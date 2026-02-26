@@ -20,7 +20,7 @@ function parseArgs(argv: string[]) {
   const args = argv.slice(2); // skip bun + script path
   let mode = "";
   let workspace = process.cwd();
-  let port = 17007;
+  let port = 0; // 0 = auto-detect based on mode
   let noOpen = false;
 
   for (let i = 0; i < args.length; i++) {
@@ -104,8 +104,11 @@ async function main() {
   }
 
   // 3. Start server
+  //    Dev mode:  backend on 17007, Vite on 17996 (user-facing)
+  //    Prod mode: backend on 17996 (serves everything)
+  const serverPort = port || (isDev ? 17007 : 17996);
   const { server, wsBridge, port: actualPort } = startServer({
-    port,
+    port: serverPort,
     workspace,
     ...(isDev ? {} : { distDir }),
   });
