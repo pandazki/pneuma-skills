@@ -39,7 +39,7 @@ Currently ships with **Doc Mode** — a markdown editing environment where Claud
 
 ```bash
 # Clone and install
-git clone git@github.com:pandazki/pneuma-skills.git
+git clone https://github.com/pandazki/pneuma-skills.git
 cd pneuma-skills
 bun install
 
