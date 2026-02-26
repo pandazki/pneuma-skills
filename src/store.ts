@@ -34,7 +34,7 @@ interface AppState {
 
   // Element selection
   selection: ElementSelection | null;
-  selectMode: boolean;
+  previewMode: "view" | "edit" | "select";
 
   // Actions — session
   setSession: (session: SessionState) => void;
@@ -60,7 +60,7 @@ interface AppState {
 
   // Actions — selection
   setSelection: (s: ElementSelection | null) => void;
-  setSelectMode: (mode: boolean) => void;
+  setPreviewMode: (mode: "view" | "edit" | "select") => void;
 
   // Actions — content
   setFiles: (files: FileContent[]) => void;
@@ -84,7 +84,7 @@ export const useStore = create<AppState>((set) => ({
   pendingPermissions: new Map(),
   files: [],
   selection: null,
-  selectMode: false,
+  previewMode: "view",
 
   setSession: (session) => set({ session }),
   updateSession: (updates) =>
@@ -126,7 +126,7 @@ export const useStore = create<AppState>((set) => ({
     }),
 
   setSelection: (selection) => set({ selection }),
-  setSelectMode: (selectMode) => set({ selectMode, ...(!selectMode ? { selection: null } : {}) }),
+  setPreviewMode: (previewMode) => set({ previewMode, ...(previewMode !== "select" ? { selection: null } : {}) }),
 
   setFiles: (files) => set({ files }),
   updateFiles: (updates) =>

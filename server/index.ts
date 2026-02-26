@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { WsBridge } from "./ws-bridge.js";
 import type { SocketData } from "./ws-bridge.js";
@@ -42,6 +42,25 @@ export function startServer(options: ServerOptions) {
       // glob failed
     }
     return c.json({ files, workspace });
+  });
+
+  // ── Save file ────────────────────────────────────────────────────────
+  app.post("/api/files", async (c) => {
+    const body = await c.req.json<{ path: string; content: string }>();
+    const relPath = body.path;
+    if (!relPath || typeof body.content !== "string") {
+      return c.json({ error: "Missing path or content" }, 400);
+    }
+    const absPath = join(workspace, relPath);
+    if (!absPath.startsWith(workspace)) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+    try {
+      writeFileSync(absPath, body.content, "utf-8");
+      return c.json({ ok: true });
+    } catch (err) {
+      return c.json({ error: "Failed to write file" }, 500);
+    }
   });
 
   // ── Static content serving (workspace files) ──────────────────────────

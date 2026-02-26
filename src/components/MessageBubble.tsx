@@ -46,7 +46,7 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
 
 function SelectionCard({ sel, interactive }: { sel: SelectionContext; interactive?: boolean }) {
   const setSelection = useStore((s) => s.setSelection);
-  const setSelectMode = useStore((s) => s.setSelectMode);
+  const setPreviewMode = useStore((s) => s.setPreviewMode);
 
   const typeLabels: Record<string, string> = {
     heading: `h${sel.level || 1}`,
@@ -63,7 +63,7 @@ function SelectionCard({ sel, interactive }: { sel: SelectionContext; interactiv
 
   const handleClick = () => {
     if (!interactive) return;
-    setSelectMode(true);
+    setPreviewMode("select");
     setSelection(sel);
   };
 
