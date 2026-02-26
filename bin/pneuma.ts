@@ -7,7 +7,7 @@
  */
 
 import { resolve, dirname, join } from "node:path";
-import { existsSync, copyFileSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import * as readline from "node:readline";
 import { startServer } from "../server/index.js";
 import { CliLauncher } from "../server/cli-launcher.js";
@@ -15,6 +15,33 @@ import { installSkill } from "../server/skill-installer.js";
 import { startFileWatcher } from "../server/file-watcher.js";
 
 const PROJECT_ROOT = resolve(dirname(import.meta.path), "..");
+
+// ── Session persistence ──────────────────────────────────────────────────────
+
+interface PersistedSession {
+  sessionId: string;
+  cliSessionId?: string;
+  mode: string;
+  createdAt: number;
+}
+
+function loadSession(workspace: string): PersistedSession | null {
+  const filePath = join(workspace, ".pneuma", "session.json");
+  try {
+    const content = readFileSync(filePath, "utf-8");
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(workspace: string, session: PersistedSession): void {
+  const dir = join(workspace, ".pneuma");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "session.json"), JSON.stringify(session, null, 2));
+}
+
+// ── CLI arg parsing ──────────────────────────────────────────────────────────
 
 function parseArgs(argv: string[]) {
   const args = argv.slice(2); // skip bun + script path
@@ -48,6 +75,8 @@ function ask(question: string): Promise<string> {
     });
   });
 }
+
+// ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
   const { mode, workspace, port, noOpen } = parseArgs(process.argv);
@@ -113,20 +142,65 @@ async function main() {
     ...(isDev ? {} : { distDir }),
   });
 
-  // 4. Launch CLI
+  // 4. Launch CLI (with session resume if available)
   const launcher = new CliLauncher(actualPort);
 
-  // When the CLI reports its internal session_id, store it
+  // When the CLI reports its internal session_id, persist it
   wsBridge.onCLISessionIdReceived((sessionId, cliSessionId) => {
     launcher.setCLISessionId(sessionId, cliSessionId);
+    // Persist to .pneuma/session.json
+    const persisted = loadSession(workspace);
+    if (persisted && persisted.sessionId === sessionId) {
+      persisted.cliSessionId = cliSessionId;
+      saveSession(workspace, persisted);
+      console.log(`[pneuma] Saved cliSessionId for resume: ${cliSessionId}`);
+    }
   });
+
+  // Check for existing session to resume
+  const existing = loadSession(workspace);
+  let resuming = false;
 
   const session = launcher.launch({
     cwd: workspace,
     permissionMode: "bypassPermissions",
+    // Reuse sessionId for stable WS routing
+    ...(existing?.cliSessionId ? {
+      sessionId: existing.sessionId,
+      resumeSessionId: existing.cliSessionId,
+    } : {}),
+  });
+
+  if (existing?.cliSessionId) {
+    resuming = true;
+    console.log(`[pneuma] Resuming session: ${existing.cliSessionId}`);
+  }
+
+  // Persist session info
+  saveSession(workspace, {
+    sessionId: session.sessionId,
+    cliSessionId: existing?.cliSessionId,
+    mode,
+    createdAt: existing?.createdAt || Date.now(),
   });
 
   console.log(`[pneuma] CLI session started: ${session.sessionId}`);
+
+  // If resume fails (CLI exits quickly), clear cliSessionId from persistence
+  launcher.onSessionExited((exitedId, exitCode) => {
+    if (exitedId === session.sessionId && resuming) {
+      const info = launcher.getSession(exitedId);
+      if (info && !info.cliSessionId) {
+        // Resume failed, cliSessionId was cleared by launcher
+        const persisted = loadSession(workspace);
+        if (persisted) {
+          persisted.cliSessionId = undefined;
+          saveSession(workspace, persisted);
+          console.log("[pneuma] Resume failed, cleared cliSessionId. Restart for fresh session.");
+        }
+      }
+    }
+  });
 
   // 5. Start file watcher
   startFileWatcher(workspace, (files) => {

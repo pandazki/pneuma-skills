@@ -27,6 +27,25 @@ You are running inside Pneuma Doc Mode. A user is viewing your markdown edits li
 ${PNEUMA_MARKER_END}`;
 
 /**
+ * Ensure `.pneuma/` is listed in the workspace's .gitignore.
+ */
+function ensureGitignore(workspace: string): void {
+  const gitignorePath = join(workspace, ".gitignore");
+  let content = "";
+  if (existsSync(gitignorePath)) {
+    content = readFileSync(gitignorePath, "utf-8");
+  }
+  if (!content.split("\n").some((line) => line.trim() === ".pneuma/" || line.trim() === ".pneuma")) {
+    if (content.length > 0 && !content.endsWith("\n")) {
+      content += "\n";
+    }
+    content += ".pneuma/\n";
+    writeFileSync(gitignorePath, content, "utf-8");
+    console.log(`[skill-installer] Added .pneuma/ to ${gitignorePath}`);
+  }
+}
+
+/**
  * Install the doc mode skill and inject CLAUDE.md configuration.
  */
 export function installSkill(workspace: string): void {
@@ -70,4 +89,7 @@ export function installSkill(workspace: string): void {
   mkdirSync(dirname(claudeMdPath), { recursive: true });
   writeFileSync(claudeMdPath, content, "utf-8");
   console.log(`[skill-installer] Updated ${claudeMdPath}`);
+
+  // 3. Ensure .pneuma/ is in .gitignore
+  ensureGitignore(workspace);
 }

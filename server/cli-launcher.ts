@@ -27,6 +27,10 @@ export interface LaunchOptions {
   claudeBinary?: string;
   allowedTools?: string[];
   env?: Record<string, string>;
+  /** Existing session ID to reuse for WS routing (instead of generating a new UUID) */
+  sessionId?: string;
+  /** CLI's internal session ID for --resume */
+  resumeSessionId?: string;
 }
 
 /**
@@ -51,7 +55,7 @@ export class CliLauncher {
    * Launch a new CLI session.
    */
   launch(options: LaunchOptions = {}): SdkSessionInfo {
-    const sessionId = randomUUID();
+    const sessionId = options.sessionId || randomUUID();
     const cwd = options.cwd || process.cwd();
 
     const info: SdkSessionInfo = {
@@ -61,6 +65,8 @@ export class CliLauncher {
       permissionMode: options.permissionMode,
       cwd,
       createdAt: Date.now(),
+      // Pre-populate for resume so exit handler knows the session was valid
+      cliSessionId: options.resumeSessionId,
     };
 
     this.sessions.set(sessionId, info);
@@ -103,6 +109,11 @@ export class CliLauncher {
       }
     }
 
+    // Resume a previous CLI session if requested
+    if (options.resumeSessionId) {
+      args.push("--resume", options.resumeSessionId);
+    }
+
     // Always pass -p "" for headless mode
     args.push("-p", "");
 
@@ -130,12 +141,20 @@ export class CliLauncher {
     this.pipeOutput(sessionId, proc);
 
     // Monitor process exit
+    const spawnedAt = Date.now();
     proc.exited.then((exitCode) => {
       console.log(`[cli-launcher] Session ${sessionId} exited (code=${exitCode})`);
       const session = this.sessions.get(sessionId);
       if (session) {
         session.state = "exited";
         session.exitCode = exitCode;
+
+        // If exited immediately after --resume, resume likely failed — clear cliSessionId
+        const uptime = Date.now() - spawnedAt;
+        if (uptime < 5000 && options.resumeSessionId) {
+          console.error(`[cli-launcher] Session ${sessionId} exited immediately after --resume (${uptime}ms). Clearing cliSessionId.`);
+          session.cliSessionId = undefined;
+        }
       }
       this.processes.delete(sessionId);
       for (const handler of this.exitHandlers) {

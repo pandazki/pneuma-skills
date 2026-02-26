@@ -1,7 +1,7 @@
 # ADR-008: Session 管理与持久化
 
-> **状态**: Accepted
-> **日期**: 2026-02-26
+> **状态**: Accepted (Revised)
+> **日期**: 2026-02-26 (初版) / 2026-02-27 (修订)
 > **决策者**: Pandazki
 > **关联**: ADR-002, ADR-003
 
@@ -9,454 +9,128 @@
 
 ## 1. 背景
 
-Session 是 Pneuma 中一次编辑会话的完整上下文，包括：
-- WebSocket 连接状态（Browser + CLI）
-- 消息历史（用户指令 + Agent 响应）
-- 待处理的权限请求
-- 文件监听状态
-- Content Mode 状态
+Session 是 Pneuma 中一次编辑会话的上下文，包括与 Claude Code CLI 的连接、消息历史、
+权限请求等。需要决定 session 的生命周期模型和持久化策略。
 
-### Companion 调研结论
+### 修订说明
 
-Companion 的 Session 管理非常成熟：
-- **双 ID 系统** — Server UUID + CLI session_id
-- **JSON 文件持久化** — `~/.companion/sessions/{id}.json`，debounced write (150ms)
-- **事件缓冲** — 600 条事件 buffer，支持断线重放
-- **消息幂等** — client_msg_id 去重
-- **自动重连** — CLI 崩溃后自动 relaunch
-- **Session Resume** — `--resume <cli-session-id>` 恢复对话
+初版设计参照 Companion 的多 session 模型（`~/.pneuma/sessions/`，SessionStore 类等）。
+经过讨论，确认 Pneuma 的使用场景与 Companion 有本质区别：
 
-Pneuma 的需求比 Companion 简单（单 session、本地使用、不需要 Docker/多用户），但核心模式可以复用。
+- Pneuma 是 **内容编辑工具**，每个 workspace 绑定一个 mode（如 doc），任务生命周期较短
+- Companion 是 **通用开发工具**，需要并行多个 session 处理不同分支/功能
+- 多个 session 同时操作同一批文件容易冲突
+- 用户真正需要的是"刷新不丢对话"和"重启能恢复"，不是并行多会话
+
+因此修订为 **单 session 模型 + workspace 本地存储**。
 
 ---
 
 ## 2. 决策
 
-### 2.1 MVP 单 Session
+### 2.1 单 Session 模型
 
-**MVP 阶段只支持一个活跃 session。**
+**Pneuma 始终维护单个活跃 session。** 不支持并行多 session。
+
+未来通过 Claude Code 的 `/clear` 命令支持"清空上下文，重新开始"。
+
+### 2.2 Workspace 本地存储
+
+**Session 元信息存储在 `<workspace>/.pneuma/` 目录下**，而非全局 `~/.pneuma/`。
 
 理由：
-- Pneuma 是 CLI 启动的本地工具，一次编辑一个项目
-- 简化实现和 UI
-- Phase 2 再支持多 session / resume
+- 打开一个 workspace 就自动加载该 workspace 的会话状态
+- 每个 workspace 自包含，不依赖全局状态
+- 与现有的 `.claude/skills/` 模式一致
 
-### 2.2 JSON 文件持久化
+### 2.3 Session Resume
 
-**采用 Companion 的 JSON 文件存储模式**，但简化结构。
+**支持通过 Claude Code 的 `--resume <cliSessionId>` 恢复会话。**
 
-### 2.3 自动恢复策略
-
-**MVP 不实现 session resume**，但预留 CLI session_id 映射。
+启动时检查 `.pneuma/session.json`，如果存在且合法，尝试恢复。
 
 ---
 
 ## 3. 详细设计
 
-### 3.1 Session 数据结构
+### 3.1 存储结构
 
-```typescript
-// core/server/session-manager.ts
-
-interface Session {
-  // === 标识 ===
-  id: string;                          // Server 生成的 UUID (用于 URL 路由)
-  cliSessionId?: string;               // CLI 报告的 session_id (用于未来 resume)
-
-  // === 配置 ===
-  workspace: string;                   // 工作目录绝对路径
-  modeName: string;                    // Content Mode 名称 ("slide")
-  backendName: string;                 // Agent Backend 名称 ("claude-code")
-
-  // === 连接状态 ===
-  cliSocket: WebSocket | null;         // CLI WebSocket
-  browserSockets: Set<WebSocket>;      // Browser WebSocket(s)
-  cliState: "starting" | "connected" | "running" | "exited";
-
-  // === CLI 进程 ===
-  process?: SpawnedProcess;            // Bun.spawn 的返回值
-
-  // === 消息管理 ===
-  messageHistory: HistoryMessage[];    // 持久化的消息历史
-  pendingMessages: string[];           // CLI 未连接时排队的 NDJSON 消息
-  pendingPermissions: Map<string, PermissionRequest>;
-
-  // === 事件序号 ===
-  nextEventSeq: number;
-  eventBuffer: Array<{ seq: number; message: any }>;
-  lastAckSeq: number;
-
-  // === 幂等性 ===
-  processedClientMsgIds: Set<string>;
-
-  // === Session 状态 ===
-  state: SessionState;
-
-  // === 时间戳 ===
-  createdAt: number;
-  lastActiveAt: number;
-}
-
-interface SessionState {
-  model?: string;
-  cwd?: string;
-  tools?: string[];
-  permissionMode?: string;
-  num_turns: number;
-  total_cost_usd: number;
-  contentStructure?: ContentStructure;
-}
-
-interface HistoryMessage {
-  type: "user" | "assistant" | "result" | "permission";
-  data: any;
-  timestamp: number;
-  seq?: number;
-}
+```
+<workspace>/
+├── .pneuma/
+│   └── session.json          # Session 元信息
+├── .claude/
+│   └── skills/pneuma-doc/    # Skill 文件（已有）
+├── CLAUDE.md                 # Claude Code 配置（已有）
+└── *.md                      # 用户内容文件
 ```
 
-### 3.2 Session Manager
+### 3.2 Session 元信息
 
 ```typescript
-class SessionManager {
-  private session: Session | null = null;
-  private store: SessionStore;
-  private fileWatcher: FileWatcher | null = null;
-
-  constructor(store: SessionStore) {
-    this.store = store;
-  }
-
-  // === 创建 Session ===
-
-  async create(options: {
-    workspace: string;
-    mode: ContentMode;
-    backend: AgentBackend;
-    port: number;
-    model?: string;
-    permissionMode?: string;
-  }): Promise<Session> {
-    const sessionId = crypto.randomUUID();
-
-    // 1. 安装 Skill
-    await installSkill(options.mode, options.workspace);
-
-    // 2. 创建 Session 对象
-    const session: Session = {
-      id: sessionId,
-      workspace: options.workspace,
-      modeName: options.mode.name,
-      backendName: options.backend.name,
-      cliSocket: null,
-      browserSockets: new Set(),
-      cliState: "starting",
-      messageHistory: [],
-      pendingMessages: [],
-      pendingPermissions: new Map(),
-      nextEventSeq: 1,
-      eventBuffer: [],
-      lastAckSeq: 0,
-      processedClientMsgIds: new Set(),
-      state: {
-        num_turns: 0,
-        total_cost_usd: 0,
-      },
-      createdAt: Date.now(),
-      lastActiveAt: Date.now(),
-    };
-
-    this.session = session;
-
-    // 3. Spawn CLI
-    const process = await options.backend.spawn({
-      sessionId,
-      port: options.port,
-      cwd: options.workspace,
-      model: options.model,
-      permissionMode: options.permissionMode,
-    });
-    session.process = process.spawned;
-
-    // 4. 启动 File Watcher
-    this.fileWatcher = new FileWatcher({
-      workspace: options.workspace,
-      mode: options.mode,
-      onContentChange: (changes) => {
-        handleContentChange(changes, session, options.mode, options.workspace);
-      },
-    });
-    this.fileWatcher.start();
-
-    // 5. 持久化
-    this.store.save(session);
-
-    console.log(`[session] Created: ${sessionId} (${options.mode.name} + ${options.backend.name})`);
-    return session;
-  }
-
-  // === 获取当前 Session ===
-
-  getSession(): Session | null {
-    return this.session;
-  }
-
-  getSessionById(id: string): Session | null {
-    return this.session?.id === id ? this.session : null;
-  }
-
-  // === 销毁 Session ===
-
-  async destroy(): Promise<void> {
-    if (!this.session) return;
-
-    // 1. 停止 File Watcher
-    this.fileWatcher?.stop();
-    this.fileWatcher = null;
-
-    // 2. Kill CLI 进程
-    if (this.session.process) {
-      this.session.process.proc.kill();
-    }
-
-    // 3. 关闭所有 WebSocket
-    for (const ws of this.session.browserSockets) {
-      ws.close(1000, "Session destroyed");
-    }
-    this.session.cliSocket?.close();
-
-    // 4. 持久化最终状态
-    this.store.save(this.session);
-
-    console.log(`[session] Destroyed: ${this.session.id}`);
-    this.session = null;
-  }
-
-  // === CLI 连接管理 ===
-
-  onCLIConnected(sessionId: string, ws: WebSocket): void {
-    const session = this.getSessionById(sessionId);
-    if (!session) return;
-
-    session.cliSocket = ws;
-    session.cliState = "connected";
-    session.lastActiveAt = Date.now();
-  }
-
-  onCLIDisconnected(sessionId: string): void {
-    const session = this.getSessionById(sessionId);
-    if (!session) return;
-
-    session.cliSocket = null;
-    session.cliState = "exited";
-  }
-
-  // === CLI Session ID 映射 ===
-
-  setCLISessionId(sessionId: string, cliSessionId: string): void {
-    const session = this.getSessionById(sessionId);
-    if (session) {
-      session.cliSessionId = cliSessionId;
-      this.store.save(session);
-    }
-  }
-}
-```
-
-### 3.3 Session Store (持久化)
-
-```typescript
-// core/server/session-store.ts
-
-import { join } from "path";
-import { mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync } from "fs";
-
-const DEFAULT_DIR = join(
-  process.env.HOME || "/tmp",
-  ".pneuma",
-  "sessions",
-);
-
 interface PersistedSession {
-  id: string;
-  cliSessionId?: string;
-  workspace: string;
-  modeName: string;
-  backendName: string;
-  state: SessionState;
-  messageHistory: HistoryMessage[];
-  createdAt: number;
-  lastActiveAt: number;
-}
-
-class SessionStore {
-  private dir: string;
-  private saveTimer: ReturnType<typeof setTimeout> | null = null;
-
-  constructor(dir?: string) {
-    this.dir = dir || DEFAULT_DIR;
-    mkdirSync(this.dir, { recursive: true });
-  }
-
-  /** Debounced save (150ms) */
-  save(session: Session): void {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-    }
-    this.saveTimer = setTimeout(() => {
-      this.saveSync(session);
-    }, 150);
-  }
-
-  /** 立即保存 */
-  saveSync(session: Session): void {
-    const persisted: PersistedSession = {
-      id: session.id,
-      cliSessionId: session.cliSessionId,
-      workspace: session.workspace,
-      modeName: session.modeName,
-      backendName: session.backendName,
-      state: session.state,
-      messageHistory: session.messageHistory,
-      createdAt: session.createdAt,
-      lastActiveAt: session.lastActiveAt,
-    };
-
-    const filePath = join(this.dir, `${session.id}.json`);
-    writeFileSync(filePath, JSON.stringify(persisted, null, 2));
-  }
-
-  /** 加载 session */
-  load(sessionId: string): PersistedSession | null {
-    try {
-      const filePath = join(this.dir, `${sessionId}.json`);
-      const content = readFileSync(filePath, "utf-8");
-      return JSON.parse(content);
-    } catch {
-      return null;
-    }
-  }
-
-  /** 列出所有已保存的 session */
-  list(): PersistedSession[] {
-    try {
-      return readdirSync(this.dir)
-        .filter(f => f.endsWith(".json"))
-        .map(f => {
-          try {
-            const content = readFileSync(join(this.dir, f), "utf-8");
-            return JSON.parse(content);
-          } catch {
-            return null;
-          }
-        })
-        .filter(Boolean) as PersistedSession[];
-    } catch {
-      return [];
-    }
-  }
-
-  /** 删除 session 文件 */
-  delete(sessionId: string): void {
-    try {
-      unlinkSync(join(this.dir, `${sessionId}.json`));
-    } catch {
-      // ignore
-    }
-  }
+  sessionId: string;          // Server UUID，用于 WebSocket 路由
+  cliSessionId?: string;      // Claude Code 内部 session ID，用于 --resume
+  mode: string;               // Content Mode 名称 ("doc")
+  createdAt: number;          // 创建时间戳
 }
 ```
 
-### 3.4 Session 生命周期时序图
+只存最少必要的信息。消息历史不持久化——Claude Code 的 `--resume` 会自动恢复
+对话上下文（message_history 事件），不需要我们自己存。
+
+### 3.3 启动流程
 
 ```
-pneuma slide --workspace ./my-deck
+pneuma-skills doc --workspace ~/my-notes
       │
       ▼
-[SessionManager.create()]
+[检查 .pneuma/session.json]
       │
-      ├─ installSkill() → .claude/skills/pneuma-slide/
-      ├─ new Session(id=UUID)
-      ├─ backend.spawn() → claude --sdk-url ws://...
-      ├─ fileWatcher.start() → 监听 workspace 文件
-      └─ store.save() → ~/.pneuma/sessions/UUID.json
+      ├─ 存在且有 cliSessionId
+      │   └─ claude --resume <cliSessionId> --sdk-url ws://...
+      │   └─ 复用 sessionId（WebSocket 路由不变）
       │
-      ▼
-[CLI 启动中... state="starting"]
-      │
-      ├─ CLI 连接 WebSocket → handleCLIOpen()
-      │  └─ state="connected"
-      │
-      ├─ CLI 发送 system/init
-      │  └─ 保存 cliSessionId
-      │  └─ 广播 session_init 到浏览器
+      └─ 不存在 / 无 cliSessionId
+          └─ claude --sdk-url ws://...（全新 session）
+          └─ 生成 sessionId，写入 session.json
       │
       ▼
-[Session 运行中]
+[CLI 连接后]
       │
-      ├─ 浏览器 ↔ 消息桥接 ↔ CLI
-      │  └─ state="running" (有活跃请求时)
-      │  └─ state="idle" (请求完成时)
-      │
-      ├─ File Watcher → content_update → iframe 刷新
-      │
-      ├─ store.save() → 定期持久化
+      └─ CLI 发送 system/init 消息
+         └─ 提取 cliSessionId，更新 session.json
+         └─ 如果是 resume，CLI 会自动发送 message_history
       │
       ▼
-[Session 结束]
+[运行中]
       │
-      ├─ Ctrl+C / 关闭浏览器 / CLI 退出
-      │
-      └─ SessionManager.destroy()
-         ├─ fileWatcher.stop()
-         ├─ process.kill()
-         ├─ websocket.close()
-         └─ store.save() → 最终状态
+      └─ 浏览器刷新 → 重连 WebSocket（同一 sessionId）
+         └─ WsBridge 自动 replay event buffer
 ```
 
-### 3.5 CLI 崩溃处理
+### 3.4 浏览器刷新恢复
 
-```typescript
-// CLI 进程退出时的处理
+浏览器刷新时：
+1. 从 URL（`?session=<sessionId>`）获取 sessionId
+2. 重新建立 WebSocket 连接到 `/ws/browser/<sessionId>`
+3. WsBridge 的 `handleBrowserOpen` 自动 replay 缓存的事件
+4. 不需要做任何特殊处理
 
-function onCLIProcessExit(session: Session, exitCode: number | undefined): void {
-  session.cliState = "exited";
+### 3.5 服务器重启恢复
 
-  // 通知浏览器
-  broadcastToBrowsers(session, { type: "cli_disconnected" });
+服务器重启时：
+1. 读取 `.pneuma/session.json`
+2. 用 `--resume <cliSessionId>` 重新 spawn CLI
+3. CLI 自动恢复对话上下文
+4. 浏览器重连后收到 message_history 事件
 
-  if (exitCode === 127) {
-    // Claude CLI 二进制不存在
-    broadcastToBrowsers(session, {
-      type: "session_update",
-      updates: { error: "Claude Code CLI not found in PATH" },
-    });
-    return;
-  }
+### 3.6 Session 失效
 
-  if (exitCode !== 0 && session.browserSockets.size > 0) {
-    // CLI 异常退出且有浏览器在线 → 提示用户
-    broadcastToBrowsers(session, {
-      type: "session_update",
-      updates: {
-        error: `Claude Code exited unexpectedly (code: ${exitCode}). You can try refreshing the page to restart.`,
-      },
-    });
-
-    // MVP: 不自动重启，让用户决定
-    // Phase 2: 可以实现自动 relaunch
-  }
-}
-```
-
-### 3.6 存储目录结构
-
-```
-~/.pneuma/
-├── sessions/
-│   └── <uuid>.json              # Session 持久化文件
-└── config.json                  # (未来) 全局配置
-```
+以下情况 session 视为失效，需要创建新 session：
+- `session.json` 不存在
+- `cliSessionId` 不存在（CLI 从未连接成功）
+- Claude Code 的 `--resume` 失败（session 过期等）
 
 ---
 
@@ -464,61 +138,65 @@ function onCLIProcessExit(session: Session, exitCode: number | undefined): void 
 
 ### 4.1 单 Session vs 多 Session
 
-**决策：MVP 单 session。**
+**决策：单 session。**
 
 理由：
-- 本地工具场景，一次编辑一个项目
-- 多 session 需要 UI 支持（session 列表、切换）和更复杂的 store
-- Phase 2 可扩展（store 改为 Map-based）
+- Pneuma 是内容编辑工具，任务生命周期小
+- 同 workspace + 同 mode 下，多 session 场景弱
+- 多 session 操作同一批文件易冲突
+- 未来用 `/clear` 替代"开新 session"的需求
 
-### 4.2 持久化频率
+### 4.2 Workspace 本地 vs 全局存储
 
-**决策：Debounced write (150ms)，与 Companion 一致。**
-
-理由：
-- 消息历史频繁更新（每条 streaming event）
-- 150ms debounce 平衡了持久化频率和磁盘 I/O
-- 异常退出最多丢失 150ms 内的数据
-
-### 4.3 不实现 MVP Session Resume
-
-**决策：MVP 不实现 `--resume`，但保存 `cliSessionId` 映射。**
+**决策：存储在 `<workspace>/.pneuma/`。**
 
 理由：
-- Resume 增加启动复杂度（需要检测旧 session 是否可恢复）
-- MVP 场景下刷新页面重新开始是可接受的
-- 保存映射为 Phase 2 resume 做准备
+- Workspace 自包含，直接打开即恢复
+- 与 `.claude/skills/` 模式一致
+- 不需要管理全局状态目录
 
-### 4.4 CLI 崩溃不自动重启
+### 4.3 最小化持久化内容
 
-**决策：MVP 不自动 relaunch CLI，只通知用户。**
+**决策：只存 sessionId + cliSessionId + mode + createdAt。**
 
 理由：
-- 自动重启可能掩盖问题
-- 用户刷新页面即可重新创建 session
-- Companion 的自动 relaunch 逻辑较复杂（grace period、retry limit 等），Phase 2 再考虑
+- 消息历史由 Claude Code 的 `--resume` 自动恢复
+- WsBridge 的 event buffer 处理浏览器刷新场景
+- 减少存储复杂度，不需要 debounced write
+
+### 4.4 Resume 失败回退
+
+**决策：Resume 失败时静默创建新 session。**
+
+理由：
+- 用户不需要关心 resume 的技术细节
+- 新 session 的唯一代价是丢失对话历史
+- 文件内容不受影响（在磁盘上）
 
 ---
 
 ## 5. 被否决的方案
 
-### 5.1 SQLite 持久化
+### 5.1 多 Session 管理
 
-- 否决原因：JSON 文件对单 session 足够；SQLite 增加依赖；Companion 也用 JSON 文件
+- 否决原因：Pneuma 的内容编辑场景不需要并行 session
+- 替代：单 session + `/clear` 命令
 
-### 5.2 内存 only（不持久化）
+### 5.2 全局存储 (`~/.pneuma/sessions/`)
 
-- 否决原因：服务器重启或 CLI 崩溃时丢失所有消息历史；用户体验差
+- 否决原因：需要额外逻辑匹配 workspace → session
+- 替代：workspace 本地 `.pneuma/`
 
-### 5.3 Redis / 外部存储
+### 5.3 完整消息历史持久化
 
-- 否决原因：Pneuma 是本地工具，不需要外部依赖
+- 否决原因：Claude Code `--resume` 已处理历史恢复
+- 减少实现复杂度
 
 ---
 
 ## 6. 影响
 
-1. **Session 文件在 `~/.pneuma/sessions/`** — 需要定期清理旧 session
-2. **单 session 限制** — 不能同时编辑多个项目
-3. **无 resume** — 关闭再打开会丢失对话上下文（但文件保留）
-4. **CLI 崩溃需要手动恢复** — 刷新页面
+1. **Workspace 下新增 `.pneuma/` 目录** — 需加入 `.gitignore`
+2. **单 session** — 不能并行多个编辑任务
+3. **Resume 依赖 Claude Code** — 如果 Claude Code 改变 `--resume` 行为需要适配
+4. **浏览器刷新无感** — 依赖 WsBridge event buffer（已实现）
