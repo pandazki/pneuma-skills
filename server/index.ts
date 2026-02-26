@@ -197,6 +197,69 @@ export function startServer(options: ServerOptions) {
     }
   });
 
+  // ── Process management ──────────────────────────────────────────────
+  app.get("/api/processes/system", (c) => {
+    const DEV_COMMANDS = new Set(["node", "bun", "deno", "python", "python3", "uvicorn", "vite", "next", "nuxt", "webpack", "esbuild", "tsx"]);
+    const EXCLUDE_COMMANDS = new Set(["launchd", "nginx", "docker", "dockerd", "com.docker", "Cursor", "cursor", "Code", "code"]);
+    const processes: { pid: number; command: string; fullCommand: string; ports: number[]; cwd?: string; startedAt?: number }[] = [];
+    try {
+      const lsofOutput = execSync("lsof -iTCP -sTCP:LISTEN -P -n", { encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] });
+      const pidPorts = new Map<number, Set<number>>();
+      const pidCommand = new Map<number, string>();
+      for (const line of lsofOutput.split("\n").slice(1)) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 9) continue;
+        const cmd = parts[0];
+        const pid = parseInt(parts[1], 10);
+        if (isNaN(pid)) continue;
+        if (EXCLUDE_COMMANDS.has(cmd)) continue;
+        if (!DEV_COMMANDS.has(cmd)) continue;
+        pidCommand.set(pid, cmd);
+        const nameField = parts[parts.length - 1];
+        const portMatch = nameField.match(/:(\d+)$/);
+        if (portMatch) {
+          if (!pidPorts.has(pid)) pidPorts.set(pid, new Set());
+          pidPorts.get(pid)!.add(parseInt(portMatch[1], 10));
+        }
+      }
+      for (const [pid, ports] of pidPorts) {
+        let fullCommand = "";
+        let cwd: string | undefined;
+        try { fullCommand = execSync(`ps -p ${pid} -o args=`, { encoding: "utf-8", timeout: 3_000 }).trim(); } catch {}
+        try {
+          const cwdOutput = execSync(`lsof -a -p ${pid} -d cwd -Fn`, { encoding: "utf-8", timeout: 3_000 });
+          const cwdMatch = cwdOutput.match(/\nn(.+)/);
+          if (cwdMatch) cwd = cwdMatch[1];
+        } catch {}
+        processes.push({
+          pid,
+          command: pidCommand.get(pid) || "",
+          fullCommand,
+          ports: Array.from(ports),
+          cwd,
+        });
+      }
+    } catch { /* lsof not available or failed */ }
+    return c.json({ processes });
+  });
+
+  app.post("/api/processes/:taskId/kill", async (c) => {
+    const taskId = c.req.param("taskId");
+    if (!/^[a-f0-9]+$/i.test(taskId)) return c.json({ error: "Invalid taskId" }, 400);
+    try {
+      execSync(`pkill -f "${taskId}"`, { timeout: 5_000, stdio: ["pipe", "pipe", "pipe"] });
+    } catch { /* process may already be gone */ }
+    return c.json({ ok: true, taskId });
+  });
+
+  app.post("/api/processes/system/:pid/kill", async (c) => {
+    const pid = parseInt(c.req.param("pid"), 10);
+    if (isNaN(pid) || pid <= 0) return c.json({ error: "Invalid PID" }, 400);
+    if (pid === process.pid) return c.json({ error: "Cannot kill self" }, 403);
+    try { process.kill(pid, "SIGTERM"); } catch { /* already gone */ }
+    return c.json({ ok: true, pid });
+  });
+
   // ── Static content serving (workspace files) ──────────────────────────
   app.get("/content/*", async (c) => {
     const relPath = c.req.path.replace(/^\/content\//, "");

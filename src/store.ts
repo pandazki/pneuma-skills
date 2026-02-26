@@ -39,6 +39,9 @@ interface AppState {
   changedFilesTick: number;
   diffBase: "last-commit" | "default-branch";
 
+  // Processes
+  sessionProcesses: import("./components/ProcessPanel.js").ProcessItem[];
+
   // Element selection
   selection: ElementSelection | null;
   previewMode: "view" | "edit" | "select";
@@ -72,6 +75,10 @@ interface AppState {
   bumpChangedFilesTick: () => void;
   setDiffBase: (base: "last-commit" | "default-branch") => void;
 
+  // Actions — processes
+  addProcess: (proc: import("./components/ProcessPanel.js").ProcessItem) => void;
+  updateProcess: (taskId: string, updates: Partial<import("./components/ProcessPanel.js").ProcessItem>) => void;
+
   // Actions — selection
   setSelection: (s: ElementSelection | null) => void;
   setPreviewMode: (mode: "view" | "edit" | "select") => void;
@@ -100,6 +107,7 @@ export const useStore = create<AppState>((set) => ({
   activeTab: "chat",
   changedFilesTick: 0,
   diffBase: "last-commit",
+  sessionProcesses: [],
   selection: null,
   previewMode: "view",
 
@@ -146,6 +154,14 @@ export const useStore = create<AppState>((set) => ({
 
   bumpChangedFilesTick: () => set((s) => ({ changedFilesTick: s.changedFilesTick + 1 })),
   setDiffBase: (diffBase) => set({ diffBase }),
+
+  addProcess: (proc) => set((s) => ({ sessionProcesses: [...s.sessionProcesses, proc] })),
+  updateProcess: (taskId, updates) =>
+    set((s) => ({
+      sessionProcesses: s.sessionProcesses.map((p) =>
+        p.taskId === taskId ? { ...p, ...updates } : p
+      ),
+    })),
 
   setSelection: (selection) => set({ selection }),
   setPreviewMode: (previewMode) => set({ previewMode, ...(previewMode !== "select" ? { selection: null } : {}) }),

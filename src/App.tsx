@@ -4,6 +4,7 @@ import TopBar from "./components/TopBar.js";
 import MarkdownPreview from "./components/MarkdownPreview.js";
 import ChatPanel from "./components/ChatPanel.js";
 import DiffPanel from "./components/DiffPanel.js";
+import ProcessPanel from "./components/ProcessPanel.js";
 import { useStore } from "./store.js";
 import { connect } from "./ws.js";
 
@@ -38,7 +39,7 @@ function RightPanel() {
       )}
       {activeTab === "diff" && <DiffPanel />}
       {activeTab === "terminal" && <PlaceholderTab name="Terminal" />}
-      {activeTab === "processes" && <PlaceholderTab name="Processes" />}
+      {activeTab === "processes" && <ProcessPanel />}
     </div>
   );
 }
