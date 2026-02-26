@@ -7,7 +7,8 @@
  */
 
 import { resolve, dirname, join } from "node:path";
-import { existsSync, copyFileSync } from "node:fs";
+import { existsSync, copyFileSync, mkdirSync } from "node:fs";
+import * as readline from "node:readline";
 import { startServer } from "../server/index.js";
 import { CliLauncher } from "../server/cli-launcher.js";
 import { installSkill } from "../server/skill-installer.js";
@@ -38,6 +39,16 @@ function parseArgs(argv: string[]) {
   return { mode, workspace: resolve(workspace), port, noOpen };
 }
 
+function ask(question: string): Promise<string> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
+
 async function main() {
   const { mode, workspace, port, noOpen } = parseArgs(process.argv);
 
@@ -47,8 +58,13 @@ async function main() {
   }
 
   if (!existsSync(workspace)) {
-    console.error(`Workspace does not exist: ${workspace}`);
-    process.exit(1);
+    const answer = await ask(`Workspace does not exist: ${workspace}\nCreate it? [Y/n] `);
+    if (answer.toLowerCase() === "n") {
+      console.log("[pneuma] Aborted.");
+      process.exit(0);
+    }
+    mkdirSync(workspace, { recursive: true });
+    console.log(`[pneuma] Created workspace: ${workspace}`);
   }
 
   console.log(`[pneuma] Mode: ${mode}`);
