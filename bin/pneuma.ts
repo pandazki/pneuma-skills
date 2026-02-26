@@ -78,7 +78,29 @@ function ask(question: string): Promise<string> {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
+function checkBunVersion() {
+  const MIN_BUN = "1.3.5"; // Required for Bun.spawn terminal (PTY) support
+  const current = typeof Bun !== "undefined" ? Bun.version : null;
+  if (!current) {
+    console.warn("[pneuma] Warning: Not running under Bun. Pneuma requires Bun >= " + MIN_BUN);
+    return;
+  }
+  const [curMajor, curMinor, curPatch] = current.split(".").map(Number);
+  const [minMajor, minMinor, minPatch] = MIN_BUN.split(".").map(Number);
+  const ok =
+    curMajor > minMajor ||
+    (curMajor === minMajor && curMinor > minMinor) ||
+    (curMajor === minMajor && curMinor === minMinor && curPatch >= minPatch);
+  if (!ok) {
+    console.warn(
+      `[pneuma] Warning: Bun ${current} detected, but >= ${MIN_BUN} is required.` +
+      ` Terminal features may not work. Run \`bun upgrade\` to update.`
+    );
+  }
+}
+
 async function main() {
+  checkBunVersion();
   const { mode, workspace, port, noOpen } = parseArgs(process.argv);
 
   if (!mode || mode !== "doc") {

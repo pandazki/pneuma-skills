@@ -185,7 +185,7 @@ export function startServer(options: ServerOptions) {
   // ── Git: status (for editor file tree badges) ──────────────────────
   app.get("/api/git/status", (c) => {
     try {
-      const output = execSync("git status --porcelain", { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+      const output = execSync("git status --porcelain", { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trimEnd();
       const statuses: Record<string, string> = {};
       for (const line of output.split("\n").filter(Boolean)) {
         const status = line.substring(0, 2).trim();
@@ -218,7 +218,8 @@ export function startServer(options: ServerOptions) {
         if (EXCLUDE_COMMANDS.has(cmd)) continue;
         if (!DEV_COMMANDS.has(cmd)) continue;
         pidCommand.set(pid, cmd);
-        const nameField = parts[parts.length - 1];
+        // lsof NAME field is "addr:port (LISTEN)" — port is in the second-to-last field
+        const nameField = parts.length >= 10 ? parts[parts.length - 2] : parts[parts.length - 1];
         const portMatch = nameField.match(/:(\d+)$/);
         if (portMatch) {
           if (!pidPorts.has(pid)) pidPorts.set(pid, new Set());
