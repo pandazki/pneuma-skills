@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import TopBar from "./components/TopBar.js";
 import MarkdownPreview from "./components/MarkdownPreview.js";
@@ -7,10 +7,20 @@ import DiffPanel from "./components/DiffPanel.js";
 import { useStore } from "./store.js";
 import { connect } from "./ws.js";
 
+const EditorPanel = lazy(() => import("./components/EditorPanel.js"));
+
 function PlaceholderTab({ name }: { name: string }) {
   return (
     <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
       {name} — coming soon
+    </div>
+  );
+}
+
+function LazyFallback() {
+  return (
+    <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
+      Loading...
     </div>
   );
 }
@@ -21,7 +31,11 @@ function RightPanel() {
   return (
     <div className="flex flex-col h-full">
       {activeTab === "chat" && <ChatPanel />}
-      {activeTab === "editor" && <PlaceholderTab name="Editor" />}
+      {activeTab === "editor" && (
+        <Suspense fallback={<LazyFallback />}>
+          <EditorPanel />
+        </Suspense>
+      )}
       {activeTab === "diff" && <DiffPanel />}
       {activeTab === "terminal" && <PlaceholderTab name="Terminal" />}
       {activeTab === "processes" && <PlaceholderTab name="Processes" />}
