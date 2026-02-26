@@ -16,10 +16,10 @@ const WS_RECONNECT_DELAY_MS = 2000;
 
 function getWsUrl(sessionId: string): string {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  // In dev mode (Vite on 7996), connect directly to backend to avoid WS proxy issues.
+  // In dev mode (Vite on 2996), connect directly to backend to avoid WS proxy issues.
   // In production, the backend serves the frontend so location.host is correct.
   const host = import.meta.env.DEV
-    ? `${location.hostname}:${import.meta.env.VITE_API_PORT || "17996"}`
+    ? `${location.hostname}:${import.meta.env.VITE_API_PORT || "12996"}`
     : location.host;
   return `${proto}//${host}/ws/browser/${sessionId}`;
 }
