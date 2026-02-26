@@ -5,7 +5,7 @@
   "description": "Framework for Code Agents to do WYSIWYG editing on HTML-based content",
   "license": "MIT",
   "bin": {
-    "pneuma": "./bin/pneuma.ts"
+    "pneuma-skills": "./bin/pneuma.ts"
   },
   "files": [
     "bin/",
