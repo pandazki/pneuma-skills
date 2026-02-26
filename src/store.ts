@@ -42,6 +42,9 @@ interface AppState {
   // Processes
   sessionProcesses: import("./components/ProcessPanel.js").ProcessItem[];
 
+  // Terminal
+  terminalId: string | null;
+
   // Element selection
   selection: ElementSelection | null;
   previewMode: "view" | "edit" | "select";
@@ -79,6 +82,9 @@ interface AppState {
   addProcess: (proc: import("./components/ProcessPanel.js").ProcessItem) => void;
   updateProcess: (taskId: string, updates: Partial<import("./components/ProcessPanel.js").ProcessItem>) => void;
 
+  // Actions — terminal
+  setTerminalId: (id: string | null) => void;
+
   // Actions — selection
   setSelection: (s: ElementSelection | null) => void;
   setPreviewMode: (mode: "view" | "edit" | "select") => void;
@@ -108,6 +114,7 @@ export const useStore = create<AppState>((set) => ({
   changedFilesTick: 0,
   diffBase: "last-commit",
   sessionProcesses: [],
+  terminalId: null,
   selection: null,
   previewMode: "view",
 
@@ -162,6 +169,8 @@ export const useStore = create<AppState>((set) => ({
         p.taskId === taskId ? { ...p, ...updates } : p
       ),
     })),
+
+  setTerminalId: (terminalId) => set({ terminalId }),
 
   setSelection: (selection) => set({ selection }),
   setPreviewMode: (previewMode) => set({ previewMode, ...(previewMode !== "select" ? { selection: null } : {}) }),

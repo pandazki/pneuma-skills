@@ -18,7 +18,12 @@ export interface BrowserSocketData {
   lastAckSeq?: number;
 }
 
-export type SocketData = CLISocketData | BrowserSocketData;
+export interface TerminalSocketData {
+  kind: "terminal";
+  terminalId: string;
+}
+
+export type SocketData = CLISocketData | BrowserSocketData | TerminalSocketData;
 
 /** Tracks a pending control_request sent to CLI that expects a control_response. */
 export interface PendingControlRequest {

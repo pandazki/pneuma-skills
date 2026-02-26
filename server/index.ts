@@ -5,7 +5,9 @@ import { join, resolve, relative, basename, extname } from "node:path";
 import { execSync } from "node:child_process";
 import { WsBridge } from "./ws-bridge.js";
 import type { SocketData } from "./ws-bridge.js";
+import type { TerminalSocketData } from "./ws-bridge-types.js";
 import type { ServerWebSocket } from "bun";
+import { TerminalManager } from "./terminal-manager.js";
 
 const DEFAULT_PORT = 17007;
 
@@ -19,6 +21,7 @@ export function startServer(options: ServerOptions) {
   const port = options.port ?? DEFAULT_PORT;
   const workspace = resolve(options.workspace);
   const wsBridge = new WsBridge();
+  const terminalManager = new TerminalManager();
 
   const app = new Hono();
 
@@ -260,6 +263,29 @@ export function startServer(options: ServerOptions) {
     return c.json({ ok: true, pid });
   });
 
+  // ── Terminal management ──────────────────────────────────────────────
+  app.post("/api/terminal/spawn", async (c) => {
+    const body = await c.req.json<{ cwd?: string; cols?: number; rows?: number }>();
+    const cwd = body.cwd || workspace;
+    const terminalId = terminalManager.spawn(cwd, body.cols, body.rows);
+    return c.json({ terminalId });
+  });
+
+  app.get("/api/terminal", (c) => {
+    const terminalId = c.req.query("terminalId");
+    const info = terminalManager.getInfo(terminalId);
+    if (info) {
+      return c.json({ active: true, terminalId: info.id, cwd: info.cwd });
+    }
+    return c.json({ active: false });
+  });
+
+  app.post("/api/terminal/kill", async (c) => {
+    const body = await c.req.json<{ terminalId?: string }>();
+    terminalManager.kill(body.terminalId);
+    return c.json({ ok: true });
+  });
+
   // ── Static content serving (workspace files) ──────────────────────────
   app.get("/content/*", async (c) => {
     const relPath = c.req.path.replace(/^\/content\//, "");
@@ -330,6 +356,17 @@ export function startServer(options: ServerOptions) {
         return new Response("WebSocket upgrade failed", { status: 400 });
       }
 
+      // Terminal WebSocket — connects to a PTY terminal
+      const terminalMatch = url.pathname.match(/^\/ws\/terminal\/([a-f0-9-]+)$/);
+      if (terminalMatch) {
+        const terminalId = terminalMatch[1];
+        const upgraded = server.upgrade(req, {
+          data: { kind: "terminal" as const, terminalId },
+        });
+        if (upgraded) return undefined;
+        return new Response("WebSocket upgrade failed", { status: 400 });
+      }
+
       // Hono handles the rest
       return app.fetch(req, server);
     },
@@ -340,6 +377,8 @@ export function startServer(options: ServerOptions) {
           wsBridge.handleCLIOpen(ws, data.sessionId);
         } else if (data.kind === "browser") {
           wsBridge.handleBrowserOpen(ws, data.sessionId);
+        } else if (data.kind === "terminal") {
+          terminalManager.addBrowserSocket(ws as ServerWebSocket<TerminalSocketData>);
         }
       },
       message(ws: ServerWebSocket<SocketData>, msg: string | Buffer) {
@@ -348,6 +387,8 @@ export function startServer(options: ServerOptions) {
           wsBridge.handleCLIMessage(ws, msg);
         } else if (data.kind === "browser") {
           wsBridge.handleBrowserMessage(ws, msg);
+        } else if (data.kind === "terminal") {
+          terminalManager.handleBrowserMessage(ws as ServerWebSocket<TerminalSocketData>, msg);
         }
       },
       close(ws: ServerWebSocket<SocketData>) {
@@ -356,6 +397,8 @@ export function startServer(options: ServerOptions) {
           wsBridge.handleCLIClose(ws);
         } else if (data.kind === "browser") {
           wsBridge.handleBrowserClose(ws);
+        } else if (data.kind === "terminal") {
+          terminalManager.removeBrowserSocket(ws as ServerWebSocket<TerminalSocketData>);
         }
       },
     },
@@ -366,5 +409,5 @@ export function startServer(options: ServerOptions) {
   console.log(`[server] CLI WebSocket:     ws://localhost:${server.port}/ws/cli/:sessionId`);
   console.log(`[server] Browser WebSocket: ws://localhost:${server.port}/ws/browser/:sessionId`);
 
-  return { server, wsBridge, port: server.port as number };
+  return { server, wsBridge, terminalManager, port: server.port as number };
 }

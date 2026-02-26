@@ -9,14 +9,7 @@ import { useStore } from "./store.js";
 import { connect } from "./ws.js";
 
 const EditorPanel = lazy(() => import("./components/EditorPanel.js"));
-
-function PlaceholderTab({ name }: { name: string }) {
-  return (
-    <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
-      {name} — coming soon
-    </div>
-  );
-}
+const TerminalPanel = lazy(() => import("./components/TerminalPanel.js"));
 
 function LazyFallback() {
   return (
@@ -38,7 +31,11 @@ function RightPanel() {
         </Suspense>
       )}
       {activeTab === "diff" && <DiffPanel />}
-      {activeTab === "terminal" && <PlaceholderTab name="Terminal" />}
+      {activeTab === "terminal" && (
+        <Suspense fallback={<LazyFallback />}>
+          <TerminalPanel />
+        </Suspense>
+      )}
       {activeTab === "processes" && <ProcessPanel />}
     </div>
   );
