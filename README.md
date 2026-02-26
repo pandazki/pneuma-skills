@@ -38,29 +38,33 @@ Currently ships with **Doc Mode** — a markdown editing environment where Claud
 ## Quick Start
 
 ```bash
-# Clone and install
+# Run directly (no install needed)
+bunx pneuma-skills doc --workspace ~/my-notes
+
+# Or use the current directory
+bunx pneuma-skills doc
+```
+
+Or install from source:
+
+```bash
 git clone https://github.com/pandazki/pneuma-skills.git
 cd pneuma-skills
 bun install
-
-# Start Doc Mode on a workspace directory
-bun bin/pneuma.ts doc --workspace ~/my-notes
-
-# Or use the current directory
-bun bin/pneuma.ts doc
+bun run dev doc --workspace ~/my-notes
 ```
 
 This will:
 
 1. Install a skill prompt into `<workspace>/.claude/skills/`
-2. Start the Pneuma server (default port 17996)
+2. Start the Pneuma server on `http://localhost:17996`
 3. Spawn a Claude Code CLI session connected via WebSocket
 4. Open your browser with the editor UI
 
 ## CLI Usage
 
 ```
-pneuma <mode> [options]
+pneuma-skills <mode> [options]
 
 Modes:
   doc    Markdown document editing mode
@@ -172,7 +176,7 @@ Currently implemented: **Doc Mode** (markdown). Future modes could include slide
 - [ ] Slide Mode — Presentation editing with page navigation
 - [ ] Session persistence — Resume previous editing sessions
 - [ ] Multiple agent backends — Codex CLI, custom agents
-- [ ] Production build — Single binary distribution
+- [x] Production build — `bunx pneuma-skills` distribution
 
 ## Acknowledgements
 
