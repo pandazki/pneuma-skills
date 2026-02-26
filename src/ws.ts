@@ -4,7 +4,8 @@
  */
 
 import { useStore, nextId } from "./store.js";
-import type { BrowserIncomingMessage, BrowserOutgoingMessage, ContentBlock, ChatMessage } from "./types.js";
+import type { ElementSelection } from "./store.js";
+import type { BrowserIncomingMessage, BrowserOutgoingMessage, ContentBlock, ChatMessage, SelectionContext, SelectionType } from "./types.js";
 
 let socket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -21,6 +22,65 @@ function getWsUrl(sessionId: string): string {
     ? `${location.hostname}:${import.meta.env.VITE_API_PORT || "3210"}`
     : location.host;
   return `${proto}//${host}/ws/browser/${sessionId}`;
+}
+
+/**
+ * Parse selection context from enriched user message content.
+ * Format: [User is viewing: file]\n[User selected: type "content"]\n\nactual message
+ */
+function parseSelectionFromContent(raw: string): { content: string; selectionContext?: SelectionContext } {
+  if (!raw.startsWith("[User is viewing: ")) return { content: raw };
+
+  const firstNl = raw.indexOf("\n");
+  if (firstNl === -1) return { content: raw };
+
+  const viewingLine = raw.slice(0, firstNl);
+  const fileMatch = viewingLine.match(/^\[User is viewing: (.+)\]$/);
+  if (!fileMatch) return { content: raw };
+
+  const file = fileMatch[1];
+  const rest = raw.slice(firstNl + 1);
+
+  const secondNl = rest.indexOf("\n");
+  if (secondNl === -1) return { content: raw };
+
+  const selectedLine = rest.slice(0, secondNl);
+  const userContent = rest.slice(secondNl + 1).replace(/^\n/, "");
+
+  // [User selected text: "..."]
+  const textMatch = selectedLine.match(/^\[User selected text: "(.+)"\]$/);
+  if (textMatch) {
+    return {
+      content: userContent,
+      selectionContext: { file, type: "text-range", content: textMatch[1] },
+    };
+  }
+
+  // [User selected: type "..."]
+  const blockMatch = selectedLine.match(/^\[User selected: (.+?) "(.+)"\]$/);
+  if (blockMatch) {
+    const typeStr = blockMatch[1];
+    const selContent = blockMatch[2];
+    let type: SelectionType = "paragraph";
+    let level: number | undefined;
+
+    const headingMatch = typeStr.match(/^h(\d) heading$/);
+    if (headingMatch) {
+      type = "heading";
+      level = Number(headingMatch[1]);
+    } else if (
+      (["paragraph", "list", "code", "blockquote", "image", "table"] as SelectionType[]).includes(typeStr as SelectionType)
+    ) {
+      type = typeStr as SelectionType;
+    }
+
+    return {
+      content: userContent,
+      selectionContext: { file, type, content: selContent, level },
+    };
+  }
+
+  return { content: raw };
 }
 
 function extractTextFromBlocks(blocks: ContentBlock[]): string {
@@ -201,11 +261,13 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       const chatMessages: ChatMessage[] = [];
       for (const histMsg of data.messages) {
         if (histMsg.type === "user_message") {
+          const parsed = parseSelectionFromContent(histMsg.content);
           chatMessages.push({
             id: histMsg.id || nextId(),
             role: "user",
-            content: histMsg.content,
+            content: parsed.content,
             timestamp: histMsg.timestamp,
+            ...(parsed.selectionContext ? { selectionContext: parsed.selectionContext } : {}),
           });
         } else if (histMsg.type === "assistant") {
           const msg = histMsg.message;
@@ -319,16 +381,33 @@ export function send(msg: BrowserOutgoingMessage) {
   }
 }
 
-export function sendUserMessage(content: string) {
+export function sendUserMessage(content: string, selection?: ElementSelection | null) {
   const store = useStore.getState();
-  // Add user message to local store immediately
+  // Add user message to local store immediately (show original text)
   store.appendMessage({
     id: nextId(),
     role: "user",
     content,
     timestamp: Date.now(),
+    ...(selection ? { selectionContext: selection } : {}),
   });
-  send({ type: "user_message", content });
+
+  // Enrich with selection context for Claude Code
+  let enrichedContent = content;
+  if (selection) {
+    const ctx: string[] = [];
+    ctx.push(`[User is viewing: ${selection.file}]`);
+    if (selection.type === "text-range") {
+      ctx.push(`[User selected text: "${selection.content}"]`);
+    } else {
+      const typeLabel =
+        selection.type === "heading" ? `h${selection.level || 1} heading` : selection.type;
+      ctx.push(`[User selected: ${typeLabel} "${selection.content}"]`);
+    }
+    enrichedContent = ctx.join("\n") + "\n\n" + content;
+  }
+
+  send({ type: "user_message", content: enrichedContent });
 }
 
 export function sendPermissionResponse(

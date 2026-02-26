@@ -8,6 +8,15 @@ import type {
 
 export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage };
 
+export type SelectionType = "heading" | "paragraph" | "list" | "code" | "blockquote" | "image" | "table" | "text-range";
+
+export interface SelectionContext {
+  file: string;
+  type: SelectionType;
+  content: string;
+  level?: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
@@ -18,6 +27,7 @@ export interface ChatMessage {
   isStreaming?: boolean;
   model?: string;
   stopReason?: string | null;
+  selectionContext?: SelectionContext;
 }
 
 export interface FileContent {

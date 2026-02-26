@@ -1,7 +1,8 @@
 import { useState, useMemo, type ComponentProps } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ChatMessage, ContentBlock } from "../types.js";
+import type { ChatMessage, ContentBlock, SelectionContext } from "../types.js";
+import { useStore } from "../store.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
 
 export default function MessageBubble({ message }: { message: ChatMessage }) {
@@ -18,11 +19,15 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
   }
 
   if (message.role === "user") {
+    const sel = message.selectionContext;
     return (
       <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
-        <div className="max-w-[85%] px-3 py-2.5 rounded-[14px] rounded-br-[4px] bg-cc-user-bubble text-cc-fg">
-          <div className="text-[13px] leading-relaxed break-words">
-            <MarkdownContent text={message.content} />
+        <div className="max-w-[85%] rounded-[14px] rounded-br-[4px] bg-cc-user-bubble text-cc-fg overflow-hidden">
+          {sel ? <SelectionCard sel={sel} interactive /> : null}
+          <div className="px-3 py-2.5">
+            <div className="text-[13px] leading-relaxed break-words">
+              <MarkdownContent text={message.content} />
+            </div>
           </div>
         </div>
       </div>
@@ -33,6 +38,54 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
   return (
     <div className="animate-[fadeSlideIn_0.2s_ease-out]">
       <AssistantMessage message={message} />
+    </div>
+  );
+}
+
+// ─── Selection Card ─────────────────────────────────────────────────────────
+
+function SelectionCard({ sel, interactive }: { sel: SelectionContext; interactive?: boolean }) {
+  const setSelection = useStore((s) => s.setSelection);
+  const setSelectMode = useStore((s) => s.setSelectMode);
+
+  const typeLabels: Record<string, string> = {
+    heading: `h${sel.level || 1}`,
+    paragraph: "paragraph",
+    list: "list",
+    code: "code block",
+    blockquote: "blockquote",
+    image: "image",
+    table: "table",
+    "text-range": "selected text",
+  };
+  const typeLabel = typeLabels[sel.type] || sel.type;
+  const preview = sel.content.length > 80 ? sel.content.slice(0, 77) + "..." : sel.content;
+
+  const handleClick = () => {
+    if (!interactive) return;
+    setSelectMode(true);
+    setSelection(sel);
+  };
+
+  return (
+    <div
+      className={`px-3 pt-2.5 pb-1.5 border-b border-cc-border/40 bg-cc-primary/5 ${
+        interactive ? "cursor-pointer hover:bg-cc-primary/10 transition-colors" : ""
+      }`}
+      onClick={interactive ? handleClick : undefined}
+    >
+      <div className="flex items-start gap-2 text-xs">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-primary shrink-0 mt-0.5">
+          <path d="M3 2l4 12 2-5 5-2L3 2z" strokeLinejoin="round" />
+        </svg>
+        <div className="min-w-0">
+          <div className="text-cc-primary font-medium">
+            {typeLabel}
+            <span className="text-cc-muted font-normal ml-1.5">in {sel.file}</span>
+          </div>
+          <div className="text-cc-muted mt-0.5 break-words leading-snug">"{preview}"</div>
+        </div>
+      </div>
     </div>
   );
 }

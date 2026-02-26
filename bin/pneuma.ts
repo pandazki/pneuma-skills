@@ -7,7 +7,7 @@
  */
 
 import { resolve, dirname, join } from "node:path";
-import { existsSync, copyFileSync, mkdirSync } from "node:fs";
+import { existsSync, copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import * as readline from "node:readline";
 import { startServer } from "../server/index.js";
 import { CliLauncher } from "../server/cli-launcher.js";
@@ -74,12 +74,18 @@ async function main() {
   console.log("[pneuma] Installing skill and preparing environment...");
   installSkill(workspace);
 
-  // 1.5 Seed default content if workspace has no markdown files
-  const hasMarkdown = Array.from(
+  // 1.5 Seed default content if workspace has no meaningful markdown files
+  const contentFiles = Array.from(
     new Bun.Glob("**/*.md").scanSync({ cwd: workspace, absolute: false })
-  ).some((f) => f !== "CLAUDE.md" && !f.startsWith(".claude/"));
+  ).filter((f) => f !== "CLAUDE.md" && !f.startsWith(".claude/"));
 
-  if (!hasMarkdown) {
+  const hasContent = contentFiles.some((f) => {
+    try {
+      return readFileSync(join(workspace, f), "utf-8").trim().length > 0;
+    } catch { return false; }
+  });
+
+  if (!hasContent) {
     const readmeSrc = join(PROJECT_ROOT, "README.md");
     if (existsSync(readmeSrc)) {
       copyFileSync(readmeSrc, join(workspace, "README.md"));

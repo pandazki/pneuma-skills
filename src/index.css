@@ -71,3 +71,61 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(222,220,209,0.3);
 }
+
+/* ── Select mode ── */
+.select-mode [data-selectable] {
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.select-mode [data-selectable]:hover {
+  outline: 2px solid rgba(217, 119, 87, 0.4);
+  outline-offset: 3px;
+}
+
+@property --selection-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.select-mode .element-selected {
+  position: relative;
+  border-radius: 8px;
+  outline: none !important;
+  box-shadow: 0 0 16px rgba(217, 119, 87, 0.1);
+  overflow: visible !important;
+}
+
+.select-mode .element-selected::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 10px;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--selection-angle),
+    rgba(217, 119, 87, 0.35) 0%,
+    rgba(217, 119, 87, 0.5) 15%,
+    rgba(217, 119, 87, 0.85) 30%,
+    rgba(217, 119, 87, 1) 38%,
+    rgba(217, 119, 87, 0.85) 46%,
+    rgba(217, 119, 87, 0.5) 60%,
+    rgba(217, 119, 87, 0.35) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: selectionRotate 3s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes selectionRotate {
+  to { --selection-angle: 360deg; }
+}

@@ -1,11 +1,13 @@
 import { create } from "zustand";
-import type { SessionState, PermissionRequest, ChatMessage, FileContent } from "./types.js";
+import type { SessionState, PermissionRequest, ChatMessage, FileContent, SelectionContext } from "./types.js";
 
 export interface Activity {
   phase: "thinking" | "responding" | "tool";
   toolName?: string;
   startedAt: number;
 }
+
+export type ElementSelection = SelectionContext;
 
 interface AppState {
   // Session
@@ -30,6 +32,10 @@ interface AppState {
   // Content (markdown files)
   files: FileContent[];
 
+  // Element selection
+  selection: ElementSelection | null;
+  selectMode: boolean;
+
   // Actions — session
   setSession: (session: SessionState) => void;
   updateSession: (updates: Partial<SessionState>) => void;
@@ -52,6 +58,10 @@ interface AppState {
   addPermission: (perm: PermissionRequest) => void;
   removePermission: (requestId: string) => void;
 
+  // Actions — selection
+  setSelection: (s: ElementSelection | null) => void;
+  setSelectMode: (mode: boolean) => void;
+
   // Actions — content
   setFiles: (files: FileContent[]) => void;
   updateFiles: (updates: FileContent[]) => void;
@@ -73,6 +83,8 @@ export const useStore = create<AppState>((set) => ({
   activity: null,
   pendingPermissions: new Map(),
   files: [],
+  selection: null,
+  selectMode: false,
 
   setSession: (session) => set({ session }),
   updateSession: (updates) =>
@@ -112,6 +124,9 @@ export const useStore = create<AppState>((set) => ({
       next.delete(requestId);
       return { pendingPermissions: next };
     }),
+
+  setSelection: (selection) => set({ selection }),
+  setSelectMode: (selectMode) => set({ selectMode, ...(!selectMode ? { selection: null } : {}) }),
 
   setFiles: (files) => set({ files }),
   updateFiles: (updates) =>
