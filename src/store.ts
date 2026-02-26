@@ -33,7 +33,7 @@ interface AppState {
   files: FileContent[];
 
   // Tab
-  activeTab: "chat" | "diff" | "terminal" | "processes";
+  activeTab: "chat" | "editor" | "diff" | "terminal" | "processes";
 
   // Element selection
   selection: ElementSelection | null;
@@ -62,7 +62,7 @@ interface AppState {
   removePermission: (requestId: string) => void;
 
   // Actions — tab
-  setActiveTab: (tab: "chat" | "diff" | "terminal" | "processes") => void;
+  setActiveTab: (tab: "chat" | "editor" | "diff" | "terminal" | "processes") => void;
 
   // Actions — selection
   setSelection: (s: ElementSelection | null) => void;

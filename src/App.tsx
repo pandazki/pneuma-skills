@@ -20,6 +20,7 @@ function RightPanel() {
   return (
     <div className="flex flex-col h-full">
       {activeTab === "chat" && <ChatPanel />}
+      {activeTab === "editor" && <PlaceholderTab name="Editor" />}
       {activeTab === "diff" && <PlaceholderTab name="Diffs" />}
       {activeTab === "terminal" && <PlaceholderTab name="Terminal" />}
       {activeTab === "processes" && <PlaceholderTab name="Processes" />}

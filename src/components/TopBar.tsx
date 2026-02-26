@@ -1,9 +1,10 @@
 import { useStore } from "../store.js";
 
-type Tab = "chat" | "diff" | "terminal" | "processes";
+type Tab = "chat" | "editor" | "diff" | "terminal" | "processes";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "chat", label: "Chat" },
+  { id: "editor", label: "Editor" },
   { id: "diff", label: "Diffs" },
   { id: "terminal", label: "Terminal" },
   { id: "processes", label: "Processes" },
