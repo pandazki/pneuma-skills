@@ -53,10 +53,9 @@ bun bin/pneuma.ts doc
 This will:
 
 1. Install a skill prompt into `<workspace>/.claude/skills/`
-2. Start the Pneuma backend server (default port 3210)
+2. Start the Pneuma server (default port 7996)
 3. Spawn a Claude Code CLI session connected via WebSocket
-4. Start the Vite dev server (port 5173)
-5. Open your browser with the editor UI
+4. Open your browser with the editor UI
 
 ## CLI Usage
 
@@ -68,7 +67,7 @@ Modes:
 
 Options:
   --workspace <path>   Target workspace directory (default: current directory)
-  --port <number>      Backend server port (default: 3210)
+  --port <number>      Server port (default: 7996)
   --no-open            Don't auto-open the browser
 ```
 
@@ -147,7 +146,7 @@ pneuma-skills/
 
 1. **Skill Installation** — Pneuma copies a mode-specific skill prompt (e.g. `skill/doc/SKILL.md`) into the workspace's `.claude/skills/` directory. Claude Code natively discovers and loads skills from this location.
 
-2. **Agent Spawning** — The CLI launcher spawns `claude --sdk-url ws://localhost:3210/ws/cli/<sessionId>` which connects Claude Code's streaming output to the Pneuma server.
+2. **Agent Spawning** — The CLI launcher spawns `claude --sdk-url ws://localhost:17996/ws/cli/<sessionId>` which connects Claude Code's streaming output to the Pneuma server.
 
 3. **Message Bridge** — The WebSocket bridge translates between the browser's JSON protocol and Claude Code's NDJSON protocol, handling message routing, permission flows, and event replay.
 

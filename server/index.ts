@@ -6,7 +6,7 @@ import { WsBridge } from "./ws-bridge.js";
 import type { SocketData } from "./ws-bridge.js";
 import type { ServerWebSocket } from "bun";
 
-const DEFAULT_PORT = 3210;
+const DEFAULT_PORT = 17996;
 
 export interface ServerOptions {
   port?: number;

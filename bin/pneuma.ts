@@ -3,7 +3,7 @@
  * Pneuma Skills CLI entry point.
  *
  * Usage:
- *   pneuma doc --workspace /path/to/project [--port 3210] [--no-open]
+ *   pneuma doc --workspace /path/to/project [--port 7996] [--no-open]
  */
 
 import { resolve, dirname, join } from "node:path";
@@ -20,7 +20,7 @@ function parseArgs(argv: string[]) {
   const args = argv.slice(2); // skip bun + script path
   let mode = "";
   let workspace = process.cwd();
-  let port = 3210;
+  let port = 17996;
   let noOpen = false;
 
   for (let i = 0; i < args.length; i++) {
@@ -53,7 +53,7 @@ async function main() {
   const { mode, workspace, port, noOpen } = parseArgs(process.argv);
 
   if (!mode || mode !== "doc") {
-    console.log("Usage: pneuma doc --workspace /path/to/project [--port 3210] [--no-open]");
+    console.log("Usage: pneuma doc --workspace /path/to/project [--port 7996] [--no-open]");
     process.exit(1);
   }
 
@@ -139,7 +139,7 @@ async function main() {
 
   if (isDev) {
     // Dev mode: start Vite dev server
-    const VITE_PORT = 5173;
+    const VITE_PORT = 7996;
     console.log(`[pneuma] Starting Vite dev server on port ${VITE_PORT}...`);
     viteProc = Bun.spawn(
       ["bunx", "vite", "--port", String(VITE_PORT), "--strictPort"],
