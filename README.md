@@ -169,11 +169,17 @@ Currently implemented: **Doc Mode** (markdown). Future modes could include slide
 ## Roadmap
 
 - [x] Doc Mode MVP — Markdown WYSIWYG editing
+- [x] Element selection — Click to select and instruct edits on specific elements
 - [ ] Slide Mode — Presentation editing with page navigation
-- [ ] Element selection — Click to select and instruct edits on specific elements
 - [ ] Session persistence — Resume previous editing sessions
 - [ ] Multiple agent backends — Codex CLI, custom agents
 - [ ] Production build — Single binary distribution
+
+## Acknowledgements
+
+This project's WebSocket bridge, NDJSON protocol handling, and chat UI rendering are heavily ~~inspired by~~ copied from [Companion](https://github.com/The-Vibe-Company/companion) by The Vibe Company. To be honest, the entire technical approach was basically Claude Code reading Companion's source code and reproducing it here. We stand on the shoulders of giants — or more accurately, we asked an AI to stand on their shoulders for us.
+
+Thank you Companion for figuring out the undocumented `--sdk-url` protocol so we didn't have to.
 
 ## License
 
