@@ -36,6 +36,63 @@ function langForPath(path: string) {
   }
 }
 
+type PreviewKind = "image" | "video" | "audio" | "pdf" | null;
+
+function getPreviewKind(path: string): PreviewKind {
+  const ext = path.split(".").pop()?.toLowerCase();
+  if (!ext) return null;
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "bmp", "avif"].includes(ext)) return "image";
+  if (["mp4", "webm", "ogg", "mov"].includes(ext)) return "video";
+  if (["mp3", "wav", "flac", "aac", "m4a", "ogg"].includes(ext)) return "audio";
+  if (ext === "pdf") return "pdf";
+  return null;
+}
+
+function FilePreview({ path }: { path: string }) {
+  const kind = getPreviewKind(path);
+  const base = getApiBase();
+  // Encode each path segment individually to preserve '/'
+  const src = `${base}/content/${path.split("/").map(encodeURIComponent).join("/")}`;
+
+  if (kind === "image") {
+    return (
+      <div className="flex items-center justify-center h-full p-4 overflow-auto bg-neutral-900/50">
+        <img
+          src={src}
+          alt={path}
+          className="max-w-full max-h-full object-contain rounded"
+          style={{ imageRendering: "auto" }}
+        />
+      </div>
+    );
+  }
+
+  if (kind === "video") {
+    return (
+      <div className="flex items-center justify-center h-full p-4">
+        <video src={src} controls className="max-w-full max-h-full rounded" />
+      </div>
+    );
+  }
+
+  if (kind === "audio") {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3">
+        <span className="text-neutral-500 text-sm">{path.split("/").pop()}</span>
+        <audio src={src} controls />
+      </div>
+    );
+  }
+
+  if (kind === "pdf") {
+    return (
+      <iframe src={src} className="w-full h-full border-0" title={path} />
+    );
+  }
+
+  return null;
+}
+
 function FileTreeItem({
   node,
   depth,
@@ -112,9 +169,11 @@ export default function EditorPanel() {
     fetch(`${base}/api/git/status`).then((r) => r.json()).then((d) => setGitStatuses(d.statuses || {})).catch(() => {});
   }, [changedFilesTick]);
 
-  // Load file content
+  const previewKind = selectedPath ? getPreviewKind(selectedPath) : null;
+
+  // Load file content (skip for preview-only files)
   useEffect(() => {
-    if (!selectedPath) return;
+    if (!selectedPath || previewKind) return;
     // Don't overwrite unsaved edits
     if (dirty) return;
     fetch(`${base}/api/files/read?path=${encodeURIComponent(selectedPath)}`)
@@ -125,7 +184,7 @@ export default function EditorPanel() {
         setDirty(false);
       })
       .catch(() => {});
-  }, [selectedPath, changedFilesTick]);
+  }, [selectedPath, changedFilesTick, previewKind]);
 
   const handleChange = useCallback((value: string) => {
     setContent(value);
@@ -186,40 +245,51 @@ export default function EditorPanel() {
       {/* Editor */}
       <div className="flex-1 min-w-0 flex flex-col">
         {selectedPath ? (
-          <>
-            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-neutral-800 text-xs">
-              <span className="text-neutral-400 truncate">{selectedPath}</span>
-              {dirty && <span className="text-amber-400">●</span>}
-              <div className="ml-auto">
-                <button
-                  onClick={handleSave}
-                  disabled={!dirty || saving}
-                  className={`px-2 py-0.5 rounded text-xs ${
-                    dirty
-                      ? "bg-blue-600 text-white hover:bg-blue-500"
-                      : "bg-neutral-800 text-neutral-600"
-                  }`}
-                >
-                  {saving ? "Saving..." : "Save"}
-                </button>
+          previewKind ? (
+            <>
+              <div className="flex items-center gap-2 px-3 py-1.5 border-b border-neutral-800 text-xs">
+                <span className="text-neutral-400 truncate">{selectedPath}</span>
               </div>
-            </div>
-            <div className="flex-1 overflow-auto">
-              <CodeMirror
-                value={content}
-                onChange={handleChange}
-                extensions={extensions}
-                theme="dark"
-                basicSetup={{
-                  foldGutter: true,
-                  dropCursor: false,
-                  allowMultipleSelections: false,
-                }}
-                className="h-full text-sm"
-                height="100%"
-              />
-            </div>
-          </>
+              <div className="flex-1 min-h-0">
+                <FilePreview path={selectedPath} />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 px-3 py-1.5 border-b border-neutral-800 text-xs">
+                <span className="text-neutral-400 truncate">{selectedPath}</span>
+                {dirty && <span className="text-amber-400">●</span>}
+                <div className="ml-auto">
+                  <button
+                    onClick={handleSave}
+                    disabled={!dirty || saving}
+                    className={`px-2 py-0.5 rounded text-xs ${
+                      dirty
+                        ? "bg-blue-600 text-white hover:bg-blue-500"
+                        : "bg-neutral-800 text-neutral-600"
+                    }`}
+                  >
+                    {saving ? "Saving..." : "Save"}
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-auto">
+                <CodeMirror
+                  value={content}
+                  onChange={handleChange}
+                  extensions={extensions}
+                  theme="dark"
+                  basicSetup={{
+                    foldGutter: true,
+                    dropCursor: false,
+                    allowMultipleSelections: false,
+                  }}
+                  className="h-full text-sm"
+                  height="100%"
+                />
+              </div>
+            </>
+          )
         ) : (
           <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
             Select a file to edit

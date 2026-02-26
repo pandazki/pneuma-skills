@@ -107,6 +107,16 @@ export function startServer(options: ServerOptions) {
     return c.json({ tree: buildTree(workspace, "") });
   });
 
+  // ── Git: availability check ────────────────────────────────────────
+  app.get("/api/git/available", (c) => {
+    try {
+      execSync("git rev-parse --is-inside-work-tree", { cwd: workspace, encoding: "utf-8", timeout: 3_000, stdio: ["pipe", "pipe", "pipe"] });
+      return c.json({ available: true });
+    } catch {
+      return c.json({ available: false });
+    }
+  });
+
   // ── Git: changed files ─────────────────────────────────────────────
   app.get("/api/git/changed-files", (c) => {
     const base = c.req.query("base") || "last-commit";
@@ -289,7 +299,7 @@ export function startServer(options: ServerOptions) {
 
   // ── Static content serving (workspace files) ──────────────────────────
   app.get("/content/*", async (c) => {
-    const relPath = c.req.path.replace(/^\/content\//, "");
+    const relPath = decodeURIComponent(c.req.path.replace(/^\/content\//, ""));
     const absPath = join(workspace, relPath);
     // Basic path traversal protection
     if (!absPath.startsWith(workspace)) {
