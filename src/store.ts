@@ -32,6 +32,9 @@ interface AppState {
   // Content (markdown files)
   files: FileContent[];
 
+  // Tab
+  activeTab: "chat" | "diff" | "terminal" | "processes";
+
   // Element selection
   selection: ElementSelection | null;
   previewMode: "view" | "edit" | "select";
@@ -58,6 +61,9 @@ interface AppState {
   addPermission: (perm: PermissionRequest) => void;
   removePermission: (requestId: string) => void;
 
+  // Actions — tab
+  setActiveTab: (tab: "chat" | "diff" | "terminal" | "processes") => void;
+
   // Actions — selection
   setSelection: (s: ElementSelection | null) => void;
   setPreviewMode: (mode: "view" | "edit" | "select") => void;
@@ -83,6 +89,7 @@ export const useStore = create<AppState>((set) => ({
   activity: null,
   pendingPermissions: new Map(),
   files: [],
+  activeTab: "chat",
   selection: null,
   previewMode: "view",
 
@@ -124,6 +131,8 @@ export const useStore = create<AppState>((set) => ({
       next.delete(requestId);
       return { pendingPermissions: next };
     }),
+
+  setActiveTab: (activeTab) => set({ activeTab }),
 
   setSelection: (selection) => set({ selection }),
   setPreviewMode: (previewMode) => set({ previewMode, ...(previewMode !== "select" ? { selection: null } : {}) }),
