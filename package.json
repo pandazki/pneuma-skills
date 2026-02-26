@@ -7,14 +7,22 @@
   "bin": {
     "pneuma": "./bin/pneuma.ts"
   },
+  "files": [
+    "bin/",
+    "server/",
+    "dist/",
+    "skill/",
+    "index.html",
+    "README.md"
+  ],
   "engines": {
     "bun": ">=1.0.0"
   },
   "scripts": {
-    "dev": "bunx vite",
-    "dev:server": "bun --watch server/index.ts",
+    "dev": "bun bin/pneuma.ts",
     "build": "vite build",
-    "start": "bun bin/pneuma.ts"
+    "start": "bun bin/pneuma.ts",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",

@@ -11,6 +11,7 @@ const DEFAULT_PORT = 3210;
 export interface ServerOptions {
   port?: number;
   workspace: string;
+  distDir?: string; // Path to built frontend assets (production mode)
 }
 
 export function startServer(options: ServerOptions) {
@@ -63,6 +64,27 @@ export function startServer(options: ServerOptions) {
       return c.text("Error reading file", 500);
     }
   });
+
+  // ── Built frontend serving (production) ─────────────────────────────
+  if (options.distDir) {
+    const distDir = options.distDir;
+
+    app.get("/assets/*", async (c) => {
+      const filePath = join(distDir, c.req.path);
+      const file = Bun.file(filePath);
+      if (await file.exists()) {
+        return new Response(file);
+      }
+      return c.notFound();
+    });
+
+    // SPA fallback — serve index.html for all non-API routes
+    app.get("*", async (c) => {
+      return new Response(Bun.file(join(distDir, "index.html")), {
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+  }
 
   // ── Bun.serve with WebSocket ──────────────────────────────────────────
   const server = Bun.serve<SocketData>({

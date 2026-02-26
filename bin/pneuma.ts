@@ -93,10 +93,24 @@ async function main() {
     }
   }
 
-  // 2. Start server
-  const { server, wsBridge, port: actualPort } = startServer({ port, workspace });
+  // 2. Detect dev vs production mode
+  const distDir = resolve(PROJECT_ROOT, "dist");
+  const isDev = !existsSync(join(distDir, "index.html"));
 
-  // 3. Launch CLI
+  if (isDev) {
+    console.log("[pneuma] Development mode (serving via Vite)");
+  } else {
+    console.log("[pneuma] Production mode (serving built assets)");
+  }
+
+  // 3. Start server
+  const { server, wsBridge, port: actualPort } = startServer({
+    port,
+    workspace,
+    ...(isDev ? {} : { distDir }),
+  });
+
+  // 4. Launch CLI
   const launcher = new CliLauncher(actualPort);
 
   // When the CLI reports its internal session_id, store it
@@ -111,7 +125,7 @@ async function main() {
 
   console.log(`[pneuma] CLI session started: ${session.sessionId}`);
 
-  // 4. Start file watcher
+  // 5. Start file watcher
   startFileWatcher(workspace, (files) => {
     wsBridge.broadcastToSession(session.sessionId, {
       type: "content_update",
@@ -119,39 +133,45 @@ async function main() {
     });
   });
 
-  // 5. Start Vite dev server (serves the React frontend, proxies /api /ws to backend)
-  const VITE_PORT = 5173;
-  console.log(`[pneuma] Starting Vite dev server on port ${VITE_PORT}...`);
-  const viteProc = Bun.spawn(
-    ["bunx", "vite", "--port", String(VITE_PORT), "--strictPort"],
-    {
-      cwd: PROJECT_ROOT,
-      stdout: "pipe",
-      stderr: "pipe",
-    }
-  );
+  // 6. Frontend serving
+  let viteProc: ReturnType<typeof Bun.spawn> | null = null;
+  let browserPort = actualPort;
 
-  // Pipe Vite output with prefix
-  const pipeViteOutput = async (stream: ReadableStream<Uint8Array>, label: string) => {
-    const reader = stream.getReader();
-    const decoder = new TextDecoder();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const text = decoder.decode(value, { stream: true });
-      for (const line of text.split("\n")) {
-        if (line.trim()) console.log(`[vite] ${line}`);
+  if (isDev) {
+    // Dev mode: start Vite dev server
+    const VITE_PORT = 5173;
+    console.log(`[pneuma] Starting Vite dev server on port ${VITE_PORT}...`);
+    viteProc = Bun.spawn(
+      ["bunx", "vite", "--port", String(VITE_PORT), "--strictPort"],
+      {
+        cwd: PROJECT_ROOT,
+        stdout: "pipe",
+        stderr: "pipe",
       }
-    }
-  };
-  pipeViteOutput(viteProc.stdout, "stdout");
-  pipeViteOutput(viteProc.stderr, "stderr");
+    );
 
-  // 6. Open browser (point to Vite dev server, not backend)
-  if (!noOpen) {
-    // Wait a moment for Vite to start
+    const pipeViteOutput = async (stream: ReadableStream<Uint8Array>) => {
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value, { stream: true });
+        for (const line of text.split("\n")) {
+          if (line.trim()) console.log(`[vite] ${line}`);
+        }
+      }
+    };
+    if (viteProc.stdout && typeof viteProc.stdout !== "number") pipeViteOutput(viteProc.stdout);
+    if (viteProc.stderr && typeof viteProc.stderr !== "number") pipeViteOutput(viteProc.stderr);
+    browserPort = VITE_PORT;
+    // Wait for Vite to start
     await new Promise((r) => setTimeout(r, 2000));
-    const url = `http://localhost:${VITE_PORT}?session=${session.sessionId}`;
+  }
+
+  // 7. Open browser
+  if (!noOpen) {
+    const url = `http://localhost:${browserPort}?session=${session.sessionId}`;
     console.log(`[pneuma] Opening browser: ${url}`);
     try {
       const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
@@ -164,7 +184,7 @@ async function main() {
   // Graceful shutdown
   const shutdown = async () => {
     console.log("\n[pneuma] Shutting down...");
-    viteProc.kill();
+    viteProc?.kill();
     await launcher.killAll();
     server.stop(true);
     process.exit(0);
