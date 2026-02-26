@@ -41,6 +41,22 @@ function saveSession(workspace: string, session: PersistedSession): void {
   writeFileSync(join(dir, "session.json"), JSON.stringify(session, null, 2));
 }
 
+function loadHistory(workspace: string): unknown[] {
+  try {
+    const content = readFileSync(join(workspace, ".pneuma", "history.json"), "utf-8");
+    const data = JSON.parse(content);
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(workspace: string, history: unknown[]): void {
+  const dir = join(workspace, ".pneuma");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "history.json"), JSON.stringify(history));
+}
+
 // ── CLI arg parsing ──────────────────────────────────────────────────────────
 
 function parseArgs(argv: string[]) {
@@ -208,6 +224,21 @@ async function main() {
 
   console.log(`[pneuma] CLI session started: ${session.sessionId}`);
 
+  // Load persisted message history into WsBridge
+  const savedHistory = loadHistory(workspace);
+  if (savedHistory.length > 0) {
+    wsBridge.loadMessageHistory(session.sessionId, savedHistory as any);
+    console.log(`[pneuma] Restored ${savedHistory.length} messages from history`);
+  }
+
+  // Periodically persist message history (debounced — every 5s)
+  const historyInterval = setInterval(() => {
+    const history = wsBridge.getMessageHistory(session.sessionId);
+    if (history.length > 0) {
+      saveHistory(workspace, history);
+    }
+  }, 5_000);
+
   // If resume fails (CLI exits quickly), clear cliSessionId from persistence
   launcher.onSessionExited((exitedId, exitCode) => {
     if (exitedId === session.sessionId && resuming) {
@@ -283,6 +314,13 @@ async function main() {
   // Graceful shutdown
   const shutdown = async () => {
     console.log("\n[pneuma] Shutting down...");
+    clearInterval(historyInterval);
+    // Final history save
+    const history = wsBridge.getMessageHistory(session.sessionId);
+    if (history.length > 0) {
+      saveHistory(workspace, history);
+      console.log(`[pneuma] Saved ${history.length} messages to history`);
+    }
     viteProc?.kill();
     await launcher.killAll();
     server.stop(true);

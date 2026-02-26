@@ -101,6 +101,18 @@ export class WsBridge {
     this.sessions.delete(sessionId);
   }
 
+  /** Get the message history for a session (for persistence). */
+  getMessageHistory(sessionId: string): BrowserIncomingMessage[] {
+    const session = this.sessions.get(sessionId);
+    return session?.messageHistory ?? [];
+  }
+
+  /** Load persisted message history into a session. */
+  loadMessageHistory(sessionId: string, history: BrowserIncomingMessage[]): void {
+    const session = this.getOrCreateSession(sessionId);
+    session.messageHistory = history;
+  }
+
   closeSession(sessionId: string) {
     const session = this.sessions.get(sessionId);
     if (!session) return;

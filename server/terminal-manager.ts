@@ -4,6 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { execSync } from "node:child_process";
 import type { ServerWebSocket } from "bun";
 
 interface TerminalSocketData {
@@ -22,6 +23,17 @@ interface TerminalInstance {
 }
 
 function resolveShell(): string {
+  // process.env.SHELL may not reflect the user's configured default shell
+  // (e.g. when launched from Claude Code which runs zsh).
+  // On macOS, query the directory service for the real login shell.
+  if (process.platform === "darwin") {
+    try {
+      const user = process.env.USER || execSync("whoami", { encoding: "utf-8" }).trim();
+      const shell = execSync(`dscl . -read /Users/${user} UserShell`, { encoding: "utf-8", timeout: 3_000 })
+        .trim().split(/\s+/).pop();
+      if (shell && shell.startsWith("/")) return shell;
+    } catch {}
+  }
   return process.env.SHELL || "/bin/bash";
 }
 

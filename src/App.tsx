@@ -41,11 +41,24 @@ function RightPanel() {
   );
 }
 
+function getApiBase(): string {
+  if (import.meta.env.DEV) {
+    return `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`;
+  }
+  return "";
+}
+
 export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const sessionId = params.get("session") || "default";
     connect(sessionId);
+
+    // Check git availability
+    fetch(`${getApiBase()}/api/git/available`)
+      .then((r) => r.json())
+      .then((d) => useStore.getState().setGitAvailable(d.available))
+      .catch(() => useStore.getState().setGitAvailable(false));
   }, []);
 
   return (

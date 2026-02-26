@@ -67,6 +67,7 @@ function SessionInfo() {
 export default function TopBar() {
   const activeTab = useStore((s) => s.activeTab);
   const setActiveTab = useStore((s) => s.setActiveTab);
+  const gitAvailable = useStore((s) => s.gitAvailable);
 
   return (
     <div className="flex items-center h-10 px-3 bg-neutral-900 border-b border-neutral-800 text-sm select-none">
@@ -78,19 +79,25 @@ export default function TopBar() {
 
       {/* Center: tabs */}
       <div className="flex items-center gap-0.5 mx-auto bg-neutral-800/50 rounded-md p-0.5">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-              activeTab === tab.id
-                ? "bg-neutral-700 text-neutral-100"
-                : "text-neutral-500 hover:text-neutral-300"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        {TABS.map((tab) => {
+          const disabled = tab.id === "diff" && gitAvailable === false;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => !disabled && setActiveTab(tab.id)}
+              title={disabled ? "Diffs require a git repository. Run `git init` in the workspace." : undefined}
+              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                disabled
+                  ? "text-neutral-700 cursor-not-allowed"
+                  : activeTab === tab.id
+                    ? "bg-neutral-700 text-neutral-100"
+                    : "text-neutral-500 hover:text-neutral-300"
+              }`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Right: mode label */}

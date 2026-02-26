@@ -35,7 +35,8 @@ interface AppState {
   // Tab
   activeTab: "chat" | "editor" | "diff" | "terminal" | "processes";
 
-  // Diff
+  // Git / Diff
+  gitAvailable: boolean | null; // null = not yet checked
   changedFilesTick: number;
   diffBase: "last-commit" | "default-branch";
 
@@ -74,7 +75,8 @@ interface AppState {
   // Actions — tab
   setActiveTab: (tab: "chat" | "editor" | "diff" | "terminal" | "processes") => void;
 
-  // Actions — diff
+  // Actions — git / diff
+  setGitAvailable: (available: boolean) => void;
   bumpChangedFilesTick: () => void;
   setDiffBase: (base: "last-commit" | "default-branch") => void;
 
@@ -111,6 +113,7 @@ export const useStore = create<AppState>((set) => ({
   pendingPermissions: new Map(),
   files: [],
   activeTab: "chat",
+  gitAvailable: null,
   changedFilesTick: 0,
   diffBase: "last-commit",
   sessionProcesses: [],
@@ -159,6 +162,7 @@ export const useStore = create<AppState>((set) => ({
 
   setActiveTab: (activeTab) => set({ activeTab }),
 
+  setGitAvailable: (gitAvailable) => set({ gitAvailable }),
   bumpChangedFilesTick: () => set((s) => ({ changedFilesTick: s.changedFilesTick + 1 })),
   setDiffBase: (diffBase) => set({ diffBase }),
 
