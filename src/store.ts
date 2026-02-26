@@ -35,6 +35,10 @@ interface AppState {
   // Tab
   activeTab: "chat" | "editor" | "diff" | "terminal" | "processes";
 
+  // Diff
+  changedFilesTick: number;
+  diffBase: "last-commit" | "default-branch";
+
   // Element selection
   selection: ElementSelection | null;
   previewMode: "view" | "edit" | "select";
@@ -64,6 +68,10 @@ interface AppState {
   // Actions — tab
   setActiveTab: (tab: "chat" | "editor" | "diff" | "terminal" | "processes") => void;
 
+  // Actions — diff
+  bumpChangedFilesTick: () => void;
+  setDiffBase: (base: "last-commit" | "default-branch") => void;
+
   // Actions — selection
   setSelection: (s: ElementSelection | null) => void;
   setPreviewMode: (mode: "view" | "edit" | "select") => void;
@@ -90,6 +98,8 @@ export const useStore = create<AppState>((set) => ({
   pendingPermissions: new Map(),
   files: [],
   activeTab: "chat",
+  changedFilesTick: 0,
+  diffBase: "last-commit",
   selection: null,
   previewMode: "view",
 
@@ -133,6 +143,9 @@ export const useStore = create<AppState>((set) => ({
     }),
 
   setActiveTab: (activeTab) => set({ activeTab }),
+
+  bumpChangedFilesTick: () => set((s) => ({ changedFilesTick: s.changedFilesTick + 1 })),
+  setDiffBase: (diffBase) => set({ diffBase }),
 
   setSelection: (selection) => set({ selection }),
   setPreviewMode: (previewMode) => set({ previewMode, ...(previewMode !== "select" ? { selection: null } : {}) }),

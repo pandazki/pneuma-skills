@@ -3,6 +3,7 @@ import { Panel, Group, Separator } from "react-resizable-panels";
 import TopBar from "./components/TopBar.js";
 import MarkdownPreview from "./components/MarkdownPreview.js";
 import ChatPanel from "./components/ChatPanel.js";
+import DiffPanel from "./components/DiffPanel.js";
 import { useStore } from "./store.js";
 import { connect } from "./ws.js";
 
@@ -21,7 +22,7 @@ function RightPanel() {
     <div className="flex flex-col h-full">
       {activeTab === "chat" && <ChatPanel />}
       {activeTab === "editor" && <PlaceholderTab name="Editor" />}
-      {activeTab === "diff" && <PlaceholderTab name="Diffs" />}
+      {activeTab === "diff" && <DiffPanel />}
       {activeTab === "terminal" && <PlaceholderTab name="Terminal" />}
       {activeTab === "processes" && <PlaceholderTab name="Processes" />}
     </div>

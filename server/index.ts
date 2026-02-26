@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { join, resolve, relative, basename, extname } from "node:path";
+import { execSync } from "node:child_process";
 import { WsBridge } from "./ws-bridge.js";
 import type { SocketData } from "./ws-bridge.js";
 import type { ServerWebSocket } from "bun";
@@ -60,6 +61,139 @@ export function startServer(options: ServerOptions) {
       return c.json({ ok: true });
     } catch (err) {
       return c.json({ error: "Failed to write file" }, 500);
+    }
+  });
+
+  // ── Read single file ────────────────────────────────────────────────
+  app.get("/api/files/read", (c) => {
+    const relPath = c.req.query("path");
+    if (!relPath) return c.json({ error: "Missing path" }, 400);
+    const absPath = join(workspace, relPath);
+    if (!absPath.startsWith(workspace)) return c.json({ error: "Forbidden" }, 403);
+    try {
+      const content = readFileSync(absPath, "utf-8");
+      return c.json({ path: relPath, content });
+    } catch {
+      return c.json({ error: "File not found" }, 404);
+    }
+  });
+
+  // ── File tree ──────────────────────────────────────────────────────
+  app.get("/api/files/tree", (c) => {
+    interface TreeNode {
+      name: string;
+      path: string;
+      type: "file" | "directory";
+      children?: TreeNode[];
+    }
+    function buildTree(dir: string, relBase: string): TreeNode[] {
+      const entries = readdirSync(dir, { withFileTypes: true })
+        .filter((e) => !e.name.startsWith(".") && e.name !== "node_modules")
+        .sort((a, b) => {
+          if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+      return entries.map((e) => {
+        const rel = relBase ? `${relBase}/${e.name}` : e.name;
+        if (e.isDirectory()) {
+          return { name: e.name, path: rel, type: "directory" as const, children: buildTree(join(dir, e.name), rel) };
+        }
+        return { name: e.name, path: rel, type: "file" as const };
+      });
+    }
+    return c.json({ tree: buildTree(workspace, "") });
+  });
+
+  // ── Git: changed files ─────────────────────────────────────────────
+  app.get("/api/git/changed-files", (c) => {
+    const base = c.req.query("base") || "last-commit";
+    const files = new Map<string, string>(); // relPath → status (A/M/D)
+    try {
+      // Uncommitted changes vs HEAD
+      const nameStatus = execSync("git diff HEAD --name-status", { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+      for (const line of nameStatus.split("\n").filter(Boolean)) {
+        const [status, ...parts] = line.split("\t");
+        const filePath = parts.join("\t");
+        if (status && filePath) files.set(filePath, status.charAt(0));
+      }
+      // Untracked files
+      const untracked = execSync("git ls-files --others --exclude-standard", { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+      for (const filePath of untracked.split("\n").filter(Boolean)) {
+        if (!files.has(filePath)) files.set(filePath, "A");
+      }
+      // Branch diff (if requested)
+      if (base === "default-branch") {
+        try {
+          const defaultBranch = execSync("git symbolic-ref refs/remotes/origin/HEAD --short", { cwd: workspace, encoding: "utf-8", timeout: 5_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+          const branchStatus = execSync(`git diff ${defaultBranch}...HEAD --name-status`, { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+          for (const line of branchStatus.split("\n").filter(Boolean)) {
+            const [status, ...parts] = line.split("\t");
+            const filePath = parts.join("\t");
+            if (status && filePath && !files.has(filePath)) files.set(filePath, status.charAt(0));
+          }
+        } catch { /* no default branch info available */ }
+      }
+    } catch {
+      // Not a git repo or git not available
+    }
+    const result = Array.from(files.entries()).map(([path, status]) => ({ path, status }));
+    return c.json({ files: result });
+  });
+
+  // ── Git: file diff ─────────────────────────────────────────────────
+  app.get("/api/git/diff", (c) => {
+    const filePath = c.req.query("path");
+    if (!filePath) return c.json({ error: "Missing path" }, 400);
+    const base = c.req.query("base") || "last-commit";
+    try {
+      let diff = "";
+      const absPath = join(workspace, filePath);
+      // Check if file is untracked
+      const tracked = execSync(`git ls-files -- "${filePath}"`, { cwd: workspace, encoding: "utf-8", timeout: 5_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+      if (!tracked) {
+        // Untracked new file — diff against /dev/null
+        try {
+          diff = execSync(`git diff --no-index -- /dev/null "${absPath}"`, { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+        } catch (e: any) {
+          // git diff --no-index exits with 1 when there are differences
+          diff = e.stdout?.toString() || "";
+        }
+      } else if (base === "default-branch") {
+        try {
+          const defaultBranch = execSync("git symbolic-ref refs/remotes/origin/HEAD --short", { cwd: workspace, encoding: "utf-8", timeout: 5_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+          diff = execSync(`git diff ${defaultBranch}...HEAD -- "${filePath}"`, { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+        } catch { /* fallback to HEAD */ }
+        if (!diff) {
+          try {
+            diff = execSync(`git diff HEAD -- "${filePath}"`, { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+          } catch (e: any) { diff = e.stdout?.toString() || ""; }
+        }
+      } else {
+        try {
+          diff = execSync(`git diff HEAD -- "${filePath}"`, { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+        } catch (e: any) { diff = e.stdout?.toString() || ""; }
+      }
+      return c.json({ path: filePath, diff });
+    } catch {
+      return c.json({ path: filePath, diff: "" });
+    }
+  });
+
+  // ── Git: status (for editor file tree badges) ──────────────────────
+  app.get("/api/git/status", (c) => {
+    try {
+      const output = execSync("git status --porcelain", { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+      const statuses: Record<string, string> = {};
+      for (const line of output.split("\n").filter(Boolean)) {
+        const status = line.substring(0, 2).trim();
+        const filePath = line.substring(3);
+        if (status === "??" || status === "A") statuses[filePath] = "A";
+        else if (status === "D") statuses[filePath] = "D";
+        else statuses[filePath] = "M";
+      }
+      return c.json({ statuses });
+    } catch {
+      return c.json({ statuses: {} });
     }
   });
 

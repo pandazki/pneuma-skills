@@ -83,6 +83,12 @@ function parseSelectionFromContent(raw: string): { content: string; selectionCon
   return { content: raw };
 }
 
+function detectFileChanges(blocks: ContentBlock[]): boolean {
+  return blocks.some(
+    (b) => b.type === "tool_use" && (b.name === "Edit" || b.name === "Write")
+  );
+}
+
 function extractTextFromBlocks(blocks: ContentBlock[]): string {
   return blocks
     .map((b) => {
@@ -133,6 +139,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       };
       // Replace streaming draft or append
       store.appendMessage(chatMsg);
+      if (detectFileChanges(msg.content)) store.bumpChangedFilesTick();
       store.setStreaming(null);
       streamingPhase = null;
       store.setSessionStatus("running");

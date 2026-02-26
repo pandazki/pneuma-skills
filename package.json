@@ -25,8 +25,18 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-html": "^6.4.11",
+    "@codemirror/lang-javascript": "^6.2.4",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/lang-python": "^6.2.1",
     "@tailwindcss/typography": "^0.5.19",
+    "@uiw/react-codemirror": "^4.25.5",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "chokidar": "^4.0.0",
+    "diff": "^8.0.3",
     "hono": "^4.7.0",
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^4.6.2",
@@ -35,6 +45,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
     "@types/bun": "^1.2.5",
+    "@types/diff": "^8.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.4.0",
