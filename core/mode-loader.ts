@@ -32,11 +32,13 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/doc/pneuma-mode.js").then((m) => m.default),
   },
-  // slide: {
-  //   type: "builtin",
-  //   manifestLoader: () => import("../modes/slide/manifest.js").then(m => m.default),
-  //   definitionLoader: () => import("../modes/slide/pneuma-mode.js").then(m => m.default),
-  // },
+  slide: {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/slide/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/slide/pneuma-mode.js").then((m) => m.default),
+  },
 };
 
 // ── Public API ───────────────────────────────────────────────────────────────

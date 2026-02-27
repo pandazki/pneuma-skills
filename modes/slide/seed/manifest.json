@@ -1,0 +1,7 @@
+{
+  "title": "My Presentation",
+  "slides": [
+    { "file": "slides/slide-01.html", "title": "Title Slide" },
+    { "file": "slides/slide-02.html", "title": "Key Points" }
+  ]
+}

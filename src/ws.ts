@@ -6,6 +6,7 @@
 import { useStore, nextId } from "./store.js";
 import type { ElementSelection } from "./store.js";
 import type { BrowserIncomingMessage, BrowserOutgoingMessage, ContentBlock, ChatMessage, SelectionContext, SelectionType } from "./types.js";
+import type { ViewerSelectionContext } from "../core/types/viewer-contract.js";
 
 let socket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -447,9 +448,10 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
     }
 
     case "content_update": {
-      const mdFiles = data.files.filter((f: { path: string; content: string }) => f.path.endsWith(".md"));
-      const hasImageChange = data.files.some((f: { path: string; content: string }) => /\.(png|jpe?g|gif|webp|svg)$/i.test(f.path));
-      if (mdFiles.length > 0) store.updateFiles(mdFiles);
+      const IMAGE_RE = /\.(png|jpe?g|gif|webp|svg)$/i;
+      const contentFiles = data.files.filter((f: { path: string; content: string }) => !IMAGE_RE.test(f.path));
+      const hasImageChange = data.files.some((f: { path: string; content: string }) => IMAGE_RE.test(f.path));
+      if (contentFiles.length > 0) store.updateFiles(contentFiles);
       if (hasImageChange) store.bumpImageTick();
       break;
     }
@@ -610,13 +612,18 @@ export function sendUserMessage(content: string, selection?: ElementSelection | 
   // Enrich with selection context — delegate to mode's viewer if available
   let enrichedContent = content;
   const viewer = store.modeViewer;
-  if (selection && viewer) {
-    const viewerSelection = {
+  if (viewer) {
+    const viewerFiles = store.files.map((f) => ({ path: f.path, content: f.content }));
+    let viewerSelection: ViewerSelectionContext | null = selection ? {
       type: selection.type,
       content: selection.content,
+      file: selection.file,
       level: selection.level,
-    };
-    const viewerFiles = store.files.map((f) => ({ path: f.path, content: f.content }));
+    } : null;
+    // Even without element selection, provide active file as viewing context
+    if (!viewerSelection && store.activeFile) {
+      viewerSelection = { type: "viewing", content: "", file: store.activeFile };
+    }
     const context = viewer.extractContext(viewerSelection, viewerFiles);
     if (context) {
       enrichedContent = context + "\n\n" + content;

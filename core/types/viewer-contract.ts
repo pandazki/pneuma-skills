@@ -36,6 +36,10 @@ export interface ViewerPreviewProps {
   contentVersion?: number;
   /** 图片版本号 (图片变更时递增，用于图片缓存失效) */
   imageVersion: number;
+  /** Mode 初始化参数（不可变，会话生命周期内固定） */
+  initParams?: Record<string, number | string>;
+  /** 当前查看的文件变更时的回调（用于追踪活跃文件上下文） */
+  onActiveFileChange?: (file: string | null) => void;
 }
 
 /** 内容查看器的 UI 契约 */

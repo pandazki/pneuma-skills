@@ -45,6 +45,20 @@ export interface AgentPreferences {
   greeting?: string;
 }
 
+/** 模式初始化参数声明 — 在首次启动时交互式询问用户 */
+export interface InitParam {
+  /** 参数名，同时作为模板占位符 key (e.g. "slideWidth") */
+  name: string;
+  /** 交互式询问时的显示标签 (e.g. "Slide width") */
+  label: string;
+  /** 补充说明 (e.g. "pixels") */
+  description?: string;
+  /** 参数类型 */
+  type: "number" | "string";
+  /** 默认值 */
+  defaultValue: number | string;
+}
+
 /** 工作区初始化配置 — 描述空 workspace 时的初始化行为 */
 export interface InitConfig {
   /**
@@ -58,6 +72,11 @@ export interface InitConfig {
    * value: 源文件相对路径 (相对于项目根目录)
    */
   seedFiles?: Record<string, string>;
+  /**
+   * 模式初始化参数。首次启动时交互式询问用户，结果持久化到 .pneuma/config.json。
+   * 参数值通过 {{name}} 模板替换注入到 skill 文件和 seed 文件中。
+   */
+  params?: InitParam[];
 }
 
 /** Mode 的完整声明式描述 */

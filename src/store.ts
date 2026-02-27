@@ -66,9 +66,14 @@ interface AppState {
   // Element selection
   selection: ElementSelection | null;
   previewMode: "view" | "edit" | "select";
+  /** Currently viewed file path (e.g. current slide), independent of element selection */
+  activeFile: string | null;
 
   // Mode viewer (loaded dynamically via mode-loader)
   modeViewer: ViewerContract | null;
+
+  // Init params (immutable per session, from mode manifest)
+  initParams: Record<string, number | string>;
 
   // Actions — session
   setSession: (session: SessionState) => void;
@@ -117,9 +122,13 @@ interface AppState {
   // Actions — selection
   setSelection: (s: ElementSelection | null) => void;
   setPreviewMode: (mode: "view" | "edit" | "select") => void;
+  setActiveFile: (file: string | null) => void;
 
   // Actions — mode viewer
   setModeViewer: (viewer: ViewerContract) => void;
+
+  // Actions — init params
+  setInitParams: (params: Record<string, number | string>) => void;
 
   // Actions — content
   setFiles: (files: FileContent[]) => void;
@@ -195,7 +204,9 @@ export const useStore = create<AppState>((set) => ({
   terminalId: null,
   selection: null,
   previewMode: "view",
+  activeFile: null,
   modeViewer: null,
+  initParams: {},
 
   setSession: (session) => set({ session }),
   updateSession: (updates) =>
@@ -272,8 +283,11 @@ export const useStore = create<AppState>((set) => ({
 
   setSelection: (selection) => set({ selection }),
   setPreviewMode: (previewMode) => set({ previewMode, ...(previewMode !== "select" ? { selection: null } : {}) }),
+  setActiveFile: (activeFile) => set({ activeFile }),
 
   setModeViewer: (modeViewer) => set({ modeViewer }),
+
+  setInitParams: (initParams) => set({ initParams }),
 
   setFiles: (files) => set({ files }),
   updateFiles: (updates) =>

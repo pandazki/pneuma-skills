@@ -24,9 +24,16 @@ export interface FileUpdate {
 function extractWatchExtensions(patterns: string[]): Set<string> | null {
   const exts = new Set<string>();
   for (const pattern of patterns) {
-    const match = pattern.match(/\*\.(\w+)$/);
-    if (match) {
-      exts.add(`.${match[1]}`);
+    // Glob pattern: "slides/*.html", "**/*.md"
+    const globMatch = pattern.match(/\*\.(\w+)$/);
+    if (globMatch) {
+      exts.add(`.${globMatch[1]}`);
+      continue;
+    }
+    // Literal filename: "manifest.json", "theme.css"
+    const literalMatch = pattern.match(/\.(\w+)$/);
+    if (literalMatch && !pattern.includes("*")) {
+      exts.add(`.${literalMatch[1]}`);
     }
   }
   return exts.size > 0 ? exts : null;
