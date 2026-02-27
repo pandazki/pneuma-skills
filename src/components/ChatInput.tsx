@@ -63,14 +63,14 @@ export default function ChatInput() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const sessionStatus = useStore((s) => s.sessionStatus);
   const cliConnected = useStore((s) => s.cliConnected);
+  const turnInProgress = useStore((s) => s.turnInProgress);
   const selection = useStore((s) => s.selection);
   const setSelection = useStore((s) => s.setSelection);
   const slashCommands = useStore((s) => s.session?.slash_commands ?? EMPTY_STRINGS);
   const skills = useStore((s) => s.session?.skills ?? EMPTY_STRINGS);
 
-  const isRunning = sessionStatus === "running";
+  const isBusy = turnInProgress;
 
   // Build slash menu items — slash_commands is the superset, skills is a subset.
   // Use slash_commands as the source, mark skills accordingly to avoid duplicates.
@@ -119,6 +119,8 @@ export default function ChatInput() {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
+    // Immediately show busy state — disable input + show Stop button
+    useStore.getState().setTurnInProgress(true);
   }, [text, images, selection, setSelection]);
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -306,13 +308,13 @@ export default function ChatInput() {
           placeholder={
             !cliConnected
               ? "Waiting for CLI connection..."
-              : isRunning
+              : isBusy
                 ? "Claude is working..."
                 : selection
                   ? "Tell Claude what to change..."
                   : "Send a message... (paste images, type / for commands)"
           }
-          disabled={!cliConnected}
+          disabled={!cliConnected || isBusy}
           rows={1}
           className="w-full bg-neutral-800 text-neutral-100 rounded-lg px-3 py-2 text-sm resize-none placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-600 disabled:opacity-50"
         />
@@ -343,7 +345,7 @@ export default function ChatInput() {
         </div>
 
         <div>
-          {isRunning ? (
+          {isBusy ? (
             <button
               onClick={sendInterrupt}
               className="px-4 py-1.5 bg-red-700 hover:bg-red-600 text-white text-xs rounded-lg transition-colors"

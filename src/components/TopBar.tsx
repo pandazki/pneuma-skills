@@ -18,7 +18,7 @@ function StatusDot() {
 
   const color =
     connectionStatus === "connected" && cliConnected
-      ? sessionStatus === "running"
+      ? sessionStatus === "running" || sessionStatus === "compacting"
         ? "bg-amber-400"
         : "bg-green-400"
       : "bg-red-400";

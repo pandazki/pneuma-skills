@@ -7,11 +7,31 @@ import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./To
 
 export default function MessageBubble({ message }: { message: ChatMessage }) {
   if (message.role === "system") {
-    if (message.isMarkdown) {
+    if (message.isCollapsible) {
+      // /context output — render as a rich visualization card (open by default)
+      if (message.subtype === "context") {
+        return (
+          <div className="animate-[fadeSlideIn_0.2s_ease-out] my-1">
+            <ContextUsageCard content={message.content} />
+          </div>
+        );
+      }
+
+      // System output (command results, compact output, etc.) — collapsed by default
+      const preview = message.content.replace(/\s+/g, " ").slice(0, 60);
       return (
-        <div className="animate-[fadeSlideIn_0.2s_ease-out] rounded-lg border border-cc-border bg-cc-card/50 px-4 py-3 my-1">
-          <MarkdownContent text={message.content} />
-        </div>
+        <details className="animate-[fadeSlideIn_0.2s_ease-out] rounded-lg border border-cc-border bg-cc-card/50 my-1 group">
+          <summary className="flex items-center gap-2 px-3 py-2 text-xs text-cc-muted cursor-pointer hover:bg-cc-hover/50 transition-colors select-none">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 transition-transform group-open:rotate-90 shrink-0">
+              <path d="M6 4l4 4-4 4" />
+            </svg>
+            <span className="font-medium text-cc-fg/70">Output</span>
+            <span className="truncate text-cc-muted/60">{preview}</span>
+          </summary>
+          <div className="px-4 pb-3 max-h-60 overflow-y-auto">
+            <MarkdownContent text={message.content} />
+          </div>
+        </details>
       );
     }
     return (
@@ -459,6 +479,205 @@ function ThinkingBlock({ text }: { text: string }) {
               </Markdown>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ToolGroupBlock ────────────────────────────────────────────────────────
+
+// ─── ContextUsageCard ──────────────────────────────────────────────────────
+
+interface ContextCategory {
+  name: string;
+  tokens: string;
+  percent: number;
+  type: "used" | "free" | "compacted";
+}
+
+interface ContextUsageData {
+  model: string;
+  usedTokens: string;
+  totalTokens: string;
+  overallPercent: number;
+  categories: ContextCategory[];
+}
+
+const CONTEXT_COLORS = [
+  "#8b5cf6", "#3b82f6", "#06b6d4", "#f59e0b",
+  "#10b981", "#ec4899", "#f97316",
+];
+const CONTEXT_FREE_COLOR = "#374151";
+const CONTEXT_COMPACT_COLOR = "#6b7280";
+
+function getContextCategoryColor(cat: ContextCategory, usedIdx: number): string {
+  if (cat.type === "free") return CONTEXT_FREE_COLOR;
+  if (cat.type === "compacted") return CONTEXT_COMPACT_COLOR;
+  return CONTEXT_COLORS[usedIdx % CONTEXT_COLORS.length];
+}
+
+function parseContextOutput(content: string): ContextUsageData | null {
+  const lines = content.split("\n").map((l) => l.trim()).filter(Boolean);
+
+  let model = "";
+  let usedTokens = "";
+  let totalTokens = "";
+  let overallPercent = 0;
+
+  // Find the token fraction line — handles both formats:
+  //   "55.7k / 200k tokens (28%)"          — plain text
+  //   "**Tokens:** 55.7k / 200k (28%)"     — markdown
+  for (const line of lines) {
+    const m = line.match(/([\d,.]+k?)\s*\/\s*([\d,.]+k?)\s*(?:tokens?\s*)?\((\d+)%\)/i);
+    if (m) {
+      usedTokens = m[1];
+      totalTokens = m[2];
+      overallPercent = parseInt(m[3], 10);
+      break;
+    }
+  }
+
+  if (!usedTokens) return null;
+
+  // Extract model — handles "**Model:** claude-opus-4-6" or "Model: claude-opus-4-6"
+  for (const line of lines) {
+    const m = line.match(/\*{0,2}Model\*{0,2}[:\s]+\*{0,2}\s*([a-z][\w.-]+)/i);
+    if (m) {
+      model = m[1];
+      break;
+    }
+  }
+
+  // Parse categories from markdown table rows or bullet/icon lines
+  const categories: ContextCategory[] = [];
+
+  // Markdown table row: | System prompt | 3.8k | 1.9% |
+  const tableRowRegex = /\|\s*(.+?)\s*\|\s*([\d,.]+k?)\s*\|\s*([\d.]+)%\s*\|?/;
+  // Bullet/icon: ● System prompt    3.4k   1.7%
+  const bulletRegex = /([●○⊠▪▫◻■□•◦])\s*(.+?)\s+([\d,.]+k?)\s+([\d.]+)%/;
+  // Simple spacing: System prompt    3.4k   1.7%
+  const simpleRegex = /(.+?)\s{2,}([\d,.]+k?)\s+([\d.]+)%/;
+
+  for (const line of lines) {
+    // Skip markdown table headers and separators
+    if (line.match(/\|\s*-+/) || line.match(/\|\s*Category\s*\|/i)) continue;
+
+    // Try markdown table row
+    let match = line.match(tableRowRegex);
+    if (match) {
+      const name = match[1].replace(/\*\*/g, "").trim();
+      if (!name || name.toLowerCase() === "category") continue;
+      categories.push({
+        name,
+        tokens: match[2],
+        percent: parseFloat(match[3]),
+        type: name.toLowerCase().includes("free") ? "free"
+          : name.toLowerCase().includes("compact") ? "compacted"
+          : "used",
+      });
+      continue;
+    }
+
+    // Try bullet/icon format
+    match = line.match(bulletRegex);
+    if (match) {
+      const marker = match[1];
+      const name = match[2].trim();
+      categories.push({
+        name,
+        tokens: match[3],
+        percent: parseFloat(match[4]),
+        type: marker === "○" || name.toLowerCase().includes("free") ? "free"
+          : marker === "⊠" || name.toLowerCase().includes("compact") ? "compacted"
+          : "used",
+      });
+      continue;
+    }
+
+    // Try simple spacing format
+    match = line.match(simpleRegex);
+    if (match) {
+      const name = match[1].replace(/^[^\w]+/, "").trim();
+      if (!name) continue;
+      categories.push({
+        name,
+        tokens: match[2],
+        percent: parseFloat(match[3]),
+        type: name.toLowerCase().includes("free") ? "free"
+          : name.toLowerCase().includes("compact") ? "compacted"
+          : "used",
+      });
+    }
+  }
+
+  return { model, usedTokens, totalTokens, overallPercent, categories };
+}
+
+function ContextUsageCard({ content }: { content: string }) {
+  const data = useMemo(() => parseContextOutput(content), [content]);
+
+  if (!data) {
+    return (
+      <div className="rounded-lg border border-cc-border bg-cc-card/50 px-4 py-3">
+        <MarkdownContent text={content} />
+      </div>
+    );
+  }
+
+  let usedColorIdx = 0;
+  const coloredCategories = data.categories.map((cat) => {
+    const color = getContextCategoryColor(cat, cat.type === "used" ? usedColorIdx : 0);
+    if (cat.type === "used") usedColorIdx++;
+    return { ...cat, color };
+  });
+
+  return (
+    <div className="rounded-lg border border-cc-border bg-cc-card overflow-hidden">
+      <div className="px-4 pt-3 pb-2">
+        <div className="text-xs font-semibold text-cc-fg mb-0.5">Context Usage</div>
+        <div className="text-xs text-cc-muted">
+          {data.model && <span>{data.model} &middot; </span>}
+          {data.usedTokens} / {data.totalTokens} tokens ({data.overallPercent}%)
+        </div>
+      </div>
+
+      {coloredCategories.length > 0 && (
+        <div className="px-4 pb-2">
+          <div className="flex h-2 rounded-full overflow-hidden bg-neutral-800">
+            {coloredCategories.map((cat, i) =>
+              cat.percent > 0 ? (
+                <div
+                  key={i}
+                  style={{ width: `${cat.percent}%`, backgroundColor: cat.color }}
+                  className="h-full"
+                  title={`${cat.name}: ${cat.tokens} (${cat.percent}%)`}
+                />
+              ) : null,
+            )}
+          </div>
+        </div>
+      )}
+
+      {coloredCategories.length > 0 && (
+        <div className="px-4 pb-3 space-y-1">
+          {coloredCategories.map((cat, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs">
+              <span
+                className={`w-2 h-2 shrink-0 ${
+                  cat.type === "free"
+                    ? "rounded-full border border-neutral-500"
+                    : cat.type === "compacted"
+                      ? "rounded-sm border border-neutral-500"
+                      : "rounded-full"
+                }`}
+                style={cat.type !== "free" && cat.type !== "compacted" ? { backgroundColor: cat.color } : undefined}
+              />
+              <span className="text-cc-muted flex-1">{cat.name}</span>
+              <span className="text-cc-fg tabular-nums">{cat.tokens}</span>
+              <span className="text-cc-muted tabular-nums w-12 text-right">{cat.percent}%</span>
+            </div>
+          ))}
         </div>
       )}
     </div>

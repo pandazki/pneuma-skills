@@ -1,12 +1,23 @@
+/**
+ * DocPreview — Doc Mode 的内容查看器组件。
+ *
+ * 实现 ViewerContract 的 PreviewComponent。
+ * 接收 ViewerPreviewProps，通过 props 获取数据而非直接读 store。
+ *
+ * 从 src/components/MarkdownPreview.tsx 迁移而来。
+ */
+
 import { useEffect, useState, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import { useStore } from "../store.js";
-import type { ElementSelection } from "../store.js";
+import type { ViewerPreviewProps, ViewerSelectionContext } from "../../../core/types/viewer-contract.js";
+
+// v1.0: DocPreview 仍引用 store 来控制 previewMode toggle。
+// 这是一个务实的耦合，未来可通过 onModeChange callback 解耦。
+import { useStore } from "../../../src/store.js";
 
 type PreviewTheme = "dark" | "light";
-type PreviewMode = "view" | "edit" | "select";
 
 /** Rewrite relative image paths to go through the /content/ endpoint */
 function rewriteImageSrc(src: string | undefined, filePath: string, cacheBust?: number): string {
@@ -27,7 +38,7 @@ function rewriteImageSrc(src: string | undefined, filePath: string, cacheBust?: 
 /** Build react-markdown components with data-selectable attributes */
 function buildSelectableComponents(filePath: string, imageTick?: number) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const wrapBlock = (tag: string, type: ElementSelection["type"], level?: number): any => {
+  const wrapBlock = (tag: string, type: ViewerSelectionContext["type"], level?: number): any => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return ({ children, node, ...props }: any) => {
       const attrs: Record<string, string | number> = {
@@ -118,13 +129,16 @@ async function saveFile(path: string, content: string): Promise<boolean> {
   }
 }
 
-export default function MarkdownPreview() {
-  const files = useStore((s) => s.files);
-  const imageTick = useStore((s) => s.imageTick);
-  const previewMode = useStore((s) => s.previewMode);
-  const selection = useStore((s) => s.selection);
-  const setSelection = useStore((s) => s.setSelection);
+export default function DocPreview({
+  files,
+  selection,
+  onSelect,
+  mode: previewMode,
+  imageVersion,
+}: ViewerPreviewProps) {
+  // v1.0: setPreviewMode 仍通过 store 控制 (toolbar toggle)
   const setPreviewMode = useStore((s) => s.setPreviewMode);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const selectedElRef = useRef<HTMLElement | null>(null);
 
@@ -137,16 +151,6 @@ export default function MarkdownPreview() {
     setTheme(next);
     localStorage.setItem("pneuma-preview-theme", next);
   };
-
-  useEffect(() => {
-    const baseUrl = import.meta.env.DEV ? `http://localhost:17007` : "";
-    fetch(`${baseUrl}/api/files`)
-      .then((r) => r.json())
-      .then((data: { files: { path: string; content: string }[] }) => {
-        useStore.getState().setFiles(data.files);
-      })
-      .catch(() => {});
-  }, []);
 
   const isSelectMode = previewMode === "select";
 
@@ -175,7 +179,6 @@ export default function MarkdownPreview() {
     for (const el of candidates) {
       let match = false;
       if (selection.type === "image") {
-        // Match images by data-src attribute
         match = (el as HTMLElement).dataset.src === selection.content;
       } else {
         const text = (el.textContent || "").trim().slice(0, 200);
@@ -195,7 +198,7 @@ export default function MarkdownPreview() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isSelectMode) {
         if (selection) {
-          setSelection(null);
+          onSelect(null);
         } else {
           setPreviewMode("view");
         }
@@ -203,7 +206,7 @@ export default function MarkdownPreview() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isSelectMode, selection, setSelection, setPreviewMode]);
+  }, [isSelectMode, selection, onSelect, setPreviewMode]);
 
   // Click handler for element selection (event delegation)
   const handleClick = useCallback(
@@ -212,35 +215,32 @@ export default function MarkdownPreview() {
 
       const target = (e.target as HTMLElement).closest("[data-selectable]") as HTMLElement | null;
 
-      // Click on background → deselect
       if (!target) {
         if (selectedElRef.current) {
           selectedElRef.current.classList.remove("element-selected");
           selectedElRef.current = null;
         }
-        setSelection(null);
+        onSelect(null);
         return;
       }
 
-      // Find which file this element belongs to
       const fileEl = target.closest("[data-file]") as HTMLElement | null;
       const file = fileEl?.dataset.file || "";
-      const type = (target.dataset.type || "paragraph") as ElementSelection["type"];
+      const type = (target.dataset.type || "paragraph") as ViewerSelectionContext["type"];
       const level = target.dataset.level ? Number(target.dataset.level) : undefined;
       const content = type === "image"
         ? (target.dataset.src || target.querySelector("img")?.getAttribute("alt") || "image")
         : (target.textContent || "").trim().slice(0, 200);
 
-      // Update DOM highlight
       if (selectedElRef.current) {
         selectedElRef.current.classList.remove("element-selected");
       }
       target.classList.add("element-selected");
       selectedElRef.current = target;
 
-      setSelection({ file, type, content, level });
+      onSelect({ file, type, content, level });
     },
-    [isSelectMode, setSelection],
+    [isSelectMode, onSelect],
   );
 
   // Text range selection via mouseup
@@ -251,23 +251,21 @@ export default function MarkdownPreview() {
     if (!sel || !sel.toString().trim()) return;
 
     const text = sel.toString().trim();
-    if (text.length < 2) return; // Ignore accidental tiny selections
+    if (text.length < 2) return;
 
-    // Find which file
     const anchor = sel.anchorNode;
     const fileEl =
       (anchor as Element)?.closest?.("[data-file]") ||
       anchor?.parentElement?.closest("[data-file]");
     const file = (fileEl as HTMLElement)?.dataset?.file || "";
 
-    // Clear any block selection
     if (selectedElRef.current) {
       selectedElRef.current.classList.remove("element-selected");
       selectedElRef.current = null;
     }
 
-    setSelection({ file, type: "text-range", content: text.slice(0, 300) });
-  }, [isSelectMode, setSelection]);
+    onSelect({ file, type: "text-range", content: text.slice(0, 300) });
+  }, [isSelectMode, onSelect]);
 
   const isDark = theme === "dark";
 
@@ -324,7 +322,7 @@ export default function MarkdownPreview() {
                   remarkPlugins={[remarkGfm]}
                   rehypePlugins={[rehypeRaw]}
                   components={
-                    isSelectMode ? buildSelectableComponents(file.path, imageTick) : buildDefaultComponents(file.path, imageTick)
+                    isSelectMode ? buildSelectableComponents(file.path, imageVersion) : buildDefaultComponents(file.path, imageVersion)
                   }
                 >
                   {file.content}
@@ -346,8 +344,6 @@ function MarkdownEditor({ file, isDark }: { file: { path: string; content: strin
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastExternalRef = useRef(file.content);
 
-  // Sync from external changes (e.g. Claude Code edits) — only when content
-  // actually changed externally (not from our own saves)
   useEffect(() => {
     const el = textareaRef.current;
     if (el && file.content !== lastExternalRef.current) {
@@ -361,12 +357,11 @@ function MarkdownEditor({ file, isDark }: { file: { path: string; content: strin
     saveTimerRef.current = setTimeout(async () => {
       setSaving(true);
       await saveFile(file.path, content);
-      lastExternalRef.current = content; // prevent echo-back
+      lastExternalRef.current = content;
       setSaving(false);
     }, 800);
   }, [file.path]);
 
-  // Save on unmount if pending
   useEffect(() => {
     return () => {
       if (saveTimerRef.current && textareaRef.current) {
@@ -381,7 +376,6 @@ function MarkdownEditor({ file, isDark }: { file: { path: string; content: strin
     if (el) scheduleSave(el.value);
   };
 
-  /** Insert markdown using execCommand to preserve native undo */
   const insertMarkdown = (before: string, after: string = "") => {
     const el = textareaRef.current;
     if (!el) return;
@@ -392,18 +386,15 @@ function MarkdownEditor({ file, isDark }: { file: { path: string; content: strin
     const inner = selected || "text";
     const replacement = `${before}${inner}${after}`;
 
-    // execCommand('insertText') preserves native undo stack
     el.setSelectionRange(start, end);
     document.execCommand("insertText", false, replacement);
 
-    // Select the inner text for easy overtyping
     const cursorPos = start + before.length;
     el.setSelectionRange(cursorPos, cursorPos + inner.length);
 
     scheduleSave(el.value);
   };
 
-  /** Insert line-level markdown (prepend to line start) */
   const insertLine = (prefix: string) => {
     const el = textareaRef.current;
     if (!el) return;
@@ -432,7 +423,6 @@ function MarkdownEditor({ file, isDark }: { file: { path: string; content: strin
           {saving ? "saving..." : "auto-save"}
         </span>
       </div>
-      {/* WYSIWYG toolbar */}
       <div className={`flex items-center gap-0.5 px-3 py-1 border-b ${
         isDark ? "border-cc-border/30 bg-cc-card/30" : "border-neutral-200 bg-neutral-50/50"
       }`}>
@@ -519,6 +509,8 @@ function ToolbarDivider({ isDark }: { isDark: boolean }) {
 
 // ── Toolbar ──────────────────────────────────────────────────────────────────
 
+type PreviewMode = "view" | "edit" | "select";
+
 function PreviewToolbar({
   theme,
   onToggleTheme,
@@ -540,7 +532,6 @@ function PreviewToolbar({
 
   return (
     <div className="flex items-center justify-end gap-1.5 px-3 py-1.5 border-b border-cc-border bg-cc-card/50 shrink-0">
-      {/* 3-state segmented control */}
       <div className="flex items-center bg-cc-bg/60 rounded-md p-0.5">
         {modes.map((m) => (
           <button
@@ -619,8 +610,6 @@ function MoonIcon() {
     </svg>
   );
 }
-
-// ── Editor toolbar icons ────────────────────────────────────────────────────
 
 function BoldIcon() {
   return (

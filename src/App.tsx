@@ -1,13 +1,15 @@
 import { useEffect, useState, lazy, Suspense } from "react";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import TopBar from "./components/TopBar.js";
-import MarkdownPreview from "./components/MarkdownPreview.js";
 import ChatPanel from "./components/ChatPanel.js";
 import DiffPanel from "./components/DiffPanel.js";
 import ProcessPanel from "./components/ProcessPanel.js";
 import ContextPanel from "./components/ContextPanel.js";
 import { useStore } from "./store.js";
+import type { SelectionType } from "./types.js";
 import { connect } from "./ws.js";
+import { loadMode } from "../core/mode-loader.js";
+import type { ViewerPreviewProps } from "../core/types/viewer-contract.js";
 
 const EditorPanel = lazy(() => import("./components/EditorPanel.js"));
 const TerminalPanel = lazy(() => import("./components/TerminalPanel.js"));
@@ -51,6 +53,33 @@ function RightPanel() {
   );
 }
 
+/** Build the ViewerPreviewProps from store state. */
+function useViewerProps(): ViewerPreviewProps {
+  const files = useStore((s) => s.files);
+  const selection = useStore((s) => s.selection);
+  const setSelection = useStore((s) => s.setSelection);
+  const previewMode = useStore((s) => s.previewMode);
+  const imageTick = useStore((s) => s.imageTick);
+
+  return {
+    files: files.map((f) => ({ path: f.path, content: f.content })),
+    selection: selection
+      ? { type: selection.type, content: selection.content, level: selection.level }
+      : null,
+    onSelect: (sel) => {
+      if (!sel) {
+        setSelection(null);
+        return;
+      }
+      // Enrich with file info from the first viewed file
+      const file = files[0]?.path || "";
+      setSelection({ type: sel.type as SelectionType, content: sel.content, level: sel.level, file });
+    },
+    mode: previewMode,
+    imageVersion: imageTick,
+  };
+}
+
 function getApiBase(): string {
   if (import.meta.env.DEV) {
     return `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`;
@@ -59,14 +88,26 @@ function getApiBase(): string {
 }
 
 export default function App() {
+  const PreviewComponent = useStore((s) => s.modeViewer?.PreviewComponent);
+
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const explicitSession = params.get("session");
+    const modeName = params.get("mode") || "doc";
 
+    // Load mode dynamically via mode-loader
+    loadMode(modeName)
+      .then((def) => {
+        useStore.getState().setModeViewer(def.viewer);
+      })
+      .catch((err) => {
+        console.error(`[app] Failed to load mode "${modeName}":`, err);
+      });
+
+    // Connect to session
     if (explicitSession) {
       connect(explicitSession);
     } else {
-      // Auto-discover the active session from the server
       fetch(`${getApiBase()}/api/session`)
         .then((r) => r.json())
         .then((d) => {
@@ -75,6 +116,14 @@ export default function App() {
         .catch(() => connect("default"));
     }
 
+    // Fetch initial file contents for the preview
+    fetch(`${getApiBase()}/api/files`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.files?.length) useStore.getState().setFiles(d.files);
+      })
+      .catch(() => {});
+
     // Check git availability
     fetch(`${getApiBase()}/api/git/available`)
       .then((r) => r.json())
@@ -82,12 +131,18 @@ export default function App() {
       .catch(() => useStore.getState().setGitAvailable(false));
   }, []);
 
+  const viewerProps = useViewerProps();
+
   return (
     <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100">
       <TopBar />
       <Group orientation="horizontal" className="flex-1">
         <Panel defaultSize={55} minSize={30}>
-          <MarkdownPreview />
+          {PreviewComponent ? (
+            <PreviewComponent {...viewerProps} />
+          ) : (
+            <LazyFallback />
+          )}
         </Panel>
         <Separator className="w-1 bg-neutral-800 hover:bg-neutral-700 transition-colors" />
         <Panel defaultSize={45} minSize={25}>

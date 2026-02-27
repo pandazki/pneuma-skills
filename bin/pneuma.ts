@@ -3,16 +3,20 @@
  * Pneuma Skills CLI entry point.
  *
  * Usage:
- *   pneuma doc --workspace /path/to/project [--port 17996] [--no-open]
+ *   pneuma <mode> --workspace /path/to/project [--port 17996] [--no-open]
+ *
+ * Driven by ModeManifest + AgentBackend — no hardcoded mode knowledge.
  */
 
 import { resolve, dirname, join } from "node:path";
 import { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import * as readline from "node:readline";
 import { startServer } from "../server/index.js";
-import { CliLauncher } from "../server/cli-launcher.js";
+import { ClaudeCodeBackend } from "../backends/claude-code/index.js";
 import { installSkill } from "../server/skill-installer.js";
 import { startFileWatcher } from "../server/file-watcher.js";
+import { loadModeManifest, listModes } from "../core/mode-loader.js";
+import type { ModeManifest } from "../core/types/mode-manifest.js";
 
 const PROJECT_ROOT = resolve(dirname(import.meta.path), "..");
 
@@ -20,7 +24,8 @@ const PROJECT_ROOT = resolve(dirname(import.meta.path), "..");
 
 interface PersistedSession {
   sessionId: string;
-  cliSessionId?: string;
+  /** Agent's internal session ID (e.g. Claude Code's --resume ID) */
+  agentSessionId?: string;
   mode: string;
   createdAt: number;
 }
@@ -29,7 +34,13 @@ function loadSession(workspace: string): PersistedSession | null {
   const filePath = join(workspace, ".pneuma", "session.json");
   try {
     const content = readFileSync(filePath, "utf-8");
-    return JSON.parse(content);
+    const data = JSON.parse(content);
+    // Backward compat: rename cliSessionId → agentSessionId
+    if (data.cliSessionId && !data.agentSessionId) {
+      data.agentSessionId = data.cliSessionId;
+      delete data.cliSessionId;
+    }
+    return data;
   } catch {
     return null;
   }
@@ -119,8 +130,20 @@ async function main() {
   checkBunVersion();
   const { mode, workspace, port, noOpen } = parseArgs(process.argv);
 
-  if (!mode || mode !== "doc") {
-    console.log("Usage: pneuma doc --workspace /path/to/project [--port 17996] [--no-open]");
+  // Validate mode
+  const availableModes = listModes();
+  if (!mode || !availableModes.includes(mode)) {
+    const modeList = availableModes.join(" | ");
+    console.log(`Usage: pneuma <${modeList}> --workspace /path/to/project [--port 17996] [--no-open]`);
+    process.exit(1);
+  }
+
+  // Load mode manifest (no React deps — backend safe)
+  let manifest: ModeManifest;
+  try {
+    manifest = await loadModeManifest(mode);
+  } catch (err) {
+    console.error(`[pneuma] Failed to load mode "${mode}":`, err);
     process.exit(1);
   }
 
@@ -134,29 +157,35 @@ async function main() {
     console.log(`[pneuma] Created workspace: ${workspace}`);
   }
 
-  console.log(`[pneuma] Mode: ${mode}`);
+  console.log(`[pneuma] Mode: ${manifest.displayName} (${mode})`);
   console.log(`[pneuma] Workspace: ${workspace}`);
 
-  // 1. Install skill + inject CLAUDE.md
+  // 1. Install skill + inject CLAUDE.md (driven by manifest)
   console.log("[pneuma] Installing skill and preparing environment...");
-  installSkill(workspace);
+  const modeSourceDir = resolve(PROJECT_ROOT, "modes", mode);
+  installSkill(workspace, manifest.skill, modeSourceDir);
 
-  // 1.5 Seed default content if workspace has no meaningful markdown files
-  const contentFiles = Array.from(
-    new Bun.Glob("**/*.md").scanSync({ cwd: workspace, absolute: false })
-  ).filter((f) => f !== "CLAUDE.md" && !f.startsWith(".claude/"));
+  // 1.5 Seed default content if workspace has no meaningful files
+  if (manifest.init && manifest.init.contentCheckPattern) {
+    const checkPattern = manifest.init.contentCheckPattern;
+    const contentFiles = Array.from(
+      new Bun.Glob(checkPattern).scanSync({ cwd: workspace, absolute: false })
+    ).filter((f) => f !== "CLAUDE.md" && !f.startsWith(".claude/"));
 
-  const hasContent = contentFiles.some((f) => {
-    try {
-      return readFileSync(join(workspace, f), "utf-8").trim().length > 0;
-    } catch { return false; }
-  });
+    const hasContent = contentFiles.some((f) => {
+      try {
+        return readFileSync(join(workspace, f), "utf-8").trim().length > 0;
+      } catch { return false; }
+    });
 
-  if (!hasContent) {
-    const readmeSrc = join(PROJECT_ROOT, "README.md");
-    if (existsSync(readmeSrc)) {
-      copyFileSync(readmeSrc, join(workspace, "README.md"));
-      console.log("[pneuma] Seeded workspace with default README.md");
+    if (!hasContent && manifest.init.seedFiles) {
+      for (const [src, dst] of Object.entries(manifest.init.seedFiles)) {
+        const srcPath = join(PROJECT_ROOT, src);
+        if (existsSync(srcPath)) {
+          copyFileSync(srcPath, join(workspace, dst));
+          console.log(`[pneuma] Seeded workspace with ${dst}`);
+        }
+      }
     }
   }
 
@@ -180,18 +209,18 @@ async function main() {
     ...(isDev ? {} : { distDir }),
   });
 
-  // 4. Launch CLI (with session resume if available)
-  const launcher = new CliLauncher(actualPort);
+  // 4. Launch Agent backend (driven by manifest)
+  const backend = new ClaudeCodeBackend(actualPort);
 
   // When the CLI reports its internal session_id, persist it
-  wsBridge.onCLISessionIdReceived((sessionId, cliSessionId) => {
-    launcher.setCLISessionId(sessionId, cliSessionId);
+  wsBridge.onCLISessionIdReceived((sessionId, agentSessionId) => {
+    backend.setAgentSessionId(sessionId, agentSessionId);
     // Persist to .pneuma/session.json
     const persisted = loadSession(workspace);
     if (persisted && persisted.sessionId === sessionId) {
-      persisted.cliSessionId = cliSessionId;
+      persisted.agentSessionId = agentSessionId;
       saveSession(workspace, persisted);
-      console.log(`[pneuma] Saved cliSessionId for resume: ${cliSessionId}`);
+      console.log(`[pneuma] Saved agentSessionId for resume: ${agentSessionId}`);
     }
   });
 
@@ -199,35 +228,35 @@ async function main() {
   const existing = loadSession(workspace);
   let resuming = false;
 
-  const session = launcher.launch({
+  const permissionMode = manifest.agent?.permissionMode;
+  const session = backend.launch({
     cwd: workspace,
-    permissionMode: "bypassPermissions",
+    permissionMode,
     // Reuse sessionId for stable WS routing
-    ...(existing?.cliSessionId ? {
+    ...(existing?.agentSessionId ? {
       sessionId: existing.sessionId,
-      resumeSessionId: existing.cliSessionId,
+      resumeSessionId: existing.agentSessionId,
     } : {}),
   });
 
-  if (existing?.cliSessionId) {
+  if (existing?.agentSessionId) {
     resuming = true;
-    console.log(`[pneuma] Resuming session: ${existing.cliSessionId}`);
+    console.log(`[pneuma] Resuming session: ${existing.agentSessionId}`);
   }
 
   // Persist session info
   saveSession(workspace, {
     sessionId: session.sessionId,
-    cliSessionId: existing?.cliSessionId,
+    agentSessionId: existing?.agentSessionId,
     mode,
     createdAt: existing?.createdAt || Date.now(),
   });
 
-  console.log(`[pneuma] CLI session started: ${session.sessionId}`);
+  console.log(`[pneuma] Agent session started: ${session.sessionId}`);
 
-  // Auto-greeting for fresh sessions — sends a hidden prompt so Claude greets the user
-  if (!resuming) {
-    const greeting = "The user just opened the Pneuma document editor workspace. Briefly greet them and let them know you're ready to help edit and create documents. Keep it to 1-2 sentences.";
-    wsBridge.injectGreeting(session.sessionId, greeting);
+  // Auto-greeting for fresh sessions (driven by manifest)
+  if (!resuming && manifest.agent?.greeting) {
+    wsBridge.injectGreeting(session.sessionId, manifest.agent.greeting);
     console.log("[pneuma] Sent auto-greeting for fresh session");
   }
 
@@ -246,9 +275,9 @@ async function main() {
     }
   }, 5_000);
 
-  // Handle CLI exit: surface errors + clear stale resume state
-  launcher.onSessionExited((exitedId, exitCode) => {
-    // Broadcast CLI errors to browser
+  // Handle Agent exit: surface errors + clear stale resume state
+  backend.onSessionExited((exitedId, exitCode) => {
+    // Broadcast Agent errors to browser
     if (exitCode !== 0 && exitCode !== 143 /* SIGTERM = normal shutdown */) {
       let errorMsg: string;
       if (exitCode === 127) {
@@ -259,23 +288,22 @@ async function main() {
       wsBridge.broadcastToSession(exitedId, { type: "error", message: errorMsg });
     }
 
-    // If resume fails (CLI exits quickly), clear cliSessionId from persistence
+    // If resume fails (Agent exits quickly), clear agentSessionId from persistence
     if (exitedId === session.sessionId && resuming) {
-      const info = launcher.getSession(exitedId);
-      if (info && !info.cliSessionId) {
-        // Resume failed, cliSessionId was cleared by launcher
+      const info = backend.getSession(exitedId);
+      if (info && !info.agentSessionId) {
         const persisted = loadSession(workspace);
         if (persisted) {
-          persisted.cliSessionId = undefined;
+          persisted.agentSessionId = undefined;
           saveSession(workspace, persisted);
-          console.log("[pneuma] Resume failed, cleared cliSessionId. Restart for fresh session.");
+          console.log("[pneuma] Resume failed, cleared agentSessionId. Restart for fresh session.");
         }
       }
     }
   });
 
-  // 5. Start file watcher
-  startFileWatcher(workspace, (files) => {
+  // 5. Start file watcher (driven by manifest)
+  startFileWatcher(workspace, manifest.viewer, (files) => {
     wsBridge.broadcastToSession(session.sessionId, {
       type: "content_update",
       files,
@@ -318,9 +346,9 @@ async function main() {
     await new Promise((r) => setTimeout(r, 2000));
   }
 
-  // 7. Open browser
+  // 7. Open browser (include mode in URL for frontend)
   if (!noOpen) {
-    const url = `http://localhost:${browserPort}?session=${session.sessionId}`;
+    const url = `http://localhost:${browserPort}?session=${session.sessionId}&mode=${mode}`;
     console.log(`[pneuma] Opening browser: ${url}`);
     try {
       const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
@@ -341,7 +369,7 @@ async function main() {
       console.log(`[pneuma] Saved ${history.length} messages to history`);
     }
     viteProc?.kill();
-    await launcher.killAll();
+    await backend.killAll();
     server.stop(true);
     process.exit(0);
   };

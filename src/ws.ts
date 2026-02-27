@@ -296,24 +296,12 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       if (typeof r.total_lines_removed === "number") {
         sessionUpdates.total_lines_removed = r.total_lines_removed;
       }
-      if (r.modelUsage) {
-        for (const usage of Object.values(r.modelUsage)) {
-          if (usage.contextWindow > 0) {
-            const totalInput = usage.inputTokens
-              + (usage.cacheReadInputTokens || 0)
-              + (usage.cacheCreationInputTokens || 0);
-            const pct = Math.round(
-              ((totalInput + usage.outputTokens) / usage.contextWindow) * 100
-            );
-            sessionUpdates.context_used_percent = Math.max(0, Math.min(pct, 100));
-          }
-        }
-      }
       store.updateSession(sessionUpdates);
       store.setStreaming(null);
       store.setActivity(null);
       streamingPhase = null;
       store.setSessionStatus("idle");
+      store.setTurnInProgress(false);
       seenTaskBlockIds.clear();
 
       if (r.is_error && r.errors?.length) {
@@ -367,7 +355,13 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
     }
 
     case "status_change": {
+      const prev = store.sessionStatus;
       store.setSessionStatus(data.status);
+      // When compacting ends (status goes from "compacting" to idle/null),
+      // clear activity since there's no "result" message for slash commands
+      if (prev === "compacting" && data.status !== "compacting") {
+        store.setActivity(null);
+      }
       break;
     }
 
@@ -377,8 +371,13 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
         role: "system",
         content: data.content,
         timestamp: Date.now(),
-        isMarkdown: true,
+        isCollapsible: true,
+        subtype: data.subtype,
       });
+      // Slash commands don't produce a "result" — clear turn on output
+      store.setActivity(null);
+      store.setSessionStatus("idle");
+      store.setTurnInProgress(false);
       break;
     }
 
@@ -408,6 +407,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       const wasWorking = store.streaming !== null || store.activity !== null;
       store.setCliConnected(false);
       store.setSessionStatus(null);
+      store.setTurnInProgress(false);
       // Clear any in-progress streaming/activity so UI doesn't get stuck
       if (store.streaming !== null) {
         store.setStreaming(null);
@@ -442,6 +442,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
           summary: evt.summary || undefined,
         });
       }
+      // compact_boundary: context% is only updated on explicit /context now
       break;
     }
 
@@ -488,6 +489,15 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
               timestamp: Date.now(),
             });
           }
+        } else if (histMsg.type === "command_output") {
+          chatMessages.push({
+            id: nextId(),
+            role: "system",
+            content: histMsg.content,
+            timestamp: Date.now(),
+            isCollapsible: true,
+            subtype: histMsg.subtype,
+          });
         }
       }
       if (chatMessages.length > 0) {
@@ -597,9 +607,22 @@ export function sendUserMessage(content: string, selection?: ElementSelection | 
     ...(images?.length ? { images } : {}),
   });
 
-  // Enrich with selection context for Claude Code
+  // Enrich with selection context — delegate to mode's viewer if available
   let enrichedContent = content;
-  if (selection) {
+  const viewer = store.modeViewer;
+  if (selection && viewer) {
+    const viewerSelection = {
+      type: selection.type,
+      content: selection.content,
+      level: selection.level,
+    };
+    const viewerFiles = store.files.map((f) => ({ path: f.path, content: f.content }));
+    const context = viewer.extractContext(viewerSelection, viewerFiles);
+    if (context) {
+      enrichedContent = context + "\n\n" + content;
+    }
+  } else if (selection) {
+    // Fallback: inline context enrichment (for when viewer hasn't loaded yet)
     const ctx: string[] = [];
     ctx.push(`[User is viewing: ${selection.file}]`);
     if (selection.type === "text-range") {

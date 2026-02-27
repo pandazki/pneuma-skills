@@ -28,8 +28,10 @@ export interface ChatMessage {
   model?: string;
   stopReason?: string | null;
   selectionContext?: SelectionContext;
-  /** If true, system message content should be rendered as markdown (e.g. command output) */
-  isMarkdown?: boolean;
+  /** If true, system message is shown in a collapsible section (e.g. command output) */
+  isCollapsible?: boolean;
+  /** Subtype for specialized rendering (e.g. "context" for /context output) */
+  subtype?: string;
   /** Attached images (base64 data URLs for display) */
   images?: { media_type: string; data: string }[];
 }

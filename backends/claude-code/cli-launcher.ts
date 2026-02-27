@@ -5,7 +5,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { Subprocess } from "bun";
-import { resolveBinary, getEnrichedPath } from "./path-resolver.js";
+import { resolveBinary, getEnrichedPath } from "../../server/path-resolver.js";
 
 export interface SdkSessionInfo {
   sessionId: string;

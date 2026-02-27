@@ -385,6 +385,7 @@ export class WsBridge {
     }
 
     if (msg.subtype === "compact_boundary") {
+      session.state.context_used_percent = 0;
       this.forwardSystemEvent(session, {
         subtype: "compact_boundary",
         compact_metadata: msg.compact_metadata,
@@ -504,22 +505,6 @@ export class WsBridge {
       session.state.total_lines_removed = msg.total_lines_removed;
     }
 
-    // Compute context usage from modelUsage
-    // inputTokens only counts non-cached tokens; include cache tokens for true context fill
-    if (msg.modelUsage) {
-      for (const usage of Object.values(msg.modelUsage)) {
-        if (usage.contextWindow > 0) {
-          const totalInput = usage.inputTokens
-            + (usage.cacheReadInputTokens || 0)
-            + (usage.cacheCreationInputTokens || 0);
-          const pct = Math.round(
-            ((totalInput + usage.outputTokens) / usage.contextWindow) * 100
-          );
-          session.state.context_used_percent = Math.max(0, Math.min(pct, 100));
-        }
-      }
-    }
-
     const browserMsg: BrowserIncomingMessage = {
       type: "result",
       data: msg,
@@ -607,12 +592,35 @@ export class WsBridge {
     // CLI echoes slash-command output as a user message with <local-command-stdout>
     const raw = typeof msg.message.content === "string" ? msg.message.content : "";
     const match = raw.match(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/);
-    const content = match ? match[1].trim() : raw.trim();
+    let content = match ? match[1].trim() : raw.trim();
     if (!content) return;
+
+    // Strip ANSI escape codes
+    // eslint-disable-next-line no-control-regex
+    content = content.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+
+    // Detect /context output: "Context Usage" heading + "X / Y" token fraction
+    const isContextOutput = /context\s+usage/i.test(content)
+      && /\d[\d,.]*k?\s*\/\s*\d[\d,.]*k?/.test(content);
+
+    if (isContextOutput) {
+      const pctMatch = content.match(/(\d+)%/);
+      if (pctMatch) {
+        const pct = parseInt(pctMatch[1], 10);
+        if (pct >= 0 && pct <= 100) {
+          session.state.context_used_percent = pct;
+          this.broadcastToBrowsers(session, {
+            type: "session_update",
+            session: { context_used_percent: pct },
+          });
+        }
+      }
+    }
 
     const browserMsg: BrowserIncomingMessage = {
       type: "command_output",
       content,
+      ...(isContextOutput ? { subtype: "context" as const } : {}),
     };
     session.messageHistory.push(browserMsg);
     this.broadcastToBrowsers(session, browserMsg);
