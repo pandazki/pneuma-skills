@@ -1,18 +1,18 @@
 # Pneuma Skills
 
-**Let Code Agents do WYSIWYG editing on HTML-based content.**
+**An extensible delivery platform for filesystem-based Agent capabilities.**
 
 > **"pneuma"** — Greek *pneuma*, meaning soul, breath, life force.
 
-Pneuma Skills is a framework that connects a Code Agent (like Claude Code) to a browser-based editor, giving users a real-time WYSIWYG experience for AI-assisted content editing. The agent edits files on disk; Pneuma watches for changes and streams a live preview to the browser alongside a chat interface.
+Pneuma fills the last mile between Code Agents and users: agents edit files on disk, Pneuma watches for changes and streams a live WYSIWYG preview alongside a full chat interface. Everything is driven by three pluggable contracts — bring your own Mode, Viewer, or Agent backend.
 
 ```
-Pneuma Skills = Content Mode x Code Agent Backend x Editor Shell
+ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell
 ```
 
 ## Demo
 
-Currently ships with **Doc Mode** — a markdown editing environment where Claude Code edits `.md` files and you see the rendered result in real-time.
+Ships with **Doc Mode** — a markdown editing environment where Claude Code edits `.md` files and you see the rendered result in real-time.
 
 ```
 ┌─────────────────────────────┬──────────────────────────┐
@@ -25,6 +25,8 @@ Currently ships with **Doc Mode** — a markdown editing environment where Claud
 │   - GFM support             │  ✎ Edit README.md        │
 │   - Image rendering         │  ✎ Write hero.png        │
 │                             │                          │
+├─────────────────────────────┼──────────────────────────┤
+│  view / edit / select       │  Chat │ Context │ Term   │
 ├─────────────────────────────┴──────────────────────────┤
 │  ● Connected  session:abc123  $0.02  3 turns           │
 └────────────────────────────────────────────────────────┘
@@ -32,7 +34,7 @@ Currently ships with **Doc Mode** — a markdown editing environment where Claud
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) >= 1.0
+- [Bun](https://bun.sh) >= 1.3.5 (required for PTY terminal support)
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated (`claude` command available in PATH)
 
 ## Quick Start
@@ -56,7 +58,7 @@ bun run dev doc --workspace ~/my-notes
 
 This will:
 
-1. Install a skill prompt into `<workspace>/.claude/skills/`
+1. Load the Doc Mode manifest and install its skill prompt into `<workspace>/.claude/skills/`
 2. Start the Pneuma server on `http://localhost:17996`
 3. Spawn a Claude Code CLI session connected via WebSocket
 4. Open your browser with the editor UI
@@ -77,21 +79,26 @@ Options:
 
 ## Architecture
 
+Pneuma is organized in four layers, each with a clear contract boundary:
+
 ```
-Browser (React)                 Pneuma Server (Bun + Hono)              Claude Code CLI
-┌──────────────┐    JSON/WS     ┌─────────────────────┐    NDJSON/WS    ┌──────────────┐
-│ Chat Panel   │◄──────────────►│                     │◄───────────────►│              │
-│ Live Preview │                │   WebSocket Bridge  │                 │  claude      │
-│ Permissions  │                │   File Watcher      │                 │  --sdk-url   │
-│ Status Bar   │                │   Content Server    │                 │              │
-└──────────────┘                └─────────────────────┘                 └──────────────┘
-                                         │
-                                    watches disk
-                                         │
-                                   ┌─────────────┐
-                                   │  Workspace   │
-                                   │  *.md files  │
-                                   └─────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  Layer 4: Mode Protocol                                 │
+│  ModeManifest — "what capability, what config, what UI" │
+│  modes/doc/pneuma-mode.ts                               │
+├─────────────────────────────────────────────────────────┤
+│  Layer 3: Content Viewer                                │
+│  ViewerContract — "how to render, select, update"       │
+│  modes/doc/components/DocPreview.tsx                     │
+├─────────────────────────────────────────────────────────┤
+│  Layer 2: Agent Bridge                                  │
+│  AgentBackend — "how to launch, communicate, lifecycle" │
+│  backends/claude-code/                                  │
+├─────────────────────────────────────────────────────────┤
+│  Layer 1: Runtime Shell                                 │
+│  WS Bridge, HTTP, File Watcher, Session, Frontend       │
+│  server/ + src/                                         │
+└─────────────────────────────────────────────────────────┘
 ```
 
 The server maintains dual WebSocket channels:
@@ -100,83 +107,104 @@ The server maintains dual WebSocket channels:
 
 When Claude Code edits files, chokidar detects the changes and pushes updated content to the browser for live preview.
 
+## Three Core Contracts
+
+| Contract | Responsibility | Extend to... |
+|----------|---------------|-------------|
+| **ModeManifest** | Declares skill, viewer config, agent preferences, init seeds | Add new modes (slide, mindmap, canvas) |
+| **ViewerContract** | Preview component, context extraction, update strategy | Custom renderers (iframe, D3, Monaco) |
+| **AgentBackend** | Launch, resume, kill, capability declaration | Other agents (Codex, Aider) |
+
+Contracts are defined in `core/types/` with 42 tests in `core/__tests__/`.
+
 ## Project Structure
 
 ```
 pneuma-skills/
-├── bin/pneuma.ts              # CLI entry point
+├── bin/pneuma.ts              # CLI entry — orchestrates mode + agent + server
+├── core/
+│   ├── types/                 # Contract definitions
+│   │   ├── mode-manifest.ts   #   ModeManifest, SkillConfig, ViewerConfig
+│   │   ├── viewer-contract.ts #   ViewerContract, ViewerPreviewProps
+│   │   ├── agent-backend.ts   #   AgentBackend, AgentCapabilities
+│   │   ├── mode-definition.ts #   ModeDefinition (manifest + viewer)
+│   │   └── index.ts           #   Re-exports
+│   ├── mode-loader.ts         # Dynamic mode discovery and loading
+│   └── __tests__/             # 42 contract tests
+├── modes/
+│   └── doc/
+│       ├── pneuma-mode.ts     # Doc Mode definition (manifest + viewer)
+│       ├── skill/SKILL.md     # Skill prompt for Claude Code
+│       └── components/
+│           └── DocPreview.tsx  # Markdown preview with select/edit modes
+├── backends/
+│   └── claude-code/
+│       ├── index.ts           # ClaudeCodeBackend implements AgentBackend
+│       └── cli-launcher.ts    # Process spawner (Bun.spawn + --sdk-url)
 ├── server/
 │   ├── index.ts               # Hono HTTP server + content API
-│   ├── ws-bridge.ts           # Dual WebSocket bridge (browser <-> CLI)
-│   ├── cli-launcher.ts        # Claude Code process spawner
-│   ├── file-watcher.ts        # chokidar-based file watcher
-│   └── skill-installer.ts     # Copies skill prompts to workspace
+│   ├── ws-bridge.ts           # Dual WebSocket bridge (browser ↔ CLI)
+│   ├── ws-bridge-*.ts         # Controls, replay, browser handlers, types
+│   ├── file-watcher.ts        # chokidar watcher (manifest-driven patterns)
+│   ├── skill-installer.ts     # Copies skill prompts (manifest-driven)
+│   └── terminal-manager.ts    # PTY terminal sessions
 ├── src/
-│   ├── App.tsx                # Root layout (resizable panels)
-│   ├── main.tsx               # React entry
-│   ├── store.ts               # Zustand state management
+│   ├── App.tsx                # Root layout (dynamic viewer from store)
+│   ├── store.ts               # Zustand state (session, messages, viewer)
 │   ├── ws.ts                  # Browser WebSocket client
-│   ├── types.ts               # Shared TypeScript types
 │   └── components/
 │       ├── ChatPanel.tsx      # Chat message feed
-│       ├── ChatInput.tsx      # Message input box
-│       ├── MarkdownPreview.tsx # Live markdown renderer
-│       ├── MessageBubble.tsx  # Rich message rendering (text, tools, thinking)
+│       ├── ChatInput.tsx      # Message composer with image upload
+│       ├── MessageBubble.tsx  # Rich messages (markdown, tools, thinking, context card)
+│       ├── ContextPanel.tsx   # Session stats, tasks, MCP servers, tools
+│       ├── TerminalPanel.tsx  # Integrated xterm.js terminal
 │       ├── ToolBlock.tsx      # Expandable tool call cards
-│       ├── StreamingText.tsx  # Streaming response display
-│       ├── ActivityIndicator.tsx # Thinking/tool progress indicator
-│       ├── PermissionBanner.tsx  # Tool permission approval UI
-│       └── TopBar.tsx         # Tab navigation + connection status
-├── skill/
-│   └── doc/SKILL.md           # Doc Mode skill prompt for Claude Code
-├── docs/adr/                  # Architecture Decision Records
-└── draft.md                   # Full requirements document (Chinese)
+│       ├── PermissionBanner.tsx # Tool permission approval UI
+│       └── TopBar.tsx         # Tabs (Chat/Context/Terminal) + status
+└── docs/
+    ├── architecture-review-v1.md    # Architecture review & v1.0 blueprint
+    ├── design/phase1-internal-decoupling.md  # Detailed design doc
+    └── adr/                         # Architecture Decision Records (1-11)
 ```
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Runtime | [Bun](https://bun.sh) |
+| Runtime | [Bun](https://bun.sh) >= 1.3.5 |
 | Server | [Hono](https://hono.dev) |
 | Frontend | React 19 + [Vite](https://vite.dev) 6 |
-| Styling | [Tailwind CSS](https://tailwindcss.com) 4 + Typography plugin |
+| Styling | [Tailwind CSS](https://tailwindcss.com) 4 |
 | State | [Zustand](https://zustand.docs.pmnd.rs) 5 |
 | Markdown | [react-markdown](https://github.com/remarkjs/react-markdown) + remark-gfm |
+| Terminal | [xterm.js](https://xtermjs.org) + Bun native PTY |
 | File Watching | [chokidar](https://github.com/paulmillr/chokidar) 4 |
 | Agent | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) via `--sdk-url` |
 
-## How It Works
+## Features
 
-1. **Skill Installation** — Pneuma copies a mode-specific skill prompt (e.g. `skill/doc/SKILL.md`) into the workspace's `.claude/skills/` directory. Claude Code natively discovers and loads skills from this location.
-
-2. **Agent Spawning** — The CLI launcher spawns `claude --sdk-url ws://localhost:17007/ws/cli/<sessionId>` which connects Claude Code's streaming output to the Pneuma server.
-
-3. **Message Bridge** — The WebSocket bridge translates between the browser's JSON protocol and Claude Code's NDJSON protocol, handling message routing, permission flows, and event replay.
-
-4. **Live Preview** — When Claude Code writes or edits files, chokidar detects changes and pushes updated content to all connected browsers via WebSocket.
-
-5. **Rich Chat UI** — The browser renders Claude Code's full output: streaming text with markdown, expandable tool call cards, collapsible thinking blocks, and an activity indicator.
-
-## Content Mode System
-
-Pneuma is designed to be extensible with different content modes. Each mode defines:
-
-- **Renderer** — How to render the content in the browser
-- **Skill** — Domain-specific prompt for the Code Agent
-- **File Convention** — How content is organized on disk
-- **Navigator** — Structural navigation (outline, page list, etc.)
-
-Currently implemented: **Doc Mode** (markdown). Future modes could include slides, mindmaps, canvas, and more.
+- **Live WYSIWYG preview** — Agent edits files, you see rendered results instantly
+- **Element selection** — Click any block to select it, then instruct changes on that specific element
+- **Inline editing** — Edit content directly in the preview (edit mode)
+- **Rich chat UI** — Streaming text, expandable tool calls, collapsible thinking, context visualization
+- **Integrated terminal** — Full PTY terminal with xterm.js
+- **Session management** — Persist and resume sessions across restarts
+- **Permission control** — Review and approve/deny tool use requests
+- **Task tracking** — Visualize Claude's TodoWrite/TaskCreate progress
+- **Background processes** — Monitor long-running background commands
+- **Context visualization** — Rich `/context` card with category breakdown and stacked bar
+- **Image upload** — Drag & drop or paste images into chat
 
 ## Roadmap
 
 - [x] Doc Mode MVP — Markdown WYSIWYG editing
-- [x] Element selection — Click to select and instruct edits on specific elements
-- [ ] Slide Mode — Presentation editing with page navigation
-- [ ] Session persistence — Resume previous editing sessions
-- [ ] Multiple agent backends — Codex CLI, custom agents
-- [x] Production build — `bunx pneuma-skills` distribution
+- [x] Element selection & inline editing
+- [x] Session persistence & resume
+- [x] Terminal, tasks, context panel
+- [x] v1.0 contract architecture (ModeManifest, ViewerContract, AgentBackend)
+- [ ] Slide Mode — Presentation editing with iframe preview (v1.1)
+- [ ] Remote mode loading — `pneuma --mode github:user/repo` (v1.x)
+- [ ] Additional agent backends — Codex CLI, custom agents (v1.x)
 
 ## Acknowledgements
 
