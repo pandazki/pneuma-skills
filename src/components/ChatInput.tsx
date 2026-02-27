@@ -72,14 +72,33 @@ export default function ChatInput() {
 
   const isRunning = sessionStatus === "running";
 
-  // Build slash menu items
-  const allSlashItems: SlashMenuItem[] = [
-    ...skills.map((s) => ({ name: s, kind: "skill" as const })),
-    ...slashCommands.map((c) => ({ name: c, kind: "command" as const })),
-  ];
-  const filteredSlashItems = slashFilter
-    ? allSlashItems.filter((item) => item.name.toLowerCase().includes(slashFilter.toLowerCase()))
-    : allSlashItems;
+  // Build slash menu items — slash_commands is the superset, skills is a subset.
+  // Use slash_commands as the source, mark skills accordingly to avoid duplicates.
+  const allSlashItems: SlashMenuItem[] = useMemo(() => {
+    const skillSet = new Set(skills);
+    return slashCommands.map((name) => ({
+      name,
+      kind: skillSet.has(name) ? "skill" as const : "command" as const,
+    }));
+  }, [slashCommands, skills]);
+  const filteredSlashItems = useMemo(() => {
+    if (!slashFilter) return allSlashItems;
+    const lower = slashFilter.toLowerCase();
+    const matches = allSlashItems.filter((item) => item.name.toLowerCase().includes(lower));
+    // Sort: exact matches first, then prefix matches, then substring matches
+    matches.sort((a, b) => {
+      const aName = a.name.toLowerCase();
+      const bName = b.name.toLowerCase();
+      const aExact = aName === lower;
+      const bExact = bName === lower;
+      if (aExact !== bExact) return aExact ? -1 : 1;
+      const aPrefix = aName.startsWith(lower);
+      const bPrefix = bName.startsWith(lower);
+      if (aPrefix !== bPrefix) return aPrefix ? -1 : 1;
+      return 0;
+    });
+    return matches;
+  }, [allSlashItems, slashFilter]);
 
   // Reset slash index when filter changes
   useEffect(() => {
@@ -254,7 +273,7 @@ export default function ChatInput() {
               />
               <button
                 onClick={() => removeImage(img.id)}
-                className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-neutral-700 hover:bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute top-0.5 right-0.5 w-4 h-4 bg-neutral-700/80 hover:bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 title="Remove"
               >
                 <CloseIcon />

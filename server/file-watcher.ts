@@ -57,10 +57,20 @@ export function startFileWatcher(
     }
   };
 
+  const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]);
+
   const scheduleFlush = (absPath: string) => {
+    const relPath = relative(workspace, absPath);
+
+    // Image changes: notify browser to bust cache (don't read content)
+    const ext = relPath.slice(relPath.lastIndexOf(".")).toLowerCase();
+    if (IMAGE_EXTS.has(ext)) {
+      onUpdate([{ path: relPath, content: "" }]);
+      return;
+    }
+
     // Only watch .md content files — skip config files
     if (!absPath.endsWith(".md")) return;
-    const relPath = relative(workspace, absPath);
     if (relPath === "CLAUDE.md") return;
     pendingChanges.add(relPath);
     if (debounceTimer) {

@@ -28,6 +28,10 @@ export interface ChatMessage {
   model?: string;
   stopReason?: string | null;
   selectionContext?: SelectionContext;
+  /** If true, system message content should be rendered as markdown (e.g. command output) */
+  isMarkdown?: boolean;
+  /** Attached images (base64 data URLs for display) */
+  images?: { media_type: string; data: string }[];
 }
 
 export interface FileContent {

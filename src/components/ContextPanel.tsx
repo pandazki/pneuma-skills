@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useStore } from "../store.js";
+import type { TaskItem } from "../store.js";
 
 function getApiBase(): string {
   if (import.meta.env.DEV) {
@@ -58,6 +59,80 @@ function SessionStatsSection() {
           />
         </div>
       </div>
+    </section>
+  );
+}
+
+// ── Section: Tasks ──────────────────────────────────────────────────────────
+
+function TaskStatusIcon({ status }: { status: TaskItem["status"] }) {
+  switch (status) {
+    case "completed":
+      return (
+        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 text-green-400 shrink-0">
+          <path fillRule="evenodd" d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.06 0l4.25-4.25z" clipRule="evenodd" />
+        </svg>
+      );
+    case "in_progress":
+      return (
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" className="w-3.5 h-3.5 text-blue-400 shrink-0 animate-spin">
+          <circle cx="8" cy="8" r="6" strokeWidth="1.5" strokeDasharray="28 10" />
+        </svg>
+      );
+    default:
+      return (
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" className="w-3.5 h-3.5 text-neutral-500 shrink-0">
+          <circle cx="8" cy="8" r="6" strokeWidth="1.5" />
+        </svg>
+      );
+  }
+}
+
+function TasksSection() {
+  const tasks = useStore((s) => s.tasks);
+  const completedCount = tasks.filter((t) => t.status === "completed").length;
+
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center gap-2">
+        <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Tasks</h3>
+        {tasks.length > 0 && (
+          <span className="text-[10px] text-neutral-500 bg-neutral-800 px-1.5 py-0.5 rounded-full">
+            {completedCount}/{tasks.length}
+          </span>
+        )}
+      </div>
+      {tasks.length === 0 ? (
+        <p className="text-xs text-neutral-600">No tasks yet</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {tasks.map((task) => (
+            <li key={task.id} className="flex items-start gap-2 text-xs">
+              <div className="mt-0.5">
+                <TaskStatusIcon status={task.status} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span
+                  className={
+                    task.status === "completed"
+                      ? "text-neutral-500 line-through"
+                      : "text-neutral-200"
+                  }
+                >
+                  {task.status === "in_progress" && task.activeForm ? (
+                    <span className="italic">{task.activeForm}</span>
+                  ) : (
+                    task.subject
+                  )}
+                </span>
+                {task.blockedBy && task.blockedBy.length > 0 && task.status !== "completed" && (
+                  <span className="ml-1.5 text-[10px] text-amber-500">blocked</span>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
@@ -191,6 +266,8 @@ export default function ContextPanel() {
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4 space-y-5">
       <SessionStatsSection />
+      <div className="border-t border-neutral-800" />
+      <TasksSection />
       <div className="border-t border-neutral-800" />
       <McpServersSection />
       <div className="border-t border-neutral-800" />

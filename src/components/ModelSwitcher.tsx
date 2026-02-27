@@ -3,17 +3,18 @@ import { useStore } from "../store.js";
 import { sendSetModel } from "../ws.js";
 
 const MODELS = [
-  { id: "claude-sonnet-4-6", label: "Sonnet", icon: "S" },
   { id: "claude-opus-4-6", label: "Opus", icon: "O" },
+  { id: "claude-sonnet-4-6", label: "Sonnet", icon: "S" },
   { id: "claude-haiku-4-5-20251001", label: "Haiku", icon: "H" },
 ];
 
+const DEFAULT_MODEL = MODELS[0]; // Opus
+
 function modelDisplay(modelId: string): { label: string; icon: string } {
-  const found = MODELS.find((m) => modelId.includes(m.id.split("-").slice(1, 2)[0]));
-  if (found) return found;
+  if (!modelId) return DEFAULT_MODEL;
   // Fuzzy match: check if model string contains sonnet/opus/haiku
-  if (modelId.toLowerCase().includes("sonnet")) return { label: "Sonnet", icon: "S" };
   if (modelId.toLowerCase().includes("opus")) return { label: "Opus", icon: "O" };
+  if (modelId.toLowerCase().includes("sonnet")) return { label: "Sonnet", icon: "S" };
   if (modelId.toLowerCase().includes("haiku")) return { label: "Haiku", icon: "H" };
   return { label: modelId.split("-").slice(0, 2).join("-"), icon: "?" };
 }
@@ -38,8 +39,8 @@ export default function ModelSwitcher() {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1 px-2 py-1 text-xs text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded transition-colors"
-        title={model}
+        className="flex items-center gap-1.5 px-2 py-1 text-xs text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded transition-colors"
+        title={model || DEFAULT_MODEL.id}
       >
         <span className="w-4 h-4 rounded bg-neutral-700 flex items-center justify-center text-[10px] font-bold text-neutral-300">
           {current.icon}
@@ -51,9 +52,9 @@ export default function ModelSwitcher() {
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 mb-1 w-48 bg-neutral-800 border border-neutral-700 rounded-md shadow-lg overflow-hidden z-50">
+        <div className="absolute bottom-full left-0 mb-1 bg-neutral-800 border border-neutral-700 rounded-md shadow-lg overflow-hidden z-50">
           {MODELS.map((m) => {
-            const active = model.includes(m.id.split("-").slice(1, 2)[0]) || model === m.id;
+            const active = model ? model.toLowerCase().includes(m.label.toLowerCase()) : m.id === DEFAULT_MODEL.id;
             return (
               <button
                 key={m.id}
@@ -61,17 +62,16 @@ export default function ModelSwitcher() {
                   sendSetModel(m.id);
                   setOpen(false);
                 }}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left transition-colors ${
+                className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left whitespace-nowrap transition-colors ${
                   active
                     ? "bg-neutral-700 text-neutral-100"
                     : "text-neutral-400 hover:bg-neutral-750 hover:text-neutral-200"
                 }`}
               >
-                <span className="w-5 h-5 rounded bg-neutral-600 flex items-center justify-center text-[11px] font-bold text-neutral-200">
+                <span className="w-4 h-4 rounded bg-neutral-600 flex items-center justify-center text-[10px] font-bold text-neutral-200 shrink-0">
                   {m.icon}
                 </span>
                 <span>{m.label}</span>
-                <span className="ml-auto text-neutral-600 text-[10px]">{m.id}</span>
               </button>
             );
           })}

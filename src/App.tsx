@@ -61,8 +61,19 @@ function getApiBase(): string {
 export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const sessionId = params.get("session") || "default";
-    connect(sessionId);
+    const explicitSession = params.get("session");
+
+    if (explicitSession) {
+      connect(explicitSession);
+    } else {
+      // Auto-discover the active session from the server
+      fetch(`${getApiBase()}/api/session`)
+        .then((r) => r.json())
+        .then((d) => {
+          connect(d.sessionId || "default");
+        })
+        .catch(() => connect("default"));
+    }
 
     // Check git availability
     fetch(`${getApiBase()}/api/git/available`)

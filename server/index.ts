@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, relative, basename, extname } from "node:path";
@@ -21,11 +22,21 @@ export function startServer(options: ServerOptions) {
   const port = options.port ?? DEFAULT_PORT;
   const workspace = resolve(options.workspace);
   const wsBridge = new WsBridge();
+  wsBridge.setWorkspace(workspace);
   const terminalManager = new TerminalManager();
 
   const app = new Hono();
 
+  // Dev mode: allow cross-origin requests from Vite dev server
+  app.use("/api/*", cors({ origin: "*" }));
+
   // ── API Routes ─────────────────────────────────────────────────────────
+
+  // Return the current active session ID so browsers can auto-connect
+  app.get("/api/session", (c) => {
+    return c.json({ sessionId: wsBridge.getActiveSessionId() });
+  });
+
   app.get("/api/files", (c) => {
     const files: { path: string; content: string }[] = [];
     // Scan workspace for .md files (simple flat scan for MVP)
