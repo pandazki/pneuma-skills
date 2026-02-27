@@ -148,26 +148,20 @@ export default function ProcessPanel() {
 
   return (
     <div className="flex flex-col h-full overflow-auto">
-      {/* Claude Tasks */}
-      <div className="border-b border-neutral-800">
-        <div className="px-3 py-2 text-xs font-medium text-neutral-400">
-          Claude Tasks ({processes.length})
-        </div>
-        {processes.length === 0 ? (
-          <div className="px-3 py-6 text-center text-neutral-600 text-xs">
-            No background tasks
+      {/* Background Jobs (Bash with run_in_background) — only shown when non-empty */}
+      {processes.length > 0 && (
+        <div className="border-b border-neutral-800">
+          <div className="px-3 py-2 text-xs font-medium text-neutral-400">
+            Background Jobs ({processes.length})
           </div>
-        ) : (
-          <>
-            {running.map((p) => (
-              <ProcessRow key={p.taskId} proc={p} onKill={() => killProcess(p.taskId)} />
-            ))}
-            {completed.map((p) => (
-              <ProcessRow key={p.taskId} proc={p} onKill={() => {}} />
-            ))}
-          </>
-        )}
-      </div>
+          {running.map((p) => (
+            <ProcessRow key={p.taskId} proc={p} onKill={() => killProcess(p.taskId)} />
+          ))}
+          {completed.map((p) => (
+            <ProcessRow key={p.taskId} proc={p} onKill={() => {}} />
+          ))}
+        </div>
+      )}
 
       {/* Dev Servers */}
       <div>

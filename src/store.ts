@@ -1,10 +1,20 @@
 import { create } from "zustand";
-import type { SessionState, PermissionRequest, ChatMessage, FileContent, SelectionContext } from "./types.js";
+import type { SessionState, PermissionRequest, ChatMessage, FileContent, SelectionContext, ContentBlock } from "./types.js";
 
 export interface Activity {
   phase: "thinking" | "responding" | "tool";
   toolName?: string;
   startedAt: number;
+}
+
+export interface TaskItem {
+  id: string;
+  subject: string;
+  description: string;
+  activeForm?: string;
+  status: "pending" | "in_progress" | "completed";
+  owner?: string;
+  blockedBy?: string[];
 }
 
 export type ElementSelection = SelectionContext;
@@ -33,15 +43,19 @@ interface AppState {
   files: FileContent[];
 
   // Tab
-  activeTab: "chat" | "editor" | "diff" | "terminal" | "processes";
+  activeTab: "chat" | "editor" | "diff" | "terminal" | "processes" | "context";
 
   // Git / Diff
   gitAvailable: boolean | null; // null = not yet checked
   changedFilesTick: number;
+  imageTick: number;
   diffBase: "last-commit" | "default-branch";
 
   // Processes
   sessionProcesses: import("./components/ProcessPanel.js").ProcessItem[];
+
+  // Tasks
+  tasks: TaskItem[];
 
   // Terminal
   terminalId: string | null;
@@ -73,16 +87,22 @@ interface AppState {
   removePermission: (requestId: string) => void;
 
   // Actions — tab
-  setActiveTab: (tab: "chat" | "editor" | "diff" | "terminal" | "processes") => void;
+  setActiveTab: (tab: "chat" | "editor" | "diff" | "terminal" | "processes" | "context") => void;
 
   // Actions — git / diff
   setGitAvailable: (available: boolean) => void;
   bumpChangedFilesTick: () => void;
+  bumpImageTick: () => void;
   setDiffBase: (base: "last-commit" | "default-branch") => void;
 
   // Actions — processes
   addProcess: (proc: import("./components/ProcessPanel.js").ProcessItem) => void;
   updateProcess: (taskId: string, updates: Partial<import("./components/ProcessPanel.js").ProcessItem>) => void;
+
+  // Actions — tasks
+  setTasks: (tasks: TaskItem[]) => void;
+  addTask: (task: TaskItem) => void;
+  updateTask: (taskId: string, updates: Partial<TaskItem>) => void;
 
   // Actions — terminal
   setTerminalId: (id: string | null) => void;
@@ -101,6 +121,48 @@ export function nextId(): string {
   return `msg-${Date.now()}-${++idCounter}`;
 }
 
+/** Merge content blocks from two assistant messages, deduplicating by JSON identity. */
+function mergeContentBlocks(prev?: ContentBlock[], next?: ContentBlock[]): ContentBlock[] | undefined {
+  const prevBlocks = prev || [];
+  const nextBlocks = next || [];
+  if (prevBlocks.length === 0 && nextBlocks.length === 0) return undefined;
+  const merged: ContentBlock[] = [];
+  const seen = new Set<string>();
+  for (const block of prevBlocks) {
+    const key = JSON.stringify(block);
+    if (!seen.has(key)) { seen.add(key); merged.push(block); }
+  }
+  for (const block of nextBlocks) {
+    const key = JSON.stringify(block);
+    if (!seen.has(key)) { seen.add(key); merged.push(block); }
+  }
+  return merged;
+}
+
+function extractTextContent(blocks: ContentBlock[]): string {
+  return blocks
+    .map((b) => {
+      if (b.type === "text") return b.text;
+      if (b.type === "thinking") return b.thinking;
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** Merge two assistant messages with the same id — combines content blocks. */
+function mergeAssistantMessage(prev: ChatMessage, incoming: ChatMessage): ChatMessage {
+  const mergedBlocks = mergeContentBlocks(prev.contentBlocks, incoming.contentBlocks);
+  const content = mergedBlocks?.length ? extractTextContent(mergedBlocks) : (incoming.content || prev.content);
+  return {
+    ...prev,
+    ...incoming,
+    content,
+    contentBlocks: mergedBlocks,
+    timestamp: prev.timestamp ?? incoming.timestamp,
+  };
+}
+
 export const useStore = create<AppState>((set) => ({
   session: null,
   sessionId: null,
@@ -115,8 +177,10 @@ export const useStore = create<AppState>((set) => ({
   activeTab: "chat",
   gitAvailable: null,
   changedFilesTick: 0,
+  imageTick: 0,
   diffBase: "last-commit",
   sessionProcesses: [],
+  tasks: [],
   terminalId: null,
   selection: null,
   previewMode: "view",
@@ -134,8 +198,15 @@ export const useStore = create<AppState>((set) => ({
 
   appendMessage: (msg) =>
     set((s) => {
-      // Deduplicate by id
-      if (msg.id && s.messages.some((m) => m.id === msg.id)) return s;
+      const existingIdx = msg.id ? s.messages.findIndex((m) => m.id === msg.id) : -1;
+      if (existingIdx !== -1) {
+        // Same id → merge content blocks (CLI sends thinking then text as separate messages)
+        const prev = s.messages[existingIdx];
+        const merged = mergeAssistantMessage(prev, msg);
+        const updated = [...s.messages];
+        updated[existingIdx] = merged;
+        return { messages: updated };
+      }
       return { messages: [...s.messages, msg] };
     }),
 
@@ -164,6 +235,7 @@ export const useStore = create<AppState>((set) => ({
 
   setGitAvailable: (gitAvailable) => set({ gitAvailable }),
   bumpChangedFilesTick: () => set((s) => ({ changedFilesTick: s.changedFilesTick + 1 })),
+  bumpImageTick: () => set((s) => ({ imageTick: s.imageTick + 1 })),
   setDiffBase: (diffBase) => set({ diffBase }),
 
   addProcess: (proc) => set((s) => ({ sessionProcesses: [...s.sessionProcesses, proc] })),
@@ -171,6 +243,15 @@ export const useStore = create<AppState>((set) => ({
     set((s) => ({
       sessionProcesses: s.sessionProcesses.map((p) =>
         p.taskId === taskId ? { ...p, ...updates } : p
+      ),
+    })),
+
+  setTasks: (tasks) => set({ tasks }),
+  addTask: (task) => set((s) => ({ tasks: [...s.tasks, task] })),
+  updateTask: (taskId, updates) =>
+    set((s) => ({
+      tasks: s.tasks.map((t) =>
+        t.id === taskId ? { ...t, ...updates } : t
       ),
     })),
 

@@ -5,6 +5,7 @@ import MarkdownPreview from "./components/MarkdownPreview.js";
 import ChatPanel from "./components/ChatPanel.js";
 import DiffPanel from "./components/DiffPanel.js";
 import ProcessPanel from "./components/ProcessPanel.js";
+import ContextPanel from "./components/ContextPanel.js";
 import { useStore } from "./store.js";
 import { connect } from "./ws.js";
 
@@ -45,6 +46,7 @@ function RightPanel() {
         </Suspense>
       )}
       {activeTab === "processes" && <ProcessPanel />}
+      {activeTab === "context" && <ContextPanel />}
     </div>
   );
 }
@@ -59,8 +61,19 @@ function getApiBase(): string {
 export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const sessionId = params.get("session") || "default";
-    connect(sessionId);
+    const explicitSession = params.get("session");
+
+    if (explicitSession) {
+      connect(explicitSession);
+    } else {
+      // Auto-discover the active session from the server
+      fetch(`${getApiBase()}/api/session`)
+        .then((r) => r.json())
+        .then((d) => {
+          connect(d.sessionId || "default");
+        })
+        .catch(() => connect("default"));
+    }
 
     // Check git availability
     fetch(`${getApiBase()}/api/git/available`)

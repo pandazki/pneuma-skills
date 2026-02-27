@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, relative, basename, extname } from "node:path";
@@ -21,11 +22,21 @@ export function startServer(options: ServerOptions) {
   const port = options.port ?? DEFAULT_PORT;
   const workspace = resolve(options.workspace);
   const wsBridge = new WsBridge();
+  wsBridge.setWorkspace(workspace);
   const terminalManager = new TerminalManager();
 
   const app = new Hono();
 
+  // Dev mode: allow cross-origin requests from Vite dev server
+  app.use("/api/*", cors({ origin: "*" }));
+
   // ── API Routes ─────────────────────────────────────────────────────────
+
+  // Return the current active session ID so browsers can auto-connect
+  app.get("/api/session", (c) => {
+    return c.json({ sessionId: wsBridge.getActiveSessionId() });
+  });
+
   app.get("/api/files", (c) => {
     const files: { path: string; content: string }[] = [];
     // Scan workspace for .md files (simple flat scan for MVP)
@@ -114,6 +125,24 @@ export function startServer(options: ServerOptions) {
       return c.json({ available: true });
     } catch {
       return c.json({ available: false });
+    }
+  });
+
+  // ── Git: branch info (for Context panel) ────────────────────────────
+  app.get("/api/git/info", (c) => {
+    try {
+      const branch = execSync("git rev-parse --abbrev-ref HEAD", { cwd: workspace, encoding: "utf-8", timeout: 3_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+      let ahead = 0;
+      let behind = 0;
+      try {
+        const counts = execSync("git rev-list --left-right --count HEAD...@{upstream}", { cwd: workspace, encoding: "utf-8", timeout: 5_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+        const [a, b] = counts.split(/\s+/);
+        ahead = parseInt(a, 10) || 0;
+        behind = parseInt(b, 10) || 0;
+      } catch { /* no upstream set */ }
+      return c.json({ branch, ahead, behind });
+    } catch {
+      return c.json({ branch: null, ahead: 0, behind: 0 });
     }
   });
 

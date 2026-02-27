@@ -7,6 +7,13 @@ import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./To
 
 export default function MessageBubble({ message }: { message: ChatMessage }) {
   if (message.role === "system") {
+    if (message.isMarkdown) {
+      return (
+        <div className="animate-[fadeSlideIn_0.2s_ease-out] rounded-lg border border-cc-border bg-cc-card/50 px-4 py-3 my-1">
+          <MarkdownContent text={message.content} />
+        </div>
+      );
+    }
     return (
       <div className="flex items-center gap-3 py-1">
         <div className="flex-1 h-px bg-cc-border" />
@@ -20,10 +27,23 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
 
   if (message.role === "user") {
     const sel = message.selectionContext;
+    const imgs = message.images;
     return (
       <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
         <div className="max-w-[85%] rounded-[14px] rounded-br-[4px] bg-cc-user-bubble text-cc-fg overflow-hidden">
           {sel ? <SelectionCard sel={sel} interactive /> : null}
+          {imgs && imgs.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
+              {imgs.map((img, i) => (
+                <img
+                  key={i}
+                  src={`data:${img.media_type};base64,${img.data}`}
+                  alt=""
+                  className="max-w-[200px] max-h-[200px] rounded-lg object-cover border border-white/10"
+                />
+              ))}
+            </div>
+          )}
           <div className="px-3 py-2.5">
             <div className="text-[13px] leading-relaxed break-words">
               <MarkdownContent text={message.content} />

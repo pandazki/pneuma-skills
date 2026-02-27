@@ -90,6 +90,7 @@ const BG_RESULT_REGEX = /Command running in background with ID:\s*(\S+)\.\s*Outp
 function extractProcessesFromBlocks(blocks: ContentBlock[]) {
   const store = useStore.getState();
   for (const block of blocks) {
+    // Phase 1: Detect Bash tool_use with run_in_background
     if (block.type === "tool_use" && block.name === "Bash") {
       const input = block.input as Record<string, unknown>;
       if (input.run_in_background === true) {
@@ -100,10 +101,15 @@ function extractProcessesFromBlocks(blocks: ContentBlock[]) {
         });
       }
     }
+    // Phase 2: Match tool_result to a pending background Bash
     if (block.type === "tool_result") {
       const pending = pendingBackgroundBash.get(block.tool_use_id);
       if (pending) {
-        const content = typeof block.content === "string" ? block.content : JSON.stringify(block.content);
+        const content = typeof block.content === "string"
+          ? block.content
+          : Array.isArray(block.content)
+            ? block.content.map((b) => ("text" in b ? (b as { text: string }).text : "")).join("")
+            : "";
         const match = content.match(BG_RESULT_REGEX);
         if (match) {
           store.addProcess({
@@ -118,6 +124,61 @@ function extractProcessesFromBlocks(blocks: ContentBlock[]) {
         }
         pendingBackgroundBash.delete(block.tool_use_id);
       }
+    }
+  }
+}
+
+// Task extraction from TodoWrite / TaskCreate / TaskUpdate tool_use blocks
+const seenTaskBlockIds = new Set<string>();
+let taskCounter = 0;
+
+function extractTasksFromBlocks(blocks: ContentBlock[]) {
+  const store = useStore.getState();
+  for (const block of blocks) {
+    if (block.type !== "tool_use") continue;
+    if (seenTaskBlockIds.has(block.id)) continue;
+    seenTaskBlockIds.add(block.id);
+
+    const input = block.input as Record<string, unknown>;
+
+    if (block.name === "TodoWrite") {
+      const todos = input.todos as Array<Record<string, unknown>> | undefined;
+      if (Array.isArray(todos)) {
+        const tasks = todos.map((t, i) => ({
+          id: String(i + 1),
+          subject: (t.content as string) || (t.subject as string) || "Task",
+          description: (t.description as string) || "",
+          activeForm: (t.activeForm as string) || undefined,
+          status: (t.status as "pending" | "in_progress" | "completed") || "pending",
+          owner: (t.owner as string) || undefined,
+          blockedBy: (t.blockedBy as string[]) || undefined,
+        }));
+        store.setTasks(tasks);
+        taskCounter = tasks.length;
+      }
+    } else if (block.name === "TaskCreate") {
+      taskCounter++;
+      const id = String(taskCounter);
+      store.addTask({
+        id,
+        subject: (input.subject as string) || "Task",
+        description: (input.description as string) || "",
+        activeForm: (input.activeForm as string) || undefined,
+        status: "pending",
+        owner: (input.owner as string) || undefined,
+        blockedBy: (input.blockedBy as string[]) || undefined,
+      });
+    } else if (block.name === "TaskUpdate") {
+      const taskId = input.taskId as string;
+      if (!taskId) continue;
+      const updates: Record<string, unknown> = {};
+      if (input.status) updates.status = input.status;
+      if (input.owner !== undefined) updates.owner = input.owner;
+      if (input.activeForm !== undefined) updates.activeForm = input.activeForm;
+      if (input.subject !== undefined) updates.subject = input.subject;
+      if (input.description !== undefined) updates.description = input.description;
+      if (input.addBlockedBy) updates.blockedBy = input.addBlockedBy as string[];
+      store.updateTask(taskId, updates);
     }
   }
 }
@@ -180,6 +241,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       store.appendMessage(chatMsg);
       if (detectFileChanges(msg.content)) store.bumpChangedFilesTick();
       extractProcessesFromBlocks(msg.content);
+      extractTasksFromBlocks(msg.content);
       store.setStreaming(null);
       streamingPhase = null;
       store.setSessionStatus("running");
@@ -224,14 +286,35 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
 
     case "result": {
       const r = data.data;
-      store.updateSession({
+      const sessionUpdates: Partial<import("./types.js").SessionState> = {
         total_cost_usd: r.total_cost_usd,
         num_turns: r.num_turns,
-      });
+      };
+      if (typeof r.total_lines_added === "number") {
+        sessionUpdates.total_lines_added = r.total_lines_added;
+      }
+      if (typeof r.total_lines_removed === "number") {
+        sessionUpdates.total_lines_removed = r.total_lines_removed;
+      }
+      if (r.modelUsage) {
+        for (const usage of Object.values(r.modelUsage)) {
+          if (usage.contextWindow > 0) {
+            const totalInput = usage.inputTokens
+              + (usage.cacheReadInputTokens || 0)
+              + (usage.cacheCreationInputTokens || 0);
+            const pct = Math.round(
+              ((totalInput + usage.outputTokens) / usage.contextWindow) * 100
+            );
+            sessionUpdates.context_used_percent = Math.max(0, Math.min(pct, 100));
+          }
+        }
+      }
+      store.updateSession(sessionUpdates);
       store.setStreaming(null);
       store.setActivity(null);
       streamingPhase = null;
       store.setSessionStatus("idle");
+      seenTaskBlockIds.clear();
 
       if (r.is_error && r.errors?.length) {
         store.appendMessage({
@@ -246,6 +329,16 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
 
     case "permission_request": {
       store.addPermission(data.request);
+      // Extract tasks from permission requests (tool_use blocks appear here before approval)
+      const req = data.request;
+      if (req.tool_name && req.input) {
+        extractTasksFromBlocks([{
+          type: "tool_use" as const,
+          id: req.tool_use_id,
+          name: req.tool_name,
+          input: req.input,
+        }]);
+      }
       break;
     }
 
@@ -278,6 +371,17 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       break;
     }
 
+    case "command_output": {
+      store.appendMessage({
+        id: nextId(),
+        role: "system",
+        content: data.content,
+        timestamp: Date.now(),
+        isMarkdown: true,
+      });
+      break;
+    }
+
     case "error": {
       store.appendMessage({
         id: nextId(),
@@ -285,6 +389,18 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
         content: data.message,
         timestamp: Date.now(),
       });
+      break;
+    }
+
+    case "auth_status": {
+      if (data.error) {
+        store.appendMessage({
+          id: nextId(),
+          role: "system",
+          content: `Authentication error: ${data.error}`,
+          timestamp: Date.now(),
+        });
+      }
       break;
     }
 
@@ -330,7 +446,10 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
     }
 
     case "content_update": {
-      store.updateFiles(data.files);
+      const mdFiles = data.files.filter((f: { path: string; content: string }) => f.path.endsWith(".md"));
+      const hasImageChange = data.files.some((f: { path: string; content: string }) => /\.(png|jpe?g|gif|webp|svg)$/i.test(f.path));
+      if (mdFiles.length > 0) store.updateFiles(mdFiles);
+      if (hasImageChange) store.bumpImageTick();
       break;
     }
 
@@ -358,6 +477,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
             model: msg.model,
             stopReason: msg.stop_reason,
           });
+          extractTasksFromBlocks(msg.content);
         } else if (histMsg.type === "result") {
           const r = histMsg.data;
           if (r.is_error && r.errors?.length) {
@@ -458,7 +578,14 @@ export function send(msg: BrowserOutgoingMessage) {
   }
 }
 
-export function sendUserMessage(content: string, selection?: ElementSelection | null) {
+export function sendSetModel(model: string) {
+  const store = useStore.getState();
+  // Optimistic update
+  store.updateSession({ model });
+  send({ type: "set_model", model });
+}
+
+export function sendUserMessage(content: string, selection?: ElementSelection | null, images?: { media_type: string; data: string }[]) {
   const store = useStore.getState();
   // Add user message to local store immediately (show original text)
   store.appendMessage({
@@ -467,6 +594,7 @@ export function sendUserMessage(content: string, selection?: ElementSelection | 
     content,
     timestamp: Date.now(),
     ...(selection ? { selectionContext: selection } : {}),
+    ...(images?.length ? { images } : {}),
   });
 
   // Enrich with selection context for Claude Code
@@ -484,7 +612,14 @@ export function sendUserMessage(content: string, selection?: ElementSelection | 
     enrichedContent = ctx.join("\n") + "\n\n" + content;
   }
 
-  send({ type: "user_message", content: enrichedContent });
+  const msg: import("./types.js").BrowserOutgoingMessage & { type: "user_message" } = {
+    type: "user_message",
+    content: enrichedContent,
+  };
+  if (images?.length) {
+    msg.images = images;
+  }
+  send(msg);
 }
 
 export function sendPermissionResponse(

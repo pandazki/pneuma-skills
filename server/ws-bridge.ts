@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import type {
   CLIMessage,
@@ -9,6 +11,7 @@ import type {
   CLIToolUseSummaryMessage,
   CLIControlRequestMessage,
   CLIAuthStatusMessage,
+  CLIUserMessage,
   BrowserOutgoingMessage,
   BrowserIncomingMessage,
   PermissionRequest,
@@ -50,6 +53,27 @@ export class WsBridge {
   private sessions = new Map<string, Session>();
   private onCLISessionId: ((sessionId: string, cliSessionId: string) => void) | null = null;
   private userMsgCounter = 0;
+  private workspace = "";
+  private imageCounter = 0;
+
+  setWorkspace(workspace: string): void {
+    this.workspace = workspace;
+  }
+
+  /**
+   * Send a greeting message to the CLI without recording it in messageHistory.
+   * The user never sees the prompt — only Claude's response appears in chat.
+   */
+  injectGreeting(sessionId: string, content: string): void {
+    const session = this.getOrCreateSession(sessionId);
+    const ndjson = JSON.stringify({
+      type: "user",
+      message: { role: "user", content },
+      parent_tool_use_id: null,
+      session_id: session.state.session_id || "",
+    });
+    this.sendToCLI(session, ndjson);
+  }
 
   /** Register a callback for when we learn the CLI's internal session ID. */
   onCLISessionIdReceived(cb: (sessionId: string, cliSessionId: string) => void): void {
@@ -61,6 +85,14 @@ export class WsBridge {
     const session = this.sessions.get(sessionId);
     if (!session) return;
     this.broadcastToBrowsers(session, msg);
+  }
+
+  /** Return the session ID that currently has a CLI connection, if any. */
+  getActiveSessionId(): string | null {
+    for (const [id, session] of this.sessions) {
+      if (session.cliSocket) return id;
+    }
+    return null;
   }
 
   // ── Session management ──────────────────────────────────────────────────
@@ -289,6 +321,19 @@ export class WsBridge {
       case "keep_alive":
         // Silently consume keepalives
         break;
+
+      case "user":
+        // CLI echoes slash-command output as a user message with <local-command-stdout>
+        this.handleCLIUserEcho(session, msg);
+        break;
+
+      case "rate_limit_event":
+        // Silently consume rate limit events
+        break;
+
+      default:
+        console.warn(`[ws-bridge] Unhandled CLI message type: ${(msg as any).type}`);
+        break;
     }
   }
 
@@ -460,11 +505,15 @@ export class WsBridge {
     }
 
     // Compute context usage from modelUsage
+    // inputTokens only counts non-cached tokens; include cache tokens for true context fill
     if (msg.modelUsage) {
       for (const usage of Object.values(msg.modelUsage)) {
         if (usage.contextWindow > 0) {
+          const totalInput = usage.inputTokens
+            + (usage.cacheReadInputTokens || 0)
+            + (usage.cacheCreationInputTokens || 0);
           const pct = Math.round(
-            ((usage.inputTokens + usage.outputTokens) / usage.contextWindow) * 100
+            ((totalInput + usage.outputTokens) / usage.contextWindow) * 100
           );
           session.state.context_used_percent = Math.max(0, Math.min(pct, 100));
         }
@@ -477,6 +526,18 @@ export class WsBridge {
     };
     session.messageHistory.push(browserMsg);
     this.broadcastToBrowsers(session, browserMsg);
+
+    // Push computed session stats so the browser doesn't need to recompute from result data
+    this.broadcastToBrowsers(session, {
+      type: "session_update",
+      session: {
+        total_cost_usd: session.state.total_cost_usd,
+        num_turns: session.state.num_turns,
+        context_used_percent: session.state.context_used_percent,
+        total_lines_added: session.state.total_lines_added,
+        total_lines_removed: session.state.total_lines_removed,
+      },
+    });
   }
 
   private handleStreamEvent(session: Session, msg: CLIStreamEventMessage) {
@@ -542,6 +603,21 @@ export class WsBridge {
     });
   }
 
+  private handleCLIUserEcho(session: Session, msg: CLIUserMessage) {
+    // CLI echoes slash-command output as a user message with <local-command-stdout>
+    const raw = typeof msg.message.content === "string" ? msg.message.content : "";
+    const match = raw.match(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/);
+    const content = match ? match[1].trim() : raw.trim();
+    if (!content) return;
+
+    const browserMsg: BrowserIncomingMessage = {
+      type: "command_output",
+      content,
+    };
+    session.messageHistory.push(browserMsg);
+    this.broadcastToBrowsers(session, browserMsg);
+  }
+
   private handleAuthStatus(session: Session, msg: CLIAuthStatusMessage) {
     this.broadcastToBrowsers(session, {
       type: "auth_status",
@@ -601,7 +677,40 @@ export class WsBridge {
       case "interrupt":
         handleInterrupt(session, this.sendToCLI.bind(this));
         break;
+
+      case "set_model": {
+        const ndjson = JSON.stringify({ type: "set_model", model: msg.model });
+        this.sendToCLI(session, ndjson);
+        // Optimistic update
+        session.state.model = msg.model;
+        this.broadcastToBrowsers(session, {
+          type: "session_update",
+          session: { model: msg.model },
+        });
+        break;
+      }
     }
+  }
+
+  private saveImageToDisk(mediaType: string, base64Data: string): string {
+    const uploadsDir = join(this.workspace, ".pneuma", "uploads");
+    mkdirSync(uploadsDir, { recursive: true });
+
+    const extMap: Record<string, string> = {
+      "image/png": "png",
+      "image/jpeg": "jpg",
+      "image/gif": "gif",
+      "image/webp": "webp",
+      "image/svg+xml": "svg",
+    };
+    const ext = extMap[mediaType] || "png";
+    const filename = `img-${Math.floor(Date.now() / 1000)}-${++this.imageCounter}.${ext}`;
+    const filePath = join(uploadsDir, filename);
+
+    const buffer = Buffer.from(base64Data, "base64");
+    writeFileSync(filePath, buffer);
+
+    return filePath;
   }
 
   private handleUserMessage(
@@ -621,13 +730,29 @@ export class WsBridge {
     let content: string | unknown[];
     if (msg.images?.length) {
       const blocks: unknown[] = [];
+      const savedPaths: string[] = [];
+
       for (const img of msg.images) {
         blocks.push({
           type: "image",
           source: { type: "base64", media_type: img.media_type, data: img.data },
         });
+        if (this.workspace) {
+          try {
+            savedPaths.push(this.saveImageToDisk(img.media_type, img.data));
+          } catch (err) {
+            console.warn("[ws-bridge] Failed to save uploaded image to disk:", err);
+          }
+        }
       }
-      blocks.push({ type: "text", text: msg.content });
+
+      let textContent = msg.content;
+      if (savedPaths.length > 0) {
+        const pathList = savedPaths.map((p) => `- ${p}`).join("\n");
+        textContent = `[Uploaded image saved to disk:\n${pathList}]\n\n${textContent}`;
+      }
+
+      blocks.push({ type: "text", text: textContent });
       content = blocks;
     } else {
       content = msg.content;

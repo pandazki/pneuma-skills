@@ -227,6 +227,17 @@ export interface CLIControlResponseMessage {
   };
 }
 
+/** CLI echoes slash-command output back as a user message wrapping <local-command-stdout> */
+export interface CLIUserMessage {
+  type: "user";
+  message: { role: "user"; content: string };
+}
+
+export interface CLIRateLimitMessage {
+  type: "rate_limit_event";
+  [key: string]: unknown;
+}
+
 export type CLIMessage =
   | CLISystemMessage
   | CLIAssistantMessage
@@ -237,7 +248,9 @@ export type CLIMessage =
   | CLIControlRequestMessage
   | CLIControlResponseMessage
   | CLIKeepAliveMessage
-  | CLIAuthStatusMessage;
+  | CLIAuthStatusMessage
+  | CLIUserMessage
+  | CLIRateLimitMessage;
 
 // ─── Content Block Types ──────────────────────────────────────────────────────
 
@@ -255,7 +268,8 @@ export type BrowserOutgoingMessage =
   | { type: "permission_response"; request_id: string; behavior: "allow" | "deny"; updated_input?: Record<string, unknown>; updated_permissions?: PermissionUpdate[]; message?: string; client_msg_id?: string }
   | { type: "session_subscribe"; last_seq: number }
   | { type: "session_ack"; last_seq: number }
-  | { type: "interrupt"; client_msg_id?: string };
+  | { type: "interrupt"; client_msg_id?: string }
+  | { type: "set_model"; model: string };
 
 /** Messages the bridge sends to the browser */
 export type BrowserIncomingMessageBase =
@@ -281,6 +295,7 @@ export type BrowserIncomingMessageBase =
   | { type: "tool_use_summary"; summary: string; tool_use_ids: string[] }
   | { type: "status_change"; status: "compacting" | "idle" | "running" | null }
   | { type: "auth_status"; isAuthenticating: boolean; output: string[]; error?: string }
+  | { type: "command_output"; content: string }
   | { type: "error"; message: string }
   | { type: "cli_disconnected" }
   | { type: "cli_connected" }

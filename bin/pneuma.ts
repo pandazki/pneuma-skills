@@ -224,6 +224,13 @@ async function main() {
 
   console.log(`[pneuma] CLI session started: ${session.sessionId}`);
 
+  // Auto-greeting for fresh sessions — sends a hidden prompt so Claude greets the user
+  if (!resuming) {
+    const greeting = "The user just opened the Pneuma document editor workspace. Briefly greet them and let them know you're ready to help edit and create documents. Keep it to 1-2 sentences.";
+    wsBridge.injectGreeting(session.sessionId, greeting);
+    console.log("[pneuma] Sent auto-greeting for fresh session");
+  }
+
   // Load persisted message history into WsBridge
   const savedHistory = loadHistory(workspace);
   if (savedHistory.length > 0) {
@@ -239,8 +246,20 @@ async function main() {
     }
   }, 5_000);
 
-  // If resume fails (CLI exits quickly), clear cliSessionId from persistence
+  // Handle CLI exit: surface errors + clear stale resume state
   launcher.onSessionExited((exitedId, exitCode) => {
+    // Broadcast CLI errors to browser
+    if (exitCode !== 0 && exitCode !== 143 /* SIGTERM = normal shutdown */) {
+      let errorMsg: string;
+      if (exitCode === 127) {
+        errorMsg = "Claude Code CLI not found. Please install it: https://docs.anthropic.com/claude-code";
+      } else {
+        errorMsg = `Claude Code exited unexpectedly (code ${exitCode}). Check CLI installation and subscription status.`;
+      }
+      wsBridge.broadcastToSession(exitedId, { type: "error", message: errorMsg });
+    }
+
+    // If resume fails (CLI exits quickly), clear cliSessionId from persistence
     if (exitedId === session.sessionId && resuming) {
       const info = launcher.getSession(exitedId);
       if (info && !info.cliSessionId) {

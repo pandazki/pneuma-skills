@@ -10,6 +10,7 @@ export default function ChatPanel() {
   const messages = useStore((s) => s.messages);
   const streaming = useStore((s) => s.streaming);
   const activity = useStore((s) => s.activity);
+  const cliConnected = useStore((s) => s.cliConnected);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive or streaming/activity updates
@@ -22,7 +23,7 @@ export default function ChatPanel() {
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {messages.length === 0 && !streaming && !activity && (
           <div className="text-cc-muted text-sm text-center mt-8">
-            Send a message to start editing
+            {cliConnected ? "Send a message to start editing" : "Connecting to Claude..."}
           </div>
         )}
         {messages.map((msg) => (

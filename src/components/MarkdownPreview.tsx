@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 import { useStore } from "../store.js";
 import type { ElementSelection } from "../store.js";
 
@@ -8,18 +9,23 @@ type PreviewTheme = "dark" | "light";
 type PreviewMode = "view" | "edit" | "select";
 
 /** Rewrite relative image paths to go through the /content/ endpoint */
-function rewriteImageSrc(src: string | undefined, filePath: string): string {
+function rewriteImageSrc(src: string | undefined, filePath: string, cacheBust?: number): string {
   if (!src) return "";
   if (/^(https?:|data:)/.test(src)) return src;
-  if (src.startsWith("/content/")) return src;
-  if (src.startsWith("/")) return `/content${src}`;
-  const dir = filePath.includes("/") ? filePath.replace(/\/[^/]+$/, "") : "";
-  const resolved = dir ? `${dir}/${src}` : src;
-  return `/content/${resolved}`;
+  let url: string;
+  if (src.startsWith("/content/")) url = src;
+  else if (src.startsWith("/")) url = `/content${src}`;
+  else {
+    const dir = filePath.includes("/") ? filePath.replace(/\/[^/]+$/, "") : "";
+    const resolved = dir ? `${dir}/${src}` : src;
+    url = `/content/${resolved}`;
+  }
+  if (cacheBust) url += `?v=${cacheBust}`;
+  return url;
 }
 
 /** Build react-markdown components with data-selectable attributes */
-function buildSelectableComponents(filePath: string) {
+function buildSelectableComponents(filePath: string, imageTick?: number) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const wrapBlock = (tag: string, type: ElementSelection["type"], level?: number): any => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,26 +67,34 @@ function buildSelectableComponents(filePath: string) {
     blockquote: wrapBlock("blockquote", "blockquote"),
     table: wrapBlock("table", "table"),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    img: ({ src, alt, node, ...props }: any) => (
-      <img
-        src={rewriteImageSrc(src, filePath)}
-        alt={alt || ""}
-        className="max-w-full rounded"
-        data-selectable=""
-        data-type="image"
-        {...props}
-      />
-    ),
+    img: ({ src, alt, node, ...props }: any) => {
+      const rewritten = rewriteImageSrc(src, filePath, imageTick);
+      return (
+        <span
+          className="inline-block max-w-full"
+          data-selectable=""
+          data-type="image"
+          data-src={src || ""}
+        >
+          <img
+            src={rewritten}
+            alt={alt || ""}
+            className="max-w-full rounded"
+            {...props}
+          />
+        </span>
+      );
+    },
   };
 }
 
 /** Build default (non-selectable) react-markdown components */
-function buildDefaultComponents(filePath: string) {
+function buildDefaultComponents(filePath: string, imageTick?: number) {
   return {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     img: ({ src, alt, node, ...props }: any) => (
       <img
-        src={rewriteImageSrc(src, filePath)}
+        src={rewriteImageSrc(src, filePath, imageTick)}
         alt={alt || ""}
         className="max-w-full rounded"
         {...props}
@@ -106,6 +120,7 @@ async function saveFile(path: string, content: string): Promise<boolean> {
 
 export default function MarkdownPreview() {
   const files = useStore((s) => s.files);
+  const imageTick = useStore((s) => s.imageTick);
   const previewMode = useStore((s) => s.previewMode);
   const selection = useStore((s) => s.selection);
   const setSelection = useStore((s) => s.setSelection);
@@ -158,8 +173,15 @@ export default function MarkdownPreview() {
     const candidates = fileEl.querySelectorAll(selector);
 
     for (const el of candidates) {
-      const text = (el.textContent || "").trim().slice(0, 200);
-      if (text === selection.content || text.startsWith(selection.content.slice(0, 50))) {
+      let match = false;
+      if (selection.type === "image") {
+        // Match images by data-src attribute
+        match = (el as HTMLElement).dataset.src === selection.content;
+      } else {
+        const text = (el.textContent || "").trim().slice(0, 200);
+        match = text === selection.content || text.startsWith(selection.content.slice(0, 50));
+      }
+      if (match) {
         el.classList.add("element-selected");
         selectedElRef.current = el as HTMLElement;
         el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -205,7 +227,9 @@ export default function MarkdownPreview() {
       const file = fileEl?.dataset.file || "";
       const type = (target.dataset.type || "paragraph") as ElementSelection["type"];
       const level = target.dataset.level ? Number(target.dataset.level) : undefined;
-      const content = (target.textContent || "").trim().slice(0, 200);
+      const content = type === "image"
+        ? (target.dataset.src || target.querySelector("img")?.getAttribute("alt") || "image")
+        : (target.textContent || "").trim().slice(0, 200);
 
       // Update DOM highlight
       if (selectedElRef.current) {
@@ -298,8 +322,9 @@ export default function MarkdownPreview() {
               <div className={`prose max-w-none ${isDark ? "prose-invert prose-neutral" : "prose-neutral"}`}>
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[rehypeRaw]}
                   components={
-                    isSelectMode ? buildSelectableComponents(file.path) : buildDefaultComponents(file.path)
+                    isSelectMode ? buildSelectableComponents(file.path, imageTick) : buildDefaultComponents(file.path, imageTick)
                   }
                 >
                   {file.content}
