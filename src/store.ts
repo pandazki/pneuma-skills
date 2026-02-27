@@ -32,6 +32,20 @@ interface AppState {
   // Content (markdown files)
   files: FileContent[];
 
+  // Tab
+  activeTab: "chat" | "editor" | "diff" | "terminal" | "processes";
+
+  // Git / Diff
+  gitAvailable: boolean | null; // null = not yet checked
+  changedFilesTick: number;
+  diffBase: "last-commit" | "default-branch";
+
+  // Processes
+  sessionProcesses: import("./components/ProcessPanel.js").ProcessItem[];
+
+  // Terminal
+  terminalId: string | null;
+
   // Element selection
   selection: ElementSelection | null;
   previewMode: "view" | "edit" | "select";
@@ -58,6 +72,21 @@ interface AppState {
   addPermission: (perm: PermissionRequest) => void;
   removePermission: (requestId: string) => void;
 
+  // Actions — tab
+  setActiveTab: (tab: "chat" | "editor" | "diff" | "terminal" | "processes") => void;
+
+  // Actions — git / diff
+  setGitAvailable: (available: boolean) => void;
+  bumpChangedFilesTick: () => void;
+  setDiffBase: (base: "last-commit" | "default-branch") => void;
+
+  // Actions — processes
+  addProcess: (proc: import("./components/ProcessPanel.js").ProcessItem) => void;
+  updateProcess: (taskId: string, updates: Partial<import("./components/ProcessPanel.js").ProcessItem>) => void;
+
+  // Actions — terminal
+  setTerminalId: (id: string | null) => void;
+
   // Actions — selection
   setSelection: (s: ElementSelection | null) => void;
   setPreviewMode: (mode: "view" | "edit" | "select") => void;
@@ -83,6 +112,12 @@ export const useStore = create<AppState>((set) => ({
   activity: null,
   pendingPermissions: new Map(),
   files: [],
+  activeTab: "chat",
+  gitAvailable: null,
+  changedFilesTick: 0,
+  diffBase: "last-commit",
+  sessionProcesses: [],
+  terminalId: null,
   selection: null,
   previewMode: "view",
 
@@ -124,6 +159,22 @@ export const useStore = create<AppState>((set) => ({
       next.delete(requestId);
       return { pendingPermissions: next };
     }),
+
+  setActiveTab: (activeTab) => set({ activeTab }),
+
+  setGitAvailable: (gitAvailable) => set({ gitAvailable }),
+  bumpChangedFilesTick: () => set((s) => ({ changedFilesTick: s.changedFilesTick + 1 })),
+  setDiffBase: (diffBase) => set({ diffBase }),
+
+  addProcess: (proc) => set((s) => ({ sessionProcesses: [...s.sessionProcesses, proc] })),
+  updateProcess: (taskId, updates) =>
+    set((s) => ({
+      sessionProcesses: s.sessionProcesses.map((p) =>
+        p.taskId === taskId ? { ...p, ...updates } : p
+      ),
+    })),
+
+  setTerminalId: (terminalId) => set({ terminalId }),
 
   setSelection: (selection) => set({ selection }),
   setPreviewMode: (previewMode) => set({ previewMode, ...(previewMode !== "select" ? { selection: null } : {}) }),

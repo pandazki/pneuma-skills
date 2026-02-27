@@ -126,7 +126,7 @@ pneuma-skills/
 │       ├── StreamingText.tsx  # Streaming response display
 │       ├── ActivityIndicator.tsx # Thinking/tool progress indicator
 │       ├── PermissionBanner.tsx  # Tool permission approval UI
-│       └── StatusBar.tsx      # Connection status + session info
+│       └── TopBar.tsx         # Tab navigation + connection status
 ├── skill/
 │   └── doc/SKILL.md           # Doc Mode skill prompt for Claude Code
 ├── docs/adr/                  # Architecture Decision Records

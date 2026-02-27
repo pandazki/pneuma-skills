@@ -83,6 +83,51 @@ function parseSelectionFromContent(raw: string): { content: string; selectionCon
   return { content: raw };
 }
 
+// Background process detection
+const pendingBackgroundBash = new Map<string, { command: string; description: string; startedAt: number }>();
+const BG_RESULT_REGEX = /Command running in background with ID:\s*(\S+)\.\s*Output is being written to:\s*(\S+)/;
+
+function extractProcessesFromBlocks(blocks: ContentBlock[]) {
+  const store = useStore.getState();
+  for (const block of blocks) {
+    if (block.type === "tool_use" && block.name === "Bash") {
+      const input = block.input as Record<string, unknown>;
+      if (input.run_in_background === true) {
+        pendingBackgroundBash.set(block.id, {
+          command: (input.command as string) || "",
+          description: (input.description as string) || "",
+          startedAt: Date.now(),
+        });
+      }
+    }
+    if (block.type === "tool_result") {
+      const pending = pendingBackgroundBash.get(block.tool_use_id);
+      if (pending) {
+        const content = typeof block.content === "string" ? block.content : JSON.stringify(block.content);
+        const match = content.match(BG_RESULT_REGEX);
+        if (match) {
+          store.addProcess({
+            taskId: match[1],
+            toolUseId: block.tool_use_id,
+            command: pending.command,
+            description: pending.description,
+            outputFile: match[2],
+            status: "running",
+            startedAt: pending.startedAt,
+          });
+        }
+        pendingBackgroundBash.delete(block.tool_use_id);
+      }
+    }
+  }
+}
+
+function detectFileChanges(blocks: ContentBlock[]): boolean {
+  return blocks.some(
+    (b) => b.type === "tool_use" && (b.name === "Edit" || b.name === "Write")
+  );
+}
+
 function extractTextFromBlocks(blocks: ContentBlock[]): string {
   return blocks
     .map((b) => {
@@ -133,6 +178,8 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       };
       // Replace streaming draft or append
       store.appendMessage(chatMsg);
+      if (detectFileChanges(msg.content)) store.bumpChangedFilesTick();
+      extractProcessesFromBlocks(msg.content);
       store.setStreaming(null);
       streamingPhase = null;
       store.setSessionStatus("running");
@@ -242,13 +289,43 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
     }
 
     case "cli_disconnected": {
+      const wasWorking = store.streaming !== null || store.activity !== null;
       store.setCliConnected(false);
       store.setSessionStatus(null);
+      // Clear any in-progress streaming/activity so UI doesn't get stuck
+      if (store.streaming !== null) {
+        store.setStreaming(null);
+      }
+      if (store.activity !== null) {
+        store.setActivity(null);
+      }
+      streamingPhase = null;
+      // Notify user if CLI disconnected mid-execution
+      if (wasWorking) {
+        store.appendMessage({
+          id: nextId(),
+          role: "system",
+          content: "CLI disconnected while processing. The response may be incomplete.",
+          timestamp: Date.now(),
+        });
+      }
       break;
     }
 
     case "cli_connected": {
       store.setCliConnected(true);
+      break;
+    }
+
+    case "system_event": {
+      const evt = (data as any).event;
+      if (evt?.subtype === "task_notification" && evt.task_id && evt.status) {
+        store.updateProcess(evt.task_id, {
+          status: evt.status,
+          completedAt: Date.now(),
+          summary: evt.summary || undefined,
+        });
+      }
       break;
     }
 
