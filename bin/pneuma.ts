@@ -17,6 +17,7 @@ import { installSkill } from "../server/skill-installer.js";
 import { startFileWatcher } from "../server/file-watcher.js";
 import { loadModeManifest, listModes } from "../core/mode-loader.js";
 import type { ModeManifest } from "../core/types/mode-manifest.js";
+import { applyTemplateParams } from "../server/skill-installer.js";
 
 const PROJECT_ROOT = resolve(dirname(import.meta.path), "..");
 
@@ -103,6 +104,45 @@ function ask(question: string): Promise<string> {
   });
 }
 
+// ── Init params persistence ──────────────────────────────────────────────────
+
+function loadConfig(workspace: string): Record<string, number | string> | null {
+  const filePath = join(workspace, ".pneuma", "config.json");
+  try {
+    const content = readFileSync(filePath, "utf-8");
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+function saveConfig(workspace: string, config: Record<string, number | string>): void {
+  const dir = join(workspace, ".pneuma");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "config.json"), JSON.stringify(config, null, 2));
+}
+
+async function promptInitParams(manifest: ModeManifest): Promise<Record<string, number | string>> {
+  const params: Record<string, number | string> = {};
+  const initParams = manifest.init?.params;
+  if (!initParams || initParams.length === 0) return params;
+
+  console.log("[pneuma] Configuring mode parameters...");
+  for (const param of initParams) {
+    const suffix = param.description ? ` (${param.description})` : "";
+    const answer = await ask(`${param.label}${suffix} [${param.defaultValue}]: `);
+    if (answer === "") {
+      params[param.name] = param.defaultValue;
+    } else if (param.type === "number") {
+      const num = Number(answer);
+      params[param.name] = isNaN(num) ? param.defaultValue : num;
+    } else {
+      params[param.name] = answer;
+    }
+  }
+  return params;
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 function checkBunVersion() {
@@ -160,10 +200,24 @@ async function main() {
   console.log(`[pneuma] Mode: ${manifest.displayName} (${mode})`);
   console.log(`[pneuma] Workspace: ${workspace}`);
 
+  // 0.5 Resolve init params (interactive on first run, then cached)
+  let resolvedParams: Record<string, number | string> = {};
+  if (manifest.init?.params && manifest.init.params.length > 0) {
+    const cached = loadConfig(workspace);
+    if (cached) {
+      resolvedParams = cached;
+      console.log("[pneuma] Loaded init params from .pneuma/config.json");
+    } else {
+      resolvedParams = await promptInitParams(manifest);
+      saveConfig(workspace, resolvedParams);
+      console.log("[pneuma] Saved init params to .pneuma/config.json");
+    }
+  }
+
   // 1. Install skill + inject CLAUDE.md (driven by manifest)
   console.log("[pneuma] Installing skill and preparing environment...");
   const modeSourceDir = resolve(PROJECT_ROOT, "modes", mode);
-  installSkill(workspace, manifest.skill, modeSourceDir);
+  installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams);
 
   // 1.5 Seed default content if workspace has no meaningful files
   if (manifest.init && manifest.init.contentCheckPattern) {
@@ -179,10 +233,20 @@ async function main() {
     });
 
     if (!hasContent && manifest.init.seedFiles) {
+      const hasParams = Object.keys(resolvedParams).length > 0;
       for (const [src, dst] of Object.entries(manifest.init.seedFiles)) {
         const srcPath = join(PROJECT_ROOT, src);
         if (existsSync(srcPath)) {
-          copyFileSync(srcPath, join(workspace, dst));
+          const dstPath = join(workspace, dst);
+          mkdirSync(dirname(dstPath), { recursive: true });
+          if (hasParams) {
+            // Read, apply template params, then write
+            let content = readFileSync(srcPath, "utf-8");
+            content = applyTemplateParams(content, resolvedParams);
+            writeFileSync(dstPath, content, "utf-8");
+          } else {
+            copyFileSync(srcPath, dstPath);
+          }
           console.log(`[pneuma] Seeded workspace with ${dst}`);
         }
       }
@@ -206,7 +270,9 @@ async function main() {
   const { server, wsBridge, port: actualPort } = startServer({
     port: serverPort,
     workspace,
+    watchPatterns: manifest.viewer.watchPatterns,
     ...(isDev ? {} : { distDir }),
+    ...(Object.keys(resolvedParams).length > 0 ? { initParams: resolvedParams } : {}),
   });
 
   // 4. Launch Agent backend (driven by manifest)

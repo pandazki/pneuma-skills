@@ -60,6 +60,8 @@ function useViewerProps(): ViewerPreviewProps {
   const setSelection = useStore((s) => s.setSelection);
   const previewMode = useStore((s) => s.previewMode);
   const imageTick = useStore((s) => s.imageTick);
+  const initParams = useStore((s) => s.initParams);
+  const setActiveFile = useStore((s) => s.setActiveFile);
 
   return {
     files: files.map((f) => ({ path: f.path, content: f.content })),
@@ -71,12 +73,14 @@ function useViewerProps(): ViewerPreviewProps {
         setSelection(null);
         return;
       }
-      // Enrich with file info from the first viewed file
-      const file = files[0]?.path || "";
+      // Use file from the viewer component (e.g. current slide), fallback to first file
+      const file = sel.file || files[0]?.path || "";
       setSelection({ type: sel.type as SelectionType, content: sel.content, level: sel.level, file });
     },
     mode: previewMode,
     imageVersion: imageTick,
+    initParams,
+    onActiveFileChange: setActiveFile,
   };
 }
 
@@ -121,6 +125,14 @@ export default function App() {
       .then((r) => r.json())
       .then((d) => {
         if (d.files?.length) useStore.getState().setFiles(d.files);
+      })
+      .catch(() => {});
+
+    // Fetch mode init params
+    fetch(`${getApiBase()}/api/config`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.initParams) useStore.getState().setInitParams(d.initParams);
       })
       .catch(() => {});
 

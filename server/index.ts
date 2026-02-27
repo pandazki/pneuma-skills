@@ -16,6 +16,8 @@ export interface ServerOptions {
   port?: number;
   workspace: string;
   distDir?: string; // Path to built frontend assets (production mode)
+  watchPatterns?: string[]; // Glob patterns for content files (from ModeManifest.viewer)
+  initParams?: Record<string, number | string>; // Mode init params (immutable per session)
 }
 
 export function startServer(options: ServerOptions) {
@@ -37,20 +39,165 @@ export function startServer(options: ServerOptions) {
     return c.json({ sessionId: wsBridge.getActiveSessionId() });
   });
 
+  // Return mode init params for the frontend
+  app.get("/api/config", (c) => {
+    return c.json({ initParams: options.initParams || {} });
+  });
+
+  // ── Slide export: vertically stacked HTML for printing ────────────────
+  app.get("/export/slides", (c) => {
+    // 1. Read manifest.json
+    const manifestPath = join(workspace, "manifest.json");
+    if (!existsSync(manifestPath)) {
+      return c.text("No manifest.json found in workspace", 404);
+    }
+    let manifest: { title: string; slides: { file: string; title: string }[] };
+    try {
+      manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+    } catch {
+      return c.text("Failed to parse manifest.json", 500);
+    }
+    if (!manifest.slides?.length) {
+      return c.text("No slides in manifest.json", 404);
+    }
+
+    // 2. Read theme.css
+    const themePath = join(workspace, "theme.css");
+    const themeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
+
+    // 3. Slide dimensions from init params
+    const W = (options.initParams?.slideWidth as number) || 1280;
+    const H = (options.initParams?.slideHeight as number) || 720;
+
+    // 4. Read each slide HTML and build page sections
+    const slidePages = manifest.slides
+      .map((slide, i) => {
+        const slidePath = join(workspace, slide.file);
+        const html = existsSync(slidePath) ? readFileSync(slidePath, "utf-8") : `<p>Missing: ${slide.file}</p>`;
+        return `<div class="slide-page">${html}</div>`;
+      })
+      .join("\n");
+
+    // 5. Build complete HTML
+    const exportHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<base href="/content/">
+<title>${manifest.title || "Slides"} — Export</title>
+<style>
+${themeCSS}
+
+@page {
+  size: ${W}px ${H}px;
+  margin: 0;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #1a1a1a;
+}
+
+.slide-page {
+  width: ${W}px;
+  height: ${H}px;
+  overflow: hidden;
+  break-after: page;
+  position: relative;
+}
+
+/* Screen preview: centered with spacing and shadow */
+@media screen {
+  body { padding: 0 0 40px 0; }
+  .slide-page {
+    margin: 20px auto;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    border-radius: 4px;
+  }
+  .export-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background: #111;
+    border-bottom: 1px solid #333;
+    color: #ccc;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .export-toolbar h1 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    color: #fff;
+  }
+  .export-toolbar .meta {
+    font-size: 13px;
+    color: #888;
+  }
+  .export-toolbar button {
+    padding: 8px 16px;
+    background: #d97757;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .export-toolbar button:hover {
+    background: #c56645;
+  }
+}
+
+/* Print: hide toolbar, clean background */
+@media print {
+  body { background: white; padding: 0; }
+  .export-toolbar { display: none; }
+  .slide-page {
+    margin: 0;
+    box-shadow: none;
+    border-radius: 0;
+  }
+}
+</style>
+</head>
+<body>
+<div class="export-toolbar">
+  <h1>${manifest.title || "Slides"}</h1>
+  <span class="meta">${manifest.slides.length} slides · ${W}×${H}</span>
+  <button onclick="window.print()">Print / Save PDF</button>
+</div>
+${slidePages}
+</body>
+</html>`;
+
+    return c.html(exportHtml);
+  });
+
   app.get("/api/files", (c) => {
     const files: { path: string; content: string }[] = [];
-    // Scan workspace for .md files (simple flat scan for MVP)
+    const patterns = options.watchPatterns || ["**/*.md"];
     try {
-      const entries = new Bun.Glob("**/*.md").scanSync({ cwd: workspace, absolute: false });
-      for (const relPath of entries) {
-        // Skip config files — only show content files in preview
-        if (relPath === "CLAUDE.md" || relPath.startsWith(".claude/")) continue;
-        const absPath = join(workspace, relPath);
-        try {
-          const content = readFileSync(absPath, "utf-8");
-          files.push({ path: relPath, content });
-        } catch {
-          // skip unreadable files
+      for (const pattern of patterns) {
+        const entries = new Bun.Glob(pattern).scanSync({ cwd: workspace, absolute: false });
+        for (const relPath of entries) {
+          // Skip config files
+          if (relPath === "CLAUDE.md" || relPath.startsWith(".claude/")) continue;
+          // Skip duplicates (patterns may overlap)
+          if (files.some((f) => f.path === relPath)) continue;
+          const absPath = join(workspace, relPath);
+          try {
+            const content = readFileSync(absPath, "utf-8");
+            files.push({ path: relPath, content });
+          } catch {
+            // skip unreadable files
+          }
         }
       }
     } catch {
