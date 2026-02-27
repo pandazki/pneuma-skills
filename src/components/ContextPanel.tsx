@@ -15,8 +15,6 @@ function SessionStatsSection() {
   const session = useStore((s) => s.session);
   if (!session) return null;
 
-  const contextPct = session.context_used_percent || 0;
-
   return (
     <section className="space-y-2">
       <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Session</h3>
@@ -42,22 +40,6 @@ function SessionStatsSection() {
           {" / "}
           <span className="text-red-400">-{session.total_lines_removed}</span>
         </span>
-      </div>
-
-      {/* Context usage bar */}
-      <div className="space-y-1 pt-1">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-neutral-500">Context</span>
-          <span className="text-neutral-400">{contextPct}%</span>
-        </div>
-        <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${
-              contextPct > 80 ? "bg-red-500" : contextPct > 50 ? "bg-amber-500" : "bg-blue-500"
-            }`}
-            style={{ width: `${contextPct}%` }}
-          />
-        </div>
       </div>
     </section>
   );

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { SessionState, PermissionRequest, ChatMessage, FileContent, SelectionContext, ContentBlock } from "./types.js";
+import type { ViewerContract } from "../core/types/viewer-contract.js";
 
 export interface Activity {
   phase: "thinking" | "responding" | "tool";
@@ -28,6 +29,8 @@ interface AppState {
   connectionStatus: "connecting" | "connected" | "disconnected";
   cliConnected: boolean;
   sessionStatus: "idle" | "running" | "compacting" | null;
+  /** True from user message send until result received — controls input disable */
+  turnInProgress: boolean;
 
   // Messages
   messages: ChatMessage[];
@@ -64,6 +67,9 @@ interface AppState {
   selection: ElementSelection | null;
   previewMode: "view" | "edit" | "select";
 
+  // Mode viewer (loaded dynamically via mode-loader)
+  modeViewer: ViewerContract | null;
+
   // Actions — session
   setSession: (session: SessionState) => void;
   updateSession: (updates: Partial<SessionState>) => void;
@@ -73,6 +79,7 @@ interface AppState {
   setConnectionStatus: (status: "connecting" | "connected" | "disconnected") => void;
   setCliConnected: (connected: boolean) => void;
   setSessionStatus: (status: "idle" | "running" | "compacting" | null) => void;
+  setTurnInProgress: (v: boolean) => void;
 
   // Actions — messages
   appendMessage: (msg: ChatMessage) => void;
@@ -110,6 +117,9 @@ interface AppState {
   // Actions — selection
   setSelection: (s: ElementSelection | null) => void;
   setPreviewMode: (mode: "view" | "edit" | "select") => void;
+
+  // Actions — mode viewer
+  setModeViewer: (viewer: ViewerContract) => void;
 
   // Actions — content
   setFiles: (files: FileContent[]) => void;
@@ -169,6 +179,7 @@ export const useStore = create<AppState>((set) => ({
   connectionStatus: "disconnected",
   cliConnected: false,
   sessionStatus: null,
+  turnInProgress: false,
   messages: [],
   streaming: null,
   activity: null,
@@ -184,6 +195,7 @@ export const useStore = create<AppState>((set) => ({
   terminalId: null,
   selection: null,
   previewMode: "view",
+  modeViewer: null,
 
   setSession: (session) => set({ session }),
   updateSession: (updates) =>
@@ -195,6 +207,7 @@ export const useStore = create<AppState>((set) => ({
   setConnectionStatus: (status) => set({ connectionStatus: status }),
   setCliConnected: (connected) => set({ cliConnected: connected }),
   setSessionStatus: (status) => set({ sessionStatus: status }),
+  setTurnInProgress: (v) => set({ turnInProgress: v }),
 
   appendMessage: (msg) =>
     set((s) => {
@@ -259,6 +272,8 @@ export const useStore = create<AppState>((set) => ({
 
   setSelection: (selection) => set({ selection }),
   setPreviewMode: (previewMode) => set({ previewMode, ...(previewMode !== "select" ? { selection: null } : {}) }),
+
+  setModeViewer: (modeViewer) => set({ modeViewer }),
 
   setFiles: (files) => set({ files }),
   updateFiles: (updates) =>

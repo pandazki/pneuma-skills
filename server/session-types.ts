@@ -295,7 +295,7 @@ export type BrowserIncomingMessageBase =
   | { type: "tool_use_summary"; summary: string; tool_use_ids: string[] }
   | { type: "status_change"; status: "compacting" | "idle" | "running" | null }
   | { type: "auth_status"; isAuthenticating: boolean; output: string[]; error?: string }
-  | { type: "command_output"; content: string }
+  | { type: "command_output"; content: string; subtype?: "context" }
   | { type: "error"; message: string }
   | { type: "cli_disconnected" }
   | { type: "cli_connected" }

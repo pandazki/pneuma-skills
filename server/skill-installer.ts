@@ -1,30 +1,16 @@
 /**
  * Skill installer — copies mode-specific skill to .claude/skills/ and
  * injects Pneuma configuration into CLAUDE.md.
+ *
+ * Parameterized by SkillConfig from ModeManifest — no hardcoded mode knowledge.
  */
 
 import { mkdirSync, existsSync, readFileSync, writeFileSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const SKILL_SOURCE = join(__dirname, "..", "skill", "doc");
+import type { SkillConfig } from "../core/types/mode-manifest.js";
 
 const PNEUMA_MARKER_START = "<!-- pneuma:start -->";
 const PNEUMA_MARKER_END = "<!-- pneuma:end -->";
-
-const PNEUMA_CLAUDE_MD_SECTION = `${PNEUMA_MARKER_START}
-## Pneuma Doc Mode
-
-You are running inside Pneuma Doc Mode. A user is viewing your markdown edits live in a browser.
-
-**Important**: When the user asks you to make changes, edit the markdown files directly using the Edit or Write tools. The user sees updates in real-time.
-
-- Workspace contains markdown (.md) files
-- Make focused, incremental edits
-- Use GitHub-Flavored Markdown (GFM)
-- Do not ask for confirmation on simple edits — just do them
-${PNEUMA_MARKER_END}`;
 
 /**
  * Ensure `.pneuma/` is listed in the workspace's .gitignore.
@@ -46,18 +32,27 @@ function ensureGitignore(workspace: string): void {
 }
 
 /**
- * Install the doc mode skill and inject CLAUDE.md configuration.
+ * Install a mode's skill and inject CLAUDE.md configuration.
+ *
+ * @param workspace  — User's project directory
+ * @param skillConfig — Skill configuration from ModeManifest
+ * @param modeSourceDir — Absolute path to the mode package directory (e.g. /path/to/modes/doc)
  */
-export function installSkill(workspace: string): void {
-  // 1. Copy skill to .claude/skills/pneuma-doc/
-  const skillTarget = join(workspace, ".claude", "skills", "pneuma-doc");
+export function installSkill(
+  workspace: string,
+  skillConfig: SkillConfig,
+  modeSourceDir: string,
+): void {
+  // 1. Copy skill to .claude/skills/{installName}/
+  const skillSource = join(modeSourceDir, skillConfig.sourceDir);
+  const skillTarget = join(workspace, ".claude", "skills", skillConfig.installName);
   mkdirSync(skillTarget, { recursive: true });
 
-  if (existsSync(SKILL_SOURCE)) {
-    cpSync(SKILL_SOURCE, skillTarget, { recursive: true, force: true });
+  if (existsSync(skillSource)) {
+    cpSync(skillSource, skillTarget, { recursive: true, force: true });
     console.log(`[skill-installer] Installed skill to ${skillTarget}`);
   } else {
-    console.warn(`[skill-installer] Skill source not found: ${SKILL_SOURCE}`);
+    console.warn(`[skill-installer] Skill source not found: ${skillSource}`);
   }
 
   // 2. Inject/update CLAUDE.md with pneuma configuration
@@ -68,6 +63,8 @@ export function installSkill(workspace: string): void {
     content = readFileSync(claudeMdPath, "utf-8");
   }
 
+  const claudeMdSection = `${PNEUMA_MARKER_START}\n${skillConfig.claudeMdSection}\n${PNEUMA_MARKER_END}`;
+
   // Check if pneuma section already exists
   const startIdx = content.indexOf(PNEUMA_MARKER_START);
   const endIdx = content.indexOf(PNEUMA_MARKER_END);
@@ -75,14 +72,14 @@ export function installSkill(workspace: string): void {
   if (startIdx !== -1 && endIdx !== -1) {
     // Replace existing section
     content = content.substring(0, startIdx) +
-      PNEUMA_CLAUDE_MD_SECTION +
+      claudeMdSection +
       content.substring(endIdx + PNEUMA_MARKER_END.length);
   } else {
     // Append section
     if (content.length > 0 && !content.endsWith("\n")) {
       content += "\n";
     }
-    content += "\n" + PNEUMA_CLAUDE_MD_SECTION + "\n";
+    content += "\n" + claudeMdSection + "\n";
   }
 
   // Ensure .claude directory exists
