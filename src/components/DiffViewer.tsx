@@ -88,6 +88,14 @@ export default function DiffViewer({ diff }: { diff: string }) {
     );
   }
 
+  if (diff.includes("Binary files") && diff.includes("differ")) {
+    return (
+      <div className="flex items-center justify-center h-full text-neutral-500 text-sm">
+        Binary file — diff not available
+      </div>
+    );
+  }
+
   return (
     <div className="overflow-auto h-full font-mono text-xs leading-5">
       {lines.map((line, i) => {

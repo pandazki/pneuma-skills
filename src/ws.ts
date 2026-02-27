@@ -289,8 +289,26 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
     }
 
     case "cli_disconnected": {
+      const wasWorking = store.streaming !== null || store.activity !== null;
       store.setCliConnected(false);
       store.setSessionStatus(null);
+      // Clear any in-progress streaming/activity so UI doesn't get stuck
+      if (store.streaming !== null) {
+        store.setStreaming(null);
+      }
+      if (store.activity !== null) {
+        store.setActivity(null);
+      }
+      streamingPhase = null;
+      // Notify user if CLI disconnected mid-execution
+      if (wasWorking) {
+        store.appendMessage({
+          id: nextId(),
+          role: "system",
+          content: "CLI disconnected while processing. The response may be incomplete.",
+          timestamp: Date.now(),
+        });
+      }
       break;
     }
 

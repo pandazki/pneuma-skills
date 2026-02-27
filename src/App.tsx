@@ -1,4 +1,4 @@
-import { useEffect, lazy, Suspense } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import TopBar from "./components/TopBar.js";
 import MarkdownPreview from "./components/MarkdownPreview.js";
@@ -21,6 +21,11 @@ function LazyFallback() {
 
 function RightPanel() {
   const activeTab = useStore((s) => s.activeTab);
+  const [terminalMounted, setTerminalMounted] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === "terminal") setTerminalMounted(true);
+  }, [activeTab]);
 
   return (
     <div className="flex flex-col h-full">
@@ -31,9 +36,12 @@ function RightPanel() {
         </Suspense>
       )}
       {activeTab === "diff" && <DiffPanel />}
-      {activeTab === "terminal" && (
-        <Suspense fallback={<LazyFallback />}>
-          <TerminalPanel />
+      {/* Terminal stays mounted once visited to preserve PTY connection */}
+      {terminalMounted && (
+        <Suspense fallback={activeTab === "terminal" ? <LazyFallback /> : null}>
+          <div className={activeTab === "terminal" ? "flex flex-col h-full" : "hidden"}>
+            <TerminalPanel />
+          </div>
         </Suspense>
       )}
       {activeTab === "processes" && <ProcessPanel />}

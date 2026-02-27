@@ -199,7 +199,11 @@ export function startServer(options: ServerOptions) {
       const statuses: Record<string, string> = {};
       for (const line of output.split("\n").filter(Boolean)) {
         const status = line.substring(0, 2).trim();
-        const filePath = line.substring(3);
+        let filePath = line.substring(3);
+        // Git wraps paths containing special chars in quotes — strip them
+        if (filePath.startsWith('"') && filePath.endsWith('"')) {
+          filePath = filePath.slice(1, -1);
+        }
         if (status === "??" || status === "A") statuses[filePath] = "A";
         else if (status === "D") statuses[filePath] = "D";
         else statuses[filePath] = "M";
