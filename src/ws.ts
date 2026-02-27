@@ -224,10 +224,27 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
 
     case "result": {
       const r = data.data;
-      store.updateSession({
+      const sessionUpdates: Partial<import("./types.js").SessionState> = {
         total_cost_usd: r.total_cost_usd,
         num_turns: r.num_turns,
-      });
+      };
+      if (typeof r.total_lines_added === "number") {
+        sessionUpdates.total_lines_added = r.total_lines_added;
+      }
+      if (typeof r.total_lines_removed === "number") {
+        sessionUpdates.total_lines_removed = r.total_lines_removed;
+      }
+      if (r.modelUsage) {
+        for (const usage of Object.values(r.modelUsage)) {
+          if (usage.contextWindow > 0) {
+            const pct = Math.round(
+              ((usage.inputTokens + usage.outputTokens) / usage.contextWindow) * 100
+            );
+            sessionUpdates.context_used_percent = Math.max(0, Math.min(pct, 100));
+          }
+        }
+      }
+      store.updateSession(sessionUpdates);
       store.setStreaming(null);
       store.setActivity(null);
       streamingPhase = null;
@@ -458,7 +475,14 @@ export function send(msg: BrowserOutgoingMessage) {
   }
 }
 
-export function sendUserMessage(content: string, selection?: ElementSelection | null) {
+export function sendSetModel(model: string) {
+  const store = useStore.getState();
+  // Optimistic update
+  store.updateSession({ model });
+  send({ type: "set_model", model });
+}
+
+export function sendUserMessage(content: string, selection?: ElementSelection | null, images?: { media_type: string; data: string }[]) {
   const store = useStore.getState();
   // Add user message to local store immediately (show original text)
   store.appendMessage({
@@ -484,7 +508,14 @@ export function sendUserMessage(content: string, selection?: ElementSelection | 
     enrichedContent = ctx.join("\n") + "\n\n" + content;
   }
 
-  send({ type: "user_message", content: enrichedContent });
+  const msg: import("./types.js").BrowserOutgoingMessage & { type: "user_message" } = {
+    type: "user_message",
+    content: enrichedContent,
+  };
+  if (images?.length) {
+    msg.images = images;
+  }
+  send(msg);
 }
 
 export function sendPermissionResponse(

@@ -601,6 +601,18 @@ export class WsBridge {
       case "interrupt":
         handleInterrupt(session, this.sendToCLI.bind(this));
         break;
+
+      case "set_model": {
+        const ndjson = JSON.stringify({ type: "set_model", model: msg.model });
+        this.sendToCLI(session, ndjson);
+        // Optimistic update
+        session.state.model = msg.model;
+        this.broadcastToBrowsers(session, {
+          type: "session_update",
+          session: { model: msg.model },
+        });
+        break;
+      }
     }
   }
 

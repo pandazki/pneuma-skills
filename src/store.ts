@@ -33,7 +33,7 @@ interface AppState {
   files: FileContent[];
 
   // Tab
-  activeTab: "chat" | "editor" | "diff" | "terminal" | "processes";
+  activeTab: "chat" | "editor" | "diff" | "terminal" | "processes" | "context";
 
   // Git / Diff
   gitAvailable: boolean | null; // null = not yet checked
@@ -73,7 +73,7 @@ interface AppState {
   removePermission: (requestId: string) => void;
 
   // Actions — tab
-  setActiveTab: (tab: "chat" | "editor" | "diff" | "terminal" | "processes") => void;
+  setActiveTab: (tab: "chat" | "editor" | "diff" | "terminal" | "processes" | "context") => void;
 
   // Actions — git / diff
   setGitAvailable: (available: boolean) => void;

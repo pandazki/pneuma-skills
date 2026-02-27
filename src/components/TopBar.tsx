@@ -1,6 +1,6 @@
 import { useStore } from "../store.js";
 
-type Tab = "chat" | "editor" | "diff" | "terminal" | "processes";
+type Tab = "chat" | "editor" | "diff" | "terminal" | "processes" | "context";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "chat", label: "Chat" },
@@ -8,6 +8,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "diff", label: "Diffs" },
   { id: "terminal", label: "Terminal" },
   { id: "processes", label: "Processes" },
+  { id: "context", label: "Context" },
 ];
 
 function StatusDot() {

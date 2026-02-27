@@ -117,6 +117,24 @@ export function startServer(options: ServerOptions) {
     }
   });
 
+  // ── Git: branch info (for Context panel) ────────────────────────────
+  app.get("/api/git/info", (c) => {
+    try {
+      const branch = execSync("git rev-parse --abbrev-ref HEAD", { cwd: workspace, encoding: "utf-8", timeout: 3_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+      let ahead = 0;
+      let behind = 0;
+      try {
+        const counts = execSync("git rev-list --left-right --count HEAD...@{upstream}", { cwd: workspace, encoding: "utf-8", timeout: 5_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+        const [a, b] = counts.split(/\s+/);
+        ahead = parseInt(a, 10) || 0;
+        behind = parseInt(b, 10) || 0;
+      } catch { /* no upstream set */ }
+      return c.json({ branch, ahead, behind });
+    } catch {
+      return c.json({ branch: null, ahead: 0, behind: 0 });
+    }
+  });
+
   // ── Git: changed files ─────────────────────────────────────────────
   app.get("/api/git/changed-files", (c) => {
     const base = c.req.query("base") || "last-commit";

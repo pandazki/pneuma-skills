@@ -5,6 +5,7 @@ import MarkdownPreview from "./components/MarkdownPreview.js";
 import ChatPanel from "./components/ChatPanel.js";
 import DiffPanel from "./components/DiffPanel.js";
 import ProcessPanel from "./components/ProcessPanel.js";
+import ContextPanel from "./components/ContextPanel.js";
 import { useStore } from "./store.js";
 import { connect } from "./ws.js";
 
@@ -45,6 +46,7 @@ function RightPanel() {
         </Suspense>
       )}
       {activeTab === "processes" && <ProcessPanel />}
+      {activeTab === "context" && <ContextPanel />}
     </div>
   );
 }
