@@ -157,6 +157,9 @@ def generate_via_openrouter(
                 if url:
                     images_data.append(url)
 
+    # Cap to requested number of images (model may return more)
+    images_data = images_data[:num_images]
+
     for i, image_url in enumerate(images_data):
         suffix = f"_{i+1}" if len(images_data) > 1 else ""
         filename = f"{filename_prefix}{suffix}.{output_format}"
