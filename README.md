@@ -12,7 +12,7 @@ ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell
 
 ## Demo
 
-Ships with **Doc Mode** — a markdown editing environment where Claude Code edits `.md` files and you see the rendered result in real-time.
+Ships with **Doc Mode** (markdown editing) and **Slide Mode** (presentation editing). Here's Doc Mode — Claude Code edits `.md` files and you see the rendered result in real-time:
 
 ```
 ┌─────────────────────────────┬──────────────────────────┐
@@ -70,6 +70,7 @@ pneuma-skills <mode> [options]
 
 Modes:
   doc    Markdown document editing mode
+  slide  Presentation editing mode (HTML slides with iframe preview)
 
 Options:
   --workspace <path>   Target workspace directory (default: current directory)
@@ -132,11 +133,16 @@ pneuma-skills/
 │   ├── mode-loader.ts         # Dynamic mode discovery and loading
 │   └── __tests__/             # 42 contract tests
 ├── modes/
-│   └── doc/
-│       ├── pneuma-mode.ts     # Doc Mode definition (manifest + viewer)
-│       ├── skill/SKILL.md     # Skill prompt for Claude Code
+│   ├── doc/
+│   │   ├── pneuma-mode.ts     # Doc Mode definition (manifest + viewer)
+│   │   ├── skill/SKILL.md     # Skill prompt for Claude Code
+│   │   └── components/
+│   │       └── DocPreview.tsx  # Markdown preview with select/edit modes
+│   └── slide/
+│       ├── pneuma-mode.ts     # Slide Mode definition (manifest + viewer)
+│       ├── skill/             # Skill package (SKILL.md + design docs + scripts)
 │       └── components/
-│           └── DocPreview.tsx  # Markdown preview with select/edit modes
+│           └── SlidePreview.tsx # Slide carousel with iframe preview
 ├── backends/
 │   └── claude-code/
 │       ├── index.ts           # ClaudeCodeBackend implements AgentBackend
@@ -162,9 +168,9 @@ pneuma-skills/
 │       ├── PermissionBanner.tsx # Tool permission approval UI
 │       └── TopBar.tsx         # Tabs (Chat/Context/Terminal) + status
 └── docs/
-    ├── architecture-review-v1.md    # Architecture review & v1.0 blueprint
-    ├── design/phase1-internal-decoupling.md  # Detailed design doc
-    └── adr/                         # Architecture Decision Records (1-11)
+    ├── adr/                         # Architecture Decision Records (1-11)
+    ├── design/                      # Active design documents
+    └── archive/                     # Completed design docs & references
 ```
 
 ## Tech Stack
@@ -197,12 +203,12 @@ pneuma-skills/
 
 ## Roadmap
 
-- [x] Doc Mode MVP — Markdown WYSIWYG editing
+- [x] Doc Mode — Markdown WYSIWYG editing
+- [x] Slide Mode — Presentation editing with iframe preview, drag-reorder, AI image generation
 - [x] Element selection & inline editing
 - [x] Session persistence & resume
 - [x] Terminal, tasks, context panel
 - [x] v1.0 contract architecture (ModeManifest, ViewerContract, AgentBackend)
-- [ ] Slide Mode — Presentation editing with iframe preview (v1.1)
 - [ ] Remote mode loading — `pneuma --mode github:user/repo` (v1.x)
 - [ ] Additional agent backends — Codex CLI, custom agents (v1.x)
 
