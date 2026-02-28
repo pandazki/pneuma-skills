@@ -75,6 +75,8 @@ export function startServer(options: ServerOptions) {
       .map((slide, i) => {
         const slidePath = join(workspace, slide.file);
         let html = existsSync(slidePath) ? readFileSync(slidePath, "utf-8") : `<p>Missing: ${slide.file}</p>`;
+        let bodyStyle = "";
+        let bodyClass = "";
         // Extract <head> resources before stripping full-document wrappers
         if (html.includes("<!DOCTYPE") || html.includes("<html")) {
           const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
@@ -90,6 +92,15 @@ export function startServer(options: ServerOptions) {
               headResourceSet.add(tag);
             }
           }
+          // Extract body attributes (style, class) before stripping
+          const bodyTagMatch = html.match(/<body([^>]*)>/i);
+          if (bodyTagMatch) {
+            const attrs = bodyTagMatch[1];
+            const styleMatch = attrs.match(/style\s*=\s*["']([^"']*)["']/i);
+            if (styleMatch) bodyStyle = styleMatch[1];
+            const classMatch = attrs.match(/class\s*=\s*["']([^"']*)["']/i);
+            if (classMatch) bodyClass = classMatch[1];
+          }
           // Strip to body content
           const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
           if (bodyMatch) {
@@ -103,7 +114,9 @@ export function startServer(options: ServerOptions) {
               .trim();
           }
         }
-        return `<div class="slide-page">${html}</div>`;
+        const wrapStyle = bodyStyle ? ` style="${bodyStyle}"` : "";
+        const wrapClass = bodyClass ? ` ${bodyClass}` : "";
+        return `<div class="slide-page${wrapClass}"${wrapStyle}>${html}</div>`;
       })
       .join("\n");
     const headResources = Array.from(headResourceSet).join("\n");
