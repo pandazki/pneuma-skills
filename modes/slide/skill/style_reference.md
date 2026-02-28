@@ -65,9 +65,11 @@ Default design system for Pneuma Slide Mode presentations. Use these conventions
 ### Font Stack
 
 ```css
---font-sans: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
+--font-sans: "Inter", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
 --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
 ```
+
+**CJK support**: Always include CJK system fonts (`"PingFang SC"` for macOS, `"Noto Sans CJK SC"` for Linux, `"Microsoft YaHei"` for Windows) **before** generic families (`sans-serif`). Without them, Chrome's print renderer cannot fall back to CJK glyphs and Chinese/Japanese/Korean text will be invisible in exported PDFs.
 
 ### Size Scale
 

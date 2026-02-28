@@ -97,7 +97,7 @@ Before writing any slide HTML, create `design_outline.md`:
 
 If the user's workspace has no `theme.css`, create one. Reference `{SKILL_PATH}/style_reference.md` for the design system. Key decisions:
 - Color palette (light/dark mode, primary/accent colors)
-- Typography (heading and body fonts)
+- Typography (heading and body fonts) — **must include CJK system fonts** in `--font-sans` for multilingual support (see style_reference.md)
 - Spacing scale
 
 ### Phase 3: Slide Generation
@@ -151,7 +151,7 @@ When slides need capabilities beyond theme.css (charts, icons, advanced layouts)
 
 - **Icons**: Lucide (`<script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>`) or inline SVG — **never use emoji** for professional icons
 - **Charts**: ECharts 5 (`<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>`)
-- **Fonts**: CSS `@import` from Google Fonts if needed, or use `var(--font-sans)` / `var(--font-mono)`
+- **Fonts**: Use `var(--font-sans)` / `var(--font-mono)` from theme.css. For custom web fonts, use CSS `@import` from Google Fonts. **CJK requirement**: `--font-sans` must include CJK system fonts (`"PingFang SC"`, `"Noto Sans CJK SC"`, `"Microsoft YaHei"`) before `sans-serif` — otherwise Chinese/Japanese/Korean text will be invisible in print/PDF export
 
 When using external scripts, add them as `<script>` tags at the end of the slide fragment. The viewer's iframe sandbox allows scripts.
 
