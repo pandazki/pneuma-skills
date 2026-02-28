@@ -61,21 +61,55 @@ export function startServer(options: ServerOptions) {
       return c.text("No slides in manifest.json", 404);
     }
 
-    // 2. Read theme.css
+    // 2. Read theme.css and patch font stacks for CJK print compatibility
+    //    Chrome's print renderer doesn't fall back -apple-system/BlinkMacSystemFont
+    //    to CJK system fonts (PingFang SC etc.), so CJK text disappears in print.
+    //    Fix: inject explicit CJK fonts before generic families in --font-sans.
     const themePath = join(workspace, "theme.css");
-    const themeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
+    let themeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
+    const CJK_FONTS = '"PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei"';
+    themeCSS = themeCSS.replace(
+      /(--font-sans\s*:\s*)([^;]*?)(,\s*)(sans-serif\s*;)/,
+      `$1$2, ${CJK_FONTS}$3$4`,
+    );
 
     // 3. Slide dimensions from init params
     const W = (options.initParams?.slideWidth as number) || 1280;
     const H = (options.initParams?.slideHeight as number) || 720;
 
-    // 4. Read each slide HTML and build page sections
+    // 4. Read each slide HTML, extract <head> resources, and build page sections
+    const headResourceSet = new Set<string>();
     const slidePages = manifest.slides
       .map((slide, i) => {
         const slidePath = join(workspace, slide.file);
         let html = existsSync(slidePath) ? readFileSync(slidePath, "utf-8") : `<p>Missing: ${slide.file}</p>`;
-        // Strip full-document wrappers — slides may be saved as complete HTML docs
+        let bodyStyle = "";
+        let bodyClass = "";
+        // Extract <head> resources before stripping full-document wrappers
         if (html.includes("<!DOCTYPE") || html.includes("<html")) {
+          const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+          if (headMatch) {
+            const headContent = headMatch[1];
+            // Extract <link>, <script>, and <style> tags (skip <meta>, <title>, <base>)
+            const resourceRe = /<(link\b[^>]*(?:\/>|>)|script\b[^>]*>[\s\S]*?<\/script>|style\b[^>]*>[\s\S]*?<\/style>)/gi;
+            let m;
+            while ((m = resourceRe.exec(headContent)) !== null) {
+              const tag = m[0].trim();
+              // Skip meta-like links (canonical, icon, etc.)
+              if (/<link\b/i.test(tag) && !/rel\s*=\s*["']stylesheet["']/i.test(tag) && !/\.css/i.test(tag)) continue;
+              headResourceSet.add(tag);
+            }
+          }
+          // Extract body attributes (style, class) before stripping
+          const bodyTagMatch = html.match(/<body([^>]*)>/i);
+          if (bodyTagMatch) {
+            const attrs = bodyTagMatch[1];
+            const styleMatch = attrs.match(/style\s*=\s*["']([^"']*)["']/i);
+            if (styleMatch) bodyStyle = styleMatch[1];
+            const classMatch = attrs.match(/class\s*=\s*["']([^"']*)["']/i);
+            if (classMatch) bodyClass = classMatch[1];
+          }
+          // Strip to body content
           const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
           if (bodyMatch) {
             html = bodyMatch[1].trim();
@@ -88,9 +122,12 @@ export function startServer(options: ServerOptions) {
               .trim();
           }
         }
-        return `<div class="slide-page">${html}</div>`;
+        const wrapStyle = bodyStyle ? ` style="${bodyStyle}"` : "";
+        const wrapClass = bodyClass ? ` ${bodyClass}` : "";
+        return `<div class="slide-page${wrapClass}"${wrapStyle}>${html}</div>`;
       })
       .join("\n");
+    const headResources = Array.from(headResourceSet).join("\n");
 
     // 5. Build complete HTML
     const exportHtml = `<!DOCTYPE html>
@@ -100,6 +137,7 @@ export function startServer(options: ServerOptions) {
 <meta name="viewport" content="width=${W}, initial-scale=1">
 <base href="/content/">
 <title>${manifest.title || "Slides"} — Export</title>
+${headResources}
 <style>
 ${themeCSS}
 
@@ -108,12 +146,21 @@ ${themeCSS}
   margin: 0;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
 
-html, body {
+html {
   margin: 0;
   padding: 0;
   background: #1a1a1a;
+}
+
+body {
+  margin: 0;
+  padding: 0;
   width: ${W}px;
 }
 
@@ -123,6 +170,8 @@ html, body {
   overflow: hidden;
   break-after: page;
   position: relative;
+  /* Use theme body background; fall back to white for themes without --color-bg */
+  background: var(--color-bg, #fff);
 }
 
 /* Screen preview: centered with spacing and shadow */
@@ -171,14 +220,16 @@ html, body {
   }
 }
 
-/* Print: hide toolbar, clean background */
+/* Print: hide toolbar, preserve slide backgrounds */
 @media print {
-  body { background: white; padding: 0; }
+  html { background: white; }
+  body { padding: 0; }
   .export-toolbar { display: none; }
   .slide-page {
     margin: 0;
     box-shadow: none;
     border-radius: 0;
+    break-inside: avoid;
   }
 }
 </style>
