@@ -82,8 +82,8 @@ You are a presentation expert running inside Pneuma Slide Mode. The user views y
     params: [
       { name: "slideWidth", label: "Slide width", description: "pixels", type: "number", defaultValue: 1280 },
       { name: "slideHeight", label: "Slide height", description: "pixels", type: "number", defaultValue: 720 },
-      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for AI image generation, leave blank to skip", type: "string", defaultValue: "" },
-      { name: "falApiKey", label: "fal.ai API Key", description: "for AI image generation, leave blank to skip", type: "string", defaultValue: "" },
+      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for AI image generation, leave blank to skip", type: "string", defaultValue: "", sensitive: true },
+      { name: "falApiKey", label: "fal.ai API Key", description: "for AI image generation, leave blank to skip", type: "string", defaultValue: "", sensitive: true },
     ],
     deriveParams: (params) => ({
       ...params,

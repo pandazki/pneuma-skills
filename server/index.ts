@@ -520,8 +520,14 @@ ${slidePages}
   }
 
   // ── Bun.serve with WebSocket ──────────────────────────────────────────
-  const server = Bun.serve<SocketData>({
-    port,
+  const MAX_PORT_ATTEMPTS = 10;
+  let serverPort = port;
+  let server!: ReturnType<typeof Bun.serve<SocketData>>;
+
+  for (let attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
+    try {
+      server = Bun.serve<SocketData>({
+        port: serverPort,
     async fetch(req, server) {
       const url = new URL(req.url);
 
@@ -594,6 +600,16 @@ ${slidePages}
       },
     },
   });
+      break; // success
+    } catch (err: any) {
+      if (err?.code === "EADDRINUSE") {
+        console.log(`[server] Port ${serverPort} is in use, trying ${serverPort + 1}...`);
+        serverPort++;
+      } else {
+        throw err;
+      }
+    }
+  }
 
   console.log(`[server] Pneuma server running on http://localhost:${server.port}`);
   console.log(`[server] Workspace: ${workspace}`);

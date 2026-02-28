@@ -64,6 +64,8 @@ export interface InitParam {
   type: "number" | "string";
   /** 默认值 */
   defaultValue: number | string;
+  /** 标记为敏感值 (API key 等)，snapshot 打包时会被清空 */
+  sensitive?: boolean;
 }
 
 /** 工作区初始化配置 — 描述空 workspace 时的初始化行为 */

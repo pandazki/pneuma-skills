@@ -125,10 +125,14 @@ After all slides are generated:
 
 When the user asks to modify existing slides:
 
-1. **Read context**: The system provides which slide the user is viewing and what element they selected
-2. **Read the target file(s)**: Always read the current HTML before editing
-3. **Make focused edits**: Use the `Edit` tool for surgical changes, `Write` for full rewrites
-4. **One operation at a time**: Apply the change, let the user see the result in real-time
+1. **Determine scope first**: Decide whether the request targets a single slide or the entire deck
+   - **Deck-wide** if the request involves: style/theme changes, language translation, tone transformation, restructuring, or any request that logically applies to all slides (e.g. "make it tech-style", "translate to English", "change the color scheme")
+   - **Single slide** if the request references a specific slide by number/title, or describes a localized content change (e.g. "fix the typo on this slide", "add a chart here")
+   - When in doubt, prefer deck-wide — it's easier for the user to say "only this slide" than to re-request for every slide
+2. **Read context**: The system provides which slide the user is viewing and what element they selected
+3. **Read the target file(s)**: Always read the current HTML before editing. For deck-wide changes, read manifest.json first to get the full slide list, then read all slides
+4. **Make focused edits**: Use the `Edit` tool for surgical changes, `Write` for full rewrites
+5. **One operation at a time**: Apply the change, let the user see the result in real-time
 
 ---
 

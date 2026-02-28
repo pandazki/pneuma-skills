@@ -168,6 +168,15 @@ function checkBunVersion() {
 
 async function main() {
   checkBunVersion();
+
+  // Snapshot subcommand — intercept before mode validation
+  const rawArgs = process.argv.slice(2);
+  if (rawArgs[0] === "snapshot") {
+    const { runSnapshot } = await import("../snapshot/index.js");
+    await runSnapshot(rawArgs.slice(1));
+    return;
+  }
+
   const { mode, workspace, port, noOpen } = parseArgs(process.argv);
 
   // Validate mode
@@ -219,9 +228,25 @@ async function main() {
   }
 
   // 1. Install skill + inject CLAUDE.md (driven by manifest)
-  console.log("[pneuma] Installing skill and preparing environment...");
   const modeSourceDir = resolve(PROJECT_ROOT, "modes", mode);
-  installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams);
+  const skillTarget = join(workspace, ".claude", "skills", manifest.skill.installName);
+  let skipSkillInstall = false;
+
+  if (existsSync(skillTarget)) {
+    const answer = await ask(
+      `[pneuma] Existing skills found at ${skillTarget}\n` +
+      `  Replace with latest version? [Y/n] `,
+    );
+    if (answer.toLowerCase() === "n") {
+      skipSkillInstall = true;
+      console.log("[pneuma] Keeping existing skills.");
+    }
+  }
+
+  if (!skipSkillInstall) {
+    console.log("[pneuma] Installing skill and preparing environment...");
+    installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams);
+  }
 
   // 1.5 Seed default content if workspace has no meaningful files
   if (manifest.init && manifest.init.contentCheckPattern) {
