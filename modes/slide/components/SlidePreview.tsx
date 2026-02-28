@@ -782,7 +782,7 @@ export default function SlidePreview({
                   goToSlide(i);
                   setIsGridView(false);
                 }}
-                className={`flex flex-col gap-2 p-2 rounded-lg transition-colors cursor-pointer text-left ${
+                className={`flex flex-col gap-2 p-2 rounded-lg transition-colors cursor-pointer text-left w-fit ${
                   i === activeSlideIndex
                     ? "bg-cc-primary/10 ring-2 ring-cc-primary"
                     : "hover:bg-cc-hover"
