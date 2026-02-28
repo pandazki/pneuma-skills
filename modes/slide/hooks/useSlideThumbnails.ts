@@ -12,7 +12,7 @@
  * while producing lightweight <img> thumbnails instead of N live iframes.
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { ViewerPreviewProps } from "../../../core/types/viewer-contract.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -96,6 +96,19 @@ function loadIframe(iframe: HTMLIFrameElement, srcdoc: string): Promise<void> {
   });
 }
 
+// ── URL resolution ───────────────────────────────────────────────────────────
+
+const TRANSPARENT_1PX =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+/** Resolve a resource URL relative to the server base URL */
+function resolveContentUrl(src: string, baseUrl: string): string {
+  if (src.startsWith("http://") || src.startsWith("https://")) return src;
+  if (src.startsWith("//")) return `https:${src}`;
+  if (src.startsWith("/")) return `${baseUrl}${src}`;
+  return `${baseUrl}/content/${src}`;
+}
+
 // ── CSS & DOM extraction ─────────────────────────────────────────────────────
 
 /** Extract all CSS rules from the iframe's loaded stylesheets */
@@ -107,39 +120,135 @@ function extractAllCSS(doc: Document): string {
         parts.push(rule.cssText);
       }
     } catch {
-      // Cross-origin stylesheet — cssRules access throws SecurityError.
-      // Try fetching the stylesheet content directly.
-      const href = (sheet.ownerNode as HTMLLinkElement)?.href;
-      if (href) {
-        // We can't await here, so skip. Cross-origin CSS without CORS
-        // headers is a known limitation of this capture approach.
-      }
+      // Cross-origin stylesheet — cssRules inaccessible (SecurityError).
     }
   }
   return parts.join("\n");
 }
 
-/** Inline all <img src="..."> as base64 data URLs */
+/** Inline all <img src> and inline-style background-image url() as base64 */
 async function inlineImages(
   container: Element,
   baseUrl: string,
 ): Promise<void> {
   const promises: Promise<void>[] = [];
+
+  // 1. Inline <img> elements
   for (const img of container.querySelectorAll("img[src]")) {
     const src = img.getAttribute("src")!;
     if (src.startsWith("data:")) continue;
-    const fullUrl = src.startsWith("http")
-      ? src
-      : `${baseUrl}/content/${src}`;
+    if (src.startsWith("blob:")) {
+      img.setAttribute("src", TRANSPARENT_1PX);
+      continue;
+    }
+    const fullUrl = resolveContentUrl(src, baseUrl);
     promises.push(
       fetch(fullUrl)
-        .then((r) => r.blob())
+        .then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.blob();
+        })
         .then((b) => blobToDataUrl(b))
         .then((dataUrl) => img.setAttribute("src", dataUrl))
-        .catch(() => {}),
+        .catch(() => {
+          img.setAttribute("src", TRANSPARENT_1PX);
+        }),
     );
   }
+
+  // 2. Inline background-image url() in inline styles
+  for (const el of container.querySelectorAll<HTMLElement>("*")) {
+    const style = el.getAttribute("style");
+    if (!style || !style.includes("url(")) continue;
+    const urlRe = /url\(['"]?(?!data:)(?!blob:)([^'")]+)['"]?\)/g;
+    const replacements: Promise<{ original: string; replacement: string }>[] =
+      [];
+    let match;
+    while ((match = urlRe.exec(style)) !== null) {
+      const originalMatch = match[0];
+      const src = match[1];
+      const fullUrl = resolveContentUrl(src, baseUrl);
+      replacements.push(
+        fetch(fullUrl)
+          .then((r) => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.blob();
+          })
+          .then((b) => blobToDataUrl(b))
+          .then((dataUrl) => ({
+            original: originalMatch,
+            replacement: `url('${dataUrl}')`,
+          }))
+          .catch(() => ({
+            original: originalMatch,
+            replacement: originalMatch,
+          })),
+      );
+    }
+    if (replacements.length > 0) {
+      promises.push(
+        Promise.all(replacements).then((reps) => {
+          let newStyle = style;
+          for (const { original, replacement } of reps) {
+            newStyle = newStyle.replace(original, replacement);
+          }
+          el.setAttribute("style", newStyle);
+        }),
+      );
+    }
+  }
+
   await Promise.all(promises);
+}
+
+/** Inline image url() references in CSS text (for extracted CSS rules) */
+async function inlineCSSImageUrls(
+  css: string,
+  baseUrl: string,
+): Promise<string> {
+  const IMAGE_EXTS = /\.(png|jpe?g|gif|webp|svg|avif|ico)(\?|#|$)/i;
+  const urlRe = /url\(['"]?(?!data:)(?!blob:)([^'")]+)['"]?\)/g;
+  const matches: { full: string; src: string }[] = [];
+  let match;
+  while ((match = urlRe.exec(css)) !== null) {
+    // Only inline image URLs (skip fonts, etc.)
+    if (IMAGE_EXTS.test(match[1])) {
+      matches.push({ full: match[0], src: match[1] });
+    }
+  }
+  if (matches.length === 0) return css;
+
+  // Deduplicate by src to avoid fetching the same image twice
+  const unique = new Map<string, string[]>();
+  for (const { full, src } of matches) {
+    if (!unique.has(src)) unique.set(src, []);
+    unique.get(src)!.push(full);
+  }
+
+  const replacements = await Promise.all(
+    Array.from(unique.entries()).map(async ([src, fulls]) => {
+      try {
+        const fullUrl = resolveContentUrl(src, baseUrl);
+        const r = await fetch(fullUrl);
+        if (!r.ok) return null;
+        const blob = await r.blob();
+        if (blob.size > 5 * 1024 * 1024) return null; // skip >5MB
+        const dataUrl = await blobToDataUrl(blob);
+        return { fulls, replacement: `url('${dataUrl}')` };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  let result = css;
+  for (const r of replacements) {
+    if (!r) continue;
+    for (const full of r.fulls) {
+      result = result.split(full).join(r.replacement);
+    }
+  }
+  return result;
 }
 
 /** Remove all <script> elements (scripts can't run in SVG img context) */
@@ -235,12 +344,17 @@ async function captureSlideToSvg(
   if (!iframeDoc) throw new Error("Cannot access capture iframe document");
 
   // Extract all CSS from the rendered page (includes Tailwind-generated rules etc.)
-  const css = extractAllCSS(iframeDoc);
+  const rawCSS = extractAllCSS(iframeDoc);
 
   // Clone body (preserving class, style, data-* attributes)
   const bodyClone = iframeDoc.body.cloneNode(true) as HTMLElement;
   removeScripts(bodyClone);
-  await inlineImages(bodyClone, baseUrl);
+
+  // Inline images in HTML and CSS (SVG foreignObject can't load external URLs)
+  const [, css] = await Promise.all([
+    inlineImages(bodyClone, baseUrl),
+    inlineCSSImageUrls(rawCSS, baseUrl),
+  ]);
 
   return buildSvgDataUrl(css, bodyClone, width, height);
 }
