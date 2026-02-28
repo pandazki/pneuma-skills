@@ -65,7 +65,17 @@ Defines CSS custom properties and base layout classes. All slides share this the
 
 Key custom properties: `--color-bg`, `--color-fg`, `--color-primary`, `--color-secondary`, `--color-accent`, `--color-muted`, `--color-surface`, `--color-border`, `--font-sans`, `--font-mono`, `--slide-padding`.
 
-Base layout classes: `.slide` (base container), `.slide-title` (centered title), `.slide-content` (top-aligned content), `.slide-split` (two-column), `.slide-image` (full-bleed).
+Base layout classes and **when to use each**:
+
+| Class | Vertical Alignment | When to Use |
+|---|---|---|
+| `.slide` | **Center** | Default for most slides. Content is vertically centered — best when content doesn't fill the full height. |
+| `.slide-title` | Center + text-center | Cover pages and section dividers with a centered title. |
+| `.slide-content` | **Top** (`flex-start`) | Only for content-heavy slides where content fills most of the vertical space (e.g., long lists, dense grids). Do NOT use as a generic "content slide" class. |
+| `.slide-split` | Center, horizontal | Two-column layouts with `gap: 48px`. |
+| `.slide-image` | Center, no padding | Full-bleed image or media slides. |
+
+**Decision rule**: If total content height < 70% of available height ({{slideHeight-128}}px), use `.slide` (centered). Only use `.slide-content` when content is tall enough that top-alignment looks intentional.
 
 ---
 
@@ -115,10 +125,14 @@ After all slides are generated:
 
 When the user asks to modify existing slides:
 
-1. **Read context**: The system provides which slide the user is viewing and what element they selected
-2. **Read the target file(s)**: Always read the current HTML before editing
-3. **Make focused edits**: Use the `Edit` tool for surgical changes, `Write` for full rewrites
-4. **One operation at a time**: Apply the change, let the user see the result in real-time
+1. **Determine scope first**: Decide whether the request targets a single slide or the entire deck
+   - **Deck-wide** if the request involves: style/theme changes, language translation, tone transformation, restructuring, or any request that logically applies to all slides (e.g. "make it tech-style", "translate to English", "change the color scheme")
+   - **Single slide** if the request references a specific slide by number/title, or describes a localized content change (e.g. "fix the typo on this slide", "add a chart here")
+   - When in doubt, prefer deck-wide — it's easier for the user to say "only this slide" than to re-request for every slide
+2. **Read context**: The system provides which slide the user is viewing and what element they selected
+3. **Read the target file(s)**: Always read the current HTML before editing. For deck-wide changes, read manifest.json first to get the full slide list, then read all slides
+4. **Make focused edits**: Use the `Edit` tool for surgical changes, `Write` for full rewrites
+5. **One operation at a time**: Apply the change, let the user see the result in real-time
 
 ---
 
