@@ -69,13 +69,28 @@ export function startServer(options: ServerOptions) {
     const W = (options.initParams?.slideWidth as number) || 1280;
     const H = (options.initParams?.slideHeight as number) || 720;
 
-    // 4. Read each slide HTML and build page sections
+    // 4. Read each slide HTML, extract <head> resources, and build page sections
+    const headResourceSet = new Set<string>();
     const slidePages = manifest.slides
       .map((slide, i) => {
         const slidePath = join(workspace, slide.file);
         let html = existsSync(slidePath) ? readFileSync(slidePath, "utf-8") : `<p>Missing: ${slide.file}</p>`;
-        // Strip full-document wrappers — slides may be saved as complete HTML docs
+        // Extract <head> resources before stripping full-document wrappers
         if (html.includes("<!DOCTYPE") || html.includes("<html")) {
+          const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+          if (headMatch) {
+            const headContent = headMatch[1];
+            // Extract <link>, <script>, and <style> tags (skip <meta>, <title>, <base>)
+            const resourceRe = /<(link\b[^>]*(?:\/>|>)|script\b[^>]*>[\s\S]*?<\/script>|style\b[^>]*>[\s\S]*?<\/style>)/gi;
+            let m;
+            while ((m = resourceRe.exec(headContent)) !== null) {
+              const tag = m[0].trim();
+              // Skip meta-like links (canonical, icon, etc.)
+              if (/<link\b/i.test(tag) && !/rel\s*=\s*["']stylesheet["']/i.test(tag) && !/\.css/i.test(tag)) continue;
+              headResourceSet.add(tag);
+            }
+          }
+          // Strip to body content
           const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
           if (bodyMatch) {
             html = bodyMatch[1].trim();
@@ -91,6 +106,7 @@ export function startServer(options: ServerOptions) {
         return `<div class="slide-page">${html}</div>`;
       })
       .join("\n");
+    const headResources = Array.from(headResourceSet).join("\n");
 
     // 5. Build complete HTML
     const exportHtml = `<!DOCTYPE html>
@@ -100,6 +116,7 @@ export function startServer(options: ServerOptions) {
 <meta name="viewport" content="width=${W}, initial-scale=1">
 <base href="/content/">
 <title>${manifest.title || "Slides"} — Export</title>
+${headResources}
 <style>
 ${themeCSS}
 
