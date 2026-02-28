@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.1] - 2026-02-28
+
+### Fixed
+- Slide navigator thumbnails not showing images — proper URL resolution and base64 inlining for SVG foreignObject (#10)
+- Grid view selected slide ring extending beyond thumbnail — removed redundant ring wrapper (#12)
+- Export page losing styles: preserves `<head>` resources, `<body>` attributes, and theme background colors (#15)
+- Export/print CJK text invisible — inject explicit CJK system fonts (PingFang SC, Noto Sans CJK SC, Microsoft YaHei) into `--font-sans` before `sans-serif`
+- Export print missing backgrounds — add `print-color-adjust: exact` and `break-inside: avoid` for slides
+
+### Changed
+- Slide skill font guidance: `style_reference.md` and `SKILL.md` now require CJK system fonts in `--font-sans`
+
 ## [1.4.0] - 2026-02-28
 
 ### Added
