@@ -202,7 +202,7 @@ function loadNavPosition(): NavigatorPosition {
     const v = localStorage.getItem(NAV_STORAGE_KEY);
     if (v === "left" || v === "bottom" || v === "hidden") return v;
   } catch {}
-  return "left";
+  return "bottom";
 }
 
 function saveNavPosition(pos: NavigatorPosition) {
@@ -367,9 +367,13 @@ export default function SlidePreview({
     [activeSlideIndex, goToSlide],
   );
 
-  // Keyboard navigation
+  // Keyboard navigation (skip when focus is inside editable elements)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) {
+        return;
+      }
       if (e.key === "ArrowLeft") {
         e.preventDefault();
         goToSlide(activeSlideIndex - 1);
