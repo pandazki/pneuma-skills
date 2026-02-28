@@ -7,26 +7,46 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const slideManifest: ModeManifest = {
   name: "slide",
-  version: "1.0.0",
+  version: "1.2.0",
   displayName: "Slide",
-  description: "Presentation editing with per-slide HTML files",
+  description: "Professional presentation creation and editing with per-slide HTML files",
 
   skill: {
     sourceDir: "skill",
     installName: "pneuma-slide",
     claudeMdSection: `## Pneuma Slide Mode
 
-You are running inside Pneuma Slide Mode. A user is viewing your slide edits live in a browser.
+You are a presentation expert running inside Pneuma Slide Mode. The user views your edits live in a browser.
 
-**Important**: When the user asks you to make changes, edit the HTML slide files directly using the Edit or Write tools. The user sees updates in real-time.
+### Architecture
+- \`slides/*.html\` — Individual HTML fragments per slide (no \`<html>\`/\`<body>\` tags)
+- \`manifest.json\` — Slide ordering and metadata (always update when adding/removing slides)
+- \`theme.css\` — Shared CSS theme via custom properties (\`--color-primary\`, \`--color-bg\`, etc.)
+- \`assets/\` — Images and media
+- Canvas: {{slideWidth}}×{{slideHeight}}px fixed viewport
 
-- Workspace contains individual HTML files per slide in \`slides/\` directory
-- A \`manifest.json\` tracks slide order and metadata
-- A \`theme.css\` provides shared styling via CSS custom properties
-- Slides render at {{slideWidth}}\u00d7{{slideHeight}}px viewport
-- Make focused, incremental edits
-- Always update manifest.json when adding or removing slides
-- Do not ask for confirmation on simple edits — just do them`,
+### Workflows
+- **New deck**: Create \`design_outline.md\` first → set up theme → generate slides in order
+- **Edit**: Read current HTML → make focused edits → user sees changes live
+- **Operations**: Add, remove, merge, split, reorder slides (always sync manifest.json)
+
+### Key Rules
+- Content must fit within {{slideWidth}}×{{slideHeight}}px — overflow is the #1 quality issue
+- No CSS animations (transition/animation/@keyframes forbidden)
+- Use theme.css custom properties for colors/fonts
+- Do not ask for confirmation on simple edits — just do them
+- Reference the skill's supporting docs for detailed design system and layout patterns
+{{#imageGenEnabled}}
+### AI Image Generation
+- AI image generation is available via the skill's \`scripts/generate_image.py\`
+- Use it to create contextual illustrations, diagrams, and visuals for slides
+- Always prefer CSS/SVG for geometric shapes and icons — use AI images for photos and complex illustrations
+- Place generated images in \`assets/\` and reference with \`<img src="assets/...">\`
+{{/imageGenEnabled}}`,
+    envMapping: {
+      OPENROUTER_API_KEY: "openrouterApiKey",
+      FAL_KEY: "falApiKey",
+    },
   },
 
   viewer: {
@@ -48,7 +68,7 @@ You are running inside Pneuma Slide Mode. A user is viewing your slide edits liv
   agent: {
     permissionMode: "bypassPermissions",
     greeting:
-      "The user just opened the Pneuma slide editor workspace. Briefly greet them and let them know you're ready to help create and edit presentation slides. Keep it to 1-2 sentences.",
+      "The user just opened the Pneuma slide editor. Greet them briefly (1-2 sentences) and let them know you can create full presentation decks from scratch (with design outlines and themed slides) or edit existing slides. Mention they can describe a topic to get started.",
   },
 
   init: {
@@ -62,7 +82,13 @@ You are running inside Pneuma Slide Mode. A user is viewing your slide edits liv
     params: [
       { name: "slideWidth", label: "Slide width", description: "pixels", type: "number", defaultValue: 1280 },
       { name: "slideHeight", label: "Slide height", description: "pixels", type: "number", defaultValue: 720 },
+      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for AI image generation, leave blank to skip", type: "string", defaultValue: "" },
+      { name: "falApiKey", label: "fal.ai API Key", description: "for AI image generation, leave blank to skip", type: "string", defaultValue: "" },
     ],
+    deriveParams: (params) => ({
+      ...params,
+      imageGenEnabled: (params.openrouterApiKey || params.falApiKey) ? "true" : "",
+    }),
   },
 };
 

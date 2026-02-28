@@ -31,12 +31,30 @@ function ensureGitignore(workspace: string): void {
   }
 }
 
-/** Replace all {{key}} placeholders in content with param values. */
+/**
+ * Replace template placeholders in content with param values.
+ *
+ * Supports two syntaxes:
+ * - Simple: `{{key}}` → replaced with value
+ * - Conditional: `{{#key}}...content...{{/key}}` → kept if value is truthy, removed otherwise
+ *
+ * Conditional blocks are processed first, then simple replacements run on remaining content.
+ */
 export function applyTemplateParams(
   content: string,
   params: Record<string, number | string>,
 ): string {
   let result = content;
+
+  // 1. Process conditional blocks: {{#key}}content{{/key}}
+  //    Truthy = defined AND non-empty string (after trim)
+  result = result.replace(/\{\{#(\w+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_match, key, inner) => {
+    const value = params[key];
+    const truthy = value !== undefined && String(value).trim() !== "";
+    return truthy ? inner : "";
+  });
+
+  // 2. Simple replacements: {{key}} → value
   for (const [key, value] of Object.entries(params)) {
     result = result.replaceAll(`{{${key}}}`, String(value));
   }
@@ -89,6 +107,20 @@ export function installSkill(
     // Apply template params to installed skill files
     if (params && Object.keys(params).length > 0) {
       applyTemplateToDir(skillTarget, params);
+    }
+    // Generate .env file from envMapping (only non-empty values)
+    if (skillConfig.envMapping && params) {
+      const envLines: string[] = [];
+      for (const [envVar, paramName] of Object.entries(skillConfig.envMapping)) {
+        const value = params[paramName];
+        if (value !== undefined && String(value).trim() !== "") {
+          envLines.push(`${envVar}=${value}`);
+        }
+      }
+      if (envLines.length > 0) {
+        writeFileSync(join(skillTarget, ".env"), envLines.join("\n") + "\n", "utf-8");
+        console.log(`[skill-installer] Generated .env with ${envLines.length} key(s)`);
+      }
     }
     console.log(`[skill-installer] Installed skill to ${skillTarget}`);
   } else {

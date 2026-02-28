@@ -25,6 +25,13 @@ export interface SkillConfig {
   installName: string;
   /** 注入 CLAUDE.md 的内容片段 (不含 marker 注释) */
   claudeMdSection: string;
+  /**
+   * 环境变量文件映射 — 安装 skill 时自动生成 .env 文件。
+   * key: 环境变量名 (e.g. "OPENROUTER_API_KEY")
+   * value: 对应的 init param 名 (e.g. "openrouterApiKey")
+   * 只有非空值的参数才会写入 .env。
+   */
+  envMapping?: Record<string, string>;
 }
 
 /** 内容查看器配置 — 描述 Mode 的文件监听和服务规则 */
@@ -77,6 +84,12 @@ export interface InitConfig {
    * 参数值通过 {{name}} 模板替换注入到 skill 文件和 seed 文件中。
    */
   params?: InitParam[];
+  /**
+   * 从用户提供的参数派生额外参数。
+   * 在交互式参数收集之后、模板替换之前调用。
+   * 用于计算条件变量 (e.g. imageGenEnabled) 等衍生值。
+   */
+  deriveParams?: (params: Record<string, number | string>) => Record<string, number | string>;
 }
 
 /** Mode 的完整声明式描述 */

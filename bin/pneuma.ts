@@ -212,6 +212,10 @@ async function main() {
       saveConfig(workspace, resolvedParams);
       console.log("[pneuma] Saved init params to .pneuma/config.json");
     }
+    // Compute derived params (e.g. imageGenEnabled from API keys)
+    if (manifest.init.deriveParams) {
+      resolvedParams = manifest.init.deriveParams(resolvedParams);
+    }
   }
 
   // 1. Install skill + inject CLAUDE.md (driven by manifest)
