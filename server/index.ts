@@ -44,27 +44,93 @@ export function startServer(options: ServerOptions) {
     return c.json({ initParams: options.initParams || {} });
   });
 
-  // ── Slide export: vertically stacked HTML for printing ────────────────
-  app.get("/export/slides", (c) => {
-    // 1. Read manifest.json
+  // ── Slide export: shared builder + routes ─────────────────────────────
+
+  const ASSET_MIME: Record<string, string> = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".svg": "image/svg+xml",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".ttf": "font/ttf",
+    ".otf": "font/otf",
+  };
+
+  /** Read a workspace-relative file and return as a data: URI, or null on failure. */
+  function readAsDataUri(ref: string): string | null {
+    let cleaned = ref.split("?")[0].split("#")[0];
+    if (cleaned.startsWith("/content/")) cleaned = cleaned.slice(9);
+    if (cleaned.startsWith("/")) return null;
+    const absPath = join(workspace, cleaned);
+    if (!absPath.startsWith(workspace) || !existsSync(absPath)) return null;
+    try {
+      const ext = extname(cleaned).toLowerCase();
+      const mime = ASSET_MIME[ext] || "application/octet-stream";
+      const data = readFileSync(absPath);
+      return `data:${mime};base64,${Buffer.from(data).toString("base64")}`;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Replace local asset references with inline data: URIs. */
+  function inlineAssets(html: string): string {
+    // Inline <link rel="stylesheet" href="..."> as <style> blocks
+    html = html.replace(/<link\b[^>]*rel\s*=\s*["']stylesheet["'][^>]*>/gi, (match) => {
+      const hrefMatch = match.match(/href\s*=\s*["']([^"']+)["']/i);
+      if (!hrefMatch) return match;
+      const ref = hrefMatch[1];
+      if (/^(https?:|data:|\/\/|#)/i.test(ref)) return match;
+      let cleaned = ref.split("?")[0].split("#")[0];
+      if (cleaned.startsWith("/content/")) cleaned = cleaned.slice(9);
+      if (cleaned.startsWith("/")) return match;
+      const absPath = join(workspace, cleaned);
+      if (!absPath.startsWith(workspace) || !existsSync(absPath)) return match;
+      try {
+        const css = readFileSync(absPath, "utf-8");
+        return `<style>/* inlined: ${cleaned} */\n${css}\n</style>`;
+      } catch {
+        return match;
+      }
+    });
+
+    // Inline src="..." attributes pointing to local files
+    html = html.replace(/(src\s*=\s*["'])([^"']+)(["'])/gi, (match, prefix, ref, suffix) => {
+      if (/^(https?:|data:|\/\/|#)/i.test(ref)) return match;
+      const dataUri = readAsDataUri(ref);
+      return dataUri ? `${prefix}${dataUri}${suffix}` : match;
+    });
+
+    // Inline url(...) in CSS pointing to local files
+    html = html.replace(/url\(\s*["']?([^"')]+?)["']?\s*\)/gi, (match, ref) => {
+      if (/^(https?:|data:|\/\/|#)/i.test(ref)) return match;
+      const dataUri = readAsDataUri(ref);
+      return dataUri ? `url("${dataUri}")` : match;
+    });
+
+    return html;
+  }
+
+  /** Build the full export HTML. When inline=true, assets are inlined and toolbar/base removed. */
+  function buildExportHtml(opts: { inline: boolean }): { html: string; title: string } | { error: string; status: number } {
     const manifestPath = join(workspace, "manifest.json");
     if (!existsSync(manifestPath)) {
-      return c.text("No manifest.json found in workspace", 404);
+      return { error: "No manifest.json found in workspace", status: 404 };
     }
     let manifest: { title: string; slides: { file: string; title: string }[] };
     try {
       manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
     } catch {
-      return c.text("Failed to parse manifest.json", 500);
+      return { error: "Failed to parse manifest.json", status: 500 };
     }
     if (!manifest.slides?.length) {
-      return c.text("No slides in manifest.json", 404);
+      return { error: "No slides in manifest.json", status: 404 };
     }
 
-    // 2. Read theme.css and patch font stacks for CJK print compatibility
-    //    Chrome's print renderer doesn't fall back -apple-system/BlinkMacSystemFont
-    //    to CJK system fonts (PingFang SC etc.), so CJK text disappears in print.
-    //    Fix: inject explicit CJK fonts before generic families in --font-sans.
+    // Read theme.css and patch font stacks for CJK print compatibility
     const themePath = join(workspace, "theme.css");
     let themeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
     const CJK_FONTS = '"PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei"';
@@ -73,34 +139,29 @@ export function startServer(options: ServerOptions) {
       `$1$2, ${CJK_FONTS}$3$4`,
     );
 
-    // 3. Slide dimensions from init params
     const W = (options.initParams?.slideWidth as number) || 1280;
     const H = (options.initParams?.slideHeight as number) || 720;
 
-    // 4. Read each slide HTML, extract <head> resources, and build page sections
+    // Read each slide HTML, extract <head> resources, and build page sections
     const headResourceSet = new Set<string>();
     const slidePages = manifest.slides
-      .map((slide, i) => {
+      .map((slide) => {
         const slidePath = join(workspace, slide.file);
         let html = existsSync(slidePath) ? readFileSync(slidePath, "utf-8") : `<p>Missing: ${slide.file}</p>`;
         let bodyStyle = "";
         let bodyClass = "";
-        // Extract <head> resources before stripping full-document wrappers
         if (html.includes("<!DOCTYPE") || html.includes("<html")) {
           const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
           if (headMatch) {
             const headContent = headMatch[1];
-            // Extract <link>, <script>, and <style> tags (skip <meta>, <title>, <base>)
             const resourceRe = /<(link\b[^>]*(?:\/>|>)|script\b[^>]*>[\s\S]*?<\/script>|style\b[^>]*>[\s\S]*?<\/style>)/gi;
             let m;
             while ((m = resourceRe.exec(headContent)) !== null) {
               const tag = m[0].trim();
-              // Skip meta-like links (canonical, icon, etc.)
               if (/<link\b/i.test(tag) && !/rel\s*=\s*["']stylesheet["']/i.test(tag) && !/\.css/i.test(tag)) continue;
               headResourceSet.add(tag);
             }
           }
-          // Extract body attributes (style, class) before stripping
           const bodyTagMatch = html.match(/<body([^>]*)>/i);
           if (bodyTagMatch) {
             const attrs = bodyTagMatch[1];
@@ -109,7 +170,6 @@ export function startServer(options: ServerOptions) {
             const classMatch = attrs.match(/class\s*=\s*["']([^"']*)["']/i);
             if (classMatch) bodyClass = classMatch[1];
           }
-          // Strip to body content
           const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
           if (bodyMatch) {
             html = bodyMatch[1].trim();
@@ -129,14 +189,42 @@ export function startServer(options: ServerOptions) {
       .join("\n");
     const headResources = Array.from(headResourceSet).join("\n");
 
-    // 5. Build complete HTML
-    const exportHtml = `<!DOCTYPE html>
+    const title = manifest.title || "Slides";
+    const baseTag = opts.inline ? "" : '\n<base href="/content/">';
+    const toolbarHtml = opts.inline
+      ? ""
+      : `\n<div class="export-toolbar">
+  <h1>${title}</h1>
+  <span class="meta">${manifest.slides.length} slides \u00b7 ${W}\u00d7${H}</span>
+  <div class="export-toolbar-actions">
+    <button onclick="downloadSlides()">Download HTML</button>
+    <button onclick="window.print()">Print / Save PDF</button>
+  </div>
+</div>`;
+
+    const downloadScript = opts.inline
+      ? ""
+      : `\n<script>
+function downloadSlides(){
+  var btn=event.target;btn.textContent="Preparing...";btn.disabled=true;
+  fetch("/export/slides/download").then(function(r){
+    if(!r.ok)throw new Error("HTTP "+r.status);return r.blob();
+  }).then(function(b){
+    var a=document.createElement("a");a.href=URL.createObjectURL(b);
+    a.download=document.title.replace(/\\s*\\u2014\\s*Export$/,"")+".html";
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  }).catch(function(e){alert("Download failed: "+e.message)})
+  .finally(function(){btn.textContent="Download HTML";btn.disabled=false});
+}
+<\/script>`;
+
+    let exportHtml = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=${W}, initial-scale=1">
-<base href="/content/">
-<title>${manifest.title || "Slides"} — Export</title>
+<meta name="viewport" content="width=${W}, initial-scale=1">${baseTag}
+<title>${title} \u2014 Export</title>
 ${headResources}
 <style>
 ${themeCSS}
@@ -155,13 +243,11 @@ ${themeCSS}
 html {
   margin: 0;
   padding: 0;
-  background: #1a1a1a;
 }
 
 body {
   margin: 0;
   padding: 0;
-  width: ${W}px;
 }
 
 .slide-page {
@@ -170,12 +256,24 @@ body {
   overflow: hidden;
   break-after: page;
   position: relative;
-  /* Use theme body background; fall back to white for themes without --color-bg */
   background: var(--color-bg, #fff);
 }
-
-/* Screen preview: centered with spacing and shadow */
+${opts.inline ? `
+/* Standalone: same preview chrome but no toolbar gap at top */
 @media screen {
+  html { background: #1a1a1a; }
+  body { padding: 0 0 40px 0; }
+  .slide-page {
+    margin: 20px auto;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    border-radius: 4px;
+  }
+  body { padding-top: 20px; }
+}
+` : `
+/* Screen preview: dark chrome with spacing and shadow */
+@media screen {
+  html { background: #1a1a1a; }
   body { padding: 0 0 40px 0; }
   .slide-page {
     margin: 20px auto;
@@ -205,6 +303,11 @@ body {
     font-size: 13px;
     color: #888;
   }
+  .export-toolbar-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
   .export-toolbar button {
     padding: 8px 16px;
     background: #d97757;
@@ -219,11 +322,10 @@ body {
     background: #c56645;
   }
 }
-
-/* Print: hide toolbar, preserve slide backgrounds */
+`}
+/* Print: set body width, preserve slide backgrounds */
 @media print {
-  html { background: white; }
-  body { padding: 0; }
+  body { padding: 0; width: ${W}px; }
   .export-toolbar { display: none; }
   .slide-page {
     margin: 0;
@@ -234,17 +336,35 @@ body {
 }
 </style>
 </head>
-<body>
-<div class="export-toolbar">
-  <h1>${manifest.title || "Slides"}</h1>
-  <span class="meta">${manifest.slides.length} slides · ${W}×${H}</span>
-  <button onclick="window.print()">Print / Save PDF</button>
-</div>
-${slidePages}
+<body>${toolbarHtml}
+${slidePages}${downloadScript}
 </body>
 </html>`;
 
-    return c.html(exportHtml);
+    if (opts.inline) {
+      exportHtml = inlineAssets(exportHtml);
+    }
+
+    return { html: exportHtml, title };
+  }
+
+  app.get("/export/slides", (c) => {
+    const result = buildExportHtml({ inline: false });
+    if ("error" in result) return c.text(result.error, result.status as any);
+    return c.html(result.html);
+  });
+
+  app.get("/export/slides/download", (c) => {
+    const result = buildExportHtml({ inline: true });
+    if ("error" in result) return c.text(result.error, result.status as any);
+    const safeFilename = result.title.replace(/[^\w\s.-]/g, "_") + ".html";
+    const utf8Filename = encodeURIComponent(result.title + ".html");
+    return new Response(result.html, {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${safeFilename}"; filename*=UTF-8''${utf8Filename}`,
+      },
+    });
   });
 
   app.get("/api/files", (c) => {
