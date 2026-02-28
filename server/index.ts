@@ -61,9 +61,17 @@ export function startServer(options: ServerOptions) {
       return c.text("No slides in manifest.json", 404);
     }
 
-    // 2. Read theme.css
+    // 2. Read theme.css and patch font stacks for CJK print compatibility
+    //    Chrome's print renderer doesn't fall back -apple-system/BlinkMacSystemFont
+    //    to CJK system fonts (PingFang SC etc.), so CJK text disappears in print.
+    //    Fix: inject explicit CJK fonts before generic families in --font-sans.
     const themePath = join(workspace, "theme.css");
-    const themeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
+    let themeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
+    const CJK_FONTS = '"PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei"';
+    themeCSS = themeCSS.replace(
+      /(--font-sans\s*:\s*)([^;]*?)(,\s*)(sans-serif\s*;)/,
+      `$1$2, ${CJK_FONTS}$3$4`,
+    );
 
     // 3. Slide dimensions from init params
     const W = (options.initParams?.slideWidth as number) || 1280;
@@ -138,7 +146,11 @@ ${themeCSS}
   margin: 0;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
 
 html {
   margin: 0;
@@ -208,14 +220,16 @@ body {
   }
 }
 
-/* Print: hide toolbar, clean background */
+/* Print: hide toolbar, preserve slide backgrounds */
 @media print {
-  body { background: white; padding: 0; }
+  html { background: white; }
+  body { padding: 0; }
   .export-toolbar { display: none; }
   .slide-page {
     margin: 0;
     box-shadow: none;
     border-radius: 0;
+    break-inside: avoid;
   }
 }
 </style>
