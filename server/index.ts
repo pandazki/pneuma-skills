@@ -18,6 +18,7 @@ export interface ServerOptions {
   distDir?: string; // Path to built frontend assets (production mode)
   watchPatterns?: string[]; // Glob patterns for content files (from ModeManifest.viewer)
   initParams?: Record<string, number | string>; // Mode init params (immutable per session)
+  externalMode?: { name: string; path: string; type: string }; // External mode info for frontend
 }
 
 export function startServer(options: ServerOptions) {
@@ -42,6 +43,19 @@ export function startServer(options: ServerOptions) {
   // Return mode init params for the frontend
   app.get("/api/config", (c) => {
     return c.json({ initParams: options.initParams || {} });
+  });
+
+  // Return external mode info for the frontend (needed for /@fs/ imports)
+  app.get("/api/mode-info", (c) => {
+    if (options.externalMode) {
+      return c.json({
+        external: true,
+        name: options.externalMode.name,
+        path: options.externalMode.path,
+        type: options.externalMode.type,
+      });
+    }
+    return c.json({ external: false });
   });
 
   // ── Slide export: shared builder + routes ─────────────────────────────

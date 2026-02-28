@@ -8,7 +8,7 @@ import ContextPanel from "./components/ContextPanel.js";
 import { useStore } from "./store.js";
 import type { SelectionType } from "./types.js";
 import { connect } from "./ws.js";
-import { loadMode } from "../core/mode-loader.js";
+import { loadMode, registerExternalMode } from "../core/mode-loader.js";
 import type { ViewerPreviewProps } from "../core/types/viewer-contract.js";
 
 const EditorPanel = lazy(() => import("./components/EditorPanel.js"));
@@ -117,14 +117,28 @@ export default function App() {
     const explicitSession = params.get("session");
     const modeName = params.get("mode") || "doc";
 
-    // Load mode dynamically via mode-loader
-    loadMode(modeName)
-      .then((def) => {
-        useStore.getState().setModeViewer(def.viewer);
-      })
-      .catch((err) => {
-        console.error(`[app] Failed to load mode "${modeName}":`, err);
-      });
+    // Check if this is an external mode — fetch mode info from server first
+    const loadModeAsync = async () => {
+      try {
+        const modeInfoRes = await fetch(`${getApiBase()}/api/mode-info`);
+        const modeInfo = await modeInfoRes.json();
+
+        if (modeInfo.external && modeInfo.name === modeName) {
+          // Register external mode so mode-loader knows where to import from
+          registerExternalMode(modeInfo.name, modeInfo.path);
+          console.log(`[app] Registered external mode "${modeInfo.name}" from ${modeInfo.path}`);
+        }
+      } catch {
+        // Server not available yet or no external mode — continue with builtin
+      }
+
+      const def = await loadMode(modeName);
+      useStore.getState().setModeViewer(def.viewer);
+    };
+
+    loadModeAsync().catch((err) => {
+      console.error(`[app] Failed to load mode "${modeName}":`, err);
+    });
 
     // Connect to session
     if (explicitSession) {
