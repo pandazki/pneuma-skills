@@ -73,7 +73,21 @@ export function startServer(options: ServerOptions) {
     const slidePages = manifest.slides
       .map((slide, i) => {
         const slidePath = join(workspace, slide.file);
-        const html = existsSync(slidePath) ? readFileSync(slidePath, "utf-8") : `<p>Missing: ${slide.file}</p>`;
+        let html = existsSync(slidePath) ? readFileSync(slidePath, "utf-8") : `<p>Missing: ${slide.file}</p>`;
+        // Strip full-document wrappers — slides may be saved as complete HTML docs
+        if (html.includes("<!DOCTYPE") || html.includes("<html")) {
+          const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+          if (bodyMatch) {
+            html = bodyMatch[1].trim();
+          } else {
+            html = html
+              .replace(/<!DOCTYPE[^>]*>/gi, "")
+              .replace(/<\/?html[^>]*>/gi, "")
+              .replace(/<head[\s\S]*?<\/head>/gi, "")
+              .replace(/<\/?body[^>]*>/gi, "")
+              .trim();
+          }
+        }
         return `<div class="slide-page">${html}</div>`;
       })
       .join("\n");

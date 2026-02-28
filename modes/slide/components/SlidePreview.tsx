@@ -73,6 +73,29 @@ function findSlideContent(
   return file?.content || "";
 }
 
+/**
+ * Strip full-document HTML wrappers from a slide, keeping only the body content.
+ * Some slides may be saved as complete HTML documents (<!DOCTYPE>, <html>, <head>, <body>)
+ * instead of fragments. We need to extract just the body content so our srcdoc
+ * template's theme CSS and sizing constraints apply correctly.
+ */
+function stripHtmlWrapper(html: string): string {
+  // If it doesn't look like a full document, return as-is
+  if (!html.includes("<!DOCTYPE") && !html.includes("<html")) return html;
+
+  // Extract body content
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch) return bodyMatch[1].trim();
+
+  // Fallback: strip known tags
+  return html
+    .replace(/<!DOCTYPE[^>]*>/gi, "")
+    .replace(/<\/?html[^>]*>/gi, "")
+    .replace(/<head[\s\S]*?<\/head>/gi, "")
+    .replace(/<\/?body[^>]*>/gi, "")
+    .trim();
+}
+
 /** Build a full HTML document for the iframe srcdoc */
 function buildSrcdoc(
   slideHtml: string,
@@ -164,7 +187,7 @@ html, body {
 </style>
 </head>
 <body>
-${slideHtml}
+${stripHtmlWrapper(slideHtml)}
 ${selectionScript}
 </body>
 </html>`;
@@ -191,7 +214,7 @@ html, body {
 </style>
 </head>
 <body>
-${slideHtml}
+${stripHtmlWrapper(slideHtml)}
 </body>
 </html>`;
 }
