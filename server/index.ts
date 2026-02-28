@@ -140,10 +140,15 @@ ${themeCSS}
 
 * { box-sizing: border-box; }
 
-html, body {
+html {
   margin: 0;
   padding: 0;
   background: #1a1a1a;
+}
+
+body {
+  margin: 0;
+  padding: 0;
   width: ${W}px;
 }
 
@@ -153,6 +158,8 @@ html, body {
   overflow: hidden;
   break-after: page;
   position: relative;
+  /* Use theme body background; fall back to white for themes without --color-bg */
+  background: var(--color-bg, #fff);
 }
 
 /* Screen preview: centered with spacing and shadow */
