@@ -202,7 +202,7 @@ function loadNavPosition(): NavigatorPosition {
     const v = localStorage.getItem(NAV_STORAGE_KEY);
     if (v === "left" || v === "bottom" || v === "hidden") return v;
   } catch {}
-  return "left";
+  return "bottom";
 }
 
 function saveNavPosition(pos: NavigatorPosition) {
