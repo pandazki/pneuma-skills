@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] - 2026-02-28
+
+### Added
+- Element thumbnail capture: selected elements shown as SVG snapshots in ChatInput chip and SelectionCard
+- CSS selector displayed in selection UI labels (replaces `<tag.class>` format)
+- SVG icons directly selectable (added to semantic element list)
+
+### Changed
+- Simplified context sent to Claude Code: just `[User selected: <css-selector>]` instead of verbose 4-line format
+- Selection bubble-up threshold lowered from 150×80 to 40×40 for better small element selection
+
+### Fixed
+- Clicking X on selection chip now clears highlight in viewer iframe (#13)
+- `selector` field properly passed through full chain (iframe → store → extractContext)
+- Selection with CSS selector but empty text content no longer silently dropped
+
 ## [1.3.2] - 2026-02-28
 
 ### Fixed
