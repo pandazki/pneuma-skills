@@ -6,7 +6,7 @@ Pneuma Skills is an extensible delivery platform for filesystem-based Agent capa
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 1.3.0
+**Version:** 1.3.1
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Available Modes:** `doc` (markdown editing), `slide` (presentation editing)
 
@@ -150,6 +150,19 @@ On startup, skills are copied from `modes/<mode>/skill/` to `<workspace>/.claude
 - **No hardcoded mode knowledge** in server or CLI — everything driven by ModeManifest
 - Frontend state via **Zustand** (single store in `src/store.ts`)
 - Mode-specific React components live in `modes/<mode>/components/`
+
+## Version Bump Checklist
+
+When bumping the version, **all** of the following must be updated in the same commit:
+
+1. `package.json` — `"version"` field
+2. `CLAUDE.md` — `**Version:**` line near the top
+3. `CHANGELOG.md` — add new version section with date and changes
+
+Follow [semver](https://semver.org/):
+- **patch** (1.3.x): bug fixes, minor UI tweaks
+- **minor** (1.x.0): new features, non-breaking behavioral changes
+- **major** (x.0.0): breaking changes to contracts or CLI interface
 
 ## Known Gotchas
 
