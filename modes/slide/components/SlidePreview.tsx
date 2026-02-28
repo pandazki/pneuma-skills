@@ -172,10 +172,13 @@ ${selectionScript}
 
 /** Build a thumbnail-safe srcdoc (no scripts, no interactivity) */
 function buildThumbnailSrcdoc(slideHtml: string, themeCSS: string): string {
+  const baseUrl = import.meta.env.DEV ? "http://localhost:17007" : "";
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<base href="${baseUrl}/content/">
 <style>${themeCSS}</style>
 <style>
 html, body {
