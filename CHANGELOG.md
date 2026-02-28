@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2026-02-28
+
+### Added
+- Self-contained HTML download for slide export — "Download HTML" button inlines all local assets (images, CSS, fonts) as base64 data URIs for fully offline viewing
+
+### Fixed
+- Export page slides not centered in viewport — body width moved to `@media print` only
+- Export download failing with non-ASCII titles — RFC 5987 Content-Disposition encoding
+
 ## [1.4.1] - 2026-02-28
 
 ### Fixed
