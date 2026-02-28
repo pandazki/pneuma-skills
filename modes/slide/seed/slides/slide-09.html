@@ -1,0 +1,52 @@
+<div class="slide slide-split" style="gap: 48px;">
+  <div style="flex: 1;">
+    <span class="tag" style="margin-bottom: 16px; display: inline-block;">智能排版</span>
+    <h1 style="font-size: 2.2rem;">内容永远<br><span class="text-primary">恰到好处</span></h1>
+    <p style="margin-top: 12px; margin-bottom: 20px;">
+      固定 1280×720 画布意味着内容溢出是最大的敌人。AI 内置精确的高度计算规则和 15% 安全边距，确保每一页都完美呈现。
+    </p>
+    <div style="display: flex; gap: 12px;">
+      <div style="flex: 1; padding: 14px; background: var(--color-surface); border-radius: 10px; border: 1px solid var(--color-border); text-align: center;">
+        <div style="font-size: 1.5rem; font-weight: 700; color: var(--color-primary);">1280</div>
+        <div style="font-size: 0.78rem; color: var(--color-muted);">× 720 px</div>
+        <div style="font-size: 0.78rem; color: var(--color-muted); margin-top: 2px;">固定画布</div>
+      </div>
+      <div style="flex: 1; padding: 14px; background: var(--color-surface); border-radius: 10px; border: 1px solid var(--color-border); text-align: center;">
+        <div style="font-size: 1.5rem; font-weight: 700; color: var(--color-accent);">64px</div>
+        <div style="font-size: 0.78rem; color: var(--color-muted);">四边内距</div>
+        <div style="font-size: 0.78rem; color: var(--color-muted); margin-top: 2px;">安全区域</div>
+      </div>
+      <div style="flex: 1; padding: 14px; background: var(--color-surface); border-radius: 10px; border: 1px solid var(--color-border); text-align: center;">
+        <div style="font-size: 1.5rem; font-weight: 700; color: #6B8E6B;">15%</div>
+        <div style="font-size: 0.78rem; color: var(--color-muted);">垂直缓冲</div>
+        <div style="font-size: 0.78rem; color: var(--color-muted); margin-top: 2px;">安全边距</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Canvas diagram -->
+  <div style="flex: 1; display: flex; align-items: center; justify-content: center;">
+    <div style="position: relative; width: 320px; height: 180px;">
+      <!-- Outer frame (total canvas) -->
+      <div style="position: absolute; inset: 0; border: 2px solid var(--color-border); border-radius: 8px; background: var(--color-surface);">
+        <div style="position: absolute; top: -10px; left: 12px; font-size: 0.65rem; color: var(--color-muted); background: var(--color-bg); padding: 0 4px;">1280 × 720</div>
+      </div>
+      <!-- Padding area -->
+      <div style="position: absolute; top: 16px; left: 16px; right: 16px; bottom: 16px; border: 1px dashed var(--color-primary); border-radius: 4px; opacity: 0.5;">
+        <div style="position: absolute; top: -8px; left: 8px; font-size: 0.6rem; color: var(--color-primary); background: var(--color-surface); padding: 0 4px;">64px padding</div>
+      </div>
+      <!-- Content area -->
+      <div style="position: absolute; top: 28px; left: 28px; right: 28px; bottom: 28px; background: rgba(212, 99, 42, 0.06); border-radius: 4px; display: flex; flex-direction: column; padding: 12px; gap: 6px;">
+        <div style="width: 60%; height: 8px; border-radius: 3px; background: var(--color-primary); opacity: 0.3;"></div>
+        <div style="width: 90%; height: 5px; border-radius: 3px; background: var(--color-border);"></div>
+        <div style="width: 80%; height: 5px; border-radius: 3px; background: var(--color-border);"></div>
+        <div style="width: 85%; height: 5px; border-radius: 3px; background: var(--color-border);"></div>
+        <div style="flex: 1;"></div>
+        <!-- Safety margin indicator -->
+        <div style="border-top: 1px dashed #6B8E6B; padding-top: 4px;">
+          <div style="font-size: 0.55rem; color: #6B8E6B; text-align: center;">↑ 15% 安全边距 ↑</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

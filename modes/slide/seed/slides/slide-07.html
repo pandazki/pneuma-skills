@@ -1,0 +1,60 @@
+<div class="slide">
+  <span class="tag" style="margin-bottom: 16px; align-self: flex-start;">设计系统</span>
+  <h1 style="font-size: 2.2rem;">主题优先，<span class="text-primary">全局一致</span></h1>
+  <p style="max-width: 700px; margin-bottom: 24px;">
+    一个 <code>theme.css</code> 文件掌控整套演示的视觉语言。通过 CSS 自定义属性定义配色、字体和间距，所有幻灯片自动保持一致。
+  </p>
+
+  <div style="display: flex; gap: 20px;">
+    <!-- Code preview -->
+    <div style="flex: 1;">
+      <pre style="font-size: 0.82rem; line-height: 1.7; margin: 0;"><code><span style="color: var(--color-muted);">/* theme.css */</span>
+<span style="color: var(--color-secondary);">:root</span> {
+  <span style="color: var(--color-primary);">--color-bg</span>: #FAF7F2;
+  <span style="color: var(--color-primary);">--color-fg</span>: #2D2A26;
+  <span style="color: var(--color-primary);">--color-primary</span>: #D4632A;
+  <span style="color: var(--color-primary);">--color-accent</span>: #C4963A;
+  <span style="color: var(--color-primary);">--font-sans</span>: "Inter"...;
+}</code></pre>
+    </div>
+
+    <!-- Color swatches -->
+    <div style="flex: 0.8; display: flex; flex-direction: column; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="width: 36px; height: 36px; border-radius: 8px; background: #FAF7F2; border: 1px solid var(--color-border); flex-shrink: 0;"></div>
+        <div>
+          <div style="font-size: 0.85rem; font-weight: 600;">Background</div>
+          <div style="font-size: 0.75rem; color: var(--color-muted); font-family: var(--font-mono);">#FAF7F2</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="width: 36px; height: 36px; border-radius: 8px; background: #2D2A26; flex-shrink: 0;"></div>
+        <div>
+          <div style="font-size: 0.85rem; font-weight: 600;">Foreground</div>
+          <div style="font-size: 0.75rem; color: var(--color-muted); font-family: var(--font-mono);">#2D2A26</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="width: 36px; height: 36px; border-radius: 8px; background: #D4632A; flex-shrink: 0;"></div>
+        <div>
+          <div style="font-size: 0.85rem; font-weight: 600;">Primary</div>
+          <div style="font-size: 0.75rem; color: var(--color-muted); font-family: var(--font-mono);">#D4632A</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="width: 36px; height: 36px; border-radius: 8px; background: #C4963A; flex-shrink: 0;"></div>
+        <div>
+          <div style="font-size: 0.85rem; font-weight: 600;">Accent</div>
+          <div style="font-size: 0.75rem; color: var(--color-muted); font-family: var(--font-mono);">#C4963A</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="width: 36px; height: 36px; border-radius: 8px; background: #F0EBE3; border: 1px solid var(--color-border); flex-shrink: 0;"></div>
+        <div>
+          <div style="font-size: 0.85rem; font-weight: 600;">Surface</div>
+          <div style="font-size: 0.75rem; color: var(--color-muted); font-family: var(--font-mono);">#F0EBE3</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

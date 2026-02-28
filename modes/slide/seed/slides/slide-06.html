@@ -1,0 +1,64 @@
+<div class="slide">
+  <span class="tag" style="margin-bottom: 16px; align-self: flex-start;">AI 配图</span>
+  <h1 style="font-size: 2.2rem;">AI 生成<span class="text-primary">上下文插图</span></h1>
+  <p style="max-width: 720px; margin-bottom: 24px;">
+    内置图片生成脚本，基于 Gemini 3 Pro Image，根据幻灯片内容自动生成风格一致的插图。
+  </p>
+
+  <div style="display: flex; gap: 20px;">
+    <!-- Process flow -->
+    <div style="flex: 1.2; display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--color-surface); border-radius: 10px; border: 1px solid var(--color-border);">
+        <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(212, 99, 42, 0.12); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4632A" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+        <div>
+          <div style="font-size: 0.85rem; font-weight: 600;">分析上下文</div>
+          <div style="font-size: 0.78rem; color: var(--color-muted);">读取幻灯片内容和设计风格</div>
+        </div>
+      </div>
+
+      <div style="margin-left: 16px; height: 12px; border-left: 2px dashed var(--color-border);"></div>
+
+      <div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--color-surface); border-radius: 10px; border: 1px solid var(--color-border);">
+        <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(196, 150, 58, 0.12); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C4963A" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        </div>
+        <div>
+          <div style="font-size: 0.85rem; font-weight: 600;">构造 Prompt</div>
+          <div style="font-size: 0.78rem; color: var(--color-muted);">描述风格、构图、色调、尺寸</div>
+        </div>
+      </div>
+
+      <div style="margin-left: 16px; height: 12px; border-left: 2px dashed var(--color-border);"></div>
+
+      <div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--color-surface); border-radius: 10px; border: 1px solid var(--color-border);">
+        <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(107, 142, 107, 0.12); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B8E6B" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        </div>
+        <div>
+          <div style="font-size: 0.85rem; font-weight: 600;">生成并嵌入</div>
+          <div style="font-size: 0.78rem; color: var(--color-muted);">输出到 assets/，自动集成到页面</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Image showcase -->
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 12px;">
+      <div style="flex: 1; background: linear-gradient(135deg, #E8D5C4, #F0E6D8, #D4A574); border-radius: 12px; display: flex; align-items: center; justify-content: center; min-height: 120px; position: relative; overflow: hidden;">
+        <svg style="opacity: 0.3;" width="120" height="80" viewBox="0 0 120 80">
+          <path d="M10 70 Q30 20 60 40 Q90 60 110 25" stroke="#8B6914" stroke-width="2" fill="none"/>
+          <circle cx="30" cy="30" r="12" fill="#C4963A" opacity="0.4"/>
+          <circle cx="85" cy="50" r="8" fill="#D4632A" opacity="0.3"/>
+        </svg>
+        <div style="position: absolute; bottom: 8px; right: 12px; font-size: 0.7rem; color: rgba(100,70,30,0.5); font-weight: 500;">AI Generated</div>
+      </div>
+      <div style="padding: 12px 16px; background: var(--color-surface); border-radius: 10px; border: 1px solid var(--color-border);">
+        <div style="font-size: 0.78rem; color: var(--color-muted); font-family: var(--font-mono);">
+          <span style="color: var(--color-primary);">$</span> generate_image.py "warm abstract..." <br>
+          <span style="color: var(--color-secondary);">→</span> assets/hero-illustration.png
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

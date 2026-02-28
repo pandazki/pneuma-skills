@@ -1,0 +1,50 @@
+<div class="slide slide-split" style="gap: 56px;">
+  <div style="flex: 1;">
+    <span class="tag" style="margin-bottom: 16px; display: inline-block;">精准编辑</span>
+    <h1 style="font-size: 2.2rem;">点击选择，<br><span class="text-primary">精确修改</span></h1>
+    <p style="margin-top: 12px; margin-bottom: 20px;">
+      在预览中切换到 Select 模式，点击任意元素——标题、段落、图片、列表——AI 会自动获取上下文，理解你指的是哪个元素。
+    </p>
+    <div class="card" style="padding: 16px 20px;">
+      <div style="font-size: 0.85rem; color: var(--color-muted); margin-bottom: 8px; font-family: var(--font-mono);">Context</div>
+      <div style="font-size: 0.9rem; color: var(--color-fg); font-family: var(--font-mono); line-height: 1.6;">
+        <span style="color: var(--color-secondary);">[viewing:</span> slide-03.html<span style="color: var(--color-secondary);">]</span><br>
+        <span style="color: var(--color-secondary);">[selected:</span> <span style="color: var(--color-primary);">heading</span> "实时预览"<span style="color: var(--color-secondary);">]</span>
+      </div>
+    </div>
+    <p style="font-size: 0.95rem; margin-top: 12px;">
+      然后说"把这个标题改成红色"——AI 精确定位并修改。
+    </p>
+  </div>
+
+  <!-- Select mode mockup -->
+  <div style="flex: 1; position: relative;">
+    <div style="background: var(--color-surface); border-radius: 14px; border: 1px solid var(--color-border); padding: 20px;">
+      <!-- Toolbar -->
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--color-border);">
+        <div style="padding: 4px 10px; border-radius: 6px; background: var(--color-bg); font-size: 0.75rem; color: var(--color-muted);">View</div>
+        <div style="padding: 4px 10px; border-radius: 6px; background: var(--color-primary); font-size: 0.75rem; color: white; font-weight: 600;">Select</div>
+        <div style="margin-left: auto; font-size: 0.75rem; color: var(--color-muted);">3/11</div>
+      </div>
+      <!-- Slide content mockup -->
+      <div style="background: var(--color-bg); border-radius: 8px; padding: 24px; min-height: 200px;">
+        <div style="width: 80px; height: 6px; border-radius: 3px; background: var(--color-border); margin-bottom: 12px;"></div>
+        <!-- Selected heading with blue outline -->
+        <div style="border: 2px solid #3B82F6; border-radius: 6px; padding: 6px 10px; margin-bottom: 12px; position: relative;">
+          <div style="width: 140px; height: 10px; border-radius: 4px; background: var(--color-fg); opacity: 0.7;"></div>
+          <!-- Selection indicator -->
+          <div style="position: absolute; top: -8px; right: -8px; width: 16px; height: 16px; border-radius: 50%; background: #3B82F6; display: flex; align-items: center; justify-content: center;">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="white"><path d="M20 6L9 17l-5-5"/></svg>
+          </div>
+        </div>
+        <div style="width: 200px; height: 5px; border-radius: 3px; background: var(--color-border); margin-bottom: 8px;"></div>
+        <div style="width: 170px; height: 5px; border-radius: 3px; background: var(--color-border); margin-bottom: 8px;"></div>
+        <div style="width: 190px; height: 5px; border-radius: 3px; background: var(--color-border);"></div>
+      </div>
+    </div>
+    <!-- Cursor icon -->
+    <svg style="position: absolute; bottom: 60px; right: 40px; opacity: 0.6;" width="28" height="28" viewBox="0 0 24 24" fill="var(--color-primary)" stroke="var(--color-primary)" stroke-width="0.5">
+      <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/>
+    </svg>
+  </div>
+</div>

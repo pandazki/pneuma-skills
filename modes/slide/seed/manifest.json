@@ -1,7 +1,16 @@
 {
-  "title": "My Presentation",
+  "title": "Pneuma Slide — Welcome",
   "slides": [
-    { "file": "slides/slide-01.html", "title": "Title Slide" },
-    { "file": "slides/slide-02.html", "title": "Key Points" }
+    { "file": "slides/slide-01.html", "title": "Pneuma Slide" },
+    { "file": "slides/slide-02.html", "title": "这不只是一个工具" },
+    { "file": "slides/slide-03.html", "title": "实时预览 WYSIWYG" },
+    { "file": "slides/slide-04.html", "title": "对话式创作" },
+    { "file": "slides/slide-05.html", "title": "点击选择，精确修改" },
+    { "file": "slides/slide-06.html", "title": "AI 生成配图" },
+    { "file": "slides/slide-07.html", "title": "主题设计系统" },
+    { "file": "slides/slide-08.html", "title": "全能工具箱" },
+    { "file": "slides/slide-09.html", "title": "智能排版引擎" },
+    { "file": "slides/slide-10.html", "title": "展示与导出" },
+    { "file": "slides/slide-11.html", "title": "开始你的创作" }
   ]
 }

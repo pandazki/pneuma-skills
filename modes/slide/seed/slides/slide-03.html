@@ -1,0 +1,44 @@
+<div class="slide slide-split" style="gap: 56px;">
+  <div style="flex: 1;">
+    <span class="tag" style="margin-bottom: 16px; display: inline-block;">核心体验</span>
+    <h1 style="font-size: 2.2rem;">实时预览，<br><span class="text-primary">所见即所得</span></h1>
+    <p style="margin-top: 12px; margin-bottom: 20px;">
+      你看到的就是最终效果。每一次文件修改都通过 WebSocket 实时推送到浏览器，iframe 沙箱立即渲染更新。
+    </p>
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 6px; height: 6px; border-radius: 50%; background: var(--color-primary); flex-shrink: 0;"></div>
+        <span style="font-size: 1rem; color: var(--color-fg);">文件监听 → WebSocket 推送 → 即时渲染</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 6px; height: 6px; border-radius: 50%; background: var(--color-accent); flex-shrink: 0;"></div>
+        <span style="font-size: 1rem; color: var(--color-fg);">1280×720 固定画布，精确像素控制</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 6px; height: 6px; border-radius: 50%; background: #6B8E6B; flex-shrink: 0;"></div>
+        <span style="font-size: 1rem; color: var(--color-fg);">30%–200% 缩放，全屏演示模式</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex: 1; background: var(--color-surface); border-radius: 14px; border: 1px solid var(--color-border); padding: 24px; position: relative;">
+    <!-- Mini preview mockup -->
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+      <div style="width: 10px; height: 10px; border-radius: 50%; background: #E5796A;"></div>
+      <div style="width: 10px; height: 10px; border-radius: 50%; background: #E5C46A;"></div>
+      <div style="width: 10px; height: 10px; border-radius: 50%; background: #7BBF7B;"></div>
+      <span style="margin-left: auto; font-size: 0.75rem; color: var(--color-muted);">Live Preview</span>
+    </div>
+    <div style="background: var(--color-bg); border-radius: 8px; border: 1px solid var(--color-border); height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+      <div style="width: 120px; height: 8px; border-radius: 4px; background: var(--color-primary); opacity: 0.6;"></div>
+      <div style="width: 200px; height: 6px; border-radius: 3px; background: var(--color-border);"></div>
+      <div style="width: 160px; height: 6px; border-radius: 3px; background: var(--color-border);"></div>
+      <div style="display: flex; gap: 12px; margin-top: 12px;">
+        <div style="width: 60px; height: 40px; border-radius: 6px; background: var(--color-surface-alt);"></div>
+        <div style="width: 60px; height: 40px; border-radius: 6px; background: var(--color-surface-alt);"></div>
+        <div style="width: 60px; height: 40px; border-radius: 6px; background: var(--color-surface-alt);"></div>
+      </div>
+    </div>
+    <div style="position: absolute; bottom: 16px; right: 20px; font-size: 0.75rem; color: var(--color-primary); font-weight: 500;">WYSIWYG</div>
+  </div>
+</div>
