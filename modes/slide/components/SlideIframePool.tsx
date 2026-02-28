@@ -43,6 +43,8 @@ interface SlideIframePoolProps {
     files: ViewerPreviewProps["files"],
     slidePath: string,
   ) => string;
+  /** CSS selector to highlight in the active iframe (for navigating to historical selections) */
+  highlightSelector?: string | null;
 }
 
 export default function SlideIframePool({
@@ -55,6 +57,7 @@ export default function SlideIframePool({
   onSelect,
   buildSrcdoc,
   findSlideContent,
+  highlightSelector,
 }: SlideIframePoolProps) {
   // Set of slide.file keys currently in the pool
   const [pool, setPool] = useState<Set<string>>(() => {
@@ -157,6 +160,27 @@ export default function SlideIframePool({
     [isSelectMode],
   );
 
+  // ── Send highlight / clear highlight to active iframe ─────────────────────
+  useEffect(() => {
+    const activeFile = slides[activeIndex]?.file;
+    if (!activeFile) return;
+    const iframe = iframeRefs.current.get(activeFile);
+    if (!iframe) return;
+    try {
+      if (highlightSelector) {
+        iframe.contentWindow?.postMessage(
+          { type: "pneuma:highlight", selector: highlightSelector },
+          "*",
+        );
+      } else {
+        iframe.contentWindow?.postMessage(
+          { type: "pneuma:clearHighlight" },
+          "*",
+        );
+      }
+    } catch {}
+  }, [highlightSelector, activeIndex, slides]);
+
   // ── Reload on imageVersion change ─────────────────────────────────────────
   useEffect(() => {
     if (imageVersion !== prevImageVersion.current) {
@@ -219,6 +243,10 @@ export default function SlideIframePool({
         content: sel.content,
         level: sel.level,
         file: currentSlide?.file,
+        tag: sel.tag,
+        classes: sel.classes,
+        selector: sel.selector,
+        thumbnail: sel.thumbnail,
       });
     };
     window.addEventListener("message", handleMessage);

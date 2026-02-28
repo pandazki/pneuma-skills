@@ -20,6 +20,14 @@ export interface ViewerSelectionContext {
   content: string;
   file?: string;
   level?: number;
+  /** HTML tag name (e.g. "div", "section", "h2") */
+  tag?: string;
+  /** CSS class list (e.g. "card bg-white rounded-lg") */
+  classes?: string;
+  /** Unique CSS selector path (e.g. "section.hero > div.card:nth-child(2)") */
+  selector?: string;
+  /** SVG data URL thumbnail of the selected element (null if capture failed or element too large) */
+  thumbnail?: string;
 }
 
 /** 预览组件的 Props */

@@ -54,11 +54,17 @@ const slideMode: ModeDefinition = {
       }
 
       // Include element selection (skip for "viewing" pseudo-selection)
-      if (selection && selection.type !== "viewing" && selection.content) {
-        const desc = selection.level
-          ? `${selection.type} (level ${selection.level})`
-          : selection.type;
-        parts.push(`[User selected: ${desc} "${selection.content}"]`);
+      if (selection && selection.type !== "viewing" && (selection.selector || selection.content)) {
+        if (selection.selector) {
+          // Concise format — Claude Code reads the HTML file anyway
+          parts.push(`[User selected: ${selection.selector}]`);
+        } else {
+          // Fallback for old selections without selector
+          const desc = selection.level
+            ? `${selection.type} (level ${selection.level})`
+            : selection.type;
+          parts.push(`[User selected: ${desc} "${selection.content}"]`);
+        }
       }
 
       return parts.join("\n");
