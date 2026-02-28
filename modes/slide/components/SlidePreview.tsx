@@ -27,6 +27,8 @@ import type {
   ViewerSelectionContext,
 } from "../../../core/types/viewer-contract.js";
 import { useStore } from "../../../src/store.js";
+import { useSlideThumbnails } from "../hooks/useSlideThumbnails.js";
+import SlideIframePool from "./SlideIframePool.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -96,27 +98,41 @@ function stripHtmlWrapper(html: string): string {
     .trim();
 }
 
-/** Build a full HTML document for the iframe srcdoc */
-function buildSrcdoc(
-  slideHtml: string,
-  themeCSS: string,
-  isSelectMode: boolean,
-): string {
-  const selectionScript = isSelectMode
-    ? `<script>
+/**
+ * Selection-mode script injected into every slide iframe.
+ * Starts dormant — parent controls activation via postMessage:
+ *   { type: 'pneuma:selectMode', enabled: true/false }
+ */
+const SELECTION_SCRIPT = `<script>
 (function() {
-  let hovered = null;
-  const OUTLINE = '2px solid rgba(110, 168, 254, 0.6)';
-  const OUTLINE_RADIUS = '4px';
+  var active = false;
+  var hovered = null;
+  var OUTLINE = '2px solid rgba(110, 168, 254, 0.6)';
+  var OUTLINE_RADIUS = '4px';
+  var SEL = '[data-selectable],h1,h2,h3,h4,h5,h6,p,li,ul,ol,pre,code,blockquote,img,div.slide>*';
 
-  document.addEventListener('mouseover', function(e) {
-    const el = e.target.closest('[data-selectable]') || e.target.closest('h1,h2,h3,h4,h5,h6,p,li,ul,ol,pre,code,blockquote,img,div.slide>*');
-    if (!el) return;
-    if (hovered && hovered !== el) {
+  function clearHover() {
+    if (hovered) {
       hovered.style.outline = '';
       hovered.style.outlineOffset = '';
       hovered.style.borderRadius = '';
+      hovered = null;
     }
+  }
+
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'pneuma:selectMode') {
+      active = !!e.data.enabled;
+      document.body.style.cursor = active ? 'crosshair' : '';
+      if (!active) clearHover();
+    }
+  });
+
+  document.addEventListener('mouseover', function(e) {
+    if (!active) return;
+    var el = e.target.closest(SEL);
+    if (!el) return;
+    if (hovered && hovered !== el) clearHover();
     hovered = el;
     el.style.outline = OUTLINE;
     el.style.outlineOffset = '2px';
@@ -124,26 +140,23 @@ function buildSrcdoc(
   });
 
   document.addEventListener('mouseout', function(e) {
-    if (hovered) {
-      hovered.style.outline = '';
-      hovered.style.outlineOffset = '';
-      hovered.style.borderRadius = '';
-      hovered = null;
-    }
+    if (!active) return;
+    clearHover();
   });
 
   document.addEventListener('click', function(e) {
+    if (!active) return;
     e.preventDefault();
     e.stopPropagation();
-    const el = e.target.closest('[data-selectable]') || e.target.closest('h1,h2,h3,h4,h5,h6,p,li,ul,ol,pre,code,blockquote,img,div.slide>*');
+    var el = e.target.closest(SEL);
     if (!el) {
       window.parent.postMessage({ type: 'pneuma:select', selection: null }, '*');
       return;
     }
 
-    const tag = el.tagName.toLowerCase();
-    let type = 'element';
-    let level;
+    var tag = el.tagName.toLowerCase();
+    var type = 'element';
+    var level;
     if (/^h[1-6]$/.test(tag)) { type = 'heading'; level = parseInt(tag[1]); }
     else if (tag === 'p') type = 'paragraph';
     else if (tag === 'li') type = 'list-item';
@@ -152,22 +165,47 @@ function buildSrcdoc(
     else if (tag === 'blockquote') type = 'blockquote';
     else if (tag === 'img') type = 'image';
 
-    const content = tag === 'img'
+    var content = tag === 'img'
       ? (el.getAttribute('alt') || el.getAttribute('src') || 'image')
       : (el.textContent || '').trim().slice(0, 200);
 
     window.parent.postMessage({
       type: 'pneuma:select',
-      selection: { type, content, level }
+      selection: { type: type, content: content, level: level }
     }, '*');
   });
-
-  document.body.style.cursor = 'crosshair';
 })();
-</script>`
-    : "";
+</script>`;
 
+/**
+ * Build a full HTML document for the iframe srcdoc.
+ * Always injects the dormant selection script (controlled via postMessage).
+ *
+ * Two paths:
+ * - Full HTML documents (with <!DOCTYPE>): keep the original document intact,
+ *   inject <base>, sizing CSS, and selection script.
+ * - Fragments: wrap in our template with themeCSS.
+ */
+function buildSrcdoc(slideHtml: string, themeCSS: string): string {
   const baseUrl = import.meta.env.DEV ? "http://localhost:17007" : "";
+  const isFullDoc =
+    slideHtml.includes("<!DOCTYPE") || slideHtml.includes("<html");
+
+  if (isFullDoc) {
+    let doc = slideHtml;
+    const inject = `<base href="${baseUrl}/content/"><style>html,body{width:100%;height:100%;margin:0;padding:0;overflow:hidden;}</style>`;
+    if (doc.includes("</head>")) {
+      doc = doc.replace("</head>", `${inject}</head>`);
+    } else if (/<body/i.test(doc)) {
+      doc = doc.replace(/<body/i, `<head>${inject}</head><body`);
+    }
+    if (doc.includes("</body>")) {
+      doc = doc.replace("</body>", `${SELECTION_SCRIPT}</body>`);
+    } else {
+      doc += SELECTION_SCRIPT;
+    }
+    return doc;
+  }
 
   return `<!DOCTYPE html>
 <html>
@@ -188,33 +226,7 @@ html, body {
 </head>
 <body>
 ${stripHtmlWrapper(slideHtml)}
-${selectionScript}
-</body>
-</html>`;
-}
-
-/** Build a thumbnail-safe srcdoc (no scripts, no interactivity) */
-function buildThumbnailSrcdoc(slideHtml: string, themeCSS: string): string {
-  const baseUrl = import.meta.env.DEV ? "http://localhost:17007" : "";
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<base href="${baseUrl}/content/">
-<style>${themeCSS}</style>
-<style>
-html, body {
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-}
-</style>
-</head>
-<body>
-${stripHtmlWrapper(slideHtml)}
+${SELECTION_SCRIPT}
 </body>
 </html>`;
 }
@@ -254,7 +266,6 @@ export default function SlidePreview({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isGridView, setIsGridView] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(100); // percentage
-  const iframeRef = useRef<HTMLIFrameElement>(null);
   const fullscreenRef = useRef<HTMLDivElement>(null);
 
   const manifest = useMemo(() => parseManifest(files), [files]);
@@ -354,24 +365,15 @@ export default function SlidePreview({
     onActiveFileChange?.(currentFile);
   }, [currentFile, onActiveFileChange]);
 
-  // Current slide content
+  // Current slide (used for fullscreen)
   const currentSlide = slides[activeSlideIndex];
-  const slideHtml = currentSlide
-    ? findSlideContent(files, currentSlide.file)
-    : "";
-  const srcdoc = useMemo(
-    () => buildSrcdoc(slideHtml, themeCSS, isSelectMode),
-    [slideHtml, themeCSS, isSelectMode],
-  );
 
-  // Pre-build all thumbnail srcdocs
-  const thumbnailSrcdocs = useMemo(
-    () =>
-      slides.map((s) =>
-        buildThumbnailSrcdoc(findSlideContent(files, s.file), themeCSS),
-      ),
-    [files, slides, themeCSS],
-  );
+  // Virtual slide dimensions from init params (or defaults)
+  const VIRTUAL_W = (initParams?.slideWidth as number) || 1280;
+  const VIRTUAL_H = (initParams?.slideHeight as number) || 720;
+
+  // Capture slide thumbnails as SVG data URL images
+  const thumbnailImages = useSlideThumbnails(slides, files, themeCSS, VIRTUAL_W, VIRTUAL_H);
 
   // Navigation
   const goToSlide = useCallback(
@@ -428,26 +430,6 @@ export default function SlidePreview({
     setPreviewMode,
   ]);
 
-  // Listen for postMessage from iframe (selection)
-  useEffect(() => {
-    const handleMessage = (e: MessageEvent) => {
-      if (e.data?.type !== "pneuma:select") return;
-      const sel = e.data.selection;
-      if (!sel) {
-        onSelect(null);
-        return;
-      }
-      onSelect({
-        type: sel.type,
-        content: sel.content,
-        level: sel.level,
-        file: currentSlide?.file,
-      });
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [onSelect, currentSlide]);
-
   if (!manifest || slideCount === 0) {
     return (
       <div className="flex flex-col h-full">
@@ -478,17 +460,13 @@ export default function SlidePreview({
     );
   }
 
-  // Virtual slide dimensions from init params (or defaults)
-  const VIRTUAL_W = (initParams?.slideWidth as number) || 1280;
-  const VIRTUAL_H = (initParams?.slideHeight as number) || 720;
-
   const navigatorEl = navPosition !== "hidden" ? (
     <SlideNavigator
       slides={slides}
       activeIndex={activeSlideIndex}
       onSelect={goToSlide}
       onReorder={handleReorder}
-      thumbnailSrcdocs={thumbnailSrcdocs}
+      thumbnailImages={thumbnailImages}
       position={navPosition}
       virtualWidth={VIRTUAL_W}
       virtualHeight={VIRTUAL_H}
@@ -507,20 +485,23 @@ export default function SlidePreview({
         style={{ width: scaledW, height: scaledH }}
       >
         <div
-          className="bg-black rounded-lg overflow-hidden shadow-2xl origin-top-left"
+          className="relative bg-black rounded-lg overflow-hidden shadow-2xl origin-top-left"
           style={{
             width: VIRTUAL_W,
             height: VIRTUAL_H,
             transform: `scale(${zoomScale})`,
           }}
         >
-          <iframe
-            ref={iframeRef}
-            srcDoc={srcdoc}
-            title={currentSlide?.title || "Slide"}
-            className="w-full h-full border-0"
-            sandbox="allow-scripts"
-            key={`${activeSlideIndex}-${imageVersion}`}
+          <SlideIframePool
+            slides={slides}
+            files={files}
+            themeCSS={themeCSS}
+            activeIndex={activeSlideIndex}
+            isSelectMode={isSelectMode}
+            imageVersion={imageVersion}
+            onSelect={onSelect}
+            buildSrcdoc={buildSrcdoc}
+            findSlideContent={findSlideContent}
           />
         </div>
       </div>
@@ -564,7 +545,7 @@ export default function SlidePreview({
                     : "hover:bg-cc-hover"
                 }`}
               >
-                <SlideThumbnail srcdoc={thumbnailSrcdocs[i]} isActive={i === activeSlideIndex} width={280} height={157.5} virtualWidth={VIRTUAL_W} virtualHeight={VIRTUAL_H} />
+                <SlideThumbnail imageUrl={thumbnailImages.get(slide.file)} isActive={i === activeSlideIndex} width={280} height={157.5} virtualWidth={VIRTUAL_W} virtualHeight={VIRTUAL_H} />
                 <span className={`text-xs px-1 truncate ${
                   i === activeSlideIndex ? "text-cc-primary" : "text-cc-muted"
                 }`}>
@@ -584,7 +565,7 @@ export default function SlidePreview({
       <div ref={fullscreenRef} className="flex flex-col h-full bg-black">
         <div className="flex-1 flex items-center justify-center">
           <iframe
-            srcDoc={buildSrcdoc(slideHtml, themeCSS, false)}
+            srcDoc={buildSrcdoc(currentSlide ? findSlideContent(files, currentSlide.file) : "", themeCSS)}
             title={currentSlide?.title || "Slide"}
             className="w-full h-full border-0"
             sandbox="allow-scripts"
@@ -643,7 +624,7 @@ function SlideNavigator({
   activeIndex,
   onSelect,
   onReorder,
-  thumbnailSrcdocs,
+  thumbnailImages,
   position,
   virtualWidth,
   virtualHeight,
@@ -652,7 +633,7 @@ function SlideNavigator({
   activeIndex: number;
   onSelect: (index: number) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
-  thumbnailSrcdocs: string[];
+  thumbnailImages: Map<string, string>;
   position: "left" | "bottom";
   virtualWidth: number;
   virtualHeight: number;
@@ -702,7 +683,7 @@ function SlideNavigator({
                   index={i}
                   title={slide.title}
                   isActive={i === activeIndex}
-                  srcdoc={thumbnailSrcdocs[i]}
+                  imageUrl={thumbnailImages.get(slide.file)}
                   onClick={() => onSelect(i)}
                   layout="horizontal"
                   virtualWidth={virtualWidth}
@@ -730,7 +711,7 @@ function SlideNavigator({
                 index={i}
                 title={slide.title}
                 isActive={i === activeIndex}
-                srcdoc={thumbnailSrcdocs[i]}
+                imageUrl={thumbnailImages.get(slide.file)}
                 onClick={() => onSelect(i)}
                 layout="vertical"
                 virtualWidth={virtualWidth}
@@ -755,13 +736,13 @@ const SortableSlideItem = forwardRef<
     index: number;
     title: string;
     isActive: boolean;
-    srcdoc: string;
+    imageUrl: string | undefined;
     onClick: () => void;
     layout: "horizontal" | "vertical";
     virtualWidth: number;
     virtualHeight: number;
   }
->(function SortableSlideItem({ id, index, title, isActive, srcdoc, onClick, layout, virtualWidth, virtualHeight }, outerRef) {
+>(function SortableSlideItem({ id, index, title, isActive, imageUrl, onClick, layout, virtualWidth, virtualHeight }, outerRef) {
   const {
     attributes,
     listeners,
@@ -799,7 +780,7 @@ const SortableSlideItem = forwardRef<
           isActive ? "" : "opacity-60 hover:opacity-100"
         } ${isDragging ? "opacity-70 scale-105 shadow-lg" : ""}`}
       >
-        <SlideThumbnail srcdoc={srcdoc} isActive={isActive} width={144} height={81} virtualWidth={virtualWidth} virtualHeight={virtualHeight} />
+        <SlideThumbnail imageUrl={imageUrl} isActive={isActive} width={144} height={81} virtualWidth={virtualWidth} virtualHeight={virtualHeight} />
         <span
           className={`text-[10px] max-w-[144px] truncate ${
             isActive ? "text-cc-primary" : "text-cc-muted group-hover:text-cc-fg"
@@ -822,7 +803,7 @@ const SortableSlideItem = forwardRef<
         isActive ? "" : "opacity-60 hover:opacity-100"
       } ${isDragging ? "opacity-70 scale-105 shadow-lg" : ""}`}
     >
-      <SlideThumbnail srcdoc={srcdoc} isActive={isActive} virtualWidth={virtualWidth} virtualHeight={virtualHeight} />
+      <SlideThumbnail imageUrl={imageUrl} isActive={isActive} virtualWidth={virtualWidth} virtualHeight={virtualHeight} />
       <div className="flex items-baseline gap-1.5 px-0.5">
         <span
           className={`text-[10px] font-mono shrink-0 ${
@@ -845,28 +826,26 @@ const SortableSlideItem = forwardRef<
 
 // ── Slide Thumbnail ──────────────────────────────────────────────────────────
 
-/** Renders a scaled-down iframe as a slide thumbnail */
+/** Renders a slide thumbnail as an <img> from an SVG data URL */
 function SlideThumbnail({
-  srcdoc,
+  imageUrl,
   isActive,
   width,
   height,
   virtualWidth,
   virtualHeight,
 }: {
-  srcdoc: string;
+  imageUrl: string | undefined;
   isActive: boolean;
   width?: number;
   height?: number;
   virtualWidth?: number;
   virtualHeight?: number;
 }) {
-  // Thumbnail renders at a virtual size then scales down via CSS transform
   const VIRTUAL_W = virtualWidth || 1280;
   const VIRTUAL_H = virtualHeight || 720;
   const thumbW = width ?? 192; // default for sidebar
-  const thumbH = height ?? 108;
-  const scale = thumbW / VIRTUAL_W;
+  const thumbH = height ?? (thumbW * VIRTUAL_H) / VIRTUAL_W;
 
   return (
     <div
@@ -877,18 +856,17 @@ function SlideThumbnail({
       }`}
       style={{ width: thumbW, height: thumbH }}
     >
-      <iframe
-        srcDoc={srcdoc}
-        tabIndex={-1}
-        className="pointer-events-none border-0 origin-top-left"
-        style={{
-          width: VIRTUAL_W,
-          height: VIRTUAL_H,
-          transform: `scale(${scale})`,
-        }}
-        sandbox="allow-same-origin"
-        aria-hidden="true"
-      />
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt=""
+          className="w-full h-full object-cover"
+          draggable={false}
+          aria-hidden="true"
+        />
+      ) : (
+        <div className="w-full h-full bg-cc-bg/50 animate-pulse" />
+      )}
     </div>
   );
 }
