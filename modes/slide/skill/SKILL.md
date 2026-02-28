@@ -65,7 +65,17 @@ Defines CSS custom properties and base layout classes. All slides share this the
 
 Key custom properties: `--color-bg`, `--color-fg`, `--color-primary`, `--color-secondary`, `--color-accent`, `--color-muted`, `--color-surface`, `--color-border`, `--font-sans`, `--font-mono`, `--slide-padding`.
 
-Base layout classes: `.slide` (base container), `.slide-title` (centered title), `.slide-content` (top-aligned content), `.slide-split` (two-column), `.slide-image` (full-bleed).
+Base layout classes and **when to use each**:
+
+| Class | Vertical Alignment | When to Use |
+|---|---|---|
+| `.slide` | **Center** | Default for most slides. Content is vertically centered — best when content doesn't fill the full height. |
+| `.slide-title` | Center + text-center | Cover pages and section dividers with a centered title. |
+| `.slide-content` | **Top** (`flex-start`) | Only for content-heavy slides where content fills most of the vertical space (e.g., long lists, dense grids). Do NOT use as a generic "content slide" class. |
+| `.slide-split` | Center, horizontal | Two-column layouts with `gap: 48px`. |
+| `.slide-image` | Center, no padding | Full-bleed image or media slides. |
+
+**Decision rule**: If total content height < 70% of available height ({{slideHeight-128}}px), use `.slide` (centered). Only use `.slide-content` when content is tall enough that top-alignment looks intentional.
 
 ---
 
