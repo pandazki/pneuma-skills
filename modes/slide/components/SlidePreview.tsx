@@ -863,7 +863,7 @@ function SlideThumbnail({
           height: VIRTUAL_H,
           transform: `scale(${scale})`,
         }}
-        sandbox=""
+        sandbox="allow-same-origin"
         aria-hidden="true"
       />
     </div>

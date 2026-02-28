@@ -83,6 +83,7 @@ export function startServer(options: ServerOptions) {
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=${W}, initial-scale=1">
 <base href="/content/">
 <title>${manifest.title || "Slides"} — Export</title>
 <style>
@@ -95,10 +96,11 @@ ${themeCSS}
 
 * { box-sizing: border-box; }
 
-body {
+html, body {
   margin: 0;
   padding: 0;
   background: #1a1a1a;
+  width: ${W}px;
 }
 
 .slide-page {
