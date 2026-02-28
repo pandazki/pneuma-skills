@@ -102,39 +102,247 @@ function stripHtmlWrapper(html: string): string {
  * Selection-mode script injected into every slide iframe.
  * Starts dormant — parent controls activation via postMessage:
  *   { type: 'pneuma:selectMode', enabled: true/false }
+ *   { type: 'pneuma:highlight', selector: '...' }
+ *   { type: 'pneuma:clearHighlight' }
  */
 const SELECTION_SCRIPT = `<script>
 (function() {
   var active = false;
   var hovered = null;
-  var OUTLINE = '2px solid rgba(110, 168, 254, 0.6)';
+  var selectedEl = null;
+  var HOVER_OUTLINE = '2px solid rgba(110, 168, 254, 0.6)';
+  var SELECT_OUTLINE = '2px solid rgba(110, 168, 254, 0.9)';
+  var SELECT_BG = 'rgba(110, 168, 254, 0.08)';
   var OUTLINE_RADIUS = '4px';
-  var SEL = '[data-selectable],h1,h2,h3,h4,h5,h6,p,li,ul,ol,pre,code,blockquote,img,div.slide>*';
+
+  // Broad selector for selectable elements
+  var SEL = [
+    '[data-selectable]',
+    'h1','h2','h3','h4','h5','h6',
+    'p','li','ul','ol','pre','code','blockquote','img',
+    'section','article','nav','aside','header','footer','main',
+    'table','thead','tbody','tr','td','th',
+    'figure','figcaption','details','summary',
+    'a','button','svg',
+    'div[class]','span[class]'
+  ].join(',');
+
+  // Semantic HTML elements — always a valid selection target, never bubble past these
+  var SEMANTIC_RE = /^(h[1-6]|p|li|ul|ol|pre|code|blockquote|img|section|article|nav|aside|header|footer|main|table|thead|tbody|tr|td|th|figure|figcaption|details|summary|a|button|svg)$/i;
+
+  /**
+   * Bubble-up heuristic:
+   * - Semantic elements (h1, p, section, table...) → always use directly
+   * - Generic elements (div, span, svg) → if small, bubble up to a larger container
+   * This way clicking an icon inside a card selects the card, not the icon wrapper.
+   */
+  function findMeaningfulElement(target) {
+    var el = target.closest(SEL);
+    if (!el) return null;
+
+    // Semantic HTML elements are always the right target
+    if (SEMANTIC_RE.test(el.tagName)) return el;
+    if (el.hasAttribute('data-selectable')) return el;
+
+    // Generic elements (div[class], span[class]): bubble up if very small
+    var rect = el.getBoundingClientRect();
+    if (rect.width >= 40 && rect.height >= 40) return el; // large enough, keep it
+
+    // Walk up to find a larger meaningful container
+    var parent = el.parentElement;
+    while (parent && parent !== document.body) {
+      if (parent.matches(SEL)) {
+        if (SEMANTIC_RE.test(parent.tagName) || parent.hasAttribute('data-selectable')) return parent;
+        var pRect = parent.getBoundingClientRect();
+        if (pRect.width >= 40 && pRect.height >= 40) return parent;
+      }
+      parent = parent.parentElement;
+    }
+    // No better container found, use original
+    return el;
+  }
 
   function clearHover() {
-    if (hovered) {
+    if (hovered && hovered !== selectedEl) {
       hovered.style.outline = '';
       hovered.style.outlineOffset = '';
       hovered.style.borderRadius = '';
-      hovered = null;
+    }
+    hovered = null;
+  }
+
+  function clearSelected() {
+    if (selectedEl) {
+      selectedEl.style.outline = '';
+      selectedEl.style.outlineOffset = '';
+      selectedEl.style.borderRadius = '';
+      selectedEl.style.backgroundColor = selectedEl._pneumaOrigBg || '';
+      delete selectedEl._pneumaOrigBg;
+      selectedEl = null;
     }
   }
 
+  function applySelectedStyle(el) {
+    clearSelected();
+    selectedEl = el;
+    el._pneumaOrigBg = el.style.backgroundColor || '';
+    el.style.outline = SELECT_OUTLINE;
+    el.style.outlineOffset = '2px';
+    el.style.borderRadius = OUTLINE_RADIUS;
+    el.style.backgroundColor = SELECT_BG;
+  }
+
+  /** Build a unique CSS selector path for an element */
+  function buildSelector(el) {
+    var parts = [];
+    var current = el;
+    while (current && current !== document.body && current !== document.documentElement) {
+      var tag = current.tagName.toLowerCase();
+      var part = tag;
+      if (current.id) {
+        part = tag + '#' + current.id;
+        parts.unshift(part);
+        break;
+      }
+      var cls = (typeof current.className === 'string' ? current.className : '').trim();
+      if (cls) {
+        // Use first 2 classes max to keep selector readable
+        var classes = cls.split(/\\s+/).slice(0, 2).join('.');
+        part = tag + '.' + classes;
+      }
+      // Add nth-child if there are siblings with same tag
+      var parent = current.parentElement;
+      if (parent) {
+        var siblings = parent.children;
+        var sameTag = 0, position = 0;
+        for (var i = 0; i < siblings.length; i++) {
+          if (siblings[i].tagName === current.tagName) {
+            sameTag++;
+            if (siblings[i] === current) position = sameTag;
+          }
+        }
+        if (sameTag > 1) part += ':nth-child(' + (Array.prototype.indexOf.call(siblings, current) + 1) + ')';
+      }
+      parts.unshift(part);
+      current = current.parentElement;
+    }
+    return parts.join(' > ');
+  }
+
+  /** Capture an SVG thumbnail of an element using foreignObject */
+  function captureElementThumbnail(el) {
+    try {
+      var elRect = el.getBoundingClientRect();
+      var elW = Math.ceil(elRect.width);
+      var elH = Math.ceil(elRect.height);
+      if (elW <= 0 || elH <= 0) return null;
+
+      // Clone the element
+      var clone = el.cloneNode(true);
+      // Remove scripts from clone
+      var scripts = clone.querySelectorAll('script');
+      for (var s = 0; s < scripts.length; s++) scripts[s].remove();
+
+      // Measure actual content size by rendering clone off-screen in the iframe
+      var measure = document.createElement('div');
+      measure.style.cssText = 'position:absolute;left:-99999px;top:-99999px;width:fit-content;max-width:' + elW + 'px;pointer-events:none;';
+      measure.appendChild(clone);
+      document.body.appendChild(measure);
+      var fitRect = clone.getBoundingClientRect();
+      var fitW = Math.ceil(fitRect.width) || elW;
+      var fitH = Math.ceil(fitRect.height) || elH;
+      document.body.removeChild(measure);
+
+      // Collect all CSS rules
+      var cssText = '';
+      try {
+        var sheets = document.styleSheets;
+        for (var i = 0; i < sheets.length; i++) {
+          try {
+            var rules = sheets[i].cssRules;
+            for (var j = 0; j < rules.length; j++) {
+              cssText += rules[j].cssText + '\\n';
+            }
+          } catch(ex) { /* cross-origin */ }
+        }
+      } catch(ex) {}
+
+      // Serialize clone directly in iframe context (preserves SVG namespaces)
+      var cloneHtml = new XMLSerializer().serializeToString(clone);
+
+      // Escape CSS for XHTML CDATA
+      var safeCss = cssText.replace(/]]>/g, ']]]]><![CDATA[>');
+      var sizeCSS = 'html,body{margin:0;padding:0;overflow:hidden;width:' + fitW + 'px;height:' + fitH + 'px;}';
+
+      var xhtml = '<html xmlns="http://www.w3.org/1999/xhtml"><head>'
+        + '<style><![CDATA[' + safeCss + ']]></style>'
+        + '<style>' + sizeCSS + '</style>'
+        + '</head><body>' + cloneHtml + '</body></html>';
+
+      var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + fitW + '" height="' + fitH + '">' +
+        '<foreignObject width="' + fitW + '" height="' + fitH + '">' + xhtml + '</foreignObject></svg>';
+      var encoded = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+
+      // Skip if too large (> 200KB)
+      if (encoded.length > 200 * 1024) return null;
+      return encoded;
+    } catch(ex) {
+      return null;
+    }
+  }
+
+  /** Classify element type */
+  function classifyElement(el) {
+    var tag = el.tagName.toLowerCase();
+    var type = 'container';
+    var level;
+    if (/^h[1-6]$/.test(tag)) { type = 'heading'; level = parseInt(tag[1]); }
+    else if (tag === 'p') type = 'paragraph';
+    else if (tag === 'li') type = 'list';
+    else if (tag === 'ul' || tag === 'ol') type = 'list';
+    else if (tag === 'pre' || tag === 'code') type = 'code';
+    else if (tag === 'blockquote') type = 'blockquote';
+    else if (tag === 'img') type = 'image';
+    else if (tag === 'table' || tag === 'thead' || tag === 'tbody' || tag === 'tr' || tag === 'td' || tag === 'th') type = 'table';
+    else if (tag === 'section' || tag === 'article' || tag === 'nav' || tag === 'aside' || tag === 'header' || tag === 'footer' || tag === 'main') type = 'section';
+    else if (tag === 'a') type = 'link';
+    else if (tag === 'button') type = 'interactive';
+    else if (tag === 'figure' || tag === 'figcaption') type = 'container';
+    return { type: type, level: level };
+  }
+
   window.addEventListener('message', function(e) {
-    if (e.data && e.data.type === 'pneuma:selectMode') {
+    if (!e.data) return;
+    if (e.data.type === 'pneuma:selectMode') {
       active = !!e.data.enabled;
       document.body.style.cursor = active ? 'crosshair' : '';
-      if (!active) clearHover();
+      if (!active) {
+        clearHover();
+        clearSelected();
+      }
+    }
+    if (e.data.type === 'pneuma:highlight') {
+      try {
+        var target = document.querySelector(e.data.selector);
+        if (target) {
+          applySelectedStyle(target);
+          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      } catch(ex) {}
+    }
+    if (e.data.type === 'pneuma:clearHighlight') {
+      clearSelected();
     }
   });
 
   document.addEventListener('mouseover', function(e) {
     if (!active) return;
-    var el = e.target.closest(SEL);
+    var el = findMeaningfulElement(e.target);
     if (!el) return;
     if (hovered && hovered !== el) clearHover();
+    if (el === selectedEl) return; // don't override selected style
     hovered = el;
-    el.style.outline = OUTLINE;
+    el.style.outline = HOVER_OUTLINE;
     el.style.outlineOffset = '2px';
     el.style.borderRadius = OUTLINE_RADIUS;
   });
@@ -148,22 +356,20 @@ const SELECTION_SCRIPT = `<script>
     if (!active) return;
     e.preventDefault();
     e.stopPropagation();
-    var el = e.target.closest(SEL);
+    var el = findMeaningfulElement(e.target);
     if (!el) {
+      clearSelected();
       window.parent.postMessage({ type: 'pneuma:select', selection: null }, '*');
       return;
     }
 
+    applySelectedStyle(el);
+
     var tag = el.tagName.toLowerCase();
-    var type = 'element';
-    var level;
-    if (/^h[1-6]$/.test(tag)) { type = 'heading'; level = parseInt(tag[1]); }
-    else if (tag === 'p') type = 'paragraph';
-    else if (tag === 'li') type = 'list-item';
-    else if (tag === 'ul' || tag === 'ol') type = 'list';
-    else if (tag === 'pre' || tag === 'code') type = 'code';
-    else if (tag === 'blockquote') type = 'blockquote';
-    else if (tag === 'img') type = 'image';
+    var info = classifyElement(el);
+    var classes = (typeof el.className === 'string' ? el.className : '').trim();
+    var selector = buildSelector(el);
+    var thumbnail = captureElementThumbnail(el);
 
     var content = tag === 'img'
       ? (el.getAttribute('alt') || el.getAttribute('src') || 'image')
@@ -171,7 +377,15 @@ const SELECTION_SCRIPT = `<script>
 
     window.parent.postMessage({
       type: 'pneuma:select',
-      selection: { type: type, content: content, level: level }
+      selection: {
+        type: info.type,
+        content: content,
+        level: info.level,
+        tag: tag,
+        classes: classes,
+        selector: selector,
+        thumbnail: thumbnail
+      }
     }, '*');
   });
 })();
@@ -268,6 +482,7 @@ export default function SlidePreview({
   const [zoomLevel, setZoomLevel] = useState(100); // percentage
   const fullscreenRef = useRef<HTMLDivElement>(null);
 
+  const [highlightSelector, setHighlightSelector] = useState<string | null>(null);
   const manifest = useMemo(() => parseManifest(files), [files]);
   const themeCSS = useMemo(() => findThemeCSS(files), [files]);
   const isSelectMode = previewMode === "select";
@@ -364,6 +579,33 @@ export default function SlidePreview({
   useEffect(() => {
     onActiveFileChange?.(currentFile);
   }, [currentFile, onActiveFileChange]);
+
+  // Navigate to slide + highlight when external selection arrives (e.g. clicking historical SelectionCard)
+  // Use a stamp counter to detect genuine selection changes from the store
+  const selectionStamp = useStore((s) => s.selectionStamp);
+  useEffect(() => {
+    if (!selectionStamp || !selection?.file) {
+      setHighlightSelector(null);
+      return;
+    }
+    // Find the slide index for the selection's file
+    const targetIndex = slides.findIndex((s) => s.file === selection.file);
+    if (targetIndex !== -1) {
+      // Navigate even if already on this slide (to re-highlight)
+      setActiveSlideIndex(targetIndex);
+      // Set highlight selector (if present)
+      setHighlightSelector(selection.selector || null);
+    }
+    // Slide was deleted — stay on current slide, clear highlight
+    // (no else needed, just don't navigate)
+  }, [selectionStamp]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear highlight when selection is removed externally (e.g. X button in ChatInput)
+  useEffect(() => {
+    if (!selection) {
+      setHighlightSelector(null);
+    }
+  }, [selection]);
 
   // Current slide (used for fullscreen)
   const currentSlide = slides[activeSlideIndex];
@@ -502,6 +744,7 @@ export default function SlidePreview({
             onSelect={onSelect}
             buildSrcdoc={buildSrcdoc}
             findSlideContent={findSlideContent}
+            highlightSelector={highlightSelector}
           />
         </div>
       </div>

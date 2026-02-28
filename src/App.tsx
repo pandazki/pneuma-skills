@@ -66,7 +66,16 @@ function useViewerProps(): ViewerPreviewProps {
   return {
     files: files.map((f) => ({ path: f.path, content: f.content })),
     selection: selection
-      ? { type: selection.type, content: selection.content, level: selection.level }
+      ? {
+          type: selection.type,
+          content: selection.content,
+          level: selection.level,
+          file: selection.file,
+          tag: selection.tag,
+          classes: selection.classes,
+          selector: selection.selector,
+          thumbnail: selection.thumbnail,
+        }
       : null,
     onSelect: (sel) => {
       if (!sel) {
@@ -75,7 +84,16 @@ function useViewerProps(): ViewerPreviewProps {
       }
       // Use file from the viewer component (e.g. current slide), fallback to first file
       const file = sel.file || files[0]?.path || "";
-      setSelection({ type: sel.type as SelectionType, content: sel.content, level: sel.level, file });
+      setSelection({
+        type: sel.type as SelectionType,
+        content: sel.content,
+        level: sel.level,
+        file,
+        tag: sel.tag,
+        classes: sel.classes,
+        selector: sel.selector,
+        thumbnail: sel.thumbnail,
+      });
     },
     mode: previewMode,
     imageVersion: imageTick,

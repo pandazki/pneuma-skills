@@ -619,6 +619,9 @@ export function sendUserMessage(content: string, selection?: ElementSelection | 
       content: selection.content,
       file: selection.file,
       level: selection.level,
+      tag: selection.tag,
+      classes: selection.classes,
+      selector: selection.selector,
     } : null;
     // Even without element selection, provide active file as viewing context
     if (!viewerSelection && store.activeFile) {

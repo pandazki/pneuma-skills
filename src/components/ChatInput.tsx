@@ -14,7 +14,11 @@ interface ImageAttachment {
 }
 
 /** Format selection info for display in the chip */
-function formatSelectionLabel(sel: { type: string; content: string; level?: number; file: string }): string {
+function formatSelectionLabel(sel: { type: string; content: string; level?: number; file: string; tag?: string; classes?: string; selector?: string }): string {
+  if (sel.selector) {
+    const preview = sel.content.length > 40 ? sel.content.slice(0, 37) + "..." : sel.content;
+    return preview ? `${sel.selector}  "${preview}"` : sel.selector;
+  }
   const typeLabels: Record<string, string> = {
     heading: `h${sel.level || 1}`,
     paragraph: "paragraph",
@@ -24,6 +28,10 @@ function formatSelectionLabel(sel: { type: string; content: string; level?: numb
     image: "image",
     table: "table",
     "text-range": "text",
+    section: "section",
+    link: "link",
+    container: "container",
+    interactive: "interactive",
   };
   const type = typeLabels[sel.type] || sel.type;
   const preview = sel.content.length > 60 ? sel.content.slice(0, 57) + "..." : sel.content;
@@ -248,17 +256,22 @@ export default function ChatInput() {
       {/* Selection chip */}
       {selection && (
         <div className="flex items-center gap-2 mb-2 px-1">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-cc-primary/15 text-cc-primary text-xs max-w-full overflow-hidden">
-            <PinIcon />
-            <span className="truncate">{formatSelectionLabel(selection)}</span>
-            <span className="shrink-0 text-cc-muted mx-0.5">in {selection.file}</span>
-            <button
-              onClick={() => setSelection(null)}
-              className="shrink-0 ml-0.5 hover:text-cc-fg transition-colors cursor-pointer"
-              title="Clear selection"
-            >
-              <CloseIcon />
-            </button>
+          <div className="rounded-md bg-cc-primary/15 text-cc-primary text-xs max-w-full overflow-hidden">
+            {selection.thumbnail && (
+              <img src={selection.thumbnail} alt="" className="mx-2 mt-2 max-h-16 max-w-[calc(100%-1rem)] rounded border border-cc-border/30 bg-white" />
+            )}
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5">
+              <PinIcon />
+              <span className="truncate">{formatSelectionLabel(selection)}</span>
+              <span className="shrink-0 text-cc-muted text-[11px]">{selection.file}</span>
+              <button
+                onClick={() => setSelection(null)}
+                className="shrink-0 ml-0.5 hover:text-cc-fg transition-colors cursor-pointer"
+                title="Clear selection"
+              >
+                <CloseIcon />
+              </button>
+            </div>
           </div>
         </div>
       )}

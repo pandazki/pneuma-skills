@@ -88,17 +88,27 @@ function SelectionCard({ sel, interactive }: { sel: SelectionContext; interactiv
   const setSelection = useStore((s) => s.setSelection);
   const setPreviewMode = useStore((s) => s.setPreviewMode);
 
-  const typeLabels: Record<string, string> = {
-    heading: `h${sel.level || 1}`,
-    paragraph: "paragraph",
-    list: "list",
-    code: "code block",
-    blockquote: "blockquote",
-    image: "image",
-    table: "table",
-    "text-range": "selected text",
-  };
-  const typeLabel = typeLabels[sel.type] || sel.type;
+  // Build a label: prefer CSS selector, fallback to type-based labels
+  let typeLabel: string;
+  if (sel.selector) {
+    typeLabel = sel.selector;
+  } else {
+    const typeLabels: Record<string, string> = {
+      heading: `h${sel.level || 1}`,
+      paragraph: "paragraph",
+      list: "list",
+      code: "code block",
+      blockquote: "blockquote",
+      image: "image",
+      table: "table",
+      "text-range": "selected text",
+      section: "section",
+      link: "link",
+      container: "container",
+      interactive: "interactive",
+    };
+    typeLabel = typeLabels[sel.type] || sel.type;
+  }
   const preview = sel.content.length > 80 ? sel.content.slice(0, 77) + "..." : sel.content;
 
   const handleClick = () => {
@@ -114,6 +124,9 @@ function SelectionCard({ sel, interactive }: { sel: SelectionContext; interactiv
       }`}
       onClick={interactive ? handleClick : undefined}
     >
+      {sel.thumbnail && (
+        <img src={sel.thumbnail} alt="" className="mb-1.5 max-h-24 max-w-full rounded border border-cc-border/30 bg-white" />
+      )}
       <div className="flex items-start gap-2 text-xs">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-primary shrink-0 mt-0.5">
           <path d="M3 2l4 12 2-5 5-2L3 2z" strokeLinejoin="round" />

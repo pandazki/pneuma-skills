@@ -8,13 +8,23 @@ import type {
 
 export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage };
 
-export type SelectionType = "heading" | "paragraph" | "list" | "code" | "blockquote" | "image" | "table" | "text-range";
+export type SelectionType =
+  | "heading" | "paragraph" | "list" | "code" | "blockquote" | "image" | "table" | "text-range"
+  | "section" | "link" | "container" | "interactive";
 
 export interface SelectionContext {
   file: string;
   type: SelectionType;
   content: string;
   level?: number;
+  /** HTML tag name (e.g. "div", "section", "h2") */
+  tag?: string;
+  /** CSS class list (e.g. "card bg-white rounded-lg") */
+  classes?: string;
+  /** Unique CSS selector path (e.g. "section.hero > div.card:nth-child(2)") */
+  selector?: string;
+  /** SVG data URL thumbnail of the selected element */
+  thumbnail?: string;
 }
 
 export interface ChatMessage {

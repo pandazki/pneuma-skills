@@ -65,6 +65,8 @@ interface AppState {
 
   // Element selection
   selection: ElementSelection | null;
+  /** Incremented every time setSelection is called with a non-null value — used to detect genuine selection changes */
+  selectionStamp: number;
   previewMode: "view" | "edit" | "select";
   /** Currently viewed file path (e.g. current slide), independent of element selection */
   activeFile: string | null;
@@ -203,6 +205,7 @@ export const useStore = create<AppState>((set) => ({
   tasks: [],
   terminalId: null,
   selection: null,
+  selectionStamp: 0,
   previewMode: "view",
   activeFile: null,
   modeViewer: null,
@@ -281,7 +284,7 @@ export const useStore = create<AppState>((set) => ({
 
   setTerminalId: (terminalId) => set({ terminalId }),
 
-  setSelection: (selection) => set({ selection }),
+  setSelection: (selection) => set((s) => ({ selection, selectionStamp: selection ? s.selectionStamp + 1 : s.selectionStamp })),
   setPreviewMode: (previewMode) => set({ previewMode, ...(previewMode !== "select" ? { selection: null } : {}) }),
   setActiveFile: (activeFile) => set({ activeFile }),
 
