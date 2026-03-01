@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.0] - 2026-03-01
+
+### Added
+- Remote mode loading — load custom modes from local paths (`pneuma /path/to/mode`) or GitHub repositories (`pneuma github:user/repo#branch`)
+- New `core/mode-resolver.ts` for mode source resolution and GitHub clone caching (`~/.pneuma/modes/`)
+- External mode registration in `core/mode-loader.ts` with support for both Bun backend and browser frontend (Vite `/@fs/` imports)
+- `/api/mode-info` server endpoint for frontend external mode discovery
+- Vite config `server.fs.allow` support for external mode directories
+
 ## [1.5.0] - 2026-02-28
 
 ### Added
