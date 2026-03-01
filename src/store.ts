@@ -73,6 +73,7 @@ interface AppState {
 
   // Mode viewer (loaded dynamically via mode-loader)
   modeViewer: ViewerContract | null;
+  modeDisplayName: string;
 
   // Init params (immutable per session, from mode manifest)
   initParams: Record<string, number | string>;
@@ -128,6 +129,7 @@ interface AppState {
 
   // Actions — mode viewer
   setModeViewer: (viewer: ViewerContract) => void;
+  setModeDisplayName: (name: string) => void;
 
   // Actions — init params
   setInitParams: (params: Record<string, number | string>) => void;
@@ -209,6 +211,7 @@ export const useStore = create<AppState>((set) => ({
   previewMode: "view",
   activeFile: null,
   modeViewer: null,
+  modeDisplayName: "",
   initParams: {},
 
   setSession: (session) => set({ session }),
@@ -289,6 +292,7 @@ export const useStore = create<AppState>((set) => ({
   setActiveFile: (activeFile) => set({ activeFile }),
 
   setModeViewer: (modeViewer) => set({ modeViewer }),
+  setModeDisplayName: (modeDisplayName) => set({ modeDisplayName }),
 
   setInitParams: (initParams) => set({ initParams }),
 

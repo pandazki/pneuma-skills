@@ -134,6 +134,7 @@ export default function App() {
 
       const def = await loadMode(modeName);
       useStore.getState().setModeViewer(def.viewer);
+      useStore.getState().setModeDisplayName(def.manifest.displayName);
     };
 
     loadModeAsync().catch((err) => {
