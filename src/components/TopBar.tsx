@@ -69,6 +69,7 @@ export default function TopBar() {
   const activeTab = useStore((s) => s.activeTab);
   const setActiveTab = useStore((s) => s.setActiveTab);
   const gitAvailable = useStore((s) => s.gitAvailable);
+  const modeDisplayName = useStore((s) => s.modeDisplayName);
 
   return (
     <div className="flex items-center h-10 px-3 bg-neutral-900 border-b border-neutral-800 text-sm select-none">
@@ -102,7 +103,7 @@ export default function TopBar() {
       </div>
 
       {/* Right: mode label */}
-      <div className="text-neutral-600 text-xs shrink-0">Pneuma Doc</div>
+      <div className="text-neutral-600 text-xs shrink-0">{modeDisplayName ? `Pneuma ${modeDisplayName}` : ""}</div>
     </div>
   );
 }
