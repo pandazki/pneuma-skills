@@ -129,9 +129,9 @@ export function registerExternalMode(name: string, absPath: string): void {
       name,
       path: absPath,
       manifestLoader: () =>
-        import(absPath + "/manifest.ts").then((m) => m.default),
+        import(/* @vite-ignore */ absPath + "/manifest.ts").then((m) => m.default),
       definitionLoader: () =>
-        import(absPath + "/pneuma-mode.ts").then((m) => m.default),
+        import(/* @vite-ignore */ absPath + "/pneuma-mode.ts").then((m) => m.default),
     };
   }
 }

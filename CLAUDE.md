@@ -6,7 +6,7 @@ Pneuma Skills is an extensible delivery platform for filesystem-based Agent capa
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 1.6.1
+**Version:** 1.6.2
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Available Modes:** `doc` (markdown editing), `slide` (presentation editing), `draw` (Excalidraw whiteboard)
 
@@ -58,7 +58,7 @@ pneuma-skills/
 │   │   └── mode-definition.ts #   ModeDefinition (manifest + viewer binding)
 │   ├── mode-loader.ts         # Dynamic mode discovery & loading (builtin + external)
 │   ├── mode-resolver.ts       # Mode source resolution (builtin/local/github)
-│   └── __tests__/             # 81 tests (bun:test)
+│   └── __tests__/             # 186 tests (bun:test)
 ├── modes/
 │   ├── doc/                   # Doc Mode — markdown editing
 │   │   ├── manifest.ts        #   ModeManifest v1.0.0
@@ -90,7 +90,8 @@ pneuma-skills/
 │   ├── file-watcher.ts        # chokidar watcher (manifest-driven patterns)
 │   ├── skill-installer.ts     # Copies skill prompts + template engine
 │   ├── terminal-manager.ts    # PTY terminal sessions
-│   └── path-resolver.ts       # Binary path resolution
+│   ├── path-resolver.ts       # Binary path resolution
+│   └── __tests__/             # 105 tests (bun:test)
 ├── src/                       # React frontend (Vite)
 │   ├── App.tsx                # Root layout with dynamic viewer from store
 │   ├── store.ts               # Zustand state (session, messages, viewer, files, git, tasks)

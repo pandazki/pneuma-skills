@@ -200,6 +200,8 @@ async function ensureGithubMode(
 /**
  * Run a git command and return the result.
  */
+const GIT_TIMEOUT_MS = 30_000;
+
 async function runGit(args: string[], cwd: string): Promise<string> {
   const proc = Bun.spawn(["git", ...args], {
     cwd,
@@ -207,7 +209,14 @@ async function runGit(args: string[], cwd: string): Promise<string> {
     stderr: "pipe",
   });
 
-  const exitCode = await proc.exited;
+  const timeout = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      proc.kill();
+      reject(new Error(`git ${args[0]} timed out after ${GIT_TIMEOUT_MS}ms`));
+    }, GIT_TIMEOUT_MS);
+  });
+
+  const exitCode = await Promise.race([proc.exited, timeout]);
   const stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();
 
