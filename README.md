@@ -69,14 +69,40 @@ This will:
 pneuma-skills <mode> [options]
 
 Modes:
-  doc    Markdown document editing mode
-  slide  Presentation editing mode (HTML slides with iframe preview)
+  doc                          Markdown document editing mode
+  slide                        Presentation editing mode (HTML slides with iframe preview)
+  /path/to/mode                Load mode from a local directory
+  github:user/repo             Load mode from a GitHub repository
+  github:user/repo#branch      Load mode from a specific branch/tag
 
 Options:
   --workspace <path>   Target workspace directory (default: current directory)
   --port <number>      Server port (default: 17996)
   --no-open            Don't auto-open the browser
 ```
+
+### Remote / External Modes
+
+Pneuma supports loading modes from outside the built-in `modes/` directory:
+
+```bash
+# Load from a local directory (must contain manifest.ts and pneuma-mode.ts)
+bunx pneuma-skills /path/to/my-custom-mode --workspace ~/project
+
+# Load from a GitHub repository
+bunx pneuma-skills github:pandazki/pneuma-mode-canvas --workspace ~/project
+
+# Load from a specific branch or tag
+bunx pneuma-skills github:pandazki/pneuma-mode-canvas#develop --workspace ~/project
+```
+
+GitHub repositories are cloned to `~/.pneuma/modes/` and cached locally. Subsequent runs will fetch the latest changes.
+
+A mode package must contain:
+- `manifest.ts` — default export of `ModeManifest`
+- `pneuma-mode.ts` — default export of `ModeDefinition`
+- `components/` — React preview components
+- `skill/` — Skill files (optional)
 
 ## Architecture
 
@@ -209,7 +235,7 @@ pneuma-skills/
 - [x] Session persistence & resume
 - [x] Terminal, tasks, context panel
 - [x] v1.0 contract architecture (ModeManifest, ViewerContract, AgentBackend)
-- [ ] Remote mode loading — `pneuma --mode github:user/repo` (v1.x)
+- [x] Remote mode loading — `pneuma github:user/repo` or local path (v1.x)
 - [ ] Additional agent backends — Codex CLI, custom agents (v1.x)
 
 ## Acknowledgements

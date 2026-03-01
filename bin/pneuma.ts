@@ -15,9 +15,11 @@ import { startServer } from "../server/index.js";
 import { ClaudeCodeBackend } from "../backends/claude-code/index.js";
 import { installSkill } from "../server/skill-installer.js";
 import { startFileWatcher } from "../server/file-watcher.js";
-import { loadModeManifest, listModes } from "../core/mode-loader.js";
+import { loadModeManifest, listBuiltinModes, registerExternalMode } from "../core/mode-loader.js";
 import type { ModeManifest } from "../core/types/mode-manifest.js";
 import { applyTemplateParams } from "../server/skill-installer.js";
+import { resolveMode as resolveModeSource, isExternalMode } from "../core/mode-resolver.js";
+import type { ResolvedMode } from "../core/mode-resolver.js";
 
 const PROJECT_ROOT = resolve(dirname(import.meta.path), "..");
 
@@ -179,20 +181,40 @@ async function main() {
 
   const { mode, workspace, port, noOpen } = parseArgs(process.argv);
 
-  // Validate mode
-  const availableModes = listModes();
-  if (!mode || !availableModes.includes(mode)) {
-    const modeList = availableModes.join(" | ");
-    console.log(`Usage: pneuma <${modeList}> --workspace /path/to/project [--port 17996] [--no-open]`);
+  // Validate mode — support builtin names, local paths, and github: specifiers
+  if (!mode) {
+    const modeList = listBuiltinModes().join("|");
+    console.log(
+      `Usage: pneuma <${modeList}|/path/to/mode|github:user/repo> [--workspace <path>] [--port <number>] [--no-open]`,
+    );
     process.exit(1);
   }
 
+  // Resolve mode source (builtin, local path, or github clone)
+  let resolved: ResolvedMode;
+  try {
+    resolved = await resolveModeSource(mode, PROJECT_ROOT);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[pneuma] Failed to resolve mode "${mode}": ${msg}`);
+    process.exit(1);
+  }
+
+  // For external modes, register them in the mode-loader before loading
+  if (resolved.type !== "builtin") {
+    registerExternalMode(resolved.name, resolved.path);
+    console.log(`[pneuma] External mode "${resolved.name}" loaded from ${resolved.path}`);
+  }
+
   // Load mode manifest (no React deps — backend safe)
+  // Use resolved.name for lookup since external modes are registered under that name
+  const modeName = resolved.name;
   let manifest: ModeManifest;
   try {
-    manifest = await loadModeManifest(mode);
+    manifest = await loadModeManifest(modeName);
   } catch (err) {
-    console.error(`[pneuma] Failed to load mode "${mode}":`, err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[pneuma] Failed to load mode "${modeName}": ${msg}`);
     process.exit(1);
   }
 
@@ -206,7 +228,7 @@ async function main() {
     console.log(`[pneuma] Created workspace: ${workspace}`);
   }
 
-  console.log(`[pneuma] Mode: ${manifest.displayName} (${mode})`);
+  console.log(`[pneuma] Mode: ${manifest.displayName} (${modeName})`);
   console.log(`[pneuma] Workspace: ${workspace}`);
 
   // 0.5 Resolve init params (interactive on first run, then cached)
@@ -228,7 +250,8 @@ async function main() {
   }
 
   // 1. Install skill + inject CLAUDE.md (driven by manifest)
-  const modeSourceDir = resolve(PROJECT_ROOT, "modes", mode);
+  // Use resolved path for external modes, PROJECT_ROOT/modes/{name} for builtin
+  const modeSourceDir = resolved.path;
   const skillTarget = join(workspace, ".claude", "skills", manifest.skill.installName);
   let skipSkillInstall = false;
 
@@ -263,8 +286,11 @@ async function main() {
 
     if (!hasContent && manifest.init.seedFiles) {
       const hasParams = Object.keys(resolvedParams).length > 0;
+      // For builtin modes, seed paths are relative to PROJECT_ROOT
+      // For external modes, seed paths are relative to the mode package directory
+      const seedBase = resolved.type === "builtin" ? PROJECT_ROOT : resolved.path;
       for (const [src, dst] of Object.entries(manifest.init.seedFiles)) {
-        const srcPath = join(PROJECT_ROOT, src);
+        const srcPath = join(seedBase, src);
         if (existsSync(srcPath)) {
           const dstPath = join(workspace, dst);
           mkdirSync(dirname(dstPath), { recursive: true });
@@ -302,6 +328,10 @@ async function main() {
     watchPatterns: manifest.viewer.watchPatterns,
     ...(isDev ? {} : { distDir }),
     ...(Object.keys(resolvedParams).length > 0 ? { initParams: resolvedParams } : {}),
+    // Pass external mode info for the /api/mode-info endpoint
+    ...(resolved.type !== "builtin"
+      ? { externalMode: { name: resolved.name, path: resolved.path, type: resolved.type } }
+      : {}),
   });
 
   // 4. Launch Agent backend (driven by manifest)
@@ -343,7 +373,7 @@ async function main() {
   saveSession(workspace, {
     sessionId: session.sessionId,
     agentSessionId: existing?.agentSessionId,
-    mode,
+    mode: modeName,
     createdAt: existing?.createdAt || Date.now(),
   });
 
@@ -413,12 +443,23 @@ async function main() {
     // Dev mode: start Vite dev server
     const VITE_PORT = 17996;
     console.log(`[pneuma] Starting Vite dev server on port ${VITE_PORT}...`);
+
+    // Pass external mode path to Vite via env var (for server.fs.allow)
+    const viteEnv: Record<string, string> = {
+      ...process.env as Record<string, string>,
+    };
+    if (resolved.type !== "builtin") {
+      viteEnv.PNEUMA_EXTERNAL_MODE_PATH = resolved.path;
+      viteEnv.PNEUMA_EXTERNAL_MODE_NAME = resolved.name;
+    }
+
     viteProc = Bun.spawn(
       ["bunx", "vite", "--port", String(VITE_PORT), "--strictPort"],
       {
         cwd: PROJECT_ROOT,
         stdout: "pipe",
         stderr: "pipe",
+        env: viteEnv,
       }
     );
 
@@ -443,7 +484,7 @@ async function main() {
 
   // 7. Open browser (include mode in URL for frontend)
   if (!noOpen) {
-    const url = `http://localhost:${browserPort}?session=${session.sessionId}&mode=${mode}`;
+    const url = `http://localhost:${browserPort}?session=${session.sessionId}&mode=${modeName}`;
     console.log(`[pneuma] Opening browser: ${url}`);
     try {
       const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
