@@ -282,7 +282,7 @@ You have access to an AI image generation script that creates contextual illustr
 3. **Generate**:
 
 ```bash
-cd {SKILL_PATH} && uv run python scripts/generate_image.py \
+cd {SKILL_PATH} && node scripts/generate_image.mjs \
   "Your detailed prompt here" \
   --aspect-ratio 16:9 \
   --resolution 1K \

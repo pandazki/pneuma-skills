@@ -68,10 +68,8 @@ export default function SlideIframePool({
 
   // Refs: one per slide.file for postMessage and reload
   const iframeRefs = useRef<Map<string, HTMLIFrameElement>>(new Map());
-  // Track which iframes have finished loading (for reload on imageVersion)
+  // Track which iframes have finished loading
   const loadedRefs = useRef<Set<string>>(new Set());
-  // Previous imageVersion to detect changes
-  const prevImageVersion = useRef(imageVersion);
   // Previous srcdoc per slide to detect content changes
   const prevSrcdocs = useRef<Map<string, string>>(new Map());
 
@@ -181,37 +179,23 @@ export default function SlideIframePool({
     } catch {}
   }, [highlightSelector, activeIndex, slides]);
 
-  // ── Reload on imageVersion change ─────────────────────────────────────────
-  useEffect(() => {
-    if (imageVersion !== prevImageVersion.current) {
-      prevImageVersion.current = imageVersion;
-      // Reload all loaded iframes
-      loadedRefs.current.forEach((file) => {
-        const iframe = iframeRefs.current.get(file);
-        if (iframe) {
-          try {
-            iframe.contentWindow?.location.reload();
-          } catch {
-            // Sandboxed — fall back to resetting srcdoc
-            // The srcdoc won't have changed, but reassigning triggers reload
-            iframe.srcdoc = iframe.srcdoc;
-          }
-        }
-      });
-    }
-  }, [imageVersion]);
-
   // ── Detect content changes and reload affected iframes ────────────────────
+  // imageVersion is included so that when an image file changes on disk,
+  // the srcdoc string changes (via the injected meta tag), which triggers
+  // the diff-based reload below.  This replaces the old location.reload()
+  // approach that failed on sandboxed iframes (allow-scripts without
+  // allow-same-origin blocks cross-origin location access).
   const currentSrcdocs = useMemo(() => {
     const map = new Map<string, string>();
+    const versionTag = `<meta name="image-version" content="${imageVersion}">`;
     for (const slide of slides) {
       if (pool.has(slide.file)) {
         const html = findSlideContent(files, slide.file);
-        map.set(slide.file, buildSrcdoc(html, themeCSS));
+        map.set(slide.file, buildSrcdoc(html, themeCSS).replace("</head>", `${versionTag}</head>`));
       }
     }
     return map;
-  }, [slides, pool, files, themeCSS, buildSrcdoc, findSlideContent]);
+  }, [slides, pool, files, themeCSS, buildSrcdoc, findSlideContent, imageVersion]);
 
   // Check for srcdoc changes and update iframes that need it
   useEffect(() => {
