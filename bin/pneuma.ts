@@ -183,9 +183,9 @@ async function main() {
 
   // Validate mode — support builtin names, local paths, and github: specifiers
   if (!mode) {
-    const modeList = listBuiltinModes().join(" | ");
+    const modeList = listBuiltinModes().join("|");
     console.log(
-      `Usage: pneuma <${modeList}|/path/to/mode|github:user/repo> --workspace /path/to/project [--port 17996] [--no-open]`,
+      `Usage: pneuma <${modeList}|/path/to/mode|github:user/repo> [--workspace <path>] [--port <number>] [--no-open]`,
     );
     process.exit(1);
   }
@@ -195,7 +195,8 @@ async function main() {
   try {
     resolved = await resolveModeSource(mode, PROJECT_ROOT);
   } catch (err) {
-    console.error(`[pneuma] Failed to resolve mode "${mode}":`, err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[pneuma] Failed to resolve mode "${mode}": ${msg}`);
     process.exit(1);
   }
 
@@ -212,7 +213,8 @@ async function main() {
   try {
     manifest = await loadModeManifest(modeName);
   } catch (err) {
-    console.error(`[pneuma] Failed to load mode "${modeName}":`, err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[pneuma] Failed to load mode "${modeName}": ${msg}`);
     process.exit(1);
   }
 
