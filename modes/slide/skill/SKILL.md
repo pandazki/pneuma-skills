@@ -100,9 +100,24 @@ If the user's workspace has no `theme.css`, create one. Reference `{SKILL_PATH}/
 - Typography (heading and body fonts) — **must include CJK system fonts** in `--font-sans` for multilingual support (see style_reference.md)
 - Spacing scale
 
-### Phase 3: Slide Generation
+### Phase 3: Scaffold All Slides
 
-Generate slides **in order**, establishing visual identity early:
+**Create the deck skeleton first** so the user can immediately see the full structure in the live preview:
+
+1. **Create all empty slide files** — For each slide in the outline, write a minimal placeholder to `slides/slide-XX.html`:
+   ```html
+   <div class="slide slide-title">
+     <h1>Slide Title from Outline</h1>
+   </div>
+   ```
+2. **Update manifest.json once** — Add all slide entries with their titles in the correct order
+3. **Update theme.css** — Set up the theme before filling content
+
+Now the viewer shows the full deck structure. The user can browse all slides and see the outline taking shape.
+
+### Phase 4: Fill Content
+
+Generate slide content **in order**, establishing visual identity early:
 
 1. **Cover slide first** — Sets the visual tone for the entire deck
 2. **First content slide** — Establishes the content layout standard
@@ -110,10 +125,10 @@ Generate slides **in order**, establishing visual identity early:
 
 For each slide:
 - Read its section from `design_outline.md`
-- Write the HTML fragment to `slides/slide-XX.html`
-- Update `manifest.json`
+- Write the full HTML content to the existing `slides/slide-XX.html` (replacing the placeholder)
+- The user sees each slide come to life in real-time as you write it
 
-### Phase 4: Review
+### Phase 5: Review
 
 After all slides are generated:
 - Verify manifest.json has correct ordering

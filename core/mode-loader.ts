@@ -47,6 +47,13 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/slide/pneuma-mode.js").then((m) => m.default),
   },
+  draw: {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/draw/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/draw/pneuma-mode.js").then((m) => m.default),
+  },
 };
 
 /** 外部 mode 注册表 — 由 CLI 在启动时通过 registerExternalMode 注册 */

@@ -2,14 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.1] - 2026-03-01
+
+### Changed
+- Slide skill workflow: scaffold all empty slides + manifest first so the viewer shows the full deck structure immediately, then fill content slide-by-slide
+- Updated CLAUDE.md, README.md with draw mode, mode-resolver, snapshot module, and accurate component/test counts
+
+### Fixed
+- Draw mode not registered in builtin mode tables (`mode-loader.ts` and `mode-resolver.ts`)
+
 ## [1.6.0] - 2026-03-01
 
 ### Added
+- **Draw Mode** — Excalidraw whiteboard mode for `.excalidraw` file editing with live preview
 - Remote mode loading — load custom modes from local paths (`pneuma /path/to/mode`) or GitHub repositories (`pneuma github:user/repo#branch`)
 - New `core/mode-resolver.ts` for mode source resolution and GitHub clone caching (`~/.pneuma/modes/`)
 - External mode registration in `core/mode-loader.ts` with support for both Bun backend and browser frontend (Vite `/@fs/` imports)
 - `/api/mode-info` server endpoint for frontend external mode discovery
 - Vite config `server.fs.allow` support for external mode directories
+- AskUserQuestion interactive UI with option cards in PermissionBanner
+
+### Changed
+- Slide image generation script rewritten from Python (`generate_image.py`) to Node.js (`generate_image.mjs`) — zero external dependencies
+
+### Fixed
+- Slide sandboxed iframe image reload — uses meta tag injection instead of `location.reload()`
 
 ## [1.5.0] - 2026-02-28
 

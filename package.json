@@ -1,6 +1,6 @@
 {
   "name": "pneuma-skills",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "type": "module",
   "description": "Framework for Code Agents to do WYSIWYG editing on HTML-based content",
   "license": "MIT",

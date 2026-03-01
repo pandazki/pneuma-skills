@@ -6,9 +6,9 @@ Pneuma Skills is an extensible delivery platform for filesystem-based Agent capa
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 1.6.0
+**Version:** 1.6.1
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
-**Available Modes:** `doc` (markdown editing), `slide` (presentation editing)
+**Available Modes:** `doc` (markdown editing), `slide` (presentation editing), `draw` (Excalidraw whiteboard)
 
 ## Tech Stack
 
@@ -23,6 +23,7 @@ Pneuma Skills is an extensible delivery platform for filesystem-based Agent capa
 | Panels | react-resizable-panels 4.6 |
 | Drag & Drop | @dnd-kit |
 | Code Editor | @uiw/react-codemirror |
+| Drawing | @excalidraw/excalidraw 0.18 |
 | Agent | Claude Code CLI via `--sdk-url` WebSocket protocol |
 
 ## Development Commands
@@ -31,6 +32,7 @@ Pneuma Skills is an extensible delivery platform for filesystem-based Agent capa
 bun install              # Install dependencies
 bun run dev doc          # Start in Doc Mode (current directory as workspace)
 bun run dev slide        # Start in Slide Mode
+bun run dev draw         # Start in Draw Mode (Excalidraw whiteboard)
 bun run dev doc --workspace ~/my-notes --port 17996 --no-open
 bun run build            # Vite production build to dist/
 bun test                 # Run all tests (bun:test)
@@ -54,19 +56,25 @@ pneuma-skills/
 │   │   ├── viewer-contract.ts #   ViewerContract, ViewerPreviewProps
 │   │   ├── agent-backend.ts   #   AgentBackend, AgentCapabilities, AgentProtocolAdapter
 │   │   └── mode-definition.ts #   ModeDefinition (manifest + viewer binding)
-│   ├── mode-loader.ts         # Dynamic mode discovery & loading
-│   └── __tests__/             # 42 contract tests (bun:test)
+│   ├── mode-loader.ts         # Dynamic mode discovery & loading (builtin + external)
+│   ├── mode-resolver.ts       # Mode source resolution (builtin/local/github)
+│   └── __tests__/             # 81 tests (bun:test)
 ├── modes/
 │   ├── doc/                   # Doc Mode — markdown editing
 │   │   ├── manifest.ts        #   ModeManifest v1.0.0
 │   │   ├── pneuma-mode.ts     #   ModeDefinition (manifest + DocPreview)
 │   │   ├── components/DocPreview.tsx  # Markdown preview with select/edit modes
 │   │   └── skill/SKILL.md     #   Skill prompt for Claude Code
-│   └── slide/                 # Slide Mode — presentation editing
-│       ├── manifest.ts        #   ModeManifest v1.2.0 (with init params)
-│       ├── pneuma-mode.ts     #   ModeDefinition (manifest + SlidePreview)
-│       ├── components/SlidePreview.tsx  # Slide carousel with iframe preview
-│       └── skill/             #   Skill package (SKILL.md + design docs + scripts)
+│   ├── slide/                 # Slide Mode — presentation editing
+│   │   ├── manifest.ts        #   ModeManifest v1.2.0 (with init params)
+│   │   ├── pneuma-mode.ts     #   ModeDefinition (manifest + SlidePreview)
+│   │   ├── components/SlidePreview.tsx  # Slide carousel with iframe preview
+│   │   └── skill/             #   Skill package (SKILL.md + design docs + scripts)
+│   └── draw/                  # Draw Mode — Excalidraw whiteboard
+│       ├── manifest.ts        #   ModeManifest
+│       ├── pneuma-mode.ts     #   ModeDefinition (manifest + DrawPreview)
+│       ├── components/DrawPreview.tsx  # Excalidraw editor
+│       └── skill/SKILL.md     #   Skill prompt for Claude Code
 ├── backends/
 │   └── claude-code/
 │       ├── index.ts           # ClaudeCodeBackend implements AgentBackend
@@ -92,16 +100,26 @@ pneuma-skills/
 │       ├── ChatPanel.tsx      # Chat message feed with streaming
 │       ├── ChatInput.tsx      # Message composer with image upload
 │       ├── MessageBubble.tsx  # Rich messages (markdown, tools, thinking)
+│       ├── StreamingText.tsx  # Streaming text renderer
 │       ├── ToolBlock.tsx      # Expandable tool call cards
 │       ├── PermissionBanner.tsx # Tool permission approval UI
 │       ├── ContextPanel.tsx   # Session stats, tasks, MCP servers
 │       ├── TerminalPanel.tsx  # Integrated xterm.js terminal
 │       ├── DiffPanel.tsx      # Git diff viewer
+│       ├── DiffViewer.tsx     # Inline diff display
 │       ├── EditorPanel.tsx    # CodeMirror code editor
 │       ├── ProcessPanel.tsx   # Background process tracking
 │       ├── TopBar.tsx         # Tabs + connection status + session cost
 │       ├── ModelSwitcher.tsx  # Model selection UI
+│       ├── SlashMenu.tsx      # Slash command menu
 │       └── ActivityIndicator.tsx  # Phase indicator (thinking/tool/responding)
+├── snapshot/                  # Snapshot push/pull via Cloudflare R2
+│   ├── index.ts               # CLI commands for snapshot management
+│   ├── push.ts                # Pack and upload workspace
+│   ├── pull.ts                # Download and extract workspace
+│   ├── archive.ts             # Tar archive utilities
+│   ├── r2.ts                  # R2 storage client
+│   └── types.ts               # Snapshot type definitions
 └── docs/
     ├── architecture-review-v1.md    # Architecture review & v1.0 blueprint
     ├── design/                      # Design documents

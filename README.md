@@ -12,7 +12,7 @@ ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell
 
 ## Demo
 
-Ships with **Doc Mode** (markdown editing) and **Slide Mode** (presentation editing). Here's Doc Mode — Claude Code edits `.md` files and you see the rendered result in real-time:
+Ships with **Doc Mode** (markdown editing), **Slide Mode** (presentation editing), and **Draw Mode** (Excalidraw whiteboard). Here's Doc Mode — Claude Code edits `.md` files and you see the rendered result in real-time:
 
 ```
 ┌─────────────────────────────┬──────────────────────────┐
@@ -71,6 +71,7 @@ pneuma-skills <mode> [options]
 Modes:
   doc                          Markdown document editing mode
   slide                        Presentation editing mode (HTML slides with iframe preview)
+  draw                         Excalidraw whiteboard drawing mode
   /path/to/mode                Load mode from a local directory
   github:user/repo             Load mode from a GitHub repository
   github:user/repo#branch      Load mode from a specific branch/tag
@@ -138,11 +139,11 @@ When Claude Code edits files, chokidar detects the changes and pushes updated co
 
 | Contract | Responsibility | Extend to... |
 |----------|---------------|-------------|
-| **ModeManifest** | Declares skill, viewer config, agent preferences, init seeds | Add new modes (slide, mindmap, canvas) |
+| **ModeManifest** | Declares skill, viewer config, agent preferences, init seeds | Add new modes (mindmap, canvas, etc.) |
 | **ViewerContract** | Preview component, context extraction, update strategy | Custom renderers (iframe, D3, Monaco) |
 | **AgentBackend** | Launch, resume, kill, capability declaration | Other agents (Codex, Aider) |
 
-Contracts are defined in `core/types/` with 42 tests in `core/__tests__/`.
+Contracts are defined in `core/types/` with 81 tests in `core/__tests__/`.
 
 ## Project Structure
 
@@ -156,19 +157,25 @@ pneuma-skills/
 │   │   ├── agent-backend.ts   #   AgentBackend, AgentCapabilities
 │   │   ├── mode-definition.ts #   ModeDefinition (manifest + viewer)
 │   │   └── index.ts           #   Re-exports
-│   ├── mode-loader.ts         # Dynamic mode discovery and loading
-│   └── __tests__/             # 42 contract tests
+│   ├── mode-loader.ts         # Dynamic mode discovery and loading (builtin + external)
+│   ├── mode-resolver.ts       # Mode source resolution (builtin/local/github)
+│   └── __tests__/             # 81 tests
 ├── modes/
 │   ├── doc/
 │   │   ├── pneuma-mode.ts     # Doc Mode definition (manifest + viewer)
 │   │   ├── skill/SKILL.md     # Skill prompt for Claude Code
 │   │   └── components/
 │   │       └── DocPreview.tsx  # Markdown preview with select/edit modes
-│   └── slide/
-│       ├── pneuma-mode.ts     # Slide Mode definition (manifest + viewer)
-│       ├── skill/             # Skill package (SKILL.md + design docs + scripts)
+│   ├── slide/
+│   │   ├── pneuma-mode.ts     # Slide Mode definition (manifest + viewer)
+│   │   ├── skill/             # Skill package (SKILL.md + design docs + scripts)
+│   │   └── components/
+│   │       └── SlidePreview.tsx # Slide carousel with iframe preview
+│   └── draw/
+│       ├── pneuma-mode.ts     # Draw Mode definition (manifest + viewer)
+│       ├── skill/SKILL.md     # Skill prompt for Claude Code
 │       └── components/
-│           └── SlidePreview.tsx # Slide carousel with iframe preview
+│           └── DrawPreview.tsx # Excalidraw editor
 ├── backends/
 │   └── claude-code/
 │       ├── index.ts           # ClaudeCodeBackend implements AgentBackend
@@ -193,6 +200,10 @@ pneuma-skills/
 │       ├── ToolBlock.tsx      # Expandable tool call cards
 │       ├── PermissionBanner.tsx # Tool permission approval UI
 │       └── TopBar.tsx         # Tabs (Chat/Context/Terminal) + status
+├── snapshot/                  # Snapshot push/pull via Cloudflare R2
+│   ├── push.ts                # Pack and upload workspace
+│   ├── pull.ts                # Download and extract workspace
+│   └── r2.ts                  # R2 storage client
 └── docs/
     ├── adr/                         # Architecture Decision Records (1-11)
     ├── design/                      # Active design documents
@@ -211,6 +222,7 @@ pneuma-skills/
 | Markdown | [react-markdown](https://github.com/remarkjs/react-markdown) + remark-gfm |
 | Terminal | [xterm.js](https://xtermjs.org) + Bun native PTY |
 | File Watching | [chokidar](https://github.com/paulmillr/chokidar) 4 |
+| Drawing | [Excalidraw](https://excalidraw.com) 0.18 |
 | Agent | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) via `--sdk-url` |
 
 ## Features
@@ -231,6 +243,7 @@ pneuma-skills/
 
 - [x] Doc Mode — Markdown WYSIWYG editing
 - [x] Slide Mode — Presentation editing with iframe preview, drag-reorder, AI image generation
+- [x] Draw Mode — Excalidraw whiteboard with `.excalidraw` file editing
 - [x] Element selection & inline editing
 - [x] Session persistence & resume
 - [x] Terminal, tasks, context panel
