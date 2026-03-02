@@ -1,14 +1,20 @@
-# Pneuma Skills
+<h1 align="center">Pneuma Skills</h1>
+<p align="center"><strong>WYSIWYG Delivery Platform for Code Agents</strong></p>
+<p align="center">Agents edit files. You see the result — live.</p>
 
-**An extensible delivery platform for filesystem-based Agent capabilities.**
+<p align="center">
+  <a href="https://www.npmjs.com/package/pneuma-skills"><img src="https://img.shields.io/npm/v/pneuma-skills.svg" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/pneuma-skills"><img src="https://img.shields.io/npm/dm/pneuma-skills.svg" alt="npm downloads" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" /></a>
+</p>
+
+<pre align="center">bunx pneuma-skills slide --workspace ./my-first-pneuma-slide</pre>
+
+---
 
 > **"pneuma"** — Greek *pneuma*, meaning soul, breath, life force.
 
 Pneuma fills the last mile between Code Agents and users: agents edit files on disk, Pneuma watches for changes and streams a live WYSIWYG preview alongside a full chat interface. Everything is driven by three pluggable contracts — bring your own Mode, Viewer, or Agent backend.
-
-```
-ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell
-```
 
 ## Demo
 
@@ -40,10 +46,12 @@ Ships with **Doc Mode** (markdown editing), **Slide Mode** (presentation editing
 ## Quick Start
 
 ```bash
-# Run directly (no install needed)
-bunx pneuma-skills doc --workspace ~/my-notes
+# Install Bun if you haven't: curl -fsSL https://bun.sh/install | bash
 
-# Or use the current directory
+# Start with a fresh workspace (recommended)
+bunx pneuma-skills slide --workspace ./my-first-pneuma-slide
+
+# Or use the current directory (files will be created here)
 bunx pneuma-skills doc
 ```
 

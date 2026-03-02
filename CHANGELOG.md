@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.0] - 2026-03-02
+
+### Changed
+- Upgraded CLI TUI from raw console.log/readline to @clack/prompts — modern terminal UI with styled intro/outro, step indicators, confirm/text prompts, and graceful cancel handling
+
 ## [1.7.3] - 2026-03-02
 
 ### Fixed

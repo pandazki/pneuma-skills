@@ -10,7 +10,7 @@
 
 import { resolve, dirname, join } from "node:path";
 import { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import * as readline from "node:readline";
+import * as p from "@clack/prompts";
 import { startServer } from "../server/index.js";
 import { ClaudeCodeBackend } from "../backends/claude-code/index.js";
 import { installSkill } from "../server/skill-installer.js";
@@ -20,6 +20,7 @@ import type { ModeManifest } from "../core/types/mode-manifest.js";
 import { applyTemplateParams } from "../server/skill-installer.js";
 import { resolveMode as resolveModeSource, isExternalMode } from "../core/mode-resolver.js";
 import type { ResolvedMode } from "../core/mode-resolver.js";
+import { resolveBinary } from "../server/path-resolver.js";
 
 const PROJECT_ROOT = resolve(dirname(import.meta.path), "..");
 
@@ -99,16 +100,6 @@ function parseArgs(argv: string[]) {
   return { mode, workspace: resolve(workspace), port, noOpen, debug };
 }
 
-function ask(question: string): Promise<string> {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
-
 // ── Init params persistence ──────────────────────────────────────────────────
 
 function loadConfig(workspace: string): Record<string, number | string> | null {
@@ -132,11 +123,19 @@ async function promptInitParams(manifest: ModeManifest): Promise<Record<string, 
   const initParams = manifest.init?.params;
   if (!initParams || initParams.length === 0) return params;
 
-  console.log("[pneuma] Configuring mode parameters...");
+  p.log.step("Configuring mode parameters...");
   for (const param of initParams) {
     const suffix = param.description ? ` (${param.description})` : "";
-    const answer = await ask(`${param.label}${suffix} [${param.defaultValue}]: `);
-    if (answer === "") {
+    const answer = await p.text({
+      message: `${param.label}${suffix}`,
+      placeholder: String(param.defaultValue),
+      defaultValue: String(param.defaultValue),
+    });
+    if (p.isCancel(answer)) {
+      p.cancel("Cancelled.");
+      process.exit(0);
+    }
+    if (answer === "" || answer === String(param.defaultValue)) {
       params[param.name] = param.defaultValue;
     } else if (param.type === "number") {
       const num = Number(answer);
@@ -154,7 +153,7 @@ function checkBunVersion() {
   const MIN_BUN = "1.3.5"; // Required for Bun.spawn terminal (PTY) support
   const current = typeof Bun !== "undefined" ? Bun.version : null;
   if (!current) {
-    console.warn("[pneuma] Warning: Not running under Bun. Pneuma requires Bun >= " + MIN_BUN);
+    p.log.warn("Not running under Bun. Pneuma requires Bun >= " + MIN_BUN);
     return;
   }
   const [curMajor, curMinor, curPatch] = current.split(".").map(Number);
@@ -164,14 +163,31 @@ function checkBunVersion() {
     (curMajor === minMajor && curMinor > minMinor) ||
     (curMajor === minMajor && curMinor === minMinor && curPatch >= minPatch);
   if (!ok) {
-    console.warn(
-      `[pneuma] Warning: Bun ${current} detected, but >= ${MIN_BUN} is required.` +
-      ` Terminal features may not work. Run \`bun upgrade\` to update.`
+    p.log.warn(
+      `Bun ${current} detected, but >= ${MIN_BUN} is required. Terminal features may not work. Run \`bun upgrade\` to update.`
     );
   }
 }
 
+function checkClaudeCode() {
+  const resolved = resolveBinary("claude");
+  if (!resolved) {
+    p.cancel(
+      "Claude Code CLI not found.\n" +
+      "  Pneuma requires Claude Code to be installed and authenticated.\n" +
+      "  Install it from: https://docs.anthropic.com/en/docs/claude-code"
+    );
+    process.exit(1);
+  }
+}
+
 async function main() {
+  // Read version from package.json
+  const pkgPath = join(PROJECT_ROOT, "package.json");
+  const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+
+  p.intro(`pneuma-skills v${pkg.version}`);
+
   checkBunVersion();
 
   // Snapshot subcommand — intercept before mode validation
@@ -187,9 +203,10 @@ async function main() {
   // Validate mode — support builtin names, local paths, and github: specifiers
   if (!mode) {
     const modeList = listBuiltinModes().join("|");
-    console.log(
+    p.log.warn(
       `Usage: pneuma <${modeList}|/path/to/mode|github:user/repo> [--workspace <path>] [--port <number>] [--no-open]`,
     );
+    p.cancel("No mode specified.");
     process.exit(1);
   }
 
@@ -199,14 +216,14 @@ async function main() {
     resolved = await resolveModeSource(mode, PROJECT_ROOT);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[pneuma] Failed to resolve mode "${mode}": ${msg}`);
+    p.cancel(`Failed to resolve mode "${mode}": ${msg}`);
     process.exit(1);
   }
 
   // For external modes, register them in the mode-loader before loading
   if (resolved.type !== "builtin") {
     registerExternalMode(resolved.name, resolved.path);
-    console.log(`[pneuma] External mode "${resolved.name}" loaded from ${resolved.path}`);
+    p.log.info(`External mode "${resolved.name}" loaded from ${resolved.path}`);
   }
 
   // Load mode manifest (no React deps — backend safe)
@@ -217,22 +234,27 @@ async function main() {
     manifest = await loadModeManifest(modeName);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[pneuma] Failed to load mode "${modeName}": ${msg}`);
+    p.cancel(`Failed to load mode "${modeName}": ${msg}`);
     process.exit(1);
   }
 
+  // Verify Claude Code CLI is available before proceeding
+  checkClaudeCode();
+
   if (!existsSync(workspace)) {
-    const answer = await ask(`Workspace does not exist: ${workspace}\nCreate it? [Y/n] `);
-    if (answer.toLowerCase() === "n") {
-      console.log("[pneuma] Aborted.");
+    const shouldCreate = await p.confirm({
+      message: `Workspace does not exist: ${workspace}\n  Create it?`,
+    });
+    if (p.isCancel(shouldCreate) || !shouldCreate) {
+      p.cancel("Cancelled.");
       process.exit(0);
     }
     mkdirSync(workspace, { recursive: true });
-    console.log(`[pneuma] Created workspace: ${workspace}`);
+    p.log.success(`Created workspace: ${workspace}`);
   }
 
-  console.log(`[pneuma] Mode: ${manifest.displayName} (${modeName})`);
-  console.log(`[pneuma] Workspace: ${workspace}`);
+  p.log.info(`Mode: ${manifest.displayName} (${modeName})`);
+  p.log.info(`Workspace: ${workspace}`);
 
   // 0.5 Resolve init params (interactive on first run, then cached)
   let resolvedParams: Record<string, number | string> = {};
@@ -240,11 +262,11 @@ async function main() {
     const cached = loadConfig(workspace);
     if (cached) {
       resolvedParams = cached;
-      console.log("[pneuma] Loaded init params from .pneuma/config.json");
+      p.log.step("Loaded init params from .pneuma/config.json");
     } else {
       resolvedParams = await promptInitParams(manifest);
       saveConfig(workspace, resolvedParams);
-      console.log("[pneuma] Saved init params to .pneuma/config.json");
+      p.log.step("Saved init params to .pneuma/config.json");
     }
     // Compute derived params (e.g. imageGenEnabled from API keys)
     if (manifest.init.deriveParams) {
@@ -265,18 +287,20 @@ async function main() {
   const effectiveApiPort = port || (isDev ? 17007 : 17996);
 
   if (existsSync(skillTarget)) {
-    const answer = await ask(
-      `[pneuma] Existing skills found at ${skillTarget}\n` +
-      `  Replace with latest version? [Y/n] `,
-    );
-    if (answer.toLowerCase() === "n") {
+    const shouldReplace = await p.confirm({
+      message: "Skill already exists. Replace with latest?",
+    });
+    if (p.isCancel(shouldReplace)) {
+      p.cancel("Cancelled.");
+      process.exit(0);
+    }
+    if (!shouldReplace) {
       skipSkillInstall = true;
-      console.log("[pneuma] Keeping existing skills.");
     }
   }
 
   if (!skipSkillInstall) {
-    console.log("[pneuma] Installing skill and preparing environment...");
+    p.log.step("Installing skill and preparing environment...");
     installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, effectiveApiPort);
   }
 
@@ -311,7 +335,7 @@ async function main() {
           } else {
             copyFileSync(srcPath, dstPath);
           }
-          console.log(`[pneuma] Seeded workspace with ${dst}`);
+          p.log.step(`Seeded workspace with ${dst}`);
         }
       }
     }
@@ -319,9 +343,9 @@ async function main() {
 
   // 2. Detect dev vs production mode (distDir, isDev computed earlier for port)
   if (isDev) {
-    console.log("[pneuma] Development mode (serving via Vite)");
+    p.log.info("Development mode (serving via Vite)");
   } else {
-    console.log("[pneuma] Production mode (serving built assets)");
+    p.log.info("Production mode (serving built assets)");
   }
 
   // 3. Start server
@@ -372,7 +396,7 @@ async function main() {
 
   if (existing?.agentSessionId) {
     resuming = true;
-    console.log(`[pneuma] Resuming session: ${existing.agentSessionId}`);
+    p.log.info(`Resuming session: ${existing.agentSessionId}`);
   }
 
   // Persist session info
@@ -383,7 +407,7 @@ async function main() {
     createdAt: existing?.createdAt || Date.now(),
   });
 
-  console.log(`[pneuma] Agent session started: ${session.sessionId}`);
+  p.log.info(`Agent session: ${session.sessionId}`);
 
   // Auto-greeting for fresh sessions (driven by manifest)
   if (!resuming && manifest.agent?.greeting) {
@@ -448,7 +472,7 @@ async function main() {
   if (isDev) {
     // Dev mode: start Vite dev server
     const VITE_PORT = 17996;
-    console.log(`[pneuma] Starting Vite dev server on port ${VITE_PORT}...`);
+    p.log.step(`Starting Vite dev server on port ${VITE_PORT}...`);
 
     // Pass external mode path to Vite via env var (for server.fs.allow)
     const viteEnv: Record<string, string> = {
@@ -492,28 +516,27 @@ async function main() {
   if (!noOpen) {
     const debugParam = debug ? "&debug=1" : "";
     const url = `http://localhost:${browserPort}?session=${session.sessionId}&mode=${modeName}${debugParam}`;
-    console.log(`[pneuma] Opening browser: ${url}`);
+    p.log.success(`Ready → ${url}`);
     try {
       const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
       Bun.spawn([opener, url], { stdout: "ignore", stderr: "ignore" });
     } catch {
-      console.log(`[pneuma] Could not open browser. Visit: ${url}`);
+      p.log.warn(`Could not open browser. Visit: ${url}`);
     }
   }
 
   // Graceful shutdown
   const shutdown = async () => {
-    console.log("\n[pneuma] Shutting down...");
     clearInterval(historyInterval);
     // Final history save
     const history = wsBridge.getMessageHistory(session.sessionId);
     if (history.length > 0) {
       saveHistory(workspace, history);
-      console.log(`[pneuma] Saved ${history.length} messages to history`);
     }
     viteProc?.kill();
     await backend.killAll();
     server.stop(true);
+    p.outro("Goodbye!");
     process.exit(0);
   };
   process.on("SIGTERM", shutdown);
@@ -521,6 +544,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("[pneuma] Fatal error:", err);
+  p.cancel(`Fatal error: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 });

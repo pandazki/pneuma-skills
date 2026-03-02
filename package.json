@@ -1,6 +1,6 @@
 {
   "name": "pneuma-skills",
-  "version": "1.7.3",
+  "version": "1.8.0",
   "type": "module",
   "description": "Framework for Code Agents to do WYSIWYG editing on HTML-based content",
   "license": "MIT",
@@ -36,6 +36,7 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
+    "@clack/prompts": "^1.0.1",
     "@codemirror/lang-css": "^6.3.1",
     "@codemirror/lang-html": "^6.4.11",
     "@codemirror/lang-javascript": "^6.2.4",
@@ -53,10 +54,13 @@
     "chokidar": "^4.0.0",
     "diff": "^8.0.3",
     "hono": "^4.7.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^4.6.2",
     "rehype-raw": "^7.0.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "zustand": "^5.0.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
@@ -65,11 +69,8 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.4.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.9.3",
-    "vite": "^6.3.0",
-    "zustand": "^5.0.0"
+    "vite": "^6.3.0"
   }
 }
