@@ -34,8 +34,10 @@ interface SlideIframePoolProps {
   themeCSS: string;
   activeIndex: number;
   isSelectMode: boolean;
+  isEditMode?: boolean;
   imageVersion: number;
-  onSelect: (sel: ViewerSelectionContext | null) => void;
+  onSelect: (sel: ViewerSelectionContext | null, rect?: { left: number; top: number; right: number; bottom: number; width: number; height: number }) => void;
+  onTextEdit?: (slideFile: string, html: string, changes?: { tag: string; before: string; after: string }[]) => void;
   /** Build the full srcdoc for a slide's HTML + theme */
   buildSrcdoc: (slideHtml: string, themeCSS: string) => string;
   /** Find a slide's HTML content by file path */
@@ -45,6 +47,10 @@ interface SlideIframePoolProps {
   ) => string;
   /** CSS selector to highlight in the active iframe (for navigating to historical selections) */
   highlightSelector?: string | null;
+  /** CSS selectors for annotation highlights on the active slide */
+  annotationSelectors?: string[];
+  /** Callback to expose iframe refs for postMessage communication (e.g. checkContentFit) */
+  iframeRefsOut?: (refs: Map<string, HTMLIFrameElement>) => void;
 }
 
 export default function SlideIframePool({
@@ -53,11 +59,15 @@ export default function SlideIframePool({
   themeCSS,
   activeIndex,
   isSelectMode,
+  isEditMode,
   imageVersion,
   onSelect,
+  onTextEdit,
   buildSrcdoc,
   findSlideContent,
   highlightSelector,
+  annotationSelectors,
+  iframeRefsOut,
 }: SlideIframePoolProps) {
   // Set of slide.file keys currently in the pool
   const [pool, setPool] = useState<Set<string>>(() => {
@@ -129,6 +139,11 @@ export default function SlideIframePool({
     };
   }, [activeIndex, slides]);
 
+  // ── Expose iframe refs to parent ────────────────────────────────────────────
+  useEffect(() => {
+    iframeRefsOut?.(iframeRefs.current);
+  });
+
   // ── Send selectMode postMessage to all loaded iframes ─────────────────────
   useEffect(() => {
     iframeRefs.current.forEach((iframe) => {
@@ -141,7 +156,21 @@ export default function SlideIframePool({
     });
   }, [isSelectMode]);
 
-  // Also send selectMode when an iframe loads
+  // ── Send editMode postMessage to active iframe ───────────────────────────
+  useEffect(() => {
+    const activeFile = slides[activeIndex]?.file;
+    if (!activeFile) return;
+    const iframe = iframeRefs.current.get(activeFile);
+    if (!iframe) return;
+    try {
+      iframe.contentWindow?.postMessage(
+        { type: "pneuma:editMode", enabled: !!isEditMode },
+        "*",
+      );
+    } catch {}
+  }, [isEditMode, activeIndex, slides]);
+
+  // Also send selectMode/editMode when an iframe loads
   const handleLoad = useCallback(
     (file: string) => {
       loadedRefs.current.add(file);
@@ -152,10 +181,14 @@ export default function SlideIframePool({
             { type: "pneuma:selectMode", enabled: isSelectMode },
             "*",
           );
+          iframe.contentWindow?.postMessage(
+            { type: "pneuma:editMode", enabled: !!isEditMode },
+            "*",
+          );
         } catch {}
       }
     },
-    [isSelectMode],
+    [isSelectMode, isEditMode],
   );
 
   // ── Send highlight / clear highlight to active iframe ─────────────────────
@@ -179,6 +212,20 @@ export default function SlideIframePool({
     } catch {}
   }, [highlightSelector, activeIndex, slides]);
 
+  // ── Send annotation highlights to active iframe ───────────────────────────
+  useEffect(() => {
+    const activeFile = slides[activeIndex]?.file;
+    if (!activeFile) return;
+    const iframe = iframeRefs.current.get(activeFile);
+    if (!iframe) return;
+    try {
+      iframe.contentWindow?.postMessage(
+        { type: "pneuma:highlightMultiple", selectors: annotationSelectors || [] },
+        "*",
+      );
+    } catch {}
+  }, [annotationSelectors, activeIndex, slides]);
+
   // ── Detect content changes and reload affected iframes ────────────────────
   // imageVersion is included so that when an image file changes on disk,
   // the srcdoc string changes (via the injected meta tag), which triggers
@@ -199,7 +246,10 @@ export default function SlideIframePool({
 
   // Check for srcdoc changes and update iframes that need it
   useEffect(() => {
+    const activeFile = slides[activeIndex]?.file;
     currentSrcdocs.forEach((srcdoc, file) => {
+      // Skip updating active slide while user is editing (prevents cursor loss)
+      if (isEditMode && file === activeFile) return;
       const prev = prevSrcdocs.current.get(file);
       if (prev !== undefined && prev !== srcdoc) {
         // Content changed — update the iframe's srcdoc directly
@@ -210,32 +260,42 @@ export default function SlideIframePool({
       }
     });
     prevSrcdocs.current = new Map(currentSrcdocs);
-  }, [currentSrcdocs]);
+  }, [currentSrcdocs, isEditMode, slides, activeIndex]);
 
   // ── Listen for selection postMessages from iframes ────────────────────────
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
-      if (e.data?.type !== "pneuma:select") return;
-      const sel = e.data.selection;
-      if (!sel) {
-        onSelect(null);
-        return;
+      if (e.data?.type === "pneuma:select") {
+        const sel = e.data.selection;
+        if (!sel) {
+          onSelect(null);
+          return;
+        }
+        const currentSlide = slides[activeIndex];
+        const rect = sel.rect;
+        onSelect({
+          type: sel.type,
+          content: sel.content,
+          level: sel.level,
+          file: currentSlide?.file,
+          tag: sel.tag,
+          classes: sel.classes,
+          selector: sel.selector,
+          thumbnail: sel.thumbnail,
+          label: sel.label,
+          nearbyText: sel.nearbyText,
+          accessibility: sel.accessibility,
+        }, rect);
+      } else if (e.data?.type === "pneuma:textEdit") {
+        const currentSlide = slides[activeIndex];
+        if (currentSlide && onTextEdit) {
+          onTextEdit(currentSlide.file, e.data.html, e.data.changes);
+        }
       }
-      const currentSlide = slides[activeIndex];
-      onSelect({
-        type: sel.type,
-        content: sel.content,
-        level: sel.level,
-        file: currentSlide?.file,
-        tag: sel.tag,
-        classes: sel.classes,
-        selector: sel.selector,
-        thumbnail: sel.thumbnail,
-      });
     };
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [onSelect, slides, activeIndex]);
+  }, [onSelect, onTextEdit, slides, activeIndex]);
 
   // ── Ref callback factory ──────────────────────────────────────────────────
   const setIframeRef = useCallback(

@@ -26,9 +26,12 @@ import type {
   ViewerPreviewProps,
   ViewerSelectionContext,
 } from "../../../core/types/viewer-contract.js";
+import { buildSelectionScript } from "../../../core/iframe-selection/index.js";
 import { useStore } from "../../../src/store.js";
 import { useSlideThumbnails } from "../hooks/useSlideThumbnails.js";
 import SlideIframePool from "./SlideIframePool.js";
+import { generateSlideScaffold, type SlideSpec, type ScaffoldFile } from "./scaffold.js";
+import ScaffoldConfirm from "../../../src/components/ScaffoldConfirm.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,297 +102,178 @@ function stripHtmlWrapper(html: string): string {
 }
 
 /**
- * Selection-mode script injected into every slide iframe.
- * Starts dormant — parent controls activation via postMessage:
- *   { type: 'pneuma:selectMode', enabled: true/false }
- *   { type: 'pneuma:highlight', selector: '...' }
- *   { type: 'pneuma:clearHighlight' }
+ * Slide-specific checkContentFit message handler extension.
+ * Injected into the shared selection script via buildSelectionScript extensions.
  */
-const SELECTION_SCRIPT = `<script>
-(function() {
-  var active = false;
-  var hovered = null;
-  var selectedEl = null;
-  var HOVER_OUTLINE = '2px solid rgba(110, 168, 254, 0.6)';
-  var SELECT_OUTLINE = '2px solid rgba(110, 168, 254, 0.9)';
-  var SELECT_BG = 'rgba(110, 168, 254, 0.08)';
-  var OUTLINE_RADIUS = '4px';
-
-  // Broad selector for selectable elements
-  var SEL = [
-    '[data-selectable]',
-    'h1','h2','h3','h4','h5','h6',
-    'p','li','ul','ol','pre','code','blockquote','img',
-    'section','article','nav','aside','header','footer','main',
-    'table','thead','tbody','tr','td','th',
-    'figure','figcaption','details','summary',
-    'a','button','svg',
-    'div[class]','span[class]'
-  ].join(',');
-
-  // Semantic HTML elements — always a valid selection target, never bubble past these
-  var SEMANTIC_RE = /^(h[1-6]|p|li|ul|ol|pre|code|blockquote|img|section|article|nav|aside|header|footer|main|table|thead|tbody|tr|td|th|figure|figcaption|details|summary|a|button|svg)$/i;
-
-  /**
-   * Bubble-up heuristic:
-   * - Semantic elements (h1, p, section, table...) → always use directly
-   * - Generic elements (div, span, svg) → if small, bubble up to a larger container
-   * This way clicking an icon inside a card selects the card, not the icon wrapper.
-   */
-  function findMeaningfulElement(target) {
-    var el = target.closest(SEL);
-    if (!el) return null;
-
-    // Semantic HTML elements are always the right target
-    if (SEMANTIC_RE.test(el.tagName)) return el;
-    if (el.hasAttribute('data-selectable')) return el;
-
-    // Generic elements (div[class], span[class]): bubble up if very small
-    var rect = el.getBoundingClientRect();
-    if (rect.width >= 40 && rect.height >= 40) return el; // large enough, keep it
-
-    // Walk up to find a larger meaningful container
-    var parent = el.parentElement;
-    while (parent && parent !== document.body) {
-      if (parent.matches(SEL)) {
-        if (SEMANTIC_RE.test(parent.tagName) || parent.hasAttribute('data-selectable')) return parent;
-        var pRect = parent.getBoundingClientRect();
-        if (pRect.width >= 40 && pRect.height >= 40) return parent;
-      }
-      parent = parent.parentElement;
-    }
-    // No better container found, use original
-    return el;
-  }
-
-  function clearHover() {
-    if (hovered && hovered !== selectedEl) {
-      hovered.style.outline = '';
-      hovered.style.outlineOffset = '';
-      hovered.style.borderRadius = '';
-    }
-    hovered = null;
-  }
-
-  function clearSelected() {
-    if (selectedEl) {
-      selectedEl.style.outline = '';
-      selectedEl.style.outlineOffset = '';
-      selectedEl.style.borderRadius = '';
-      selectedEl.style.backgroundColor = selectedEl._pneumaOrigBg || '';
-      delete selectedEl._pneumaOrigBg;
-      selectedEl = null;
-    }
-  }
-
-  function applySelectedStyle(el) {
-    clearSelected();
-    selectedEl = el;
-    el._pneumaOrigBg = el.style.backgroundColor || '';
-    el.style.outline = SELECT_OUTLINE;
-    el.style.outlineOffset = '2px';
-    el.style.borderRadius = OUTLINE_RADIUS;
-    el.style.backgroundColor = SELECT_BG;
-  }
-
-  /** Build a unique CSS selector path for an element */
-  function buildSelector(el) {
-    var parts = [];
-    var current = el;
-    while (current && current !== document.body && current !== document.documentElement) {
-      var tag = current.tagName.toLowerCase();
-      var part = tag;
-      if (current.id) {
-        part = tag + '#' + current.id;
-        parts.unshift(part);
-        break;
-      }
-      var cls = (typeof current.className === 'string' ? current.className : '').trim();
-      if (cls) {
-        // Use first 2 classes max to keep selector readable
-        var classes = cls.split(/\\s+/).slice(0, 2).join('.');
-        part = tag + '.' + classes;
-      }
-      // Add nth-child if there are siblings with same tag
-      var parent = current.parentElement;
-      if (parent) {
-        var siblings = parent.children;
-        var sameTag = 0, position = 0;
-        for (var i = 0; i < siblings.length; i++) {
-          if (siblings[i].tagName === current.tagName) {
-            sameTag++;
-            if (siblings[i] === current) position = sameTag;
-          }
-        }
-        if (sameTag > 1) part += ':nth-child(' + (Array.prototype.indexOf.call(siblings, current) + 1) + ')';
-      }
-      parts.unshift(part);
-      current = current.parentElement;
-    }
-    return parts.join(' > ');
-  }
-
-  /** Capture an SVG thumbnail of an element using foreignObject */
-  function captureElementThumbnail(el) {
-    try {
-      var elRect = el.getBoundingClientRect();
-      var elW = Math.ceil(elRect.width);
-      var elH = Math.ceil(elRect.height);
-      if (elW <= 0 || elH <= 0) return null;
-
-      // Clone the element
-      var clone = el.cloneNode(true);
-      // Remove scripts from clone
-      var scripts = clone.querySelectorAll('script');
-      for (var s = 0; s < scripts.length; s++) scripts[s].remove();
-
-      // Measure actual content size by rendering clone off-screen in the iframe
-      var measure = document.createElement('div');
-      measure.style.cssText = 'position:absolute;left:-99999px;top:-99999px;width:fit-content;max-width:' + elW + 'px;pointer-events:none;';
-      measure.appendChild(clone);
-      document.body.appendChild(measure);
-      var fitRect = clone.getBoundingClientRect();
-      var fitW = Math.ceil(fitRect.width) || elW;
-      var fitH = Math.ceil(fitRect.height) || elH;
-      document.body.removeChild(measure);
-
-      // Collect all CSS rules
-      var cssText = '';
-      try {
-        var sheets = document.styleSheets;
-        for (var i = 0; i < sheets.length; i++) {
-          try {
-            var rules = sheets[i].cssRules;
-            for (var j = 0; j < rules.length; j++) {
-              cssText += rules[j].cssText + '\\n';
-            }
-          } catch(ex) { /* cross-origin */ }
-        }
-      } catch(ex) {}
-
-      // Serialize clone directly in iframe context (preserves SVG namespaces)
-      var cloneHtml = new XMLSerializer().serializeToString(clone);
-
-      // Escape CSS for XHTML CDATA
-      var safeCss = cssText.replace(/]]>/g, ']]]]><![CDATA[>');
-      var sizeCSS = 'html,body{margin:0;padding:0;overflow:hidden;width:' + fitW + 'px;height:' + fitH + 'px;}';
-
-      var xhtml = '<html xmlns="http://www.w3.org/1999/xhtml"><head>'
-        + '<style><![CDATA[' + safeCss + ']]></style>'
-        + '<style>' + sizeCSS + '</style>'
-        + '</head><body>' + cloneHtml + '</body></html>';
-
-      var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + fitW + '" height="' + fitH + '">' +
-        '<foreignObject width="' + fitW + '" height="' + fitH + '">' + xhtml + '</foreignObject></svg>';
-      var encoded = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-
-      // Skip if too large (> 200KB)
-      if (encoded.length > 200 * 1024) return null;
-      return encoded;
-    } catch(ex) {
-      return null;
-    }
-  }
-
-  /** Classify element type */
-  function classifyElement(el) {
-    var tag = el.tagName.toLowerCase();
-    var type = 'container';
-    var level;
-    if (/^h[1-6]$/.test(tag)) { type = 'heading'; level = parseInt(tag[1]); }
-    else if (tag === 'p') type = 'paragraph';
-    else if (tag === 'li') type = 'list';
-    else if (tag === 'ul' || tag === 'ol') type = 'list';
-    else if (tag === 'pre' || tag === 'code') type = 'code';
-    else if (tag === 'blockquote') type = 'blockquote';
-    else if (tag === 'img') type = 'image';
-    else if (tag === 'table' || tag === 'thead' || tag === 'tbody' || tag === 'tr' || tag === 'td' || tag === 'th') type = 'table';
-    else if (tag === 'section' || tag === 'article' || tag === 'nav' || tag === 'aside' || tag === 'header' || tag === 'footer' || tag === 'main') type = 'section';
-    else if (tag === 'a') type = 'link';
-    else if (tag === 'button') type = 'interactive';
-    else if (tag === 'figure' || tag === 'figcaption') type = 'container';
-    return { type: type, level: level };
-  }
-
+const CHECK_CONTENT_FIT_EXTENSION = `
   window.addEventListener('message', function(e) {
-    if (!e.data) return;
-    if (e.data.type === 'pneuma:selectMode') {
-      active = !!e.data.enabled;
-      document.body.style.cursor = active ? 'crosshair' : '';
-      if (!active) {
-        clearHover();
-        clearSelected();
+    if (!e.data || e.data.type !== 'pneuma:checkContentFit') return;
+    var vw = e.data.viewportW || window.innerWidth || document.documentElement.clientWidth;
+    var vh = e.data.viewportH || window.innerHeight || document.documentElement.clientHeight;
+    var issues = [];
+    var bodyChildren = Array.from(document.body.children);
+    var flowChildren = bodyChildren.filter(function(child) {
+      var pos = window.getComputedStyle(child).position;
+      return pos !== 'absolute' && pos !== 'fixed';
+    });
+    for (var ci = 0; ci < flowChildren.length; ci++) {
+      var el = flowChildren[ci];
+      if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
+      var tag = el.tagName.toLowerCase();
+      var cls = (typeof el.className === 'string' ? el.className : '').trim();
+      var id = cls ? '<' + tag + '.' + cls.split(' ')[0] + '>' : '<' + tag + '>';
+      var rect = el.getBoundingClientRect();
+      if (rect.right > vw + 1 || rect.bottom > vh + 1) {
+        issues.push(id + ' overflows viewport: right=' + Math.round(rect.right) + 'px (max ' + vw + '), bottom=' + Math.round(rect.bottom) + 'px (max ' + vh + ')');
       }
-    }
-    if (e.data.type === 'pneuma:highlight') {
-      try {
-        var target = document.querySelector(e.data.selector);
-        if (target) {
-          applySelectedStyle(target);
-          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      var absHidden = [];
+      for (var ak = 0; ak < el.children.length; ak++) {
+        var absChild = el.children[ak];
+        var absPos = window.getComputedStyle(absChild).position;
+        if (absPos === 'absolute' || absPos === 'fixed') {
+          absHidden.push({ el: absChild, prev: absChild.style.display });
+          absChild.style.display = 'none';
         }
-      } catch(ex) {}
-    }
-    if (e.data.type === 'pneuma:clearHighlight') {
-      clearSelected();
-    }
-  });
-
-  document.addEventListener('mouseover', function(e) {
-    if (!active) return;
-    var el = findMeaningfulElement(e.target);
-    if (!el) return;
-    if (hovered && hovered !== el) clearHover();
-    if (el === selectedEl) return; // don't override selected style
-    hovered = el;
-    el.style.outline = HOVER_OUTLINE;
-    el.style.outlineOffset = '2px';
-    el.style.borderRadius = OUTLINE_RADIUS;
-  });
-
-  document.addEventListener('mouseout', function(e) {
-    if (!active) return;
-    clearHover();
-  });
-
-  document.addEventListener('click', function(e) {
-    if (!active) return;
-    e.preventDefault();
-    e.stopPropagation();
-    var el = findMeaningfulElement(e.target);
-    if (!el) {
-      clearSelected();
-      window.parent.postMessage({ type: 'pneuma:select', selection: null }, '*');
-      return;
-    }
-
-    applySelectedStyle(el);
-
-    var tag = el.tagName.toLowerCase();
-    var info = classifyElement(el);
-    var classes = (typeof el.className === 'string' ? el.className : '').trim();
-    var selector = buildSelector(el);
-    var thumbnail = captureElementThumbnail(el);
-
-    var content = tag === 'img'
-      ? (el.getAttribute('alt') || el.getAttribute('src') || 'image')
-      : (el.textContent || '').trim().slice(0, 200);
-
-    window.parent.postMessage({
-      type: 'pneuma:select',
-      selection: {
-        type: info.type,
-        content: content,
-        level: info.level,
-        tag: tag,
-        classes: classes,
-        selector: selector,
-        thumbnail: thumbnail
       }
+      var overflowH = el.scrollHeight - el.clientHeight;
+      var overflowW = el.scrollWidth - el.clientWidth;
+      for (var ar = 0; ar < absHidden.length; ar++) {
+        absHidden[ar].el.style.display = absHidden[ar].prev;
+      }
+      if (overflowH > 1) {
+        issues.push(id + ' content clipped vertically: scrollHeight=' + el.scrollHeight + 'px, clientHeight=' + el.clientHeight + 'px (overflow by ' + overflowH + 'px)');
+      }
+      if (overflowW > 1) {
+        issues.push(id + ' content clipped horizontally: scrollWidth=' + el.scrollWidth + 'px, clientWidth=' + el.clientWidth + 'px (overflow by ' + overflowW + 'px)');
+      }
+      for (var cj = 0; cj < el.children.length; cj++) {
+        var child = el.children[cj];
+        if (child.tagName === 'SCRIPT' || child.tagName === 'STYLE') continue;
+        var childPos = window.getComputedStyle(child).position;
+        if (childPos === 'absolute' || childPos === 'fixed') continue;
+        var childOver = child.scrollHeight - child.clientHeight;
+        if (childOver > 1) {
+          var ctag = child.tagName.toLowerCase();
+          var ccls = (typeof child.className === 'string' ? child.className : '').trim();
+          var cid = ccls ? '<' + ctag + '.' + ccls.split(' ')[0] + '>' : '<' + ctag + '>';
+          issues.push(cid + ' content clipped: scrollHeight=' + child.scrollHeight + 'px, clientHeight=' + child.clientHeight + 'px (overflow by ' + childOver + 'px)');
+        }
+      }
+    }
+    window.parent.postMessage({
+      type: 'pneuma:contentFitResult',
+      requestId: e.data.requestId,
+      fits: issues.length === 0,
+      issues: issues
     }, '*');
   });
-})();
-</script>`;
+`;
+
+/**
+ * Edit mode extension — makes text elements contentEditable on demand.
+ * Tracks per-element before/after text and sends diff info with the edited HTML.
+ */
+const EDIT_MODE_EXTENSION = `
+  var editActive = false;
+  var editDirty = false;
+  var editOriginalText = '';
+  var editFocusedTag = '';
+  var editChanges = [];
+
+  window.addEventListener('message', function(e) {
+    if (!e.data || e.data.type !== 'pneuma:editMode') return;
+    editActive = !!e.data.enabled;
+    toggleEditable(editActive);
+    if (!editActive) {
+      if (editDirty) {
+        sendEditedContent();
+        editDirty = false;
+      }
+      editChanges = [];
+    }
+  });
+
+  function toggleEditable(enable) {
+    var tags = 'h1,h2,h3,h4,h5,h6,p,li,td,th,span,a,blockquote,figcaption,label,dt,dd';
+    var els = document.querySelectorAll(tags);
+    for (var i = 0; i < els.length; i++) {
+      els[i].contentEditable = enable ? 'true' : 'false';
+      els[i].style.cursor = enable ? 'text' : '';
+    }
+    if (enable) {
+      document.addEventListener('click', preventEditNav, true);
+    } else {
+      document.removeEventListener('click', preventEditNav, true);
+    }
+  }
+
+  function preventEditNav(e) {
+    if (e.target.closest && e.target.closest('a')) e.preventDefault();
+  }
+
+  document.addEventListener('focus', function(e) {
+    if (!editActive) return;
+    var el = e.target;
+    if (el && el.contentEditable === 'true') {
+      editOriginalText = (el.textContent || '').trim();
+      editFocusedTag = el.tagName ? el.tagName.toLowerCase() : '';
+    }
+  }, true);
+
+  document.addEventListener('input', function() {
+    if (!editActive) return;
+    editDirty = true;
+  });
+
+  document.addEventListener('blur', function(e) {
+    if (!editActive) return;
+    var el = e.target;
+    if (el && el.contentEditable === 'true') {
+      var newText = (el.textContent || '').trim();
+      if (editOriginalText !== newText) {
+        editChanges.push({ tag: editFocusedTag, before: editOriginalText, after: newText });
+        editDirty = true;
+      }
+      if (editDirty) {
+        sendEditedContent();
+        editDirty = false;
+      }
+    }
+  }, true);
+
+  function serializeCleanBody() {
+    var clone = document.body.cloneNode(true);
+    var scripts = clone.querySelectorAll('script');
+    for (var i = scripts.length - 1; i >= 0; i--) scripts[i].parentNode.removeChild(scripts[i]);
+    var eds = clone.querySelectorAll('[contenteditable]');
+    for (var i = 0; i < eds.length; i++) eds[i].removeAttribute('contenteditable');
+    var styled = clone.querySelectorAll('[style]');
+    for (var i = 0; i < styled.length; i++) {
+      var s = styled[i].style;
+      s.outline = ''; s.outlineOffset = ''; s.borderRadius = ''; s.cursor = '';
+      if (styled[i].getAttribute('data-pneuma-annotated')) s.backgroundColor = '';
+      if (!styled[i].getAttribute('style').trim()) styled[i].removeAttribute('style');
+    }
+    var da = clone.querySelectorAll('[data-pneuma-annotated]');
+    for (var i = 0; i < da.length; i++) da[i].removeAttribute('data-pneuma-annotated');
+    return clone.innerHTML.trim();
+  }
+
+  function sendEditedContent() {
+    var changes = editChanges.slice();
+    editChanges = [];
+    window.parent.postMessage({
+      type: 'pneuma:textEdit',
+      html: serializeCleanBody(),
+      changes: changes
+    }, '*');
+  }
+`;
+
+/** Selection script for slide iframes — shared library + slide-specific extensions */
+const SELECTION_SCRIPT = buildSelectionScript({
+  extensions: [CHECK_CONTENT_FIT_EXTENSION, EDIT_MODE_EXTENSION],
+});
 
 /**
  * Build a full HTML document for the iframe srcdoc.
@@ -463,6 +347,80 @@ function saveNavPosition(pos: NavigatorPosition) {
   } catch {}
 }
 
+// ── Annotation Popover ──────────────────────────────────────────────────────
+
+function AnnotationPopover({
+  style,
+  label,
+  thumbnail,
+  onConfirm,
+  onCancel,
+}: {
+  style: React.CSSProperties;
+  label?: string;
+  thumbnail?: string;
+  onConfirm: (comment: string) => void;
+  onCancel: () => void;
+}) {
+  const [comment, setComment] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Auto-focus after a short delay (iframe click may steal focus)
+    const t = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      onConfirm(comment);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      onCancel();
+    }
+  };
+
+  return (
+    <div
+      style={style}
+      className="bg-neutral-800 border border-neutral-600 rounded-lg shadow-xl p-3 text-sm"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center gap-2 mb-2 min-w-0">
+        {thumbnail && (
+          <img src={thumbnail} alt="" className="w-8 h-8 rounded border border-neutral-600 shrink-0 object-contain bg-white" />
+        )}
+        <span className="text-neutral-300 truncate text-xs">{label || "Element"}</span>
+      </div>
+      <input
+        ref={inputRef}
+        type="text"
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Add comment (optional)..."
+        className="w-full bg-neutral-900 border border-neutral-600 rounded px-2 py-1.5 text-sm text-white placeholder-neutral-500 outline-none focus:border-blue-500"
+      />
+      <div className="flex justify-end gap-2 mt-2">
+        <button
+          onClick={onCancel}
+          className="px-2.5 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => onConfirm(comment)}
+          className="px-2.5 py-1 text-xs text-white bg-blue-600 hover:bg-blue-500 rounded transition-colors"
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function SlidePreview({
@@ -475,19 +433,41 @@ export default function SlidePreview({
   onActiveFileChange,
   actionRequest,
   onActionResult,
+  onNotifyAgent,
 }: ViewerPreviewProps) {
   const setPreviewMode = useStore((s) => s.setPreviewMode);
+  const pushUserAction = useStore((s) => s.pushUserAction);
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [navPosition, setNavPosition] = useState<NavigatorPosition>(loadNavPosition);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isGridView, setIsGridView] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(100); // percentage
   const fullscreenRef = useRef<HTMLDivElement>(null);
+  const iframeRefsRef = useRef<Map<string, HTMLIFrameElement>>(new Map());
+
+  // Scaffold state
+  const [scaffoldPending, setScaffoldPending] = useState<{
+    files: ScaffoldFile[];
+    clearPatterns: string[];
+    resolve: (result: { success: boolean; message?: string }) => void;
+    source: "agent" | "user";
+  } | null>(null);
+
+  const annotations = useStore((s) => s.annotations);
+  const addAnnotation = useStore((s) => s.addAnnotation);
+
+  // Pending annotation popover state (annotate mode: click → popover → confirm → add)
+  const [pendingAnnotation, setPendingAnnotation] = useState<{
+    selection: ViewerSelectionContext;
+    slideFile: string;
+    rect: { left: number; top: number; right: number; bottom: number; width: number; height: number };
+  } | null>(null);
 
   const [highlightSelector, setHighlightSelector] = useState<string | null>(null);
   const manifest = useMemo(() => parseManifest(files), [files]);
   const themeCSS = useMemo(() => findThemeCSS(files), [files]);
-  const isSelectMode = previewMode === "select";
+  const isSelectMode = previewMode === "select" || previewMode === "annotate";
+  const isEditMode = previewMode === "edit";
 
   // Optimistic slide order: updated immediately on drag, synced from manifest on external changes
   const [localSlides, setLocalSlides] = useState<{ file: string; title: string }[]>([]);
@@ -565,8 +545,85 @@ export default function SlidePreview({
           content: JSON.stringify(newManifest, null, 2) + "\n",
         }),
       }).catch(() => {});
+
+      pushUserAction({
+        timestamp: Date.now(),
+        actionId: "reorder-slide",
+        description: `Moved slide "${moved.title || moved.file}" from position ${fromIndex + 1} to ${toIndex + 1}`,
+      });
     },
-    [manifest, slides, activeSlideIndex],
+    [manifest, slides, activeSlideIndex, pushUserAction],
+  );
+
+  // Delete slide — remove from manifest (confirmation handled by UI component)
+  const handleDeleteSlide = useCallback(
+    (index: number) => {
+      if (!manifest || slides.length <= 1) return;
+      const slide = slides[index];
+
+      const newSlides = slides.filter((_, i) => i !== index);
+      setLocalSlides(newSlides);
+
+      if (activeSlideIndex >= newSlides.length) {
+        setActiveSlideIndex(newSlides.length - 1);
+      } else if (activeSlideIndex > index) {
+        setActiveSlideIndex(activeSlideIndex - 1);
+      }
+
+      const newManifest = { ...manifest, slides: newSlides };
+      const baseUrl = import.meta.env.DEV ? `http://localhost:17007` : "";
+      fetch(`${baseUrl}/api/files`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "manifest.json",
+          content: JSON.stringify(newManifest, null, 2) + "\n",
+        }),
+      }).catch(() => {});
+
+      pushUserAction({
+        timestamp: Date.now(),
+        actionId: "delete-slide",
+        description: `Deleted slide ${index + 1}: "${slide.title || slide.file}"`,
+      });
+    },
+    [manifest, slides, activeSlideIndex, pushUserAction],
+  );
+
+  // Handle text edit from iframe (edit mode)
+  const editTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const pendingChangesRef = useRef<{ tag: string; before: string; after: string }[]>([]);
+  const handleTextEdit = useCallback(
+    (slideFile: string, html: string, changes?: { tag: string; before: string; after: string }[]) => {
+      if (changes?.length) {
+        pendingChangesRef.current.push(...changes);
+      }
+      clearTimeout(editTimerRef.current);
+      editTimerRef.current = setTimeout(() => {
+        const baseUrl = import.meta.env.DEV ? "http://localhost:17007" : "";
+        fetch(`${baseUrl}/api/files`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: slideFile, content: html + "\n" }),
+        }).catch(() => {});
+
+        const slide = slides.find((s) => s.file === slideFile);
+        const label = slide?.title || slideFile;
+        const batch = pendingChangesRef.current.splice(0);
+        const diffLines = batch.map((c) =>
+          `  <${c.tag}>: "${c.before}" → "${c.after}"`
+        );
+        const desc = diffLines.length > 0
+          ? `Edited text on slide "${label}":\n${diffLines.join("\n")}`
+          : `Edited text on slide "${label}"`;
+        pushUserAction({
+          timestamp: Date.now(),
+          actionId: "edit-text",
+          description: desc,
+        });
+      }, 800);
+    },
+    [slides, pushUserAction],
   );
 
   // Clamp active index when slides change
@@ -581,6 +638,29 @@ export default function SlidePreview({
   useEffect(() => {
     onActiveFileChange?.(currentFile);
   }, [currentFile, onActiveFileChange]);
+
+  // Scaffold execution helper
+  const executeScaffold = useCallback(async (
+    scaffoldFiles: ScaffoldFile[],
+    clearPatterns: string[],
+  ): Promise<{ success: boolean; message?: string }> => {
+    const baseUrl = import.meta.env.DEV ? "http://localhost:17007" : "";
+    try {
+      const res = await fetch(`${baseUrl}/api/workspace/scaffold`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clear: clearPatterns, files: scaffoldFiles }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActiveSlideIndex(0);
+        return { success: true, message: `Created ${data.filesWritten} files` };
+      }
+      return { success: false, message: data.message || "Scaffold failed" };
+    } catch (err) {
+      return { success: false, message: err instanceof Error ? err.message : "Network error" };
+    }
+  }, []);
 
   // Handle viewer action requests from agent
   useEffect(() => {
@@ -599,6 +679,138 @@ export default function SlidePreview({
             message: `Slide not found: ${targetFile}`,
           });
         }
+        break;
+      }
+      case "scaffold": {
+        const title = actionRequest.params?.title as string;
+        const slidesParam = actionRequest.params?.slides as string;
+        if (!title || !slidesParam) {
+          onActionResult?.(actionRequest.requestId, {
+            success: false,
+            message: "title and slides params are required",
+          });
+          break;
+        }
+        let slideSpecs: SlideSpec[];
+        try {
+          slideSpecs = JSON.parse(slidesParam);
+        } catch {
+          onActionResult?.(actionRequest.requestId, {
+            success: false,
+            message: "slides param must be valid JSON array",
+          });
+          break;
+        }
+        const scaffoldFiles = generateSlideScaffold(title, slideSpecs);
+        const reqId = actionRequest.requestId;
+        setScaffoldPending({
+          files: scaffoldFiles,
+          clearPatterns: ["slides/*.html", "manifest.json"],
+          source: "agent",
+          resolve: (result) => {
+            onActionResult?.(reqId, result);
+          },
+        });
+        break;
+      }
+      case "checkContentFit": {
+        const slidesParam = actionRequest.params?.slides as string | undefined;
+        let targetIndices: number[];
+        if (slidesParam) {
+          try {
+            const oneIndexed: number[] = JSON.parse(slidesParam);
+            targetIndices = oneIndexed.map((n) => n - 1).filter((i) => i >= 0 && i < slides.length);
+          } catch {
+            onActionResult?.(actionRequest.requestId, {
+              success: false,
+              message: "slides param must be a JSON array of 1-indexed slide numbers",
+            });
+            break;
+          }
+        } else {
+          targetIndices = slides.map((_, i) => i);
+        }
+
+        if (targetIndices.length === 0) {
+          onActionResult?.(actionRequest.requestId, {
+            success: true,
+            data: { results: [], allFit: true },
+          });
+          break;
+        }
+
+        const refs = iframeRefsRef.current;
+        const pending = new Map<string, number>(); // requestId → slide 1-indexed
+        const results: { slide: number; file: string; fits: boolean | null; issues: string[] }[] = [];
+        let responded = false;
+        const reqId = actionRequest.requestId;
+
+        for (const idx of targetIndices) {
+          const slide = slides[idx];
+          const iframe = refs.get(slide.file);
+          if (!iframe?.contentWindow) {
+            results.push({ slide: idx + 1, file: slide.file, fits: null, issues: ["Not rendered in pool"] });
+            continue;
+          }
+          const subReqId = `fit-${idx}-${Date.now()}`;
+          pending.set(subReqId, idx + 1);
+          try {
+            iframe.contentWindow.postMessage({
+              type: "pneuma:checkContentFit",
+              requestId: subReqId,
+              viewportW: VIRTUAL_W,
+              viewportH: VIRTUAL_H,
+            }, "*");
+          } catch {
+            pending.delete(subReqId);
+            results.push({ slide: idx + 1, file: slide.file, fits: null, issues: ["Failed to send message to iframe"] });
+          }
+        }
+
+        if (pending.size === 0) {
+          const allFit = results.every((r) => r.fits === true || r.fits === null);
+          onActionResult?.(reqId, { success: true, data: { results, allFit } });
+          break;
+        }
+
+        const handleResult = (e: MessageEvent) => {
+          if (responded || e.data?.type !== "pneuma:contentFitResult") return;
+          const subId = e.data.requestId as string;
+          if (!pending.has(subId)) return;
+          const slideNum = pending.get(subId)!;
+          pending.delete(subId);
+          const slideFile = slides[slideNum - 1]?.file || "";
+          results.push({
+            slide: slideNum,
+            file: slideFile,
+            fits: !!e.data.fits,
+            issues: e.data.issues || [],
+          });
+          if (pending.size === 0) {
+            responded = true;
+            window.removeEventListener("message", handleResult);
+            clearTimeout(timer);
+            results.sort((a, b) => a.slide - b.slide);
+            const allFit = results.every((r) => r.fits === true);
+            onActionResult?.(reqId, { success: true, data: { results, allFit } });
+          }
+        };
+
+        window.addEventListener("message", handleResult);
+
+        const timer = setTimeout(() => {
+          if (responded) return;
+          responded = true;
+          window.removeEventListener("message", handleResult);
+          for (const [, slideNum] of pending) {
+            const slideFile = slides[slideNum - 1]?.file || "";
+            results.push({ slide: slideNum, file: slideFile, fits: null, issues: ["Timeout waiting for iframe response"] });
+          }
+          results.sort((a, b) => a.slide - b.slide);
+          const allFit = results.every((r) => r.fits === true);
+          onActionResult?.(reqId, { success: true, data: { results, allFit } });
+        }, 5000);
+
         break;
       }
       default:
@@ -646,6 +858,111 @@ export default function SlidePreview({
   // Capture slide thumbnails as SVG data URL images
   const thumbnailImages = useSlideThumbnails(slides, files, themeCSS, VIRTUAL_W, VIRTUAL_H);
 
+  // ── Auto content-fit check on file changes ─────────────────────────────
+  // When files change, wait for iframes to render, then check if any slide
+  // has overflowing content. Only notify agent on state transition (fit → overflow).
+  const prevOverflowRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!onNotifyAgent || slides.length === 0) return;
+
+    const timer = setTimeout(() => {
+      const refs = iframeRefsRef.current;
+      if (refs.size === 0) return;
+
+      const pending = new Map<string, { slideNum: number; file: string }>();
+      const results: { slide: number; file: string; fits: boolean; issues: string[] }[] = [];
+      let responded = false;
+
+      for (let i = 0; i < slides.length; i++) {
+        const slide = slides[i];
+        const iframe = refs.get(slide.file);
+        if (!iframe?.contentWindow) continue;
+        const subReqId = `autofit-${i}-${Date.now()}`;
+        pending.set(subReqId, { slideNum: i + 1, file: slide.file });
+        try {
+          iframe.contentWindow.postMessage({
+            type: "pneuma:checkContentFit",
+            requestId: subReqId,
+            viewportW: VIRTUAL_W,
+            viewportH: VIRTUAL_H,
+          }, "*");
+        } catch {
+          pending.delete(subReqId);
+        }
+      }
+
+      if (pending.size === 0) return;
+
+      const handleResult = (e: MessageEvent) => {
+        if (responded || e.data?.type !== "pneuma:contentFitResult") return;
+        const subId = e.data.requestId as string;
+        const info = pending.get(subId);
+        if (!info) return;
+        pending.delete(subId);
+        results.push({
+          slide: info.slideNum,
+          file: info.file,
+          fits: !!e.data.fits,
+          issues: e.data.issues || [],
+        });
+        if (pending.size === 0) {
+          responded = true;
+          window.removeEventListener("message", handleResult);
+          clearTimeout(timeoutTimer);
+          processAutoFitResults(results);
+        }
+      };
+
+      const processAutoFitResults = (res: typeof results) => {
+        const overflowing = new Set<string>();
+        const overflowDetails: string[] = [];
+        for (const r of res) {
+          if (!r.fits) {
+            overflowing.add(r.file);
+            overflowDetails.push(`Slide ${r.slide} (${r.file}): ${r.issues.join("; ")}`);
+          }
+        }
+
+        // Only notify on state change: new overflow slides that weren't overflowing before
+        const prevOverflow = prevOverflowRef.current;
+        const newOverflows = [...overflowing].filter((f) => !prevOverflow.has(f));
+        prevOverflowRef.current = overflowing;
+
+        if (newOverflows.length === 0) return;
+
+        const msg = [
+          `<viewer-notification type="contentFitCheck">`,
+          `Content overflow detected on ${overflowing.size} slide(s). The following slides have content that doesn't fit within the ${VIRTUAL_W}x${VIRTUAL_H} viewport:`,
+          "",
+          ...overflowDetails,
+          "",
+          `Please fix the overflowing slides so all content fits within the viewport. Reduce content, adjust font sizes, or restructure the layout.`,
+          `</viewer-notification>`,
+        ].join("\n");
+
+        // Build a clean one-liner for UI display
+        const overflowFiles = [...overflowing];
+        const summary = overflowFiles.length === 1
+          ? `${overflowFiles[0]} content overflows viewport`
+          : `${overflowFiles.length} slides overflow viewport`;
+
+        onNotifyAgent({ type: "contentFitCheck", severity: "warning", message: msg, summary });
+      };
+
+      window.addEventListener("message", handleResult);
+      const timeoutTimer = setTimeout(() => {
+        if (responded) return;
+        responded = true;
+        window.removeEventListener("message", handleResult);
+        // On timeout, process whatever we have
+        processAutoFitResults(results);
+      }, 3000);
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timer);
+  }, [files, slides, VIRTUAL_W, VIRTUAL_H, onNotifyAgent]);
+
   // Navigation
   const goToSlide = useCallback(
     (index: number) => {
@@ -666,6 +983,68 @@ export default function SlidePreview({
     [activeSlideIndex, goToSlide],
   );
 
+  // Annotation selectors for highlighting on the current slide
+  const annotationSelectors = useMemo(() => {
+    const currentFile = slides[activeSlideIndex]?.file;
+    if (!currentFile) return [];
+    return annotations
+      .filter((a) => a.slideFile === currentFile && a.element.selector)
+      .map((a) => a.element.selector!);
+  }, [annotations, slides, activeSlideIndex]);
+
+  // Select handler: in annotate mode, show popover; in select mode, delegate to onSelect
+  const handleSelect = useCallback(
+    (sel: ViewerSelectionContext | null, rect?: { left: number; top: number; right: number; bottom: number; width: number; height: number }) => {
+      if (previewMode === "annotate") {
+        if (!sel) {
+          setPendingAnnotation(null);
+          return;
+        }
+        const currentSlide = slides[activeSlideIndex];
+        if (!currentSlide || !rect) return;
+        setPendingAnnotation({
+          selection: sel,
+          slideFile: currentSlide.file,
+          rect,
+        });
+        return;
+      }
+      onSelect(sel);
+    },
+    [previewMode, slides, activeSlideIndex, onSelect],
+  );
+
+  // Confirm pending annotation with comment
+  const confirmAnnotation = useCallback(
+    (comment: string) => {
+      if (!pendingAnnotation) return;
+      const { selection: sel, slideFile } = pendingAnnotation;
+      addAnnotation({
+        id: `ann-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        slideFile,
+        element: {
+          file: slideFile,
+          type: sel.type as import("../../../src/types.js").SelectionType,
+          content: sel.content,
+          level: sel.level,
+          tag: sel.tag,
+          classes: sel.classes,
+          selector: sel.selector,
+          thumbnail: sel.thumbnail,
+          label: sel.label,
+          nearbyText: sel.nearbyText,
+          accessibility: sel.accessibility,
+        },
+        comment,
+      });
+      setPendingAnnotation(null);
+    },
+    [pendingAnnotation, addAnnotation],
+  );
+
+  // Dismiss pending annotation on slide navigation
+  useEffect(() => { setPendingAnnotation(null); }, [activeSlideIndex]);
+
   // Keyboard navigation (skip when focus is inside editable elements)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -681,7 +1060,11 @@ export default function SlidePreview({
         goToSlide(activeSlideIndex + 1);
       } else if (e.key === "Escape") {
         // Fullscreen exit is handled by the browser's Fullscreen API
-        if (isSelectMode) {
+        if (previewMode === "annotate" && pendingAnnotation) {
+          setPendingAnnotation(null);
+        } else if (previewMode === "annotate" || previewMode === "edit") {
+          setPreviewMode("view");
+        } else if (previewMode === "select") {
           if (selection) {
             onSelect(null);
           } else {
@@ -695,11 +1078,83 @@ export default function SlidePreview({
   }, [
     activeSlideIndex,
     goToSlide,
-    isSelectMode,
+    previewMode,
+    pendingAnnotation,
     selection,
     onSelect,
     setPreviewMode,
   ]);
+
+  // Scaffold confirm/cancel handlers (must be before early returns to satisfy Rules of Hooks)
+  const handleScaffoldConfirm = useCallback(async () => {
+    if (!scaffoldPending) return;
+    const { files: sFiles, clearPatterns, resolve, source } = scaffoldPending;
+    setScaffoldPending(null);
+    const result = await executeScaffold(sFiles, clearPatterns);
+    resolve(result);
+    if (result.success && source === "user") {
+      pushUserAction({
+        timestamp: Date.now(),
+        actionId: "scaffold",
+        description: `Initialized workspace with ${sFiles.length - 1} slides`,
+      });
+    }
+  }, [scaffoldPending, executeScaffold, pushUserAction]);
+
+  const handleScaffoldCancel = useCallback(() => {
+    if (!scaffoldPending) return;
+    scaffoldPending.resolve({ success: false, message: "Cancelled by user" });
+    setScaffoldPending(null);
+  }, [scaffoldPending]);
+
+  // User-initiated scaffold from toolbar button
+  const handleUserScaffold = useCallback(() => {
+    const title = window.prompt("Deck title:", manifest?.title || "Untitled");
+    if (!title) return;
+    const slidesInput = window.prompt(
+      "Slide titles (comma-separated):",
+      "Cover, Introduction, Content, Summary",
+    );
+    if (!slidesInput) return;
+    const slideSpecs: SlideSpec[] = slidesInput
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((t) => ({ title: t }));
+    if (slideSpecs.length === 0) return;
+    const scaffoldFiles = generateSlideScaffold(title, slideSpecs);
+    setScaffoldPending({
+      files: scaffoldFiles,
+      clearPatterns: ["slides/*.html", "manifest.json"],
+      source: "user",
+      resolve: () => {},
+    });
+  }, [manifest]);
+
+  // Zoom: render iframe at a virtual size, use CSS transform to scale
+  // (must be before early returns to satisfy Rules of Hooks)
+  const zoomScale = zoomLevel / 100;
+  const scaledW = VIRTUAL_W * zoomScale;
+  const scaledH = VIRTUAL_H * zoomScale;
+
+  // Popover positioning (relative to the sizer div, in scaled coordinates)
+  const popoverStyle = useMemo((): React.CSSProperties => {
+    if (!pendingAnnotation) return {};
+    const { rect } = pendingAnnotation;
+    const POPOVER_H = 130;
+    const POPOVER_W = 280;
+
+    let top = rect.bottom * zoomScale + 8;
+    if (top + POPOVER_H > scaledH) {
+      top = rect.top * zoomScale - POPOVER_H - 8;
+    }
+    top = Math.max(0, top);
+
+    let left = rect.left * zoomScale;
+    left = Math.max(8, Math.min(left, scaledW - POPOVER_W - 8));
+
+    return { position: "absolute" as const, top, left, width: POPOVER_W, zIndex: 50 };
+  }, [pendingAnnotation, zoomScale, scaledW, scaledH]);
 
   if (!manifest || slideCount === 0) {
     return (
@@ -721,6 +1176,7 @@ export default function SlidePreview({
           onZoomIn={zoomIn}
           onZoomOut={zoomOut}
           onZoomFit={zoomFit}
+          onScaffold={handleUserScaffold}
         />
         <div className="flex items-center justify-center flex-1 text-neutral-500">
           {!manifest
@@ -737,6 +1193,7 @@ export default function SlidePreview({
       activeIndex={activeSlideIndex}
       onSelect={goToSlide}
       onReorder={handleReorder}
+      onDelete={isEditMode ? handleDeleteSlide : undefined}
       thumbnailImages={thumbnailImages}
       position={navPosition}
       virtualWidth={VIRTUAL_W}
@@ -744,15 +1201,10 @@ export default function SlidePreview({
     />
   ) : null;
 
-  // Zoom: render iframe at a virtual size, use CSS transform to scale
-  const zoomScale = zoomLevel / 100;
-  const scaledW = VIRTUAL_W * zoomScale;
-  const scaledH = VIRTUAL_H * zoomScale;
-
   const viewerEl = (
     <div className="flex-1 flex items-center justify-center bg-neutral-900 min-w-0 min-h-0 overflow-auto">
       <div
-        className="shrink-0"
+        className="shrink-0 relative"
         style={{ width: scaledW, height: scaledH }}
       >
         <div
@@ -769,13 +1221,26 @@ export default function SlidePreview({
             themeCSS={themeCSS}
             activeIndex={activeSlideIndex}
             isSelectMode={isSelectMode}
+            isEditMode={isEditMode}
             imageVersion={imageVersion}
-            onSelect={onSelect}
+            onSelect={handleSelect}
+            onTextEdit={handleTextEdit}
             buildSrcdoc={buildSrcdoc}
             findSlideContent={findSlideContent}
             highlightSelector={highlightSelector}
+            annotationSelectors={annotationSelectors}
+            iframeRefsOut={(refs) => { iframeRefsRef.current = refs; }}
           />
         </div>
+        {pendingAnnotation && (
+          <AnnotationPopover
+            style={popoverStyle}
+            label={pendingAnnotation.selection.label}
+            thumbnail={pendingAnnotation.selection.thumbnail}
+            onConfirm={confirmAnnotation}
+            onCancel={() => setPendingAnnotation(null)}
+          />
+        )}
       </div>
     </div>
   );
@@ -801,6 +1266,7 @@ export default function SlidePreview({
           onZoomIn={zoomIn}
           onZoomOut={zoomOut}
           onZoomFit={zoomFit}
+          onScaffold={handleUserScaffold}
         />
         <div className="flex-1 overflow-auto bg-neutral-900 p-4">
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
@@ -885,6 +1351,14 @@ export default function SlidePreview({
         /* hidden */
         <div className="flex flex-1 min-h-0">{viewerEl}</div>
       )}
+      {scaffoldPending && (
+        <ScaffoldConfirm
+          clearPatterns={scaffoldPending.clearPatterns}
+          files={scaffoldPending.files}
+          onConfirm={handleScaffoldConfirm}
+          onCancel={handleScaffoldCancel}
+        />
+      )}
     </div>
   );
 }
@@ -896,6 +1370,7 @@ function SlideNavigator({
   activeIndex,
   onSelect,
   onReorder,
+  onDelete,
   thumbnailImages,
   position,
   virtualWidth,
@@ -905,6 +1380,7 @@ function SlideNavigator({
   activeIndex: number;
   onSelect: (index: number) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
+  onDelete?: (index: number) => void;
   thumbnailImages: Map<string, string>;
   position: "left" | "bottom";
   virtualWidth: number;
@@ -957,6 +1433,7 @@ function SlideNavigator({
                   isActive={i === activeIndex}
                   imageUrl={thumbnailImages.get(slide.file)}
                   onClick={() => onSelect(i)}
+                  onDelete={onDelete && slides.length > 1 ? () => onDelete(i) : undefined}
                   layout="horizontal"
                   virtualWidth={virtualWidth}
                   virtualHeight={virtualHeight}
@@ -985,6 +1462,7 @@ function SlideNavigator({
                 isActive={i === activeIndex}
                 imageUrl={thumbnailImages.get(slide.file)}
                 onClick={() => onSelect(i)}
+                onDelete={onDelete && slides.length > 1 ? () => onDelete(i) : undefined}
                 layout="vertical"
                 virtualWidth={virtualWidth}
                 virtualHeight={virtualHeight}
@@ -1010,11 +1488,12 @@ const SortableSlideItem = forwardRef<
     isActive: boolean;
     imageUrl: string | undefined;
     onClick: () => void;
+    onDelete?: () => void;
     layout: "horizontal" | "vertical";
     virtualWidth: number;
     virtualHeight: number;
   }
->(function SortableSlideItem({ id, index, title, isActive, imageUrl, onClick, layout, virtualWidth, virtualHeight }, outerRef) {
+>(function SortableSlideItem({ id, index, title, isActive, imageUrl, onClick, onDelete, layout, virtualWidth, virtualHeight }, outerRef) {
   const {
     attributes,
     listeners,
@@ -1030,6 +1509,29 @@ const SortableSlideItem = forwardRef<
     zIndex: isDragging ? 10 : undefined,
   };
 
+  // Two-click delete: first click arms, second confirms
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Reset armed state after 2s timeout
+  useEffect(() => {
+    if (deleteArmed) {
+      deleteTimerRef.current = setTimeout(() => setDeleteArmed(false), 2000);
+      return () => clearTimeout(deleteTimerRef.current);
+    }
+  }, [deleteArmed]);
+
+  const handleDeleteClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (deleteArmed) {
+      clearTimeout(deleteTimerRef.current);
+      setDeleteArmed(false);
+      onDelete?.();
+    } else {
+      setDeleteArmed(true);
+    }
+  }, [deleteArmed, onDelete]);
+
   // Merge refs
   const mergedRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -1040,6 +1542,25 @@ const SortableSlideItem = forwardRef<
     [setNodeRef, outerRef],
   );
 
+  const deleteBtn = onDelete ? (
+    <button
+      onClick={handleDeleteClick}
+      className={`absolute top-1 right-1 w-5 h-5 rounded flex items-center justify-center z-10 cursor-pointer transition-all ${
+        deleteArmed
+          ? "bg-red-500/90 text-white opacity-100 scale-110"
+          : "bg-black/50 text-cc-muted hover:text-cc-fg opacity-0 group-hover:opacity-100"
+      }`}
+      title={deleteArmed ? "Click again to confirm" : "Delete slide"}
+    >
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+        {deleteArmed
+          ? <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+          : <><path d="M5 3V2h6v1M2 4h12M4 4v9a1 1 0 001 1h6a1 1 0 001-1V4" /><path d="M7 7v4M9 7v4" /></>
+        }
+      </svg>
+    </button>
+  ) : null;
+
   if (layout === "horizontal") {
     return (
       <div
@@ -1048,10 +1569,11 @@ const SortableSlideItem = forwardRef<
         {...attributes}
         {...listeners}
         onClick={onClick}
-        className={`shrink-0 flex flex-col items-center gap-1 cursor-pointer group ${
+        className={`shrink-0 flex flex-col items-center gap-1 cursor-pointer group relative ${
           isActive ? "" : "opacity-60 hover:opacity-100"
         } ${isDragging ? "opacity-70 scale-105 shadow-lg" : ""}`}
       >
+        {deleteBtn}
         <SlideThumbnail imageUrl={imageUrl} isActive={isActive} width={144} height={81} virtualWidth={virtualWidth} virtualHeight={virtualHeight} />
         <span
           className={`text-[10px] max-w-[144px] truncate ${
@@ -1071,10 +1593,11 @@ const SortableSlideItem = forwardRef<
       {...attributes}
       {...listeners}
       onClick={onClick}
-      className={`w-full flex flex-col gap-1 cursor-pointer group ${
+      className={`w-full flex flex-col gap-1 cursor-pointer group relative ${
         isActive ? "" : "opacity-60 hover:opacity-100"
       } ${isDragging ? "opacity-70 scale-105 shadow-lg" : ""}`}
     >
+      {deleteBtn}
       <SlideThumbnail imageUrl={imageUrl} isActive={isActive} virtualWidth={virtualWidth} virtualHeight={virtualHeight} />
       <div className="flex items-baseline gap-1.5 px-0.5">
         <span
@@ -1145,7 +1668,7 @@ function SlideThumbnail({
 
 // ── Toolbar ──────────────────────────────────────────────────────────────────
 
-type PreviewMode = "view" | "edit" | "select";
+type PreviewMode = "view" | "edit" | "select" | "annotate";
 
 function SlideToolbar({
   previewMode,
@@ -1164,6 +1687,7 @@ function SlideToolbar({
   onZoomIn,
   onZoomOut,
   onZoomFit,
+  onScaffold,
 }: {
   previewMode: PreviewMode;
   onSetPreviewMode: (mode: PreviewMode) => void;
@@ -1181,6 +1705,7 @@ function SlideToolbar({
   onZoomIn: () => void;
   onZoomOut: () => void;
   onZoomFit: () => void;
+  onScaffold?: () => void;
 }) {
   const [isJumping, setIsJumping] = useState(false);
   const [jumpValue, setJumpValue] = useState("");
@@ -1214,7 +1739,9 @@ function SlideToolbar({
   const modes: { value: PreviewMode; label: string; icon: React.ReactNode }[] =
     [
       { value: "view", label: "View", icon: <EyeIcon /> },
+      { value: "edit", label: "Edit", icon: <EditIcon /> },
       { value: "select", label: "Select", icon: <CursorIcon /> },
+      { value: "annotate", label: "Annotate", icon: <AnnotateIcon /> },
     ];
 
   const handleExport = useCallback(() => {
@@ -1327,7 +1854,11 @@ function SlideToolbar({
               title={
                 m.value === "view"
                   ? "Read-only view"
-                  : "Select elements (Esc to exit)"
+                  : m.value === "edit"
+                    ? "Edit text inline (Esc to exit)"
+                    : m.value === "select"
+                      ? "Select elements (Esc to exit)"
+                      : "Annotate multiple elements (Esc to exit)"
               }
             >
               {m.icon}
@@ -1359,6 +1890,18 @@ function SlideToolbar({
         >
           <ExportIcon />
         </button>
+        {onScaffold && (
+          <>
+            <div className="w-px h-4 bg-cc-border" />
+            <button
+              onClick={onScaffold}
+              className="flex items-center justify-center w-7 h-7 rounded text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+              title="Initialize / reset workspace"
+            >
+              <ScaffoldIcon />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1375,10 +1918,28 @@ function EyeIcon() {
   );
 }
 
+function EditIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+      <path d="M11.5 2.5l2 2-8 8L3 13.5l1-2.5z" strokeLinejoin="round" />
+      <path d="M9.5 4.5l2 2" />
+    </svg>
+  );
+}
+
 function CursorIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
       <path d="M3 2l4 12 2-5 5-2L3 2z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function AnnotateIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+      <path d="M12 3l1.5 1.5L5 13l-2 .5.5-2z" strokeLinejoin="round" />
+      <path d="M2 15h5" strokeLinecap="round" strokeDasharray="2 1.5" />
     </svg>
   );
 }
@@ -1422,6 +1983,18 @@ function GridIcon() {
       <rect x="9.5" y="2" width="5" height="5" rx="0.5" />
       <rect x="1.5" y="9" width="5" height="5" rx="0.5" />
       <rect x="9.5" y="9" width="5" height="5" rx="0.5" />
+    </svg>
+  );
+}
+
+function ScaffoldIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+      <rect x="2" y="2" width="5" height="5" rx="0.5" />
+      <rect x="9" y="2" width="5" height="5" rx="0.5" />
+      <rect x="2" y="9" width="5" height="5" rx="0.5" />
+      <rect x="9" y="9" width="5" height="5" rx="0.5" />
+      <path d="M4.5 4.5h0M11.5 4.5h0M4.5 11.5h0M11.5 11.5h0" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }

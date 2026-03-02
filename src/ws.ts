@@ -5,7 +5,7 @@
 
 import { useStore, nextId } from "./store.js";
 import type { ElementSelection } from "./store.js";
-import type { BrowserIncomingMessage, BrowserOutgoingMessage, ContentBlock, ChatMessage, SelectionContext, SelectionType } from "./types.js";
+import type { BrowserIncomingMessage, BrowserOutgoingMessage, ContentBlock, ChatMessage, SelectionContext, SelectionType, Annotation } from "./types.js";
 import type { ViewerSelectionContext } from "../core/types/viewer-contract.js";
 
 let socket: WebSocket | null = null;
@@ -624,7 +624,7 @@ export function sendSetModel(model: string) {
   send({ type: "set_model", model });
 }
 
-export async function sendUserMessage(content: string, selection?: ElementSelection | null, images?: { media_type: string; data: string }[]) {
+export async function sendUserMessage(content: string, selection?: ElementSelection | null, images?: { media_type: string; data: string }[], annotations?: Annotation[]) {
   const store = useStore.getState();
   // Add user message to local store immediately (show original text)
   const msgId = nextId();
@@ -635,6 +635,7 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
     timestamp: Date.now(),
     ...(selection ? { selectionContext: selection } : {}),
     ...(images?.length ? { images } : {}),
+    ...(annotations?.length ? { annotations } : {}),
   });
 
   // Enrich with selection context — delegate to mode's viewer if available
@@ -642,16 +643,45 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
   const viewer = store.modeViewer;
   if (viewer) {
     const viewerFiles = store.files.map((f) => ({ path: f.path, content: f.content }));
-    let viewerSelection: ViewerSelectionContext | null = selection ? {
-      type: selection.type,
-      content: selection.content,
-      file: selection.file,
-      level: selection.level,
-      tag: selection.tag,
-      classes: selection.classes,
-      selector: selection.selector,
-      thumbnail: selection.thumbnail,
-    } : null;
+    let viewerSelection: ViewerSelectionContext | null = null;
+
+    // Annotations take priority over single selection
+    if (annotations?.length) {
+      viewerSelection = {
+        type: "annotations",
+        content: "",
+        file: store.activeFile || annotations[0]?.slideFile || "",
+        annotations: annotations.map((a) => ({
+          slideFile: a.slideFile,
+          element: {
+            type: a.element.type,
+            content: a.element.content,
+            selector: a.element.selector,
+            label: a.element.label,
+            tag: a.element.tag,
+            classes: a.element.classes,
+            nearbyText: a.element.nearbyText,
+            accessibility: a.element.accessibility,
+          },
+          comment: a.comment,
+        })),
+      };
+    } else if (selection) {
+      viewerSelection = {
+        type: selection.type,
+        content: selection.content,
+        file: selection.file,
+        level: selection.level,
+        tag: selection.tag,
+        classes: selection.classes,
+        selector: selection.selector,
+        thumbnail: selection.thumbnail,
+        label: selection.label,
+        nearbyText: selection.nearbyText,
+        accessibility: selection.accessibility,
+      };
+    }
+
     // Even without element selection, provide active file as viewing context
     if (!viewerSelection && store.activeFile) {
       viewerSelection = { type: "viewing", content: "", file: store.activeFile };
@@ -682,6 +712,29 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
     enrichedContent = ctx.join("\n") + "\n\n" + content;
   }
 
+  // Inject user action events between viewer-context and user text
+  const drainedActions = useStore.getState().drainUserActions();
+  if (drainedActions.length > 0) {
+    const lines = drainedActions.map((a) => {
+      const agoMs = Date.now() - a.timestamp;
+      const ago = agoMs < 60_000
+        ? `${Math.round(agoMs / 1000)}s ago`
+        : `${Math.round(agoMs / 60_000)}m ago`;
+      return `  <action time="${ago}" id="${a.actionId}">${a.description}</action>`;
+    });
+    const actionsBlock = "<user-actions>\n" + lines.join("\n") + "\n</user-actions>";
+    // Insert actions block before the user's actual text
+    // enrichedContent is either "context\n\ncontent" or just "content"
+    const contextEndTag = "</viewer-context>";
+    const ctxIdx = enrichedContent.indexOf(contextEndTag);
+    if (ctxIdx !== -1) {
+      const afterCtx = ctxIdx + contextEndTag.length;
+      enrichedContent = enrichedContent.slice(0, afterCtx) + "\n\n" + actionsBlock + enrichedContent.slice(afterCtx);
+    } else {
+      enrichedContent = actionsBlock + "\n\n" + enrichedContent;
+    }
+  }
+
   let allImages = images ? [...images] : [];
 
   // If selection has a thumbnail (e.g. Draw mode element screenshot), attach as image
@@ -701,6 +754,7 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
       timestamp: Date.now(),
       ...(selection ? { selectionContext: selection } : {}),
       ...(images?.length ? { images } : {}),
+      ...(annotations?.length ? { annotations } : {}),
       debugPayload: { enrichedContent, images: allImages.length > 0 ? allImages : undefined },
     });
   }
@@ -738,4 +792,10 @@ export function sendViewerActionResponse(
   result: { success: boolean; message?: string; data?: Record<string, unknown> },
 ) {
   send({ type: "viewer_action_response", request_id: requestId, result });
+}
+
+export function sendViewerNotification(
+  notification: { type: string; message: string; severity: "info" | "warning" },
+) {
+  send({ type: "viewer_notification", notification });
 }

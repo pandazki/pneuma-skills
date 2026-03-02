@@ -40,6 +40,8 @@ export interface Session {
   pendingPermissions: Map<string, PermissionRequest>;
   pendingControlRequests: Map<string, PendingControlRequest>;
   pendingViewerActions: Map<string, { resolve: (result: ViewerActionResult) => void }>;
+  /** Whether CLI is idle (not processing a turn). Used to gate viewer notifications. */
+  cliIdle: boolean;
   messageHistory: BrowserIncomingMessage[];
   pendingMessages: string[];
   nextEventSeq: number;

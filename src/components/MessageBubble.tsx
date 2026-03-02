@@ -1,7 +1,7 @@
 import { useState, useMemo, type ComponentProps } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ChatMessage, ContentBlock, SelectionContext } from "../types.js";
+import type { ChatMessage, ContentBlock, SelectionContext, Annotation } from "../types.js";
 import { useStore } from "../store.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
 
@@ -47,11 +47,16 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
 
   if (message.role === "user") {
     const sel = message.selectionContext;
+    const notif = message.viewerNotification;
+    const anns = message.annotations;
     const imgs = message.images;
+    const hasText = message.content.trim().length > 0;
     return (
       <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
         <div className="max-w-[85%] rounded-[14px] rounded-br-[4px] bg-cc-user-bubble text-cc-fg overflow-hidden">
-          {sel ? <SelectionCard sel={sel} interactive /> : null}
+          {anns && anns.length > 0 ? <AnnotationsCard annotations={anns} /> : null}
+          {!anns?.length && sel ? <SelectionCard sel={sel} interactive /> : null}
+          {notif ? <ViewerNotificationCard notification={notif} /> : null}
           {imgs && imgs.length > 0 && (
             <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
               {imgs.map((img, i) => (
@@ -64,11 +69,13 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
               ))}
             </div>
           )}
-          <div className="px-3 py-2.5">
-            <div className="text-[13px] leading-relaxed break-words">
-              <MarkdownContent text={message.content} />
+          {hasText && (
+            <div className="px-3 py-2.5">
+              <div className="text-[13px] leading-relaxed break-words">
+                <MarkdownContent text={message.content} />
+              </div>
             </div>
-          </div>
+          )}
           {message.debugPayload && <DebugPayloadButton payload={message.debugPayload} />}
         </div>
       </div>
@@ -138,6 +145,72 @@ function SelectionCard({ sel, interactive }: { sel: SelectionContext; interactiv
             <span className="text-cc-muted font-normal ml-1.5">in {sel.file}</span>
           </div>
           <div className="text-cc-muted mt-0.5 break-words leading-snug">"{preview}"</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Annotations Card ────────────────────────────────────────────────────
+
+function AnnotationsCard({ annotations }: { annotations: Annotation[] }) {
+  return (
+    <div className="px-3 pt-2.5 pb-1.5 border-b border-cc-border/40 bg-cc-primary/5">
+      <div className="flex items-center gap-2 text-xs mb-1.5">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-primary shrink-0">
+          <path d="M2 11l7-7 2 2-7 7H2v-2z" strokeLinejoin="round" />
+          <path d="M12.5 2.5l1 1" strokeLinecap="round" />
+        </svg>
+        <span className="text-cc-primary font-medium">
+          {annotations.length} annotation{annotations.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+      <div className="space-y-1">
+        {annotations.map((ann, i) => {
+          const label = ann.element.label || ann.element.selector || `${ann.element.type}`;
+          return (
+            <div key={ann.id} className="flex items-start gap-1.5 text-xs">
+              <span className="shrink-0 text-cc-primary/70 font-mono text-[10px] mt-0.5 w-4 text-right">
+                {i + 1}.
+              </span>
+              <div className="min-w-0">
+                <span className="text-cc-muted">{label}</span>
+                {ann.comment && (
+                  <span className="text-cc-fg ml-1">&rarr; {ann.comment}</span>
+                )}
+                <span className="text-cc-muted/50 ml-1 text-[10px]">{ann.slideFile}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Viewer Notification Card ────────────────────────────────────────────
+
+function ViewerNotificationCard({ notification }: { notification: NonNullable<ChatMessage["viewerNotification"]> }) {
+  const filesLabel = notification.files?.length
+    ? notification.files.join(", ")
+    : undefined;
+
+  return (
+    <div className="px-3 pt-2.5 pb-1.5 border-b border-cc-border/40 bg-cc-primary/5">
+      <div className="flex items-start gap-2 text-xs">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-primary shrink-0 mt-0.5">
+          <circle cx="8" cy="8" r="6" />
+          <circle cx="8" cy="8" r="2.5" />
+          <path d="M8 2v1M8 13v1M2 8h1M13 8h1" strokeLinecap="round" />
+        </svg>
+        <div className="min-w-0">
+          <div className="text-cc-primary font-medium">
+            {notification.type}
+            {filesLabel && (
+              <span className="text-cc-muted font-normal ml-1.5">{filesLabel}</span>
+            )}
+          </div>
+          <div className="text-cc-muted mt-0.5 break-words leading-snug">{notification.summary}</div>
         </div>
       </div>
     </div>

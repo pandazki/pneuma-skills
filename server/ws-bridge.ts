@@ -67,6 +67,7 @@ export class WsBridge {
    */
   injectGreeting(sessionId: string, content: string): void {
     const session = this.getOrCreateSession(sessionId);
+    session.cliIdle = false;
     const ndjson = JSON.stringify({
       type: "user",
       message: { role: "user", content },
@@ -131,6 +132,7 @@ export class WsBridge {
         pendingPermissions: new Map(),
         pendingControlRequests: new Map(),
         pendingViewerActions: new Map(),
+        cliIdle: true,
         messageHistory: [],
         pendingMessages: [],
         nextEventSeq: 1,
@@ -519,6 +521,7 @@ export class WsBridge {
   }
 
   private handleResultMessage(session: Session, msg: CLIResultMessage) {
+    session.cliIdle = true;
     session.state.total_cost_usd = msg.total_cost_usd;
     session.state.num_turns = msg.num_turns;
 
@@ -547,6 +550,7 @@ export class WsBridge {
         total_lines_removed: session.state.total_lines_removed,
       },
     });
+
   }
 
   private handleStreamEvent(session: Session, msg: CLIStreamEventMessage) {
@@ -725,6 +729,10 @@ export class WsBridge {
       case "viewer_action_response":
         handleViewerActionResponse(session, msg);
         break;
+
+      case "viewer_notification":
+        this.handleViewerNotification(session, msg);
+        break;
     }
   }
 
@@ -794,6 +802,7 @@ export class WsBridge {
       content = msg.content;
     }
 
+    session.cliIdle = false;
     const ndjson = JSON.stringify({
       type: "user",
       message: { role: "user", content },
@@ -801,6 +810,38 @@ export class WsBridge {
       session_id: msg.session_id || session.state.session_id || "",
     });
     this.sendToCLI(session, ndjson);
+  }
+
+  private handleViewerNotification(
+    session: Session,
+    msg: { type: "viewer_notification"; notification: { type: string; message: string; severity: "info" | "warning" } },
+  ) {
+    // Only handle warning-level notifications
+    if (msg.notification.severity !== "warning") return;
+
+    if (!session.cliIdle) {
+      // CLI busy — drop. Frontend will re-detect on next auto-check cycle after CLI goes idle.
+      console.log(`[ws-bridge] Viewer notification dropped (CLI busy): ${msg.notification.type}`);
+      return;
+    }
+
+    this.sendViewerNotificationToCLI(session, msg.notification);
+  }
+
+  /** Send a viewer notification to CLI as a user message (not recorded in messageHistory). */
+  private sendViewerNotificationToCLI(
+    session: Session,
+    notification: { type: string; message: string; severity: "info" | "warning" },
+  ) {
+    session.cliIdle = false;
+    const ndjson = JSON.stringify({
+      type: "user",
+      message: { role: "user", content: notification.message },
+      parent_tool_use_id: null,
+      session_id: session.state.session_id || "",
+    });
+    this.sendToCLI(session, ndjson);
+    console.log(`[ws-bridge] Viewer notification forwarded to CLI: ${notification.type}`);
   }
 
   // ── Transport helpers ───────────────────────────────────────────────────

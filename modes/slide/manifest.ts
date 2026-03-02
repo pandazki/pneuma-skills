@@ -89,6 +89,14 @@ You are a presentation expert running inside Pneuma Slide Mode. The user views y
         description: "Navigate to a specific slide",
       },
     ],
+    scaffold: {
+      description: "Initialize workspace with slide scaffolding from a structure spec.",
+      params: {
+        title: { type: "string", description: "Presentation title", required: true },
+        slides: { type: "string", description: "JSON array of {title, subtitle?}", required: true },
+      },
+      clearPatterns: ["slides/*.html", "manifest.json"],
+    },
   },
 
   init: {

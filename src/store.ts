@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { SessionState, PermissionRequest, ChatMessage, FileContent, SelectionContext, ContentBlock } from "./types.js";
+import type { SessionState, PermissionRequest, ChatMessage, FileContent, SelectionContext, ContentBlock, UserAction, Annotation } from "./types.js";
 import type { ViewerContract, WorkspaceItem, ViewerActionRequest } from "../core/types/viewer-contract.js";
 
 export interface Activity {
@@ -67,7 +67,9 @@ interface AppState {
   selection: ElementSelection | null;
   /** Incremented every time setSelection is called with a non-null value — used to detect genuine selection changes */
   selectionStamp: number;
-  previewMode: "view" | "edit" | "select";
+  previewMode: "view" | "edit" | "select" | "annotate";
+  /** Annotations collected in annotate mode */
+  annotations: Annotation[];
   /** Currently viewed file path (e.g. current slide), independent of element selection */
   activeFile: string | null;
   /** Current viewport line range (Doc mode) */
@@ -86,6 +88,12 @@ interface AppState {
   // Viewer workspace + actions
   workspaceItems: WorkspaceItem[];
   actionRequest: ViewerActionRequest | null;
+
+  // User action events (for CC context injection)
+  userActions: UserAction[];
+
+  // Queued viewer notification (sent when CC idle)
+  pendingViewerNotification: { type: string; message: string; severity: "info" | "warning"; summary?: string } | null;
 
   // Actions — session
   setSession: (session: SessionState) => void;
@@ -133,9 +141,15 @@ interface AppState {
 
   // Actions — selection
   setSelection: (s: ElementSelection | null) => void;
-  setPreviewMode: (mode: "view" | "edit" | "select") => void;
+  setPreviewMode: (mode: "view" | "edit" | "select" | "annotate") => void;
   setActiveFile: (file: string | null) => void;
   setViewportRange: (range: { file: string; startLine: number; endLine: number; heading?: string } | null) => void;
+
+  // Actions — annotations
+  addAnnotation: (annotation: Annotation) => void;
+  removeAnnotation: (id: string) => void;
+  updateAnnotationComment: (id: string, comment: string) => void;
+  clearAnnotations: () => void;
 
   // Actions — mode viewer
   setModeViewer: (viewer: ViewerContract) => void;
@@ -149,6 +163,13 @@ interface AppState {
 
   // Actions — viewer actions
   setActionRequest: (req: ViewerActionRequest | null) => void;
+
+  // Actions — user actions
+  pushUserAction: (action: UserAction) => void;
+  drainUserActions: () => UserAction[];
+
+  // Actions — viewer notification queue
+  setPendingViewerNotification: (n: { type: string; message: string; severity: "info" | "warning" } | null) => void;
 
   // Actions — content
   setFiles: (files: FileContent[]) => void;
@@ -225,6 +246,7 @@ export const useStore = create<AppState>((set) => ({
   selection: null,
   selectionStamp: 0,
   previewMode: "view",
+  annotations: [],
   activeFile: null,
   viewportRange: null,
   modeViewer: null,
@@ -233,6 +255,8 @@ export const useStore = create<AppState>((set) => ({
   debugMode: false,
   workspaceItems: [],
   actionRequest: null,
+  userActions: [],
+  pendingViewerNotification: null,
 
   setSession: (session) => set({ session }),
   updateSession: (updates) =>
@@ -308,9 +332,20 @@ export const useStore = create<AppState>((set) => ({
   setTerminalId: (terminalId) => set({ terminalId }),
 
   setSelection: (selection) => set((s) => ({ selection, selectionStamp: selection ? s.selectionStamp + 1 : s.selectionStamp })),
-  setPreviewMode: (previewMode) => set({ previewMode, ...(previewMode !== "select" ? { selection: null } : {}) }),
+  setPreviewMode: (previewMode) => set({
+    previewMode,
+    ...(previewMode !== "select" && previewMode !== "annotate" ? { selection: null } : {}),
+    ...(previewMode !== "annotate" ? { annotations: [] } : {}),
+  }),
   setActiveFile: (activeFile) => set({ activeFile }),
   setViewportRange: (viewportRange) => set({ viewportRange }),
+
+  addAnnotation: (annotation) => set((s) => ({ annotations: [...s.annotations, annotation] })),
+  removeAnnotation: (id) => set((s) => ({ annotations: s.annotations.filter((a) => a.id !== id) })),
+  updateAnnotationComment: (id, comment) => set((s) => ({
+    annotations: s.annotations.map((a) => a.id === id ? { ...a, comment } : a),
+  })),
+  clearAnnotations: () => set({ annotations: [] }),
 
   setModeViewer: (modeViewer) => set({ modeViewer }),
   setModeDisplayName: (modeDisplayName) => set({ modeDisplayName }),
@@ -320,6 +355,15 @@ export const useStore = create<AppState>((set) => ({
   setDebugMode: (debugMode) => set({ debugMode }),
 
   setActionRequest: (actionRequest) => set({ actionRequest }),
+
+  pushUserAction: (action) => set((s) => ({ userActions: [...s.userActions, action] })),
+  drainUserActions: (): UserAction[] => {
+    const actions = useStore.getState().userActions;
+    useStore.setState({ userActions: [] });
+    return actions;
+  },
+
+  setPendingViewerNotification: (n) => set({ pendingViewerNotification: n }),
 
   setFiles: (files) =>
     set((s) => {
