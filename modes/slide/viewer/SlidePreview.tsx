@@ -169,9 +169,110 @@ const CHECK_CONTENT_FIT_EXTENSION = `
   });
 `;
 
+/**
+ * Edit mode extension — makes text elements contentEditable on demand.
+ * Tracks per-element before/after text and sends diff info with the edited HTML.
+ */
+const EDIT_MODE_EXTENSION = `
+  var editActive = false;
+  var editDirty = false;
+  var editOriginalText = '';
+  var editFocusedTag = '';
+  var editChanges = [];
+
+  window.addEventListener('message', function(e) {
+    if (!e.data || e.data.type !== 'pneuma:editMode') return;
+    editActive = !!e.data.enabled;
+    toggleEditable(editActive);
+    if (!editActive) {
+      if (editDirty) {
+        sendEditedContent();
+        editDirty = false;
+      }
+      editChanges = [];
+    }
+  });
+
+  function toggleEditable(enable) {
+    var tags = 'h1,h2,h3,h4,h5,h6,p,li,td,th,span,a,blockquote,figcaption,label,dt,dd';
+    var els = document.querySelectorAll(tags);
+    for (var i = 0; i < els.length; i++) {
+      els[i].contentEditable = enable ? 'true' : 'false';
+      els[i].style.cursor = enable ? 'text' : '';
+    }
+    if (enable) {
+      document.addEventListener('click', preventEditNav, true);
+    } else {
+      document.removeEventListener('click', preventEditNav, true);
+    }
+  }
+
+  function preventEditNav(e) {
+    if (e.target.closest && e.target.closest('a')) e.preventDefault();
+  }
+
+  document.addEventListener('focus', function(e) {
+    if (!editActive) return;
+    var el = e.target;
+    if (el && el.contentEditable === 'true') {
+      editOriginalText = (el.textContent || '').trim();
+      editFocusedTag = el.tagName ? el.tagName.toLowerCase() : '';
+    }
+  }, true);
+
+  document.addEventListener('input', function() {
+    if (!editActive) return;
+    editDirty = true;
+  });
+
+  document.addEventListener('blur', function(e) {
+    if (!editActive) return;
+    var el = e.target;
+    if (el && el.contentEditable === 'true') {
+      var newText = (el.textContent || '').trim();
+      if (editOriginalText !== newText) {
+        editChanges.push({ tag: editFocusedTag, before: editOriginalText, after: newText });
+        editDirty = true;
+      }
+      if (editDirty) {
+        sendEditedContent();
+        editDirty = false;
+      }
+    }
+  }, true);
+
+  function serializeCleanBody() {
+    var clone = document.body.cloneNode(true);
+    var scripts = clone.querySelectorAll('script');
+    for (var i = scripts.length - 1; i >= 0; i--) scripts[i].parentNode.removeChild(scripts[i]);
+    var eds = clone.querySelectorAll('[contenteditable]');
+    for (var i = 0; i < eds.length; i++) eds[i].removeAttribute('contenteditable');
+    var styled = clone.querySelectorAll('[style]');
+    for (var i = 0; i < styled.length; i++) {
+      var s = styled[i].style;
+      s.outline = ''; s.outlineOffset = ''; s.borderRadius = ''; s.cursor = '';
+      if (styled[i].getAttribute('data-pneuma-annotated')) s.backgroundColor = '';
+      if (!styled[i].getAttribute('style').trim()) styled[i].removeAttribute('style');
+    }
+    var da = clone.querySelectorAll('[data-pneuma-annotated]');
+    for (var i = 0; i < da.length; i++) da[i].removeAttribute('data-pneuma-annotated');
+    return clone.innerHTML.trim();
+  }
+
+  function sendEditedContent() {
+    var changes = editChanges.slice();
+    editChanges = [];
+    window.parent.postMessage({
+      type: 'pneuma:textEdit',
+      html: serializeCleanBody(),
+      changes: changes
+    }, '*');
+  }
+`;
+
 /** Selection script for slide iframes — shared library + slide-specific extensions */
 const SELECTION_SCRIPT = buildSelectionScript({
-  extensions: [CHECK_CONTENT_FIT_EXTENSION],
+  extensions: [CHECK_CONTENT_FIT_EXTENSION, EDIT_MODE_EXTENSION],
 });
 
 /**
@@ -366,6 +467,7 @@ export default function SlidePreview({
   const manifest = useMemo(() => parseManifest(files), [files]);
   const themeCSS = useMemo(() => findThemeCSS(files), [files]);
   const isSelectMode = previewMode === "select" || previewMode === "annotate";
+  const isEditMode = previewMode === "edit";
 
   // Optimistic slide order: updated immediately on drag, synced from manifest on external changes
   const [localSlides, setLocalSlides] = useState<{ file: string; title: string }[]>([]);
@@ -443,8 +545,85 @@ export default function SlidePreview({
           content: JSON.stringify(newManifest, null, 2) + "\n",
         }),
       }).catch(() => {});
+
+      pushUserAction({
+        timestamp: Date.now(),
+        actionId: "reorder-slide",
+        description: `Moved slide "${moved.title || moved.file}" from position ${fromIndex + 1} to ${toIndex + 1}`,
+      });
     },
-    [manifest, slides, activeSlideIndex],
+    [manifest, slides, activeSlideIndex, pushUserAction],
+  );
+
+  // Delete slide — remove from manifest (confirmation handled by UI component)
+  const handleDeleteSlide = useCallback(
+    (index: number) => {
+      if (!manifest || slides.length <= 1) return;
+      const slide = slides[index];
+
+      const newSlides = slides.filter((_, i) => i !== index);
+      setLocalSlides(newSlides);
+
+      if (activeSlideIndex >= newSlides.length) {
+        setActiveSlideIndex(newSlides.length - 1);
+      } else if (activeSlideIndex > index) {
+        setActiveSlideIndex(activeSlideIndex - 1);
+      }
+
+      const newManifest = { ...manifest, slides: newSlides };
+      const baseUrl = import.meta.env.DEV ? `http://localhost:17007` : "";
+      fetch(`${baseUrl}/api/files`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "manifest.json",
+          content: JSON.stringify(newManifest, null, 2) + "\n",
+        }),
+      }).catch(() => {});
+
+      pushUserAction({
+        timestamp: Date.now(),
+        actionId: "delete-slide",
+        description: `Deleted slide ${index + 1}: "${slide.title || slide.file}"`,
+      });
+    },
+    [manifest, slides, activeSlideIndex, pushUserAction],
+  );
+
+  // Handle text edit from iframe (edit mode)
+  const editTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const pendingChangesRef = useRef<{ tag: string; before: string; after: string }[]>([]);
+  const handleTextEdit = useCallback(
+    (slideFile: string, html: string, changes?: { tag: string; before: string; after: string }[]) => {
+      if (changes?.length) {
+        pendingChangesRef.current.push(...changes);
+      }
+      clearTimeout(editTimerRef.current);
+      editTimerRef.current = setTimeout(() => {
+        const baseUrl = import.meta.env.DEV ? "http://localhost:17007" : "";
+        fetch(`${baseUrl}/api/files`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: slideFile, content: html + "\n" }),
+        }).catch(() => {});
+
+        const slide = slides.find((s) => s.file === slideFile);
+        const label = slide?.title || slideFile;
+        const batch = pendingChangesRef.current.splice(0);
+        const diffLines = batch.map((c) =>
+          `  <${c.tag}>: "${c.before}" → "${c.after}"`
+        );
+        const desc = diffLines.length > 0
+          ? `Edited text on slide "${label}":\n${diffLines.join("\n")}`
+          : `Edited text on slide "${label}"`;
+        pushUserAction({
+          timestamp: Date.now(),
+          actionId: "edit-text",
+          description: desc,
+        });
+      }, 800);
+    },
+    [slides, pushUserAction],
   );
 
   // Clamp active index when slides change
@@ -883,7 +1062,7 @@ export default function SlidePreview({
         // Fullscreen exit is handled by the browser's Fullscreen API
         if (previewMode === "annotate" && pendingAnnotation) {
           setPendingAnnotation(null);
-        } else if (previewMode === "annotate") {
+        } else if (previewMode === "annotate" || previewMode === "edit") {
           setPreviewMode("view");
         } else if (previewMode === "select") {
           if (selection) {
@@ -1014,6 +1193,7 @@ export default function SlidePreview({
       activeIndex={activeSlideIndex}
       onSelect={goToSlide}
       onReorder={handleReorder}
+      onDelete={isEditMode ? handleDeleteSlide : undefined}
       thumbnailImages={thumbnailImages}
       position={navPosition}
       virtualWidth={VIRTUAL_W}
@@ -1041,8 +1221,10 @@ export default function SlidePreview({
             themeCSS={themeCSS}
             activeIndex={activeSlideIndex}
             isSelectMode={isSelectMode}
+            isEditMode={isEditMode}
             imageVersion={imageVersion}
             onSelect={handleSelect}
+            onTextEdit={handleTextEdit}
             buildSrcdoc={buildSrcdoc}
             findSlideContent={findSlideContent}
             highlightSelector={highlightSelector}
@@ -1188,6 +1370,7 @@ function SlideNavigator({
   activeIndex,
   onSelect,
   onReorder,
+  onDelete,
   thumbnailImages,
   position,
   virtualWidth,
@@ -1197,6 +1380,7 @@ function SlideNavigator({
   activeIndex: number;
   onSelect: (index: number) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
+  onDelete?: (index: number) => void;
   thumbnailImages: Map<string, string>;
   position: "left" | "bottom";
   virtualWidth: number;
@@ -1249,6 +1433,7 @@ function SlideNavigator({
                   isActive={i === activeIndex}
                   imageUrl={thumbnailImages.get(slide.file)}
                   onClick={() => onSelect(i)}
+                  onDelete={onDelete && slides.length > 1 ? () => onDelete(i) : undefined}
                   layout="horizontal"
                   virtualWidth={virtualWidth}
                   virtualHeight={virtualHeight}
@@ -1277,6 +1462,7 @@ function SlideNavigator({
                 isActive={i === activeIndex}
                 imageUrl={thumbnailImages.get(slide.file)}
                 onClick={() => onSelect(i)}
+                onDelete={onDelete && slides.length > 1 ? () => onDelete(i) : undefined}
                 layout="vertical"
                 virtualWidth={virtualWidth}
                 virtualHeight={virtualHeight}
@@ -1302,11 +1488,12 @@ const SortableSlideItem = forwardRef<
     isActive: boolean;
     imageUrl: string | undefined;
     onClick: () => void;
+    onDelete?: () => void;
     layout: "horizontal" | "vertical";
     virtualWidth: number;
     virtualHeight: number;
   }
->(function SortableSlideItem({ id, index, title, isActive, imageUrl, onClick, layout, virtualWidth, virtualHeight }, outerRef) {
+>(function SortableSlideItem({ id, index, title, isActive, imageUrl, onClick, onDelete, layout, virtualWidth, virtualHeight }, outerRef) {
   const {
     attributes,
     listeners,
@@ -1322,6 +1509,29 @@ const SortableSlideItem = forwardRef<
     zIndex: isDragging ? 10 : undefined,
   };
 
+  // Two-click delete: first click arms, second confirms
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Reset armed state after 2s timeout
+  useEffect(() => {
+    if (deleteArmed) {
+      deleteTimerRef.current = setTimeout(() => setDeleteArmed(false), 2000);
+      return () => clearTimeout(deleteTimerRef.current);
+    }
+  }, [deleteArmed]);
+
+  const handleDeleteClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (deleteArmed) {
+      clearTimeout(deleteTimerRef.current);
+      setDeleteArmed(false);
+      onDelete?.();
+    } else {
+      setDeleteArmed(true);
+    }
+  }, [deleteArmed, onDelete]);
+
   // Merge refs
   const mergedRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -1332,6 +1542,25 @@ const SortableSlideItem = forwardRef<
     [setNodeRef, outerRef],
   );
 
+  const deleteBtn = onDelete ? (
+    <button
+      onClick={handleDeleteClick}
+      className={`absolute top-1 right-1 w-5 h-5 rounded flex items-center justify-center z-10 cursor-pointer transition-all ${
+        deleteArmed
+          ? "bg-red-500/90 text-white opacity-100 scale-110"
+          : "bg-black/50 text-cc-muted hover:text-cc-fg opacity-0 group-hover:opacity-100"
+      }`}
+      title={deleteArmed ? "Click again to confirm" : "Delete slide"}
+    >
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+        {deleteArmed
+          ? <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+          : <><path d="M5 3V2h6v1M2 4h12M4 4v9a1 1 0 001 1h6a1 1 0 001-1V4" /><path d="M7 7v4M9 7v4" /></>
+        }
+      </svg>
+    </button>
+  ) : null;
+
   if (layout === "horizontal") {
     return (
       <div
@@ -1340,10 +1569,11 @@ const SortableSlideItem = forwardRef<
         {...attributes}
         {...listeners}
         onClick={onClick}
-        className={`shrink-0 flex flex-col items-center gap-1 cursor-pointer group ${
+        className={`shrink-0 flex flex-col items-center gap-1 cursor-pointer group relative ${
           isActive ? "" : "opacity-60 hover:opacity-100"
         } ${isDragging ? "opacity-70 scale-105 shadow-lg" : ""}`}
       >
+        {deleteBtn}
         <SlideThumbnail imageUrl={imageUrl} isActive={isActive} width={144} height={81} virtualWidth={virtualWidth} virtualHeight={virtualHeight} />
         <span
           className={`text-[10px] max-w-[144px] truncate ${
@@ -1363,10 +1593,11 @@ const SortableSlideItem = forwardRef<
       {...attributes}
       {...listeners}
       onClick={onClick}
-      className={`w-full flex flex-col gap-1 cursor-pointer group ${
+      className={`w-full flex flex-col gap-1 cursor-pointer group relative ${
         isActive ? "" : "opacity-60 hover:opacity-100"
       } ${isDragging ? "opacity-70 scale-105 shadow-lg" : ""}`}
     >
+      {deleteBtn}
       <SlideThumbnail imageUrl={imageUrl} isActive={isActive} virtualWidth={virtualWidth} virtualHeight={virtualHeight} />
       <div className="flex items-baseline gap-1.5 px-0.5">
         <span
@@ -1508,6 +1739,7 @@ function SlideToolbar({
   const modes: { value: PreviewMode; label: string; icon: React.ReactNode }[] =
     [
       { value: "view", label: "View", icon: <EyeIcon /> },
+      { value: "edit", label: "Edit", icon: <EditIcon /> },
       { value: "select", label: "Select", icon: <CursorIcon /> },
       { value: "annotate", label: "Annotate", icon: <AnnotateIcon /> },
     ];
@@ -1622,9 +1854,11 @@ function SlideToolbar({
               title={
                 m.value === "view"
                   ? "Read-only view"
-                  : m.value === "select"
-                    ? "Select elements (Esc to exit)"
-                    : "Annotate multiple elements (Esc to exit)"
+                  : m.value === "edit"
+                    ? "Edit text inline (Esc to exit)"
+                    : m.value === "select"
+                      ? "Select elements (Esc to exit)"
+                      : "Annotate multiple elements (Esc to exit)"
               }
             >
               {m.icon}
@@ -1680,6 +1914,15 @@ function EyeIcon() {
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
       <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" />
       <circle cx="8" cy="8" r="2" />
+    </svg>
+  );
+}
+
+function EditIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+      <path d="M11.5 2.5l2 2-8 8L3 13.5l1-2.5z" strokeLinejoin="round" />
+      <path d="M9.5 4.5l2 2" />
     </svg>
   );
 }
