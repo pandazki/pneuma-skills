@@ -473,6 +473,8 @@ export default function SlidePreview({
   imageVersion,
   initParams,
   onActiveFileChange,
+  actionRequest,
+  onActionResult,
 }: ViewerPreviewProps) {
   const setPreviewMode = useStore((s) => s.setPreviewMode);
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
@@ -579,6 +581,33 @@ export default function SlidePreview({
   useEffect(() => {
     onActiveFileChange?.(currentFile);
   }, [currentFile, onActiveFileChange]);
+
+  // Handle viewer action requests from agent
+  useEffect(() => {
+    if (!actionRequest) return;
+
+    switch (actionRequest.actionId) {
+      case "navigate-to": {
+        const targetFile = actionRequest.params?.file as string;
+        const index = slides.findIndex((s) => s.file === targetFile);
+        if (index !== -1) {
+          setActiveSlideIndex(index);
+          onActionResult?.(actionRequest.requestId, { success: true });
+        } else {
+          onActionResult?.(actionRequest.requestId, {
+            success: false,
+            message: `Slide not found: ${targetFile}`,
+          });
+        }
+        break;
+      }
+      default:
+        onActionResult?.(actionRequest.requestId, {
+          success: false,
+          message: `Unknown action: ${actionRequest.actionId}`,
+        });
+    }
+  }, [actionRequest]);
 
   // Navigate to slide + highlight when external selection arrives (e.g. clicking historical SelectionCard)
   // Use a stamp counter to detect genuine selection changes from the store

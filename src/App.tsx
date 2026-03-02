@@ -62,6 +62,10 @@ function useViewerProps(): ViewerPreviewProps {
   const imageTick = useStore((s) => s.imageTick);
   const initParams = useStore((s) => s.initParams);
   const setActiveFile = useStore((s) => s.setActiveFile);
+  const setViewportRange = useStore((s) => s.setViewportRange);
+  const workspaceItems = useStore((s) => s.workspaceItems);
+  const actionRequest = useStore((s) => s.actionRequest);
+  const setActionRequest = useStore((s) => s.setActionRequest);
 
   return {
     files: files.map((f) => ({ path: f.path, content: f.content })),
@@ -99,6 +103,15 @@ function useViewerProps(): ViewerPreviewProps {
     imageVersion: imageTick,
     initParams,
     onActiveFileChange: setActiveFile,
+    onViewportChange: setViewportRange,
+    workspaceItems,
+    actionRequest,
+    onActionResult: (requestId, result) => {
+      import("./ws.js").then(({ sendViewerActionResponse }) => {
+        sendViewerActionResponse(requestId, result);
+      });
+      setActionRequest(null);
+    },
   };
 }
 
@@ -116,6 +129,9 @@ export default function App() {
     const params = new URLSearchParams(location.search);
     const explicitSession = params.get("session");
     const modeName = params.get("mode") || "doc";
+    if (params.get("debug") === "1") {
+      useStore.getState().setDebugMode(true);
+    }
 
     // Check if this is an external mode — fetch mode info from server first
     const loadModeAsync = async () => {

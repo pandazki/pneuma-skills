@@ -10,7 +10,7 @@ import type {
   ViewerSelectionContext,
   ViewerFileContent,
 } from "../../core/types/viewer-contract.js";
-import SlidePreview from "./components/SlidePreview.js";
+import SlidePreview from "./viewer/SlidePreview.js";
 import slideManifest from "./manifest.js";
 
 const slideMode: ModeDefinition = {
@@ -19,55 +19,85 @@ const slideMode: ModeDefinition = {
   viewer: {
     PreviewComponent: SlidePreview,
 
+    workspace: {
+      type: "manifest",
+      multiFile: true,
+      ordered: true,
+      hasActiveFile: true,
+      manifestFile: "manifest.json",
+      resolveItems: (files) => {
+        const mf = files.find(
+          (f) => f.path === "manifest.json" || f.path.endsWith("/manifest.json"),
+        );
+        if (!mf) return [];
+        try {
+          const parsed = JSON.parse(mf.content);
+          return (parsed.slides ?? []).map(
+            (s: { file: string; title?: string }, i: number) => ({
+              path: s.file,
+              label: s.title || s.file,
+              index: i,
+            }),
+          );
+        } catch {
+          return [];
+        }
+      },
+    },
+
+    actions: slideManifest.viewerApi?.actions,
+
     extractContext(
       selection: ViewerSelectionContext | null,
       files: ViewerFileContent[],
     ): string {
-      const parts: string[] = [];
+      if (!selection?.file) return "";
 
-      // Resolve slide title from manifest.json
-      const resolveSlideTitle = (filePath: string): string => {
-        const manifestFile = files.find(
-          (f) =>
-            f.path === "manifest.json" ||
-            f.path.endsWith("/manifest.json"),
-        );
-        if (!manifestFile) return "";
+      // Parse manifest for slide info
+      const manifestFile = files.find(
+        (f) =>
+          f.path === "manifest.json" ||
+          f.path.endsWith("/manifest.json"),
+      );
+      let slideTitle = "";
+      let slideIndex = 0;
+      let slideCount = 0;
+      if (manifestFile) {
         try {
           const manifest = JSON.parse(manifestFile.content);
-          const slide = manifest.slides?.find(
-            (s: { file: string; title: string }) => s.file === filePath,
-          );
-          return slide?.title || "";
-        } catch {
-          return "";
-        }
-      };
+          const slides: { file: string; title?: string }[] = manifest.slides ?? [];
+          slideCount = slides.length;
+          const idx = slides.findIndex((s) => s.file === selection.file);
+          if (idx >= 0) {
+            slideIndex = idx + 1;
+            slideTitle = slides[idx].title || "";
+          }
+        } catch { /* ignore parse errors */ }
+      }
 
-      // Include which slide the user is viewing
-      if (selection?.file) {
-        const slideTitle = resolveSlideTitle(selection.file);
-        const viewDesc = slideTitle
-          ? `${selection.file} "${slideTitle}"`
-          : selection.file;
-        parts.push(`[Context: slide, viewing: ${viewDesc}]`);
+      const attrs = [`mode="slide"`, `file="${selection.file}"`];
+      const lines: string[] = [];
+
+      if (slideIndex > 0) {
+        const desc = slideTitle
+          ? `Viewing slide ${slideIndex}/${slideCount}: "${slideTitle}"`
+          : `Viewing slide ${slideIndex}/${slideCount}`;
+        lines.push(desc);
       }
 
       // Include element selection (skip for "viewing" pseudo-selection)
-      if (selection && selection.type !== "viewing" && (selection.selector || selection.content)) {
+      if (selection.type !== "viewing" && (selection.selector || selection.content)) {
         if (selection.selector) {
-          // Concise format — Claude Code reads the HTML file anyway
-          parts.push(`[User selected: ${selection.selector}]`);
+          lines.push(`Selected: ${selection.selector}`);
         } else {
-          // Fallback for old selections without selector
           const desc = selection.level
             ? `${selection.type} (level ${selection.level})`
             : selection.type;
-          parts.push(`[User selected: ${desc} "${selection.content}"]`);
+          lines.push(`Selected: ${desc} "${selection.content}"`);
         }
       }
 
-      return parts.join("\n");
+      return `<viewer-context ${attrs.join(" ")}>\n${lines.join("\n")}\n</viewer-context>`;
     },
 
     updateStrategy: "full-reload",

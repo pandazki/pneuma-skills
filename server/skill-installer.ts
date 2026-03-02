@@ -7,10 +7,12 @@
 
 import { mkdirSync, existsSync, readFileSync, writeFileSync, cpSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, extname } from "node:path";
-import type { SkillConfig } from "../core/types/mode-manifest.js";
+import type { SkillConfig, ViewerApiConfig } from "../core/types/mode-manifest.js";
 
 const PNEUMA_MARKER_START = "<!-- pneuma:start -->";
 const PNEUMA_MARKER_END = "<!-- pneuma:end -->";
+const VIEWER_API_MARKER_START = "<!-- pneuma:viewer-api:start -->";
+const VIEWER_API_MARKER_END = "<!-- pneuma:viewer-api:end -->";
 
 /**
  * Ensure `.pneuma/` is listed in the workspace's .gitignore.
@@ -84,18 +86,89 @@ function applyTemplateToDir(
 }
 
 /**
+ * Generate a CLAUDE.md section describing the Viewer's self-describing API.
+ * Pure function — no side effects, no dependency on Skill.
+ *
+ * Returns empty string if no viewer API is declared.
+ */
+export function generateViewerApiSection(
+  viewerApi: ViewerApiConfig | undefined,
+  port: number = 17007,
+): string {
+  if (!viewerApi) return "";
+  const lines: string[] = ["## Viewer API", ""];
+  let hasContent = false;
+
+  // Workspace model
+  if (viewerApi.workspace) {
+    const ws = viewerApi.workspace;
+    const traits: string[] = [];
+    if (ws.ordered) traits.push("ordered");
+    if (ws.multiFile) traits.push("multi-file");
+    if (ws.hasActiveFile) traits.push("active file tracking");
+    lines.push("### Workspace");
+    lines.push(`- Type: ${ws.type}${traits.length > 0 ? ` (${traits.join(", ")})` : ""}`);
+    if (ws.manifestFile) lines.push(`- Index file: ${ws.manifestFile}`);
+    lines.push("");
+    hasContent = true;
+  }
+
+  // Actions
+  const actions = viewerApi.actions?.filter((a) => a.agentInvocable) ?? [];
+  if (actions.length > 0) {
+    lines.push("### Actions");
+    lines.push("");
+    lines.push("The viewer supports these operations. Invoke via Bash:");
+    lines.push(`\`curl -s -X POST http://localhost:${port}/api/viewer/action -H 'Content-Type: application/json' -d '{\"actionId\":\"<id>\",\"params\":{...}}'\``);
+    lines.push("");
+    lines.push("| Action | Description | Params |");
+    lines.push("|--------|-------------|--------|");
+    for (const action of actions) {
+      const paramDescs: string[] = [];
+      if (action.params) {
+        for (const [name, p] of Object.entries(action.params)) {
+          paramDescs.push(`${name}${p.required ? "" : "?"}: ${p.type}`);
+        }
+      }
+      lines.push(`| \`${action.id}\` | ${action.description || action.label} | ${paramDescs.join(", ") || "—"} |`);
+    }
+    lines.push("");
+    hasContent = true;
+  }
+
+  if (!hasContent) return "";
+
+  // Viewer context format description (prepend after header)
+  const contextLines = [
+    "### Viewer Context",
+    "",
+    "Each user message may be prefixed with a `<viewer-context>` block.",
+    "It describes what the user is currently seeing — the active file, viewport position, and selected elements.",
+    'Use this to resolve references like "this page", "here", "this section" in user messages.',
+    "",
+  ];
+  lines.splice(2, 0, ...contextLines);
+
+  return lines.join("\n");
+}
+
+/**
  * Install a mode's skill and inject CLAUDE.md configuration.
  *
  * @param workspace  — User's project directory
  * @param skillConfig — Skill configuration from ModeManifest
  * @param modeSourceDir — Absolute path to the mode package directory (e.g. /path/to/modes/doc)
  * @param params — Optional init params for template replacement
+ * @param viewerApi — Optional viewer self-describing API (auto-injected as independent CLAUDE.md section)
+ * @param port — Server port for viewer action curl commands
  */
 export function installSkill(
   workspace: string,
   skillConfig: SkillConfig,
   modeSourceDir: string,
   params?: Record<string, number | string>,
+  viewerApi?: ViewerApiConfig,
+  port?: number,
 ): void {
   // 1. Copy skill to .claude/skills/{installName}/
   const skillSource = join(modeSourceDir, skillConfig.sourceDir);
@@ -156,6 +229,24 @@ export function installSkill(
       content += "\n";
     }
     content += "\n" + claudeMdSection + "\n";
+  }
+
+  // 2b. Inject/update Viewer API section (independent marker, Viewer-owned)
+  const viewerApiContent = generateViewerApiSection(viewerApi, port);
+  if (viewerApiContent) {
+    const viewerSection = `${VIEWER_API_MARKER_START}\n${viewerApiContent}\n${VIEWER_API_MARKER_END}`;
+    const vStart = content.indexOf(VIEWER_API_MARKER_START);
+    const vEnd = content.indexOf(VIEWER_API_MARKER_END);
+    if (vStart !== -1 && vEnd !== -1) {
+      content = content.substring(0, vStart) +
+        viewerSection +
+        content.substring(vEnd + VIEWER_API_MARKER_END.length);
+    } else {
+      if (content.length > 0 && !content.endsWith("\n")) {
+        content += "\n";
+      }
+      content += "\n" + viewerSection + "\n";
+    }
   }
 
   // Ensure .claude directory exists

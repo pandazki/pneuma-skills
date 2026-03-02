@@ -27,9 +27,27 @@ function getWsUrl(sessionId: string): string {
 
 /**
  * Parse selection context from enriched user message content.
- * Format: [User is viewing: file]\n[User selected: type "content"]\n\nactual message
+ * Supports both legacy format ([User is viewing: ...]) and new XML format (<viewer-context ...>).
  */
 function parseSelectionFromContent(raw: string): { content: string; selectionContext?: SelectionContext } {
+  // New XML format: <viewer-context mode="..." file="...">...\n</viewer-context>\n\nuser message
+  if (raw.startsWith("<viewer-context ")) {
+    const closeTag = "</viewer-context>";
+    const closeIdx = raw.indexOf(closeTag);
+    if (closeIdx !== -1) {
+      const xmlBlock = raw.slice(0, closeIdx + closeTag.length);
+      const userContent = raw.slice(closeIdx + closeTag.length).replace(/^\n\n/, "");
+      // Extract file from attributes
+      const fileMatch = xmlBlock.match(/file="([^"]+)"/);
+      const file = fileMatch?.[1] || "";
+      return {
+        content: userContent,
+        selectionContext: file ? { file, type: "paragraph" as SelectionType, content: "" } : undefined,
+      };
+    }
+  }
+
+  // Legacy format: [User is viewing: file]\n[User selected: type "content"]\n\nactual message
   if (!raw.startsWith("[User is viewing: ")) return { content: raw };
 
   const firstNl = raw.indexOf("\n");
@@ -456,6 +474,15 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       break;
     }
 
+    case "viewer_action_request": {
+      store.setActionRequest({
+        requestId: data.request_id,
+        actionId: data.action_id,
+        params: data.params,
+      });
+      break;
+    }
+
     case "message_history": {
       const chatMessages: ChatMessage[] = [];
       for (const histMsg of data.messages) {
@@ -597,11 +624,12 @@ export function sendSetModel(model: string) {
   send({ type: "set_model", model });
 }
 
-export function sendUserMessage(content: string, selection?: ElementSelection | null, images?: { media_type: string; data: string }[]) {
+export async function sendUserMessage(content: string, selection?: ElementSelection | null, images?: { media_type: string; data: string }[]) {
   const store = useStore.getState();
   // Add user message to local store immediately (show original text)
+  const msgId = nextId();
   store.appendMessage({
-    id: nextId(),
+    id: msgId,
     role: "user",
     content,
     timestamp: Date.now(),
@@ -622,10 +650,19 @@ export function sendUserMessage(content: string, selection?: ElementSelection | 
       tag: selection.tag,
       classes: selection.classes,
       selector: selection.selector,
+      thumbnail: selection.thumbnail,
     } : null;
     // Even without element selection, provide active file as viewing context
     if (!viewerSelection && store.activeFile) {
       viewerSelection = { type: "viewing", content: "", file: store.activeFile };
+    }
+    // Attach viewport range if available — also creates viewerSelection if needed
+    const vp = store.viewportRange;
+    if (vp) {
+      if (!viewerSelection) {
+        viewerSelection = { type: "viewing", content: "", file: vp.file };
+      }
+      viewerSelection.viewport = { startLine: vp.startLine, endLine: vp.endLine, heading: vp.heading };
     }
     const context = viewer.extractContext(viewerSelection, viewerFiles);
     if (context) {
@@ -645,12 +682,35 @@ export function sendUserMessage(content: string, selection?: ElementSelection | 
     enrichedContent = ctx.join("\n") + "\n\n" + content;
   }
 
+  let allImages = images ? [...images] : [];
+
+  // If selection has a thumbnail (e.g. Draw mode element screenshot), attach as image
+  if (selection?.thumbnail) {
+    const match = selection.thumbnail.match(/^data:([^;]+);base64,(.+)$/);
+    if (match) {
+      allImages.push({ media_type: match[1], data: match[2] });
+    }
+  }
+
+  // In debug mode, attach the enriched payload to the user message for inspection
+  if (store.debugMode) {
+    store.appendMessage({
+      id: msgId,
+      role: "user",
+      content,
+      timestamp: Date.now(),
+      ...(selection ? { selectionContext: selection } : {}),
+      ...(images?.length ? { images } : {}),
+      debugPayload: { enrichedContent, images: allImages.length > 0 ? allImages : undefined },
+    });
+  }
+
   const msg: import("./types.js").BrowserOutgoingMessage & { type: "user_message" } = {
     type: "user_message",
     content: enrichedContent,
   };
-  if (images?.length) {
-    msg.images = images;
+  if (allImages.length > 0) {
+    msg.images = allImages;
   }
   send(msg);
 }
@@ -671,4 +731,11 @@ export function sendPermissionResponse(
 
 export function sendInterrupt() {
   send({ type: "interrupt" });
+}
+
+export function sendViewerActionResponse(
+  requestId: string,
+  result: { success: boolean; message?: string; data?: Record<string, unknown> },
+) {
+  send({ type: "viewer_action_response", request_id: requestId, result });
 }

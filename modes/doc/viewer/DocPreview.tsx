@@ -35,7 +35,7 @@ function rewriteImageSrc(src: string | undefined, filePath: string, cacheBust?: 
   return url;
 }
 
-/** Build react-markdown components with data-selectable attributes */
+/** Build react-markdown components with data-selectable attributes + line numbers */
 function buildSelectableComponents(filePath: string, imageTick?: number) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const wrapBlock = (tag: string, type: ViewerSelectionContext["type"], level?: number): any => {
@@ -46,6 +46,11 @@ function buildSelectableComponents(filePath: string, imageTick?: number) {
         "data-type": type,
       };
       if (level) attrs["data-level"] = level;
+      // Inject source line numbers from remark/rehype AST position
+      if (node?.position) {
+        attrs["data-line-start"] = node.position.start.line;
+        attrs["data-line-end"] = node.position.end.line;
+      }
       switch (tag) {
         case "h1": return <h1 {...attrs} {...props}>{children}</h1>;
         case "h2": return <h2 {...attrs} {...props}>{children}</h2>;
@@ -99,9 +104,48 @@ function buildSelectableComponents(filePath: string, imageTick?: number) {
   };
 }
 
-/** Build default (non-selectable) react-markdown components */
+/** Build default (non-selectable) react-markdown components with line numbers */
 function buildDefaultComponents(filePath: string, imageTick?: number) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const wrapDefault = (tag: string): any => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return ({ children, node, ...props }: any) => {
+      const attrs: Record<string, string | number> = {};
+      if (node?.position) {
+        attrs["data-line-start"] = node.position.start.line;
+        attrs["data-line-end"] = node.position.end.line;
+      }
+      switch (tag) {
+        case "h1": return <h1 {...attrs} {...props}>{children}</h1>;
+        case "h2": return <h2 {...attrs} {...props}>{children}</h2>;
+        case "h3": return <h3 {...attrs} {...props}>{children}</h3>;
+        case "h4": return <h4 {...attrs} {...props}>{children}</h4>;
+        case "h5": return <h5 {...attrs} {...props}>{children}</h5>;
+        case "h6": return <h6 {...attrs} {...props}>{children}</h6>;
+        case "p": return <p {...attrs} {...props}>{children}</p>;
+        case "ul": return <ul {...attrs} {...props}>{children}</ul>;
+        case "ol": return <ol {...attrs} {...props}>{children}</ol>;
+        case "pre": return <pre {...attrs} {...props}>{children}</pre>;
+        case "blockquote": return <blockquote {...attrs} {...props}>{children}</blockquote>;
+        case "table": return <table {...attrs} {...props}>{children}</table>;
+        default: return <div {...attrs} {...props}>{children}</div>;
+      }
+    };
+  };
+
   return {
+    h1: wrapDefault("h1"),
+    h2: wrapDefault("h2"),
+    h3: wrapDefault("h3"),
+    h4: wrapDefault("h4"),
+    h5: wrapDefault("h5"),
+    h6: wrapDefault("h6"),
+    p: wrapDefault("p"),
+    ul: wrapDefault("ul"),
+    ol: wrapDefault("ol"),
+    pre: wrapDefault("pre"),
+    blockquote: wrapDefault("blockquote"),
+    table: wrapDefault("table"),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     img: ({ src, alt, node, ...props }: any) => (
       <img
@@ -135,9 +179,21 @@ export default function DocPreview({
   onSelect,
   mode: previewMode,
   imageVersion,
+  actionRequest,
+  onActionResult,
+  onViewportChange,
 }: ViewerPreviewProps) {
   // v1.0: setPreviewMode 仍通过 store 控制 (toolbar toggle)
   const setPreviewMode = useStore((s) => s.setPreviewMode);
+
+  // Handle viewer action requests from agent
+  useEffect(() => {
+    if (!actionRequest) return;
+    onActionResult?.(actionRequest.requestId, {
+      success: false,
+      message: `Unknown action: ${actionRequest.actionId}`,
+    });
+  }, [actionRequest]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const selectedElRef = useRef<HTMLElement | null>(null);
@@ -207,6 +263,59 @@ export default function DocPreview({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isSelectMode, selection, onSelect, setPreviewMode]);
+
+  // Viewport scroll tracking — detect visible line range and heading
+  const updateViewport = useCallback(() => {
+    const container = containerRef.current;
+    if (!container || !onViewportChange) return;
+    const rect = container.getBoundingClientRect();
+    const elements = container.querySelectorAll("[data-line-start]");
+    let firstLine = Infinity;
+    let lastLine = 0;
+    let visibleFile = "";
+    let firstHeading = "";
+    for (const el of elements) {
+      const elRect = el.getBoundingClientRect();
+      if (elRect.bottom > rect.top && elRect.top < rect.bottom) {
+        const start = Number((el as HTMLElement).dataset.lineStart);
+        const end = Number((el as HTMLElement).dataset.lineEnd);
+        if (start < firstLine) firstLine = start;
+        if (end > lastLine) lastLine = end;
+        if (!visibleFile) {
+          visibleFile = el.closest("[data-file]")?.getAttribute("data-file") || "";
+        }
+        // Track first visible heading
+        if (!firstHeading && /^H[1-6]$/.test(el.tagName)) {
+          firstHeading = (el.textContent || "").trim();
+        }
+      }
+    }
+    if (firstLine < Infinity) {
+      onViewportChange({
+        file: visibleFile,
+        startLine: firstLine,
+        endLine: lastLine,
+        heading: firstHeading || undefined,
+      });
+    }
+  }, [onViewportChange]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !onViewportChange) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const handler = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(updateViewport, 200);
+    };
+    container.addEventListener("scroll", handler, { passive: true });
+    // Initial viewport report after render
+    updateViewport();
+    return () => {
+      container.removeEventListener("scroll", handler);
+      if (timer) clearTimeout(timer);
+    };
+  }, [onViewportChange, updateViewport, files]);
 
   // Click handler for element selection (event delegation)
   const handleClick = useCallback(

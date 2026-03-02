@@ -17,6 +17,7 @@ import type {
   ViewerSelectionContext,
 } from "../../../core/types/viewer-contract.js";
 import { useStore } from "../../../src/store.js";
+import { setDrawCaptureViewport } from "../pneuma-mode.js";
 
 // Lazy-loaded Excalidraw (no SSR support)
 let ExcalidrawComponent: React.ComponentType<any> | null = null;
@@ -112,8 +113,19 @@ export default function DrawPreview({
   onSelect,
   mode: previewMode,
   imageVersion,
+  actionRequest,
+  onActionResult,
 }: ViewerPreviewProps) {
   const setPreviewMode = useStore((s) => s.setPreviewMode);
+
+  // Handle viewer action requests from agent
+  useEffect(() => {
+    if (!actionRequest) return;
+    onActionResult?.(actionRequest.requestId, {
+      success: false,
+      message: `Unknown action: ${actionRequest.actionId}`,
+    });
+  }, [actionRequest]);
 
   const [ready, setReady] = useState(excalidrawLoaded);
   const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
@@ -127,6 +139,9 @@ export default function DrawPreview({
   const currentFilePathRef = useRef<string>("");
   // Track if we're currently saving (to skip onChange during updateScene)
   const isUpdatingFromFileRef = useRef(false);
+  // Skip redundant first updateScene — initialData already provides data to Excalidraw.
+  // Calling updateScene before font initialization completes causes text to vanish.
+  const isFirstSyncRef = useRef(true);
 
   // Load Excalidraw dynamically
   useEffect(() => {
@@ -177,6 +192,17 @@ export default function DrawPreview({
       excalidrawData.excalidrawFiles,
     );
 
+    // On the first sync after mount, skip updateScene if initialData already
+    // provided the same data. Excalidraw's internal font rendering isn't ready
+    // yet, and an early updateScene causes text elements to vanish.
+    if (isFirstSyncRef.current) {
+      isFirstSyncRef.current = false;
+      if (initialData.elements.length > 0) {
+        lastSavedContentRef.current = newContent;
+        return;
+      }
+    }
+
     // Skip if this is our own save echoing back
     if (newContent === lastSavedContentRef.current) return;
 
@@ -197,9 +223,15 @@ export default function DrawPreview({
     }
   }, [excalidrawAPI, excalidrawData]);
 
+  // Track current preview mode in a ref so handleChange can read it without re-creating
+  const previewModeRef = useRef(previewMode);
+  previewModeRef.current = previewMode;
+
   // Handle changes from the Excalidraw canvas (user editing)
   const handleChange = useCallback(
     (elements: any[], appState: any, files: any) => {
+      // Skip saves in view mode
+      if (previewModeRef.current === "view") return;
       // Skip if we're updating from a file change (avoid echo)
       if (isUpdatingFromFileRef.current) return;
       if (!currentFilePathRef.current) return;
@@ -214,6 +246,29 @@ export default function DrawPreview({
     },
     [],
   );
+
+  // Export selected elements as a screenshot (base64 PNG)
+  const captureSelectedElements = useCallback(async (selectedElements: any[]): Promise<string | undefined> => {
+    if (!excalidrawAPI || selectedElements.length === 0) return undefined;
+    try {
+      const { exportToBlob } = await import("@excalidraw/excalidraw");
+      const blob = await exportToBlob({
+        elements: selectedElements,
+        appState: { ...excalidrawAPI.getAppState(), exportWithDarkMode: false },
+        files: excalidrawAPI.getFiles(),
+        maxWidthOrHeight: 600,
+      });
+      const buffer = await blob.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return `data:${blob.type};base64,${btoa(binary)}`;
+    } catch {
+      return undefined;
+    }
+  }, [excalidrawAPI]);
 
   // Handle element selection for agent context
   const handlePointerUp = useCallback(() => {
@@ -252,12 +307,61 @@ export default function DrawPreview({
     });
 
     const content = descriptions.join(", ");
-    onSelect({
-      type: selectedElements.length === 1 ? selectedElements[0].type : "group",
-      content,
-      file: currentFilePathRef.current,
+
+    // Expand selection to include bound text elements (e.g. text inside a rectangle)
+    const selectedIdSet = new Set(selectedElements.map((el: any) => el.id));
+    for (const el of selectedElements) {
+      if (el.boundElements) {
+        for (const bound of el.boundElements) {
+          if (bound.type === "text" && !selectedIdSet.has(bound.id)) {
+            const boundEl = elements.find((e: any) => e.id === bound.id);
+            if (boundEl) {
+              selectedIdSet.add(bound.id);
+              selectedElements.push(boundEl);
+            }
+          }
+        }
+      }
+    }
+
+    // Capture screenshot of selected elements, then fire onSelect with thumbnail
+    captureSelectedElements(selectedElements).then((thumbnail) => {
+      onSelect({
+        type: selectedElements.length === 1 ? selectedElements[0].type : "group",
+        content,
+        file: currentFilePathRef.current,
+        thumbnail,
+      });
     });
-  }, [previewMode, excalidrawAPI, onSelect]);
+  }, [previewMode, excalidrawAPI, onSelect, captureSelectedElements]);
+
+  // Register captureViewport for the draw mode contract
+  useEffect(() => {
+    if (!excalidrawAPI) return;
+    const capture = async (): Promise<{ data: string; media_type: string } | null> => {
+      try {
+        const { exportToBlob } = await import("@excalidraw/excalidraw");
+        const blob = await exportToBlob({
+          elements: excalidrawAPI.getSceneElements(),
+          appState: { ...excalidrawAPI.getAppState(), exportWithDarkMode: false },
+          files: excalidrawAPI.getFiles(),
+          maxWidthOrHeight: 800,
+        });
+        const buffer = await blob.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const base64 = btoa(binary);
+        return { data: base64, media_type: blob.type };
+      } catch {
+        return null;
+      }
+    };
+    setDrawCaptureViewport(capture);
+    return () => setDrawCaptureViewport(null);
+  }, [excalidrawAPI]);
 
   // Theme toggle
   const toggleTheme = useCallback(() => {
@@ -265,6 +369,13 @@ export default function DrawPreview({
     setTheme(next);
     localStorage.setItem("pneuma-draw-theme", next);
   }, [theme]);
+
+  // Switch Excalidraw to selection tool when entering select mode
+  useEffect(() => {
+    if (previewMode === "select" && excalidrawAPI) {
+      excalidrawAPI.setActiveTool({ type: "selection" });
+    }
+  }, [previewMode, excalidrawAPI]);
 
   // Escape key handler
   useEffect(() => {
@@ -288,7 +399,17 @@ export default function DrawPreview({
     };
   }, []);
 
-  const isViewMode = previewMode === "view";
+  // Stable refs for Excalidraw props — avoid re-initialization on parent re-renders
+  const handleExcalidrawAPI = useCallback((api: any) => setExcalidrawAPI(api), []);
+  const uiOptions = useMemo(() => ({
+    canvasActions: {
+      saveToActiveFile: false,
+      loadScene: false,
+      export: false,
+      toggleTheme: false,
+    },
+  }), []);
+
   const excalidrawFiles = files.filter((f) => f.path.endsWith(".excalidraw"));
 
   if (!ready || !ExcalidrawComponent) {
@@ -337,20 +458,17 @@ export default function DrawPreview({
         onPointerUp={handlePointerUp}
       >
         <ExcalidrawComponent
-          excalidrawAPI={(api: any) => setExcalidrawAPI(api)}
+          excalidrawAPI={handleExcalidrawAPI}
           initialData={initialData}
-          onChange={isViewMode ? undefined : handleChange}
-          viewModeEnabled={isViewMode}
+          onChange={handleChange}
+          viewModeEnabled={false}
           theme={theme}
-          UIOptions={{
-            canvasActions: {
-              saveToActiveFile: false,
-              loadScene: false,
-              export: false,
-              toggleTheme: false,
-            },
-          }}
+          UIOptions={uiOptions}
         />
+        {/* View mode: block editing interactions while allowing scroll/zoom via Excalidraw's hand tool */}
+        {previewMode === "view" && (
+          <div className="absolute inset-0 z-[3]" style={{ cursor: "grab" }} />
+        )}
       </div>
     </div>
   );

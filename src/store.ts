@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { SessionState, PermissionRequest, ChatMessage, FileContent, SelectionContext, ContentBlock } from "./types.js";
-import type { ViewerContract } from "../core/types/viewer-contract.js";
+import type { ViewerContract, WorkspaceItem, ViewerActionRequest } from "../core/types/viewer-contract.js";
 
 export interface Activity {
   phase: "thinking" | "responding" | "tool";
@@ -70,6 +70,8 @@ interface AppState {
   previewMode: "view" | "edit" | "select";
   /** Currently viewed file path (e.g. current slide), independent of element selection */
   activeFile: string | null;
+  /** Current viewport line range (Doc mode) */
+  viewportRange: { file: string; startLine: number; endLine: number; heading?: string } | null;
 
   // Mode viewer (loaded dynamically via mode-loader)
   modeViewer: ViewerContract | null;
@@ -77,6 +79,13 @@ interface AppState {
 
   // Init params (immutable per session, from mode manifest)
   initParams: Record<string, number | string>;
+
+  // Debug
+  debugMode: boolean;
+
+  // Viewer workspace + actions
+  workspaceItems: WorkspaceItem[];
+  actionRequest: ViewerActionRequest | null;
 
   // Actions — session
   setSession: (session: SessionState) => void;
@@ -126,6 +135,7 @@ interface AppState {
   setSelection: (s: ElementSelection | null) => void;
   setPreviewMode: (mode: "view" | "edit" | "select") => void;
   setActiveFile: (file: string | null) => void;
+  setViewportRange: (range: { file: string; startLine: number; endLine: number; heading?: string } | null) => void;
 
   // Actions — mode viewer
   setModeViewer: (viewer: ViewerContract) => void;
@@ -133,6 +143,12 @@ interface AppState {
 
   // Actions — init params
   setInitParams: (params: Record<string, number | string>) => void;
+
+  // Actions — debug
+  setDebugMode: (v: boolean) => void;
+
+  // Actions — viewer actions
+  setActionRequest: (req: ViewerActionRequest | null) => void;
 
   // Actions — content
   setFiles: (files: FileContent[]) => void;
@@ -210,9 +226,13 @@ export const useStore = create<AppState>((set) => ({
   selectionStamp: 0,
   previewMode: "view",
   activeFile: null,
+  viewportRange: null,
   modeViewer: null,
   modeDisplayName: "",
   initParams: {},
+  debugMode: false,
+  workspaceItems: [],
+  actionRequest: null,
 
   setSession: (session) => set({ session }),
   updateSession: (updates) =>
@@ -290,19 +310,36 @@ export const useStore = create<AppState>((set) => ({
   setSelection: (selection) => set((s) => ({ selection, selectionStamp: selection ? s.selectionStamp + 1 : s.selectionStamp })),
   setPreviewMode: (previewMode) => set({ previewMode, ...(previewMode !== "select" ? { selection: null } : {}) }),
   setActiveFile: (activeFile) => set({ activeFile }),
+  setViewportRange: (viewportRange) => set({ viewportRange }),
 
   setModeViewer: (modeViewer) => set({ modeViewer }),
   setModeDisplayName: (modeDisplayName) => set({ modeDisplayName }),
 
   setInitParams: (initParams) => set({ initParams }),
 
-  setFiles: (files) => set({ files }),
+  setDebugMode: (debugMode) => set({ debugMode }),
+
+  setActionRequest: (actionRequest) => set({ actionRequest }),
+
+  setFiles: (files) =>
+    set((s) => {
+      const resolveItems = s.modeViewer?.workspace?.resolveItems;
+      return {
+        files,
+        workspaceItems: resolveItems ? resolveItems(files) : s.workspaceItems,
+      };
+    }),
   updateFiles: (updates) =>
     set((s) => {
       const fileMap = new Map(s.files.map((f) => [f.path, f]));
       for (const u of updates) {
         fileMap.set(u.path, u);
       }
-      return { files: Array.from(fileMap.values()) };
+      const files = Array.from(fileMap.values());
+      const resolveItems = s.modeViewer?.workspace?.resolveItems;
+      return {
+        files,
+        workspaceItems: resolveItems ? resolveItems(files) : s.workspaceItems,
+      };
     }),
 }));

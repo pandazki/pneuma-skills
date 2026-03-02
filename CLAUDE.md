@@ -63,17 +63,17 @@ pneuma-skills/
 │   ├── doc/                   # Doc Mode — markdown editing
 │   │   ├── manifest.ts        #   ModeManifest v1.0.0
 │   │   ├── pneuma-mode.ts     #   ModeDefinition (manifest + DocPreview)
-│   │   ├── components/DocPreview.tsx  # Markdown preview with select/edit modes
+│   │   ├── viewer/DocPreview.tsx  # Markdown preview with select/edit modes
 │   │   └── skill/SKILL.md     #   Skill prompt for Claude Code
 │   ├── slide/                 # Slide Mode — presentation editing
 │   │   ├── manifest.ts        #   ModeManifest v1.2.0 (with init params)
 │   │   ├── pneuma-mode.ts     #   ModeDefinition (manifest + SlidePreview)
-│   │   ├── components/SlidePreview.tsx  # Slide carousel with iframe preview
+│   │   ├── viewer/SlidePreview.tsx  # Slide carousel with iframe preview
 │   │   └── skill/             #   Skill package (SKILL.md + design docs + scripts)
 │   └── draw/                  # Draw Mode — Excalidraw whiteboard
 │       ├── manifest.ts        #   ModeManifest
 │       ├── pneuma-mode.ts     #   ModeDefinition (manifest + DrawPreview)
-│       ├── components/DrawPreview.tsx  # Excalidraw editor
+│       ├── viewer/DrawPreview.tsx  # Excalidraw editor
 │       └── skill/SKILL.md     #   Skill prompt for Claude Code
 ├── backends/
 │   └── claude-code/
@@ -159,7 +159,18 @@ Stored in `<workspace>/.pneuma/`:
 
 ### Skill Installation
 
-On startup, skills are copied from `modes/<mode>/skill/` to `<workspace>/.claude/skills/<installName>/`. Template params (`{{key}}`, `{{#key}}...{{/key}}`) are applied. A section is injected into workspace's CLAUDE.md between `<!-- pneuma:start -->` / `<!-- pneuma:end -->` markers.
+On startup, skills are copied from `modes/<mode>/skill/` to `<workspace>/.claude/skills/<installName>/`. Template params (`{{key}}`, `{{#key}}...{{/key}}`) are applied. A section is injected into workspace's CLAUDE.md between `<!-- pneuma:start -->
+## Pneuma Doc Mode
+
+You are running inside Pneuma Doc Mode. A user is viewing your markdown edits live in a browser.
+
+**Important**: When the user asks you to make changes, edit the markdown files directly using the Edit or Write tools. The user sees updates in real-time.
+
+- Workspace contains markdown (.md) files
+- Make focused, incremental edits
+- Use GitHub-Flavored Markdown (GFM)
+- Do not ask for confirmation on simple edits — just do them
+<!-- pneuma:end -->` markers.
 
 ## Coding Conventions
 
@@ -168,7 +179,7 @@ On startup, skills are copied from `modes/<mode>/skill/` to `<workspace>/.claude
 - **Contract-first**: changes to Mode/Viewer/Agent contracts require updating types in `core/types/` and corresponding tests in `core/__tests__/`
 - **No hardcoded mode knowledge** in server or CLI — everything driven by ModeManifest
 - Frontend state via **Zustand** (single store in `src/store.ts`)
-- Mode-specific React components live in `modes/<mode>/components/`
+- Mode-specific viewer components live in `modes/<mode>/viewer/`
 
 ## Version Bump Checklist
 
@@ -193,3 +204,17 @@ Follow [semver](https://semver.org/):
 - **`modelUsage` in CLI result is cumulative**: Use delta approach (current - previous) for per-turn approximation.
 - **CLAUDECODE env var**: Must be unset when spawning Claude Code CLI subprocess.
 - **NDJSON**: Each message must be terminated with `\n` when sending to CLI.
+
+<!-- pneuma:viewer-api:start -->
+## Viewer API
+
+### Viewer Context
+
+Each user message may be prefixed with a `<viewer-context>` block.
+It describes what the user is currently seeing — the active file, viewport position, and selected elements.
+Use this to resolve references like "this page", "here", "this section" in user messages.
+
+### Workspace
+- Type: all (multi-file)
+
+<!-- pneuma:viewer-api:end -->

@@ -102,7 +102,7 @@ GitHub repositories are cloned to `~/.pneuma/modes/` and cached locally. Subsequ
 A mode package must contain:
 - `manifest.ts` — default export of `ModeManifest`
 - `pneuma-mode.ts` — default export of `ModeDefinition`
-- `components/` — React preview components
+- `viewer/` — React preview components
 - `skill/` — Skill files (optional)
 
 ## Architecture
@@ -117,7 +117,7 @@ Pneuma is organized in four layers, each with a clear contract boundary:
 ├─────────────────────────────────────────────────────────┤
 │  Layer 3: Content Viewer                                │
 │  ViewerContract — "how to render, select, update"       │
-│  modes/doc/components/DocPreview.tsx                     │
+│  modes/doc/viewer/DocPreview.tsx                         │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 2: Agent Bridge                                  │
 │  AgentBackend — "how to launch, communicate, lifecycle" │
@@ -164,17 +164,17 @@ pneuma-skills/
 │   ├── doc/
 │   │   ├── pneuma-mode.ts     # Doc Mode definition (manifest + viewer)
 │   │   ├── skill/SKILL.md     # Skill prompt for Claude Code
-│   │   └── components/
+│   │   └── viewer/
 │   │       └── DocPreview.tsx  # Markdown preview with select/edit modes
 │   ├── slide/
 │   │   ├── pneuma-mode.ts     # Slide Mode definition (manifest + viewer)
 │   │   ├── skill/             # Skill package (SKILL.md + design docs + scripts)
-│   │   └── components/
+│   │   └── viewer/
 │   │       └── SlidePreview.tsx # Slide carousel with iframe preview
 │   └── draw/
 │       ├── pneuma-mode.ts     # Draw Mode definition (manifest + viewer)
 │       ├── skill/SKILL.md     # Skill prompt for Claude Code
-│       └── components/
+│       └── viewer/
 │           └── DrawPreview.tsx # Excalidraw editor
 ├── backends/
 │   └── claude-code/

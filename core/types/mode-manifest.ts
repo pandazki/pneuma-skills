@@ -94,6 +94,25 @@ export interface InitConfig {
   deriveParams?: (params: Record<string, number | string>) => Record<string, number | string>;
 }
 
+/** Viewer 自描述 API — 纯数据声明，后端 (pneuma.ts / skill-installer) 可读 */
+export interface ViewerApiConfig {
+  workspace?: {
+    type: "all" | "manifest" | "single";
+    multiFile: boolean;
+    ordered: boolean;
+    hasActiveFile: boolean;
+    manifestFile?: string;
+  };
+  actions?: Array<{
+    id: string;
+    label: string;
+    category: "file" | "navigate" | "ui" | "custom";
+    agentInvocable: boolean;
+    params?: Record<string, { type: "string" | "number" | "boolean"; description: string; required?: boolean }>;
+    description?: string;
+  }>;
+}
+
 /** Mode 的完整声明式描述 */
 export interface ModeManifest {
   /** Mode 唯一标识 (e.g. "doc", "slide") */
@@ -113,4 +132,6 @@ export interface ModeManifest {
   agent?: AgentPreferences;
   /** 工作区初始化配置 (可选) */
   init?: InitConfig;
+  /** Viewer 自描述 API — 纯数据声明，后端可读，自动注入 CLAUDE.md */
+  viewerApi?: ViewerApiConfig;
 }

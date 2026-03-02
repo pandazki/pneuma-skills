@@ -13,6 +13,7 @@ export type {
   ViewerConfig,
   AgentPreferences,
   InitConfig,
+  ViewerApiConfig,
 } from "./mode-manifest.js";
 
 export type {
@@ -20,6 +21,12 @@ export type {
   ViewerPreviewProps,
   ViewerFileContent,
   ViewerSelectionContext,
+  WorkspaceItem,
+  FileWorkspaceModel,
+  ViewerActionParam,
+  ViewerActionDescriptor,
+  ViewerActionRequest,
+  ViewerActionResult,
 } from "./viewer-contract.js";
 
 export type { ModeDefinition } from "./mode-definition.js";

@@ -8,8 +8,8 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { applyTemplateParams, installSkill } from "../skill-installer.js";
-import type { SkillConfig } from "../../core/types/mode-manifest.js";
+import { applyTemplateParams, installSkill, generateViewerApiSection } from "../skill-installer.js";
+import type { SkillConfig, ViewerApiConfig } from "../../core/types/mode-manifest.js";
 
 // ── applyTemplateParams (pure) ──────────────────────────────────────────────
 
@@ -278,5 +278,110 @@ describe("installSkill", () => {
 
     const content = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
     expect(content).toContain("Canvas size: 1920x1080");
+  });
+
+  test("injects viewer API section with independent markers", () => {
+    const viewerApi: ViewerApiConfig = {
+      workspace: { type: "manifest", multiFile: true, ordered: true, hasActiveFile: true, manifestFile: "manifest.json" },
+      actions: [
+        { id: "navigate-to", label: "Go to Slide", category: "navigate", agentInvocable: true,
+          params: { file: { type: "string", description: "Slide file path", required: true } },
+          description: "Navigate to a specific slide" },
+      ],
+    };
+    installSkill(workspace, defaultSkillConfig, modeSourceDir, {}, viewerApi);
+
+    const content = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
+    // Skill section
+    expect(content).toContain("<!-- pneuma:start -->");
+    expect(content).toContain("<!-- pneuma:end -->");
+    // Viewer API section (independent)
+    expect(content).toContain("<!-- pneuma:viewer-api:start -->");
+    expect(content).toContain("<!-- pneuma:viewer-api:end -->");
+    expect(content).toContain("## Viewer API");
+    expect(content).toContain("`navigate-to`");
+    expect(content).toContain("manifest.json");
+  });
+
+  test("viewer API section is independent of skill section", () => {
+    // First install with viewer API
+    const viewerApi: ViewerApiConfig = {
+      workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: false },
+    };
+    installSkill(workspace, defaultSkillConfig, modeSourceDir, {}, viewerApi);
+
+    const content1 = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
+    expect(content1).toContain("<!-- pneuma:viewer-api:start -->");
+
+    // Re-install with different skill but same viewer
+    const newSkillConfig: SkillConfig = {
+      ...defaultSkillConfig,
+      claudeMdSection: "New skill content!",
+    };
+    installSkill(workspace, newSkillConfig, modeSourceDir, {}, viewerApi);
+
+    const content2 = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
+    expect(content2).toContain("New skill content!");
+    expect(content2).toContain("<!-- pneuma:viewer-api:start -->");
+    // Both sections present
+    expect(content2).toContain("<!-- pneuma:start -->");
+  });
+
+  test("no viewer API section when viewerApi is undefined", () => {
+    installSkill(workspace, defaultSkillConfig, modeSourceDir);
+
+    const content = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
+    expect(content).not.toContain("<!-- pneuma:viewer-api:start -->");
+  });
+});
+
+// ── generateViewerApiSection (pure) ────────────────────────────────────────
+
+describe("generateViewerApiSection", () => {
+  test("returns empty for undefined", () => {
+    expect(generateViewerApiSection(undefined)).toBe("");
+  });
+
+  test("returns empty for empty viewerApi", () => {
+    expect(generateViewerApiSection({})).toBe("");
+  });
+
+  test("includes workspace model description", () => {
+    const result = generateViewerApiSection({
+      workspace: { type: "manifest", multiFile: true, ordered: true, hasActiveFile: true, manifestFile: "manifest.json" },
+    });
+    expect(result).toContain("## Viewer API");
+    expect(result).toContain("Type: manifest");
+    expect(result).toContain("ordered");
+    expect(result).toContain("manifest.json");
+  });
+
+  test("includes actions table", () => {
+    const result = generateViewerApiSection({
+      actions: [
+        { id: "navigate-to", label: "Go", category: "navigate", agentInvocable: true,
+          params: { file: { type: "string", description: "path", required: true } },
+          description: "Navigate" },
+        { id: "internal", label: "X", category: "custom", agentInvocable: false },
+      ],
+    });
+    expect(result).toContain("`navigate-to`");
+    // Non-agent-invocable actions should be filtered out
+    expect(result).not.toContain("`internal`");
+  });
+
+  test("uses custom port", () => {
+    const result = generateViewerApiSection({
+      actions: [{ id: "test", label: "T", category: "custom", agentInvocable: true, description: "test" }],
+    }, 9999);
+    expect(result).toContain("localhost:9999");
+  });
+
+  test("workspace only (no actions)", () => {
+    const result = generateViewerApiSection({
+      workspace: { type: "single", multiFile: false, ordered: false, hasActiveFile: false },
+    });
+    expect(result).toContain("Type: single");
+    expect(result).not.toContain("### Actions");
   });
 });

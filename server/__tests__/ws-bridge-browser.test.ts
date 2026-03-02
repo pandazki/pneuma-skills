@@ -32,6 +32,7 @@ function makeDefaultSession(id = "test-session"): Session {
     lastAckSeq: 0,
     processedClientMessageIds: [],
     processedClientMessageIdSet: new Set(),
+    pendingViewerActions: new Map(),
   };
 }
 

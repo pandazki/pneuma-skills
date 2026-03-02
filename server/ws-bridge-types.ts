@@ -5,6 +5,7 @@ import type {
   SessionState,
   BufferedBrowserEvent,
 } from "./session-types.js";
+import type { ViewerActionResult } from "../core/types/viewer-contract.js";
 
 export interface CLISocketData {
   kind: "cli";
@@ -38,6 +39,7 @@ export interface Session {
   state: SessionState;
   pendingPermissions: Map<string, PermissionRequest>;
   pendingControlRequests: Map<string, PendingControlRequest>;
+  pendingViewerActions: Map<string, { resolve: (result: ViewerActionResult) => void }>;
   messageHistory: BrowserIncomingMessage[];
   pendingMessages: string[];
   nextEventSeq: number;
