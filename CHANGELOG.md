@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.10.0] - 2026-03-03
+
+### Added
+- **Workspace scaffold actions** — modes can declare initialization actions (e.g. "Create slide deck"), with confirmation UI and template-based workspace creation
+- **User action event stream** — user operations (text edits, slide reorder, deletions) tracked via `pushUserAction()` and injected as `<user-actions>` XML into agent messages
+- **Viewer → agent notification channel** — viewer can proactively push notifications to the agent (e.g. content overflow warnings) via WebSocket bridge
+- **Slide auto-fit** — automatic CSS transform scaling when slide content overflows the viewport
+- **Slide select mode** — click elements in iframe to get rich context (tag, classes, CSS selector, thumbnail, nearby text, accessibility info)
+- **Slide annotate mode** — popover-based comment UX for marking up elements across multiple slides, structured annotation extraction for agent context
+- **Slide edit mode** — inline contentEditable text editing inside iframes, debounced save with diff-formatted action descriptions, two-click slide deletion pattern
+- **`--dev` CLI flag** — force dev mode even when `dist/` exists, avoiding stale build issues
+- **Shared iframe selection module** (`core/iframe-selection/`) — modular selection script with classify, identify, selector, thumbnail, context, and message-handler sections
+
+### Changed
+- `ViewerSelectionContext` extended with `annotations`, `selector`, `label`, `nearbyText`, `accessibility` fields
+- Slide mode `extractContext` generates structured context for select, annotate, and viewing modes
+
 ## [1.9.1] - 2026-03-02
 
 ### Fixed
