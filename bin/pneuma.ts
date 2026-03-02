@@ -81,6 +81,7 @@ function parseArgs(argv: string[]) {
   let port = 0; // 0 = auto-detect based on mode
   let noOpen = false;
   let debug = false;
+  let forceDev = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -92,12 +93,14 @@ function parseArgs(argv: string[]) {
       noOpen = true;
     } else if (arg === "--debug") {
       debug = true;
+    } else if (arg === "--dev") {
+      forceDev = true;
     } else if (!arg.startsWith("--")) {
       mode = arg;
     }
   }
 
-  return { mode, workspace: resolve(workspace), port, noOpen, debug };
+  return { mode, workspace: resolve(workspace), port, noOpen, debug, forceDev };
 }
 
 // ── Init params persistence ──────────────────────────────────────────────────
@@ -236,7 +239,7 @@ async function main() {
     return;
   }
 
-  const { mode, workspace, port, noOpen, debug } = parseArgs(process.argv);
+  const { mode, workspace, port, noOpen, debug, forceDev } = parseArgs(process.argv);
 
   // Validate mode — support builtin names, local paths, and github: specifiers
   if (!mode) {
@@ -321,7 +324,7 @@ async function main() {
   // Compute the effective API port (same logic as server startup in step 3)
   // Dev mode: backend on 17007, Prod mode: backend on 17996
   const distDir = resolve(PROJECT_ROOT, "dist");
-  const isDev = !existsSync(join(distDir, "index.html"));
+  const isDev = forceDev || !existsSync(join(distDir, "index.html"));
   const effectiveApiPort = port || (isDev ? 17007 : 17996);
 
   if (existsSync(skillTarget)) {
