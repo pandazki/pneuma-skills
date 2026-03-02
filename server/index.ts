@@ -58,6 +58,21 @@ export function startServer(options: ServerOptions) {
     return c.json({ external: false });
   });
 
+  // ── Viewer Action API ───────────────────────────────────────────────
+  app.post("/api/viewer/action", async (c) => {
+    try {
+      const body = await c.req.json<{ actionId: string; params?: Record<string, unknown> }>();
+      if (!body.actionId) {
+        return c.json({ success: false, message: "actionId is required" }, 400);
+      }
+      const result = await wsBridge.dispatchViewerAction(body.actionId, body.params);
+      return c.json(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ success: false, message }, 500);
+    }
+  });
+
   // ── Slide export: shared builder + routes ─────────────────────────────
 
   const ASSET_MIME: Record<string, string> = {

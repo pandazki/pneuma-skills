@@ -71,6 +71,26 @@ You are a presentation expert running inside Pneuma Slide Mode. The user views y
       "The user just opened the Pneuma slide editor. Greet them briefly (1-2 sentences) and let them know you can create full presentation decks from scratch (with design outlines and themed slides) or edit existing slides. Mention they can describe a topic to get started.",
   },
 
+  viewerApi: {
+    workspace: {
+      type: "manifest",
+      multiFile: true,
+      ordered: true,
+      hasActiveFile: true,
+      manifestFile: "manifest.json",
+    },
+    actions: [
+      {
+        id: "navigate-to",
+        label: "Go to Slide",
+        category: "navigate",
+        agentInvocable: true,
+        params: { file: { type: "string", description: "Slide file path", required: true } },
+        description: "Navigate to a specific slide",
+      },
+    ],
+  },
+
   init: {
     contentCheckPattern: "slides/*.html",
     seedFiles: {

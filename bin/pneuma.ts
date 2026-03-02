@@ -79,6 +79,7 @@ function parseArgs(argv: string[]) {
   let workspace = process.cwd();
   let port = 0; // 0 = auto-detect based on mode
   let noOpen = false;
+  let debug = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -88,12 +89,14 @@ function parseArgs(argv: string[]) {
       port = Number(args[++i]);
     } else if (arg === "--no-open") {
       noOpen = true;
+    } else if (arg === "--debug") {
+      debug = true;
     } else if (!arg.startsWith("--")) {
       mode = arg;
     }
   }
 
-  return { mode, workspace: resolve(workspace), port, noOpen };
+  return { mode, workspace: resolve(workspace), port, noOpen, debug };
 }
 
 function ask(question: string): Promise<string> {
@@ -179,7 +182,7 @@ async function main() {
     return;
   }
 
-  const { mode, workspace, port, noOpen } = parseArgs(process.argv);
+  const { mode, workspace, port, noOpen, debug } = parseArgs(process.argv);
 
   // Validate mode — support builtin names, local paths, and github: specifiers
   if (!mode) {
@@ -255,6 +258,12 @@ async function main() {
   const skillTarget = join(workspace, ".claude", "skills", manifest.skill.installName);
   let skipSkillInstall = false;
 
+  // Compute the effective API port (same logic as server startup in step 3)
+  // Dev mode: backend on 17007, Prod mode: backend on 17996
+  const distDir = resolve(PROJECT_ROOT, "dist");
+  const isDev = !existsSync(join(distDir, "index.html"));
+  const effectiveApiPort = port || (isDev ? 17007 : 17996);
+
   if (existsSync(skillTarget)) {
     const answer = await ask(
       `[pneuma] Existing skills found at ${skillTarget}\n` +
@@ -268,7 +277,7 @@ async function main() {
 
   if (!skipSkillInstall) {
     console.log("[pneuma] Installing skill and preparing environment...");
-    installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams);
+    installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, effectiveApiPort);
   }
 
   // 1.5 Seed default content if workspace has no meaningful files
@@ -308,10 +317,7 @@ async function main() {
     }
   }
 
-  // 2. Detect dev vs production mode
-  const distDir = resolve(PROJECT_ROOT, "dist");
-  const isDev = !existsSync(join(distDir, "index.html"));
-
+  // 2. Detect dev vs production mode (distDir, isDev computed earlier for port)
   if (isDev) {
     console.log("[pneuma] Development mode (serving via Vite)");
   } else {
@@ -321,7 +327,7 @@ async function main() {
   // 3. Start server
   //    Dev mode:  backend on 17007, Vite on 17996 (user-facing)
   //    Prod mode: backend on 17996 (serves everything)
-  const serverPort = port || (isDev ? 17007 : 17996);
+  const serverPort = effectiveApiPort;
   const { server, wsBridge, port: actualPort } = startServer({
     port: serverPort,
     workspace,
@@ -484,7 +490,8 @@ async function main() {
 
   // 7. Open browser (include mode in URL for frontend)
   if (!noOpen) {
-    const url = `http://localhost:${browserPort}?session=${session.sessionId}&mode=${modeName}`;
+    const debugParam = debug ? "&debug=1" : "";
+    const url = `http://localhost:${browserPort}?session=${session.sessionId}&mode=${modeName}${debugParam}`;
     console.log(`[pneuma] Opening browser: ${url}`);
     try {
       const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";

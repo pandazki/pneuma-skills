@@ -16,24 +16,32 @@ const docMode: ModeDefinition = {
   viewer: {
     PreviewComponent: DocPreview,
 
+    workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: false },
+
     extractContext(
       selection: ViewerSelectionContext | null,
       files: ViewerFileContent[],
     ): string {
-      const parts: string[] = [];
-      if (files.length > 0) {
-        const viewingFile = files[0];
-        if (viewingFile) {
-          parts.push(`[User is viewing: ${viewingFile.path}]`);
-        }
+      const file = selection?.file || files[0]?.path || "";
+      if (!file) return "";
+
+      const attrs = [`mode="doc"`, `file="${file}"`];
+      if (selection?.viewport) {
+        attrs.push(`viewport="${selection.viewport.startLine}-${selection.viewport.endLine}"`);
       }
-      if (selection) {
+
+      const lines: string[] = [];
+      if (selection?.viewport?.heading) {
+        lines.push(`Visible section: ${selection.viewport.heading}`);
+      }
+      if (selection && selection.type !== "viewing") {
         const desc = selection.level
           ? `${selection.type} (level ${selection.level})`
           : selection.type;
-        parts.push(`[User selected: ${desc} "${selection.content}"]`);
+        lines.push(`Selected: ${desc} "${selection.content}"`);
       }
-      return parts.join("\n");
+
+      return `<viewer-context ${attrs.join(" ")}>\n${lines.join("\n")}\n</viewer-context>`;
     },
 
     updateStrategy: "full-reload",

@@ -38,6 +38,10 @@ You are running inside Pneuma Doc Mode. A user is viewing your markdown edits li
     serveDir: ".",
   },
 
+  viewerApi: {
+    workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: false },
+  },
+
   agent: {
     permissionMode: "bypassPermissions",
     greeting:

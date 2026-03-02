@@ -39,6 +39,10 @@ You are running inside Pneuma Draw Mode. A user is viewing your Excalidraw diagr
     serveDir: ".",
   },
 
+  viewerApi: {
+    workspace: { type: "single", multiFile: false, ordered: false, hasActiveFile: false },
+  },
+
   agent: {
     permissionMode: "bypassPermissions",
     greeting:

@@ -269,7 +269,8 @@ export type BrowserOutgoingMessage =
   | { type: "session_subscribe"; last_seq: number }
   | { type: "session_ack"; last_seq: number }
   | { type: "interrupt"; client_msg_id?: string }
-  | { type: "set_model"; model: string };
+  | { type: "set_model"; model: string }
+  | { type: "viewer_action_response"; request_id: string; result: { success: boolean; message?: string; data?: Record<string, unknown> } };
 
 /** Messages the bridge sends to the browser */
 export type BrowserIncomingMessageBase =
@@ -302,7 +303,8 @@ export type BrowserIncomingMessageBase =
   | { type: "user_message"; content: string; timestamp: number; id?: string }
   | { type: "message_history"; messages: BrowserIncomingMessage[] }
   | { type: "event_replay"; events: BufferedBrowserEvent[] }
-  | { type: "content_update"; files: { path: string; content: string }[] };
+  | { type: "content_update"; files: { path: string; content: string }[] }
+  | { type: "viewer_action_request"; request_id: string; action_id: string; params?: Record<string, unknown> };
 
 export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };
 

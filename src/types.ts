@@ -44,6 +44,8 @@ export interface ChatMessage {
   subtype?: string;
   /** Attached images (base64 data URLs for display) */
   images?: { media_type: string; data: string }[];
+  /** Debug mode: enriched content + images actually sent to CLI */
+  debugPayload?: { enrichedContent: string; images?: { media_type: string; data: string }[] };
 }
 
 export interface FileContent {

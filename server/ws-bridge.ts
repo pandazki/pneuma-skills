@@ -39,6 +39,7 @@ import {
   handleSessionAck,
   handlePermissionResponse,
 } from "./ws-bridge-browser.js";
+import { handleViewerActionResponse } from "./ws-bridge-viewer.js";
 
 // ─── Bridge ───────────────────────────────────────────────────────────────────
 
@@ -87,6 +88,28 @@ export class WsBridge {
     this.broadcastToBrowsers(session, msg);
   }
 
+  /** Dispatch a viewer action to the active browser session, return the result. */
+  async dispatchViewerAction(
+    actionId: string,
+    params?: Record<string, unknown>,
+  ): Promise<import("../core/types/viewer-contract.js").ViewerActionResult> {
+    const sessionId = this.getActiveSessionId();
+    if (!sessionId) {
+      return { success: false, message: "No active session" };
+    }
+    const session = this.sessions.get(sessionId);
+    if (!session || session.browserSockets.size === 0) {
+      return { success: false, message: "No browser connected" };
+    }
+    const { sendViewerActionRequest } = await import("./ws-bridge-viewer.js");
+    return sendViewerActionRequest(
+      session,
+      actionId,
+      params,
+      (msg) => this.broadcastToBrowsers(session, msg),
+    );
+  }
+
   /** Return the session ID that currently has a CLI connection, if any. */
   getActiveSessionId(): string | null {
     for (const [id, session] of this.sessions) {
@@ -107,6 +130,7 @@ export class WsBridge {
         state: makeDefaultState(sessionId),
         pendingPermissions: new Map(),
         pendingControlRequests: new Map(),
+        pendingViewerActions: new Map(),
         messageHistory: [],
         pendingMessages: [],
         nextEventSeq: 1,
@@ -697,6 +721,10 @@ export class WsBridge {
         });
         break;
       }
+
+      case "viewer_action_response":
+        handleViewerActionResponse(session, msg);
+        break;
     }
   }
 

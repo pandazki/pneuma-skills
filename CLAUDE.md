@@ -159,7 +159,18 @@ Stored in `<workspace>/.pneuma/`:
 
 ### Skill Installation
 
-On startup, skills are copied from `modes/<mode>/skill/` to `<workspace>/.claude/skills/<installName>/`. Template params (`{{key}}`, `{{#key}}...{{/key}}`) are applied. A section is injected into workspace's CLAUDE.md between `<!-- pneuma:start -->` / `<!-- pneuma:end -->` markers.
+On startup, skills are copied from `modes/<mode>/skill/` to `<workspace>/.claude/skills/<installName>/`. Template params (`{{key}}`, `{{#key}}...{{/key}}`) are applied. A section is injected into workspace's CLAUDE.md between `<!-- pneuma:start -->
+## Pneuma Doc Mode
+
+You are running inside Pneuma Doc Mode. A user is viewing your markdown edits live in a browser.
+
+**Important**: When the user asks you to make changes, edit the markdown files directly using the Edit or Write tools. The user sees updates in real-time.
+
+- Workspace contains markdown (.md) files
+- Make focused, incremental edits
+- Use GitHub-Flavored Markdown (GFM)
+- Do not ask for confirmation on simple edits — just do them
+<!-- pneuma:end -->` markers.
 
 ## Coding Conventions
 
@@ -193,3 +204,17 @@ Follow [semver](https://semver.org/):
 - **`modelUsage` in CLI result is cumulative**: Use delta approach (current - previous) for per-turn approximation.
 - **CLAUDECODE env var**: Must be unset when spawning Claude Code CLI subprocess.
 - **NDJSON**: Each message must be terminated with `\n` when sending to CLI.
+
+<!-- pneuma:viewer-api:start -->
+## Viewer API
+
+### Viewer Context
+
+Each user message may be prefixed with a `<viewer-context>` block.
+It describes what the user is currently seeing — the active file, viewport position, and selected elements.
+Use this to resolve references like "this page", "here", "this section" in user messages.
+
+### Workspace
+- Type: all (multi-file)
+
+<!-- pneuma:viewer-api:end -->
