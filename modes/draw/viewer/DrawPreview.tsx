@@ -138,11 +138,11 @@ export default function DrawPreview({
   const lastSavedContentRef = useRef<string>("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentFilePathRef = useRef<string>("");
-  // Track if we're currently saving (to skip onChange during updateScene)
+  // Suppress onChange during Excalidraw remount initialization
   const isUpdatingFromFileRef = useRef(false);
-  // Skip redundant first updateScene — initialData already provides data to Excalidraw.
-  // Calling updateScene before font initialization completes causes text to vanish.
-  const isFirstSyncRef = useRef(true);
+  // Key to force Excalidraw remount on external file changes.
+  // updateScene() breaks text rendering — remount goes through proper font init.
+  const [excalidrawKey, setExcalidrawKey] = useState(0);
 
   // Load Excalidraw dynamically
   useEffect(() => {
@@ -167,7 +167,8 @@ export default function DrawPreview({
     }
   }, [activeFilePath]);
 
-  // Build initial data for Excalidraw
+  // Build initial data for Excalidraw — recomputes on remount (key change)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const initialData = useMemo(() => {
     if (!excalidrawData) return { elements: [], appState: { viewBackgroundColor: "#ffffff" }, files: {} };
     return {
@@ -179,50 +180,38 @@ export default function DrawPreview({
       files: excalidrawData.excalidrawFiles,
       scrollToContent: true,
     };
-  // Only compute once on first render with data
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [excalidrawKey]);
 
-  // Sync file changes from disk into the Excalidraw canvas
+  // Record content on mount/remount so echo detection works
   useEffect(() => {
-    if (!excalidrawAPI || !excalidrawData) return;
+    if (!excalidrawData) return;
+    lastSavedContentRef.current = serializeToFile(
+      excalidrawData.elements,
+      excalidrawData.appState,
+      excalidrawData.excalidrawFiles,
+    );
+  }, [excalidrawKey]);
 
+  // Sync file changes from disk — force Excalidraw remount instead of updateScene.
+  // updateScene() disrupts Excalidraw's internal font rendering, causing text to vanish.
+  // Remounting goes through the proper initialData → font init pipeline.
+  useEffect(() => {
+    if (!excalidrawData) return;
     const newContent = serializeToFile(
       excalidrawData.elements,
       excalidrawData.appState,
       excalidrawData.excalidrawFiles,
     );
-
-    // On the first sync after mount, skip updateScene if initialData already
-    // provided the same data. Excalidraw's internal font rendering isn't ready
-    // yet, and an early updateScene causes text elements to vanish.
-    if (isFirstSyncRef.current) {
-      isFirstSyncRef.current = false;
-      if (initialData.elements.length > 0) {
-        lastSavedContentRef.current = newContent;
-        return;
-      }
-    }
-
-    // Skip if this is our own save echoing back
+    // Skip if content matches (our own save echoing back, or same as initial)
     if (newContent === lastSavedContentRef.current) return;
 
-    // Update the canvas with the file's data
+    // External file change: force Excalidraw remount with new initialData
     isUpdatingFromFileRef.current = true;
-    try {
-      excalidrawAPI.updateScene({
-        elements: excalidrawData.elements,
-      });
-      if (excalidrawData.excalidrawFiles && Object.keys(excalidrawData.excalidrawFiles).length > 0) {
-        excalidrawAPI.addFiles(Object.values(excalidrawData.excalidrawFiles));
-      }
-    } finally {
-      // Reset after a delay to allow all onChange events from updateScene to be ignored
-      setTimeout(() => {
-        isUpdatingFromFileRef.current = false;
-      }, 500);
-    }
-  }, [excalidrawAPI, excalidrawData]);
+    setExcalidrawKey((k) => k + 1);
+    setTimeout(() => {
+      isUpdatingFromFileRef.current = false;
+    }, 500);
+  }, [excalidrawData]);
 
   // Track current preview mode in a ref so handleChange can read it without re-creating
   const previewModeRef = useRef(previewMode);
@@ -459,6 +448,7 @@ export default function DrawPreview({
         onPointerUp={handlePointerUp}
       >
         <ExcalidrawComponent
+          key={excalidrawKey}
           excalidrawAPI={handleExcalidrawAPI}
           initialData={initialData}
           onChange={handleChange}
