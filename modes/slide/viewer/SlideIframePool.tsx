@@ -35,7 +35,7 @@ interface SlideIframePoolProps {
   activeIndex: number;
   isSelectMode: boolean;
   imageVersion: number;
-  onSelect: (sel: ViewerSelectionContext | null) => void;
+  onSelect: (sel: ViewerSelectionContext | null, rect?: { left: number; top: number; right: number; bottom: number; width: number; height: number }) => void;
   /** Build the full srcdoc for a slide's HTML + theme */
   buildSrcdoc: (slideHtml: string, themeCSS: string) => string;
   /** Find a slide's HTML content by file path */
@@ -45,6 +45,8 @@ interface SlideIframePoolProps {
   ) => string;
   /** CSS selector to highlight in the active iframe (for navigating to historical selections) */
   highlightSelector?: string | null;
+  /** CSS selectors for annotation highlights on the active slide */
+  annotationSelectors?: string[];
   /** Callback to expose iframe refs for postMessage communication (e.g. checkContentFit) */
   iframeRefsOut?: (refs: Map<string, HTMLIFrameElement>) => void;
 }
@@ -60,6 +62,7 @@ export default function SlideIframePool({
   buildSrcdoc,
   findSlideContent,
   highlightSelector,
+  annotationSelectors,
   iframeRefsOut,
 }: SlideIframePoolProps) {
   // Set of slide.file keys currently in the pool
@@ -187,6 +190,20 @@ export default function SlideIframePool({
     } catch {}
   }, [highlightSelector, activeIndex, slides]);
 
+  // ── Send annotation highlights to active iframe ───────────────────────────
+  useEffect(() => {
+    const activeFile = slides[activeIndex]?.file;
+    if (!activeFile) return;
+    const iframe = iframeRefs.current.get(activeFile);
+    if (!iframe) return;
+    try {
+      iframe.contentWindow?.postMessage(
+        { type: "pneuma:highlightMultiple", selectors: annotationSelectors || [] },
+        "*",
+      );
+    } catch {}
+  }, [annotationSelectors, activeIndex, slides]);
+
   // ── Detect content changes and reload affected iframes ────────────────────
   // imageVersion is included so that when an image file changes on disk,
   // the srcdoc string changes (via the injected meta tag), which triggers
@@ -230,6 +247,7 @@ export default function SlideIframePool({
         return;
       }
       const currentSlide = slides[activeIndex];
+      const rect = sel.rect;
       onSelect({
         type: sel.type,
         content: sel.content,
@@ -239,7 +257,10 @@ export default function SlideIframePool({
         classes: sel.classes,
         selector: sel.selector,
         thumbnail: sel.thumbnail,
-      });
+        label: sel.label,
+        nearbyText: sel.nearbyText,
+        accessibility: sel.accessibility,
+      }, rect);
     };
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);

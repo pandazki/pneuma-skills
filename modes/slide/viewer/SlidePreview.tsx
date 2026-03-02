@@ -26,6 +26,7 @@ import type {
   ViewerPreviewProps,
   ViewerSelectionContext,
 } from "../../../core/types/viewer-contract.js";
+import { buildSelectionScript } from "../../../core/iframe-selection/index.js";
 import { useStore } from "../../../src/store.js";
 import { useSlideThumbnails } from "../hooks/useSlideThumbnails.js";
 import SlideIframePool from "./SlideIframePool.js";
@@ -101,363 +102,77 @@ function stripHtmlWrapper(html: string): string {
 }
 
 /**
- * Selection-mode script injected into every slide iframe.
- * Starts dormant — parent controls activation via postMessage:
- *   { type: 'pneuma:selectMode', enabled: true/false }
- *   { type: 'pneuma:highlight', selector: '...' }
- *   { type: 'pneuma:clearHighlight' }
+ * Slide-specific checkContentFit message handler extension.
+ * Injected into the shared selection script via buildSelectionScript extensions.
  */
-const SELECTION_SCRIPT = `<script>
-(function() {
-  var active = false;
-  var hovered = null;
-  var selectedEl = null;
-  var HOVER_OUTLINE = '2px solid rgba(110, 168, 254, 0.6)';
-  var SELECT_OUTLINE = '2px solid rgba(110, 168, 254, 0.9)';
-  var SELECT_BG = 'rgba(110, 168, 254, 0.08)';
-  var OUTLINE_RADIUS = '4px';
-
-  // Broad selector for selectable elements
-  var SEL = [
-    '[data-selectable]',
-    'h1','h2','h3','h4','h5','h6',
-    'p','li','ul','ol','pre','code','blockquote','img',
-    'section','article','nav','aside','header','footer','main',
-    'table','thead','tbody','tr','td','th',
-    'figure','figcaption','details','summary',
-    'a','button','svg',
-    'div[class]','span[class]'
-  ].join(',');
-
-  // Semantic HTML elements — always a valid selection target, never bubble past these
-  var SEMANTIC_RE = /^(h[1-6]|p|li|ul|ol|pre|code|blockquote|img|section|article|nav|aside|header|footer|main|table|thead|tbody|tr|td|th|figure|figcaption|details|summary|a|button|svg)$/i;
-
-  /**
-   * Bubble-up heuristic:
-   * - Semantic elements (h1, p, section, table...) → always use directly
-   * - Generic elements (div, span, svg) → if small, bubble up to a larger container
-   * This way clicking an icon inside a card selects the card, not the icon wrapper.
-   */
-  function findMeaningfulElement(target) {
-    var el = target.closest(SEL);
-    if (!el) return null;
-
-    // Semantic HTML elements are always the right target
-    if (SEMANTIC_RE.test(el.tagName)) return el;
-    if (el.hasAttribute('data-selectable')) return el;
-
-    // Generic elements (div[class], span[class]): bubble up if very small
-    var rect = el.getBoundingClientRect();
-    if (rect.width >= 40 && rect.height >= 40) return el; // large enough, keep it
-
-    // Walk up to find a larger meaningful container
-    var parent = el.parentElement;
-    while (parent && parent !== document.body) {
-      if (parent.matches(SEL)) {
-        if (SEMANTIC_RE.test(parent.tagName) || parent.hasAttribute('data-selectable')) return parent;
-        var pRect = parent.getBoundingClientRect();
-        if (pRect.width >= 40 && pRect.height >= 40) return parent;
-      }
-      parent = parent.parentElement;
-    }
-    // No better container found, use original
-    return el;
-  }
-
-  function clearHover() {
-    if (hovered && hovered !== selectedEl) {
-      hovered.style.outline = '';
-      hovered.style.outlineOffset = '';
-      hovered.style.borderRadius = '';
-    }
-    hovered = null;
-  }
-
-  function clearSelected() {
-    if (selectedEl) {
-      selectedEl.style.outline = '';
-      selectedEl.style.outlineOffset = '';
-      selectedEl.style.borderRadius = '';
-      selectedEl.style.backgroundColor = selectedEl._pneumaOrigBg || '';
-      delete selectedEl._pneumaOrigBg;
-      selectedEl = null;
-    }
-  }
-
-  function applySelectedStyle(el) {
-    clearSelected();
-    selectedEl = el;
-    el._pneumaOrigBg = el.style.backgroundColor || '';
-    el.style.outline = SELECT_OUTLINE;
-    el.style.outlineOffset = '2px';
-    el.style.borderRadius = OUTLINE_RADIUS;
-    el.style.backgroundColor = SELECT_BG;
-  }
-
-  /** Build a unique CSS selector path for an element */
-  function buildSelector(el) {
-    var parts = [];
-    var current = el;
-    while (current && current !== document.body && current !== document.documentElement) {
-      var tag = current.tagName.toLowerCase();
-      var part = tag;
-      if (current.id) {
-        part = tag + '#' + current.id;
-        parts.unshift(part);
-        break;
-      }
-      var cls = (typeof current.className === 'string' ? current.className : '').trim();
-      if (cls) {
-        // Use first 2 classes max to keep selector readable
-        var classes = cls.split(/\\s+/).slice(0, 2).join('.');
-        part = tag + '.' + classes;
-      }
-      // Add nth-child if there are siblings with same tag
-      var parent = current.parentElement;
-      if (parent) {
-        var siblings = parent.children;
-        var sameTag = 0, position = 0;
-        for (var i = 0; i < siblings.length; i++) {
-          if (siblings[i].tagName === current.tagName) {
-            sameTag++;
-            if (siblings[i] === current) position = sameTag;
-          }
-        }
-        if (sameTag > 1) part += ':nth-child(' + (Array.prototype.indexOf.call(siblings, current) + 1) + ')';
-      }
-      parts.unshift(part);
-      current = current.parentElement;
-    }
-    return parts.join(' > ');
-  }
-
-  /** Capture an SVG thumbnail of an element using foreignObject */
-  function captureElementThumbnail(el) {
-    try {
-      var elRect = el.getBoundingClientRect();
-      var elW = Math.ceil(elRect.width);
-      var elH = Math.ceil(elRect.height);
-      if (elW <= 0 || elH <= 0) return null;
-
-      // Clone the element
-      var clone = el.cloneNode(true);
-      // Remove scripts from clone
-      var scripts = clone.querySelectorAll('script');
-      for (var s = 0; s < scripts.length; s++) scripts[s].remove();
-
-      // Measure actual content size by rendering clone off-screen in the iframe
-      var measure = document.createElement('div');
-      measure.style.cssText = 'position:absolute;left:-99999px;top:-99999px;width:fit-content;max-width:' + elW + 'px;pointer-events:none;';
-      measure.appendChild(clone);
-      document.body.appendChild(measure);
-      var fitRect = clone.getBoundingClientRect();
-      var fitW = Math.ceil(fitRect.width) || elW;
-      var fitH = Math.ceil(fitRect.height) || elH;
-      document.body.removeChild(measure);
-
-      // Collect all CSS rules
-      var cssText = '';
-      try {
-        var sheets = document.styleSheets;
-        for (var i = 0; i < sheets.length; i++) {
-          try {
-            var rules = sheets[i].cssRules;
-            for (var j = 0; j < rules.length; j++) {
-              cssText += rules[j].cssText + '\\n';
-            }
-          } catch(ex) { /* cross-origin */ }
-        }
-      } catch(ex) {}
-
-      // Serialize clone directly in iframe context (preserves SVG namespaces)
-      var cloneHtml = new XMLSerializer().serializeToString(clone);
-
-      // Escape CSS for XHTML CDATA
-      var safeCss = cssText.replace(/]]>/g, ']]]]><![CDATA[>');
-      var sizeCSS = 'html,body{margin:0;padding:0;overflow:hidden;width:' + fitW + 'px;height:' + fitH + 'px;}';
-
-      var xhtml = '<html xmlns="http://www.w3.org/1999/xhtml"><head>'
-        + '<style><![CDATA[' + safeCss + ']]></style>'
-        + '<style>' + sizeCSS + '</style>'
-        + '</head><body>' + cloneHtml + '</body></html>';
-
-      var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + fitW + '" height="' + fitH + '">' +
-        '<foreignObject width="' + fitW + '" height="' + fitH + '">' + xhtml + '</foreignObject></svg>';
-      var encoded = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-
-      // Skip if too large (> 200KB)
-      if (encoded.length > 200 * 1024) return null;
-      return encoded;
-    } catch(ex) {
-      return null;
-    }
-  }
-
-  /** Classify element type */
-  function classifyElement(el) {
-    var tag = el.tagName.toLowerCase();
-    var type = 'container';
-    var level;
-    if (/^h[1-6]$/.test(tag)) { type = 'heading'; level = parseInt(tag[1]); }
-    else if (tag === 'p') type = 'paragraph';
-    else if (tag === 'li') type = 'list';
-    else if (tag === 'ul' || tag === 'ol') type = 'list';
-    else if (tag === 'pre' || tag === 'code') type = 'code';
-    else if (tag === 'blockquote') type = 'blockquote';
-    else if (tag === 'img') type = 'image';
-    else if (tag === 'table' || tag === 'thead' || tag === 'tbody' || tag === 'tr' || tag === 'td' || tag === 'th') type = 'table';
-    else if (tag === 'section' || tag === 'article' || tag === 'nav' || tag === 'aside' || tag === 'header' || tag === 'footer' || tag === 'main') type = 'section';
-    else if (tag === 'a') type = 'link';
-    else if (tag === 'button') type = 'interactive';
-    else if (tag === 'figure' || tag === 'figcaption') type = 'container';
-    return { type: type, level: level };
-  }
-
+const CHECK_CONTENT_FIT_EXTENSION = `
   window.addEventListener('message', function(e) {
-    if (!e.data) return;
-    if (e.data.type === 'pneuma:selectMode') {
-      active = !!e.data.enabled;
-      document.body.style.cursor = active ? 'crosshair' : '';
-      if (!active) {
-        clearHover();
-        clearSelected();
+    if (!e.data || e.data.type !== 'pneuma:checkContentFit') return;
+    var vw = e.data.viewportW || window.innerWidth || document.documentElement.clientWidth;
+    var vh = e.data.viewportH || window.innerHeight || document.documentElement.clientHeight;
+    var issues = [];
+    var bodyChildren = Array.from(document.body.children);
+    var flowChildren = bodyChildren.filter(function(child) {
+      var pos = window.getComputedStyle(child).position;
+      return pos !== 'absolute' && pos !== 'fixed';
+    });
+    for (var ci = 0; ci < flowChildren.length; ci++) {
+      var el = flowChildren[ci];
+      if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
+      var tag = el.tagName.toLowerCase();
+      var cls = (typeof el.className === 'string' ? el.className : '').trim();
+      var id = cls ? '<' + tag + '.' + cls.split(' ')[0] + '>' : '<' + tag + '>';
+      var rect = el.getBoundingClientRect();
+      if (rect.right > vw + 1 || rect.bottom > vh + 1) {
+        issues.push(id + ' overflows viewport: right=' + Math.round(rect.right) + 'px (max ' + vw + '), bottom=' + Math.round(rect.bottom) + 'px (max ' + vh + ')');
       }
-    }
-    if (e.data.type === 'pneuma:highlight') {
-      try {
-        var target = document.querySelector(e.data.selector);
-        if (target) {
-          applySelectedStyle(target);
-          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      } catch(ex) {}
-    }
-    if (e.data.type === 'pneuma:clearHighlight') {
-      clearSelected();
-    }
-    if (e.data.type === 'pneuma:checkContentFit') {
-      var vw = e.data.viewportW || window.innerWidth || document.documentElement.clientWidth;
-      var vh = e.data.viewportH || window.innerHeight || document.documentElement.clientHeight;
-      var issues = [];
-      var bodyChildren = Array.from(document.body.children);
-      var flowChildren = bodyChildren.filter(function(child) {
-        var pos = window.getComputedStyle(child).position;
-        return pos !== 'absolute' && pos !== 'fixed';
-      });
-      for (var ci = 0; ci < flowChildren.length; ci++) {
-        var el = flowChildren[ci];
-        if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
-        var tag = el.tagName.toLowerCase();
-        var cls = (typeof el.className === 'string' ? el.className : '').trim();
-        var id = cls ? '<' + tag + '.' + cls.split(' ')[0] + '>' : '<' + tag + '>';
-        var rect = el.getBoundingClientRect();
-        // Check 1: element itself overflows viewport (no overflow:hidden on it)
-        if (rect.right > vw + 1 || rect.bottom > vh + 1) {
-          issues.push(id + ' overflows viewport: right=' + Math.round(rect.right) + 'px (max ' + vw + '), bottom=' + Math.round(rect.bottom) + 'px (max ' + vh + ')');
-        }
-        // Check 2: scrollable overflow — content clipped by overflow:hidden
-        // scrollHeight/scrollWidth reveal the natural content size even when clipped.
-        // Absolute/fixed children can inflate scrollHeight (e.g. decorative elements with
-        // negative offsets), so temporarily hide them to measure flow-only overflow.
-        var absHidden = [];
-        for (var ak = 0; ak < el.children.length; ak++) {
-          var absChild = el.children[ak];
-          var absPos = window.getComputedStyle(absChild).position;
-          if (absPos === 'absolute' || absPos === 'fixed') {
-            absHidden.push({ el: absChild, prev: absChild.style.display });
-            absChild.style.display = 'none';
-          }
-        }
-        var overflowH = el.scrollHeight - el.clientHeight;
-        var overflowW = el.scrollWidth - el.clientWidth;
-        for (var ar = 0; ar < absHidden.length; ar++) {
-          absHidden[ar].el.style.display = absHidden[ar].prev;
-        }
-        if (overflowH > 1) {
-          issues.push(id + ' content clipped vertically: scrollHeight=' + el.scrollHeight + 'px, clientHeight=' + el.clientHeight + 'px (overflow by ' + overflowH + 'px)');
-        }
-        if (overflowW > 1) {
-          issues.push(id + ' content clipped horizontally: scrollWidth=' + el.scrollWidth + 'px, clientWidth=' + el.clientWidth + 'px (overflow by ' + overflowW + 'px)');
-        }
-        // Check 3: children overflowing parent (one level deep, skip absolute/fixed)
-        for (var cj = 0; cj < el.children.length; cj++) {
-          var child = el.children[cj];
-          if (child.tagName === 'SCRIPT' || child.tagName === 'STYLE') continue;
-          var childPos = window.getComputedStyle(child).position;
-          if (childPos === 'absolute' || childPos === 'fixed') continue;
-          var childOver = child.scrollHeight - child.clientHeight;
-          if (childOver > 1) {
-            var ctag = child.tagName.toLowerCase();
-            var ccls = (typeof child.className === 'string' ? child.className : '').trim();
-            var cid = ccls ? '<' + ctag + '.' + ccls.split(' ')[0] + '>' : '<' + ctag + '>';
-            issues.push(cid + ' content clipped: scrollHeight=' + child.scrollHeight + 'px, clientHeight=' + child.clientHeight + 'px (overflow by ' + childOver + 'px)');
-          }
+      var absHidden = [];
+      for (var ak = 0; ak < el.children.length; ak++) {
+        var absChild = el.children[ak];
+        var absPos = window.getComputedStyle(absChild).position;
+        if (absPos === 'absolute' || absPos === 'fixed') {
+          absHidden.push({ el: absChild, prev: absChild.style.display });
+          absChild.style.display = 'none';
         }
       }
-      window.parent.postMessage({
-        type: 'pneuma:contentFitResult',
-        requestId: e.data.requestId,
-        fits: issues.length === 0,
-        issues: issues
-      }, '*');
+      var overflowH = el.scrollHeight - el.clientHeight;
+      var overflowW = el.scrollWidth - el.clientWidth;
+      for (var ar = 0; ar < absHidden.length; ar++) {
+        absHidden[ar].el.style.display = absHidden[ar].prev;
+      }
+      if (overflowH > 1) {
+        issues.push(id + ' content clipped vertically: scrollHeight=' + el.scrollHeight + 'px, clientHeight=' + el.clientHeight + 'px (overflow by ' + overflowH + 'px)');
+      }
+      if (overflowW > 1) {
+        issues.push(id + ' content clipped horizontally: scrollWidth=' + el.scrollWidth + 'px, clientWidth=' + el.clientWidth + 'px (overflow by ' + overflowW + 'px)');
+      }
+      for (var cj = 0; cj < el.children.length; cj++) {
+        var child = el.children[cj];
+        if (child.tagName === 'SCRIPT' || child.tagName === 'STYLE') continue;
+        var childPos = window.getComputedStyle(child).position;
+        if (childPos === 'absolute' || childPos === 'fixed') continue;
+        var childOver = child.scrollHeight - child.clientHeight;
+        if (childOver > 1) {
+          var ctag = child.tagName.toLowerCase();
+          var ccls = (typeof child.className === 'string' ? child.className : '').trim();
+          var cid = ccls ? '<' + ctag + '.' + ccls.split(' ')[0] + '>' : '<' + ctag + '>';
+          issues.push(cid + ' content clipped: scrollHeight=' + child.scrollHeight + 'px, clientHeight=' + child.clientHeight + 'px (overflow by ' + childOver + 'px)');
+        }
+      }
     }
-  });
-
-  document.addEventListener('mouseover', function(e) {
-    if (!active) return;
-    var el = findMeaningfulElement(e.target);
-    if (!el) return;
-    if (hovered && hovered !== el) clearHover();
-    if (el === selectedEl) return; // don't override selected style
-    hovered = el;
-    el.style.outline = HOVER_OUTLINE;
-    el.style.outlineOffset = '2px';
-    el.style.borderRadius = OUTLINE_RADIUS;
-  });
-
-  document.addEventListener('mouseout', function(e) {
-    if (!active) return;
-    clearHover();
-  });
-
-  document.addEventListener('click', function(e) {
-    if (!active) return;
-    e.preventDefault();
-    e.stopPropagation();
-    var el = findMeaningfulElement(e.target);
-    if (!el) {
-      clearSelected();
-      window.parent.postMessage({ type: 'pneuma:select', selection: null }, '*');
-      return;
-    }
-
-    applySelectedStyle(el);
-
-    var tag = el.tagName.toLowerCase();
-    var info = classifyElement(el);
-    var classes = (typeof el.className === 'string' ? el.className : '').trim();
-    var selector = buildSelector(el);
-    var thumbnail = captureElementThumbnail(el);
-
-    var content = tag === 'img'
-      ? (el.getAttribute('alt') || el.getAttribute('src') || 'image')
-      : (el.textContent || '').trim().slice(0, 200);
-
     window.parent.postMessage({
-      type: 'pneuma:select',
-      selection: {
-        type: info.type,
-        content: content,
-        level: info.level,
-        tag: tag,
-        classes: classes,
-        selector: selector,
-        thumbnail: thumbnail
-      }
+      type: 'pneuma:contentFitResult',
+      requestId: e.data.requestId,
+      fits: issues.length === 0,
+      issues: issues
     }, '*');
   });
-})();
-</script>`;
+`;
+
+/** Selection script for slide iframes — shared library + slide-specific extensions */
+const SELECTION_SCRIPT = buildSelectionScript({
+  extensions: [CHECK_CONTENT_FIT_EXTENSION],
+});
 
 /**
  * Build a full HTML document for the iframe srcdoc.
@@ -531,6 +246,80 @@ function saveNavPosition(pos: NavigatorPosition) {
   } catch {}
 }
 
+// ── Annotation Popover ──────────────────────────────────────────────────────
+
+function AnnotationPopover({
+  style,
+  label,
+  thumbnail,
+  onConfirm,
+  onCancel,
+}: {
+  style: React.CSSProperties;
+  label?: string;
+  thumbnail?: string;
+  onConfirm: (comment: string) => void;
+  onCancel: () => void;
+}) {
+  const [comment, setComment] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Auto-focus after a short delay (iframe click may steal focus)
+    const t = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      onConfirm(comment);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      onCancel();
+    }
+  };
+
+  return (
+    <div
+      style={style}
+      className="bg-neutral-800 border border-neutral-600 rounded-lg shadow-xl p-3 text-sm"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center gap-2 mb-2 min-w-0">
+        {thumbnail && (
+          <img src={thumbnail} alt="" className="w-8 h-8 rounded border border-neutral-600 shrink-0 object-contain bg-white" />
+        )}
+        <span className="text-neutral-300 truncate text-xs">{label || "Element"}</span>
+      </div>
+      <input
+        ref={inputRef}
+        type="text"
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Add comment (optional)..."
+        className="w-full bg-neutral-900 border border-neutral-600 rounded px-2 py-1.5 text-sm text-white placeholder-neutral-500 outline-none focus:border-blue-500"
+      />
+      <div className="flex justify-end gap-2 mt-2">
+        <button
+          onClick={onCancel}
+          className="px-2.5 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => onConfirm(comment)}
+          className="px-2.5 py-1 text-xs text-white bg-blue-600 hover:bg-blue-500 rounded transition-colors"
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function SlidePreview({
@@ -563,10 +352,20 @@ export default function SlidePreview({
     source: "agent" | "user";
   } | null>(null);
 
+  const annotations = useStore((s) => s.annotations);
+  const addAnnotation = useStore((s) => s.addAnnotation);
+
+  // Pending annotation popover state (annotate mode: click → popover → confirm → add)
+  const [pendingAnnotation, setPendingAnnotation] = useState<{
+    selection: ViewerSelectionContext;
+    slideFile: string;
+    rect: { left: number; top: number; right: number; bottom: number; width: number; height: number };
+  } | null>(null);
+
   const [highlightSelector, setHighlightSelector] = useState<string | null>(null);
   const manifest = useMemo(() => parseManifest(files), [files]);
   const themeCSS = useMemo(() => findThemeCSS(files), [files]);
-  const isSelectMode = previewMode === "select";
+  const isSelectMode = previewMode === "select" || previewMode === "annotate";
 
   // Optimistic slide order: updated immediately on drag, synced from manifest on external changes
   const [localSlides, setLocalSlides] = useState<{ file: string; title: string }[]>([]);
@@ -1005,6 +804,68 @@ export default function SlidePreview({
     [activeSlideIndex, goToSlide],
   );
 
+  // Annotation selectors for highlighting on the current slide
+  const annotationSelectors = useMemo(() => {
+    const currentFile = slides[activeSlideIndex]?.file;
+    if (!currentFile) return [];
+    return annotations
+      .filter((a) => a.slideFile === currentFile && a.element.selector)
+      .map((a) => a.element.selector!);
+  }, [annotations, slides, activeSlideIndex]);
+
+  // Select handler: in annotate mode, show popover; in select mode, delegate to onSelect
+  const handleSelect = useCallback(
+    (sel: ViewerSelectionContext | null, rect?: { left: number; top: number; right: number; bottom: number; width: number; height: number }) => {
+      if (previewMode === "annotate") {
+        if (!sel) {
+          setPendingAnnotation(null);
+          return;
+        }
+        const currentSlide = slides[activeSlideIndex];
+        if (!currentSlide || !rect) return;
+        setPendingAnnotation({
+          selection: sel,
+          slideFile: currentSlide.file,
+          rect,
+        });
+        return;
+      }
+      onSelect(sel);
+    },
+    [previewMode, slides, activeSlideIndex, onSelect],
+  );
+
+  // Confirm pending annotation with comment
+  const confirmAnnotation = useCallback(
+    (comment: string) => {
+      if (!pendingAnnotation) return;
+      const { selection: sel, slideFile } = pendingAnnotation;
+      addAnnotation({
+        id: `ann-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        slideFile,
+        element: {
+          file: slideFile,
+          type: sel.type as import("../../../src/types.js").SelectionType,
+          content: sel.content,
+          level: sel.level,
+          tag: sel.tag,
+          classes: sel.classes,
+          selector: sel.selector,
+          thumbnail: sel.thumbnail,
+          label: sel.label,
+          nearbyText: sel.nearbyText,
+          accessibility: sel.accessibility,
+        },
+        comment,
+      });
+      setPendingAnnotation(null);
+    },
+    [pendingAnnotation, addAnnotation],
+  );
+
+  // Dismiss pending annotation on slide navigation
+  useEffect(() => { setPendingAnnotation(null); }, [activeSlideIndex]);
+
   // Keyboard navigation (skip when focus is inside editable elements)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1020,7 +881,11 @@ export default function SlidePreview({
         goToSlide(activeSlideIndex + 1);
       } else if (e.key === "Escape") {
         // Fullscreen exit is handled by the browser's Fullscreen API
-        if (isSelectMode) {
+        if (previewMode === "annotate" && pendingAnnotation) {
+          setPendingAnnotation(null);
+        } else if (previewMode === "annotate") {
+          setPreviewMode("view");
+        } else if (previewMode === "select") {
           if (selection) {
             onSelect(null);
           } else {
@@ -1034,7 +899,8 @@ export default function SlidePreview({
   }, [
     activeSlideIndex,
     goToSlide,
-    isSelectMode,
+    previewMode,
+    pendingAnnotation,
     selection,
     onSelect,
     setPreviewMode,
@@ -1086,6 +952,31 @@ export default function SlidePreview({
     });
   }, [manifest]);
 
+  // Zoom: render iframe at a virtual size, use CSS transform to scale
+  // (must be before early returns to satisfy Rules of Hooks)
+  const zoomScale = zoomLevel / 100;
+  const scaledW = VIRTUAL_W * zoomScale;
+  const scaledH = VIRTUAL_H * zoomScale;
+
+  // Popover positioning (relative to the sizer div, in scaled coordinates)
+  const popoverStyle = useMemo((): React.CSSProperties => {
+    if (!pendingAnnotation) return {};
+    const { rect } = pendingAnnotation;
+    const POPOVER_H = 130;
+    const POPOVER_W = 280;
+
+    let top = rect.bottom * zoomScale + 8;
+    if (top + POPOVER_H > scaledH) {
+      top = rect.top * zoomScale - POPOVER_H - 8;
+    }
+    top = Math.max(0, top);
+
+    let left = rect.left * zoomScale;
+    left = Math.max(8, Math.min(left, scaledW - POPOVER_W - 8));
+
+    return { position: "absolute" as const, top, left, width: POPOVER_W, zIndex: 50 };
+  }, [pendingAnnotation, zoomScale, scaledW, scaledH]);
+
   if (!manifest || slideCount === 0) {
     return (
       <div className="flex flex-col h-full">
@@ -1130,15 +1021,10 @@ export default function SlidePreview({
     />
   ) : null;
 
-  // Zoom: render iframe at a virtual size, use CSS transform to scale
-  const zoomScale = zoomLevel / 100;
-  const scaledW = VIRTUAL_W * zoomScale;
-  const scaledH = VIRTUAL_H * zoomScale;
-
   const viewerEl = (
     <div className="flex-1 flex items-center justify-center bg-neutral-900 min-w-0 min-h-0 overflow-auto">
       <div
-        className="shrink-0"
+        className="shrink-0 relative"
         style={{ width: scaledW, height: scaledH }}
       >
         <div
@@ -1156,13 +1042,23 @@ export default function SlidePreview({
             activeIndex={activeSlideIndex}
             isSelectMode={isSelectMode}
             imageVersion={imageVersion}
-            onSelect={onSelect}
+            onSelect={handleSelect}
             buildSrcdoc={buildSrcdoc}
             findSlideContent={findSlideContent}
             highlightSelector={highlightSelector}
+            annotationSelectors={annotationSelectors}
             iframeRefsOut={(refs) => { iframeRefsRef.current = refs; }}
           />
         </div>
+        {pendingAnnotation && (
+          <AnnotationPopover
+            style={popoverStyle}
+            label={pendingAnnotation.selection.label}
+            thumbnail={pendingAnnotation.selection.thumbnail}
+            onConfirm={confirmAnnotation}
+            onCancel={() => setPendingAnnotation(null)}
+          />
+        )}
       </div>
     </div>
   );
@@ -1541,7 +1437,7 @@ function SlideThumbnail({
 
 // ── Toolbar ──────────────────────────────────────────────────────────────────
 
-type PreviewMode = "view" | "edit" | "select";
+type PreviewMode = "view" | "edit" | "select" | "annotate";
 
 function SlideToolbar({
   previewMode,
@@ -1613,6 +1509,7 @@ function SlideToolbar({
     [
       { value: "view", label: "View", icon: <EyeIcon /> },
       { value: "select", label: "Select", icon: <CursorIcon /> },
+      { value: "annotate", label: "Annotate", icon: <AnnotateIcon /> },
     ];
 
   const handleExport = useCallback(() => {
@@ -1725,7 +1622,9 @@ function SlideToolbar({
               title={
                 m.value === "view"
                   ? "Read-only view"
-                  : "Select elements (Esc to exit)"
+                  : m.value === "select"
+                    ? "Select elements (Esc to exit)"
+                    : "Annotate multiple elements (Esc to exit)"
               }
             >
               {m.icon}
@@ -1789,6 +1688,15 @@ function CursorIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
       <path d="M3 2l4 12 2-5 5-2L3 2z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function AnnotateIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+      <path d="M12 3l1.5 1.5L5 13l-2 .5.5-2z" strokeLinejoin="round" />
+      <path d="M2 15h5" strokeLinecap="round" strokeDasharray="2 1.5" />
     </svg>
   );
 }

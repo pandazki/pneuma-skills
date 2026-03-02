@@ -75,6 +75,67 @@ const slideMode: ModeDefinition = {
         } catch { /* ignore parse errors */ }
       }
 
+      // Helper to get slide label from file path
+      const getSlideLabel = (file: string): string => {
+        if (!manifestFile) return file;
+        try {
+          const m = JSON.parse(manifestFile.content);
+          const ss: { file: string; title?: string }[] = m.slides ?? [];
+          const idx = ss.findIndex((s) => s.file === file);
+          if (idx >= 0) {
+            const title = ss[idx].title;
+            return title ? `slide ${idx + 1}: "${title}"` : `slide ${idx + 1}`;
+          }
+        } catch {}
+        return file;
+      };
+
+      // Annotations mode — multiple annotated elements with comments
+      if (selection.type === "annotations" && selection.annotations?.length) {
+        const attrs = [`mode="slide"`, `file="${selection.file}"`];
+        const lines: string[] = [];
+
+        if (slideIndex > 0) {
+          const desc = slideTitle
+            ? `Viewing slide ${slideIndex}/${slideCount}: "${slideTitle}"`
+            : `Viewing slide ${slideIndex}/${slideCount}`;
+          lines.push(desc);
+        }
+
+        lines.push("Annotations:");
+        selection.annotations.forEach((ann, i) => {
+          const el = ann.element;
+          const slideLabel = getSlideLabel(ann.slideFile);
+
+          // Primary identification: selector or type description (same as select mode)
+          let primary: string;
+          if (el.selector) {
+            primary = el.selector;
+          } else {
+            const desc = el.type;
+            primary = `${desc} "${(el.content || "").slice(0, 50)}"`;
+          }
+
+          lines.push(`  ${i + 1}. [${slideLabel}] ${primary}`);
+
+          // Rich identification details (same fields as select mode)
+          if (el.label) {
+            lines.push(`     Element: ${el.label}`);
+          }
+          if (el.nearbyText) {
+            lines.push(`     Context: ${el.nearbyText}`);
+          }
+          if (el.accessibility) {
+            lines.push(`     Accessibility: ${el.accessibility}`);
+          }
+          if (ann.comment) {
+            lines.push(`     Feedback: ${ann.comment}`);
+          }
+        });
+
+        return `<viewer-context ${attrs.join(" ")}>\n${lines.join("\n")}\n</viewer-context>`;
+      }
+
       const attrs = [`mode="slide"`, `file="${selection.file}"`];
       const lines: string[] = [];
 
@@ -94,6 +155,16 @@ const slideMode: ModeDefinition = {
             ? `${selection.type} (level ${selection.level})`
             : selection.type;
           lines.push(`Selected: ${desc} "${selection.content}"`);
+        }
+        // Rich identification from iframe selection
+        if (selection.label) {
+          lines.push(`  Element: ${selection.label}`);
+        }
+        if (selection.nearbyText) {
+          lines.push(`  Context: ${selection.nearbyText}`);
+        }
+        if (selection.accessibility) {
+          lines.push(`  Accessibility: ${selection.accessibility}`);
         }
       }
 

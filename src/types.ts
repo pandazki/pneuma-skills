@@ -25,6 +25,12 @@ export interface SelectionContext {
   selector?: string;
   /** SVG data URL thumbnail of the selected element */
   thumbnail?: string;
+  /** Human-readable element name (e.g. 'button "Submit"', 'h2 "Our Solution"') */
+  label?: string;
+  /** Nearby sibling text for context */
+  nearbyText?: string;
+  /** Accessibility attributes summary */
+  accessibility?: string;
 }
 
 export interface ChatMessage {
@@ -38,6 +44,8 @@ export interface ChatMessage {
   model?: string;
   stopReason?: string | null;
   selectionContext?: SelectionContext;
+  /** Annotations attached to this message (annotate mode) */
+  annotations?: Annotation[];
   /** If true, system message is shown in a collapsible section (e.g. command output) */
   isCollapsible?: boolean;
   /** Subtype for specialized rendering (e.g. "context" for /context output) */
@@ -53,6 +61,14 @@ export interface ChatMessage {
 export interface FileContent {
   path: string;
   content: string;
+}
+
+/** A single annotation — element + user feedback comment. */
+export interface Annotation {
+  id: string;
+  slideFile: string;          // which slide this annotation is on
+  element: SelectionContext;  // reuse existing type
+  comment: string;            // user's feedback for this element
 }
 
 /** A significant user action performed in the viewer (recorded for CC context injection). */

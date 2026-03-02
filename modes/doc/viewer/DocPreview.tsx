@@ -709,7 +709,7 @@ function ToolbarDivider({ isDark }: { isDark: boolean }) {
 
 // ── Toolbar ──────────────────────────────────────────────────────────────────
 
-type PreviewMode = "view" | "edit" | "select";
+type PreviewMode = "view" | "edit" | "select" | "annotate";
 
 function PreviewToolbar({
   theme,

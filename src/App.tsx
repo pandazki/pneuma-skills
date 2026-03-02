@@ -79,6 +79,9 @@ function useViewerProps(): ViewerPreviewProps {
           classes: selection.classes,
           selector: selection.selector,
           thumbnail: selection.thumbnail,
+          label: selection.label,
+          nearbyText: selection.nearbyText,
+          accessibility: selection.accessibility,
         }
       : null,
     onSelect: (sel) => {
@@ -97,6 +100,9 @@ function useViewerProps(): ViewerPreviewProps {
         classes: sel.classes,
         selector: sel.selector,
         thumbnail: sel.thumbnail,
+        label: sel.label,
+        nearbyText: sel.nearbyText,
+        accessibility: sel.accessibility,
       });
     },
     mode: previewMode,

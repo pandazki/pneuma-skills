@@ -75,6 +75,11 @@ export default function ChatInput() {
   const turnInProgress = useStore((s) => s.turnInProgress);
   const selection = useStore((s) => s.selection);
   const setSelection = useStore((s) => s.setSelection);
+  const annotations = useStore((s) => s.annotations);
+  const removeAnnotation = useStore((s) => s.removeAnnotation);
+  const updateAnnotationComment = useStore((s) => s.updateAnnotationComment);
+  const clearAnnotations = useStore((s) => s.clearAnnotations);
+  const previewMode = useStore((s) => s.previewMode);
   const slashCommands = useStore((s) => s.session?.slash_commands ?? EMPTY_STRINGS);
   const skills = useStore((s) => s.session?.skills ?? EMPTY_STRINGS);
 
@@ -115,21 +120,23 @@ export default function ChatInput() {
 
   const handleSubmit = useCallback(() => {
     const trimmed = text.trim();
-    if (!trimmed && images.length === 0) return;
+    const hasAnnotations = annotations.length > 0;
+    if (!trimmed && images.length === 0 && !hasAnnotations) return;
     const imgPayload = images.length > 0
       ? images.map((img) => ({ media_type: img.media_type, data: img.data }))
       : undefined;
-    sendUserMessage(trimmed, selection, imgPayload);
+    sendUserMessage(trimmed, selection, imgPayload, hasAnnotations ? annotations : undefined);
     setText("");
     setImages([]);
     setSelection(null);
+    clearAnnotations();
     setSlashOpen(false);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
     // Immediately show busy state — disable input + show Stop button
     useStore.getState().setTurnInProgress(true);
-  }, [text, images, selection, setSelection]);
+  }, [text, images, selection, setSelection, annotations, clearAnnotations]);
 
   const handleKeyDown = (e: KeyboardEvent) => {
     // Slash menu navigation
@@ -251,10 +258,62 @@ export default function ChatInput() {
     }
   };
 
+  const hasAnnotations = annotations.length > 0;
+
   return (
     <div className="p-3 border-t border-neutral-800">
-      {/* Selection chip */}
-      {selection && (
+      {/* Annotations list (annotate mode) */}
+      {hasAnnotations && (
+        <div className="mb-2 rounded-lg border border-cc-border bg-cc-card/50 overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-cc-border/50">
+            <span className="text-xs font-medium text-cc-fg">
+              Annotations ({annotations.length})
+            </span>
+            <button
+              onClick={clearAnnotations}
+              className="text-[11px] text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
+            >
+              Clear all
+            </button>
+          </div>
+          <div className="max-h-[200px] overflow-y-auto divide-y divide-cc-border/30">
+            {annotations.map((ann, i) => (
+              <div key={ann.id} className="px-3 py-2 group">
+                <div className="flex items-start gap-2">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-cc-primary/15 text-cc-primary text-[10px] font-bold flex items-center justify-center mt-0.5">
+                    {i + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className="text-cc-fg truncate font-medium">
+                        {ann.element.label || ann.element.selector || `${ann.element.type}: "${ann.element.content.slice(0, 30)}"`}
+                      </span>
+                      <span className="shrink-0 text-cc-muted text-[10px]">{ann.slideFile}</span>
+                    </div>
+                    <input
+                      type="text"
+                      value={ann.comment}
+                      onChange={(e) => updateAnnotationComment(ann.id, e.target.value)}
+                      placeholder="Add comment..."
+                      className="mt-1 w-full bg-cc-bg/60 text-cc-fg text-xs rounded px-2 py-1 border border-cc-border/40 placeholder-cc-muted/50 focus:outline-none focus:border-cc-primary/50"
+                    />
+                  </div>
+                  <button
+                    onClick={() => removeAnnotation(ann.id)}
+                    className="shrink-0 text-cc-muted hover:text-cc-fg transition-colors cursor-pointer opacity-0 group-hover:opacity-100 mt-0.5"
+                    title="Remove annotation"
+                  >
+                    <CloseIcon />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Selection chip (select mode — only when no annotations) */}
+      {!hasAnnotations && selection && (
         <div className="flex items-center gap-2 mb-2 px-1">
           <div className="rounded-md bg-cc-primary/15 text-cc-primary text-xs max-w-full overflow-hidden">
             {selection.thumbnail && (
@@ -323,9 +382,13 @@ export default function ChatInput() {
               ? "Waiting for CLI connection..."
               : isBusy
                 ? "Claude is working..."
-                : selection
-                  ? "Tell Claude what to change..."
-                  : "Send a message... (paste images, type / for commands)"
+                : hasAnnotations
+                  ? "Add notes (optional)..."
+                  : selection
+                    ? "Tell Claude what to change..."
+                    : previewMode === "annotate"
+                      ? "Click elements to annotate, then send..."
+                      : "Send a message... (paste images, type / for commands)"
           }
           disabled={!cliConnected || isBusy}
           rows={1}
@@ -368,7 +431,7 @@ export default function ChatInput() {
           ) : (
             <button
               onClick={handleSubmit}
-              disabled={(!text.trim() && images.length === 0) || !cliConnected}
+              disabled={(!text.trim() && images.length === 0 && !hasAnnotations) || !cliConnected}
               className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Send
