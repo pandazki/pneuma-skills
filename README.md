@@ -80,6 +80,7 @@ Options:
   --workspace <path>   Target workspace directory (default: current directory)
   --port <number>      Server port (default: 17996)
   --no-open            Don't auto-open the browser
+  --debug              Enable debug mode (inspect enriched CLI payloads)
 ```
 
 ### Remote / External Modes
@@ -116,7 +117,7 @@ Pneuma is organized in four layers, each with a clear contract boundary:
 │  modes/doc/pneuma-mode.ts                               │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 3: Content Viewer                                │
-│  ViewerContract — "how to render, select, update"       │
+│  ViewerContract — "how to render, select, align"        │
 │  modes/doc/viewer/DocPreview.tsx                         │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 2: Agent Bridge                                  │
@@ -140,10 +141,10 @@ When Claude Code edits files, chokidar detects the changes and pushes updated co
 | Contract | Responsibility | Extend to... |
 |----------|---------------|-------------|
 | **ModeManifest** | Declares skill, viewer config, agent preferences, init seeds | Add new modes (mindmap, canvas, etc.) |
-| **ViewerContract** | Preview component, context extraction, update strategy | Custom renderers (iframe, D3, Monaco) |
+| **ViewerContract** | Preview component, context extraction, file workspace model, agent-callable actions | Custom renderers, viewport tracking, action protocols |
 | **AgentBackend** | Launch, resume, kill, capability declaration | Other agents (Codex, Aider) |
 
-Contracts are defined in `core/types/` with 81 tests in `core/__tests__/`.
+Contracts are defined in `core/types/` with 208 tests across `core/__tests__/` and `server/__tests__/`.
 
 ## Project Structure
 
@@ -152,14 +153,14 @@ pneuma-skills/
 ├── bin/pneuma.ts              # CLI entry — orchestrates mode + agent + server
 ├── core/
 │   ├── types/                 # Contract definitions
-│   │   ├── mode-manifest.ts   #   ModeManifest, SkillConfig, ViewerConfig
-│   │   ├── viewer-contract.ts #   ViewerContract, ViewerPreviewProps
+│   │   ├── mode-manifest.ts   #   ModeManifest, SkillConfig, ViewerConfig, ViewerApi
+│   │   ├── viewer-contract.ts #   ViewerContract, FileWorkspaceModel, ViewerAction*
 │   │   ├── agent-backend.ts   #   AgentBackend, AgentCapabilities
 │   │   ├── mode-definition.ts #   ModeDefinition (manifest + viewer)
 │   │   └── index.ts           #   Re-exports
 │   ├── mode-loader.ts         # Dynamic mode discovery and loading (builtin + external)
 │   ├── mode-resolver.ts       # Mode source resolution (builtin/local/github)
-│   └── __tests__/             # 81 tests
+│   └── __tests__/             # Contract tests
 ├── modes/
 │   ├── doc/
 │   │   ├── pneuma-mode.ts     # Doc Mode definition (manifest + viewer)
@@ -181,11 +182,12 @@ pneuma-skills/
 │       ├── index.ts           # ClaudeCodeBackend implements AgentBackend
 │       └── cli-launcher.ts    # Process spawner (Bun.spawn + --sdk-url)
 ├── server/
-│   ├── index.ts               # Hono HTTP server + content API
-│   ├── ws-bridge.ts           # Dual WebSocket bridge (browser ↔ CLI)
+│   ├── index.ts               # Hono HTTP server + WS routing + content/viewer APIs
+│   ├── ws-bridge.ts           # Dual WebSocket bridge (browser JSON ↔ CLI NDJSON)
+│   ├── ws-bridge-viewer.ts    # Viewer action request/response routing
 │   ├── ws-bridge-*.ts         # Controls, replay, browser handlers, types
 │   ├── file-watcher.ts        # chokidar watcher (manifest-driven patterns)
-│   ├── skill-installer.ts     # Copies skill prompts (manifest-driven)
+│   ├── skill-installer.ts     # Copies skill prompts + template engine
 │   └── terminal-manager.ts    # PTY terminal sessions
 ├── src/
 │   ├── App.tsx                # Root layout (dynamic viewer from store)
@@ -238,6 +240,9 @@ pneuma-skills/
 - **Background processes** — Monitor long-running background commands
 - **Context visualization** — Rich `/context` card with category breakdown and stacked bar
 - **Image upload** — Drag & drop or paste images into chat
+- **Viewer context enrichment** — `<viewer-context>` XML blocks align agent perception with user viewport
+- **Viewer action protocol** — Agent can invoke viewer capabilities (navigate, toggle UI, capture)
+- **Debug mode** — `--debug` flag shows enriched CLI payloads for each message
 
 ## Roadmap
 
@@ -248,6 +253,7 @@ pneuma-skills/
 - [x] Session persistence & resume
 - [x] Terminal, tasks, context panel
 - [x] v1.0 contract architecture (ModeManifest, ViewerContract, AgentBackend)
+- [x] ViewerContract v2 — Agent-Human alignment protocol (workspace model, action protocol, context enrichment)
 - [x] Remote mode loading — `pneuma github:user/repo` or local path (v1.x)
 - [ ] Additional agent backends — Codex CLI, custom agents (v1.x)
 

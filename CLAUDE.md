@@ -6,7 +6,7 @@ Pneuma Skills is an extensible delivery platform for filesystem-based Agent capa
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 1.6.2
+**Version:** 1.7.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Available Modes:** `doc` (markdown editing), `slide` (presentation editing), `draw` (Excalidraw whiteboard)
 
@@ -34,6 +34,7 @@ bun run dev doc          # Start in Doc Mode (current directory as workspace)
 bun run dev slide        # Start in Slide Mode
 bun run dev draw         # Start in Draw Mode (Excalidraw whiteboard)
 bun run dev doc --workspace ~/my-notes --port 17996 --no-open
+bun run dev draw --debug      # Enable debug mode (inspect CLI payloads)
 bun run build            # Vite production build to dist/
 bun test                 # Run all tests (bun:test)
 ```
@@ -53,12 +54,12 @@ pneuma-skills/
 ├── core/
 │   ├── types/                 # Contract definitions (Layer 4 + 3 + 2)
 │   │   ├── mode-manifest.ts   #   ModeManifest, SkillConfig, ViewerConfig, InitConfig
-│   │   ├── viewer-contract.ts #   ViewerContract, ViewerPreviewProps
+│   │   ├── viewer-contract.ts #   ViewerContract, ViewerPreviewProps, FileWorkspaceModel, ViewerAction*
 │   │   ├── agent-backend.ts   #   AgentBackend, AgentCapabilities, AgentProtocolAdapter
 │   │   └── mode-definition.ts #   ModeDefinition (manifest + viewer binding)
 │   ├── mode-loader.ts         # Dynamic mode discovery & loading (builtin + external)
 │   ├── mode-resolver.ts       # Mode source resolution (builtin/local/github)
-│   └── __tests__/             # 186 tests (bun:test)
+│   └── __tests__/             # Contract tests (bun:test)
 ├── modes/
 │   ├── doc/                   # Doc Mode — markdown editing
 │   │   ├── manifest.ts        #   ModeManifest v1.0.0
@@ -86,12 +87,13 @@ pneuma-skills/
 │   ├── ws-bridge-controls.ts  # Permission request routing
 │   ├── ws-bridge-replay.ts    # Session history replay
 │   ├── ws-bridge-browser.ts   # Browser message handling
+│   ├── ws-bridge-viewer.ts    # Viewer action request/response routing
 │   ├── session-types.ts       # Session message type definitions
 │   ├── file-watcher.ts        # chokidar watcher (manifest-driven patterns)
-│   ├── skill-installer.ts     # Copies skill prompts + template engine
+│   ├── skill-installer.ts     # Copies skill prompts + template engine ({{viewerCapabilities}})
 │   ├── terminal-manager.ts    # PTY terminal sessions
 │   ├── path-resolver.ts       # Binary path resolution
-│   └── __tests__/             # 105 tests (bun:test)
+│   └── __tests__/             # Server tests (bun:test)
 ├── src/                       # React frontend (Vite)
 │   ├── App.tsx                # Root layout with dynamic viewer from store
 │   ├── store.ts               # Zustand state (session, messages, viewer, files, git, tasks)
@@ -131,7 +133,7 @@ pneuma-skills/
 
 ```
 Layer 4: Mode Protocol     — ModeManifest describes "what capability, config, UI"
-Layer 3: Content Viewer    — ViewerContract defines "how to render, select, update"
+Layer 3: Content Viewer    — ViewerContract defines "how to render, select, align agent perception"
 Layer 2: Agent Bridge      — AgentBackend defines "how to launch, communicate, lifecycle"
 Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 ```
@@ -141,7 +143,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 | Contract | File | Purpose |
 |----------|------|---------|
 | **ModeManifest** | `core/types/mode-manifest.ts` | Declares skill, viewer config, agent preferences, init params |
-| **ViewerContract** | `core/types/viewer-contract.ts` | Preview component, context extraction, update strategy |
+| **ViewerContract** | `core/types/viewer-contract.ts` | Preview component, context extraction, file workspace model, agent-callable actions |
 | **AgentBackend** | `core/types/agent-backend.ts` | Launch, resume, kill, capability declaration |
 
 ### Communication
@@ -159,7 +161,11 @@ Stored in `<workspace>/.pneuma/`:
 
 ### Skill Installation
 
-On startup, skills are copied from `modes/<mode>/skill/` to `<workspace>/.claude/skills/<installName>/`. Template params (`{{key}}`, `{{#key}}...{{/key}}`) are applied. A section is injected into workspace's CLAUDE.md between `<!-- pneuma:start -->
+On startup, skills are copied from `modes/<mode>/skill/` to `<workspace>/.claude/skills/<installName>/`. Template params (`{{key}}`, `{{#key}}...{{/key}}`, `{{viewerCapabilities}}`) are applied. Two sections are injected into workspace's CLAUDE.md:
+- `<!-- pneuma:start -->` / `<!-- pneuma:end -->` — Skill prompt
+- `<!-- pneuma:viewer-api:start -->` / `<!-- pneuma:viewer-api:end -->` — Viewer self-description (context format, workspace model, available actions)
+
+Example skill section between `<!-- pneuma:start -->
 ## Pneuma Doc Mode
 
 You are running inside Pneuma Doc Mode. A user is viewing your markdown edits live in a browser.
