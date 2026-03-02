@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.1] - 2026-03-02
+
+### Fixed
+- Draw mode text rendering — replace `updateScene` with key-based remount to prevent Excalidraw Virgil font initialization issues
+- Draw mode seed content switched to English (Virgil font lacks CJK glyph support)
+- Draw mode viewing card and seed content font alignment
+
 ## [1.7.0] - 2026-03-02
 
 ### Added
