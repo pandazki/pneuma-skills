@@ -48,7 +48,7 @@ You are running inside Pneuma Draw Mode. A user is viewing your Excalidraw diagr
   init: {
     contentCheckPattern: "**/*.excalidraw",
     seedFiles: {
-      "seed/drawing.excalidraw": "drawing.excalidraw",
+      "modes/draw/seed/drawing.excalidraw": "drawing.excalidraw",
     },
   },
 };

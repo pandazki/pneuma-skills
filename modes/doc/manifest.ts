@@ -47,7 +47,7 @@ You are running inside Pneuma Doc Mode. A user is viewing your markdown edits li
   init: {
     contentCheckPattern: "**/*.md",
     seedFiles: {
-      "README.md": "README.md",
+      "modes/doc/seed/README.md": "README.md",
     },
   },
 };
