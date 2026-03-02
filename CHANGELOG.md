@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.9.1] - 2026-03-02
+
+### Fixed
+- Suppress React 19 peer dependency warnings via `overrides` in package.json
+
 ## [1.9.0] - 2026-03-02
 
 ### Added
