@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.3] - 2026-03-02
+
+### Fixed
+- Release workflow changelog extraction — awk regex treated `[x.y.z]` as character class; switched to `index()` for literal matching
+
 ## [1.7.2] - 2026-03-02
 
 ### Added
