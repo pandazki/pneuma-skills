@@ -682,6 +682,29 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
     enrichedContent = ctx.join("\n") + "\n\n" + content;
   }
 
+  // Inject user action events between viewer-context and user text
+  const drainedActions = useStore.getState().drainUserActions();
+  if (drainedActions.length > 0) {
+    const lines = drainedActions.map((a) => {
+      const agoMs = Date.now() - a.timestamp;
+      const ago = agoMs < 60_000
+        ? `${Math.round(agoMs / 1000)}s ago`
+        : `${Math.round(agoMs / 60_000)}m ago`;
+      return `  <action time="${ago}" id="${a.actionId}">${a.description}</action>`;
+    });
+    const actionsBlock = "<user-actions>\n" + lines.join("\n") + "\n</user-actions>";
+    // Insert actions block before the user's actual text
+    // enrichedContent is either "context\n\ncontent" or just "content"
+    const contextEndTag = "</viewer-context>";
+    const ctxIdx = enrichedContent.indexOf(contextEndTag);
+    if (ctxIdx !== -1) {
+      const afterCtx = ctxIdx + contextEndTag.length;
+      enrichedContent = enrichedContent.slice(0, afterCtx) + "\n\n" + actionsBlock + enrichedContent.slice(afterCtx);
+    } else {
+      enrichedContent = actionsBlock + "\n\n" + enrichedContent;
+    }
+  }
+
   let allImages = images ? [...images] : [];
 
   // If selection has a thumbnail (e.g. Draw mode element screenshot), attach as image

@@ -29,6 +29,8 @@ import type {
 import { useStore } from "../../../src/store.js";
 import { useSlideThumbnails } from "../hooks/useSlideThumbnails.js";
 import SlideIframePool from "./SlideIframePool.js";
+import { generateSlideScaffold, type SlideSpec, type ScaffoldFile } from "./scaffold.js";
+import ScaffoldConfirm from "../../../src/components/ScaffoldConfirm.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -477,12 +479,21 @@ export default function SlidePreview({
   onActionResult,
 }: ViewerPreviewProps) {
   const setPreviewMode = useStore((s) => s.setPreviewMode);
+  const pushUserAction = useStore((s) => s.pushUserAction);
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [navPosition, setNavPosition] = useState<NavigatorPosition>(loadNavPosition);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isGridView, setIsGridView] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(100); // percentage
   const fullscreenRef = useRef<HTMLDivElement>(null);
+
+  // Scaffold state
+  const [scaffoldPending, setScaffoldPending] = useState<{
+    files: ScaffoldFile[];
+    clearPatterns: string[];
+    resolve: (result: { success: boolean; message?: string }) => void;
+    source: "agent" | "user";
+  } | null>(null);
 
   const [highlightSelector, setHighlightSelector] = useState<string | null>(null);
   const manifest = useMemo(() => parseManifest(files), [files]);
@@ -582,6 +593,29 @@ export default function SlidePreview({
     onActiveFileChange?.(currentFile);
   }, [currentFile, onActiveFileChange]);
 
+  // Scaffold execution helper
+  const executeScaffold = useCallback(async (
+    scaffoldFiles: ScaffoldFile[],
+    clearPatterns: string[],
+  ): Promise<{ success: boolean; message?: string }> => {
+    const baseUrl = import.meta.env.DEV ? "http://localhost:17007" : "";
+    try {
+      const res = await fetch(`${baseUrl}/api/workspace/scaffold`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clear: clearPatterns, files: scaffoldFiles }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActiveSlideIndex(0);
+        return { success: true, message: `Created ${data.filesWritten} files` };
+      }
+      return { success: false, message: data.message || "Scaffold failed" };
+    } catch (err) {
+      return { success: false, message: err instanceof Error ? err.message : "Network error" };
+    }
+  }, []);
+
   // Handle viewer action requests from agent
   useEffect(() => {
     if (!actionRequest) return;
@@ -599,6 +633,38 @@ export default function SlidePreview({
             message: `Slide not found: ${targetFile}`,
           });
         }
+        break;
+      }
+      case "scaffold": {
+        const title = actionRequest.params?.title as string;
+        const slidesParam = actionRequest.params?.slides as string;
+        if (!title || !slidesParam) {
+          onActionResult?.(actionRequest.requestId, {
+            success: false,
+            message: "title and slides params are required",
+          });
+          break;
+        }
+        let slideSpecs: SlideSpec[];
+        try {
+          slideSpecs = JSON.parse(slidesParam);
+        } catch {
+          onActionResult?.(actionRequest.requestId, {
+            success: false,
+            message: "slides param must be valid JSON array",
+          });
+          break;
+        }
+        const scaffoldFiles = generateSlideScaffold(title, slideSpecs);
+        const reqId = actionRequest.requestId;
+        setScaffoldPending({
+          files: scaffoldFiles,
+          clearPatterns: ["slides/*.html", "manifest.json"],
+          source: "agent",
+          resolve: (result) => {
+            onActionResult?.(reqId, result);
+          },
+        });
         break;
       }
       default:
@@ -701,6 +767,52 @@ export default function SlidePreview({
     setPreviewMode,
   ]);
 
+  // Scaffold confirm/cancel handlers (must be before early returns to satisfy Rules of Hooks)
+  const handleScaffoldConfirm = useCallback(async () => {
+    if (!scaffoldPending) return;
+    const { files: sFiles, clearPatterns, resolve, source } = scaffoldPending;
+    setScaffoldPending(null);
+    const result = await executeScaffold(sFiles, clearPatterns);
+    resolve(result);
+    if (result.success && source === "user") {
+      pushUserAction({
+        timestamp: Date.now(),
+        actionId: "scaffold",
+        description: `Initialized workspace with ${sFiles.length - 1} slides`,
+      });
+    }
+  }, [scaffoldPending, executeScaffold, pushUserAction]);
+
+  const handleScaffoldCancel = useCallback(() => {
+    if (!scaffoldPending) return;
+    scaffoldPending.resolve({ success: false, message: "Cancelled by user" });
+    setScaffoldPending(null);
+  }, [scaffoldPending]);
+
+  // User-initiated scaffold from toolbar button
+  const handleUserScaffold = useCallback(() => {
+    const title = window.prompt("Deck title:", manifest?.title || "Untitled");
+    if (!title) return;
+    const slidesInput = window.prompt(
+      "Slide titles (comma-separated):",
+      "Cover, Introduction, Content, Summary",
+    );
+    if (!slidesInput) return;
+    const slideSpecs: SlideSpec[] = slidesInput
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((t) => ({ title: t }));
+    if (slideSpecs.length === 0) return;
+    const scaffoldFiles = generateSlideScaffold(title, slideSpecs);
+    setScaffoldPending({
+      files: scaffoldFiles,
+      clearPatterns: ["slides/*.html", "manifest.json"],
+      source: "user",
+      resolve: () => {},
+    });
+  }, [manifest]);
+
   if (!manifest || slideCount === 0) {
     return (
       <div className="flex flex-col h-full">
@@ -721,6 +833,7 @@ export default function SlidePreview({
           onZoomIn={zoomIn}
           onZoomOut={zoomOut}
           onZoomFit={zoomFit}
+          onScaffold={handleUserScaffold}
         />
         <div className="flex items-center justify-center flex-1 text-neutral-500">
           {!manifest
@@ -801,6 +914,7 @@ export default function SlidePreview({
           onZoomIn={zoomIn}
           onZoomOut={zoomOut}
           onZoomFit={zoomFit}
+          onScaffold={handleUserScaffold}
         />
         <div className="flex-1 overflow-auto bg-neutral-900 p-4">
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
@@ -884,6 +998,14 @@ export default function SlidePreview({
       ) : (
         /* hidden */
         <div className="flex flex-1 min-h-0">{viewerEl}</div>
+      )}
+      {scaffoldPending && (
+        <ScaffoldConfirm
+          clearPatterns={scaffoldPending.clearPatterns}
+          files={scaffoldPending.files}
+          onConfirm={handleScaffoldConfirm}
+          onCancel={handleScaffoldCancel}
+        />
       )}
     </div>
   );
@@ -1164,6 +1286,7 @@ function SlideToolbar({
   onZoomIn,
   onZoomOut,
   onZoomFit,
+  onScaffold,
 }: {
   previewMode: PreviewMode;
   onSetPreviewMode: (mode: PreviewMode) => void;
@@ -1181,6 +1304,7 @@ function SlideToolbar({
   onZoomIn: () => void;
   onZoomOut: () => void;
   onZoomFit: () => void;
+  onScaffold?: () => void;
 }) {
   const [isJumping, setIsJumping] = useState(false);
   const [jumpValue, setJumpValue] = useState("");
@@ -1359,6 +1483,18 @@ function SlideToolbar({
         >
           <ExportIcon />
         </button>
+        {onScaffold && (
+          <>
+            <div className="w-px h-4 bg-cc-border" />
+            <button
+              onClick={onScaffold}
+              className="flex items-center justify-center w-7 h-7 rounded text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+              title="Initialize / reset workspace"
+            >
+              <ScaffoldIcon />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1422,6 +1558,18 @@ function GridIcon() {
       <rect x="9.5" y="2" width="5" height="5" rx="0.5" />
       <rect x="1.5" y="9" width="5" height="5" rx="0.5" />
       <rect x="9.5" y="9" width="5" height="5" rx="0.5" />
+    </svg>
+  );
+}
+
+function ScaffoldIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+      <rect x="2" y="2" width="5" height="5" rx="0.5" />
+      <rect x="9" y="2" width="5" height="5" rx="0.5" />
+      <rect x="2" y="9" width="5" height="5" rx="0.5" />
+      <rect x="9" y="9" width="5" height="5" rx="0.5" />
+      <path d="M4.5 4.5h0M11.5 4.5h0M4.5 11.5h0M11.5 11.5h0" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }

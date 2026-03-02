@@ -18,6 +18,7 @@ import type {
 } from "../../../core/types/viewer-contract.js";
 import { useStore } from "../../../src/store.js";
 import { setDrawCaptureViewport } from "../pneuma-mode.js";
+import ScaffoldConfirm from "../../../src/components/ScaffoldConfirm.js";
 
 // Lazy-loaded Excalidraw (no SSR support)
 let ExcalidrawComponent: React.ComponentType<any> | null = null;
@@ -118,14 +119,89 @@ export default function DrawPreview({
   onActiveFileChange,
 }: ViewerPreviewProps) {
   const setPreviewMode = useStore((s) => s.setPreviewMode);
+  const pushUserAction = useStore((s) => s.pushUserAction);
+
+  // Scaffold state
+  const [scaffoldPending, setScaffoldPending] = useState<{
+    files: { path: string; content: string }[];
+    clearPatterns: string[];
+    resolve: (result: { success: boolean; message?: string }) => void;
+    source: "agent" | "user";
+  } | null>(null);
+
+  const executeScaffold = useCallback(async (
+    scaffoldFiles: { path: string; content: string }[],
+    clearPatterns: string[],
+  ): Promise<{ success: boolean; message?: string }> => {
+    const base = getApiBase();
+    try {
+      const res = await fetch(`${base}/api/workspace/scaffold`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clear: clearPatterns, files: scaffoldFiles }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        return { success: true, message: `Created ${data.filesWritten} files` };
+      }
+      return { success: false, message: data.message || "Scaffold failed" };
+    } catch (err) {
+      return { success: false, message: err instanceof Error ? err.message : "Network error" };
+    }
+  }, []);
+
+  const handleScaffoldConfirm = useCallback(async () => {
+    if (!scaffoldPending) return;
+    const { files: sFiles, clearPatterns, resolve, source } = scaffoldPending;
+    setScaffoldPending(null);
+    const result = await executeScaffold(sFiles, clearPatterns);
+    resolve(result);
+    if (result.success && source === "user") {
+      pushUserAction({
+        timestamp: Date.now(),
+        actionId: "scaffold",
+        description: "Reset canvas to empty state",
+      });
+    }
+  }, [scaffoldPending, executeScaffold, pushUserAction]);
+
+  const handleScaffoldCancel = useCallback(() => {
+    if (!scaffoldPending) return;
+    scaffoldPending.resolve({ success: false, message: "Cancelled by user" });
+    setScaffoldPending(null);
+  }, [scaffoldPending]);
 
   // Handle viewer action requests from agent
   useEffect(() => {
     if (!actionRequest) return;
-    onActionResult?.(actionRequest.requestId, {
-      success: false,
-      message: `Unknown action: ${actionRequest.actionId}`,
-    });
+
+    switch (actionRequest.actionId) {
+      case "scaffold": {
+        const emptyExcalidraw = JSON.stringify({
+          type: "excalidraw",
+          version: 2,
+          source: "https://excalidraw.com",
+          elements: [],
+          appState: { viewBackgroundColor: "#ffffff" },
+          files: {},
+        }, null, 2);
+        const reqId = actionRequest.requestId;
+        setScaffoldPending({
+          files: [{ path: "drawing.excalidraw", content: emptyExcalidraw }],
+          clearPatterns: ["*.excalidraw"],
+          source: "agent",
+          resolve: (result) => {
+            onActionResult?.(reqId, result);
+          },
+        });
+        break;
+      }
+      default:
+        onActionResult?.(actionRequest.requestId, {
+          success: false,
+          message: `Unknown action: ${actionRequest.actionId}`,
+        });
+    }
   }, [actionRequest]);
 
   const [ready, setReady] = useState(excalidrawLoaded);
@@ -461,6 +537,14 @@ export default function DrawPreview({
           <div className="absolute inset-0 z-[3]" style={{ cursor: "grab" }} />
         )}
       </div>
+      {scaffoldPending && (
+        <ScaffoldConfirm
+          clearPatterns={scaffoldPending.clearPatterns}
+          files={scaffoldPending.files}
+          onConfirm={handleScaffoldConfirm}
+          onCancel={handleScaffoldCancel}
+        />
+      )}
     </div>
   );
 }

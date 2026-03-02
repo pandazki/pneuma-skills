@@ -52,3 +52,11 @@ export interface FileContent {
   path: string;
   content: string;
 }
+
+/** A significant user action performed in the viewer (recorded for CC context injection). */
+export interface UserAction {
+  timestamp: number;
+  actionId: string;       // e.g. "scaffold", "navigate-to", "clear"
+  description: string;    // human-readable, e.g. "Initialized workspace with 5 slides"
+  params?: Record<string, unknown>;
+}

@@ -102,18 +102,20 @@ If the user's workspace has no `theme.css`, create one. Reference `{SKILL_PATH}/
 
 ### Phase 3: Scaffold All Slides
 
-**Create the deck skeleton first** so the user can immediately see the full structure in the live preview:
+**Use the scaffold viewer action** to create the deck skeleton instantly. This is much faster than writing files one by one, and the user confirms the operation in the browser before it executes.
 
-1. **Create all empty slide files** — For each slide in the outline, write a minimal placeholder to `slides/slide-XX.html`:
-   ```html
-   <div class="slide slide-title">
-     <h1>Slide Title from Outline</h1>
-   </div>
+1. **Invoke scaffold** via the viewer action API (see Viewer API → Scaffold section in CLAUDE.md):
+   ```bash
+   curl -s -X POST http://localhost:PORT/api/viewer/action \
+     -H 'Content-Type: application/json' \
+     -d '{"actionId":"scaffold","params":{"title":"DECK TITLE","slides":"[{\"title\":\"Slide 1\"},{\"title\":\"Slide 2\"}]"}}'
    ```
-2. **Update manifest.json once** — Add all slide entries with their titles in the correct order
-3. **Update theme.css** — Set up the theme before filling content
+   The browser will show a confirmation dialog. Once the user confirms, all slide placeholder files and manifest.json are created instantly.
+2. **Update theme.css** — Set up the theme before filling content
 
 Now the viewer shows the full deck structure. The user can browse all slides and see the outline taking shape.
+
+> **Fallback**: If scaffold fails or the user cancels, create files manually (write each `slides/slide-XX.html` + update `manifest.json`).
 
 ### Phase 4: Fill Content
 

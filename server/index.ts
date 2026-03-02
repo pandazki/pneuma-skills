@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { join, resolve, relative, basename, extname } from "node:path";
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, unlinkSync, mkdirSync } from "node:fs";
+import { join, resolve, relative, basename, extname, dirname } from "node:path";
 import { execSync } from "node:child_process";
 import { WsBridge } from "./ws-bridge.js";
 import type { SocketData } from "./ws-bridge.js";
@@ -67,6 +67,58 @@ export function startServer(options: ServerOptions) {
       }
       const result = await wsBridge.dispatchViewerAction(body.actionId, body.params);
       return c.json(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ success: false, message }, 500);
+    }
+  });
+
+  // ── Workspace Scaffold API ───────────────────────────────────────────
+  app.post("/api/workspace/scaffold", async (c) => {
+    try {
+      const body = await c.req.json<{ clear?: string[]; files: { path: string; content: string }[] }>();
+      if (!Array.isArray(body.files)) {
+        return c.json({ success: false, message: "files array is required" }, 400);
+      }
+
+      // Validate all paths before performing any mutations
+      for (const f of body.files) {
+        if (!f.path || f.path.includes("..") || f.path.startsWith("/")) {
+          return c.json({ success: false, message: `Invalid path: ${f.path}` }, 400);
+        }
+        const abs = join(workspace, f.path);
+        if (!abs.startsWith(workspace)) {
+          return c.json({ success: false, message: `Path escapes workspace: ${f.path}` }, 403);
+        }
+      }
+
+      // 1. Delete files matching clear globs
+      let filesDeleted = 0;
+      if (Array.isArray(body.clear)) {
+        for (const pattern of body.clear) {
+          try {
+            const matches = new Bun.Glob(pattern).scanSync({ cwd: workspace, absolute: false });
+            for (const relPath of matches) {
+              const absPath = join(workspace, relPath);
+              if (absPath.startsWith(workspace) && existsSync(absPath)) {
+                unlinkSync(absPath);
+                filesDeleted++;
+              }
+            }
+          } catch {
+            // skip invalid globs
+          }
+        }
+      }
+
+      // 2. Write files
+      for (const f of body.files) {
+        const absPath = join(workspace, f.path);
+        mkdirSync(dirname(absPath), { recursive: true });
+        writeFileSync(absPath, f.content, "utf-8");
+      }
+
+      return c.json({ success: true, filesWritten: body.files.length, filesDeleted });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       return c.json({ success: false, message }, 500);

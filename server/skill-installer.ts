@@ -136,6 +136,30 @@ export function generateViewerApiSection(
     hasContent = true;
   }
 
+  // Scaffold
+  if (viewerApi.scaffold) {
+    const sc = viewerApi.scaffold;
+    lines.push("### Scaffold");
+    lines.push("");
+    lines.push(`${sc.description} **Requires user confirmation in browser.**`);
+    lines.push("");
+    lines.push("Invoke via the viewer action API:");
+    lines.push(`\`curl -s -X POST http://localhost:${port}/api/viewer/action -H 'Content-Type: application/json' -d '{\"actionId\":\"scaffold\",\"params\":{...}}'\``);
+    lines.push("");
+    const paramEntries = Object.entries(sc.params);
+    if (paramEntries.length > 0) {
+      lines.push("| Param | Type | Required | Description |");
+      lines.push("|-------|------|----------|-------------|");
+      for (const [name, p] of paramEntries) {
+        lines.push(`| \`${name}\` | ${p.type} | ${p.required ? "yes" : "no"} | ${p.description} |`);
+      }
+      lines.push("");
+    }
+    lines.push(`Clears: ${sc.clearPatterns.map((p) => `\`${p}\``).join(", ")}`);
+    lines.push("");
+    hasContent = true;
+  }
+
   if (!hasContent) return "";
 
   // Viewer context format description (prepend after header)
@@ -145,6 +169,12 @@ export function generateViewerApiSection(
     "Each user message may be prefixed with a `<viewer-context>` block.",
     "It describes what the user is currently seeing — the active file, viewport position, and selected elements.",
     'Use this to resolve references like "this page", "here", "this section" in user messages.',
+    "",
+    "### User Actions",
+    "",
+    "Messages may include a `<user-actions>` block listing significant actions",
+    "the user performed in the viewer since the last message.",
+    "Use this to understand workspace state changes that happened outside of your edits.",
     "",
   ];
   lines.splice(2, 0, ...contextLines);

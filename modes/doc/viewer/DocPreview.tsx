@@ -16,6 +16,8 @@ import type { ViewerPreviewProps, ViewerSelectionContext } from "../../../core/t
 // v1.0: DocPreview 仍引用 store 来控制 previewMode toggle。
 // 这是一个务实的耦合，未来可通过 onModeChange callback 解耦。
 import { useStore } from "../../../src/store.js";
+import { generateDocScaffold, type DocFileSpec, type ScaffoldFile } from "./scaffold.js";
+import ScaffoldConfirm from "../../../src/components/ScaffoldConfirm.js";
 
 type PreviewTheme = "dark" | "light";
 
@@ -185,14 +187,95 @@ export default function DocPreview({
 }: ViewerPreviewProps) {
   // v1.0: setPreviewMode 仍通过 store 控制 (toolbar toggle)
   const setPreviewMode = useStore((s) => s.setPreviewMode);
+  const pushUserAction = useStore((s) => s.pushUserAction);
+
+  // Scaffold state
+  const [scaffoldPending, setScaffoldPending] = useState<{
+    files: ScaffoldFile[];
+    clearPatterns: string[];
+    resolve: (result: { success: boolean; message?: string }) => void;
+    source: "agent" | "user";
+  } | null>(null);
+
+  const executeScaffold = useCallback(async (
+    scaffoldFiles: ScaffoldFile[],
+    clearPatterns: string[],
+  ): Promise<{ success: boolean; message?: string }> => {
+    const baseUrl = import.meta.env.DEV ? "http://localhost:17007" : "";
+    try {
+      const res = await fetch(`${baseUrl}/api/workspace/scaffold`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clear: clearPatterns, files: scaffoldFiles }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        return { success: true, message: `Created ${data.filesWritten} files` };
+      }
+      return { success: false, message: data.message || "Scaffold failed" };
+    } catch (err) {
+      return { success: false, message: err instanceof Error ? err.message : "Network error" };
+    }
+  }, []);
+
+  const handleScaffoldConfirm = useCallback(async () => {
+    if (!scaffoldPending) return;
+    const { files: sFiles, clearPatterns, resolve, source } = scaffoldPending;
+    setScaffoldPending(null);
+    const result = await executeScaffold(sFiles, clearPatterns);
+    resolve(result);
+    if (result.success && source === "user") {
+      pushUserAction({
+        timestamp: Date.now(),
+        actionId: "scaffold",
+        description: `Initialized workspace with ${sFiles.length} markdown files`,
+      });
+    }
+  }, [scaffoldPending, executeScaffold, pushUserAction]);
+
+  const handleScaffoldCancel = useCallback(() => {
+    if (!scaffoldPending) return;
+    scaffoldPending.resolve({ success: false, message: "Cancelled by user" });
+    setScaffoldPending(null);
+  }, [scaffoldPending]);
 
   // Handle viewer action requests from agent
   useEffect(() => {
     if (!actionRequest) return;
-    onActionResult?.(actionRequest.requestId, {
-      success: false,
-      message: `Unknown action: ${actionRequest.actionId}`,
-    });
+
+    switch (actionRequest.actionId) {
+      case "scaffold": {
+        const filesParam = actionRequest.params?.files as string | undefined;
+        let fileSpecs: DocFileSpec[] | undefined;
+        if (filesParam) {
+          try {
+            fileSpecs = JSON.parse(filesParam);
+          } catch {
+            onActionResult?.(actionRequest.requestId, {
+              success: false,
+              message: "files param must be valid JSON array",
+            });
+            return;
+          }
+        }
+        const scaffoldFiles = generateDocScaffold(fileSpecs);
+        const reqId = actionRequest.requestId;
+        setScaffoldPending({
+          files: scaffoldFiles,
+          clearPatterns: ["*.md", "**/*.md"],
+          source: "agent",
+          resolve: (result) => {
+            onActionResult?.(reqId, result);
+          },
+        });
+        break;
+      }
+      default:
+        onActionResult?.(actionRequest.requestId, {
+          success: false,
+          message: `Unknown action: ${actionRequest.actionId}`,
+        });
+    }
   }, [actionRequest]);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -440,6 +523,14 @@ export default function DocPreview({
             </div>
           ))}
         </div>
+      )}
+      {scaffoldPending && (
+        <ScaffoldConfirm
+          clearPatterns={scaffoldPending.clearPatterns}
+          files={scaffoldPending.files}
+          onConfirm={handleScaffoldConfirm}
+          onCancel={handleScaffoldCancel}
+        />
       )}
     </div>
   );

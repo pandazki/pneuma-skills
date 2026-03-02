@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { SessionState, PermissionRequest, ChatMessage, FileContent, SelectionContext, ContentBlock } from "./types.js";
+import type { SessionState, PermissionRequest, ChatMessage, FileContent, SelectionContext, ContentBlock, UserAction } from "./types.js";
 import type { ViewerContract, WorkspaceItem, ViewerActionRequest } from "../core/types/viewer-contract.js";
 
 export interface Activity {
@@ -87,6 +87,9 @@ interface AppState {
   workspaceItems: WorkspaceItem[];
   actionRequest: ViewerActionRequest | null;
 
+  // User action events (for CC context injection)
+  userActions: UserAction[];
+
   // Actions — session
   setSession: (session: SessionState) => void;
   updateSession: (updates: Partial<SessionState>) => void;
@@ -149,6 +152,10 @@ interface AppState {
 
   // Actions — viewer actions
   setActionRequest: (req: ViewerActionRequest | null) => void;
+
+  // Actions — user actions
+  pushUserAction: (action: UserAction) => void;
+  drainUserActions: () => UserAction[];
 
   // Actions — content
   setFiles: (files: FileContent[]) => void;
@@ -233,6 +240,7 @@ export const useStore = create<AppState>((set) => ({
   debugMode: false,
   workspaceItems: [],
   actionRequest: null,
+  userActions: [],
 
   setSession: (session) => set({ session }),
   updateSession: (updates) =>
@@ -320,6 +328,13 @@ export const useStore = create<AppState>((set) => ({
   setDebugMode: (debugMode) => set({ debugMode }),
 
   setActionRequest: (actionRequest) => set({ actionRequest }),
+
+  pushUserAction: (action) => set((s) => ({ userActions: [...s.userActions, action] })),
+  drainUserActions: (): UserAction[] => {
+    const actions = useStore.getState().userActions;
+    useStore.setState({ userActions: [] });
+    return actions;
+  },
 
   setFiles: (files) =>
     set((s) => {

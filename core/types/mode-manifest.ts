@@ -111,6 +111,12 @@ export interface ViewerApiConfig {
     params?: Record<string, { type: "string" | "number" | "boolean"; description: string; required?: boolean }>;
     description?: string;
   }>;
+  /** Scaffold — workspace initialization/reset capability. Requires user confirmation in browser. */
+  scaffold?: {
+    description: string;
+    params: Record<string, { type: "string" | "number" | "boolean"; description: string; required?: boolean }>;
+    clearPatterns: string[];
+  };
 }
 
 /** Mode 的完整声明式描述 */
