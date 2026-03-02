@@ -7,7 +7,7 @@
 
 import type { ModeDefinition } from "../../core/types/mode-definition.js";
 import type { ViewerSelectionContext, ViewerFileContent } from "../../core/types/viewer-contract.js";
-import DrawPreview from "./components/DrawPreview.js";
+import DrawPreview from "./viewer/DrawPreview.js";
 import drawManifest from "./manifest.js";
 
 const drawMode: ModeDefinition = {

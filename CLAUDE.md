@@ -63,17 +63,17 @@ pneuma-skills/
 │   ├── doc/                   # Doc Mode — markdown editing
 │   │   ├── manifest.ts        #   ModeManifest v1.0.0
 │   │   ├── pneuma-mode.ts     #   ModeDefinition (manifest + DocPreview)
-│   │   ├── components/DocPreview.tsx  # Markdown preview with select/edit modes
+│   │   ├── viewer/DocPreview.tsx  # Markdown preview with select/edit modes
 │   │   └── skill/SKILL.md     #   Skill prompt for Claude Code
 │   ├── slide/                 # Slide Mode — presentation editing
 │   │   ├── manifest.ts        #   ModeManifest v1.2.0 (with init params)
 │   │   ├── pneuma-mode.ts     #   ModeDefinition (manifest + SlidePreview)
-│   │   ├── components/SlidePreview.tsx  # Slide carousel with iframe preview
+│   │   ├── viewer/SlidePreview.tsx  # Slide carousel with iframe preview
 │   │   └── skill/             #   Skill package (SKILL.md + design docs + scripts)
 │   └── draw/                  # Draw Mode — Excalidraw whiteboard
 │       ├── manifest.ts        #   ModeManifest
 │       ├── pneuma-mode.ts     #   ModeDefinition (manifest + DrawPreview)
-│       ├── components/DrawPreview.tsx  # Excalidraw editor
+│       ├── viewer/DrawPreview.tsx  # Excalidraw editor
 │       └── skill/SKILL.md     #   Skill prompt for Claude Code
 ├── backends/
 │   └── claude-code/
@@ -168,7 +168,7 @@ On startup, skills are copied from `modes/<mode>/skill/` to `<workspace>/.claude
 - **Contract-first**: changes to Mode/Viewer/Agent contracts require updating types in `core/types/` and corresponding tests in `core/__tests__/`
 - **No hardcoded mode knowledge** in server or CLI — everything driven by ModeManifest
 - Frontend state via **Zustand** (single store in `src/store.ts`)
-- Mode-specific React components live in `modes/<mode>/components/`
+- Mode-specific viewer components live in `modes/<mode>/viewer/`
 
 ## Version Bump Checklist
 

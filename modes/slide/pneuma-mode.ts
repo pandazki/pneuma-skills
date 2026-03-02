@@ -10,7 +10,7 @@ import type {
   ViewerSelectionContext,
   ViewerFileContent,
 } from "../../core/types/viewer-contract.js";
-import SlidePreview from "./components/SlidePreview.js";
+import SlidePreview from "./viewer/SlidePreview.js";
 import slideManifest from "./manifest.js";
 
 const slideMode: ModeDefinition = {

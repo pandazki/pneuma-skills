@@ -7,7 +7,7 @@
 
 import type { ModeDefinition } from "../../core/types/mode-definition.js";
 import type { ViewerSelectionContext, ViewerFileContent } from "../../core/types/viewer-contract.js";
-import DocPreview from "./components/DocPreview.js";
+import DocPreview from "./viewer/DocPreview.js";
 import docManifest from "./manifest.js";
 
 const docMode: ModeDefinition = {
