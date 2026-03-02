@@ -4,6 +4,14 @@
   "type": "module",
   "description": "Framework for Code Agents to do WYSIWYG editing on HTML-based content",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pandazki/pneuma-skills.git"
+  },
+  "homepage": "https://github.com/pandazki/pneuma-skills#readme",
+  "bugs": {
+    "url": "https://github.com/pandazki/pneuma-skills/issues"
+  },
   "bin": {
     "pneuma-skills": "./bin/pneuma.ts"
   },
