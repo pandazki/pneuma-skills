@@ -65,7 +65,7 @@ jobs:
           VERSION: ${{ needs.check-version.outputs.version }}
         run: |
           BODY=$(awk -v ver="## [${VERSION}]" '
-            $0 ~ ver { found=1; next }
+            index($0, ver) { found=1; next }
             found && /^## \[/ { exit }
             found { print }
           ' CHANGELOG.md)
