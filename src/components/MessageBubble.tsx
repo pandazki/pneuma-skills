@@ -47,11 +47,14 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
 
   if (message.role === "user") {
     const sel = message.selectionContext;
+    const notif = message.viewerNotification;
     const imgs = message.images;
+    const hasText = message.content.trim().length > 0;
     return (
       <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
         <div className="max-w-[85%] rounded-[14px] rounded-br-[4px] bg-cc-user-bubble text-cc-fg overflow-hidden">
           {sel ? <SelectionCard sel={sel} interactive /> : null}
+          {notif ? <ViewerNotificationCard notification={notif} /> : null}
           {imgs && imgs.length > 0 && (
             <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
               {imgs.map((img, i) => (
@@ -64,11 +67,13 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
               ))}
             </div>
           )}
-          <div className="px-3 py-2.5">
-            <div className="text-[13px] leading-relaxed break-words">
-              <MarkdownContent text={message.content} />
+          {hasText && (
+            <div className="px-3 py-2.5">
+              <div className="text-[13px] leading-relaxed break-words">
+                <MarkdownContent text={message.content} />
+              </div>
             </div>
-          </div>
+          )}
           {message.debugPayload && <DebugPayloadButton payload={message.debugPayload} />}
         </div>
       </div>
@@ -138,6 +143,35 @@ function SelectionCard({ sel, interactive }: { sel: SelectionContext; interactiv
             <span className="text-cc-muted font-normal ml-1.5">in {sel.file}</span>
           </div>
           <div className="text-cc-muted mt-0.5 break-words leading-snug">"{preview}"</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Viewer Notification Card ────────────────────────────────────────────
+
+function ViewerNotificationCard({ notification }: { notification: NonNullable<ChatMessage["viewerNotification"]> }) {
+  const filesLabel = notification.files?.length
+    ? notification.files.join(", ")
+    : undefined;
+
+  return (
+    <div className="px-3 pt-2.5 pb-1.5 border-b border-cc-border/40 bg-cc-primary/5">
+      <div className="flex items-start gap-2 text-xs">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-primary shrink-0 mt-0.5">
+          <circle cx="8" cy="8" r="6" />
+          <circle cx="8" cy="8" r="2.5" />
+          <path d="M8 2v1M8 13v1M2 8h1M13 8h1" strokeLinecap="round" />
+        </svg>
+        <div className="min-w-0">
+          <div className="text-cc-primary font-medium">
+            {notification.type}
+            {filesLabel && (
+              <span className="text-cc-muted font-normal ml-1.5">{filesLabel}</span>
+            )}
+          </div>
+          <div className="text-cc-muted mt-0.5 break-words leading-snug">{notification.summary}</div>
         </div>
       </div>
     </div>

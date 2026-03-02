@@ -46,6 +46,8 @@ export interface ChatMessage {
   images?: { media_type: string; data: string }[];
   /** Debug mode: enriched content + images actually sent to CLI */
   debugPayload?: { enrichedContent: string; images?: { media_type: string; data: string }[] };
+  /** Viewer-initiated notification sent to agent (shown as context card in user bubble) */
+  viewerNotification?: { type: string; summary: string; files?: string[] };
 }
 
 export interface FileContent {

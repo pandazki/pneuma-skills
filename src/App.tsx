@@ -5,9 +5,9 @@ import ChatPanel from "./components/ChatPanel.js";
 import DiffPanel from "./components/DiffPanel.js";
 import ProcessPanel from "./components/ProcessPanel.js";
 import ContextPanel from "./components/ContextPanel.js";
-import { useStore } from "./store.js";
+import { useStore, nextId } from "./store.js";
 import type { SelectionType } from "./types.js";
-import { connect } from "./ws.js";
+import { connect, sendViewerNotification } from "./ws.js";
 import { loadMode, registerExternalMode } from "../core/mode-loader.js";
 import type { ViewerPreviewProps } from "../core/types/viewer-contract.js";
 
@@ -112,6 +112,10 @@ function useViewerProps(): ViewerPreviewProps {
       });
       setActionRequest(null);
     },
+    onNotifyAgent: (notification) => {
+      // Queue — will be flushed when CC goes idle (see useFlushViewerNotification)
+      useStore.getState().setPendingViewerNotification(notification);
+    },
   };
 }
 
@@ -191,6 +195,39 @@ export default function App() {
       .then((d) => useStore.getState().setGitAvailable(d.available))
       .catch(() => useStore.getState().setGitAvailable(false));
   }, []);
+
+  // Flush queued viewer notification when CC goes idle
+  const sessionStatus = useStore((s) => s.sessionStatus);
+  const pendingNotification = useStore((s) => s.pendingViewerNotification);
+  useEffect(() => {
+    if (sessionStatus !== "idle" || !pendingNotification) return;
+    const store = useStore.getState();
+    store.setPendingViewerNotification(null);
+
+    // Send to server
+    sendViewerNotification(pendingNotification);
+
+    // Parse affected files from notification message
+    const fileMatches = [...pendingNotification.message.matchAll(/\(([^)]+\.html)\)/g)];
+    const affectedFiles = fileMatches.map((m) => m[1]);
+
+    // Show as user-side bubble with context card
+    const msg: import("./types.js").ChatMessage = {
+      id: nextId(),
+      role: "user",
+      content: "",
+      timestamp: Date.now(),
+      viewerNotification: {
+        type: pendingNotification.type,
+        summary: pendingNotification.summary || pendingNotification.type,
+        files: affectedFiles.length > 0 ? affectedFiles : undefined,
+      },
+    };
+    if (store.debugMode) {
+      msg.debugPayload = { enrichedContent: pendingNotification.message };
+    }
+    store.appendMessage(msg);
+  }, [sessionStatus, pendingNotification]);
 
   const viewerProps = useViewerProps();
 

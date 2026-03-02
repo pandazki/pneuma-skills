@@ -90,6 +90,9 @@ interface AppState {
   // User action events (for CC context injection)
   userActions: UserAction[];
 
+  // Queued viewer notification (sent when CC idle)
+  pendingViewerNotification: { type: string; message: string; severity: "info" | "warning"; summary?: string } | null;
+
   // Actions — session
   setSession: (session: SessionState) => void;
   updateSession: (updates: Partial<SessionState>) => void;
@@ -156,6 +159,9 @@ interface AppState {
   // Actions — user actions
   pushUserAction: (action: UserAction) => void;
   drainUserActions: () => UserAction[];
+
+  // Actions — viewer notification queue
+  setPendingViewerNotification: (n: { type: string; message: string; severity: "info" | "warning" } | null) => void;
 
   // Actions — content
   setFiles: (files: FileContent[]) => void;
@@ -241,6 +247,7 @@ export const useStore = create<AppState>((set) => ({
   workspaceItems: [],
   actionRequest: null,
   userActions: [],
+  pendingViewerNotification: null,
 
   setSession: (session) => set({ session }),
   updateSession: (updates) =>
@@ -335,6 +342,8 @@ export const useStore = create<AppState>((set) => ({
     useStore.setState({ userActions: [] });
     return actions;
   },
+
+  setPendingViewerNotification: (n) => set({ pendingViewerNotification: n }),
 
   setFiles: (files) =>
     set((s) => {

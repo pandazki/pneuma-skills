@@ -762,3 +762,9 @@ export function sendViewerActionResponse(
 ) {
   send({ type: "viewer_action_response", request_id: requestId, result });
 }
+
+export function sendViewerNotification(
+  notification: { type: string; message: string; severity: "info" | "warning" },
+) {
+  send({ type: "viewer_notification", notification });
+}

@@ -30,6 +30,7 @@ function makeDefaultSession(id = "test-session"): Session {
     processedClientMessageIds: [],
     processedClientMessageIdSet: new Set(),
     pendingViewerActions: new Map(),
+    cliIdle: true,
   };
 }
 

@@ -270,7 +270,8 @@ export type BrowserOutgoingMessage =
   | { type: "session_ack"; last_seq: number }
   | { type: "interrupt"; client_msg_id?: string }
   | { type: "set_model"; model: string }
-  | { type: "viewer_action_response"; request_id: string; result: { success: boolean; message?: string; data?: Record<string, unknown> } };
+  | { type: "viewer_action_response"; request_id: string; result: { success: boolean; message?: string; data?: Record<string, unknown> } }
+  | { type: "viewer_notification"; notification: { type: string; message: string; severity: "info" | "warning" } };
 
 /** Messages the bridge sends to the browser */
 export type BrowserIncomingMessageBase =

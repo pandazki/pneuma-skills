@@ -335,6 +335,72 @@ const SELECTION_SCRIPT = `<script>
     if (e.data.type === 'pneuma:clearHighlight') {
       clearSelected();
     }
+    if (e.data.type === 'pneuma:checkContentFit') {
+      var vw = e.data.viewportW || window.innerWidth || document.documentElement.clientWidth;
+      var vh = e.data.viewportH || window.innerHeight || document.documentElement.clientHeight;
+      var issues = [];
+      var bodyChildren = Array.from(document.body.children);
+      var flowChildren = bodyChildren.filter(function(child) {
+        var pos = window.getComputedStyle(child).position;
+        return pos !== 'absolute' && pos !== 'fixed';
+      });
+      for (var ci = 0; ci < flowChildren.length; ci++) {
+        var el = flowChildren[ci];
+        if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
+        var tag = el.tagName.toLowerCase();
+        var cls = (typeof el.className === 'string' ? el.className : '').trim();
+        var id = cls ? '<' + tag + '.' + cls.split(' ')[0] + '>' : '<' + tag + '>';
+        var rect = el.getBoundingClientRect();
+        // Check 1: element itself overflows viewport (no overflow:hidden on it)
+        if (rect.right > vw + 1 || rect.bottom > vh + 1) {
+          issues.push(id + ' overflows viewport: right=' + Math.round(rect.right) + 'px (max ' + vw + '), bottom=' + Math.round(rect.bottom) + 'px (max ' + vh + ')');
+        }
+        // Check 2: scrollable overflow — content clipped by overflow:hidden
+        // scrollHeight/scrollWidth reveal the natural content size even when clipped.
+        // Absolute/fixed children can inflate scrollHeight (e.g. decorative elements with
+        // negative offsets), so temporarily hide them to measure flow-only overflow.
+        var absHidden = [];
+        for (var ak = 0; ak < el.children.length; ak++) {
+          var absChild = el.children[ak];
+          var absPos = window.getComputedStyle(absChild).position;
+          if (absPos === 'absolute' || absPos === 'fixed') {
+            absHidden.push({ el: absChild, prev: absChild.style.display });
+            absChild.style.display = 'none';
+          }
+        }
+        var overflowH = el.scrollHeight - el.clientHeight;
+        var overflowW = el.scrollWidth - el.clientWidth;
+        for (var ar = 0; ar < absHidden.length; ar++) {
+          absHidden[ar].el.style.display = absHidden[ar].prev;
+        }
+        if (overflowH > 1) {
+          issues.push(id + ' content clipped vertically: scrollHeight=' + el.scrollHeight + 'px, clientHeight=' + el.clientHeight + 'px (overflow by ' + overflowH + 'px)');
+        }
+        if (overflowW > 1) {
+          issues.push(id + ' content clipped horizontally: scrollWidth=' + el.scrollWidth + 'px, clientWidth=' + el.clientWidth + 'px (overflow by ' + overflowW + 'px)');
+        }
+        // Check 3: children overflowing parent (one level deep, skip absolute/fixed)
+        for (var cj = 0; cj < el.children.length; cj++) {
+          var child = el.children[cj];
+          if (child.tagName === 'SCRIPT' || child.tagName === 'STYLE') continue;
+          var childPos = window.getComputedStyle(child).position;
+          if (childPos === 'absolute' || childPos === 'fixed') continue;
+          var childOver = child.scrollHeight - child.clientHeight;
+          if (childOver > 1) {
+            var ctag = child.tagName.toLowerCase();
+            var ccls = (typeof child.className === 'string' ? child.className : '').trim();
+            var cid = ccls ? '<' + ctag + '.' + ccls.split(' ')[0] + '>' : '<' + ctag + '>';
+            issues.push(cid + ' content clipped: scrollHeight=' + child.scrollHeight + 'px, clientHeight=' + child.clientHeight + 'px (overflow by ' + childOver + 'px)');
+          }
+        }
+      }
+      window.parent.postMessage({
+        type: 'pneuma:contentFitResult',
+        requestId: e.data.requestId,
+        fits: issues.length === 0,
+        issues: issues
+      }, '*');
+    }
   });
 
   document.addEventListener('mouseover', function(e) {
@@ -477,6 +543,7 @@ export default function SlidePreview({
   onActiveFileChange,
   actionRequest,
   onActionResult,
+  onNotifyAgent,
 }: ViewerPreviewProps) {
   const setPreviewMode = useStore((s) => s.setPreviewMode);
   const pushUserAction = useStore((s) => s.pushUserAction);
@@ -486,6 +553,7 @@ export default function SlidePreview({
   const [isGridView, setIsGridView] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(100); // percentage
   const fullscreenRef = useRef<HTMLDivElement>(null);
+  const iframeRefsRef = useRef<Map<string, HTMLIFrameElement>>(new Map());
 
   // Scaffold state
   const [scaffoldPending, setScaffoldPending] = useState<{
@@ -667,6 +735,106 @@ export default function SlidePreview({
         });
         break;
       }
+      case "checkContentFit": {
+        const slidesParam = actionRequest.params?.slides as string | undefined;
+        let targetIndices: number[];
+        if (slidesParam) {
+          try {
+            const oneIndexed: number[] = JSON.parse(slidesParam);
+            targetIndices = oneIndexed.map((n) => n - 1).filter((i) => i >= 0 && i < slides.length);
+          } catch {
+            onActionResult?.(actionRequest.requestId, {
+              success: false,
+              message: "slides param must be a JSON array of 1-indexed slide numbers",
+            });
+            break;
+          }
+        } else {
+          targetIndices = slides.map((_, i) => i);
+        }
+
+        if (targetIndices.length === 0) {
+          onActionResult?.(actionRequest.requestId, {
+            success: true,
+            data: { results: [], allFit: true },
+          });
+          break;
+        }
+
+        const refs = iframeRefsRef.current;
+        const pending = new Map<string, number>(); // requestId → slide 1-indexed
+        const results: { slide: number; file: string; fits: boolean | null; issues: string[] }[] = [];
+        let responded = false;
+        const reqId = actionRequest.requestId;
+
+        for (const idx of targetIndices) {
+          const slide = slides[idx];
+          const iframe = refs.get(slide.file);
+          if (!iframe?.contentWindow) {
+            results.push({ slide: idx + 1, file: slide.file, fits: null, issues: ["Not rendered in pool"] });
+            continue;
+          }
+          const subReqId = `fit-${idx}-${Date.now()}`;
+          pending.set(subReqId, idx + 1);
+          try {
+            iframe.contentWindow.postMessage({
+              type: "pneuma:checkContentFit",
+              requestId: subReqId,
+              viewportW: VIRTUAL_W,
+              viewportH: VIRTUAL_H,
+            }, "*");
+          } catch {
+            pending.delete(subReqId);
+            results.push({ slide: idx + 1, file: slide.file, fits: null, issues: ["Failed to send message to iframe"] });
+          }
+        }
+
+        if (pending.size === 0) {
+          const allFit = results.every((r) => r.fits === true || r.fits === null);
+          onActionResult?.(reqId, { success: true, data: { results, allFit } });
+          break;
+        }
+
+        const handleResult = (e: MessageEvent) => {
+          if (responded || e.data?.type !== "pneuma:contentFitResult") return;
+          const subId = e.data.requestId as string;
+          if (!pending.has(subId)) return;
+          const slideNum = pending.get(subId)!;
+          pending.delete(subId);
+          const slideFile = slides[slideNum - 1]?.file || "";
+          results.push({
+            slide: slideNum,
+            file: slideFile,
+            fits: !!e.data.fits,
+            issues: e.data.issues || [],
+          });
+          if (pending.size === 0) {
+            responded = true;
+            window.removeEventListener("message", handleResult);
+            clearTimeout(timer);
+            results.sort((a, b) => a.slide - b.slide);
+            const allFit = results.every((r) => r.fits === true);
+            onActionResult?.(reqId, { success: true, data: { results, allFit } });
+          }
+        };
+
+        window.addEventListener("message", handleResult);
+
+        const timer = setTimeout(() => {
+          if (responded) return;
+          responded = true;
+          window.removeEventListener("message", handleResult);
+          for (const [, slideNum] of pending) {
+            const slideFile = slides[slideNum - 1]?.file || "";
+            results.push({ slide: slideNum, file: slideFile, fits: null, issues: ["Timeout waiting for iframe response"] });
+          }
+          results.sort((a, b) => a.slide - b.slide);
+          const allFit = results.every((r) => r.fits === true);
+          onActionResult?.(reqId, { success: true, data: { results, allFit } });
+        }, 5000);
+
+        break;
+      }
       default:
         onActionResult?.(actionRequest.requestId, {
           success: false,
@@ -711,6 +879,111 @@ export default function SlidePreview({
 
   // Capture slide thumbnails as SVG data URL images
   const thumbnailImages = useSlideThumbnails(slides, files, themeCSS, VIRTUAL_W, VIRTUAL_H);
+
+  // ── Auto content-fit check on file changes ─────────────────────────────
+  // When files change, wait for iframes to render, then check if any slide
+  // has overflowing content. Only notify agent on state transition (fit → overflow).
+  const prevOverflowRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!onNotifyAgent || slides.length === 0) return;
+
+    const timer = setTimeout(() => {
+      const refs = iframeRefsRef.current;
+      if (refs.size === 0) return;
+
+      const pending = new Map<string, { slideNum: number; file: string }>();
+      const results: { slide: number; file: string; fits: boolean; issues: string[] }[] = [];
+      let responded = false;
+
+      for (let i = 0; i < slides.length; i++) {
+        const slide = slides[i];
+        const iframe = refs.get(slide.file);
+        if (!iframe?.contentWindow) continue;
+        const subReqId = `autofit-${i}-${Date.now()}`;
+        pending.set(subReqId, { slideNum: i + 1, file: slide.file });
+        try {
+          iframe.contentWindow.postMessage({
+            type: "pneuma:checkContentFit",
+            requestId: subReqId,
+            viewportW: VIRTUAL_W,
+            viewportH: VIRTUAL_H,
+          }, "*");
+        } catch {
+          pending.delete(subReqId);
+        }
+      }
+
+      if (pending.size === 0) return;
+
+      const handleResult = (e: MessageEvent) => {
+        if (responded || e.data?.type !== "pneuma:contentFitResult") return;
+        const subId = e.data.requestId as string;
+        const info = pending.get(subId);
+        if (!info) return;
+        pending.delete(subId);
+        results.push({
+          slide: info.slideNum,
+          file: info.file,
+          fits: !!e.data.fits,
+          issues: e.data.issues || [],
+        });
+        if (pending.size === 0) {
+          responded = true;
+          window.removeEventListener("message", handleResult);
+          clearTimeout(timeoutTimer);
+          processAutoFitResults(results);
+        }
+      };
+
+      const processAutoFitResults = (res: typeof results) => {
+        const overflowing = new Set<string>();
+        const overflowDetails: string[] = [];
+        for (const r of res) {
+          if (!r.fits) {
+            overflowing.add(r.file);
+            overflowDetails.push(`Slide ${r.slide} (${r.file}): ${r.issues.join("; ")}`);
+          }
+        }
+
+        // Only notify on state change: new overflow slides that weren't overflowing before
+        const prevOverflow = prevOverflowRef.current;
+        const newOverflows = [...overflowing].filter((f) => !prevOverflow.has(f));
+        prevOverflowRef.current = overflowing;
+
+        if (newOverflows.length === 0) return;
+
+        const msg = [
+          `<viewer-notification type="contentFitCheck">`,
+          `Content overflow detected on ${overflowing.size} slide(s). The following slides have content that doesn't fit within the ${VIRTUAL_W}x${VIRTUAL_H} viewport:`,
+          "",
+          ...overflowDetails,
+          "",
+          `Please fix the overflowing slides so all content fits within the viewport. Reduce content, adjust font sizes, or restructure the layout.`,
+          `</viewer-notification>`,
+        ].join("\n");
+
+        // Build a clean one-liner for UI display
+        const overflowFiles = [...overflowing];
+        const summary = overflowFiles.length === 1
+          ? `${overflowFiles[0]} content overflows viewport`
+          : `${overflowFiles.length} slides overflow viewport`;
+
+        onNotifyAgent({ type: "contentFitCheck", severity: "warning", message: msg, summary });
+      };
+
+      window.addEventListener("message", handleResult);
+      const timeoutTimer = setTimeout(() => {
+        if (responded) return;
+        responded = true;
+        window.removeEventListener("message", handleResult);
+        // On timeout, process whatever we have
+        processAutoFitResults(results);
+      }, 3000);
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timer);
+  }, [files, slides, VIRTUAL_W, VIRTUAL_H, onNotifyAgent]);
 
   // Navigation
   const goToSlide = useCallback(
@@ -887,6 +1160,7 @@ export default function SlidePreview({
             buildSrcdoc={buildSrcdoc}
             findSlideContent={findSlideContent}
             highlightSelector={highlightSelector}
+            iframeRefsOut={(refs) => { iframeRefsRef.current = refs; }}
           />
         </div>
       </div>

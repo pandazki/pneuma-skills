@@ -45,6 +45,8 @@ interface SlideIframePoolProps {
   ) => string;
   /** CSS selector to highlight in the active iframe (for navigating to historical selections) */
   highlightSelector?: string | null;
+  /** Callback to expose iframe refs for postMessage communication (e.g. checkContentFit) */
+  iframeRefsOut?: (refs: Map<string, HTMLIFrameElement>) => void;
 }
 
 export default function SlideIframePool({
@@ -58,6 +60,7 @@ export default function SlideIframePool({
   buildSrcdoc,
   findSlideContent,
   highlightSelector,
+  iframeRefsOut,
 }: SlideIframePoolProps) {
   // Set of slide.file keys currently in the pool
   const [pool, setPool] = useState<Set<string>>(() => {
@@ -128,6 +131,11 @@ export default function SlideIframePool({
       timers.forEach(clearTimeout);
     };
   }, [activeIndex, slides]);
+
+  // ── Expose iframe refs to parent ────────────────────────────────────────────
+  useEffect(() => {
+    iframeRefsOut?.(iframeRefs.current);
+  });
 
   // ── Send selectMode postMessage to all loaded iframes ─────────────────────
   useEffect(() => {

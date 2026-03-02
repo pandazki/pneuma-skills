@@ -102,6 +102,20 @@ export interface ViewerActionResult {
   data?: Record<string, unknown>;
 }
 
+// ── Viewer Notification (Viewer → Agent proactive channel) ────────────────
+
+/** Viewer 主动向 Agent 发送的通知 */
+export interface ViewerNotification {
+  /** 通知类型标识，如 "contentFitCheck" */
+  type: string;
+  /** 通知内容，会作为系统消息发送给 Agent */
+  message: string;
+  /** 严重级别 — info 仅记录，warning 发送给 agent */
+  severity: "info" | "warning";
+  /** 面向用户的简短摘要（一句话，用于 UI 显示） */
+  summary?: string;
+}
+
 // ── Preview Props & Contract ───────────────────────────────────────────────
 
 /** 预览组件的 Props */
@@ -130,6 +144,8 @@ export interface ViewerPreviewProps {
   onActionResult?: (requestId: string, result: ViewerActionResult) => void;
   /** 视窗变更回调 — Viewer 上报当前可见范围 */
   onViewportChange?: (viewport: { file: string; startLine: number; endLine: number; heading?: string }) => void;
+  /** Viewer 主动向 Agent 发送通知（如自检结果、状态变更等） */
+  onNotifyAgent?: (notification: ViewerNotification) => void;
 }
 
 /** 内容查看器的 UI 契约 */
