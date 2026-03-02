@@ -115,6 +115,7 @@ export default function DrawPreview({
   imageVersion,
   actionRequest,
   onActionResult,
+  onActiveFileChange,
 }: ViewerPreviewProps) {
   const setPreviewMode = useStore((s) => s.setPreviewMode);
 
@@ -159,10 +160,10 @@ export default function DrawPreview({
     currentFilePathRef.current = activeFilePath || "";
   }, [activeFilePath]);
 
-  // Notify parent of active file
+  // Notify parent of active file (without showing a selection card)
   useEffect(() => {
     if (activeFilePath) {
-      onSelect?.({ type: "viewing", content: "", file: activeFilePath } as ViewerSelectionContext);
+      onActiveFileChange?.(activeFilePath);
     }
   }, [activeFilePath]);
 
