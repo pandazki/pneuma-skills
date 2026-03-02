@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.9.0] - 2026-03-02
+
+### Added
+- Auto-update check on startup — queries npm registry for latest version, prompts to update when major/minor differs, re-executes via `bunx pneuma-skills@{version}` on confirmation (3s timeout, silent skip on network failure)
+
 ## [1.8.0] - 2026-03-02
 
 ### Changed

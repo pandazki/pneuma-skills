@@ -6,7 +6,7 @@ Pneuma Skills is an extensible delivery platform for filesystem-based Agent capa
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 1.8.0
+**Version:** 1.9.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Available Modes:** `doc` (markdown editing), `slide` (presentation editing), `draw` (Excalidraw whiteboard)
 
@@ -187,13 +187,26 @@ You are running inside Pneuma Doc Mode. A user is viewing your markdown edits li
 - Frontend state via **Zustand** (single store in `src/store.ts`)
 - Mode-specific viewer components live in `modes/<mode>/viewer/`
 
-## Version Bump Checklist
+## Release Process
+
+CI (`release.yml`) handles tagging, GitHub Release, and npm publish automatically on push to `main`.
+
+**Do NOT manually create or push git tags.** CI creates tags based on `package.json` version.
+
+### Version Bump Checklist
 
 When bumping the version, **all** of the following must be updated in the same commit:
 
 1. `package.json` — `"version"` field
 2. `CLAUDE.md` — `**Version:**` line near the top
 3. `CHANGELOG.md` — add new version section with date and changes
+
+Then commit and `git push origin main` (no `--tags`). CI will:
+1. Detect the new version has no tag
+2. Run tests + build
+3. Create git tag `v{version}`
+4. Create GitHub Release with changelog
+5. Publish to npm
 
 Follow [semver](https://semver.org/):
 - **patch** (1.3.x): bug fixes, minor UI tweaks

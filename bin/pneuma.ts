@@ -169,6 +169,43 @@ function checkBunVersion() {
   }
 }
 
+async function checkForUpdate(currentVersion: string) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    const res = await fetch("https://registry.npmjs.org/pneuma-skills/latest", {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return;
+
+    const { version: latest } = (await res.json()) as { version: string };
+    const [curMaj, curMin] = currentVersion.split(".").map(Number);
+    const [latMaj, latMin] = latest.split(".").map(Number);
+
+    // Only prompt when major or minor differs (skip patch-only differences)
+    if (curMaj === latMaj && curMin === latMin) return;
+
+    p.log.warn(`Update available: ${currentVersion} → ${latest}`);
+    const shouldUpdate = await p.confirm({
+      message: "Update to latest version?",
+    });
+    if (p.isCancel(shouldUpdate) || !shouldUpdate) return;
+
+    p.log.step(`Updating to pneuma-skills@${latest}...`);
+    const originalArgs = process.argv.slice(2);
+    const child = Bun.spawn(["bunx", `pneuma-skills@${latest}`, ...originalArgs], {
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    await child.exited;
+    process.exit(child.exitCode ?? 0);
+  } catch {
+    // Network error / timeout → silently skip
+  }
+}
+
 function checkClaudeCode() {
   const resolved = resolveBinary("claude");
   if (!resolved) {
@@ -189,6 +226,7 @@ async function main() {
   p.intro(`pneuma-skills v${pkg.version}`);
 
   checkBunVersion();
+  await checkForUpdate(pkg.version);
 
   // Snapshot subcommand — intercept before mode validation
   const rawArgs = process.argv.slice(2);
