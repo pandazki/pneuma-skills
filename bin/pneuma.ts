@@ -8,7 +8,7 @@
  * Driven by ModeManifest + AgentBackend — no hardcoded mode knowledge.
  */
 
-import { resolve, dirname, join } from "node:path";
+import { resolve, dirname, join, basename } from "node:path";
 import { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import * as p from "@clack/prompts";
 import { startServer } from "../server/index.js";
@@ -121,18 +121,22 @@ function saveConfig(workspace: string, config: Record<string, number | string>):
   writeFileSync(join(dir, "config.json"), JSON.stringify(config, null, 2));
 }
 
-async function promptInitParams(manifest: ModeManifest): Promise<Record<string, number | string>> {
+async function promptInitParams(
+  manifest: ModeManifest,
+  defaultOverrides?: Record<string, string>,
+): Promise<Record<string, number | string>> {
   const params: Record<string, number | string> = {};
   const initParams = manifest.init?.params;
   if (!initParams || initParams.length === 0) return params;
 
   p.log.step("Configuring mode parameters...");
   for (const param of initParams) {
+    const effectiveDefault = defaultOverrides?.[param.name] ?? String(param.defaultValue);
     const suffix = param.description ? ` (${param.description})` : "";
     const answer = await p.text({
       message: `${param.label}${suffix}`,
-      placeholder: String(param.defaultValue),
-      defaultValue: String(param.defaultValue),
+      placeholder: effectiveDefault,
+      defaultValue: effectiveDefault,
     });
     if (p.isCancel(answer)) {
       p.cancel("Cancelled.");
@@ -305,7 +309,17 @@ async function main() {
       resolvedParams = cached;
       p.log.step("Loaded init params from .pneuma/config.json");
     } else {
-      resolvedParams = await promptInitParams(manifest);
+      // Derive smart defaults from workspace directory name
+      const wsBasename = basename(workspace);
+      const defaultOverrides: Record<string, string> = {};
+      if (wsBasename && wsBasename !== "." && wsBasename !== "/") {
+        defaultOverrides.modeName = wsBasename;
+        defaultOverrides.displayName = wsBasename
+          .split(/[-_]/)
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(" ");
+      }
+      resolvedParams = await promptInitParams(manifest, defaultOverrides);
       saveConfig(workspace, resolvedParams);
       p.log.step("Saved init params to .pneuma/config.json");
     }
@@ -341,6 +355,25 @@ async function main() {
   }
 
   if (!skipSkillInstall) {
+    // Validate skill dependencies before install
+    if (manifest.skill.skillDependencies?.length) {
+      const missing: string[] = [];
+      for (const dep of manifest.skill.skillDependencies) {
+        if (!dep.sourceDir) {
+          missing.push(`${dep.name}: missing sourceDir`);
+        } else if (!existsSync(join(modeSourceDir, dep.sourceDir))) {
+          missing.push(`${dep.name}: ${dep.sourceDir} not found`);
+        }
+      }
+      if (missing.length > 0) {
+        p.log.error("Skill dependencies incomplete:");
+        for (const m of missing) p.log.warn(`  ${m}`);
+        p.log.info("Skill files must be bundled in the mode package before running.");
+        p.cancel("Fix the mode package and try again.");
+        process.exit(1);
+      }
+    }
+
     p.log.step("Installing skill and preparing environment...");
     installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, effectiveApiPort);
   }
@@ -393,7 +426,7 @@ async function main() {
   //    Dev mode:  backend on 17007, Vite on 17996 (user-facing)
   //    Prod mode: backend on 17996 (serves everything)
   const serverPort = effectiveApiPort;
-  const { server, wsBridge, port: actualPort } = startServer({
+  const { server, wsBridge, port: actualPort, modeMakerCleanup } = startServer({
     port: serverPort,
     workspace,
     watchPatterns: manifest.viewer.watchPatterns,
@@ -403,6 +436,8 @@ async function main() {
     ...(resolved.type !== "builtin"
       ? { externalMode: { name: resolved.name, path: resolved.path, type: resolved.type } }
       : {}),
+    projectRoot: PROJECT_ROOT,
+    modeName,
   });
 
   // 4. Launch Agent backend (driven by manifest)
@@ -424,6 +459,17 @@ async function main() {
   const existing = loadSession(workspace);
   let resuming = false;
 
+  // Build env map from envMapping (init param values → env vars for agent process)
+  const agentEnv: Record<string, string> = {};
+  if (manifest.skill.envMapping) {
+    for (const [envVar, paramName] of Object.entries(manifest.skill.envMapping)) {
+      const value = resolvedParams[paramName];
+      if (value !== undefined && String(value).trim() !== "") {
+        agentEnv[envVar] = String(value);
+      }
+    }
+  }
+
   const permissionMode = manifest.agent?.permissionMode;
   const session = backend.launch({
     cwd: workspace,
@@ -433,6 +479,7 @@ async function main() {
       sessionId: existing.sessionId,
       resumeSessionId: existing.agentSessionId,
     } : {}),
+    ...(Object.keys(agentEnv).length > 0 ? { env: agentEnv } : {}),
   });
 
   if (existing?.agentSessionId) {
@@ -515,17 +562,22 @@ async function main() {
     const VITE_PORT = 17996;
     p.log.step(`Starting Vite dev server on port ${VITE_PORT}...`);
 
-    // Pass external mode path to Vite via env var (for server.fs.allow)
+    // Pass config to Vite via env vars
     const viteEnv: Record<string, string> = {
       ...process.env as Record<string, string>,
+      // Tell frontend which port the backend API server is on
+      VITE_API_PORT: String(actualPort),
     };
     if (resolved.type !== "builtin") {
       viteEnv.PNEUMA_EXTERNAL_MODE_PATH = resolved.path;
       viteEnv.PNEUMA_EXTERNAL_MODE_NAME = resolved.name;
     }
+    if (modeName === "mode-maker") {
+      viteEnv.VITE_MODE_MAKER_WORKSPACE = workspace;
+    }
 
     viteProc = Bun.spawn(
-      ["bunx", "vite", "--port", String(VITE_PORT), "--strictPort"],
+      ["bunx", "vite", "--port", String(VITE_PORT)],
       {
         cwd: PROJECT_ROOT,
         stdout: "pipe",
@@ -534,35 +586,56 @@ async function main() {
       }
     );
 
-    const pipeViteOutput = async (stream: ReadableStream<Uint8Array>) => {
-      const reader = stream.getReader();
-      const decoder = new TextDecoder();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const text = decoder.decode(value, { stream: true });
-        for (const line of text.split("\n")) {
-          if (line.trim()) console.log(`[vite] ${line}`);
+    // Parse Vite stdout to detect the actual port (may differ if VITE_PORT is occupied)
+    let vitePortResolved = false;
+    const vitePortPromise = new Promise<number>((resolvePort) => {
+      const timeout = setTimeout(() => {
+        if (!vitePortResolved) {
+          vitePortResolved = true;
+          resolvePort(VITE_PORT);
         }
-      }
-    };
-    if (viteProc.stdout && typeof viteProc.stdout !== "number") pipeViteOutput(viteProc.stdout);
-    if (viteProc.stderr && typeof viteProc.stderr !== "number") pipeViteOutput(viteProc.stderr);
-    browserPort = VITE_PORT;
-    // Wait for Vite to start
-    await new Promise((r) => setTimeout(r, 2000));
+      }, 10_000);
+
+      const pipeAndParse = async (stream: ReadableStream<Uint8Array>) => {
+        const reader = stream.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const text = decoder.decode(value, { stream: true });
+          for (const line of text.split("\n")) {
+            if (line.trim()) console.log(`[vite] ${line}`);
+            // Vite outputs: "  ➜  Local:   http://localhost:17996/"
+            if (!vitePortResolved) {
+              const match = line.match(/Local:\s+https?:\/\/[^:]+:(\d+)/);
+              if (match) {
+                vitePortResolved = true;
+                clearTimeout(timeout);
+                resolvePort(parseInt(match[1], 10));
+              }
+            }
+          }
+        }
+      };
+      if (viteProc!.stdout && typeof viteProc!.stdout !== "number") pipeAndParse(viteProc!.stdout);
+      if (viteProc!.stderr && typeof viteProc!.stderr !== "number") pipeAndParse(viteProc!.stderr);
+    });
+    browserPort = await vitePortPromise;
   }
 
   // 7. Open browser (include mode in URL for frontend)
+  const debugParam = debug ? "&debug=1" : "";
+  const browserUrl = `http://localhost:${browserPort}?session=${session.sessionId}&mode=${modeName}${debugParam}`;
+  // Always print ready message (used by mode-maker play to detect startup)
+  console.log(`[pneuma] ready ${browserUrl}`);
+
   if (!noOpen) {
-    const debugParam = debug ? "&debug=1" : "";
-    const url = `http://localhost:${browserPort}?session=${session.sessionId}&mode=${modeName}${debugParam}`;
-    p.log.success(`Ready → ${url}`);
+    p.log.success(`Ready → ${browserUrl}`);
     try {
       const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-      Bun.spawn([opener, url], { stdout: "ignore", stderr: "ignore" });
+      Bun.spawn([opener, browserUrl], { stdout: "ignore", stderr: "ignore" });
     } catch {
-      p.log.warn(`Could not open browser. Visit: ${url}`);
+      p.log.warn(`Could not open browser. Visit: ${browserUrl}`);
     }
   }
 
@@ -574,6 +647,7 @@ async function main() {
     if (history.length > 0) {
       saveHistory(workspace, history);
     }
+    modeMakerCleanup?.();
     viteProc?.kill();
     await backend.killAll();
     server.stop(true);
