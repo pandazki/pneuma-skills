@@ -624,7 +624,7 @@ export function sendSetModel(model: string) {
   send({ type: "set_model", model });
 }
 
-export async function sendUserMessage(content: string, selection?: ElementSelection | null, images?: { media_type: string; data: string }[], annotations?: Annotation[]) {
+export async function sendUserMessage(content: string, selection?: ElementSelection | null, images?: { media_type: string; data: string }[], annotations?: Annotation[], files?: { name: string; media_type: string; data: string; size: number }[]) {
   const store = useStore.getState();
   // Add user message to local store immediately (show original text)
   const msgId = nextId();
@@ -635,6 +635,7 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
     timestamp: Date.now(),
     ...(selection ? { selectionContext: selection } : {}),
     ...(images?.length ? { images } : {}),
+    ...(files?.length ? { files: files.map((f) => ({ name: f.name, size: f.size })) } : {}),
     ...(annotations?.length ? { annotations } : {}),
   });
 
@@ -766,8 +767,9 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
       timestamp: Date.now(),
       ...(selection ? { selectionContext: selection } : {}),
       ...(images?.length ? { images } : {}),
+      ...(files?.length ? { files: files.map((f) => ({ name: f.name, size: f.size })) } : {}),
       ...(annotations?.length ? { annotations } : {}),
-      debugPayload: { enrichedContent, images: allImages.length > 0 ? allImages : undefined },
+      debugPayload: { enrichedContent, images: allImages.length > 0 ? allImages : undefined, files: files?.length ? files.map((f) => ({ name: f.name, media_type: f.media_type, size: f.size })) : undefined },
     });
   }
 
@@ -777,6 +779,9 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
   };
   if (allImages.length > 0) {
     msg.images = allImages;
+  }
+  if (files?.length) {
+    msg.files = files;
   }
   send(msg);
 }

@@ -50,6 +50,7 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
     const notif = message.viewerNotification;
     const anns = message.annotations;
     const imgs = message.images;
+    const files = message.files;
     const hasText = message.content.trim().length > 0;
     return (
       <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
@@ -66,6 +67,13 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
                   alt=""
                   className="max-w-[200px] max-h-[200px] rounded-lg object-cover border border-white/10"
                 />
+              ))}
+            </div>
+          )}
+          {files && files.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
+              {files.map((f, i) => (
+                <FileTag key={i} name={f.name} size={f.size} />
               ))}
             </div>
           )}
@@ -213,6 +221,27 @@ function ViewerNotificationCard({ notification }: { notification: NonNullable<Ch
           <div className="text-cc-muted mt-0.5 break-words leading-snug">{notification.summary}</div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── File Tag ─────────────────────────────────────────────────────────────
+
+function FileTag({ name, size }: { name: string; size: number }) {
+  const sizeStr = size < 1024
+    ? `${size} B`
+    : size < 1024 * 1024
+      ? `${Math.round(size / 1024)} KB`
+      : `${(size / (1024 * 1024)).toFixed(1)} MB`;
+
+  return (
+    <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-cc-fg/[0.06] border border-cc-border/30">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-3.5 h-3.5 text-cc-muted shrink-0">
+        <path d="M4 1.5h5l3 3v10H4z" strokeLinejoin="round" />
+        <path d="M9 1.5v3h3" strokeLinejoin="round" />
+      </svg>
+      <span className="text-xs text-cc-fg truncate max-w-[150px]">{name}</span>
+      <span className="text-[10px] text-cc-muted shrink-0">{sizeStr}</span>
     </div>
   );
 }
@@ -829,6 +858,18 @@ function DebugPayloadModal({ payload, onClose }: { payload: NonNullable<ChatMess
                     alt={`Debug image ${i + 1}`}
                     className="max-w-[300px] max-h-[200px] rounded-lg border border-cc-border object-contain bg-white"
                   />
+                ))}
+              </div>
+            </div>
+          )}
+          {payload.files && payload.files.length > 0 && (
+            <div>
+              <div className="text-xs font-medium text-cc-muted mb-1.5">
+                Attached Files ({payload.files.length})
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {payload.files.map((f, i) => (
+                  <FileTag key={i} name={f.name} size={f.size} />
                 ))}
               </div>
             </div>

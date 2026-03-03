@@ -6,11 +6,14 @@ import SlashMenu, { type SlashMenuItem } from "./SlashMenu.js";
 
 const EMPTY_STRINGS: string[] = [];
 
-interface ImageAttachment {
+interface FileAttachment {
   id: string;
+  kind: "image" | "file";
+  name: string;
   media_type: string;
-  data: string; // base64
-  preview: string; // data URL for thumbnail
+  data: string;          // base64
+  size: number;
+  preview: string | null; // data URL (image) or null (file)
 }
 
 /** Format selection info for display in the chip */
@@ -40,21 +43,21 @@ function formatSelectionLabel(sel: { type: string; content: string; level?: numb
 
 let attachmentCounter = 0;
 
-function fileToAttachment(file: File): Promise<ImageAttachment | null> {
+function fileToAttachment(file: File): Promise<FileAttachment | null> {
   return new Promise((resolve) => {
-    if (!file.type.startsWith("image/")) {
-      resolve(null);
-      return;
-    }
+    const isImage = file.type.startsWith("image/");
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
       const base64 = dataUrl.split(",")[1];
       resolve({
-        id: `img-${Date.now()}-${++attachmentCounter}`,
-        media_type: file.type,
+        id: `att-${Date.now()}-${++attachmentCounter}`,
+        kind: isImage ? "image" : "file",
+        name: file.name,
+        media_type: file.type || "application/octet-stream",
         data: base64,
-        preview: dataUrl,
+        size: file.size,
+        preview: isImage ? dataUrl : null,
       });
     };
     reader.onerror = () => resolve(null);
@@ -64,7 +67,7 @@ function fileToAttachment(file: File): Promise<ImageAttachment | null> {
 
 export default function ChatInput() {
   const [text, setText] = useState("");
-  const [images, setImages] = useState<ImageAttachment[]>([]);
+  const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashFilter, setSlashFilter] = useState("");
   const [slashIndex, setSlashIndex] = useState(0);
@@ -121,13 +124,18 @@ export default function ChatInput() {
   const handleSubmit = useCallback(() => {
     const trimmed = text.trim();
     const hasAnnotations = annotations.length > 0;
-    if (!trimmed && images.length === 0 && !hasAnnotations) return;
-    const imgPayload = images.length > 0
-      ? images.map((img) => ({ media_type: img.media_type, data: img.data }))
+    if (!trimmed && attachments.length === 0 && !hasAnnotations) return;
+    const imageAtts = attachments.filter((a) => a.kind === "image");
+    const fileAtts = attachments.filter((a) => a.kind === "file");
+    const imgPayload = imageAtts.length > 0
+      ? imageAtts.map((img) => ({ media_type: img.media_type, data: img.data }))
       : undefined;
-    sendUserMessage(trimmed, selection, imgPayload, hasAnnotations ? annotations : undefined);
+    const filePayload = fileAtts.length > 0
+      ? fileAtts.map((f) => ({ name: f.name, media_type: f.media_type, data: f.data, size: f.size }))
+      : undefined;
+    sendUserMessage(trimmed, selection, imgPayload, hasAnnotations ? annotations : undefined, filePayload);
     setText("");
-    setImages([]);
+    setAttachments([]);
     setSelection(null);
     clearAnnotations();
     setSlashOpen(false);
@@ -136,7 +144,7 @@ export default function ChatInput() {
     }
     // Immediately show busy state — disable input + show Stop button
     useStore.getState().setTurnInProgress(true);
-  }, [text, images, selection, setSelection, annotations, clearAnnotations]);
+  }, [text, attachments, selection, setSelection, annotations, clearAnnotations]);
 
   const handleKeyDown = (e: KeyboardEvent) => {
     // Slash menu navigation
@@ -206,18 +214,18 @@ export default function ChatInput() {
     }
   };
 
-  // Image handling
-  const addImages = useCallback(async (files: FileList | File[]) => {
+  // File handling
+  const addAttachments = useCallback(async (files: FileList | File[]) => {
     const fileArray = Array.from(files);
-    const attachments = await Promise.all(fileArray.map(fileToAttachment));
-    const valid = attachments.filter((a): a is ImageAttachment => a !== null);
+    const results = await Promise.all(fileArray.map(fileToAttachment));
+    const valid = results.filter((a): a is FileAttachment => a !== null);
     if (valid.length > 0) {
-      setImages((prev) => [...prev, ...valid]);
+      setAttachments((prev) => [...prev, ...valid]);
     }
   }, []);
 
-  const removeImage = (id: string) => {
-    setImages((prev) => prev.filter((img) => img.id !== id));
+  const removeAttachment = (id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
   };
 
   const handlePaste = useCallback((e: ClipboardEvent) => {
@@ -232,9 +240,9 @@ export default function ChatInput() {
     }
     if (imageFiles.length > 0) {
       e.preventDefault();
-      addImages(imageFiles);
+      addAttachments(imageFiles);
     }
-  }, [addImages]);
+  }, [addAttachments]);
 
   const handleDragOver = (e: DragEvent) => {
     e.preventDefault();
@@ -244,8 +252,8 @@ export default function ChatInput() {
   const handleDrop = useCallback((e: DragEvent) => {
     e.preventDefault();
     const files = e.dataTransfer?.files;
-    if (files?.length) addImages(files);
-  }, [addImages]);
+    if (files?.length) addAttachments(files);
+  }, [addAttachments]);
 
   const handleFilePickerClick = () => {
     fileInputRef.current?.click();
@@ -253,7 +261,7 @@ export default function ChatInput() {
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.length) {
-      addImages(e.target.files);
+      addAttachments(e.target.files);
       e.target.value = ""; // reset so same file can be re-selected
     }
   };
@@ -335,18 +343,25 @@ export default function ChatInput() {
         </div>
       )}
 
-      {/* Image thumbnails */}
-      {images.length > 0 && (
+      {/* Attachment thumbnails */}
+      {attachments.length > 0 && (
         <div className="flex items-center gap-2 mb-2 px-1 overflow-x-auto">
-          {images.map((img) => (
-            <div key={img.id} className="relative shrink-0 group">
-              <img
-                src={img.preview}
-                alt=""
-                className="w-14 h-14 rounded-md object-cover border border-neutral-700"
-              />
+          {attachments.map((att) => (
+            <div key={att.id} className="relative shrink-0 group">
+              {att.kind === "image" ? (
+                <img
+                  src={att.preview!}
+                  alt=""
+                  className="w-14 h-14 rounded-md object-cover border border-neutral-700"
+                />
+              ) : (
+                <div className="w-14 h-14 rounded-md border border-neutral-700 bg-neutral-800 flex flex-col items-center justify-center gap-0.5 px-1">
+                  <FileIcon />
+                  <span className="text-[8px] text-neutral-400 truncate w-full text-center">{att.name}</span>
+                </div>
+              )}
               <button
-                onClick={() => removeImage(img.id)}
+                onClick={() => removeAttachment(att.id)}
                 className="absolute top-0.5 right-0.5 w-4 h-4 bg-neutral-700/80 hover:bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 title="Remove"
               >
@@ -388,7 +403,7 @@ export default function ChatInput() {
                     ? "Tell Claude what to change..."
                     : previewMode === "annotate"
                       ? "Click elements to annotate, then send..."
-                      : "Send a message... (paste images, type / for commands)"
+                      : "Send a message... (drop files, paste images, type / for commands)"
           }
           disabled={!cliConnected || isBusy}
           rows={1}
@@ -403,17 +418,16 @@ export default function ChatInput() {
           <button
             onClick={handleFilePickerClick}
             className="flex items-center gap-1 px-2 py-1 text-xs text-neutral-500 hover:text-neutral-300 bg-neutral-800 hover:bg-neutral-700 rounded transition-colors"
-            title="Attach image"
+            title="Attach file"
           >
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
               <path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z" />
             </svg>
-            <span>Image</span>
+            <span>File</span>
           </button>
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
             multiple
             className="hidden"
             onChange={handleFileInput}
@@ -431,7 +445,7 @@ export default function ChatInput() {
           ) : (
             <button
               onClick={handleSubmit}
-              disabled={(!text.trim() && images.length === 0 && !hasAnnotations) || !cliConnected}
+              disabled={(!text.trim() && attachments.length === 0 && !hasAnnotations) || !cliConnected}
               className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Send
@@ -455,6 +469,15 @@ function CloseIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
       <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-4 h-4 text-neutral-400">
+      <path d="M4 1.5h5l3 3v10H4z" strokeLinejoin="round" />
+      <path d="M9 1.5v3h3" strokeLinejoin="round" />
     </svg>
   );
 }

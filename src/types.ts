@@ -52,8 +52,10 @@ export interface ChatMessage {
   subtype?: string;
   /** Attached images (base64 data URLs for display) */
   images?: { media_type: string; data: string }[];
-  /** Debug mode: enriched content + images actually sent to CLI */
-  debugPayload?: { enrichedContent: string; images?: { media_type: string; data: string }[] };
+  /** Non-image file attachments (metadata only, no data) */
+  files?: { name: string; size: number }[];
+  /** Debug mode: enriched content + images + files actually sent to CLI */
+  debugPayload?: { enrichedContent: string; images?: { media_type: string; data: string }[]; files?: { name: string; media_type: string; size: number }[] };
   /** Viewer-initiated notification sent to agent (shown as context card in user bubble) */
   viewerNotification?: { type: string; summary: string; files?: string[] };
 }

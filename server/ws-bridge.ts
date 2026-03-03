@@ -1,5 +1,5 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import type { ServerWebSocket } from "bun";
 import type {
   CLIMessage,
@@ -56,6 +56,7 @@ export class WsBridge {
   private userMsgCounter = 0;
   private workspace = "";
   private imageCounter = 0;
+  private fileCounter = 0;
 
   setWorkspace(workspace: string): void {
     this.workspace = workspace;
@@ -757,9 +758,47 @@ export class WsBridge {
     return filePath;
   }
 
+  private saveFileToDisk(name: string, mediaType: string, base64Data: string): string {
+    const uploadsDir = join(this.workspace, ".pneuma", "uploads");
+    mkdirSync(uploadsDir, { recursive: true });
+
+    // Sanitize filename: remove path separators and control chars
+    const safeName = name.replace(/[/\\:*?"<>|\x00-\x1f]/g, "_").slice(0, 200);
+    const filename = `${Math.floor(Date.now() / 1000)}-${++this.fileCounter}-${safeName}`;
+    const filePath = join(uploadsDir, filename);
+
+    const buffer = Buffer.from(base64Data, "base64");
+    writeFileSync(filePath, buffer);
+
+    return filePath;
+  }
+
+  private static isTextMimeType(mediaType: string): boolean {
+    if (mediaType.startsWith("text/")) return true;
+    const textTypes = [
+      "application/json",
+      "application/xml",
+      "application/javascript",
+      "application/x-yaml",
+      "application/yaml",
+      "application/toml",
+      "application/x-sh",
+      "application/sql",
+      "application/graphql",
+      "application/ld+json",
+    ];
+    return textTypes.includes(mediaType);
+  }
+
+  private static formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
   private handleUserMessage(
     session: Session,
-    msg: { type: "user_message"; content: string; session_id?: string; images?: { media_type: string; data: string }[] }
+    msg: { type: "user_message"; content: string; session_id?: string; images?: { media_type: string; data: string }[]; files?: { name: string; media_type: string; data: string; size: number }[] }
   ) {
     // Store user message in history for replay
     const ts = Date.now();
@@ -770,11 +809,38 @@ export class WsBridge {
       id: `user-${ts}-${this.userMsgCounter++}`,
     });
 
+    // Save non-image files to disk and build notification
+    const savedImagePaths: string[] = [];
+    const savedFiles: { path: string; name: string; size: number; mediaType: string; inlineContent?: string }[] = [];
+
+    if (this.workspace && msg.files?.length) {
+      const TEXT_INLINE_LIMIT = 32 * 1024; // 32 KB
+      for (const file of msg.files) {
+        try {
+          const filePath = this.saveFileToDisk(file.name, file.media_type, file.data);
+          const entry: typeof savedFiles[number] = {
+            path: filePath,
+            name: file.name,
+            size: file.size,
+            mediaType: file.media_type,
+          };
+          // Inline small text files
+          if (WsBridge.isTextMimeType(file.media_type) && file.size <= TEXT_INLINE_LIMIT) {
+            try {
+              entry.inlineContent = readFileSync(filePath, "utf-8");
+            } catch {}
+          }
+          savedFiles.push(entry);
+        } catch (err) {
+          console.warn("[ws-bridge] Failed to save uploaded file to disk:", err);
+        }
+      }
+    }
+
     // Build content: if images are present, use content block array; otherwise plain string
     let content: string | unknown[];
     if (msg.images?.length) {
       const blocks: unknown[] = [];
-      const savedPaths: string[] = [];
 
       for (const img of msg.images) {
         blocks.push({
@@ -783,7 +849,7 @@ export class WsBridge {
         });
         if (this.workspace) {
           try {
-            savedPaths.push(this.saveImageToDisk(img.media_type, img.data));
+            savedImagePaths.push(this.saveImageToDisk(img.media_type, img.data));
           } catch (err) {
             console.warn("[ws-bridge] Failed to save uploaded image to disk:", err);
           }
@@ -791,13 +857,12 @@ export class WsBridge {
       }
 
       let textContent = msg.content;
-      if (savedPaths.length > 0) {
-        const pathList = savedPaths.map((p) => `- ${p}`).join("\n");
-        textContent = `[Uploaded image saved to disk:\n${pathList}]\n\n${textContent}`;
-      }
+      textContent = this.buildUploadNotification(savedImagePaths, savedFiles) + textContent;
 
       blocks.push({ type: "text", text: textContent });
       content = blocks;
+    } else if (savedFiles.length > 0) {
+      content = this.buildUploadNotification(savedImagePaths, savedFiles) + msg.content;
     } else {
       content = msg.content;
     }
@@ -810,6 +875,41 @@ export class WsBridge {
       session_id: msg.session_id || session.state.session_id || "",
     });
     this.sendToCLI(session, ndjson);
+  }
+
+  private buildUploadNotification(
+    imagePaths: string[],
+    files: { path: string; name: string; size: number; mediaType: string; inlineContent?: string }[],
+  ): string {
+    if (imagePaths.length === 0 && files.length === 0) return "";
+
+    const toRel = (p: string) => this.workspace ? relative(this.workspace, p) : p;
+    const totalCount = imagePaths.length + files.length;
+    const lines: string[] = [];
+
+    lines.push(`<uploaded-files count="${totalCount}" dir=".pneuma/uploads/">`);
+    lines.push(`The user provided ${totalCount} file${totalCount !== 1 ? "s" : ""} with this message. They have been saved to .pneuma/uploads/ for your use.`);
+
+    if (imagePaths.length > 0) {
+      for (const p of imagePaths) {
+        lines.push(`  <image path="${toRel(p)}" />`);
+      }
+    }
+
+    for (const f of files) {
+      const sizeStr = WsBridge.formatFileSize(f.size);
+      if (f.inlineContent != null) {
+        lines.push(`  <file path="${toRel(f.path)}" name="${f.name}" size="${sizeStr}">`);
+        lines.push(f.inlineContent);
+        lines.push(`  </file>`);
+      } else {
+        lines.push(`  <file path="${toRel(f.path)}" name="${f.name}" size="${sizeStr}" />`);
+      }
+    }
+
+    lines.push(`</uploaded-files>`);
+
+    return lines.join("\n") + "\n\n";
   }
 
   private handleViewerNotification(
