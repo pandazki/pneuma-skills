@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.13.2] - 2026-03-03
+
+### Fixed
+- **JSX dev runtime shim** — Bun.build v1.3+ emits `jsxDEV` (dev runtime) even in production builds. The vendor shim now maps `jsxDEV` to `jsx` from the production runtime, fixing "jsxDEV is not a function" errors in external mode viewers.
+- **Dev mode compatibility** — added Vite plugin to mark `/mode-assets/` and `/vendor/` URLs as external during dev transforms, preventing import analysis errors.
+
 ## [1.13.1] - 2026-03-03
 
 ### Fixed

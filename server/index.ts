@@ -809,12 +809,19 @@ export default R;
 export const { useState, useEffect, useCallback, useMemo, useRef, useContext, createContext, forwardRef, memo, Fragment, createElement, cloneElement, Children, isValidElement, Component, PureComponent, Suspense, lazy, startTransition, useTransition, useDeferredValue, useId, useSyncExternalStore, useImperativeHandle, useLayoutEffect, useDebugValue, useReducer } = R;`;
 
     const JSX_RUNTIME_SHIM = `const J = window.__PNEUMA_JSX_RUNTIME__;
-export const { jsx, jsxs, jsxDEV, Fragment } = J;`;
+export const { jsx, jsxs, Fragment } = J;`;
+
+    // Bun.build uses jsx-dev-runtime (jsxDEV) due to a Bun v1.3+ regression.
+    // jsxDEV(type, props, key, isStatic, source, self) is signature-compatible
+    // with jsx(type, props, key) — extra dev args are simply ignored.
+    const JSX_DEV_RUNTIME_SHIM = `const J = window.__PNEUMA_JSX_RUNTIME__;
+export const jsxDEV = J.jsx;
+export const Fragment = J.Fragment;`;
 
     app.get("/vendor/react.js", (c) => new Response(REACT_SHIM, { headers: { "Content-Type": "application/javascript" } }));
     app.get("/vendor/react-dom.js", (c) => new Response(`export default window.__PNEUMA_REACT_DOM__;`, { headers: { "Content-Type": "application/javascript" } }));
     app.get("/vendor/react-jsx-runtime.js", (c) => new Response(JSX_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));
-    app.get("/vendor/react-jsx-dev-runtime.js", (c) => new Response(JSX_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));
+    app.get("/vendor/react-jsx-dev-runtime.js", (c) => new Response(JSX_DEV_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));
 
     // Serve compiled mode bundle
     app.get("/mode-assets/*", async (c) => {
