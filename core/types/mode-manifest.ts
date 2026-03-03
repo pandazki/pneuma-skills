@@ -17,6 +17,40 @@
  * ```
  */
 
+/** MCP 服务器声明 — skill 安装时自动注册到 workspace 的 .mcp.json */
+export interface McpServerConfig {
+  /** 服务器名称（.mcp.json 中 mcpServers 的 key） */
+  name: string;
+  /** stdio: 执行命令 */
+  command?: string;
+  /** stdio: 命令参数（支持 {{param}} 模板） */
+  args?: string[];
+  /**
+   * 环境变量。值支持：
+   * - {{param}} — 替换为 init param 值
+   * - ${VAR} — 原样写入，Claude Code 运行时从进程 env 解析
+   */
+  env?: Record<string, string>;
+  /** HTTP 服务器 URL */
+  url?: string;
+  /** HTTP 请求头（支持 {{param}} 模板） */
+  headers?: Record<string, string>;
+}
+
+/** 外部 Skill 依赖声明 — skill 安装时自动拷贝到 .claude/skills/ */
+export interface SkillDependency {
+  /** Skill 名称（安装到 .claude/skills/<name>/） */
+  name: string;
+  /** Skill 来源：相对于 mode 包根目录的路径（包含 SKILL.md 的目录） */
+  sourceDir: string;
+  /**
+   * 注入 CLAUDE.md 的描述片段（可选）。
+   * 放在 <!-- pneuma:skills:start --> / <!-- pneuma:skills:end --> 标记内。
+   * 如果不提供，自动从 SKILL.md 第一行 heading 提取摘要。
+   */
+  claudeMdSnippet?: string;
+}
+
 /** Skill 注入配置 — 描述如何将 Mode 的领域知识安装到 workspace */
 export interface SkillConfig {
   /** Skill 源目录 (相对于 mode 包根目录) */
@@ -32,6 +66,10 @@ export interface SkillConfig {
    * 只有非空值的参数才会写入 .env。
    */
   envMapping?: Record<string, string>;
+  /** MCP 服务器声明 — 安装时自动写入 workspace 的 .mcp.json */
+  mcpServers?: McpServerConfig[];
+  /** 外部 Skill 依赖 — 安装时自动拷贝到 .claude/skills/ */
+  skillDependencies?: SkillDependency[];
 }
 
 /** 内容查看器配置 — 描述 Mode 的文件监听和服务规则 */
