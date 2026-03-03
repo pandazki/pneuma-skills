@@ -9,6 +9,8 @@ import type { SocketData } from "./ws-bridge.js";
 import type { TerminalSocketData } from "./ws-bridge-types.js";
 import type { ServerWebSocket } from "bun";
 import { TerminalManager } from "./terminal-manager.js";
+import { registerModeMakerRoutes } from "./mode-maker-routes.js";
+import { openPath, revealPath, openUrl } from "./system-bridge.js";
 
 const DEFAULT_PORT = 17007;
 
@@ -19,6 +21,8 @@ export interface ServerOptions {
   watchPatterns?: string[]; // Glob patterns for content files (from ModeManifest.viewer)
   initParams?: Record<string, number | string>; // Mode init params (immutable per session)
   externalMode?: { name: string; path: string; type: string }; // External mode info for frontend
+  projectRoot?: string; // Pneuma project root (for mode-maker routes to access builtin modes)
+  modeName?: string; // Current mode name (for conditional route registration)
 }
 
 export function startServer(options: ServerOptions) {
@@ -71,6 +75,25 @@ export function startServer(options: ServerOptions) {
       const message = err instanceof Error ? err.message : "Unknown error";
       return c.json({ success: false, message }, 500);
     }
+  });
+
+  // ── System Bridge API (OS-level operations for Viewer) ──────────────
+  app.post("/api/system/open", async (c) => {
+    const body = await c.req.json<{ path: string }>();
+    if (!body.path) return c.json({ success: false, message: "path is required" }, 400);
+    return c.json(await openPath(workspace, body.path));
+  });
+
+  app.post("/api/system/open-url", async (c) => {
+    const body = await c.req.json<{ url: string }>();
+    if (!body.url) return c.json({ success: false, message: "url is required" }, 400);
+    return c.json(await openUrl(body.url));
+  });
+
+  app.post("/api/system/reveal", async (c) => {
+    const body = await c.req.json<{ path: string }>();
+    if (!body.path) return c.json({ success: false, message: "path is required" }, 400);
+    return c.json(await revealPath(workspace, body.path));
   });
 
   // ── Workspace Scaffold API ───────────────────────────────────────────
@@ -745,6 +768,15 @@ ${slidePages}${downloadScript}
     return c.json({ ok: true });
   });
 
+  // ── Mode Maker routes (conditional) ──────────────────────────────────
+  let modeMakerCleanup: (() => void) | undefined;
+  if (options.modeName === "mode-maker" && options.projectRoot) {
+    modeMakerCleanup = registerModeMakerRoutes(app, {
+      workspace,
+      projectRoot: options.projectRoot,
+    });
+  }
+
   // ── Static content serving (workspace files) ──────────────────────────
   app.get("/content/*", async (c) => {
     const relPath = decodeURIComponent(c.req.path.replace(/^\/content\//, ""));
@@ -884,5 +916,5 @@ ${slidePages}${downloadScript}
   console.log(`[server] CLI WebSocket:     ws://localhost:${server.port}/ws/cli/:sessionId`);
   console.log(`[server] Browser WebSocket: ws://localhost:${server.port}/ws/browser/:sessionId`);
 
-  return { server, wsBridge, terminalManager, port: server.port as number };
+  return { server, wsBridge, terminalManager, port: server.port as number, modeMakerCleanup };
 }
