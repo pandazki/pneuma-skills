@@ -13,7 +13,7 @@ import { resolve, join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 
-export type ModeSourceType = "builtin" | "local" | "github";
+export type ModeSourceType = "builtin" | "local" | "github" | "url";
 
 export interface ResolvedMode {
   /** Mode source type */
@@ -46,7 +46,24 @@ export function parseModeSpecifier(specifier: string): {
   github?: { user: string; repo: string; ref: string };
   /** For local: the raw path (may be relative) */
   localPath?: string;
+  /** For url: the full URL to the tar.gz archive */
+  urlSpec?: { url: string };
 } {
+  // URL: https://...tar.gz
+  if (specifier.startsWith("https://") && specifier.endsWith(".tar.gz")) {
+    // Try to extract mode name from R2 key pattern: modes/{name}/{version}.tar.gz
+    const urlPath = new URL(specifier).pathname;
+    const modesMatch = urlPath.match(/\/modes\/([^/]+)\/[^/]+\.tar\.gz$/);
+    const name = modesMatch
+      ? modesMatch[1]
+      : urlPath.split("/").pop()!.replace(/\.tar\.gz$/, "").replace(/[-.][\d]+/g, "") || "url-mode";
+    return {
+      type: "url",
+      name,
+      urlSpec: { url: specifier },
+    };
+  }
+
   // GitHub: "github:user/repo" or "github:user/repo#branch"
   if (specifier.startsWith("github:")) {
     const rest = specifier.slice("github:".length);
@@ -145,6 +162,19 @@ export async function resolveMode(
         specifier,
       };
     }
+
+    case "url": {
+      const { url } = parsed.urlSpec!;
+      const cacheDir = join(MODES_CACHE_DIR, parsed.name);
+      await ensureUrlMode(url, cacheDir);
+      validateModePackage(cacheDir);
+      return {
+        type: "url",
+        name: parsed.name,
+        path: cacheDir,
+        specifier,
+      };
+    }
   }
 }
 
@@ -194,6 +224,55 @@ async function ensureGithubMode(
       MODES_CACHE_DIR,
     );
     console.log(`[mode-resolver] Cloned to ${cacheDir}`);
+  }
+}
+
+/**
+ * Download a tar.gz URL and extract into the cache directory.
+ * Always re-downloads for a fresh extract each run.
+ */
+async function ensureUrlMode(url: string, cacheDir: string): Promise<void> {
+  const { rmSync } = await import("node:fs");
+  mkdirSync(MODES_CACHE_DIR, { recursive: true });
+
+  // Clean previous extract
+  if (existsSync(cacheDir)) {
+    rmSync(cacheDir, { recursive: true, force: true });
+  }
+  mkdirSync(cacheDir, { recursive: true });
+
+  console.log(`[mode-resolver] Downloading ${url}...`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    // Save to temp file, then extract
+    const tempPath = join(MODES_CACHE_DIR, `_download_${Date.now()}.tar.gz`);
+    const body = await response.arrayBuffer();
+    await Bun.write(tempPath, body);
+
+    const proc = Bun.spawn(["tar", "xzf", tempPath, "-C", cacheDir], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const exitCode = await proc.exited;
+    // Cleanup temp file
+    try { rmSync(tempPath); } catch {}
+
+    if (exitCode !== 0) {
+      const stderr = await new Response(proc.stderr).text();
+      throw new Error(`tar extract failed (exit ${exitCode}): ${stderr}`);
+    }
+
+    console.log(`[mode-resolver] Extracted to ${cacheDir}`);
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

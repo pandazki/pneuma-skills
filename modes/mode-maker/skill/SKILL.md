@@ -267,6 +267,42 @@ pneuma github:user/my-mode --workspace ~/my-project
 
 The mode will be cloned to `~/.pneuma/modes/` and loaded automatically.
 
+## Publishing to Pneuma Registry
+
+Publish your mode to R2 so anyone can run it with a single command:
+
+```bash
+# Publish the current workspace as a mode
+bunx pneuma-skills mode publish [--workspace .] [--force]
+
+# List all published modes
+bunx pneuma-skills mode list
+```
+
+### Pre-publish Checklist
+
+1. `manifest.ts` has valid `name` (lowercase, starts with letter), `version` (semver), and `displayName`
+2. `pneuma-mode.ts` exists and exports a `ModeDefinition`
+3. `viewer/` directory contains the preview component
+4. `skill/SKILL.md` contains the agent skill prompt
+5. Bump `version` in `manifest.ts` before each publish (existing versions cannot be overwritten unless `--force` is used)
+
+### Version Management
+
+- Follow semver: `1.0.0` → `1.0.1` (patch), `1.1.0` (minor), `2.0.0` (major)
+- Pre-release tags (e.g. `1.0.0-beta.1`) are not supported
+- Use `--force` to overwrite an existing version (not recommended for shared modes)
+
+### Shareable URL
+
+After publishing, a one-liner command is printed:
+
+```bash
+bunx pneuma-skills https://pub-xxx.r2.dev/modes/my-mode/1.0.0.tar.gz --workspace ~/project
+```
+
+The mode is downloaded, extracted to `~/.pneuma/modes/`, and started automatically.
+
 ## Existing Mode Examples
 
 ### Doc Mode (Markdown)

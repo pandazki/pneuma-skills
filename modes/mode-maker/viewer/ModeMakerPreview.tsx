@@ -98,6 +98,160 @@ function getChecklist(files: ViewerPreviewProps["files"]): CheckItem[] {
   ];
 }
 
+// ── Smart summary generators ─────────────────────────────────────────────────
+
+function getManifestSummary(parsed: ParsedManifest): string {
+  if (!parsed.name) return "Mode identity and configuration";
+  const parts: string[] = [];
+  parts.push(parsed.name);
+  if (parsed.version) parts[0] += ` v${parsed.version}`;
+  if (parsed.watchPatterns && parsed.watchPatterns.length > 0) {
+    const shown = parsed.watchPatterns.slice(0, 3).join(", ");
+    const more = parsed.watchPatterns.length > 3 ? ` +${parsed.watchPatterns.length - 3} more` : "";
+    parts.push(`watches ${shown}${more}`);
+  }
+  if (parsed.workspaceType) parts.push(`${parsed.workspaceType} workspace`);
+  return parts.join(" — ");
+}
+
+function getModeDefSummary(files: ViewerPreviewProps["files"]): string {
+  const modeDef = files.find((f) => f.path === "pneuma-mode.ts" || f.path === "pneuma-mode.js");
+  if (!modeDef) return "Manifest + viewer binding";
+  const match = modeDef.content.match(/import\s+(\w+)\s+from\s+["']\.\/(viewer\/[^"']+)["']/);
+  if (!match) return "Manifest + viewer binding";
+  return `Binds ${match[1]} from ${match[2].replace(/\.[jt]sx?$/, "").replace(/\.js$/, "")}`;
+}
+
+function getViewerSummary(files: ViewerPreviewProps["files"]): string {
+  const viewerFiles = files.filter((f) => classifyFile(f.path) === "viewer");
+  if (viewerFiles.length === 0) return "Preview component";
+  const totalLines = viewerFiles.reduce((sum, f) => sum + f.content.split("\n").length, 0);
+  if (viewerFiles.length === 1) {
+    const name = viewerFiles[0].path.split("/").pop() || viewerFiles[0].path;
+    return `${name} — ${totalLines} lines`;
+  }
+  return `${viewerFiles.length} files, ${totalLines} lines`;
+}
+
+function getSkillSummary(files: ViewerPreviewProps["files"]): string {
+  const skill = files.find((f) => f.path === "skill/SKILL.md");
+  if (!skill) return "Domain knowledge prompt";
+  const headings = skill.content.split("\n")
+    .filter((line) => /^##\s+/.test(line))
+    .map((line) => line.replace(/^##\s+/, "").trim());
+  if (headings.length === 0) {
+    const lineCount = skill.content.split("\n").length;
+    return `Skill prompt — ${lineCount} lines`;
+  }
+  const shown = headings.slice(0, 3).join(", ");
+  const more = headings.length > 3 ? `...+${headings.length - 3}` : "";
+  return `${headings.length} sections: ${shown}${more}`;
+}
+
+function getSeedSummary(files: ViewerPreviewProps["files"]): string {
+  const seedFiles = files.filter((f) => classifyFile(f.path) === "seed");
+  if (seedFiles.length === 0) return "Initial workspace files";
+  const names = seedFiles.map((f) => f.path.replace(/^seed\//, "").split("/").pop() || f.path);
+  const shown = names.slice(0, 3).join(", ");
+  const more = names.length > 3 ? ` +${names.length - 3} more` : "";
+  return `${seedFiles.length} file${seedFiles.length > 1 ? "s" : ""}: ${shown}${more}`;
+}
+
+// ── Detail renderers ─────────────────────────────────────────────────────────
+
+function ManifestDetail({ parsed }: { parsed: ParsedManifest }) {
+  const entries: [string, string | string[]][] = [];
+  if (parsed.name) entries.push(["name", parsed.name]);
+  if (parsed.version) entries.push(["version", parsed.version]);
+  if (parsed.displayName) entries.push(["displayName", parsed.displayName]);
+  if (parsed.description) entries.push(["description", parsed.description]);
+  if (parsed.installName) entries.push(["installName", parsed.installName]);
+  if (parsed.workspaceType) entries.push(["workspaceType", parsed.workspaceType]);
+  if (parsed.watchPatterns) entries.push(["watchPatterns", parsed.watchPatterns]);
+
+  if (entries.length === 0) return <div className="text-xs text-zinc-500">No manifest fields parsed</div>;
+
+  return (
+    <div className="space-y-1.5">
+      {entries.map(([key, val]) => (
+        <div key={key} className="flex gap-3 text-xs">
+          <span className="text-zinc-500 w-28 shrink-0 font-mono">{key}</span>
+          <span className="text-zinc-300 min-w-0">
+            {Array.isArray(val)
+              ? val.map((v, i) => <code key={i} className="bg-zinc-700/50 px-1 py-0.5 rounded mr-1 text-zinc-400">{v}</code>)
+              : val}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ModeDefDetail({ files }: { files: ViewerPreviewProps["files"] }) {
+  const modeDef = files.find((f) => f.path === "pneuma-mode.ts" || f.path === "pneuma-mode.js");
+  if (!modeDef) return <div className="text-xs text-zinc-500">File not found</div>;
+
+  const content = modeDef.content;
+  const manifestMatch = content.match(/import\s+(\w+)\s+from\s+["']\.\/manifest[^"']*["']/);
+  const viewerMatch = content.match(/import\s+(\w+)\s+from\s+["']\.\/(viewer\/[^"']+)["']/);
+  const wsTypeMatch = content.match(/type:\s*["'](\w+)["']/);
+  const hasExtractContext = /extractContext\s*\(/.test(content);
+  const strategyMatch = content.match(/updateStrategy:\s*["']([^"']+)["']/);
+
+  const rows: [string, string][] = [];
+  if (manifestMatch) rows.push(["Manifest", `${manifestMatch[1]} from ./manifest`]);
+  if (viewerMatch) rows.push(["Viewer", `${viewerMatch[1]} from ./${viewerMatch[2]}`]);
+  if (wsTypeMatch) rows.push(["Workspace", wsTypeMatch[1]]);
+  if (hasExtractContext) rows.push(["extractContext", "defined"]);
+  if (strategyMatch) rows.push(["updateStrategy", strategyMatch[1]]);
+
+  if (rows.length === 0) return <div className="text-xs text-zinc-500">Could not parse bindings</div>;
+
+  return (
+    <div className="space-y-1.5">
+      {rows.map(([key, val]) => (
+        <div key={key} className="flex gap-3 text-xs">
+          <span className="text-zinc-500 w-28 shrink-0 font-mono">{key}</span>
+          <span className="text-zinc-300">{val}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SkillOutline({ files }: { files: ViewerPreviewProps["files"] }) {
+  const skill = files.find((f) => f.path === "skill/SKILL.md");
+  if (!skill) return <div className="text-xs text-zinc-500">File not found</div>;
+
+  const lines = skill.content.split("\n");
+  const headings = lines
+    .map((line) => {
+      const match = line.match(/^(#{1,6})\s+(.+)/);
+      if (!match) return null;
+      return { depth: match[1].length, text: match[2].trim() };
+    })
+    .filter((h): h is { depth: number; text: string } => h !== null);
+
+  const depthColors = ["text-zinc-200", "text-zinc-300", "text-zinc-400", "text-zinc-500"];
+
+  return (
+    <div className="space-y-0.5">
+      {headings.map((h, i) => (
+        <div
+          key={i}
+          className={`text-xs ${depthColors[Math.min(h.depth - 1, depthColors.length - 1)]}`}
+          style={{ paddingLeft: `${(h.depth - 1) * 16}px` }}
+        >
+          {h.text}
+        </div>
+      ))}
+      <div className="text-[11px] text-zinc-500 pt-1.5 mt-1 border-t border-zinc-700/50">
+        {lines.length} lines total
+      </div>
+    </div>
+  );
+}
+
 // ── Shared types ──────────────────────────────────────────────────────────────
 
 interface AvailableMode {
@@ -138,15 +292,115 @@ function ModalDialog({ open, onClose, title, children }: {
   );
 }
 
+// ── Structure Card ───────────────────────────────────────────────────────────
+
+function StructureCard({ title, subtitle, done, accentColor, expandable, expanded, onToggle, onClick, children }: {
+  title: string;
+  subtitle: string;
+  done: boolean;
+  accentColor: string;
+  expandable?: boolean;
+  expanded?: boolean;
+  onToggle?: () => void;
+  onClick?: () => void;
+  children?: ReactNode;
+}) {
+  const handleClick = () => {
+    if (expandable && done) {
+      onToggle?.();
+    } else {
+      onClick?.();
+    }
+  };
+
+  return (
+    <div
+      className={`rounded-lg border border-zinc-700 bg-zinc-800/50 p-3.5 border-l-[3px] cursor-pointer hover:bg-zinc-800 transition-colors ${
+        done ? accentColor : "border-l-zinc-600"
+      } ${expanded ? "col-span-2" : ""}`}
+      onClick={handleClick}
+    >
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-medium text-zinc-200">{title}</span>
+          {expandable && done && (
+            <svg
+              className={`w-3.5 h-3.5 text-zinc-500 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+            >
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          )}
+          {!expandable && done && (
+            <svg className="w-3 h-3 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M7 17l9.2-9.2M17 17V7H7" />
+            </svg>
+          )}
+        </div>
+        <span className={`flex items-center gap-1.5 text-xs ${done ? "text-emerald-400" : "text-zinc-500"}`}>
+          <span className={`inline-block w-1.5 h-1.5 rounded-full ${done ? "bg-emerald-400" : "bg-zinc-600"}`} />
+          {done ? "Ready" : "Missing"}
+        </span>
+      </div>
+      <div className="text-xs text-zinc-500">{subtitle}</div>
+      {expanded && children && (
+        <div className="mt-3 pt-3 border-t border-zinc-700/50" onClick={(e) => e.stopPropagation()}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Action Card ──────────────────────────────────────────────────────────────
+
+function ActionCard({ title, description, children }: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-4 flex flex-col min-w-[180px] flex-1">
+      <h4 className="text-sm font-medium text-zinc-200 mb-0.5">{title}</h4>
+      <p className="text-xs text-zinc-500 mb-3 flex-1">{description}</p>
+      {children}
+    </div>
+  );
+}
+
+// ── Publish result type ──────────────────────────────────────────────────────
+
+interface PublishResult {
+  url: string;
+  version: string;
+  runCommand: string;
+}
+
 // ── Overview Tab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ files, parsed, onSelectFile }: {
+function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
   files: ViewerPreviewProps["files"];
   parsed: ParsedManifest;
   onSelectFile: (path: string) => void;
+  onTabChange: (tab: TabId) => void;
 }) {
   const checklist = getChecklist(files);
   const doneCount = checklist.filter((c) => c.done).length;
+
+  // ── Expand state ──
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const toggleCard = useCallback((title: string) => {
+    setExpandedCard((prev) => prev === title ? null : title);
+  }, []);
+
+  // ── Computed summaries ──
+  const summaries = useMemo(() => ({
+    manifest: getManifestSummary(parsed),
+    modeDef: getModeDefSummary(files),
+    viewer: getViewerSummary(files),
+    skill: getSkillSummary(files),
+    seed: getSeedSummary(files),
+  }), [files, parsed]);
 
   // ── Import state ──
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -161,6 +415,13 @@ function OverviewTab({ files, parsed, onSelectFile }: {
   const [playLoading, setPlayLoading] = useState(false);
   const [playError, setPlayError] = useState<string>("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Publish state ──
+  const [publishLoading, setPublishLoading] = useState(false);
+  const [publishError, setPublishError] = useState<string>("");
+  const [publishErrorCode, setPublishErrorCode] = useState<string>("");
+  const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState(false);
 
   // ── Reset state ──
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -245,6 +506,40 @@ function OverviewTab({ files, parsed, onSelectFile }: {
       .catch(() => {});
   }, [api]);
 
+  // ── Publish handler ──
+  const doPublish = useCallback((force = false) => {
+    setPublishLoading(true);
+    setPublishError("");
+    setPublishErrorCode("");
+    setPublishResult(null);
+    fetch(`${api}/api/mode-maker/publish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ force }),
+    })
+      .then((r) => r.json())
+      .then((data: any) => {
+        if (data.success) {
+          setPublishResult({ url: data.url, version: data.version, runCommand: data.runCommand });
+        } else {
+          setPublishError(data.message || "Publish failed");
+          setPublishErrorCode(data.errorCode || "");
+        }
+      })
+      .catch((err) => {
+        setPublishError(err.message);
+        setPublishErrorCode("");
+      })
+      .finally(() => setPublishLoading(false));
+  }, [api]);
+
+  const copyUrl = useCallback((text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 2000);
+    });
+  }, []);
+
   // ── Reset handler ──
   const doReset = useCallback(() => {
     setResetLoading(true);
@@ -259,9 +554,20 @@ function OverviewTab({ files, parsed, onSelectFile }: {
       .finally(() => setResetLoading(false));
   }, [api]);
 
+  // Map checklist items to structure card props
+  const structureCards: {
+    title: string; subtitle: string; done: boolean; accentColor: string;
+  }[] = [
+    { title: "Manifest", subtitle: summaries.manifest, done: checklist[0].done, accentColor: "border-l-blue-500" },
+    { title: "Mode Definition", subtitle: summaries.modeDef, done: checklist[1].done, accentColor: "border-l-violet-500" },
+    { title: "Viewer", subtitle: summaries.viewer, done: checklist[2].done, accentColor: "border-l-amber-500" },
+    { title: "Agent Skill", subtitle: summaries.skill, done: checklist[3].done, accentColor: "border-l-emerald-500" },
+    { title: "Seed Content", subtitle: summaries.seed, done: checklist[4].done, accentColor: "border-l-orange-500" },
+  ];
+
   return (
     <div className="p-5 space-y-6">
-      {/* Identity card */}
+      {/* ── Identity Header ── */}
       <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-5">
         <div className="flex items-start justify-between">
           <div>
@@ -274,11 +580,19 @@ function OverviewTab({ files, parsed, onSelectFile }: {
               </code>
             )}
           </div>
-          {parsed.version && (
-            <span className="text-xs bg-zinc-700 text-zinc-300 px-2 py-1 rounded">
-              v{parsed.version}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            <button
+              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              onClick={openImportDialog}
+            >
+              Import...
+            </button>
+            {parsed.version && (
+              <span className="text-xs bg-zinc-700 text-zinc-300 px-2 py-1 rounded">
+                v{parsed.version}
+              </span>
+            )}
+          </div>
         </div>
         {parsed.description && (
           <p className="text-sm text-zinc-400 mt-3">{parsed.description}</p>
@@ -300,100 +614,145 @@ function OverviewTab({ files, parsed, onSelectFile }: {
         )}
       </div>
 
-      {/* Completeness checklist */}
+      {/* ── Package Structure ── */}
       <div>
-        <h3 className="text-sm font-medium text-zinc-300 mb-3">
-          Structure Completeness ({doneCount}/{checklist.length})
-        </h3>
-        <div className="space-y-2">
-          {checklist.map((item) => (
-            <div
-              key={item.label}
-              className="flex items-center gap-3 text-sm cursor-pointer hover:bg-zinc-800/50 rounded px-2 py-1.5 -mx-2"
-              onClick={() => {
-                if (item.detail) {
-                  const firstFile = item.detail.split(",")[0].trim();
-                  onSelectFile(firstFile);
-                }
-              }}
-            >
-              <span className={item.done ? "text-emerald-400" : "text-zinc-600"}>
-                {item.done ? "\u2705" : "\u2B1C"}
-              </span>
-              <span className={item.done ? "text-zinc-200" : "text-zinc-500"}>
-                {item.label}
-              </span>
-              {item.detail && item.done && (
-                <span className="text-xs text-zinc-500 ml-auto">{item.detail}</span>
-              )}
-            </div>
-          ))}
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-zinc-300">Package Structure</h3>
+          <span className="text-xs text-zinc-500">{doneCount}/{checklist.length} components</span>
+        </div>
+        {/* Progress bar */}
+        <div className="h-1 bg-zinc-800 rounded-full mb-4 overflow-hidden">
+          <div
+            className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+            style={{ width: `${(doneCount / checklist.length) * 100}%` }}
+          />
+        </div>
+        {/* 2-column grid */}
+        <div className="grid grid-cols-2 gap-3">
+          {structureCards.map((card) => {
+            const isExpandable = card.title === "Manifest" || card.title === "Mode Definition" || card.title === "Agent Skill";
+            const isExpanded = expandedCard === card.title;
+            return (
+              <StructureCard
+                key={card.title}
+                title={card.title}
+                subtitle={card.subtitle}
+                done={card.done}
+                accentColor={card.accentColor}
+                expandable={isExpandable}
+                expanded={isExpanded}
+                onToggle={() => toggleCard(card.title)}
+                onClick={() => {
+                  if (card.title === "Viewer" || card.title === "Seed Content") {
+                    onTabChange("preview");
+                  }
+                }}
+              >
+                {isExpanded && card.title === "Manifest" && <ManifestDetail parsed={parsed} />}
+                {isExpanded && card.title === "Mode Definition" && <ModeDefDetail files={files} />}
+                {isExpanded && card.title === "Agent Skill" && <SkillOutline files={files} />}
+              </StructureCard>
+            );
+          })}
         </div>
       </div>
 
-      {/* ── Import from Mode ── */}
-      <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-medium text-zinc-200">Import from Mode</h3>
-            <p className="text-xs text-zinc-500 mt-1">Copy files from an existing builtin mode as a starting point</p>
-          </div>
-          <button
-            className="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded transition-colors"
-            onClick={openImportDialog}
-          >
-            Import...
-          </button>
-        </div>
-      </div>
-
-      {/* ── Test Mode (Play) ── */}
-      <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-medium text-zinc-200">Test Mode</h3>
-            <p className="text-xs text-zinc-500 mt-1">Launch this mode in a temporary workspace to test it</p>
-          </div>
-          <div className="flex items-center gap-2">
+      {/* ── Actions ── */}
+      <div>
+        <h3 className="text-sm font-medium text-zinc-300 mb-3">Actions</h3>
+        <div className="flex gap-3 flex-wrap">
+          {/* Test card */}
+          <ActionCard title="Test" description="Launch in a temporary workspace">
             {playState.running ? (
-              <>
-                <a
-                  href={playState.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
-                >
-                  Open
-                </a>
-                <button
-                  className="px-3 py-1.5 text-xs bg-red-700 hover:bg-red-600 text-white rounded transition-colors"
-                  onClick={stopPlay}
-                >
-                  Stop
-                </button>
-              </>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <a
+                    href={playState.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+                  >
+                    Open
+                  </a>
+                  <button
+                    className="px-3 py-1.5 text-xs bg-red-700 hover:bg-red-600 text-white rounded transition-colors"
+                    onClick={stopPlay}
+                  >
+                    Stop
+                  </button>
+                </div>
+                <div className="text-[11px] text-zinc-500">Port {playState.port} &middot; PID {playState.pid}</div>
+              </div>
             ) : (
               <button
-                className="px-3 py-1.5 text-xs bg-emerald-700 hover:bg-emerald-600 text-white rounded transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 text-xs bg-emerald-700 hover:bg-emerald-600 text-white rounded transition-colors disabled:opacity-50 self-start"
                 onClick={startPlay}
                 disabled={playLoading}
               >
                 {playLoading ? "Starting..." : "Play"}
               </button>
             )}
-          </div>
+            {playError && <div className="text-xs text-red-400 mt-2">{playError}</div>}
+          </ActionCard>
+
+          {/* Publish card */}
+          <ActionCard title="Publish" description="Upload mode package to registry">
+            {publishResult ? (
+              <div className="space-y-2">
+                <div className="text-xs text-emerald-400 bg-emerald-900/20 border border-emerald-800/30 rounded p-2.5">
+                  Published v{publishResult.version}
+                </div>
+                <div className="flex items-center gap-1.5 bg-zinc-900/50 rounded p-2">
+                  <code className="text-[11px] text-zinc-300 truncate flex-1">{publishResult.runCommand}</code>
+                  <button
+                    className="text-xs text-zinc-400 hover:text-zinc-200 shrink-0 transition-colors"
+                    onClick={() => copyUrl(publishResult.runCommand)}
+                  >
+                    {copiedUrl ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {publishErrorCode === "NO_CREDENTIALS" && (
+                  <div className="text-xs text-amber-400 bg-amber-900/20 border border-amber-800/30 rounded p-2.5 mb-2">
+                    {publishError}
+                  </div>
+                )}
+                {publishErrorCode === "VERSION_EXISTS" && (
+                  <div className="space-y-2">
+                    <div className="text-xs text-amber-400 bg-amber-900/20 border border-amber-800/30 rounded p-2.5">
+                      {publishError}
+                    </div>
+                    <button
+                      className="px-3 py-1.5 text-xs bg-amber-700 hover:bg-amber-600 text-white rounded transition-colors disabled:opacity-50"
+                      onClick={() => doPublish(true)}
+                      disabled={publishLoading}
+                    >
+                      {publishLoading ? "Publishing..." : "Force Publish"}
+                    </button>
+                  </div>
+                )}
+                {publishErrorCode && publishErrorCode !== "NO_CREDENTIALS" && publishErrorCode !== "VERSION_EXISTS" && (
+                  <div className="text-xs text-red-400 mb-2">{publishError}</div>
+                )}
+                {!publishErrorCode && (
+                  <button
+                    className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors disabled:opacity-50 self-start"
+                    onClick={() => doPublish(false)}
+                    disabled={publishLoading}
+                  >
+                    {publishLoading ? "Publishing..." : "Publish"}
+                  </button>
+                )}
+              </>
+            )}
+          </ActionCard>
+
         </div>
-        {playState.running && (
-          <div className="mt-2 text-xs text-zinc-500">
-            Port {playState.port} &middot; PID {playState.pid}
-          </div>
-        )}
-        {playError && (
-          <div className="mt-2 text-xs text-red-400">{playError}</div>
-        )}
       </div>
 
-      {/* ── Reset ── */}
+      {/* ── Reset footer ── */}
       <div className="pt-2 border-t border-zinc-800">
         <button
           className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
@@ -883,7 +1242,7 @@ export default function ModeMakerPreview({
       <div className="flex-1 overflow-hidden">
         {activeTab === "overview" && (
           <div className="h-full overflow-auto">
-            <OverviewTab files={files} parsed={parsed} onSelectFile={handleSelectFile} />
+            <OverviewTab files={files} parsed={parsed} onSelectFile={handleSelectFile} onTabChange={setActiveTab} />
           </div>
         )}
         {activeTab === "preview" && <PreviewTab files={files} />}

@@ -12,6 +12,9 @@ import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { parseManifestTs } from "../core/utils/manifest-parser.js";
 import { applyTemplateParams } from "./skill-installer.js";
+import { readAndValidateManifest, getModeArchiveKey, getModeLatestKey } from "../snapshot/mode-publish.js";
+import { loadCredentials, uploadToR2, uploadJsonToR2, checkR2KeyExists } from "../snapshot/r2.js";
+import { createModeArchive } from "../snapshot/archive.js";
 
 interface ModeMakerOptions {
   workspace: string;
@@ -333,6 +336,91 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
       });
     }
     return c.json({ running: false });
+  });
+
+  // POST /api/mode-maker/publish — publish mode package to R2
+  app.post("/api/mode-maker/publish", async (c) => {
+    try {
+      const body = await c.req.json<{ force?: boolean }>().catch(() => ({}));
+
+      // 1. Validate manifest
+      let manifest: ReturnType<typeof readAndValidateManifest>;
+      try {
+        manifest = readAndValidateManifest(workspace);
+      } catch (err) {
+        return c.json({
+          success: false,
+          errorCode: "VALIDATION_ERROR",
+          message: err instanceof Error ? err.message : "Manifest validation failed",
+        }, 400);
+      }
+
+      // 2. Check pneuma-mode.ts exists
+      if (!existsSync(join(workspace, "pneuma-mode.ts"))) {
+        return c.json({
+          success: false,
+          errorCode: "VALIDATION_ERROR",
+          message: "pneuma-mode.ts not found. A valid mode package requires this file.",
+        }, 400);
+      }
+
+      // 3. Load credentials (non-interactive)
+      const creds = loadCredentials();
+      if (!creds) {
+        return c.json({
+          success: false,
+          errorCode: "NO_CREDENTIALS",
+          message: "R2 credentials not configured. Run `bunx pneuma-skills snapshot push` once from the CLI to set up credentials.",
+        }, 400);
+      }
+
+      // 4. Check if version already exists
+      const archiveKey = getModeArchiveKey(manifest.name, manifest.version);
+      const exists = await checkR2KeyExists(archiveKey, creds);
+      if (exists && !body.force) {
+        return c.json({
+          success: false,
+          errorCode: "VERSION_EXISTS",
+          message: `Version ${manifest.version} already published for "${manifest.name}". Use force to overwrite, or bump the version in manifest.ts.`,
+        }, 409);
+      }
+
+      // 5. Create archive
+      const archiveName = `${manifest.name}-${manifest.version}.tar.gz`;
+      const archivePath = join(tmpdir(), archiveName);
+      await createModeArchive(workspace, archivePath);
+
+      // 6. Upload archive
+      const publicUrl = await uploadToR2(archivePath, archiveKey, creds);
+
+      // 7. Upload latest.json
+      const latestKey = getModeLatestKey(manifest.name);
+      const publishedAt = new Date().toISOString();
+      await uploadJsonToR2({
+        name: manifest.name,
+        version: manifest.version,
+        displayName: manifest.displayName,
+        description: manifest.description,
+        publishedAt,
+      }, latestKey, creds);
+
+      // 8. Cleanup temp file
+      try { unlinkSync(archivePath); } catch {}
+
+      // 9. Return result
+      const runCommand = `bunx pneuma-skills ${publicUrl} --workspace ~/pneuma-projects/${manifest.name}-workspace`;
+      return c.json({
+        success: true,
+        name: manifest.name,
+        version: manifest.version,
+        url: publicUrl,
+        publishedAt,
+        runCommand,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ success: false, errorCode: "PUBLISH_ERROR", message }, 500);
+    }
   });
 
   // POST /api/mode-maker/reset — clear workspace and re-seed from templates

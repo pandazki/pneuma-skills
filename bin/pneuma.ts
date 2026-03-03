@@ -243,6 +243,44 @@ async function main() {
     return;
   }
 
+  // Mode subcommand — publish, list
+  if (rawArgs[0] === "mode") {
+    if (rawArgs[1] === "publish") {
+      let workspace = process.cwd();
+      let force = false;
+      for (let i = 2; i < rawArgs.length; i++) {
+        if (rawArgs[i] === "--workspace" && i + 1 < rawArgs.length) {
+          workspace = resolve(rawArgs[++i]);
+        } else if (rawArgs[i] === "--force") {
+          force = true;
+        }
+      }
+      const { publishMode } = await import("../snapshot/mode-publish.js");
+      await publishMode(workspace, { force });
+      return;
+    }
+    if (rawArgs[1] === "list") {
+      const { getCredentials, listModes } = await import("../snapshot/r2.js");
+      const creds = await getCredentials();
+      const modes = await listModes(creds);
+      // Filter to only latest.json entries for a clean listing
+      const latestEntries = modes.filter((m) => m.key.endsWith("/latest.json"));
+      if (latestEntries.length === 0) {
+        console.log("[mode] No published modes found.");
+      } else {
+        console.log(`[mode] ${latestEntries.length} published mode(s):\n`);
+        for (const entry of latestEntries) {
+          const name = entry.key.replace("modes/", "").replace("/latest.json", "");
+          const date = new Date(entry.lastModified).toLocaleString();
+          console.log(`  ${name}`);
+          console.log(`    Updated: ${date}\n`);
+        }
+      }
+      return;
+    }
+    // Unknown mode subcommand — fall through to normal mode resolution
+  }
+
   const { mode, workspace, port, noOpen, debug, forceDev } = parseArgs(process.argv);
 
   // Validate mode — support builtin names, local paths, and github: specifiers
