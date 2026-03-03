@@ -102,8 +102,28 @@ function pneumaWorkspaceResolve(): Plugin {
   };
 }
 
+/**
+ * Vite plugin: mark production-only URLs as external during dev.
+ *
+ * mode-loader.ts has `if (isDev) ... else import("/mode-assets/...")` branches.
+ * Vite's import-analysis scans ALL import() calls regardless of runtime guards,
+ * so the /mode-assets/ and /vendor/ URLs fail in dev. This plugin intercepts
+ * those resolve requests and marks them as external.
+ */
+function pneumaProdUrlsExternal(): Plugin {
+  return {
+    name: "pneuma-prod-urls-external",
+    resolveId(source) {
+      if (source.startsWith("/mode-assets/") || source.startsWith("/vendor/")) {
+        return { id: source, external: true };
+      }
+      return null;
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), pneumaWorkspaceResolve()],
+  plugins: [react(), tailwindcss(), pneumaWorkspaceResolve(), pneumaProdUrlsExternal()],
   resolve: {
     alias: {
       // Ensure external modes use the project's React (prevent duplicate instances)
