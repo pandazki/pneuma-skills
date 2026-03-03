@@ -1,0 +1,383 @@
+/**
+ * Mode Maker API routes — Fork, Play, Reset.
+ *
+ * Registered conditionally when modeName === "mode-maker".
+ * All endpoints scoped under /api/mode-maker/.
+ */
+
+import type { Hono } from "hono";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync, statSync, unlinkSync, rmdirSync } from "node:fs";
+import { join, relative, dirname, basename } from "node:path";
+import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
+import { parseManifestTs } from "../core/utils/manifest-parser.js";
+import { applyTemplateParams } from "./skill-installer.js";
+
+interface ModeMakerOptions {
+  workspace: string;
+  projectRoot: string;
+}
+
+const PROTECTED_DIRS = new Set([".pneuma", ".claude", ".git", "node_modules"]);
+const PLAY_PORT = 18997;
+
+/** Recursively list files in a directory, skipping protected dirs. Returns relative paths. */
+function listFilesRecursive(dir: string, base: string = ""): string[] {
+  const results: string[] = [];
+  let entries: ReturnType<typeof readdirSync>;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+  for (const entry of entries) {
+    const rel = base ? `${base}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      if (PROTECTED_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
+      results.push(...listFilesRecursive(join(dir, entry.name), rel));
+    } else {
+      results.push(rel);
+    }
+  }
+  return results;
+}
+
+/** Delete all non-protected files and empty directories from workspace. */
+function clearWorkspace(workspace: string): number {
+  let count = 0;
+
+  function walk(dir: string) {
+    let entries: ReturnType<typeof readdirSync>;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (PROTECTED_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
+        walk(full);
+        // Try removing now-empty directory
+        try { rmdirSync(full); } catch { /* not empty */ }
+      } else {
+        try {
+          unlinkSync(full);
+          count++;
+        } catch { /* skip */ }
+      }
+    }
+  }
+
+  walk(workspace);
+  return count;
+}
+
+/** Recursively copy a directory tree, applying template params to text files. */
+const TEMPLATE_EXTENSIONS = new Set([".md", ".txt", ".html", ".css", ".json", ".ts", ".tsx", ".js", ".jsx"]);
+
+function copyDirRecursive(
+  src: string,
+  dst: string,
+  params?: Record<string, number | string>,
+): { files: string[]; count: number } {
+  const files: string[] = [];
+
+  function walk(srcDir: string, dstDir: string, relBase: string) {
+    let entries: ReturnType<typeof readdirSync>;
+    try {
+      entries = readdirSync(srcDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const srcPath = join(srcDir, entry.name);
+      const dstPath = join(dstDir, entry.name);
+      const rel = relBase ? `${relBase}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        if (PROTECTED_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
+        mkdirSync(dstPath, { recursive: true });
+        walk(srcPath, dstPath, rel);
+      } else {
+        mkdirSync(dirname(dstPath), { recursive: true });
+        let content = readFileSync(srcPath);
+        // Apply template params to text files
+        if (params && Object.keys(params).length > 0) {
+          const ext = entry.name.slice(entry.name.lastIndexOf(".")).toLowerCase();
+          if (TEMPLATE_EXTENSIONS.has(ext)) {
+            const text = content.toString("utf-8");
+            const replaced = applyTemplateParams(text, params);
+            writeFileSync(dstPath, replaced, "utf-8");
+            files.push(rel);
+            continue;
+          }
+        }
+        writeFileSync(dstPath, content);
+        files.push(rel);
+      }
+    }
+  }
+
+  walk(src, dst, "");
+  return { files, count: files.length };
+}
+
+// ── Play state ─────────────────────────────────────────────────────────────
+
+interface ActivePlay {
+  proc: ReturnType<typeof Bun.spawn>;
+  pid: number;
+  port: number;
+  url: string;
+  tmpDir: string;
+}
+
+let activePlay: ActivePlay | null = null;
+
+function cleanupPlay() {
+  if (!activePlay) return;
+  try { activePlay.proc.kill(); } catch { /* already dead */ }
+  // Clean up tmpDir
+  try {
+    const files = listFilesRecursive(activePlay.tmpDir);
+    for (const f of files) {
+      try { unlinkSync(join(activePlay.tmpDir, f)); } catch { /* skip */ }
+    }
+    // Remove directories bottom-up
+    function rmDirs(dir: string) {
+      try {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          if (entry.isDirectory()) rmDirs(join(dir, entry.name));
+        }
+        rmdirSync(dir);
+      } catch { /* skip */ }
+    }
+    rmDirs(activePlay.tmpDir);
+  } catch { /* tmpDir cleanup failed, not critical */ }
+  activePlay = null;
+}
+
+// ── Route registration ─────────────────────────────────────────────────────
+
+export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () => void {
+  const { workspace, projectRoot } = opts;
+  const modesDir = join(projectRoot, "modes");
+
+  // GET /api/mode-maker/modes — list builtin modes available for forking
+  app.get("/api/mode-maker/modes", (c) => {
+    const modes: { name: string; displayName?: string; description?: string; fileCount: number }[] = [];
+    try {
+      const entries = readdirSync(modesDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name === "mode-maker") continue;
+        const manifestPath = join(modesDir, entry.name, "manifest.ts");
+        if (!existsSync(manifestPath)) continue;
+        const content = readFileSync(manifestPath, "utf-8");
+        const parsed = parseManifestTs(content);
+        const files = listFilesRecursive(join(modesDir, entry.name));
+        modes.push({
+          name: entry.name,
+          displayName: parsed.displayName,
+          description: parsed.description,
+          fileCount: files.length,
+        });
+      }
+    } catch { /* modes dir scan failed */ }
+    return c.json({ modes });
+  });
+
+  // POST /api/mode-maker/fork — copy a builtin mode's files into workspace
+  app.post("/api/mode-maker/fork", async (c) => {
+    try {
+      const body = await c.req.json<{ sourceMode: string; overwrite?: boolean }>();
+      if (!body.sourceMode) {
+        return c.json({ success: false, message: "sourceMode is required" }, 400);
+      }
+
+      const sourceDir = join(modesDir, body.sourceMode);
+      if (!existsSync(sourceDir) || !existsSync(join(sourceDir, "manifest.ts"))) {
+        return c.json({ success: false, message: `Mode "${body.sourceMode}" not found` }, 404);
+      }
+
+      // Check if workspace has existing files
+      const existingFiles = listFilesRecursive(workspace);
+      if (existingFiles.length > 0 && !body.overwrite) {
+        return c.json({
+          success: false,
+          requireConfirmation: true,
+          existingFileCount: existingFiles.length,
+          message: `Workspace has ${existingFiles.length} existing file(s). Set overwrite: true to proceed.`,
+        });
+      }
+
+      // Copy all files from source mode to workspace
+      const { files, count } = copyDirRecursive(sourceDir, workspace);
+      return c.json({ success: true, filesWritten: count, files });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ success: false, message }, 500);
+    }
+  });
+
+  // POST /api/mode-maker/play — start a test instance of the mode being developed
+  app.post("/api/mode-maker/play", async (c) => {
+    try {
+      if (activePlay) {
+        return c.json({ success: false, message: "A play instance is already running" }, 409);
+      }
+
+      // Create temporary workspace
+      const uuid8 = randomUUID().slice(0, 8);
+      const tmpDir = join(tmpdir(), `pneuma-play-${uuid8}`);
+      mkdirSync(tmpDir, { recursive: true });
+
+      // Launch subprocess: bun <projectRoot>/bin/pneuma.ts <workspace> --workspace <tmpDir> --port <PLAY_PORT> --no-open --dev
+      // workspace path acts as local mode source; --dev forces Vite dev server
+      // so that /@fs/ imports work for external mode files
+      const proc = Bun.spawn(
+        ["bun", join(projectRoot, "bin", "pneuma.ts"), workspace, "--workspace", tmpDir, "--port", String(PLAY_PORT), "--no-open", "--dev"],
+        {
+          cwd: projectRoot,
+          stdout: "pipe",
+          stderr: "pipe",
+          env: {
+            ...process.env as Record<string, string>,
+            // Don't inherit CLAUDECODE env var
+            CLAUDECODE: "",
+          },
+        },
+      );
+
+      // Wait for the subprocess to print its ready URL (up to 30s — Vite startup can be slow)
+      const readyPromise = new Promise<string>((resolve) => {
+        const fallbackUrl = `http://localhost:${PLAY_PORT}?mode=${encodeURIComponent(basename(workspace))}`;
+        const timeout = setTimeout(() => resolve(fallbackUrl), 30_000);
+        const readStream = async (stream: ReadableStream<Uint8Array>) => {
+          const reader = stream.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              // bin/pneuma.ts prints: [pneuma] ready http://localhost:<port>?session=...&mode=...
+              const match = buffer.match(/\[pneuma\] ready (http:\/\/\S+)/);
+              if (match) {
+                clearTimeout(timeout);
+                resolve(match[1]);
+                break;
+              }
+            }
+          } catch { /* stream ended */ }
+        };
+        if (proc.stdout && typeof proc.stdout !== "number") readStream(proc.stdout);
+      });
+
+      const url = await readyPromise;
+      const port = parseInt(new URL(url).port, 10) || PLAY_PORT;
+
+      activePlay = {
+        proc,
+        pid: proc.pid,
+        port,
+        url,
+        tmpDir,
+      };
+
+      // Auto-cleanup when process exits
+      proc.exited.then(() => {
+        if (activePlay?.proc === proc) {
+          // Clean tmpDir
+          try {
+            function rmRecursive(dir: string) {
+              try {
+                for (const entry of readdirSync(dir, { withFileTypes: true })) {
+                  const full = join(dir, entry.name);
+                  if (entry.isDirectory()) rmRecursive(full);
+                  else unlinkSync(full);
+                }
+                rmdirSync(dir);
+              } catch { /* skip */ }
+            }
+            rmRecursive(activePlay.tmpDir);
+          } catch { /* not critical */ }
+          activePlay = null;
+        }
+      });
+
+      return c.json({ success: true, pid: proc.pid, port, url, tmpDir });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ success: false, message }, 500);
+    }
+  });
+
+  // POST /api/mode-maker/play/stop — stop the running test instance
+  app.post("/api/mode-maker/play/stop", (c) => {
+    if (activePlay) {
+      try { activePlay.proc.kill(); } catch { /* already dead */ }
+      // exited handler will clean up
+    }
+    return c.json({ success: true });
+  });
+
+  // GET /api/mode-maker/play/status — check if a play instance is running
+  app.get("/api/mode-maker/play/status", (c) => {
+    if (activePlay) {
+      return c.json({
+        running: true,
+        pid: activePlay.pid,
+        port: activePlay.port,
+        url: activePlay.url,
+      });
+    }
+    return c.json({ running: false });
+  });
+
+  // POST /api/mode-maker/reset — clear workspace and re-seed from templates
+  app.post("/api/mode-maker/reset", async (c) => {
+    try {
+      const body = await c.req.json<{ confirmed?: boolean }>();
+      if (!body.confirmed) {
+        return c.json({
+          requireConfirmation: true,
+          message: "All files will be deleted and replaced with seed templates. .pneuma/ .claude/ .git/ are preserved.",
+        });
+      }
+
+      // Read init params from config
+      let params: Record<string, number | string> = {};
+      const configPath = join(workspace, ".pneuma", "config.json");
+      if (existsSync(configPath)) {
+        try {
+          params = JSON.parse(readFileSync(configPath, "utf-8"));
+        } catch { /* use empty params */ }
+      }
+
+      // Clear all user files
+      const filesDeleted = clearWorkspace(workspace);
+
+      // Re-seed from mode-maker seed directory
+      const seedDir = join(modesDir, "mode-maker", "seed");
+      const seedFiles: string[] = [];
+      let filesWritten = 0;
+
+      if (existsSync(seedDir)) {
+        const result = copyDirRecursive(seedDir, workspace, params);
+        seedFiles.push(...result.files);
+        filesWritten = result.count;
+      }
+
+      return c.json({ success: true, filesDeleted, filesWritten, files: seedFiles });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ success: false, message }, 500);
+    }
+  });
+
+  // Return cleanup function
+  return () => {
+    cleanupPlay();
+  };
+}
