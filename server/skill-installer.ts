@@ -7,12 +7,14 @@
 
 import { mkdirSync, existsSync, readFileSync, writeFileSync, cpSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, extname } from "node:path";
-import type { SkillConfig, ViewerApiConfig } from "../core/types/mode-manifest.js";
+import type { SkillConfig, ViewerApiConfig, McpServerConfig, SkillDependency } from "../core/types/mode-manifest.js";
 
 const PNEUMA_MARKER_START = "<!-- pneuma:start -->";
 const PNEUMA_MARKER_END = "<!-- pneuma:end -->";
 const VIEWER_API_MARKER_START = "<!-- pneuma:viewer-api:start -->";
 const VIEWER_API_MARKER_END = "<!-- pneuma:viewer-api:end -->";
+const SKILLS_MARKER_START = "<!-- pneuma:skills:start -->";
+const SKILLS_MARKER_END = "<!-- pneuma:skills:end -->";
 
 /**
  * Ensure `.pneuma/` is listed in the workspace's .gitignore.
@@ -183,6 +185,148 @@ export function generateViewerApiSection(
 }
 
 /**
+ * Install MCP servers declared by a mode into workspace's .mcp.json.
+ *
+ * Management strategy: uses .pneuma/managed-mcp.json to track which servers
+ * Pneuma manages. On re-install, old managed entries are removed before writing new ones.
+ * User-added servers are preserved.
+ */
+export function installMcpServers(
+  workspace: string,
+  mcpServers: McpServerConfig[],
+  params?: Record<string, number | string>,
+): void {
+  const mcpJsonPath = join(workspace, ".mcp.json");
+  const managedListPath = join(workspace, ".pneuma", "managed-mcp.json");
+
+  // Read existing .mcp.json
+  let mcpConfig: { mcpServers: Record<string, unknown> } = { mcpServers: {} };
+  if (existsSync(mcpJsonPath)) {
+    try {
+      mcpConfig = JSON.parse(readFileSync(mcpJsonPath, "utf-8"));
+      if (!mcpConfig.mcpServers) mcpConfig.mcpServers = {};
+    } catch {
+      mcpConfig = { mcpServers: {} };
+    }
+  }
+
+  // Read managed server names and remove old entries
+  let managedNames: string[] = [];
+  if (existsSync(managedListPath)) {
+    try {
+      managedNames = JSON.parse(readFileSync(managedListPath, "utf-8"));
+    } catch {
+      managedNames = [];
+    }
+  }
+  for (const name of managedNames) {
+    delete mcpConfig.mcpServers[name];
+  }
+
+  // Apply template params helper
+  const applyToValue = (value: string): string => {
+    return params && Object.keys(params).length > 0
+      ? applyTemplateParams(value, params)
+      : value;
+  };
+  const applyToRecord = (record: Record<string, string>): Record<string, string> => {
+    const result: Record<string, string> = {};
+    for (const [k, v] of Object.entries(record)) {
+      result[k] = applyToValue(v);
+    }
+    return result;
+  };
+
+  // Build and write new entries
+  const newManagedNames: string[] = [];
+  for (const server of mcpServers) {
+    newManagedNames.push(server.name);
+
+    if (server.url) {
+      // HTTP server
+      const entry: Record<string, unknown> = {
+        type: "http",
+        url: applyToValue(server.url),
+      };
+      if (server.headers && Object.keys(server.headers).length > 0) {
+        entry.headers = applyToRecord(server.headers);
+      }
+      mcpConfig.mcpServers[server.name] = entry;
+    } else {
+      // stdio server
+      const entry: Record<string, unknown> = {};
+      if (server.command) entry.command = server.command;
+      if (server.args) entry.args = server.args.map(applyToValue);
+      if (server.env && Object.keys(server.env).length > 0) {
+        entry.env = applyToRecord(server.env);
+      }
+      mcpConfig.mcpServers[server.name] = entry;
+    }
+  }
+
+  // Write .mcp.json
+  writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2) + "\n", "utf-8");
+  console.log(`[skill-installer] Updated .mcp.json with ${mcpServers.length} server(s)`);
+
+  // Write managed list
+  mkdirSync(join(workspace, ".pneuma"), { recursive: true });
+  writeFileSync(managedListPath, JSON.stringify(newManagedNames, null, 2), "utf-8");
+}
+
+/**
+ * Install skill dependencies declared by a mode.
+ *
+ * Copies each dependency's source directory into .claude/skills/<name>/,
+ * applies template params, and returns CLAUDE.md snippet lines for injection.
+ */
+export function installSkillDependencies(
+  workspace: string,
+  dependencies: SkillDependency[],
+  modeSourceDir: string,
+  params?: Record<string, number | string>,
+): string[] {
+  const snippets: string[] = [];
+
+  for (const dep of dependencies) {
+    if (!dep.sourceDir) {
+      console.error(`[skill-installer] Skill dependency "${dep.name}" is missing sourceDir — skipping. The skill files must be bundled in the mode package.`);
+      continue;
+    }
+
+    const depSource = join(modeSourceDir, dep.sourceDir);
+    const depTarget = join(workspace, ".claude", "skills", dep.name);
+
+    mkdirSync(depTarget, { recursive: true });
+    if (existsSync(depSource)) {
+      cpSync(depSource, depTarget, { recursive: true, force: true });
+      if (params && Object.keys(params).length > 0) {
+        applyTemplateToDir(depTarget, params);
+      }
+      console.log(`[skill-installer] Installed skill dependency: ${dep.name}`);
+    } else {
+      console.error(`[skill-installer] Skill dependency "${dep.name}" source not found: ${depSource} — the mode package is incomplete.`);
+    }
+
+    // Collect snippet for CLAUDE.md
+    if (dep.claudeMdSnippet) {
+      snippets.push(`- ${dep.claudeMdSnippet}`);
+    } else {
+      // Try extracting summary from installed SKILL.md
+      const skillMdPath = join(depTarget, "SKILL.md");
+      if (existsSync(skillMdPath)) {
+        const content = readFileSync(skillMdPath, "utf-8");
+        const headingMatch = content.match(/^#\s+(.+)/m);
+        snippets.push(`- **${dep.name}** — ${headingMatch ? headingMatch[1] : "Installed skill"}`);
+      } else {
+        snippets.push(`- **${dep.name}**`);
+      }
+    }
+  }
+
+  return snippets;
+}
+
+/**
  * Install a mode's skill and inject CLAUDE.md configuration.
  *
  * @param workspace  — User's project directory
@@ -228,6 +372,17 @@ export function installSkill(
     console.log(`[skill-installer] Installed skill to ${skillTarget}`);
   } else {
     console.warn(`[skill-installer] Skill source not found: ${skillSource}`);
+  }
+
+  // 1b. Install MCP servers
+  if (skillConfig.mcpServers && skillConfig.mcpServers.length > 0) {
+    installMcpServers(workspace, skillConfig.mcpServers, params);
+  }
+
+  // 1c. Install skill dependencies
+  let skillSnippets: string[] = [];
+  if (skillConfig.skillDependencies && skillConfig.skillDependencies.length > 0) {
+    skillSnippets = installSkillDependencies(workspace, skillConfig.skillDependencies, modeSourceDir, params);
   }
 
   // 2. Inject/update CLAUDE.md with pneuma configuration
@@ -276,6 +431,40 @@ export function installSkill(
         content += "\n";
       }
       content += "\n" + viewerSection + "\n";
+    }
+  }
+
+  // 2c. Inject/update skills dependency section
+  if (skillSnippets.length > 0) {
+    const skillsContent = [
+      "## Available Skills",
+      "",
+      "The following skills are installed and available for use:",
+      "",
+      ...skillSnippets,
+      "",
+      "Use `/<skill-name>` to invoke these skills.",
+    ].join("\n");
+    const skillsSection = `${SKILLS_MARKER_START}\n${skillsContent}\n${SKILLS_MARKER_END}`;
+    const sStart = content.indexOf(SKILLS_MARKER_START);
+    const sEnd = content.indexOf(SKILLS_MARKER_END);
+    if (sStart !== -1 && sEnd !== -1) {
+      content = content.substring(0, sStart) +
+        skillsSection +
+        content.substring(sEnd + SKILLS_MARKER_END.length);
+    } else {
+      if (content.length > 0 && !content.endsWith("\n")) {
+        content += "\n";
+      }
+      content += "\n" + skillsSection + "\n";
+    }
+  } else {
+    // Remove stale skills section if no dependencies
+    const sStart = content.indexOf(SKILLS_MARKER_START);
+    const sEnd = content.indexOf(SKILLS_MARKER_END);
+    if (sStart !== -1 && sEnd !== -1) {
+      content = content.substring(0, sStart) +
+        content.substring(sEnd + SKILLS_MARKER_END.length);
     }
   }
 

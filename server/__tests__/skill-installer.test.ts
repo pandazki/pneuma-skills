@@ -8,8 +8,8 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { applyTemplateParams, installSkill, generateViewerApiSection } from "../skill-installer.js";
-import type { SkillConfig, ViewerApiConfig } from "../../core/types/mode-manifest.js";
+import { applyTemplateParams, installSkill, generateViewerApiSection, installMcpServers, installSkillDependencies } from "../skill-installer.js";
+import type { SkillConfig, ViewerApiConfig, McpServerConfig, SkillDependency } from "../../core/types/mode-manifest.js";
 
 // ── applyTemplateParams (pure) ──────────────────────────────────────────────
 
@@ -383,5 +383,343 @@ describe("generateViewerApiSection", () => {
     });
     expect(result).toContain("Type: single");
     expect(result).not.toContain("### Actions");
+  });
+});
+
+// ── installMcpServers ──────────────────────────────────────────────────────
+
+describe("installMcpServers", () => {
+  let tmpDir: string;
+  let workspace: string;
+
+  beforeEach(() => {
+    tmpDir = join(import.meta.dir, `.tmp-mcp-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    workspace = join(tmpDir, "workspace");
+    mkdirSync(join(workspace, ".pneuma"), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("writes stdio server to .mcp.json", () => {
+    const servers: McpServerConfig[] = [{
+      name: "brave-search",
+      command: "npx",
+      args: ["-y", "@anthropic/mcp-server-brave-search"],
+      env: { BRAVE_API_KEY: "${BRAVE_API_KEY}" },
+    }];
+
+    installMcpServers(workspace, servers);
+
+    const mcpJson = JSON.parse(readFileSync(join(workspace, ".mcp.json"), "utf-8"));
+    expect(mcpJson.mcpServers["brave-search"]).toEqual({
+      command: "npx",
+      args: ["-y", "@anthropic/mcp-server-brave-search"],
+      env: { BRAVE_API_KEY: "${BRAVE_API_KEY}" },
+    });
+  });
+
+  test("applies template params to args", () => {
+    const servers: McpServerConfig[] = [{
+      name: "test-server",
+      command: "node",
+      args: ["server.js", "--width", "{{width}}"],
+    }];
+
+    installMcpServers(workspace, servers, { width: 1920 });
+
+    const mcpJson = JSON.parse(readFileSync(join(workspace, ".mcp.json"), "utf-8"));
+    expect(mcpJson.mcpServers["test-server"].args).toEqual(["server.js", "--width", "1920"]);
+  });
+
+  test("preserves ${VAR} references in env values", () => {
+    const servers: McpServerConfig[] = [{
+      name: "api-server",
+      command: "node",
+      args: ["serve.js"],
+      env: { API_KEY: "${API_KEY}", CUSTOM: "{{customVal}}" },
+    }];
+
+    installMcpServers(workspace, servers, { customVal: "hello" });
+
+    const mcpJson = JSON.parse(readFileSync(join(workspace, ".mcp.json"), "utf-8"));
+    expect(mcpJson.mcpServers["api-server"].env).toEqual({
+      API_KEY: "${API_KEY}",
+      CUSTOM: "hello",
+    });
+  });
+
+  test("preserves user-defined servers", () => {
+    // Pre-write a user server
+    writeFileSync(join(workspace, ".mcp.json"), JSON.stringify({
+      mcpServers: { "user-server": { command: "my-tool" } },
+    }));
+
+    const servers: McpServerConfig[] = [{
+      name: "pneuma-server",
+      command: "npx",
+      args: ["some-tool"],
+    }];
+
+    installMcpServers(workspace, servers);
+
+    const mcpJson = JSON.parse(readFileSync(join(workspace, ".mcp.json"), "utf-8"));
+    expect(mcpJson.mcpServers["user-server"]).toEqual({ command: "my-tool" });
+    expect(mcpJson.mcpServers["pneuma-server"]).toBeDefined();
+  });
+
+  test("re-install cleans old managed entries (idempotent)", () => {
+    // First install
+    installMcpServers(workspace, [
+      { name: "old-server", command: "old-cmd" },
+      { name: "kept-server", command: "kept-cmd" },
+    ]);
+
+    // Second install with different servers
+    installMcpServers(workspace, [
+      { name: "new-server", command: "new-cmd" },
+    ]);
+
+    const mcpJson = JSON.parse(readFileSync(join(workspace, ".mcp.json"), "utf-8"));
+    expect(mcpJson.mcpServers["old-server"]).toBeUndefined();
+    expect(mcpJson.mcpServers["kept-server"]).toBeUndefined();
+    expect(mcpJson.mcpServers["new-server"]).toEqual({ command: "new-cmd" });
+  });
+
+  test("writes HTTP server with type and url", () => {
+    const servers: McpServerConfig[] = [{
+      name: "http-api",
+      url: "https://api.example.com/mcp",
+      headers: { Authorization: "Bearer {{token}}" },
+    }];
+
+    installMcpServers(workspace, servers, { token: "sk-123" });
+
+    const mcpJson = JSON.parse(readFileSync(join(workspace, ".mcp.json"), "utf-8"));
+    expect(mcpJson.mcpServers["http-api"]).toEqual({
+      type: "http",
+      url: "https://api.example.com/mcp",
+      headers: { Authorization: "Bearer sk-123" },
+    });
+  });
+
+  test("writes managed-mcp.json tracking file", () => {
+    installMcpServers(workspace, [
+      { name: "server-a", command: "a" },
+      { name: "server-b", command: "b" },
+    ]);
+
+    const managed = JSON.parse(readFileSync(join(workspace, ".pneuma", "managed-mcp.json"), "utf-8"));
+    expect(managed).toEqual(["server-a", "server-b"]);
+  });
+});
+
+// ── installSkillDependencies ───────────────────────────────────────────────
+
+describe("installSkillDependencies", () => {
+  let tmpDir: string;
+  let workspace: string;
+  let modeSourceDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(import.meta.dir, `.tmp-deps-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    workspace = join(tmpDir, "workspace");
+    modeSourceDir = join(tmpDir, "mode-pkg");
+
+    mkdirSync(workspace, { recursive: true });
+
+    // Create dependency source directories
+    mkdirSync(join(modeSourceDir, "deps", "jina-search"), { recursive: true });
+    writeFileSync(join(modeSourceDir, "deps", "jina-search", "SKILL.md"), "# Jina Search\n\nSearch the web.\n");
+
+    mkdirSync(join(modeSourceDir, "deps", "illustrator"), { recursive: true });
+    writeFileSync(join(modeSourceDir, "deps", "illustrator", "SKILL.md"), "# Illustrator\n\nGenerate images.\nAPI: {{apiUrl}}\n");
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("copies dependency skill to .claude/skills/<name>/", () => {
+    const deps: SkillDependency[] = [
+      { name: "jina-search", sourceDir: "deps/jina-search" },
+    ];
+
+    installSkillDependencies(workspace, deps, modeSourceDir);
+
+    expect(existsSync(join(workspace, ".claude", "skills", "jina-search", "SKILL.md"))).toBe(true);
+  });
+
+  test("applies template params to dependency files", () => {
+    const deps: SkillDependency[] = [
+      { name: "illustrator", sourceDir: "deps/illustrator" },
+    ];
+
+    installSkillDependencies(workspace, deps, modeSourceDir, { apiUrl: "https://api.example.com" });
+
+    const content = readFileSync(join(workspace, ".claude", "skills", "illustrator", "SKILL.md"), "utf-8");
+    expect(content).toContain("API: https://api.example.com");
+    expect(content).not.toContain("{{apiUrl}}");
+  });
+
+  test("returns custom snippet from claudeMdSnippet", () => {
+    const deps: SkillDependency[] = [
+      { name: "jina-search", sourceDir: "deps/jina-search", claudeMdSnippet: "**jina-search** — Web search via Jina API" },
+    ];
+
+    const snippets = installSkillDependencies(workspace, deps, modeSourceDir);
+
+    expect(snippets).toEqual(["- **jina-search** — Web search via Jina API"]);
+  });
+
+  test("extracts snippet from SKILL.md heading when no claudeMdSnippet", () => {
+    const deps: SkillDependency[] = [
+      { name: "jina-search", sourceDir: "deps/jina-search" },
+    ];
+
+    const snippets = installSkillDependencies(workspace, deps, modeSourceDir);
+
+    expect(snippets).toEqual(["- **jina-search** — Jina Search"]);
+  });
+
+  test("skips dependency with missing sourceDir", () => {
+    const deps: SkillDependency[] = [
+      { name: "broken-dep", sourceDir: undefined as any },
+      { name: "jina-search", sourceDir: "deps/jina-search" },
+    ];
+
+    const snippets = installSkillDependencies(workspace, deps, modeSourceDir);
+
+    // Broken dep skipped, only jina-search installed
+    expect(snippets.length).toBe(1);
+    expect(existsSync(join(workspace, ".claude", "skills", "jina-search", "SKILL.md"))).toBe(true);
+  });
+
+  test("handles multiple dependencies", () => {
+    const deps: SkillDependency[] = [
+      { name: "jina-search", sourceDir: "deps/jina-search", claudeMdSnippet: "**jina-search** — Search" },
+      { name: "illustrator", sourceDir: "deps/illustrator", claudeMdSnippet: "**illustrator** — Images" },
+    ];
+
+    const snippets = installSkillDependencies(workspace, deps, modeSourceDir);
+
+    expect(snippets.length).toBe(2);
+    expect(existsSync(join(workspace, ".claude", "skills", "jina-search", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(workspace, ".claude", "skills", "illustrator", "SKILL.md"))).toBe(true);
+  });
+});
+
+// ── installSkill integration: MCP + skill deps ────────────────────────────
+
+describe("installSkill with mcpServers and skillDependencies", () => {
+  let tmpDir: string;
+  let workspace: string;
+  let modeSourceDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(import.meta.dir, `.tmp-integ-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    workspace = join(tmpDir, "workspace");
+    modeSourceDir = join(tmpDir, "mode-pkg");
+
+    // Create mode source with skill files
+    mkdirSync(join(modeSourceDir, "skill"), { recursive: true });
+    writeFileSync(join(modeSourceDir, "skill", "SKILL.md"), "# Main Skill\n");
+
+    // Create dependency
+    mkdirSync(join(modeSourceDir, "deps", "helper"), { recursive: true });
+    writeFileSync(join(modeSourceDir, "deps", "helper", "SKILL.md"), "# Helper Tool\n\nA helper tool.\n");
+
+    mkdirSync(workspace, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("installs MCP servers via installSkill", () => {
+    const config: SkillConfig = {
+      sourceDir: "skill",
+      installName: "pneuma-integ",
+      claudeMdSection: "Integration test.",
+      mcpServers: [{
+        name: "test-mcp",
+        command: "npx",
+        args: ["-y", "test-server"],
+      }],
+    };
+
+    installSkill(workspace, config, modeSourceDir);
+
+    const mcpJson = JSON.parse(readFileSync(join(workspace, ".mcp.json"), "utf-8"));
+    expect(mcpJson.mcpServers["test-mcp"]).toBeDefined();
+    expect(mcpJson.mcpServers["test-mcp"].command).toBe("npx");
+  });
+
+  test("installs skill dependencies and generates CLAUDE.md skills section", () => {
+    const config: SkillConfig = {
+      sourceDir: "skill",
+      installName: "pneuma-integ",
+      claudeMdSection: "Integration test.",
+      skillDependencies: [{
+        name: "helper",
+        sourceDir: "deps/helper",
+        claudeMdSnippet: "**helper** — A helper tool",
+      }],
+    };
+
+    installSkill(workspace, config, modeSourceDir);
+
+    // Dependency installed
+    expect(existsSync(join(workspace, ".claude", "skills", "helper", "SKILL.md"))).toBe(true);
+
+    // CLAUDE.md contains skills section
+    const claudeMd = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
+    expect(claudeMd).toContain("<!-- pneuma:skills:start -->");
+    expect(claudeMd).toContain("**helper** — A helper tool");
+    expect(claudeMd).toContain("<!-- pneuma:skills:end -->");
+  });
+
+  test("no skills section in CLAUDE.md when no dependencies", () => {
+    const config: SkillConfig = {
+      sourceDir: "skill",
+      installName: "pneuma-integ",
+      claudeMdSection: "No deps test.",
+    };
+
+    installSkill(workspace, config, modeSourceDir);
+
+    const claudeMd = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
+    expect(claudeMd).not.toContain("<!-- pneuma:skills:start -->");
+  });
+
+  test("re-install removes stale skills section when dependencies removed", () => {
+    // First install with dependency
+    const configWithDeps: SkillConfig = {
+      sourceDir: "skill",
+      installName: "pneuma-integ",
+      claudeMdSection: "With deps.",
+      skillDependencies: [{
+        name: "helper",
+        sourceDir: "deps/helper",
+        claudeMdSnippet: "**helper** — A helper tool",
+      }],
+    };
+    installSkill(workspace, configWithDeps, modeSourceDir);
+
+    let claudeMd = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
+    expect(claudeMd).toContain("<!-- pneuma:skills:start -->");
+
+    // Re-install without dependencies
+    const configWithoutDeps: SkillConfig = {
+      sourceDir: "skill",
+      installName: "pneuma-integ",
+      claudeMdSection: "No deps now.",
+    };
+    installSkill(workspace, configWithoutDeps, modeSourceDir);
+
+    claudeMd = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
+    expect(claudeMd).not.toContain("<!-- pneuma:skills:start -->");
+    expect(claudeMd).toContain("No deps now.");
   });
 });
