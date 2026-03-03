@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.13.0] - 2026-03-03
+
+### Added
+- **Mode publish API** — `POST /api/mode-maker/publish` endpoint with structured error codes (VALIDATION_ERROR, NO_CREDENTIALS, VERSION_EXISTS)
+- **CLI mode subcommands** — `mode publish` and `mode list` for publishing and listing mode packages on R2
+- **URL mode resolution** — run published modes via `https://*.tar.gz` specifier
+- **Mode archive utility** — `createModeArchive()` for packaging mode source files
+
+### Changed
+- **Overview tab redesign** — AI-native Package Structure cards with content-aware summaries, expandable detail panels (Manifest fields, Mode Definition bindings, Skill heading outline), and click-to-navigate (Viewer → Preview, Seed → Preview)
+- Default workspace path in run command: `~/pneuma-projects/{mode-name}-workspace`
+- Publish success UI shows copyable run command instead of raw URL
+
 ## [1.12.0] - 2026-03-03
 
 ### Added
