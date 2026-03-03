@@ -43,6 +43,15 @@ export const SECTION_THUMBNAIL = `
         }
       } catch(ex) {}
 
+      // Reset clone's margin so it renders at (0,0) in the standalone SVG context
+      // (the original element may have margin/position from its parent layout)
+      clone.style.margin = '0';
+      if (clone.style.position === 'absolute' || clone.style.position === 'fixed') {
+        clone.style.position = 'relative';
+      }
+      clone.style.top = '0';
+      clone.style.left = '0';
+
       // Serialize clone directly in iframe context (preserves SVG namespaces)
       var cloneHtml = new XMLSerializer().serializeToString(clone);
 

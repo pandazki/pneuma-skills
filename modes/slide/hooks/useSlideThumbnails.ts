@@ -27,7 +27,7 @@ function djb2(str: string): number {
 }
 
 /** Strip full-document wrappers, keeping only body content. Mirrors SlidePreview.tsx. */
-function stripHtmlWrapper(html: string): string {
+export function stripHtmlWrapper(html: string): string {
   if (!html.includes("<!DOCTYPE") && !html.includes("<html")) return html;
   const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   if (bodyMatch) return bodyMatch[1].trim();
@@ -49,7 +49,7 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-function getBaseUrl(): string {
+export function getBaseUrl(): string {
   return import.meta.env.DEV ? "http://localhost:17007" : "";
 }
 
@@ -57,7 +57,7 @@ function getBaseUrl(): string {
 
 let captureIframe: HTMLIFrameElement | null = null;
 
-function getOrCreateCaptureIframe(
+export function getOrCreateCaptureIframe(
   width: number,
   height: number,
 ): HTMLIFrameElement {
@@ -84,7 +84,7 @@ function destroyCaptureIframe(): void {
 }
 
 /** Load srcdoc into iframe and wait for rendering to complete */
-function loadIframe(iframe: HTMLIFrameElement, srcdoc: string): Promise<void> {
+export function loadIframe(iframe: HTMLIFrameElement, srcdoc: string): Promise<void> {
   return new Promise((resolve) => {
     const timeout = setTimeout(resolve, 5000); // max 5s fallback
     iframe.onload = () => {
@@ -102,7 +102,7 @@ const TRANSPARENT_1PX =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 /** Resolve a resource URL relative to the server base URL */
-function resolveContentUrl(src: string, baseUrl: string): string {
+export function resolveContentUrl(src: string, baseUrl: string): string {
   if (src.startsWith("http://") || src.startsWith("https://")) return src;
   if (src.startsWith("//")) return `https:${src}`;
   if (src.startsWith("/")) return `${baseUrl}${src}`;
@@ -112,7 +112,7 @@ function resolveContentUrl(src: string, baseUrl: string): string {
 // ── CSS & DOM extraction ─────────────────────────────────────────────────────
 
 /** Extract all CSS rules from the iframe's loaded stylesheets */
-function extractAllCSS(doc: Document): string {
+export function extractAllCSS(doc: Document): string {
   const parts: string[] = [];
   for (const sheet of Array.from(doc.styleSheets)) {
     try {
@@ -127,7 +127,7 @@ function extractAllCSS(doc: Document): string {
 }
 
 /** Inline all <img src> and inline-style background-image url() as base64 */
-async function inlineImages(
+export async function inlineImages(
   container: Element,
   baseUrl: string,
 ): Promise<void> {
@@ -202,7 +202,7 @@ async function inlineImages(
 }
 
 /** Inline image url() references in CSS text (for extracted CSS rules) */
-async function inlineCSSImageUrls(
+export async function inlineCSSImageUrls(
   css: string,
   baseUrl: string,
 ): Promise<string> {
@@ -252,7 +252,7 @@ async function inlineCSSImageUrls(
 }
 
 /** Remove all <script> elements (scripts can't run in SVG img context) */
-function removeScripts(el: Element): void {
+export function removeScripts(el: Element): void {
   for (const script of Array.from(el.querySelectorAll("script"))) {
     script.remove();
   }
@@ -264,7 +264,7 @@ function removeScripts(el: Element): void {
  * Build an SVG data URL from extracted CSS + body DOM.
  * Uses document.implementation.createHTMLDocument for safe XHTML serialization.
  */
-function buildSvgDataUrl(
+export function buildSvgDataUrl(
   css: string,
   body: HTMLElement,
   width: number,
@@ -309,7 +309,7 @@ function buildSvgDataUrl(
  * external CSS, custom scripts all execute normally in the iframe.
  * Fragment slides are wrapped in our themeCSS template.
  */
-async function captureSlideToSvg(
+export async function captureSlideToSvg(
   slideHtml: string,
   themeCSS: string,
   width: number,

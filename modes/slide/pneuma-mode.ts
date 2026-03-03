@@ -128,6 +128,9 @@ const slideMode: ModeDefinition = {
           if (el.accessibility) {
             lines.push(`     Accessibility: ${el.accessibility}`);
           }
+          if (el.type === "region" && el.thumbnail) {
+            lines.push(`     [region screenshot attached as image]`);
+          }
           if (ann.comment) {
             lines.push(`     Feedback: ${ann.comment}`);
           }

@@ -49,6 +49,10 @@ interface SlideIframePoolProps {
   highlightSelector?: string | null;
   /** CSS selectors for annotation highlights on the active slide */
   annotationSelectors?: string[];
+  /** Callback when ESC is pressed inside an iframe (keyboard events don't bubble across iframe boundary) */
+  onEscapeKey?: () => void;
+  /** Callback when Alt key state changes inside an iframe */
+  onAltKey?: (pressed: boolean) => void;
   /** Callback to expose iframe refs for postMessage communication (e.g. checkContentFit) */
   iframeRefsOut?: (refs: Map<string, HTMLIFrameElement>) => void;
 }
@@ -67,6 +71,8 @@ export default function SlideIframePool({
   findSlideContent,
   highlightSelector,
   annotationSelectors,
+  onEscapeKey,
+  onAltKey,
   iframeRefsOut,
 }: SlideIframePoolProps) {
   // Set of slide.file keys currently in the pool
@@ -291,11 +297,15 @@ export default function SlideIframePool({
         if (currentSlide && onTextEdit) {
           onTextEdit(currentSlide.file, e.data.html, e.data.changes);
         }
+      } else if (e.data?.type === "pneuma:escapeKey") {
+        onEscapeKey?.();
+      } else if (e.data?.type === "pneuma:altKey") {
+        onAltKey?.(!!e.data.pressed);
       }
     };
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [onSelect, onTextEdit, slides, activeIndex]);
+  }, [onSelect, onTextEdit, onEscapeKey, onAltKey, slides, activeIndex]);
 
   // ── Ref callback factory ──────────────────────────────────────────────────
   const setIframeRef = useCallback(

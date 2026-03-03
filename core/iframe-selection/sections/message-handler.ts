@@ -31,38 +31,51 @@ export const SECTION_MESSAGE_HANDLER = `
       } catch(ex) {}
     }
     if (e.data.type === 'pneuma:highlightMultiple') {
-      // Clear previous annotation highlights
-      var prev = document.querySelectorAll('[data-pneuma-annotated]');
-      for (var pi = 0; pi < prev.length; pi++) {
-        prev[pi].style.outline = '';
-        prev[pi].style.outlineOffset = '';
-        prev[pi].style.borderRadius = '';
-        prev[pi].removeAttribute('data-pneuma-annotated');
+      // Clear previous annotation overlays
+      var prevOverlays = document.querySelectorAll('[data-pneuma-annotation-overlay]');
+      for (var pi = 0; pi < prevOverlays.length; pi++) {
+        prevOverlays[pi].remove();
       }
-      // Highlight each selector
+      // Create overlay for each selector
       var selectors = e.data.selectors || [];
       for (var ai = 0; ai < selectors.length; ai++) {
         try {
           var ael = document.querySelector(selectors[ai]);
           if (ael) {
-            ael.setAttribute('data-pneuma-annotated', 'true');
-            ael.style.outline = SELECT_OUTLINE;
-            ael.style.outlineOffset = '2px';
-            ael.style.borderRadius = OUTLINE_RADIUS;
+            var arect = ael.getBoundingClientRect();
+            var adiv = createOverlayDiv(arect, true);
+            adiv.setAttribute('data-pneuma-annotation-overlay', 'true');
+            adiv.removeAttribute('data-pneuma-overlay');
           }
         } catch(ex) {}
       }
     }
     if (e.data.type === 'pneuma:clearHighlight') {
       clearSelected();
-      // Also clear annotation highlights
-      var annotated = document.querySelectorAll('[data-pneuma-annotated]');
-      for (var ci = 0; ci < annotated.length; ci++) {
-        annotated[ci].style.outline = '';
-        annotated[ci].style.outlineOffset = '';
-        annotated[ci].style.borderRadius = '';
-        annotated[ci].removeAttribute('data-pneuma-annotated');
+      // Also clear annotation overlays
+      var annotOverlays = document.querySelectorAll('[data-pneuma-annotation-overlay]');
+      for (var ci = 0; ci < annotOverlays.length; ci++) {
+        annotOverlays[ci].remove();
       }
+    }
+  });
+
+  // Forward keyboard events from iframe to parent (iframe events don't bubble)
+  document.addEventListener('keydown', function(e) {
+    if (!active) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      window.parent.postMessage({ type: 'pneuma:escapeKey' }, '*');
+    }
+    if (e.key === 'Alt') {
+      window.parent.postMessage({ type: 'pneuma:altKey', pressed: true }, '*');
+    }
+  });
+
+  document.addEventListener('keyup', function(e) {
+    if (!active) return;
+    if (e.key === 'Alt') {
+      window.parent.postMessage({ type: 'pneuma:altKey', pressed: false }, '*');
     }
   });
 
@@ -73,9 +86,8 @@ export const SECTION_MESSAGE_HANDLER = `
     if (hovered && hovered !== el) clearHover();
     if (el === selectedEl) return;
     hovered = el;
-    el.style.outline = HOVER_OUTLINE;
-    el.style.outlineOffset = '2px';
-    el.style.borderRadius = OUTLINE_RADIUS;
+    var rect = el.getBoundingClientRect();
+    hoverOverlay = createOverlayDiv(rect, false);
   });
 
   document.addEventListener('mouseout', function(e) {
@@ -94,12 +106,10 @@ export const SECTION_MESSAGE_HANDLER = `
       return;
     }
 
-    // Strip any hover/prior-selection outline before capturing thumbnail
-    el.style.outline = '';
-    el.style.outlineOffset = '';
-    el.style.borderRadius = '';
+    // Remove hover overlay before thumbnail capture (no blue border in preview)
+    clearHover();
 
-    // Capture thumbnail with clean styles (no blue outline in preview)
+    // Capture thumbnail with clean styles
     var thumbnail = captureElementThumbnail(el);
 
     applySelectedStyle(el);

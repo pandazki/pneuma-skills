@@ -30,6 +30,8 @@ import { buildSelectionScript } from "../../../core/iframe-selection/index.js";
 import { useStore } from "../../../src/store.js";
 import { useSlideThumbnails } from "../hooks/useSlideThumbnails.js";
 import SlideIframePool from "./SlideIframePool.js";
+import HighlighterCanvas from "./HighlighterCanvas.js";
+import { captureSlideRegion } from "./captureSlideRegion.js";
 import { generateSlideScaffold, type SlideSpec, type ScaffoldFile } from "./scaffold.js";
 import ScaffoldConfirm from "../../../src/components/ScaffoldConfirm.js";
 
@@ -99,6 +101,35 @@ function stripHtmlWrapper(html: string): string {
     .replace(/<head[\s\S]*?<\/head>/gi, "")
     .replace(/<\/?body[^>]*>/gi, "")
     .trim();
+}
+
+/** Composite highlighter strokes PNG on top of a slide capture PNG */
+function compositeStrokesOnCapture(
+  basePngUrl: string,
+  strokesPngUrl: string,
+  width: number,
+  height: number,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const baseImg = new Image();
+    baseImg.onload = () => {
+      const strokesImg = new Image();
+      strokesImg.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(basePngUrl); return; }
+        ctx.drawImage(baseImg, 0, 0, width, height);
+        ctx.drawImage(strokesImg, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      strokesImg.onerror = () => resolve(basePngUrl);
+      strokesImg.src = strokesPngUrl;
+    };
+    baseImg.onerror = () => reject(new Error("Failed to load base image"));
+    baseImg.src = basePngUrl;
+  });
 }
 
 /**
@@ -462,6 +493,10 @@ export default function SlidePreview({
     slideFile: string;
     rect: { left: number; top: number; right: number; bottom: number; width: number; height: number };
   } | null>(null);
+
+  // Highlighter: Alt+draw to capture region screenshot
+  const [altHeld, setAltHeld] = useState(false);
+  const [showHighlighter, setShowHighlighter] = useState(false);
 
   const [highlightSelector, setHighlightSelector] = useState<string | null>(null);
   const manifest = useMemo(() => parseManifest(files), [files]);
@@ -1085,6 +1120,82 @@ export default function SlidePreview({
     setPreviewMode,
   ]);
 
+  // Alt key tracking for highlighter mode (select mode only)
+  useEffect(() => {
+    if (previewMode !== "select") {
+      setAltHeld(false);
+      return;
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Alt") setAltHeld(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Alt") setAltHeld(false);
+    };
+    const onBlur = () => setAltHeld(false);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, [previewMode]);
+
+  // Clear highlighter when selection is cleared or mode changes
+  useEffect(() => {
+    if (!selection) setShowHighlighter(false);
+  }, [selection]);
+  useEffect(() => {
+    if (previewMode !== "select") setShowHighlighter(false);
+  }, [previewMode]);
+
+  // Highlighter completion: capture region screenshot → set as standard selection
+  const handleHighlighterComplete = useCallback(
+    async (region: { x: number; y: number; width: number; height: number }, strokesDataUrl?: string) => {
+      const currentSlide = slides[activeSlideIndex];
+      if (!currentSlide) return;
+
+      const slideHtml = findSlideContent(files, currentSlide.file);
+      if (!slideHtml) return;
+
+      // Keep strokes visible
+      setShowHighlighter(true);
+
+      try {
+        const VIRTUAL_W_VAL = (initParams?.slideWidth as number) || 1280;
+        const VIRTUAL_H_VAL = (initParams?.slideHeight as number) || 720;
+        let pngDataUrl = await captureSlideRegion(
+          slideHtml,
+          themeCSS,
+          VIRTUAL_W_VAL,
+          VIRTUAL_H_VAL,
+          region,
+        );
+
+        // Composite highlighter strokes on top of the slide screenshot
+        if (strokesDataUrl) {
+          try {
+            pngDataUrl = await compositeStrokesOnCapture(pngDataUrl, strokesDataUrl, region.width, region.height);
+          } catch { /* use un-composited capture */ }
+        }
+
+        // Use standard selection flow (same as clicking an element)
+        onSelect({
+          type: "region",
+          content: "",
+          file: currentSlide.file,
+          thumbnail: pngDataUrl,
+          label: "Highlighted region",
+        });
+      } catch {
+        setShowHighlighter(false);
+      }
+    },
+    [slides, activeSlideIndex, files, themeCSS, initParams, onSelect],
+  );
+
   // Scaffold confirm/cancel handlers (must be before early returns to satisfy Rules of Hooks)
   const handleScaffoldConfirm = useCallback(async () => {
     if (!scaffoldPending) return;
@@ -1229,9 +1340,28 @@ export default function SlidePreview({
             findSlideContent={findSlideContent}
             highlightSelector={highlightSelector}
             annotationSelectors={annotationSelectors}
+            onEscapeKey={() => {
+              if (selection) {
+                onSelect(null);
+              } else {
+                setPreviewMode("view");
+              }
+            }}
+            onAltKey={(pressed) => setAltHeld(pressed)}
             iframeRefsOut={(refs) => { iframeRefsRef.current = refs; }}
           />
         </div>
+        {(altHeld || showHighlighter) && previewMode === "select" && (
+          <HighlighterCanvas
+            width={scaledW}
+            height={scaledH}
+            zoomScale={zoomScale}
+            virtualW={VIRTUAL_W}
+            virtualH={VIRTUAL_H}
+            drawing={altHeld}
+            onComplete={handleHighlighterComplete}
+          />
+        )}
         {pendingAnnotation && (
           <AnnotationPopover
             style={popoverStyle}

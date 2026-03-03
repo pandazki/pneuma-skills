@@ -10,7 +10,7 @@ export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMess
 
 export type SelectionType =
   | "heading" | "paragraph" | "list" | "code" | "blockquote" | "image" | "table" | "text-range"
-  | "section" | "link" | "container" | "interactive";
+  | "section" | "link" | "container" | "interactive" | "region";
 
 export interface SelectionContext {
   file: string;
