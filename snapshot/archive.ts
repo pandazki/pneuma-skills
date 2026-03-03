@@ -112,6 +112,48 @@ function sanitizeConfig(
 /**
  * Extract a tar.gz archive into the target directory.
  */
+/**
+ * Mode-specific excludes — no runtime config or workspace state.
+ */
+const MODE_EXCLUDES = [
+  ".git",
+  "node_modules",
+  ".pneuma",
+  ".claude",
+  ".DS_Store",
+  ".mcp.json",
+  "CLAUDE.md",
+  ".gitignore",
+];
+
+/**
+ * Create a tar.gz archive of a mode package directory.
+ * Excludes runtime/workspace artifacts — only ships mode source files.
+ */
+export async function createModeArchive(
+  modeDir: string,
+  outputPath: string,
+): Promise<string> {
+  const excludeArgs = MODE_EXCLUDES.flatMap((p) => ["--exclude", p]);
+
+  const proc = Bun.spawn(["tar", "czf", outputPath, ...excludeArgs, "."], {
+    cwd: modeDir,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) {
+    const stderr = await new Response(proc.stderr).text();
+    throw new Error(`tar create failed (exit ${exitCode}): ${stderr}`);
+  }
+
+  return outputPath;
+}
+
+/**
+ * Extract a tar.gz archive into the target directory.
+ */
 export async function extractArchive(
   archivePath: string,
   targetDir: string,

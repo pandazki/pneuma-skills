@@ -106,6 +106,74 @@ export async function uploadToR2(
 }
 
 /**
+ * Upload a JSON object to R2.
+ * Returns the public URL of the uploaded object.
+ */
+export async function uploadJsonToR2(
+  data: unknown,
+  key: string,
+  creds: R2Credentials,
+): Promise<string> {
+  const endpoint = `https://${creds.accountId}.r2.cloudflarestorage.com`;
+
+  const client = new Bun.S3Client({
+    endpoint,
+    accessKeyId: creds.accessKeyId,
+    secretAccessKey: creds.secretAccessKey,
+    bucket: creds.bucket,
+  });
+
+  const body = JSON.stringify(data, null, 2);
+  const s3File = client.file(key);
+  await s3File.write(body, { type: "application/json" });
+
+  return `${creds.publicUrl}/${key}`;
+}
+
+/**
+ * Check if an R2 key exists.
+ */
+export async function checkR2KeyExists(
+  key: string,
+  creds: R2Credentials,
+): Promise<boolean> {
+  const endpoint = `https://${creds.accountId}.r2.cloudflarestorage.com`;
+
+  const client = new Bun.S3Client({
+    endpoint,
+    accessKeyId: creds.accessKeyId,
+    secretAccessKey: creds.secretAccessKey,
+    bucket: creds.bucket,
+  });
+
+  return client.file(key).exists();
+}
+
+/**
+ * List published modes in R2.
+ * Returns an array of { key, size, lastModified }.
+ */
+export async function listModes(
+  creds: R2Credentials,
+): Promise<Array<{ key: string; size: number; lastModified: string }>> {
+  const response = await signedS3Request("GET", `/${creds.bucket}?list-type=2&prefix=modes/`, creds);
+  const text = await response.text();
+
+  const results: Array<{ key: string; size: number; lastModified: string }> = [];
+  const contentRegex = /<Contents>([\s\S]*?)<\/Contents>/g;
+  let match;
+  while ((match = contentRegex.exec(text)) !== null) {
+    const block = match[1];
+    const key = block.match(/<Key>(.*?)<\/Key>/)?.[1] ?? "";
+    const size = parseInt(block.match(/<Size>(.*?)<\/Size>/)?.[1] ?? "0", 10);
+    const lastModified = block.match(/<LastModified>(.*?)<\/LastModified>/)?.[1] ?? "";
+    results.push({ key, size, lastModified });
+  }
+
+  return results;
+}
+
+/**
  * List snapshot objects in R2.
  * Returns an array of { key, size, lastModified }.
  */
