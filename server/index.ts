@@ -21,6 +21,7 @@ export interface ServerOptions {
   watchPatterns?: string[]; // Glob patterns for content files (from ModeManifest.viewer)
   initParams?: Record<string, number | string>; // Mode init params (immutable per session)
   externalMode?: { name: string; path: string; type: string }; // External mode info for frontend
+  modeBundleDir?: string; // Pre-compiled mode bundle directory (production external modes)
   projectRoot?: string; // Pneuma project root (for mode-maker routes to access builtin modes)
   modeName?: string; // Current mode name (for conditional route registration)
 }
@@ -798,9 +799,39 @@ ${slidePages}${downloadScript}
     }
   });
 
+  // ── External mode bundle serving (production) ───────────────────────
+  if (options.modeBundleDir) {
+    const bundleDir = options.modeBundleDir;
+
+    // Vendor shims — re-export React from window globals set by main bundle
+    const REACT_SHIM = `const R = window.__PNEUMA_REACT__;
+export default R;
+export const { useState, useEffect, useCallback, useMemo, useRef, useContext, createContext, forwardRef, memo, Fragment, createElement, cloneElement, Children, isValidElement, Component, PureComponent, Suspense, lazy, startTransition, useTransition, useDeferredValue, useId, useSyncExternalStore, useImperativeHandle, useLayoutEffect, useDebugValue, useReducer } = R;`;
+
+    const JSX_RUNTIME_SHIM = `const J = window.__PNEUMA_JSX_RUNTIME__;
+export const { jsx, jsxs, jsxDEV, Fragment } = J;`;
+
+    app.get("/vendor/react.js", (c) => new Response(REACT_SHIM, { headers: { "Content-Type": "application/javascript" } }));
+    app.get("/vendor/react-dom.js", (c) => new Response(`export default window.__PNEUMA_REACT_DOM__;`, { headers: { "Content-Type": "application/javascript" } }));
+    app.get("/vendor/react-jsx-runtime.js", (c) => new Response(JSX_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));
+    app.get("/vendor/react-jsx-dev-runtime.js", (c) => new Response(JSX_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));
+
+    // Serve compiled mode bundle
+    app.get("/mode-assets/*", async (c) => {
+      const relPath = c.req.path.replace("/mode-assets/", "");
+      const filePath = join(bundleDir, relPath);
+      const file = Bun.file(filePath);
+      if (await file.exists()) {
+        return new Response(file, { headers: { "Content-Type": "application/javascript" } });
+      }
+      return c.notFound();
+    });
+  }
+
   // ── Built frontend serving (production) ─────────────────────────────
   if (options.distDir) {
     const distDir = options.distDir;
+    const hasModeBundleDir = !!options.modeBundleDir;
 
     app.get("/assets/*", async (c) => {
       const filePath = join(distDir, c.req.path);
@@ -812,10 +843,18 @@ ${slidePages}${downloadScript}
     });
 
     // SPA fallback — serve index.html for all non-API routes
+    // When external mode bundle exists, inject importmap for React resolution
     app.get("*", async (c) => {
-      return new Response(Bun.file(join(distDir, "index.html")), {
-        headers: { "Content-Type": "text/html" },
-      });
+      let html = await Bun.file(join(distDir, "index.html")).text();
+
+      if (hasModeBundleDir) {
+        const importMap = `<script type="importmap">
+{"imports":{"react":"/vendor/react.js","react-dom":"/vendor/react-dom.js","react/jsx-runtime":"/vendor/react-jsx-runtime.js","react/jsx-dev-runtime":"/vendor/react-jsx-dev-runtime.js"}}
+</script>`;
+        html = html.replace("<head>", `<head>\n${importMap}`);
+      }
+
+      return new Response(html, { headers: { "Content-Type": "text/html" } });
     });
   }
 

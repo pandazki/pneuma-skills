@@ -460,6 +460,34 @@ async function main() {
     p.log.info("Production mode (serving built assets)");
   }
 
+  // 2.5 Pre-compile external mode viewer for production serving
+  let modeBundleDir: string | undefined;
+  if (!isDev && resolved.type !== "builtin") {
+    const buildDir = join(resolved.path, ".build");
+    const modeEntry = join(resolved.path, "pneuma-mode.ts");
+    const manifestEntry = join(resolved.path, "manifest.ts");
+    const entrypoints = [modeEntry, manifestEntry].filter((e) => existsSync(e));
+    if (entrypoints.length > 0) {
+      p.log.step("Compiling mode viewer for production...");
+      const result = await Bun.build({
+        entrypoints,
+        outdir: buildDir,
+        target: "browser",
+        format: "esm",
+        external: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
+      });
+      if (result.success) {
+        modeBundleDir = buildDir;
+        p.log.step("Mode viewer compiled successfully");
+      } else {
+        p.log.warn("Mode viewer compilation failed — viewer may not load");
+        for (const log of result.logs) {
+          p.log.warn(`  ${log.message}`);
+        }
+      }
+    }
+  }
+
   // 3. Start server
   //    Dev mode:  backend on 17007, Vite on 17996 (user-facing)
   //    Prod mode: backend on 17996 (serves everything)
@@ -474,6 +502,7 @@ async function main() {
     ...(resolved.type !== "builtin"
       ? { externalMode: { name: resolved.name, path: resolved.path, type: resolved.type } }
       : {}),
+    ...(modeBundleDir ? { modeBundleDir } : {}),
     projectRoot: PROJECT_ROOT,
     modeName,
   });

@@ -111,6 +111,12 @@ export default defineConfig({
       "react-dom": path.resolve(__dirname, "node_modules/react-dom"),
     },
   },
+  build: {
+    rollupOptions: {
+      // Don't resolve runtime-only URLs used by external mode loading in production
+      external: (id) => id.startsWith("/mode-assets/") || id.startsWith("/vendor/"),
+    },
+  },
   server: {
     host: "0.0.0.0",
     port: 17996,

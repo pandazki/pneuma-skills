@@ -115,20 +115,39 @@ export function registerExternalMode(name: string, absPath: string): void {
   const isBrowser = typeof window !== "undefined";
 
   if (isBrowser) {
-    // Frontend: use Vite's /@fs/ URL scheme for dev mode
-    externalModes[name] = {
-      type: "external",
-      name,
-      path: absPath,
-      manifestLoader: () =>
-        import(/* @vite-ignore */ `/@fs${absPath}/manifest.ts`).then(
-          (m) => m.default,
-        ),
-      definitionLoader: () =>
-        import(/* @vite-ignore */ `/@fs${absPath}/pneuma-mode.ts`).then(
-          (m) => m.default,
-        ),
-    };
+    const isDev = import.meta.env?.DEV;
+
+    if (isDev) {
+      // Dev mode: use Vite's /@fs/ URL scheme
+      externalModes[name] = {
+        type: "external",
+        name,
+        path: absPath,
+        manifestLoader: () =>
+          import(/* @vite-ignore */ `/@fs${absPath}/manifest.ts`).then(
+            (m) => m.default,
+          ),
+        definitionLoader: () =>
+          import(/* @vite-ignore */ `/@fs${absPath}/pneuma-mode.ts`).then(
+            (m) => m.default,
+          ),
+      };
+    } else {
+      // Production: use pre-compiled bundle served at /mode-assets/
+      externalModes[name] = {
+        type: "external",
+        name,
+        path: absPath,
+        manifestLoader: () =>
+          import(/* @vite-ignore */ `/mode-assets/manifest.js`).then(
+            (m) => m.default,
+          ),
+        definitionLoader: () =>
+          import(/* @vite-ignore */ `/mode-assets/pneuma-mode.js`).then(
+            (m) => m.default,
+          ),
+      };
+    }
   } else {
     // Backend (Bun): use direct absolute path import
     externalModes[name] = {

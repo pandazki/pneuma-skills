@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.13.1] - 2026-03-03
+
+### Fixed
+- **Production external mode loading** — viewer no longer shows "Loading" forever when running published modes via `bunx`. External mode viewer components are now pre-compiled with `Bun.build()` at startup, served as ES modules with React resolved via import maps and vendor shims.
+
 ## [1.13.0] - 2026-03-03
 
 ### Added
