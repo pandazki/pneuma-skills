@@ -7,7 +7,7 @@
  * 从 src/components/MarkdownPreview.tsx 迁移而来。
  */
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
@@ -18,6 +18,7 @@ import type { ViewerPreviewProps, ViewerSelectionContext } from "../../../core/t
 import { useStore } from "../../../src/store.js";
 import { generateDocScaffold, type DocFileSpec, type ScaffoldFile } from "./scaffold.js";
 import ScaffoldConfirm from "../../../src/components/ScaffoldConfirm.js";
+import type { Annotation } from "../../../src/types.js";
 
 type PreviewTheme = "dark" | "light";
 
@@ -160,6 +161,53 @@ function buildDefaultComponents(filePath: string, imageTick?: number) {
   };
 }
 
+/** Build a CSS selector path for a DOM element up to the [data-file] container */
+function buildSelectorPath(el: HTMLElement): string {
+  const parts: string[] = [];
+  let cur: HTMLElement | null = el;
+  while (cur && !cur.hasAttribute("data-file")) {
+    const tag = cur.tagName.toLowerCase();
+    const parent: HTMLElement | null = cur.parentElement;
+    if (parent) {
+      const siblings = Array.from(parent.children).filter((c) => (c as HTMLElement).tagName === cur!.tagName);
+      if (siblings.length > 1) {
+        const idx = siblings.indexOf(cur) + 1;
+        parts.unshift(`${tag}:nth-of-type(${idx})`);
+      } else {
+        parts.unshift(tag);
+      }
+    } else {
+      parts.unshift(tag);
+    }
+    cur = parent;
+  }
+  return parts.join(" > ");
+}
+
+/** Build a human-readable label for a DOM element */
+function buildLabel(el: HTMLElement): string {
+  const tag = el.tagName.toLowerCase();
+  const text = (el.textContent || "").trim().slice(0, 40);
+  if (/^h[1-6]$/.test(tag)) return `${tag} "${text}"`;
+  if (tag === "p") return text ? `paragraph "${text}"` : "paragraph";
+  if (tag === "pre") return "code block";
+  if (tag === "ul" || tag === "ol") return `${tag === "ul" ? "unordered" : "ordered"} list`;
+  if (tag === "blockquote") return text ? `blockquote "${text}"` : "blockquote";
+  if (tag === "table") return "table";
+  if (tag === "span" && el.dataset.type === "image") return `image "${el.querySelector("img")?.alt || ""}"`;
+  return text ? `${tag} "${text}"` : tag;
+}
+
+/** Get nearby sibling text for context */
+function buildNearbyText(el: HTMLElement): string {
+  const parts: string[] = [];
+  const prev = el.previousElementSibling;
+  const next = el.nextElementSibling;
+  if (prev) parts.push(`[before: "${(prev.textContent || "").trim().slice(0, 30)}"]`);
+  if (next) parts.push(`[after: "${(next.textContent || "").trim().slice(0, 30)}"]`);
+  return parts.join(" ");
+}
+
 /** Save file content to server */
 async function saveFile(path: string, content: string): Promise<boolean> {
   try {
@@ -188,6 +236,15 @@ export default function DocPreview({
   // v1.0: setPreviewMode 仍通过 store 控制 (toolbar toggle)
   const setPreviewMode = useStore((s) => s.setPreviewMode);
   const pushUserAction = useStore((s) => s.pushUserAction);
+  const annotations = useStore((s) => s.annotations);
+  const addAnnotation = useStore((s) => s.addAnnotation);
+
+  // Pending annotation popover state
+  const [pendingAnnotation, setPendingAnnotation] = useState<{
+    selection: ViewerSelectionContext;
+    file: string;
+    rect: DOMRect;
+  } | null>(null);
 
   // Scaffold state
   const [scaffoldPending, setScaffoldPending] = useState<{
@@ -291,7 +348,33 @@ export default function DocPreview({
     localStorage.setItem("pneuma-preview-theme", next);
   };
 
-  const isSelectMode = previewMode === "select";
+  const isSelectMode = previewMode === "select" || previewMode === "annotate";
+
+  // Annotation highlight CSS class names for annotated elements
+  const annotatedSelectors = useMemo(() => {
+    return annotations
+      .filter((a) => a.element.selector)
+      .map((a) => ({ file: a.slideFile, selector: a.element.selector! }));
+  }, [annotations]);
+
+  // Apply annotation highlights
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    // Clear previous
+    container.querySelectorAll(".element-annotated").forEach((el) => {
+      el.classList.remove("element-annotated");
+    });
+    // Apply
+    for (const { file, selector } of annotatedSelectors) {
+      const fileEl = container.querySelector(`[data-file="${file}"]`);
+      if (!fileEl) continue;
+      try {
+        const el = fileEl.querySelector(selector);
+        if (el) el.classList.add("element-annotated");
+      } catch {}
+    }
+  }, [annotatedSelectors, files]);
 
   // Re-apply selection highlight after content re-renders or selection changes
   useEffect(() => {
@@ -335,17 +418,23 @@ export default function DocPreview({
   // Escape key handler
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isSelectMode) {
-        if (selection) {
-          onSelect(null);
-        } else {
+      if (e.key === "Escape") {
+        if (previewMode === "annotate" && pendingAnnotation) {
+          setPendingAnnotation(null);
+        } else if (previewMode === "annotate" || previewMode === "edit") {
           setPreviewMode("view");
+        } else if (previewMode === "select") {
+          if (selection) {
+            onSelect(null);
+          } else {
+            setPreviewMode("view");
+          }
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isSelectMode, selection, onSelect, setPreviewMode]);
+  }, [previewMode, pendingAnnotation, selection, onSelect, setPreviewMode]);
 
   // Viewport scroll tracking — detect visible line range and heading
   const updateViewport = useCallback(() => {
@@ -412,7 +501,11 @@ export default function DocPreview({
           selectedElRef.current.classList.remove("element-selected");
           selectedElRef.current = null;
         }
-        onSelect(null);
+        if (previewMode === "annotate") {
+          setPendingAnnotation(null);
+        } else {
+          onSelect(null);
+        }
         return;
       }
 
@@ -424,15 +517,31 @@ export default function DocPreview({
         ? (target.dataset.src || target.querySelector("img")?.getAttribute("alt") || "image")
         : (target.textContent || "").trim().slice(0, 200);
 
+      // Build rich context
+      const selector = buildSelectorPath(target);
+      const label = buildLabel(target);
+      const nearbyText = buildNearbyText(target);
+      const tag = target.tagName.toLowerCase();
+
+      const sel: ViewerSelectionContext = {
+        file, type, content, level,
+        selector, label, nearbyText, tag,
+      };
+
       if (selectedElRef.current) {
         selectedElRef.current.classList.remove("element-selected");
       }
       target.classList.add("element-selected");
       selectedElRef.current = target;
 
-      onSelect({ file, type, content, level });
+      if (previewMode === "annotate") {
+        const rect = target.getBoundingClientRect();
+        setPendingAnnotation({ selection: sel, file, rect });
+      } else {
+        onSelect(sel);
+      }
     },
-    [isSelectMode, onSelect],
+    [isSelectMode, previewMode, onSelect],
   );
 
   // Text range selection via mouseup
@@ -458,6 +567,47 @@ export default function DocPreview({
 
     onSelect({ file, type: "text-range", content: text.slice(0, 300) });
   }, [isSelectMode, onSelect]);
+
+  // Confirm pending annotation with comment
+  const confirmAnnotation = useCallback(
+    (comment: string) => {
+      if (!pendingAnnotation) return;
+      const { selection: sel, file } = pendingAnnotation;
+      addAnnotation({
+        id: `ann-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        slideFile: file,
+        element: {
+          file,
+          type: sel.type as import("../../../src/types.js").SelectionType,
+          content: sel.content,
+          level: sel.level,
+          tag: sel.tag,
+          classes: sel.classes,
+          selector: sel.selector,
+          label: sel.label,
+          nearbyText: sel.nearbyText,
+          accessibility: sel.accessibility,
+        },
+        comment,
+      });
+      setPendingAnnotation(null);
+    },
+    [pendingAnnotation, addAnnotation],
+  );
+
+  // Compute popover position for annotation
+  const popoverStyle = useMemo((): React.CSSProperties => {
+    if (!pendingAnnotation || !containerRef.current) return {};
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const { rect } = pendingAnnotation;
+    return {
+      position: "absolute",
+      top: rect.bottom - containerRect.top + containerRef.current.scrollTop + 8,
+      left: Math.max(8, rect.left - containerRect.left),
+      zIndex: 50,
+      width: 280,
+    };
+  }, [pendingAnnotation]);
 
   const isDark = theme === "dark";
 
@@ -500,7 +650,7 @@ export default function DocPreview({
           ref={containerRef}
           onClick={handleClick}
           onMouseUp={handleMouseUp}
-          className={`flex-1 overflow-y-auto p-6 transition-colors duration-200 ${
+          className={`flex-1 overflow-y-auto p-6 transition-colors duration-200 relative ${
             isDark ? "bg-[#1a1a18] text-[#e8e6df]" : "bg-white text-[#1f1f1e]"
           } ${isSelectMode ? "select-mode" : ""}`}
         >
@@ -522,6 +672,14 @@ export default function DocPreview({
               </div>
             </div>
           ))}
+          {pendingAnnotation && (
+            <AnnotationPopover
+              style={popoverStyle}
+              label={pendingAnnotation.selection.label}
+              onConfirm={confirmAnnotation}
+              onCancel={() => setPendingAnnotation(null)}
+            />
+          )}
         </div>
       )}
       {scaffoldPending && (
@@ -543,12 +701,15 @@ function MarkdownEditor({ file, isDark }: { file: { path: string; content: strin
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastExternalRef = useRef(file.content);
+  const lastSavedForActionRef = useRef(file.content);
+  const pushUserAction = useStore((s) => s.pushUserAction);
 
   useEffect(() => {
     const el = textareaRef.current;
     if (el && file.content !== lastExternalRef.current) {
       el.value = file.content;
       lastExternalRef.current = file.content;
+      lastSavedForActionRef.current = file.content;
     }
   }, [file.content]);
 
@@ -559,8 +720,36 @@ function MarkdownEditor({ file, isDark }: { file: { path: string; content: strin
       await saveFile(file.path, content);
       lastExternalRef.current = content;
       setSaving(false);
+
+      // Generate user action with line-level diff summary
+      const before = lastSavedForActionRef.current;
+      lastSavedForActionRef.current = content;
+      const bLines = before.split("\n");
+      const aLines = content.split("\n");
+      const changes: string[] = [];
+      const maxLen = Math.max(bLines.length, aLines.length);
+      for (let i = 0; i < maxLen && changes.length < 5; i++) {
+        const bL = bLines[i] ?? "";
+        const aL = aLines[i] ?? "";
+        if (bL !== aL) {
+          if (bL && aL) {
+            changes.push(`  L${i + 1}: "${bL.trim().slice(0, 40)}" → "${aL.trim().slice(0, 40)}"`);
+          } else if (!bL) {
+            changes.push(`  L${i + 1}: + "${aL.trim().slice(0, 40)}"`);
+          } else {
+            changes.push(`  L${i + 1}: - "${bL.trim().slice(0, 40)}"`);
+          }
+        }
+      }
+      if (changes.length > 0) {
+        pushUserAction({
+          timestamp: Date.now(),
+          actionId: "edit-text",
+          description: `Edited "${file.path}":\n${changes.join("\n")}`,
+        });
+      }
     }, 800);
-  }, [file.path]);
+  }, [file.path, pushUserAction]);
 
   useEffect(() => {
     return () => {
@@ -728,6 +917,7 @@ function PreviewToolbar({
     { value: "view", label: "View", icon: <EyeIcon /> },
     { value: "edit", label: "Edit", icon: <PencilIcon /> },
     { value: "select", label: "Select", icon: <CursorIcon /> },
+    { value: "annotate", label: "Annotate", icon: <AnnotateIcon /> },
   ];
 
   return (
@@ -745,6 +935,7 @@ function PreviewToolbar({
             title={
               m.value === "view" ? "Read-only view"
                 : m.value === "edit" ? "Edit markdown directly"
+                : m.value === "annotate" ? "Annotate elements (Esc to exit)"
                 : "Select elements (Esc to exit)"
             }
           >
@@ -910,5 +1101,84 @@ function HrIcon() {
     <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
       <rect x="1" y="7" width="14" height="2" rx="1" />
     </svg>
+  );
+}
+
+function AnnotateIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+      <path d="M2 2h12v9H6l-4 3V2z" strokeLinejoin="round" />
+      <circle cx="5" cy="6.5" r="0.5" fill="currentColor" stroke="none" />
+      <circle cx="8" cy="6.5" r="0.5" fill="currentColor" stroke="none" />
+      <circle cx="11" cy="6.5" r="0.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+// ── Annotation Popover ──────────────────────────────────────────────────────
+
+function AnnotationPopover({
+  style,
+  label,
+  onConfirm,
+  onCancel,
+}: {
+  style: React.CSSProperties;
+  label?: string;
+  onConfirm: (comment: string) => void;
+  onCancel: () => void;
+}) {
+  const [comment, setComment] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      onConfirm(comment);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      onCancel();
+    }
+  };
+
+  return (
+    <div
+      style={style}
+      className="bg-neutral-800 border border-neutral-600 rounded-lg shadow-xl p-3 text-sm"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center gap-2 mb-2 min-w-0">
+        <span className="text-neutral-300 truncate text-xs">{label || "Element"}</span>
+      </div>
+      <input
+        ref={inputRef}
+        type="text"
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Add comment (optional)..."
+        className="w-full bg-neutral-900 border border-neutral-600 rounded px-2 py-1.5 text-sm text-white placeholder-neutral-500 outline-none focus:border-blue-500"
+      />
+      <div className="flex justify-end gap-2 mt-2">
+        <button
+          onClick={onCancel}
+          className="px-2.5 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => onConfirm(comment)}
+          className="px-2.5 py-1 text-xs text-white bg-blue-600 hover:bg-blue-500 rounded transition-colors"
+        >
+          Add
+        </button>
+      </div>
+    </div>
   );
 }

@@ -120,6 +120,15 @@ export default function DrawPreview({
 }: ViewerPreviewProps) {
   const setPreviewMode = useStore((s) => s.setPreviewMode);
   const pushUserAction = useStore((s) => s.pushUserAction);
+  const annotations = useStore((s) => s.annotations);
+  const addAnnotation = useStore((s) => s.addAnnotation);
+
+  // Pending annotation popover state
+  const [pendingAnnotation, setPendingAnnotation] = useState<{
+    selection: ViewerSelectionContext;
+    file: string;
+    position: { x: number; y: number };
+  } | null>(null);
 
   // Scaffold state
   const [scaffoldPending, setScaffoldPending] = useState<{
@@ -210,6 +219,13 @@ export default function DrawPreview({
     return (localStorage.getItem("pneuma-draw-theme") as "light" | "dark") || "dark";
   });
 
+  // Canvas container ref for popover positioning
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  // Stable ref to pushUserAction for use in debounced callbacks
+  const pushUserActionRef = useRef(pushUserAction);
+  pushUserActionRef.current = pushUserAction;
+  // Track element state for user action descriptions
+  const prevElementSnapshotRef = useRef<Map<string, { type: string; text?: string }>>(new Map());
   // Track what we last saved to avoid echo from file watcher
   const lastSavedContentRef = useRef<string>("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -266,6 +282,12 @@ export default function DrawPreview({
       excalidrawData.appState,
       excalidrawData.excalidrawFiles,
     );
+    // Initialize element snapshot for user action tracking
+    const snap = new Map<string, { type: string; text?: string }>();
+    for (const el of excalidrawData.elements.filter((e: any) => !e.isDeleted)) {
+      snap.set(el.id, { type: el.type, text: el.type === "text" ? el.text : undefined });
+    }
+    prevElementSnapshotRef.current = snap;
   }, [excalidrawKey]);
 
   // Sync file changes from disk — force Excalidraw remount instead of updateScene.
@@ -308,6 +330,49 @@ export default function DrawPreview({
         const content = serializeToFile(elements, appState, files);
         lastSavedContentRef.current = content;
         saveFile(currentFilePathRef.current, content);
+
+        // Track user action for canvas changes
+        const active = elements.filter((el: any) => !el.isDeleted);
+        const prevSnap = prevElementSnapshotRef.current;
+        if (prevSnap.size > 0) {
+          const changes: string[] = [];
+          const newSnap = new Map<string, { type: string; text?: string }>();
+          for (const el of active) {
+            newSnap.set(el.id, { type: el.type, text: el.type === "text" ? el.text : undefined });
+          }
+          for (const [id, info] of newSnap) {
+            if (!prevSnap.has(id)) {
+              const desc = info.text ? `${info.type} "${info.text.slice(0, 30)}"` : info.type;
+              changes.push(`+ ${desc}`);
+            }
+          }
+          for (const [id, info] of prevSnap) {
+            if (!newSnap.has(id)) {
+              const desc = info.text ? `${info.type} "${info.text.slice(0, 30)}"` : info.type;
+              changes.push(`- ${desc}`);
+            }
+          }
+          for (const [id, info] of newSnap) {
+            const prev = prevSnap.get(id);
+            if (prev && info.text !== undefined && prev.text !== info.text) {
+              changes.push(`~ text "${(prev.text || "").slice(0, 20)}" → "${info.text.slice(0, 20)}"`);
+            }
+          }
+          if (changes.length > 0) {
+            pushUserActionRef.current({
+              timestamp: Date.now(),
+              actionId: "edit-canvas",
+              description: `Edited canvas:\n${changes.join("\n")}`,
+            });
+          }
+          prevElementSnapshotRef.current = newSnap;
+        } else {
+          const snap = new Map<string, { type: string; text?: string }>();
+          for (const el of active) {
+            snap.set(el.id, { type: el.type, text: el.type === "text" ? el.text : undefined });
+          }
+          prevElementSnapshotRef.current = snap;
+        }
       }, 500);
     },
     [],
@@ -336,16 +401,20 @@ export default function DrawPreview({
     }
   }, [excalidrawAPI]);
 
-  // Handle element selection for agent context
-  const handlePointerUp = useCallback(() => {
-    if (previewMode !== "select" || !excalidrawAPI) return;
+  // Handle element selection for agent context (select + annotate modes)
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    if ((previewMode !== "select" && previewMode !== "annotate") || !excalidrawAPI) return;
 
     const appState = excalidrawAPI.getAppState();
     const selectedIds = appState.selectedElementIds || {};
     const selectedIdList = Object.keys(selectedIds).filter((id) => selectedIds[id]);
 
     if (selectedIdList.length === 0) {
-      onSelect(null);
+      if (previewMode === "annotate") {
+        setPendingAnnotation(null);
+      } else {
+        onSelect(null);
+      }
       return;
     }
 
@@ -353,7 +422,11 @@ export default function DrawPreview({
     const selectedElements = elements.filter((el: any) => selectedIdList.includes(el.id));
 
     if (selectedElements.length === 0) {
-      onSelect(null);
+      if (previewMode === "annotate") {
+        setPendingAnnotation(null);
+      } else {
+        onSelect(null);
+      }
       return;
     }
 
@@ -373,6 +446,10 @@ export default function DrawPreview({
     });
 
     const content = descriptions.join(", ");
+    // Build a human-readable label
+    const label = selectedElements.length === 1
+      ? descriptions[0]
+      : `${selectedElements.length} elements (${descriptions.slice(0, 3).join(", ")}${selectedElements.length > 3 ? "\u2026" : ""})`;
 
     // Expand selection to include bound text elements (e.g. text inside a rectangle)
     const selectedIdSet = new Set(selectedElements.map((el: any) => el.id));
@@ -390,16 +467,83 @@ export default function DrawPreview({
       }
     }
 
-    // Capture screenshot of selected elements, then fire onSelect with thumbnail
-    captureSelectedElements(selectedElements).then((thumbnail) => {
-      onSelect({
-        type: selectedElements.length === 1 ? selectedElements[0].type : "group",
-        content,
-        file: currentFilePathRef.current,
-        thumbnail,
+    const selType = selectedElements.length === 1 ? selectedElements[0].type : "group";
+
+    if (previewMode === "annotate") {
+      // Position popover near the pointer
+      const containerRect = canvasContainerRef.current?.getBoundingClientRect();
+      const posX = containerRect ? e.clientX - containerRect.left : 100;
+      const posY = containerRect ? e.clientY - containerRect.top : 100;
+      // Capture thumbnail, then show popover
+      captureSelectedElements(selectedElements).then((thumbnail) => {
+        setPendingAnnotation({
+          selection: {
+            type: selType,
+            content,
+            file: currentFilePathRef.current,
+            label,
+            thumbnail,
+          },
+          file: currentFilePathRef.current,
+          position: { x: posX, y: posY },
+        });
       });
-    });
+    } else {
+      // Select mode — capture screenshot then fire onSelect
+      captureSelectedElements(selectedElements).then((thumbnail) => {
+        onSelect({
+          type: selType,
+          content,
+          file: currentFilePathRef.current,
+          label,
+          thumbnail,
+        });
+      });
+    }
   }, [previewMode, excalidrawAPI, onSelect, captureSelectedElements]);
+
+  // Confirm pending annotation with comment
+  const confirmAnnotation = useCallback(
+    (comment: string) => {
+      if (!pendingAnnotation) return;
+      const { selection: sel, file } = pendingAnnotation;
+      addAnnotation({
+        id: `ann-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        slideFile: file,
+        element: {
+          file,
+          type: sel.type as import("../../../src/types.js").SelectionType,
+          content: sel.content,
+          label: sel.label,
+          thumbnail: sel.thumbnail,
+        },
+        comment,
+      });
+      setPendingAnnotation(null);
+    },
+    [pendingAnnotation, addAnnotation],
+  );
+
+  // Compute popover position for annotation
+  const popoverStyle = useMemo((): React.CSSProperties => {
+    if (!pendingAnnotation || !canvasContainerRef.current) return {};
+    const { position } = pendingAnnotation;
+    const containerWidth = canvasContainerRef.current.clientWidth;
+    return {
+      position: "absolute",
+      top: position.y + 12,
+      left: Math.max(8, Math.min(position.x - 140, containerWidth - 288)),
+      zIndex: 50,
+      width: 280,
+    };
+  }, [pendingAnnotation]);
+
+  // Clear pending annotation when leaving annotate mode
+  useEffect(() => {
+    if (previewMode !== "annotate") {
+      setPendingAnnotation(null);
+    }
+  }, [previewMode]);
 
   // Register captureViewport for the draw mode contract
   useEffect(() => {
@@ -436,9 +580,9 @@ export default function DrawPreview({
     localStorage.setItem("pneuma-draw-theme", next);
   }, [theme]);
 
-  // Switch Excalidraw to selection tool when entering select mode
+  // Switch Excalidraw to selection tool when entering select/annotate mode
   useEffect(() => {
-    if (previewMode === "select" && excalidrawAPI) {
+    if ((previewMode === "select" || previewMode === "annotate") && excalidrawAPI) {
       excalidrawAPI.setActiveTool({ type: "selection" });
     }
   }, [previewMode, excalidrawAPI]);
@@ -446,17 +590,25 @@ export default function DrawPreview({
   // Escape key handler
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && previewMode === "select") {
-        if (selection) {
-          onSelect(null);
-        } else {
-          setPreviewMode("view");
+      if (e.key === "Escape") {
+        if (previewMode === "annotate") {
+          if (pendingAnnotation) {
+            setPendingAnnotation(null);
+          } else {
+            setPreviewMode("view");
+          }
+        } else if (previewMode === "select") {
+          if (selection) {
+            onSelect(null);
+          } else {
+            setPreviewMode("view");
+          }
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [previewMode, selection, onSelect, setPreviewMode]);
+  }, [previewMode, pendingAnnotation, selection, onSelect, setPreviewMode]);
 
   // Cleanup save timer on unmount
   useEffect(() => {
@@ -520,6 +672,7 @@ export default function DrawPreview({
         filePath={activeFilePath || undefined}
       />
       <div
+        ref={canvasContainerRef}
         className="flex-1 relative"
         onPointerUp={handlePointerUp}
       >
@@ -528,13 +681,19 @@ export default function DrawPreview({
           excalidrawAPI={handleExcalidrawAPI}
           initialData={initialData}
           onChange={handleChange}
-          viewModeEnabled={false}
+          viewModeEnabled={previewMode === "view"}
           theme={theme}
           UIOptions={uiOptions}
         />
-        {/* View mode: block editing interactions while allowing scroll/zoom via Excalidraw's hand tool */}
-        {previewMode === "view" && (
-          <div className="absolute inset-0 z-[3]" style={{ cursor: "grab" }} />
+        {/* View mode uses Excalidraw's native viewModeEnabled — allows pan/zoom, hides toolbar */}
+        {/* Annotation popover */}
+        {pendingAnnotation && (
+          <AnnotationPopover
+            style={popoverStyle}
+            label={pendingAnnotation.selection.label}
+            onConfirm={confirmAnnotation}
+            onCancel={() => setPendingAnnotation(null)}
+          />
         )}
       </div>
       {scaffoldPending && (
@@ -572,6 +731,7 @@ function DrawToolbar({
     { value: "view", label: "View", icon: <EyeIcon /> },
     { value: "edit", label: "Edit", icon: <PencilIcon /> },
     { value: "select", label: "Select", icon: <CursorIcon /> },
+    { value: "annotate", label: "Annotate", icon: <AnnotateIcon /> },
   ];
 
   return (
@@ -597,7 +757,8 @@ function DrawToolbar({
               title={
                 m.value === "view" ? "View only (pan/zoom)"
                   : m.value === "edit" ? "Edit drawing directly"
-                  : "Select elements for agent context (Esc to exit)"
+                  : m.value === "select" ? "Select elements for agent context (Esc to exit)"
+                  : "Annotate elements with comments (Esc to exit)"
               }
             >
               {m.icon}
@@ -661,5 +822,84 @@ function MoonIcon() {
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
       <path d="M13.5 8.5a5.5 5.5 0 01-7-7 5.5 5.5 0 107 7z" />
     </svg>
+  );
+}
+
+function AnnotateIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+      <path d="M2 2h12v9H6l-4 3V2z" strokeLinejoin="round" />
+      <circle cx="5" cy="6.5" r="0.5" fill="currentColor" stroke="none" />
+      <circle cx="8" cy="6.5" r="0.5" fill="currentColor" stroke="none" />
+      <circle cx="11" cy="6.5" r="0.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+// ── Annotation Popover ──────────────────────────────────────────────────────
+
+function AnnotationPopover({
+  style,
+  label,
+  onConfirm,
+  onCancel,
+}: {
+  style: React.CSSProperties;
+  label?: string;
+  onConfirm: (comment: string) => void;
+  onCancel: () => void;
+}) {
+  const [comment, setComment] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      onConfirm(comment);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      onCancel();
+    }
+  };
+
+  return (
+    <div
+      style={style}
+      className="bg-neutral-800 border border-neutral-600 rounded-lg shadow-xl p-3 text-sm"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center gap-2 mb-2 min-w-0">
+        <span className="text-neutral-300 truncate text-xs">{label || "Element"}</span>
+      </div>
+      <input
+        ref={inputRef}
+        type="text"
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Add comment (optional)..."
+        className="w-full bg-neutral-900 border border-neutral-600 rounded px-2 py-1.5 text-sm text-white placeholder-neutral-500 outline-none focus:border-blue-500"
+      />
+      <div className="flex justify-end gap-2 mt-2">
+        <button
+          onClick={onCancel}
+          className="px-2.5 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => onConfirm(comment)}
+          className="px-2.5 py-1 text-xs text-white bg-blue-600 hover:bg-blue-500 rounded transition-colors"
+        >
+          Add
+        </button>
+      </div>
+    </div>
   );
 }

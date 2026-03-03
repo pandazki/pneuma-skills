@@ -36,11 +36,29 @@ const drawMode: ModeDefinition = {
       const file = selection?.file || files[0]?.path || "";
       if (!file) return "";
 
+      // Annotations mode — multiple annotated elements with comments
+      if (selection?.type === "annotations" && selection.annotations?.length) {
+        const attrs = [`mode="draw"`, `file="${file}"`];
+        const lines: string[] = [];
+        lines.push("Annotations:");
+        selection.annotations.forEach((ann, i) => {
+          const el = ann.element;
+          const primary = el.label || `${el.type} "${(el.content || "").slice(0, 50)}"`;
+          lines.push(`  ${i + 1}. [${ann.slideFile}] ${primary}`);
+          if (ann.comment) lines.push(`     Feedback: ${ann.comment}`);
+        });
+        return `<viewer-context ${attrs.join(" ")}>\n${lines.join("\n")}\n</viewer-context>`;
+      }
+
       const attrs = [`mode="draw"`, `file="${file}"`];
       const lines: string[] = [];
 
       if (selection && selection.type !== "viewing" && selection.content) {
-        lines.push(`Selected: ${selection.content}`);
+        if (selection.label) {
+          lines.push(`Selected: ${selection.label}`);
+        } else {
+          lines.push(`Selected: ${selection.content}`);
+        }
         if (selection.thumbnail) {
           lines.push("[selection screenshot attached]");
         }
