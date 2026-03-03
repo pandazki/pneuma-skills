@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.12.0] - 2026-03-03
+
+### Added
+- **Mode Maker** — builtin mode for creating new Pneuma modes, with live dashboard viewer, skill reference, seed templates, and Vite workspace resolve plugin
+- **MCP server declarations** — modes can declare MCP tool servers in manifest; auto-installed to workspace `.mcp.json` with idempotent managed-entry tracking
+- **Skill dependencies** — modes can bundle external skills; auto-copied to `.claude/skills/` with template params and CLAUDE.md injection
+- **File attachments** — chat input accepts any file type (not just images); files saved to `.pneuma/uploads/`, small text files inlined in agent message
+- **System Bridge API** — `/api/system/open`, `/api/system/open-url`, `/api/system/reveal` endpoints for viewer-triggered OS operations with path traversal protection
+- **Smart init defaults** — derive `modeName`/`displayName` from workspace directory name
+- **Agent env mapping** — pass `envMapping` init param values as agent process environment variables
+
+### Changed
+- CLI parses Vite stdout for actual port instead of assuming fixed port
+- Snapshot archive excludes `.mcp.json` (regenerated on startup)
+
 ## [1.11.0] - 2026-03-03
 
 ### Added
