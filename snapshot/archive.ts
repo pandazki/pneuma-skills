@@ -10,6 +10,7 @@ const BASE_EXCLUDES = [
   ".pneuma/session.json",
   ".pneuma/history.json",
   ".DS_Store",
+  ".mcp.json",
 ];
 
 /** Extra excludes when including .claude/ skills — only keep .claude/skills/ (minus .env) */
