@@ -745,6 +745,18 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
     }
   }
 
+  // Attach annotation thumbnails (e.g. highlighter region screenshots) as images
+  if (annotations?.length) {
+    for (const ann of annotations) {
+      if (ann.element.thumbnail) {
+        const match = ann.element.thumbnail.match(/^data:([^;]+);base64,(.+)$/);
+        if (match) {
+          allImages.push({ media_type: match[1], data: match[2] });
+        }
+      }
+    }
+  }
+
   // In debug mode, attach the enriched payload to the user message for inspection
   if (store.debugMode) {
     store.appendMessage({
