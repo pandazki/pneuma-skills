@@ -681,14 +681,11 @@ export default function DrawPreview({
           excalidrawAPI={handleExcalidrawAPI}
           initialData={initialData}
           onChange={handleChange}
-          viewModeEnabled={false}
+          viewModeEnabled={previewMode === "view"}
           theme={theme}
           UIOptions={uiOptions}
         />
-        {/* View mode: block editing interactions while allowing scroll/zoom via Excalidraw's hand tool */}
-        {previewMode === "view" && (
-          <div className="absolute inset-0 z-[3]" style={{ cursor: "grab" }} />
-        )}
+        {/* View mode uses Excalidraw's native viewModeEnabled — allows pan/zoom, hides toolbar */}
         {/* Annotation popover */}
         {pendingAnnotation && (
           <AnnotationPopover
