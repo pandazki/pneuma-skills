@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.11.0] - 2026-03-03
+
+### Added
+- **Doc annotate mode** — popover-based comment UX for markdown elements with CSS selector path, human-readable label, and nearby text context
+- **Doc user action tracking** — line-level diff tracking for markdown editor edits (additions, deletions, changes)
+- **Draw annotate mode** — select Excalidraw elements to add comments via popover, with element thumbnail capture
+- **Draw user action tracking** — element-level diff tracking for canvas edits (additions, deletions, text changes)
+- **Draw richer select context** — human-readable labels for selected Excalidraw elements
+
+### Fixed
+- **Draw view mode** — use Excalidraw native `viewModeEnabled` for proper pan/zoom (was blocked by overlay div)
+
+### Changed
+- Doc and draw `extractContext` updated with annotation and label-based context support
+- All three built-in modes (slide, doc, draw) now have consistent View / Edit / Select / Annotate modes
+
 ## [1.10.0] - 2026-03-03
 
 ### Added
