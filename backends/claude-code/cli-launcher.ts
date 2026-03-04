@@ -191,7 +191,11 @@ export class CliLauncher {
     const proc = this.processes.get(sessionId);
     if (!proc) return false;
 
-    proc.kill("SIGTERM");
+    if (process.platform === "win32") {
+      proc.kill();
+    } else {
+      proc.kill("SIGTERM");
+    }
 
     const exited = await Promise.race([
       proc.exited.then(() => true),
@@ -200,7 +204,11 @@ export class CliLauncher {
 
     if (!exited) {
       console.log(`[cli-launcher] Force-killing session ${sessionId}`);
-      proc.kill("SIGKILL");
+      if (process.platform === "win32") {
+        proc.kill();
+      } else {
+        proc.kill("SIGKILL");
+      }
     }
 
     const session = this.sessions.get(sessionId);

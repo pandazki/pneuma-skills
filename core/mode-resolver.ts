@@ -9,7 +9,7 @@
  * GitHub 仓库会被 clone 到 ~/.pneuma/modes/{user}-{repo}/ 缓存目录。
  */
 
-import { resolve, join } from "node:path";
+import { resolve, join, basename } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 
@@ -81,12 +81,13 @@ export function parseModeSpecifier(specifier: string): {
     };
   }
 
-  // Local: starts with "/", "./", "../", or "~"
+  // Local: starts with "/", "./", "../", "~", or Windows drive letter (C:\...)
   if (
     specifier.startsWith("/") ||
     specifier.startsWith("./") ||
     specifier.startsWith("../") ||
-    specifier.startsWith("~")
+    specifier.startsWith("~") ||
+    /^[A-Za-z]:[\\/]/.test(specifier)
   ) {
     // Expand ~ to home directory
     const expandedPath = specifier.startsWith("~")
@@ -94,7 +95,7 @@ export function parseModeSpecifier(specifier: string): {
       : specifier;
     const absPath = resolve(expandedPath);
     // Extract mode name from directory name
-    const name = absPath.split("/").pop() || "custom";
+    const name = basename(absPath) || "custom";
     return {
       type: "local",
       name,

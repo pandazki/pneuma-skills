@@ -7,6 +7,8 @@ import { randomUUID } from "node:crypto";
 import { execSync } from "node:child_process";
 import type { ServerWebSocket } from "bun";
 
+const isWin = process.platform === "win32";
+
 interface TerminalSocketData {
   kind: "terminal";
   terminalId: string;
@@ -23,6 +25,10 @@ interface TerminalInstance {
 }
 
 function resolveShell(): string {
+  if (isWin) {
+    // On Windows, use COMSPEC (defaults to cmd.exe)
+    return process.env.COMSPEC || "cmd.exe";
+  }
   // process.env.SHELL may not reflect the user's configured default shell
   // (e.g. when launched from Claude Code which runs zsh).
   // On macOS, query the directory service for the real login shell.
@@ -45,9 +51,16 @@ export class TerminalManager {
     const shell = resolveShell();
     const sockets = new Set<ServerWebSocket<TerminalSocketData>>();
 
-    const proc = Bun.spawn([shell, "-l"], {
+    // On Unix, use login shell flag; on Windows, no special flags
+    const shellArgs = isWin ? [] : ["-l"];
+
+    const proc = Bun.spawn([shell, ...shellArgs], {
       cwd,
-      env: { ...process.env, TERM: "xterm-256color", CLAUDECODE: undefined as any },
+      env: {
+        ...process.env,
+        ...(isWin ? {} : { TERM: "xterm-256color" }),
+        CLAUDECODE: undefined as any,
+      },
       terminal: {
         cols,
         rows,
@@ -150,11 +163,16 @@ export class TerminalManager {
     if (!inst) return;
 
     console.log(`[terminal] Killing terminal ${id}`);
-    inst.proc.kill("SIGTERM");
-    // Force kill after 2s
-    setTimeout(() => {
-      try { inst.proc.kill("SIGKILL"); } catch {}
-    }, 2_000);
+    if (isWin) {
+      // On Windows, kill() without signal terminates the process
+      inst.proc.kill();
+    } else {
+      inst.proc.kill("SIGTERM");
+      // Force kill after 2s
+      setTimeout(() => {
+        try { inst.proc.kill("SIGKILL"); } catch {}
+      }, 2_000);
+    }
 
     for (const ws of inst.browserSockets) {
       try { ws.close(1000, "Terminal killed"); } catch {}

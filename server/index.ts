@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, unlinkSync, mkdirSync } from "node:fs";
-import { join, resolve, relative, basename, extname, dirname } from "node:path";
+import { join, resolve, relative, basename, extname, dirname, sep } from "node:path";
 import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { WsBridge } from "./ws-bridge.js";
@@ -14,6 +14,13 @@ import { registerModeMakerRoutes } from "./mode-maker-routes.js";
 import { openPath, revealPath, openUrl } from "./system-bridge.js";
 
 const DEFAULT_PORT = 17007;
+const isWin = process.platform === "win32";
+
+/** Cross-platform path containment check (case-insensitive on Windows). */
+function pathStartsWith(child: string, parent: string): boolean {
+  if (isWin) return child.toLowerCase().startsWith(parent.toLowerCase());
+  return child.startsWith(parent);
+}
 
 export interface ServerOptions {
   port?: number;
@@ -94,13 +101,13 @@ export function startServer(options: ServerOptions) {
     // Delete a local mode
     app.delete("/api/modes/:name", async (c) => {
       const name = c.req.param("name");
-      if (!name || name.includes("..") || name.includes("/")) {
+      if (!name || name.includes("..") || name.includes("/") || name.includes("\\")) {
         return c.json({ error: "Invalid mode name" }, 400);
       }
       const modesDir = join(homedir(), ".pneuma", "modes");
       const targetDir = join(modesDir, name);
       // Safety: resolved path must be inside modesDir
-      if (!resolve(targetDir).startsWith(resolve(modesDir) + "/")) {
+      if (!pathStartsWith(resolve(targetDir), resolve(modesDir) + sep)) {
         return c.json({ error: "Invalid mode name" }, 400);
       }
       if (!existsSync(targetDir)) {
@@ -422,7 +429,7 @@ export function startServer(options: ServerOptions) {
           return c.json({ success: false, message: `Invalid path: ${f.path}` }, 400);
         }
         const abs = join(workspace, f.path);
-        if (!abs.startsWith(workspace)) {
+        if (!pathStartsWith(abs, workspace)) {
           return c.json({ success: false, message: `Path escapes workspace: ${f.path}` }, 403);
         }
       }
@@ -435,7 +442,7 @@ export function startServer(options: ServerOptions) {
             const matches = new Bun.Glob(pattern).scanSync({ cwd: workspace, absolute: false });
             for (const relPath of matches) {
               const absPath = join(workspace, relPath);
-              if (absPath.startsWith(workspace) && existsSync(absPath)) {
+              if (pathStartsWith(absPath, workspace) && existsSync(absPath)) {
                 unlinkSync(absPath);
                 filesDeleted++;
               }
@@ -481,7 +488,7 @@ export function startServer(options: ServerOptions) {
     if (cleaned.startsWith("/content/")) cleaned = cleaned.slice(9);
     if (cleaned.startsWith("/")) return null;
     const absPath = join(workspace, cleaned);
-    if (!absPath.startsWith(workspace) || !existsSync(absPath)) return null;
+    if (!pathStartsWith(absPath, workspace) || !existsSync(absPath)) return null;
     try {
       const ext = extname(cleaned).toLowerCase();
       const mime = ASSET_MIME[ext] || "application/octet-stream";
@@ -504,7 +511,7 @@ export function startServer(options: ServerOptions) {
       if (cleaned.startsWith("/content/")) cleaned = cleaned.slice(9);
       if (cleaned.startsWith("/")) return match;
       const absPath = join(workspace, cleaned);
-      if (!absPath.startsWith(workspace) || !existsSync(absPath)) return match;
+      if (!pathStartsWith(absPath, workspace) || !existsSync(absPath)) return match;
       try {
         const css = readFileSync(absPath, "utf-8");
         return `<style>/* inlined: ${cleaned} */\n${css}\n</style>`;
@@ -817,7 +824,7 @@ ${slidePages}${downloadScript}
       return c.json({ error: "Missing path or content" }, 400);
     }
     const absPath = join(workspace, relPath);
-    if (!absPath.startsWith(workspace)) {
+    if (!pathStartsWith(absPath, workspace)) {
       return c.json({ error: "Forbidden" }, 403);
     }
     try {
@@ -833,7 +840,7 @@ ${slidePages}${downloadScript}
     const relPath = c.req.query("path");
     if (!relPath) return c.json({ error: "Missing path" }, 400);
     const absPath = join(workspace, relPath);
-    if (!absPath.startsWith(workspace)) return c.json({ error: "Forbidden" }, 403);
+    if (!pathStartsWith(absPath, workspace)) return c.json({ error: "Forbidden" }, 403);
     try {
       const content = readFileSync(absPath, "utf-8");
       return c.json({ path: relPath, content });
@@ -943,9 +950,10 @@ ${slidePages}${downloadScript}
       // Check if file is untracked
       const tracked = execSync(`git -c core.quotePath=false ls-files -- "${filePath}"`, { cwd: workspace, encoding: "utf-8", timeout: 5_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
       if (!tracked) {
-        // Untracked new file — diff against /dev/null
+        // Untracked new file — diff against /dev/null (NUL on Windows)
         try {
-          diff = execSync(`git -c core.quotePath=false diff --no-index -- /dev/null "${absPath}"`, { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+          const devNull = isWin ? "NUL" : "/dev/null";
+          diff = execSync(`git -c core.quotePath=false diff --no-index -- ${devNull} "${absPath}"`, { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
         } catch (e: any) {
           // git diff --no-index exits with 1 when there are differences
           diff = e.stdout?.toString() || "";
@@ -995,6 +1003,9 @@ ${slidePages}${downloadScript}
 
   // ── Process management ──────────────────────────────────────────────
   app.get("/api/processes/system", (c) => {
+    // lsof/ps are Unix-only — graceful degrade on Windows
+    if (isWin) return c.json({ processes: [] });
+
     const DEV_COMMANDS = new Set(["node", "bun", "deno", "python", "python3", "uvicorn", "vite", "next", "nuxt", "webpack", "esbuild", "tsx"]);
     const EXCLUDE_COMMANDS = new Set(["launchd", "nginx", "docker", "dockerd", "com.docker", "Cursor", "cursor", "Code", "code"]);
     const processes: { pid: number; command: string; fullCommand: string; ports: number[]; cwd?: string; startedAt?: number }[] = [];
@@ -1044,7 +1055,11 @@ ${slidePages}${downloadScript}
     const taskId = c.req.param("taskId");
     if (!/^[a-f0-9]+$/i.test(taskId)) return c.json({ error: "Invalid taskId" }, 400);
     try {
-      execSync(`pkill -f "${taskId}"`, { timeout: 5_000, stdio: ["pipe", "pipe", "pipe"] });
+      if (isWin) {
+        execSync(`taskkill /F /PID ${taskId}`, { timeout: 5_000, stdio: ["pipe", "pipe", "pipe"] });
+      } else {
+        execSync(`pkill -f "${taskId}"`, { timeout: 5_000, stdio: ["pipe", "pipe", "pipe"] });
+      }
     } catch { /* process may already be gone */ }
     return c.json({ ok: true, taskId });
   });
@@ -1053,7 +1068,7 @@ ${slidePages}${downloadScript}
     const pid = parseInt(c.req.param("pid"), 10);
     if (isNaN(pid) || pid <= 0) return c.json({ error: "Invalid PID" }, 400);
     if (pid === process.pid) return c.json({ error: "Cannot kill self" }, 403);
-    try { process.kill(pid, "SIGTERM"); } catch { /* already gone */ }
+    try { process.kill(pid); } catch { /* already gone */ }
     return c.json({ ok: true, pid });
   });
 
@@ -1094,7 +1109,7 @@ ${slidePages}${downloadScript}
     const relPath = decodeURIComponent(c.req.path.replace(/^\/content\//, ""));
     const absPath = join(workspace, relPath);
     // Basic path traversal protection
-    if (!absPath.startsWith(workspace)) {
+    if (!pathStartsWith(absPath, workspace)) {
       return c.text("Forbidden", 403);
     }
     if (!existsSync(absPath)) {

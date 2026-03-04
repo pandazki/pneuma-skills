@@ -1,17 +1,25 @@
 /**
  * PATH discovery and binary resolution.
  * Ported from Companion — captures the user's real shell PATH at runtime.
+ * Supports macOS, Linux, and Windows.
  */
 
 import { execSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, delimiter } from "node:path";
+
+const isWin = process.platform === "win32";
 
 /**
  * Capture the user's full interactive shell PATH by spawning a login shell.
+ * On Windows, process.env.PATH already contains the full user PATH.
  */
 export function captureUserShellPath(): string {
+  if (isWin) {
+    return process.env.PATH || "";
+  }
+
   try {
     const shell = process.env.SHELL || "/bin/bash";
     const captured = execSync(
@@ -38,6 +46,30 @@ export function captureUserShellPath(): string {
  */
 export function buildFallbackPath(): string {
   const home = homedir();
+
+  if (isWin) {
+    const localAppData = process.env.LOCALAPPDATA || join(home, "AppData", "Local");
+    const appData = process.env.APPDATA || join(home, "AppData", "Roaming");
+    const pf = process.env["ProgramFiles"] || "C:\\Program Files";
+
+    const candidates = [
+      join(home, ".bun", "bin"),
+      join(localAppData, "bun"),
+      join(appData, "npm"),
+      join(home, "scoop", "shims"),
+      join(home, ".cargo", "bin"),
+      join(home, ".deno", "bin"),
+      join(home, "go", "bin"),
+      join(pf, "Git", "cmd"),
+      join(pf, "nodejs"),
+      join(localAppData, "Programs", "Python"),
+      join(localAppData, "fnm"),
+      join(home, ".volta", "bin"),
+    ];
+
+    return [...new Set(candidates.filter((dir) => existsSync(dir)))].join(delimiter);
+  }
+
   const candidates = [
     "/opt/homebrew/bin",
     "/opt/homebrew/sbin",
@@ -77,7 +109,7 @@ export function buildFallbackPath(): string {
     } catch { /* ignore */ }
   }
 
-  return [...new Set(candidates.filter((dir) => existsSync(dir)))].join(":");
+  return [...new Set(candidates.filter((dir) => existsSync(dir)))].join(delimiter);
 }
 
 // ─── Enriched PATH (cached) ───────────────────────────────────────────────────
@@ -94,7 +126,7 @@ export function getEnrichedPath(): string {
   const currentPath = process.env.PATH || "";
   const userPath = captureUserShellPath();
 
-  const allDirs = [...userPath.split(":"), ...currentPath.split(":")];
+  const allDirs = [...userPath.split(delimiter), ...currentPath.split(delimiter)];
   const seen = new Set<string>();
   const deduped: string[] = [];
   for (const dir of allDirs) {
@@ -104,7 +136,7 @@ export function getEnrichedPath(): string {
     }
   }
 
-  _cachedPath = deduped.join(":");
+  _cachedPath = deduped.join(delimiter);
   return _cachedPath;
 }
 
@@ -113,18 +145,21 @@ export function getEnrichedPath(): string {
  * Returns null if the binary is not found anywhere.
  */
 export function resolveBinary(name: string): string | null {
-  if (name.startsWith("/")) {
+  // Check if name is an absolute path
+  if (isWin ? /^[A-Za-z]:[\\/]/.test(name) : name.startsWith("/")) {
     return existsSync(name) ? name : null;
   }
 
   const enrichedPath = getEnrichedPath();
+  const cmd = isWin ? "where" : "which";
   try {
-    const resolved = execSync(`which ${name.replace(/[^a-zA-Z0-9._@/-]/g, "")}`, {
+    const resolved = execSync(`${cmd} ${name.replace(/[^a-zA-Z0-9._@/\\-]/g, "")}`, {
       encoding: "utf-8",
       timeout: 5_000,
       env: { ...process.env, PATH: enrichedPath },
     }).trim();
-    return resolved || null;
+    // `where` on Windows may return multiple lines; take the first
+    return (isWin ? resolved.split("\n")[0].trim() : resolved) || null;
   } catch {
     return null;
   }

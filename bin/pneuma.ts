@@ -425,8 +425,12 @@ async function main() {
     const url = `http://localhost:${browserPort}`;
     if (!noOpen) {
       try {
-        const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-        Bun.spawn([opener, url], { stdout: "ignore", stderr: "ignore" });
+        if (process.platform === "win32") {
+          Bun.spawn(["cmd", "/c", "start", "", url], { stdout: "ignore", stderr: "ignore" });
+        } else {
+          const opener = process.platform === "darwin" ? "open" : "xdg-open";
+          Bun.spawn([opener, url], { stdout: "ignore", stderr: "ignore" });
+        }
       } catch {}
     }
     p.log.success(`Marketplace → ${url}`);
@@ -862,8 +866,12 @@ async function main() {
   if (!noOpen) {
     p.log.success(`Ready → ${browserUrl}`);
     try {
-      const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-      Bun.spawn([opener, browserUrl], { stdout: "ignore", stderr: "ignore" });
+      if (process.platform === "win32") {
+        Bun.spawn(["cmd", "/c", "start", "", browserUrl], { stdout: "ignore", stderr: "ignore" });
+      } else {
+        const opener = process.platform === "darwin" ? "open" : "xdg-open";
+        Bun.spawn([opener, browserUrl], { stdout: "ignore", stderr: "ignore" });
+      }
     } catch {
       p.log.warn(`Could not open browser. Visit: ${browserUrl}`);
     }

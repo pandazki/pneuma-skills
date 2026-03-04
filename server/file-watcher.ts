@@ -7,7 +7,7 @@
 
 import { watch } from "chokidar";
 import { readFileSync, existsSync } from "node:fs";
-import { relative } from "node:path";
+import { relative, join } from "node:path";
 import type { ViewerConfig } from "../core/types/mode-manifest.js";
 
 const DEBOUNCE_MS = 300;
@@ -82,7 +82,7 @@ export function startFileWatcher(
   const flush = () => {
     const files: FileUpdate[] = [];
     for (const relPath of pendingChanges) {
-      const absPath = `${workspace}/${relPath}`;
+      const absPath = join(workspace, relPath);
       if (existsSync(absPath)) {
         try {
           const content = readFileSync(absPath, "utf-8");
