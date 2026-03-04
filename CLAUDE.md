@@ -6,7 +6,7 @@ Pneuma Skills is an extensible delivery platform for filesystem-based Agent capa
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 1.14.1
+**Version:** 1.14.2
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `doc`, `slide`, `draw`
 

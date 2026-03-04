@@ -422,7 +422,7 @@ async function main() {
       process.on("SIGTERM", () => { server.stop(true); process.exit(0); });
     }
 
-    const url = `http://localhost:${browserPort}?launcher=1`;
+    const url = `http://localhost:${browserPort}`;
     if (!noOpen) {
       try {
         const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";

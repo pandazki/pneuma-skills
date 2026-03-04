@@ -245,7 +245,7 @@ export function startServer(options: ServerOptions) {
         // 3. Spawn pneuma process
         const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
         const pneumaBin = join(projectRoot, "bin", "pneuma.ts");
-        const args = ["bun", pneumaBin, specifier, "--workspace", resolvedWorkspace, "--no-prompt"];
+        const args = ["bun", pneumaBin, specifier, "--workspace", resolvedWorkspace, "--no-prompt", "--no-open"];
         if (skipSkill) args.push("--skip-skill");
 
         const child = Bun.spawn(args, {

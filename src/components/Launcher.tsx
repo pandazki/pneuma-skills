@@ -158,7 +158,7 @@ function SessionCard({
 }: {
   session: RecentSession;
   homeDir: string;
-  onResume: (skipSkill?: boolean) => void;
+  onResume: (skipSkill?: boolean) => Promise<void>;
   onDelete: () => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -186,17 +186,20 @@ function SessionCard({
         return;
       }
       // No update needed (or dismissed) — launch directly, skip skill install for speed
-      onResume(!data.needsUpdate || data.dismissed);
+      await onResume(!data.needsUpdate || data.dismissed);
+      setLaunching(false);
     } catch {
       // Can't check — just launch
-      onResume();
+      await onResume();
+      setLaunching(false);
     }
   };
 
-  const handleUpdate = () => {
+  const handleUpdate = async () => {
     setSkillUpdate(null);
     setLaunching(true);
-    onResume(false); // don't skip skill → will update
+    await onResume(false);
+    setLaunching(false);
   };
 
   const handleSkip = async () => {
@@ -210,7 +213,8 @@ function SessionCard({
     } catch {}
     setSkillUpdate(null);
     setLaunching(true);
-    onResume(true); // skip skill
+    await onResume(true);
+    setLaunching(false);
   };
 
   return (
@@ -350,13 +354,15 @@ function LaunchDialog({
         setError(data.error);
         setLoading(false);
       } else if (data.url) {
-        window.location.href = data.url;
+        window.open(data.url, "_blank");
+        setLoading(false);
+        onClose();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Launch failed");
       setLoading(false);
     }
-  }, [specifier, workspace, paramValues]);
+  }, [specifier, workspace, paramValues, onClose]);
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
@@ -507,7 +513,8 @@ export default function Launcher() {
       });
       const data = await res.json();
       if (data.url) {
-        window.location.href = data.url;
+        window.open(data.url, "_blank");
+        refreshSessions();
       }
     } catch {}
   }, []);

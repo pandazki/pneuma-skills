@@ -135,7 +135,11 @@ function getApiBase(): string {
 
 export default function App() {
   // Launcher mode — lightweight marketplace UI
-  const [isLauncher] = useState(() => new URLSearchParams(location.search).has("launcher"));
+  const [isLauncher] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    // Launcher if explicitly requested OR no session/mode params (bare URL)
+    return params.has("launcher") || (!params.has("session") && !params.has("mode"));
+  });
   if (isLauncher) {
     return (
       <Suspense fallback={<LazyFallback />}>

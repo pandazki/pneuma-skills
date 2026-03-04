@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.14.2] - 2026-03-04
+
+### Fixed
+- **Launcher default URL** — bare URL (`http://localhost:17996/`) now opens the Launcher directly, no `?launcher=1` param needed
+- **Launch in new tab** — launching a mode from Launcher opens it in a new tab instead of navigating away, keeping the Launcher available
+- **"Launching..." state stuck** — SessionCard now properly resets its loading state after launch completes
+- **Frontend deps moved to devDependencies** — reduced `bunx` install from ~500 packages to ~7 (all frontend code already bundled in `dist/`)
+
 ## [1.14.1] - 2026-03-04
 
 ### Fixed
