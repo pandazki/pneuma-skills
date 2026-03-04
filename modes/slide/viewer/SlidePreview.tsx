@@ -472,7 +472,9 @@ export default function SlidePreview({
   const [navPosition, setNavPosition] = useState<NavigatorPosition>(loadNavPosition);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isGridView, setIsGridView] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(100); // percentage
+  const [zoomLevel, setZoomLevel] = useState<number | null>(null); // null = pending first fit
+  const [autoFit, setAutoFit] = useState(true); // continuous fit mode
+  const viewerContainerRef = useRef<HTMLDivElement>(null);
   const fullscreenRef = useRef<HTMLDivElement>(null);
   const iframeRefsRef = useRef<Map<string, HTMLIFrameElement>>(new Map());
 
@@ -544,10 +546,37 @@ export default function SlidePreview({
   // Grid view
   const toggleGridView = useCallback(() => setIsGridView((v) => !v), []);
 
-  // Zoom
-  const zoomIn = useCallback(() => setZoomLevel((z) => Math.min(200, z + 10)), []);
-  const zoomOut = useCallback(() => setZoomLevel((z) => Math.max(30, z - 10)), []);
-  const zoomFit = useCallback(() => setZoomLevel(100), []);
+  // Zoom — fit calculates scale from container size vs virtual slide dimensions
+  const calcFitZoom = useCallback(() => {
+    const el = viewerContainerRef.current;
+    if (!el) return 100;
+    const padding = 32; // breathing room
+    const w = el.clientWidth - padding;
+    const h = el.clientHeight - padding;
+    if (w <= 0 || h <= 0) return 100;
+    const vw = (initParams?.slideWidth as number) || 1280;
+    const vh = (initParams?.slideHeight as number) || 720;
+    return Math.max(30, Math.min(200, Math.floor(Math.min(w / vw, h / vh) * 100)));
+  }, [initParams]);
+
+  const zoomIn = useCallback(() => { setAutoFit(false); setZoomLevel((z) => Math.min(200, (z ?? 100) + 10)); }, []);
+  const zoomOut = useCallback(() => { setAutoFit(false); setZoomLevel((z) => Math.max(30, (z ?? 100) - 10)); }, []);
+  const zoomFit = useCallback(() => { setAutoFit(true); setZoomLevel(calcFitZoom()); }, [calcFitZoom]);
+
+  // Auto-fit: on first render + continuous ResizeObserver while autoFit is on
+  useEffect(() => {
+    if (slideCount === 0) return;
+    const el = viewerContainerRef.current;
+    if (!el) return;
+    // Initial fit
+    setZoomLevel(calcFitZoom());
+    // Continuous fit via ResizeObserver
+    const ro = new ResizeObserver(() => {
+      if (autoFit) setZoomLevel(calcFitZoom());
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [calcFitZoom, slideCount, autoFit]);
 
   // Drag reorder — optimistic local update + persist via API
   const handleReorder = useCallback(
@@ -1244,7 +1273,8 @@ export default function SlidePreview({
 
   // Zoom: render iframe at a virtual size, use CSS transform to scale
   // (must be before early returns to satisfy Rules of Hooks)
-  const zoomScale = zoomLevel / 100;
+  const effectiveZoom = zoomLevel ?? 100;
+  const zoomScale = effectiveZoom / 100;
   const scaledW = VIRTUAL_W * zoomScale;
   const scaledH = VIRTUAL_H * zoomScale;
 
@@ -1283,7 +1313,7 @@ export default function SlidePreview({
           onToggleFullscreen={toggleFullscreen}
           isGridView={isGridView}
           onToggleGridView={toggleGridView}
-          zoomLevel={zoomLevel}
+          zoomLevel={effectiveZoom}
           onZoomIn={zoomIn}
           onZoomOut={zoomOut}
           onZoomFit={zoomFit}
@@ -1313,7 +1343,7 @@ export default function SlidePreview({
   ) : null;
 
   const viewerEl = (
-    <div className="flex-1 flex items-center justify-center bg-neutral-900 min-w-0 min-h-0 overflow-auto">
+    <div ref={viewerContainerRef} className="flex-1 flex items-center justify-center bg-neutral-900 min-w-0 min-h-0 overflow-auto">
       <div
         className="shrink-0 relative"
         style={{ width: scaledW, height: scaledH }}
@@ -1392,7 +1422,7 @@ export default function SlidePreview({
           onToggleFullscreen={toggleFullscreen}
           isGridView={isGridView}
           onToggleGridView={toggleGridView}
-          zoomLevel={zoomLevel}
+          zoomLevel={effectiveZoom}
           onZoomIn={zoomIn}
           onZoomOut={zoomOut}
           onZoomFit={zoomFit}
@@ -1462,7 +1492,7 @@ export default function SlidePreview({
         onToggleFullscreen={toggleFullscreen}
         isGridView={isGridView}
         onToggleGridView={toggleGridView}
-        zoomLevel={zoomLevel}
+        zoomLevel={effectiveZoom}
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}
         onZoomFit={zoomFit}

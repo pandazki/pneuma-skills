@@ -252,7 +252,7 @@ export default function App() {
     <div className="flex flex-col h-screen bg-cc-bg text-cc-fg">
       <TopBar />
       <Group orientation="horizontal" className="flex-1">
-        <Panel defaultSize={60} minSize={30}>
+        <Panel defaultSize={65} minSize={30}>
           {PreviewComponent ? (
             <PreviewComponent {...viewerProps} />
           ) : (
@@ -260,7 +260,7 @@ export default function App() {
           )}
         </Panel>
         <Separator className="w-1 bg-cc-border hover:bg-cc-primary/30 transition-colors" />
-        <Panel defaultSize={40} minSize={25}>
+        <Panel defaultSize={35} minSize={20}>
           <RightPanel />
         </Panel>
       </Group>
