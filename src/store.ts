@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { SessionState, PermissionRequest, ChatMessage, FileContent, SelectionContext, ContentBlock, UserAction, Annotation } from "./types.js";
-import type { ViewerContract, WorkspaceItem, ViewerActionRequest } from "../core/types/viewer-contract.js";
+import type { ViewerContract, WorkspaceItem, ViewerActionRequest, ContentSet } from "../core/types/viewer-contract.js";
 
 export interface Activity {
   phase: "thinking" | "responding" | "tool";
@@ -89,6 +89,10 @@ interface AppState {
   workspaceItems: WorkspaceItem[];
   actionRequest: ViewerActionRequest | null;
 
+  // Content contentSets (multi-theme / multi-language)
+  contentSets: ContentSet[];
+  activeContentSet: string | null;
+
   // User action events (for CC context injection)
   userActions: UserAction[];
 
@@ -163,6 +167,9 @@ interface AppState {
 
   // Actions — viewer actions
   setActionRequest: (req: ViewerActionRequest | null) => void;
+
+  // Actions — content contentSets
+  setActiveContentSet: (prefix: string | null) => void;
 
   // Actions — user actions
   pushUserAction: (action: UserAction) => void;
@@ -255,6 +262,8 @@ export const useStore = create<AppState>((set) => ({
   debugMode: false,
   workspaceItems: [],
   actionRequest: null,
+  contentSets: [],
+  activeContentSet: null,
   userActions: [],
   pendingViewerNotification: null,
 
@@ -347,7 +356,21 @@ export const useStore = create<AppState>((set) => ({
   })),
   clearAnnotations: () => set({ annotations: [] }),
 
-  setModeViewer: (modeViewer) => set({ modeViewer }),
+  setModeViewer: (modeViewer) =>
+    set((s) => {
+      const ws = modeViewer.workspace;
+      const contentSets = ws?.resolveContentSets ? ws.resolveContentSets(s.files) : [];
+      const contentSetsChanged =
+        contentSets.length !== s.contentSets.length ||
+        contentSets.some((v, i) => v.prefix !== s.contentSets[i]?.prefix);
+      const filtered = s.activeContentSet ? filterAndRemapFiles(s.files, s.activeContentSet) : s.files;
+      const resolveItems = ws?.resolveItems;
+      return {
+        modeViewer,
+        ...(contentSetsChanged ? { contentSets } : {}),
+        workspaceItems: resolveItems ? resolveItems(filtered) : s.workspaceItems,
+      };
+    }),
   setModeDisplayName: (modeDisplayName) => set({ modeDisplayName }),
 
   setInitParams: (initParams) => set({ initParams }),
@@ -355,6 +378,18 @@ export const useStore = create<AppState>((set) => ({
   setDebugMode: (debugMode) => set({ debugMode }),
 
   setActionRequest: (actionRequest) => set({ actionRequest }),
+
+  setActiveContentSet: (activeContentSet) =>
+    set((s) => {
+      const resolveItems = s.modeViewer?.workspace?.resolveItems;
+      const filtered = activeContentSet ? filterAndRemapFiles(s.files, activeContentSet) : s.files;
+      return {
+        activeContentSet,
+        activeFile: null,
+        selection: null,
+        workspaceItems: resolveItems ? resolveItems(filtered) : s.workspaceItems,
+      };
+    }),
 
   pushUserAction: (action) => set((s) => ({ userActions: [...s.userActions, action] })),
   drainUserActions: (): UserAction[] => {
@@ -367,10 +402,30 @@ export const useStore = create<AppState>((set) => ({
 
   setFiles: (files) =>
     set((s) => {
-      const resolveItems = s.modeViewer?.workspace?.resolveItems;
+      const ws = s.modeViewer?.workspace;
+      const contentSets = ws?.resolveContentSets ? ws.resolveContentSets(files) : [];
+      const contentSetsChanged =
+        contentSets.length !== s.contentSets.length ||
+        contentSets.some((v, i) => v.prefix !== s.contentSets[i]?.prefix);
+
+      let activeContentSet = s.activeContentSet;
+      if (activeContentSet && !contentSets.some((v) => v.prefix === activeContentSet)) {
+        activeContentSet = null;
+      }
+
+      const filtered = activeContentSet ? filterAndRemapFiles(files, activeContentSet) : files;
+      const resolveItems = ws?.resolveItems;
+      const newItems = resolveItems ? resolveItems(filtered) : s.workspaceItems;
+      let activeFile = s.activeFile;
+      if (activeFile && newItems.length > 0 && !newItems.some((i) => i.path === activeFile)) {
+        activeFile = null;
+      }
       return {
         files,
-        workspaceItems: resolveItems ? resolveItems(files) : s.workspaceItems,
+        ...(contentSetsChanged ? { contentSets } : {}),
+        activeContentSet,
+        workspaceItems: newItems,
+        activeFile,
       };
     }),
   updateFiles: (updates) =>
@@ -380,10 +435,41 @@ export const useStore = create<AppState>((set) => ({
         fileMap.set(u.path, u);
       }
       const files = Array.from(fileMap.values());
-      const resolveItems = s.modeViewer?.workspace?.resolveItems;
+      const ws = s.modeViewer?.workspace;
+      const contentSets = ws?.resolveContentSets ? ws.resolveContentSets(files) : [];
+      const contentSetsChanged =
+        contentSets.length !== s.contentSets.length ||
+        contentSets.some((v, i) => v.prefix !== s.contentSets[i]?.prefix);
+
+      let activeContentSet = s.activeContentSet;
+      if (activeContentSet && !contentSets.some((v) => v.prefix === activeContentSet)) {
+        activeContentSet = null;
+      }
+
+      const filtered = activeContentSet ? filterAndRemapFiles(files, activeContentSet) : files;
+      const resolveItems = ws?.resolveItems;
+      const newItems = resolveItems ? resolveItems(filtered) : s.workspaceItems;
+      let activeFile = s.activeFile;
+      if (activeFile && newItems.length > 0 && !newItems.some((i) => i.path === activeFile)) {
+        activeFile = null;
+      }
       return {
         files,
-        workspaceItems: resolveItems ? resolveItems(files) : s.workspaceItems,
+        ...(contentSetsChanged ? { contentSets } : {}),
+        activeContentSet,
+        workspaceItems: newItems,
+        activeFile,
       };
     }),
 }));
+
+/** Filter files by content set prefix and strip the prefix from paths. */
+function filterAndRemapFiles(
+  files: { path: string; content: string }[],
+  prefix: string,
+): { path: string; content: string }[] {
+  const pfx = prefix + "/";
+  return files
+    .filter((f) => f.path.startsWith(pfx))
+    .map((f) => ({ path: f.path.slice(pfx.length), content: f.content }));
+}

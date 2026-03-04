@@ -1,5 +1,7 @@
 /* Pneuma Slide Theme — Humanistic Tech Fusion (Warm Light) */
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
 :root {
   --color-bg: #FAF7F2;
   --color-fg: #2D2A26;
@@ -62,7 +64,7 @@ body {
   align-items: center;
 }
 
-.slide-split > * {
+.slide-split>* {
   flex: 1;
   min-width: 0;
 }
@@ -74,6 +76,16 @@ body {
 }
 
 /* ── Typography ───────────────────────────────────────── */
+
+h1,
+h2,
+h3,
+p,
+div,
+span {
+  z-index: 1;
+  position: relative;
+}
 
 h1 {
   font-size: 2.75rem;
@@ -108,9 +120,8 @@ p {
   margin-bottom: 0.6em;
 }
 
-/* ── Lists ────────────────────────────────────────────── */
-
-ul, ol {
+ul,
+ol {
   font-size: 1.15rem;
   line-height: 1.8;
   padding-left: 1.5em;
@@ -233,23 +244,82 @@ img {
 
 /* ── Utilities ────────────────────────────────────────── */
 
-.text-primary { color: var(--color-primary); }
-.text-secondary { color: var(--color-secondary); }
-.text-accent { color: var(--color-accent); }
-.text-muted { color: var(--color-muted); }
-.text-center { text-align: center; }
-.text-small { font-size: 0.95rem; }
-.text-large { font-size: 1.35rem; }
-.mt-1 { margin-top: 1em; }
-.mt-2 { margin-top: 2em; }
-.mb-1 { margin-bottom: 1em; }
-.mb-2 { margin-bottom: 2em; }
-.flex { display: flex; }
-.flex-col { flex-direction: column; }
-.flex-row { flex-direction: row; }
-.gap-xs { gap: 8px; }
-.gap-sm { gap: 16px; }
-.gap-md { gap: 24px; }
-.gap-lg { gap: 32px; }
-.items-center { align-items: center; }
-.justify-center { justify-content: center; }
+.text-primary {
+  color: var(--color-primary);
+}
+
+.text-secondary {
+  color: var(--color-secondary);
+}
+
+.text-accent {
+  color: var(--color-accent);
+}
+
+.text-muted {
+  color: var(--color-muted);
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-small {
+  font-size: 0.95rem;
+}
+
+.text-large {
+  font-size: 1.35rem;
+}
+
+.mt-1 {
+  margin-top: 1em;
+}
+
+.mt-2 {
+  margin-top: 2em;
+}
+
+.mb-1 {
+  margin-bottom: 1em;
+}
+
+.mb-2 {
+  margin-bottom: 2em;
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.flex-row {
+  flex-direction: row;
+}
+
+.gap-xs {
+  gap: 8px;
+}
+
+.gap-sm {
+  gap: 16px;
+}
+
+.gap-md {
+  gap: 24px;
+}
+
+.gap-lg {
+  gap: 32px;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-center {
+  justify-content: center;
+}

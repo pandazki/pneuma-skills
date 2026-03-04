@@ -113,6 +113,14 @@ export function generateViewerApiSection(
     if (ws.manifestFile) lines.push(`- Index file: ${ws.manifestFile}`);
     lines.push("");
     hasContent = true;
+
+    if (ws.supportsContentSets) {
+      lines.push("### Content Sets");
+      lines.push("This workspace may contain multiple content sets as top-level directories (e.g. en-dark/, ja-light/).");
+      lines.push("The `<viewer-context>` includes a `content-set` attribute. File paths include the content set prefix.");
+      lines.push("Always edit files within the active content set's directory unless asked to work across content sets.");
+      lines.push("");
+    }
   }
 
   // Actions

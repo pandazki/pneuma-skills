@@ -1,0 +1,67 @@
+<div class="slide">
+  <div style="display: flex; justify-content: space-between; align-items: flex-end; width: 100%; height: 100%;">
+
+    <!-- Left: Statement -->
+    <div style="flex: 1; padding-right: 64px; z-index: 10;">
+      <span class="tag" style="margin-bottom: 24px;">The Philosophy</span>
+      <h1 style="font-size: 3.8rem; line-height: 1.1; margin-bottom: 32px; letter-spacing: -0.04em;">A Canvas for<br>the
+        <span class="text-primary">Blind AI.</span>
+      </h1>
+      <p style="font-size: 1.25rem; max-width: 500px; color: var(--color-secondary);">
+        Code agents are incredibly powerful, but they edit files in the absolute dark. Pneuma connects them
+        bidirectionally to a visual viewer.
+      </p>
+
+      <div style="margin-top: 48px; border-left: 2px solid var(--color-primary); padding-left: 20px;">
+        <h3 style="font-size: 1.1rem; color: var(--color-fg); margin-bottom: 8px;">Synchronized Co-Creation</h3>
+        <p style="font-size: 0.95rem; line-height: 1.5; margin: 0; color: var(--color-secondary);">Without needing
+          native vision, the LLM constructs layouts via standard markup, and you guide it visually as it rapidly
+          iterates.
+        </p>
+      </div>
+    </div>
+
+    <!-- Right: Abstract Visual representation -->
+    <div
+      style="flex: 1; position: relative; height: 100%; display: flex; align-items: center; justify-content: center;">
+
+      <!-- CLI Box -->
+      <div
+        style="position: absolute; top: 15%; right: 45%; width: 280px; background: #fff; border: 1px solid rgba(0,0,0,0.05); border-radius: 8px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); z-index: 2;">
+        <div style="display: flex; gap: 6px; margin-bottom: 12px;">
+          <div style="width: 10px; height: 10px; border-radius: 50%; background: #EF4444;"></div>
+          <div style="width: 10px; height: 10px; border-radius: 50%; background: #F59E0B;"></div>
+          <div style="width: 10px; height: 10px; border-radius: 50%; background: #10B981;"></div>
+        </div>
+        <div style="font-family: monospace; color: #555; font-size: 0.8rem; line-height: 1.5;">
+          <span style="color: #3B82F6;">➜</span> <span style="color: #D97706;">claude</span> "Draw an orange circle"<br>
+          <span style="color: var(--color-primary)">> &lt;circle fill="orange"/&gt;</span>
+        </div>
+      </div>
+
+      <!-- Connecting Beam -->
+      <svg
+        style="position: absolute; top: 35%; right: 28%; z-index: 1; width: 200px; height: 150px; overflow: visible;">
+        <path d="M 0,0 C 100,50 100,100 150,150" fill="none" stroke="var(--color-primary)" stroke-width="2"
+          stroke-dasharray="4 4" opacity="0.6" />
+        <circle cx="150" cy="150" r="4" fill="var(--color-primary)" />
+      </svg>
+
+      <!-- Canvas Box -->
+      <div
+        style="position: absolute; bottom: 15%; right: 5%; width: 320px; height: 220px; background: rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.05); border-radius: 12px; backdrop-filter: blur(20px); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 80px rgba(255, 79, 0, 0.1); z-index: 3;">
+        <!-- The shape being drawn -->
+        <div
+          style="width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, var(--color-primary), #FF8A00); box-shadow: 0 0 40px rgba(255,79,0,0.2);">
+        </div>
+
+        <div
+          style="position: absolute; bottom: 16px; right: 16px; background: #fff; padding: 4px 10px; border-radius: 4px; font-size: 0.7rem; font-family: monospace; border: 1px solid rgba(0,0,0,0.05); color: var(--color-fg);">
+          Live Canvas
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>

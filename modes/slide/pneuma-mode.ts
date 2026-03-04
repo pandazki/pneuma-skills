@@ -12,6 +12,7 @@ import type {
 } from "../../core/types/viewer-contract.js";
 import SlidePreview from "./viewer/SlidePreview.js";
 import slideManifest from "./manifest.js";
+import { createDirectoryContentSetResolver } from "../../core/utils/content-set-resolver.js";
 
 const slideMode: ModeDefinition = {
   manifest: slideManifest,
@@ -25,6 +26,48 @@ const slideMode: ModeDefinition = {
       ordered: true,
       hasActiveFile: true,
       manifestFile: "manifest.json",
+      resolveContentSets: createDirectoryContentSetResolver(),
+      // Creates a new deck directory (content set) with manifest + theme + one blank slide.
+      // Receives ALL raw workspace files (not content-set-filtered).
+      createEmpty(files) {
+        // Find existing top-level directories
+        const existingDirs = new Set<string>();
+        for (const f of files) {
+          const slashIdx = f.path.indexOf("/");
+          if (slashIdx > 0) existingDirs.add(f.path.slice(0, slashIdx));
+        }
+
+        // Pick a unique deck name
+        let deckName = "deck-1";
+        let n = 1;
+        while (existingDirs.has(deckName)) {
+          deckName = `deck-${++n}`;
+        }
+
+        // Copy theme.css from any existing deck (first one found)
+        let themeContent = `:root {\n  --color-bg: #ffffff;\n  --color-fg: #111111;\n}\n`;
+        for (const dir of existingDirs) {
+          const theme = files.find((f) => f.path === `${dir}/theme.css`);
+          if (theme) {
+            themeContent = theme.content;
+            break;
+          }
+        }
+
+        const manifest = {
+          title: "New Deck",
+          slides: [{ file: "slides/slide-01.html", title: "Slide 1" }],
+        };
+        const slideHtml = `<div class="slide" style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 60px;">
+    <h1 style="font-size: 2.5rem;">Slide 1</h1>
+</div>\n`;
+
+        return [
+          { path: `${deckName}/manifest.json`, content: JSON.stringify(manifest, null, 2) },
+          { path: `${deckName}/theme.css`, content: themeContent },
+          { path: `${deckName}/slides/slide-01.html`, content: slideHtml },
+        ];
+      },
       resolveItems: (files) => {
         const mf = files.find(
           (f) => f.path === "manifest.json" || f.path.endsWith("/manifest.json"),

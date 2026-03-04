@@ -1,0 +1,242 @@
+/* Pneuma Slide Theme — Modern Dark Mode (Vercel/Linear inspired) */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root {
+  /* Core Colors */
+  --color-bg: #0A0A0A;
+  --color-fg: #EDEDED;
+  --color-primary: #FF4F00; /* Vibrant Orange */
+  --color-accent: #0070F3;  /* Electric Blue */
+  --color-secondary: #A1A1AA;
+  --color-muted: #71717A;
+  
+  /* Surfaces & Borders */
+  --color-surface: rgba(255, 255, 255, 0.03);
+  --color-surface-hover: rgba(255, 255, 255, 0.05);
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-border-glow: rgba(255, 79, 0, 0.3);
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', "SF Mono", "Fira Code", monospace;
+
+  --slide-padding: 64px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-fg);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Base slide container ─────────────────────────────── */
+
+.slide {
+  width: 100%;
+  height: 100%;
+  padding: var(--slide-padding);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 0%, rgba(255,255,255,0.03) 0%, transparent 70%), var(--color-bg);
+}
+
+/* Base glowing orb behind everything */
+.slide::before {
+  content: '';
+  position: absolute;
+  top: -20%;
+  left: -10%;
+  width: 50%;
+  height: 50%;
+  background: radial-gradient(circle, rgba(255, 79, 0, 0.08) 0%, transparent 60%);
+  filter: blur(80px);
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ── Typography ───────────────────────────────────────── */
+
+h1, h2, h3, p, div, span {
+  z-index: 1;
+  position: relative;
+}
+
+h1 {
+  font-size: 3.25rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+  margin-bottom: 0.4em;
+  color: #fff;
+}
+
+h2 {
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.5em;
+  color: #fff;
+}
+
+h3 {
+  font-size: 1.35rem;
+  font-weight: 500;
+  line-height: 1.4;
+  margin-bottom: 0.4em;
+  color: #E4E4E7;
+  letter-spacing: -0.01em;
+}
+
+p {
+  font-size: 1.1rem;
+  line-height: 1.7;
+  color: var(--color-secondary);
+  font-weight: 400;
+  margin-bottom: 0.6em;
+}
+
+ul, ol {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  padding-left: 1.5em;
+  color: #E4E4E7;
+}
+
+li { margin-bottom: 0.4em; }
+li::marker { color: var(--color-primary); }
+
+/* Highlighted Text */
+.text-primary { 
+  background: linear-gradient(135deg, #FF4F00 0%, #FF8A00 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--color-primary); /* fallback */
+}
+.text-accent { 
+  background: linear-gradient(135deg, #0070F3 0%, #00C6FF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--color-accent); /* fallback */
+}
+
+/* ── Code ─────────────────────────────────────────────── */
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: rgba(255,255,255,0.08);
+  padding: 0.2em 0.4em;
+  border-radius: 6px;
+  color: #E4E4E7;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+pre {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 1.25em;
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.95rem;
+  color: var(--color-fg);
+  border: none;
+}
+
+/* ── Images ───────────────────────────────────────────── */
+
+img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+/* ── Cards (Glassmorphism) ───────────────────────────── */
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 28px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+.card:hover {
+  background: var(--color-surface-hover);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.card h3 {
+  color: #fff;
+  margin-bottom: 0.5em;
+}
+
+.card p {
+  font-size: 0.95rem;
+  margin-bottom: 0;
+}
+
+/* ── Tags / Badges ────────────────────────────────────── */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 16px;
+  border-radius: 30px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+/* Glowing dot in tag */
+.tag::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  margin-right: 8px;
+  box-shadow: 0 0 8px var(--color-primary);
+}
+
+/* ── Utilities ────────────────────────────────────────── */
+.text-secondary { color: var(--color-secondary); }
+.text-muted { color: var(--color-muted); }
+.text-center { text-align: center; }
+
+/* ── Divider ──────────────────────────────────────────── */
+
+.divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 20px 0;
+}

@@ -232,7 +232,21 @@ export default function DocPreview({
   actionRequest,
   onActionResult,
   onViewportChange,
+  onActiveFileChange,
+  workspaceItems,
+  activeFile,
 }: ViewerPreviewProps) {
+
+  // Notify framework of initial active file when files arrive and nothing selected
+  useEffect(() => {
+    if (files.length > 0 && !activeFile) {
+      onActiveFileChange?.(files[0].path);
+    }
+  }, [files]);
+
+  const activeFiles = activeFile && files.length > 1
+    ? files.filter((f) => f.path === activeFile)
+    : files;
   // v1.0: setPreviewMode 仍通过 store 控制 (toolbar toggle)
   const setPreviewMode = useStore((s) => s.setPreviewMode);
   const pushUserAction = useStore((s) => s.pushUserAction);
@@ -641,7 +655,7 @@ export default function DocPreview({
             isDark ? "bg-[#1a1a18]" : "bg-white"
           }`}
         >
-          {files.map((file) => (
+          {activeFiles.map((file) => (
             <MarkdownEditor key={file.path} file={file} isDark={isDark} />
           ))}
         </div>
@@ -654,11 +668,13 @@ export default function DocPreview({
             isDark ? "bg-[#1a1a18] text-[#e8e6df]" : "bg-white text-[#1f1f1e]"
           } ${isSelectMode ? "select-mode" : ""}`}
         >
-          {files.map((file) => (
+          {activeFiles.map((file) => (
             <div key={file.path} className="mb-8" data-file={file.path}>
-              <div className={`text-xs mb-2 font-mono ${isDark ? "text-neutral-500" : "text-neutral-400"}`}>
-                {file.path}
-              </div>
+              {!activeFile && files.length > 1 && (
+                <div className={`text-xs mb-2 font-mono ${isDark ? "text-neutral-500" : "text-neutral-400"}`}>
+                  {file.path}
+                </div>
+              )}
               <div className={`prose max-w-none ${isDark ? "prose-invert prose-neutral" : "prose-neutral"}`}>
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}

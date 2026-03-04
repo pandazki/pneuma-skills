@@ -1,0 +1,66 @@
+<div class="slide">
+  <span class="tag" style="margin-bottom: 16px; align-self: flex-start;">Architecture</span>
+  <h1 style="font-size: 2.2rem;">The <span class="text-primary">Four-Layer</span> Engine</h1>
+  <p style="max-width: 700px; margin-bottom: 32px;">
+    Pneuma is built on four distinct layers, cleanly separating the concerns of AI execution, visual rendering, and
+    domain-specific knowledge.
+  </p>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <!-- Layer 4 -->
+    <div
+      style="background: var(--color-surface); padding: 24px; border-radius: 16px; border: 1px solid var(--color-border); position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
+      <div
+        style="position: absolute; right: -15px; bottom: -25px; font-size: 120px; opacity: 0.04; font-weight: 800; line-height: 1; color: var(--color-primary);">
+        4</div>
+      <h3 style="color: var(--color-primary); margin-bottom: 8px; font-size: 1.3rem;">Mode Protocol</h3>
+      <p
+        style="font-family: monospace; font-size: 0.85rem; color: var(--color-muted); margin-bottom: 12px; background: rgba(0,0,0,0.04); padding: 4px 8px; border-radius: 4px; display: inline-block;">
+        ModeManifest</p>
+      <p style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 0;">The declarative soul. Defines what the AI knows
+        (skills), what the user sees (viewers), and how the agent is configured.</p>
+    </div>
+
+    <!-- Layer 3 -->
+    <div
+      style="background: var(--color-surface); padding: 24px; border-radius: 16px; border: 1px solid var(--color-border); position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
+      <div
+        style="position: absolute; right: -15px; bottom: -25px; font-size: 120px; opacity: 0.04; font-weight: 800; line-height: 1; color: var(--color-accent);">
+        3</div>
+      <h3 style="color: var(--color-accent); margin-bottom: 8px; font-size: 1.3rem;">Content Viewer</h3>
+      <p
+        style="font-family: monospace; font-size: 0.85rem; color: var(--color-muted); margin-bottom: 12px; background: rgba(0,0,0,0.04); padding: 4px 8px; border-radius: 4px; display: inline-block;">
+        ViewerContract</p>
+      <p style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 0;">The dynamic frontend. Renders workspace files
+        in real-time, extracts context, and provides agent-callable actions.</p>
+    </div>
+
+    <!-- Layer 2 -->
+    <div
+      style="background: var(--color-surface); padding: 24px; border-radius: 16px; border: 1px solid var(--color-border); position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
+      <div
+        style="position: absolute; right: -15px; bottom: -25px; font-size: 120px; opacity: 0.04; font-weight: 800; line-height: 1; color: #6B8E6B;">
+        2</div>
+      <h3 style="color: #6B8E6B; margin-bottom: 8px; font-size: 1.3rem;">Agent Bridge</h3>
+      <p
+        style="font-family: monospace; font-size: 0.85rem; color: var(--color-muted); margin-bottom: 12px; background: rgba(0,0,0,0.04); padding: 4px 8px; border-radius: 4px; display: inline-block;">
+        AgentBackend</p>
+      <p style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 0;">The AI orchestrator. Handles launching,
+        resuming, and communicating with the underlying CLI agents (e.g. Claude Code).</p>
+    </div>
+
+    <!-- Layer 1 -->
+    <div
+      style="background: var(--color-surface); padding: 24px; border-radius: 16px; border: 1px solid var(--color-border); position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
+      <div
+        style="position: absolute; right: -15px; bottom: -25px; font-size: 120px; opacity: 0.04; font-weight: 800; line-height: 1; color: #5B8DB5;">
+        1</div>
+      <h3 style="color: #5B8DB5; margin-bottom: 8px; font-size: 1.3rem;">Runtime Shell</h3>
+      <p
+        style="font-family: monospace; font-size: 0.85rem; color: var(--color-muted); margin-bottom: 12px; background: rgba(0,0,0,0.04); padding: 4px 8px; border-radius: 4px; display: inline-block;">
+        Bun + Hono + Vite</p>
+      <p style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 0;">The foundation. Manages file watching, PTY
+        terminals, session persistence, and hosts the Dual WebSocket bridge.</p>
+    </div>
+  </div>
+</div>

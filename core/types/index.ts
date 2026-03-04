@@ -23,6 +23,8 @@ export type {
   ViewerSelectionContext,
   WorkspaceItem,
   FileWorkspaceModel,
+  ContentSetTraits,
+  ContentSet,
   ViewerActionParam,
   ViewerActionDescriptor,
   ViewerActionRequest,

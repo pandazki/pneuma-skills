@@ -1,0 +1,325 @@
+/* Pneuma Slide Theme — Humanistic Tech Fusion (Warm Light) */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root {
+  --color-bg: #FAF7F2;
+  --color-fg: #2D2A26;
+  --color-primary: #D4632A;
+  --color-secondary: #8A8178;
+  --color-accent: #C4963A;
+  --color-muted: #8A8178;
+  --color-surface: #F0EBE3;
+  --color-border: #DDD5CA;
+  --color-surface-alt: #E8E1D7;
+
+  --font-sans: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
+
+  --slide-padding: 64px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-fg);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Base slide container ─────────────────────────────── */
+
+.slide {
+  width: 100%;
+  height: 100%;
+  padding: var(--slide-padding);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Layout variants ──────────────────────────────────── */
+
+.slide-title {
+  align-items: center;
+  text-align: center;
+}
+
+.slide-content {
+  justify-content: flex-start;
+  padding-top: 72px;
+}
+
+.slide-split {
+  flex-direction: row;
+  gap: 48px;
+  align-items: center;
+}
+
+.slide-split>* {
+  flex: 1;
+  min-width: 0;
+}
+
+.slide-image {
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Typography ───────────────────────────────────────── */
+
+h1,
+h2,
+h3,
+p,
+div,
+span {
+  z-index: 1;
+  position: relative;
+}
+
+h1 {
+  font-size: 2.75rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.4em;
+  color: var(--color-fg);
+}
+
+h2 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.6em;
+  color: var(--color-fg);
+}
+
+h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-bottom: 0.4em;
+  color: var(--color-fg);
+}
+
+p {
+  font-size: 1.15rem;
+  line-height: 1.7;
+  color: var(--color-muted);
+  margin-bottom: 0.6em;
+}
+
+ul,
+ol {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  padding-left: 1.5em;
+  color: var(--color-fg);
+}
+
+li {
+  margin-bottom: 0.4em;
+}
+
+li::marker {
+  color: var(--color-primary);
+}
+
+/* ── Code ─────────────────────────────────────────────── */
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--color-surface);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  color: var(--color-primary);
+}
+
+pre {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 1.25em;
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.95rem;
+  color: var(--color-fg);
+}
+
+/* ── Images ───────────────────────────────────────────── */
+
+img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+/* ── Cards ────────────────────────────────────────────── */
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 24px;
+}
+
+.card h3 {
+  color: var(--color-primary);
+  margin-bottom: 0.4em;
+}
+
+.card p {
+  font-size: 1rem;
+  margin-bottom: 0;
+}
+
+/* ── Tags / Badges ────────────────────────────────────── */
+
+.tag {
+  display: inline-block;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  background: rgba(212, 99, 42, 0.12);
+  color: var(--color-primary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ── Divider ──────────────────────────────────────────── */
+
+.divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 20px 0;
+}
+
+/* ── Icon container ───────────────────────────────────── */
+
+.icon-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.icon-circle svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* ── Feature row ──────────────────────────────────────── */
+
+.feature-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.feature-row .icon-circle {
+  margin-top: 2px;
+}
+
+/* ── Utilities ────────────────────────────────────────── */
+
+.text-primary {
+  color: var(--color-primary);
+}
+
+.text-secondary {
+  color: var(--color-secondary);
+}
+
+.text-accent {
+  color: var(--color-accent);
+}
+
+.text-muted {
+  color: var(--color-muted);
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-small {
+  font-size: 0.95rem;
+}
+
+.text-large {
+  font-size: 1.35rem;
+}
+
+.mt-1 {
+  margin-top: 1em;
+}
+
+.mt-2 {
+  margin-top: 2em;
+}
+
+.mb-1 {
+  margin-bottom: 1em;
+}
+
+.mb-2 {
+  margin-bottom: 2em;
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.flex-row {
+  flex-direction: row;
+}
+
+.gap-xs {
+  gap: 8px;
+}
+
+.gap-sm {
+  gap: 16px;
+}
+
+.gap-md {
+  gap: 24px;
+}
+
+.gap-lg {
+  gap: 32px;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-center {
+  justify-content: center;
+}

@@ -695,9 +695,24 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
       }
       viewerSelection.viewport = { startLine: vp.startLine, endLine: vp.endLine, heading: vp.heading };
     }
+
+    // Re-prefix file paths with active content set directory for agent awareness
+    const activeContentSet = store.activeContentSet;
+    if (activeContentSet && viewerSelection?.file) {
+      viewerSelection = { ...viewerSelection, file: `${activeContentSet}/${viewerSelection.file}` };
+    }
+
     const context = viewer.extractContext(viewerSelection, viewerFiles);
     if (context) {
-      enrichedContent = context + "\n\n" + content;
+      let enrichedContext = context;
+      // Inject content-set attribute into <viewer-context> tag
+      if (activeContentSet && enrichedContext.startsWith("<viewer-context ")) {
+        enrichedContext = enrichedContext.replace(
+          "<viewer-context ",
+          `<viewer-context content-set="${activeContentSet}" `,
+        );
+      }
+      enrichedContent = enrichedContext + "\n\n" + content;
     }
   } else if (selection) {
     // Fallback: inline context enrichment (for when viewer hasn't loaded yet)

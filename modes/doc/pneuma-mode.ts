@@ -16,7 +16,31 @@ const docMode: ModeDefinition = {
   viewer: {
     PreviewComponent: DocPreview,
 
-    workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: false },
+    workspace: {
+      type: "all",
+      multiFile: true,
+      ordered: false,
+      hasActiveFile: true,
+      topBarNavigation: true,
+      resolveItems(files) {
+        return files
+          .filter((f) => /\.(md|markdown)$/i.test(f.path))
+          .map((f, i) => ({
+            path: f.path,
+            label: f.path.replace(/^.*\//, "").replace(/\.(md|markdown)$/i, ""),
+            index: i,
+          }));
+      },
+      createEmpty(files) {
+        const existing = new Set(files.map((f) => f.path));
+        let name = "untitled.md";
+        let n = 1;
+        while (existing.has(name)) {
+          name = `untitled-${n++}.md`;
+        }
+        return [{ path: name, content: `# ${name.replace(/\.md$/, "")}\n` }];
+      },
+    },
 
     extractContext(
       selection: ViewerSelectionContext | null,

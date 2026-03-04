@@ -1,0 +1,61 @@
+<div class="slide">
+  <span class="tag" style="margin-bottom: 16px; align-self: flex-start;">Viewer Actions</span>
+  <h1 style="font-size: 2.2rem;">从后端反控 <span class="text-accent">前端画布</span></h1>
+  <p style="max-width: 800px; margin-bottom: 24px;">
+    连接是双向的。不仅视图能向 AI 发送上下文，AI 也可以通过代码执行，直接触发 React 界面中的各种动作。
+  </p>
+
+  <div
+    style="background: var(--color-surface); padding: 32px; border-radius: 12px; border: 1px solid var(--color-border); position: relative; overflow: hidden;">
+    <div style="position: absolute; right: -40px; top: -40px; opacity: 0.05;">
+      <svg width="200" height="200" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1">
+        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+      </svg>
+    </div>
+
+    <div style="display: flex; gap: 24px;">
+
+      <!-- CLI Call -->
+      <div style="flex: 1; border-right: 1px dashed var(--color-border); padding-right: 24px;">
+        <h3
+          style="margin-top: 0; color: var(--color-muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">
+          智能体的工具调用</h3>
+        <div
+          style="background: #1e1e1e; padding: 16px; border-radius: 8px; font-family: monospace; color: #fff; font-size: 0.85rem; margin-top: 16px; border-left: 3px solid var(--color-accent);">
+          <span style="color: #569CD6;">import</span> { invokeViewerAction } <span style="color: #569CD6;">from</span>
+          <span style="color: #CE9178;">"pneuma"</span>;<br><br>
+          <span style="color: #C586C0;">await</span> <span style="color: #DCDCAA;">invokeViewerAction</span>({<br>
+          &nbsp;&nbsp;id: <span style="color: #CE9178;">"navigate-to"</span>,<br>
+          &nbsp;&nbsp;params: { slide: <span style="color: #CE9178;">10</span> }<br>
+          });
+        </div>
+      </div>
+
+      <!-- Arrow -->
+      <div style="display: flex; align-items: center; justify-content: center; color: var(--color-accent);">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M5 12h14M12 5l7 7-7 7" />
+        </svg>
+      </div>
+
+      <!-- React Reaction -->
+      <div style="flex: 1; padding-left: 24px;">
+        <h3
+          style="margin-top: 0; color: var(--color-muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">
+          Vite 前端立刻响应</h3>
+        <div
+          style="background: var(--color-bg); border: 1px solid var(--color-border); padding: 16px; border-radius: 8px; margin-top: 16px; border-left: 3px solid #5B8DB5; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="font-weight: 600; font-size: 0.95rem;">视口瞬间跳转至 Slide 10</div>
+            <div
+              style="width: 12px; height: 12px; border-radius: 50%; background: #4caf50; box-shadow: 0 0 8px #4caf50;">
+            </div>
+          </div>
+          <p style="margin: 0; font-size: 0.85rem; color: var(--color-secondary);">
+            用户甚至不需要自己滚动页面。当 AI 编辑完第 10 页，它会通过 <code>ViewerContract</code> 直接将你的视线精确带到它刚刚完成工作的地方。
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

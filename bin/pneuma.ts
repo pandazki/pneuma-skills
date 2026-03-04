@@ -9,7 +9,7 @@
  */
 
 import { resolve, dirname, join, basename } from "node:path";
-import { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import * as p from "@clack/prompts";
 import { startServer } from "../server/index.js";
@@ -431,7 +431,7 @@ async function main() {
           const opener = process.platform === "darwin" ? "open" : "xdg-open";
           Bun.spawn([opener, url], { stdout: "ignore", stderr: "ignore" });
         }
-      } catch {}
+      } catch { }
     }
     p.log.success(`Marketplace → ${url}`);
     return;
@@ -599,8 +599,28 @@ async function main() {
       // For external modes, seed paths are relative to the mode package directory
       const seedBase = resolved.type === "builtin" ? PROJECT_ROOT : resolved.path;
       for (const [src, dst] of Object.entries(manifest.init.seedFiles)) {
-        const srcPath = join(seedBase, src);
-        if (existsSync(srcPath)) {
+        const resolvedSrc = hasParams ? applyTemplateParams(src, resolvedParams) : src;
+        const srcPath = join(seedBase, resolvedSrc);
+        if (!existsSync(srcPath)) continue;
+
+        // Directory-based seeding: if source ends with /, copy all files recursively
+        if (resolvedSrc.endsWith("/") && statSync(srcPath).isDirectory()) {
+          const glob = new Bun.Glob("**/*");
+          for (const relFile of glob.scanSync({ cwd: srcPath, absolute: false })) {
+            const fileSrc = join(srcPath, relFile);
+            if (statSync(fileSrc).isDirectory()) continue;
+            const fileDst = join(workspace, dst, relFile);
+            mkdirSync(dirname(fileDst), { recursive: true });
+            if (hasParams) {
+              let content = readFileSync(fileSrc, "utf-8");
+              content = applyTemplateParams(content, resolvedParams);
+              writeFileSync(fileDst, content, "utf-8");
+            } else {
+              copyFileSync(fileSrc, fileDst);
+            }
+          }
+          p.log.step(`Seeded workspace with ${dst}`);
+        } else {
           const dstPath = join(workspace, dst);
           mkdirSync(dirname(dstPath), { recursive: true });
           if (hasParams) {

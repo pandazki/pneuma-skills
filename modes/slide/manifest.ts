@@ -51,10 +51,10 @@ You are a presentation expert running inside Pneuma Slide Mode. The user views y
 
   viewer: {
     watchPatterns: [
-      "slides/*.html",
-      "manifest.json",
-      "theme.css",
-      "assets/**/*",
+      "**/slides/*.html",
+      "**/manifest.json",
+      "**/theme.css",
+      "**/assets/**/*",
     ],
     ignorePatterns: [
       "node_modules/**",
@@ -78,6 +78,7 @@ You are a presentation expert running inside Pneuma Slide Mode. The user views y
       ordered: true,
       hasActiveFile: true,
       manifestFile: "manifest.json",
+      supportsContentSets: true,
     },
     actions: [
       {
@@ -100,22 +101,12 @@ You are a presentation expert running inside Pneuma Slide Mode. The user views y
   },
 
   init: {
-    contentCheckPattern: "slides/*.html",
+    contentCheckPattern: "**/slides/*.html",
     seedFiles: {
-      "modes/slide/seed/manifest.json": "manifest.json",
-      "modes/slide/seed/theme.css": "theme.css",
-      "modes/slide/seed/design_outline.md": "design_outline.md",
-      "modes/slide/seed/slides/slide-01.html": "slides/slide-01.html",
-      "modes/slide/seed/slides/slide-02.html": "slides/slide-02.html",
-      "modes/slide/seed/slides/slide-03.html": "slides/slide-03.html",
-      "modes/slide/seed/slides/slide-04.html": "slides/slide-04.html",
-      "modes/slide/seed/slides/slide-05.html": "slides/slide-05.html",
-      "modes/slide/seed/slides/slide-06.html": "slides/slide-06.html",
-      "modes/slide/seed/slides/slide-07.html": "slides/slide-07.html",
-      "modes/slide/seed/slides/slide-08.html": "slides/slide-08.html",
-      "modes/slide/seed/slides/slide-09.html": "slides/slide-09.html",
-      "modes/slide/seed/slides/slide-10.html": "slides/slide-10.html",
-      "modes/slide/seed/slides/slide-11.html": "slides/slide-11.html",
+      "modes/slide/seed/en-dark/": "en-dark/",
+      "modes/slide/seed/en-light/": "en-light/",
+      "modes/slide/seed/zh-dark/": "zh-dark/",
+      "modes/slide/seed/zh-light/": "zh-light/",
     },
     params: [
       { name: "slideWidth", label: "Slide width", description: "pixels", type: "number", defaultValue: 1280 },
