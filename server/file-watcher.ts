@@ -104,7 +104,8 @@ export function startFileWatcher(
   const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]);
 
   const scheduleFlush = (absPath: string) => {
-    const relPath = relative(workspace, absPath);
+    // Normalize to forward slashes for cross-platform consistency (Windows path.relative returns backslashes)
+    const relPath = relative(workspace, absPath).replaceAll("\\", "/");
 
     // Image changes: notify browser to bust cache (don't read content)
     const ext = relPath.slice(relPath.lastIndexOf(".")).toLowerCase();

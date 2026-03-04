@@ -293,15 +293,20 @@ function LaunchDialog({
   specifier,
   displayName,
   defaultWorkspace,
+  homeDir,
   onClose,
 }: {
   specifier: string;
   displayName: string;
   defaultWorkspace?: string;
+  homeDir: string;
   onClose: () => void;
 }) {
+  const fallback = homeDir
+    ? `${homeDir.replace(/[\\/]+$/, "")}/pneuma-projects/${specifier}-workspace`
+    : `~/pneuma-projects/${specifier}-workspace`;
   const [workspace, setWorkspace] = useState(
-    defaultWorkspace || `~/pneuma-projects/${specifier}-workspace`,
+    defaultWorkspace || fallback,
   );
   const [initParams, setInitParams] = useState<InitParam[]>([]);
   const [paramValues, setParamValues] = useState<Record<string, string | number>>({});
@@ -689,6 +694,7 @@ export default function Launcher() {
           specifier={launchTarget.specifier}
           displayName={launchTarget.displayName}
           defaultWorkspace={launchTarget.defaultWorkspace}
+          homeDir={homeDir}
           onClose={() => setLaunchTarget(null)}
         />
       )}

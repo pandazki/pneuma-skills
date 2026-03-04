@@ -796,7 +796,9 @@ ${slidePages}${downloadScript}
     try {
       for (const pattern of patterns) {
         const entries = new Bun.Glob(pattern).scanSync({ cwd: workspace, absolute: false });
-        for (const relPath of entries) {
+        for (const rawPath of entries) {
+          // Normalize to forward slashes (Bun.Glob returns backslashes on Windows)
+          const relPath = rawPath.replaceAll("\\", "/");
           // Skip config files
           if (relPath === "CLAUDE.md" || relPath.startsWith(".claude/")) continue;
           // Skip duplicates (patterns may overlap)
