@@ -8,7 +8,7 @@ Pneuma Skills is an extensible delivery platform for filesystem-based Agent capa
 
 **Version:** 1.14.3
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
-**Builtin Modes:** `doc`, `slide`, `draw`
+**Builtin Modes:** `doc`, `slide`, `draw`, `mode-maker`
 
 ## Tech Stack
 
@@ -72,14 +72,17 @@ pneuma-skills/
 │   ├── mode-loader.ts         # Mode discovery & loading (builtin + external)
 │   ├── mode-resolver.ts       # Source resolution (builtin/local/github/url → disk path)
 │   └── utils/manifest-parser.ts  # Regex-based manifest.ts metadata extraction
-├── modes/{doc,slide,draw}/    # Builtin modes (manifest.ts + viewer/ + skill/)
+├── modes/{doc,slide,draw,mode-maker}/  # Builtin modes (manifest.ts + viewer/ + skill/)
 ├── backends/claude-code/      # AgentBackend impl — Bun.spawn with --sdk-url
 ├── server/
 │   ├── index.ts               # Hono server + launcher endpoints + WS routing
 │   ├── ws-bridge*.ts          # Dual WebSocket bridge (browser JSON ↔ CLI NDJSON)
 │   ├── skill-installer.ts     # Skill copy + template engine + CLAUDE.md injection
 │   ├── file-watcher.ts        # chokidar watcher (manifest-driven)
-│   └── terminal-manager.ts    # PTY terminal sessions
+│   ├── terminal-manager.ts    # PTY terminal sessions
+│   ├── path-resolver.ts       # Binary PATH resolution (cross-platform)
+│   ├── system-bridge.ts       # OS-level operations (open, reveal, openUrl)
+│   └── mode-maker-routes.ts   # Mode Maker API routes (fork, play, publish, reset)
 ├── src/                       # React frontend (Vite)
 │   ├── App.tsx                # Root layout, dynamic viewer loading
 │   ├── store.ts               # Zustand store
@@ -91,7 +94,8 @@ pneuma-skills/
 │       ├── PermissionBanner.tsx  # Tool permissions + AskUserQuestion UI
 │       ├── ContextPanel.tsx   # Session stats, tasks, MCP, git
 │       └── ...                # TopBar, ToolBlock, Terminal, Diff, Editor panels
-├── snapshot/                  # R2 push/pull for workspace snapshots
+├── snapshot/                  # R2 push/pull for workspace snapshots + mode publishing
+│   └── mode-publish.ts        # Mode package publishing to R2 registry
 └── docs/                      # Architecture docs + ADRs
 ```
 
@@ -118,6 +122,50 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 - File changes: chokidar → WebSocket push to browser
 - CLI: `claude --sdk-url ws://... --print --output-format stream-json --input-format stream-json --verbose -p ""`
 
+## Mode Lifecycle
+
+End-to-end flow from CLI entry to preview loop:
+
+```
+CLI Entry (bin/pneuma.ts)
+  │
+  ├─ No mode arg → Launcher Mode (marketplace UI)
+  │   ├─ /api/registry → builtins + published + local
+  │   ├─ /api/sessions → recent sessions
+  │   └─ /api/launch → spawn child pneuma process
+  │
+  └─ Mode arg → Normal Mode
+      │
+      ├─ 1. Resolve: mode-resolver.ts
+      │   builtin | local path | github:user/repo | https://...tar.gz
+      │   → disk path with manifest.ts
+      │
+      ├─ 2. Load manifest: loadModeManifest()
+      │   → ModeManifest (skill, viewer, agent config, init params)
+      │
+      ├─ 3. Session: load or create .pneuma/session.json
+      │   → sessionId, agentSessionId
+      │
+      ├─ 4. Skill install: skill-installer.ts
+      │   modes/<mode>/skill/ → workspace/.claude/skills/<installName>/
+      │   Template: {{key}}, {{viewerCapabilities}}
+      │   CLAUDE.md injection: <!-- pneuma:start/end -->
+      │
+      ├─ 5. Server start: server/index.ts
+      │   Hono HTTP + dual WebSocket (browser JSON / CLI NDJSON)
+      │
+      ├─ 6. Agent launch: backends/claude-code/cli-launcher.ts
+      │   claude --sdk-url ws://localhost:PORT/ws/cli/SESSION
+      │
+      ├─ 7. Frontend: mode-loader.ts → dynamic import viewer
+      │   External modes: registerExternalMode() → Bun.build() → import map
+      │
+      └─ 8. Preview loop
+          Agent edits → chokidar → WS → browser → viewer render
+          User selects → <viewer-context> → agent message
+          User actions → viewer notification → agent
+```
+
 ## Mode System
 
 ### Mode Sources
@@ -126,7 +174,7 @@ Modes can come from four sources, resolved by `core/mode-resolver.ts`:
 
 | Type | Specifier | Resolved Path |
 |------|-----------|---------------|
-| **builtin** | `doc`, `slide`, `draw` | `modes/<name>/` |
+| **builtin** | `doc`, `slide`, `draw`, `mode-maker` | `modes/<name>/` |
 | **local** | `/abs/path`, `./rel` | As-is |
 | **github** | `github:user/repo` | `~/.pneuma/modes/<user>-<repo>/` |
 | **url** | `https://...tar.gz` | `~/.pneuma/modes/<name>/` |
@@ -198,6 +246,96 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 3. **Local Modes** — scanned from `~/.pneuma/modes/`, with delete
 4. **Published Modes** — fetched from R2 registry
 
+## Server API Reference
+
+### Session & Config
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/session` | Current active session ID |
+| GET | `/api/config` | Mode init params |
+| GET | `/api/mode-info` | External mode info |
+
+### Files
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/files` | List files in workspace |
+| POST | `/api/files` | Save file |
+| GET | `/api/files/read` | Read single file |
+| GET | `/api/files/tree` | File tree structure |
+
+### Git
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/git/available` | Check if in git repo |
+| GET | `/api/git/info` | Branch info and counts |
+| GET | `/api/git/changed-files` | Changed files list |
+| GET | `/api/git/diff` | File diff vs HEAD/branch |
+| GET | `/api/git/status` | Git status --porcelain |
+
+### Workspace & Viewer
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/workspace/scaffold` | Write/clear workspace files |
+| POST | `/api/viewer/action` | Dispatch viewer action |
+
+### System
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/system/open` | Open file/directory |
+| POST | `/api/system/open-url` | Open URL in browser |
+| POST | `/api/system/reveal` | Reveal file in file manager |
+
+### Processes & Terminal
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/processes/system` | List dev processes with ports |
+| POST | `/api/processes/:taskId/kill` | Kill process by task ID |
+| POST | `/api/processes/system/:pid/kill` | Kill process by PID |
+| POST | `/api/terminal/spawn` | Spawn PTY terminal |
+| GET | `/api/terminal` | Get terminal info |
+| POST | `/api/terminal/kill` | Kill terminal |
+
+### Content & Assets
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/content/*` | Serve workspace files |
+| GET | `/mode-assets/*` | Compiled mode bundle (production) |
+| GET | `/vendor/*` | React shims for external modes (react.js, react-dom.js, jsx-runtime) |
+
+### Export (Slide Mode)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/export/slides` | Slide export HTML |
+| GET | `/export/slides/download` | Download slides as HTML file |
+
+### WebSocket
+
+| Path | Protocol | Description |
+|------|----------|-------------|
+| `/ws/browser/:sessionId` | JSON | Browser ↔ server |
+| `/ws/cli/:sessionId` | NDJSON | CLI ↔ server |
+| `/ws/terminal/:terminalId` | binary | PTY terminal |
+
+### Mode Maker API (when mode = mode-maker)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/mode-maker/modes` | List builtin modes for forking |
+| POST | `/api/mode-maker/fork` | Fork a builtin mode into workspace |
+| POST | `/api/mode-maker/play` | Start test instance of mode |
+| POST | `/api/mode-maker/play/stop` | Stop running test instance |
+| GET | `/api/mode-maker/play/status` | Check if play instance is running |
+| POST | `/api/mode-maker/publish` | Publish mode package to R2 |
+| POST | `/api/mode-maker/reset` | Clear workspace and re-seed templates |
+
 ## Coding Conventions
 
 - **TypeScript strict**, ESNext modules, bundler resolution
@@ -233,6 +371,12 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **NDJSON**: Each message to CLI must end with `\n`.
 - **Empty assistant messages**: `MessageBubble` returns null when content is empty (tool_use-only messages).
 - **modelUsage cumulative**: Use delta (current - previous) for per-turn cost.
+- **Windows compatibility**: Cross-platform support via:
+  - `path-resolver.ts`: `where` instead of `which`, builds PATH from `LOCALAPPDATA`/`APPDATA`/`ProgramFiles`
+  - `terminal-manager.ts`: `COMSPEC`/`cmd.exe` as shell, no `-l` flag
+  - `system-bridge.ts`: `cmd /c start "" url` for browser opening, `explorer /select,` for revealing
+  - `server/index.ts`: `NUL` for null device, `taskkill /F /PID` for process kill, lsof/ps gracefully return empty list
+  - Path comparison is case-insensitive on win32
 
 <!-- pneuma:viewer-api:start -->
 ## Viewer API

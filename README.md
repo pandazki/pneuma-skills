@@ -18,7 +18,7 @@ Pneuma fills the last mile between Code Agents and users: agents edit files on d
 
 ## Demo
 
-Ships with **Doc Mode** (markdown editing), **Slide Mode** (presentation editing), and **Draw Mode** (Excalidraw whiteboard). Here's Doc Mode — Claude Code edits `.md` files and you see the rendered result in real-time:
+Ships with **Doc Mode** (markdown editing), **Slide Mode** (presentation editing), **Draw Mode** (Excalidraw whiteboard), and **Mode Maker** (create custom modes with AI). Here's Doc Mode — Claude Code edits `.md` files and you see the rendered result in real-time:
 
 ```
 ┌─────────────────────────────┬──────────────────────────┐
@@ -48,6 +48,9 @@ Ships with **Doc Mode** (markdown editing), **Slide Mode** (presentation editing
 ```bash
 # Install Bun if you haven't: curl -fsSL https://bun.sh/install | bash
 
+# Open the Launcher (marketplace UI — browse, discover, resume sessions)
+bunx pneuma-skills
+
 # Start with a fresh workspace (recommended)
 bunx pneuma-skills slide --workspace ./my-first-pneuma-slide
 
@@ -74,21 +77,34 @@ This will:
 ## CLI Usage
 
 ```
-pneuma-skills <mode> [options]
+pneuma-skills [mode] [options]
 
 Modes:
+  (no argument)                Open the Launcher (marketplace UI)
   doc                          Markdown document editing mode
   slide                        Presentation editing mode (HTML slides with iframe preview)
   draw                         Excalidraw whiteboard drawing mode
+  mode-maker                   Create and develop custom modes with AI
   /path/to/mode                Load mode from a local directory
   github:user/repo             Load mode from a GitHub repository
   github:user/repo#branch      Load mode from a specific branch/tag
+  https://...tar.gz            Load mode from a URL
 
 Options:
   --workspace <path>   Target workspace directory (default: current directory)
   --port <number>      Server port (default: 17996)
   --no-open            Don't auto-open the browser
+  --no-prompt          Non-interactive mode (used by launcher)
+  --skip-skill         Skip skill installation (session resume without update)
   --debug              Enable debug mode (inspect enriched CLI payloads)
+  --dev                Force dev mode (Vite)
+
+Subcommands:
+  mode add <url>       Install a remote mode to ~/.pneuma/modes/
+  mode list            List published modes on the R2 registry
+  mode publish         Publish the current workspace as a mode
+  snapshot push        Upload workspace snapshot to R2
+  snapshot pull        Download workspace snapshot from R2
 ```
 
 ### Remote / External Modes
@@ -104,9 +120,12 @@ bunx pneuma-skills github:pandazki/pneuma-mode-canvas --workspace ~/project
 
 # Load from a specific branch or tag
 bunx pneuma-skills github:pandazki/pneuma-mode-canvas#develop --workspace ~/project
+
+# Install a published mode from URL
+pneuma mode add https://example.com/my-mode.tar.gz
 ```
 
-GitHub repositories are cloned to `~/.pneuma/modes/` and cached locally. Subsequent runs will fetch the latest changes.
+GitHub repositories are cloned to `~/.pneuma/modes/` and cached locally. Subsequent runs will fetch the latest changes. Published modes can be browsed in the Launcher or installed via `pneuma mode add`.
 
 A mode package must contain:
 - `manifest.ts` — default export of `ModeManifest`
@@ -120,21 +139,23 @@ Pneuma is organized in four layers, each with a clear contract boundary:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
+│  Launcher (marketplace UI)                              │
+│  Browse → Discover → Launch → Resume                    │
+├─────────────────────────────────────────────────────────┤
+│  Mode Resolution                                        │
+│  builtin | local | github | url → manifest.ts on disk   │
+├─────────────────────────────────────────────────────────┤
 │  Layer 4: Mode Protocol                                 │
 │  ModeManifest — "what capability, what config, what UI" │
-│  modes/doc/pneuma-mode.ts                               │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 3: Content Viewer                                │
 │  ViewerContract — "how to render, select, align"        │
-│  modes/doc/viewer/DocPreview.tsx                         │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 2: Agent Bridge                                  │
 │  AgentBackend — "how to launch, communicate, lifecycle" │
-│  backends/claude-code/                                  │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 1: Runtime Shell                                 │
-│  WS Bridge, HTTP, File Watcher, Session, Frontend       │
-│  server/ + src/                                         │
+│  HTTP, WebSocket, PTY, File Watch, Frontend             │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -167,24 +188,17 @@ pneuma-skills/
 │   │   ├── mode-definition.ts #   ModeDefinition (manifest + viewer)
 │   │   └── index.ts           #   Re-exports
 │   ├── mode-loader.ts         # Dynamic mode discovery and loading (builtin + external)
-│   ├── mode-resolver.ts       # Mode source resolution (builtin/local/github)
+│   ├── mode-resolver.ts       # Mode source resolution (builtin/local/github/url)
 │   └── __tests__/             # Contract tests
 ├── modes/
-│   ├── doc/
-│   │   ├── pneuma-mode.ts     # Doc Mode definition (manifest + viewer)
-│   │   ├── skill/SKILL.md     # Skill prompt for Claude Code
-│   │   └── viewer/
-│   │       └── DocPreview.tsx  # Markdown preview with select/edit modes
-│   ├── slide/
-│   │   ├── pneuma-mode.ts     # Slide Mode definition (manifest + viewer)
-│   │   ├── skill/             # Skill package (SKILL.md + design docs + scripts)
-│   │   └── viewer/
-│   │       └── SlidePreview.tsx # Slide carousel with iframe preview
-│   └── draw/
-│       ├── pneuma-mode.ts     # Draw Mode definition (manifest + viewer)
-│       ├── skill/SKILL.md     # Skill prompt for Claude Code
-│       └── viewer/
-│           └── DrawPreview.tsx # Excalidraw editor
+│   ├── doc/                   # Doc Mode — markdown editing
+│   ├── slide/                 # Slide Mode — presentation editing
+│   ├── draw/                  # Draw Mode — Excalidraw whiteboard
+│   └── mode-maker/            # Mode Maker — create custom modes with AI
+│       ├── manifest.ts        # Mode manifest (fork, play, publish workflow)
+│       ├── seed/              # Template files for new modes
+│       ├── skill/             # Skill prompt for mode development
+│       └── viewer/            # Mode development preview UI
 ├── backends/
 │   └── claude-code/
 │       ├── index.ts           # ClaudeCodeBackend implements AgentBackend
@@ -196,12 +210,16 @@ pneuma-skills/
 │   ├── ws-bridge-*.ts         # Controls, replay, browser handlers, types
 │   ├── file-watcher.ts        # chokidar watcher (manifest-driven patterns)
 │   ├── skill-installer.ts     # Copies skill prompts + template engine
-│   └── terminal-manager.ts    # PTY terminal sessions
+│   ├── terminal-manager.ts    # PTY terminal sessions
+│   ├── path-resolver.ts       # Binary PATH resolution (cross-platform)
+│   ├── system-bridge.ts       # OS-level operations (open, reveal, openUrl)
+│   └── mode-maker-routes.ts   # Mode Maker API routes (fork, play, publish, reset)
 ├── src/
 │   ├── App.tsx                # Root layout (dynamic viewer from store)
 │   ├── store.ts               # Zustand state (session, messages, viewer)
 │   ├── ws.ts                  # Browser WebSocket client
 │   └── components/
+│       ├── Launcher.tsx       # Mode marketplace + recent sessions + local modes
 │       ├── ChatPanel.tsx      # Chat message feed
 │       ├── ChatInput.tsx      # Message composer with image upload
 │       ├── MessageBubble.tsx  # Rich messages (markdown, tools, thinking, context card)
@@ -213,11 +231,12 @@ pneuma-skills/
 ├── snapshot/                  # Snapshot push/pull via Cloudflare R2
 │   ├── push.ts                # Pack and upload workspace
 │   ├── pull.ts                # Download and extract workspace
-│   └── r2.ts                  # R2 storage client
+│   ├── r2.ts                  # R2 storage client
+│   └── mode-publish.ts        # Mode package publishing to R2 registry
 └── docs/
-    ├── adr/                         # Architecture Decision Records (1-11)
-    ├── design/                      # Active design documents
-    └── archive/                     # Completed design docs & references
+    ├── adr/                   # Architecture Decision Records
+    ├── design/                # Active design documents
+    └── archive/               # Completed design docs & references
 ```
 
 ## Tech Stack
@@ -237,12 +256,16 @@ pneuma-skills/
 
 ## Features
 
+- **Launcher marketplace UI** — Browse builtin, published, and local modes; one-click launch or resume
 - **Live WYSIWYG preview** — Agent edits files, you see rendered results instantly
+- **Mode Maker** — Create and develop custom modes with AI assistance (fork, play-test, publish)
 - **Element selection** — Click any block to select it, then instruct changes on that specific element
 - **Inline editing** — Edit content directly in the preview (edit mode)
 - **Rich chat UI** — Streaming text, expandable tool calls, collapsible thinking, context visualization
 - **Integrated terminal** — Full PTY terminal with xterm.js
-- **Session management** — Persist and resume sessions across restarts
+- **Session history** — Persist sessions, resume with one-click, skill update detection on resume
+- **Local mode management** — Install modes via `pneuma mode add`, delete from launcher UI
+- **Mode publishing** — Publish custom modes to R2 registry via `pneuma mode publish`
 - **Permission control** — Review and approve/deny tool use requests
 - **Task tracking** — Visualize Claude's TodoWrite/TaskCreate progress
 - **Background processes** — Monitor long-running background commands
@@ -250,6 +273,7 @@ pneuma-skills/
 - **Image upload** — Drag & drop or paste images into chat
 - **Viewer context enrichment** — `<viewer-context>` XML blocks align agent perception with user viewport
 - **Viewer action protocol** — Agent can invoke viewer capabilities (navigate, toggle UI, capture)
+- **Windows compatibility** — Cross-platform PATH resolution, terminal, browser opening, process management
 - **Debug mode** — `--debug` flag shows enriched CLI payloads for each message
 
 ## Roadmap
@@ -262,8 +286,12 @@ pneuma-skills/
 - [x] Terminal, tasks, context panel
 - [x] v1.0 contract architecture (ModeManifest, ViewerContract, AgentBackend)
 - [x] ViewerContract v2 — Agent-Human alignment protocol (workspace model, action protocol, context enrichment)
-- [x] Remote mode loading — `pneuma github:user/repo` or local path (v1.x)
-- [ ] Additional agent backends — Codex CLI, custom agents (v1.x)
+- [x] Remote mode loading — `pneuma github:user/repo` or local path
+- [x] Launcher marketplace UI — Browse, discover, launch, resume sessions
+- [x] Mode Maker — Create custom modes with AI (fork, play-test, publish)
+- [x] Mode publishing — `pneuma mode publish` to R2 registry
+- [x] Windows compatibility — Cross-platform PATH, terminal, browser, process management
+- [ ] Additional agent backends — Codex CLI, custom agents
 
 ## Acknowledgements
 
