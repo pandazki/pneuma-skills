@@ -10,6 +10,7 @@
 
 import { resolve, dirname, join, basename } from "node:path";
 import { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import * as p from "@clack/prompts";
 import { startServer } from "../server/index.js";
 import { ClaudeCodeBackend } from "../backends/claude-code/index.js";
@@ -72,6 +73,46 @@ function saveHistory(workspace: string, history: unknown[]): void {
   writeFileSync(join(dir, "history.json"), JSON.stringify(history));
 }
 
+// ── Session registry (global, for launcher "Recent Sessions") ───────────────
+
+interface SessionRecord {
+  id: string; // `${workspace}::${mode}`
+  mode: string;
+  displayName: string;
+  workspace: string;
+  lastAccessed: number;
+}
+
+const SESSIONS_REGISTRY = join(homedir(), ".pneuma", "sessions.json");
+
+function loadSessionsRegistry(): SessionRecord[] {
+  try {
+    return JSON.parse(readFileSync(SESSIONS_REGISTRY, "utf-8"));
+  } catch {
+    return [];
+  }
+}
+
+function saveSessionsRegistry(records: SessionRecord[]): void {
+  const dir = dirname(SESSIONS_REGISTRY);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(SESSIONS_REGISTRY, JSON.stringify(records, null, 2));
+}
+
+function recordSession(mode: string, displayName: string, workspace: string): void {
+  const id = `${workspace}::${mode}`;
+  const records = loadSessionsRegistry();
+  const existing = records.findIndex((r) => r.id === id);
+  const entry: SessionRecord = { id, mode, displayName, workspace, lastAccessed: Date.now() };
+  if (existing >= 0) {
+    records[existing] = entry;
+  } else {
+    records.unshift(entry);
+  }
+  // Cap at 50 entries
+  saveSessionsRegistry(records.slice(0, 50));
+}
+
 // ── CLI arg parsing ──────────────────────────────────────────────────────────
 
 function parseArgs(argv: string[]) {
@@ -82,6 +123,8 @@ function parseArgs(argv: string[]) {
   let noOpen = false;
   let debug = false;
   let forceDev = false;
+  let noPrompt = false;
+  let skipSkill = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -91,6 +134,10 @@ function parseArgs(argv: string[]) {
       port = Number(args[++i]);
     } else if (arg === "--no-open") {
       noOpen = true;
+    } else if (arg === "--no-prompt") {
+      noPrompt = true;
+    } else if (arg === "--skip-skill") {
+      skipSkill = true;
     } else if (arg === "--debug") {
       debug = true;
     } else if (arg === "--dev") {
@@ -100,7 +147,7 @@ function parseArgs(argv: string[]) {
     }
   }
 
-  return { mode, workspace: resolve(workspace), port, noOpen, debug, forceDev };
+  return { mode, workspace: resolve(workspace), port, noOpen, debug, forceDev, noPrompt, skipSkill };
 }
 
 // ── Init params persistence ──────────────────────────────────────────────────
@@ -187,11 +234,15 @@ async function checkForUpdate(currentVersion: string) {
     if (!res.ok) return;
 
     const { version: latest } = (await res.json()) as { version: string };
-    const [curMaj, curMin] = currentVersion.split(".").map(Number);
-    const [latMaj, latMin] = latest.split(".").map(Number);
+    const [curMaj, curMin, curPat] = currentVersion.split(".").map(Number);
+    const [latMaj, latMin, latPat] = latest.split(".").map(Number);
 
-    // Only prompt when major or minor differs (skip patch-only differences)
-    if (curMaj === latMaj && curMin === latMin) return;
+    // Only prompt when the remote version is strictly newer
+    const isNewer =
+      latMaj > curMaj ||
+      (latMaj === curMaj && latMin > curMin) ||
+      (latMaj === curMaj && latMin === curMin && latPat > curPat);
+    if (!isNewer) return;
 
     p.log.warn(`Update available: ${currentVersion} → ${latest}`);
     const shouldUpdate = await p.confirm({
@@ -278,19 +329,108 @@ async function main() {
       }
       return;
     }
+    if (rawArgs[1] === "add") {
+      const specifier = rawArgs[2];
+      if (!specifier) {
+        p.cancel("Usage: pneuma mode add <url|github:user/repo>");
+        process.exit(1);
+      }
+      try {
+        const resolved = await resolveModeSource(specifier, PROJECT_ROOT);
+        if (resolved.type === "builtin") {
+          p.log.info(`"${resolved.name}" is a built-in mode — no need to add.`);
+        } else {
+          p.log.success(`Mode "${resolved.name}" added at ${resolved.path}`);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        p.cancel(`Failed to add mode: ${msg}`);
+        process.exit(1);
+      }
+      return;
+    }
     // Unknown mode subcommand — fall through to normal mode resolution
   }
 
-  const { mode, workspace, port, noOpen, debug, forceDev } = parseArgs(process.argv);
+  const { mode, workspace, port, noOpen, debug, forceDev, noPrompt, skipSkill } = parseArgs(process.argv);
 
-  // Validate mode — support builtin names, local paths, and github: specifiers
+  // Launcher mode — no mode arg → start marketplace UI
   if (!mode) {
-    const modeList = listBuiltinModes().join("|");
-    p.log.warn(
-      `Usage: pneuma <${modeList}|/path/to/mode|github:user/repo> [--workspace <path>] [--port <number>] [--no-open]`,
-    );
-    p.cancel("No mode specified.");
-    process.exit(1);
+    const { homedir } = await import("node:os");
+    const launcherPort = port || 17996;
+    const distDir = resolve(PROJECT_ROOT, "dist");
+    const isDev = forceDev || !existsSync(join(distDir, "index.html"));
+
+    const { server, port: actualPort } = startServer({
+      port: isDev ? 17007 : launcherPort,
+      workspace: homedir(),
+      watchPatterns: [],
+      ...(isDev ? {} : { distDir }),
+      launcherMode: true,
+      projectRoot: PROJECT_ROOT,
+    });
+
+    let browserPort = actualPort;
+    if (isDev) {
+      const VITE_PORT = 17996;
+      p.log.step(`Starting Vite dev server on port ${VITE_PORT}...`);
+
+      const viteEnv: Record<string, string> = {
+        ...process.env as Record<string, string>,
+        VITE_API_PORT: String(actualPort),
+      };
+
+      const viteProc = Bun.spawn(
+        ["bunx", "vite", "--port", String(VITE_PORT)],
+        { cwd: PROJECT_ROOT, stdout: "pipe", stderr: "pipe", env: viteEnv },
+      );
+
+      let vitePortResolved = false;
+      browserPort = await new Promise<number>((resolvePort) => {
+        const timeout = setTimeout(() => {
+          if (!vitePortResolved) { vitePortResolved = true; resolvePort(VITE_PORT); }
+        }, 10_000);
+
+        const pipeAndParse = async (stream: ReadableStream<Uint8Array>) => {
+          const reader = stream.getReader();
+          const decoder = new TextDecoder();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const text = decoder.decode(value, { stream: true });
+            for (const line of text.split("\n")) {
+              if (line.trim()) console.log(`[vite] ${line}`);
+              if (!vitePortResolved) {
+                const match = line.match(/Local:\s+https?:\/\/[^:]+:(\d+)/);
+                if (match) {
+                  vitePortResolved = true;
+                  clearTimeout(timeout);
+                  resolvePort(parseInt(match[1], 10));
+                }
+              }
+            }
+          }
+        };
+        if (viteProc.stdout && typeof viteProc.stdout !== "number") pipeAndParse(viteProc.stdout);
+        if (viteProc.stderr && typeof viteProc.stderr !== "number") pipeAndParse(viteProc.stderr);
+      });
+
+      process.on("SIGINT", () => { viteProc.kill(); server.stop(true); process.exit(0); });
+      process.on("SIGTERM", () => { viteProc.kill(); server.stop(true); process.exit(0); });
+    } else {
+      process.on("SIGINT", () => { server.stop(true); process.exit(0); });
+      process.on("SIGTERM", () => { server.stop(true); process.exit(0); });
+    }
+
+    const url = `http://localhost:${browserPort}?launcher=1`;
+    if (!noOpen) {
+      try {
+        const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+        Bun.spawn([opener, url], { stdout: "ignore", stderr: "ignore" });
+      } catch {}
+    }
+    p.log.success(`Marketplace → ${url}`);
+    return;
   }
 
   // Resolve mode source (builtin, local path, or github clone)
@@ -325,15 +465,20 @@ async function main() {
   checkClaudeCode();
 
   if (!existsSync(workspace)) {
-    const shouldCreate = await p.confirm({
-      message: `Workspace does not exist: ${workspace}\n  Create it?`,
-    });
-    if (p.isCancel(shouldCreate) || !shouldCreate) {
-      p.cancel("Cancelled.");
-      process.exit(0);
+    if (noPrompt) {
+      mkdirSync(workspace, { recursive: true });
+      p.log.success(`Created workspace: ${workspace}`);
+    } else {
+      const shouldCreate = await p.confirm({
+        message: `Workspace does not exist: ${workspace}\n  Create it?`,
+      });
+      if (p.isCancel(shouldCreate) || !shouldCreate) {
+        p.cancel("Cancelled.");
+        process.exit(0);
+      }
+      mkdirSync(workspace, { recursive: true });
+      p.log.success(`Created workspace: ${workspace}`);
     }
-    mkdirSync(workspace, { recursive: true });
-    p.log.success(`Created workspace: ${workspace}`);
   }
 
   p.log.info(`Mode: ${manifest.displayName} (${modeName})`);
@@ -346,6 +491,13 @@ async function main() {
     if (cached) {
       resolvedParams = cached;
       p.log.step("Loaded init params from .pneuma/config.json");
+    } else if (noPrompt) {
+      // No-prompt mode (launched from marketplace) — use defaults
+      for (const param of manifest.init!.params!) {
+        resolvedParams[param.name] = param.defaultValue;
+      }
+      saveConfig(workspace, resolvedParams);
+      p.log.step("Using default init params (no-prompt mode)");
     } else {
       // Derive smart defaults from workspace directory name
       const wsBasename = basename(workspace);
@@ -371,7 +523,7 @@ async function main() {
   // Use resolved path for external modes, PROJECT_ROOT/modes/{name} for builtin
   const modeSourceDir = resolved.path;
   const skillTarget = join(workspace, ".claude", "skills", manifest.skill.installName);
-  let skipSkillInstall = false;
+  let skipSkillInstall = skipSkill; // --skip-skill from CLI (session resume without update)
 
   // Compute the effective API port (same logic as server startup in step 3)
   // Dev mode: backend on 17007, Prod mode: backend on 17996
@@ -379,16 +531,20 @@ async function main() {
   const isDev = forceDev || !existsSync(join(distDir, "index.html"));
   const effectiveApiPort = port || (isDev ? 17007 : 17996);
 
-  if (existsSync(skillTarget)) {
-    const shouldReplace = await p.confirm({
-      message: "Skill already exists. Replace with latest?",
-    });
-    if (p.isCancel(shouldReplace)) {
-      p.cancel("Cancelled.");
-      process.exit(0);
-    }
-    if (!shouldReplace) {
-      skipSkillInstall = true;
+  if (!skipSkillInstall && existsSync(skillTarget)) {
+    if (noPrompt) {
+      // Auto-replace when launched from marketplace
+    } else {
+      const shouldReplace = await p.confirm({
+        message: "Skill already exists. Replace with latest?",
+      });
+      if (p.isCancel(shouldReplace)) {
+        p.cancel("Cancelled.");
+        process.exit(0);
+      }
+      if (!shouldReplace) {
+        skipSkillInstall = true;
+      }
     }
   }
 
@@ -414,6 +570,10 @@ async function main() {
 
     p.log.step("Installing skill and preparing environment...");
     installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, effectiveApiPort);
+    // Record installed skill version for update detection
+    const skillVersionPath = join(workspace, ".pneuma", "skill-version.json");
+    mkdirSync(join(workspace, ".pneuma"), { recursive: true });
+    writeFileSync(skillVersionPath, JSON.stringify({ mode: modeName, version: manifest.version }));
   }
 
   // 1.5 Seed default content if workspace has no meaningful files
@@ -561,6 +721,9 @@ async function main() {
     mode: modeName,
     createdAt: existing?.createdAt || Date.now(),
   });
+
+  // Record to global sessions registry for launcher "Recent Sessions"
+  recordSession(modeName, manifest.displayName, workspace);
 
   p.log.info(`Agent session: ${session.sessionId}`);
 

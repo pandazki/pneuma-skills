@@ -37,7 +37,7 @@ function StatusDot() {
   return (
     <div className="flex items-center gap-1.5" title={text}>
       <div className={`w-2 h-2 rounded-full ${color}`} />
-      <span className="text-neutral-500 text-xs">{text}</span>
+      <span className="text-cc-muted text-xs">{text}</span>
     </div>
   );
 }
@@ -47,17 +47,17 @@ function SessionInfo() {
   if (!session) return null;
 
   return (
-    <div className="flex items-center gap-2 text-xs text-neutral-500">
+    <div className="flex items-center gap-2 text-xs text-cc-muted">
       <span>{session.model || "no model"}</span>
       {session.total_cost_usd > 0 && (
         <>
-          <span className="text-neutral-700">·</span>
+          <span className="text-cc-border">·</span>
           <span>${session.total_cost_usd.toFixed(4)}</span>
         </>
       )}
       {session.context_used_percent > 0 && (
         <>
-          <span className="text-neutral-700">·</span>
+          <span className="text-cc-border">·</span>
           <span>ctx {session.context_used_percent}%</span>
         </>
       )}
@@ -72,7 +72,7 @@ export default function TopBar() {
   const modeDisplayName = useStore((s) => s.modeDisplayName);
 
   return (
-    <div className="flex items-center h-10 px-3 bg-neutral-900 border-b border-neutral-800 text-sm select-none">
+    <div className="flex items-center h-10 px-3 bg-cc-surface border-b border-cc-border text-sm select-none">
       {/* Left: status */}
       <div className="flex items-center gap-3 min-w-0 shrink-0">
         <StatusDot />
@@ -80,7 +80,7 @@ export default function TopBar() {
       </div>
 
       {/* Center: tabs */}
-      <div className="flex items-center gap-0.5 mx-auto bg-neutral-800/50 rounded-md p-0.5">
+      <div className="flex items-center gap-0.5 mx-auto bg-cc-bg/50 rounded-md p-0.5">
         {TABS.map((tab) => {
           const disabled = tab.id === "diff" && gitAvailable === false;
           return (
@@ -90,10 +90,10 @@ export default function TopBar() {
               title={disabled ? "Diffs require a git repository. Run `git init` in the workspace." : undefined}
               className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
                 disabled
-                  ? "text-neutral-700 cursor-not-allowed"
+                  ? "text-cc-muted/30 cursor-not-allowed"
                   : activeTab === tab.id
-                    ? "bg-neutral-700 text-neutral-100"
-                    : "text-neutral-500 hover:text-neutral-300"
+                    ? "bg-cc-primary-muted text-cc-fg"
+                    : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
               }`}
             >
               {tab.label}
@@ -103,7 +103,7 @@ export default function TopBar() {
       </div>
 
       {/* Right: mode label */}
-      <div className="text-neutral-600 text-xs shrink-0">{modeDisplayName ? `Pneuma ${modeDisplayName}` : ""}</div>
+      <div className="text-cc-primary/60 text-xs shrink-0">{modeDisplayName ? `Pneuma ${modeDisplayName}` : ""}</div>
     </div>
   );
 }

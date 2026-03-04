@@ -269,7 +269,7 @@ export default function ChatInput() {
   const hasAnnotations = annotations.length > 0;
 
   return (
-    <div className="p-3 border-t border-neutral-800">
+    <div className="p-3 border-t border-cc-border">
       {/* Annotations list (annotate mode) */}
       {hasAnnotations && (
         <div className="mb-2 rounded-lg border border-cc-border bg-cc-card/50 overflow-hidden">
@@ -352,17 +352,17 @@ export default function ChatInput() {
                 <img
                   src={att.preview!}
                   alt=""
-                  className="w-14 h-14 rounded-md object-cover border border-neutral-700"
+                  className="w-14 h-14 rounded-md object-cover border border-cc-border"
                 />
               ) : (
-                <div className="w-14 h-14 rounded-md border border-neutral-700 bg-neutral-800 flex flex-col items-center justify-center gap-0.5 px-1">
+                <div className="w-14 h-14 rounded-md border border-cc-border bg-cc-card flex flex-col items-center justify-center gap-0.5 px-1">
                   <FileIcon />
-                  <span className="text-[8px] text-neutral-400 truncate w-full text-center">{att.name}</span>
+                  <span className="text-[8px] text-cc-muted truncate w-full text-center">{att.name}</span>
                 </div>
               )}
               <button
                 onClick={() => removeAttachment(att.id)}
-                className="absolute top-0.5 right-0.5 w-4 h-4 bg-neutral-700/80 hover:bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute top-0.5 right-0.5 w-4 h-4 bg-cc-card/80 hover:bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 title="Remove"
               >
                 <CloseIcon />
@@ -407,7 +407,7 @@ export default function ChatInput() {
           }
           disabled={!cliConnected || isBusy}
           rows={1}
-          className="w-full bg-neutral-800 text-neutral-100 rounded-lg px-3 py-2 text-sm resize-none placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-600 disabled:opacity-50"
+          className="w-full bg-cc-input-bg text-cc-fg rounded-lg px-3 py-2 text-sm resize-none placeholder-cc-muted/50 border border-cc-border focus:outline-none focus:border-cc-primary/50 disabled:opacity-50"
         />
       </div>
 
@@ -417,7 +417,7 @@ export default function ChatInput() {
           <ModelSwitcher />
           <button
             onClick={handleFilePickerClick}
-            className="flex items-center gap-1 px-2 py-1 text-xs text-neutral-500 hover:text-neutral-300 bg-neutral-800 hover:bg-neutral-700 rounded transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-xs text-cc-muted hover:text-cc-fg bg-cc-card hover:bg-cc-hover rounded transition-colors"
             title="Attach file"
           >
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
@@ -446,7 +446,7 @@ export default function ChatInput() {
             <button
               onClick={handleSubmit}
               disabled={(!text.trim() && attachments.length === 0 && !hasAnnotations) || !cliConnected}
-              className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-1.5 bg-cc-primary hover:bg-cc-primary-hover text-cc-fg text-xs rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Send
             </button>
@@ -475,7 +475,7 @@ function CloseIcon() {
 
 function FileIcon() {
   return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-4 h-4 text-neutral-400">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-4 h-4 text-cc-muted">
       <path d="M4 1.5h5l3 3v10H4z" strokeLinejoin="round" />
       <path d="M9 1.5v3h3" strokeLinejoin="round" />
     </svg>

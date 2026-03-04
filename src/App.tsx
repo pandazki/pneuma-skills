@@ -13,10 +13,11 @@ import type { ViewerPreviewProps } from "../core/types/viewer-contract.js";
 
 const EditorPanel = lazy(() => import("./components/EditorPanel.js"));
 const TerminalPanel = lazy(() => import("./components/TerminalPanel.js"));
+const Launcher = lazy(() => import("./components/Launcher.js"));
 
 function LazyFallback() {
   return (
-    <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
+    <div className="flex items-center justify-center h-full text-cc-muted text-sm">
       Loading...
     </div>
   );
@@ -133,6 +134,16 @@ function getApiBase(): string {
 }
 
 export default function App() {
+  // Launcher mode — lightweight marketplace UI
+  const [isLauncher] = useState(() => new URLSearchParams(location.search).has("launcher"));
+  if (isLauncher) {
+    return (
+      <Suspense fallback={<LazyFallback />}>
+        <Launcher />
+      </Suspense>
+    );
+  }
+
   const PreviewComponent = useStore((s) => s.modeViewer?.PreviewComponent);
 
   useEffect(() => {
@@ -238,7 +249,7 @@ export default function App() {
   const viewerProps = useViewerProps();
 
   return (
-    <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100">
+    <div className="flex flex-col h-screen bg-cc-bg text-cc-fg">
       <TopBar />
       <Group orientation="horizontal" className="flex-1">
         <Panel defaultSize={60} minSize={30}>
@@ -248,7 +259,7 @@ export default function App() {
             <LazyFallback />
           )}
         </Panel>
-        <Separator className="w-1 bg-neutral-800 hover:bg-neutral-700 transition-colors" />
+        <Separator className="w-1 bg-cc-border hover:bg-cc-primary/30 transition-colors" />
         <Panel defaultSize={40} minSize={25}>
           <RightPanel />
         </Panel>

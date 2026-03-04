@@ -36,7 +36,7 @@ function ToolPermissionCard({ perm }: { perm: PermissionRequest }) {
           {perm.description}
         </div>
       )}
-      <div className="text-xs text-neutral-400 mb-2 font-mono max-h-32 overflow-y-auto bg-neutral-900/50 rounded p-2">
+      <div className="text-xs text-cc-muted mb-2 font-mono max-h-32 overflow-y-auto bg-cc-bg/50 rounded p-2">
         {JSON.stringify(perm.input, null, 2)}
       </div>
       <div className="flex gap-2">
@@ -123,16 +123,16 @@ function AskUserQuestionCard({ perm }: { perm: PermissionRequest }) {
   if (questions.length === 0) {
     const question = typeof perm.input.question === "string" ? perm.input.question : "";
     return (
-      <div className="bg-blue-900/30 border border-blue-700/40 rounded-lg p-3">
-        <div className="text-sm font-medium text-blue-200 mb-1">Question</div>
-        {question && <div className="text-xs text-blue-300/80">{question}</div>}
+      <div className="bg-cc-primary/5 border border-cc-primary/20 rounded-lg p-3">
+        <div className="text-sm font-medium text-cc-primary mb-1">Question</div>
+        {question && <div className="text-xs text-cc-primary/80">{question}</div>}
       </div>
     );
   }
 
   return (
-    <div className="bg-blue-900/30 border border-blue-700/40 rounded-lg p-3 space-y-3">
-      <div className="text-sm font-medium text-blue-200">Question</div>
+    <div className="bg-cc-primary/5 border border-cc-primary/20 rounded-lg p-3 space-y-3">
+      <div className="text-sm font-medium text-cc-primary">Question</div>
 
       {questions.map((q, i) => {
         const header = typeof q.header === "string" ? q.header : "";
@@ -145,11 +145,11 @@ function AskUserQuestionCard({ perm }: { perm: PermissionRequest }) {
         return (
           <div key={i} className="space-y-2">
             {header && (
-              <span className="inline-block text-[10px] font-semibold text-blue-300 bg-blue-800/40 px-1.5 py-0.5 rounded">
+              <span className="inline-block text-[10px] font-semibold text-cc-primary bg-cc-primary/10 px-1.5 py-0.5 rounded">
                 {header}
               </span>
             )}
-            {text && <p className="text-sm text-neutral-200 leading-relaxed">{text}</p>}
+            {text && <p className="text-sm text-cc-fg leading-relaxed">{text}</p>}
 
             {options.length > 0 && (
               <div className="space-y-1.5">
@@ -165,19 +165,19 @@ function AskUserQuestionCard({ perm }: { perm: PermissionRequest }) {
                       disabled={submitted}
                       className={`w-full text-left px-3 py-2 rounded-lg border transition-all cursor-pointer disabled:opacity-50 ${
                         isSelected
-                          ? "border-blue-500 bg-blue-800/40 ring-1 ring-blue-500/30"
-                          : "border-neutral-700 bg-neutral-800/50 hover:bg-neutral-800 hover:border-blue-600/40"
+                          ? "border-cc-primary bg-cc-primary/10 ring-1 ring-cc-primary/30"
+                          : "border-cc-border bg-cc-card/50 hover:bg-cc-hover hover:border-cc-primary/30"
                       }`}
                     >
                       <div className="flex items-center gap-2">
                         <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                          isSelected ? "border-blue-500" : "border-neutral-600"
+                          isSelected ? "border-cc-primary" : "border-cc-border"
                         }`}>
-                          {isSelected && <span className="w-2 h-2 rounded-full bg-blue-500" />}
+                          {isSelected && <span className="w-2 h-2 rounded-full bg-cc-primary" />}
                         </span>
                         <div>
-                          <span className="text-xs font-medium text-neutral-200">{label}</span>
-                          {desc && <p className="text-[11px] text-neutral-400 mt-0.5 leading-snug">{desc}</p>}
+                          <span className="text-xs font-medium text-cc-fg">{label}</span>
+                          {desc && <p className="text-[11px] text-cc-muted mt-0.5 leading-snug">{desc}</p>}
                         </div>
                       </div>
                     </button>
@@ -190,17 +190,17 @@ function AskUserQuestionCard({ perm }: { perm: PermissionRequest }) {
                   disabled={submitted}
                   className={`w-full text-left px-3 py-2 rounded-lg border transition-all cursor-pointer disabled:opacity-50 ${
                     isCustom
-                      ? "border-blue-500 bg-blue-800/40 ring-1 ring-blue-500/30"
-                      : "border-neutral-700 bg-neutral-800/50 hover:bg-neutral-800 hover:border-blue-600/40"
+                      ? "border-cc-primary bg-cc-primary/10 ring-1 ring-cc-primary/30"
+                      : "border-cc-border bg-cc-card/50 hover:bg-cc-hover hover:border-cc-primary/30"
                   }`}
                 >
                   <div className="flex items-center gap-2">
                     <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                      isCustom ? "border-blue-500" : "border-neutral-600"
+                      isCustom ? "border-cc-primary" : "border-cc-border"
                     }`}>
-                      {isCustom && <span className="w-2 h-2 rounded-full bg-blue-500" />}
+                      {isCustom && <span className="w-2 h-2 rounded-full bg-cc-primary" />}
                     </span>
-                    <span className="text-xs font-medium text-neutral-500">Other...</span>
+                    <span className="text-xs font-medium text-cc-muted">Other...</span>
                   </div>
                 </button>
 
@@ -212,11 +212,11 @@ function AskUserQuestionCard({ perm }: { perm: PermissionRequest }) {
                       onChange={(e) => handleCustomChange(i, e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleCustomSubmit(i); }}
                       placeholder="Type your answer..."
-                      className="w-full px-2.5 py-1.5 text-xs bg-neutral-900 border border-neutral-700 rounded-lg text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:border-blue-500/50"
+                      className="w-full px-2.5 py-1.5 text-xs bg-cc-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
                       autoFocus
                     />
                     {questions.length <= 1 && (
-                      <p className="mt-1 text-[10px] text-neutral-500">Press Enter to submit</p>
+                      <p className="mt-1 text-[10px] text-cc-muted">Press Enter to submit</p>
                     )}
                   </div>
                 )}
@@ -231,7 +231,7 @@ function AskUserQuestionCard({ perm }: { perm: PermissionRequest }) {
         <button
           onClick={() => submit(selections)}
           disabled={submitted}
-          className="px-4 py-1.5 text-xs font-medium bg-blue-700 hover:bg-blue-600 text-white rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
+          className="px-4 py-1.5 text-xs font-medium bg-cc-primary hover:bg-cc-primary-hover text-white rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
         >
           Submit answers
         </button>

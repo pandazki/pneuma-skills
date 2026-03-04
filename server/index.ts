@@ -4,6 +4,7 @@ import { serveStatic } from "hono/bun";
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, unlinkSync, mkdirSync } from "node:fs";
 import { join, resolve, relative, basename, extname, dirname } from "node:path";
 import { execSync } from "node:child_process";
+import { homedir } from "node:os";
 import { WsBridge } from "./ws-bridge.js";
 import type { SocketData } from "./ws-bridge.js";
 import type { TerminalSocketData } from "./ws-bridge-types.js";
@@ -24,6 +25,7 @@ export interface ServerOptions {
   modeBundleDir?: string; // Pre-compiled mode bundle directory (production external modes)
   projectRoot?: string; // Pneuma project root (for mode-maker routes to access builtin modes)
   modeName?: string; // Current mode name (for conditional route registration)
+  launcherMode?: boolean; // Lightweight launcher server (no workspace, no agent, no watcher)
 }
 
 export function startServer(options: ServerOptions) {
@@ -37,6 +39,315 @@ export function startServer(options: ServerOptions) {
 
   // Dev mode: allow cross-origin requests from Vite dev server
   app.use("/api/*", cors({ origin: "*" }));
+
+  // ── Launcher Mode (lightweight — no workspace, no agent, no watcher) ────
+  if (options.launcherMode) {
+    const REGISTRY_URL = "https://pneuma-storage.vibecoding.icu";
+
+    app.get("/api/registry", async (c) => {
+      const builtins = [
+        { name: "doc", displayName: "Document", description: "Markdown document editing with live preview", version: "builtin", type: "builtin" as const },
+        { name: "slide", displayName: "Slide", description: "Professional presentation creation and editing", version: "builtin", type: "builtin" as const, hasInitParams: true },
+        { name: "draw", displayName: "Draw", description: "Excalidraw whiteboard for diagrams and visual thinking", version: "builtin", type: "builtin" as const },
+      ];
+
+      let published: Array<{ name: string; displayName: string; description?: string; version: string; publishedAt: string; archiveUrl: string }> = [];
+      try {
+        const res = await fetch(`${REGISTRY_URL}/registry/index.json`, { signal: AbortSignal.timeout(5000) });
+        if (res.ok) {
+          const data = await res.json() as { modes?: typeof published };
+          published = data.modes || [];
+        }
+      } catch {}
+
+      // Scan local modes from ~/.pneuma/modes/
+      const modesDir = join(homedir(), ".pneuma", "modes");
+      let local: Array<{ name: string; displayName: string; description?: string; version: string; path: string }> = [];
+      try {
+        if (existsSync(modesDir)) {
+          const { parseManifestTs } = await import("../core/utils/manifest-parser.js");
+          const entries = readdirSync(modesDir);
+          for (const entry of entries) {
+            const entryPath = join(modesDir, entry);
+            if (!statSync(entryPath).isDirectory()) continue;
+            // Look for manifest.ts or manifest.js
+            const manifestFile = ["manifest.ts", "manifest.js"].find((f) => existsSync(join(entryPath, f)));
+            if (!manifestFile) continue;
+            try {
+              const content = readFileSync(join(entryPath, manifestFile), "utf-8");
+              const parsed = parseManifestTs(content);
+              local.push({
+                name: parsed.name || entry,
+                displayName: parsed.displayName || entry,
+                description: parsed.description,
+                version: parsed.version || "local",
+                path: entryPath,
+              });
+            } catch {}
+          }
+        }
+      } catch {}
+
+      return c.json({ builtins, published, local });
+    });
+
+    // Delete a local mode
+    app.delete("/api/modes/:name", async (c) => {
+      const name = c.req.param("name");
+      if (!name || name.includes("..") || name.includes("/")) {
+        return c.json({ error: "Invalid mode name" }, 400);
+      }
+      const modesDir = join(homedir(), ".pneuma", "modes");
+      const targetDir = join(modesDir, name);
+      // Safety: resolved path must be inside modesDir
+      if (!resolve(targetDir).startsWith(resolve(modesDir) + "/")) {
+        return c.json({ error: "Invalid mode name" }, 400);
+      }
+      if (!existsSync(targetDir)) {
+        return c.json({ error: "Mode not found" }, 404);
+      }
+      const { rmSync } = await import("node:fs");
+      rmSync(targetDir, { recursive: true, force: true });
+      return c.json({ ok: true });
+    });
+
+    // List recent sessions
+    app.get("/api/sessions", (c) => {
+      const registryPath = join(homedir(), ".pneuma", "sessions.json");
+      let sessions: Array<{ id: string; mode: string; displayName: string; workspace: string; lastAccessed: number }> = [];
+      try {
+        sessions = JSON.parse(readFileSync(registryPath, "utf-8"));
+      } catch {}
+      // Filter out sessions whose workspace no longer exists
+      sessions = sessions.filter((s) => existsSync(s.workspace));
+      // Sort by lastAccessed descending
+      sessions.sort((a, b) => b.lastAccessed - a.lastAccessed);
+      return c.json({ sessions, homeDir: homedir() });
+    });
+
+    // Delete a session record
+    app.delete("/api/sessions/:id", (c) => {
+      const id = decodeURIComponent(c.req.param("id"));
+      const registryPath = join(homedir(), ".pneuma", "sessions.json");
+      let sessions: Array<{ id: string; mode: string; displayName: string; workspace: string; lastAccessed: number }> = [];
+      try {
+        sessions = JSON.parse(readFileSync(registryPath, "utf-8"));
+      } catch {}
+      sessions = sessions.filter((s) => s.id !== id);
+      try {
+        writeFileSync(registryPath, JSON.stringify(sessions, null, 2));
+      } catch {}
+      return c.json({ ok: true });
+    });
+
+    // Check if a session's skill needs updating
+    app.post("/api/launch/skill-check", async (c) => {
+      const { specifier, workspace: rawWorkspace } = await c.req.json<{ specifier: string; workspace: string }>();
+      try {
+        const resolvedWorkspace = resolve(rawWorkspace.replace(/^~/, homedir()));
+        const { resolveMode } = await import("../core/mode-resolver.js");
+        const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
+        const resolved = await resolveMode(specifier, projectRoot);
+
+        if (resolved.type !== "builtin") {
+          const { registerExternalMode } = await import("../core/mode-loader.js");
+          registerExternalMode(resolved.name, resolved.path);
+        }
+
+        const { loadModeManifest } = await import("../core/mode-loader.js");
+        const manifest = await loadModeManifest(resolved.name);
+        const currentVersion = manifest.version || "unknown";
+
+        // Read installed version
+        let installedVersion = "";
+        try {
+          const data = JSON.parse(readFileSync(join(resolvedWorkspace, ".pneuma", "skill-version.json"), "utf-8"));
+          installedVersion = data.version || "";
+        } catch {}
+
+        // Read dismissed version
+        let dismissedVersion = "";
+        try {
+          const data = JSON.parse(readFileSync(join(resolvedWorkspace, ".pneuma", "skill-dismissed.json"), "utf-8"));
+          dismissedVersion = data.version || "";
+        } catch {}
+
+        const needsUpdate = installedVersion !== "" && installedVersion !== currentVersion;
+        const dismissed = needsUpdate && dismissedVersion === currentVersion;
+
+        return c.json({ needsUpdate, currentVersion, installedVersion, dismissed });
+      } catch (err) {
+        // Can't check — just let them launch
+        return c.json({ needsUpdate: false, currentVersion: "", installedVersion: "", dismissed: false });
+      }
+    });
+
+    // Dismiss a skill update for a specific version
+    app.post("/api/launch/skill-dismiss", async (c) => {
+      const { workspace: rawWorkspace, version } = await c.req.json<{ workspace: string; version: string }>();
+      try {
+        const resolvedWorkspace = resolve(rawWorkspace.replace(/^~/, homedir()));
+        const dir = join(resolvedWorkspace, ".pneuma");
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, "skill-dismissed.json"), JSON.stringify({ version }));
+      } catch {}
+      return c.json({ ok: true });
+    });
+
+    app.post("/api/launch/prepare", async (c) => {
+      const { specifier } = await c.req.json<{ specifier: string }>();
+      try {
+        // Resolve mode → load manifest → return initParams
+        const { resolveMode } = await import("../core/mode-resolver.js");
+        const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
+        const resolved = await resolveMode(specifier, projectRoot);
+
+        if (resolved.type !== "builtin") {
+          const { registerExternalMode } = await import("../core/mode-loader.js");
+          registerExternalMode(resolved.name, resolved.path);
+        }
+
+        const { loadModeManifest } = await import("../core/mode-loader.js");
+        const manifest = await loadModeManifest(resolved.name);
+
+        return c.json({
+          name: resolved.name,
+          displayName: manifest.displayName,
+          initParams: manifest.init?.params || [],
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 400);
+      }
+    });
+
+    app.post("/api/launch", async (c) => {
+      const { specifier, workspace: targetWorkspace, initParams, skipSkill } = await c.req.json<{
+        specifier: string;
+        workspace: string;
+        initParams?: Record<string, string | number>;
+        skipSkill?: boolean;
+      }>();
+
+      try {
+        const resolvedWorkspace = resolve(targetWorkspace.replace(/^~/, homedir()));
+
+        // 1. Create workspace dir
+        mkdirSync(resolvedWorkspace, { recursive: true });
+
+        // 2. Save initParams to .pneuma/config.json if provided
+        if (initParams && Object.keys(initParams).length > 0) {
+          const pneumaDir = join(resolvedWorkspace, ".pneuma");
+          mkdirSync(pneumaDir, { recursive: true });
+          writeFileSync(join(pneumaDir, "config.json"), JSON.stringify(initParams, null, 2));
+        }
+
+        // 3. Spawn pneuma process
+        const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
+        const pneumaBin = join(projectRoot, "bin", "pneuma.ts");
+        const args = ["bun", pneumaBin, specifier, "--workspace", resolvedWorkspace, "--no-prompt"];
+        if (skipSkill) args.push("--skip-skill");
+
+        const child = Bun.spawn(args, {
+          stdout: "pipe",
+          stderr: "pipe",
+          env: { ...process.env as Record<string, string> },
+        });
+
+        // 4. Wait for "[pneuma] ready <url>" (30s timeout)
+        const readyUrl = await new Promise<string>((resolveUrl, reject) => {
+          const timeout = setTimeout(() => reject(new Error("Launch timeout (30s)")), 30_000);
+          const decoder = new TextDecoder();
+
+          const readStream = async (stream: ReadableStream<Uint8Array>) => {
+            const reader = stream.getReader();
+            let buffer = "";
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop() || "";
+              for (const line of lines) {
+                console.log(`[launcher] ${line}`);
+                const match = line.match(/\[pneuma\] ready (.+)/);
+                if (match) {
+                  clearTimeout(timeout);
+                  resolveUrl(match[1]);
+                  return;
+                }
+              }
+            }
+          };
+
+          if (child.stdout) readStream(child.stdout);
+          if (child.stderr) {
+            const readErr = async (stream: ReadableStream<Uint8Array>) => {
+              const reader = stream.getReader();
+              const decoder = new TextDecoder();
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                console.error(`[launcher:err] ${decoder.decode(value, { stream: true })}`);
+              }
+            };
+            readErr(child.stderr);
+          }
+
+          child.exited.then((code) => {
+            clearTimeout(timeout);
+            if (code !== 0) reject(new Error(`Process exited with code ${code}`));
+          });
+        });
+
+        return c.json({ url: readyUrl });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 500);
+      }
+    });
+
+    // Serve frontend assets in launcher mode too
+    if (options.distDir) {
+      const distDir = options.distDir;
+      app.get("/assets/*", async (c) => {
+        const filePath = join(distDir, c.req.path);
+        const file = Bun.file(filePath);
+        if (await file.exists()) return new Response(file);
+        return c.notFound();
+      });
+      app.get("*", async (c) => {
+        const html = await Bun.file(join(distDir, "index.html")).text();
+        return new Response(html, { headers: { "Content-Type": "text/html" } });
+      });
+    }
+
+    // Start server (no WebSocket needed for launcher)
+    const MAX_PORT_ATTEMPTS = 10;
+    let serverPort = port;
+    let server!: ReturnType<typeof Bun.serve>;
+
+    for (let attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
+      try {
+        server = Bun.serve({
+          port: serverPort,
+          hostname: "0.0.0.0",
+          fetch: app.fetch,
+        });
+        break;
+      } catch (err: any) {
+        if (err?.code === "EADDRINUSE") {
+          console.log(`[server] Port ${serverPort} is in use, trying ${serverPort + 1}...`);
+          serverPort++;
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    console.log(`[server] Launcher server running on http://localhost:${server.port}`);
+    return { server, wsBridge, terminalManager, port: server.port as number, modeMakerCleanup: undefined };
+  }
 
   // ── API Routes ─────────────────────────────────────────────────────────
 
@@ -874,6 +1185,7 @@ export const Fragment = J.Fragment;`;
     try {
       server = Bun.serve<SocketData>({
         port: serverPort,
+        hostname: "0.0.0.0",
     async fetch(req, server) {
       const url = new URL(req.url);
 
