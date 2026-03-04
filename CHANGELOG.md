@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.14.1] - 2026-03-04
+
+### Fixed
+- **Slide auto-fit zoom** — slide viewer now defaults to continuous auto-fit mode, adapting zoom to container size via ResizeObserver. Fixes horizontal scrollbar on small screens (#28)
+- **Panel ratio** — adjusted default split to 65/35 (viewer/chat) for more preview space
+
 ## [1.14.0] - 2026-03-04
 
 ### Added
