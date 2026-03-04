@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.15.0] - 2026-03-05
+
+### Added
+- **Content Set system** — directory-based workspace variants (e.g. slide decks in `en-dark`/`zh-light`), auto-selected by user locale/theme preferences, switchable via TopBar dropdown
+- **Unified TopBar navigation** — workspace items and content sets rendered in TopBar left side, driven by each viewer's `topBarNavigation` flag; Doc mode's internal FileTabBar removed
+- **`createEmpty` protocol** — "+" button in TopBar creates new content per mode: new file (doc/draw) or new deck directory (slide, inherits theme from existing deck)
+- **Draw mode multi-file** — upgraded from single-file to multi-file workspace with file selector and "+" support
+- **Slide seed content sets** — seed restructured into 4 variants: en-dark, en-light, zh-dark, zh-light
+
+### Fixed
+- **Windows: launcher default path** — use absolute `homeDir` instead of `~/` which Windows shells can't expand
+- **Windows: slide blank screen** — normalize file paths to forward slashes at server source points (`path.relative()` and `Bun.Glob` return backslashes on Windows); all frontend path matching silently failed
+- **File watcher missed .json/.css** — `extractWatchExtensions` now correctly handles glob patterns like `**/manifest.json`
+- **Hidden dirs in content sets** — content set resolver skips `.`-prefixed directories (`.pneuma`, `.claude`)
+
 ## [1.14.3] - 2026-03-04
 
 ### Fixed
