@@ -1,0 +1,54 @@
+<div class="slide">
+  <span class="tag" style="margin-bottom: 16px; align-self: flex-start;">Design</span>
+  <h1 style="font-size: 2.2rem;">智能容错的 <span class="text-accent">布局引擎</span></h1>
+  <p style="max-width: 800px; margin-bottom: 32px;">
+    Slide 模式底层的 CSS 框架专为严谨、可预测的静态布局而生。它宛如一套物理屏障，确保你的内容绝对不会撑爆演示画布。
+  </p>
+
+  <div style="display: flex; gap: 24px; height: 320px;">
+
+    <div
+      style="flex: 1; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 24px; position: relative;">
+      <div
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(212, 99, 42, 0.03) 10px, rgba(212, 99, 42, 0.03) 20px); border-radius: 12px;">
+      </div>
+
+      <div style="position: relative; z-index: 1;">
+        <h3 style="margin-top: 0; display: flex; align-items: center; gap: 8px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <line x1="12" y1="8" x2="12" y2="16" />
+            <line x1="8" y1="12" x2="16" y2="12" />
+          </svg>
+          完全杜绝溢出
+        </h3>
+        <p style="font-size: 0.95rem; color: var(--color-secondary);">
+          与可以无限向下滚动的普通网页截然不同，幻灯片是绝对禁止出现滚动条的。我们的核心框架在画布底层强制执行了
+          <code>overflow: hidden</code> 裁切机制，并辅以 Flexbox 自适应缩放，让所有生成的元素和文本稳固地锁在容器边界之内。
+        </p>
+      </div>
+    </div>
+
+    <div
+      style="flex: 1; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 24px; position: relative;">
+      <div
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(91, 141, 181, 0.03) 10px, rgba(91, 141, 181, 0.03) 20px); border-radius: 12px;">
+      </div>
+
+      <div style="position: relative; z-index: 1;">
+        <h3 style="margin-top: 0; display: flex; align-items: center; gap: 8px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 2 7 12 12 22 7 12 2" />
+            <polyline points="2 17 12 22 22 17" />
+            <polyline points="2 12 12 17 22 12" />
+          </svg>
+          分毫不差的精准度
+        </h3>
+        <p style="font-size: 0.95rem; color: var(--color-secondary);">
+          大胆命令 AI ：“请在坐标 500, 100 的位置放置一个红色描边的圆圈”。因为所有幻灯片画布都具有固定不变的物理宽高比（默认 1280x720），AI 因此可以直接基于数学模型计算，使用绝对定位输出完美的样式代码。
+        </p>
+      </div>
+    </div>
+
+  </div>
+</div>

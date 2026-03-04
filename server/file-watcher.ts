@@ -30,10 +30,12 @@ function extractWatchExtensions(patterns: string[]): Set<string> | null {
       exts.add(`.${globMatch[1]}`);
       continue;
     }
-    // Literal filename: "manifest.json", "theme.css"
-    const literalMatch = pattern.match(/\.(\w+)$/);
-    if (literalMatch && !pattern.includes("*")) {
-      exts.add(`.${literalMatch[1]}`);
+    // Named file pattern: "manifest.json", "**/theme.css"
+    // Check the basename (last segment) for a literal extension
+    const basename = pattern.split("/").pop() || "";
+    const namedMatch = basename.match(/\.(\w+)$/);
+    if (namedMatch && !basename.includes("*")) {
+      exts.add(`.${namedMatch[1]}`);
     }
   }
   return exts.size > 0 ? exts : null;

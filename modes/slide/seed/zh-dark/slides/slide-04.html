@@ -1,0 +1,93 @@
+<div class="slide">
+  <span class="tag" style="margin-bottom: 16px; align-self: flex-start;">Communication</span>
+  <h1 style="font-size: 2.2rem;">双向 <span class="text-accent">互通桥梁</span></h1>
+  <p style="max-width: 700px; margin-bottom: 40px;">
+    Runtime Shell 的核心是一座极速的 WebSocket 桥，它作为中枢神经系统，将 CLI Agent 的流输出与 React 预览前端紧密同步。
+  </p>
+
+  <div
+    style="display: flex; align-items: stretch; justify-content: center; width: 100%; max-width: 860px; margin: 0 auto; padding: 32px; background: var(--color-surface); border-radius: 16px; border: 1px solid var(--color-border); box-shadow: inset 0 2px 10px rgba(0,0,0,0.02);">
+
+    <!-- AI Agent Side -->
+    <div
+      style="flex: 1; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+      <div
+        style="width: 72px; height: 72px; margin: 0 auto 16px; background: #fff; border: 2px solid var(--color-primary); border-radius: 20px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(212, 99, 42, 0.15);">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#D4632A" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 17l6-6-6-6" />
+          <path d="M12 19h8" />
+        </svg>
+      </div>
+      <h3 style="margin-bottom: 4px; font-size: 1.1rem;">Claude CLI</h3>
+      <p
+        style="font-size: 0.8rem; color: var(--color-muted); font-family: monospace; background: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 4px;">
+        --sdk-url</p>
+    </div>
+
+    <!-- The Bridge -->
+    <div
+      style="flex: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; padding: 0 20px;">
+
+      <!-- Top Arrow -->
+      <div style="display: flex; align-items: center; width: 100%; margin-bottom: 16px; position: relative;">
+        <!-- Animated dots track -->
+        <div
+          style="position: absolute; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-accent) 50%, #5B8DB5 100%); opacity: 0.3; top: 50%; transform: translateY(-50%); z-index: 0;">
+        </div>
+
+        <div style="flex: 1;"></div>
+        <div
+          style="padding: 6px 14px; background: #2D2A26; border-radius: 20px; font-size: 0.75rem; color: #fff; margin: 0 8px; z-index: 1; font-family: monospace; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
+          <span style="color: var(--color-primary);">NDJSON</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12h14" />
+            <path d="M12 5l7 7-7 7" />
+          </svg>
+          <span style="color: #5B8DB5;">JSON</span>
+        </div>
+        <div style="flex: 1;"></div>
+      </div>
+
+      <div
+        style="padding: 16px 32px; background: #fff; border: 2px solid var(--color-border); border-radius: 12px; font-weight: 700; color: #111; z-index: 1; box-shadow: 0 4px 16px rgba(0,0,0,0.04); font-size: 1.1rem; letter-spacing: 0.02em;">
+        Hono Server
+      </div>
+
+      <!-- Bottom Arrow -->
+      <div style="display: flex; align-items: center; width: 100%; margin-top: 16px; position: relative;">
+        <div
+          style="position: absolute; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, #5B8DB5 0%, var(--color-accent) 50%, var(--color-primary) 100%); opacity: 0.3; top: 50%; transform: translateY(-50%); z-index: 0;">
+        </div>
+
+        <div style="flex: 1;"></div>
+        <div
+          style="padding: 6px 14px; background: #2D2A26; border-radius: 20px; font-size: 0.75rem; color: #fff; margin: 0 8px; z-index: 1; font-family: monospace; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 12H5" />
+            <path d="M12 19l-7-7 7-7" />
+          </svg>
+          <span>文件变更推送</span>
+        </div>
+        <div style="flex: 1;"></div>
+      </div>
+    </div>
+
+    <!-- Frontend Side -->
+    <div
+      style="flex: 1; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+      <div
+        style="width: 72px; height: 72px; margin: 0 auto 16px; background: #fff; border: 2px solid #5B8DB5; border-radius: 20px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(91, 141, 181, 0.15);">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#5B8DB5" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 12h4l2-9 5 18 3-10h6" />
+        </svg>
+      </div>
+      <h3 style="margin-bottom: 4px; font-size: 1.1rem;">Vite Viewer</h3>
+      <p
+        style="font-size: 0.8rem; color: var(--color-muted); font-family: monospace; background: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 4px;">
+        React App</p>
+    </div>
+
+  </div>
+</div>

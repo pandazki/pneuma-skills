@@ -57,6 +57,26 @@ export interface WorkspaceItem {
   metadata?: Record<string, unknown>;
 }
 
+/** 内容集合特征 — 从目录名解析或显式声明 */
+export interface ContentSetTraits {
+  /** BCP-47 locale code, e.g. "en", "ja" */
+  locale?: string;
+  /** Color scheme preference */
+  theme?: "light" | "dark";
+  /** Mode-specific custom traits */
+  custom?: Record<string, string>;
+}
+
+/** 内容集合 — 工作区中一套可编辑的完整内容 (对应一个顶层目录) */
+export interface ContentSet {
+  /** 目录前缀 (不含尾部 /), e.g. "en-dark" */
+  prefix: string;
+  /** 显示名, e.g. "EN Dark" */
+  label: string;
+  /** 解析出的特征 */
+  traits: ContentSetTraits;
+}
+
 /**
  * 文件工作区模型 — 描述 Viewer 如何组织文件。
  *
@@ -73,6 +93,16 @@ export interface FileWorkspaceModel {
   manifestFile?: string;
   /** 从文件列表解析工作区项（前端运行时使用） */
   resolveItems?: (files: ViewerFileContent[]) => WorkspaceItem[];
+  /** 从文件列表发现内容集合 (e.g. 多语言/多主题目录) */
+  resolveContentSets?: (files: ViewerFileContent[]) => ContentSet[];
+  /** 当没有 content sets 时，workspace items 是否显示在 TopBar。
+   *  true → 框架在 TopBar 渲染 item 选择器，驱动 activeFile。
+   *  false/undefined → viewer 自行处理文件导航（如 SlideNavigator）。*/
+  topBarNavigation?: boolean;
+  /** 生成一个空的新内容项（与 scaffold/clear 配套）。
+   *  返回要写入磁盘的文件列表，框架通过 /api/workspace/scaffold 写入。
+   *  返回 null 表示该 mode 不支持新建。*/
+  createEmpty?: (files: ViewerFileContent[]) => { path: string; content: string }[] | null;
 }
 
 // ── Viewer Action (能力对齐) ───────────────────────────────────────────────
@@ -158,6 +188,8 @@ export interface ViewerPreviewProps {
   onViewportChange?: (viewport: { file: string; startLine: number; endLine: number; heading?: string }) => void;
   /** Viewer 主动向 Agent 发送通知（如自检结果、状态变更等） */
   onNotifyAgent?: (notification: ViewerNotification) => void;
+  /** 框架当前选中的活跃文件（store.activeFile） */
+  activeFile?: string | null;
 }
 
 /** 内容查看器的 UI 契约 */

@@ -1,0 +1,57 @@
+<div class="slide">
+  <span class="tag" style="margin-bottom: 16px; align-self: flex-start;">Extensibility</span>
+  <h1 style="font-size: 2.2rem;"><span class="text-primary">Mode Maker:</span> 让 AI 创造 AI</h1>
+  <p style="max-width: 800px; margin-bottom: 24px;">
+    因为 Pneuma 的每一个功能都被高度抽象在 <code>ModeProtocol</code> 之后，所以我们甚至构建了一个专门用来创造 Mode 的 Mode。
+  </p>
+
+  <div style="display: flex; gap: 24px;">
+
+    <div
+      style="flex: 1; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 24px; display: flex; flex-direction: column;">
+      <div
+        style="width: 48px; height: 48px; border-radius: 12px; background: rgba(91, 141, 181, 0.1); display: flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5B8DB5" stroke-width="2">
+          <path d="M12 2L2 7l10 5 10-5-10-5z" />
+          <path d="M2 17l10 5 10-5" />
+          <path d="M2 12l10 5 10-5" />
+        </svg>
+      </div>
+      <h3 style="font-size: 1.2rem; margin-bottom: 8px;">1. 分支与脚手架搭建</h3>
+      <p style="font-size: 0.9rem; color: var(--color-secondary); line-height: 1.5; flex: 1;">
+        启动 <code>mode-maker</code> 模式。告诉 Claude 你想要一个“看板模式”。它会自动拉取基础模板并为你生成所有的 React 初始文件。
+      </p>
+    </div>
+
+    <div
+      style="flex: 1; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 24px; display: flex; flex-direction: column;">
+      <div
+        style="width: 48px; height: 48px; border-radius: 12px; background: rgba(212, 99, 42, 0.1); display: flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#D4632A" stroke-width="2">
+          <polygon points="5 3 19 12 5 21 5 3" />
+        </svg>
+      </div>
+      <h3 style="font-size: 1.2rem; margin-bottom: 8px;">2. 实时边写边测</h3>
+      <p style="font-size: 0.9rem; color: var(--color-secondary); line-height: 1.5; flex: 1;">
+        点击“Play”。Pneuma 会嵌套启动一个子服务器来运行你刚写好的 Viewer。在 Claude 飞速写代码的同时，你可以左右分屏实时测试你的应用布局。
+      </p>
+    </div>
+
+    <div
+      style="flex: 1; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 24px; display: flex; flex-direction: column;">
+      <div
+        style="width: 48px; height: 48px; border-radius: 12px; background: rgba(196, 150, 58, 0.1); display: flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C4963A" stroke-width="2">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+      </div>
+      <h3 style="font-size: 1.2rem; margin-bottom: 8px;">3. 一键发布全网</h3>
+      <p style="font-size: 0.9rem; color: var(--color-secondary); line-height: 1.5; flex: 1;">
+        一切就绪后，执行 <code>pneuma mode publish</code>。你的 Mode 会被无缝上传至 R2 节点，全球的 Pneuma 扩展市场将即刻查收到你的作品。
+      </p>
+    </div>
+
+  </div>
+</div>

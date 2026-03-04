@@ -1,0 +1,63 @@
+<div class="slide">
+  <span class="tag" style="margin-bottom: 16px; align-self: flex-start;">Viewer Actions</span>
+  <h1 style="font-size: 2.2rem;">Controlling the <span class="text-accent">Canvas</span></h1>
+  <p style="max-width: 800px; margin-bottom: 24px;">
+    The connection is two-way. Not only does the viewer send context to the AI, but the AI can also programmatically
+    trigger actions in the React UI.
+  </p>
+
+  <div
+    style="background: var(--color-surface); padding: 32px; border-radius: 12px; border: 1px solid var(--color-border); position: relative; overflow: hidden;">
+    <div style="position: absolute; right: -40px; top: -40px; opacity: 0.05;">
+      <svg width="200" height="200" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1">
+        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+      </svg>
+    </div>
+
+    <div style="display: flex; gap: 24px;">
+
+      <!-- CLI Call -->
+      <div style="flex: 1; border-right: 1px dashed var(--color-border); padding-right: 24px;">
+        <h3
+          style="margin-top: 0; color: var(--color-muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">
+          Agent's Tool Call</h3>
+        <div
+          style="background: #1e1e1e; padding: 16px; border-radius: 8px; font-family: monospace; color: #fff; font-size: 0.85rem; margin-top: 16px; border-left: 3px solid var(--color-accent);">
+          <span style="color: #569CD6;">import</span> { invokeViewerAction } <span style="color: #569CD6;">from</span>
+          <span style="color: #CE9178;">"pneuma"</span>;<br><br>
+          <span style="color: #C586C0;">await</span> <span style="color: #DCDCAA;">invokeViewerAction</span>({<br>
+          &nbsp;&nbsp;id: <span style="color: #CE9178;">"navigate-to"</span>,<br>
+          &nbsp;&nbsp;params: { slide: <span style="color: #CE9178;">10</span> }<br>
+          });
+        </div>
+      </div>
+
+      <!-- Arrow -->
+      <div style="display: flex; align-items: center; justify-content: center; color: var(--color-accent);">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M5 12h14M12 5l7 7-7 7" />
+        </svg>
+      </div>
+
+      <!-- React Reaction -->
+      <div style="flex: 1; padding-left: 24px;">
+        <h3
+          style="margin-top: 0; color: var(--color-muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">
+          Vite Frontend Response</h3>
+        <div
+          style="background: var(--color-bg); border: 1px solid var(--color-border); padding: 16px; border-radius: 8px; margin-top: 16px; border-left: 3px solid #5B8DB5; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="font-weight: 600; font-size: 0.95rem;">Viewport jumped to Slide 10</div>
+            <div
+              style="width: 12px; height: 12px; border-radius: 50%; background: #4caf50; box-shadow: 0 0 8px #4caf50;">
+            </div>
+          </div>
+          <p style="margin: 0; font-size: 0.85rem; color: var(--color-secondary);">
+            The user doesn't have to scroll. When the AI finishes editing slide 10, it brings the user's attention
+            exactly where it's needed via the <code>ViewerContract</code>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

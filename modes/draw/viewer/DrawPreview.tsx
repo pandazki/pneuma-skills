@@ -41,10 +41,29 @@ function loadExcalidraw(): Promise<void> {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Parse .excalidraw JSON from files array — returns the first valid one */
+/** Parse .excalidraw JSON from files array — prefer activeFile, fallback to first valid */
 function parseExcalidrawFile(
   files: ViewerPreviewProps["files"],
+  activeFile?: string | null,
 ): { elements: any[]; appState: any; excalidrawFiles: any; filePath: string } | null {
+  // If activeFile specified, try it first
+  if (activeFile) {
+    const f = files.find((f) => f.path === activeFile);
+    if (f) {
+      try {
+        const data = JSON.parse(f.content);
+        if (data.type === "excalidraw" && Array.isArray(data.elements)) {
+          return {
+            elements: data.elements,
+            appState: data.appState || {},
+            excalidrawFiles: data.files || {},
+            filePath: f.path,
+          };
+        }
+      } catch { /* skip */ }
+    }
+  }
+  // Fallback: first valid .excalidraw file
   for (const f of files) {
     if (!f.path.endsWith(".excalidraw")) continue;
     try {
@@ -117,6 +136,7 @@ export default function DrawPreview({
   actionRequest,
   onActionResult,
   onActiveFileChange,
+  activeFile,
 }: ViewerPreviewProps) {
   const setPreviewMode = useStore((s) => s.setPreviewMode);
   const pushUserAction = useStore((s) => s.pushUserAction);
@@ -244,7 +264,7 @@ export default function DrawPreview({
   }, [ready]);
 
   // Parse the excalidraw data from files
-  const excalidrawData = useMemo(() => parseExcalidrawFile(files), [files]);
+  const excalidrawData = useMemo(() => parseExcalidrawFile(files, activeFile), [files, activeFile]);
 
   // Track the active file
   const activeFilePath = excalidrawData?.filePath || null;

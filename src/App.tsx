@@ -1,14 +1,17 @@
-import { useEffect, useState, lazy, Suspense } from "react";
+import { useEffect, useState, useMemo, lazy, Suspense } from "react";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import TopBar from "./components/TopBar.js";
 import ChatPanel from "./components/ChatPanel.js";
 import DiffPanel from "./components/DiffPanel.js";
 import ProcessPanel from "./components/ProcessPanel.js";
 import ContextPanel from "./components/ContextPanel.js";
+
 import { useStore, nextId } from "./store.js";
 import type { SelectionType } from "./types.js";
 import { connect, sendViewerNotification } from "./ws.js";
 import { loadMode, registerExternalMode } from "../core/mode-loader.js";
+import { useSystemPreferences } from "./hooks/useSystemPreferences.js";
+import { selectBestContentSet } from "../core/utils/content-set-matcher.js";
 import type { ViewerPreviewProps } from "../core/types/viewer-contract.js";
 
 const EditorPanel = lazy(() => import("./components/EditorPanel.js"));
@@ -56,20 +59,32 @@ function RightPanel() {
 
 /** Build the ViewerPreviewProps from store state. */
 function useViewerProps(): ViewerPreviewProps {
-  const files = useStore((s) => s.files);
+  const rawFiles = useStore((s) => s.files);
+  const activeContentSet = useStore((s) => s.activeContentSet);
   const selection = useStore((s) => s.selection);
   const setSelection = useStore((s) => s.setSelection);
   const previewMode = useStore((s) => s.previewMode);
   const imageTick = useStore((s) => s.imageTick);
   const initParams = useStore((s) => s.initParams);
+  const activeFile = useStore((s) => s.activeFile);
   const setActiveFile = useStore((s) => s.setActiveFile);
   const setViewportRange = useStore((s) => s.setViewportRange);
   const workspaceItems = useStore((s) => s.workspaceItems);
   const actionRequest = useStore((s) => s.actionRequest);
   const setActionRequest = useStore((s) => s.setActionRequest);
 
+  // Filter and remap files based on active content set
+  const files = useMemo(() => {
+    if (!activeContentSet) return rawFiles.map((f) => ({ path: f.path, content: f.content }));
+    const pfx = activeContentSet + "/";
+    return rawFiles
+      .filter((f) => f.path.startsWith(pfx))
+      .map((f) => ({ path: f.path.slice(pfx.length), content: f.content }));
+  }, [rawFiles, activeContentSet]);
+
   return {
-    files: files.map((f) => ({ path: f.path, content: f.content })),
+    files,
+    activeFile,
     selection: selection
       ? {
           type: selection.type,
@@ -249,6 +264,27 @@ export default function App() {
     }
     store.appendMessage(msg);
   }, [sessionStatus, pendingNotification]);
+
+  // Workspace item auto-selection (topBarNavigation modes)
+  const topBarNav = useStore((s) => s.modeViewer?.workspace?.topBarNavigation);
+  const workspaceItemsForAutoSelect = useStore((s) => s.workspaceItems);
+  const activeFileForAutoSelect = useStore((s) => s.activeFile);
+  useEffect(() => {
+    if (topBarNav && workspaceItemsForAutoSelect.length > 0 && !activeFileForAutoSelect) {
+      useStore.getState().setActiveFile(workspaceItemsForAutoSelect[0].path);
+    }
+  }, [topBarNav, workspaceItemsForAutoSelect, activeFileForAutoSelect]);
+
+  // Content set auto-selection based on system preferences
+  const contentSets = useStore((s) => s.contentSets);
+  const activeContentSet = useStore((s) => s.activeContentSet);
+  const systemPrefs = useSystemPreferences();
+  useEffect(() => {
+    if (contentSets.length > 1 && !activeContentSet) {
+      const best = selectBestContentSet(contentSets, systemPrefs);
+      if (best) useStore.getState().setActiveContentSet(best.prefix);
+    }
+  }, [contentSets, systemPrefs]); // activeContentSet intentionally excluded
 
   const viewerProps = useViewerProps();
 

@@ -27,7 +27,39 @@ const drawMode: ModeDefinition = {
   viewer: {
     PreviewComponent: DrawPreview,
 
-    workspace: { type: "single", multiFile: false, ordered: false, hasActiveFile: false },
+    workspace: {
+      type: "all",
+      multiFile: true,
+      ordered: false,
+      hasActiveFile: true,
+      topBarNavigation: true,
+      resolveItems(files) {
+        return files
+          .filter((f) => f.path.endsWith(".excalidraw"))
+          .map((f, i) => ({
+            path: f.path,
+            label: f.path.replace(/^.*\//, "").replace(/\.excalidraw$/, ""),
+            index: i,
+          }));
+      },
+      createEmpty(files) {
+        const existing = new Set(files.map((f) => f.path));
+        let name = "drawing.excalidraw";
+        let n = 1;
+        while (existing.has(name)) {
+          name = `drawing-${n++}.excalidraw`;
+        }
+        const empty = JSON.stringify({
+          type: "excalidraw",
+          version: 2,
+          source: "https://excalidraw.com",
+          elements: [],
+          appState: { viewBackgroundColor: "#ffffff" },
+          files: {},
+        }, null, 2);
+        return [{ path: name, content: empty }];
+      },
+    },
 
     extractContext(
       selection: ViewerSelectionContext | null,

@@ -1,0 +1,57 @@
+<div class="slide">
+  <span class="tag" style="margin-bottom: 16px; align-self: flex-start;">Design System</span>
+  <h1 style="font-size: 2.2rem;">Global Theming via <span class="text-primary">CSS Variables</span></h1>
+  <p style="max-width: 700px; margin-bottom: 32px;">
+    Slide mode encourages a "Theme-first" design philosophy. By editing <code>theme.css</code>, you alter the visual
+    aesthetic of the entire presentation at once.
+  </p>
+
+  <div style="display: flex; gap: 24px;">
+    <!-- Theme definitions -->
+    <div style="flex: 1; background: #1E1E1E; padding: 20px; border-radius: 12px; border: 1px solid #333;">
+      <div
+        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid #333; padding-bottom: 8px;">
+        <span style="color: #888; font-size: 0.85rem; font-family: monospace;">theme.css</span>
+        <div style="display: flex; gap: 6px;">
+          <div style="width: 10px; height: 10px; border-radius: 50%; background: #ED6A5E;"></div>
+          <div style="width: 10px; height: 10px; border-radius: 50%; background: #F4BF4F;"></div>
+          <div style="width: 10px; height: 10px; border-radius: 50%; background: #61C554;"></div>
+        </div>
+      </div>
+      <pre
+        style="margin: 0; padding: 0; background: transparent; font-size: 0.85rem; line-height: 1.6; font-family: 'JetBrains Mono', monospace;"><span style="color: #DCDCAA;">:root</span> {
+  <span style="color: #9CDCFE;">--color-bg</span>: <span style="color: #CE9178;">#FAF7F2</span>;
+  <span style="color: #9CDCFE;">--color-text</span>: <span style="color: #CE9178;">#2D2A26</span>;
+  <span style="color: #9CDCFE;">--color-primary</span>: <span style="color: #CE9178;">#D4632A</span>;
+  <span style="color: #9CDCFE;">--color-accent</span>: <span style="color: #CE9178;">#C4963A</span>;
+  <span style="color: #9CDCFE;">--color-surface</span>: <span style="color: #CE9178;">#F0EBE3</span>;
+  
+  <span style="color: #9CDCFE;">--font-sans</span>: <span style="color: #CE9178;">'Inter', sans-serif</span>;
+}</pre>
+    </div>
+
+    <!-- Usage example -->
+    <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 16px;">
+      <div
+        style="padding: 16px; background: var(--color-surface); border: 1px solid var(--color-border); border-left: 4px solid var(--color-primary); border-radius: 6px;">
+        <div
+          style="font-weight: 600; font-size: 0.85rem; color: var(--color-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
+          Prompting Tip #1</div>
+        <p style="margin: 0; font-size: 0.95rem;">
+          "Change the entire theme to a Cyberpunk aesthetic. Use dark grays for the background, and neon pink and cyan
+          for accents."
+        </p>
+      </div>
+
+      <div
+        style="padding: 16px; background: var(--color-surface); border: 1px solid var(--color-border); border-left: 4px solid var(--color-accent); border-radius: 6px;">
+        <div
+          style="font-weight: 600; font-size: 0.85rem; color: var(--color-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
+          Prompting Tip #2</div>
+        <p style="margin: 0; font-size: 0.95rem;">
+          "Increase the global border radius for all cards to make the deck feel more playful and rounded."
+        </p>
+      </div>
+    </div>
+  </div>
+</div>

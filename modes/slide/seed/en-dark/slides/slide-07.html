@@ -1,0 +1,61 @@
+<div class="slide">
+  <span class="tag" style="margin-bottom: 16px; align-self: flex-start;">Extensibility</span>
+  <h1 style="font-size: 2.2rem;"><span class="text-primary">Mode Maker:</span> AI creating AI</h1>
+  <p style="max-width: 800px; margin-bottom: 24px;">
+    Because every feature in Pneuma is abstracted behind the <code>ModeProtocol</code>, we built a Mode to create other
+    Modes.
+  </p>
+
+  <div style="display: flex; gap: 24px;">
+
+    <div
+      style="flex: 1; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 24px; display: flex; flex-direction: column;">
+      <div
+        style="width: 48px; height: 48px; border-radius: 12px; background: rgba(91, 141, 181, 0.1); display: flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5B8DB5" stroke-width="2">
+          <path d="M12 2L2 7l10 5 10-5-10-5z" />
+          <path d="M2 17l10 5 10-5" />
+          <path d="M2 12l10 5 10-5" />
+        </svg>
+      </div>
+      <h3 style="font-size: 1.2rem; margin-bottom: 8px;">1. Fork & Scaffold</h3>
+      <p style="font-size: 0.9rem; color: var(--color-secondary); line-height: 1.5; flex: 1;">
+        Start the <code>mode-maker</code> mode. Tell Claude you want a "Kanban Board Mode". It automatically forks a
+        basic template and scaffolds your React files.
+      </p>
+    </div>
+
+    <div
+      style="flex: 1; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 24px; display: flex; flex-direction: column;">
+      <div
+        style="width: 48px; height: 48px; border-radius: 12px; background: rgba(212, 99, 42, 0.1); display: flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#D4632A" stroke-width="2">
+          <polygon points="5 3 19 12 5 21 5 3" />
+        </svg>
+      </div>
+      <h3 style="font-size: 1.2rem; margin-bottom: 8px;">2. Play-test Instantly</h3>
+      <p style="font-size: 0.9rem; color: var(--color-secondary); line-height: 1.5; flex: 1;">
+        Hit "Play". Pneuma spins up a nested server running your newly coded Viewer. You can test your Kanban layout
+        side-by-side while Claude codes it.
+      </p>
+    </div>
+
+    <div
+      style="flex: 1; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 24px; display: flex; flex-direction: column;">
+      <div
+        style="width: 48px; height: 48px; border-radius: 12px; background: rgba(196, 150, 58, 0.1); display: flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C4963A" stroke-width="2">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+      </div>
+      <h3 style="font-size: 1.2rem; margin-bottom: 8px;">3. Publish to Network</h3>
+      <p style="font-size: 0.9rem; color: var(--color-secondary); line-height: 1.5; flex: 1;">
+        Once complete, run <code>pneuma mode publish</code>. Your mode is uploaded to the R2 registry, immediately
+        available in the global Launcher Marketplace.
+      </p>
+    </div>
+
+  </div>
+</div>

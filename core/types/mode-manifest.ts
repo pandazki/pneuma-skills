@@ -140,6 +140,8 @@ export interface ViewerApiConfig {
     ordered: boolean;
     hasActiveFile: boolean;
     manifestFile?: string;
+    /** If true, the workspace supports multiple content sets (e.g. locale/theme directories) */
+    supportsContentSets?: boolean;
   };
   actions?: Array<{
     id: string;
