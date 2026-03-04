@@ -20,7 +20,10 @@ function getPlatform(): Platform {
 
 export function resolveAndValidate(workspace: string, inputPath: string): string {
   const abs = resolve(workspace, inputPath);
-  if (!abs.startsWith(workspace)) {
+  const match = process.platform === "win32"
+    ? abs.toLowerCase().startsWith(workspace.toLowerCase())
+    : abs.startsWith(workspace);
+  if (!match) {
     throw new Error("Path escapes workspace");
   }
   return abs;

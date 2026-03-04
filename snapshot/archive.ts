@@ -87,7 +87,8 @@ export async function createArchive(
 
   if (exitCode !== 0) {
     const stderr = await new Response(proc.stderr).text();
-    throw new Error(`tar create failed (exit ${exitCode}): ${stderr}`);
+    const hint = process.platform === "win32" ? " (ensure tar is available — included in Windows 10+)" : "";
+    throw new Error(`tar create failed (exit ${exitCode}): ${stderr}${hint}`);
   }
 
   return outputPath;
@@ -145,7 +146,8 @@ export async function createModeArchive(
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
     const stderr = await new Response(proc.stderr).text();
-    throw new Error(`tar create failed (exit ${exitCode}): ${stderr}`);
+    const hint = process.platform === "win32" ? " (ensure tar is available — included in Windows 10+)" : "";
+    throw new Error(`tar create failed (exit ${exitCode}): ${stderr}${hint}`);
   }
 
   return outputPath;
@@ -169,6 +171,7 @@ export async function extractArchive(
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
     const stderr = await new Response(proc.stderr).text();
-    throw new Error(`tar extract failed (exit ${exitCode}): ${stderr}`);
+    const hint = process.platform === "win32" ? " (ensure tar is available — included in Windows 10+)" : "";
+    throw new Error(`tar extract failed (exit ${exitCode}): ${stderr}${hint}`);
   }
 }
