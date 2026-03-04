@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.14.3] - 2026-03-04
+
+### Fixed
+- **Windows compatibility** — added `win32` platform branches across 9 core files: PATH resolution (`delimiter`, `where`, Windows candidate dirs), terminal shell (`COMSPEC`/`cmd.exe`), browser opener (`cmd /c start`), process management (graceful degrade), path security checks (case-insensitive), `/dev/null` → `NUL`, `basename()` for cross-platform path extraction
+
 ## [1.14.2] - 2026-03-04
 
 ### Fixed
