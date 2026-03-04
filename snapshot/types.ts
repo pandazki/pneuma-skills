@@ -17,3 +17,18 @@ export interface R2Credentials {
   bucket: string;
   publicUrl: string;
 }
+
+export interface ModeRegistryEntry {
+  name: string;
+  displayName: string;
+  description?: string;
+  version: string;
+  publishedAt: string;
+  archiveUrl: string;
+}
+
+export interface ModeRegistryIndex {
+  version: number;
+  updatedAt: string;
+  modes: ModeRegistryEntry[];
+}

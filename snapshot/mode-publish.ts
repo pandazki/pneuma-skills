@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { parseManifestTs } from "../core/utils/manifest-parser.js";
 import { createModeArchive } from "./archive.js";
-import { getCredentials, uploadToR2, uploadJsonToR2, checkR2KeyExists } from "./r2.js";
+import { getCredentials, uploadToR2, uploadJsonToR2, checkR2KeyExists, updateRegistryIndex } from "./r2.js";
 
 /** Valid mode name: lowercase letters, digits, hyphens; must start with a letter. */
 const MODE_NAME_RE = /^[a-z][a-z0-9-]*$/;
@@ -139,6 +139,16 @@ export async function publishMode(workspace: string, options?: PublishOptions): 
     publishedAt: new Date().toISOString(),
   };
   await uploadJsonToR2(latestData, latestKey, creds);
+
+  // 8.5. Update registry index
+  await updateRegistryIndex(creds, {
+    name: manifest.name,
+    displayName: manifest.displayName,
+    description: manifest.description,
+    version: manifest.version,
+    publishedAt: latestData.publishedAt,
+    archiveUrl: publicUrl,
+  });
 
   // 9. Cleanup temp file
   const { unlinkSync } = await import("node:fs");

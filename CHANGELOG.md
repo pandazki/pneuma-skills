@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.14.0] - 2026-03-04
+
+### Added
+- **Mode Marketplace Launcher** — running `pneuma` with no arguments opens a browsable UI for discovering and launching modes from the registry
+- **`--no-prompt` CLI flag** — skip interactive prompts, used internally by the marketplace launcher to streamline mode launch
+- **Registry index auto-update** — `pneuma mode publish` now automatically updates `registry/index.json` with the published mode metadata
+- **Launcher server routes** — new `/api/registry`, `/api/launch/prepare`, `/api/launch` endpoints for marketplace browsing and mode launch orchestration
+- **Launcher UI component** — `Launcher.tsx` marketplace interface with search, mode cards, and launch configuration dialog
+- **Local mode management** — scan `~/.pneuma/modes/` and display user-installed modes in Launcher with inline delete
+- **`pneuma mode add <url>`** — CLI command to download and install remote modes locally
+- **Session history** — track launched sessions in `~/.pneuma/sessions.json`, display "Recent Sessions" in Launcher with one-click resume
+- **Skill update detection** — on session resume, detect mode version changes and prompt for skill update (with dismiss/skip support)
+- **`--skip-skill` CLI flag** — skip skill installation on launch, used when resuming sessions with dismissed skill updates
+- **Warm Craft design theme** — updated UI with warm copper/sand palette, rounded corners, and refined typography
+
 ## [1.13.2] - 2026-03-03
 
 ### Fixed

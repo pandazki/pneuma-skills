@@ -18,6 +18,9 @@
   --color-cc-success: #48bb78;
   --color-cc-error: #fc8181;
   --color-cc-warning: #f6e05e;
+  --color-cc-surface: #1e1e1c;
+  --color-cc-glow: rgba(217,119,87,0.08);
+  --color-cc-primary-muted: rgba(217,119,87,0.15);
 }
 
 @keyframes fadeSlideIn {
@@ -128,4 +131,14 @@
 
 @keyframes selectionRotate {
   to { --selection-angle: 360deg; }
+}
+
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 0 rgba(217,119,87,0); }
+  50% { box-shadow: 0 0 24px rgba(217,119,87,0.06); }
+}
+
+@keyframes warmFadeIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }

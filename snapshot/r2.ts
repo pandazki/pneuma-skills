@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import * as readline from "node:readline";
-import type { R2Credentials } from "./types.js";
+import type { R2Credentials, ModeRegistryEntry, ModeRegistryIndex } from "./types.js";
 
 const CREDENTIALS_PATH = join(homedir(), ".pneuma", "r2.json");
 
@@ -292,4 +292,45 @@ async function signedS3Request(
       Authorization: authorization,
     },
   });
+}
+
+// ── Registry helpers ──────────────────────────────────────────────────────────
+
+const REGISTRY_KEY = "registry/index.json";
+
+/**
+ * Fetch the public mode registry index (no auth needed).
+ */
+export async function fetchRegistry(publicUrl: string): Promise<ModeRegistryIndex> {
+  const url = `${publicUrl}/${REGISTRY_KEY}`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return { version: 1, updatedAt: new Date().toISOString(), modes: [] };
+    return await res.json() as ModeRegistryIndex;
+  } catch {
+    return { version: 1, updatedAt: new Date().toISOString(), modes: [] };
+  }
+}
+
+/**
+ * Upsert a mode entry in the registry index on R2.
+ */
+export async function updateRegistryIndex(
+  creds: R2Credentials,
+  entry: ModeRegistryEntry,
+): Promise<void> {
+  // 1. Fetch current index
+  const current = await fetchRegistry(creds.publicUrl);
+
+  // 2. Upsert by name
+  const idx = current.modes.findIndex((m) => m.name === entry.name);
+  if (idx >= 0) {
+    current.modes[idx] = entry;
+  } else {
+    current.modes.push(entry);
+  }
+  current.updatedAt = new Date().toISOString();
+
+  // 3. Upload updated index
+  await uploadJsonToR2(current, REGISTRY_KEY, creds);
 }
