@@ -212,7 +212,7 @@ function buildNearbyText(el: HTMLElement): string {
 /** Save file content to server */
 async function saveFile(path: string, content: string): Promise<boolean> {
   try {
-    const baseUrl = import.meta.env.DEV ? `http://localhost:17007` : "";
+    const baseUrl = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
     const res = await fetch(`${baseUrl}/api/files`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -273,7 +273,7 @@ export default function DocPreview({
     scaffoldFiles: ScaffoldFile[],
     clearPatterns: string[],
   ): Promise<{ success: boolean; message?: string }> => {
-    const baseUrl = import.meta.env.DEV ? "http://localhost:17007" : "";
+    const baseUrl = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
     try {
       const res = await fetch(`${baseUrl}/api/workspace/scaffold`, {
         method: "POST",
