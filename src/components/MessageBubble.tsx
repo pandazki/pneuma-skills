@@ -319,8 +319,8 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
     );
   }
 
-  // Nothing to render
-  if (blocks.length === 0 && !message.content) return null;
+  // Nothing to render (or all blocks filtered out, e.g. AskUserQuestion-only messages)
+  if (grouped.length === 0 && !message.content) return null;
 
   return (
     <div className="flex items-start gap-3">
