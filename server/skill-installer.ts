@@ -95,7 +95,6 @@ function applyTemplateToDir(
  */
 export function generateViewerApiSection(
   viewerApi: ViewerApiConfig | undefined,
-  port: number = 17007,
 ): string {
   if (!viewerApi) return "";
   const lines: string[] = ["## Viewer API", ""];
@@ -129,7 +128,7 @@ export function generateViewerApiSection(
     lines.push("### Actions");
     lines.push("");
     lines.push("The viewer supports these operations. Invoke via Bash:");
-    lines.push(`\`curl -s -X POST http://localhost:${port}/api/viewer/action -H 'Content-Type: application/json' -d '{\"actionId\":\"<id>\",\"params\":{...}}'\``);
+    lines.push("`curl -s -X POST $PNEUMA_API/api/viewer/action -H 'Content-Type: application/json' -d '{\"actionId\":\"<id>\",\"params\":{...}}'`");
     lines.push("");
     lines.push("| Action | Description | Params |");
     lines.push("|--------|-------------|--------|");
@@ -154,7 +153,7 @@ export function generateViewerApiSection(
     lines.push(`${sc.description} **Requires user confirmation in browser.**`);
     lines.push("");
     lines.push("Invoke via the viewer action API:");
-    lines.push(`\`curl -s -X POST http://localhost:${port}/api/viewer/action -H 'Content-Type: application/json' -d '{\"actionId\":\"scaffold\",\"params\":{...}}'\``);
+    lines.push("`curl -s -X POST $PNEUMA_API/api/viewer/action -H 'Content-Type: application/json' -d '{\"actionId\":\"scaffold\",\"params\":{...}}'`");
     lines.push("");
     const paramEntries = Object.entries(sc.params);
     if (paramEntries.length > 0) {
@@ -342,7 +341,6 @@ export function installSkillDependencies(
  * @param modeSourceDir — Absolute path to the mode package directory (e.g. /path/to/modes/doc)
  * @param params — Optional init params for template replacement
  * @param viewerApi — Optional viewer self-describing API (auto-injected as independent CLAUDE.md section)
- * @param port — Server port for viewer action curl commands
  */
 export function installSkill(
   workspace: string,
@@ -350,7 +348,6 @@ export function installSkill(
   modeSourceDir: string,
   params?: Record<string, number | string>,
   viewerApi?: ViewerApiConfig,
-  port?: number,
 ): void {
   // 1. Copy skill to .claude/skills/{installName}/
   const skillSource = join(modeSourceDir, skillConfig.sourceDir);
@@ -425,7 +422,7 @@ export function installSkill(
   }
 
   // 2b. Inject/update Viewer API section (independent marker, Viewer-owned)
-  const viewerApiContent = generateViewerApiSection(viewerApi, port);
+  const viewerApiContent = generateViewerApiSection(viewerApi);
   if (viewerApiContent) {
     const viewerSection = `${VIEWER_API_MARKER_START}\n${viewerApiContent}\n${VIEWER_API_MARKER_END}`;
     const vStart = content.indexOf(VIEWER_API_MARKER_START);

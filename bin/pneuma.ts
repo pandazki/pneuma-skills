@@ -583,7 +583,7 @@ async function main() {
     }
 
     p.log.step("Installing skill and preparing environment...");
-    installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, effectiveApiPort);
+    installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi);
     // Record installed skill version for update detection
     const skillVersionPath = join(workspace, ".pneuma", "skill-version.json");
     mkdirSync(join(workspace, ".pneuma"), { recursive: true });
@@ -721,7 +721,9 @@ async function main() {
   let resuming = false;
 
   // Build env map from envMapping (init param values → env vars for agent process)
-  const agentEnv: Record<string, string> = {};
+  const agentEnv: Record<string, string> = {
+    PNEUMA_API: `http://localhost:${actualPort}`,
+  };
   if (manifest.skill.envMapping) {
     for (const [envVar, paramName] of Object.entries(manifest.skill.envMapping)) {
       const value = resolvedParams[paramName];
@@ -740,7 +742,7 @@ async function main() {
       sessionId: existing.sessionId,
       resumeSessionId: existing.agentSessionId,
     } : {}),
-    ...(Object.keys(agentEnv).length > 0 ? { env: agentEnv } : {}),
+    env: agentEnv,
   });
 
   if (existing?.agentSessionId) {

@@ -370,11 +370,11 @@ describe("generateViewerApiSection", () => {
     expect(result).not.toContain("`internal`");
   });
 
-  test("uses custom port", () => {
+  test("uses $PNEUMA_API env var in curl examples", () => {
     const result = generateViewerApiSection({
       actions: [{ id: "test", label: "T", category: "custom", agentInvocable: true, description: "test" }],
-    }, 9999);
-    expect(result).toContain("localhost:9999");
+    });
+    expect(result).toContain("$PNEUMA_API/api/viewer/action");
   });
 
   test("workspace only (no actions)", () => {
