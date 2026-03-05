@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.18.2] - 2026-03-05
+
+### Fixed
+- **Slide export 404 in launcher**: use `VITE_API_PORT` instead of hardcoded `17007` so child processes resolve the correct backend port
+- **Slide export trailing blank page**: add `break-after: auto` on last slide to prevent extra page when printing
+- **Slide export print guard**: disable Print button while image conversion is in progress
+- **Debug payload display**: replace modal with inline collapsible panel to avoid `backdrop-filter` containing block issue
+
 ## [1.18.1] - 2026-03-05
 
 ### Added
