@@ -171,6 +171,47 @@ export function startServer(options: ServerOptions) {
       return c.json({ ok: true });
     });
 
+    // Browse directories for workspace path picker
+    app.get("/api/browse-dirs", (c) => {
+      const raw = (c.req.query("path") || "").trim() || homedir();
+      let target = resolve(raw.replace(/^~/, homedir()));
+      // Walk up to nearest existing directory
+      let walked = false;
+      while (!existsSync(target) && target !== dirname(target)) {
+        target = dirname(target);
+        walked = true;
+      }
+      try {
+        const entries = readdirSync(target, { withFileTypes: true });
+        const dirs = entries
+          .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((e) => ({ name: e.name, path: join(target, e.name) }));
+        const parent = dirname(target);
+        return c.json({ current: target, parent: parent !== target ? parent : null, dirs, ...(walked ? { resolved: true } : {}) });
+      } catch {
+        return c.json({ current: target, parent: dirname(target), dirs: [], error: "Cannot read directory" });
+      }
+    });
+
+    // Check if a workspace already has a Pneuma session
+    app.get("/api/workspace-check", (c) => {
+      const raw = (c.req.query("path") || "").trim();
+      if (!raw) return c.json({ hasSession: false });
+      const target = resolve(raw.replace(/^~/, homedir()));
+      const sessionPath = join(target, ".pneuma", "session.json");
+      const configPath = join(target, ".pneuma", "config.json");
+      if (!existsSync(sessionPath)) return c.json({ hasSession: false });
+      try {
+        const session = JSON.parse(readFileSync(sessionPath, "utf-8"));
+        let config: Record<string, string | number> = {};
+        try { config = JSON.parse(readFileSync(configPath, "utf-8")); } catch { }
+        return c.json({ hasSession: true, mode: session.mode, config });
+      } catch {
+        return c.json({ hasSession: false });
+      }
+    });
+
     // Check if a session's skill needs updating
     app.post("/api/launch/skill-check", async (c) => {
       const { specifier, workspace: rawWorkspace } = await c.req.json<{ specifier: string; workspace: string }>();

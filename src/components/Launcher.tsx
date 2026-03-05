@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 
 
 interface BuiltinMode {
@@ -110,6 +110,7 @@ function ModeCard({
   onLaunch,
   index,
   onDelete,
+  onEdit,
 }: {
   name: string;
   displayName: string;
@@ -119,6 +120,7 @@ function ModeCard({
   onLaunch: () => void;
   index: number;
   onDelete?: () => void;
+  onEdit?: () => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -156,6 +158,17 @@ function ModeCard({
         </span>
 
         <div className="flex items-center gap-3">
+          {onEdit && (
+            <button
+              onClick={onEdit}
+              className="p-1.5 rounded-md text-cc-muted/40 hover:text-cc-primary hover:bg-cc-primary/10 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+              title="Open in Mode Maker"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                <path d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085" />
+              </svg>
+            </button>
+          )}
           {onDelete && !confirmDelete && (
             <button
               onClick={() => setConfirmDelete(true)}
@@ -191,6 +204,73 @@ function ModeCard({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
             </svg>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ModeMakerCard ─────────────────────────────────────────────────────────
+
+const MODE_MAKER_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085"/></svg>`;
+
+function ModeMakerCard({ onLaunch }: { onLaunch: () => void }) {
+  return (
+    <div
+      onClick={onLaunch}
+      className="group relative rounded-2xl p-6 bg-cc-card backdrop-blur-2xl cursor-pointer transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_8px_32px_-8px_rgba(249,115,22,0.25)]"
+      style={{ animation: "warmFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both" }}
+    >
+      {/* Shimmer rotating border */}
+      <div
+        className="absolute inset-0 rounded-2xl pointer-events-none"
+        style={{
+          padding: "1px",
+          background: `conic-gradient(from var(--shimmer-angle), rgba(249,115,22,0.08) 0%, rgba(251,191,36,0.4) 12%, rgba(249,115,22,0.6) 20%, rgba(251,191,36,0.4) 28%, rgba(249,115,22,0.08) 40%, rgba(249,115,22,0.03) 60%, rgba(249,115,22,0.08) 100%)`,
+          WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+          WebkitMaskComposite: "xor",
+          mask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+          maskComposite: "exclude",
+          animation: "shimmerRotate 4s linear infinite",
+        }}
+      />
+
+      {/* Subtle hover overlay */}
+      <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-cc-primary/0 via-cc-primary/5 to-cc-primary/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+      <div className="relative z-10 flex items-center gap-5">
+        {/* Icon with shimmer gradient */}
+        <div className="w-14 h-14 shrink-0 flex items-center justify-center rounded-full bg-gradient-to-b from-cc-surface/80 to-cc-surface/20 border border-white/5 shadow-[0_4px_16px_rgba(0,0,0,0.4)] group-hover:shadow-[0_0_30px_rgba(249,115,22,0.2)] transition-all duration-500">
+          <div
+            className="w-7 h-7 [&>svg]:w-full [&>svg]:h-full transition-all duration-500"
+            style={{
+              background: "linear-gradient(90deg, #f97316, #fbbf24, #fb923c, #f97316)",
+              backgroundSize: "200% auto",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              animation: "text-gradient-flow 3s linear infinite",
+            }}
+            dangerouslySetInnerHTML={{ __html: MODE_MAKER_ICON.replace('stroke="currentColor"', 'stroke="url(#mm-grad)"').replace('</svg>', '<defs><linearGradient id="mm-grad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#f97316"/><stop offset="50%" style="stop-color:#fbbf24"/><stop offset="100%" style="stop-color:#f97316"/></linearGradient></defs></svg>') }}
+          />
+        </div>
+
+        {/* Text */}
+        <div className="flex-1 min-w-0">
+          <h3
+            className="text-lg font-semibold bg-clip-text text-transparent animate-text-gradient-flow"
+            style={{ backgroundImage: "linear-gradient(90deg, #f97316, #fbbf24, #fb923c, #f97316)", backgroundSize: "200% auto" }}
+          >
+            Mode Maker
+          </h3>
+          <p className="text-sm text-cc-muted/80 mt-0.5">Create and develop your own Pneuma modes with AI assistance</p>
+        </div>
+
+        {/* Launch arrow */}
+        <div className="flex items-center text-sm font-medium text-cc-primary opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 delay-75 shrink-0">
+          Create
+          <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+          </svg>
         </div>
       </div>
     </div>
@@ -443,6 +523,140 @@ function RunningCard({
   );
 }
 
+// ── DirBrowser ────────────────────────────────────────────────────────────
+
+function DirBrowser({
+  startPath,
+  apiBase,
+  onSelect,
+  onClose,
+}: {
+  startPath: string;
+  apiBase: string;
+  onSelect: (path: string) => void;
+  onClose: () => void;
+}) {
+  const [currentPath, setCurrentPath] = useState(startPath);
+  const [dirs, setDirs] = useState<Array<{ name: string; path: string }>>([]);
+  const [parentPath, setParentPath] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const browse = useCallback(async (path: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${apiBase}/api/browse-dirs?path=${encodeURIComponent(path)}`);
+      const data = await res.json();
+      if (data.error && data.dirs?.length === 0) {
+        setError(data.error);
+      }
+      setCurrentPath(data.current || path);
+      setDirs(data.dirs || []);
+      setParentPath(data.parent || null);
+    } catch {
+      setError("Failed to browse directory");
+    }
+    setLoading(false);
+  }, [apiBase]);
+
+  useEffect(() => { browse(startPath); }, [browse, startPath]);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  // Breadcrumb segments
+  const segments = currentPath.split("/").filter(Boolean);
+
+  return (
+    <div
+      ref={ref}
+      className="absolute left-0 right-0 top-full mt-1 z-50 bg-cc-surface border border-cc-border/60 rounded-lg shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden"
+    >
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-0.5 px-3 py-2 border-b border-cc-border/40 overflow-x-auto text-xs">
+        <button
+          onClick={() => browse("/")}
+          className="shrink-0 text-cc-muted hover:text-cc-primary transition-colors cursor-pointer px-1"
+        >
+          /
+        </button>
+        {segments.map((seg, i) => {
+          const path = "/" + segments.slice(0, i + 1).join("/");
+          const isLast = i === segments.length - 1;
+          return (
+            <span key={path} className="flex items-center shrink-0">
+              <span className="text-cc-border mx-0.5">/</span>
+              <button
+                onClick={() => !isLast && browse(path)}
+                className={`transition-colors cursor-pointer px-0.5 ${isLast ? "text-cc-fg font-medium" : "text-cc-muted hover:text-cc-primary"}`}
+              >
+                {seg}
+              </button>
+            </span>
+          );
+        })}
+      </div>
+
+      {/* Directory list */}
+      <div className="max-h-48 overflow-y-auto">
+        {loading ? (
+          <div className="py-6 text-center text-cc-muted text-sm">Loading...</div>
+        ) : error && dirs.length === 0 ? (
+          <div className="py-6 text-center text-cc-muted text-sm">{error}</div>
+        ) : (
+          <>
+            {parentPath && (
+              <button
+                onClick={() => browse(parentPath)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-cc-muted hover:bg-cc-hover hover:text-cc-fg transition-colors cursor-pointer"
+              >
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                </svg>
+                ..
+              </button>
+            )}
+            {dirs.map((dir) => (
+              <button
+                key={dir.path}
+                onClick={() => browse(dir.path)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer group"
+              >
+                <svg className="w-4 h-4 shrink-0 text-cc-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                </svg>
+                <span className="truncate flex-1 text-left">{dir.name}</span>
+              </button>
+            ))}
+            {dirs.length === 0 && !error && (
+              <div className="py-4 text-center text-cc-muted/60 text-xs">Empty directory</div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Footer: Select current */}
+      <div className="flex items-center justify-between px-3 py-2 border-t border-cc-border/40">
+        <span className="text-xs text-cc-muted truncate mr-2">{currentPath}</span>
+        <button
+          onClick={() => { onSelect(currentPath); onClose(); }}
+          className="shrink-0 px-3 py-1 text-xs font-medium rounded-md bg-cc-primary hover:bg-cc-primary-hover text-cc-fg transition-colors cursor-pointer"
+        >
+          Select
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── LaunchDialog ──────────────────────────────────────────────────────────
 
 function LaunchDialog({
@@ -458,9 +672,10 @@ function LaunchDialog({
   homeDir: string;
   onClose: () => void;
 }) {
+  const safeName = /[\\/]/.test(specifier) ? specifier.split(/[\\/]/).filter(Boolean).pop()! : specifier;
   const fallback = homeDir
-    ? `${homeDir.replace(/[\\/]+$/, "")}/pneuma-projects/${specifier}-workspace`
-    : `~/pneuma-projects/${specifier}-workspace`;
+    ? `${homeDir.replace(/[\\/]+$/, "")}/pneuma-projects/${safeName}-workspace`
+    : `~/pneuma-projects/${safeName}-workspace`;
   const [workspace, setWorkspace] = useState(
     defaultWorkspace || fallback,
   );
@@ -469,6 +684,23 @@ function LaunchDialog({
   const [loading, setLoading] = useState(false);
   const [preparing, setPreparing] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [browsing, setBrowsing] = useState(false);
+  const [existingSession, setExistingSession] = useState<{ mode: string; config: Record<string, string | number> } | null>(null);
+
+  const checkWorkspace = useCallback(async (path: string) => {
+    setWorkspace(path);
+    setExistingSession(null);
+    try {
+      const res = await fetch(`${getApiBase()}/api/workspace-check?path=${encodeURIComponent(path)}`);
+      const data = await res.json();
+      if (data.hasSession) {
+        setExistingSession({ mode: data.mode, config: data.config || {} });
+        if (data.config && Object.keys(data.config).length > 0) {
+          setParamValues(data.config);
+        }
+      }
+    } catch { }
+  }, []);
 
   useEffect(() => {
     const prepare = async () => {
@@ -493,9 +725,12 @@ function LaunchDialog({
         setError(err instanceof Error ? err.message : "Failed to prepare launch");
       }
       setPreparing(false);
+      if (defaultWorkspace) {
+        checkWorkspace(defaultWorkspace);
+      }
     };
     prepare();
-  }, [specifier]);
+  }, [specifier, defaultWorkspace, checkWorkspace]);
 
   const handleLaunch = useCallback(async () => {
     setLoading(true);
@@ -537,20 +772,54 @@ function LaunchDialog({
         </h2>
 
         <label className="block text-sm text-cc-muted mb-1">Workspace path</label>
-        <input
-          type="text"
-          value={workspace}
-          onChange={(e) => setWorkspace(e.target.value)}
-          className="w-full px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm mb-4 focus:outline-none focus:border-cc-primary/50"
-        />
+        <div className="relative mb-4">
+          <div className="flex gap-1.5">
+            <input
+              type="text"
+              value={workspace}
+              onChange={(e) => { setWorkspace(e.target.value); setExistingSession(null); }}
+              className="flex-1 min-w-0 px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50"
+            />
+            <button
+              type="button"
+              onClick={() => setBrowsing(!browsing)}
+              className={`shrink-0 px-2.5 py-2 rounded-lg border transition-colors cursor-pointer ${browsing ? "bg-cc-primary/20 border-cc-primary/50 text-cc-primary" : "bg-cc-input-bg border-cc-border text-cc-muted hover:text-cc-fg hover:border-cc-border"}`}
+              title="Browse directories"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+              </svg>
+            </button>
+          </div>
+          {browsing && (
+            <DirBrowser
+              startPath={workspace || homeDir}
+              apiBase={getApiBase()}
+              onSelect={checkWorkspace}
+              onClose={() => setBrowsing(false)}
+            />
+          )}
+        </div>
 
         {preparing && (
           <p className="text-sm text-cc-muted mb-4">Loading configuration...</p>
         )}
 
-        {initParams.length > 0 && (
+        {existingSession && (
+          <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-cc-primary-muted/30 border border-cc-primary/20">
+            <svg className="w-4 h-4 text-cc-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-xs text-cc-primary">Existing workspace — will resume session</span>
+          </div>
+        )}
+
+        {initParams.length > 0 && !defaultWorkspace && (
           <div className="mb-4 space-y-3">
-            <p className="text-sm font-medium text-cc-fg">Parameters</p>
+            <p className="text-sm font-medium text-cc-fg">
+              Parameters
+              {existingSession && <span className="text-xs text-cc-muted font-normal ml-2">(read-only)</span>}
+            </p>
             {initParams.map((param) => (
               <div key={param.name}>
                 <label className="block text-sm text-cc-muted mb-1">
@@ -562,11 +831,12 @@ function LaunchDialog({
                 <input
                   type={param.type === "number" ? "number" : "text"}
                   value={paramValues[param.name] ?? param.defaultValue}
+                  disabled={!!existingSession}
                   onChange={(e) => {
                     const val = param.type === "number" ? Number(e.target.value) : e.target.value;
                     setParamValues((prev) => ({ ...prev, [param.name]: val }));
                   }}
-                  className="w-full px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50"
+                  className={`w-full px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50 ${existingSession ? "opacity-60 cursor-not-allowed" : ""}`}
                 />
               </div>
             ))}
@@ -728,10 +998,14 @@ export default function Launcher() {
         s.workspace.toLowerCase().includes(search.toLowerCase()),
     )
     : sessions;
+  const showModeMaker = !search || ["mode-maker", "mode maker", "create", "develop", "new mode"].some(
+    (kw) => kw.includes(search.toLowerCase()) || search.toLowerCase().includes(kw),
+  );
 
   // Build icon lookup from all mode sources for session cards
   const iconMap = React.useMemo(() => {
     const map: Record<string, string> = {};
+    map["mode-maker"] = MODE_MAKER_ICON;
     for (const m of builtins) { if (m.icon) map[m.name] = m.icon; }
     for (const m of local) { if (m.icon) map[m.name] = m.icon; }
     for (const m of published) { if (m.icon) map[m.name] = m.icon; }
@@ -756,6 +1030,15 @@ export default function Launcher() {
           <p className="text-cc-muted/80 text-lg font-medium tracking-wide">
             Choose a mode to get started
           </p>
+          <a
+            href="https://github.com/pandazki/pneuma-skills"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 mt-3 text-sm text-cc-muted/50 hover:text-cc-muted transition-colors"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            GitHub
+          </a>
         </div>
 
         {/* Search */}
@@ -856,6 +1139,20 @@ export default function Launcher() {
               </section>
             )}
 
+            {/* Mode Maker */}
+            {showModeMaker && (
+              <section className="mb-10">
+                <ModeMakerCard
+                  onLaunch={() =>
+                    setLaunchTarget({
+                      specifier: "mode-maker",
+                      displayName: "Mode Maker",
+                    })
+                  }
+                />
+              </section>
+            )}
+
             {/* Local Modes */}
             {filteredLocal.length > 0 && (
               <section className="mb-10">
@@ -876,6 +1173,13 @@ export default function Launcher() {
                         setLaunchTarget({
                           specifier: mode.path,
                           displayName: mode.displayName,
+                        })
+                      }
+                      onEdit={() =>
+                        setLaunchTarget({
+                          specifier: "mode-maker",
+                          displayName: "Mode Maker",
+                          defaultWorkspace: mode.path,
                         })
                       }
                       onDelete={() => deleteLocalMode(mode.name)}

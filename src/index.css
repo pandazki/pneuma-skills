@@ -183,6 +183,18 @@
   }
 }
 
+@property --shimmer-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes shimmerRotate {
+  to {
+    --shimmer-angle: 360deg;
+  }
+}
+
 @keyframes breathe {
 
   0%,
