@@ -526,13 +526,27 @@ export function startServer(options: ServerOptions) {
   // ── Workspace Scaffold API ───────────────────────────────────────────
   app.post("/api/workspace/scaffold", async (c) => {
     try {
-      const body = await c.req.json<{ clear?: string[]; files: { path: string; content: string }[] }>();
+      const body = await c.req.json<{ clear?: string[]; files: { path: string; content: string }[]; contentSet?: string }>();
       if (!Array.isArray(body.files)) {
         return c.json({ success: false, message: "files array is required" }, 400);
       }
 
+      // Content set scoping: when provided, clear globs scan within the content set
+      // directory and file paths are prefixed with it.
+      const contentSet = body.contentSet?.replace(/^\/+|\/+$/g, ""); // sanitize
+      const scopedRoot = contentSet ? join(workspace, contentSet) : workspace;
+      if (contentSet && !pathStartsWith(scopedRoot, workspace)) {
+        return c.json({ success: false, message: `Invalid contentSet: ${contentSet}` }, 403);
+      }
+
+      // Prefix file paths with content set if scoped
+      const resolvedFiles = body.files.map((f) => ({
+        path: contentSet ? `${contentSet}/${f.path}` : f.path,
+        content: f.content,
+      }));
+
       // Validate all paths before performing any mutations
-      for (const f of body.files) {
+      for (const f of resolvedFiles) {
         if (!f.path || f.path.includes("..") || f.path.startsWith("/")) {
           return c.json({ success: false, message: `Invalid path: ${f.path}` }, 400);
         }
@@ -542,13 +556,21 @@ export function startServer(options: ServerOptions) {
         }
       }
 
-      // 1. Delete files matching clear globs
+      // Protected paths — never delete system files
+      const PROTECTED = [".claude/", ".pneuma/", "CLAUDE.md", ".gitignore", ".mcp.json"];
+      const isProtected = (relPath: string) =>
+        PROTECTED.some((p) => p.endsWith("/") ? relPath.startsWith(p) : relPath === p);
+
+      // 1. Delete files matching clear globs (scoped to contentSet if provided)
       let filesDeleted = 0;
       if (Array.isArray(body.clear)) {
         for (const pattern of body.clear) {
           try {
-            const matches = new Bun.Glob(pattern).scanSync({ cwd: workspace, absolute: false });
-            for (const relPath of matches) {
+            const matches = new Bun.Glob(pattern).scanSync({ cwd: scopedRoot, absolute: false });
+            for (const matchPath of matches) {
+              // matchPath is relative to scopedRoot; compute workspace-relative path
+              const relPath = contentSet ? `${contentSet}/${matchPath}` : matchPath;
+              if (isProtected(relPath)) continue;
               const absPath = join(workspace, relPath);
               if (pathStartsWith(absPath, workspace) && existsSync(absPath)) {
                 unlinkSync(absPath);
@@ -562,13 +584,13 @@ export function startServer(options: ServerOptions) {
       }
 
       // 2. Write files
-      for (const f of body.files) {
+      for (const f of resolvedFiles) {
         const absPath = join(workspace, f.path);
         mkdirSync(dirname(absPath), { recursive: true });
         writeFileSync(absPath, f.content, "utf-8");
       }
 
-      return c.json({ success: true, filesWritten: body.files.length, filesDeleted });
+      return c.json({ success: true, filesWritten: resolvedFiles.length, filesDeleted });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       return c.json({ success: false, message }, 500);

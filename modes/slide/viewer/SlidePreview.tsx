@@ -716,7 +716,7 @@ export default function SlidePreview({
       const res = await fetch(`${baseUrl}/api/workspace/scaffold`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clear: clearPatterns, files: scaffoldFiles }),
+        body: JSON.stringify({ clear: clearPatterns, files: scaffoldFiles, contentSet: useStore.getState().activeContentSet || undefined }),
       });
       const data = await res.json();
       if (data.success) {
