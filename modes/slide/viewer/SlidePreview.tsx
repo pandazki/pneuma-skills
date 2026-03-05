@@ -1951,7 +1951,9 @@ function SlideToolbar({
 
   const handleExport = useCallback(() => {
     const baseUrl = import.meta.env.DEV ? `http://localhost:17007` : "";
-    window.open(`${baseUrl}/export/slides`, "_blank");
+    const cs = useStore.getState().activeContentSet;
+    const qs = cs ? `?contentSet=${encodeURIComponent(cs)}` : "";
+    window.open(`${baseUrl}/export/slides${qs}`, "_blank");
   }, []);
 
   const navTitle =

@@ -588,8 +588,24 @@ export function startServer(options: ServerOptions) {
   }
 
   /** Build the full export HTML. When inline=true, assets are inlined and toolbar/base removed. */
-  function buildExportHtml(opts: { inline: boolean }): { html: string; title: string } | { error: string; status: number } {
-    const manifestPath = join(workspace, "manifest.json");
+  function buildExportHtml(opts: { inline: boolean; contentSet?: string }): { html: string; title: string } | { error: string; status: number } {
+    // Resolve base directory: workspace root or content set subdirectory
+    let baseDir = workspace;
+    if (opts.contentSet) {
+      baseDir = join(workspace, opts.contentSet);
+    } else if (!existsSync(join(workspace, "manifest.json"))) {
+      // Auto-discover: find first subdirectory containing manifest.json
+      try {
+        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
+          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
+            baseDir = join(workspace, entry.name);
+            break;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    const manifestPath = join(baseDir, "manifest.json");
     if (!existsSync(manifestPath)) {
       return { error: "No manifest.json found in workspace", status: 404 };
     }
@@ -604,7 +620,7 @@ export function startServer(options: ServerOptions) {
     }
 
     // Read theme.css and patch font stacks for CJK print compatibility
-    const themePath = join(workspace, "theme.css");
+    const themePath = join(baseDir, "theme.css");
     let themeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
     const CJK_FONTS = '"PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei"';
     themeCSS = themeCSS.replace(
@@ -619,7 +635,7 @@ export function startServer(options: ServerOptions) {
     const headResourceSet = new Set<string>();
     const slidePages = manifest.slides
       .map((slide) => {
-        const slidePath = join(workspace, slide.file);
+        const slidePath = join(baseDir, slide.file);
         let html = existsSync(slidePath) ? readFileSync(slidePath, "utf-8") : `<p>Missing: ${slide.file}</p>`;
         let bodyStyle = "";
         let bodyClass = "";
@@ -680,7 +696,8 @@ export function startServer(options: ServerOptions) {
       : `\n<script>
 function downloadSlides(){
   var btn=event.target;btn.textContent="Preparing...";btn.disabled=true;
-  fetch("/export/slides/download").then(function(r){
+  var qs=new URLSearchParams(location.search).get("contentSet");
+  fetch("/export/slides/download"+(qs?"?contentSet="+encodeURIComponent(qs):"")).then(function(r){
     if(!r.ok)throw new Error("HTTP "+r.status);return r.blob();
   }).then(function(b){
     var a=document.createElement("a");a.href=URL.createObjectURL(b);
@@ -822,13 +839,15 @@ ${slidePages}${downloadScript}
   }
 
   app.get("/export/slides", (c) => {
-    const result = buildExportHtml({ inline: false });
+    const contentSet = c.req.query("contentSet") || undefined;
+    const result = buildExportHtml({ inline: false, contentSet });
     if ("error" in result) return c.text(result.error, result.status as any);
     return c.html(result.html);
   });
 
   app.get("/export/slides/download", (c) => {
-    const result = buildExportHtml({ inline: true });
+    const contentSet = c.req.query("contentSet") || undefined;
+    const result = buildExportHtml({ inline: true, contentSet });
     if ("error" in result) return c.text(result.error, result.status as any);
     const safeFilename = result.title.replace(/[^\w\s.-]/g, "_") + ".html";
     const utf8Filename = encodeURIComponent(result.title + ".html");
