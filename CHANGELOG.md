@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.16.0] - 2026-03-05
+
+### Added
+- **Launcher process management** — track child pneuma processes spawned by `/api/launch`; new `GET /api/processes/children` and `POST /api/processes/children/:pid/kill` endpoints; launcher SIGINT/SIGTERM handlers kill all tracked children (no more orphaned processes)
+- **Running panel** — launcher UI shows running instances alongside recent sessions in a side-by-side grid layout, with RunningCard component (green pulse indicator, Open/Stop actions, 3s polling)
+
+### Changed
+- **Next-gen visual design** — darker zinc palette (`#09090b` bg), neon orange primary (`#f97316`), glassmorphism surfaces with backdrop-blur, mesh gradient backgrounds, refined animations across all components
+- **Visual design spec** — added `docs/visual-design-spec.md` documenting the new design system
+
+### Fixed
+- **AskUserQuestion bypass** — `AskUserQuestion` now always requires user interaction even in `bypassPermissions` mode
+
 ## [1.15.0] - 2026-03-05
 
 ### Added
