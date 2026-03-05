@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.18.4] - 2026-03-05
+
+### Fixed
+- **Viewer action curl uses `$PNEUMA_API` env var**: no more hardcoded port in CLAUDE.md; base URL injected at agent launch time, works across port changes and session resume
+- **Scaffold scoped to current view**: doc mode only clears viewed files, draw mode only clears active canvas (not all files matching glob)
+- **Scaffold protects system files**: `.claude/`, `.pneuma/`, `CLAUDE.md`, `.gitignore`, `.mcp.json` are never deleted by scaffold clear
+- **Scaffold content set support**: optional `contentSet` param scopes clear and file writes to a subdirectory (slide mode passes `activeContentSet`)
+- **Doc mode hardcoded port**: `saveFile` and scaffold API calls use `VITE_API_PORT` instead of `localhost:17007`
+
 ## [1.18.3] - 2026-03-05
 
 ### Fixed
