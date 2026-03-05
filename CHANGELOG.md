@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.18.0] - 2026-03-05
+## [1.18.1] - 2026-03-05
 
 ### Added
 - **Launcher: Mode Maker card** — special full-width card with shimmer border animation between built-in and local modes
