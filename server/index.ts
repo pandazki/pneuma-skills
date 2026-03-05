@@ -63,13 +63,27 @@ export function startServer(options: ServerOptions) {
     }>();
 
     app.get("/api/registry", async (c) => {
-      const builtins = [
-        { name: "doc", displayName: "Document", description: "Markdown document editing with live preview", version: "builtin", type: "builtin" as const },
-        { name: "slide", displayName: "Slide", description: "Professional presentation creation and editing", version: "builtin", type: "builtin" as const, hasInitParams: true },
-        { name: "draw", displayName: "Draw", description: "Excalidraw whiteboard for diagrams and visual thinking", version: "builtin", type: "builtin" as const },
-      ];
+      const { parseManifestTs } = await import("../core/utils/manifest-parser.js");
+      const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
 
-      let published: Array<{ name: string; displayName: string; description?: string; version: string; publishedAt: string; archiveUrl: string }> = [];
+      // Parse builtin mode manifests for metadata (icon, description, etc.)
+      const builtinNames = ["doc", "slide", "draw"];
+      const builtins = builtinNames.map((name) => {
+        const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
+        let parsed: ReturnType<typeof parseManifestTs> = {};
+        try { parsed = parseManifestTs(readFileSync(manifestPath, "utf-8")); } catch { }
+        return {
+          name,
+          displayName: parsed.displayName || name,
+          description: parsed.description || "",
+          icon: parsed.icon,
+          version: "builtin",
+          type: "builtin" as const,
+          ...(name === "slide" ? { hasInitParams: true } : {}),
+        };
+      });
+
+      let published: Array<{ name: string; displayName: string; description?: string; version: string; publishedAt: string; archiveUrl: string; icon?: string }> = [];
       try {
         const res = await fetch(`${REGISTRY_URL}/registry/index.json`, { signal: AbortSignal.timeout(5000) });
         if (res.ok) {
@@ -80,15 +94,13 @@ export function startServer(options: ServerOptions) {
 
       // Scan local modes from ~/.pneuma/modes/
       const modesDir = join(homedir(), ".pneuma", "modes");
-      let local: Array<{ name: string; displayName: string; description?: string; version: string; path: string }> = [];
+      let local: Array<{ name: string; displayName: string; description?: string; version: string; path: string; icon?: string }> = [];
       try {
         if (existsSync(modesDir)) {
-          const { parseManifestTs } = await import("../core/utils/manifest-parser.js");
           const entries = readdirSync(modesDir);
           for (const entry of entries) {
             const entryPath = join(modesDir, entry);
             if (!statSync(entryPath).isDirectory()) continue;
-            // Look for manifest.ts or manifest.js
             const manifestFile = ["manifest.ts", "manifest.js"].find((f) => existsSync(join(entryPath, f)));
             if (!manifestFile) continue;
             try {
@@ -98,6 +110,7 @@ export function startServer(options: ServerOptions) {
                 name: parsed.name || entry,
                 displayName: parsed.displayName || entry,
                 description: parsed.description,
+                icon: parsed.icon,
                 version: parsed.version || "local",
                 path: entryPath,
               });

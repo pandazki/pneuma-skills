@@ -10,6 +10,7 @@ export interface ParsedManifest {
   version?: string;
   displayName?: string;
   description?: string;
+  icon?: string;
   watchPatterns?: string[];
   installName?: string;
   workspaceType?: string;
@@ -19,6 +20,12 @@ export interface ParsedManifest {
 function extractString(source: string, field: string): string | undefined {
   const re = new RegExp(`${field}:\\s*["'\`]([^"'\`]*)["'\`]`);
   return re.exec(source)?.[1];
+}
+
+/** Extract a backtick template string field: `` fieldName: `value` `` (may span multiple lines) */
+function extractBacktickString(source: string, field: string): string | undefined {
+  const re = new RegExp(`${field}:\\s*\`([^\`]*)\``,"s");
+  return re.exec(source)?.[1]?.trim();
 }
 
 /** Extract a string array field: `fieldName: ["a", "b"]` */
@@ -45,6 +52,7 @@ export function parseManifestTs(content: string): ParsedManifest {
     version: extractString(content, "version"),
     displayName: extractString(content, "displayName"),
     description: extractString(content, "description"),
+    icon: extractBacktickString(content, "icon") || extractString(content, "icon"),
     watchPatterns: extractStringArray(content, "watchPatterns"),
     installName: extractString(content, "installName"),
     workspaceType: extractString(content, "type"),
