@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.17.0] - 2026-03-05
+
+### Added
+- **Inline AskUserQuestion** — moved from floating overlay into the chat message stream; interactive picker when pending, collapsed `<details>` summary when answered, with per-question-answer pair rendering
+- **Mode icons as manifest property** — `icon` field on `ModeManifest` (inline SVG string), parsed via `extractBacktickString()` in manifest-parser, served through `/api/registry`; Launcher renders data-driven icons via `ModeIcon` component
+- **Custom Warm Craft CodeMirror theme** — editor panel uses project design tokens instead of default dark theme
+
+### Changed
+- **TopBar redesign** — floating pills layout, agent status indicator moved to chat area
+- **Launcher visual overhaul** — gradient animations, glassmorphism cards, hover micro-interactions
+- **Registry endpoint refactored** — builtins now dynamically parsed from manifest.ts files instead of hardcoded metadata
+- **README refresh** — updated positioning, built-in modes table, screenshot
+
+### Fixed
+- **Slide seed overflow** — dark/light theme h1 line-height, slide-02 content trimming across all 4 variants (en/zh × light/dark)
+- **Curly quote sanitization** — smart quotes in HTML attributes sanitized at render time
+- **Slide export with content sets** — correct workspace resolution for content set directories
+- **Print CSS Chrome hang** — strip expensive CSS effects (box-shadow/filter) that caused Chrome print renderer to hang; softer fallback preserving glass effects
+- **Doc mode gray icon** — key mismatch `"document"` vs `"doc"` caused fallback; now driven by manifest data
+- **Launcher --dev/--debug passthrough** — child processes spawned by launcher inherit dev mode and debug flags
+- **AskUserQuestion stale replay** — prevent ghost questions on page refresh, hide empty assistant bubbles
+
 ## [1.16.0] - 2026-03-05
 
 ### Added
