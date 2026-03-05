@@ -54,7 +54,7 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
     const hasText = message.content.trim().length > 0;
     return (
       <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
-        <div className="max-w-[85%] rounded-[14px] rounded-br-[4px] bg-cc-user-bubble text-cc-fg overflow-hidden">
+        <div className="max-w-[85%] rounded-[20px] rounded-br-[6px] bg-cc-surface/60 backdrop-blur-md border border-cc-border/30 text-cc-fg overflow-hidden shadow-sm">
           {anns && anns.length > 0 ? <AnnotationsCard annotations={anns} /> : null}
           {!anns?.length && sel ? <SelectionCard sel={sel} interactive /> : null}
           {notif ? <ViewerNotificationCard notification={notif} /> : null}
@@ -135,9 +135,8 @@ function SelectionCard({ sel, interactive }: { sel: SelectionContext; interactiv
 
   return (
     <div
-      className={`px-3 pt-2.5 pb-1.5 border-b border-cc-border/40 bg-cc-primary/5 ${
-        interactive ? "cursor-pointer hover:bg-cc-primary/10 transition-colors" : ""
-      }`}
+      className={`px-3 pt-2.5 pb-1.5 border-b border-cc-border/40 bg-cc-primary/5 ${interactive ? "cursor-pointer hover:bg-cc-primary/10 transition-colors" : ""
+        }`}
       onClick={interactive ? handleClick : undefined}
     >
       {sel.thumbnail && (
@@ -270,6 +269,8 @@ function groupContentBlocks(blocks: ContentBlock[]): GroupedBlock[] {
 
   for (const block of blocks) {
     if (block.type === "tool_use") {
+      // AskUserQuestion has its own UI in PermissionBanner — don't render as ToolBlock
+      if (block.name === "AskUserQuestion") continue;
       const last = groups[groups.length - 1];
       if (last?.kind === "tool_group" && last.name === block.name) {
         last.items.push({ id: block.id, name: block.name, input: block.input });
@@ -344,7 +345,7 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
 
 function AssistantAvatar() {
   return (
-    <div className="w-6 h-6 rounded-full bg-cc-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+    <div className="w-6 h-6 rounded-full bg-cc-primary/10 border border-cc-primary/30 shadow-[0_0_10px_rgba(249,115,22,0.3)] flex items-center justify-center shrink-0 mt-0.5">
       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-primary">
         <circle cx="8" cy="8" r="3" />
       </svg>
@@ -479,6 +480,8 @@ function ContentBlockRenderer({
   }
 
   if (block.type === "tool_use") {
+    // AskUserQuestion has its own UI in PermissionBanner
+    if (block.name === "AskUserQuestion") return null;
     return <ToolBlock name={block.name} input={block.input} toolUseId={block.id} />;
   }
 
@@ -493,11 +496,10 @@ function ContentBlockRenderer({
     }
 
     return (
-      <div className={`text-xs font-mono-code rounded-lg px-3 py-2 border ${
-        isError
-          ? "bg-cc-error/5 border-cc-error/20 text-cc-error"
-          : "bg-cc-card border-cc-border text-cc-muted"
-      } max-h-40 overflow-y-auto whitespace-pre-wrap`}>
+      <div className={`text-xs font-mono-code rounded-lg px-3 py-2 border ${isError
+        ? "bg-cc-error/5 border-cc-error/20 text-cc-error"
+        : "bg-cc-card border-cc-border text-cc-muted"
+        } max-h-40 overflow-y-auto whitespace-pre-wrap`}>
         {content}
       </div>
     );
@@ -515,9 +517,8 @@ function BashResultBlock({ text, isError }: { text: string; isError: boolean }) 
   const rendered = showFull || !hasMore ? text : lines.slice(-20).join("\n");
 
   return (
-    <div className={`rounded-lg border ${
-      isError ? "bg-cc-error/5 border-cc-error/20" : "bg-cc-card border-cc-border"
-    }`}>
+    <div className={`rounded-lg border ${isError ? "bg-cc-error/5 border-cc-error/20" : "bg-cc-card border-cc-border"
+      }`}>
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-cc-border">
         <span className={`text-[10px] font-medium ${isError ? "text-cc-error" : "text-cc-muted"}`}>
           {hasMore && !showFull ? "Output (last 20 lines)" : "Output"}
@@ -531,9 +532,8 @@ function BashResultBlock({ text, isError }: { text: string; isError: boolean }) 
           </button>
         )}
       </div>
-      <pre className={`text-xs font-mono-code px-3 py-2 whitespace-pre-wrap max-h-60 overflow-y-auto ${
-        isError ? "text-cc-error" : "text-cc-muted"
-      }`}>
+      <pre className={`text-xs font-mono-code px-3 py-2 whitespace-pre-wrap max-h-60 overflow-y-auto ${isError ? "text-cc-error" : "text-cc-muted"
+        }`}>
         {rendered}
       </pre>
     </div>
@@ -548,10 +548,10 @@ function ThinkingBlock({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="border border-cc-border rounded-[12px] overflow-hidden bg-cc-card/70">
+    <div className="border border-cc-primary/20 rounded-[16px] overflow-hidden bg-cc-primary/[0.03] shadow-[0_0_15px_rgba(249,115,22,0.05)] relative before:absolute before:inset-0 before:bg-gradient-to-b before:from-cc-primary/10 before:to-transparent before:opacity-0 hover:before:opacity-100 before:transition-opacity">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-cc-muted hover:bg-cc-hover/70 transition-colors cursor-pointer"
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-cc-muted hover:bg-cc-primary/10 transition-colors cursor-pointer relative z-10"
       >
         <svg
           viewBox="0 0 16 16"
@@ -690,7 +690,7 @@ function parseContextOutput(content: string): ContextUsageData | null {
         percent: parseFloat(match[3]),
         type: name.toLowerCase().includes("free") ? "free"
           : name.toLowerCase().includes("compact") ? "compacted"
-          : "used",
+            : "used",
       });
       continue;
     }
@@ -706,7 +706,7 @@ function parseContextOutput(content: string): ContextUsageData | null {
         percent: parseFloat(match[4]),
         type: marker === "○" || name.toLowerCase().includes("free") ? "free"
           : marker === "⊠" || name.toLowerCase().includes("compact") ? "compacted"
-          : "used",
+            : "used",
       });
       continue;
     }
@@ -722,7 +722,7 @@ function parseContextOutput(content: string): ContextUsageData | null {
         percent: parseFloat(match[3]),
         type: name.toLowerCase().includes("free") ? "free"
           : name.toLowerCase().includes("compact") ? "compacted"
-          : "used",
+            : "used",
       });
     }
   }
@@ -780,13 +780,12 @@ function ContextUsageCard({ content }: { content: string }) {
           {coloredCategories.map((cat, i) => (
             <div key={i} className="flex items-center gap-2 text-xs">
               <span
-                className={`w-2 h-2 shrink-0 ${
-                  cat.type === "free"
-                    ? "rounded-full border border-neutral-500"
-                    : cat.type === "compacted"
-                      ? "rounded-sm border border-neutral-500"
-                      : "rounded-full"
-                }`}
+                className={`w-2 h-2 shrink-0 ${cat.type === "free"
+                  ? "rounded-full border border-neutral-500"
+                  : cat.type === "compacted"
+                    ? "rounded-sm border border-neutral-500"
+                    : "rounded-full"
+                  }`}
                 style={cat.type !== "free" && cat.type !== "compacted" ? { backgroundColor: cat.color } : undefined}
               />
               <span className="text-cc-muted flex-1">{cat.name}</span>

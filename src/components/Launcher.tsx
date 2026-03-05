@@ -34,6 +34,14 @@ interface RecentSession {
   lastAccessed: number;
 }
 
+interface ChildProcess {
+  pid: number;
+  specifier: string;
+  workspace: string;
+  url: string;
+  startedAt: number;
+}
+
 interface InitParam {
   name: string;
   label: string;
@@ -67,6 +75,15 @@ function timeAgo(timestamp: number): string {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
+function runningDuration(startedAt: number): string {
+  const seconds = Math.floor((Date.now() - startedAt) / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
+}
+
 function shortenPath(path: string, homeDir: string): string {
   if (path.startsWith(homeDir)) return "~" + path.slice(homeDir.length);
   return path;
@@ -95,8 +112,8 @@ function ModeCard({
 
   return (
     <div
-      className="border border-cc-border rounded-xl p-5 bg-cc-card hover:border-cc-primary/30 transition-all duration-300 flex flex-col gap-3 hover:shadow-[0_0_24px_rgba(217,119,87,0.06)]"
-      style={{ animation: `warmFadeIn 0.5s ease-out ${index * 0.1}s both` }}
+      className="border border-cc-border/50 rounded-2xl p-6 bg-cc-card backdrop-blur-xl hover:border-cc-primary/40 transition-all duration-300 flex flex-col gap-4 hover:shadow-[0_8px_32px_-8px_rgba(249,115,22,0.2)] hover:-translate-y-1"
+      style={{ animation: `warmFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${index * 0.05}s both` }}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-3">
@@ -210,7 +227,7 @@ function SessionCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspace: session.workspace, version: skillUpdate!.currentVersion }),
       });
-    } catch {}
+    } catch { }
     setSkillUpdate(null);
     setLaunching(true);
     await onResume(true);
@@ -219,7 +236,7 @@ function SessionCard({
 
   return (
     <div
-      className={`border border-cc-border rounded-lg bg-cc-card hover:border-cc-primary/30 transition-all group ${launching ? "opacity-60 pointer-events-none" : ""}`}
+      className={`border border-cc-border/50 rounded-xl bg-cc-card backdrop-blur-md hover:border-cc-primary/40 transition-all duration-300 group hover:shadow-[0_4px_24px_-8px_rgba(249,115,22,0.15)] hover:-translate-y-0.5 ${launching ? "opacity-60 pointer-events-none" : ""}`}
     >
       <div
         className="flex items-center gap-3 px-4 py-2.5 cursor-pointer"
@@ -283,6 +300,85 @@ function SessionCard({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── RunningCard ───────────────────────────────────────────────────────────
+
+function RunningCard({
+  process: proc,
+  homeDir,
+  onStop,
+}: {
+  process: ChildProcess;
+  homeDir: string;
+  onStop: () => void;
+}) {
+  const [confirmStop, setConfirmStop] = useState(false);
+  const [duration, setDuration] = useState(runningDuration(proc.startedAt));
+
+  // Update duration every 10s
+  useEffect(() => {
+    const interval = setInterval(() => setDuration(runningDuration(proc.startedAt)), 10_000);
+    return () => clearInterval(interval);
+  }, [proc.startedAt]);
+
+  // Extract mode name from specifier for icon lookup
+  const modeName = proc.specifier.split("/").pop() || proc.specifier;
+
+  return (
+    <div className="border-l-2 border-emerald-500/70 rounded-r-xl bg-cc-card backdrop-blur-md hover:bg-cc-card/80 transition-all duration-200 group">
+      <div className="flex items-center gap-3 px-4 py-2.5">
+        {/* Pulsing green dot */}
+        <span className="relative flex h-2.5 w-2.5 shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+        </span>
+        <span className="text-base shrink-0">{MODE_ICONS[modeName] || "\u{1F4E6}"}</span>
+        <div className="min-w-0 flex-1">
+          <span className="text-sm font-medium text-cc-fg">{modeName}</span>
+          <span className="text-xs text-cc-muted ml-2 font-mono truncate">
+            {shortenPath(proc.workspace, homeDir)}
+          </span>
+        </div>
+        <span className="text-xs text-emerald-400/80 shrink-0">{duration}</span>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => window.open(proc.url, "_blank")}
+            className="px-2 py-1 text-xs text-cc-muted hover:text-cc-fg transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+            title="Open"
+          >
+            Open
+          </button>
+          {!confirmStop ? (
+            <button
+              onClick={() => setConfirmStop(true)}
+              className="text-cc-muted/40 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+              title="Stop"
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                <rect x="3" y="3" width="10" height="10" rx="1.5" />
+              </svg>
+            </button>
+          ) : (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => { onStop(); setConfirmStop(false); }}
+                className="text-xs text-red-400 hover:text-red-300 font-medium cursor-pointer"
+              >
+                Confirm
+              </button>
+              <button
+                onClick={() => setConfirmStop(false)}
+                className="text-xs text-cc-muted hover:text-cc-fg cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -372,8 +468,8 @@ function LaunchDialog({
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="bg-cc-surface border border-cc-border rounded-xl p-6 w-full max-w-lg mx-4"
-        style={{ animation: "warmFadeIn 0.3s ease-out" }}
+        className="bg-cc-surface/80 backdrop-blur-2xl border border-cc-border/50 rounded-2xl p-8 w-full max-w-lg mx-4 shadow-[0_16px_64px_-16px_rgba(0,0,0,0.5)]"
+        style={{ animation: "warmFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-xl font-semibold text-cc-fg mb-4">
@@ -448,6 +544,7 @@ export default function Launcher() {
   const [published, setPublished] = useState<PublishedMode[]>([]);
   const [local, setLocal] = useState<LocalMode[]>([]);
   const [sessions, setSessions] = useState<RecentSession[]>([]);
+  const [running, setRunning] = useState<ChildProcess[]>([]);
   const [homeDir, setHomeDir] = useState("");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -465,7 +562,7 @@ export default function Launcher() {
         setPublished(data.published || []);
         setLocal(data.local || []);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const refreshSessions = useCallback(() => {
@@ -475,38 +572,60 @@ export default function Launcher() {
         setSessions(data.sessions || []);
         if (data.homeDir) setHomeDir(data.homeDir);
       })
-      .catch(() => {});
+      .catch(() => { });
+  }, []);
+
+  const refreshRunning = useCallback(() => {
+    fetch(`${getApiBase()}/api/processes/children`)
+      .then((r) => r.json())
+      .then((data) => setRunning(data.processes || []))
+      .catch(() => { });
   }, []);
 
   useEffect(() => {
     Promise.all([
       fetch(`${getApiBase()}/api/registry`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/sessions`).then((r) => r.json()),
+      fetch(`${getApiBase()}/api/processes/children`).then((r) => r.json()),
     ])
-      .then(([registryData, sessionsData]) => {
+      .then(([registryData, sessionsData, runningData]) => {
         setBuiltins(registryData.builtins || []);
         setPublished(registryData.published || []);
         setLocal(registryData.local || []);
         setSessions(sessionsData.sessions || []);
         if (sessionsData.homeDir) setHomeDir(sessionsData.homeDir);
+        setRunning(runningData.processes || []);
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, []);
+
+  // Poll running processes every 3s
+  useEffect(() => {
+    const interval = setInterval(refreshRunning, 3000);
+    return () => clearInterval(interval);
+  }, [refreshRunning]);
 
   const deleteLocalMode = useCallback(async (name: string) => {
     try {
       await fetch(`${getApiBase()}/api/modes/${encodeURIComponent(name)}`, { method: "DELETE" });
       refreshModes();
-    } catch {}
+    } catch { }
   }, [refreshModes]);
 
   const deleteSession = useCallback(async (id: string) => {
     try {
       await fetch(`${getApiBase()}/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
       refreshSessions();
-    } catch {}
+    } catch { }
   }, [refreshSessions]);
+
+  const stopProcess = useCallback(async (pid: number) => {
+    try {
+      await fetch(`${getApiBase()}/api/processes/children/${pid}/kill`, { method: "POST" });
+      refreshRunning();
+    } catch { }
+  }, [refreshRunning]);
 
   // Direct launch for session resume — no dialog, just go
   const directLaunch = useCallback(async (specifier: string, workspace: string, skipSkill?: boolean) => {
@@ -520,9 +639,10 @@ export default function Launcher() {
       if (data.url) {
         window.open(data.url, "_blank");
         refreshSessions();
+        refreshRunning();
       }
-    } catch {}
-  }, []);
+    } catch { }
+  }, [refreshSessions, refreshRunning]);
 
   const filterModes = <T extends { name: string; displayName: string; description?: string }>(
     modes: T[],
@@ -542,57 +662,97 @@ export default function Launcher() {
   const filteredLocal = filterModes(local);
   const filteredSessions = search
     ? sessions.filter(
-        (s) =>
-          s.mode.toLowerCase().includes(search.toLowerCase()) ||
-          s.displayName.toLowerCase().includes(search.toLowerCase()) ||
-          s.workspace.toLowerCase().includes(search.toLowerCase()),
-      )
+      (s) =>
+        s.mode.toLowerCase().includes(search.toLowerCase()) ||
+        s.displayName.toLowerCase().includes(search.toLowerCase()) ||
+        s.workspace.toLowerCase().includes(search.toLowerCase()),
+    )
     : sessions;
 
+  const showTopRow = filteredSessions.length > 0 || running.length > 0;
+
   return (
-    <div className="min-h-screen bg-cc-bg text-cc-fg">
-      <div className="max-w-5xl mx-auto px-6 py-16">
+    <div className="min-h-screen bg-cc-bg text-cc-fg relative overflow-hidden">
+      {/* Immersive mesh gradient background element */}
+      <div className="absolute top-[-10%] left-[20%] w-[60%] h-[40%] bg-cc-primary/10 blur-[120px] rounded-full pointer-events-none animate-[pulse-dot_8s_ease-in-out_infinite]" />
+      <div className="absolute top-[20%] right-[-10%] w-[40%] h-[50%] bg-purple-500/10 blur-[100px] rounded-full pointer-events-none animate-[pulse-dot_10s_ease-in-out_infinite_reverse]" />
+
+      <div className="max-w-5xl mx-auto px-6 py-20 relative z-10">
         {/* Header */}
-        <div className="text-center mb-12" style={{ animation: "warmFadeIn 0.5s ease-out" }}>
-          <h1 className="text-5xl font-bold mb-3 bg-gradient-to-r from-cc-primary via-cc-primary-hover to-cc-primary bg-clip-text text-transparent">
+        <div className="text-center mb-16" style={{ animation: "warmFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+          <h1 className="text-6xl font-extrabold mb-4 tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-cc-fg via-cc-primary to-indigo-400">
             Pneuma
           </h1>
-          <p className="text-cc-muted text-lg">
+          <p className="text-cc-muted/80 text-lg font-medium tracking-wide">
             Choose a mode to get started
           </p>
         </div>
 
         {/* Search */}
-        <div className="mb-10 max-w-xl mx-auto" style={{ animation: "warmFadeIn 0.5s ease-out 0.1s both" }}>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search modes..."
-            className="w-full px-4 py-3 bg-cc-input-bg border border-cc-border rounded-xl text-cc-fg text-sm placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50 transition-colors"
-          />
+        <div className="mb-14 max-w-xl mx-auto" style={{ animation: "warmFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both" }}>
+          <div className="relative group">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search modes..."
+              className="w-full pl-12 pr-6 py-4 bg-cc-surface/40 backdrop-blur-md border border-cc-border/40 rounded-full text-cc-fg text-base placeholder:text-cc-muted/40 outline-none transition-all focus:border-cc-primary/50 focus:bg-cc-surface/70 focus:shadow-[0_0_30px_rgba(249,115,22,0.1)] hover:border-cc-border"
+            />
+            <svg className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-cc-muted/60 group-focus-within:text-cc-primary/80 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
         </div>
 
         {loading ? (
-          <p className="text-center text-cc-muted">Loading modes...</p>
+          <div className="flex justify-center items-center py-20">
+            <div className="w-8 h-8 rounded-full border-2 border-cc-primary border-t-transparent animate-spin" />
+          </div>
         ) : (
           <>
-            {/* Recent Sessions */}
-            {filteredSessions.length > 0 && (
+            {/* Recent Sessions + Running — side by side */}
+            {showTopRow && (
               <section className="mb-10" style={{ animation: "warmFadeIn 0.5s ease-out 0.15s both" }}>
-                <h2 className="text-sm font-medium text-cc-muted uppercase tracking-wide mb-4">
-                  Recent Sessions
-                </h2>
-                <div className="space-y-2">
-                  {filteredSessions.map((session) => (
-                    <SessionCard
-                      key={session.id}
-                      session={session}
-                      homeDir={homeDir}
-                      onResume={(skipSkill) => directLaunch(session.mode, session.workspace, skipSkill)}
-                      onDelete={() => deleteSession(session.id)}
-                    />
-                  ))}
+                <div className={`grid gap-6 ${filteredSessions.length > 0 && running.length > 0 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1"}`}>
+                  {/* Recent Sessions */}
+                  {filteredSessions.length > 0 && (
+                    <div>
+                      <h2 className="text-sm font-medium text-cc-muted uppercase tracking-wide mb-3">
+                        Recent Sessions
+                      </h2>
+                      <div className="space-y-2 max-h-[156px] overflow-y-auto pr-1">
+                        {filteredSessions.map((session) => (
+                          <SessionCard
+                            key={session.id}
+                            session={session}
+                            homeDir={homeDir}
+                            onResume={(skipSkill) => directLaunch(session.mode, session.workspace, skipSkill)}
+                            onDelete={() => deleteSession(session.id)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Running Processes */}
+                  {running.length > 0 && (
+                    <div>
+                      <h2 className="text-sm font-medium text-cc-muted uppercase tracking-wide mb-3">
+                        Running
+                        <span className="ml-2 text-xs text-emerald-400/80 normal-case font-normal">{running.length} active</span>
+                      </h2>
+                      <div className="space-y-2 max-h-[156px] overflow-y-auto pr-1">
+                        {running.map((proc) => (
+                          <RunningCard
+                            key={proc.pid}
+                            process={proc}
+                            homeDir={homeDir}
+                            onStop={() => stopProcess(proc.pid)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </section>
             )}

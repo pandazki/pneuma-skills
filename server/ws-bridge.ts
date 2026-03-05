@@ -565,7 +565,8 @@ export class WsBridge {
   private handleControlRequest(session: Session, msg: CLIControlRequestMessage) {
     if (msg.request.subtype === "can_use_tool") {
       // In bypassPermissions mode, auto-approve all tool requests
-      if (session.state.permissionMode === "bypassPermissions") {
+      // EXCEPT AskUserQuestion — it always requires user interaction
+      if (session.state.permissionMode === "bypassPermissions" && msg.request.tool_name !== "AskUserQuestion") {
         const ndjson = JSON.stringify({
           type: "control_response",
           response: {

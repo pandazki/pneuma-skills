@@ -9,9 +9,9 @@ const FONT_FAMILY =
   "'MesloLGS Nerd Font Mono', 'MesloLGS NF', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace";
 
 const THEME = {
-  background: "#141413",
+  background: "#000000",
   foreground: "#faf9f5",
-  cursor: "#d97757",
+  cursor: "#f97316",
   selectionBackground: "rgba(217, 119, 87, 0.3)",
   black: "#1a1a18",
   red: "#fc8181",
@@ -70,7 +70,7 @@ export default function TerminalPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ terminalId }),
       });
-    } catch {}
+    } catch { }
     setTerminalId(null);
   }, [terminalId, setTerminalId]);
 
@@ -99,7 +99,7 @@ export default function TerminalPanel() {
     // Fit after open
     try {
       fitAddon.fit();
-    } catch {}
+    } catch { }
 
     xtermRef.current = xterm;
     fitAddonRef.current = fitAddon;
@@ -113,7 +113,7 @@ export default function TerminalPanel() {
       // Send initial resize
       try {
         fitAddon.fit();
-      } catch {}
+      } catch { }
       ws.send(
         JSON.stringify({
           type: "resize",
@@ -135,7 +135,7 @@ export default function TerminalPanel() {
             xterm.writeln(`\r\n[Process exited with code ${msg.exitCode}]`);
             setTerminalId(null);
           }
-        } catch {}
+        } catch { }
       }
     };
 
@@ -163,7 +163,7 @@ export default function TerminalPanel() {
             }),
           );
         }
-      } catch {}
+      } catch { }
     });
     resizeObserver.observe(containerRef.current);
 
@@ -181,9 +181,12 @@ export default function TerminalPanel() {
   }, [terminalId, setTerminalId]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-black relative shadow-inner overflow-hidden">
+      {/* CRT Scanline Overlay */}
+      <div className="pointer-events-none absolute inset-0 z-50 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_4px,3px_100%] opacity-20" />
+
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-cc-border bg-cc-card">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-cc-border/40 bg-zinc-950 shadow-sm z-10 relative">
         <span className="text-xs text-cc-muted font-medium">Terminal</span>
         <div className="flex-1" />
         {terminalId && (
