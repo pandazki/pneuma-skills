@@ -374,12 +374,16 @@ export function useSlideThumbnails(
   themeCSS: string,
   virtualWidth: number,
   virtualHeight: number,
+  /** Skip SVG capture entirely (e.g. Safari can't render foreignObject in <img>) */
+  skip = false,
 ): Map<string, string> {
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(new Map());
   const hashesRef = useRef<Map<string, number>>(new Map());
   const queueRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    if (skip) return;
+
     // Cancel any in-flight capture queue
     queueRef.current?.abort();
     const controller = new AbortController();
