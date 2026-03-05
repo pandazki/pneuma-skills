@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.18.0] - 2026-03-05
+
+### Added
+- **Launcher: Mode Maker card** — special full-width card with shimmer border animation between built-in and local modes
+- **Launcher: GitHub link** — repo link in header area
+- **Launcher: Directory browser** — Browse button on workspace path inputs with inline directory navigator (breadcrumbs, dir list, Select)
+- **Launcher: Existing workspace detection** — auto-loads config params and locks them read-only when selecting a directory with `.pneuma/session.json`
+- **Launcher: "Open in Mode Maker" button** — local mode cards have a wrench icon to open in Mode Maker
+- **Mode Maker: Import dialog upgrade** — card-based UI with icons and source badges, Modes + URL tabs
+- **Mode Maker: URL import** — download tar.gz from URL, extract to `~/.pneuma/modes/`, and fork into workspace
+- **Server: `GET /api/browse-dirs`** — filesystem directory browsing for workspace path picker
+- **Server: `GET /api/workspace-check`** — detect existing sessions and load config
+
+### Changed
+- **Mode Maker seed templates** — synced with latest architecture: icon placeholder, serveDir, topBarNavigation, resolveItems, createEmpty
+- **Mode Maker SKILL.md** — added icon format docs, workspace model section, supportsContentSets, updated mode examples
+- **Mode Maker import** — `GET /api/mode-maker/modes` now scans both builtin and `~/.pneuma/modes/` local modes
+- **Mode Maker version** — bumped to 1.1.0 with icon
+
+### Fixed
+- **Local mode workspace path** — extract mode name from path instead of using full absolute path
+- **LaunchDialog init params** — hidden when defaultWorkspace is provided (existing content won't be re-seeded)
+
 ## [1.17.0] - 2026-03-05
 
 ### Added
