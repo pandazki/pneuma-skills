@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.18.3] - 2026-03-05
+
+### Fixed
+- **ScaffoldConfirm not visible in launcher**: use `createPortal` to `document.body` in slide/draw/doc modes to escape `backdrop-filter` containing block
+- **Slide navigator crash**: remove leftover `getSrcdoc` reference from vertical layout (pre-existing bug from Safari fallback cleanup)
+- **Duplicate React key warnings**: deduplicate assistant messages in server `messageHistory` to prevent duplicate entries on page load/reconnect
+- **Doc mode edit not saving in launcher**: use `VITE_API_PORT` instead of hardcoded `17007` for `saveFile` and scaffold API calls
+
 ## [1.18.2] - 2026-03-05
 
 ### Fixed
