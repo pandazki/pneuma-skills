@@ -206,3 +206,31 @@
     transform: translateY(0) scale(1);
   }
 }
+
+@keyframes text-gradient-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@layer utilities {
+  .animate-text-gradient-flow {
+    background-size: 200% auto;
+    animation: text-gradient-flow 6s linear infinite;
+  }
+
+  .bg-grid-pattern {
+    background-image:
+      linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+}

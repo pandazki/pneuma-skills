@@ -1,11 +1,15 @@
 <h1 align="center">Pneuma Skills</h1>
-<p align="center"><strong>WYSIWYG Delivery Platform for Code Agents</strong></p>
-<p align="center">Agents edit files. You see the result — live.</p>
+<p align="center"><strong>Co-creation Infrastructure for Humans × Code Agents</strong></p>
+<p align="center">Visual environment, skills, continuous learning, and distribution — <br>everything humans and agents need to build content together.</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/pneuma-skills"><img src="https://img.shields.io/npm/v/pneuma-skills.svg" alt="npm version" /></a>
   <a href="https://www.npmjs.com/package/pneuma-skills"><img src="https://img.shields.io/npm/dm/pneuma-skills.svg" alt="npm downloads" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" /></a>
+</p>
+
+<p align="center">
+  <img src="docs/images/slide-mode-screenshot.png" alt="Pneuma Slide Mode" width="800" />
 </p>
 
 <pre align="center">bunx pneuma-skills slide --workspace ./my-first-pneuma-slide</pre>
@@ -14,29 +18,24 @@
 
 > **"pneuma"** — Greek *pneuma*, meaning soul, breath, life force.
 
-Pneuma fills the last mile between Code Agents and users: agents edit files on disk, Pneuma watches for changes and streams a live WYSIWYG preview alongside a full chat interface. Everything is driven by three pluggable contracts — bring your own Mode, Viewer, or Agent backend.
+When humans and code agents co-create content, they need more than a chat window — they need shared infrastructure. Pneuma provides four pillars for this **isomorphic collaboration**, built atop mainstream code agents (currently [Claude Code](https://docs.anthropic.com/en/docs/claude-code)):
 
-## Demo
+**Visual Environment** — The agent edits files on disk; you see, select, and guide the rendered result in a live, bidirectional workspace. Both human and agent operate on the same content representation in real-time.
 
-Ships with **Doc Mode** (markdown editing), **Slide Mode** (presentation editing), **Draw Mode** (Excalidraw whiteboard), and **Mode Maker** (create custom modes with AI). Here's Doc Mode — Claude Code edits `.md` files and you see the rendered result in real-time:
+**Skills** — Domain-specific knowledge and seed templates injected into the agent per mode. A presentation skill teaches layout, rhythm, and export; a document skill teaches prose and structure. Skills version and evolve with each release, and sessions persist across runs — the agent picks up where it left off.
 
-```
-┌─────────────────────────────┬──────────────────────────┐
-│                             │  Chat with Claude Code   │
-│   Live Markdown Preview     │                          │
-│                             │  > Add a features section│
-│   # My Document             │                          │
-│   ## Features               │  [Thinking... 3s]        │
-│   - Real-time preview       │                          │
-│   - GFM support             │  ✎ Edit README.md        │
-│   - Image rendering         │  ✎ Write hero.png        │
-│                             │                          │
-├─────────────────────────────┼──────────────────────────┤
-│  view / edit / select       │  Chat │ Context │ Term   │
-├─────────────────────────────┴──────────────────────────┤
-│  ● Connected  session:abc123  $0.02  3 turns           │
-└────────────────────────────────────────────────────────┘
-```
+**Continuous Learning** *(v2.0)* — Skills today are static presets. The next step: mine cross-session conversation history to extract user preferences and style patterns, then dynamically augment the preset skill. During a session, the agent further adapts in real-time — learning what "good" looks like for *this* user, in *this* domain, over time.
+
+**Distribution** — A complete ecosystem for sharing capabilities. Build a custom mode with AI assistance via Mode Maker, publish to the marketplace, and let anyone `pneuma mode add` it instantly.
+
+## Built-in Modes
+
+| Mode | What it does |
+|------|-------------|
+| **doc** | Markdown editing with live rendered preview |
+| **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export |
+| **draw** | Excalidraw whiteboard with `.excalidraw` file editing |
+| **mode-maker** | Create custom modes with AI — fork, play-test, publish |
 
 ## Prerequisites
 
@@ -173,7 +172,7 @@ When Claude Code edits files, chokidar detects the changes and pushes updated co
 | **ViewerContract** | Preview component, context extraction, file workspace model, agent-callable actions | Custom renderers, viewport tracking, action protocols |
 | **AgentBackend** | Launch, resume, kill, capability declaration | Other agents (Codex, Aider) |
 
-Contracts are defined in `core/types/` with 208 tests across `core/__tests__/` and `server/__tests__/`.
+Contracts are defined in `core/types/` with 274 tests across 17 test files.
 
 ## Project Structure
 
@@ -235,7 +234,7 @@ pneuma-skills/
 │   └── mode-publish.ts        # Mode package publishing to R2 registry
 └── docs/
     ├── adr/                   # Architecture Decision Records
-    ├── design/                # Active design documents
+    ├── images/                # Screenshots and visual assets
     └── archive/               # Completed design docs & references
 ```
 
@@ -257,8 +256,12 @@ pneuma-skills/
 ## Features
 
 - **Launcher marketplace UI** — Browse builtin, published, and local modes; one-click launch or resume
-- **Live WYSIWYG preview** — Agent edits files, you see rendered results instantly
+- **Live visual workspace** — Agent edits files, you see rendered results instantly in a bidirectional canvas
 - **Mode Maker** — Create and develop custom modes with AI assistance (fork, play-test, publish)
+- **Content sets** — Slide Mode supports multiple slide sets per workspace with seed templates
+- **Next-gen visual design** — Ethereal Tech aesthetic with glassmorphism, neon orange accents, cinematic dark UI
+- **Export & capture** — Slide export to HTML/images via `@zumer/snapdom`
+- **Launcher process management** — Monitor and kill child processes spawned from the launcher
 - **Element selection** — Click any block to select it, then instruct changes on that specific element
 - **Inline editing** — Edit content directly in the preview (edit mode)
 - **Rich chat UI** — Streaming text, expandable tool calls, collapsible thinking, context visualization
@@ -278,7 +281,7 @@ pneuma-skills/
 
 ## Roadmap
 
-- [x] Doc Mode — Markdown WYSIWYG editing
+- [x] Doc Mode — Markdown editing with live visual preview
 - [x] Slide Mode — Presentation editing with iframe preview, drag-reorder, AI image generation
 - [x] Draw Mode — Excalidraw whiteboard with `.excalidraw` file editing
 - [x] Element selection & inline editing
@@ -291,7 +294,17 @@ pneuma-skills/
 - [x] Mode Maker — Create custom modes with AI (fork, play-test, publish)
 - [x] Mode publishing — `pneuma mode publish` to R2 registry
 - [x] Windows compatibility — Cross-platform PATH, terminal, browser, process management
+- [x] Content sets — Multiple slide sets per workspace with seed templates
+- [x] Launcher process management — Monitor and kill child processes
+- [x] Next-gen visual redesign — Ethereal Tech aesthetic (glassmorphism, cinematic dark UI)
+- [x] Export & image capture — Slide export via `@zumer/snapdom`
 - [ ] Additional agent backends — Codex CLI, custom agents
+
+### v2.0 — Continuous Learning
+
+- [ ] Cross-session preference extraction — mine conversation history to discover user style, tone, and layout preferences
+- [ ] Dynamic skill augmentation — automatically append learned preferences to preset skills at session start
+- [ ] In-session adaptation — agent refines its approach in real-time based on user feedback patterns
 
 ## Acknowledgements
 

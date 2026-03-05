@@ -28,15 +28,13 @@ import type {
 } from "../../../core/types/viewer-contract.js";
 import { buildSelectionScript } from "../../../core/iframe-selection/index.js";
 import { useStore } from "../../../src/store.js";
-import { useSlideThumbnails } from "../hooks/useSlideThumbnails.js";
+import { useSlideThumbnails, sanitizeHtmlQuotes } from "../hooks/useSlideThumbnails.js";
 import SlideIframePool from "./SlideIframePool.js";
 import HighlighterCanvas from "./HighlighterCanvas.js";
 import { captureSlideRegion } from "./captureSlideRegion.js";
 import { generateSlideScaffold, type SlideSpec, type ScaffoldFile } from "./scaffold.js";
 import ScaffoldConfirm from "../../../src/components/ScaffoldConfirm.js";
 
-/** Safari doesn't render SVG foreignObject in <img> — detect once at module level */
-const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -319,6 +317,7 @@ const SELECTION_SCRIPT = buildSelectionScript({
  * - Fragments: wrap in our template with themeCSS.
  */
 function buildSrcdoc(slideHtml: string, themeCSS: string): string {
+  slideHtml = sanitizeHtmlQuotes(slideHtml);
   const baseUrl = import.meta.env.DEV ? "http://localhost:17007" : "";
   const isFullDoc =
     slideHtml.includes("<!DOCTYPE") || slideHtml.includes("<html");
@@ -922,8 +921,8 @@ export default function SlidePreview({
   const VIRTUAL_W = (initParams?.slideWidth as number) || 1280;
   const VIRTUAL_H = (initParams?.slideHeight as number) || 720;
 
-  // Capture slide thumbnails as SVG data URL images (skipped on Safari — uses iframe fallback)
-  const thumbnailImages = useSlideThumbnails(slides, files, themeCSS, VIRTUAL_W, VIRTUAL_H, isSafari);
+  // Capture slide thumbnails as PNG data URL images via snapdom
+  const thumbnailImages = useSlideThumbnails(slides, files, themeCSS, VIRTUAL_W, VIRTUAL_H);
 
   // ── Auto content-fit check on file changes ─────────────────────────────
   // When files change, wait for iframes to render, then check if any slide
@@ -1342,8 +1341,6 @@ export default function SlidePreview({
       position={navPosition}
       virtualWidth={VIRTUAL_W}
       virtualHeight={VIRTUAL_H}
-      files={isSafari ? files : undefined}
-      themeCSS={isSafari ? themeCSS : undefined}
     />
   ) : null;
 
@@ -1540,8 +1537,6 @@ function SlideNavigator({
   position,
   virtualWidth,
   virtualHeight,
-  files,
-  themeCSS,
 }: {
   slides: { file: string; title: string }[];
   activeIndex: number;
@@ -1552,9 +1547,6 @@ function SlideNavigator({
   position: "left" | "bottom";
   virtualWidth: number;
   virtualHeight: number;
-  /** Pass files + themeCSS for Safari iframe-based thumbnails */
-  files?: ViewerPreviewProps["files"];
-  themeCSS?: string;
 }) {
   const activeRef = useRef<HTMLDivElement>(null);
 
@@ -1587,11 +1579,6 @@ function SlideNavigator({
   const strategy =
     position === "bottom" ? horizontalListSortingStrategy : verticalListSortingStrategy;
 
-  // Safari: build srcdoc for each slide (iframe-based thumbnails)
-  const getSrcdoc = files && themeCSS != null
-    ? (file: string) => buildSrcdoc(findSlideContent(files, file), themeCSS)
-    : undefined;
-
   if (position === "bottom") {
     return (
       <div className="shrink-0 border-t border-cc-border bg-cc-bg">
@@ -1607,7 +1594,6 @@ function SlideNavigator({
                   title={slide.title}
                   isActive={i === activeIndex}
                   imageUrl={thumbnailImages.get(slide.file)}
-                  srcdoc={getSrcdoc?.(slide.file)}
                   onClick={() => onSelect(i)}
                   onDelete={onDelete && slides.length > 1 ? () => onDelete(i) : undefined}
                   layout="horizontal"
@@ -1664,14 +1650,13 @@ const SortableSlideItem = forwardRef<
     title: string;
     isActive: boolean;
     imageUrl: string | undefined;
-    srcdoc?: string;
     onClick: () => void;
     onDelete?: () => void;
     layout: "horizontal" | "vertical";
     virtualWidth: number;
     virtualHeight: number;
   }
->(function SortableSlideItem({ id, index, title, isActive, imageUrl, srcdoc, onClick, onDelete, layout, virtualWidth, virtualHeight }, outerRef) {
+>(function SortableSlideItem({ id, index, title, isActive, imageUrl, onClick, onDelete, layout, virtualWidth, virtualHeight }, outerRef) {
   const {
     attributes,
     listeners,
@@ -1752,7 +1737,7 @@ const SortableSlideItem = forwardRef<
         } ${isDragging ? "opacity-70 scale-105 shadow-lg" : ""}`}
       >
         {deleteBtn}
-        <SlideThumbnail imageUrl={imageUrl} srcdoc={srcdoc} isActive={isActive} width={144} height={81} virtualWidth={virtualWidth} virtualHeight={virtualHeight} />
+        <SlideThumbnail imageUrl={imageUrl} isActive={isActive} width={144} height={81} virtualWidth={virtualWidth} virtualHeight={virtualHeight} />
         <span
           className={`text-[10px] max-w-[144px] truncate ${
             isActive ? "text-cc-primary" : "text-cc-muted group-hover:text-cc-fg"
@@ -1799,10 +1784,9 @@ const SortableSlideItem = forwardRef<
 
 // ── Slide Thumbnail ──────────────────────────────────────────────────────────
 
-/** Renders a slide thumbnail as an <img> (Chrome) or scaled iframe (Safari) */
+/** Renders a slide thumbnail as a PNG <img> */
 function SlideThumbnail({
   imageUrl,
-  srcdoc,
   isActive,
   width,
   height,
@@ -1810,8 +1794,6 @@ function SlideThumbnail({
   virtualHeight,
 }: {
   imageUrl: string | undefined;
-  /** Safari fallback: render slide in a scaled iframe instead of SVG <img> */
-  srcdoc?: string;
   isActive: boolean;
   width?: number;
   height?: number;
@@ -1823,39 +1805,6 @@ function SlideThumbnail({
   const thumbW = width ?? 192; // default for sidebar
   const thumbH = height ?? (thumbW * VIRTUAL_H) / VIRTUAL_W;
 
-  let content: React.ReactNode;
-  if (srcdoc) {
-    // Safari: scaled iframe thumbnail
-    content = (
-      <iframe
-        srcDoc={srcdoc}
-        sandbox="allow-same-origin allow-scripts"
-        tabIndex={-1}
-        aria-hidden="true"
-        style={{
-          width: VIRTUAL_W,
-          height: VIRTUAL_H,
-          transform: `scale(${thumbW / VIRTUAL_W})`,
-          transformOrigin: "top left",
-          border: "none",
-          pointerEvents: "none",
-        }}
-      />
-    );
-  } else if (imageUrl) {
-    content = (
-      <img
-        src={imageUrl}
-        alt=""
-        className="w-full h-full object-cover"
-        draggable={false}
-        aria-hidden="true"
-      />
-    );
-  } else {
-    content = <div className="w-full h-full bg-cc-bg/50 animate-pulse" />;
-  }
-
   return (
     <div
       className={`relative rounded overflow-hidden border-2 transition-colors ${
@@ -1865,7 +1814,17 @@ function SlideThumbnail({
       }`}
       style={{ width: thumbW, height: thumbH }}
     >
-      {content}
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt=""
+          className="w-full h-full object-cover"
+          draggable={false}
+          aria-hidden="true"
+        />
+      ) : (
+        <div className="w-full h-full bg-cc-bg/50 animate-pulse" />
+      )}
     </div>
   );
 }
@@ -1950,7 +1909,9 @@ function SlideToolbar({
 
   const handleExport = useCallback(() => {
     const baseUrl = import.meta.env.DEV ? `http://localhost:17007` : "";
-    window.open(`${baseUrl}/export/slides`, "_blank");
+    const cs = useStore.getState().activeContentSet;
+    const qs = cs ? `?contentSet=${encodeURIComponent(cs)}` : "";
+    window.open(`${baseUrl}/export/slides${qs}`, "_blank");
   }, []);
 
   const navTitle =

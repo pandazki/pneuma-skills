@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+
 
 interface BuiltinMode {
   name: string;
@@ -7,6 +8,7 @@ interface BuiltinMode {
   version: string;
   type: "builtin";
   hasInitParams?: boolean;
+  icon?: string;
 }
 
 interface PublishedMode {
@@ -16,6 +18,7 @@ interface PublishedMode {
   version: string;
   publishedAt: string;
   archiveUrl: string;
+  icon?: string;
 }
 
 interface LocalMode {
@@ -24,6 +27,7 @@ interface LocalMode {
   description?: string;
   version: string;
   path: string;
+  icon?: string;
 }
 
 interface RecentSession {
@@ -57,11 +61,17 @@ function getApiBase(): string {
   return "";
 }
 
-const MODE_ICONS: Record<string, string> = {
-  doc: "\u{1F4C4}",
-  slide: "\u{1F3A8}",
-  draw: "\u{270F}\u{FE0F}",
-};
+const FALLBACK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"/></svg>`;
+
+function ModeIcon({ svg }: { svg?: string }) {
+  const hasSvg = svg && svg.trim().startsWith("<svg");
+  return (
+    <div
+      className={`w-[1em] h-[1em] [&>svg]:w-full [&>svg]:h-full transition-all duration-500 ${hasSvg ? "text-cc-primary drop-shadow-[0_0_8px_rgba(249,115,22,0.4)]" : "text-cc-muted drop-shadow-[0_0_8px_rgba(255,255,255,0.15)]"}`}
+      dangerouslySetInnerHTML={{ __html: hasSvg ? svg : FALLBACK_SVG }}
+    />
+  );
+}
 
 function timeAgo(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -96,6 +106,7 @@ function ModeCard({
   displayName,
   description,
   version,
+  icon,
   onLaunch,
   index,
   onDelete,
@@ -104,6 +115,7 @@ function ModeCard({
   displayName: string;
   description?: string;
   version: string;
+  icon?: string;
   onLaunch: () => void;
   index: number;
   onDelete?: () => void;
@@ -112,54 +124,74 @@ function ModeCard({
 
   return (
     <div
-      className="border border-cc-border/50 rounded-2xl p-6 bg-cc-card backdrop-blur-xl hover:border-cc-primary/40 transition-all duration-300 flex flex-col gap-4 hover:shadow-[0_8px_32px_-8px_rgba(249,115,22,0.2)] hover:-translate-y-1"
+      onClick={(e) => {
+        // Only launch if we didn't click delete/confirm buttons
+        if (!(e.target as HTMLElement).closest("button")) {
+          onLaunch();
+        }
+      }}
+      className="group relative border border-cc-border/50 rounded-2xl p-6 bg-cc-card backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] hover:border-cc-primary/40 transition-all duration-500 hover:shadow-[0_8px_32px_-8px_rgba(249,115,22,0.2),inset_0_1px_0_rgba(255,255,255,0.1)] hover:-translate-y-1.5 cursor-pointer overflow-hidden flex flex-col h-full"
       style={{ animation: `warmFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${index * 0.05}s both` }}
     >
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-3">
-          <span className="text-2xl leading-none mt-0.5">{MODE_ICONS[name] || "\u{1F4E6}"}</span>
-          <div>
-            <h3 className="text-lg font-semibold text-cc-fg">{displayName}</h3>
+      {/* Subtle overlay gradient on hover */}
+      <div className="absolute inset-0 bg-gradient-to-br from-cc-primary/0 to-cc-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+      <div className="flex items-start justify-between relative z-10">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 shrink-0 flex items-center justify-center rounded-full bg-gradient-to-b from-cc-surface/80 to-cc-surface/20 border border-white/5 shadow-[0_4px_12px_rgba(0,0,0,0.3)] text-2xl group-hover:scale-110 group-hover:border-cc-primary/30 group-hover:shadow-[0_0_25px_rgba(249,115,22,0.15)] transition-all duration-500">
+            <ModeIcon svg={icon} />
+          </div>
+          <div className="pt-1">
+            <h3 className="text-lg font-semibold text-cc-fg group-hover:text-cc-primary transition-colors duration-300">{displayName}</h3>
             {description && (
-              <p className="text-sm text-cc-muted mt-1">{description}</p>
+              <p className="text-sm text-cc-muted/80 mt-1.5 leading-relaxed">{description}</p>
             )}
           </div>
         </div>
-        <span className="text-xs px-2 py-0.5 rounded-full bg-cc-primary-muted text-cc-primary shrink-0 ml-3">
-          {version}
-        </span>
       </div>
-      <div className="mt-auto flex items-center gap-2">
-        <button
-          onClick={onLaunch}
-          className="self-start px-4 py-1.5 text-sm font-medium rounded-lg bg-cc-primary hover:bg-cc-primary-hover text-cc-fg transition-colors cursor-pointer"
-        >
-          Launch
-        </button>
-        {onDelete && !confirmDelete && (
-          <button
-            onClick={() => setConfirmDelete(true)}
-            className="px-2 py-1.5 text-xs text-cc-muted hover:text-red-400 transition-colors cursor-pointer"
-          >
-            Delete
-          </button>
-        )}
-        {onDelete && confirmDelete && (
-          <>
+
+      <div className="mt-auto pt-6 flex items-end justify-between relative z-10">
+        <span className="text-xs px-2.5 py-1 rounded-full bg-cc-primary-muted/50 text-cc-primary font-medium tracking-wide">
+          v{version}
+        </span>
+
+        <div className="flex items-center gap-3">
+          {onDelete && !confirmDelete && (
             <button
-              onClick={() => { onDelete(); setConfirmDelete(false); }}
-              className="px-2 py-1.5 text-xs text-red-400 hover:text-red-300 font-medium transition-colors cursor-pointer"
+              onClick={() => setConfirmDelete(true)}
+              className="p-1.5 rounded-md text-cc-muted/40 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+              title="Delete mode"
             >
-              Confirm
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" />
+              </svg>
             </button>
-            <button
-              onClick={() => setConfirmDelete(false)}
-              className="px-2 py-1.5 text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-          </>
-        )}
+          )}
+          {onDelete && confirmDelete && (
+            <div className="flex items-center gap-2 bg-cc-surface/80 px-2 py-1 rounded border border-red-500/20">
+              <button
+                onClick={() => { onDelete(); setConfirmDelete(false); }}
+                className="text-xs text-red-400 hover:text-red-300 font-medium transition-colors cursor-pointer"
+              >
+                Confirm
+              </button>
+              <span className="text-cc-border">|</span>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          <div className="flex items-center text-sm font-medium text-cc-primary opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 delay-75">
+            Launch
+            <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -170,11 +202,13 @@ function ModeCard({
 function SessionCard({
   session,
   homeDir,
+  icon,
   onResume,
   onDelete,
 }: {
   session: RecentSession;
   homeDir: string;
+  icon?: string;
   onResume: (skipSkill?: boolean) => Promise<void>;
   onDelete: () => void;
 }) {
@@ -236,68 +270,81 @@ function SessionCard({
 
   return (
     <div
-      className={`border border-cc-border/50 rounded-xl bg-cc-card backdrop-blur-md hover:border-cc-primary/40 transition-all duration-300 group hover:shadow-[0_4px_24px_-8px_rgba(249,115,22,0.15)] hover:-translate-y-0.5 ${launching ? "opacity-60 pointer-events-none" : ""}`}
+      className={`relative rounded-lg bg-transparent hover:bg-cc-surface/40 transition-all duration-300 group cursor-pointer overflow-hidden ${launching ? "opacity-50 pointer-events-none" : ""}`}
+      onClick={handleResume}
     >
-      <div
-        className="flex items-center gap-3 px-4 py-2.5 cursor-pointer"
-        onClick={handleResume}
-      >
-        <span className="text-base shrink-0">{MODE_ICONS[session.mode] || "\u{1F4E6}"}</span>
-        <div className="min-w-0 flex-1">
-          <span className="text-sm font-medium text-cc-fg">
+      {/* Subtle left accent line on hover */}
+      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-0 bg-cc-primary rounded-r-full transition-all duration-300 group-hover:h-3/4 opacity-0 group-hover:opacity-100" />
+
+      <div className="flex items-center gap-4 px-4 py-3">
+        <div className="w-8 h-8 shrink-0 rounded-full bg-gradient-to-b from-cc-surface/80 to-cc-surface/20 border border-white/5 flex items-center justify-center text-lg shadow-[0_2px_8px_rgba(0,0,0,0.3)] group-hover:border-cc-primary/30 group-hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] transition-all">
+          <ModeIcon svg={icon} />
+        </div>
+        <div className="min-w-0 flex-1 flex flex-col justify-center">
+          <span className="text-sm font-medium text-cc-fg/90 group-hover:text-cc-fg transition-colors truncate">
             {launching ? "Launching..." : session.displayName}
           </span>
-          <span className="text-xs text-cc-muted ml-2 font-mono truncate">
+          <span className="text-[11px] text-cc-muted/70 font-mono truncate mt-0.5">
             {shortenPath(session.workspace, homeDir)}
           </span>
         </div>
-        <span className="text-xs text-cc-muted/60 shrink-0">{timeAgo(session.lastAccessed)}</span>
-        {!confirmDelete && !skillUpdate ? (
-          <button
-            onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
-            className="text-cc-muted/40 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0 cursor-pointer"
-            title="Remove"
-          >
-            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-              <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" />
-            </svg>
-          </button>
-        ) : confirmDelete ? (
-          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+        <span className="text-xs text-cc-muted/50 group-hover:text-cc-primary/60 transition-colors shrink-0 pr-2">{timeAgo(session.lastAccessed)}</span>
+
+        <div className="absolute right-4 flex items-center bg-cc-surface/90 backdrop-blur-md rounded-md border border-cc-border/50 opacity-0 group-hover:opacity-100 transition-opacity duration-200" onClick={(e) => e.stopPropagation()}>
+          {!confirmDelete && !skillUpdate ? (
             <button
-              onClick={onDelete}
-              className="text-xs text-red-400 hover:text-red-300 font-medium cursor-pointer"
+              onClick={() => setConfirmDelete(true)}
+              className="p-1.5 text-cc-muted hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors cursor-pointer flex items-center gap-1.5"
+              title="Remove"
             >
-              Confirm
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" />
+              </svg>
+              <span className="text-xs pr-1 font-medium hidden sm:inline-block">Remove</span>
             </button>
-            <button
-              onClick={() => setConfirmDelete(false)}
-              className="text-xs text-cc-muted hover:text-cc-fg cursor-pointer"
-            >
-              Cancel
-            </button>
-          </div>
-        ) : null}
+          ) : confirmDelete ? (
+            <div className="flex items-center gap-1.5 px-2 py-1">
+              <span className="text-xs text-cc-muted mr-1">Are you sure?</span>
+              <button
+                onClick={onDelete}
+                className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 font-medium cursor-pointer transition-colors"
+              >
+                Yes
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="text-xs px-2 py-0.5 rounded hover:bg-cc-hover text-cc-muted hover:text-cc-fg cursor-pointer transition-colors"
+              >
+                No
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
 
-      {/* Inline skill update prompt */}
+      {/* Inline skill update prompt - appears below row */}
       {skillUpdate && (
-        <div className="px-4 pb-3 flex items-center gap-3 text-xs" onClick={(e) => e.stopPropagation()}>
-          <span className="text-cc-primary">
-            Skill update: {skillUpdate.installedVersion} → {skillUpdate.currentVersion}
-          </span>
-          <button
-            onClick={handleUpdate}
-            className="px-2.5 py-1 rounded bg-cc-primary hover:bg-cc-primary-hover text-cc-fg font-medium transition-colors cursor-pointer"
-          >
-            Update
-          </button>
-          <button
-            onClick={handleSkip}
-            className="px-2.5 py-1 rounded border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
-          >
-            Skip
-          </button>
+        <div className="mx-4 mb-2 p-3 bg-cc-primary/5 border border-cc-primary/20 rounded-lg flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
+          <div className="flex flex-col">
+            <span className="text-[11px] font-semibold text-cc-primary uppercase tracking-wider mb-0.5">Skill Update Available</span>
+            <span className="text-xs text-cc-fg/80">
+              v{skillUpdate.installedVersion} → v{skillUpdate.currentVersion}
+            </span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleSkip}
+              className="px-3 py-1.5 text-xs rounded-md border border-cc-border/50 text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+            >
+              Skip
+            </button>
+            <button
+              onClick={handleUpdate}
+              className="px-3 py-1.5 text-xs rounded-md bg-cc-primary/10 border border-cc-primary/30 text-cc-primary hover:bg-cc-primary hover:text-cc-fg font-medium transition-colors cursor-pointer shadow-[0_0_10px_rgba(249,115,22,0.1)]"
+            >
+              Update
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -328,33 +375,46 @@ function RunningCard({
   const modeName = proc.specifier.split("/").pop() || proc.specifier;
 
   return (
-    <div className="border-l-2 border-emerald-500/70 rounded-r-xl bg-cc-card backdrop-blur-md hover:bg-cc-card/80 transition-all duration-200 group">
-      <div className="flex items-center gap-3 px-4 py-2.5">
-        {/* Pulsing green dot */}
-        <span className="relative flex h-2.5 w-2.5 shrink-0">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
-        </span>
-        <span className="text-base shrink-0">{MODE_ICONS[modeName] || "\u{1F4E6}"}</span>
-        <div className="min-w-0 flex-1">
-          <span className="text-sm font-medium text-cc-fg">{modeName}</span>
-          <span className="text-xs text-cc-muted ml-2 font-mono truncate">
+    <div className="relative rounded-lg bg-[#050505] border border-emerald-500/10 hover:border-emerald-500/30 transition-all duration-300 group overflow-hidden mb-2">
+      <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-emerald-500/0 via-emerald-500/50 to-emerald-500/0 opacity-50" />
+
+      <div className="flex items-center gap-4 px-4 py-3">
+        {/* Pulsing terminal interface dot */}
+        <div className="relative flex items-center justify-center w-8 h-8 shrink-0 rounded-full bg-gradient-to-b from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 shadow-[0_2px_8px_rgba(0,0,0,0.3)]">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+          </span>
+        </div>
+
+        <div className="min-w-0 flex-1 flex flex-col justify-center">
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm font-medium text-emerald-50 truncate filter drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]">{modeName}</span>
+            <span className="text-xs text-emerald-500 font-mono tracking-wide">{duration}</span>
+          </div>
+          <span className="text-[11px] text-cc-muted/60 font-mono truncate mt-0.5">
             {shortenPath(proc.workspace, homeDir)}
           </span>
         </div>
-        <span className="text-xs text-emerald-400/80 shrink-0">{duration}</span>
-        <div className="flex items-center gap-1 shrink-0">
+
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => window.open(proc.url, "_blank")}
-            className="px-2 py-1 text-xs text-cc-muted hover:text-cc-fg transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
-            title="Open"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md hover:bg-emerald-500 hover:text-emerald-50 transition-colors shadow-[0_0_10px_rgba(16,185,129,0.1)] cursor-pointer"
+            title="Open Workspace"
           >
             Open
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
           </button>
+
+          <div className="w-px h-4 bg-cc-border/50 mx-1 opacity-0 group-hover:opacity-100 transition-opacity" />
+
           {!confirmStop ? (
             <button
               onClick={() => setConfirmStop(true)}
-              className="text-cc-muted/40 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+              className="p-1.5 text-cc-muted/40 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
               title="Stop"
             >
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
@@ -468,7 +528,7 @@ function LaunchDialog({
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="bg-cc-surface/80 backdrop-blur-2xl border border-cc-border/50 rounded-2xl p-8 w-full max-w-lg mx-4 shadow-[0_16px_64px_-16px_rgba(0,0,0,0.5)]"
+        className="bg-cc-card/90 backdrop-blur-2xl border border-cc-border/50 rounded-2xl p-8 w-full max-w-lg mx-4 shadow-[0_16px_64px_-16px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1)]"
         style={{ animation: "warmFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1)" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -669,18 +729,28 @@ export default function Launcher() {
     )
     : sessions;
 
+  // Build icon lookup from all mode sources for session cards
+  const iconMap = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const m of builtins) { if (m.icon) map[m.name] = m.icon; }
+    for (const m of local) { if (m.icon) map[m.name] = m.icon; }
+    for (const m of published) { if (m.icon) map[m.name] = m.icon; }
+    return map;
+  }, [builtins, local, published]);
+
   const showTopRow = filteredSessions.length > 0 || running.length > 0;
 
   return (
     <div className="min-h-screen bg-cc-bg text-cc-fg relative overflow-hidden">
       {/* Immersive mesh gradient background element */}
-      <div className="absolute top-[-10%] left-[20%] w-[60%] h-[40%] bg-cc-primary/10 blur-[120px] rounded-full pointer-events-none animate-[pulse-dot_8s_ease-in-out_infinite]" />
-      <div className="absolute top-[20%] right-[-10%] w-[40%] h-[50%] bg-purple-500/10 blur-[100px] rounded-full pointer-events-none animate-[pulse-dot_10s_ease-in-out_infinite_reverse]" />
+      <div className="absolute inset-0 bg-grid-pattern opacity-10 pointer-events-none mix-blend-overlay" />
+      <div className="absolute top-[-10%] left-[20%] w-[60%] h-[40%] bg-cc-primary/15 blur-[120px] rounded-full pointer-events-none animate-[pulse-dot_8s_ease-in-out_infinite]" />
+      <div className="absolute top-[20%] right-[-10%] w-[40%] h-[50%] bg-violet-500/15 blur-[100px] rounded-full pointer-events-none animate-[pulse-dot_10s_ease-in-out_infinite_reverse]" />
 
       <div className="max-w-5xl mx-auto px-6 py-20 relative z-10">
         {/* Header */}
         <div className="text-center mb-16" style={{ animation: "warmFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1)" }}>
-          <h1 className="text-6xl font-extrabold mb-4 tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-cc-fg via-cc-primary to-indigo-400">
+          <h1 className="text-6xl font-extrabold mb-4 tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-cc-fg via-cc-primary to-indigo-400 animate-text-gradient-flow">
             Pneuma
           </h1>
           <p className="text-cc-muted/80 text-lg font-medium tracking-wide">
@@ -696,7 +766,7 @@ export default function Launcher() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search modes..."
-              className="w-full pl-12 pr-6 py-4 bg-cc-surface/40 backdrop-blur-md border border-cc-border/40 rounded-full text-cc-fg text-base placeholder:text-cc-muted/40 outline-none transition-all focus:border-cc-primary/50 focus:bg-cc-surface/70 focus:shadow-[0_0_30px_rgba(249,115,22,0.1)] hover:border-cc-border"
+              className="w-full pl-12 pr-6 py-4 bg-cc-surface/40 backdrop-blur-2xl border border-cc-border/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] rounded-full text-cc-fg text-base placeholder:text-cc-muted/40 outline-none transition-all focus:border-cc-primary/50 focus:bg-cc-surface/70 focus:shadow-[0_0_30px_rgba(249,115,22,0.2),inset_0_1px_0_rgba(255,255,255,0.1)] hover:border-cc-border"
             />
             <svg className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-cc-muted/60 group-focus-within:text-cc-primary/80 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -720,12 +790,13 @@ export default function Launcher() {
                       <h2 className="text-sm font-medium text-cc-muted uppercase tracking-wide mb-3">
                         Recent Sessions
                       </h2>
-                      <div className="space-y-2 max-h-[156px] overflow-y-auto pr-1">
+                      <div className="space-y-2 max-h-[220px] overflow-y-auto p-1">
                         {filteredSessions.map((session) => (
                           <SessionCard
                             key={session.id}
                             session={session}
                             homeDir={homeDir}
+                            icon={iconMap[session.mode]}
                             onResume={(skipSkill) => directLaunch(session.mode, session.workspace, skipSkill)}
                             onDelete={() => deleteSession(session.id)}
                           />
@@ -741,7 +812,7 @@ export default function Launcher() {
                         Running
                         <span className="ml-2 text-xs text-emerald-400/80 normal-case font-normal">{running.length} active</span>
                       </h2>
-                      <div className="space-y-2 max-h-[156px] overflow-y-auto pr-1">
+                      <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                         {running.map((proc) => (
                           <RunningCard
                             key={proc.pid}
@@ -771,6 +842,7 @@ export default function Launcher() {
                       displayName={mode.displayName}
                       description={mode.description}
                       version={mode.version}
+                      icon={mode.icon}
                       index={i}
                       onLaunch={() =>
                         setLaunchTarget({
@@ -798,6 +870,7 @@ export default function Launcher() {
                       displayName={mode.displayName}
                       description={mode.description}
                       version={mode.version}
+                      icon={mode.icon}
                       index={i}
                       onLaunch={() =>
                         setLaunchTarget({
@@ -826,6 +899,7 @@ export default function Launcher() {
                       displayName={mode.displayName}
                       description={mode.description}
                       version={mode.version}
+                      icon={mode.icon}
                       index={i}
                       onLaunch={() =>
                         setLaunchTarget({

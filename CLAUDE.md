@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Pneuma Skills is an extensible delivery platform for filesystem-based Agent capabilities. Agents edit files on disk, Pneuma watches for changes and streams a live WYSIWYG preview alongside a full chat interface.
+Pneuma Skills is co-creation infrastructure for humans and code agents. It provides four pillars for isomorphic collaboration: a **visual environment** (live bidirectional workspace), **skills** (domain knowledge + seed templates + session persistence), **continuous learning** (v2.0 — cross-session preference extraction and dynamic skill augmentation), and **distribution** (mode marketplace, publishing, sharing). Built atop mainstream code agents (currently Claude Code via `--sdk-url`), Pneuma doesn't replace your agent — it gives both of you a shared workspace to think in.
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
@@ -297,6 +297,8 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 | GET | `/api/processes/system` | List dev processes with ports |
 | POST | `/api/processes/:taskId/kill` | Kill process by task ID |
 | POST | `/api/processes/system/:pid/kill` | Kill process by PID |
+| GET | `/api/processes/children` | List child processes spawned by launcher |
+| POST | `/api/processes/children/:pid/kill` | Kill a launcher child process by PID |
 | POST | `/api/terminal/spawn` | Spawn PTY terminal |
 | GET | `/api/terminal` | Get terminal info |
 | POST | `/api/terminal/kill` | Kill terminal |
@@ -343,7 +345,7 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 - **Contract-first**: changes to contracts → update `core/types/` + `core/__tests__/`
 - **No hardcoded mode knowledge** in server/CLI — driven by ModeManifest
 - **Zustand** single store (`src/store.ts`), mode viewers in `modes/<mode>/viewer/`
-- **Design tokens**: "Warm Craft" theme via `cc-*` CSS custom properties (terracotta primary, warm grays)
+- **Design tokens**: "Ethereal Tech" theme via `cc-*` CSS custom properties (deep zinc bg `#09090b`, neon orange primary `#f97316`, glassmorphism surfaces with `backdrop-blur`)
 
 ## Release Process
 
@@ -365,12 +367,14 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **chokidar v4 glob broken**: Watch directory path, filter in callback. Don't use `watch("**/*.md", { cwd })`.
 - **react-resizable-panels v4.6**: `Group` not `PanelGroup`, `Separator` not `PanelResizeHandle`, `orientation` not `direction`.
 - **Vite WS proxy + Bun.serve**: Browser WS connects directly to backend port, bypassing Vite.
-- **Stale `dist/`**: If `dist/index.html` exists, dev mode serves production build. Delete `dist/` or rebuild.
+- **Stale `dist/`**: If `dist/index.html` exists, the server falls back to production mode. Launcher-spawned children auto-inherit `--dev` from the parent, but direct CLI usage without `--dev` may still hit this. Delete `dist/` or pass `--dev` explicitly.
 - **Bun.serve dual-stack**: Must set `hostname: "0.0.0.0"` to avoid IPv6/IPv4 port collision on macOS.
 - **CLAUDECODE env var**: Must be unset when spawning Claude Code CLI.
 - **NDJSON**: Each message to CLI must end with `\n`.
 - **Empty assistant messages**: `MessageBubble` returns null when content is empty (tool_use-only messages).
 - **modelUsage cumulative**: Use delta (current - previous) for per-turn cost.
+- **`backdrop-filter` containing block**: `backdrop-filter` creates a containing block for fixed-positioned children, causing coordinate offset in Excalidraw. Avoid or account for it.
+- **`@zumer/snapdom`**: Used for slide thumbnail capture and export image mode. Renders DOM to canvas via snapshot cloning.
 - **Windows compatibility**: Cross-platform support via:
   - `path-resolver.ts`: `where` instead of `which`, builds PATH from `LOCALAPPDATA`/`APPDATA`/`ProgramFiles`
   - `terminal-manager.ts`: `COMSPEC`/`cmd.exe` as shell, no `-l` flag

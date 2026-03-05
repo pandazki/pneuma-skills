@@ -33,6 +33,8 @@ export interface ServerOptions {
   projectRoot?: string; // Pneuma project root (for mode-maker routes to access builtin modes)
   modeName?: string; // Current mode name (for conditional route registration)
   launcherMode?: boolean; // Lightweight launcher server (no workspace, no agent, no watcher)
+  debug?: boolean; // Pass --debug to child processes
+  forceDev?: boolean; // Pass --dev to child processes
 }
 
 export function startServer(options: ServerOptions) {
@@ -61,32 +63,44 @@ export function startServer(options: ServerOptions) {
     }>();
 
     app.get("/api/registry", async (c) => {
-      const builtins = [
-        { name: "doc", displayName: "Document", description: "Markdown document editing with live preview", version: "builtin", type: "builtin" as const },
-        { name: "slide", displayName: "Slide", description: "Professional presentation creation and editing", version: "builtin", type: "builtin" as const, hasInitParams: true },
-        { name: "draw", displayName: "Draw", description: "Excalidraw whiteboard for diagrams and visual thinking", version: "builtin", type: "builtin" as const },
-      ];
+      const { parseManifestTs } = await import("../core/utils/manifest-parser.js");
+      const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
 
-      let published: Array<{ name: string; displayName: string; description?: string; version: string; publishedAt: string; archiveUrl: string }> = [];
+      // Parse builtin mode manifests for metadata (icon, description, etc.)
+      const builtinNames = ["doc", "slide", "draw"];
+      const builtins = builtinNames.map((name) => {
+        const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
+        let parsed: ReturnType<typeof parseManifestTs> = {};
+        try { parsed = parseManifestTs(readFileSync(manifestPath, "utf-8")); } catch { }
+        return {
+          name,
+          displayName: parsed.displayName || name,
+          description: parsed.description || "",
+          icon: parsed.icon,
+          version: "builtin",
+          type: "builtin" as const,
+          ...(name === "slide" ? { hasInitParams: true } : {}),
+        };
+      });
+
+      let published: Array<{ name: string; displayName: string; description?: string; version: string; publishedAt: string; archiveUrl: string; icon?: string }> = [];
       try {
         const res = await fetch(`${REGISTRY_URL}/registry/index.json`, { signal: AbortSignal.timeout(5000) });
         if (res.ok) {
           const data = await res.json() as { modes?: typeof published };
           published = data.modes || [];
         }
-      } catch {}
+      } catch { }
 
       // Scan local modes from ~/.pneuma/modes/
       const modesDir = join(homedir(), ".pneuma", "modes");
-      let local: Array<{ name: string; displayName: string; description?: string; version: string; path: string }> = [];
+      let local: Array<{ name: string; displayName: string; description?: string; version: string; path: string; icon?: string }> = [];
       try {
         if (existsSync(modesDir)) {
-          const { parseManifestTs } = await import("../core/utils/manifest-parser.js");
           const entries = readdirSync(modesDir);
           for (const entry of entries) {
             const entryPath = join(modesDir, entry);
             if (!statSync(entryPath).isDirectory()) continue;
-            // Look for manifest.ts or manifest.js
             const manifestFile = ["manifest.ts", "manifest.js"].find((f) => existsSync(join(entryPath, f)));
             if (!manifestFile) continue;
             try {
@@ -96,13 +110,14 @@ export function startServer(options: ServerOptions) {
                 name: parsed.name || entry,
                 displayName: parsed.displayName || entry,
                 description: parsed.description,
+                icon: parsed.icon,
                 version: parsed.version || "local",
                 path: entryPath,
               });
-            } catch {}
+            } catch { }
           }
         }
-      } catch {}
+      } catch { }
 
       return c.json({ builtins, published, local });
     });
@@ -133,7 +148,7 @@ export function startServer(options: ServerOptions) {
       let sessions: Array<{ id: string; mode: string; displayName: string; workspace: string; lastAccessed: number }> = [];
       try {
         sessions = JSON.parse(readFileSync(registryPath, "utf-8"));
-      } catch {}
+      } catch { }
       // Filter out sessions whose workspace no longer exists
       sessions = sessions.filter((s) => existsSync(s.workspace));
       // Sort by lastAccessed descending
@@ -148,11 +163,11 @@ export function startServer(options: ServerOptions) {
       let sessions: Array<{ id: string; mode: string; displayName: string; workspace: string; lastAccessed: number }> = [];
       try {
         sessions = JSON.parse(readFileSync(registryPath, "utf-8"));
-      } catch {}
+      } catch { }
       sessions = sessions.filter((s) => s.id !== id);
       try {
         writeFileSync(registryPath, JSON.stringify(sessions, null, 2));
-      } catch {}
+      } catch { }
       return c.json({ ok: true });
     });
 
@@ -179,14 +194,14 @@ export function startServer(options: ServerOptions) {
         try {
           const data = JSON.parse(readFileSync(join(resolvedWorkspace, ".pneuma", "skill-version.json"), "utf-8"));
           installedVersion = data.version || "";
-        } catch {}
+        } catch { }
 
         // Read dismissed version
         let dismissedVersion = "";
         try {
           const data = JSON.parse(readFileSync(join(resolvedWorkspace, ".pneuma", "skill-dismissed.json"), "utf-8"));
           dismissedVersion = data.version || "";
-        } catch {}
+        } catch { }
 
         const needsUpdate = installedVersion !== "" && installedVersion !== currentVersion;
         const dismissed = needsUpdate && dismissedVersion === currentVersion;
@@ -206,7 +221,7 @@ export function startServer(options: ServerOptions) {
         const dir = join(resolvedWorkspace, ".pneuma");
         mkdirSync(dir, { recursive: true });
         writeFileSync(join(dir, "skill-dismissed.json"), JSON.stringify({ version }));
-      } catch {}
+      } catch { }
       return c.json({ ok: true });
     });
 
@@ -263,6 +278,8 @@ export function startServer(options: ServerOptions) {
         const pneumaBin = join(projectRoot, "bin", "pneuma.ts");
         const args = ["bun", pneumaBin, specifier, "--workspace", resolvedWorkspace, "--no-prompt", "--no-open"];
         if (skipSkill) args.push("--skip-skill");
+        if (options.debug) args.push("--debug");
+        if (options.forceDev) args.push("--dev");
 
         const child = Bun.spawn(args, {
           stdout: "pipe",
@@ -360,7 +377,7 @@ export function startServer(options: ServerOptions) {
       try {
         entry.proc.kill();
         childProcesses.delete(pid);
-      } catch {}
+      } catch { }
       return c.json({ ok: true });
     });
 
@@ -588,8 +605,24 @@ export function startServer(options: ServerOptions) {
   }
 
   /** Build the full export HTML. When inline=true, assets are inlined and toolbar/base removed. */
-  function buildExportHtml(opts: { inline: boolean }): { html: string; title: string } | { error: string; status: number } {
-    const manifestPath = join(workspace, "manifest.json");
+  function buildExportHtml(opts: { inline: boolean; contentSet?: string }): { html: string; title: string } | { error: string; status: number } {
+    // Resolve base directory: workspace root or content set subdirectory
+    let baseDir = workspace;
+    if (opts.contentSet) {
+      baseDir = join(workspace, opts.contentSet);
+    } else if (!existsSync(join(workspace, "manifest.json"))) {
+      // Auto-discover: find first subdirectory containing manifest.json
+      try {
+        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
+          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
+            baseDir = join(workspace, entry.name);
+            break;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    const manifestPath = join(baseDir, "manifest.json");
     if (!existsSync(manifestPath)) {
       return { error: "No manifest.json found in workspace", status: 404 };
     }
@@ -604,7 +637,7 @@ export function startServer(options: ServerOptions) {
     }
 
     // Read theme.css and patch font stacks for CJK print compatibility
-    const themePath = join(workspace, "theme.css");
+    const themePath = join(baseDir, "theme.css");
     let themeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
     const CJK_FONTS = '"PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei"';
     themeCSS = themeCSS.replace(
@@ -619,7 +652,7 @@ export function startServer(options: ServerOptions) {
     const headResourceSet = new Set<string>();
     const slidePages = manifest.slides
       .map((slide) => {
-        const slidePath = join(workspace, slide.file);
+        const slidePath = join(baseDir, slide.file);
         let html = existsSync(slidePath) ? readFileSync(slidePath, "utf-8") : `<p>Missing: ${slide.file}</p>`;
         let bodyStyle = "";
         let bodyClass = "";
@@ -666,12 +699,21 @@ export function startServer(options: ServerOptions) {
     const baseTag = opts.inline ? "" : '\n<base href="/content/">';
     const toolbarHtml = opts.inline
       ? ""
-      : `\n<div class="export-toolbar">
-  <h1>${title}</h1>
-  <span class="meta">${manifest.slides.length} slides \u00b7 ${W}\u00d7${H}</span>
-  <div class="export-toolbar-actions">
-    <button onclick="downloadSlides()">Download HTML</button>
-    <button onclick="window.print()">Print / Save PDF</button>
+      : `\n<div class="export-toolbar-wrapper">
+  <div class="export-toolbar">
+    <div class="header-left">
+      <h1>${title}</h1>
+      <span class="meta">${manifest.slides.length} slides \u00b7 ${W}\u00d7${H}</span>
+    </div>
+    <div class="export-toolbar-actions">
+      <button class="btn-primary" onclick="downloadSlides()">Download HTML</button>
+      <div class="print-group">
+        <button class="mode-btn active" id="mode-img" onclick="setMode('image')">Image</button>
+        <button class="mode-btn" id="mode-html" onclick="setMode('html')">HTML</button>
+        <div class="print-divider"></div>
+        <button class="print-action" onclick="window.print()">Print / Save PDF</button>
+      </div>
+    </div>
   </div>
 </div>`;
 
@@ -679,8 +721,9 @@ export function startServer(options: ServerOptions) {
       ? ""
       : `\n<script>
 function downloadSlides(){
-  var btn=event.target;btn.textContent="Preparing...";btn.disabled=true;
-  fetch("/export/slides/download").then(function(r){
+  var btn=document.querySelector('.btn-primary');btn.textContent="Preparing...";btn.disabled=true;
+  var qs=new URLSearchParams(location.search).get("contentSet");
+  fetch("/export/slides/download"+(qs?"?contentSet="+encodeURIComponent(qs):"")).then(function(r){
     if(!r.ok)throw new Error("HTTP "+r.status);return r.blob();
   }).then(function(b){
     var a=document.createElement("a");a.href=URL.createObjectURL(b);
@@ -692,6 +735,43 @@ function downloadSlides(){
 }
 <\/script>`;
 
+    const imageModeScript = opts.inline
+      ? ""
+      : `\n<script src="https://unpkg.com/@zumer/snapdom/dist/snapdom.js"><\/script>
+<script>
+var originalSlides=[],converting=false,metaOriginal='';
+
+async function convertToImages(){
+  if(converting)return;converting=true;
+  var pages=document.querySelectorAll('.slide-page');
+  if(!pages.length){converting=false;return}
+  var meta=document.querySelector('.meta');
+  if(meta&&!metaOriginal)metaOriginal=meta.textContent||'';
+  for(var i=0;i<pages.length;i++){
+    if(meta)meta.textContent='Converting '+(i+1)+'/'+pages.length+'...';
+    var page=pages[i];
+    if(!originalSlides[i])originalSlides[i]=page.innerHTML;
+    var result=await snapdom(page,{scale:2,embedFonts:true});
+    var png=await result.toPng();
+    page.innerHTML='';
+    png.style.cssText='width:100%;height:100%;display:block';
+    page.appendChild(png);
+  }
+  converting=false;if(meta)meta.textContent=metaOriginal;
+}
+function restoreHTML(){
+  var pages=document.querySelectorAll('.slide-page');
+  for(var i=0;i<pages.length;i++){if(originalSlides[i]!=null)pages[i].innerHTML=originalSlides[i]}
+}
+function setMode(mode){
+  document.getElementById('mode-img').classList.toggle('active',mode==='image');
+  document.getElementById('mode-html').classList.toggle('active',mode==='html');
+  if(mode==='image')convertToImages();else restoreHTML();
+}
+if(document.readyState==='complete')convertToImages();
+else window.addEventListener('load',function(){convertToImages()});
+<\/script>`;
+
     let exportHtml = `<!DOCTYPE html>
 <html>
 <head>
@@ -701,6 +781,18 @@ function downloadSlides(){
 ${headResources}
 <style>
 ${themeCSS}
+
+/* Force standard font stack for Next-Gen design */
+:root {
+  --color-cc-bg: #09090b;
+  --color-cc-surface: #18181b;
+  --color-cc-card: rgba(24, 24, 27, 0.6);
+  --color-cc-primary: #f97316;
+  --color-cc-primary-hover: #fdba74;
+  --color-cc-fg: #fafafa;
+  --color-cc-muted: #a1a1aa;
+  --color-cc-border: rgba(255, 255, 255, 0.08);
+}
 
 @page {
   size: ${W}px ${H}px;
@@ -716,6 +808,8 @@ ${themeCSS}
 html {
   margin: 0;
   padding: 0;
+  background: var(--color-cc-bg);
+  font-family: 'Inter', 'Geist', system-ui, -apple-system, sans-serif;
 }
 
 body {
@@ -729,88 +823,184 @@ body {
   overflow: hidden;
   break-after: page;
   position: relative;
-  background: var(--color-bg, #fff);
+  /* Prevent blending issues with background */
+  isolation: isolate;
+  background-color: var(--color-bg, #ffffff) !important;
 }
 ${opts.inline ? `
 /* Standalone: same preview chrome but no toolbar gap at top */
 @media screen {
-  html { background: #1a1a1a; }
-  body { padding: 0 0 40px 0; }
+  body { 
+    padding: 20px 0 40px 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at 50% 0%, rgba(249, 115, 22, 0.08) 0%, transparent 60%);
+  }
   .slide-page {
     margin: 20px auto;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
-    border-radius: 4px;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.6), 0 0 0 1px var(--color-cc-border);
+    border-radius: 8px;
   }
-  body { padding-top: 20px; }
 }
 ` : `
-/* Screen preview: dark chrome with spacing and shadow */
+/* Screen preview: next-gen glassmorphic chrome */
 @media screen {
-  html { background: #1a1a1a; }
-  body { padding: 0 0 40px 0; }
-  .slide-page {
-    margin: 20px auto;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
-    border-radius: 4px;
+  body { 
+    padding: 0 0 40px 0; 
+    min-height: 100vh;
+    background: radial-gradient(circle at 50% 0%, rgba(249, 115, 22, 0.08) 0%, transparent 60%);
   }
-  .export-toolbar {
+  .slide-page {
+    margin: 32px auto;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.6), 0 0 0 1px var(--color-cc-border);
+    border-radius: 8px;
+  }
+  .export-toolbar-wrapper {
     position: sticky;
     top: 0;
     z-index: 100;
+    padding: 16px 24px 0;
+    pointer-events: none;
+  }
+  .export-toolbar {
+    pointer-events: auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 24px;
-    background: #111;
-    border-bottom: 1px solid #333;
-    color: #ccc;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 12px 20px;
+    background: var(--color-cc-card);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--color-cc-border);
+    border-radius: 999px;
+    color: var(--color-cc-fg);
+    max-width: ${W}px;
+    margin: 0 auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .header-left {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
   }
   .export-toolbar h1 {
-    font-size: 16px;
-    font-weight: 600;
+    font-size: 15px;
+    font-weight: 500;
     margin: 0;
-    color: #fff;
+    letter-spacing: -0.01em;
   }
   .export-toolbar .meta {
     font-size: 13px;
-    color: #888;
+    color: var(--color-cc-muted);
   }
   .export-toolbar-actions {
     display: flex;
-    gap: 8px;
+    gap: 12px;
     align-items: center;
   }
   .export-toolbar button {
-    padding: 8px 16px;
-    background: #d97757;
-    color: #fff;
+    padding: 8px 18px;
     border: none;
-    border-radius: 6px;
+    border-radius: 999px;
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
+    transition: all 0.3s ease-out;
   }
-  .export-toolbar button:hover {
-    background: #c56645;
+  .btn-primary {
+    background: var(--color-cc-primary);
+    color: #fff;
+    box-shadow: 0 2px 12px rgba(249, 115, 22, 0.2);
+  }
+  .btn-primary:hover {
+    background: var(--color-cc-primary-hover);
+    box-shadow: 0 4px 16px rgba(249, 115, 22, 0.4);
+    transform: translateY(-1px);
+  }
+  .btn-secondary {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--color-cc-fg);
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  }
+  .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .print-group {
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 2px;
+  }
+  .mode-btn {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    background: transparent;
+    color: var(--color-cc-muted);
+    transition: all 0.2s ease;
+  }
+  .mode-btn:hover { color: var(--color-cc-fg); }
+  .mode-btn.active {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--color-cc-fg);
+  }
+  .print-divider {
+    width: 1px;
+    height: 18px;
+    background: rgba(255, 255, 255, 0.12);
+    margin: 0 4px;
+  }
+  .print-action {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    background: var(--color-cc-primary);
+    color: #fff;
+    transition: all 0.2s ease;
+  }
+  .print-action:hover {
+    background: var(--color-cc-primary-hover);
   }
 }
 `}
 /* Print: set body width, preserve slide backgrounds */
 @media print {
   body { padding: 0; width: ${W}px; }
-  .export-toolbar { display: none; }
+  .export-toolbar-wrapper { display: none; }
   .slide-page {
     margin: 0;
     box-shadow: none;
     border-radius: 0;
     break-inside: avoid;
   }
+  /* Strip only the effects that actually hang Chrome's print renderer:
+     1. backdrop-filter — rasterising blurred background is extremely slow
+     2. Large decorative blur pseudo-elements (theme glow orbs) */
+  .slide-page * {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .slide-page .slide::before,
+  .slide-page .slide::after {
+    display: none !important;
+  }
+  /* Compensate: elements that relied on backdrop-filter for glass look
+     become nearly invisible without it — give them a visible background */
+  .slide-page [style*="backdrop-filter"] {
+    background: rgba(0, 0, 0, 0.5) !important;
+  }
 }
 </style>
 </head>
 <body>${toolbarHtml}
-${slidePages}${downloadScript}
+${slidePages}${downloadScript}${imageModeScript}
 </body>
 </html>`;
 
@@ -822,20 +1012,22 @@ ${slidePages}${downloadScript}
   }
 
   app.get("/export/slides", (c) => {
-    const result = buildExportHtml({ inline: false });
+    const contentSet = c.req.query("contentSet") || undefined;
+    const result = buildExportHtml({ inline: false, contentSet });
     if ("error" in result) return c.text(result.error, result.status as any);
     return c.html(result.html);
   });
 
   app.get("/export/slides/download", (c) => {
-    const result = buildExportHtml({ inline: true });
+    const contentSet = c.req.query("contentSet") || undefined;
+    const result = buildExportHtml({ inline: true, contentSet });
     if ("error" in result) return c.text(result.error, result.status as any);
     const safeFilename = result.title.replace(/[^\w\s.-]/g, "_") + ".html";
     const utf8Filename = encodeURIComponent(result.title + ".html");
     return new Response(result.html, {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${safeFilename}"; filename*=UTF-8''${utf8Filename}`,
+        "Content-Disposition": `attachment; filename = "${safeFilename}"; filename *= UTF - 8''${utf8Filename} `,
       },
     });
   });
@@ -1085,12 +1277,12 @@ ${slidePages}${downloadScript}
       for (const [pid, ports] of pidPorts) {
         let fullCommand = "";
         let cwd: string | undefined;
-        try { fullCommand = execSync(`ps -p ${pid} -o args=`, { encoding: "utf-8", timeout: 3_000 }).trim(); } catch {}
+        try { fullCommand = execSync(`ps -p ${pid} -o args=`, { encoding: "utf-8", timeout: 3_000 }).trim(); } catch { }
         try {
           const cwdOutput = execSync(`lsof -a -p ${pid} -d cwd -Fn`, { encoding: "utf-8", timeout: 3_000 });
           const cwdMatch = cwdOutput.match(/\nn(.+)/);
           if (cwdMatch) cwd = cwdMatch[1];
-        } catch {}
+        } catch { }
         processes.push({
           pid,
           command: pidCommand.get(pid) || "",
@@ -1253,78 +1445,78 @@ export const Fragment = J.Fragment;`;
       server = Bun.serve<SocketData>({
         port: serverPort,
         hostname: "0.0.0.0",
-    async fetch(req, server) {
-      const url = new URL(req.url);
+        async fetch(req, server) {
+          const url = new URL(req.url);
 
-      // CLI WebSocket — Claude Code CLI connects here via --sdk-url
-      const cliMatch = url.pathname.match(/^\/ws\/cli\/([a-f0-9-]+)$/);
-      if (cliMatch) {
-        const sessionId = cliMatch[1];
-        const upgraded = server.upgrade(req, {
-          data: { kind: "cli" as const, sessionId },
-        });
-        if (upgraded) return undefined;
-        return new Response("WebSocket upgrade failed", { status: 400 });
-      }
+          // CLI WebSocket — Claude Code CLI connects here via --sdk-url
+          const cliMatch = url.pathname.match(/^\/ws\/cli\/([a-f0-9-]+)$/);
+          if (cliMatch) {
+            const sessionId = cliMatch[1];
+            const upgraded = server.upgrade(req, {
+              data: { kind: "cli" as const, sessionId },
+            });
+            if (upgraded) return undefined;
+            return new Response("WebSocket upgrade failed", { status: 400 });
+          }
 
-      // Browser WebSocket — connects to a specific session
-      const browserMatch = url.pathname.match(/^\/ws\/browser\/([a-f0-9-]+)$/);
-      if (browserMatch) {
-        const sessionId = browserMatch[1];
-        const upgraded = server.upgrade(req, {
-          data: { kind: "browser" as const, sessionId },
-        });
-        if (upgraded) return undefined;
-        return new Response("WebSocket upgrade failed", { status: 400 });
-      }
+          // Browser WebSocket — connects to a specific session
+          const browserMatch = url.pathname.match(/^\/ws\/browser\/([a-f0-9-]+)$/);
+          if (browserMatch) {
+            const sessionId = browserMatch[1];
+            const upgraded = server.upgrade(req, {
+              data: { kind: "browser" as const, sessionId },
+            });
+            if (upgraded) return undefined;
+            return new Response("WebSocket upgrade failed", { status: 400 });
+          }
 
-      // Terminal WebSocket — connects to a PTY terminal
-      const terminalMatch = url.pathname.match(/^\/ws\/terminal\/([a-f0-9-]+)$/);
-      if (terminalMatch) {
-        const terminalId = terminalMatch[1];
-        const upgraded = server.upgrade(req, {
-          data: { kind: "terminal" as const, terminalId },
-        });
-        if (upgraded) return undefined;
-        return new Response("WebSocket upgrade failed", { status: 400 });
-      }
+          // Terminal WebSocket — connects to a PTY terminal
+          const terminalMatch = url.pathname.match(/^\/ws\/terminal\/([a-f0-9-]+)$/);
+          if (terminalMatch) {
+            const terminalId = terminalMatch[1];
+            const upgraded = server.upgrade(req, {
+              data: { kind: "terminal" as const, terminalId },
+            });
+            if (upgraded) return undefined;
+            return new Response("WebSocket upgrade failed", { status: 400 });
+          }
 
-      // Hono handles the rest
-      return app.fetch(req, server);
-    },
-    websocket: {
-      open(ws: ServerWebSocket<SocketData>) {
-        const data = ws.data;
-        if (data.kind === "cli") {
-          wsBridge.handleCLIOpen(ws, data.sessionId);
-        } else if (data.kind === "browser") {
-          wsBridge.handleBrowserOpen(ws, data.sessionId);
-        } else if (data.kind === "terminal") {
-          terminalManager.addBrowserSocket(ws as ServerWebSocket<TerminalSocketData>);
-        }
-      },
-      message(ws: ServerWebSocket<SocketData>, msg: string | Buffer) {
-        const data = ws.data;
-        if (data.kind === "cli") {
-          wsBridge.handleCLIMessage(ws, msg);
-        } else if (data.kind === "browser") {
-          wsBridge.handleBrowserMessage(ws, msg);
-        } else if (data.kind === "terminal") {
-          terminalManager.handleBrowserMessage(ws as ServerWebSocket<TerminalSocketData>, msg);
-        }
-      },
-      close(ws: ServerWebSocket<SocketData>) {
-        const data = ws.data;
-        if (data.kind === "cli") {
-          wsBridge.handleCLIClose(ws);
-        } else if (data.kind === "browser") {
-          wsBridge.handleBrowserClose(ws);
-        } else if (data.kind === "terminal") {
-          terminalManager.removeBrowserSocket(ws as ServerWebSocket<TerminalSocketData>);
-        }
-      },
-    },
-  });
+          // Hono handles the rest
+          return app.fetch(req, server);
+        },
+        websocket: {
+          open(ws: ServerWebSocket<SocketData>) {
+            const data = ws.data;
+            if (data.kind === "cli") {
+              wsBridge.handleCLIOpen(ws, data.sessionId);
+            } else if (data.kind === "browser") {
+              wsBridge.handleBrowserOpen(ws, data.sessionId);
+            } else if (data.kind === "terminal") {
+              terminalManager.addBrowserSocket(ws as ServerWebSocket<TerminalSocketData>);
+            }
+          },
+          message(ws: ServerWebSocket<SocketData>, msg: string | Buffer) {
+            const data = ws.data;
+            if (data.kind === "cli") {
+              wsBridge.handleCLIMessage(ws, msg);
+            } else if (data.kind === "browser") {
+              wsBridge.handleBrowserMessage(ws, msg);
+            } else if (data.kind === "terminal") {
+              terminalManager.handleBrowserMessage(ws as ServerWebSocket<TerminalSocketData>, msg);
+            }
+          },
+          close(ws: ServerWebSocket<SocketData>) {
+            const data = ws.data;
+            if (data.kind === "cli") {
+              wsBridge.handleCLIClose(ws);
+            } else if (data.kind === "browser") {
+              wsBridge.handleBrowserClose(ws);
+            } else if (data.kind === "terminal") {
+              terminalManager.removeBrowserSocket(ws as ServerWebSocket<TerminalSocketData>);
+            }
+          },
+        },
+      });
       break; // success
     } catch (err: any) {
       if (err?.code === "EADDRINUSE") {

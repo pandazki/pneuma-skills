@@ -169,6 +169,8 @@ export interface ModeManifest {
   displayName: string;
   /** 简短描述 */
   description: string;
+  /** Mode icon as inline SVG string (e.g. `<svg viewBox="0 0 24 24">...</svg>`) */
+  icon?: string;
 
   /** Skill 注入配置 */
   skill: SkillConfig;

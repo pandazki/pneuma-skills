@@ -350,6 +350,10 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
     }
 
     case "permission_cancelled": {
+      const cancelled = store.pendingPermissions.get(data.request_id);
+      if (cancelled?.tool_name === "AskUserQuestion") {
+        store.recordAnsweredQuestion(cancelled.tool_use_id, [{ question: "", answer: "(cancelled)" }]);
+      }
       store.removePermission(data.request_id);
       break;
     }
@@ -508,6 +512,16 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
             stopReason: msg.stop_reason,
           });
           extractTasksFromBlocks(msg.content);
+          // Mark AskUserQuestion blocks as answered for history replay
+          for (const block of msg.content) {
+            if (block.type === "tool_use" && block.name === "AskUserQuestion") {
+              const qs: Record<string, unknown>[] = Array.isArray(block.input?.questions) ? block.input.questions : [];
+              const pairs = qs.length > 0
+                ? qs.map((q) => ({ question: ((q as Record<string, unknown>).question as string) || "", answer: "(answered previously)" }))
+                : [{ question: (block.input?.question as string) || "", answer: "(answered previously)" }];
+              store.recordAnsweredQuestion(block.id, pairs);
+            }
+          }
         } else if (histMsg.type === "result") {
           const r = histMsg.data;
           if (r.is_error && r.errors?.length) {
@@ -806,7 +820,32 @@ export function sendPermissionResponse(
   behavior: "allow" | "deny",
   updatedInput?: Record<string, unknown>,
 ) {
-  useStore.getState().removePermission(requestId);
+  const store = useStore.getState();
+  const perm = store.pendingPermissions.get(requestId);
+
+  // Track answered AskUserQuestion before removing permission
+  if (perm && perm.tool_name === "AskUserQuestion" && behavior === "allow" && updatedInput) {
+    const answers = updatedInput.answers as Record<string, string> | undefined;
+    const questions: Record<string, unknown>[] = Array.isArray(perm.input.questions) ? perm.input.questions : [];
+    const pairs: { question: string; answer: string }[] = [];
+    if (questions.length > 0 && answers) {
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i] as Record<string, unknown>;
+        pairs.push({
+          question: (q.question as string) || "",
+          answer: answers[String(i)] || "",
+        });
+      }
+    } else {
+      pairs.push({
+        question: (perm.input.question as string) || "",
+        answer: answers ? Object.values(answers).join(", ") : "",
+      });
+    }
+    store.recordAnsweredQuestion(perm.tool_use_id, pairs);
+  }
+
+  store.removePermission(requestId);
   send({
     type: "permission_response",
     request_id: requestId,

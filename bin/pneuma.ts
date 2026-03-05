@@ -368,6 +368,8 @@ async function main() {
       ...(isDev ? {} : { distDir }),
       launcherMode: true,
       projectRoot: PROJECT_ROOT,
+      debug,
+      forceDev: isDev,
     });
 
     const killChildProcesses = () => {
