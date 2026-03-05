@@ -331,10 +331,16 @@ export default function DocPreview({
           }
         }
         const scaffoldFiles = generateDocScaffold(fileSpecs);
+        // Scope clear to what the viewer is showing:
+        // - If a single file is active, only clear that file
+        // - Otherwise clear all viewed markdown files
+        const clearPatterns = activeFile
+          ? [activeFile]
+          : activeFiles.map((f) => f.path);
         const reqId = actionRequest.requestId;
         setScaffoldPending({
           files: scaffoldFiles,
-          clearPatterns: ["*.md", "**/*.md"],
+          clearPatterns,
           source: "agent",
           resolve: (result) => {
             onActionResult?.(reqId, result);

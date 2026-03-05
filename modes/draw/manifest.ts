@@ -43,9 +43,9 @@ You are running inside Pneuma Draw Mode. A user is viewing your Excalidraw diagr
   viewerApi: {
     workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: true },
     scaffold: {
-      description: "Reset canvas to empty state.",
+      description: "Reset the active canvas to empty state. Only affects the currently viewed file.",
       params: {},
-      clearPatterns: ["*.excalidraw"],
+      clearPatterns: ["(active file)"],
     },
   },
 

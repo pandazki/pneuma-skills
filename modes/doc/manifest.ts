@@ -42,11 +42,11 @@ You are running inside Pneuma Doc Mode. A user is viewing your markdown edits li
   viewerApi: {
     workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: false },
     scaffold: {
-      description: "Initialize workspace with empty markdown files.",
+      description: "Initialize workspace with empty markdown files. Clears only the currently viewed files.",
       params: {
         files: { type: "string", description: "JSON array of {name, heading?}", required: false },
       },
-      clearPatterns: ["*.md", "**/*.md"],
+      clearPatterns: ["(currently viewed files)"],
     },
   },
 

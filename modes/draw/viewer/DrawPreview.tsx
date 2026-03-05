@@ -215,10 +215,12 @@ export default function DrawPreview({
           appState: { viewBackgroundColor: "#ffffff" },
           files: {},
         }, null, 2);
+        // Scope to the active file — don't wipe other .excalidraw files
+        const targetFile = activeFile || "drawing.excalidraw";
         const reqId = actionRequest.requestId;
         setScaffoldPending({
-          files: [{ path: "drawing.excalidraw", content: emptyExcalidraw }],
-          clearPatterns: ["*.excalidraw"],
+          files: [{ path: targetFile, content: emptyExcalidraw }],
+          clearPatterns: [targetFile],
           source: "agent",
           resolve: (result) => {
             onActionResult?.(reqId, result);
