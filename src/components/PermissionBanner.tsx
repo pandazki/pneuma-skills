@@ -131,7 +131,7 @@ function AskUserQuestionCard({ perm }: { perm: PermissionRequest }) {
   }
 
   return (
-    <div className="bg-cc-primary/5 border border-cc-primary/20 rounded-lg p-3 space-y-3">
+    <div className="bg-cc-surface border border-cc-primary/20 rounded-lg p-3 space-y-3">
       <div className="text-sm font-medium text-cc-primary">Question</div>
 
       {questions.map((q, i) => {
@@ -166,7 +166,7 @@ function AskUserQuestionCard({ perm }: { perm: PermissionRequest }) {
                       className={`w-full text-left px-3 py-2 rounded-lg border transition-all cursor-pointer disabled:opacity-50 ${
                         isSelected
                           ? "border-cc-primary bg-cc-primary/10 ring-1 ring-cc-primary/30"
-                          : "border-cc-border bg-cc-card/50 hover:bg-cc-hover hover:border-cc-primary/30"
+                          : "border-cc-border bg-cc-bg hover:bg-cc-hover hover:border-cc-primary/30"
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -191,7 +191,7 @@ function AskUserQuestionCard({ perm }: { perm: PermissionRequest }) {
                   className={`w-full text-left px-3 py-2 rounded-lg border transition-all cursor-pointer disabled:opacity-50 ${
                     isCustom
                       ? "border-cc-primary bg-cc-primary/10 ring-1 ring-cc-primary/30"
-                      : "border-cc-border bg-cc-card/50 hover:bg-cc-hover hover:border-cc-primary/30"
+                      : "border-cc-border bg-cc-bg hover:bg-cc-hover hover:border-cc-primary/30"
                   }`}
                 >
                   <div className="flex items-center gap-2">
