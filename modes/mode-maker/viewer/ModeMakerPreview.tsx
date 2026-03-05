@@ -169,16 +169,16 @@ function ManifestDetail({ parsed }: { parsed: ParsedManifest }) {
   if (parsed.workspaceType) entries.push(["workspaceType", parsed.workspaceType]);
   if (parsed.watchPatterns) entries.push(["watchPatterns", parsed.watchPatterns]);
 
-  if (entries.length === 0) return <div className="text-xs text-zinc-500">No manifest fields parsed</div>;
+  if (entries.length === 0) return <div className="text-xs text-cc-muted">No manifest fields parsed</div>;
 
   return (
     <div className="space-y-1.5">
       {entries.map(([key, val]) => (
         <div key={key} className="flex gap-3 text-xs">
-          <span className="text-zinc-500 w-28 shrink-0 font-mono">{key}</span>
-          <span className="text-zinc-300 min-w-0">
+          <span className="text-cc-muted w-28 shrink-0 font-mono">{key}</span>
+          <span className="text-cc-fg min-w-0">
             {Array.isArray(val)
-              ? val.map((v, i) => <code key={i} className="bg-zinc-700/50 px-1 py-0.5 rounded mr-1 text-zinc-400">{v}</code>)
+              ? val.map((v, i) => <code key={i} className="bg-cc-surface border border-cc-border px-1 py-0.5 rounded break-all mr-1 text-cc-muted">{v}</code>)
               : val}
           </span>
         </div>
@@ -189,7 +189,7 @@ function ManifestDetail({ parsed }: { parsed: ParsedManifest }) {
 
 function ModeDefDetail({ files }: { files: ViewerPreviewProps["files"] }) {
   const modeDef = files.find((f) => f.path === "pneuma-mode.ts" || f.path === "pneuma-mode.js");
-  if (!modeDef) return <div className="text-xs text-zinc-500">File not found</div>;
+  if (!modeDef) return <div className="text-xs text-cc-muted">File not found</div>;
 
   const content = modeDef.content;
   const manifestMatch = content.match(/import\s+(\w+)\s+from\s+["']\.\/manifest[^"']*["']/);
@@ -205,14 +205,14 @@ function ModeDefDetail({ files }: { files: ViewerPreviewProps["files"] }) {
   if (hasExtractContext) rows.push(["extractContext", "defined"]);
   if (strategyMatch) rows.push(["updateStrategy", strategyMatch[1]]);
 
-  if (rows.length === 0) return <div className="text-xs text-zinc-500">Could not parse bindings</div>;
+  if (rows.length === 0) return <div className="text-xs text-cc-muted">Could not parse bindings</div>;
 
   return (
     <div className="space-y-1.5">
       {rows.map(([key, val]) => (
         <div key={key} className="flex gap-3 text-xs">
-          <span className="text-zinc-500 w-28 shrink-0 font-mono">{key}</span>
-          <span className="text-zinc-300">{val}</span>
+          <span className="text-cc-muted w-28 shrink-0 font-mono">{key}</span>
+          <span className="text-cc-fg">{val}</span>
         </div>
       ))}
     </div>
@@ -221,7 +221,7 @@ function ModeDefDetail({ files }: { files: ViewerPreviewProps["files"] }) {
 
 function SkillOutline({ files }: { files: ViewerPreviewProps["files"] }) {
   const skill = files.find((f) => f.path === "skill/SKILL.md");
-  if (!skill) return <div className="text-xs text-zinc-500">File not found</div>;
+  if (!skill) return <div className="text-xs text-cc-muted">File not found</div>;
 
   const lines = skill.content.split("\n");
   const headings = lines
@@ -232,7 +232,7 @@ function SkillOutline({ files }: { files: ViewerPreviewProps["files"] }) {
     })
     .filter((h): h is { depth: number; text: string } => h !== null);
 
-  const depthColors = ["text-zinc-200", "text-zinc-300", "text-zinc-400", "text-zinc-500"];
+  const depthColors = ["text-cc-fg", "text-cc-fg/80", "text-cc-muted", "text-cc-muted/80"];
 
   return (
     <div className="space-y-0.5">
@@ -245,7 +245,7 @@ function SkillOutline({ files }: { files: ViewerPreviewProps["files"] }) {
           {h.text}
         </div>
       ))}
-      <div className="text-[11px] text-zinc-500 pt-1.5 mt-1 border-t border-zinc-700/50">
+      <div className="text-[11px] text-cc-muted pt-1.5 mt-1 border-t border-cc-border">
         {lines.length} lines total
       </div>
     </div>
@@ -258,6 +258,10 @@ interface AvailableMode {
   name: string;
   displayName?: string;
   description?: string;
+  icon?: string;
+  version?: string;
+  source: "builtin" | "local";
+  path?: string;
   fileCount: number;
 }
 
@@ -280,11 +284,11 @@ function ModalDialog({ open, onClose, title, children }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="bg-zinc-800 border border-zinc-600 rounded-lg shadow-2xl w-[420px] max-h-[80vh] overflow-hidden"
+        className="bg-cc-surface/90 backdrop-blur-2xl border border-cc-border/60 rounded-xl shadow-2xl w-[560px] max-h-[80vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b border-zinc-700">
-          <h3 className="text-base font-medium text-zinc-100">{title}</h3>
+        <div className="px-5 py-4 border-b border-cc-border/50">
+          <h3 className="text-base font-medium text-cc-fg">{title}</h3>
         </div>
         <div className="px-5 py-4">{children}</div>
       </div>
@@ -294,11 +298,10 @@ function ModalDialog({ open, onClose, title, children }: {
 
 // ── Structure Card ───────────────────────────────────────────────────────────
 
-function StructureCard({ title, subtitle, done, accentColor, expandable, expanded, onToggle, onClick, children }: {
+function StructureCard({ title, subtitle, done, expandable, expanded, onToggle, onClick, children }: {
   title: string;
   subtitle: string;
   done: boolean;
-  accentColor: string;
   expandable?: boolean;
   expanded?: boolean;
   onToggle?: () => void;
@@ -315,36 +318,35 @@ function StructureCard({ title, subtitle, done, accentColor, expandable, expande
 
   return (
     <div
-      className={`rounded-lg border border-zinc-700 bg-zinc-800/50 p-3.5 border-l-[3px] cursor-pointer hover:bg-zinc-800 transition-colors ${
-        done ? accentColor : "border-l-zinc-600"
-      } ${expanded ? "col-span-2" : ""}`}
+      className={`rounded-xl border bg-cc-surface/50 p-4 cursor-pointer hover:bg-cc-surface transition-all ${done ? "border-cc-border hover:border-cc-primary/30" : "border-cc-border/30 opacity-80"
+        } ${expanded ? "col-span-2" : ""}`}
       onClick={handleClick}
     >
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-1.5">
-          <span className="text-sm font-medium text-zinc-200">{title}</span>
+          <span className="text-sm font-medium text-cc-fg">{title}</span>
           {expandable && done && (
             <svg
-              className={`w-3.5 h-3.5 text-zinc-500 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+              className={`w-3.5 h-3.5 text-cc-muted transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
               viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
             >
               <path d="M9 18l6-6-6-6" />
             </svg>
           )}
           {!expandable && done && (
-            <svg className="w-3 h-3 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg className="w-3 h-3 text-cc-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M7 17l9.2-9.2M17 17V7H7" />
             </svg>
           )}
         </div>
-        <span className={`flex items-center gap-1.5 text-xs ${done ? "text-emerald-400" : "text-zinc-500"}`}>
-          <span className={`inline-block w-1.5 h-1.5 rounded-full ${done ? "bg-emerald-400" : "bg-zinc-600"}`} />
+        <span className={`flex items-center gap-1.5 text-xs ${done ? "text-cc-success" : "text-cc-muted"}`}>
+          <span className={`inline-block w-1.5 h-1.5 rounded-full ${done ? "bg-cc-success drop-shadow-[0_0_8px_rgba(45,212,191,0.5)]" : "bg-cc-border"}`} />
           {done ? "Ready" : "Missing"}
         </span>
       </div>
-      <div className="text-xs text-zinc-500">{subtitle}</div>
+      <div className="text-xs text-cc-muted">{subtitle}</div>
       {expanded && children && (
-        <div className="mt-3 pt-3 border-t border-zinc-700/50" onClick={(e) => e.stopPropagation()}>
+        <div className="mt-4 pt-4 border-t border-cc-border/50" onClick={(e) => e.stopPropagation()}>
           {children}
         </div>
       )}
@@ -360,9 +362,9 @@ function ActionCard({ title, description, children }: {
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-4 flex flex-col min-w-[180px] flex-1">
-      <h4 className="text-sm font-medium text-zinc-200 mb-0.5">{title}</h4>
-      <p className="text-xs text-zinc-500 mb-3 flex-1">{description}</p>
+    <div className="rounded-xl border border-cc-border bg-cc-surface p-4 flex flex-col min-w-[180px] flex-1">
+      <h4 className="text-sm font-medium text-cc-fg mb-0.5">{title}</h4>
+      <p className="text-xs text-cc-muted mb-4 flex-1">{description}</p>
       {children}
     </div>
   );
@@ -404,11 +406,13 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
 
   // ── Import state ──
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importTab, setImportTab] = useState<"modes" | "url">("modes");
   const [availableModes, setAvailableModes] = useState<AvailableMode[]>([]);
   const [selectedMode, setSelectedMode] = useState<string>("");
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState<string>("");
   const [importNeedsConfirm, setImportNeedsConfirm] = useState(false);
+  const [importUrl, setImportUrl] = useState("");
 
   // ── Play state ──
   const [playState, setPlayState] = useState<PlayStatus>({ running: false });
@@ -435,7 +439,7 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
       fetch(`${api}/api/mode-maker/play/status`)
         .then((r) => r.json())
         .then((data: PlayStatus) => setPlayState(data))
-        .catch(() => {});
+        .catch(() => { });
     };
     fetchStatus();
     pollRef.current = setInterval(fetchStatus, 3000);
@@ -449,6 +453,8 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
     setImportError("");
     setImportNeedsConfirm(false);
     setSelectedMode("");
+    setImportTab("modes");
+    setImportUrl("");
     setShowImportDialog(true);
     fetch(`${api}/api/mode-maker/modes`)
       .then((r) => r.json())
@@ -461,12 +467,17 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
 
   const doImport = useCallback((overwrite = false) => {
     if (!selectedMode) return;
+    const selected = availableModes.find((m) => m.name === selectedMode);
     setImportLoading(true);
     setImportError("");
     fetch(`${api}/api/mode-maker/fork`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sourceMode: selectedMode, overwrite }),
+      body: JSON.stringify({
+        sourceMode: selectedMode,
+        sourcePath: selected?.source === "local" ? selected.path : undefined,
+        overwrite,
+      }),
     })
       .then((r) => r.json())
       .then((data: any) => {
@@ -481,7 +492,31 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
       })
       .catch((err) => setImportError(err.message))
       .finally(() => setImportLoading(false));
-  }, [api, selectedMode]);
+  }, [api, selectedMode, availableModes]);
+
+  const doImportUrl = useCallback((overwrite = false) => {
+    if (!importUrl.trim()) return;
+    setImportLoading(true);
+    setImportError("");
+    fetch(`${api}/api/mode-maker/fork-url`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: importUrl.trim(), overwrite }),
+    })
+      .then((r) => r.json())
+      .then((data: any) => {
+        if (data.requireConfirmation) {
+          setImportNeedsConfirm(true);
+        } else if (data.success) {
+          setShowImportDialog(false);
+          setImportNeedsConfirm(false);
+        } else {
+          setImportError(data.message || "Import failed");
+        }
+      })
+      .catch((err) => setImportError(err.message))
+      .finally(() => setImportLoading(false));
+  }, [api, importUrl]);
 
   // ── Play handlers ──
   const startPlay = useCallback(() => {
@@ -503,7 +538,7 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
   const stopPlay = useCallback(() => {
     fetch(`${api}/api/mode-maker/play/stop`, { method: "POST" })
       .then(() => setPlayState({ running: false }))
-      .catch(() => {});
+      .catch(() => { });
   }, [api]);
 
   // ── Publish handler ──
@@ -550,65 +585,66 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
     })
       .then((r) => r.json())
       .then(() => setShowResetConfirm(false))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setResetLoading(false));
   }, [api]);
 
   // Map checklist items to structure card props
   const structureCards: {
-    title: string; subtitle: string; done: boolean; accentColor: string;
+    title: string; subtitle: string; done: boolean;
   }[] = [
-    { title: "Manifest", subtitle: summaries.manifest, done: checklist[0].done, accentColor: "border-l-blue-500" },
-    { title: "Mode Definition", subtitle: summaries.modeDef, done: checklist[1].done, accentColor: "border-l-violet-500" },
-    { title: "Viewer", subtitle: summaries.viewer, done: checklist[2].done, accentColor: "border-l-amber-500" },
-    { title: "Agent Skill", subtitle: summaries.skill, done: checklist[3].done, accentColor: "border-l-emerald-500" },
-    { title: "Seed Content", subtitle: summaries.seed, done: checklist[4].done, accentColor: "border-l-orange-500" },
-  ];
+      { title: "Manifest", subtitle: summaries.manifest, done: checklist[0].done },
+      { title: "Mode Definition", subtitle: summaries.modeDef, done: checklist[1].done },
+      { title: "Viewer", subtitle: summaries.viewer, done: checklist[2].done },
+      { title: "Agent Skill", subtitle: summaries.skill, done: checklist[3].done },
+      { title: "Seed Content", subtitle: summaries.seed, done: checklist[4].done },
+    ];
 
   return (
     <div className="p-5 space-y-6">
       {/* ── Identity Header ── */}
-      <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-5">
+      <div className="rounded-2xl border border-cc-border/50 bg-cc-card backdrop-blur-xl p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
         <div className="flex items-start justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-zinc-100">
+            <h2 className="text-xl font-semibold text-cc-fg">
               {parsed.displayName || parsed.name || "Untitled Mode"}
             </h2>
             {parsed.name && (
-              <code className="text-sm text-zinc-400 mt-1 block">
+              <code className="text-sm text-cc-muted mt-1 block">
                 {parsed.name}
               </code>
             )}
           </div>
           <div className="flex items-center gap-2">
             <button
-              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
               onClick={openImportDialog}
             >
               Import...
             </button>
             {parsed.version && (
-              <span className="text-xs bg-zinc-700 text-zinc-300 px-2 py-1 rounded">
+              <span className="text-xs bg-cc-surface border border-cc-border text-cc-muted px-2 py-1 rounded-md tracking-wide">
                 v{parsed.version}
               </span>
             )}
           </div>
         </div>
         {parsed.description && (
-          <p className="text-sm text-zinc-400 mt-3">{parsed.description}</p>
+          <p className="text-sm text-cc-muted/80 mt-3">{parsed.description}</p>
         )}
-        <div className="mt-4 flex gap-4 text-xs text-zinc-500">
+        <div className="mt-4 flex gap-4 text-xs text-cc-muted">
           {parsed.installName && (
-            <span>Skill: <code className="text-zinc-400">{parsed.installName}</code></span>
+            <span className="flex items-center gap-1.5">Skill <code className="text-cc-fg bg-cc-surface border border-cc-border px-1.5 py-0.5 rounded-md">{parsed.installName}</code></span>
           )}
           {parsed.workspaceType && (
-            <span>Workspace: <code className="text-zinc-400">{parsed.workspaceType}</code></span>
+            <span className="flex items-center gap-1.5">Workspace <code className="text-cc-fg bg-cc-surface border border-cc-border px-1.5 py-0.5 rounded-md">{parsed.workspaceType}</code></span>
           )}
         </div>
         {parsed.watchPatterns && parsed.watchPatterns.length > 0 && (
-          <div className="mt-3 text-xs text-zinc-500">
-            Watch: {parsed.watchPatterns.map((p, i) => (
-              <code key={i} className="text-zinc-400 bg-zinc-700/50 px-1.5 py-0.5 rounded mr-1">{p}</code>
+          <div className="mt-3 flex items-center gap-1.5 text-xs text-cc-muted flex-wrap">
+            Watch
+            {parsed.watchPatterns.map((p, i) => (
+              <code key={i} className="text-cc-fg bg-cc-surface border border-cc-border px-1.5 py-0.5 rounded-md">{p}</code>
             ))}
           </div>
         )}
@@ -617,13 +653,13 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
       {/* ── Package Structure ── */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-zinc-300">Package Structure</h3>
-          <span className="text-xs text-zinc-500">{doneCount}/{checklist.length} components</span>
+          <h3 className="text-sm font-medium text-cc-fg">Package Structure</h3>
+          <span className="text-xs text-cc-muted">{doneCount}/{checklist.length} components</span>
         </div>
         {/* Progress bar */}
-        <div className="h-1 bg-zinc-800 rounded-full mb-4 overflow-hidden">
+        <div className="h-1 bg-cc-surface border border-cc-border/50 rounded-full mb-4 overflow-hidden">
           <div
-            className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+            className="h-full bg-cc-success drop-shadow-[0_0_8px_rgba(45,212,191,0.5)] transition-all duration-300"
             style={{ width: `${(doneCount / checklist.length) * 100}%` }}
           />
         </div>
@@ -638,7 +674,6 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
                 title={card.title}
                 subtitle={card.subtitle}
                 done={card.done}
-                accentColor={card.accentColor}
                 expandable={isExpandable}
                 expanded={isExpanded}
                 onToggle={() => toggleCard(card.title)}
@@ -659,7 +694,7 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
 
       {/* ── Actions ── */}
       <div>
-        <h3 className="text-sm font-medium text-zinc-300 mb-3">Actions</h3>
+        <h3 className="text-sm font-medium text-cc-fg mb-3">Actions</h3>
         <div className="flex gap-3 flex-wrap">
           {/* Test card */}
           <ActionCard title="Test" description="Launch in a temporary workspace">
@@ -670,12 +705,12 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
                     href={playState.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+                    className="px-3 py-1.5 text-xs bg-cc-primary hover:bg-cc-primary-hover text-cc-bg font-medium rounded-md transition-colors shadow-[0_0_10px_rgba(249,115,22,0.2)]"
                   >
                     Open
                   </a>
                   <button
-                    className="px-3 py-1.5 text-xs bg-red-700 hover:bg-red-600 text-white rounded transition-colors"
+                    className="px-3 py-1.5 text-xs border border-cc-border bg-cc-surface hover:border-cc-primary/50 hover:text-cc-primary text-cc-fg rounded-md transition-colors cursor-pointer"
                     onClick={stopPlay}
                   >
                     Stop
@@ -766,60 +801,131 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
       <ModalDialog
         open={showImportDialog}
         onClose={() => setShowImportDialog(false)}
-        title="Import from Existing Mode"
+        title="Import Mode"
       >
-        {availableModes.length === 0 && !importError && (
-          <div className="text-sm text-zinc-400 py-4 text-center">Loading modes...</div>
-        )}
+        {/* Tabs */}
+        <div className="flex gap-1 mb-4 p-0.5 bg-cc-bg/50 rounded-lg border border-cc-border/30">
+          {(["modes", "url"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => { setImportTab(tab); setImportError(""); setImportNeedsConfirm(false); }}
+              className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all cursor-pointer ${importTab === tab ? "bg-cc-surface text-cc-fg shadow-sm" : "text-cc-muted hover:text-cc-fg"}`}
+            >
+              {tab === "modes" ? "Modes" : "From URL"}
+            </button>
+          ))}
+        </div>
+
         {importError && (
           <div className="text-sm text-red-400 mb-3">{importError}</div>
         )}
-        <div className="space-y-1 mb-4 max-h-48 overflow-auto">
-          {availableModes.map((m) => (
-            <label
-              key={m.name}
-              className={`flex items-start gap-3 p-2.5 rounded cursor-pointer transition-colors ${
-                selectedMode === m.name ? "bg-zinc-700" : "hover:bg-zinc-700/50"
-              }`}
-            >
-              <input
-                type="radio"
-                name="importMode"
-                value={m.name}
-                checked={selectedMode === m.name}
-                onChange={() => setSelectedMode(m.name)}
-                className="mt-0.5 accent-blue-500"
-              />
-              <div className="min-w-0">
-                <div className="text-sm text-zinc-200 font-medium">{m.name}</div>
-                {m.description && (
-                  <div className="text-xs text-zinc-400 mt-0.5">{m.description}</div>
-                )}
-                <div className="text-xs text-zinc-500 mt-0.5">{m.fileCount} files</div>
+
+        {importTab === "modes" && (
+          <>
+            {availableModes.length === 0 && !importError && (
+              <div className="text-sm text-cc-muted py-6 text-center">Loading modes...</div>
+            )}
+            <div className="space-y-2 mb-4 max-h-64 overflow-auto pr-1">
+              {availableModes.map((m) => {
+                const isSelected = selectedMode === m.name;
+                const hasSvg = m.icon && m.icon.trim().startsWith("<svg");
+                return (
+                  <div
+                    key={m.name}
+                    onClick={() => setSelectedMode(m.name)}
+                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${isSelected ? "border-cc-primary/60 bg-cc-primary/5 shadow-[0_0_12px_rgba(249,115,22,0.08)]" : "border-cc-border/40 bg-cc-bg/30 hover:border-cc-border hover:bg-cc-bg/60"}`}
+                  >
+                    {/* Icon */}
+                    <div className={`w-9 h-9 shrink-0 flex items-center justify-center rounded-full border ${isSelected ? "border-cc-primary/40 bg-cc-primary/10" : "border-cc-border/50 bg-cc-surface/50"}`}>
+                      {hasSvg ? (
+                        <div
+                          className={`w-4 h-4 [&>svg]:w-full [&>svg]:h-full ${isSelected ? "text-cc-primary" : "text-cc-muted"}`}
+                          dangerouslySetInnerHTML={{ __html: m.icon! }}
+                        />
+                      ) : (
+                        <svg className={`w-4 h-4 ${isSelected ? "text-cc-primary" : "text-cc-muted"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" /></svg>
+                      )}
+                    </div>
+                    {/* Info */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm font-medium ${isSelected ? "text-cc-fg" : "text-cc-fg/80"}`}>
+                          {m.displayName || m.name}
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${m.source === "builtin" ? "bg-cc-border/40 text-cc-muted" : "bg-cc-primary-muted/50 text-cc-primary"}`}>
+                          {m.source}
+                        </span>
+                        {m.version && m.version !== "builtin" && (
+                          <span className="text-[10px] text-cc-muted">v{m.version}</span>
+                        )}
+                      </div>
+                      {m.description && (
+                        <div className="text-xs text-cc-muted mt-0.5 truncate">{m.description}</div>
+                      )}
+                    </div>
+                    {/* File count */}
+                    <span className="text-[10px] text-cc-muted shrink-0">{m.fileCount} files</span>
+                  </div>
+                );
+              })}
+            </div>
+            {importNeedsConfirm && (
+              <div className="text-xs text-amber-400 mb-3 bg-amber-900/20 border border-amber-800/30 rounded-lg p-2.5">
+                Workspace has existing files. Importing will add/overwrite files from the selected mode.
               </div>
-            </label>
-          ))}
-        </div>
-        {importNeedsConfirm && (
-          <div className="text-xs text-amber-400 mb-3 bg-amber-900/20 border border-amber-800/30 rounded p-2.5">
-            Workspace has existing files. Importing will add/overwrite files from the selected mode.
-          </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
+                onClick={() => setShowImportDialog(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs bg-cc-primary hover:bg-cc-primary-hover text-cc-bg font-medium rounded-md transition-colors disabled:opacity-50 cursor-pointer"
+                onClick={() => doImport(importNeedsConfirm)}
+                disabled={importLoading || !selectedMode}
+              >
+                {importLoading ? "Importing..." : importNeedsConfirm ? "Overwrite & Import" : "Import"}
+              </button>
+            </div>
+          </>
         )}
-        <div className="flex justify-end gap-2">
-          <button
-            className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
-            onClick={() => setShowImportDialog(false)}
-          >
-            Cancel
-          </button>
-          <button
-            className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors disabled:opacity-50"
-            onClick={() => doImport(importNeedsConfirm)}
-            disabled={importLoading || !selectedMode}
-          >
-            {importLoading ? "Importing..." : importNeedsConfirm ? "Overwrite & Import" : "Import"}
-          </button>
-        </div>
+
+        {importTab === "url" && (
+          <>
+            <p className="text-xs text-cc-muted mb-3">
+              Enter a mode package URL (.tar.gz) to download and import.
+            </p>
+            <input
+              type="text"
+              value={importUrl}
+              onChange={(e) => setImportUrl(e.target.value)}
+              placeholder="https://example.com/modes/my-mode/1.0.0.tar.gz"
+              className="w-full px-3 py-2 bg-cc-bg/50 border border-cc-border/50 rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50 placeholder:text-cc-muted/40 mb-4"
+            />
+            {importNeedsConfirm && (
+              <div className="text-xs text-amber-400 mb-3 bg-amber-900/20 border border-amber-800/30 rounded-lg p-2.5">
+                Workspace has existing files. Importing will add/overwrite files from the downloaded mode.
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
+                onClick={() => setShowImportDialog(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs bg-cc-primary hover:bg-cc-primary-hover text-cc-bg font-medium rounded-md transition-colors disabled:opacity-50 cursor-pointer"
+                onClick={() => doImportUrl(importNeedsConfirm)}
+                disabled={importLoading || !importUrl.trim()}
+              >
+                {importLoading ? "Downloading..." : importNeedsConfirm ? "Overwrite & Import" : "Download & Import"}
+              </button>
+            </div>
+          </>
+        )}
       </ModalDialog>
 
       {/* ── Reset Confirm Dialog ── */}
@@ -1060,7 +1166,7 @@ function PreviewTab({ files }: { files: ViewerPreviewProps["files"] }) {
       <DynComponent
         files={mockFiles}
         selection={null}
-        onSelect={() => {}}
+        onSelect={() => { }}
         mode="view"
         imageVersion={0}
       />
@@ -1152,11 +1258,10 @@ function FilesTab({ files, onSelectFile }: {
               {group.files.map((f) => (
                 <button
                   key={f.path}
-                  className={`w-full text-left text-xs px-2 py-1 rounded truncate transition-colors ${
-                    f.path === selectedFile
-                      ? "bg-zinc-600 text-zinc-100"
-                      : "text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-300"
-                  }`}
+                  className={`w-full text-left text-xs px-2 py-1 rounded truncate transition-colors ${f.path === selectedFile
+                    ? "bg-zinc-600 text-zinc-100"
+                    : "text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-300"
+                    }`}
                   onClick={() => handleSelect(f.path)}
                   title={f.path}
                 >
@@ -1217,25 +1322,23 @@ export default function ModeMakerPreview({
   }, [onSelect, onActiveFileChange]);
 
   return (
-    <div className="flex flex-col h-full bg-zinc-900 text-zinc-100">
+    <div className="flex flex-col h-full bg-cc-bg text-cc-fg">
       {/* Tab bar */}
-      <div className="flex border-b border-zinc-700 shrink-0">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors relative ${
-              activeTab === tab.id
-                ? "text-zinc-100"
-                : "text-zinc-500 hover:text-zinc-300"
-            }`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-            {activeTab === tab.id && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
-            )}
-          </button>
-        ))}
+      <div className="flex border-b border-cc-border/50 shrink-0">
+        <div className="flex items-center gap-1 bg-cc-surface/50 border border-cc-border/50 rounded-full p-1 shadow-inner mx-4 my-3">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-full transition-all duration-300 ${activeTab === tab.id
+                  ? "bg-cc-primary text-cc-bg shadow-[0_0_12px_rgba(249,115,22,0.4)]"
+                  : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
+                }`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Tab content */}

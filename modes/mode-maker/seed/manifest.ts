@@ -12,6 +12,7 @@ const manifest: ModeManifest = {
   version: "1.0.0",
   displayName: "{{displayName}}",
   description: "TODO: describe what this mode does",
+  // icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">...</svg>`,
 
   skill: {
     sourceDir: "skill",
@@ -37,10 +38,11 @@ You are running inside Pneuma {{displayName}} Mode. A user is viewing your edits
       ".claude/**",
       ".pneuma/**",
     ],
+    serveDir: ".",
   },
 
   viewerApi: {
-    workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: false },
+    workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: true },
   },
 
   agent: {

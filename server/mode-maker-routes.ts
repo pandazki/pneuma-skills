@@ -7,8 +7,8 @@
 
 import type { Hono } from "hono";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync, statSync, unlinkSync, rmdirSync } from "node:fs";
-import { join, relative, dirname, basename } from "node:path";
-import { tmpdir } from "node:os";
+import { join, relative, dirname, basename, resolve } from "node:path";
+import { tmpdir, homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { parseManifestTs } from "../core/utils/manifest-parser.js";
 import { applyTemplateParams } from "./skill-installer.js";
@@ -166,9 +166,12 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
   const { workspace, projectRoot } = opts;
   const modesDir = join(projectRoot, "modes");
 
-  // GET /api/mode-maker/modes — list builtin modes available for forking
+  // GET /api/mode-maker/modes — list builtin + local modes available for forking
   app.get("/api/mode-maker/modes", (c) => {
-    const modes: { name: string; displayName?: string; description?: string; fileCount: number }[] = [];
+    interface ModeEntry { name: string; displayName?: string; description?: string; icon?: string; version?: string; source: "builtin" | "local"; path?: string; fileCount: number }
+    const modes: ModeEntry[] = [];
+
+    // Scan builtin modes
     try {
       const entries = readdirSync(modesDir, { withFileTypes: true });
       for (const entry of entries) {
@@ -182,23 +185,56 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
           name: entry.name,
           displayName: parsed.displayName,
           description: parsed.description,
+          icon: parsed.icon,
+          version: "builtin",
+          source: "builtin",
           fileCount: files.length,
         });
       }
     } catch { /* modes dir scan failed */ }
+
+    // Scan local modes from ~/.pneuma/modes/
+    const localModesDir = join(homedir(), ".pneuma", "modes");
+    try {
+      if (existsSync(localModesDir)) {
+        const entries = readdirSync(localModesDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          const entryPath = join(localModesDir, entry.name);
+          // Note: we don't skip workspace-self here — user may want to re-import
+          const manifestFile = ["manifest.ts", "manifest.js"].find((f) => existsSync(join(entryPath, f)));
+          if (!manifestFile) continue;
+          const content = readFileSync(join(entryPath, manifestFile), "utf-8");
+          const parsed = parseManifestTs(content);
+          const files = listFilesRecursive(entryPath);
+          modes.push({
+            name: parsed.name || entry.name,
+            displayName: parsed.displayName,
+            description: parsed.description,
+            icon: parsed.icon,
+            version: parsed.version || "local",
+            source: "local",
+            path: entryPath,
+            fileCount: files.length,
+          });
+        }
+      }
+    } catch { /* local modes scan failed */ }
+
     return c.json({ modes });
   });
 
-  // POST /api/mode-maker/fork — copy a builtin mode's files into workspace
+  // POST /api/mode-maker/fork — copy a builtin or local mode's files into workspace
   app.post("/api/mode-maker/fork", async (c) => {
     try {
-      const body = await c.req.json<{ sourceMode: string; overwrite?: boolean }>();
+      const body = await c.req.json<{ sourceMode: string; sourcePath?: string; overwrite?: boolean }>();
       if (!body.sourceMode) {
         return c.json({ success: false, message: "sourceMode is required" }, 400);
       }
 
-      const sourceDir = join(modesDir, body.sourceMode);
-      if (!existsSync(sourceDir) || !existsSync(join(sourceDir, "manifest.ts"))) {
+      // Resolve source: explicit path (local mode) or builtin by name
+      let sourceDir = body.sourcePath || join(modesDir, body.sourceMode);
+      if (!existsSync(sourceDir) || !["manifest.ts", "manifest.js"].some((f) => existsSync(join(sourceDir, f)))) {
         return c.json({ success: false, message: `Mode "${body.sourceMode}" not found` }, 404);
       }
 
@@ -216,6 +252,85 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
       // Copy all files from source mode to workspace
       const { files, count } = copyDirRecursive(sourceDir, workspace);
       return c.json({ success: true, filesWritten: count, files });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ success: false, message }, 500);
+    }
+  });
+
+  // POST /api/mode-maker/fork-url — download a mode from URL, then fork into workspace
+  app.post("/api/mode-maker/fork-url", async (c) => {
+    try {
+      const body = await c.req.json<{ url: string; overwrite?: boolean }>();
+      if (!body.url) {
+        return c.json({ success: false, message: "url is required" }, 400);
+      }
+
+      // Infer mode name from URL (e.g. .../modes/my-mode/1.0.0.tar.gz → my-mode)
+      const urlParts = body.url.replace(/\/$/, "").split("/");
+      const tarIdx = urlParts.findIndex((p) => p.endsWith(".tar.gz"));
+      let modeName = tarIdx > 0 ? urlParts[tarIdx - 1] : `url-mode-${Date.now()}`;
+      // Fallback: use filename without extension
+      if (modeName.endsWith(".tar.gz")) modeName = modeName.replace(/\.tar\.gz$/, "");
+
+      const localModesDir = join(homedir(), ".pneuma", "modes");
+      const targetDir = join(localModesDir, modeName);
+      mkdirSync(localModesDir, { recursive: true });
+
+      // Download
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 60_000);
+      try {
+        const response = await fetch(body.url, { signal: controller.signal });
+        if (!response.ok) {
+          return c.json({ success: false, message: `Download failed: HTTP ${response.status}` }, 400);
+        }
+
+        // Save to temp file
+        const tempPath = join(tmpdir(), `pneuma-dl-${Date.now()}.tar.gz`);
+        const arrayBuf = await response.arrayBuffer();
+        writeFileSync(tempPath, Buffer.from(arrayBuf));
+
+        // Clean existing target and extract
+        if (existsSync(targetDir)) {
+          const { rmSync } = await import("node:fs");
+          rmSync(targetDir, { recursive: true, force: true });
+        }
+        mkdirSync(targetDir, { recursive: true });
+
+        const proc = Bun.spawn(["tar", "xzf", tempPath, "-C", targetDir], {
+          stdout: "pipe", stderr: "pipe",
+        });
+        const exitCode = await proc.exited;
+        try { unlinkSync(tempPath); } catch {}
+
+        if (exitCode !== 0) {
+          return c.json({ success: false, message: "Failed to extract archive" }, 500);
+        }
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      // Validate
+      if (!["manifest.ts", "manifest.js"].some((f) => existsSync(join(targetDir, f)))) {
+        return c.json({ success: false, message: "Downloaded archive does not contain a valid mode package (no manifest.ts)" }, 400);
+      }
+
+      // Check workspace files
+      const existingFiles = listFilesRecursive(workspace);
+      if (existingFiles.length > 0 && !body.overwrite) {
+        return c.json({
+          success: false,
+          requireConfirmation: true,
+          modeName,
+          existingFileCount: existingFiles.length,
+          message: `Workspace has ${existingFiles.length} existing file(s). Set overwrite: true to proceed.`,
+        });
+      }
+
+      // Fork into workspace
+      const { files, count } = copyDirRecursive(targetDir, workspace);
+      return c.json({ success: true, filesWritten: count, files, modeName });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       return c.json({ success: false, message }, 500);
