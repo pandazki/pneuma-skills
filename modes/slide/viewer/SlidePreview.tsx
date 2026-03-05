@@ -318,7 +318,7 @@ const SELECTION_SCRIPT = buildSelectionScript({
  */
 function buildSrcdoc(slideHtml: string, themeCSS: string): string {
   slideHtml = sanitizeHtmlQuotes(slideHtml);
-  const baseUrl = import.meta.env.DEV ? "http://localhost:17007" : "";
+  const baseUrl = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
   const isFullDoc =
     slideHtml.includes("<!DOCTYPE") || slideHtml.includes("<html");
 
@@ -602,7 +602,7 @@ export default function SlidePreview({
 
       // Persist to file in background
       const newManifest = { ...manifest, slides: newSlides };
-      const baseUrl = import.meta.env.DEV ? `http://localhost:17007` : "";
+      const baseUrl = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
       fetch(`${baseUrl}/api/files`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -637,7 +637,7 @@ export default function SlidePreview({
       }
 
       const newManifest = { ...manifest, slides: newSlides };
-      const baseUrl = import.meta.env.DEV ? `http://localhost:17007` : "";
+      const baseUrl = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
       fetch(`${baseUrl}/api/files`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -666,7 +666,7 @@ export default function SlidePreview({
       }
       clearTimeout(editTimerRef.current);
       editTimerRef.current = setTimeout(() => {
-        const baseUrl = import.meta.env.DEV ? "http://localhost:17007" : "";
+        const baseUrl = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
         fetch(`${baseUrl}/api/files`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -710,7 +710,7 @@ export default function SlidePreview({
     scaffoldFiles: ScaffoldFile[],
     clearPatterns: string[],
   ): Promise<{ success: boolean; message?: string }> => {
-    const baseUrl = import.meta.env.DEV ? "http://localhost:17007" : "";
+    const baseUrl = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
     try {
       const res = await fetch(`${baseUrl}/api/workspace/scaffold`, {
         method: "POST",
@@ -1908,7 +1908,7 @@ function SlideToolbar({
     ];
 
   const handleExport = useCallback(() => {
-    const baseUrl = import.meta.env.DEV ? `http://localhost:17007` : "";
+    const baseUrl = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
     const cs = useStore.getState().activeContentSet;
     const qs = cs ? `?contentSet=${encodeURIComponent(cs)}` : "";
     window.open(`${baseUrl}/export/slides${qs}`, "_blank");

@@ -1045,75 +1045,43 @@ function ContextUsageCard({ content }: { content: string }) {
 function DebugPayloadButton({ payload }: { payload: NonNullable<ChatMessage["debugPayload"]> }) {
   const [open, setOpen] = useState(false);
   return (
-    <>
+    <div className="border-t border-cc-border/30">
       <button
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-1 px-2 py-1 text-[10px] text-cc-muted hover:text-cc-fg transition-colors cursor-pointer border-t border-cc-border/30"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1 px-2 py-1 text-[10px] text-cc-muted hover:text-cc-fg transition-colors cursor-pointer w-full"
         title="Debug: view CLI payload"
       >
-        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
-          <path d="M4.5 2.5L2 5l2.5 2.5M11.5 2.5L14 5l-2.5 2.5M9 1.5L7 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        <svg viewBox="0 0 16 16" fill="currentColor" className={`w-3 h-3 transition-transform ${open ? "rotate-90" : ""}`}>
+          <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
         </svg>
         <span>payload</span>
       </button>
-      {open && <DebugPayloadModal payload={payload} onClose={() => setOpen(false)} />}
-    </>
-  );
-}
-
-function DebugPayloadModal({ payload, onClose }: { payload: NonNullable<ChatMessage["debugPayload"]>; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div
-        className="bg-cc-bg border border-cc-border rounded-lg max-w-2xl w-full max-h-[80vh] overflow-auto shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-cc-border">
-          <span className="text-sm font-semibold text-cc-fg">Debug: CLI Payload</span>
-          <button onClick={onClose} className="text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">
-            <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
-              <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-            </svg>
-          </button>
-        </div>
-        <div className="p-4 space-y-4">
-          <div>
-            <div className="text-xs font-medium text-cc-muted mb-1.5">Enriched Content</div>
-            <pre className="text-xs font-mono-code bg-cc-code-bg text-cc-code-fg rounded-lg px-3 py-2.5 overflow-x-auto whitespace-pre-wrap border border-cc-border max-h-80 overflow-y-auto">
-              {payload.enrichedContent}
-            </pre>
-          </div>
+      {open && (
+        <div className="px-2.5 pb-2.5 space-y-2">
+          <pre className="text-[10px] font-mono-code bg-black/30 text-cc-code-fg rounded-md px-2.5 py-2 overflow-x-auto whitespace-pre-wrap max-h-60 overflow-y-auto">
+            {payload.enrichedContent}
+          </pre>
           {payload.images && payload.images.length > 0 && (
-            <div>
-              <div className="text-xs font-medium text-cc-muted mb-1.5">
-                Attached Images ({payload.images.length})
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {payload.images.map((img, i) => (
-                  <img
-                    key={i}
-                    src={`data:${img.media_type};base64,${img.data}`}
-                    alt={`Debug image ${i + 1}`}
-                    className="max-w-[300px] max-h-[200px] rounded-lg border border-cc-border object-contain bg-white"
-                  />
-                ))}
-              </div>
+            <div className="flex flex-wrap gap-1.5">
+              {payload.images.map((img, i) => (
+                <img
+                  key={i}
+                  src={`data:${img.media_type};base64,${img.data}`}
+                  alt={`Debug image ${i + 1}`}
+                  className="max-w-[200px] max-h-[120px] rounded-md border border-cc-border object-contain bg-white"
+                />
+              ))}
             </div>
           )}
           {payload.files && payload.files.length > 0 && (
-            <div>
-              <div className="text-xs font-medium text-cc-muted mb-1.5">
-                Attached Files ({payload.files.length})
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {payload.files.map((f, i) => (
-                  <FileTag key={i} name={f.name} size={f.size} />
-                ))}
-              </div>
+            <div className="flex flex-wrap gap-1.5">
+              {payload.files.map((f, i) => (
+                <FileTag key={i} name={f.name} size={f.size} />
+              ))}
             </div>
           )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
