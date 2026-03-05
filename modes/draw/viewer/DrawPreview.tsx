@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import type {
   ViewerPreviewProps,
   ViewerSelectionContext,
@@ -716,13 +717,14 @@ export default function DrawPreview({
           />
         )}
       </div>
-      {scaffoldPending && (
+      {scaffoldPending && createPortal(
         <ScaffoldConfirm
           clearPatterns={scaffoldPending.clearPatterns}
           files={scaffoldPending.files}
           onConfirm={handleScaffoldConfirm}
           onCancel={handleScaffoldCancel}
-        />
+        />,
+        document.body,
       )}
     </div>
   );

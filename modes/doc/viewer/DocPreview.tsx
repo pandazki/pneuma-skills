@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
@@ -698,13 +699,14 @@ export default function DocPreview({
           )}
         </div>
       )}
-      {scaffoldPending && (
+      {scaffoldPending && createPortal(
         <ScaffoldConfirm
           clearPatterns={scaffoldPending.clearPatterns}
           files={scaffoldPending.files}
           onConfirm={handleScaffoldConfirm}
           onCancel={handleScaffoldCancel}
-        />
+        />,
+        document.body,
       )}
     </div>
   );

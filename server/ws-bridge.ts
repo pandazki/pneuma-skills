@@ -169,7 +169,21 @@ export class WsBridge {
   /** Load persisted message history into a session. */
   loadMessageHistory(sessionId: string, history: BrowserIncomingMessage[]): void {
     const session = this.getOrCreateSession(sessionId);
-    session.messageHistory = history;
+    // Deduplicate assistant messages with the same ID (legacy files may have duplicates)
+    const deduped: BrowserIncomingMessage[] = [];
+    const assistantIdToIdx = new Map<string, number>();
+    for (const msg of history) {
+      if (msg.type === "assistant" && msg.message?.id) {
+        const existing = assistantIdToIdx.get(msg.message.id);
+        if (existing !== undefined) {
+          deduped[existing] = msg; // replace with latest
+          continue;
+        }
+        assistantIdToIdx.set(msg.message.id, deduped.length);
+      }
+      deduped.push(msg);
+    }
+    session.messageHistory = deduped;
   }
 
   closeSession(sessionId: string) {
@@ -517,7 +531,16 @@ export class WsBridge {
       parent_tool_use_id: msg.parent_tool_use_id,
       timestamp: Date.now(),
     };
-    session.messageHistory.push(browserMsg);
+    // CLI sends multiple assistant messages with the same ID (thinking then text blocks).
+    // Replace existing history entry to avoid duplicates on replay.
+    const existingIdx = session.messageHistory.findLastIndex(
+      (h) => h.type === "assistant" && h.message.id === msg.message.id,
+    );
+    if (existingIdx !== -1) {
+      session.messageHistory[existingIdx] = browserMsg;
+    } else {
+      session.messageHistory.push(browserMsg);
+    }
     this.broadcastToBrowsers(session, browserMsg);
   }
 

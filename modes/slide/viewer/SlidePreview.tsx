@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   closestCenter,
@@ -1513,13 +1514,14 @@ export default function SlidePreview({
         /* hidden */
         <div className="flex flex-1 min-h-0">{viewerEl}</div>
       )}
-      {scaffoldPending && (
+      {scaffoldPending && createPortal(
         <ScaffoldConfirm
           clearPatterns={scaffoldPending.clearPatterns}
           files={scaffoldPending.files}
           onConfirm={handleScaffoldConfirm}
           onCancel={handleScaffoldCancel}
-        />
+        />,
+        document.body,
       )}
     </div>
   );
@@ -1623,7 +1625,6 @@ function SlideNavigator({
                 title={slide.title}
                 isActive={i === activeIndex}
                 imageUrl={thumbnailImages.get(slide.file)}
-                srcdoc={getSrcdoc?.(slide.file)}
                 onClick={() => onSelect(i)}
                 onDelete={onDelete && slides.length > 1 ? () => onDelete(i) : undefined}
                 layout="vertical"
