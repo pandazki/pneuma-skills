@@ -752,7 +752,7 @@ export function startServer(options: ServerOptions) {
         <button class="mode-btn active" id="mode-img" onclick="setMode('image')">Image</button>
         <button class="mode-btn" id="mode-html" onclick="setMode('html')">HTML</button>
         <div class="print-divider"></div>
-        <button class="print-action" onclick="window.print()">Print / Save PDF</button>
+        <button class="print-action" id="print-btn" onclick="window.print()">Print / Save PDF</button>
       </div>
     </div>
   </div>
@@ -784,8 +784,10 @@ var originalSlides=[],converting=false,metaOriginal='';
 
 async function convertToImages(){
   if(converting)return;converting=true;
+  var printBtn=document.getElementById('print-btn');
+  if(printBtn){printBtn.disabled=true;printBtn.textContent='Converting...'}
   var pages=document.querySelectorAll('.slide-page');
-  if(!pages.length){converting=false;return}
+  if(!pages.length){converting=false;if(printBtn){printBtn.disabled=false;printBtn.textContent='Print / Save PDF'}return}
   var meta=document.querySelector('.meta');
   if(meta&&!metaOriginal)metaOriginal=meta.textContent||'';
   for(var i=0;i<pages.length;i++){
@@ -799,6 +801,7 @@ async function convertToImages(){
     page.appendChild(png);
   }
   converting=false;if(meta)meta.textContent=metaOriginal;
+  if(printBtn){printBtn.disabled=false;printBtn.textContent='Print / Save PDF'}
 }
 function restoreHTML(){
   var pages=document.querySelectorAll('.slide-page');
@@ -1006,8 +1009,12 @@ ${opts.inline ? `
     color: #fff;
     transition: all 0.2s ease;
   }
-  .print-action:hover {
+  .print-action:hover:not(:disabled) {
     background: var(--color-cc-primary-hover);
+  }
+  .print-action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 }
 `}
@@ -1020,6 +1027,9 @@ ${opts.inline ? `
     box-shadow: none;
     border-radius: 0;
     break-inside: avoid;
+  }
+  .slide-page:last-of-type {
+    break-after: auto;
   }
   /* Strip only the effects that actually hang Chrome's print renderer:
      1. backdrop-filter — rasterising blurred background is extremely slow

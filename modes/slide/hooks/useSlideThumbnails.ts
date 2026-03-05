@@ -49,7 +49,7 @@ export function stripHtmlWrapper(html: string): string {
 }
 
 export function getBaseUrl(): string {
-  return import.meta.env.DEV ? "http://localhost:17007" : "";
+  return import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
 }
 
 // ── Capture iframe management ────────────────────────────────────────────────
