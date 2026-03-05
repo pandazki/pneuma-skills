@@ -720,7 +720,7 @@ export default function Launcher() {
                       <h2 className="text-sm font-medium text-cc-muted uppercase tracking-wide mb-3">
                         Recent Sessions
                       </h2>
-                      <div className="space-y-2 max-h-[156px] overflow-y-auto pr-1">
+                      <div className="space-y-2 max-h-[160px] overflow-y-auto p-1">
                         {filteredSessions.map((session) => (
                           <SessionCard
                             key={session.id}

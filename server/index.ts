@@ -690,7 +690,12 @@ export function startServer(options: ServerOptions) {
     </div>
     <div class="export-toolbar-actions">
       <button class="btn-primary" onclick="downloadSlides()">Download HTML</button>
-      <button class="btn-secondary" onclick="window.print()">Print / Save PDF</button>
+      <div class="print-group">
+        <button class="mode-btn active" id="mode-img" onclick="setMode('image')">Image</button>
+        <button class="mode-btn" id="mode-html" onclick="setMode('html')">HTML</button>
+        <div class="print-divider"></div>
+        <button class="print-action" onclick="window.print()">Print / Save PDF</button>
+      </div>
     </div>
   </div>
 </div>`;
@@ -711,6 +716,43 @@ function downloadSlides(){
   }).catch(function(e){alert("Download failed: "+e.message)})
   .finally(function(){btn.textContent="Download HTML";btn.disabled=false});
 }
+<\/script>`;
+
+    const imageModeScript = opts.inline
+      ? ""
+      : `\n<script src="https://unpkg.com/@zumer/snapdom/dist/snapdom.js"><\/script>
+<script>
+var originalSlides=[],converting=false,metaOriginal='';
+
+async function convertToImages(){
+  if(converting)return;converting=true;
+  var pages=document.querySelectorAll('.slide-page');
+  if(!pages.length){converting=false;return}
+  var meta=document.querySelector('.meta');
+  if(meta&&!metaOriginal)metaOriginal=meta.textContent||'';
+  for(var i=0;i<pages.length;i++){
+    if(meta)meta.textContent='Converting '+(i+1)+'/'+pages.length+'...';
+    var page=pages[i];
+    if(!originalSlides[i])originalSlides[i]=page.innerHTML;
+    var result=await snapdom(page,{scale:2,embedFonts:true});
+    var png=await result.toPng();
+    page.innerHTML='';
+    png.style.cssText='width:100%;height:100%;display:block';
+    page.appendChild(png);
+  }
+  converting=false;if(meta)meta.textContent=metaOriginal;
+}
+function restoreHTML(){
+  var pages=document.querySelectorAll('.slide-page');
+  for(var i=0;i<pages.length;i++){if(originalSlides[i]!=null)pages[i].innerHTML=originalSlides[i]}
+}
+function setMode(mode){
+  document.getElementById('mode-img').classList.toggle('active',mode==='image');
+  document.getElementById('mode-html').classList.toggle('active',mode==='html');
+  if(mode==='image')convertToImages();else restoreHTML();
+}
+if(document.readyState==='complete')convertToImages();
+else window.addEventListener('load',function(){convertToImages()});
 <\/script>`;
 
     let exportHtml = `<!DOCTYPE html>
@@ -865,6 +907,50 @@ ${opts.inline ? `
   .btn-secondary:hover {
     background: rgba(255, 255, 255, 0.1);
   }
+  .print-group {
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 2px;
+  }
+  .mode-btn {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    background: transparent;
+    color: var(--color-cc-muted);
+    transition: all 0.2s ease;
+  }
+  .mode-btn:hover { color: var(--color-cc-fg); }
+  .mode-btn.active {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--color-cc-fg);
+  }
+  .print-divider {
+    width: 1px;
+    height: 18px;
+    background: rgba(255, 255, 255, 0.12);
+    margin: 0 4px;
+  }
+  .print-action {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    background: var(--color-cc-primary);
+    color: #fff;
+    transition: all 0.2s ease;
+  }
+  .print-action:hover {
+    background: var(--color-cc-primary-hover);
+  }
 }
 `}
 /* Print: set body width, preserve slide backgrounds */
@@ -897,7 +983,7 @@ ${opts.inline ? `
 </style>
 </head>
 <body>${toolbarHtml}
-${slidePages}${downloadScript}
+${slidePages}${downloadScript}${imageModeScript}
 </body>
 </html>`;
 
