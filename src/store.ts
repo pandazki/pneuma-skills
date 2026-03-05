@@ -20,8 +20,7 @@ export interface TaskItem {
 
 export interface AnsweredQuestion {
   toolUseId: string;
-  question: string;
-  answer: string;
+  pairs: { question: string; answer: string }[];
 }
 
 export type ElementSelection = SelectionContext;
@@ -128,7 +127,7 @@ interface AppState {
   // Actions — permissions
   addPermission: (perm: PermissionRequest) => void;
   removePermission: (requestId: string) => void;
-  recordAnsweredQuestion: (toolUseId: string, question: string, answer: string) => void;
+  recordAnsweredQuestion: (toolUseId: string, pairs: { question: string; answer: string }[]) => void;
 
   // Actions — tab
   setActiveTab: (tab: "chat" | "editor" | "diff" | "terminal" | "processes" | "context") => void;
@@ -323,10 +322,10 @@ export const useStore = create<AppState>((set) => ({
       return { pendingPermissions: next };
     }),
 
-  recordAnsweredQuestion: (toolUseId, question, answer) =>
+  recordAnsweredQuestion: (toolUseId, pairs) =>
     set((s) => {
       const next = new Map(s.answeredQuestions);
-      next.set(toolUseId, { toolUseId, question, answer });
+      next.set(toolUseId, { toolUseId, pairs });
       return { answeredQuestions: next };
     }),
 

@@ -384,7 +384,7 @@ function InlineAskUserQuestion({ toolUseId, input }: { toolUseId: string; input:
   const answered = useStore((s) => s.answeredQuestions.get(toolUseId));
 
   if (answered) {
-    return <AnsweredQuestionSummary question={answered.question} answer={answered.answer} />;
+    return <AnsweredQuestionSummary pairs={answered.pairs} />;
   }
 
   if (perm) {
@@ -399,7 +399,8 @@ function InlineAskUserQuestion({ toolUseId, input }: { toolUseId: string; input:
   );
 }
 
-function AnsweredQuestionSummary({ question, answer }: { question: string; answer: string }) {
+function AnsweredQuestionSummary({ pairs }: { pairs: { question: string; answer: string }[] }) {
+  const summaryText = pairs.map((p) => p.answer).filter(Boolean).join(", ");
   return (
     <details className="rounded-lg border border-cc-border bg-cc-card group">
       <summary className="flex items-center gap-2 px-3 py-2 text-xs cursor-pointer hover:bg-cc-hover/50 transition-colors select-none">
@@ -407,14 +408,18 @@ function AnsweredQuestionSummary({ question, answer }: { question: string; answe
           <path d="M6 4l4 4-4 4" />
         </svg>
         <span className="text-cc-primary font-medium shrink-0">Q&A</span>
-        <span className="text-cc-fg truncate">{answer}</span>
+        <span className="text-cc-fg truncate">{summaryText}</span>
       </summary>
-      <div className="px-3 pb-2.5 border-t border-cc-border/50 pt-2 space-y-1.5">
-        {question && <p className="text-xs text-cc-muted leading-relaxed">{question}</p>}
-        <div className="text-xs text-cc-fg font-medium flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-cc-primary shrink-0" />
-          {answer}
-        </div>
+      <div className="px-3 pb-2.5 border-t border-cc-border/50 pt-2 space-y-2.5">
+        {pairs.map((pair, i) => (
+          <div key={i} className="space-y-1">
+            {pair.question && <p className="text-xs text-cc-muted leading-relaxed">{pair.question}</p>}
+            <div className="text-xs text-cc-fg font-medium flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-cc-primary shrink-0" />
+              {pair.answer}
+            </div>
+          </div>
+        ))}
       </div>
     </details>
   );
