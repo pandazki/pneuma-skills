@@ -877,15 +877,21 @@ ${opts.inline ? `
     border-radius: 0;
     break-inside: avoid;
   }
-  /* Strip expensive effects that hang Chrome's print renderer */
+  /* Strip only the effects that actually hang Chrome's print renderer:
+     1. backdrop-filter — rasterising blurred background is extremely slow
+     2. Large decorative blur pseudo-elements (theme glow orbs) */
   .slide-page * {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
-    filter: none !important;
   }
   .slide-page .slide::before,
   .slide-page .slide::after {
     display: none !important;
+  }
+  /* Compensate: elements that relied on backdrop-filter for glass look
+     become nearly invisible without it — give them a visible background */
+  .slide-page [style*="backdrop-filter"] {
+    background: rgba(0, 0, 0, 0.5) !important;
   }
 }
 </style>
