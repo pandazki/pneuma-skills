@@ -19,8 +19,8 @@ export default function ChatPanel() {
   }, [messages.length, streaming, activity]);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+    <div className="flex flex-col h-full relative">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-36">
         {messages.length === 0 && !streaming && !activity && (
           <div className="text-cc-muted text-sm text-center mt-8">
             {cliConnected ? "Send a message to start editing" : "Connecting to Claude..."}
@@ -30,10 +30,12 @@ export default function ChatPanel() {
           <MessageBubble key={msg.id} message={msg} />
         ))}
         {streaming ? <StreamingText /> : activity ? <ActivityIndicator /> : null}
-        <div ref={bottomRef} />
+        <div ref={bottomRef} className="h-4" />
       </div>
-      <PermissionBanner />
-      <ChatInput />
+      <div className="absolute bottom-4 left-4 right-4 z-10 space-y-2">
+        <PermissionBanner />
+        <ChatInput />
+      </div>
     </div>
   );
 }

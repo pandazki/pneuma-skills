@@ -361,7 +361,7 @@ async function main() {
     const distDir = resolve(PROJECT_ROOT, "dist");
     const isDev = forceDev || !existsSync(join(distDir, "index.html"));
 
-    const { server, port: actualPort } = startServer({
+    const { server, port: actualPort, childProcesses } = startServer({
       port: isDev ? 17007 : launcherPort,
       workspace: homedir(),
       watchPatterns: [],
@@ -369,6 +369,14 @@ async function main() {
       launcherMode: true,
       projectRoot: PROJECT_ROOT,
     });
+
+    const killChildProcesses = () => {
+      if (!childProcesses) return;
+      for (const { proc } of childProcesses.values()) {
+        try { proc.kill(); } catch {}
+      }
+      childProcesses.clear();
+    };
 
     let browserPort = actualPort;
     if (isDev) {
@@ -415,11 +423,11 @@ async function main() {
         if (viteProc.stderr && typeof viteProc.stderr !== "number") pipeAndParse(viteProc.stderr);
       });
 
-      process.on("SIGINT", () => { viteProc.kill(); server.stop(true); process.exit(0); });
-      process.on("SIGTERM", () => { viteProc.kill(); server.stop(true); process.exit(0); });
+      process.on("SIGINT", () => { killChildProcesses(); viteProc.kill(); server.stop(true); process.exit(0); });
+      process.on("SIGTERM", () => { killChildProcesses(); viteProc.kill(); server.stop(true); process.exit(0); });
     } else {
-      process.on("SIGINT", () => { server.stop(true); process.exit(0); });
-      process.on("SIGTERM", () => { server.stop(true); process.exit(0); });
+      process.on("SIGINT", () => { killChildProcesses(); server.stop(true); process.exit(0); });
+      process.on("SIGTERM", () => { killChildProcesses(); server.stop(true); process.exit(0); });
     }
 
     const url = `http://localhost:${browserPort}`;

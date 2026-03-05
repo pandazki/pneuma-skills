@@ -269,7 +269,7 @@ export default function ChatInput() {
   const hasAnnotations = annotations.length > 0;
 
   return (
-    <div className="p-3 border-t border-cc-border">
+    <div className="p-3 bg-cc-surface/70 backdrop-blur-2xl border border-cc-primary/20 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.6)] ring-1 ring-white/5">
       {/* Annotations list (annotate mode) */}
       {hasAnnotations && (
         <div className="mb-2 rounded-lg border border-cc-border bg-cc-card/50 overflow-hidden">
@@ -407,7 +407,7 @@ export default function ChatInput() {
           }
           disabled={!cliConnected || isBusy}
           rows={1}
-          className="w-full bg-cc-input-bg text-cc-fg rounded-lg px-3 py-2 text-sm resize-none placeholder-cc-muted/50 border border-cc-border focus:outline-none focus:border-cc-primary/50 disabled:opacity-50"
+          className="w-full bg-cc-surface/80 backdrop-blur-xl text-cc-fg rounded-2xl px-4 py-3 text-sm resize-none placeholder-cc-muted/50 border border-cc-border/50 shadow-inner focus:outline-none focus:border-cc-primary/60 focus:ring-1 focus:ring-cc-primary/30 disabled:opacity-50 transition-all"
         />
       </div>
 
@@ -438,7 +438,7 @@ export default function ChatInput() {
           {isBusy ? (
             <button
               onClick={sendInterrupt}
-              className="px-4 py-1.5 bg-red-700 hover:bg-red-600 text-white text-xs rounded-lg transition-colors"
+              className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-medium text-xs rounded-full transition-all shadow-[0_0_12px_rgba(220,38,38,0.4)]"
             >
               Stop
             </button>
@@ -446,7 +446,7 @@ export default function ChatInput() {
             <button
               onClick={handleSubmit}
               disabled={(!text.trim() && attachments.length === 0 && !hasAnnotations) || !cliConnected}
-              className="px-4 py-1.5 bg-cc-primary hover:bg-cc-primary-hover text-cc-fg text-xs rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-5 py-2 bg-cc-primary hover:bg-cc-primary-hover text-cc-bg font-medium text-xs rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(249,115,22,0.4)] disabled:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Send
             </button>

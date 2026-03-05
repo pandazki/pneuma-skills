@@ -51,6 +51,15 @@ export function startServer(options: ServerOptions) {
   if (options.launcherMode) {
     const REGISTRY_URL = "https://pneuma-storage.vibecoding.icu";
 
+    // Track child pneuma processes spawned by /api/launch
+    const childProcesses = new Map<number, {
+      proc: ReturnType<typeof Bun.spawn>;
+      specifier: string;
+      workspace: string;
+      url: string;
+      startedAt: number;
+    }>();
+
     app.get("/api/registry", async (c) => {
       const builtins = [
         { name: "doc", displayName: "Document", description: "Markdown document editing with live preview", version: "builtin", type: "builtin" as const },
@@ -307,11 +316,52 @@ export function startServer(options: ServerOptions) {
           });
         });
 
+        // Track the child process
+        const pid = child.pid;
+        childProcesses.set(pid, {
+          proc: child,
+          specifier,
+          workspace: resolvedWorkspace,
+          url: readyUrl,
+          startedAt: Date.now(),
+        });
+
+        // Auto-remove when process exits
+        child.exited.then(() => {
+          childProcesses.delete(pid);
+        });
+
         return c.json({ url: readyUrl });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return c.json({ error: message }, 500);
       }
+    });
+
+    // List running child processes
+    app.get("/api/processes/children", (c) => {
+      const processes = Array.from(childProcesses.entries()).map(([pid, info]) => ({
+        pid,
+        specifier: info.specifier,
+        workspace: info.workspace,
+        url: info.url,
+        startedAt: info.startedAt,
+      }));
+      return c.json({ processes });
+    });
+
+    // Kill a specific child process
+    app.post("/api/processes/children/:pid/kill", (c) => {
+      const pid = parseInt(c.req.param("pid"), 10);
+      const entry = childProcesses.get(pid);
+      if (!entry) {
+        return c.json({ error: "Process not found" }, 404);
+      }
+      try {
+        entry.proc.kill();
+        childProcesses.delete(pid);
+      } catch {}
+      return c.json({ ok: true });
     });
 
     // Serve frontend assets in launcher mode too
@@ -353,7 +403,7 @@ export function startServer(options: ServerOptions) {
     }
 
     console.log(`[server] Launcher server running on http://localhost:${server.port}`);
-    return { server, wsBridge, terminalManager, port: server.port as number, modeMakerCleanup: undefined };
+    return { server, wsBridge, terminalManager, port: server.port as number, modeMakerCleanup: undefined, childProcesses };
   }
 
   // ── API Routes ─────────────────────────────────────────────────────────

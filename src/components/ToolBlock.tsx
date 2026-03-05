@@ -89,7 +89,8 @@ export function ToolBlock({
   const preview = getPreview(name, input);
 
   return (
-    <div className="border border-cc-border rounded-[10px] overflow-hidden bg-cc-card">
+    <div className="border border-cc-primary/30 rounded-[12px] overflow-hidden bg-cc-surface/60 backdrop-blur-sm shadow-[0_4px_24px_rgba(249,115,22,0.05)] transition-all hover:bg-cc-surface/80 hover:border-cc-primary/50 relative">
+      <div className="pointer-events-none absolute inset-0 mix-blend-overlay opacity-10 bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.5)_50%)] bg-[length:100%_4px]" />
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-cc-hover transition-colors cursor-pointer"

@@ -87,18 +87,18 @@ function useViewerProps(): ViewerPreviewProps {
     activeFile,
     selection: selection
       ? {
-          type: selection.type,
-          content: selection.content,
-          level: selection.level,
-          file: selection.file,
-          tag: selection.tag,
-          classes: selection.classes,
-          selector: selection.selector,
-          thumbnail: selection.thumbnail,
-          label: selection.label,
-          nearbyText: selection.nearbyText,
-          accessibility: selection.accessibility,
-        }
+        type: selection.type,
+        content: selection.content,
+        level: selection.level,
+        file: selection.file,
+        tag: selection.tag,
+        classes: selection.classes,
+        selector: selection.selector,
+        thumbnail: selection.thumbnail,
+        label: selection.label,
+        nearbyText: selection.nearbyText,
+        accessibility: selection.accessibility,
+      }
       : null,
     onSelect: (sel) => {
       if (!sel) {
@@ -215,7 +215,7 @@ export default function App() {
       .then((d) => {
         if (d.files?.length) useStore.getState().setFiles(d.files);
       })
-      .catch(() => {});
+      .catch(() => { });
 
     // Fetch mode init params
     fetch(`${getApiBase()}/api/config`)
@@ -223,7 +223,7 @@ export default function App() {
       .then((d) => {
         if (d.initParams) useStore.getState().setInitParams(d.initParams);
       })
-      .catch(() => {});
+      .catch(() => { });
 
     // Check git availability
     fetch(`${getApiBase()}/api/git/available`)
@@ -289,21 +289,27 @@ export default function App() {
   const viewerProps = useViewerProps();
 
   return (
-    <div className="flex flex-col h-screen bg-cc-bg text-cc-fg">
-      <TopBar />
-      <Group orientation="horizontal" className="flex-1">
-        <Panel defaultSize={65} minSize={30}>
-          {PreviewComponent ? (
-            <PreviewComponent {...viewerProps} />
-          ) : (
-            <LazyFallback />
-          )}
-        </Panel>
-        <Separator className="w-1 bg-cc-border hover:bg-cc-primary/30 transition-colors" />
-        <Panel defaultSize={35} minSize={20}>
-          <RightPanel />
-        </Panel>
-      </Group>
+    <div className="flex flex-col h-screen bg-cc-bg text-cc-fg relative overflow-hidden p-4 sm:p-6 md:p-8">
+      {/* Immersive mesh gradient background element */}
+      <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[50%] bg-cc-primary/10 blur-[120px] rounded-full pointer-events-none animate-[pulse-dot_8s_ease-in-out_infinite]" />
+      <div className="absolute top-[20%] right-[-10%] w-[50%] h-[60%] bg-purple-500/10 blur-[100px] rounded-full pointer-events-none animate-[pulse-dot_10s_ease-in-out_infinite_reverse]" />
+
+      <div className="relative z-10 flex flex-col flex-1 bg-cc-surface/40 backdrop-blur-3xl border border-cc-primary/20 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(249,115,22,0.15)] ring-1 ring-white/5">
+        <TopBar />
+        <Group orientation="horizontal" className="flex-1">
+          <Panel defaultSize={65} minSize={30}>
+            {PreviewComponent ? (
+              <PreviewComponent {...viewerProps} />
+            ) : (
+              <LazyFallback />
+            )}
+          </Panel>
+          <Separator className="w-[1px] bg-cc-border/40 hover:w-1 hover:bg-cc-primary/40 transition-all duration-300 cursor-col-resize z-10" />
+          <Panel defaultSize={35} minSize={20}>
+            <RightPanel />
+          </Panel>
+        </Group>
+      </div>
     </div>
   );
 }

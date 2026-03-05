@@ -134,7 +134,7 @@ export default function TopBar() {
   }, [createEmpty]);
 
   return (
-    <div className="flex items-center h-10 px-3 bg-cc-surface border-b border-cc-border text-sm select-none">
+    <div className="flex items-center h-12 px-4 bg-cc-surface/60 backdrop-blur-xl border-b border-cc-border/40 text-sm select-none shadow-sm z-20 relative">
       {/* Left: status + selectors */}
       <div className="flex items-center gap-3 min-w-0 shrink-0">
         <StatusDot />
@@ -169,7 +169,7 @@ export default function TopBar() {
       </div>
 
       {/* Center: tabs */}
-      <div className="flex items-center gap-0.5 mx-auto bg-cc-bg/50 rounded-md p-0.5">
+      <div className="flex items-center gap-1 mx-auto bg-cc-bg/80 border border-cc-border/50 rounded-full p-1 shadow-inner">
         {TABS.map((tab) => {
           const disabled = tab.id === "diff" && gitAvailable === false;
           return (
@@ -177,13 +177,12 @@ export default function TopBar() {
               key={tab.id}
               onClick={() => !disabled && setActiveTab(tab.id)}
               title={disabled ? "Diffs require a git repository. Run `git init` in the workspace." : undefined}
-              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                disabled
-                  ? "text-cc-muted/30 cursor-not-allowed"
-                  : activeTab === tab.id
-                    ? "bg-cc-primary-muted text-cc-fg"
-                    : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
-              }`}
+              className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${disabled
+                ? "text-cc-muted/30 cursor-not-allowed"
+                : activeTab === tab.id
+                  ? "bg-cc-primary text-cc-bg shadow-[0_0_12px_rgba(249,115,22,0.4)]"
+                  : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+                }`}
             >
               {tab.label}
             </button>
