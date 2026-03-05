@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import CodeMirror from "@uiw/react-codemirror";
+import { EditorView } from "@codemirror/view";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags as t } from "@lezer/highlight";
 import { markdown } from "@codemirror/lang-markdown";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
@@ -7,6 +10,43 @@ import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
 import { python } from "@codemirror/lang-python";
 import { useStore } from "../store.js";
+
+const warmCraftEditorTheme = EditorView.theme({
+  "&": { backgroundColor: "#09090b", color: "#e4e4e7" },
+  ".cm-content": { caretColor: "#f97316" },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#f97316" },
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
+    backgroundColor: "rgba(249, 115, 22, 0.15)",
+  },
+  ".cm-selectionMatch": { backgroundColor: "rgba(249, 115, 22, 0.08)" },
+  ".cm-activeLine": { backgroundColor: "rgba(255, 255, 255, 0.03)" },
+  ".cm-gutters": { backgroundColor: "#09090b", color: "#52525b", border: "none" },
+  ".cm-activeLineGutter": { backgroundColor: "rgba(255, 255, 255, 0.03)" },
+  ".cm-foldPlaceholder": { backgroundColor: "#27272a", border: "none", color: "#a1a1aa" },
+  ".cm-matchingBracket": { backgroundColor: "rgba(249, 115, 22, 0.2)", color: "#fafafa" },
+}, { dark: true });
+
+const warmCraftHighlight = HighlightStyle.define([
+  { tag: [t.comment, t.lineComment, t.blockComment], color: "#52525b", fontStyle: "italic" },
+  { tag: [t.string, t.special(t.brace)], color: "#4ade80" },
+  { tag: [t.number, t.bool, t.null], color: "#fdba74" },
+  { tag: [t.keyword, t.operator], color: "#f97316" },
+  { tag: [t.className, t.typeName, t.definition(t.typeName)], color: "#fbbf24" },
+  { tag: [t.definition(t.variableName), t.function(t.variableName)], color: "#60a5fa" },
+  { tag: t.variableName, color: "#e4e4e7" },
+  { tag: [t.propertyName, t.definition(t.propertyName)], color: "#93c5fd" },
+  { tag: t.tagName, color: "#f97316" },
+  { tag: t.attributeName, color: "#fdba74" },
+  { tag: t.attributeValue, color: "#4ade80" },
+  { tag: [t.heading, t.strong], color: "#fafafa", fontWeight: "bold" },
+  { tag: t.emphasis, color: "#e4e4e7", fontStyle: "italic" },
+  { tag: [t.link, t.url], color: "#60a5fa" },
+  { tag: t.regexp, color: "#fb923c" },
+  { tag: t.meta, color: "#a1a1aa" },
+  { tag: t.punctuation, color: "#71717a" },
+]);
+
+const warmCraftTheme = [warmCraftEditorTheme, syntaxHighlighting(warmCraftHighlight)];
 
 interface TreeNode {
   name: string;
@@ -56,7 +96,7 @@ function FilePreview({ path }: { path: string }) {
 
   if (kind === "image") {
     return (
-      <div className="flex items-center justify-center h-full p-4 overflow-auto bg-neutral-900/50">
+      <div className="flex items-center justify-center h-full p-4 overflow-auto bg-cc-bg/50">
         <img
           src={src}
           alt={path}
@@ -78,7 +118,7 @@ function FilePreview({ path }: { path: string }) {
   if (kind === "audio") {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
-        <span className="text-neutral-500 text-sm">{path.split("/").pop()}</span>
+        <span className="text-cc-muted text-sm">{path.split("/").pop()}</span>
         <audio src={src} controls />
       </div>
     );
@@ -120,12 +160,12 @@ function FileTreeItem({
     <>
       <button
         onClick={() => isDir ? setExpanded(!expanded) : onSelect(node.path)}
-        className={`w-full text-left flex items-center gap-1 py-0.5 text-xs hover:bg-neutral-800/50 ${
-          selectedPath === node.path ? "bg-neutral-800 text-neutral-100" : "text-neutral-400"
+        className={`w-full text-left flex items-center gap-1 py-0.5 text-xs hover:bg-cc-hover ${
+          selectedPath === node.path ? "bg-cc-active text-cc-fg" : "text-cc-muted"
         }`}
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
       >
-        <span className="w-4 text-center text-neutral-600 shrink-0">
+        <span className="w-4 text-center text-cc-muted/50 shrink-0">
           {isDir ? (expanded ? "▾" : "▸") : ""}
         </span>
         <span className={`truncate ${hasDirtyChild ? "text-amber-400" : ""}`}>{node.name}</span>
@@ -224,9 +264,9 @@ export default function EditorPanel() {
   return (
     <div className="flex h-full">
       {/* File tree sidebar */}
-      <div className="w-52 shrink-0 border-r border-neutral-800 flex flex-col">
-        <div className="px-3 py-2 border-b border-neutral-800">
-          <span className="text-xs font-medium text-neutral-400">Files</span>
+      <div className="w-52 shrink-0 border-r border-cc-border flex flex-col">
+        <div className="px-3 py-2 border-b border-cc-border">
+          <span className="text-xs font-medium text-cc-muted">Files</span>
         </div>
         <div className="flex-1 overflow-auto">
           {tree.map((node) => (
@@ -247,8 +287,8 @@ export default function EditorPanel() {
         {selectedPath ? (
           previewKind ? (
             <>
-              <div className="flex items-center gap-2 px-3 py-1.5 border-b border-neutral-800 text-xs">
-                <span className="text-neutral-400 truncate">{selectedPath}</span>
+              <div className="flex items-center gap-2 px-3 py-1.5 border-b border-cc-border text-xs">
+                <span className="text-cc-muted truncate">{selectedPath}</span>
               </div>
               <div className="flex-1 min-h-0">
                 <FilePreview path={selectedPath} />
@@ -256,8 +296,8 @@ export default function EditorPanel() {
             </>
           ) : (
             <>
-              <div className="flex items-center gap-2 px-3 py-1.5 border-b border-neutral-800 text-xs">
-                <span className="text-neutral-400 truncate">{selectedPath}</span>
+              <div className="flex items-center gap-2 px-3 py-1.5 border-b border-cc-border text-xs">
+                <span className="text-cc-muted truncate">{selectedPath}</span>
                 {dirty && <span className="text-amber-400">●</span>}
                 <div className="ml-auto">
                   <button
@@ -265,8 +305,8 @@ export default function EditorPanel() {
                     disabled={!dirty || saving}
                     className={`px-2 py-0.5 rounded text-xs ${
                       dirty
-                        ? "bg-blue-600 text-white hover:bg-blue-500"
-                        : "bg-neutral-800 text-neutral-600"
+                        ? "bg-cc-primary text-cc-bg hover:bg-cc-primary-hover"
+                        : "bg-cc-surface text-cc-muted/50"
                     }`}
                   >
                     {saving ? "Saving..." : "Save"}
@@ -278,7 +318,7 @@ export default function EditorPanel() {
                   value={content}
                   onChange={handleChange}
                   extensions={extensions}
-                  theme="dark"
+                  theme={warmCraftTheme}
                   basicSetup={{
                     foldGutter: true,
                     dropCursor: false,
@@ -291,7 +331,7 @@ export default function EditorPanel() {
             </>
           )
         ) : (
-          <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
+          <div className="flex items-center justify-center h-full text-cc-muted/50 text-sm">
             Select a file to edit
           </div>
         )}
