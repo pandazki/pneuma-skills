@@ -123,7 +123,7 @@ function AskUserQuestionCard({ perm }: { perm: PermissionRequest }) {
   if (questions.length === 0) {
     const question = typeof perm.input.question === "string" ? perm.input.question : "";
     return (
-      <div className="bg-cc-primary/5 border border-cc-primary/20 rounded-lg p-3">
+      <div className="bg-cc-surface border border-cc-primary/20 rounded-lg p-3 shadow-lg">
         <div className="text-sm font-medium text-cc-primary mb-1">Question</div>
         {question && <div className="text-xs text-cc-primary/80">{question}</div>}
       </div>
@@ -131,7 +131,7 @@ function AskUserQuestionCard({ perm }: { perm: PermissionRequest }) {
   }
 
   return (
-    <div className="bg-cc-surface border border-cc-primary/20 rounded-lg p-3 space-y-3">
+    <div className="bg-cc-surface border border-cc-primary/20 rounded-lg p-3 space-y-3 shadow-lg">
       <div className="text-sm font-medium text-cc-primary">Question</div>
 
       {questions.map((q, i) => {
