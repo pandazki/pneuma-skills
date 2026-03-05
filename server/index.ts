@@ -33,6 +33,7 @@ export interface ServerOptions {
   projectRoot?: string; // Pneuma project root (for mode-maker routes to access builtin modes)
   modeName?: string; // Current mode name (for conditional route registration)
   launcherMode?: boolean; // Lightweight launcher server (no workspace, no agent, no watcher)
+  debug?: boolean; // Pass --debug to child processes
 }
 
 export function startServer(options: ServerOptions) {
@@ -263,6 +264,7 @@ export function startServer(options: ServerOptions) {
         const pneumaBin = join(projectRoot, "bin", "pneuma.ts");
         const args = ["bun", pneumaBin, specifier, "--workspace", resolvedWorkspace, "--no-prompt", "--no-open"];
         if (skipSkill) args.push("--skip-skill");
+        if (options.debug) args.push("--debug");
 
         const child = Bun.spawn(args, {
           stdout: "pipe",

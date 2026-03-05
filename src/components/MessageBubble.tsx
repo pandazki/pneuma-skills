@@ -90,7 +90,9 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
     );
   }
 
-  // Assistant message
+  // Assistant message — skip empty messages (e.g. AskUserQuestion-only turns)
+  if (isEmptyAssistantMessage(message)) return null;
+
   return (
     <div className="animate-[fadeSlideIn_0.2s_ease-out]">
       <AssistantMessage message={message} />
@@ -264,6 +266,17 @@ type GroupedBlock =
 
 // ─── Block grouping ────────────────────────────────────────────────────────
 
+/** Returns true when all visible content blocks have been filtered out (e.g. AskUserQuestion-only). */
+function isEmptyAssistantMessage(message: ChatMessage): boolean {
+  const blocks = message.contentBlocks || [];
+  if (blocks.length === 0 && !message.content?.trim()) return true;
+  // All tool_use blocks are AskUserQuestion (filtered out) and no text/thinking
+  const hasVisibleBlock = blocks.some((b) =>
+    b.type !== "tool_use" || (b as { name?: string }).name !== "AskUserQuestion"
+  );
+  return !hasVisibleBlock && !message.content?.trim();
+}
+
 function groupContentBlocks(blocks: ContentBlock[]): GroupedBlock[] {
   const groups: GroupedBlock[] = [];
 
@@ -320,7 +333,7 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
   }
 
   // Nothing to render (or all blocks filtered out, e.g. AskUserQuestion-only messages)
-  if (grouped.length === 0 && !message.content) return null;
+  if (grouped.length === 0 && !message.content?.trim()) return null;
 
   return (
     <div className="flex items-start gap-3">
