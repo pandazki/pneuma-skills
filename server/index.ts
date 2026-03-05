@@ -34,6 +34,7 @@ export interface ServerOptions {
   modeName?: string; // Current mode name (for conditional route registration)
   launcherMode?: boolean; // Lightweight launcher server (no workspace, no agent, no watcher)
   debug?: boolean; // Pass --debug to child processes
+  forceDev?: boolean; // Pass --dev to child processes
 }
 
 export function startServer(options: ServerOptions) {
@@ -265,6 +266,7 @@ export function startServer(options: ServerOptions) {
         const args = ["bun", pneumaBin, specifier, "--workspace", resolvedWorkspace, "--no-prompt", "--no-open"];
         if (skipSkill) args.push("--skip-skill");
         if (options.debug) args.push("--debug");
+        if (options.forceDev) args.push("--dev");
 
         const child = Bun.spawn(args, {
           stdout: "pipe",

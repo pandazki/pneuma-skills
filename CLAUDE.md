@@ -367,7 +367,7 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **chokidar v4 glob broken**: Watch directory path, filter in callback. Don't use `watch("**/*.md", { cwd })`.
 - **react-resizable-panels v4.6**: `Group` not `PanelGroup`, `Separator` not `PanelResizeHandle`, `orientation` not `direction`.
 - **Vite WS proxy + Bun.serve**: Browser WS connects directly to backend port, bypassing Vite.
-- **Stale `dist/`**: If `dist/index.html` exists, dev mode serves production build. Delete `dist/` or rebuild.
+- **Stale `dist/`**: If `dist/index.html` exists, the server falls back to production mode. Launcher-spawned children auto-inherit `--dev` from the parent, but direct CLI usage without `--dev` may still hit this. Delete `dist/` or pass `--dev` explicitly.
 - **Bun.serve dual-stack**: Must set `hostname: "0.0.0.0"` to avoid IPv6/IPv4 port collision on macOS.
 - **CLAUDECODE env var**: Must be unset when spawning Claude Code CLI.
 - **NDJSON**: Each message to CLI must end with `\n`.

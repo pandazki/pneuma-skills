@@ -369,6 +369,7 @@ async function main() {
       launcherMode: true,
       projectRoot: PROJECT_ROOT,
       debug,
+      forceDev: isDev,
     });
 
     const killChildProcesses = () => {
