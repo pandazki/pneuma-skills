@@ -185,10 +185,9 @@ export default function TerminalPanel() {
       {/* CRT Scanline Overlay */}
       <div className="pointer-events-none absolute inset-0 z-50 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_4px,3px_100%] opacity-20" />
 
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-cc-border/40 bg-zinc-950 shadow-sm z-10 relative">
-        <span className="text-xs text-cc-muted font-medium">Terminal</span>
-        <div className="flex-1" />
+      {/* Toolbar (floating pill) */}
+      <div className="absolute top-3 right-4 z-20 flex items-center gap-2 px-3 py-1.5 bg-black/60 backdrop-blur-md border border-white/10 rounded-md shadow-sm">
+        <span className="text-xs text-cc-muted font-medium mr-2">Terminal</span>
         {terminalId && (
           <button
             onClick={killTerminal}
@@ -208,7 +207,7 @@ export default function TerminalPanel() {
       <div
         ref={containerRef}
         className="flex-1 min-h-0"
-        style={{ backgroundColor: THEME.background, padding: "4px 0 0 4px" }}
+        style={{ backgroundColor: THEME.background, padding: "40px 0 0 4px" }}
       />
     </div>
   );
