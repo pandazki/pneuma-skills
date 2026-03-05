@@ -65,12 +65,13 @@ export default function ChatPanel() {
   const streaming = useStore((s) => s.streaming);
   const activity = useStore((s) => s.activity);
   const cliConnected = useStore((s) => s.cliConnected);
+  const permSize = useStore((s) => s.pendingPermissions.size);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive or streaming/activity updates
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, streaming, activity]);
+  }, [messages.length, streaming, activity, permSize]);
 
   return (
     <div className="flex flex-col h-full relative">

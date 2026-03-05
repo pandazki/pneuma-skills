@@ -1,8 +1,9 @@
 import { useState, useMemo, type ComponentProps } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ChatMessage, ContentBlock, SelectionContext, Annotation } from "../types.js";
+import type { ChatMessage, ContentBlock, SelectionContext, Annotation, PermissionRequest } from "../types.js";
 import { useStore } from "../store.js";
+import { sendPermissionResponse } from "../ws.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
 
 export default function MessageBubble({ message }: { message: ChatMessage }) {
@@ -262,17 +263,17 @@ interface ToolUseInfo {
 
 type GroupedBlock =
   | { kind: "content"; block: ContentBlock }
-  | { kind: "tool_group"; name: string; items: ToolGroupItem[] };
+  | { kind: "tool_group"; name: string; items: ToolGroupItem[] }
+  | { kind: "ask_user_question"; id: string; input: Record<string, unknown> };
 
 // ─── Block grouping ────────────────────────────────────────────────────────
 
-/** Returns true when all visible content blocks have been filtered out (e.g. AskUserQuestion-only). */
+/** Returns true when the message has no renderable content at all. */
 function isEmptyAssistantMessage(message: ChatMessage): boolean {
   const blocks = message.contentBlocks || [];
   if (blocks.length === 0 && !message.content?.trim()) return true;
-  // All tool_use blocks are AskUserQuestion (filtered out) and no text/thinking
   const hasVisibleBlock = blocks.some((b) =>
-    b.type !== "tool_use" || (b as { name?: string }).name !== "AskUserQuestion"
+    b.type === "text" || b.type === "thinking" || b.type === "tool_use" || b.type === "tool_result"
   );
   return !hasVisibleBlock && !message.content?.trim();
 }
@@ -282,8 +283,10 @@ function groupContentBlocks(blocks: ContentBlock[]): GroupedBlock[] {
 
   for (const block of blocks) {
     if (block.type === "tool_use") {
-      // AskUserQuestion has its own UI in PermissionBanner — don't render as ToolBlock
-      if (block.name === "AskUserQuestion") continue;
+      if (block.name === "AskUserQuestion") {
+        groups.push({ kind: "ask_user_question", id: block.id, input: block.input });
+        continue;
+      }
       const last = groups[groups.length - 1];
       if (last?.kind === "tool_group" && last.name === block.name) {
         last.items.push({ id: block.id, name: block.name, input: block.input });
@@ -340,6 +343,9 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
       <AssistantAvatar />
       <div className="flex-1 min-w-0 space-y-3">
         {grouped.map((group, i) => {
+          if (group.kind === "ask_user_question") {
+            return <InlineAskUserQuestion key={i} toolUseId={group.id} input={group.input} />;
+          }
           if (group.kind === "content") {
             return <ContentBlockRenderer key={i} block={group.block} toolUseById={toolUseById} />;
           }
@@ -362,6 +368,223 @@ function AssistantAvatar() {
       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-primary">
         <circle cx="8" cy="8" r="3" />
       </svg>
+    </div>
+  );
+}
+
+// ─── InlineAskUserQuestion ─────────────────────────────────────────────────
+
+function InlineAskUserQuestion({ toolUseId, input }: { toolUseId: string; input: Record<string, unknown> }) {
+  const perm = useStore((s) => {
+    for (const p of s.pendingPermissions.values()) {
+      if (p.tool_use_id === toolUseId) return p;
+    }
+    return null;
+  });
+  const answered = useStore((s) => s.answeredQuestions.get(toolUseId));
+
+  if (answered) {
+    return <AnsweredQuestionSummary question={answered.question} answer={answered.answer} />;
+  }
+
+  if (perm) {
+    return <AskUserQuestionPicker perm={perm} />;
+  }
+
+  // Brief loading state (tool_use block arrived but permission_request not yet)
+  return (
+    <div className="text-xs text-cc-muted italic py-1">
+      Waiting for question...
+    </div>
+  );
+}
+
+function AnsweredQuestionSummary({ question, answer }: { question: string; answer: string }) {
+  return (
+    <details className="rounded-lg border border-cc-border bg-cc-card group">
+      <summary className="flex items-center gap-2 px-3 py-2 text-xs cursor-pointer hover:bg-cc-hover/50 transition-colors select-none">
+        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 transition-transform group-open:rotate-90 shrink-0 text-cc-muted">
+          <path d="M6 4l4 4-4 4" />
+        </svg>
+        <span className="text-cc-primary font-medium shrink-0">Q&A</span>
+        <span className="text-cc-fg truncate">{answer}</span>
+      </summary>
+      <div className="px-3 pb-2.5 border-t border-cc-border/50 pt-2 space-y-1.5">
+        {question && <p className="text-xs text-cc-muted leading-relaxed">{question}</p>}
+        <div className="text-xs text-cc-fg font-medium flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-cc-primary shrink-0" />
+          {answer}
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
+  const questions: Record<string, unknown>[] = Array.isArray(perm.input.questions) ? perm.input.questions : [];
+  const [selections, setSelections] = useState<Record<string, string>>({});
+  const [customText, setCustomText] = useState<Record<string, string>>({});
+  const [showCustom, setShowCustom] = useState<Record<string, boolean>>({});
+  const [submitted, setSubmitted] = useState(false);
+
+  function submit(answers: Record<string, string>) {
+    setSubmitted(true);
+    sendPermissionResponse(perm.request_id, "allow", { ...perm.input, answers });
+  }
+
+  function handleOptionClick(qIdx: number, label: string) {
+    const key = String(qIdx);
+    setSelections((prev) => ({ ...prev, [key]: label }));
+    setShowCustom((prev) => ({ ...prev, [key]: false }));
+    if (questions.length <= 1) submit({ [key]: label });
+  }
+
+  function handleCustomToggle(qIdx: number) {
+    const key = String(qIdx);
+    setShowCustom((prev) => {
+      const wasOpen = Boolean(prev[key]);
+      const next = { ...prev, [key]: !wasOpen };
+      if (wasOpen) {
+        setSelections((s) => { const c = { ...s }; delete c[key]; return c; });
+        setCustomText((t) => { const c = { ...t }; delete c[key]; return c; });
+      }
+      return next;
+    });
+  }
+
+  function handleCustomChange(qIdx: number, value: string) {
+    const key = String(qIdx);
+    setCustomText((prev) => ({ ...prev, [key]: value }));
+    const trimmed = value.trim();
+    setSelections((prev) => {
+      if (!trimmed) { const c = { ...prev }; delete c[key]; return c; }
+      return { ...prev, [key]: trimmed };
+    });
+  }
+
+  function handleCustomSubmit(qIdx: number) {
+    const key = String(qIdx);
+    const text = customText[key]?.trim();
+    if (!text) return;
+    setSelections((prev) => ({ ...prev, [key]: text }));
+    if (questions.length <= 1) submit({ [key]: text });
+  }
+
+  // Fallback: no structured questions
+  if (questions.length === 0) {
+    const question = typeof perm.input.question === "string" ? perm.input.question : "";
+    return (
+      <div className="rounded-lg border border-cc-primary/20 bg-cc-card p-3">
+        <div className="text-sm font-medium text-cc-primary mb-1">Question</div>
+        {question && <div className="text-xs text-cc-fg">{question}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-cc-primary/20 bg-cc-card p-3 space-y-3">
+      {questions.map((q, i) => {
+        const header = typeof q.header === "string" ? q.header : "";
+        const text = typeof q.question === "string" ? q.question : "";
+        const options: Record<string, unknown>[] = Array.isArray(q.options) ? q.options : [];
+        const key = String(i);
+        const selected = selections[key];
+        const isCustom = showCustom[key];
+
+        return (
+          <div key={i} className="space-y-2">
+            {header && (
+              <span className="inline-block text-[10px] font-semibold text-cc-primary bg-cc-primary/10 px-1.5 py-0.5 rounded">
+                {header}
+              </span>
+            )}
+            {text && <p className="text-sm text-cc-fg leading-relaxed">{text}</p>}
+
+            {options.length > 0 && (
+              <div className="space-y-1.5">
+                {options.map((opt, j) => {
+                  const label = typeof opt.label === "string" ? opt.label : String(opt);
+                  const desc = typeof opt.description === "string" ? opt.description : "";
+                  const isSelected = selected === label && !isCustom;
+
+                  return (
+                    <button
+                      key={j}
+                      onClick={() => handleOptionClick(i, label)}
+                      disabled={submitted}
+                      className={`w-full text-left px-3 py-2 rounded-lg border transition-all cursor-pointer disabled:opacity-50 ${
+                        isSelected
+                          ? "border-cc-primary bg-cc-primary/10 ring-1 ring-cc-primary/30"
+                          : "border-cc-border bg-cc-bg hover:bg-cc-hover hover:border-cc-primary/30"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                          isSelected ? "border-cc-primary" : "border-cc-border"
+                        }`}>
+                          {isSelected && <span className="w-2 h-2 rounded-full bg-cc-primary" />}
+                        </span>
+                        <div>
+                          <span className="text-xs font-medium text-cc-fg">{label}</span>
+                          {desc && <p className="text-[11px] text-cc-muted mt-0.5 leading-snug">{desc}</p>}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+
+                {/* "Other..." custom input */}
+                <button
+                  onClick={() => handleCustomToggle(i)}
+                  disabled={submitted}
+                  className={`w-full text-left px-3 py-2 rounded-lg border transition-all cursor-pointer disabled:opacity-50 ${
+                    isCustom
+                      ? "border-cc-primary bg-cc-primary/10 ring-1 ring-cc-primary/30"
+                      : "border-cc-border bg-cc-bg hover:bg-cc-hover hover:border-cc-primary/30"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                      isCustom ? "border-cc-primary" : "border-cc-border"
+                    }`}>
+                      {isCustom && <span className="w-2 h-2 rounded-full bg-cc-primary" />}
+                    </span>
+                    <span className="text-xs font-medium text-cc-muted">Other...</span>
+                  </div>
+                </button>
+
+                {isCustom && (
+                  <div className="pl-6">
+                    <input
+                      type="text"
+                      value={customText[key] || ""}
+                      onChange={(e) => handleCustomChange(i, e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleCustomSubmit(i); }}
+                      placeholder="Type your answer..."
+                      className="w-full px-2.5 py-1.5 text-xs bg-cc-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
+                      autoFocus
+                    />
+                    {questions.length <= 1 && (
+                      <p className="mt-1 text-[10px] text-cc-muted">Press Enter to submit</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Submit button for multi-question forms */}
+      {questions.length > 1 && Object.keys(selections).length > 0 && (
+        <button
+          onClick={() => submit(selections)}
+          disabled={submitted}
+          className="px-4 py-1.5 text-xs font-medium bg-cc-primary hover:bg-cc-primary-hover text-white rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
+        >
+          Submit answers
+        </button>
+      )}
     </div>
   );
 }
@@ -493,8 +716,6 @@ function ContentBlockRenderer({
   }
 
   if (block.type === "tool_use") {
-    // AskUserQuestion has its own UI in PermissionBanner
-    if (block.name === "AskUserQuestion") return null;
     return <ToolBlock name={block.name} input={block.input} toolUseId={block.id} />;
   }
 

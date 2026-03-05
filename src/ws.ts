@@ -350,6 +350,10 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
     }
 
     case "permission_cancelled": {
+      const cancelled = store.pendingPermissions.get(data.request_id);
+      if (cancelled?.tool_name === "AskUserQuestion") {
+        store.recordAnsweredQuestion(cancelled.tool_use_id, "", "(cancelled)");
+      }
       store.removePermission(data.request_id);
       break;
     }
@@ -508,6 +512,14 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
             stopReason: msg.stop_reason,
           });
           extractTasksFromBlocks(msg.content);
+          // Mark AskUserQuestion blocks as answered for history replay
+          for (const block of msg.content) {
+            if (block.type === "tool_use" && block.name === "AskUserQuestion") {
+              const qs: Record<string, unknown>[] = Array.isArray(block.input?.questions) ? block.input.questions : [];
+              const qText = qs.length > 0 ? ((qs[0] as Record<string, unknown>).question as string || "") : ((block.input?.question as string) || "");
+              store.recordAnsweredQuestion(block.id, qText, "(answered previously)");
+            }
+          }
         } else if (histMsg.type === "result") {
           const r = histMsg.data;
           if (r.is_error && r.errors?.length) {
@@ -806,7 +818,21 @@ export function sendPermissionResponse(
   behavior: "allow" | "deny",
   updatedInput?: Record<string, unknown>,
 ) {
-  useStore.getState().removePermission(requestId);
+  const store = useStore.getState();
+  const perm = store.pendingPermissions.get(requestId);
+
+  // Track answered AskUserQuestion before removing permission
+  if (perm && perm.tool_name === "AskUserQuestion" && behavior === "allow" && updatedInput) {
+    const answers = updatedInput.answers as Record<string, string> | undefined;
+    const questions: Record<string, unknown>[] = Array.isArray(perm.input.questions) ? perm.input.questions : [];
+    const questionText = questions.length > 0
+      ? (questions[0] as Record<string, unknown>).question as string || ""
+      : (perm.input.question as string) || "";
+    const answerText = answers ? Object.values(answers).join(", ") : "";
+    store.recordAnsweredQuestion(perm.tool_use_id, questionText, answerText);
+  }
+
+  store.removePermission(requestId);
   send({
     type: "permission_response",
     request_id: requestId,

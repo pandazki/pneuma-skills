@@ -18,6 +18,12 @@ export interface TaskItem {
   blockedBy?: string[];
 }
 
+export interface AnsweredQuestion {
+  toolUseId: string;
+  question: string;
+  answer: string;
+}
+
 export type ElementSelection = SelectionContext;
 
 interface AppState {
@@ -41,6 +47,7 @@ interface AppState {
 
   // Permissions
   pendingPermissions: Map<string, PermissionRequest>;
+  answeredQuestions: Map<string, AnsweredQuestion>;  // key = toolUseId
 
   // Content (markdown files)
   files: FileContent[];
@@ -121,6 +128,7 @@ interface AppState {
   // Actions — permissions
   addPermission: (perm: PermissionRequest) => void;
   removePermission: (requestId: string) => void;
+  recordAnsweredQuestion: (toolUseId: string, question: string, answer: string) => void;
 
   // Actions — tab
   setActiveTab: (tab: "chat" | "editor" | "diff" | "terminal" | "processes" | "context") => void;
@@ -241,6 +249,7 @@ export const useStore = create<AppState>((set) => ({
   streaming: null,
   activity: null,
   pendingPermissions: new Map(),
+  answeredQuestions: new Map(),
   files: [],
   activeTab: "chat",
   gitAvailable: null,
@@ -312,6 +321,13 @@ export const useStore = create<AppState>((set) => ({
       const next = new Map(s.pendingPermissions);
       next.delete(requestId);
       return { pendingPermissions: next };
+    }),
+
+  recordAnsweredQuestion: (toolUseId, question, answer) =>
+    set((s) => {
+      const next = new Map(s.answeredQuestions);
+      next.set(toolUseId, { toolUseId, question, answer });
+      return { answeredQuestions: next };
     }),
 
   setActiveTab: (activeTab) => set({ activeTab }),
