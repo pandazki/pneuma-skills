@@ -28,7 +28,7 @@ import type {
 } from "../../../core/types/viewer-contract.js";
 import { buildSelectionScript } from "../../../core/iframe-selection/index.js";
 import { useStore } from "../../../src/store.js";
-import { useSlideThumbnails } from "../hooks/useSlideThumbnails.js";
+import { useSlideThumbnails, sanitizeHtmlQuotes } from "../hooks/useSlideThumbnails.js";
 import SlideIframePool from "./SlideIframePool.js";
 import HighlighterCanvas from "./HighlighterCanvas.js";
 import { captureSlideRegion } from "./captureSlideRegion.js";
@@ -319,6 +319,7 @@ const SELECTION_SCRIPT = buildSelectionScript({
  * - Fragments: wrap in our template with themeCSS.
  */
 function buildSrcdoc(slideHtml: string, themeCSS: string): string {
+  slideHtml = sanitizeHtmlQuotes(slideHtml);
   const baseUrl = import.meta.env.DEV ? "http://localhost:17007" : "";
   const isFullDoc =
     slideHtml.includes("<!DOCTYPE") || slideHtml.includes("<html");

@@ -26,6 +26,16 @@ function djb2(str: string): number {
   return hash >>> 0;
 }
 
+/**
+ * Sanitize curly (smart) quotes inside HTML tags so attribute values parse correctly.
+ * Text content outside tags is left untouched, preserving visible curly quotes.
+ */
+export function sanitizeHtmlQuotes(html: string): string {
+  return html.replace(/<[^>]*>/g, (tag) =>
+    tag.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'"),
+  );
+}
+
 /** Strip full-document wrappers, keeping only body content. Mirrors SlidePreview.tsx. */
 export function stripHtmlWrapper(html: string): string {
   if (!html.includes("<!DOCTYPE") && !html.includes("<html")) return html;
@@ -315,6 +325,7 @@ export async function captureSlideToSvg(
   width: number,
   height: number,
 ): Promise<string> {
+  slideHtml = sanitizeHtmlQuotes(slideHtml);
   const baseUrl = getBaseUrl();
   const isFullDoc =
     slideHtml.includes("<!DOCTYPE") || slideHtml.includes("<html");

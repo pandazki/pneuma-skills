@@ -14,6 +14,7 @@ import {
   inlineCSSImageUrls,
   removeScripts,
   stripHtmlWrapper,
+  sanitizeHtmlQuotes,
   getBaseUrl,
 } from "../hooks/useSlideThumbnails.js";
 
@@ -41,6 +42,7 @@ export async function captureSlideRegion(
   virtualH: number,
   region: CaptureRegion,
 ): Promise<string> {
+  slideHtml = sanitizeHtmlQuotes(slideHtml);
   const baseUrl = getBaseUrl();
   const isFullDoc =
     slideHtml.includes("<!DOCTYPE") || slideHtml.includes("<html");
