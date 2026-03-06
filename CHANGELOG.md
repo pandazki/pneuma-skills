@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2026-03-06
+
+### Added
+- **Evolution Agent** — AI-native continuous skill learning system. Analyzes cross-session conversation history to extract user preferences, generates proposals with evidence citations, and augments skill files. Modes declare an `evolution.directive` in their manifest to guide the analysis direction.
+  - `pneuma evolve <mode>` CLI command to launch the evolution agent
+  - Evolve Mode (`modes/evolve/`) with dashboard viewer for proposal review
+  - Proposal lifecycle: pending → apply/rollback/discard/fork
+  - Fork proposals into standalone custom modes (`~/.pneuma/modes/<name>-evolved-<date>/`)
+  - Automatic CLAUDE.md sync — "Learned Preferences" section injected on apply, removed on rollback
+  - Session analysis tools: list sessions, search messages, session digest, tool flow extraction
+  - Evolution API routes (`/api/evolve/*`) for proposal management
+- **`EvolutionConfig`** contract — new optional `evolution` field on `ModeManifest` with `directive` and `tools`
+- **Skill effectiveness optimization** — standardized `claudeMdSection` across all built-in modes following Anthropic best practices (identity → skill reference → core rules pattern)
+- **YAML frontmatter** on doc and draw SKILL.md files for Claude Code native skill discovery
+- **Mode-maker seed improvements** — expanded skill template with structured sections, YAML frontmatter placeholders, and claudeMdSection best practices guidance
+
+### Changed
+- Slide mode claudeMdSection directs agent to use native skill tool instead of file path reference
+- Doc mode SKILL.md expanded from 24 to ~95 lines with workflow patterns and markdown conventions
+
 ## [1.18.9] - 2026-03-06
 
 ### Fixed

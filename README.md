@@ -24,7 +24,7 @@ When humans and code agents co-create content, they need more than a chat window
 
 **Skills** — Domain-specific knowledge and seed templates injected into the agent per mode. A presentation skill teaches layout, rhythm, and export; a document skill teaches prose and structure. Skills version and evolve with each release, and sessions persist across runs — the agent picks up where it left off.
 
-**Continuous Learning** *(v2.0)* — Skills today are static presets. The next step: mine cross-session conversation history to extract user preferences and style patterns, then dynamically augment the preset skill. During a session, the agent further adapts in real-time — learning what "good" looks like for *this* user, in *this* domain, over time.
+**Continuous Learning** — Skills aren't static presets. The Evolution Agent mines cross-session conversation history to extract user preferences and style patterns, then augments the preset skill with learned knowledge. Run `pneuma evolve <mode>` to analyze your history, review AI-generated proposals with evidence citations, and apply them to personalize your experience.
 
 **Distribution** — A complete ecosystem for sharing capabilities. Build a custom mode with AI assistance via Mode Maker, publish to the marketplace, and let anyone `pneuma mode add` it instantly.
 
@@ -36,6 +36,7 @@ When humans and code agents co-create content, they need more than a chat window
 | **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export |
 | **draw** | Excalidraw whiteboard with `.excalidraw` file editing |
 | **mode-maker** | Create custom modes with AI — fork, play-test, publish |
+| **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback |
 
 ## Prerequisites
 
@@ -84,6 +85,7 @@ Modes:
   slide                        Presentation editing mode (HTML slides with iframe preview)
   draw                         Excalidraw whiteboard drawing mode
   mode-maker                   Create and develop custom modes with AI
+  evolve                       Launch the Evolution Agent for skill learning
   /path/to/mode                Load mode from a local directory
   github:user/repo             Load mode from a GitHub repository
   github:user/repo#branch      Load mode from a specific branch/tag
@@ -99,6 +101,7 @@ Options:
   --dev                Force dev mode (Vite)
 
 Subcommands:
+  evolve <mode>        Analyze history and propose skill improvements
   mode add <url>       Install a remote mode to ~/.pneuma/modes/
   mode list            List published modes on the R2 registry
   mode publish         Publish the current workspace as a mode
@@ -172,7 +175,7 @@ When Claude Code edits files, chokidar detects the changes and pushes updated co
 | **ViewerContract** | Preview component, context extraction, file workspace model, agent-callable actions | Custom renderers, viewport tracking, action protocols |
 | **AgentBackend** | Launch, resume, kill, capability declaration | Other agents (Codex, Aider) |
 
-Contracts are defined in `core/types/` with 274 tests across 17 test files.
+Contracts are defined in `core/types/` with 316 tests across 20 test files.
 
 ## Project Structure
 
@@ -193,7 +196,8 @@ pneuma-skills/
 │   ├── doc/                   # Doc Mode — markdown editing
 │   ├── slide/                 # Slide Mode — presentation editing
 │   ├── draw/                  # Draw Mode — Excalidraw whiteboard
-│   └── mode-maker/            # Mode Maker — create custom modes with AI
+│   ├── mode-maker/            # Mode Maker — create custom modes with AI
+│   └── evolve/                # Evolve Mode — evolution agent dashboard
 │       ├── manifest.ts        # Mode manifest (fork, play, publish workflow)
 │       ├── seed/              # Template files for new modes
 │       ├── skill/             # Skill prompt for mode development
@@ -212,7 +216,10 @@ pneuma-skills/
 │   ├── terminal-manager.ts    # PTY terminal sessions
 │   ├── path-resolver.ts       # Binary PATH resolution (cross-platform)
 │   ├── system-bridge.ts       # OS-level operations (open, reveal, openUrl)
-│   └── mode-maker-routes.ts   # Mode Maker API routes (fork, play, publish, reset)
+│   ├── mode-maker-routes.ts   # Mode Maker API routes (fork, play, publish, reset)
+│   ├── evolution-agent.ts     # Evolution Agent launcher (spawns CC with analysis tools)
+│   ├── evolution-proposal.ts  # Proposal CRUD + apply/rollback + CLAUDE.md sync
+│   └── evolution-routes.ts    # Evolution API routes (/api/evolve/*)
 ├── src/
 │   ├── App.tsx                # Root layout (dynamic viewer from store)
 │   ├── store.ts               # Zustand state (session, messages, viewer)
@@ -276,6 +283,8 @@ pneuma-skills/
 - **Image upload** — Drag & drop or paste images into chat
 - **Viewer context enrichment** — `<viewer-context>` XML blocks align agent perception with user viewport
 - **Viewer action protocol** — Agent can invoke viewer capabilities (navigate, toggle UI, capture)
+- **Evolution Agent** — `pneuma evolve <mode>` analyzes conversation history, proposes skill improvements with evidence
+- **Proposal lifecycle** — Review, apply, rollback, discard, or fork proposals into custom modes
 - **Windows compatibility** — Cross-platform PATH resolution, terminal, browser opening, process management
 - **Debug mode** — `--debug` flag shows enriched CLI payloads for each message
 
@@ -298,13 +307,10 @@ pneuma-skills/
 - [x] Launcher process management — Monitor and kill child processes
 - [x] Next-gen visual redesign — Ethereal Tech aesthetic (glassmorphism, cinematic dark UI)
 - [x] Export & image capture — Slide export via `@zumer/snapdom`
+- [x] Evolution Agent — AI-native continuous skill learning (`pneuma evolve <mode>`)
+- [x] Skill effectiveness optimization — standardized claudeMdSection + YAML frontmatter for native skill discovery
 - [ ] Additional agent backends — Codex CLI, custom agents
-
-### v2.0 — Continuous Learning
-
-- [ ] Cross-session preference extraction — mine conversation history to discover user style, tone, and layout preferences
-- [ ] Dynamic skill augmentation — automatically append learned preferences to preset skills at session start
-- [ ] In-session adaptation — agent refines its approach in real-time based on user feedback patterns
+- [ ] In-session adaptation — agent refines its approach in real-time based on feedback within a session
 
 ## Acknowledgements
 

@@ -1,9 +1,9 @@
 # Pneuma 2.0: Evolution Agent — AI-Native Skill 演进
 
 > **日期**: 2026-03-06
-> **基于**: v1.18.9
-> **状态**: Draft
-> **替代**: `proposal-v2-continuous-learning.md`（该方案被评估为"过浅"，用 ETL pipeline 解决 Agent 问题）
+> **基于**: v1.18.9 → Implemented in v2.0.0
+> **状态**: Implemented (merged in PR #41)
+> **替代**: `proposal-v2-continuous-learning.md`（已归档至 `archive/`）
 
 ---
 

@@ -2,13 +2,13 @@
 
 ## Project Overview
 
-Pneuma Skills is co-creation infrastructure for humans and code agents. It provides four pillars for isomorphic collaboration: a **visual environment** (live bidirectional workspace), **skills** (domain knowledge + seed templates + session persistence), **continuous learning** (v2.0 — cross-session preference extraction and dynamic skill augmentation), and **distribution** (mode marketplace, publishing, sharing). Built atop mainstream code agents (currently Claude Code via `--sdk-url`), Pneuma doesn't replace your agent — it gives both of you a shared workspace to think in.
+Pneuma Skills is co-creation infrastructure for humans and code agents. It provides four pillars for isomorphic collaboration: a **visual environment** (live bidirectional workspace), **skills** (domain knowledge + seed templates + session persistence), **continuous learning** (evolution agent for cross-session preference extraction and skill augmentation), and **distribution** (mode marketplace, publishing, sharing). Built atop mainstream code agents (currently Claude Code via `--sdk-url`), Pneuma doesn't replace your agent — it gives both of you a shared workspace to think in.
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 1.18.9
+**Version:** 2.0.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
-**Builtin Modes:** `doc`, `slide`, `draw`, `mode-maker`
+**Builtin Modes:** `doc`, `slide`, `draw`, `mode-maker`, `evolve`
 
 ## Tech Stack
 
@@ -32,6 +32,9 @@ bun run dev slide        # Slide Mode
 bun run dev doc --workspace ~/notes --port 17996 --no-open --debug
 bun run build            # Vite production build
 bun test                 # All tests (bun:test)
+
+# Skill evolution
+pneuma evolve <mode>     # Launch evolution agent for a mode's skill
 
 # Mode management
 pneuma mode add <url>    # Install remote mode to ~/.pneuma/modes/
@@ -72,7 +75,7 @@ pneuma-skills/
 │   ├── mode-loader.ts         # Mode discovery & loading (builtin + external)
 │   ├── mode-resolver.ts       # Source resolution (builtin/local/github/url → disk path)
 │   └── utils/manifest-parser.ts  # Regex-based manifest.ts metadata extraction
-├── modes/{doc,slide,draw,mode-maker}/  # Builtin modes (manifest.ts + viewer/ + skill/)
+├── modes/{doc,slide,draw,mode-maker,evolve}/  # Builtin modes
 ├── backends/claude-code/      # AgentBackend impl — Bun.spawn with --sdk-url
 ├── server/
 │   ├── index.ts               # Hono server + launcher endpoints + WS routing
@@ -82,7 +85,10 @@ pneuma-skills/
 │   ├── terminal-manager.ts    # PTY terminal sessions
 │   ├── path-resolver.ts       # Binary PATH resolution (cross-platform)
 │   ├── system-bridge.ts       # OS-level operations (open, reveal, openUrl)
-│   └── mode-maker-routes.ts   # Mode Maker API routes (fork, play, publish, reset)
+│   ├── mode-maker-routes.ts   # Mode Maker API routes (fork, play, publish, reset)
+│   ├── evolution-agent.ts     # Evolution Agent launcher (spawns CC with analysis tools)
+│   ├── evolution-proposal.ts  # Proposal CRUD + apply/rollback + CLAUDE.md sync
+│   └── evolution-routes.ts    # Evolution API routes (/api/evolve/*)
 ├── src/                       # React frontend (Vite)
 │   ├── App.tsx                # Root layout, dynamic viewer loading
 │   ├── store.ts               # Zustand store
@@ -112,9 +118,10 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 
 | Contract | File | Purpose |
 |----------|------|---------|
-| **ModeManifest** | `core/types/mode-manifest.ts` | Skill, viewer config, agent preferences, init params |
+| **ModeManifest** | `core/types/mode-manifest.ts` | Skill, viewer config, agent preferences, init params, evolution |
 | **ViewerContract** | `core/types/viewer-contract.ts` | Preview component, context extraction, workspace model |
 | **AgentBackend** | `core/types/agent-backend.ts` | Launch, resume, kill, capabilities |
+| **EvolutionConfig** | `core/types/mode-manifest.ts` | Evolution directive, tools (part of ModeManifest) |
 
 ### Communication
 
@@ -174,7 +181,7 @@ Modes can come from four sources, resolved by `core/mode-resolver.ts`:
 
 | Type | Specifier | Resolved Path |
 |------|-----------|---------------|
-| **builtin** | `doc`, `slide`, `draw`, `mode-maker` | `modes/<name>/` |
+| **builtin** | `doc`, `slide`, `draw`, `mode-maker`, `evolve` | `modes/<name>/` |
 | **local** | `/abs/path`, `./rel` | As-is |
 | **github** | `github:user/repo` | `~/.pneuma/modes/<user>-<repo>/` |
 | **url** | `https://...tar.gz` | `~/.pneuma/modes/<name>/` |
@@ -209,12 +216,16 @@ Stored in `<workspace>/.pneuma/`:
 | `config.json` | Init params (e.g. slideWidth, API keys) |
 | `skill-version.json` | `{ mode, version }` — installed skill version for update detection |
 | `skill-dismissed.json` | `{ version }` — dismissed skill update version |
+| `evolution/` | Evolution proposals, backups, and CLAUDE.md snapshots |
 
 ### Skill Installation & Update Detection
 
 On startup, skills are copied from `modes/<mode>/skill/` to `<workspace>/.claude/skills/<installName>/`. Template params (`{{key}}`, `{{viewerCapabilities}}`) are applied. Two sections are injected into CLAUDE.md:
 - `<!-- pneuma:start -->` / `<!-- pneuma:end -->` — Skill prompt
 - `<!-- pneuma:viewer-api:start -->` / `<!-- pneuma:viewer-api:end -->` — Viewer API description
+
+A third optional section is injected by the evolution system:
+- `<!-- pneuma:evolved:start -->` / `<!-- pneuma:evolved:end -->` — Learned preferences summary (inside pneuma:start/end block)
 
 After install, the mode version is written to `skill-version.json`. On session resume:
 1. Launcher checks installed version vs current mode version
@@ -325,6 +336,18 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 | `/ws/browser/:sessionId` | JSON | Browser ↔ server |
 | `/ws/cli/:sessionId` | NDJSON | CLI ↔ server |
 | `/ws/terminal/:terminalId` | binary | PTY terminal |
+
+### Evolution API (when mode = evolve)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/evolve/proposals` | List all evolution proposals |
+| GET | `/api/evolve/proposals/latest` | Most recent proposal |
+| GET | `/api/evolve/proposals/:id` | Specific proposal by ID |
+| POST | `/api/evolve/apply/:id` | Apply a pending proposal to skill files |
+| POST | `/api/evolve/rollback/:id` | Rollback an applied proposal |
+| POST | `/api/evolve/discard/:id` | Discard a pending proposal |
+| POST | `/api/evolve/fork/:id` | Fork proposal into a new custom mode |
 
 ### Mode Maker API (when mode = mode-maker)
 
