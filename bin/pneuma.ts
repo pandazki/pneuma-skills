@@ -694,9 +694,12 @@ async function main() {
             name: "pneuma-mode-resolve",
             setup(build) {
               // Redirect imports from external mode files to pneuma project root
+              const externals = new Set(["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"]);
               build.onResolve({ filter: /.+/ }, (args) => {
                 if (!args.importer || (!args.importer.startsWith(realModePath) && !args.importer.startsWith(resolved.path))) return;
                 if (!args.path.startsWith(".") && !args.path.startsWith("/")) {
+                  // Let Bun handle external modules (don't resolve them to file paths)
+                  if (externals.has(args.path)) return;
                   // Bare specifier — resolve from project's or mode's node_modules
                   try {
                     return { path: require.resolve(args.path, { paths: [resolved.path, join(PROJECT_ROOT, "node_modules")] }) };
