@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.18.7] - 2026-03-06
+
+### Added
+- **Third-party dependency support for custom modes**: Modes can now use any npm package; dependencies auto-installed on seed and inlined at publish via `Bun.build()`
+- **Mode build pipeline** (`snapshot/mode-build.ts`): Shared build module used by both UI publish and CLI publish to produce self-contained bundles
+- **CSS support in production mode serving**: Compiled mode bundles can include CSS files, served with correct content type and injected via `<link>` tags
+- **Network topology documentation** (`docs/network-topology.md`): Comprehensive developer reference for ports, scenarios, and connection diagrams
+- **Seed `package.json`** for mode-maker: New modes start with `react-markdown` and `remark-gfm` as default dependencies
+
+### Fixed
+- **Production mode-maker Play**: Play subprocess no longer forces `--dev` in production; uses `Bun.build()` compilation instead of Vite when parent is not in dev mode
+- **Bun.build resolve plugin**: Handles macOS `/tmp` → `/private/tmp` symlinks via `realpathSync`, uses `/.+/` filter for reliable bare specifier matching, and resolves imports from both mode workspace and project `node_modules`
+- **Pre-built bundle detection**: Skips recompilation when `.build/pneuma-mode.js` already exists (published modes)
+- **Publish pre-build step**: Both UI and CLI publish now build viewer bundle before creating archive, then clean `.build/` from workspace
+
+### Improved
+- **Protected directories**: `.build/` added to mode-maker's protected dirs to prevent accidental deletion
+- **Mode-maker skill docs**: Added "Third-Party Dependencies" section explaining npm package usage in modes
+
 ## [1.18.6] - 2026-03-06
 
 ### Fixed
