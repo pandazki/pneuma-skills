@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.18.9] - 2026-03-06
+
+### Fixed
+- **Chat input IME conflict**: Enter key now checks `isComposing` to avoid sending messages while selecting Chinese/Japanese/Korean IME candidates
+
 ## [1.18.8] - 2026-03-06
 
 ### Fixed
