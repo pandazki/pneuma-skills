@@ -61,6 +61,13 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/mode-maker/pneuma-mode.js").then((m) => m.default),
   },
+  evolve: {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/evolve/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/evolve/pneuma-mode.js").then((m) => m.default),
+  },
 };
 
 /** 外部 mode 注册表 — 由 CLI 在启动时通过 registerExternalMode 注册 */

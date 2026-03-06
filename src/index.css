@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+.font-chat {
+  font-family: "Lora", serif;
+  letter-spacing: 0.02em;
+}
+
 @theme {
   --color-cc-bg: #09090b;
   /* Zinc 950 essentially */

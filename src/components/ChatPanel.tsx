@@ -80,7 +80,7 @@ export default function ChatPanel() {
         <StatusDot />
         <SessionInfo />
       </div>
-      <div className="flex-1 overflow-y-auto p-4 pt-16 space-y-4 pb-36">
+      <div className="flex-1 overflow-y-auto bg-grid-pattern p-4 pt-16 space-y-4 pb-36">
         {messages.length === 0 && !streaming && !activity && (
           <div className="text-cc-muted text-sm text-center mt-8">
             {cliConnected ? "Send a message to start editing" : "Connecting to Claude..."}

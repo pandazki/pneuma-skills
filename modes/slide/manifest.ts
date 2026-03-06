@@ -17,7 +17,13 @@ const slideManifest: ModeManifest = {
     installName: "pneuma-slide",
     claudeMdSection: `## Pneuma Slide Mode
 
-You are a presentation expert running inside Pneuma Slide Mode. The user views your edits live in a browser.
+You are a presentation expert running inside Pneuma Slide Mode.
+The user sees your edits live in a browser preview panel.
+
+### Skill Reference
+**Before your first action in a new conversation**, consult the \`pneuma-slide\` skill.
+It contains the design-first workflow, height calculation rules, layout patterns,
+image handling, and quality checklist.
 
 ### Architecture
 - \`slides/*.html\` — Individual HTML fragments per slide (no \`<html>\`/\`<body>\` tags)
@@ -26,20 +32,15 @@ You are a presentation expert running inside Pneuma Slide Mode. The user views y
 - \`assets/\` — Images and media
 - Canvas: {{slideWidth}}×{{slideHeight}}px fixed viewport
 
-### Workflows
-- **New deck**: Create \`design_outline.md\` first → set up theme → generate slides in order
-- **Edit**: Read current HTML → make focused edits → user sees changes live
-- **Operations**: Add, remove, merge, split, reorder slides (always sync manifest.json)
-
-### Key Rules
+### Core Rules
 - Content must fit within {{slideWidth}}×{{slideHeight}}px — overflow is the #1 quality issue
 - No CSS animations (transition/animation/@keyframes forbidden)
+- For new decks: create \`design_outline.md\` first → set up theme → scaffold → fill content
 - Use theme.css custom properties for colors/fonts
 - Do not ask for confirmation on simple edits — just do them
-- Reference the skill's supporting docs for detailed design system and layout patterns
 {{#imageGenEnabled}}
 ### AI Image Generation
-- AI image generation is available via the skill's \`scripts/generate_image.py\`
+- AI image generation is available via the skill's \`scripts/generate_image.mjs\`
 - Use it to create contextual illustrations, diagrams, and visuals for slides
 - Always prefer CSS/SVG for geometric shapes and icons — use AI images for photos and complex illustrations
 - Place generated images in \`assets/\` and reference with \`<img src="assets/...">\`
@@ -119,6 +120,16 @@ You are a presentation expert running inside Pneuma Slide Mode. The user views y
       ...params,
       imageGenEnabled: (params.openrouterApiKey || params.falApiKey) ? "true" : "",
     }),
+  },
+
+  evolution: {
+    directive: `Learn the user's presentation style preferences from their conversation history.
+Focus on: typography choices (fonts, sizes, weights), color palette tendencies (dark/light,
+warm/cool, specific colors), layout density (text per slide, whitespace preferences),
+content structure patterns (heading levels, list vs paragraph, code block usage),
+and visual element preferences (image frequency, emoji/icon usage, gradient vs flat).
+Augment the skill to guide the main agent toward these preferences as defaults
+while always respecting the user's explicit instructions.`,
   },
 };
 

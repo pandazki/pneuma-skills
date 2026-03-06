@@ -19,9 +19,13 @@ const modeMakerManifest: ModeManifest = {
     installName: "pneuma-mode-maker",
     claudeMdSection: `## Pneuma Mode Maker
 
-You are running inside Pneuma Mode Maker. The workspace is a **Mode package** — a directory structure that defines a new Pneuma mode.
+You are a mode development assistant running inside Pneuma Mode Maker.
+The workspace is a **Mode package** and the user sees structure updates live.
 
-**Important**: When the user asks you to create or modify mode files, edit them directly using the Edit or Write tools. The user sees the mode structure and previews update in real-time.
+### Skill Reference
+**Before your first action in a new conversation**, consult the \`pneuma-mode-maker\` skill.
+It contains the ModeManifest reference, ViewerContract patterns, publishing workflow,
+and existing mode examples.
 
 ### Mode Package Structure
 - \`manifest.ts\` — ModeManifest: name, version, skill config, viewer config, init params
@@ -30,7 +34,7 @@ You are running inside Pneuma Mode Maker. The workspace is a **Mode package** �
 - \`skill/SKILL.md\` — Agent skill prompt (domain knowledge for the mode)
 - \`seed/\` — Template files for new workspaces (copied on first run)
 
-### Key Rules
+### Core Rules
 - Follow existing mode patterns (doc, slide, draw) for consistency
 - Manifest must be a valid ModeManifest type export
 - Viewer component must accept ViewerPreviewProps

@@ -35,7 +35,7 @@ const manifest: ModeManifest = {
   skill: {
     sourceDir: "skill",                    // Directory containing skill files
     installName: "pneuma-my-mode",         // Install name under .claude/skills/
-    claudeMdSection: `## Pneuma My Mode\n...`, // Injected into workspace CLAUDE.md
+    claudeMdSection: `...`,                // Injected into workspace CLAUDE.md (see below)
     envMapping: {                          // Generate .env from init params (optional)
       API_KEY: "apiKey",                   //   env var name → init param name
     },
@@ -96,6 +96,35 @@ const manifest: ModeManifest = {
   },
 };
 ```
+
+### claudeMdSection Best Practices
+
+The `claudeMdSection` is injected into the workspace's `CLAUDE.md` and is auto-loaded by Claude Code on every conversation. It serves as the **hook** that directs the agent to read the full skill.
+
+**Template pattern** (follow this for all modes):
+
+```markdown
+## Pneuma {DisplayName} Mode
+
+You are a {role} running inside Pneuma {DisplayName} Mode.
+The user sees your edits live in a browser preview panel.
+
+### Skill Reference
+**Before your first action in a new conversation**, consult the `{installName}` skill.
+It contains {preview of key topics}.
+
+### Core Rules
+- {3-5 most critical rules inline}
+- Do not ask for confirmation on simple edits — just do them
+```
+
+**Key principles:**
+- Keep it **concise** (~10-20 lines) — it's loaded on every message, so avoid bloat
+- The "Skill Reference" section is critical — it directs the agent to consult the skill via CC's native skill mechanism (not manual file reading)
+- Reference the skill by its `installName` (e.g. `pneuma-slide`) so CC's skill discovery can resolve it
+- Include a brief preview of what's in SKILL.md so the agent knows it's worth consulting
+- Inline only the 3-5 most critical rules that the agent must follow even without reading the skill
+- Heavy content (examples, patterns, reference tables) belongs in SKILL.md, not claudeMdSection
 
 ### Icon Format
 

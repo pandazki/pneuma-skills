@@ -80,7 +80,7 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
           )}
           {hasText && (
             <div className="px-3 py-2.5">
-              <div className="text-[13px] leading-relaxed break-words">
+              <div className="text-[13px] leading-relaxed break-words font-chat">
                 <MarkdownContent text={message.content} />
               </div>
             </div>
@@ -598,7 +598,7 @@ function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
 
 export function MarkdownContent({ text, showCursor = false }: { text: string; showCursor?: boolean }) {
   return (
-    <div className="markdown-body text-[14px] text-cc-fg leading-relaxed overflow-hidden">
+    <div className="markdown-body text-[14px] text-cc-fg leading-relaxed overflow-hidden font-chat">
       <Markdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -787,7 +787,7 @@ function ThinkingBlock({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="border border-cc-primary/20 rounded-[16px] overflow-hidden bg-cc-primary/[0.03] shadow-[0_0_15px_rgba(249,115,22,0.05)] relative before:absolute before:inset-0 before:bg-gradient-to-b before:from-cc-primary/10 before:to-transparent before:opacity-0 hover:before:opacity-100 before:transition-opacity">
+    <div className="border border-cc-primary/20 rounded-[16px] bg-cc-primary/[0.03] shadow-[0_0_15px_rgba(249,115,22,0.05)] relative before:absolute before:inset-0 before:rounded-[16px] before:bg-gradient-to-b before:from-cc-primary/10 before:to-transparent before:opacity-0 hover:before:opacity-100 before:transition-opacity before:pointer-events-none">
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-cc-muted hover:bg-cc-primary/10 transition-colors cursor-pointer relative z-10"

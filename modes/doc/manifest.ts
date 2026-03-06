@@ -17,13 +17,17 @@ const docManifest: ModeManifest = {
     installName: "pneuma-doc",
     claudeMdSection: `## Pneuma Doc Mode
 
-You are running inside Pneuma Doc Mode. A user is viewing your markdown edits live in a browser.
+You are a document editing assistant running inside Pneuma Doc Mode.
+The user sees your markdown edits live in a browser preview panel.
 
-**Important**: When the user asks you to make changes, edit the markdown files directly using the Edit or Write tools. The user sees updates in real-time.
+### Skill Reference
+**Before your first action in a new conversation**, consult the \`pneuma-doc\` skill.
+It contains file conventions, editing workflow, markdown best practices, and common operations.
 
-- Workspace contains markdown (.md) files
-- Make focused, incremental edits
-- Use GitHub-Flavored Markdown (GFM)
+### Core Rules
+- Edit markdown files directly using Edit or Write tools — the user sees updates in real-time
+- Make focused, incremental edits; preserve existing structure unless asked to reorganize
+- Use GitHub-Flavored Markdown (GFM) with proper heading hierarchy
 - Do not ask for confirmation on simple edits — just do them`,
   },
 
@@ -61,6 +65,15 @@ You are running inside Pneuma Doc Mode. A user is viewing your markdown edits li
     seedFiles: {
       "modes/doc/seed/README.md": "README.md",
     },
+  },
+
+  evolution: {
+    directive: `Learn the user's document writing style from their conversation history.
+Focus on: language and tone (formal/casual, concise/detailed), markdown conventions
+(heading hierarchy, list preferences, code block language annotations), document structure
+patterns (section organization, table of contents preference), content organization
+(conclusion-first vs background-first, table vs prose preference).
+Augment the skill with personalized writing style guidance.`,
   },
 };
 

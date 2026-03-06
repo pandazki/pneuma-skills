@@ -276,8 +276,308 @@ function checkClaudeCode() {
   }
 }
 
+async function handleEvolveCommand(args: string[]) {
+  let workspace = process.cwd();
+  let modeName = "";
+  let subAction = ""; // "apply", "rollback", "show", or "" (propose)
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--workspace" && i + 1 < args.length) {
+      workspace = resolve(args[++i]);
+    } else if (arg === "--mode" && i + 1 < args.length) {
+      modeName = args[++i];
+    } else if (["apply", "rollback", "show", "list"].includes(arg)) {
+      subAction = arg;
+    }
+  }
+
+  workspace = resolve(workspace);
+
+  const {
+    loadProposal, loadLatestProposal, listProposals,
+    applyProposal, rollbackProposal, formatProposalForDisplay,
+  } = await import("../server/evolution-proposal.js");
+
+  if (subAction === "list") {
+    const proposals = listProposals(workspace);
+    if (proposals.length === 0) {
+      p.log.info("No evolution proposals found.");
+    } else {
+      p.log.info(`${proposals.length} proposal(s):`);
+      for (const prop of proposals) {
+        const changesCount = prop.changes.length;
+        p.log.message(`  ${prop.id}  [${prop.status}]  ${prop.mode}  ${changesCount} change(s)  ${prop.createdAt}`);
+      }
+    }
+    return;
+  }
+
+  if (subAction === "show") {
+    const proposal = loadLatestProposal(workspace);
+    if (!proposal) {
+      p.log.error("No proposals found. Run `pneuma evolve` first.");
+      process.exit(1);
+    }
+    console.log(formatProposalForDisplay(proposal));
+    return;
+  }
+
+  if (subAction === "apply") {
+    const proposal = loadLatestProposal(workspace);
+    if (!proposal) {
+      p.log.error("No proposals found. Run `pneuma evolve` first.");
+      process.exit(1);
+    }
+    if (proposal.status !== "pending") {
+      p.log.error(`Proposal ${proposal.id} is already ${proposal.status}.`);
+      process.exit(1);
+    }
+
+    console.log(formatProposalForDisplay(proposal));
+    console.log("");
+
+    const confirm = await p.confirm({ message: "Apply this proposal?" });
+    if (p.isCancel(confirm) || !confirm) {
+      p.log.info("Cancelled.");
+      return;
+    }
+
+    const result = applyProposal(workspace, proposal.id);
+    if (result.success) {
+      p.log.success(`Applied ${result.appliedFiles.length} file(s). Use \`pneuma evolve rollback\` to revert.`);
+      for (const f of result.appliedFiles) {
+        p.log.step(`  ✓ ${f}`);
+      }
+    } else {
+      p.log.error(`Apply failed: ${result.error}`);
+    }
+    return;
+  }
+
+  if (subAction === "rollback") {
+    const proposals = listProposals(workspace);
+    const applied = proposals.find(p => p.status === "applied");
+    if (!applied) {
+      p.log.error("No applied proposals to rollback.");
+      process.exit(1);
+    }
+
+    const confirm = await p.confirm({ message: `Rollback proposal ${applied.id}?` });
+    if (p.isCancel(confirm) || !confirm) {
+      p.log.info("Cancelled.");
+      return;
+    }
+
+    const result = rollbackProposal(workspace, applied.id);
+    if (result.success) {
+      p.log.success(`Rolled back ${result.restoredFiles.length} file(s).`);
+      for (const f of result.restoredFiles) {
+        p.log.step(`  ✓ ${f}`);
+      }
+    } else {
+      p.log.error(`Rollback failed: ${result.error}`);
+    }
+    return;
+  }
+
+  // Default: launch evolution agent as a standard pneuma session
+  let port = 0;
+  let noOpen = false;
+  let noPrompt = false;
+  let debug = false;
+  let forceDev = false;
+
+  // Re-parse flags from the evolve subcommand args
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--port" && i + 1 < args.length) {
+      port = Number(args[++i]);
+    } else if (arg === "--no-open") {
+      noOpen = true;
+    } else if (arg === "--no-prompt") {
+      noPrompt = true;
+    } else if (arg === "--debug") {
+      debug = true;
+    } else if (arg === "--dev") {
+      forceDev = true;
+    }
+  }
+
+  // Resolve target mode from --mode flag or existing session
+  if (!modeName) {
+    const session = loadSession(workspace);
+    if (session?.mode) {
+      modeName = session.mode;
+    } else {
+      // Check if targetMode was passed via config (from Launcher)
+      const configPath = join(workspace, ".pneuma", "config.json");
+      try {
+        const config = JSON.parse(readFileSync(configPath, "utf-8"));
+        if (config.targetMode) modeName = config.targetMode;
+      } catch {}
+    }
+    if (!modeName) {
+      p.cancel("No mode specified and no .pneuma/session.json found.\nUse: pneuma evolve --mode <mode> --workspace <path>");
+      process.exit(1);
+    }
+  }
+
+  checkClaudeCode();
+
+  // 1. Resolve target mode and build evolution data
+  let resolved: ResolvedMode;
+  try {
+    resolved = await resolveModeSource(modeName, PROJECT_ROOT);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    p.cancel(`Failed to resolve mode "${modeName}": ${msg}`);
+    process.exit(1);
+  }
+
+  if (resolved.type !== "builtin") {
+    registerExternalMode(resolved.name, resolved.path);
+  }
+
+  let manifest: ModeManifest;
+  try {
+    manifest = await loadModeManifest(resolved.name);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    p.cancel(`Failed to load mode "${resolved.name}": ${msg}`);
+    process.exit(1);
+  }
+
+  p.log.step(`Evolving skill for ${manifest.displayName} mode...`);
+  p.log.info(`Workspace: ${workspace}`);
+
+  // 2. Build evolution prompt + metadata, save metadata as initParams
+  const { buildEvolutionPrompt, buildEvolutionMetadata } = await import("../server/evolution-agent.js");
+  const evolutionPrompt = buildEvolutionPrompt({ workspace, manifest });
+  const metadata = buildEvolutionMetadata({ workspace, manifest });
+
+  // Save metadata to .pneuma/config.json so the viewer dashboard can read it
+  const pneumaDir = join(workspace, ".pneuma");
+  mkdirSync(pneumaDir, { recursive: true });
+  writeFileSync(join(pneumaDir, "config.json"), JSON.stringify(metadata, null, 2));
+
+  // 3. Install evolve skill (so agent has dashboard context in SKILL.md)
+  const evolveManifest = await loadModeManifest("evolve");
+  const evolveModeSourceDir = join(PROJECT_ROOT, "modes", "evolve");
+  installSkill(workspace, evolveManifest.skill, evolveModeSourceDir, {}, evolveManifest.viewerApi);
+
+  // 4. Determine dev vs production mode
+  const distDir = resolve(PROJECT_ROOT, "dist");
+  const isDev = forceDev || !existsSync(join(distDir, "index.html"));
+  const effectivePort = port || (isDev ? 17007 : 17996);
+
+  // 5. Start server with evolution routes
+  const { server, wsBridge, port: actualPort } = startServer({
+    port: effectivePort,
+    workspace,
+    watchPatterns: [],
+    ...(isDev ? {} : { distDir }),
+    modeName: "evolve",
+    projectRoot: PROJECT_ROOT,
+    debug,
+    forceDev: isDev,
+    initParams: metadata as unknown as Record<string, string | number>,
+  });
+
+  // 6. Launch agent via ClaudeCodeBackend (fresh session, bypassPermissions)
+  const backend = new ClaudeCodeBackend(actualPort);
+  const session = backend.launch({
+    cwd: workspace,
+    permissionMode: "bypassPermissions",
+  });
+
+  p.log.info(`Agent session: ${session.sessionId}`);
+
+  // 7. Inject evolution prompt as greeting (dynamic, not from manifest)
+  wsBridge.injectGreeting(session.sessionId, evolutionPrompt);
+  console.log("[pneuma] Sent evolution prompt to agent");
+
+  // 8. Start Vite (dev) or serve dist (prod), open browser
+  let viteProc: ReturnType<typeof Bun.spawn> | null = null;
+  let browserPort = actualPort;
+
+  if (isDev) {
+    const VITE_PORT = 17996;
+    p.log.step(`Starting Vite dev server on port ${VITE_PORT}...`);
+
+    const viteEnv: Record<string, string> = {
+      ...process.env as Record<string, string>,
+      VITE_API_PORT: String(actualPort),
+    };
+
+    viteProc = Bun.spawn(
+      ["bunx", "vite", "--port", String(VITE_PORT)],
+      { cwd: PROJECT_ROOT, stdout: "pipe", stderr: "pipe", env: viteEnv },
+    );
+
+    let vitePortResolved = false;
+    browserPort = await new Promise<number>((resolvePort) => {
+      const timeout = setTimeout(() => {
+        if (!vitePortResolved) { vitePortResolved = true; resolvePort(VITE_PORT); }
+      }, 10_000);
+
+      const pipeAndParse = async (stream: ReadableStream<Uint8Array>) => {
+        const reader = stream.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const text = decoder.decode(value, { stream: true });
+          for (const line of text.split("\n")) {
+            if (line.trim()) console.log(`[vite] ${line}`);
+            if (!vitePortResolved) {
+              const match = line.match(/Local:\s+https?:\/\/[^:]+:(\d+)/);
+              if (match) {
+                vitePortResolved = true;
+                clearTimeout(timeout);
+                resolvePort(parseInt(match[1], 10));
+              }
+            }
+          }
+        }
+      };
+      if (viteProc!.stdout && typeof viteProc!.stdout !== "number") pipeAndParse(viteProc!.stdout);
+      if (viteProc!.stderr && typeof viteProc!.stderr !== "number") pipeAndParse(viteProc!.stderr);
+    });
+  }
+
+  // 9. Open browser with evolution mode dashboard
+  const debugParam = debug ? "&debug=1" : "";
+  const browserUrl = `http://localhost:${browserPort}?session=${session.sessionId}&mode=evolve${debugParam}`;
+  console.log(`[pneuma] ready ${browserUrl}`);
+
+  if (!noOpen) {
+    p.log.success(`Ready → ${browserUrl}`);
+    try {
+      if (process.platform === "win32") {
+        Bun.spawn(["cmd", "/c", "start", "", browserUrl], { stdout: "ignore", stderr: "ignore" });
+      } else {
+        const opener = process.platform === "darwin" ? "open" : "xdg-open";
+        Bun.spawn([opener, browserUrl], { stdout: "ignore", stderr: "ignore" });
+      }
+    } catch {
+      p.log.warn(`Could not open browser. Visit: ${browserUrl}`);
+    }
+  }
+
+  // 10. Graceful shutdown
+  const shutdown = async () => {
+    viteProc?.kill();
+    await backend.killAll();
+    server.stop(true);
+    p.outro("Goodbye!");
+    process.exit(0);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+}
+
 async function main() {
-  // Read version from package.json
   const pkgPath = join(PROJECT_ROOT, "package.json");
   const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
 
@@ -350,6 +650,16 @@ async function main() {
       return;
     }
     // Unknown mode subcommand — fall through to normal mode resolution
+  }
+
+  // Evolve subcommand — AI-native skill evolution
+  // Find "evolve" in rawArgs (may be preceded by flags like --dev)
+  const evolveIdx = rawArgs.findIndex(a => a === "evolve");
+  if (evolveIdx !== -1) {
+    // Pass all args except "evolve" itself to the handler
+    const evolveArgs = [...rawArgs.slice(0, evolveIdx), ...rawArgs.slice(evolveIdx + 1)];
+    await handleEvolveCommand(evolveArgs);
+    return;
   }
 
   const { mode, workspace, port, noOpen, debug, forceDev, noPrompt, skipSkill } = parseArgs(process.argv);
