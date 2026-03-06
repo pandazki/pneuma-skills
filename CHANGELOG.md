@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.18.6] - 2026-03-06
+
+### Fixed
+- **External mode import resolution in Vite**: `pneumaWorkspaceResolve` plugin now handles `PNEUMA_EXTERNAL_MODE_PATH` in addition to mode-maker workspace, fixing white screen when Play loads external mode files with relative `core/` imports
+
 ## [1.18.5] - 2026-03-06
 
 ### Fixed

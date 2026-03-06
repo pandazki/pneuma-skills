@@ -24,8 +24,15 @@ const modeMakerWorkspace = process.env.VITE_MODE_MAKER_WORKSPACE;
 function pneumaWorkspaceResolve(): Plugin {
   const projectRoot = path.resolve(__dirname);
 
-  if (!modeMakerWorkspace) {
+  // Directories whose imports need redirect: mode-maker workspace and external mode path
+  const watchedDirs = [modeMakerWorkspace, externalModePath].filter(Boolean) as string[];
+
+  if (watchedDirs.length === 0) {
     return { name: "pneuma-workspace-resolve-noop" };
+  }
+
+  function isInsideWatchedDir(filePath: string): boolean {
+    return watchedDirs.some((dir) => filePath.startsWith(dir));
   }
 
   return {
@@ -38,8 +45,8 @@ function pneumaWorkspaceResolve(): Plugin {
       if (cleanImporter.startsWith("/@fs")) cleanImporter = cleanImporter.slice(4);
       cleanImporter = cleanImporter.split("?")[0];
 
-      // Only apply to files within the mode-maker workspace
-      if (!cleanImporter.startsWith(modeMakerWorkspace)) return null;
+      // Only apply to files within watched directories
+      if (!isInsideWatchedDir(cleanImporter)) return null;
 
       const cleanSource = source.split("?")[0];
 
@@ -64,6 +71,8 @@ function pneumaWorkspaceResolve(): Plugin {
     // Watch workspace files for HMR — invalidate Vite's module transform cache
     // so the next dynamic import() gets fresh content
     configureServer(server: ViteDevServer) {
+      if (!modeMakerWorkspace) return;
+
       const watcher = watch(modeMakerWorkspace, {
         ignoreInitial: true,
         ignored: [
