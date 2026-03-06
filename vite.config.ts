@@ -141,6 +141,9 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 17996,
     strictPort: false,
+    watch: {
+      ignored: ["**/.claude/worktrees/**"],
+    },
     proxy: {
       "/api": `http://localhost:${process.env.VITE_API_PORT || "17007"}`,
       "/content": `http://localhost:${process.env.VITE_API_PORT || "17007"}`,

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.18.5] - 2026-03-06
+
+### Fixed
+- **Mode-maker Play port collision**: Play subprocess now uses dedicated ports (backend 18997, Vite 18996) to avoid conflicts with the parent instance
+- **Play subprocess hang**: Added `--no-prompt` flag to prevent interactive prompt blocking when stdout is piped
+- **Play fallback URL**: Fixed fallback URL to use Vite port instead of backend port
+
+### Improved
+- **Launcher dialog**: Added explicit close button, timestamp in default workspace path, auto-sync displayName from modeName
+- **Vite dev watcher**: Excluded `.claude/worktrees/` from file watching to prevent spurious reloads
+
 ## [1.18.4] - 2026-03-05
 
 ### Fixed
