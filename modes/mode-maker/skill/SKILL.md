@@ -375,6 +375,16 @@ The mode is downloaded, extracted to `~/.pneuma/modes/`, and started automatical
 - Workspace: `type: "all"`, multi-file, `topBarNavigation: true`, `createEmpty` generates `drawing.excalidraw`
 - JSON-based content
 
+## Third-Party Dependencies
+
+Modes can use any npm package in their viewer component:
+
+1. Install with `bun add <package>` in the workspace
+2. Import normally in viewer code: `import * as echarts from 'echarts'`
+3. Dependencies are automatically bundled when the mode is published
+
+`package.json` in the workspace tracks all dependencies. They are inlined at publish time via `Bun.build()` — consumers don't need to install anything. React and React-DOM are provided by the host runtime and should not be bundled.
+
 ## What NOT to Do
 - Do not modify `.claude/` or `.pneuma/` directories — these are managed by the runtime
 - Do not create circular imports between manifest.ts and pneuma-mode.ts

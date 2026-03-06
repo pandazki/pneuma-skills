@@ -9,7 +9,7 @@
  */
 
 import { resolve, dirname, join, basename } from "node:path";
-import { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
+import { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync, statSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import * as p from "@clack/prompts";
 import { startServer } from "../server/index.js";
@@ -644,6 +644,17 @@ async function main() {
           p.log.step(`Seeded workspace with ${dst}`);
         }
       }
+
+      // Auto-install deps if package.json was seeded
+      if (existsSync(join(workspace, "package.json"))) {
+        p.log.step("Installing dependencies...");
+        const proc = Bun.spawn(["bun", "install"], {
+          cwd: workspace,
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        await proc.exited;
+      }
     }
   }
 
@@ -657,26 +668,58 @@ async function main() {
   // 2.5 Pre-compile external mode viewer for production serving
   let modeBundleDir: string | undefined;
   if (!isDev && resolved.type !== "builtin") {
-    const buildDir = join(resolved.path, ".build");
-    const modeEntry = join(resolved.path, "pneuma-mode.ts");
-    const manifestEntry = join(resolved.path, "manifest.ts");
-    const entrypoints = [modeEntry, manifestEntry].filter((e) => existsSync(e));
-    if (entrypoints.length > 0) {
-      p.log.step("Compiling mode viewer for production...");
-      const result = await Bun.build({
-        entrypoints,
-        outdir: buildDir,
-        target: "browser",
-        format: "esm",
-        external: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
-      });
-      if (result.success) {
-        modeBundleDir = buildDir;
-        p.log.step("Mode viewer compiled successfully");
-      } else {
-        p.log.warn("Mode viewer compilation failed — viewer may not load");
-        for (const log of result.logs) {
-          p.log.warn(`  ${log.message}`);
+    const existingBuild = join(resolved.path, ".build", "pneuma-mode.js");
+    if (existsSync(existingBuild)) {
+      // Use pre-built bundle from publish (third-party deps already inlined)
+      modeBundleDir = join(resolved.path, ".build");
+      p.log.step("Using pre-built mode viewer bundle");
+    } else {
+      // Build from source (local development, unpublished modes)
+      const buildDir = join(resolved.path, ".build");
+      const modeEntry = join(resolved.path, "pneuma-mode.ts");
+      const manifestEntry = join(resolved.path, "manifest.ts");
+      const entrypoints = [modeEntry, manifestEntry].filter((e) => existsSync(e));
+      if (entrypoints.length > 0) {
+        p.log.step("Compiling mode viewer for production...");
+        // Resolve symlinks (macOS /tmp → /private/tmp) so importer paths match
+        const realModePath = realpathSync(resolved.path);
+        const result = await Bun.build({
+          entrypoints,
+          outdir: buildDir,
+          target: "browser",
+          format: "esm",
+          external: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
+          throw: false,
+          plugins: [{
+            name: "pneuma-mode-resolve",
+            setup(build) {
+              // Redirect imports from external mode files to pneuma project root
+              build.onResolve({ filter: /.+/ }, (args) => {
+                if (!args.importer || (!args.importer.startsWith(realModePath) && !args.importer.startsWith(resolved.path))) return;
+                if (!args.path.startsWith(".") && !args.path.startsWith("/")) {
+                  // Bare specifier — resolve from project's or mode's node_modules
+                  try {
+                    return { path: require.resolve(args.path, { paths: [resolved.path, join(PROJECT_ROOT, "node_modules")] }) };
+                  } catch { /* let Bun handle it */ }
+                  return;
+                }
+                const abs = resolve(dirname(args.importer), args.path);
+                const coreIdx = abs.indexOf("/core/");
+                if (coreIdx !== -1 && !abs.startsWith(PROJECT_ROOT)) {
+                  return { path: PROJECT_ROOT + abs.slice(coreIdx) };
+                }
+              });
+            },
+          }],
+        });
+        if (result.success) {
+          modeBundleDir = buildDir;
+          p.log.step("Mode viewer compiled successfully");
+        } else {
+          p.log.warn("Mode viewer compilation failed — viewer may not load");
+          for (const log of result.logs) {
+            p.log.warn(`  ${log.message}`);
+          }
         }
       }
     }

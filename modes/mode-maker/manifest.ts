@@ -53,6 +53,7 @@ You are running inside Pneuma Mode Maker. The workspace is a **Mode package** â€
     ],
     ignorePatterns: [
       "node_modules/**",
+      ".build/**",
       ".git/**",
       ".claude/**",
       ".pneuma/**",
@@ -80,6 +81,7 @@ You are running inside Pneuma Mode Maker. The workspace is a **Mode package** â€
       "modes/mode-maker/seed/pneuma-mode.ts": "pneuma-mode.ts",
       "modes/mode-maker/seed/viewer/Preview.tsx": "viewer/Preview.tsx",
       "modes/mode-maker/seed/skill/SKILL.md": "skill/SKILL.md",
+      "modes/mode-maker/seed/package.json": "package.json",
     },
   },
 };

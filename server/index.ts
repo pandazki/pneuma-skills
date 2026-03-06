@@ -1418,6 +1418,7 @@ ${slidePages}${downloadScript}${imageModeScript}
     modeMakerCleanup = registerModeMakerRoutes(app, {
       workspace,
       projectRoot: options.projectRoot,
+      isDev: !options.distDir,
     });
   }
 
@@ -1466,13 +1467,16 @@ export const Fragment = J.Fragment;`;
     app.get("/vendor/react-jsx-runtime.js", (c) => new Response(JSX_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));
     app.get("/vendor/react-jsx-dev-runtime.js", (c) => new Response(JSX_DEV_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));
 
-    // Serve compiled mode bundle
+    // Serve compiled mode bundle (JS + CSS)
     app.get("/mode-assets/*", async (c) => {
       const relPath = c.req.path.replace("/mode-assets/", "");
       const filePath = join(bundleDir, relPath);
       const file = Bun.file(filePath);
       if (await file.exists()) {
-        return new Response(file, { headers: { "Content-Type": "application/javascript" } });
+        const contentType = relPath.endsWith(".css")
+          ? "text/css"
+          : "application/javascript";
+        return new Response(file, { headers: { "Content-Type": contentType } });
       }
       return c.notFound();
     });
@@ -1501,7 +1505,15 @@ export const Fragment = J.Fragment;`;
         const importMap = `<script type="importmap">
 {"imports":{"react":"/vendor/react.js","react-dom":"/vendor/react-dom.js","react/jsx-runtime":"/vendor/react-jsx-runtime.js","react/jsx-dev-runtime":"/vendor/react-jsx-dev-runtime.js"}}
 </script>`;
-        html = html.replace("<head>", `<head>\n${importMap}`);
+        // Inject <link> tags for any CSS files produced by Bun.build()
+        let cssLinks = "";
+        try {
+          const bundleDir = options.modeBundleDir!;
+          const { readdirSync } = await import("node:fs");
+          const cssFiles = readdirSync(bundleDir).filter((f: string) => f.endsWith(".css"));
+          cssLinks = cssFiles.map((f: string) => `<link rel="stylesheet" href="/mode-assets/${f}">`).join("\n");
+        } catch { /* no CSS files or dir read failed */ }
+        html = html.replace("<head>", `<head>\n${importMap}\n${cssLinks}`);
       }
 
       return new Response(html, { headers: { "Content-Type": "text/html" } });

@@ -15,13 +15,15 @@ import { applyTemplateParams } from "./skill-installer.js";
 import { readAndValidateManifest, getModeArchiveKey, getModeLatestKey } from "../snapshot/mode-publish.js";
 import { loadCredentials, uploadToR2, uploadJsonToR2, checkR2KeyExists } from "../snapshot/r2.js";
 import { createModeArchive } from "../snapshot/archive.js";
+import { buildModeForPublish, cleanModeBuild } from "../snapshot/mode-build.js";
 
 interface ModeMakerOptions {
   workspace: string;
   projectRoot: string;
+  isDev?: boolean;
 }
 
-const PROTECTED_DIRS = new Set([".pneuma", ".claude", ".git", "node_modules"]);
+const PROTECTED_DIRS = new Set([".pneuma", ".claude", ".git", "node_modules", ".build"]);
 const PLAY_PORT = 18997;
 const PLAY_VITE_PORT = 18996;
 
@@ -350,28 +352,34 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
       const tmpDir = join(tmpdir(), `pneuma-play-${uuid8}`);
       mkdirSync(tmpDir, { recursive: true });
 
-      // Launch subprocess: bun <projectRoot>/bin/pneuma.ts <workspace> --workspace <tmpDir> --port <PLAY_PORT> --no-open --no-prompt --dev
-      // workspace path acts as local mode source; --dev forces Vite dev server
-      // so that /@fs/ imports work for external mode files
-      const proc = Bun.spawn(
-        ["bun", join(projectRoot, "bin", "pneuma.ts"), workspace, "--workspace", tmpDir, "--port", String(PLAY_PORT), "--no-open", "--no-prompt", "--dev"],
-        {
+      // Launch subprocess: workspace path acts as local mode source
+      // In dev mode: --dev forces Vite so /@fs/ imports work for external mode files
+      // In prod mode: no --dev, external mode compiled via Bun.build(), single-server
+      const args = ["bun", join(projectRoot, "bin", "pneuma.ts"), workspace, "--workspace", tmpDir, "--port", String(PLAY_PORT), "--no-open", "--no-prompt"];
+      if (opts.isDev) args.push("--dev");
+
+      const childEnv: Record<string, string> = {
+        ...process.env as Record<string, string>,
+        // Don't inherit CLAUDECODE env var
+        CLAUDECODE: "",
+      };
+      // Only set dedicated Vite port in dev mode (prod doesn't spawn Vite)
+      if (opts.isDev) {
+        childEnv.PNEUMA_VITE_PORT = String(PLAY_VITE_PORT);
+      }
+
+      const proc = Bun.spawn(args, {
           cwd: projectRoot,
           stdout: "pipe",
           stderr: "pipe",
-          env: {
-            ...process.env as Record<string, string>,
-            // Don't inherit CLAUDECODE env var
-            CLAUDECODE: "",
-            // Use dedicated Vite port to avoid collision with parent instance
-            PNEUMA_VITE_PORT: String(PLAY_VITE_PORT),
-          },
+          env: childEnv,
         },
       );
 
       // Wait for the subprocess to print its ready URL (up to 30s — Vite startup can be slow)
       const readyPromise = new Promise<string>((resolve) => {
-        const fallbackUrl = `http://localhost:${PLAY_VITE_PORT}?mode=${encodeURIComponent(basename(workspace))}`;
+        const fallbackPort = opts.isDev ? PLAY_VITE_PORT : PLAY_PORT;
+        const fallbackUrl = `http://localhost:${fallbackPort}?mode=${encodeURIComponent(basename(workspace))}`;
         const timeout = setTimeout(() => resolve(fallbackUrl), 30_000);
         const readStream = async (stream: ReadableStream<Uint8Array>) => {
           const reader = stream.getReader();
@@ -503,29 +511,42 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
         }, 409);
       }
 
-      // 5. Create archive
+      // 5. Pre-build viewer bundle (inlines third-party deps)
+      const buildResult = await buildModeForPublish(workspace);
+      if (!buildResult.success) {
+        return c.json({
+          success: false,
+          errorCode: "BUILD_ERROR",
+          message: `Viewer build failed:\n${buildResult.errors.join("\n")}`,
+        }, 500);
+      }
+
+      // 6. Create archive (includes .build/ with inlined deps)
       const archiveName = `${manifest.name}-${manifest.version}.tar.gz`;
       const archivePath = join(tmpdir(), archiveName);
       await createModeArchive(workspace, archivePath);
 
-      // 6. Upload archive
+      // Clean .build/ from workspace after archive captures it
+      cleanModeBuild(workspace);
+
+      // 7. Upload archive
       const publicUrl = await uploadToR2(archivePath, archiveKey, creds);
 
-      // 7. Upload latest.json
+      // 8. Upload latest.json
       const latestKey = getModeLatestKey(manifest.name);
       const publishedAt = new Date().toISOString();
       await uploadJsonToR2({
         name: manifest.name,
         version: manifest.version,
+        archiveUrl: publicUrl,
         displayName: manifest.displayName,
-        description: manifest.description,
         publishedAt,
       }, latestKey, creds);
 
-      // 8. Cleanup temp file
+      // 9. Cleanup temp file
       try { unlinkSync(archivePath); } catch {}
 
-      // 9. Return result
+      // 10. Return result
       const runCommand = `bunx pneuma-skills ${publicUrl} --workspace ~/pneuma-projects/${manifest.name}-workspace`;
       return c.json({
         success: true,

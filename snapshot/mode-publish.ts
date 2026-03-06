@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { parseManifestTs } from "../core/utils/manifest-parser.js";
 import { createModeArchive } from "./archive.js";
+import { buildModeForPublish, cleanModeBuild } from "./mode-build.js";
 import { getCredentials, uploadToR2, uploadJsonToR2, checkR2KeyExists, updateRegistryIndex } from "./r2.js";
 
 /** Valid mode name: lowercase letters, digits, hyphens; must start with a letter. */
@@ -114,22 +115,35 @@ export async function publishMode(workspace: string, options?: PublishOptions): 
     );
   }
 
-  // 6. Create archive
+  // 6. Pre-build viewer bundle (inlines third-party deps)
+  console.log("[mode-publish] Building viewer bundle...");
+  const buildResult = await buildModeForPublish(workspace);
+  if (!buildResult.success) {
+    throw new Error(
+      `Viewer build failed:\n${buildResult.errors.join("\n")}`,
+    );
+  }
+  console.log("[mode-publish] Viewer bundle compiled successfully");
+
+  // 7. Create archive (includes .build/ with inlined deps)
   const archiveName = `${manifest.name}-${manifest.version}.tar.gz`;
   const archivePath = join(tmpdir(), archiveName);
 
   console.log("[mode-publish] Creating archive...");
   await createModeArchive(workspace, archivePath);
 
+  // Clean .build/ from workspace after archive captures it
+  cleanModeBuild(workspace);
+
   const file = Bun.file(archivePath);
   const sizeMB = (file.size / 1024 / 1024).toFixed(2);
   console.log(`[mode-publish] Archive size: ${sizeMB} MB`);
 
-  // 7. Upload archive
+  // 8. Upload archive
   console.log("[mode-publish] Uploading archive...");
   const publicUrl = await uploadToR2(archivePath, archiveKey, creds);
 
-  // 8. Upload latest.json
+  // 9. Upload latest.json
   const latestKey = getModeLatestKey(manifest.name);
   const latestData = {
     name: manifest.name,
@@ -140,7 +154,7 @@ export async function publishMode(workspace: string, options?: PublishOptions): 
   };
   await uploadJsonToR2(latestData, latestKey, creds);
 
-  // 8.5. Update registry index
+  // 9.5. Update registry index
   await updateRegistryIndex(creds, {
     name: manifest.name,
     displayName: manifest.displayName,
@@ -150,11 +164,11 @@ export async function publishMode(workspace: string, options?: PublishOptions): 
     archiveUrl: publicUrl,
   });
 
-  // 9. Cleanup temp file
+  // 10. Cleanup temp file
   const { unlinkSync } = await import("node:fs");
   try { unlinkSync(archivePath); } catch {}
 
-  // 10. Print result
+  // 11. Print result
   console.log(`\n[mode-publish] Published ${manifest.name}@${manifest.version}!`);
   console.log(`[mode-publish] URL: ${publicUrl}`);
   console.log(`\n  Run with:\n    bunx pneuma-skills ${publicUrl} --workspace ~/pneuma-projects/${manifest.name}-workspace`);
