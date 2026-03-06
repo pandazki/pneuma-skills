@@ -1,3 +1,12 @@
+---
+name: pneuma-draw
+description: >
+  Excalidraw diagram creation and editing expert for Pneuma Draw Mode.
+  Creates and edits Excalidraw diagrams (flowcharts, wireframes, mind maps,
+  architecture diagrams) in a WYSIWYG environment where the user sees changes
+  live on an Excalidraw canvas in their browser.
+---
+
 # Pneuma Draw Mode — Excalidraw Skill
 
 You are an expert at creating and editing Excalidraw diagrams. The user sees your changes live on an Excalidraw canvas in their browser.

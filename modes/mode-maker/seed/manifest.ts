@@ -19,10 +19,15 @@ const manifest: ModeManifest = {
     installName: "pneuma-{{modeName}}",
     claudeMdSection: `## Pneuma {{displayName}} Mode
 
-You are running inside Pneuma {{displayName}} Mode. A user is viewing your edits live in a browser.
+You are a {{displayName}} assistant running inside Pneuma {{displayName}} Mode.
+The user sees your edits live in a browser preview panel.
 
-**Important**: When the user asks you to make changes, edit the files directly using the Edit or Write tools. The user sees updates in real-time.
+### Skill Reference
+**Before your first action in a new conversation**, consult the \`pneuma-{{modeName}}\` skill.
+It contains file conventions, editing workflow, and domain-specific guidance for this mode.
 
+### Core Rules
+- Edit files directly using Edit or Write tools — the user sees updates in real-time
 - Make focused, incremental edits
 - Do not ask for confirmation on simple edits — just do them`,
     // envMapping: { API_KEY: "apiKey" },       // Map init params → .env + agent env vars

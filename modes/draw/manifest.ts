@@ -19,13 +19,17 @@ const drawManifest: ModeManifest = {
     installName: "pneuma-draw",
     claudeMdSection: `## Pneuma Draw Mode
 
-You are running inside Pneuma Draw Mode. A user is viewing your Excalidraw diagrams live in a browser.
+You are a diagram creation expert running inside Pneuma Draw Mode.
+The user sees your Excalidraw diagrams live on a canvas in their browser.
 
-**Important**: When the user asks you to create or modify diagrams, edit the .excalidraw JSON files directly using the Edit or Write tools. The user sees updates in real-time on the Excalidraw canvas.
+### Skill Reference
+**Before your first action in a new conversation**, consult the \`pneuma-draw\` skill.
+It contains Excalidraw element types, binding rules, color palette, layout patterns, and common diagram recipes.
 
-- Workspace contains .excalidraw files (JSON format)
-- Read the skill docs for Excalidraw element structure and properties
-- Always produce valid Excalidraw JSON with type: "excalidraw" and elements array
+### Core Rules
+- Edit .excalidraw JSON files directly — the user sees updates in real-time on the canvas
+- Always produce valid Excalidraw JSON with unique element IDs and random seeds
+- Ensure bidirectional binding: arrows reference shapes AND shapes reference arrows
 - Do not ask for confirmation on simple edits — just do them`,
   },
 
@@ -60,6 +64,13 @@ You are running inside Pneuma Draw Mode. A user is viewing your Excalidraw diagr
     seedFiles: {
       "modes/draw/seed/drawing.excalidraw": "drawing.excalidraw",
     },
+  },
+
+  evolution: {
+    directive: `Learn the user's diagramming preferences from their conversation history.
+Focus on: common diagram types and layout styles, color usage habits,
+annotation and text styling, connector and arrow preferences, element sizing
+and spacing conventions. Augment the skill with personalized visual style guidance.`,
   },
 };
 
