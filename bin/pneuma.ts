@@ -825,7 +825,8 @@ async function main() {
 
   if (isDev) {
     // Dev mode: start Vite dev server
-    const VITE_PORT = 17996;
+    // PNEUMA_VITE_PORT allows play instances to use a dedicated Vite port
+    const VITE_PORT = parseInt(process.env.PNEUMA_VITE_PORT || "17996", 10);
     p.log.step(`Starting Vite dev server on port ${VITE_PORT}...`);
 
     // Pass config to Vite via env vars

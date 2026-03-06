@@ -23,6 +23,7 @@ interface ModeMakerOptions {
 
 const PROTECTED_DIRS = new Set([".pneuma", ".claude", ".git", "node_modules"]);
 const PLAY_PORT = 18997;
+const PLAY_VITE_PORT = 18996;
 
 /** Recursively list files in a directory, skipping protected dirs. Returns relative paths. */
 function listFilesRecursive(dir: string, base: string = ""): string[] {
@@ -349,11 +350,11 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
       const tmpDir = join(tmpdir(), `pneuma-play-${uuid8}`);
       mkdirSync(tmpDir, { recursive: true });
 
-      // Launch subprocess: bun <projectRoot>/bin/pneuma.ts <workspace> --workspace <tmpDir> --port <PLAY_PORT> --no-open --dev
+      // Launch subprocess: bun <projectRoot>/bin/pneuma.ts <workspace> --workspace <tmpDir> --port <PLAY_PORT> --no-open --no-prompt --dev
       // workspace path acts as local mode source; --dev forces Vite dev server
       // so that /@fs/ imports work for external mode files
       const proc = Bun.spawn(
-        ["bun", join(projectRoot, "bin", "pneuma.ts"), workspace, "--workspace", tmpDir, "--port", String(PLAY_PORT), "--no-open", "--dev"],
+        ["bun", join(projectRoot, "bin", "pneuma.ts"), workspace, "--workspace", tmpDir, "--port", String(PLAY_PORT), "--no-open", "--no-prompt", "--dev"],
         {
           cwd: projectRoot,
           stdout: "pipe",
@@ -362,13 +363,15 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
             ...process.env as Record<string, string>,
             // Don't inherit CLAUDECODE env var
             CLAUDECODE: "",
+            // Use dedicated Vite port to avoid collision with parent instance
+            PNEUMA_VITE_PORT: String(PLAY_VITE_PORT),
           },
         },
       );
 
       // Wait for the subprocess to print its ready URL (up to 30s — Vite startup can be slow)
       const readyPromise = new Promise<string>((resolve) => {
-        const fallbackUrl = `http://localhost:${PLAY_PORT}?mode=${encodeURIComponent(basename(workspace))}`;
+        const fallbackUrl = `http://localhost:${PLAY_VITE_PORT}?mode=${encodeURIComponent(basename(workspace))}`;
         const timeout = setTimeout(() => resolve(fallbackUrl), 30_000);
         const readStream = async (stream: ReadableStream<Uint8Array>) => {
           const reader = stream.getReader();
