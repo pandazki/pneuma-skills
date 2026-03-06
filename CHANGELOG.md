@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.18.8] - 2026-03-06
+
+### Fixed
+- **Bun.build resolve plugin bundles React**: The `onResolve` plugin with `/.+/` filter was resolving React/ReactDOM to file paths via `require.resolve`, bypassing the `external` option and bundling them into the output (89KB → 34KB)
+
 ## [1.18.7] - 2026-03-06
 
 ### Added
