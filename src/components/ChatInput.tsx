@@ -159,7 +159,7 @@ export default function ChatInput() {
         setSlashIndex((i) => (i - 1 + filteredSlashItems.length) % filteredSlashItems.length);
         return;
       }
-      if (e.key === "Enter" || e.key === "Tab") {
+      if ((e.key === "Enter" && !e.nativeEvent.isComposing) || e.key === "Tab") {
         e.preventDefault();
         selectSlashItem(filteredSlashItems[slashIndex]);
         return;
@@ -171,7 +171,7 @@ export default function ChatInput() {
       }
     }
 
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSubmit();
     }
