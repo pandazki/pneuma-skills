@@ -673,14 +673,16 @@ function LaunchDialog({
   onClose: () => void;
 }) {
   const safeName = /[\\/]/.test(specifier) ? specifier.split(/[\\/]/).filter(Boolean).pop()! : specifier;
+  const timeTag = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 13);
   const fallback = homeDir
-    ? `${homeDir.replace(/[\\/]+$/, "")}/pneuma-projects/${safeName}-workspace`
-    : `~/pneuma-projects/${safeName}-workspace`;
+    ? `${homeDir.replace(/[\\/]+$/, "")}/pneuma-projects/${safeName}-${timeTag}`
+    : `~/pneuma-projects/${safeName}-${timeTag}`;
   const [workspace, setWorkspace] = useState(
     defaultWorkspace || fallback,
   );
   const [initParams, setInitParams] = useState<InitParam[]>([]);
   const [paramValues, setParamValues] = useState<Record<string, string | number>>({});
+  const displayNameTouchedRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [preparing, setPreparing] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -761,15 +763,24 @@ function LaunchDialog({
   }, [specifier, workspace, paramValues, onClose]);
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
       <div
         className="bg-cc-card/90 backdrop-blur-2xl border border-cc-border/50 rounded-2xl p-8 w-full max-w-lg mx-4 shadow-[0_16px_64px_-16px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1)]"
         style={{ animation: "warmFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1)" }}
-        onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-xl font-semibold text-cc-fg mb-4">
-          Launch {displayName}
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-cc-fg">
+            Launch {displayName}
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
 
         <label className="block text-sm text-cc-muted mb-1">Workspace path</label>
         <div className="relative mb-4">
@@ -834,7 +845,21 @@ function LaunchDialog({
                   disabled={!!existingSession}
                   onChange={(e) => {
                     const val = param.type === "number" ? Number(e.target.value) : e.target.value;
-                    setParamValues((prev) => ({ ...prev, [param.name]: val }));
+                    const next: Record<string, string | number> = { ...paramValues, [param.name]: val };
+                    // Auto-sync displayName from modeName
+                    if (param.name === "modeName" && typeof val === "string" && !displayNameTouchedRef.current) {
+                      const hasDisplayName = initParams.some((p) => p.name === "displayName");
+                      if (hasDisplayName) {
+                        next.displayName = val
+                          .split(/[-_\s]+/)
+                          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                          .join(" ");
+                      }
+                    }
+                    if (param.name === "displayName") {
+                      displayNameTouchedRef.current = true;
+                    }
+                    setParamValues(next);
                   }}
                   className={`w-full px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50 ${existingSession ? "opacity-60 cursor-not-allowed" : ""}`}
                 />
