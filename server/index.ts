@@ -11,6 +11,7 @@ import type { TerminalSocketData } from "./ws-bridge-types.js";
 import type { ServerWebSocket } from "bun";
 import { TerminalManager } from "./terminal-manager.js";
 import { registerModeMakerRoutes } from "./mode-maker-routes.js";
+import { registerEvolutionRoutes } from "./evolution-routes.js";
 import { openPath, revealPath, openUrl } from "./system-bridge.js";
 
 const DEFAULT_PORT = 17007;
@@ -1420,6 +1421,11 @@ ${slidePages}${downloadScript}${imageModeScript}
       projectRoot: options.projectRoot,
       isDev: !options.distDir,
     });
+  }
+
+  // ── Evolution routes (conditional) ──────────────────────────────────
+  if (options.modeName === "evolve") {
+    registerEvolutionRoutes(app, { workspace });
   }
 
   // ── Static content serving (workspace files) ──────────────────────────

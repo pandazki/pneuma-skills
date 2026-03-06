@@ -111,6 +111,7 @@ function ModeCard({
   index,
   onDelete,
   onEdit,
+  onEvolve,
 }: {
   name: string;
   displayName: string;
@@ -121,6 +122,7 @@ function ModeCard({
   index: number;
   onDelete?: () => void;
   onEdit?: () => void;
+  onEvolve?: () => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -158,6 +160,20 @@ function ModeCard({
         </span>
 
         <div className="flex items-center gap-3">
+          {onEvolve && (
+            <button
+              onClick={onEvolve}
+              className="p-1.5 rounded-md text-cc-muted/40 hover:text-purple-400 hover:bg-purple-500/10 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+              title="Evolve skill"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                <path d="M12 3c-1.5 0-2.5 1-3 2-.5-1-1.5-2-3-2C4 3 2 5 2 7c0 3 4 6 6 8 .5-.5 1.5-1.5 2-2" />
+                <path d="M12 3c1.5 0 2.5 1 3 2 .5-1 1.5-2 3-2 2 0 4 2 4 4 0 3-4 6-6 8-.5-.5-1.5-1.5-2-2" />
+                <path d="M12 21v-8" />
+                <path d="M9 18l3-3 3 3" />
+              </svg>
+            </button>
+          )}
           {onEdit && (
             <button
               onClick={onEdit}
@@ -663,12 +679,14 @@ function LaunchDialog({
   specifier,
   displayName,
   defaultWorkspace,
+  defaultInitParams,
   homeDir,
   onClose,
 }: {
   specifier: string;
   displayName: string;
   defaultWorkspace?: string;
+  defaultInitParams?: Record<string, string>;
   homeDir: string;
   onClose: () => void;
 }) {
@@ -744,7 +762,10 @@ function LaunchDialog({
         body: JSON.stringify({
           specifier,
           workspace,
-          initParams: Object.keys(paramValues).length > 0 ? paramValues : undefined,
+          initParams: {
+            ...(defaultInitParams || {}),
+            ...(Object.keys(paramValues).length > 0 ? paramValues : {}),
+          },
         }),
       });
       const data = await res.json();
@@ -907,6 +928,7 @@ export default function Launcher() {
     specifier: string;
     displayName: string;
     defaultWorkspace?: string;
+    defaultInitParams?: Record<string, string>;
   } | null>(null);
 
   const refreshModes = useCallback(() => {
@@ -1158,6 +1180,13 @@ export default function Launcher() {
                           displayName: mode.displayName,
                         })
                       }
+                      onEvolve={() =>
+                        setLaunchTarget({
+                          specifier: "evolve",
+                          displayName: `Evolve: ${mode.displayName}`,
+                          defaultInitParams: { targetMode: mode.name },
+                        })
+                      }
                     />
                   ))}
                 </div>
@@ -1207,7 +1236,14 @@ export default function Launcher() {
                           defaultWorkspace: mode.path,
                         })
                       }
-                      onDelete={() => deleteLocalMode(mode.name)}
+                      onEvolve={() =>
+                        setLaunchTarget({
+                          specifier: "evolve",
+                          displayName: `Evolve: ${mode.displayName}`,
+                          defaultInitParams: { targetMode: mode.path },
+                        })
+                      }
+                      onDelete={() => deleteLocalMode(mode.path.split("/").pop()!)}
                     />
                   ))}
                 </div>
@@ -1257,6 +1293,7 @@ export default function Launcher() {
           specifier={launchTarget.specifier}
           displayName={launchTarget.displayName}
           defaultWorkspace={launchTarget.defaultWorkspace}
+          defaultInitParams={launchTarget.defaultInitParams}
           homeDir={homeDir}
           onClose={() => setLaunchTarget(null)}
         />

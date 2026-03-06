@@ -14,6 +14,8 @@ export type {
   AgentPreferences,
   InitConfig,
   ViewerApiConfig,
+  EvolutionConfig,
+  EvolutionTool,
 } from "./mode-manifest.js";
 
 export type {

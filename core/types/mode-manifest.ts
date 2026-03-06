@@ -159,6 +159,47 @@ export interface ViewerApiConfig {
   };
 }
 
+/**
+ * Skill 演进配置 — 定义 Evolution Agent 的目标方向和可用工具。
+ *
+ * Evolution Agent 是一个独立的 Agent 过程，分析用户历史并增强 skill 文件。
+ * 它输出一个 proposal（附带证据和引用），用户审核后可 apply 或取消。
+ */
+export interface EvolutionConfig {
+  /**
+   * 演进方向 — 给 Evolution Agent 的目标描述。
+   * 告诉 Agent 这个 Mode 的 skill 应该朝什么方向个性化。
+   *
+   * @example
+   * "Learn the user's presentation style preferences: typography choices,
+   *  color palette tendencies, layout density, slide structure patterns.
+   *  Augment the skill to guide the main agent toward these preferences
+   *  as defaults while respecting explicit user instructions."
+   */
+  directive: string;
+
+  /**
+   * 额外的数据获取工具（预留，第一版不实现）。
+   * 框架已内置基础工具（读取 CC 历史等），这里声明 Mode 特有的。
+   */
+  tools?: EvolutionTool[];
+}
+
+/**
+ * Evolution Agent 可用的外部数据获取工具（预留）。
+ * 第一版不实现，框架内置工具足够。
+ */
+export interface EvolutionTool {
+  /** 工具名称 */
+  name: string;
+  /** 工具描述（给 Agent 看的） */
+  description: string;
+  /** 实现方式 */
+  type: "command" | "http" | "mcp";
+  /** 具体配置 */
+  config: Record<string, unknown>;
+}
+
 /** Mode 的完整声明式描述 */
 export interface ModeManifest {
   /** Mode 唯一标识 (e.g. "doc", "slide") */
@@ -182,4 +223,6 @@ export interface ModeManifest {
   init?: InitConfig;
   /** Viewer 自描述 API — 纯数据声明，后端可读，自动注入 CLAUDE.md */
   viewerApi?: ViewerApiConfig;
+  /** Skill 演进配置 — 定义 Evolution Agent 的演进方向 (可选) */
+  evolution?: EvolutionConfig;
 }
