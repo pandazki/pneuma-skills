@@ -1,10 +1,11 @@
 ---
 name: pneuma-draw
 description: >
-  Excalidraw diagram creation and editing expert for Pneuma Draw Mode.
-  Creates and edits Excalidraw diagrams (flowcharts, wireframes, mind maps,
-  architecture diagrams) in a WYSIWYG environment where the user sees changes
-  live on an Excalidraw canvas in their browser.
+  Pneuma Draw Mode workspace guidelines. Use for ANY task in this workspace:
+  creating or editing diagrams, flowcharts, wireframes, mind maps, architecture diagrams,
+  org charts, sketches, or any visual content on the Excalidraw canvas.
+  This skill defines the Excalidraw JSON format, element types, binding rules, and color palette.
+  Consult before your first edit in a new conversation.
 ---
 
 # Pneuma Draw Mode — Excalidraw Skill
@@ -13,11 +14,11 @@ You are an expert at creating and editing Excalidraw diagrams. The user sees you
 
 ## Credits
 
-This mode uses [Excalidraw](https://excalidraw.com) — an open-source, MIT-licensed virtual whiteboard by the Excalidraw team. The Excalidraw community has built extensive tooling and integrations that inspired this mode's design.
+This mode uses [Excalidraw](https://excalidraw.com) — an open-source, MIT-licensed virtual whiteboard by the Excalidraw team.
 
 ## File Format
 
-Excalidraw files use `.excalidraw` extension and are JSON with this structure:
+Excalidraw files use `.excalidraw` extension and are JSON:
 
 ```json
 {
@@ -32,35 +33,6 @@ Excalidraw files use `.excalidraw` extension and are JSON with this structure:
 
 ## Element Types
 
-All elements share common properties:
-
-```json
-{
-  "id": "unique-id",
-  "type": "rectangle",
-  "x": 100,
-  "y": 200,
-  "width": 200,
-  "height": 100,
-  "angle": 0,
-  "strokeColor": "#1e1e1e",
-  "backgroundColor": "transparent",
-  "fillStyle": "solid",
-  "strokeWidth": 2,
-  "strokeStyle": "solid",
-  "roughness": 1,
-  "opacity": 100,
-  "roundness": { "type": 3 },
-  "isDeleted": false,
-  "boundElements": null,
-  "groupIds": [],
-  "seed": 12345,
-  "version": 1
-}
-```
-
-### Available Types
-
 | Type | Extra Properties | Usage |
 |------|-----------------|-------|
 | `rectangle` | `roundness` | Boxes, containers, cards |
@@ -73,91 +45,15 @@ All elements share common properties:
 | `image` | `fileId`, `status` | Embedded images |
 | `frame` | — | Grouping frames |
 
-### Text Properties
+For full JSON schema of each type (common properties, text properties, line/arrow point arrays, binding mechanics), read `{SKILL_PATH}/references/element-types.md`.
 
-```json
-{
-  "type": "text",
-  "text": "Hello World",
-  "fontSize": 20,
-  "fontFamily": 1,
-  "textAlign": "center",
-  "verticalAlign": "middle"
-}
-```
+## Binding
 
-Font families: `1` = Virgil (hand-drawn), `2` = Helvetica, `3` = Cascadia (monospace)
+Excalidraw requires **bidirectional binding** — if only the arrow references the shape but not vice versa, the connection breaks when the user interacts with the canvas. Always set both:
+- Arrow's `startBinding`/`endBinding` → references shape IDs
+- Shape's `boundElements` → references arrow ID
 
-### Line/Arrow Points
-
-Lines and arrows use relative point arrays:
-
-```json
-{
-  "type": "arrow",
-  "x": 100,
-  "y": 200,
-  "points": [[0, 0], [200, 0], [200, 100]],
-  "startArrowhead": null,
-  "endArrowhead": "arrow"
-}
-```
-
-### Binding (Connecting Arrows to Shapes)
-
-To connect an arrow to shapes:
-
-```json
-{
-  "type": "arrow",
-  "startBinding": {
-    "elementId": "shape-id-1",
-    "focus": 0,
-    "gap": 5,
-    "fixedPoint": null
-  },
-  "endBinding": {
-    "elementId": "shape-id-2",
-    "focus": 0,
-    "gap": 5,
-    "fixedPoint": null
-  }
-}
-```
-
-The bound shape must also reference the arrow:
-```json
-{
-  "id": "shape-id-1",
-  "type": "rectangle",
-  "boundElements": [{ "id": "arrow-id", "type": "arrow" }]
-}
-```
-
-### Text Bound to Shapes (Labels)
-
-To put text inside a shape:
-
-1. Create the shape with `boundElements` referencing the text
-2. Create the text with `containerId` pointing to the shape
-
-```json
-{
-  "id": "box-1",
-  "type": "rectangle",
-  "boundElements": [{ "id": "text-1", "type": "text" }]
-}
-```
-```json
-{
-  "id": "text-1",
-  "type": "text",
-  "containerId": "box-1",
-  "text": "Label",
-  "textAlign": "center",
-  "verticalAlign": "middle"
-}
-```
+Same pattern for text inside shapes: shape's `boundElements` references the text, text's `containerId` references the shape.
 
 ## Colors
 
@@ -179,7 +75,7 @@ To put text inside a shape:
 
 ## ID Generation
 
-Each element needs a unique `id`. Use descriptive IDs like `"start-node"`, `"arrow-1"`, `"label-process"`. The `seed` field should be a random integer (used for hand-drawn rendering variations).
+Each element needs a unique `id`. Use descriptive IDs like `"start-node"`, `"arrow-1"`, `"label-process"`. The `seed` field should be a random integer — Excalidraw uses it for hand-drawn rendering variations, so different seeds give different "wobble" patterns.
 
 ## Common Patterns
 
@@ -192,7 +88,7 @@ Each element needs a unique `id`. Use descriptive IDs like `"start-node"`, `"arr
 1. Use rectangles for containers and sections
 2. Add text for labels and placeholder content
 3. Use lines for dividers
-4. Keep `roughness: 0` for clean wireframes
+4. Set `roughness: 0` for clean wireframes — the hand-drawn look doesn't suit UI mockups
 
 ### Mind Map
 1. Central ellipse or rectangle
@@ -201,10 +97,9 @@ Each element needs a unique `id`. Use descriptive IDs like `"start-node"`, `"arr
 
 ## Tips
 
-- Position elements on a grid (multiples of 20-40 work well)
-- Keep adequate spacing between connected elements (40-60px gaps)
+- Position elements on multiples of 20-40 — this aligns with Excalidraw's snap grid and produces clean diagrams
+- Keep 40-60px gaps between connected elements — tighter gaps make arrows hard to see, wider gaps waste canvas space
 - Use `roundness: { "type": 3 }` for rounded rectangles
 - Set `roughness: 0` for clean/professional look, `1` for hand-drawn style
 - Always generate unique `id` values and random `seed` values
-- When modifying existing diagrams, preserve unchanged elements exactly as they are
-- Ensure bidirectional binding: arrows reference shapes AND shapes reference arrows
+- When modifying existing diagrams, preserve unchanged elements exactly — changing IDs or seeds causes visual flicker on the canvas

@@ -11,7 +11,7 @@ const modeMakerManifest: ModeManifest = {
   name: "mode-maker",
   version: "1.1.0",
   displayName: "Mode Maker",
-  description: "Create and develop new Pneuma modes with AI assistance",
+  description: "Create, develop, test, and publish new Pneuma mode packages",
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085"/></svg>`,
 
   skill: {
@@ -20,25 +20,19 @@ const modeMakerManifest: ModeManifest = {
     claudeMdSection: `## Pneuma Mode Maker
 
 You are a mode development assistant running inside Pneuma Mode Maker.
-The workspace is a **Mode package** and the user sees structure updates live.
+The workspace IS the mode package — the user sees structure updates live.
 
-### Skill Reference
-**Before your first action in a new conversation**, consult the \`pneuma-mode-maker\` skill.
-It contains the ModeManifest reference, ViewerContract patterns, publishing workflow,
-and existing mode examples.
+For ModeManifest reference, ViewerContract patterns, publishing workflow, and mode examples, consult the \`pneuma-mode-maker\` skill. Mode development has specific constraints you need to know.
 
 ### Mode Package Structure
-- \`manifest.ts\` — ModeManifest: name, version, skill config, viewer config, init params
-- \`pneuma-mode.ts\` — ModeDefinition: binds manifest + viewer component
-- \`viewer/*.tsx\` — React preview component implementing ViewerPreviewProps
-- \`skill/SKILL.md\` — Agent skill prompt (domain knowledge for the mode)
-- \`seed/\` — Template files for new workspaces (copied on first run)
+- \`manifest.ts\` — ModeManifest (pure data — no React imports, no side effects)
+- \`pneuma-mode.ts\` — ModeDefinition (binds manifest + viewer)
+- \`viewer/*.tsx\` — React preview component
+- \`skill/SKILL.md\` — Agent skill prompt
+- \`seed/\` — Template files for new workspaces
 
 ### Core Rules
 - Follow existing mode patterns (doc, slide, draw) for consistency
-- Manifest must be a valid ModeManifest type export
-- Viewer component must accept ViewerPreviewProps
-- Skill prompt should guide the agent on how to work within the mode
 - Do not ask for confirmation on simple edits — just do them`,
   },
 
@@ -70,8 +64,8 @@ and existing mode examples.
 
   agent: {
     permissionMode: "bypassPermissions",
-    greeting:
-      "The user just opened the Pneuma Mode Maker. Briefly greet them and let them know you can help create a new Pneuma mode from scratch or develop an existing mode package. Keep it to 1-2 sentences.",
+    greeting: `<system-info pneuma-mode="Pneuma Mode Maker" skill="pneuma-mode-maker" session="new"></system-info>
+The user just opened the workspace. You are ready to assist with mode package development. Greet the user briefly (1-2 sentences).`,
   },
 
   init: {

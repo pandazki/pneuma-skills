@@ -84,12 +84,14 @@ describe("buildEvolutionPrompt", () => {
     expect(prompt).toContain("Secondary: Global CC History");
   });
 
-  it("includes current skill section", () => {
+  it("includes target skill section with embedded content", () => {
     const ws = makeWorkspace();
     const prompt = buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
-    expect(prompt).toContain("Current Skill Files");
+    expect(prompt).toContain("Target Skill — What You Are Evolving");
     expect(prompt).toContain(".claude/skills/pneuma-slide");
-    expect(prompt).toContain("CLAUDE.md");
+    // Embedded SKILL.md content
+    expect(prompt).toContain("# Slide Skill");
+    expect(prompt).toContain("Current SKILL.md Content");
   });
 
   it("includes output instructions with proposals directory", () => {

@@ -40,52 +40,45 @@ function makeWorkspace(name: string): string {
   return ws;
 }
 
-// ── 1. Skill Installation: CLAUDE.md has "Skill Reference" directive ────────
+// ── 1. Skill Installation: CLAUDE.md has skill consult directive + core rules ─
 
 describe("skill installation → CLAUDE.md skill reference", () => {
-  it("doc mode: CLAUDE.md directs agent to consult the pneuma-doc skill", () => {
+  it("doc mode: CLAUDE.md directs agent to consult skill and has core rules", () => {
     const ws = makeWorkspace("doc-e2e");
     const modeSourceDir = join(PROJECT_ROOT, "modes", "doc");
     installSkill(ws, docManifest.skill, modeSourceDir, {}, docManifest.viewerApi);
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
-    expect(claudeMd).toContain("### Skill Reference");
     expect(claudeMd).toContain("consult the `pneuma-doc` skill");
-    expect(claudeMd).toContain("file conventions, editing");
     expect(claudeMd).toContain("### Core Rules");
   });
 
-  it("draw mode: CLAUDE.md directs agent to consult the pneuma-draw skill", () => {
+  it("draw mode: CLAUDE.md directs agent to consult skill and has core rules", () => {
     const ws = makeWorkspace("draw-e2e");
     const modeSourceDir = join(PROJECT_ROOT, "modes", "draw");
     installSkill(ws, drawManifest.skill, modeSourceDir, {}, drawManifest.viewerApi);
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
-    expect(claudeMd).toContain("### Skill Reference");
     expect(claudeMd).toContain("consult the `pneuma-draw` skill");
-    expect(claudeMd).toContain("Excalidraw element types");
     expect(claudeMd).toContain("bidirectional binding");
   });
 
-  it("slide mode: CLAUDE.md directs agent to consult the pneuma-slide skill", () => {
+  it("slide mode: CLAUDE.md directs agent to consult skill and has core rules", () => {
     const ws = makeWorkspace("slide-e2e");
     const modeSourceDir = join(PROJECT_ROOT, "modes", "slide");
     installSkill(ws, slideManifest.skill, modeSourceDir, { slideWidth: 1280, slideHeight: 720 }, slideManifest.viewerApi);
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
-    expect(claudeMd).toContain("### Skill Reference");
     expect(claudeMd).toContain("consult the `pneuma-slide` skill");
-    expect(claudeMd).toContain("design-first workflow");
     expect(claudeMd).toContain("overflow is the #1 quality issue");
   });
 
-  it("mode-maker: CLAUDE.md directs agent to consult the pneuma-mode-maker skill", () => {
+  it("mode-maker: CLAUDE.md directs agent to consult skill and has core rules", () => {
     const ws = makeWorkspace("mode-maker-e2e");
     const modeSourceDir = join(PROJECT_ROOT, "modes", "mode-maker");
     installSkill(ws, modeMakerManifest.skill, modeSourceDir, {}, modeMakerManifest.viewerApi);
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
-    expect(claudeMd).toContain("### Skill Reference");
     expect(claudeMd).toContain("consult the `pneuma-mode-maker` skill");
     expect(claudeMd).toContain("ModeManifest reference");
   });
@@ -103,10 +96,10 @@ describe("SKILL.md YAML frontmatter", () => {
     expect(skillMd.startsWith("---\n")).toBe(true);
     expect(skillMd).toContain("name: pneuma-doc");
     expect(skillMd).toContain("description:");
-    // Verify content sections exist
+    // Verify content sections exist (trimmed: generic markdown knowledge removed)
     expect(skillMd).toContain("## Core Principles");
-    expect(skillMd).toContain("## Markdown Conventions");
-    expect(skillMd).toContain("## Common Operations");
+    expect(skillMd).toContain("## File Convention");
+    expect(skillMd).toContain("## Editing Guidelines");
   });
 
   it("draw SKILL.md has name and description frontmatter", () => {
@@ -118,9 +111,9 @@ describe("SKILL.md YAML frontmatter", () => {
     expect(skillMd.startsWith("---\n")).toBe(true);
     expect(skillMd).toContain("name: pneuma-draw");
     expect(skillMd).toContain("description:");
-    // Existing content preserved
+    // Existing content preserved (JSON schema extracted to references/)
     expect(skillMd).toContain("## Element Types");
-    expect(skillMd).toContain("## Binding (Connecting Arrows to Shapes)");
+    expect(skillMd).toContain("## Binding");
   });
 
   it("slide SKILL.md already has frontmatter (unchanged)", () => {
@@ -176,7 +169,7 @@ describe("evolution apply/rollback → CLAUDE.md sync (end-to-end)", () => {
     const originalClaudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
     expect(originalClaudeMd).toContain("<!-- pneuma:start -->");
     expect(originalClaudeMd).toContain("<!-- pneuma:end -->");
-    expect(originalClaudeMd).toContain("### Skill Reference");
+    expect(originalClaudeMd).toContain("consult the `pneuma-slide` skill");
     expect(originalClaudeMd).not.toContain("<!-- pneuma:evolved:start -->");
 
     // Save and apply proposal
@@ -199,8 +192,7 @@ describe("evolution apply/rollback → CLAUDE.md sync (end-to-end)", () => {
     expect(evolvedStart).toBeGreaterThan(pneumaStart);
     expect(evolvedStart).toBeLessThan(pneumaEnd);
 
-    // The skill reference section should still be there
-    expect(appliedClaudeMd).toContain("### Skill Reference");
+    // The skill consult directive should still be there
     expect(appliedClaudeMd).toContain("consult the `pneuma-slide` skill");
 
     // Verify SKILL.md was also modified (the actual proposal changes)
@@ -246,10 +238,14 @@ describe("mode-maker seed template", () => {
     expect(seedManifest).toContain("### Core Rules");
   });
 
-  it("mode-maker SKILL.md has claudeMdSection best practices guidance", () => {
+  it("mode-maker SKILL.md points to manifest reference for claudeMdSection guidance", () => {
     const mmSkill = readFileSync(join(PROJECT_ROOT, "modes", "mode-maker", "skill", "SKILL.md"), "utf-8");
-    expect(mmSkill).toContain("### claudeMdSection Best Practices");
-    expect(mmSkill).toContain("Skill Reference");
-    expect(mmSkill).toContain("hook");
+    // claudeMdSection best practices moved to references/manifest-reference.md
+    expect(mmSkill).toContain("references/manifest-reference.md");
+    // The reference file should exist and contain the guidance
+    const refFile = readFileSync(join(PROJECT_ROOT, "modes", "mode-maker", "skill", "references", "manifest-reference.md"), "utf-8");
+    expect(refFile).toContain("claudeMdSection Best Practices");
+    expect(refFile).toContain("Skill Reference");
+    expect(refFile).toContain("hook");
   });
 });
