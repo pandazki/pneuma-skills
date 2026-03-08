@@ -202,6 +202,104 @@ function extractTasksFromBlocks(blocks: ContentBlock[]) {
   }
 }
 
+// Cron job extraction from CronCreate / CronDelete / CronList tool blocks
+const pendingCronCreate = new Map<string, Record<string, unknown>>();
+const pendingCronToolUse = new Map<string, string>(); // tool_use_id → tool name
+
+// Regex to extract job ID from CronCreate text result:
+// "Scheduled recurring job abc123 (every 5 minutes). ..."
+// "Scheduled one-shot task abc123 (every hour). ..."
+const CRON_CREATE_RESULT_RE = /Scheduled (?:recurring job|one-shot task) (\S+) \(([^)]+)\)/;
+
+// Regex to parse CronList text lines:
+// "abc123 — every 5 minutes (recurring) [session-only]: prompt text"
+// "abc123 — every hour (one-shot): prompt text"
+const CRON_LIST_LINE_RE = /^(\S+)\s+\u2014\s+(.+?)\s*\((recurring|one-shot)\)(?:\s*\[session-only\])?\s*:\s*(.+)$/;
+
+function extractCronJobsFromBlocks(blocks: ContentBlock[]) {
+  const store = useStore.getState();
+  for (const block of blocks) {
+    // Capture CronCreate tool_use input for later pairing with tool_result
+    if (block.type === "tool_use" && block.name === "CronCreate") {
+      pendingCronCreate.set(block.id, block.input as Record<string, unknown>);
+      pendingCronToolUse.set(block.id, "CronCreate");
+    }
+
+    // CronDelete tool_use — remove job immediately + track for result
+    if (block.type === "tool_use" && block.name === "CronDelete") {
+      const input = block.input as Record<string, unknown>;
+      if (typeof input.id === "string") {
+        store.removeCronJob(input.id);
+      }
+      pendingCronToolUse.set(block.id, "CronDelete");
+    }
+
+    // CronList tool_use — track for result
+    if (block.type === "tool_use" && block.name === "CronList") {
+      pendingCronToolUse.set(block.id, "CronList");
+    }
+
+    if (block.type === "tool_result") {
+      const toolName = pendingCronToolUse.get(block.tool_use_id);
+      if (!toolName) continue;
+      pendingCronToolUse.delete(block.tool_use_id);
+
+      const content = typeof block.content === "string"
+        ? block.content
+        : Array.isArray(block.content)
+          ? block.content.map((b) => ("text" in b ? (b as { text: string }).text : "")).join("")
+          : "";
+
+      if (toolName === "CronCreate") {
+        const pending = pendingCronCreate.get(block.tool_use_id);
+        pendingCronCreate.delete(block.tool_use_id);
+        if (!pending || block.is_error) continue;
+
+        // Parse text result: "Scheduled recurring job ID (humanSchedule). ..."
+        const match = content.match(CRON_CREATE_RESULT_RE);
+        if (match) {
+          const isRecurring = content.startsWith("Scheduled recurring");
+          const isDurable = content.includes("Persisted to");
+          store.addCronJob({
+            id: match[1],
+            cron: (pending.cron as string) || "",
+            humanSchedule: match[2],
+            prompt: (pending.prompt as string) || "",
+            recurring: isRecurring,
+            durable: isDurable,
+            createdAt: Date.now(),
+          });
+        }
+      }
+
+      if (toolName === "CronList") {
+        if (content === "No scheduled jobs." || content.trim() === "") {
+          store.setCronJobs([]);
+          continue;
+        }
+        // Parse multi-line text: "id — schedule (recurring|one-shot) [session-only]: prompt"
+        const jobs: import("./store.js").CronJob[] = [];
+        for (const line of content.split("\n")) {
+          const m = line.match(CRON_LIST_LINE_RE);
+          if (m) {
+            jobs.push({
+              id: m[1],
+              cron: "",
+              humanSchedule: m[2],
+              prompt: m[4],
+              recurring: m[3] === "recurring",
+              durable: !line.includes("[session-only]"),
+            });
+          }
+        }
+        store.setCronJobs(jobs);
+      }
+
+      // CronDelete result — already handled in tool_use phase
+    }
+  }
+}
+
 function detectFileChanges(blocks: ContentBlock[]): boolean {
   return blocks.some(
     (b) => b.type === "tool_use" && (b.name === "Edit" || b.name === "Write")
@@ -261,6 +359,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       if (detectFileChanges(msg.content)) store.bumpChangedFilesTick();
       extractProcessesFromBlocks(msg.content);
       extractTasksFromBlocks(msg.content);
+      extractCronJobsFromBlocks(msg.content);
       store.setStreaming(null);
       streamingPhase = null;
       store.setSessionStatus("running");
@@ -512,6 +611,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
             stopReason: msg.stop_reason,
           });
           extractTasksFromBlocks(msg.content);
+          extractCronJobsFromBlocks(msg.content);
           // Mark AskUserQuestion blocks as answered for history replay
           for (const block of msg.content) {
             if (block.type === "tool_use" && block.name === "AskUserQuestion") {

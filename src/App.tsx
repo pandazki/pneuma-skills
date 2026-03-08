@@ -5,6 +5,7 @@ import ChatPanel from "./components/ChatPanel.js";
 import DiffPanel from "./components/DiffPanel.js";
 import ProcessPanel from "./components/ProcessPanel.js";
 import ContextPanel from "./components/ContextPanel.js";
+import SchedulePanel from "./components/SchedulePanel.js";
 
 import { useStore, nextId } from "./store.js";
 import type { SelectionType } from "./types.js";
@@ -53,6 +54,7 @@ function RightPanel() {
       )}
       {activeTab === "processes" && <ProcessPanel />}
       {activeTab === "context" && <ContextPanel />}
+      {activeTab === "schedules" && <SchedulePanel />}
     </div>
   );
 }

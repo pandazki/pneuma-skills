@@ -23,6 +23,16 @@ export interface AnsweredQuestion {
   pairs: { question: string; answer: string }[];
 }
 
+export interface CronJob {
+  id: string;
+  cron: string;
+  humanSchedule: string;
+  prompt: string;
+  recurring: boolean;
+  durable: boolean;
+  createdAt?: number;
+}
+
 export type ElementSelection = SelectionContext;
 
 interface AppState {
@@ -52,7 +62,7 @@ interface AppState {
   files: FileContent[];
 
   // Tab
-  activeTab: "chat" | "editor" | "diff" | "terminal" | "processes" | "context";
+  activeTab: "chat" | "editor" | "diff" | "terminal" | "processes" | "context" | "schedules";
 
   // Git / Diff
   gitAvailable: boolean | null; // null = not yet checked
@@ -65,6 +75,9 @@ interface AppState {
 
   // Tasks
   tasks: TaskItem[];
+
+  // Cron/Schedule jobs
+  cronJobs: CronJob[];
 
   // Terminal
   terminalId: string | null;
@@ -130,7 +143,7 @@ interface AppState {
   recordAnsweredQuestion: (toolUseId: string, pairs: { question: string; answer: string }[]) => void;
 
   // Actions — tab
-  setActiveTab: (tab: "chat" | "editor" | "diff" | "terminal" | "processes" | "context") => void;
+  setActiveTab: (tab: "chat" | "editor" | "diff" | "terminal" | "processes" | "context" | "schedules") => void;
 
   // Actions — git / diff
   setGitAvailable: (available: boolean) => void;
@@ -146,6 +159,11 @@ interface AppState {
   setTasks: (tasks: TaskItem[]) => void;
   addTask: (task: TaskItem) => void;
   updateTask: (taskId: string, updates: Partial<TaskItem>) => void;
+
+  // Actions — cron jobs
+  setCronJobs: (jobs: CronJob[]) => void;
+  addCronJob: (job: CronJob) => void;
+  removeCronJob: (id: string) => void;
 
   // Actions — terminal
   setTerminalId: (id: string | null) => void;
@@ -257,6 +275,7 @@ export const useStore = create<AppState>((set) => ({
   diffBase: "last-commit",
   sessionProcesses: [],
   tasks: [],
+  cronJobs: [],
   terminalId: null,
   selection: null,
   selectionStamp: 0,
@@ -352,6 +371,14 @@ export const useStore = create<AppState>((set) => ({
         t.id === taskId ? { ...t, ...updates } : t
       ),
     })),
+
+  setCronJobs: (cronJobs) => set({ cronJobs }),
+  addCronJob: (job) => set((s) => {
+    // Avoid duplicates
+    if (s.cronJobs.some((j) => j.id === job.id)) return s;
+    return { cronJobs: [...s.cronJobs, job] };
+  }),
+  removeCronJob: (id) => set((s) => ({ cronJobs: s.cronJobs.filter((j) => j.id !== id) })),
 
   setTerminalId: (terminalId) => set({ terminalId }),
 
