@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2026-03-09
+
+### Improved
+- **Skill effectiveness optimization** — all 5 builtin skills refined based on Anthropic skill-creator best practices
+  - Added Pneuma identity to claudeMdSection (doc/draw/slide) for co-creation workspace context
+  - `<system-info>` tag in greetings for natural skill association at session start
+  - Trimmed generic knowledge from SKILL.md bodies, extracted heavy references to `references/` files
+  - Added "why" explanations to constraints for better LLM compliance
+  - Broadened SKILL.md descriptions for wider trigger coverage
+- **Slide content set workflow** — new presentation tasks create a new top-level directory instead of overwriting seed content
+- **Evolution agent** — embeds current skill content in system prompt, briefing-first interaction protocol, installs target mode skill in evolve workspace
+
 ## [2.0.0] - 2026-03-06
 
 ### Added
