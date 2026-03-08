@@ -87,9 +87,17 @@ Lists all active scheduled jobs.
 
 ## Wire Format
 
-Cron tools appear as standard `tool_use` / `tool_result` content blocks in assistant messages.
+Cron tools appear as `tool_use` content blocks in assistant messages.
 
-**Important:** The `tool_result` content is human-readable **text**, not JSON.
+**Critical:** In the SDK WebSocket stream (`--sdk-url` mode), `tool_result` blocks are **NOT forwarded** to the consumer. The CLI handles tool results internally and produces a new assistant `text` block with a natural-language confirmation (not structured text).
+
+**Extraction strategy (optimistic):** Since tool_result is unavailable and the follow-up text is free-form natural language, we extract cron job data directly from `tool_use` input blocks:
+
+1. **CronCreate**: Read `cron`, `prompt`, `recurring`, `durable` from `tool_use.input`. Generate a display ID from `tool_use.id` (strip `toolu_` prefix, take first 8 chars). Compute `humanSchedule` locally from the cron expression.
+2. **CronDelete**: Read `id` from `tool_use.input` and remove from local state.
+3. **CronList**: Not directly extractable — the agent's text response doesn't follow a parseable format. The Refresh button in the UI asks the agent to run CronList, but jobs are primarily tracked via CronCreate/CronDelete interception.
+
+**Trade-off:** The display ID is synthetic (derived from tool_use_id, not the real job ID assigned by Claude Code's scheduler). This means the Cancel button sends the synthetic ID, which the agent may not recognize. In practice, the agent understands the intent and cancels correctly via natural language.
 
 ### CronCreate
 

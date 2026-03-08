@@ -202,100 +202,71 @@ function extractTasksFromBlocks(blocks: ContentBlock[]) {
   }
 }
 
-// Cron job extraction from CronCreate / CronDelete / CronList tool blocks
-const pendingCronCreate = new Map<string, Record<string, unknown>>();
-const pendingCronToolUse = new Map<string, string>(); // tool_use_id → tool name
+// Cron job extraction from CronCreate / CronDelete tool_use blocks
+//
+// KEY FINDING: In the SDK WebSocket stream (`--sdk-url`), tool_result blocks
+// are NOT forwarded to the browser. The CLI handles them internally and the
+// agent produces a natural-language text response. Therefore we extract cron
+// job info directly from tool_use inputs (which DO appear in the stream).
+//
+// Strategy:
+//   - CronCreate tool_use → optimistically add job from input fields.
+//     Use a truncated tool_use_id as display ID (the real 8-char CLI ID
+//     is not available in the stream).
+//   - CronDelete tool_use → remove job by ID from input.
 
-// Regex to extract job ID from CronCreate text result:
-// "Scheduled recurring job abc123 (every 5 minutes). ..."
-// "Scheduled one-shot task abc123 (every hour). ..."
-const CRON_CREATE_RESULT_RE = /Scheduled (?:recurring job|one-shot task) (\S+) \(([^)]+)\)/;
+const seenCronToolUseIds = new Set<string>();
 
-// Regex to parse CronList text lines:
-// "abc123 — every 5 minutes (recurring) [session-only]: prompt text"
-// "abc123 — every hour (one-shot): prompt text"
-const CRON_LIST_LINE_RE = /^(\S+)\s+\u2014\s+(.+?)\s*\((recurring|one-shot)\)(?:\s*\[session-only\])?\s*:\s*(.+)$/;
+/** Derive a short display ID from a tool_use_id */
+function cronIdFromToolUseId(toolUseId: string): string {
+  return toolUseId.replace(/^toolu_/, "").slice(0, 8);
+}
+
+/** Convert a cron expression to a human-readable schedule */
+function cronToHuman(cron: string): string {
+  const parts = cron.split(/\s+/);
+  if (parts.length !== 5) return cron;
+  const [min, hour, dom, mon, dow] = parts;
+  if (min.startsWith("*/") && hour === "*" && dom === "*" && mon === "*" && dow === "*") {
+    const n = parseInt(min.slice(2), 10);
+    return n === 1 ? "every minute" : `every ${n} minutes`;
+  }
+  if (min === "0" && hour.startsWith("*/") && dom === "*" && mon === "*" && dow === "*") {
+    const n = parseInt(hour.slice(2), 10);
+    return n === 1 ? "every hour" : `every ${n} hours`;
+  }
+  if (min === "0" && hour === "0" && dom.startsWith("*/") && mon === "*" && dow === "*") {
+    const n = parseInt(dom.slice(2), 10);
+    return n === 1 ? "every day" : `every ${n} days`;
+  }
+  return cron;
+}
 
 function extractCronJobsFromBlocks(blocks: ContentBlock[]) {
   const store = useStore.getState();
   for (const block of blocks) {
-    // Capture CronCreate tool_use input for later pairing with tool_result
-    if (block.type === "tool_use" && block.name === "CronCreate") {
-      pendingCronCreate.set(block.id, block.input as Record<string, unknown>);
-      pendingCronToolUse.set(block.id, "CronCreate");
+    if (block.type !== "tool_use") continue;
+    if (seenCronToolUseIds.has(block.id)) continue;
+    seenCronToolUseIds.add(block.id);
+
+    const input = block.input as Record<string, unknown>;
+
+    if (block.name === "CronCreate") {
+      const cron = (input.cron as string) || "";
+      store.addCronJob({
+        id: cronIdFromToolUseId(block.id),
+        cron,
+        humanSchedule: cronToHuman(cron),
+        prompt: (input.prompt as string) || "",
+        recurring: (input.recurring as boolean) ?? true,
+        durable: (input.durable as boolean) ?? false,
+        createdAt: Date.now(),
+      });
     }
 
-    // CronDelete tool_use — remove job immediately + track for result
-    if (block.type === "tool_use" && block.name === "CronDelete") {
-      const input = block.input as Record<string, unknown>;
-      if (typeof input.id === "string") {
-        store.removeCronJob(input.id);
-      }
-      pendingCronToolUse.set(block.id, "CronDelete");
-    }
-
-    // CronList tool_use — track for result
-    if (block.type === "tool_use" && block.name === "CronList") {
-      pendingCronToolUse.set(block.id, "CronList");
-    }
-
-    if (block.type === "tool_result") {
-      const toolName = pendingCronToolUse.get(block.tool_use_id);
-      if (!toolName) continue;
-      pendingCronToolUse.delete(block.tool_use_id);
-
-      const content = typeof block.content === "string"
-        ? block.content
-        : Array.isArray(block.content)
-          ? block.content.map((b) => ("text" in b ? (b as { text: string }).text : "")).join("")
-          : "";
-
-      if (toolName === "CronCreate") {
-        const pending = pendingCronCreate.get(block.tool_use_id);
-        pendingCronCreate.delete(block.tool_use_id);
-        if (!pending || block.is_error) continue;
-
-        // Parse text result: "Scheduled recurring job ID (humanSchedule). ..."
-        const match = content.match(CRON_CREATE_RESULT_RE);
-        if (match) {
-          const isRecurring = content.startsWith("Scheduled recurring");
-          const isDurable = content.includes("Persisted to");
-          store.addCronJob({
-            id: match[1],
-            cron: (pending.cron as string) || "",
-            humanSchedule: match[2],
-            prompt: (pending.prompt as string) || "",
-            recurring: isRecurring,
-            durable: isDurable,
-            createdAt: Date.now(),
-          });
-        }
-      }
-
-      if (toolName === "CronList") {
-        if (content === "No scheduled jobs." || content.trim() === "") {
-          store.setCronJobs([]);
-          continue;
-        }
-        // Parse multi-line text: "id — schedule (recurring|one-shot) [session-only]: prompt"
-        const jobs: import("./store.js").CronJob[] = [];
-        for (const line of content.split("\n")) {
-          const m = line.match(CRON_LIST_LINE_RE);
-          if (m) {
-            jobs.push({
-              id: m[1],
-              cron: "",
-              humanSchedule: m[2],
-              prompt: m[4],
-              recurring: m[3] === "recurring",
-              durable: !line.includes("[session-only]"),
-            });
-          }
-        }
-        store.setCronJobs(jobs);
-      }
-
-      // CronDelete result — already handled in tool_use phase
+    if (block.name === "CronDelete") {
+      const id = input.id as string;
+      if (id) store.removeCronJob(id);
     }
   }
 }
