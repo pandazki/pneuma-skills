@@ -120,17 +120,55 @@ Cron tools appear as standard `tool_use` / `tool_result` content blocks in assis
 // No jobs
 { "type": "tool_result", "tool_use_id": "toolu_list",
   "content": "No scheduled jobs." }
-```
-```
-
 ## `/loop` Slash Command
 
-The `/loop` command is the user-facing interface for CronCreate. It translates human-friendly intervals into cron expressions:
+The `/loop` command is a bundled skill (user-invocable) that translates human-friendly intervals into cron expressions and calls CronCreate.
 
-| Input | Cron |
-|-------|------|
-| `5m` | `*/5 * * * *` |
-| `1h` | `0 */1 * * *` |
-| `30s` | Not supported (cron minimum is 1 minute) |
+### Syntax
 
-Usage: `/loop 5m check if the build passed`
+```
+/loop [interval] <prompt>
+/loop <prompt> every <interval>
+/loop <prompt>                     # defaults to 10m
+```
+
+### Interval Parsing (priority order)
+
+1. **Leading token** (`/loop 30m check build`) — regex `^\d+[smhd]$`
+2. **Trailing "every" clause** (`/loop check build every 2h`)
+3. **No interval** — defaults to **10 minutes**
+
+### Supported Units
+
+| Unit | Example | Cron |
+|------|---------|------|
+| `m` (minutes) | `5m` | `*/5 * * * *` |
+| `h` (hours) | `2h` | `0 */2 * * *` |
+| `d` (days) | `1d` | `0 0 */1 * *` |
+| `s` (seconds) | `30s` | Rounded up to 1 minute |
+
+### Can loop other commands
+
+```
+/loop 20m /review-pr 1234
+/loop 1h /standup 1
+```
+
+## Scheduler Runtime Details
+
+- **Tick interval:** Every 1 second
+- **Execution:** Fires between turns (waits if agent is busy)
+- **No catch-up:** Missed intervals fire once when idle, not per missed interval
+- **Jitter:** Recurring tasks fire up to 10% late (max 15 min); one-shot tasks up to 90s early
+- **Jitter is deterministic** per job ID (hash of first 8 hex chars)
+- **Timezone:** All times in local timezone
+- **Feature flag:** `tengu_kairos_cron` (polled every 5 minutes)
+- **Disable:** Set `CLAUDE_CODE_DISABLE_CRON=1`
+
+## One-Shot Reminders
+
+Natural language scheduling also uses CronCreate with `recurring: false`:
+```
+"remind me at 3pm to push the release branch"
+"in 45 minutes, check whether tests passed"
+```
