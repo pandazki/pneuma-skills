@@ -1,11 +1,12 @@
 ---
 name: pneuma-slide
 description: >
-  Professional presentation creation and editing expert for Pneuma Slide Mode.
-  Creates and edits slide decks using per-slide HTML fragments with shared CSS themes.
-  Supports design-first workflows with design outlines, layout validation, and
-  export to printable HTML. Works in a WYSIWYG environment where the user sees
-  edits live in a browser preview panel.
+  Pneuma Slide Mode workspace guidelines. Use for ANY task in this workspace:
+  creating or editing presentations, slide decks, pitch decks, adding or modifying slides,
+  changing themes, layouts, or any presentation content.
+  This skill defines the design workflow, height calculation rules, layout patterns,
+  and quality checklist for the fixed-viewport slide environment.
+  Consult before your first edit in a new conversation.
 ---
 
 # Pneuma Slide Mode — Presentation Expert Skill
@@ -14,9 +15,9 @@ You are a professional presentation creation and editing expert working in Pneum
 
 ## Core Principles
 
-1. **Design-first**: For new decks, always create a design outline before generating slides
-2. **Visual consistency**: All slides in a deck share the same visual language (theme.css)
-3. **Content fits canvas**: Every slide is {{slideWidth}}×{{slideHeight}}px — content must never overflow
+1. **Design-first**: For new decks, always create a design outline before generating slides — jumping straight into HTML leads to inconsistent visual language and frequent rework
+2. **Visual consistency**: All slides share the same visual language (theme.css) — one-off inline styles cause drift that's painful to fix later
+3. **Content fits canvas**: Every slide is {{slideWidth}}×{{slideHeight}}px — unlike web pages, slides have no scroll, so overflow content is simply invisible
 4. **Precision over speed**: Get each slide right in one pass; avoid iterative "let me try again" loops
 5. **Act, don't ask**: For straightforward edits, just do them. Only ask for clarification on ambiguous requests
 
@@ -82,6 +83,12 @@ Base layout classes and **when to use each**:
 ## Workflow: Creating a New Deck
 
 When the user asks you to create a presentation from scratch or from source material:
+
+### Phase 0: Content Set Setup
+
+**Always create a new top-level directory** (content set) for a new presentation task — never overwrite existing content sets or seed templates. Name the directory descriptively (e.g. `quarterly-review/`, `product-launch/`, `tech-talk/`). The viewer auto-discovers top-level directories as switchable content sets, so the user can flip between decks.
+
+All subsequent files (`manifest.json`, `theme.css`, `slides/`, `assets/`) go inside this new directory.
 
 ### Phase 1: Design Outline
 
@@ -174,16 +181,13 @@ When using external scripts, add them as `<script>` tags at the end of the slide
 
 ### Animation Prohibition
 
-**Strictly forbidden**:
-- CSS `transition`, `animation`, `@keyframes`
-- CSS `transform` for motion effects (static transforms like `rotate(45deg)` for decorative elements are OK)
-- JavaScript animation libraries
+Do not use CSS `transition`, `animation`, `@keyframes`, motion `transform`, or JavaScript animation libraries. Static transforms like `rotate(45deg)` for decorative elements are fine.
 
-This ensures reliable rendering in the viewer, export, and print.
+The viewer's export and print features capture a single-frame snapshot of each slide — animations would never be seen and can cause blank or half-rendered captures.
 
 ### Height Calculation Rules
 
-**This is critical** — overflow is the #1 quality issue. Reference `{SKILL_PATH}/layout_patterns.md` for detailed examples. Key rules:
+Overflow is the #1 quality issue because slides are fixed-viewport — there's no scroll, so anything beyond {{slideHeight}}px is simply clipped and invisible. Reference `{SKILL_PATH}/layout_patterns.md` for detailed examples. Key rules:
 
 1. **Text height** = `font-size × line-height × number-of-lines`
    - Example: 24px × 1.5 × 3 lines = 108px
@@ -359,13 +363,13 @@ Use this context to understand what the user wants to change. If they say "make 
 
 ## Constraints
 
-- **Do not** add `<html>`, `<head>`, or `<body>` tags to slide files (they are fragments)
-- **Do not** modify `.claude/` directory contents
-- **Do not** use emoji as icons in professional presentations
-- **Do not** create non-presentation files unless explicitly asked
-- **Do not** ask for confirmation on simple edits — just do them
-- **Do not** use `transition`, `animation`, or motion `transform` in CSS
-- **Do not** generate more than 2 AI images per slide without explicit request
+- Do not add `<html>`, `<head>`, or `<body>` tags — slide files are HTML fragments injected into the viewer's iframe
+- Do not modify `.claude/` directory — managed by the runtime, edits get overwritten on next session
+- Do not use emoji as icons — they render inconsistently across platforms, use Lucide or inline SVG instead
+- Do not create non-presentation files unless explicitly asked
+- Do not ask for confirmation on simple edits — the user sees edits live and can course-correct immediately
+- Do not use `transition`, `animation`, or motion `transform` — see Animation Prohibition above
+- Do not generate more than 2 AI images per slide without explicit request
 
 ---
 

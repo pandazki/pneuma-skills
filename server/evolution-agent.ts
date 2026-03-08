@@ -11,7 +11,7 @@
  */
 
 import { join } from "node:path";
-import { existsSync, readdirSync, statSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import type { ModeManifest } from "../core/types/mode-manifest.js";
 import { getProposalsDir } from "./evolution-proposal.js";
@@ -211,13 +211,40 @@ export function buildDataSourceSection(workspace: string, _manifest: ModeManifes
 
 function buildCurrentSkillSection(workspace: string, manifest: ModeManifest): string {
   const skillDir = join(workspace, ".claude", "skills", manifest.skill.installName);
-  const claudeMdPath = join(workspace, "CLAUDE.md");
+  const lines: string[] = ["## Target Skill — What You Are Evolving", ""];
 
-  const lines: string[] = ["## Current Skill Files", ""];
-  lines.push(`Skill directory: ${skillDir}/`);
-  lines.push(`Project instructions: ${claudeMdPath}`);
+  lines.push(`Mode: **${manifest.displayName}** (\`${manifest.name}\`)`);
+  lines.push(`Skill directory: \`${skillDir}/\``);
   lines.push("");
-  lines.push("Read these files first to understand the existing domain knowledge before deciding what to augment.");
+
+  // Embed the actual SKILL.md content so the agent knows what it's evolving
+  const skillMdPath = join(skillDir, "SKILL.md");
+  if (existsSync(skillMdPath)) {
+    const content = readFileSync(skillMdPath, "utf-8");
+    lines.push("### Current SKILL.md Content");
+    lines.push("");
+    lines.push("Below is the full skill that the main agent uses in this mode. Your proposals will augment this content.");
+    lines.push("");
+    lines.push("````markdown");
+    lines.push(content.trimEnd());
+    lines.push("````");
+  } else {
+    lines.push("No SKILL.md found yet — the skill may not have been installed for this workspace.");
+    lines.push("You can still analyze history and propose new skill content.");
+  }
+
+  lines.push("");
+
+  // Embed the claudeMdSection (the hook injected into CLAUDE.md)
+  if (manifest.skill.claudeMdSection) {
+    lines.push("### claudeMdSection (injected into CLAUDE.md)");
+    lines.push("");
+    lines.push("This is the short prompt injected into the workspace's CLAUDE.md. It directs the main agent to consult the skill.");
+    lines.push("");
+    lines.push("```markdown");
+    lines.push(manifest.skill.claudeMdSection.trimEnd());
+    lines.push("```");
+  }
 
   return lines.join("\n");
 }
@@ -413,6 +440,42 @@ You have full access to Read, Bash, and Write tools. Use them to:
 
 **CRITICAL: Use the data access scripts instead of raw grep/cat on JSONL files.**
 CC history files are 100MB+ and 99% tool_result noise. The scripts use streaming JSONL processing to extract only meaningful conversation text.
+
+## Interaction Protocol
+
+**Step 0 — Load Skill (ALWAYS do this first)**
+
+Before anything else, consult the \`pneuma-evolve\` skill to load the full evolution reference (data access scripts, proposal format, dashboard context, key rules).
+
+**Step 1 — Briefing (before any analysis)**
+
+After loading the skill, present the user with a concise overview:
+
+1. Briefly explain what you'll do (2-3 sentences):
+   - Scan their conversation history for this mode's workspace
+   - Extract style preferences, recurring patterns, and correction signals
+   - Generate a proposal with evidence they can review before applying
+
+2. Summarize the context from the sections below:
+   - Target mode name and its evolution directive
+   - Data sources available (N sessions, ~X MB in primary source; N projects in global source)
+   - The skill files that will be augmented
+
+3. Ask the user how they'd like to proceed. Offer these options:
+   - **Start directly** — proceed with the default directive as-is
+   - **Provide preferences** — the user shares specific areas to focus on, or preferences they already know about themselves
+   - **Provide reference material** — the user shares reference content, style examples, or desired output samples
+   - **Adjust direction** — the user modifies the evolution directive before you start
+
+**Wait for the user's response before proceeding.** If the user provides additional context, incorporate it into your analysis. If they say "start" or similar, proceed with the defaults.
+
+**Step 2 — Analysis (after user confirmation)**
+
+Once confirmed, follow the recommended analysis workflow: discover sessions → triage → digest → search → synthesize.
+
+**Step 3 — Proposal**
+
+Write the proposal JSON file and summarize findings in chat.
 
 ## What is Pneuma
 

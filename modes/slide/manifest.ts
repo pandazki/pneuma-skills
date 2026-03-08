@@ -9,7 +9,7 @@ const slideManifest: ModeManifest = {
   name: "slide",
   version: "1.2.0",
   displayName: "Slide",
-  description: "Professional presentation creation and editing with per-slide HTML files",
+  description: "Create and edit professional presentations with live-preview HTML slides",
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605"/></svg>`,
 
   skill: {
@@ -17,33 +17,30 @@ const slideManifest: ModeManifest = {
     installName: "pneuma-slide",
     claudeMdSection: `## Pneuma Slide Mode
 
-You are a presentation expert running inside Pneuma Slide Mode.
-The user sees your edits live in a browser preview panel.
+You are running inside **Pneuma**, a co-creation workspace where you and the user build content together — you edit files, the user sees live results in a browser preview panel.
 
-### Skill Reference
-**Before your first action in a new conversation**, consult the \`pneuma-slide\` skill.
-It contains the design-first workflow, height calculation rules, layout patterns,
-image handling, and quality checklist.
+This is **Slide Mode**: HTML presentation creation with live fixed-viewport preview.
+
+For design workflow, height calculation rules, layout patterns, and quality checklist, consult the \`pneuma-slide\` skill. Slides have no scroll — getting the layout right requires the skill's guidance.
 
 ### Architecture
-- \`slides/*.html\` — Individual HTML fragments per slide (no \`<html>\`/\`<body>\` tags)
-- \`manifest.json\` — Slide ordering and metadata (always update when adding/removing slides)
-- \`theme.css\` — Shared CSS theme via custom properties (\`--color-primary\`, \`--color-bg\`, etc.)
-- \`assets/\` — Images and media
-- Canvas: {{slideWidth}}×{{slideHeight}}px fixed viewport
+- \`slides/*.html\` — HTML fragments per slide (no \`<html>\`/\`<body>\` tags)
+- \`manifest.json\` — Slide ordering (always update when adding/removing slides)
+- \`theme.css\` — Shared CSS theme via custom properties
+- Canvas: {{slideWidth}}×{{slideHeight}}px fixed viewport — content beyond this is invisible
+- **Content sets**: Each top-level directory (e.g. \`en-dark/\`, \`my-deck/\`) is a switchable content set with its own slides, manifest, and theme
 
 ### Core Rules
-- Content must fit within {{slideWidth}}×{{slideHeight}}px — overflow is the #1 quality issue
-- No CSS animations (transition/animation/@keyframes forbidden)
-- For new decks: create \`design_outline.md\` first → set up theme → scaffold → fill content
-- Use theme.css custom properties for colors/fonts
+- Content must fit within {{slideWidth}}×{{slideHeight}}px — overflow is the #1 quality issue (no scroll)
+- No CSS animations — they break snapshot-based export and print
+- **New task → new content set**: When the user asks for a completely new presentation, create a new top-level directory (content set) rather than overwriting existing content — this preserves seed templates and prior work
+- For new decks: design outline first → theme → scaffold → fill content
 - Do not ask for confirmation on simple edits — just do them
 {{#imageGenEnabled}}
 ### AI Image Generation
-- AI image generation is available via the skill's \`scripts/generate_image.mjs\`
-- Use it to create contextual illustrations, diagrams, and visuals for slides
-- Always prefer CSS/SVG for geometric shapes and icons — use AI images for photos and complex illustrations
-- Place generated images in \`assets/\` and reference with \`<img src="assets/...">\`
+- Available via the skill's \`scripts/generate_image.mjs\`
+- Prefer CSS/SVG for shapes and icons — use AI images for photos and complex illustrations
+- Place generated images in \`assets/\`
 {{/imageGenEnabled}}`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
@@ -69,8 +66,8 @@ image handling, and quality checklist.
 
   agent: {
     permissionMode: "bypassPermissions",
-    greeting:
-      "The user just opened the Pneuma slide editor. Greet them briefly (1-2 sentences) and let them know you can create full presentation decks from scratch (with design outlines and themed slides) or edit existing slides. Mention they can describe a topic to get started.",
+    greeting: `<system-info pneuma-mode="Pneuma Slide Mode" skill="pneuma-slide" session="new"></system-info>
+The user just opened the workspace. You are ready to assist with presentation creation and editing. Greet the user briefly (1-2 sentences) and mention they can describe a topic to get started.`,
   },
 
   viewerApi: {

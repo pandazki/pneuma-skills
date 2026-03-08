@@ -461,7 +461,13 @@ async function handleEvolveCommand(args: string[]) {
   mkdirSync(pneumaDir, { recursive: true });
   writeFileSync(join(pneumaDir, "config.json"), JSON.stringify(metadata, null, 2));
 
-  // 3. Install evolve skill (so agent has dashboard context in SKILL.md)
+  // 3a. Install target mode's skill (so agent can read the current skill to augment)
+  const targetModeSourceDir = resolved.type === "builtin"
+    ? join(PROJECT_ROOT, "modes", resolved.name)
+    : resolved.path;
+  installSkill(workspace, manifest.skill, targetModeSourceDir);
+
+  // 3b. Install evolve skill (so agent has dashboard context in SKILL.md)
   const evolveManifest = await loadModeManifest("evolve");
   const evolveModeSourceDir = join(PROJECT_ROOT, "modes", "evolve");
   installSkill(workspace, evolveManifest.skill, evolveModeSourceDir, {}, evolveManifest.viewerApi);
