@@ -405,11 +405,15 @@ export const useStore = create<AppState>((set) => ({
       const contentSetsChanged =
         contentSets.length !== s.contentSets.length ||
         contentSets.some((v, i) => v.prefix !== s.contentSets[i]?.prefix);
-      const filtered = s.activeContentSet ? filterAndRemapFiles(s.files, s.activeContentSet) : s.files;
+      let activeContentSet = s.activeContentSet;
+      if (!activeContentSet && contentSets.length > 0) {
+        activeContentSet = contentSets[0].prefix;
+      }
+      const filtered = activeContentSet ? filterAndRemapFiles(s.files, activeContentSet) : s.files;
       const resolveItems = ws?.resolveItems;
       return {
         modeViewer,
-        ...(contentSetsChanged ? { contentSets } : {}),
+        ...(contentSetsChanged ? { contentSets, activeContentSet } : {}),
         workspaceItems: resolveItems ? resolveItems(filtered) : s.workspaceItems,
       };
     }),
@@ -454,6 +458,10 @@ export const useStore = create<AppState>((set) => ({
       if (activeContentSet && !contentSets.some((v) => v.prefix === activeContentSet)) {
         activeContentSet = null;
       }
+      // Auto-select first content set when none is active
+      if (!activeContentSet && contentSets.length > 0) {
+        activeContentSet = contentSets[0].prefix;
+      }
 
       const filtered = activeContentSet ? filterAndRemapFiles(files, activeContentSet) : files;
       const resolveItems = ws?.resolveItems;
@@ -486,6 +494,10 @@ export const useStore = create<AppState>((set) => ({
       let activeContentSet = s.activeContentSet;
       if (activeContentSet && !contentSets.some((v) => v.prefix === activeContentSet)) {
         activeContentSet = null;
+      }
+      // Auto-select first content set when none is active
+      if (!activeContentSet && contentSets.length > 0) {
+        activeContentSet = contentSets[0].prefix;
       }
 
       const filtered = activeContentSet ? filterAndRemapFiles(files, activeContentSet) : files;

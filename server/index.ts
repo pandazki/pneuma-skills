@@ -1106,6 +1106,620 @@ ${slidePages}${downloadScript}${imageModeScript}
     });
   });
 
+  // ── WebCraft export ──────────────────────────────────────────────────
+
+  /** Inline local assets within a single page's HTML. Works relative to baseDir. */
+  function inlineWebcraftAssets(html: string, baseDir: string): string {
+    // Inline <link rel="stylesheet" href="..."> as <style> blocks
+    html = html.replace(/<link\b[^>]*rel\s*=\s*["']stylesheet["'][^>]*>/gi, (match) => {
+      const hrefMatch = match.match(/href\s*=\s*["']([^"']+)["']/i);
+      if (!hrefMatch) return match;
+      const ref = hrefMatch[1];
+      if (/^(https?:|data:|\/\/|#)/i.test(ref)) return match;
+      const cleaned = ref.split("?")[0].split("#")[0];
+      if (cleaned.startsWith("/")) return match;
+      const absPath = join(baseDir, cleaned);
+      if (!pathStartsWith(absPath, workspace) || !existsSync(absPath)) return match;
+      try {
+        const css = readFileSync(absPath, "utf-8");
+        return `<style>/* inlined: ${cleaned} */\n${css}\n</style>`;
+      } catch {
+        return match;
+      }
+    });
+
+    // Inline src="..." attributes pointing to local files
+    html = html.replace(/(src\s*=\s*["'])([^"']+)(["'])/gi, (match, prefix, ref, suffix) => {
+      if (/^(https?:|data:|\/\/|#)/i.test(ref)) return match;
+      const cleaned = ref.split("?")[0].split("#")[0];
+      if (cleaned.startsWith("/")) return match;
+      const absPath = join(baseDir, cleaned);
+      if (!pathStartsWith(absPath, workspace) || !existsSync(absPath)) return match;
+      try {
+        const ext = extname(cleaned).toLowerCase();
+        const mime = ASSET_MIME[ext] || "application/octet-stream";
+        const data = readFileSync(absPath);
+        return `${prefix}data:${mime};base64,${Buffer.from(data).toString("base64")}${suffix}`;
+      } catch {
+        return match;
+      }
+    });
+
+    // Inline url(...) in CSS pointing to local files
+    html = html.replace(/url\(\s*["']?([^"')]+?)["']?\s*\)/gi, (match, ref) => {
+      if (/^(https?:|data:|\/\/|#)/i.test(ref)) return match;
+      const cleaned = ref.split("?")[0].split("#")[0];
+      if (cleaned.startsWith("/")) return match;
+      const absPath = join(baseDir, cleaned);
+      if (!pathStartsWith(absPath, workspace) || !existsSync(absPath)) return match;
+      try {
+        const ext = extname(cleaned).toLowerCase();
+        const mime = ASSET_MIME[ext] || "application/octet-stream";
+        const data = readFileSync(absPath);
+        return `url("data:${mime};base64,${Buffer.from(data).toString("base64")}")`;
+      } catch {
+        return match;
+      }
+    });
+
+    return html;
+  }
+
+  /** Build the WebCraft export HTML page. */
+  function buildWebcraftExportHtml(opts: { inline: boolean; contentSet?: string }): { html: string; title: string } | { error: string; status: number } {
+    // Resolve base directory
+    let baseDir = workspace;
+    if (opts.contentSet) {
+      baseDir = join(workspace, opts.contentSet);
+    } else if (!existsSync(join(workspace, "manifest.json"))) {
+      try {
+        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
+          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
+            baseDir = join(workspace, entry.name);
+            break;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    const manifestPath = join(baseDir, "manifest.json");
+    if (!existsSync(manifestPath)) {
+      return { error: "No manifest.json found in workspace", status: 404 };
+    }
+    let manifest: { title?: string; pages?: { file: string; title?: string }[] };
+    try {
+      manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+    } catch {
+      return { error: "Failed to parse manifest.json", status: 500 };
+    }
+    if (!manifest.pages?.length) {
+      return { error: "No pages in manifest.json", status: 404 };
+    }
+
+    const title = manifest.title || "WebCraft Project";
+
+    // Read each page HTML
+    const pageContents = manifest.pages.map((page) => {
+      const pagePath = join(baseDir, page.file);
+      let html = existsSync(pagePath) ? readFileSync(pagePath, "utf-8") : `<p>Missing: ${page.file}</p>`;
+      if (opts.inline) {
+        html = inlineWebcraftAssets(html, baseDir);
+      }
+      return { file: page.file, title: page.title || page.file.replace(/\.html$/i, ""), html };
+    });
+
+    const baseTag = opts.inline ? "" : `\n<base href="/content/${opts.contentSet ? opts.contentSet + "/" : ""}">`;
+    const toolbarHtml = opts.inline
+      ? ""
+      : `\n<div class="export-toolbar-wrapper">
+  <div class="export-toolbar">
+    <div class="header-left">
+      <h1>${title}</h1>
+      <span class="meta">${manifest.pages!.length} page${manifest.pages!.length > 1 ? "s" : ""}</span>
+    </div>
+    <div class="viewport-group">
+      <button class="vp-btn active" data-vp="full" onclick="setViewport('full')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+        Full
+      </button>
+      <button class="vp-btn" data-vp="mobile" onclick="setViewport('mobile')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+        Mobile
+      </button>
+      <button class="vp-btn" data-vp="tablet" onclick="setViewport('tablet')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+        Tablet
+      </button>
+      <button class="vp-btn" data-vp="desktop" onclick="setViewport('desktop')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        Desktop
+      </button>
+    </div>
+    <div class="export-toolbar-actions">
+      <button class="btn-primary" onclick="downloadHtml()">Download HTML</button>
+      <button class="btn-secondary" onclick="downloadZip()">Download ZIP</button>
+      <div class="print-divider"></div>
+      <button class="btn-secondary" onclick="window.print()">Print / Save PDF</button>
+    </div>
+  </div>
+</div>`;
+
+    const downloadScript = opts.inline
+      ? ""
+      : `\n<script>
+function downloadHtml(){
+  var btn=document.querySelector('.btn-primary');btn.textContent="Preparing...";btn.disabled=true;
+  var qs=new URLSearchParams(location.search).get("contentSet");
+  fetch("/export/webcraft/download"+(qs?"?contentSet="+encodeURIComponent(qs):"")).then(function(r){
+    if(!r.ok)throw new Error("HTTP "+r.status);return r.blob();
+  }).then(function(b){
+    var a=document.createElement("a");a.href=URL.createObjectURL(b);
+    a.download="${title.replace(/"/g, "")}.html";
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  }).catch(function(e){alert("Download failed: "+e.message)})
+  .finally(function(){btn.textContent="Download HTML";btn.disabled=false});
+}
+function downloadZip(){
+  var qs=new URLSearchParams(location.search).get("contentSet");
+  window.open("/export/webcraft/zip"+(qs?"?contentSet="+encodeURIComponent(qs):""));
+}
+
+var VIEWPORTS={full:{w:0,h:0},mobile:{w:375,h:812},tablet:{w:768,h:1024},desktop:{w:1280,h:800}};
+var currentVP='full';
+
+function updatePrintStyle(vp){
+  var el=document.getElementById('print-page-style');
+  if(!el){el=document.createElement('style');el.id='print-page-style';document.head.appendChild(el);}
+  var spec=VIEWPORTS[vp];
+  if(spec.w===0){
+    el.textContent='@page{size:auto;margin:10mm;}';
+  } else {
+    // Use viewport dimensions for page size; landscape if wider than tall
+    var orient=spec.w>spec.h?'landscape':'portrait';
+    el.textContent='@page{size:'+spec.w+'px '+spec.h+'px;margin:0;}';
+  }
+}
+
+function setViewport(vp){
+  currentVP=vp;
+  document.querySelectorAll('.vp-btn').forEach(function(b){
+    b.classList.toggle('active',b.dataset.vp===vp);
+  });
+  updatePrintStyle(vp);
+  var spec=VIEWPORTS[vp];
+  var sections=document.querySelectorAll('.page-section');
+  sections.forEach(function(sec){
+    var wrapper=sec.querySelector('.page-frame-wrapper');
+    var frame=sec.querySelector('iframe');
+    if(!wrapper||!frame)return;
+    if(spec.w===0){
+      wrapper.style.width='';
+      wrapper.style.margin='';
+      frame.style.width='100%';
+      frame.style.height='';
+      frame.style.transform='';
+      frame.style.transformOrigin='';
+      wrapper.style.overflow='hidden';
+      wrapper.style.height='';
+      try{var h=frame.contentDocument.documentElement.scrollHeight;frame.style.height=Math.max(h,200)+'px';}catch(e){}
+    } else {
+      frame.style.width=spec.w+'px';
+      frame.style.height=spec.h+'px';
+      frame.style.transform='';
+      frame.style.transformOrigin='top left';
+      var containerW=wrapper.parentElement.clientWidth;
+      var scale=Math.min(containerW/spec.w,1);
+      frame.style.transform='scale('+scale+')';
+      wrapper.style.width=Math.min(spec.w*scale,containerW)+'px';
+      wrapper.style.height=(spec.h*scale)+'px';
+      wrapper.style.overflow='hidden';
+      wrapper.style.margin='0 auto';
+    }
+  });
+}
+updatePrintStyle('full');
+<\/script>`;
+
+    const pagesJson = JSON.stringify(pageContents.map((p) => ({ file: p.file, title: p.title, html: p.html })));
+    const pageInitScript = `\n<script>
+var pages = ${pagesJson};
+pages.forEach(function(page, i) {
+  var frame = document.getElementById('page-frame-' + i);
+  if (frame) {
+    frame.srcdoc = page.html;
+    frame.addEventListener('load', function() {
+      try {
+        var h = frame.contentDocument.documentElement.scrollHeight;
+        frame.style.height = Math.max(h, 200) + 'px';
+      } catch(e) {}
+    });
+  }
+});
+
+// Chrome can't print srcdoc iframes reliably.
+// Before print: extract iframe content into direct DOM divs.
+// After print: remove them and restore iframes.
+window.addEventListener('beforeprint', function() {
+  pages.forEach(function(page, i) {
+    var section = document.querySelectorAll('.page-section')[i];
+    if (!section) return;
+    var wrapper = section.querySelector('.page-frame-wrapper');
+    if (!wrapper) return;
+    // Hide iframe
+    var frame = wrapper.querySelector('iframe');
+    if (frame) frame.style.display = 'none';
+    // Create print-only div with page HTML directly embedded
+    var div = document.createElement('div');
+    div.className = 'print-page-content';
+    div.innerHTML = page.html;
+    // Strip <html>, <head>, <body> wrappers — extract body content
+    var bodyMatch = page.html.match(/<body[^>]*>([\\s\\S]*?)<\\/body>/i);
+    if (bodyMatch) {
+      div.innerHTML = bodyMatch[1];
+      // Also inject styles from <head>
+      var headMatch = page.html.match(/<head[^>]*>([\\s\\S]*?)<\\/head>/i);
+      if (headMatch) {
+        var styleRe = /<style[^>]*>[\\s\\S]*?<\\/style>/gi;
+        var linkRe = /<link[^>]*rel\\s*=\\s*["']stylesheet["'][^>]*>/gi;
+        var m;
+        while ((m = styleRe.exec(headMatch[1])) !== null) {
+          div.insertAdjacentHTML('afterbegin', m[0]);
+        }
+        while ((m = linkRe.exec(headMatch[1])) !== null) {
+          div.insertAdjacentHTML('afterbegin', m[0]);
+        }
+      }
+    }
+    wrapper.appendChild(div);
+  });
+});
+
+window.addEventListener('afterprint', function() {
+  // Remove print divs, restore iframes
+  document.querySelectorAll('.print-page-content').forEach(function(el) { el.remove(); });
+  document.querySelectorAll('.page-frame-wrapper iframe').forEach(function(f) { f.style.display = 'block'; });
+});
+<\/script>`;
+
+    const pageSectionsHtml = pageContents.map((_page, i) => {
+      return `<div class="page-section">
+  <div class="page-header">
+    <span class="page-number">${i + 1}</span>
+    <span class="page-title">${pageContents[i].title}</span>
+    <span class="page-file">${pageContents[i].file}</span>
+  </div>
+  <div class="page-frame-wrapper">
+    <iframe id="page-frame-${i}" sandbox="allow-same-origin allow-scripts" style="width:100%;min-height:600px;border:none;background:#fff;"></iframe>
+  </div>
+</div>`;
+    }).join("\n");
+
+    let exportHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">${baseTag}
+<title>${title} \u2014 Export</title>
+<style>
+:root {
+  --color-cc-bg: #09090b;
+  --color-cc-surface: #18181b;
+  --color-cc-card: rgba(24, 24, 27, 0.6);
+  --color-cc-primary: #f97316;
+  --color-cc-primary-hover: #fdba74;
+  --color-cc-fg: #fafafa;
+  --color-cc-muted: #a1a1aa;
+  --color-cc-border: rgba(255, 255, 255, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+html {
+  margin: 0;
+  padding: 0;
+  background: var(--color-cc-bg);
+  font-family: 'Inter', 'Geist', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}
+
+@media screen {
+  body {
+    padding: 0 0 60px 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at 50% 0%, rgba(249, 115, 22, 0.08) 0%, transparent 60%);
+  }
+
+  .export-toolbar-wrapper {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    padding: 16px 24px 0;
+    pointer-events: none;
+  }
+
+  .export-toolbar {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 10px 20px;
+    background: var(--color-cc-card);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--color-cc-border);
+    border-radius: 999px;
+    color: var(--color-cc-fg);
+    max-width: 1100px;
+    margin: 0 auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    flex-wrap: wrap;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-right: auto;
+  }
+
+  .export-toolbar h1 {
+    font-size: 15px;
+    font-weight: 500;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  .export-toolbar .meta {
+    font-size: 13px;
+    color: var(--color-cc-muted);
+  }
+
+  .viewport-group {
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 2px;
+    gap: 1px;
+  }
+
+  .vp-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border: none;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    background: transparent;
+    color: var(--color-cc-muted);
+    transition: all 0.2s ease;
+    white-space: nowrap;
+  }
+  .vp-btn svg { flex-shrink: 0; }
+  .vp-btn:hover { color: var(--color-cc-fg); }
+  .vp-btn.active {
+    background: rgba(249, 115, 22, 0.15);
+    color: var(--color-cc-primary);
+  }
+
+  .export-toolbar-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .export-toolbar-actions button {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease-out;
+    white-space: nowrap;
+  }
+
+  .btn-primary {
+    background: var(--color-cc-primary);
+    color: #fff;
+    box-shadow: 0 2px 12px rgba(249, 115, 22, 0.2);
+  }
+  .btn-primary:hover {
+    background: var(--color-cc-primary-hover);
+    box-shadow: 0 4px 16px rgba(249, 115, 22, 0.4);
+    transform: translateY(-1px);
+  }
+  .btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .btn-secondary {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--color-cc-fg);
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  }
+  .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .print-divider {
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .page-section {
+    max-width: 960px;
+    margin: 32px auto;
+  }
+
+  .page-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 8px 8px;
+  }
+
+  .page-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: rgba(249, 115, 22, 0.15);
+    color: var(--color-cc-primary);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .page-title {
+    color: var(--color-cc-fg);
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .page-file {
+    color: var(--color-cc-muted);
+    font-size: 12px;
+    font-family: ui-monospace, 'SF Mono', monospace;
+  }
+
+  .page-frame-wrapper {
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.6), 0 0 0 1px var(--color-cc-border);
+    transition: width 0.3s ease, height 0.3s ease, margin 0.3s ease;
+  }
+
+  .page-frame-wrapper iframe {
+    display: block;
+    border-radius: 8px;
+    transition: transform 0.3s ease;
+    transform-origin: top left;
+  }
+}
+
+@media screen {
+  .print-page-content { display: none; }
+}
+
+@media print {
+  html, body { padding: 0; margin: 0; background: #fff !important; }
+  .export-toolbar-wrapper { display: none !important; }
+  .page-header { display: none !important; }
+  .page-section { margin: 0 !important; max-width: none !important; }
+  .page-section + .page-section { break-before: page; }
+  .page-frame-wrapper {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    transition: none !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+  }
+  .page-frame-wrapper iframe {
+    display: none !important;
+  }
+  .print-page-content {
+    display: block !important;
+    background: #fff;
+  }
+}
+</style>
+</head>
+<body>${toolbarHtml}
+${pageSectionsHtml}${downloadScript}${pageInitScript}
+</body>
+</html>`;
+
+    return { html: exportHtml, title };
+  }
+
+  app.get("/export/webcraft", (c) => {
+    const contentSet = c.req.query("contentSet") || undefined;
+    const result = buildWebcraftExportHtml({ inline: false, contentSet });
+    if ("error" in result) return c.text(result.error, result.status as any);
+    return c.html(result.html);
+  });
+
+  app.get("/export/webcraft/download", (c) => {
+    const contentSet = c.req.query("contentSet") || undefined;
+    const result = buildWebcraftExportHtml({ inline: true, contentSet });
+    if ("error" in result) return c.text(result.error, result.status as any);
+    const safeFilename = result.title.replace(/[^\w\s.-]/g, "_") + ".html";
+    const utf8Filename = encodeURIComponent(result.title + ".html");
+    return new Response(result.html, {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${safeFilename}"; filename*=UTF-8''${utf8Filename}`,
+      },
+    });
+  });
+
+  app.get("/export/webcraft/zip", async (c) => {
+    if (!workspace) return c.text("No workspace", 400);
+    let contentSet = c.req.query("contentSet") || undefined;
+    // Auto-discover content set if not specified
+    if (!contentSet && !existsSync(join(workspace, "manifest.json"))) {
+      try {
+        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
+          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
+            contentSet = entry.name;
+            break;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    const exportDir = contentSet ? join(workspace, contentSet) : workspace;
+    const tmpFile = `/tmp/pneuma-webcraft-export-${Date.now()}.zip`;
+    try {
+      const proc = Bun.spawn(
+        ["zip", "-r", tmpFile, ".", "-x", ".claude/*", ".pneuma/*", "CLAUDE.md", ".gitignore", "node_modules/*", ".git/*"],
+        { cwd: exportDir, stdout: "ignore", stderr: "ignore" },
+      );
+      await proc.exited;
+      const file = Bun.file(tmpFile);
+      if (!(await file.exists())) return c.text("Export failed", 500);
+      const content = await file.arrayBuffer();
+      try { await Bun.spawn(["rm", tmpFile]).exited; } catch {}
+      // Try to get title from manifest for filename
+      let zipName = "webcraft-project";
+      try {
+        const mPath = join(exportDir, "manifest.json");
+        if (existsSync(mPath)) {
+          const m = JSON.parse(readFileSync(mPath, "utf-8"));
+          if (m.title) zipName = m.title.replace(/[^\w\s.-]/g, "_");
+        }
+      } catch { /* ignore */ }
+      return new Response(content, {
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="${zipName}.zip"`,
+        },
+      });
+    } catch {
+      return c.text("Export failed", 500);
+    }
+  });
+
   app.get("/api/files", (c) => {
     const files: { path: string; content: string }[] = [];
     const patterns = options.watchPatterns || ["**/*.md"];

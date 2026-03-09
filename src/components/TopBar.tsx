@@ -39,7 +39,7 @@ export default function TopBar() {
     if (!createEmpty) return;
     const store = useStore.getState();
     const rawFiles = store.files;
-    const hasContentSets = store.contentSets.length > 1;
+    const hasContentSets = store.contentSets.length >= 1;
 
     // When mode has content sets, createEmpty creates a new content set (pass all raw files).
     // Otherwise, it creates an item within the current workspace.
