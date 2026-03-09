@@ -39,23 +39,6 @@ When humans and code agents co-create content, they need more than a chat window
 | **mode-maker** | Create custom modes with AI — fork, play-test, publish |
 | **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback |
 
-### WebCraft Mode
-
-WebCraft turns Claude into a web design partner powered by [Impeccable.style](https://impeccable.style) design intelligence. Build, review, and refine multi-page websites in a live preview workspace with 17 AI design commands across 6 categories:
-
-- **Review** — Audit accessibility/performance, Critique visual design, Harden WCAG compliance
-- **Enhance** — Bolder presence, Colorize palettes, Polish micro-interactions, Delight with animation
-- **Simplify** — Distill to essentials, Clarify hierarchy, Quieter visual noise
-- **Adapt** — Normalize cross-browser, Optimize performance, Extract design tokens
-- **Extend** — Animate with motion design, Onboard user flows
-- **Setup** — Teach Impeccable your brand context
-
-The viewer provides responsive viewport presets (Mobile / Tablet / Desktop), element selection with CSS selector display, inline text editing, multi-element annotation mode, and a full export page with Download HTML (self-contained with inlined assets), Download ZIP, and Print/Save PDF with viewport-aware page sizing.
-
-```bash
-bunx pneuma-skills webcraft --workspace ./my-site
-```
-
 ## Prerequisites
 
 - [Bun](https://bun.sh) >= 1.3.5 (required for PTY terminal support)
