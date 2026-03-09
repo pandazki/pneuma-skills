@@ -10,9 +10,10 @@ interface ContentSetSelectorProps {
   activeId: string | null;
   onSelect: (id: string) => void;
   icon?: "folder" | "file";
+  unread?: Set<string>;
 }
 
-export default function ContentSetSelector({ items, activeId, onSelect, icon = "folder" }: ContentSetSelectorProps) {
+export default function ContentSetSelector({ items, activeId, onSelect, icon = "folder", unread }: ContentSetSelectorProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -26,16 +27,21 @@ export default function ContentSetSelector({ items, activeId, onSelect, icon = "
   }, [open]);
 
   const activeLabel = items.find((item) => item.id === activeId)?.label || "Select";
+  const hasUnread = unread && unread.size > 0;
 
   return (
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium
+        className="relative flex items-center gap-1.5 px-2 py-1 text-xs font-medium
           rounded-md text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
       >
         {icon === "folder" ? <FolderIcon /> : <FileIcon />}
         <span>{activeLabel}</span>
+        {hasUnread && (
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-cc-primary
+            shadow-[0_0_6px_rgba(249,115,22,0.6)] animate-pulse" />
+        )}
         <svg
           className={`w-3 h-3 text-cc-muted transition-transform ${open ? "rotate-180" : ""}`}
           viewBox="0 0 12 12"
@@ -56,11 +62,14 @@ export default function ContentSetSelector({ items, activeId, onSelect, icon = "
             <button
               key={item.id}
               onClick={() => { onSelect(item.id); setOpen(false); }}
-              className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between
+              className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2
                 hover:bg-cc-hover transition-colors cursor-pointer
                 ${item.id === activeId ? "bg-cc-primary/15 text-cc-fg" : "text-cc-muted"}`}
             >
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {unread?.has(item.id) && (
+                <span className="w-1.5 h-1.5 rounded-full bg-cc-primary shrink-0" />
+              )}
             </button>
           ))}
         </div>

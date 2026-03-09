@@ -111,6 +111,7 @@ interface AppState {
   // Content contentSets (multi-theme / multi-language)
   contentSets: ContentSet[];
   activeContentSet: string | null;
+  contentSetUnread: Set<string>;
 
   // User action events (for CC context injection)
   userActions: UserAction[];
@@ -291,6 +292,7 @@ export const useStore = create<AppState>((set) => ({
   actionRequest: null,
   contentSets: [],
   activeContentSet: null,
+  contentSetUnread: new Set(),
   userActions: [],
   pendingViewerNotification: null,
 
@@ -429,8 +431,15 @@ export const useStore = create<AppState>((set) => ({
     set((s) => {
       const resolveItems = s.modeViewer?.workspace?.resolveItems;
       const filtered = activeContentSet ? filterAndRemapFiles(s.files, activeContentSet) : s.files;
+      // Clear unread for the content set being selected
+      let contentSetUnread = s.contentSetUnread;
+      if (activeContentSet && contentSetUnread.has(activeContentSet)) {
+        contentSetUnread = new Set(contentSetUnread);
+        contentSetUnread.delete(activeContentSet);
+      }
       return {
         activeContentSet,
+        contentSetUnread,
         activeFile: null,
         selection: null,
         workspaceItems: resolveItems ? resolveItems(filtered) : s.workspaceItems,
@@ -500,6 +509,25 @@ export const useStore = create<AppState>((set) => ({
         activeContentSet = contentSets[0].prefix;
       }
 
+      // Mark content sets with changes as unread (if not the active one)
+      let contentSetUnread = s.contentSetUnread;
+      if (contentSets.length > 1) {
+        const touchedPrefixes = new Set<string>();
+        for (const u of updates) {
+          const slashIdx = u.path.indexOf("/");
+          if (slashIdx > 0) {
+            const prefix = u.path.slice(0, slashIdx);
+            if (prefix !== activeContentSet && contentSets.some((cs) => cs.prefix === prefix)) {
+              touchedPrefixes.add(prefix);
+            }
+          }
+        }
+        if (touchedPrefixes.size > 0) {
+          contentSetUnread = new Set(s.contentSetUnread);
+          for (const p of touchedPrefixes) contentSetUnread.add(p);
+        }
+      }
+
       const filtered = activeContentSet ? filterAndRemapFiles(files, activeContentSet) : files;
       const resolveItems = ws?.resolveItems;
       const newItems = resolveItems ? resolveItems(filtered) : s.workspaceItems;
@@ -511,6 +539,7 @@ export const useStore = create<AppState>((set) => ({
         files,
         ...(contentSetsChanged ? { contentSets } : {}),
         activeContentSet,
+        contentSetUnread,
         workspaceItems: newItems,
         activeFile,
       };
