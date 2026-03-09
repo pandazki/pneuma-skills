@@ -1,0 +1,10 @@
+import { contextBridge, ipcRenderer } from "electron";
+
+contextBridge.exposeInMainWorld("pneumaDesktop", {
+  getVersion: () => ipcRenderer.invoke("pneuma:get-app-version"),
+  getPlatform: () => ipcRenderer.invoke("pneuma:get-platform"),
+  openExternal: (url: string) => ipcRenderer.invoke("pneuma:open-external", url),
+  recheckClaude: () => ipcRenderer.invoke("pneuma:recheck-claude"),
+  showOpenDialog: (options: { title?: string; defaultPath?: string; buttonLabel?: string }) =>
+    ipcRenderer.invoke("pneuma:show-open-dialog", options),
+});
