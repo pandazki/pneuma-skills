@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.1] - 2026-03-09
+
+### Added
+- **Schedules tab** — view and manage cron/loop scheduled tasks from a dedicated top-level tab
+  - Job list with prompt, schedule, recurring/one-shot/durable badges
+  - Cancel and refresh buttons (agent-mediated)
+  - Badge count on tab header
+- **Cron trigger visual indicator** — "SCHEDULED TASK" bubble before each cron-triggered turn showing the job's prompt
+- **Claude Code version check** — warns in Schedules tab if CC version is below 2.1.0 (cron minimum)
+- **Cron protocol documentation** — full reverse-engineered docs for CronCreate/CronDelete/CronList
+
+### Fixed
+- **Cron job extraction** — use optimistic tool_use extraction since SDK stream does not forward tool_result blocks
+
 ## [2.1.0] - 2026-03-09
 
 ### Improved
