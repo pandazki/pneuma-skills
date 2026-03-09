@@ -169,6 +169,10 @@ jobs:
         working-directory: desktop
         run: npm install
 
+      - name: Build Electron main/preload
+        working-directory: desktop
+        run: npx tsup
+
       - name: Sync version from root package.json
         working-directory: desktop
         shell: bash
