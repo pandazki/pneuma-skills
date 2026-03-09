@@ -1,0 +1,7 @@
+{
+  "title": "Pneuma",
+  "pages": [
+    { "file": "index.html", "title": "Home" },
+    { "file": "how-it-works.html", "title": "How It Works" }
+  ]
+}

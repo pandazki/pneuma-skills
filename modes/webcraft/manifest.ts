@@ -216,7 +216,8 @@ The user just opened the workspace. You are ready to assist with web design and 
   init: {
     contentCheckPattern: "**/manifest.json",
     seedFiles: {
-      "modes/webcraft/seed/default/": "default/",
+      "modes/webcraft/seed/pneuma/": "pneuma/",
+      "modes/webcraft/seed/gazette/": "gazette/",
     },
   },
 

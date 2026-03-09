@@ -1,7 +1,0 @@
-{
-  "title": "WebCraft Workspace",
-  "pages": [
-    { "file": "index.html", "title": "Home" },
-    { "file": "about.html", "title": "About" }
-  ]
-}
