@@ -156,6 +156,7 @@ export default defineConfig({
     proxy: {
       "/api": `http://localhost:${process.env.VITE_API_PORT || "17007"}`,
       "/content": `http://localhost:${process.env.VITE_API_PORT || "17007"}`,
+      "/export": `http://localhost:${process.env.VITE_API_PORT || "17007"}`,
     },
     fs: {
       // Allow serving files from external mode and workspace directories (for /@fs/ imports)
