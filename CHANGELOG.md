@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.1] - 2026-03-09
+
+### Fixed
+- **Desktop CI** — merged desktop build into `release.yml` as a dependent job (GitHub Actions tokens can't trigger cross-workflow events)
+
 ## [2.3.0] - 2026-03-09
 
 ### Added
