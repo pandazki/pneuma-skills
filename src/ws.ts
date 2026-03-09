@@ -274,9 +274,9 @@ function extractCronJobsFromBlocks(blocks: ContentBlock[]) {
 }
 
 /** Infer which cron job likely triggered a turn based on active jobs. */
-function inferCronPrompt(jobs: import("./store.js").CronJob[]): string {
-  if (jobs.length === 0) return "Scheduled task";
-  if (jobs.length === 1) return jobs[0].prompt;
+function inferCronPrompt(jobs: import("./store.js").CronJob[]): string | undefined {
+  if (jobs.length === 0) return undefined;
+  if (jobs.length === 1) return jobs[0].prompt || "Scheduled task";
   return jobs.map((j) => j.prompt).join(" / ");
 }
 

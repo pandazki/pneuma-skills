@@ -41,7 +41,7 @@ function resolveWebcraftContentSets(files: ViewerFileContent[]): ContentSet[] {
   // Unlike generic resolver (requires 2+), webcraft needs content-set prefix
   // stripping even with a single site directory.
   if (sets.length === 0) return [];
-  sets.sort((a, b) => a.prefix.localeCompare(b.prefix));
+  // Preserve discovery order (filesystem scan order) — no alphabetical sort
   return sets;
 }
 

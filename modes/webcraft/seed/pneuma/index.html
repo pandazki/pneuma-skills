@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,6 +16,9 @@
       --accent: oklch(72% 0.19 55);
       --accent-dim: oklch(72% 0.19 55 / 0.12);
       --border: oklch(22% 0.01 260);
+      --nav-bg: oklch(8% 0.015 260 / 0.85);
+      --glow-color: oklch(72% 0.19 55 / 0.06);
+      --glow-shadow: oklch(72% 0.19 55 / 0.3);
 
       --font-display: "Outfit", system-ui, sans-serif;
       --font-body: "Source Sans 3", system-ui, sans-serif;
@@ -24,6 +27,30 @@
       --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
       --duration: 300ms;
       --measure: 62ch;
+    }
+
+    /* ── Light Theme ──────────────────────────────────── */
+    [data-theme="light"] {
+      --bg: oklch(97% 0.005 80);
+      --surface: oklch(94% 0.008 80);
+      --surface-raised: oklch(91% 0.01 80);
+      --text: oklch(18% 0.015 260);
+      --text-secondary: oklch(40% 0.015 260);
+      --text-tertiary: oklch(58% 0.01 260);
+      --accent: oklch(62% 0.2 55);
+      --accent-dim: oklch(62% 0.2 55 / 0.1);
+      --border: oklch(85% 0.01 80);
+      --nav-bg: oklch(97% 0.005 80 / 0.88);
+      --glow-color: oklch(62% 0.2 55 / 0.08);
+      --glow-shadow: oklch(62% 0.2 55 / 0.25);
+    }
+
+    /* ── Theme Transition ─────────────────────────────── */
+    html.theme-transitioning,
+    html.theme-transitioning *,
+    html.theme-transitioning *::before,
+    html.theme-transitioning *::after {
+      transition: background 0.4s ease, color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease !important;
     }
 
     /* ── Reset ──────────────────────────────────────────── */
@@ -89,7 +116,7 @@
       top: 0;
       z-index: 10;
       padding-block: 1rem;
-      background: oklch(8% 0.015 260 / 0.85);
+      background: var(--nav-bg);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
@@ -121,30 +148,88 @@
       font-size: 0.85rem;
       color: var(--text-secondary);
       transition: color var(--duration) var(--ease-out);
+      position: relative;
     }
 
+    .nav-links a::after {
+      content: "";
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      width: 0;
+      height: 1.5px;
+      background: var(--accent);
+      transition: width var(--duration) var(--ease-out);
+    }
+
+    .nav-links a:hover::after { width: 100%; }
     .nav-links a:hover { color: var(--text); opacity: 1; }
+
+    .theme-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.4em;
+      cursor: pointer;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color var(--duration) var(--ease-out), border-color var(--duration) var(--ease-out);
+      line-height: 1;
+    }
+
+    .theme-toggle:hover {
+      color: var(--text);
+      border-color: var(--text-tertiary);
+    }
+
+    .theme-toggle svg { width: 18px; height: 18px; }
+    .theme-toggle .icon-sun { display: none; }
+    [data-theme="light"] .theme-toggle .icon-moon { display: none; }
+    [data-theme="light"] .theme-toggle .icon-sun { display: block; }
 
     /* ── Hero ───────────────────────────────────────────── */
     .hero {
       padding-block: clamp(5rem, 12vw, 10rem) clamp(4rem, 8vw, 7rem);
       position: relative;
+      perspective: 1px;
+      transform-style: preserve-3d;
+      overflow: hidden;
     }
 
     .hero::before {
       content: "";
       position: absolute;
-      top: 0;
+      top: -100px;
       left: 50%;
-      transform: translateX(-50%);
+      transform: translateX(-50%) translateZ(-1px) scale(2);
       width: 600px;
       height: 600px;
-      background: radial-gradient(circle, oklch(72% 0.19 55 / 0.06) 0%, transparent 70%);
+      background: radial-gradient(circle, var(--glow-color) 0%, transparent 70%);
       pointer-events: none;
     }
 
-    .hero h1 { margin-bottom: 1.5rem; position: relative; }
-    .hero h1 .accent { color: var(--accent); }
+    .hero h1 {
+      margin-bottom: 1.5rem;
+      position: relative;
+      text-shadow: 0 0 80px oklch(72% 0.19 55 / 0.15);
+    }
+
+    .hero h1 .accent {
+      color: var(--accent);
+      background: linear-gradient(90deg, var(--accent), oklch(80% 0.16 30), var(--accent));
+      background-size: 200% 100%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 3s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
 
     .hero p {
       font-size: 1.15rem;
@@ -168,6 +253,11 @@
       font-size: 0.85rem;
       color: var(--text-secondary);
       overflow-x: auto;
+      transition: border-color var(--duration) var(--ease-out);
+    }
+
+    .hero-code:hover {
+      border-color: var(--text-tertiary);
     }
 
     .hero-code .prompt { color: var(--text-tertiary); user-select: none; }
@@ -196,9 +286,19 @@
       color: oklch(12% 0.02 55);
     }
 
+    .btn-primary {
+      animation: glow-pulse 3s ease-in-out infinite;
+    }
+
     .btn-primary:hover {
-      box-shadow: 0 0 24px oklch(72% 0.19 55 / 0.3);
+      box-shadow: 0 0 24px var(--glow-shadow);
       opacity: 1;
+      animation: none;
+    }
+
+    @keyframes glow-pulse {
+      0%, 100% { box-shadow: 0 0 0px oklch(72% 0.19 55 / 0); }
+      50% { box-shadow: 0 0 18px oklch(72% 0.19 55 / 0.15); }
     }
 
     .btn-ghost {
@@ -241,10 +341,15 @@
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
-      transition: background var(--duration) var(--ease-out);
+      transition: background var(--duration) var(--ease-out), transform var(--duration) var(--ease-out), box-shadow var(--duration) var(--ease-out);
+      position: relative;
     }
 
-    .pillar:hover { background: var(--surface-raised); }
+    .pillar:hover {
+      background: var(--surface-raised);
+      transform: scale(1.015);
+      box-shadow: inset 0 0 30px oklch(72% 0.19 55 / 0.04), 0 0 20px oklch(72% 0.19 55 / 0.06);
+    }
 
     .pillar-number {
       font-family: var(--font-mono);
@@ -289,7 +394,10 @@
       transition: background var(--duration) var(--ease-out);
     }
 
-    .mode-row:hover { background: var(--surface-raised); }
+    .mode-row:hover {
+      background: var(--surface-raised);
+      box-shadow: inset 0 0 20px oklch(72% 0.19 55 / 0.03);
+    }
 
     .mode-name {
       font-family: var(--font-mono);
@@ -348,6 +456,38 @@
 
     .footer-links a:hover { color: var(--text-secondary); opacity: 1; }
 
+    /* ── Scroll Reveal ────────────────────────────────── */
+    [data-reveal] {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out);
+    }
+
+    [data-reveal].revealed {
+      opacity: 1;
+      transform: none;
+    }
+
+    /* ── Gradient Border on Pillar Grid ──────────────── */
+    .pillars-grid {
+      position: relative;
+    }
+
+    .pillar::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      opacity: 0;
+      background: linear-gradient(135deg, oklch(72% 0.19 55 / 0.15), transparent 60%);
+      transition: opacity var(--duration) var(--ease-out);
+      pointer-events: none;
+    }
+
+    .pillar:hover::before {
+      opacity: 1;
+    }
+
     /* ── Responsive ────────────────────────────────────── */
     @media (max-width: 640px) {
       .nav-links { gap: 1.25rem; }
@@ -359,6 +499,10 @@
       *, *::before, *::after {
         animation-duration: 0.01ms !important;
         transition-duration: 0.01ms !important;
+      }
+      [data-reveal] {
+        opacity: 1 !important;
+        transform: none !important;
       }
     }
   </style>
@@ -372,11 +516,17 @@
   <nav>
     <div class="wrap">
       <span class="logo">pneuma<span>.</span></span>
-      <ul class="nav-links">
-        <li><a href="index.html">Home</a></li>
-        <li><a href="how-it-works.html">How It Works</a></li>
-        <li><a href="https://github.com/pandazki/pneuma-skills">GitHub</a></li>
-      </ul>
+      <div style="display:flex;align-items:center;gap:1.5rem;">
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="how-it-works.html">How It Works</a></li>
+          <li><a href="https://github.com/pandazki/pneuma-skills">GitHub</a></li>
+        </ul>
+        <button class="theme-toggle" aria-label="Toggle theme">
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </button>
+      </div>
     </div>
   </nav>
 
@@ -402,11 +552,11 @@
   <!-- Four Pillars -->
   <section class="pillars">
     <div class="wrap">
-      <div class="pillars-intro">
+      <div class="pillars-intro" data-reveal>
         <h2>Four pillars of isomorphic collaboration</h2>
         <p>Not a chat wrapper. Not a code generator. A shared medium where human intent and agent capability meet.</p>
       </div>
-      <div class="pillars-grid">
+      <div class="pillars-grid" data-reveal>
         <div class="pillar">
           <span class="pillar-number">01 &mdash; See</span>
           <h3>Visual Environment</h3>
@@ -434,11 +584,11 @@
   <!-- Built-in Modes -->
   <section class="modes">
     <div class="wrap">
-      <div class="modes-intro">
+      <div class="modes-intro" data-reveal>
         <h2>Built-in modes</h2>
         <p>Each mode is a complete vertical &mdash; skill prompt, live viewer, seed templates, and export.</p>
       </div>
-      <div class="mode-list">
+      <div class="mode-list" data-reveal>
         <div class="mode-row">
           <span class="mode-name">doc</span>
           <span class="mode-desc">Markdown editing with live rendered preview</span>
@@ -469,7 +619,7 @@
 
   <!-- CTA -->
   <section class="cta">
-    <div class="wrap">
+    <div class="wrap" data-reveal>
       <h2>Your agent deserves a workspace.</h2>
       <p>Stop pasting screenshots into chat. Give your agent eyes, memory, and a canvas to work on.</p>
       <a class="btn btn-primary" href="https://github.com/pandazki/pneuma-skills">View on GitHub</a>
@@ -487,5 +637,40 @@
     </div>
   </footer>
 
+  <script>
+    // Theme toggle
+    (function() {
+      var html = document.documentElement;
+      var stored = localStorage.getItem('pneuma-theme');
+      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var theme = stored || (prefersDark ? 'dark' : 'dark');
+      html.setAttribute('data-theme', theme);
+
+      document.querySelector('.theme-toggle').addEventListener('click', function() {
+        html.classList.add('theme-transitioning');
+        var next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-theme', next);
+        localStorage.setItem('pneuma-theme', next);
+        setTimeout(function() { html.classList.remove('theme-transitioning'); }, 450);
+      });
+    })();
+
+    // Scroll reveal
+    (function() {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.querySelectorAll('[data-reveal]').forEach(function(el) { el.classList.add('revealed'); });
+        return;
+      }
+      var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('revealed');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+      document.querySelectorAll('[data-reveal]').forEach(function(el) { observer.observe(el); });
+    })();
+  </script>
 </body>
 </html>
