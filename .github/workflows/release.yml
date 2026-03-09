@@ -161,6 +161,10 @@ jobs:
             node scripts/download-bun.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
           fi
 
+      - name: Prepare production node_modules
+        working-directory: desktop
+        run: node scripts/prepare-deps.mjs
+
       - name: Install Electron dependencies
         working-directory: desktop
         run: npm install

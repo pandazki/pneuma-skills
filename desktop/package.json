@@ -12,11 +12,12 @@
     "build:main": "tsup",
     "build:frontend": "cd .. && bun run build",
     "download-bun": "node scripts/download-bun.mjs",
-    "pack": "npm run build:main && electron-builder --dir",
-    "dist": "npm run build:main && electron-builder",
-    "dist:mac": "npm run build:main && electron-builder --mac",
-    "dist:win": "npm run build:main && electron-builder --win",
-    "dist:linux": "npm run build:main && electron-builder --linux"
+    "prepare-deps": "node scripts/prepare-deps.mjs",
+    "pack": "npm run prepare-deps && npm run build:main && electron-builder --dir",
+    "dist": "npm run prepare-deps && npm run build:main && electron-builder",
+    "dist:mac": "npm run prepare-deps && npm run build:main && electron-builder --mac",
+    "dist:win": "npm run prepare-deps && npm run build:main && electron-builder --win",
+    "dist:linux": "npm run prepare-deps && npm run build:main && electron-builder --linux"
   },
   "dependencies": {
     "electron-updater": "^6.3.9"

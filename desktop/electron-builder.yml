@@ -34,16 +34,10 @@ extraResources:
     to: "pneuma/index.html"
   - from: "../package.json"
     to: "pneuma/package.json"
-  # Runtime node_modules for the Bun server
-  - from: "../node_modules"
+  # Runtime node_modules for the Bun server (production deps only)
+  # Built by: node scripts/prepare-deps.mjs
+  - from: "pneuma-node-modules"
     to: "pneuma/node_modules"
-    filter:
-      - "hono/**/*"
-      - "chokidar/**/*"
-      - "diff/**/*"
-      - "@clack/**/*"
-      - "@zumer/**/*"
-      - "readdirp/**/*"
 
 asar: true
 
