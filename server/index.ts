@@ -490,6 +490,25 @@ export function startServer(options: ServerOptions) {
     return c.json({ external: false });
   });
 
+  // ── Viewer State Persistence ─────────────────────────────────────────
+  const viewerStatePath = workspace ? join(workspace, ".pneuma", "viewer-state.json") : null;
+
+  app.get("/api/viewer-state", (c) => {
+    if (!viewerStatePath || !existsSync(viewerStatePath)) return c.json({});
+    try { return c.json(JSON.parse(readFileSync(viewerStatePath, "utf-8"))); } catch { return c.json({}); }
+  });
+
+  app.post("/api/viewer-state", async (c) => {
+    if (!viewerStatePath) return c.json({ ok: false }, 400);
+    try {
+      const body = await c.req.json<{ contentSet?: string | null; file?: string | null }>();
+      const dir = dirname(viewerStatePath);
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(viewerStatePath, JSON.stringify(body, null, 2));
+      return c.json({ ok: true });
+    } catch { return c.json({ ok: false }, 500); }
+  });
+
   // ── Viewer Action API ───────────────────────────────────────────────
   app.post("/api/viewer/action", async (c) => {
     try {
@@ -1321,7 +1340,9 @@ function setViewport(vp){
 updatePrintStyle('full');
 <\/script>`;
 
-    const pagesJson = JSON.stringify(pageContents.map((p) => ({ file: p.file, title: p.title, html: p.html })));
+    // Escape </script> inside JSON to prevent premature script block closure
+    const pagesJson = JSON.stringify(pageContents.map((p) => ({ file: p.file, title: p.title, html: p.html })))
+      .replace(/<\/script>/gi, "<\\/script>");
     const pageInitScript = `\n<script>
 var pages = ${pagesJson};
 pages.forEach(function(page, i) {
@@ -1662,11 +1683,40 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
 
   app.get("/export/webcraft/download", (c) => {
     const contentSet = c.req.query("contentSet") || undefined;
-    const result = buildWebcraftExportHtml({ inline: true, contentSet });
-    if ("error" in result) return c.text(result.error, result.status as any);
-    const safeFilename = result.title.replace(/[^\w\s.-]/g, "_") + ".html";
-    const utf8Filename = encodeURIComponent(result.title + ".html");
-    return new Response(result.html, {
+    const pageFile = c.req.query("page") || undefined;
+    // Resolve base directory (same logic as buildWebcraftExportHtml)
+    let baseDir = workspace;
+    if (contentSet) {
+      baseDir = join(workspace, contentSet);
+    } else if (!existsSync(join(workspace, "manifest.json"))) {
+      try {
+        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
+          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
+            baseDir = join(workspace, entry.name);
+            break;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    const manifestPath = join(baseDir, "manifest.json");
+    if (!existsSync(manifestPath)) return c.text("No manifest.json found", 404);
+    let manifest: { title?: string; pages?: { file: string; title?: string }[] };
+    try { manifest = JSON.parse(readFileSync(manifestPath, "utf-8")); } catch { return c.text("Bad manifest", 500); }
+    if (!manifest.pages?.length) return c.text("No pages", 404);
+
+    // Find the target page (specific page or first page)
+    const targetPage = pageFile
+      ? manifest.pages.find((p) => p.file === pageFile) || manifest.pages[0]
+      : manifest.pages[0];
+    const pagePath = join(baseDir, targetPage.file);
+    if (!existsSync(pagePath)) return c.text(`Missing: ${targetPage.file}`, 404);
+
+    // Return the original HTML with assets inlined
+    const html = inlineWebcraftAssets(readFileSync(pagePath, "utf-8"), baseDir);
+    const title = targetPage.title || manifest.title || targetPage.file.replace(/\.html$/i, "");
+    const safeFilename = title.replace(/[^\w\s.-]/g, "_") + ".html";
+    const utf8Filename = encodeURIComponent(title + ".html");
+    return new Response(html, {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
         "Content-Disposition": `attachment; filename="${safeFilename}"; filename*=UTF-8''${utf8Filename}`,

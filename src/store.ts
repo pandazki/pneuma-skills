@@ -546,6 +546,33 @@ export const useStore = create<AppState>((set) => ({
     }),
 }));
 
+// ── Viewer state persistence (debounced) ──────────────────────────────────
+let _viewerStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
+function getApiBase() {
+  return import.meta.env.DEV
+    ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`
+    : "";
+}
+function saveViewerState() {
+  if (_viewerStateSaveTimer) clearTimeout(_viewerStateSaveTimer);
+  _viewerStateSaveTimer = setTimeout(() => {
+    const { activeContentSet, activeFile } = useStore.getState();
+    fetch(`${getApiBase()}/api/viewer-state`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contentSet: activeContentSet, file: activeFile }),
+    }).catch(() => { /* ignore */ });
+  }, 500);
+}
+
+useStore.subscribe(
+  (state, prevState) => {
+    if (state.activeContentSet !== prevState.activeContentSet || state.activeFile !== prevState.activeFile) {
+      saveViewerState();
+    }
+  },
+);
+
 /** Filter files by content set prefix and strip the prefix from paths. */
 function filterAndRemapFiles(
   files: { path: string; content: string }[],

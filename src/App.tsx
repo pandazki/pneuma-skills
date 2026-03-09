@@ -211,11 +211,26 @@ export default function App() {
         .catch(() => connect("default"));
     }
 
-    // Fetch initial file contents for the preview
+    // Fetch initial file contents, then restore last viewer state
     fetch(`${getApiBase()}/api/files`)
       .then((r) => r.json())
-      .then((d) => {
+      .then(async (d) => {
         if (d.files?.length) useStore.getState().setFiles(d.files);
+        // Restore persisted viewer position (content set + active file)
+        try {
+          const vs = await fetch(`${getApiBase()}/api/viewer-state`).then((r) => r.json());
+          const store = useStore.getState();
+          if (vs.contentSet && store.contentSets.some((cs: { prefix: string }) => cs.prefix === vs.contentSet)) {
+            store.setActiveContentSet(vs.contentSet);
+          }
+          if (vs.file) {
+            // For content-set modes, the file path is relative within the set
+            const items = useStore.getState().workspaceItems;
+            if (items.some((item: { path: string }) => item.path === vs.file)) {
+              useStore.getState().setActiveFile(vs.file);
+            }
+          }
+        } catch { /* no saved state — auto-selection will handle it */ }
       })
       .catch(() => { });
 
