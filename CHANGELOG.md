@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.4] - 2026-03-10
+
+### Fixed
+- **Desktop CI** — added missing `tsup` build step to compile Electron main/preload TypeScript before packaging
+
 ## [2.3.3] - 2026-03-10
 
 ### Fixed
