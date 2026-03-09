@@ -58,6 +58,8 @@ export interface ChatMessage {
   debugPayload?: { enrichedContent: string; images?: { media_type: string; data: string }[]; files?: { name: string; media_type: string; size: number }[] };
   /** Viewer-initiated notification sent to agent (shown as context card in user bubble) */
   viewerNotification?: { type: string; summary: string; files?: string[] };
+  /** If set, this message belongs to a turn triggered by a cron/scheduled job. Value is the inferred prompt. */
+  cronTriggered?: string;
 }
 
 export interface FileContent {

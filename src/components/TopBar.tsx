@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useStore } from "../store.js";
 import ContentSetSelector from "./ContentSetSelector.js";
 
-type Tab = "chat" | "editor" | "diff" | "terminal" | "processes" | "context";
+type Tab = "chat" | "editor" | "diff" | "terminal" | "processes" | "context" | "schedules";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "chat", label: "Chat" },
@@ -11,6 +11,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "terminal", label: "Terminal" },
   { id: "processes", label: "Processes" },
   { id: "context", label: "Context" },
+  { id: "schedules", label: "Schedules" },
 ];
 
 function getApiBase(): string {
@@ -24,6 +25,7 @@ export default function TopBar() {
   const activeTab = useStore((s) => s.activeTab);
   const setActiveTab = useStore((s) => s.setActiveTab);
   const gitAvailable = useStore((s) => s.gitAvailable);
+  const cronJobCount = useStore((s) => s.cronJobs.length);
   const contentSets = useStore((s) => s.contentSets);
   const activeContentSet = useStore((s) => s.activeContentSet);
   const workspaceItems = useStore((s) => s.workspaceItems);
@@ -116,12 +118,13 @@ export default function TopBar() {
       <div className="flex items-center gap-1 mx-auto bg-cc-bg/80 border border-cc-border/50 rounded-full p-1 shadow-inner">
         {TABS.map((tab) => {
           const disabled = tab.id === "diff" && gitAvailable === false;
+          const badge = tab.id === "schedules" && cronJobCount > 0 ? cronJobCount : 0;
           return (
             <button
               key={tab.id}
               onClick={() => !disabled && setActiveTab(tab.id)}
               title={disabled ? "Diffs require a git repository. Run `git init` in the workspace." : undefined}
-              className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${disabled
+              className={`relative px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${disabled
                 ? "text-cc-muted/30 cursor-not-allowed"
                 : activeTab === tab.id
                   ? "bg-cc-primary text-cc-bg shadow-[0_0_12px_rgba(249,115,22,0.4)]"
@@ -129,6 +132,11 @@ export default function TopBar() {
                 }`}
             >
               {tab.label}
+              {badge > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-cc-primary text-cc-bg text-[10px] font-bold leading-none">
+                  {badge}
+                </span>
+              )}
             </button>
           );
         })}

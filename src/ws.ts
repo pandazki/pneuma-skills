@@ -12,6 +12,8 @@ let socket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let lastSeq = 0;
 let streamingPhase: "thinking" | "text" | null = null;
+/** Tracks whether the current turn was initiated by a user message (false = cron-triggered) */
+let currentTurnUserInitiated = true;
 
 const WS_RECONNECT_DELAY_MS = 2000;
 
@@ -202,6 +204,82 @@ function extractTasksFromBlocks(blocks: ContentBlock[]) {
   }
 }
 
+// Cron job extraction from CronCreate / CronDelete tool_use blocks
+//
+// KEY FINDING: In the SDK WebSocket stream (`--sdk-url`), tool_result blocks
+// are NOT forwarded to the browser. The CLI handles them internally and the
+// agent produces a natural-language text response. Therefore we extract cron
+// job info directly from tool_use inputs (which DO appear in the stream).
+//
+// Strategy:
+//   - CronCreate tool_use → optimistically add job from input fields.
+//     Use a truncated tool_use_id as display ID (the real 8-char CLI ID
+//     is not available in the stream).
+//   - CronDelete tool_use → remove job by ID from input.
+
+const seenCronToolUseIds = new Set<string>();
+
+/** Derive a short display ID from a tool_use_id */
+function cronIdFromToolUseId(toolUseId: string): string {
+  return toolUseId.replace(/^toolu_/, "").slice(0, 8);
+}
+
+/** Convert a cron expression to a human-readable schedule */
+function cronToHuman(cron: string): string {
+  const parts = cron.split(/\s+/);
+  if (parts.length !== 5) return cron;
+  const [min, hour, dom, mon, dow] = parts;
+  if (min.startsWith("*/") && hour === "*" && dom === "*" && mon === "*" && dow === "*") {
+    const n = parseInt(min.slice(2), 10);
+    return n === 1 ? "every minute" : `every ${n} minutes`;
+  }
+  if (min === "0" && hour.startsWith("*/") && dom === "*" && mon === "*" && dow === "*") {
+    const n = parseInt(hour.slice(2), 10);
+    return n === 1 ? "every hour" : `every ${n} hours`;
+  }
+  if (min === "0" && hour === "0" && dom.startsWith("*/") && mon === "*" && dow === "*") {
+    const n = parseInt(dom.slice(2), 10);
+    return n === 1 ? "every day" : `every ${n} days`;
+  }
+  return cron;
+}
+
+function extractCronJobsFromBlocks(blocks: ContentBlock[]) {
+  const store = useStore.getState();
+  for (const block of blocks) {
+    if (block.type !== "tool_use") continue;
+    if (seenCronToolUseIds.has(block.id)) continue;
+    seenCronToolUseIds.add(block.id);
+
+    const input = block.input as Record<string, unknown>;
+
+    if (block.name === "CronCreate") {
+      const cron = (input.cron as string) || "";
+      store.addCronJob({
+        id: cronIdFromToolUseId(block.id),
+        cron,
+        humanSchedule: cronToHuman(cron),
+        prompt: (input.prompt as string) || "",
+        recurring: (input.recurring as boolean) ?? true,
+        durable: (input.durable as boolean) ?? false,
+        createdAt: Date.now(),
+      });
+    }
+
+    if (block.name === "CronDelete") {
+      const id = input.id as string;
+      if (id) store.removeCronJob(id);
+    }
+  }
+}
+
+/** Infer which cron job likely triggered a turn based on active jobs. */
+function inferCronPrompt(jobs: import("./store.js").CronJob[]): string {
+  if (jobs.length === 0) return "Scheduled task";
+  if (jobs.length === 1) return jobs[0].prompt;
+  return jobs.map((j) => j.prompt).join(" / ");
+}
+
 function detectFileChanges(blocks: ContentBlock[]): boolean {
   return blocks.some(
     (b) => b.type === "tool_use" && (b.name === "Edit" || b.name === "Write")
@@ -255,12 +333,14 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
         parentToolUseId: data.parent_tool_use_id,
         model: msg.model,
         stopReason: msg.stop_reason,
+        ...(currentTurnUserInitiated ? {} : { cronTriggered: inferCronPrompt(useStore.getState().cronJobs) }),
       };
       // Replace streaming draft or append
       store.appendMessage(chatMsg);
       if (detectFileChanges(msg.content)) store.bumpChangedFilesTick();
       extractProcessesFromBlocks(msg.content);
       extractTasksFromBlocks(msg.content);
+      extractCronJobsFromBlocks(msg.content);
       store.setStreaming(null);
       streamingPhase = null;
       store.setSessionStatus("running");
@@ -321,6 +401,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       streamingPhase = null;
       store.setSessionStatus("idle");
       store.setTurnInProgress(false);
+      currentTurnUserInitiated = false; // Reset for next turn — if no user message, it's cron
       seenTaskBlockIds.clear();
 
       if (r.is_error && r.errors?.length) {
@@ -489,8 +570,10 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
 
     case "message_history": {
       const chatMessages: ChatMessage[] = [];
+      let historyTurnUserInitiated = true;
       for (const histMsg of data.messages) {
         if (histMsg.type === "user_message") {
+          historyTurnUserInitiated = true;
           const parsed = parseSelectionFromContent(histMsg.content);
           chatMessages.push({
             id: histMsg.id || nextId(),
@@ -510,8 +593,10 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
             parentToolUseId: histMsg.parent_tool_use_id,
             model: msg.model,
             stopReason: msg.stop_reason,
+            ...(!historyTurnUserInitiated ? { cronTriggered: inferCronPrompt(useStore.getState().cronJobs) } : {}),
           });
           extractTasksFromBlocks(msg.content);
+          extractCronJobsFromBlocks(msg.content);
           // Mark AskUserQuestion blocks as answered for history replay
           for (const block of msg.content) {
             if (block.type === "tool_use" && block.name === "AskUserQuestion") {
@@ -523,6 +608,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
             }
           }
         } else if (histMsg.type === "result") {
+          historyTurnUserInitiated = false; // Reset — next assistant without user_message = cron
           const r = histMsg.data;
           if (r.is_error && r.errors?.length) {
             chatMessages.push({
@@ -639,6 +725,7 @@ export function sendSetModel(model: string) {
 }
 
 export async function sendUserMessage(content: string, selection?: ElementSelection | null, images?: { media_type: string; data: string }[], annotations?: Annotation[], files?: { name: string; media_type: string; data: string; size: number }[]) {
+  currentTurnUserInitiated = true;
   const store = useStore.getState();
   // Add user message to local store immediately (show original text)
   const msgId = nextId();
