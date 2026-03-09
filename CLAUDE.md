@@ -6,9 +6,9 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.2.1
+**Version:** 2.3.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
-**Builtin Modes:** `doc`, `slide`, `draw`, `mode-maker`, `evolve`
+**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `mode-maker`, `evolve`
 
 ## Tech Stack
 
@@ -20,6 +20,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 | Terminal | xterm.js 6 + Bun native PTY |
 | File Watching | chokidar 4 |
 | Drawing | @excalidraw/excalidraw 0.18 |
+| Desktop | Electron 35 + electron-builder + electron-updater |
 | Agent | Claude Code CLI via `--sdk-url` WebSocket protocol |
 
 ## CLI Commands
@@ -75,7 +76,7 @@ pneuma-skills/
 │   ├── mode-loader.ts         # Mode discovery & loading (builtin + external)
 │   ├── mode-resolver.ts       # Source resolution (builtin/local/github/url → disk path)
 │   └── utils/manifest-parser.ts  # Regex-based manifest.ts metadata extraction
-├── modes/{doc,slide,draw,mode-maker,evolve}/  # Builtin modes
+├── modes/{webcraft,doc,slide,draw,mode-maker,evolve}/  # Builtin modes
 ├── backends/claude-code/      # AgentBackend impl — Bun.spawn with --sdk-url
 ├── server/
 │   ├── index.ts               # Hono server + launcher endpoints + WS routing
@@ -100,6 +101,11 @@ pneuma-skills/
 │       ├── PermissionBanner.tsx  # Tool permissions + AskUserQuestion UI
 │       ├── ContextPanel.tsx   # Session stats, tasks, MCP, git
 │       └── ...                # TopBar, ToolBlock, Terminal, Diff, Editor panels
+├── desktop/                   # Electron desktop client
+│   ├── src/main/              # Main process (tray, windows, Bun spawner, Claude detector)
+│   ├── src/preload/           # contextBridge for renderer
+│   ├── scripts/               # Build scripts (download-bun.mjs)
+│   └── electron-builder.yml   # Packaging config (mac/win/linux)
 ├── snapshot/                  # R2 push/pull for workspace snapshots + mode publishing
 │   └── mode-publish.ts        # Mode package publishing to R2 registry
 └── docs/                      # Architecture docs + ADRs

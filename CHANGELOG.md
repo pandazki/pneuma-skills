@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.0] - 2026-03-09
+
+### Added
+- **Electron desktop client** — cross-platform native app wrapping the full Pneuma runtime
+  - Bundles Bun binary per platform — no runtime install required for end users
+  - Claude CLI detection with guided setup wizard
+  - System tray app: left-click opens launcher, right-click shows sessions/updates/quit menu
+  - Launcher window (80% screen) + maximized mode session windows
+  - Native OS folder picker for workspace selection (Electron), fallback to in-page browser (web)
+  - macOS app menu with About dialog and GitHub link
+  - Auto-updater via `electron-updater` + GitHub Releases (download progress bar, restart prompt)
+- **Desktop CI workflow** — `desktop.yml` builds on GitHub Release for macOS arm64/x64, Windows x64, Linux x64
+  - DMG + ZIP (macOS), NSIS installer (Windows), AppImage + deb (Linux)
+  - Artifacts uploaded to the same GitHub Release as the npm package
+
 ## [2.2.1] - 2026-03-09
 
 ### Fixed
