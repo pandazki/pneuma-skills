@@ -608,7 +608,9 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
             }
           }
         } else if (histMsg.type === "result") {
-          historyTurnUserInitiated = false; // Reset — next assistant without user_message = cron
+          // Only mark as cron-eligible if no user interaction follows.
+          // Permission responses, viewer actions etc. also trigger turns.
+          historyTurnUserInitiated = false;
           const r = histMsg.data;
           if (r.is_error && r.errors?.length) {
             chatMessages.push({
@@ -618,15 +620,20 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
               timestamp: Date.now(),
             });
           }
-        } else if (histMsg.type === "command_output") {
-          chatMessages.push({
-            id: nextId(),
-            role: "system",
-            content: histMsg.content,
-            timestamp: Date.now(),
-            isCollapsible: true,
-            subtype: histMsg.subtype,
-          });
+        } else {
+          // Any other message type (command_output, system_event, etc.) indicates
+          // browser/user interaction — not a cron trigger.
+          historyTurnUserInitiated = true;
+          if (histMsg.type === "command_output") {
+            chatMessages.push({
+              id: nextId(),
+              role: "system",
+              content: histMsg.content,
+              timestamp: Date.now(),
+              isCollapsible: true,
+              subtype: histMsg.subtype,
+            });
+          }
         }
       }
       if (chatMessages.length > 0) {
@@ -713,6 +720,11 @@ export function disconnect() {
 
 export function send(msg: BrowserOutgoingMessage) {
   if (socket?.readyState === WebSocket.OPEN) {
+    // Any outgoing message that could trigger an agent turn counts as user-initiated
+    const turnTriggers = ["user_message", "permission_response", "viewer_notification", "viewer_action_response"];
+    if (turnTriggers.includes(msg.type)) {
+      currentTurnUserInitiated = true;
+    }
     socket.send(JSON.stringify(msg));
   }
 }
