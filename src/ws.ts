@@ -12,6 +12,8 @@ let socket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let lastSeq = 0;
 let streamingPhase: "thinking" | "text" | null = null;
+/** Tracks whether the current turn was initiated by a user message (false = cron-triggered) */
+let currentTurnUserInitiated = true;
 
 const WS_RECONNECT_DELAY_MS = 2000;
 
@@ -271,6 +273,13 @@ function extractCronJobsFromBlocks(blocks: ContentBlock[]) {
   }
 }
 
+/** Infer which cron job likely triggered a turn based on active jobs. */
+function inferCronPrompt(jobs: import("./store.js").CronJob[]): string {
+  if (jobs.length === 0) return "Scheduled task";
+  if (jobs.length === 1) return jobs[0].prompt;
+  return jobs.map((j) => j.prompt).join(" / ");
+}
+
 function detectFileChanges(blocks: ContentBlock[]): boolean {
   return blocks.some(
     (b) => b.type === "tool_use" && (b.name === "Edit" || b.name === "Write")
@@ -324,6 +333,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
         parentToolUseId: data.parent_tool_use_id,
         model: msg.model,
         stopReason: msg.stop_reason,
+        ...(currentTurnUserInitiated ? {} : { cronTriggered: inferCronPrompt(useStore.getState().cronJobs) }),
       };
       // Replace streaming draft or append
       store.appendMessage(chatMsg);
@@ -391,6 +401,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       streamingPhase = null;
       store.setSessionStatus("idle");
       store.setTurnInProgress(false);
+      currentTurnUserInitiated = false; // Reset for next turn — if no user message, it's cron
       seenTaskBlockIds.clear();
 
       if (r.is_error && r.errors?.length) {
@@ -559,8 +570,10 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
 
     case "message_history": {
       const chatMessages: ChatMessage[] = [];
+      let historyTurnUserInitiated = true;
       for (const histMsg of data.messages) {
         if (histMsg.type === "user_message") {
+          historyTurnUserInitiated = true;
           const parsed = parseSelectionFromContent(histMsg.content);
           chatMessages.push({
             id: histMsg.id || nextId(),
@@ -580,6 +593,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
             parentToolUseId: histMsg.parent_tool_use_id,
             model: msg.model,
             stopReason: msg.stop_reason,
+            ...(!historyTurnUserInitiated ? { cronTriggered: inferCronPrompt(useStore.getState().cronJobs) } : {}),
           });
           extractTasksFromBlocks(msg.content);
           extractCronJobsFromBlocks(msg.content);
@@ -594,6 +608,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
             }
           }
         } else if (histMsg.type === "result") {
+          historyTurnUserInitiated = false; // Reset — next assistant without user_message = cron
           const r = histMsg.data;
           if (r.is_error && r.errors?.length) {
             chatMessages.push({
@@ -710,6 +725,7 @@ export function sendSetModel(model: string) {
 }
 
 export async function sendUserMessage(content: string, selection?: ElementSelection | null, images?: { media_type: string; data: string }[], annotations?: Annotation[], files?: { name: string; media_type: string; data: string; size: number }[]) {
+  currentTurnUserInitiated = true;
   const store = useStore.getState();
   // Add user message to local store immediately (show original text)
   const msgId = nextId();

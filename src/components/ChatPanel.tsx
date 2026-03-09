@@ -1,10 +1,33 @@
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { useStore } from "../store.js";
 import MessageBubble from "./MessageBubble.js";
 import StreamingText from "./StreamingText.js";
 import ActivityIndicator from "./ActivityIndicator.js";
 import PermissionBanner from "./PermissionBanner.js";
 import ChatInput from "./ChatInput.js";
+
+function CronTriggerBubble({ prompt }: { prompt: string }) {
+  return (
+    <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
+      <div className="max-w-[85%] rounded-[20px] rounded-br-[6px] bg-amber-400/5 border border-amber-400/20 overflow-hidden shadow-sm">
+        <div className="flex items-center gap-1.5 px-3 pt-2 pb-0.5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3 text-amber-400/70 shrink-0">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 6v6l4 2" />
+          </svg>
+          <span className="text-[10px] font-medium text-amber-400/70 tracking-wide uppercase">
+            Scheduled Task
+          </span>
+        </div>
+        <div className="px-3 pb-2.5 pt-0.5">
+          <div className="text-[13px] leading-relaxed break-words font-chat text-cc-fg/80">
+            {prompt}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function StatusDot() {
   const connectionStatus = useStore((s) => s.connectionStatus);
@@ -86,8 +109,13 @@ export default function ChatPanel() {
             {cliConnected ? "Send a message to start editing" : "Connecting to Claude..."}
           </div>
         )}
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
+        {messages.map((msg, i) => (
+          <React.Fragment key={msg.id}>
+            {msg.cronTriggered && (i === 0 || !messages[i - 1].cronTriggered || messages[i - 1].content?.trim()) && (
+              <CronTriggerBubble prompt={msg.cronTriggered} />
+            )}
+            <MessageBubble message={msg} />
+          </React.Fragment>
         ))}
         {streaming ? <StreamingText /> : activity ? <ActivityIndicator /> : null}
         <div ref={bottomRef} className="h-4" />
