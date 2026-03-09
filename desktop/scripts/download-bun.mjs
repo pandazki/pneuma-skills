@@ -13,7 +13,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, chmodSync, renameSync } from "node:fs";
+import { existsSync, mkdirSync, chmodSync, copyFileSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -115,8 +115,9 @@ try {
     throw new Error(`Binary not found at ${extractedBinary}`);
   }
 
-  // Move to target
-  renameSync(extractedBinary, targetBinary);
+  // Copy to target (copyFile instead of rename to avoid EXDEV across drives)
+  copyFileSync(extractedBinary, targetBinary);
+  unlinkSync(extractedBinary);
 
   // Make executable (Unix)
   if (bunPlatform !== "windows") {
@@ -130,6 +131,7 @@ try {
 } finally {
   // Cleanup
   try {
-    execSync(`rm -rf "${tmpDir}"`);
+    const { rmSync } = await import("node:fs");
+    rmSync(tmpDir, { recursive: true, force: true });
   } catch {}
 }

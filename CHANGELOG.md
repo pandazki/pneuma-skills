@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.5] - 2026-03-10
+
+### Fixed
+- **Windows desktop build** — replaced `renameSync` with `copyFileSync` in Bun download script to avoid `EXDEV` cross-device error on CI
+- **Linux deb package** — added required `author` and `homepage` fields to desktop `package.json`
+
 ## [2.3.4] - 2026-03-10
 
 ### Fixed

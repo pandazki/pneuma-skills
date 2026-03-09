@@ -3,6 +3,11 @@
   "productName": "Pneuma Skills",
   "version": "2.2.1",
   "description": "Pneuma Skills — Desktop Client",
+  "author": {
+    "name": "pandazki",
+    "email": "onlrrr@gmail.com"
+  },
+  "homepage": "https://github.com/pandazki/pneuma-skills",
   "main": "dist-electron/main/index.js",
   "private": true,
   "scripts": {
