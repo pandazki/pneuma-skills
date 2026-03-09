@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.1] - 2026-03-09
+
+### Fixed
+- **Export white screen** — `</script>` in page HTML no longer breaks the export preview's JSON script block
+- **Download HTML** — returns the original page with inlined assets instead of the export wrapper
+- **Vite proxy for `/export`** — export routes now correctly proxied in dev mode
+
+### Added
+- **Viewer position persistence** — `activeContentSet` + `activeFile` saved to `.pneuma/viewer-state.json` and restored on session resume
+
 ## [2.2.0] - 2026-03-09
 
 ### Added
