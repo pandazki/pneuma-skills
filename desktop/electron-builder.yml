@@ -1,0 +1,97 @@
+appId: com.pneuma.skills
+productName: Pneuma Skills
+copyright: Copyright © 2024-2026 Pneuma Skills
+
+directories:
+  output: release
+
+files:
+  - "dist-electron/**/*"
+  - "package.json"
+
+extraResources:
+  # Bundled Bun binary (downloaded at build time)
+  - from: "resources/bun-${platform}-${arch}"
+    to: "bun"
+    filter:
+      - "**/*"
+  # Pneuma project files (server, modes, frontend build)
+  - from: "../bin"
+    to: "pneuma/bin"
+  - from: "../server"
+    to: "pneuma/server"
+  - from: "../backends"
+    to: "pneuma/backends"
+  - from: "../core"
+    to: "pneuma/core"
+  - from: "../modes"
+    to: "pneuma/modes"
+  - from: "../snapshot"
+    to: "pneuma/snapshot"
+  - from: "../dist"
+    to: "pneuma/dist"
+  - from: "../index.html"
+    to: "pneuma/index.html"
+  - from: "../package.json"
+    to: "pneuma/package.json"
+  # Runtime node_modules for the Bun server
+  - from: "../node_modules"
+    to: "pneuma/node_modules"
+    filter:
+      - "hono/**/*"
+      - "chokidar/**/*"
+      - "diff/**/*"
+      - "@clack/**/*"
+      - "@zumer/**/*"
+      - "readdirp/**/*"
+
+asar: true
+
+mac:
+  icon: resources/icon.icns
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+    - target: zip
+      arch:
+        - arm64
+        - x64
+  darkModeSupport: true
+  hardenedRuntime: true
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
+
+dmg:
+  artifactName: "${productName}-${version}-${arch}.dmg"
+
+win:
+  icon: resources/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: "${productName}-${version}-Setup.exe"
+
+linux:
+  icon: resources/icon.png
+  category: Development
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+
+publish:
+  - provider: github
+    owner: pandazki
+    repo: pneuma-skills

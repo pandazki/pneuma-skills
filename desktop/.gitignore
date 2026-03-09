@@ -1,0 +1,5 @@
+node_modules/
+dist-electron/
+release/
+resources/bun-*/
+*.tsbuildinfo

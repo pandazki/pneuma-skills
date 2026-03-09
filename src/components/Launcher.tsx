@@ -814,7 +814,22 @@ function LaunchDialog({
             />
             <button
               type="button"
-              onClick={() => setBrowsing(!browsing)}
+              onClick={async () => {
+                // Electron: use native system folder picker
+                const desktop = (window as any).pneumaDesktop;
+                if (desktop?.showOpenDialog) {
+                  const selected = await desktop.showOpenDialog({
+                    title: "Select Workspace",
+                    defaultPath: workspace || undefined,
+                  });
+                  if (selected) {
+                    checkWorkspace(selected);
+                  }
+                } else {
+                  // Browser fallback: in-page directory browser
+                  setBrowsing(!browsing);
+                }
+              }}
               className={`shrink-0 px-2.5 py-2 rounded-lg border transition-colors cursor-pointer ${browsing ? "bg-cc-primary/20 border-cc-primary/50 text-cc-primary" : "bg-cc-input-bg border-cc-border text-cc-muted hover:text-cc-fg hover:border-cc-border"}`}
               title="Browse directories"
             >
