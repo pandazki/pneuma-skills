@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.2] - 2026-03-09
+
+### Fixed
+- **macOS desktop build** — replaced deprecated `macos-13` runner with universal build on `macos-latest` (single DMG for both ARM64 and Intel)
+
 ## [2.3.1] - 2026-03-09
 
 ### Fixed
