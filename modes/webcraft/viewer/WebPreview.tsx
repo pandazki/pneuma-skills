@@ -708,6 +708,79 @@ function ViewportToolbar({
   );
 }
 
+// ── Annotation Popover ──────────────────────────────────────────────────────
+
+function AnnotationPopover({
+  style,
+  label,
+  thumbnail,
+  onConfirm,
+  onCancel,
+}: {
+  style: React.CSSProperties;
+  label?: string;
+  thumbnail?: string;
+  onConfirm: (comment: string) => void;
+  onCancel: () => void;
+}) {
+  const [comment, setComment] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      onConfirm(comment);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      onCancel();
+    }
+  };
+
+  return (
+    <div
+      style={style}
+      className="bg-neutral-800 border border-neutral-600 rounded-lg shadow-xl p-3 text-sm"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center gap-2 mb-2 min-w-0">
+        {thumbnail && (
+          <img src={thumbnail} alt="" className="w-8 h-8 rounded border border-neutral-600 shrink-0 object-contain bg-white" />
+        )}
+        <span className="text-neutral-300 truncate text-xs">{label || "Element"}</span>
+      </div>
+      <input
+        ref={inputRef}
+        type="text"
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Add comment (optional)..."
+        className="w-full bg-neutral-900 border border-neutral-600 rounded px-2 py-1.5 text-sm text-white placeholder-neutral-500 outline-none focus:border-blue-500"
+      />
+      <div className="flex justify-end gap-2 mt-2">
+        <button
+          onClick={onCancel}
+          className="px-2.5 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => onConfirm(comment)}
+          className="px-2.5 py-1 text-xs text-white bg-blue-600 hover:bg-blue-500 rounded transition-colors"
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function WebPreview({
@@ -728,9 +801,18 @@ export default function WebPreview({
   const [commandBarCollapsed, setCommandBarCollapsed] = useState(false);
   const [viewport, setViewport] = useState<string>("full");
 
-  // Access store for activeContentSet and preview mode
+  // Access store for activeContentSet, preview mode, and annotations
   const activeContentSet = useStore((s) => s.activeContentSet);
   const setPreviewMode = useStore((s) => s.setPreviewMode);
+  const addAnnotation = useStore((s) => s.addAnnotation);
+  const annotations = useStore((s) => s.annotations);
+
+  // Pending annotation popover state (annotate mode: click → popover → confirm → add)
+  const [pendingAnnotation, setPendingAnnotation] = useState<{
+    selection: ViewerSelectionContext;
+    pageFile: string;
+    rect: { left: number; top: number; right: number; bottom: number; width: number; height: number };
+  } | null>(null);
 
   // Parse manifest.json for page list, fallback to raw HTML files
   const pageEntries = useMemo<PageEntry[]>(() => {
@@ -904,14 +986,55 @@ export default function WebPreview({
       if (e.data?.type === "pneuma:select") {
         const sel = e.data.selection;
         if (!sel) {
-          onSelect(null);
+          if (previewMode === "annotate") {
+            setPendingAnnotation(null);
+          } else {
+            onSelect(null);
+          }
           return;
         }
-        onSelect({
-          type: sel.type,
+        if (previewMode === "annotate") {
+          // In annotate mode: show popover instead of selecting
+          if (!sel.rect) return;
+          setPendingAnnotation({
+            selection: sel,
+            pageFile: currentFile,
+            rect: sel.rect,
+          });
+        } else {
+          onSelect({
+            type: sel.type,
+            content: sel.content,
+            level: sel.level,
+            file: currentFile,
+            tag: sel.tag,
+            classes: sel.classes,
+            selector: sel.selector,
+            thumbnail: sel.thumbnail,
+            label: sel.label,
+            nearbyText: sel.nearbyText,
+            accessibility: sel.accessibility,
+          });
+        }
+      }
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [currentFile, onSelect, handleTextEdit, previewMode]);
+
+  // Confirm pending annotation with comment
+  const confirmAnnotation = useCallback(
+    (comment: string) => {
+      if (!pendingAnnotation) return;
+      const { selection: sel, pageFile } = pendingAnnotation;
+      addAnnotation({
+        id: `ann-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        slideFile: pageFile,
+        element: {
+          file: pageFile,
+          type: sel.type as import("../../../src/types.js").SelectionType,
           content: sel.content,
           level: sel.level,
-          file: currentFile,
           tag: sel.tag,
           classes: sel.classes,
           selector: sel.selector,
@@ -919,23 +1042,34 @@ export default function WebPreview({
           label: sel.label,
           nearbyText: sel.nearbyText,
           accessibility: sel.accessibility,
-        });
-      }
-    }
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [currentFile, onSelect, handleTextEdit]);
+        },
+        comment,
+      });
+      setPendingAnnotation(null);
+    },
+    [pendingAnnotation, addAnnotation],
+  );
 
-  // Escape key exits select/annotate mode
+  // Dismiss pending annotation on page navigation
+  useEffect(() => { setPendingAnnotation(null); }, [currentFile]);
+
+  // Escape key: dismiss popover first, then exit mode
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && (previewMode === "select" || previewMode === "annotate" || previewMode === "edit")) {
-        setPreviewMode("view");
+      if (e.key === "Escape") {
+        // If annotation popover is open, dismiss it first (don't exit mode)
+        if (pendingAnnotation) {
+          setPendingAnnotation(null);
+          return;
+        }
+        if (previewMode === "select" || previewMode === "annotate" || previewMode === "edit") {
+          setPreviewMode("view");
+        }
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [previewMode, setPreviewMode]);
+  }, [previewMode, setPreviewMode, pendingAnnotation]);
 
   // ── Page navigation ─────────────────────────────────────────────────────────
 
@@ -1275,6 +1409,43 @@ export default function WebPreview({
                 </div>
               </div>
             </div>
+          )}
+          {/* Annotation Popover */}
+          {pendingAnnotation && (
+            <AnnotationPopover
+              style={(() => {
+                const { rect } = pendingAnnotation;
+                const POPOVER_W = 280;
+                const POPOVER_H = 130;
+                const container = containerRef.current;
+                const iframe = iframeRef.current;
+                if (!container || !iframe) return { position: "absolute" as const, top: 100, left: 100, width: POPOVER_W, zIndex: 50 };
+
+                const containerRect = container.getBoundingClientRect();
+                const iframeRect = iframe.getBoundingClientRect();
+
+                // Translate iframe-relative rect to container-relative coords
+                // For scaled viewports, account for the CSS transform scale
+                const scale = iframeLayout.useTransform ? iframeLayout.scale : 1;
+                const offsetX = iframeRect.left - containerRect.left;
+                const offsetY = iframeRect.top - containerRect.top;
+
+                let top = offsetY + rect.bottom * scale + 8;
+                if (top + POPOVER_H > containerRect.height) {
+                  top = offsetY + rect.top * scale - POPOVER_H - 8;
+                }
+                top = Math.max(8, top);
+
+                let left = offsetX + rect.left * scale;
+                left = Math.max(8, Math.min(left, containerRect.width - POPOVER_W - 8));
+
+                return { position: "absolute" as const, top, left, width: POPOVER_W, zIndex: 50 };
+              })()}
+              label={pendingAnnotation.selection.label}
+              thumbnail={pendingAnnotation.selection.thumbnail}
+              onConfirm={confirmAnnotation}
+              onCancel={() => setPendingAnnotation(null)}
+            />
           )}
         </div>
 
