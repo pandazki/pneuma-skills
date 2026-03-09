@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.0] - 2026-03-09
+
+### Added
+- **WebCraft Mode** — new builtin mode for live web development with [Impeccable.style](https://impeccable.style) AI design intelligence
+  - 17 AI design commands: Audit, Critique, Polish, Bolder, Colorize, Animate, Distill, Clarify, Optimize, Harden, Delight, Extract, Adapt, Onboard, Normalize, Quieter, Teach Impeccable
+  - Responsive viewport presets (Mobile/Tablet/Desktop/Full), element selection, annotation mode
+  - Export: Download HTML (self-contained with inlined assets), Download ZIP, Print/PDF
+  - Two seed sites: Pneuma project showcase (dark/light toggle, parallax, scroll-reveal) and The Gazette (newspaper editorial with AI-generated illustrations)
+- **Centralized viewer context enrichment** — all message paths to CLI agent auto-prepend `<viewer-context>` with active content set, file, and viewport info
+- **Content set import guidance** — agent instructions for webcraft & slide: imported content always goes into a new content set to preserve seeds and enable switching/comparison
+
+### Fixed
+- False "Scheduled task" labels on history page reload
+- Content set ordering now preserves filesystem discovery order (not alphabetical)
+- Impeccable commands now include viewer context (content set + active file)
+- Annotate mode in WebCraft works correctly (popover UI for contextual comments)
+
+### Improved
+- Launcher widened to 4 cards per row, builtins reordered: webcraft > slide > doc > draw
+- Updated all mode descriptions to highlight key features and positioning
+- Unread indicator on content set selector when files change in inactive sets
+
 ## [2.1.1] - 2026-03-09
 
 ### Added
