@@ -32,10 +32,10 @@ When humans and code agents co-create content, they need more than a chat window
 
 | Mode | What it does |
 |------|-------------|
-| **doc** | Markdown editing with live rendered preview |
-| **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export |
-| **draw** | Excalidraw whiteboard with `.excalidraw` file editing |
 | **webcraft** | Live web development with [Impeccable](https://impeccable.style) AI design intelligence — 17 design commands, responsive preview, element selection, export |
+| **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export |
+| **doc** | Markdown documents with live preview — the simplest mode, a minimal example of the mode system |
+| **draw** | Diagrams and visual thinking on an [Excalidraw](https://excalidraw.com) canvas — showcasing viewer extensibility with a rich third-party component |
 | **mode-maker** | Create custom modes with AI — fork, play-test, publish |
 | **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback |
 
@@ -82,10 +82,10 @@ pneuma-skills [mode] [options]
 
 Modes:
   (no argument)                Open the Launcher (marketplace UI)
-  doc                          Markdown document editing mode
-  slide                        Presentation editing mode (HTML slides with iframe preview)
-  draw                         Excalidraw whiteboard drawing mode
-  webcraft                     Live web development with Impeccable AI design intelligence
+  webcraft                     Web design with Impeccable.style — 17 AI design commands, responsive preview, export
+  slide                        HTML presentations — content sets, drag-reorder, presenter mode, export
+  doc                          Markdown with live preview — simplest mode, minimal example of the mode system
+  draw                         Excalidraw canvas — viewer extensibility showcase with third-party component
   mode-maker                   Create and develop custom modes with AI
   evolve                       Launch the Evolution Agent for skill learning
   /path/to/mode                Load mode from a local directory
