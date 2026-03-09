@@ -9,7 +9,7 @@ const webcraftManifest: ModeManifest = {
   name: "webcraft",
   version: "1.0.0",
   displayName: "WebCraft",
-  description: "Web design with Impeccable.style AI design intelligence",
+  description: "Web design powered by Impeccable.style — 17 AI design commands, responsive preview, and export",
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>`,
 
   skill: {
@@ -29,7 +29,15 @@ For design principles, anti-patterns, editing conventions, and workspace constra
 - Make focused, incremental edits; preserve existing structure unless asked to reorganize
 - Do not modify \`.claude/\` directory — managed by runtime, edits get overwritten
 - Do not ask for confirmation on simple edits — just do them
-- When the user invokes an Impeccable command (audit, critique, polish, etc.), follow the corresponding command reference`,
+- When the user invokes an Impeccable command (audit, critique, polish, etc.), follow the corresponding command reference
+
+### Importing External Content
+When the user provides original content (uploaded files, pasted HTML, or a URL to convert), **always create a new content set** for it before making any edits:
+1. Choose a short descriptive name for the content set (e.g. \`portfolio/\`, \`landing-page/\`)
+2. Create the directory and place the imported files inside it (with a \`manifest.json\`)
+3. Then begin editing within that content set
+
+**Why**: Pneuma's workspace is organized around content sets — each is a self-contained, switchable project. Importing into a content set (rather than dumping files at the root) preserves the seed templates, enables side-by-side comparison between sets, and ensures all built-in features (set switching, per-set theming, export) work correctly.`,
   },
 
   viewer: {

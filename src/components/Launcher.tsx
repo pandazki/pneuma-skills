@@ -1068,7 +1068,7 @@ export default function Launcher() {
       <div className="absolute top-[-10%] left-[20%] w-[60%] h-[40%] bg-cc-primary/15 blur-[120px] rounded-full pointer-events-none animate-[pulse-dot_8s_ease-in-out_infinite]" />
       <div className="absolute top-[20%] right-[-10%] w-[40%] h-[50%] bg-violet-500/15 blur-[100px] rounded-full pointer-events-none animate-[pulse-dot_10s_ease-in-out_infinite_reverse]" />
 
-      <div className="max-w-5xl mx-auto px-6 py-20 relative z-10">
+      <div className="max-w-7xl mx-auto px-6 py-20 relative z-10">
         {/* Header */}
         <div className="text-center mb-16" style={{ animation: "warmFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1)" }}>
           <h1 className="text-6xl font-extrabold mb-4 tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-cc-fg via-cc-primary to-indigo-400 animate-text-gradient-flow">
@@ -1164,7 +1164,7 @@ export default function Launcher() {
                 <h2 className="text-sm font-medium text-cc-muted uppercase tracking-wide mb-4">
                   Built-in Modes
                 </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {filteredBuiltins.map((mode, i) => (
                     <ModeCard
                       key={mode.name}
@@ -1213,7 +1213,7 @@ export default function Launcher() {
                 <h2 className="text-sm font-medium text-cc-muted uppercase tracking-wide mb-4">
                   Local Modes
                 </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {filteredLocal.map((mode, i) => (
                     <ModeCard
                       key={mode.name}
@@ -1256,7 +1256,7 @@ export default function Launcher() {
                 <h2 className="text-sm font-medium text-cc-muted uppercase tracking-wide mb-4">
                   Published Modes
                 </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {filteredPublished.map((mode, i) => (
                     <ModeCard
                       key={mode.name}
