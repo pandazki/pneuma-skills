@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.3] - 2026-03-10
+
+### Fixed
+- **Desktop production build** — pruned node_modules to production-only dependencies (8 packages / 5MB instead of 551 / 230MB), fixing missing transitive deps and bloated DMG size
+- **App icons** — added proper icon set (icns/ico/png) and tray icons generated from helix logo
+
 ## [2.3.2] - 2026-03-09
 
 ### Fixed
