@@ -1149,23 +1149,15 @@ export default function WebPreview({
       const allCommands = COMMAND_CATEGORIES.flatMap((c) => c.commands);
       const cmd = allCommands.find((c) => c.id === commandId);
       if (!cmd) return;
-
-      // Build viewer context so the agent knows which content set and page to operate on
-      const store = useStore.getState();
-      const cs = store.activeContentSet;
-      const filePath = cs ? `${cs}/${currentFile}` : currentFile;
-      const contextLine = cs
-        ? `<viewer-context mode="webcraft" content-set="${cs}" file="${filePath}">\nViewing: ${filePath}\n</viewer-context>\n\n`
-        : `<viewer-context mode="webcraft" file="${filePath}">\nViewing: ${filePath}\n</viewer-context>\n\n`;
-
+      // Viewer context is automatically prepended by sendViewerNotification
       onNotifyAgent({
         type: "impeccable-command",
-        message: `${contextLine}Please run the Impeccable "${cmd.id}" command on the current workspace. Follow the instructions in the cmd-${cmd.id} reference document.`,
+        message: `Please run the Impeccable "${cmd.id}" command on the current workspace. Follow the instructions in the cmd-${cmd.id} reference document.`,
         severity: "warning",
         summary: `/${cmd.id}`,
       });
     },
-    [onNotifyAgent, currentFile],
+    [onNotifyAgent],
   );
 
   const toggleCategory = useCallback((name: string) => {
