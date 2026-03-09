@@ -26,6 +26,19 @@ const rootPkg = JSON.parse(
 
 const outputDir = resolve(desktopDir, "pneuma-node-modules");
 
+// Sync version from root package.json into desktop package.json
+const desktopPkgPath = resolve(desktopDir, "package.json");
+const desktopPkg = JSON.parse(
+  await import("node:fs").then((fs) =>
+    fs.readFileSync(desktopPkgPath, "utf-8")
+  )
+);
+if (desktopPkg.version !== rootPkg.version) {
+  desktopPkg.version = rootPkg.version;
+  writeFileSync(desktopPkgPath, JSON.stringify(desktopPkg, null, 2) + "\n");
+  console.log(`Synced desktop version to ${rootPkg.version}`);
+}
+
 console.log("Preparing production dependencies...");
 console.log("Production deps:", Object.keys(rootPkg.dependencies || {}).join(", "));
 

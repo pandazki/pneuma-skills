@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.6] - 2026-03-10
+
+### Fixed
+- **Desktop version sync** — `prepare-deps` script now auto-syncs root `package.json` version into desktop `package.json`, ensuring local and CI builds use the correct version
+
 ## [2.3.5] - 2026-03-10
 
 ### Fixed
