@@ -28,6 +28,7 @@ export default function TopBar() {
   const cronJobCount = useStore((s) => s.cronJobs.length);
   const contentSets = useStore((s) => s.contentSets);
   const activeContentSet = useStore((s) => s.activeContentSet);
+  const contentSetUnread = useStore((s) => s.contentSetUnread);
   const workspaceItems = useStore((s) => s.workspaceItems);
   const activeFile = useStore((s) => s.activeFile);
   const topBarNav = useStore((s) => s.modeViewer?.workspace?.topBarNavigation);
@@ -39,7 +40,7 @@ export default function TopBar() {
     if (!createEmpty) return;
     const store = useStore.getState();
     const rawFiles = store.files;
-    const hasContentSets = store.contentSets.length > 1;
+    const hasContentSets = store.contentSets.length >= 1;
 
     // When mode has content sets, createEmpty creates a new content set (pass all raw files).
     // Otherwise, it creates an item within the current workspace.
@@ -90,6 +91,7 @@ export default function TopBar() {
             items={contentSets.map((cs) => ({ id: cs.prefix, label: cs.label }))}
             activeId={activeContentSet}
             onSelect={(id) => useStore.getState().setActiveContentSet(id)}
+            unread={contentSetUnread}
           />
         )}
         {showItemSelector && (

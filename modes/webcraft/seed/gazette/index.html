@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Gazette — Front Page</title>
+  <style>
+    /* ── Design Tokens ─────────────────────────────────── */
+    :root {
+      --paper: oklch(96% 0.008 80);
+      --paper-aged: oklch(93% 0.012 78);
+      --ink: oklch(18% 0.01 260);
+      --ink-light: oklch(35% 0.008 260);
+      --ink-faded: oklch(52% 0.006 260);
+      --rule: oklch(72% 0.01 80);
+      --rule-heavy: oklch(30% 0.01 260);
+      --accent: oklch(42% 0.12 25);
+
+      --font-headline: "Playfair Display", "Georgia", serif;
+      --font-body: "Source Serif 4", "Georgia", serif;
+      --font-sans: "Inter", system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+      --measure: 65ch;
+      --col-gap: clamp(1.5rem, 3vw, 2.5rem);
+    }
+
+    /* ── Reset ──────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Base ───────────────────────────────────────────── */
+    html {
+      font-size: clamp(15px, 0.85vw + 13px, 18px);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--ink);
+      background: var(--paper);
+      line-height: 1.75;
+    }
+
+    /* ── Typography ─────────────────────────────────────── */
+    h1, h2, h3, h4 {
+      font-family: var(--font-headline);
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.015em;
+    }
+
+    h1 { font-size: clamp(2.8rem, 7vw, 5rem); line-height: 1.02; letter-spacing: -0.03em; }
+    h2 { font-size: clamp(1.5rem, 3vw, 2.2rem); }
+    h3 { font-size: clamp(1.15rem, 2vw, 1.5rem); }
+    h4 { font-size: 1rem; }
+
+    p { max-width: var(--measure); }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+      transition: color 200ms ease;
+    }
+    a:hover { color: var(--accent); }
+
+    /* ── Masthead ───────────────────────────────────────── */
+    .masthead {
+      text-align: center;
+      padding: clamp(1.5rem, 3vw, 2.5rem) clamp(1rem, 4vw, 2.5rem) 0;
+      border-bottom: 3px double var(--rule-heavy);
+    }
+
+    .masthead-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-family: var(--font-sans);
+      font-size: 0.7rem;
+      color: var(--ink-faded);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+    }
+
+    .masthead h1 {
+      font-size: clamp(3rem, 8vw, 5.5rem);
+      letter-spacing: -0.03em;
+      line-height: 1;
+      margin-bottom: 0.2em;
+    }
+
+    .masthead-motto {
+      font-family: var(--font-body);
+      font-style: italic;
+      font-size: 0.85rem;
+      color: var(--ink-light);
+      margin-bottom: 0.75rem;
+    }
+
+    .masthead-rule {
+      width: 100%;
+      height: 1px;
+      background: var(--rule);
+      border: none;
+    }
+
+    .masthead-nav {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      padding: 0.6rem 0;
+      list-style: none;
+      font-family: var(--font-sans);
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      border-top: 1px solid var(--rule);
+    }
+
+    .masthead-nav a { color: var(--ink-light); }
+    .masthead-nav a:hover { color: var(--ink); }
+
+    /* ── Wrap ───────────────────────────────────────────── */
+    .page-wrap {
+      max-width: 1100px;
+      margin-inline: auto;
+      padding-inline: clamp(1rem, 4vw, 2.5rem);
+    }
+
+    /* ── Lead Story ────────────────────────────────────── */
+    .lead {
+      padding-block: clamp(2rem, 4vw, 3.5rem);
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .lead h2 {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      letter-spacing: -0.025em;
+      line-height: 1.05;
+      margin-bottom: 0.75rem;
+    }
+
+    .lead-deck {
+      font-size: 1.15rem;
+      line-height: 1.65;
+      color: var(--ink-light);
+      margin-bottom: 1.25rem;
+      max-width: 55ch;
+    }
+
+    .lead-body {
+      column-count: 2;
+      column-gap: var(--col-gap);
+      column-rule: 1px solid var(--rule);
+    }
+
+    .lead-body p {
+      font-size: 0.95rem;
+      margin-bottom: 1em;
+      text-align: justify;
+      text-justify: inter-word;
+      hyphens: auto;
+    }
+
+    .lead-body p:first-of-type::first-letter {
+      font-family: var(--font-headline);
+      font-size: 3.8em;
+      float: left;
+      line-height: 0.8;
+      margin-right: 0.08em;
+      margin-top: 0.05em;
+      color: var(--ink);
+    }
+
+    .byline {
+      font-family: var(--font-sans);
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink-faded);
+      margin-bottom: 1rem;
+    }
+
+    /* ── Two-Column Grid ───────────────────────────────── */
+    .grid-two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .grid-two .story {
+      padding: clamp(1.5rem, 3vw, 2.5rem) 0;
+    }
+
+    .grid-two .story:first-child {
+      padding-right: calc(var(--col-gap) / 2);
+      border-right: 1px solid var(--rule);
+    }
+
+    .grid-two .story:last-child {
+      padding-left: calc(var(--col-gap) / 2);
+    }
+
+    .story h3 { margin-bottom: 0.5rem; }
+
+    .story p {
+      font-size: 0.9rem;
+      text-align: justify;
+      hyphens: auto;
+      margin-bottom: 0.75em;
+    }
+
+    .story .byline { margin-top: 0; }
+
+    /* ── Three-Column Grid ─────────────────────────────── */
+    .grid-three {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .grid-three .brief {
+      padding: clamp(1.25rem, 2.5vw, 2rem) 0;
+    }
+
+    .grid-three .brief:not(:last-child) {
+      padding-right: calc(var(--col-gap) / 2);
+      border-right: 1px solid var(--rule);
+    }
+
+    .grid-three .brief:not(:first-child) {
+      padding-left: calc(var(--col-gap) / 2);
+    }
+
+    .brief-section {
+      font-family: var(--font-sans);
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+    }
+
+    .brief h4 {
+      font-family: var(--font-headline);
+      margin-bottom: 0.4rem;
+    }
+
+    .brief p {
+      font-size: 0.85rem;
+      line-height: 1.6;
+      color: var(--ink-light);
+    }
+
+    /* ── Article Images ─────────────────────────────────── */
+    .lead-image {
+      margin: 1.25rem 0 1.5rem;
+      border: 1px solid var(--rule);
+      overflow: hidden;
+    }
+
+    .lead-image img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .lead-image figcaption {
+      font-family: var(--font-sans);
+      font-size: 0.68rem;
+      color: var(--ink-faded);
+      padding: 0.5rem 0.75rem;
+      border-top: 1px solid var(--rule);
+      letter-spacing: 0.02em;
+    }
+
+    .story-image {
+      margin: 0.75rem 0 1rem;
+      border: 1px solid var(--rule);
+      overflow: hidden;
+    }
+
+    .story-image img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .story-image figcaption {
+      font-family: var(--font-sans);
+      font-size: 0.65rem;
+      color: var(--ink-faded);
+      padding: 0.4rem 0.6rem;
+      border-top: 1px solid var(--rule);
+    }
+
+    /* ── Quotation Box ─────────────────────────────────── */
+    .pullquote {
+      padding: clamp(2rem, 4vw, 3rem) 0;
+      border-bottom: 1px solid var(--rule);
+      text-align: center;
+    }
+
+    .pullquote blockquote {
+      font-family: var(--font-headline);
+      font-size: clamp(1.3rem, 2.5vw, 1.8rem);
+      font-style: italic;
+      line-height: 1.45;
+      max-width: 42ch;
+      margin-inline: auto;
+      color: var(--ink);
+    }
+
+    .pullquote blockquote::before { content: "\201C"; }
+    .pullquote blockquote::after { content: "\201D"; }
+
+    .pullquote cite {
+      display: block;
+      margin-top: 0.75rem;
+      font-family: var(--font-sans);
+      font-style: normal;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-faded);
+    }
+
+    /* ── Opinion Section ───────────────────────────────── */
+    .opinion {
+      padding-block: clamp(1.5rem, 3vw, 2.5rem);
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .opinion-header {
+      font-family: var(--font-sans);
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid var(--rule-heavy);
+      margin-bottom: 1.25rem;
+    }
+
+    .opinion h3 {
+      font-style: italic;
+      margin-bottom: 0.5rem;
+    }
+
+    .opinion p {
+      font-size: 0.9rem;
+      text-align: justify;
+      hyphens: auto;
+      max-width: 50ch;
+    }
+
+    .opinion .byline { margin-top: 0.75rem; }
+
+    /* ── Footer ────────────────────────────────────────── */
+    footer {
+      padding: clamp(1.5rem, 3vw, 2rem) 0;
+      text-align: center;
+    }
+
+    footer p {
+      font-family: var(--font-sans);
+      font-size: 0.7rem;
+      color: var(--ink-faded);
+      letter-spacing: 0.05em;
+      max-width: none;
+    }
+
+    /* ── Responsive ────────────────────────────────────── */
+    @media (max-width: 720px) {
+      .lead-body { column-count: 1; }
+      .grid-two { grid-template-columns: 1fr; }
+      .grid-two .story:first-child {
+        padding-right: 0;
+        border-right: none;
+        border-bottom: 1px solid var(--rule);
+      }
+      .grid-two .story:last-child { padding-left: 0; }
+      .grid-three { grid-template-columns: 1fr; }
+      .grid-three .brief:not(:last-child) {
+        padding-right: 0;
+        border-right: none;
+        border-bottom: 1px solid var(--rule);
+      }
+      .grid-three .brief:not(:first-child) { padding-left: 0; }
+      .masthead-top { flex-direction: column; gap: 0.25rem; align-items: center; }
+      .masthead-nav { flex-wrap: wrap; gap: 1rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* ── Print ─────────────────────────────────────────── */
+    @media print {
+      body { background: white; }
+      .masthead { border-bottom-color: #333; }
+    }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Masthead -->
+  <header class="masthead page-wrap">
+    <div class="masthead-top">
+      <span>Vol. CLVII &middot; No. 42</span>
+      <span>Sunday, March 9, 2026</span>
+      <span>Price: Two Shillings</span>
+    </div>
+    <h1>The Gazette</h1>
+    <p class="masthead-motto">All the news that&rsquo;s fit to render</p>
+    <hr class="masthead-rule">
+    <ul class="masthead-nav">
+      <li><a href="index.html">Front Page</a></li>
+      <li><a href="article.html">Features</a></li>
+      <li><a href="#">Opinion</a></li>
+      <li><a href="#">Arts</a></li>
+      <li><a href="#">Science</a></li>
+    </ul>
+  </header>
+
+  <main class="page-wrap">
+
+    <!-- Lead Story -->
+    <article class="lead">
+      <h2>Machines and Makers Find Common Ground in Shared Workspaces</h2>
+      <p class="lead-deck">A new paradigm emerges as code agents move beyond chat windows into visual environments where both human and artificial intelligence operate on the same canvas.</p>
+      <p class="byline">By Eleanor Voss &middot; Technology Correspondent</p>
+      <figure class="lead-image">
+        <img src="images/lead-story.webp" alt="Editorial illustration of humans and AI agents collaborating at shared digital workstations, connected by flowing amber lines">
+        <figcaption>Illustration: Humans and agents converge in a shared creative workspace — the paradigm shift from chat to canvas.</figcaption>
+      </figure>
+      <div class="lead-body">
+        <p>The relationship between human creators and their artificial counterparts has, until recently, resembled something like a long-distance correspondence &mdash; messages exchanged across a void, screenshots pasted into chat windows, instructions given and sometimes followed. The friction was palpable. Every interaction required translation: from visual intention to verbal description, from spatial understanding to textual approximation.</p>
+        <p>But a quiet revolution is underway. A new class of tools has begun to bridge this gap, not by making agents smarter or humans more precise, but by giving both parties something they&rsquo;ve lacked: a shared medium. The agent edits files on disk. The human sees, selects, and guides the rendered result. Both operate on the same representation, in real time, each bringing their particular strengths to the collaboration.</p>
+        <p>This is not the AI future that was promised by breathless press releases &mdash; no sentient machines, no obsolete workers. It is something more practical and, perhaps, more interesting: infrastructure for a new kind of partnership, where the boundary between human intent and machine capability becomes productively blurred.</p>
+        <p>The implications extend beyond individual productivity. When skills can evolve based on cross-session history, when modes can be shared through marketplaces, the knowledge of one collaboration enriches all future ones. A presentation designer&rsquo;s preferences inform the agent&rsquo;s next session. A web developer&rsquo;s patterns become reusable templates.</p>
+      </div>
+    </article>
+
+    <!-- Two-Column Stories -->
+    <div class="grid-two">
+      <article class="story">
+        <h3>The Evolution Agent: When Software Learns Its Users</h3>
+        <p class="byline">By Marcus Chen &middot; AI Bureau</p>
+        <figure class="story-image">
+          <img src="images/evolution-story.webp" alt="Conversation patterns flowing into a funnel and crystallizing into refined geometric preferences">
+          <figcaption>Software that learns: conversation history distilled into user preferences.</figcaption>
+        </figure>
+        <p>In the annals of software design, adaptation has typically meant settings panels and preference dialogs &mdash; crude instruments for expressing the subtlety of individual taste. A new approach inverts this paradigm entirely.</p>
+        <p>Rather than asking users to configure their tools, an evolution agent mines conversation history across sessions, extracting patterns of preference that the user may not even consciously recognize. Typography choices, spacing density, color palette tendencies &mdash; these are surfaced as proposals, presented with evidence citations from actual conversations, and applied only with explicit approval.</p>
+        <p>The result is software that grows more attuned to its user with each session, not through surveillance but through considered reflection on shared creative history.</p>
+      </article>
+      <article class="story">
+        <h3>Mode Makers and the Marketplace of Capabilities</h3>
+        <p class="byline">By Ava Langford &middot; Industry Analysis</p>
+        <p>The ecosystem model &mdash; once the province of app stores and plugin directories &mdash; has found new expression in the realm of agent-assisted creation. Custom modes, each encapsulating a complete vertical of capability, can now be forked, developed with AI assistance, tested in isolation, and published to a shared registry.</p>
+        <p>This represents a shift from monolithic tools that try to do everything to composable capabilities that do one thing well. A mode for presentations. A mode for documents. A mode for whiteboard diagrams. Each carries its own skill prompt, viewer component, seed templates, and export pipeline.</p>
+        <p>The marketplace, then, is not merely a distribution channel but a collective intelligence &mdash; each published mode an artifact of someone&rsquo;s refined workflow made available to all.</p>
+      </article>
+    </div>
+
+    <!-- Pull Quote -->
+    <div class="pullquote">
+      <blockquote>Stop pasting screenshots into chat. Give your agent eyes, memory, and a canvas to work on.</blockquote>
+      <cite>&mdash; Pneuma Project Documentation</cite>
+    </div>
+
+    <!-- Three Briefs -->
+    <div class="grid-three">
+      <div class="brief">
+        <span class="brief-section">Technology</span>
+        <h4>Dual WebSocket Channels Enable Real-Time Agent-Browser Bridge</h4>
+        <p>A novel architecture maintains two simultaneous WebSocket connections &mdash; JSON for the browser, NDJSON for the CLI agent &mdash; enabling sub-second feedback loops between human perception and machine action.</p>
+      </div>
+      <div class="brief">
+        <span class="brief-section">Design</span>
+        <h4>Impeccable Design Intelligence Brings 17 Commands to Web Creation</h4>
+        <p>From audit to animate, critique to colorize, a new design intelligence framework offers structured commands that transform vague aesthetic aspirations into concrete, principled design decisions.</p>
+      </div>
+      <div class="brief">
+        <span class="brief-section">Industry</span>
+        <h4>Cross-Platform Compatibility Reaches Windows, macOS, and Linux</h4>
+        <p>PATH resolution, terminal management, browser opening, and process control now work consistently across operating systems, removing a persistent barrier to adoption in enterprise environments.</p>
+      </div>
+    </div>
+
+    <!-- Opinion -->
+    <section class="opinion">
+      <p class="opinion-header">Editorial</p>
+      <h3>The Case for Shared Representation</h3>
+      <p class="byline">The Gazette Editorial Board</p>
+      <p>For too long, the conversation about artificial intelligence in creative work has been framed as a binary: replacement or irrelevance. This framing misses the far more interesting middle ground &mdash; the possibility that humans and machines might genuinely collaborate, each compensating for the other&rsquo;s limitations, provided they share a common medium of expression.</p>
+      <p>The emergence of visual co-creation infrastructure suggests this middle ground is not merely theoretical. When an agent can see what the user sees, when preferences evolve from actual collaboration rather than abstract configuration, the relationship ceases to be one of command and execution. It becomes, for lack of a better word, a partnership.</p>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="page-wrap">
+    <p>Copyright &copy; 2026 The Gazette &middot; A Pneuma WebCraft seed publication &middot; All rights reserved</p>
+  </footer>
+
+</body>
+</html>

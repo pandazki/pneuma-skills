@@ -274,9 +274,9 @@ function extractCronJobsFromBlocks(blocks: ContentBlock[]) {
 }
 
 /** Infer which cron job likely triggered a turn based on active jobs. */
-function inferCronPrompt(jobs: import("./store.js").CronJob[]): string {
-  if (jobs.length === 0) return "Scheduled task";
-  if (jobs.length === 1) return jobs[0].prompt;
+function inferCronPrompt(jobs: import("./store.js").CronJob[]): string | undefined {
+  if (jobs.length === 0) return undefined;
+  if (jobs.length === 1) return jobs[0].prompt || "Scheduled task";
   return jobs.map((j) => j.prompt).join(" / ");
 }
 
@@ -964,8 +964,60 @@ export function sendViewerActionResponse(
   send({ type: "viewer_action_response", request_id: requestId, result });
 }
 
+/**
+ * Build a <viewer-context> prefix from the current viewer state.
+ * Used to enrich both user messages and viewer notifications with
+ * what the user is currently looking at (active file, content set).
+ */
+function buildViewerContextPrefix(): string {
+  const store = useStore.getState();
+  const viewer = store.modeViewer;
+  if (!viewer) return "";
+
+  const viewerFiles = store.files.map((f) => ({ path: f.path, content: f.content }));
+  let viewerSelection: ViewerSelectionContext | null = null;
+
+  // Provide active file as viewing context
+  if (store.activeFile) {
+    viewerSelection = { type: "viewing", content: "", file: store.activeFile };
+  }
+
+  // Attach viewport range if available
+  const vp = store.viewportRange;
+  if (vp) {
+    if (!viewerSelection) {
+      viewerSelection = { type: "viewing", content: "", file: vp.file };
+    }
+    viewerSelection.viewport = { startLine: vp.startLine, endLine: vp.endLine, heading: vp.heading };
+  }
+
+  // Re-prefix file paths with active content set directory
+  const activeContentSet = store.activeContentSet;
+  if (activeContentSet && viewerSelection?.file) {
+    viewerSelection = { ...viewerSelection, file: `${activeContentSet}/${viewerSelection.file}` };
+  }
+
+  const context = viewer.extractContext(viewerSelection, viewerFiles);
+  if (!context) return "";
+
+  let enrichedContext = context;
+  if (activeContentSet && enrichedContext.startsWith("<viewer-context ")) {
+    enrichedContext = enrichedContext.replace(
+      "<viewer-context ",
+      `<viewer-context content-set="${activeContentSet}" `,
+    );
+  }
+
+  return enrichedContext + "\n\n";
+}
+
 export function sendViewerNotification(
   notification: { type: string; message: string; severity: "info" | "warning" },
 ) {
-  send({ type: "viewer_notification", notification });
+  // Enrich notification message with viewer context (active file, content set)
+  const prefix = buildViewerContextPrefix();
+  const enriched = prefix
+    ? { ...notification, message: prefix + notification.message }
+    : notification;
+  send({ type: "viewer_notification", notification: enriched });
 }

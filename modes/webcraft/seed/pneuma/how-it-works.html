@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How It Works — Pneuma</title>
+  <style>
+    /* ── Design Tokens ─────────────────────────────────── */
+    :root {
+      --bg: oklch(8% 0.015 260);
+      --surface: oklch(12% 0.012 260);
+      --surface-raised: oklch(16% 0.01 260);
+      --text: oklch(92% 0.005 260);
+      --text-secondary: oklch(62% 0.01 260);
+      --text-tertiary: oklch(42% 0.01 260);
+      --accent: oklch(72% 0.19 55);
+      --accent-dim: oklch(72% 0.19 55 / 0.12);
+      --border: oklch(22% 0.01 260);
+      --nav-bg: oklch(8% 0.015 260 / 0.85);
+      --glow-color: oklch(72% 0.19 55 / 0.06);
+      --glow-shadow: oklch(72% 0.19 55 / 0.3);
+
+      --font-display: "Outfit", system-ui, sans-serif;
+      --font-body: "Source Sans 3", system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --duration: 300ms;
+      --measure: 62ch;
+    }
+
+    /* ── Light Theme ──────────────────────────────────── */
+    [data-theme="light"] {
+      --bg: oklch(97% 0.005 80);
+      --surface: oklch(94% 0.008 80);
+      --surface-raised: oklch(91% 0.01 80);
+      --text: oklch(18% 0.015 260);
+      --text-secondary: oklch(40% 0.015 260);
+      --text-tertiary: oklch(58% 0.01 260);
+      --accent: oklch(62% 0.2 55);
+      --accent-dim: oklch(62% 0.2 55 / 0.1);
+      --border: oklch(85% 0.01 80);
+      --nav-bg: oklch(97% 0.005 80 / 0.88);
+      --glow-color: oklch(62% 0.2 55 / 0.08);
+      --glow-shadow: oklch(62% 0.2 55 / 0.25);
+    }
+
+    /* ── Theme Transition ─────────────────────────────── */
+    html.theme-transitioning,
+    html.theme-transitioning *,
+    html.theme-transitioning *::before,
+    html.theme-transitioning *::after {
+      transition: background 0.4s ease, color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease !important;
+    }
+
+    /* ── Reset ──────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Base ───────────────────────────────────────────── */
+    html {
+      font-size: clamp(15px, 0.9vw + 13px, 19px);
+      -webkit-font-smoothing: antialiased;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.7;
+    }
+
+    /* ── Typography ─────────────────────────────────────── */
+    h1, h2, h3, h4 {
+      font-family: var(--font-display);
+      font-weight: 600;
+      line-height: 1.15;
+      letter-spacing: -0.025em;
+      color: var(--text);
+    }
+
+    h1 { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 700; letter-spacing: -0.035em; }
+    h2 { font-size: clamp(1.5rem, 2.8vw, 2.2rem); }
+    h3 { font-size: clamp(1.1rem, 1.8vw, 1.35rem); }
+    h4 { font-size: 0.95rem; font-weight: 600; }
+
+    p { color: var(--text-secondary); max-width: var(--measure); }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      transition: opacity var(--duration) var(--ease-out);
+    }
+    a:hover { opacity: 0.8; }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+    }
+
+    /* ── Layout ─────────────────────────────────────────── */
+    .wrap {
+      max-width: 1080px;
+      margin-inline: auto;
+      padding-inline: clamp(1.25rem, 4vw, 2.5rem);
+    }
+
+    section { padding-block: clamp(4rem, 8vw, 7rem); }
+
+    /* ── Nav ──────────────────────────────────────────── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      padding-block: 1rem;
+      background: var(--nav-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    nav .wrap {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.15rem;
+      letter-spacing: -0.03em;
+      color: var(--text);
+    }
+
+    .logo span { color: var(--accent); }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      transition: color var(--duration) var(--ease-out);
+      position: relative;
+    }
+
+    .nav-links a::after {
+      content: "";
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      width: 0;
+      height: 1.5px;
+      background: var(--accent);
+      transition: width var(--duration) var(--ease-out);
+    }
+
+    .nav-links a:hover::after { width: 100%; }
+    .nav-links a:hover { color: var(--text); opacity: 1; }
+
+    .theme-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.4em;
+      cursor: pointer;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color var(--duration) var(--ease-out), border-color var(--duration) var(--ease-out);
+      line-height: 1;
+    }
+
+    .theme-toggle:hover {
+      color: var(--text);
+      border-color: var(--text-tertiary);
+    }
+
+    .theme-toggle svg { width: 18px; height: 18px; }
+    .theme-toggle .icon-sun { display: none; }
+    [data-theme="light"] .theme-toggle .icon-moon { display: none; }
+    [data-theme="light"] .theme-toggle .icon-sun { display: block; }
+
+    /* ── Page Header ───────────────────────────────────── */
+    .page-header {
+      padding-block: clamp(4rem, 8vw, 6rem) clamp(2rem, 4vw, 3rem);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .page-header h1 {
+      text-shadow: 0 0 80px oklch(72% 0.19 55 / 0.15);
+    }
+
+    .page-header p {
+      margin-top: 1rem;
+      font-size: 1.1rem;
+    }
+
+    /* ── Architecture Diagram ──────────────────────────── */
+    .arch-diagram {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .arch-layers {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: clamp(2rem, 4vw, 3rem);
+    }
+
+    .arch-layer {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 2rem;
+      align-items: center;
+      background: var(--surface);
+      padding: 1.5rem clamp(1.25rem, 3vw, 2rem);
+      transition: background var(--duration) var(--ease-out);
+    }
+
+    .arch-layer:hover {
+      background: var(--surface-raised);
+      box-shadow: inset 0 0 25px oklch(72% 0.19 55 / 0.03);
+    }
+
+    .arch-label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--accent);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .arch-desc {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      max-width: none;
+    }
+
+    .arch-desc strong { color: var(--text); font-weight: 600; }
+
+    /* ── Flow Steps ────────────────────────────────────── */
+    .flow-section {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .flow-intro {
+      margin-bottom: clamp(2.5rem, 5vw, 4rem);
+    }
+
+    .flow-intro p { margin-top: 1rem; }
+
+    .flow-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .flow-step {
+      display: grid;
+      grid-template-columns: 60px 1fr;
+      gap: 1.5rem;
+      padding-block: 2rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .flow-step:last-child { border-bottom: 1px solid var(--border); }
+
+    .step-number {
+      font-family: var(--font-mono);
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1;
+      padding-top: 0.15em;
+    }
+
+    .step-content h3 { margin-bottom: 0.5rem; }
+
+    .step-content p {
+      font-size: 0.95rem;
+      line-height: 1.7;
+    }
+
+    .step-code {
+      margin-top: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      overflow-x: auto;
+      white-space: pre;
+      transition: border-color var(--duration) var(--ease-out);
+    }
+
+    .step-code:hover {
+      border-color: var(--text-tertiary);
+    }
+
+    /* ── Contracts ─────────────────────────────────────── */
+    .contracts {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .contracts-intro { margin-bottom: clamp(2rem, 4vw, 3rem); }
+    .contracts-intro p { margin-top: 1rem; }
+
+    .contract-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .contract-card {
+      background: var(--surface);
+      padding: clamp(1.5rem, 3vw, 2rem);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      transition: background var(--duration) var(--ease-out), transform var(--duration) var(--ease-out), box-shadow var(--duration) var(--ease-out);
+      position: relative;
+    }
+
+    .contract-card:hover {
+      background: var(--surface-raised);
+      transform: scale(1.015);
+      box-shadow: inset 0 0 30px oklch(72% 0.19 55 / 0.04), 0 0 20px oklch(72% 0.19 55 / 0.06);
+    }
+
+    .contract-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      opacity: 0;
+      background: linear-gradient(135deg, oklch(72% 0.19 55 / 0.15), transparent 60%);
+      transition: opacity var(--duration) var(--ease-out);
+      pointer-events: none;
+    }
+
+    .contract-card:hover::before { opacity: 1; }
+
+    .contract-tag {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .contract-card p {
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    .contract-extends {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-tertiary);
+      margin-top: auto;
+      padding-top: 0.5rem;
+    }
+
+    /* ── Communication ─────────────────────────────────── */
+    .comm {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .comm-intro { margin-bottom: clamp(2rem, 4vw, 3rem); }
+    .comm-intro p { margin-top: 1rem; }
+
+    .comm-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+      gap: 1.5rem;
+    }
+
+    .comm-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: clamp(1.25rem, 2.5vw, 1.75rem);
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      transition: border-color var(--duration) var(--ease-out), transform var(--duration) var(--ease-out), box-shadow var(--duration) var(--ease-out);
+    }
+
+    .comm-card:hover {
+      border-color: oklch(72% 0.19 55 / 0.3);
+      transform: scale(1.01);
+      box-shadow: 0 0 20px oklch(72% 0.19 55 / 0.06);
+    }
+
+    .comm-card h4 { color: var(--accent); }
+
+    .comm-card p {
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    .comm-path {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-tertiary);
+      margin-top: auto;
+      padding-top: 0.25rem;
+    }
+
+    /* ── Footer ────────────────────────────────────────── */
+    footer {
+      padding-block: 2rem;
+      border-top: 1px solid var(--border);
+    }
+
+    footer .wrap {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    footer p {
+      font-size: 0.8rem;
+      color: var(--text-tertiary);
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 1.5rem;
+      list-style: none;
+    }
+
+    .footer-links a {
+      font-size: 0.8rem;
+      color: var(--text-tertiary);
+    }
+
+    .footer-links a:hover { color: var(--text-secondary); opacity: 1; }
+
+    /* ── Scroll Reveal ────────────────────────────────── */
+    [data-reveal] {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out);
+    }
+
+    [data-reveal].revealed {
+      opacity: 1;
+      transform: none;
+    }
+
+    /* ── Responsive ────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .nav-links { gap: 1.25rem; }
+      .arch-layer { grid-template-columns: 1fr; gap: 0.25rem; }
+      .flow-step { grid-template-columns: 40px 1fr; gap: 1rem; }
+      .step-number { font-size: 1.5rem; }
+      footer .wrap { flex-direction: column; gap: 1rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+      [data-reveal] {
+        opacity: 1 !important;
+        transform: none !important;
+      }
+    }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;600;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav>
+    <div class="wrap">
+      <a href="index.html" class="logo">pneuma<span>.</span></a>
+      <div style="display:flex;align-items:center;gap:1.5rem;">
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="how-it-works.html">How It Works</a></li>
+          <li><a href="https://github.com/pandazki/pneuma-skills">GitHub</a></li>
+        </ul>
+        <button class="theme-toggle" aria-label="Toggle theme">
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Page Header -->
+  <section class="page-header">
+    <div class="wrap">
+      <h1>How it works</h1>
+      <p>Pneuma is four layers with clear contract boundaries. The agent edits files, the server watches for changes, and the browser renders the result &mdash; a continuous loop of creation.</p>
+    </div>
+  </section>
+
+  <!-- Architecture -->
+  <section class="arch-diagram">
+    <div class="wrap">
+      <h2>Architecture layers</h2>
+      <div class="arch-layers" data-reveal>
+        <div class="arch-layer">
+          <span class="arch-label">Layer 4</span>
+          <span class="arch-desc"><strong>Mode Protocol</strong> &mdash; ModeManifest declares the skill, viewer config, agent preferences, and init parameters</span>
+        </div>
+        <div class="arch-layer">
+          <span class="arch-label">Layer 3</span>
+          <span class="arch-desc"><strong>Content Viewer</strong> &mdash; ViewerContract defines how to render, select elements, and extract context for the agent</span>
+        </div>
+        <div class="arch-layer">
+          <span class="arch-label">Layer 2</span>
+          <span class="arch-desc"><strong>Agent Bridge</strong> &mdash; AgentBackend handles launch, resume, kill, and capability declaration</span>
+        </div>
+        <div class="arch-layer">
+          <span class="arch-label">Layer 1</span>
+          <span class="arch-desc"><strong>Runtime Shell</strong> &mdash; HTTP server, dual WebSocket, file watcher, PTY terminal, and frontend</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Lifecycle Flow -->
+  <section class="flow-section">
+    <div class="wrap">
+      <div class="flow-intro" data-reveal>
+        <h2>Session lifecycle</h2>
+        <p>From <code>bunx pneuma-skills slide</code> to a live preview loop &mdash; eight steps, fully automated.</p>
+      </div>
+      <div class="flow-steps">
+        <div class="flow-step" data-reveal>
+          <span class="step-number">1</span>
+          <div class="step-content">
+            <h3>Resolve mode</h3>
+            <p>The CLI resolves the mode specifier &mdash; builtin name, local path, GitHub repo, or URL &mdash; to a directory on disk containing <code>manifest.ts</code>.</p>
+          </div>
+        </div>
+        <div class="flow-step" data-reveal>
+          <span class="step-number">2</span>
+          <div class="step-content">
+            <h3>Load manifest</h3>
+            <p>The manifest is dynamically imported, providing skill config, viewer setup, agent preferences, and init parameters as a typed <code>ModeManifest</code> object.</p>
+          </div>
+        </div>
+        <div class="flow-step" data-reveal>
+          <span class="step-number">3</span>
+          <div class="step-content">
+            <h3>Session setup</h3>
+            <p>A session is created or resumed from <code>.pneuma/session.json</code> in the workspace. Message history, config, and agent state persist across runs.</p>
+          </div>
+        </div>
+        <div class="flow-step" data-reveal>
+          <span class="step-number">4</span>
+          <div class="step-content">
+            <h3>Install skill</h3>
+            <p>Skill files are copied to the workspace and template parameters applied. A <code>claudeMdSection</code> is injected into <code>CLAUDE.md</code> so the agent discovers its capabilities natively.</p>
+          </div>
+        </div>
+        <div class="flow-step" data-reveal>
+          <span class="step-number">5</span>
+          <div class="step-content">
+            <h3>Start server</h3>
+            <p>The Hono server starts with dual WebSocket channels &mdash; one for the browser (JSON), one for the CLI (NDJSON) &mdash; plus REST APIs for files, git, and system ops.</p>
+          </div>
+        </div>
+        <div class="flow-step" data-reveal>
+          <span class="step-number">6</span>
+          <div class="step-content">
+            <h3>Launch agent</h3>
+            <p>Claude Code is spawned via <code>Bun.spawn</code> with the <code>--sdk-url</code> flag pointing to the CLI WebSocket endpoint. The agent connects and begins its session.</p>
+            <div class="step-code">claude --sdk-url ws://localhost:17996/ws/cli/SESSION --print --output-format stream-json</div>
+          </div>
+        </div>
+        <div class="flow-step" data-reveal>
+          <span class="step-number">7</span>
+          <div class="step-content">
+            <h3>Load viewer</h3>
+            <p>The frontend dynamically imports the mode's viewer component. External modes are compiled at runtime via <code>Bun.build()</code> and loaded through an import map.</p>
+          </div>
+        </div>
+        <div class="flow-step" data-reveal>
+          <span class="step-number">8</span>
+          <div class="step-content">
+            <h3>Preview loop</h3>
+            <p>The agent edits files. Chokidar detects changes and pushes updates via WebSocket. The browser re-renders instantly. The user selects, guides, and the agent responds &mdash; a continuous loop.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contracts -->
+  <section class="contracts">
+    <div class="wrap">
+      <div class="contracts-intro" data-reveal>
+        <h2>Core contracts</h2>
+        <p>Three typed interfaces define the extension points. Implement one to add a new mode, renderer, or agent backend.</p>
+      </div>
+      <div class="contract-cards" data-reveal>
+        <div class="contract-card">
+          <span class="contract-tag">Contract</span>
+          <h3>ModeManifest</h3>
+          <p>Declares what a mode is &mdash; its skill prompt, viewer configuration, agent preferences, init parameters, and evolution directive.</p>
+          <span class="contract-extends">Extend to &rarr; add new modes (canvas, mindmap, diagram&hellip;)</span>
+        </div>
+        <div class="contract-card">
+          <span class="contract-tag">Contract</span>
+          <h3>ViewerContract</h3>
+          <p>Defines how content is rendered, how elements are selected, and how context is extracted for the agent. Includes the workspace model and action protocol.</p>
+          <span class="contract-extends">Extend to &rarr; custom renderers, viewports, action protocols</span>
+        </div>
+        <div class="contract-card">
+          <span class="contract-tag">Contract</span>
+          <h3>AgentBackend</h3>
+          <p>Handles agent lifecycle &mdash; launch, resume, kill &mdash; and declares capabilities. Currently implemented for Claude Code; designed for other backends.</p>
+          <span class="contract-extends">Extend to &rarr; Codex CLI, Aider, custom agents</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Communication -->
+  <section class="comm">
+    <div class="wrap">
+      <div class="comm-intro" data-reveal>
+        <h2>Communication channels</h2>
+        <p>The server maintains three real-time channels connecting the browser, the agent, and the terminal.</p>
+      </div>
+      <div class="comm-grid" data-reveal>
+        <div class="comm-card">
+          <h4>Browser channel</h4>
+          <p>JSON messages for the React UI &mdash; chat messages, file updates, viewer actions, permission requests, and task progress.</p>
+          <span class="comm-path">/ws/browser/:sessionId</span>
+        </div>
+        <div class="comm-card">
+          <h4>CLI channel</h4>
+          <p>NDJSON messages for Claude Code's <code>--sdk-url</code> protocol &mdash; user messages enriched with viewer context, tool permissions, and agent responses.</p>
+          <span class="comm-path">/ws/cli/:sessionId</span>
+        </div>
+        <div class="comm-card">
+          <h4>Terminal channel</h4>
+          <p>Binary PTY stream for the integrated xterm.js terminal &mdash; full shell access within the workspace context.</p>
+          <span class="comm-path">/ws/terminal/:terminalId</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="wrap">
+      <p>Pneuma Skills &mdash; MIT License</p>
+      <ul class="footer-links">
+        <li><a href="https://github.com/pandazki/pneuma-skills">Source</a></li>
+        <li><a href="https://www.npmjs.com/package/pneuma-skills">npm</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <script>
+    // Theme toggle
+    (function() {
+      var html = document.documentElement;
+      var stored = localStorage.getItem('pneuma-theme');
+      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var theme = stored || (prefersDark ? 'dark' : 'dark');
+      html.setAttribute('data-theme', theme);
+
+      document.querySelector('.theme-toggle').addEventListener('click', function() {
+        html.classList.add('theme-transitioning');
+        var next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-theme', next);
+        localStorage.setItem('pneuma-theme', next);
+        setTimeout(function() { html.classList.remove('theme-transitioning'); }, 450);
+      });
+    })();
+
+    // Scroll reveal
+    (function() {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.querySelectorAll('[data-reveal]').forEach(function(el) { el.classList.add('revealed'); });
+        return;
+      }
+      var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('revealed');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+      document.querySelectorAll('[data-reveal]').forEach(function(el) { observer.observe(el); });
+    })();
+  </script>
+</body>
+</html>

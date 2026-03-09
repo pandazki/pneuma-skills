@@ -32,9 +32,10 @@ When humans and code agents co-create content, they need more than a chat window
 
 | Mode | What it does |
 |------|-------------|
-| **doc** | Markdown editing with live rendered preview |
+| **webcraft** | Live web development with [Impeccable](https://impeccable.style) AI design intelligence — 17 design commands, responsive preview, element selection, export |
 | **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export |
-| **draw** | Excalidraw whiteboard with `.excalidraw` file editing |
+| **doc** | Markdown documents with live preview — the simplest mode, a minimal example of the mode system |
+| **draw** | Diagrams and visual thinking on an [Excalidraw](https://excalidraw.com) canvas — showcasing viewer extensibility with a rich third-party component |
 | **mode-maker** | Create custom modes with AI — fork, play-test, publish |
 | **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback |
 
@@ -81,9 +82,10 @@ pneuma-skills [mode] [options]
 
 Modes:
   (no argument)                Open the Launcher (marketplace UI)
-  doc                          Markdown document editing mode
-  slide                        Presentation editing mode (HTML slides with iframe preview)
-  draw                         Excalidraw whiteboard drawing mode
+  webcraft                     Web design with Impeccable.style — 17 AI design commands, responsive preview, export
+  slide                        HTML presentations — content sets, drag-reorder, presenter mode, export
+  doc                          Markdown with live preview — simplest mode, minimal example of the mode system
+  draw                         Excalidraw canvas — viewer extensibility showcase with third-party component
   mode-maker                   Create and develop custom modes with AI
   evolve                       Launch the Evolution Agent for skill learning
   /path/to/mode                Load mode from a local directory
@@ -196,6 +198,7 @@ pneuma-skills/
 │   ├── doc/                   # Doc Mode — markdown editing
 │   ├── slide/                 # Slide Mode — presentation editing
 │   ├── draw/                  # Draw Mode — Excalidraw whiteboard
+│   ├── webcraft/              # WebCraft Mode — live web dev + Impeccable design AI
 │   ├── mode-maker/            # Mode Maker — create custom modes with AI
 │   └── evolve/                # Evolve Mode — evolution agent dashboard
 │       ├── manifest.ts        # Mode manifest (fork, play, publish workflow)
@@ -265,7 +268,8 @@ pneuma-skills/
 - **Launcher marketplace UI** — Browse builtin, published, and local modes; one-click launch or resume
 - **Live visual workspace** — Agent edits files, you see rendered results instantly in a bidirectional canvas
 - **Mode Maker** — Create and develop custom modes with AI assistance (fork, play-test, publish)
-- **Content sets** — Slide Mode supports multiple slide sets per workspace with seed templates
+- **Content sets** — Multiple content sets per workspace with unread change indicators
+- **WebCraft + Impeccable** — 17 AI design commands, responsive viewport preview, export to HTML/ZIP/PDF
 - **Next-gen visual design** — Ethereal Tech aesthetic with glassmorphism, neon orange accents, cinematic dark UI
 - **Export & capture** — Slide export to HTML/images via `@zumer/snapdom`
 - **Launcher process management** — Monitor and kill child processes spawned from the launcher
@@ -303,7 +307,8 @@ pneuma-skills/
 - [x] Mode Maker — Create custom modes with AI (fork, play-test, publish)
 - [x] Mode publishing — `pneuma mode publish` to R2 registry
 - [x] Windows compatibility — Cross-platform PATH, terminal, browser, process management
-- [x] Content sets — Multiple slide sets per workspace with seed templates
+- [x] Content sets — Multiple content sets per workspace with unread indicators
+- [x] WebCraft Mode — Live web development with Impeccable.style AI design intelligence
 - [x] Launcher process management — Monitor and kill child processes
 - [x] Next-gen visual redesign — Ethereal Tech aesthetic (glassmorphism, cinematic dark UI)
 - [x] Export & image capture — Slide export via `@zumer/snapdom`

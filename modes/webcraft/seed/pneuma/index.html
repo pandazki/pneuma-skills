@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pneuma — Co-creation Infrastructure</title>
+  <style>
+    /* ── Design Tokens ─────────────────────────────────── */
+    :root {
+      --bg: oklch(8% 0.015 260);
+      --surface: oklch(12% 0.012 260);
+      --surface-raised: oklch(16% 0.01 260);
+      --text: oklch(92% 0.005 260);
+      --text-secondary: oklch(62% 0.01 260);
+      --text-tertiary: oklch(42% 0.01 260);
+      --accent: oklch(72% 0.19 55);
+      --accent-dim: oklch(72% 0.19 55 / 0.12);
+      --border: oklch(22% 0.01 260);
+      --nav-bg: oklch(8% 0.015 260 / 0.85);
+      --glow-color: oklch(72% 0.19 55 / 0.06);
+      --glow-shadow: oklch(72% 0.19 55 / 0.3);
+
+      --font-display: "Outfit", system-ui, sans-serif;
+      --font-body: "Source Sans 3", system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --duration: 300ms;
+      --measure: 62ch;
+    }
+
+    /* ── Light Theme ──────────────────────────────────── */
+    [data-theme="light"] {
+      --bg: oklch(97% 0.005 80);
+      --surface: oklch(94% 0.008 80);
+      --surface-raised: oklch(91% 0.01 80);
+      --text: oklch(18% 0.015 260);
+      --text-secondary: oklch(40% 0.015 260);
+      --text-tertiary: oklch(58% 0.01 260);
+      --accent: oklch(62% 0.2 55);
+      --accent-dim: oklch(62% 0.2 55 / 0.1);
+      --border: oklch(85% 0.01 80);
+      --nav-bg: oklch(97% 0.005 80 / 0.88);
+      --glow-color: oklch(62% 0.2 55 / 0.08);
+      --glow-shadow: oklch(62% 0.2 55 / 0.25);
+    }
+
+    /* ── Theme Transition ─────────────────────────────── */
+    html.theme-transitioning,
+    html.theme-transitioning *,
+    html.theme-transitioning *::before,
+    html.theme-transitioning *::after {
+      transition: background 0.4s ease, color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease !important;
+    }
+
+    /* ── Reset ──────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Base ───────────────────────────────────────────── */
+    html {
+      font-size: clamp(15px, 0.9vw + 13px, 19px);
+      -webkit-font-smoothing: antialiased;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.7;
+    }
+
+    /* ── Typography ─────────────────────────────────────── */
+    h1, h2, h3 {
+      font-family: var(--font-display);
+      font-weight: 600;
+      line-height: 1.15;
+      letter-spacing: -0.025em;
+      color: var(--text);
+    }
+
+    h1 { font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 700; letter-spacing: -0.035em; }
+    h2 { font-size: clamp(1.6rem, 3vw, 2.4rem); }
+    h3 { font-size: clamp(1.1rem, 1.8vw, 1.35rem); }
+
+    p { color: var(--text-secondary); max-width: var(--measure); }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      transition: opacity var(--duration) var(--ease-out);
+    }
+    a:hover { opacity: 0.8; }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+    }
+
+    /* ── Layout ─────────────────────────────────────────── */
+    .wrap {
+      max-width: 1080px;
+      margin-inline: auto;
+      padding-inline: clamp(1.25rem, 4vw, 2.5rem);
+    }
+
+    section { padding-block: clamp(4rem, 8vw, 7rem); }
+
+    /* ── Nav ──────────────────────────────────────────── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      padding-block: 1rem;
+      background: var(--nav-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    nav .wrap {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.15rem;
+      letter-spacing: -0.03em;
+      color: var(--text);
+    }
+
+    .logo span { color: var(--accent); }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      transition: color var(--duration) var(--ease-out);
+      position: relative;
+    }
+
+    .nav-links a::after {
+      content: "";
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      width: 0;
+      height: 1.5px;
+      background: var(--accent);
+      transition: width var(--duration) var(--ease-out);
+    }
+
+    .nav-links a:hover::after { width: 100%; }
+    .nav-links a:hover { color: var(--text); opacity: 1; }
+
+    .theme-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.4em;
+      cursor: pointer;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color var(--duration) var(--ease-out), border-color var(--duration) var(--ease-out);
+      line-height: 1;
+    }
+
+    .theme-toggle:hover {
+      color: var(--text);
+      border-color: var(--text-tertiary);
+    }
+
+    .theme-toggle svg { width: 18px; height: 18px; }
+    .theme-toggle .icon-sun { display: none; }
+    [data-theme="light"] .theme-toggle .icon-moon { display: none; }
+    [data-theme="light"] .theme-toggle .icon-sun { display: block; }
+
+    /* ── Hero ───────────────────────────────────────────── */
+    .hero {
+      padding-block: clamp(5rem, 12vw, 10rem) clamp(4rem, 8vw, 7rem);
+      position: relative;
+      perspective: 1px;
+      transform-style: preserve-3d;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      top: -100px;
+      left: 50%;
+      transform: translateX(-50%) translateZ(-1px) scale(2);
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, var(--glow-color) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero h1 {
+      margin-bottom: 1.5rem;
+      position: relative;
+      text-shadow: 0 0 80px oklch(72% 0.19 55 / 0.15);
+    }
+
+    .hero h1 .accent {
+      color: var(--accent);
+      background: linear-gradient(90deg, var(--accent), oklch(80% 0.16 30), var(--accent));
+      background-size: 200% 100%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 3s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .hero p {
+      font-size: 1.15rem;
+      line-height: 1.75;
+      margin-bottom: 2.5rem;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .hero-code {
+      margin-top: 3rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      overflow-x: auto;
+      transition: border-color var(--duration) var(--ease-out);
+    }
+
+    .hero-code:hover {
+      border-color: var(--text-tertiary);
+    }
+
+    .hero-code .prompt { color: var(--text-tertiary); user-select: none; }
+    .hero-code .cmd { color: var(--accent); }
+    .hero-code .arg { color: var(--text); }
+
+    /* ── Buttons ────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5em;
+      padding: 0.7em 1.6em;
+      border-radius: 6px;
+      font-family: var(--font-body);
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: transform 120ms var(--ease-out), box-shadow var(--duration) var(--ease-out);
+    }
+
+    .btn:active { transform: translateY(1px); }
+
+    .btn-primary {
+      background: var(--accent);
+      color: oklch(12% 0.02 55);
+    }
+
+    .btn-primary {
+      animation: glow-pulse 3s ease-in-out infinite;
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 0 24px var(--glow-shadow);
+      opacity: 1;
+      animation: none;
+    }
+
+    @keyframes glow-pulse {
+      0%, 100% { box-shadow: 0 0 0px oklch(72% 0.19 55 / 0); }
+      50% { box-shadow: 0 0 18px oklch(72% 0.19 55 / 0.15); }
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-secondary);
+      border-color: var(--border);
+    }
+
+    .btn-ghost:hover {
+      border-color: var(--text-tertiary);
+      color: var(--text);
+      opacity: 1;
+    }
+
+    /* ── Pillars ────────────────────────────────────────── */
+    .pillars { border-top: 1px solid var(--border); }
+
+    .pillars-intro {
+      margin-bottom: clamp(2.5rem, 5vw, 4rem);
+    }
+
+    .pillars-intro p {
+      margin-top: 1rem;
+      font-size: 1.05rem;
+    }
+
+    .pillars-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .pillar {
+      background: var(--surface);
+      padding: clamp(1.5rem, 3vw, 2.25rem);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      transition: background var(--duration) var(--ease-out), transform var(--duration) var(--ease-out), box-shadow var(--duration) var(--ease-out);
+      position: relative;
+    }
+
+    .pillar:hover {
+      background: var(--surface-raised);
+      transform: scale(1.015);
+      box-shadow: inset 0 0 30px oklch(72% 0.19 55 / 0.04), 0 0 20px oklch(72% 0.19 55 / 0.06);
+    }
+
+    .pillar-number {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .pillar h3 {
+      font-family: var(--font-display);
+    }
+
+    .pillar p {
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    /* ── Modes ──────────────────────────────────────────── */
+    .modes { border-top: 1px solid var(--border); }
+
+    .modes-intro { margin-bottom: clamp(2rem, 4vw, 3rem); }
+    .modes-intro p { margin-top: 1rem; }
+
+    .mode-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .mode-row {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 2rem;
+      align-items: baseline;
+      background: var(--surface);
+      padding: 1.25rem clamp(1.25rem, 3vw, 2rem);
+      transition: background var(--duration) var(--ease-out);
+    }
+
+    .mode-row:hover {
+      background: var(--surface-raised);
+      box-shadow: inset 0 0 20px oklch(72% 0.19 55 / 0.03);
+    }
+
+    .mode-name {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .mode-desc {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      max-width: none;
+    }
+
+    /* ── CTA ──────────────────────────────────────────── */
+    .cta {
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+
+    .cta h2 { margin-bottom: 1rem; }
+
+    .cta p {
+      margin-inline: auto;
+      margin-bottom: 2rem;
+      font-size: 1.05rem;
+    }
+
+    /* ── Footer ────────────────────────────────────────── */
+    footer {
+      padding-block: 2rem;
+      border-top: 1px solid var(--border);
+    }
+
+    footer .wrap {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    footer p {
+      font-size: 0.8rem;
+      color: var(--text-tertiary);
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 1.5rem;
+      list-style: none;
+    }
+
+    .footer-links a {
+      font-size: 0.8rem;
+      color: var(--text-tertiary);
+    }
+
+    .footer-links a:hover { color: var(--text-secondary); opacity: 1; }
+
+    /* ── Scroll Reveal ────────────────────────────────── */
+    [data-reveal] {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out);
+    }
+
+    [data-reveal].revealed {
+      opacity: 1;
+      transform: none;
+    }
+
+    /* ── Gradient Border on Pillar Grid ──────────────── */
+    .pillars-grid {
+      position: relative;
+    }
+
+    .pillar::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      opacity: 0;
+      background: linear-gradient(135deg, oklch(72% 0.19 55 / 0.15), transparent 60%);
+      transition: opacity var(--duration) var(--ease-out);
+      pointer-events: none;
+    }
+
+    .pillar:hover::before {
+      opacity: 1;
+    }
+
+    /* ── Responsive ────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .nav-links { gap: 1.25rem; }
+      .mode-row { grid-template-columns: 1fr; gap: 0.25rem; }
+      footer .wrap { flex-direction: column; gap: 1rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+      [data-reveal] {
+        opacity: 1 !important;
+        transform: none !important;
+      }
+    }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@400;600;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav>
+    <div class="wrap">
+      <span class="logo">pneuma<span>.</span></span>
+      <div style="display:flex;align-items:center;gap:1.5rem;">
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="how-it-works.html">How It Works</a></li>
+          <li><a href="https://github.com/pandazki/pneuma-skills">GitHub</a></li>
+        </ul>
+        <button class="theme-toggle" aria-label="Toggle theme">
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="wrap">
+      <h1>Co-creation infrastructure<br>for humans <span class="accent">&times;</span> agents</h1>
+      <p>
+        Visual environment, skills, continuous learning, and distribution &mdash;
+        everything humans and code agents need to build content together.
+        Built atop Claude Code, Pneuma gives both of you a shared workspace to think in.
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="https://github.com/pandazki/pneuma-skills">Get Started</a>
+        <a class="btn btn-ghost" href="how-it-works.html">How It Works</a>
+      </div>
+      <div class="hero-code">
+        <span class="prompt">$ </span><span class="cmd">bunx</span> <span class="arg">pneuma-skills slide</span> <span style="color: var(--text-tertiary)">--workspace ./my-deck</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Four Pillars -->
+  <section class="pillars">
+    <div class="wrap">
+      <div class="pillars-intro" data-reveal>
+        <h2>Four pillars of isomorphic collaboration</h2>
+        <p>Not a chat wrapper. Not a code generator. A shared medium where human intent and agent capability meet.</p>
+      </div>
+      <div class="pillars-grid" data-reveal>
+        <div class="pillar">
+          <span class="pillar-number">01 &mdash; See</span>
+          <h3>Visual Environment</h3>
+          <p>The agent edits files on disk. You see, select, and guide the rendered result in a live, bidirectional workspace. Both operate on the same representation.</p>
+        </div>
+        <div class="pillar">
+          <span class="pillar-number">02 &mdash; Know</span>
+          <h3>Skills</h3>
+          <p>Domain knowledge and seed templates injected per mode. A presentation skill teaches rhythm and export. A document skill teaches prose. Skills version and evolve.</p>
+        </div>
+        <div class="pillar">
+          <span class="pillar-number">03 &mdash; Learn</span>
+          <h3>Continuous Learning</h3>
+          <p>The Evolution Agent mines cross-session history to extract your preferences, then augments the skill with learned patterns. Your agent gets better at being your agent.</p>
+        </div>
+        <div class="pillar">
+          <span class="pillar-number">04 &mdash; Share</span>
+          <h3>Distribution</h3>
+          <p>Build a custom mode with AI via Mode Maker, publish to the marketplace, and let anyone install it instantly. A complete ecosystem for sharing capabilities.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Built-in Modes -->
+  <section class="modes">
+    <div class="wrap">
+      <div class="modes-intro" data-reveal>
+        <h2>Built-in modes</h2>
+        <p>Each mode is a complete vertical &mdash; skill prompt, live viewer, seed templates, and export.</p>
+      </div>
+      <div class="mode-list" data-reveal>
+        <div class="mode-row">
+          <span class="mode-name">doc</span>
+          <span class="mode-desc">Markdown editing with live rendered preview</span>
+        </div>
+        <div class="mode-row">
+          <span class="mode-name">slide</span>
+          <span class="mode-desc">HTML presentations &mdash; content sets, drag-reorder, presenter mode, PDF/image export</span>
+        </div>
+        <div class="mode-row">
+          <span class="mode-name">draw</span>
+          <span class="mode-desc">Excalidraw whiteboard with .excalidraw file editing</span>
+        </div>
+        <div class="mode-row">
+          <span class="mode-name">webcraft</span>
+          <span class="mode-desc">Live web development with Impeccable AI design intelligence &mdash; 17 commands, responsive preview, export</span>
+        </div>
+        <div class="mode-row">
+          <span class="mode-name">mode-maker</span>
+          <span class="mode-desc">Create custom modes with AI assistance &mdash; fork, play-test, publish</span>
+        </div>
+        <div class="mode-row">
+          <span class="mode-name">evolve</span>
+          <span class="mode-desc">Evolution Agent &mdash; analyze history, propose skill improvements, apply or rollback</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta">
+    <div class="wrap" data-reveal>
+      <h2>Your agent deserves a workspace.</h2>
+      <p>Stop pasting screenshots into chat. Give your agent eyes, memory, and a canvas to work on.</p>
+      <a class="btn btn-primary" href="https://github.com/pandazki/pneuma-skills">View on GitHub</a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="wrap">
+      <p>Pneuma Skills &mdash; MIT License</p>
+      <ul class="footer-links">
+        <li><a href="https://github.com/pandazki/pneuma-skills">Source</a></li>
+        <li><a href="https://www.npmjs.com/package/pneuma-skills">npm</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <script>
+    // Theme toggle
+    (function() {
+      var html = document.documentElement;
+      var stored = localStorage.getItem('pneuma-theme');
+      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var theme = stored || (prefersDark ? 'dark' : 'dark');
+      html.setAttribute('data-theme', theme);
+
+      document.querySelector('.theme-toggle').addEventListener('click', function() {
+        html.classList.add('theme-transitioning');
+        var next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-theme', next);
+        localStorage.setItem('pneuma-theme', next);
+        setTimeout(function() { html.classList.remove('theme-transitioning'); }, 450);
+      });
+    })();
+
+    // Scroll reveal
+    (function() {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.querySelectorAll('[data-reveal]').forEach(function(el) { el.classList.add('revealed'); });
+        return;
+      }
+      var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('revealed');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+      document.querySelectorAll('[data-reveal]').forEach(function(el) { observer.observe(el); });
+    })();
+  </script>
+</body>
+</html>
