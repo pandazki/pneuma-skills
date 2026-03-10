@@ -2,5 +2,5 @@ node_modules/
 dist-electron/
 release/
 resources/bun-*
-pneuma-node-modules//
+pneuma-node-modules/
 *.tsbuildinfo

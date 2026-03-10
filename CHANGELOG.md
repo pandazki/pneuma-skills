@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.4.3] - 2026-03-10
+
+### Fixed
+- **Mode Maker play/test 404 on `bunx`** — moved Vite toolchain from `devDependencies` to `dependencies` in seed `package.json` so they're actually installed when creating a new mode; added `src/` and `vite.config.ts` to npm `files` array so Vite dev server can resolve the entry point
+- **Desktop `.gitignore` typo** — removed duplicate trailing slash in `pneuma-node-modules//`
+
+### Improved
+- **Dependency hygiene** — moved mode-specific deps (`@xyflow/react`, `@excalidraw/excalidraw`, `@dnd-kit/*`, `@zumer/snapdom`, `@tailwindcss/typography`) from root `dependencies` to `devDependencies`; they're bundled into `dist/` at publish time and don't need runtime installation
+
 ## [2.4.2] - 2026-03-10
 
 ### Added
