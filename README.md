@@ -40,6 +40,7 @@ When humans and code agents co-create content, they need more than a chat window
 | **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export |
 | **doc** | Markdown documents with live preview — the simplest mode, a minimal example of the mode system |
 | **draw** | Diagrams and visual thinking on an [Excalidraw](https://excalidraw.com) canvas |
+| **illustrate** | AI illustration studio — generate and curate visual assets on a row-based canvas with content sets |
 | **mode-maker** | Create custom modes with AI — fork, play-test, publish |
 | **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback |
 
@@ -95,6 +96,7 @@ Modes:
   slide                        HTML presentations
   doc                          Markdown with live preview
   draw                         Excalidraw canvas
+  illustrate                   AI illustration studio
   mode-maker                   Create custom modes with AI
   evolve                       Launch the Evolution Agent
   /path/to/mode                Load from a local directory
@@ -156,6 +158,7 @@ Three core contracts in `core/types/`:
 | Desktop | [Electron](https://www.electronjs.org) 35 + electron-builder + electron-updater |
 | Terminal | [xterm.js](https://xtermjs.org) + Bun native PTY |
 | Drawing | [Excalidraw](https://excalidraw.com) |
+| Canvas | [React Flow](https://reactflow.dev) (Illustrate mode) |
 | Agent | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) via `--sdk-url` |
 
 ## Acknowledgements
