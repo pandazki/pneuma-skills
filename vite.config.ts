@@ -2,7 +2,10 @@ import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { watch } from "chokidar";
+
+const require = createRequire(import.meta.url);
 
 // External mode path — passed from bin/pneuma.ts via env var
 const externalModePath = process.env.PNEUMA_EXTERNAL_MODE_PATH;
@@ -137,9 +140,10 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), pneumaWorkspaceResolve(), pneumaProdUrlsExternal()],
   resolve: {
     alias: {
-      // Ensure external modes use the project's React (prevent duplicate instances)
-      react: path.resolve(__dirname, "node_modules/react"),
-      "react-dom": path.resolve(__dirname, "node_modules/react-dom"),
+      // Ensure external modes use the project's React (prevent duplicate instances).
+      // Use require.resolve to handle hoisted node_modules (e.g. bunx installs).
+      react: path.dirname(require.resolve("react/package.json")),
+      "react-dom": path.dirname(require.resolve("react-dom/package.json")),
     },
   },
   build: {

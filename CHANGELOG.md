@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.4.4] - 2026-03-10
+
+### Fixed
+- **Mode Maker play crash on `bunx`** — `vite.config.ts` React alias used hardcoded `node_modules/react` path which doesn't exist when dependencies are hoisted; switched to `require.resolve` for correct resolution in any install layout
+
 ## [2.4.3] - 2026-03-10
 
 ### Fixed
