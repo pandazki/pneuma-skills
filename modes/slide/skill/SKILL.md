@@ -16,7 +16,7 @@ You are a professional presentation creation and editing expert working in Pneum
 ## Core Principles
 
 1. **Design-first**: For new decks, always create a design outline before generating slides — jumping straight into HTML leads to inconsistent visual language and frequent rework
-2. **Design with intention**: Every visual choice should have a reason. Match the aesthetic to the content, audience, and purpose (see `{SKILL_PATH}/references/aesthetics.md`)
+2. **Design with intention**: Every visual choice should have a reason. Match the aesthetic to the content, audience, and purpose (see `{SKILL_PATH}/references/design-guide.md`)
 3. **Visual consistency**: All slides share the same visual language (theme.css) — one-off inline styles cause drift that's painful to fix later
 4. **Content fits canvas**: Every slide is {{slideWidth}}×{{slideHeight}}px — unlike web pages, slides have no scroll, so overflow content is simply invisible
 5. **Precision over speed**: Get each slide right in one pass; avoid iterative "let me try again" loops
@@ -97,15 +97,15 @@ Before writing any slide HTML, create `design_outline.md`:
 
 1. **Understand the brief**: What is the presentation about? Who is the audience? What tone?
 2. **Gather information**: Read any source files the user provides (documents, data, links)
-3. **Write the outline**: Create `design_outline.md` — reference `{SKILL_PATH}/design_outline_template.md` for the full template structure
+3. **Write the outline**: Create `design_outline.md` — reference `{SKILL_PATH}/references/design-outline.md` for the full template structure
 
 4. **Confirm with user** (for large decks): "I've created a design outline with N slides. Ready to generate?"
 
 ### Phase 2: Theme Setup
 
-If the user's workspace has no `theme.css`, create one. Reference `{SKILL_PATH}/style_reference.md` for the design system. Key decisions:
+If the user's workspace has no `theme.css`, create one. Read `{SKILL_PATH}/references/design-guide.md` for typography, color, spacing defaults, and design direction. Key decisions:
 - Color palette (light/dark mode, primary/accent colors)
-- Typography (heading and body fonts) — **must include CJK system fonts** in `--font-sans` for multilingual support (see style_reference.md)
+- Typography (heading and body fonts) — **must include CJK system fonts** in `--font-sans` for multilingual support
 - Spacing scale
 
 ### Phase 3: Scaffold All Slides
@@ -188,7 +188,7 @@ The viewer's export and print features capture a single-frame snapshot of each s
 
 ### Height Calculation Rules
 
-Overflow is the #1 quality issue because slides are fixed-viewport — there's no scroll, so anything beyond {{slideHeight}}px is simply clipped and invisible. Reference `{SKILL_PATH}/layout_patterns.md` for detailed examples. Key rules:
+Overflow is the #1 quality issue because slides are fixed-viewport — there's no scroll, so anything beyond {{slideHeight}}px is simply clipped and invisible. Reference `{SKILL_PATH}/references/layout-patterns.md` for detailed examples. Key rules:
 
 1. **Text height** = `font-size × line-height × number-of-lines`
    - Example: 24px × 1.5 × 3 lines = 108px
@@ -206,15 +206,15 @@ Overflow is the #1 quality issue because slides are fixed-viewport — there's n
 
 ### Design Principles
 
-> For deeper guidance on typography selection, color theory, visual hierarchy, and avoiding AI-generated aesthetics, consult `{SKILL_PATH}/references/aesthetics.md`.
-
 - **Whitespace**: Generous padding and margins. Slides should feel spacious, not cramped
-- **Typography hierarchy**: h1 for slide titles (32-48px), h2 for section headers (24-32px), body text 18-24px. Use fewer sizes with more contrast. See aesthetics.md § Typography.
+- **Typography hierarchy**: h1 for slide titles (32-48px), h2 for section headers (24-32px), body text 18-24px
 - **Bullet points**: Concise (< 10 words each), max 5-6 per slide
-- **Colors**: Use CSS custom properties from theme.css (`var(--color-primary)`, etc.). See aesthetics.md § Color for palette-building guidance.
+- **Colors**: Use CSS custom properties from theme.css (`var(--color-primary)`, etc.)
 - **Contrast**: Ensure text is always readable against its background
 - **Alignment**: Consistent alignment within and across slides
 - **Information density**: One key idea per slide. If a slide feels crowded, split it
+
+For deeper guidance on typography selection, color theory, and visual hierarchy, read `{SKILL_PATH}/references/design-guide.md`.
 
 ---
 
@@ -335,7 +335,7 @@ cd {SKILL_PATH} && node scripts/generate_image.mjs \
 
 ## Refinement Workflow
 
-When the user asks to improve, polish, refine, or critique a deck, follow the practices in `{SKILL_PATH}/references/aesthetics.md` § Refinement Practices. The available refinement approaches are:
+When the user asks to improve, polish, refine, or critique a deck, follow the practices in `{SKILL_PATH}/references/refinement.md`. The available refinement approaches are:
 
 | Request | Practice | What It Does |
 |---------|----------|-------------|
@@ -346,7 +346,7 @@ When the user asks to improve, polish, refine, or critique a deck, follow the pr
 | "tone it down" / "too busy" | **Quieter** | Reduce saturation, font weight, decorations. Refined, not boring. |
 | "add more color" / "too gray" | **Colorize** | Strategic color introduction — tinted neutrals, accent data, section coding |
 
-**Process**: Read the corresponding section in aesthetics.md, assess the current state, plan changes, then apply systematically across all affected slides. For deck-wide refinement, read all slides first (via manifest.json) to ensure consistent application.
+**Process**: Read the corresponding section in refinement.md, assess the current state, plan changes, then apply systematically across all affected slides. For deck-wide refinement, read all slides first (via manifest.json) to ensure consistent application.
 
 ---
 
@@ -412,10 +412,10 @@ The script checks:
 
 ## Supporting Reference Documents
 
-For detailed guidance, read these files from the skill directory:
+For detailed guidance, read these files from the skill directory on demand:
 
-- `{SKILL_PATH}/references/aesthetics.md` — **Design intelligence**: typography selection, OKLCH color, visual hierarchy, AI slop avoidance, and refinement practices (polish, critique, distill, bolder, quieter, colorize)
-- `{SKILL_PATH}/design_outline_template.md` — Full template for creating design outlines
-- `{SKILL_PATH}/style_reference.md` — Design system reference (colors, typography, spacing, visual patterns)
-- `{SKILL_PATH}/layout_patterns.md` — Common layout patterns with height calculations and examples
-- `{SKILL_PATH}/layout_check.js` — Overflow detection script for browser-based validation
+- `{SKILL_PATH}/references/design-guide.md` — **Design direction**: typography, color (OKLCH), visual hierarchy, spacing, layout templates, and AI image usage. Read when creating themes or making design decisions.
+- `{SKILL_PATH}/references/refinement.md` — **Refinement practices**: critique, polish, distill, bolder, quieter, colorize. Read when the user wants to improve a completed deck.
+- `{SKILL_PATH}/references/design-outline.md` — Full template for creating design outlines. Read during Phase 1.
+- `{SKILL_PATH}/references/layout-patterns.md` — Common layout patterns with height calculations and examples. Read when dealing with overflow or complex layouts.
+- `{SKILL_PATH}/layout_check.js` — Overflow detection script for browser-based validation.

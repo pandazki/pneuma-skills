@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.4.10] - 2026-03-10
+
+### Improved
+- **Slide skill reference restructuring** — merged `style_reference.md` and `aesthetics.md` into a single `references/design-guide.md` following progressive disclosure pattern; extracted refinement practices into `references/refinement.md`; moved `layout_patterns.md` and `design_outline_template.md` into `references/` for consistency
+- **Slide SKILL.md** — rewritten Supporting Reference Documents section with clear "when to read" guidance for each reference file; all internal cross-references updated to new paths
+
+### Removed
+- **Redundant slide skill files** — deleted `style_reference.md`, `references/aesthetics.md`, top-level `layout_patterns.md`, and `design_outline_template.md` (content merged into new reference structure)
+
 ## [2.4.9] - 2026-03-10
 
 ### Added
