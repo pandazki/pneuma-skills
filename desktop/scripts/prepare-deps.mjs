@@ -9,7 +9,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { mkdirSync, writeFileSync, rmSync, existsSync, cpSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync, existsSync, cpSync, readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -82,12 +82,23 @@ try {
 // Move node_modules to output location
 cpSync(resolve(tmpDir, "node_modules"), outputDir, { recursive: true });
 
-// Remove .bin symlinks — desktop app uses Bun, not node_modules/.bin
-const binDir = resolve(outputDir, ".bin");
-if (existsSync(binDir)) {
-  rmSync(binDir, { recursive: true, force: true });
-  console.log("Removed .bin directory (not needed for Bun runtime)");
+// Remove ALL .bin directories (including nested ones) — desktop app uses Bun,
+// and broken symlinks in .bin/ crash electron-builder's universal merge.
+function removeBinDirs(dir) {
+  let entries;
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const full = resolve(dir, entry.name);
+    if (entry.name === ".bin") {
+      rmSync(full, { recursive: true, force: true });
+    } else {
+      removeBinDirs(full);
+    }
+  }
 }
+removeBinDirs(outputDir);
+console.log("Removed all .bin directories (not needed for Bun runtime)");
 
 // Clean up temp dir
 rmSync(tmpDir, { recursive: true, force: true });

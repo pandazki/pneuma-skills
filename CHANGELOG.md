@@ -2,11 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2.4.6] - 2026-03-10
+## [2.4.7] - 2026-03-10
 
 ### Fixed
-- **Mode Maker play missing deps on `bunx`** — reverted mode-specific deps (@tailwindcss/typography, @xyflow/react, etc.) back to `dependencies`; play uses Vite dev mode which needs all frontend deps at runtime
-- **macOS desktop build failure** — electron-builder universal merge crashes on broken symlinks in `node_modules/.bin/`; `prepare-deps.mjs` now removes `.bin/` directory (Bun runtime doesn't need it)
+- **Mode Maker play on `bunx`** — seed `package.json` Vite toolchain moved to `dependencies` (not devDeps) so they're installed; `vite.config.ts` React alias uses `require.resolve` for hoisted node_modules; all frontend deps restored to root `dependencies` (Vite dev mode needs them at runtime)
+- **macOS desktop build failure** — `prepare-deps.mjs` recursively removes all `.bin/` directories from production node_modules; broken symlinks in nested `.bin/` crashed electron-builder's universal merge
+- **Desktop `.gitignore` typo** — removed duplicate trailing slash in `pneuma-node-modules//`
 
 ## [2.4.4] - 2026-03-10
 
