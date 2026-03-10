@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { SessionState, PermissionRequest, ChatMessage, FileContent, SelectionContext, ContentBlock, UserAction, Annotation } from "./types.js";
-import type { ViewerContract, WorkspaceItem, ViewerActionRequest, ContentSet } from "../core/types/viewer-contract.js";
+import type { ViewerContract, WorkspaceItem, ViewerActionRequest, ContentSet, ViewerLocator } from "../core/types/viewer-contract.js";
 
 export interface Activity {
   phase: "thinking" | "responding" | "tool";
@@ -116,6 +116,9 @@ interface AppState {
   // User action events (for CC context injection)
   userActions: UserAction[];
 
+  // Locator navigation request (from chat card click → viewer)
+  navigateRequest: ViewerLocator | null;
+
   // Queued viewer notification (sent when CC idle)
   pendingViewerNotification: { type: string; message: string; severity: "info" | "warning"; summary?: string } | null;
 
@@ -200,6 +203,9 @@ interface AppState {
   // Actions — user actions
   pushUserAction: (action: UserAction) => void;
   drainUserActions: () => UserAction[];
+
+  // Actions — locator navigation
+  setNavigateRequest: (req: ViewerLocator | null) => void;
 
   // Actions — viewer notification queue
   setPendingViewerNotification: (n: { type: string; message: string; severity: "info" | "warning" } | null) => void;
@@ -294,6 +300,7 @@ export const useStore = create<AppState>((set) => ({
   activeContentSet: null,
   contentSetUnread: new Set(),
   userActions: [],
+  navigateRequest: null,
   pendingViewerNotification: null,
 
   setSession: (session) => set({ session }),
@@ -451,6 +458,62 @@ export const useStore = create<AppState>((set) => ({
     const actions = useStore.getState().userActions;
     useStore.setState({ userActions: [] });
     return actions;
+  },
+
+  setNavigateRequest: (navigateRequest) => {
+    if (!navigateRequest) {
+      set({ navigateRequest: null });
+      return;
+    }
+    const { data } = navigateRequest;
+    // Handle contentSet switching at the store level, then forward the rest
+    if (data.contentSet) {
+      const targetSet = data.contentSet as string;
+      const state = useStore.getState();
+      const needsSwitch = state.activeContentSet !== targetSet;
+      if (needsSwitch && state.contentSets.some((cs) => cs.prefix === targetSet)) {
+        state.setActiveContentSet(targetSet);
+      }
+      const { contentSet: _, ...rest } = data;
+      // Strip content set prefix from file path — viewer works with unprefixed paths
+      if (typeof rest.file === "string" && rest.file.startsWith(targetSet + "/")) {
+        rest.file = rest.file.slice(targetSet.length + 1);
+      }
+      if (Object.keys(rest).length > 0) {
+        if (needsSwitch) {
+          // Content set changed — delay navigation for viewer to settle
+          setTimeout(() => {
+            set({ navigateRequest: { label: navigateRequest.label, data: rest } });
+          }, 50);
+        } else {
+          set({ navigateRequest: { label: navigateRequest.label, data: rest } });
+        }
+      }
+    } else {
+      // Auto-detect content set from file path prefix
+      const state = useStore.getState();
+      const filePath = typeof data.file === "string" ? data.file : null;
+      if (filePath && state.contentSets.length > 0) {
+        const matchedCS = state.contentSets.find((cs) => filePath.startsWith(cs.prefix + "/"));
+        if (matchedCS) {
+          const needsSwitch = state.activeContentSet !== matchedCS.prefix;
+          if (needsSwitch) {
+            state.setActiveContentSet(matchedCS.prefix);
+          }
+          const stripped = { ...data, file: filePath.slice(matchedCS.prefix.length + 1) };
+          if (needsSwitch) {
+            // Content set changed — delay navigation for viewer to settle
+            setTimeout(() => {
+              set({ navigateRequest: { label: navigateRequest.label, data: stripped } });
+            }, 50);
+          } else {
+            set({ navigateRequest: { label: navigateRequest.label, data: stripped } });
+          }
+          return;
+        }
+      }
+      set({ navigateRequest });
+    }
   },
 
   setPendingViewerNotification: (n) => set({ pendingViewerNotification: n }),

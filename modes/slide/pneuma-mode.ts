@@ -94,14 +94,27 @@ const slideMode: ModeDefinition = {
       selection: ViewerSelectionContext | null,
       files: ViewerFileContent[],
     ): string {
-      if (!selection?.file) return "";
-
       // Parse manifest for slide info
       const manifestFile = files.find(
         (f) =>
           f.path === "manifest.json" ||
           f.path.endsWith("/manifest.json"),
       );
+
+      // Derive active file: selection → first slide in manifest → first HTML file
+      let activeFile = selection?.file || "";
+      if (!activeFile && manifestFile) {
+        try {
+          const m = JSON.parse(manifestFile.content);
+          const slides: { file: string }[] = m.slides ?? [];
+          if (slides.length > 0) activeFile = slides[0].file;
+        } catch { /* ignore */ }
+      }
+      if (!activeFile) {
+        activeFile = files.find((f) => /\.html$/i.test(f.path))?.path || "";
+      }
+      if (!activeFile) return "";
+
       let slideTitle = "";
       let slideIndex = 0;
       let slideCount = 0;
@@ -110,7 +123,7 @@ const slideMode: ModeDefinition = {
           const manifest = JSON.parse(manifestFile.content);
           const slides: { file: string; title?: string }[] = manifest.slides ?? [];
           slideCount = slides.length;
-          const idx = slides.findIndex((s) => s.file === selection.file);
+          const idx = slides.findIndex((s) => s.file === activeFile);
           if (idx >= 0) {
             slideIndex = idx + 1;
             slideTitle = slides[idx].title || "";
@@ -134,8 +147,8 @@ const slideMode: ModeDefinition = {
       };
 
       // Annotations mode — multiple annotated elements with comments
-      if (selection.type === "annotations" && selection.annotations?.length) {
-        const attrs = [`mode="slide"`, `file="${selection.file}"`];
+      if (selection?.type === "annotations" && selection.annotations?.length) {
+        const attrs = [`mode="slide"`, `file="${activeFile}"`];
         const lines: string[] = [];
 
         if (slideIndex > 0) {
@@ -182,7 +195,7 @@ const slideMode: ModeDefinition = {
         return `<viewer-context ${attrs.join(" ")}>\n${lines.join("\n")}\n</viewer-context>`;
       }
 
-      const attrs = [`mode="slide"`, `file="${selection.file}"`];
+      const attrs = [`mode="slide"`, `file="${activeFile}"`];
       const lines: string[] = [];
 
       if (slideIndex > 0) {
@@ -193,7 +206,7 @@ const slideMode: ModeDefinition = {
       }
 
       // Include element selection (skip for "viewing" pseudo-selection)
-      if (selection.type !== "viewing" && (selection.selector || selection.content)) {
+      if (selection && selection.type !== "viewing" && (selection.selector || selection.content)) {
         if (selection.selector) {
           lines.push(`Selected: ${selection.selector}`);
         } else {

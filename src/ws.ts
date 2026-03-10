@@ -756,7 +756,14 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
   let enrichedContent = content;
   const viewer = store.modeViewer;
   if (viewer) {
-    const viewerFiles = store.files.map((f) => ({ path: f.path, content: f.content }));
+    // Filter files by active content set and strip prefix (matching what the viewer sees)
+    const activeContentSet = store.activeContentSet;
+    const allFiles = store.files.map((f) => ({ path: f.path, content: f.content }));
+    const viewerFiles = activeContentSet
+      ? allFiles
+          .filter((f) => f.path.startsWith(activeContentSet + "/"))
+          .map((f) => ({ path: f.path.slice(activeContentSet.length + 1), content: f.content }))
+      : allFiles;
     let viewerSelection: ViewerSelectionContext | null = null;
 
     // Annotations take priority over single selection
@@ -809,20 +816,21 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
       viewerSelection.viewport = { startLine: vp.startLine, endLine: vp.endLine, heading: vp.heading };
     }
 
-    // Re-prefix file paths with active content set directory for agent awareness
-    const activeContentSet = store.activeContentSet;
-    if (activeContentSet && viewerSelection?.file) {
-      viewerSelection = { ...viewerSelection, file: `${activeContentSet}/${viewerSelection.file}` };
-    }
-
+    // Pass content-set-relative selection & files to extractContext,
+    // then re-prefix file paths in the output for agent awareness.
     const context = viewer.extractContext(viewerSelection, viewerFiles);
     if (context) {
       let enrichedContext = context;
-      // Inject content-set info into <viewer-context> tag
+      // Inject content-set info and re-prefix file paths in the XML output
       if (activeContentSet && enrichedContext.startsWith("<viewer-context ")) {
         enrichedContext = enrichedContext.replace(
-          "<viewer-context ",
-          `<viewer-context content-set="${activeContentSet}" `,
+          /(<viewer-context\s)/,
+          `$1content-set="${activeContentSet}" `,
+        );
+        // Re-prefix file="..." attribute so the agent sees full workspace paths
+        enrichedContext = enrichedContext.replace(
+          /file="([^"]+)"/,
+          `file="${activeContentSet}/$1"`,
         );
         // Append content set listing to body
         enrichedContext = injectContentSetListing(enrichedContext, store.contentSets, activeContentSet);
@@ -999,7 +1007,14 @@ function buildViewerContextPrefix(): string {
   const viewer = store.modeViewer;
   if (!viewer) return "";
 
-  const viewerFiles = store.files.map((f) => ({ path: f.path, content: f.content }));
+  // Filter files by active content set and strip prefix (matching what the viewer sees)
+  const activeContentSet = store.activeContentSet;
+  const allFiles = store.files.map((f) => ({ path: f.path, content: f.content }));
+  const viewerFiles = activeContentSet
+    ? allFiles
+        .filter((f) => f.path.startsWith(activeContentSet + "/"))
+        .map((f) => ({ path: f.path.slice(activeContentSet.length + 1), content: f.content }))
+    : allFiles;
   let viewerSelection: ViewerSelectionContext | null = null;
 
   // Provide active file as viewing context
@@ -1016,20 +1031,21 @@ function buildViewerContextPrefix(): string {
     viewerSelection.viewport = { startLine: vp.startLine, endLine: vp.endLine, heading: vp.heading };
   }
 
-  // Re-prefix file paths with active content set directory
-  const activeContentSet = store.activeContentSet;
-  if (activeContentSet && viewerSelection?.file) {
-    viewerSelection = { ...viewerSelection, file: `${activeContentSet}/${viewerSelection.file}` };
-  }
-
+  // Pass content-set-relative selection & files to extractContext,
+  // then re-prefix file paths in the output for agent awareness.
   const context = viewer.extractContext(viewerSelection, viewerFiles);
   if (!context) return "";
 
   let enrichedContext = context;
   if (activeContentSet && enrichedContext.startsWith("<viewer-context ")) {
     enrichedContext = enrichedContext.replace(
-      "<viewer-context ",
-      `<viewer-context content-set="${activeContentSet}" `,
+      /(<viewer-context\s)/,
+      `$1content-set="${activeContentSet}" `,
+    );
+    // Re-prefix file="..." attribute so the agent sees full workspace paths
+    enrichedContext = enrichedContext.replace(
+      /file="([^"]+)"/,
+      `file="${activeContentSet}/$1"`,
     );
     enrichedContext = injectContentSetListing(enrichedContext, store.contentSets, activeContentSet);
   }

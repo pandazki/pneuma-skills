@@ -90,6 +90,7 @@ The user just opened the workspace. You are ready to assist with presentation cr
         description: "Navigate to a specific slide",
       },
     ],
+    locatorDescription: 'After creating or editing slides, embed locator cards so the user can jump to them. Navigate by file: `data=\'{"file":"slides/slide-03.html"}\'`. Navigate by number: `data=\'{"index":3}\'`. Switch content set: `data=\'{"contentSet":"deck-2"}\'`. Switch content set and slide: `data=\'{"contentSet":"deck-2","index":1}\'`.',
     scaffold: {
       description: "Initialize workspace with slide scaffolding from a structure spec.",
       params: {

@@ -169,6 +169,22 @@ export function generateViewerApiSection(
     hasContent = true;
   }
 
+  // Locator cards
+  if (viewerApi.locatorDescription) {
+    lines.push("### Locator Cards");
+    lines.push("");
+    lines.push("You may embed clickable navigation cards in your messages using this tag:");
+    lines.push("`<viewer-locator label=\"Display Label\" data='{\"key\":\"value\"}' />`");
+    lines.push("");
+    lines.push(viewerApi.locatorDescription);
+    lines.push("");
+    lines.push("When the user clicks a locator card, the viewer navigates to that location.");
+    lines.push("");
+    lines.push("**Always** embed locator cards at the end of your response when you create or edit content. The user may have navigated away while you were working — locators let them jump directly to what changed.");
+    lines.push("");
+    hasContent = true;
+  }
+
   if (!hasContent) return "";
 
   // Viewer context format description (prepend after header)

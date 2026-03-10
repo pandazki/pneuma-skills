@@ -45,6 +45,7 @@ For Excalidraw JSON format, element types, color palette, and diagram recipes, c
 
   viewerApi: {
     workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: true },
+    locatorDescription: 'After creating drawings, embed locator cards so the user can switch to them. Navigate to file: `data=\'{"file":"architecture.excalidraw"}\'`.',
     scaffold: {
       description: "Reset the active canvas to empty state. Only affects the currently viewed file.",
       params: {},

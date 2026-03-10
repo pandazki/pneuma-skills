@@ -138,6 +138,8 @@ export default function DrawPreview({
   onActionResult,
   onActiveFileChange,
   activeFile,
+  navigateRequest,
+  onNavigateComplete,
 }: ViewerPreviewProps) {
   const setPreviewMode = useStore((s) => s.setPreviewMode);
   const pushUserAction = useStore((s) => s.pushUserAction);
@@ -281,6 +283,16 @@ export default function DrawPreview({
       onActiveFileChange?.(activeFilePath);
     }
   }, [activeFilePath]);
+
+  // ── Locator navigation from chat cards ──────────────────────────────────
+  useEffect(() => {
+    if (!navigateRequest) return;
+    const { data } = navigateRequest;
+    if (data.file) {
+      onActiveFileChange?.(data.file as string);
+    }
+    onNavigateComplete?.();
+  }, [navigateRequest]);
 
   // Build initial data for Excalidraw — recomputes on remount (key change)
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -5,6 +5,59 @@ import type { ChatMessage, ContentBlock, SelectionContext, Annotation, Permissio
 import { useStore } from "../store.js";
 import { sendPermissionResponse } from "../ws.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
+import type { ViewerLocator } from "../../core/types/viewer-contract.js";
+
+// ─── Viewer Locator parsing ────────────────────────────────────────────────
+
+const LOCATOR_RE = /<viewer-locator\s+label="([^"]+)"\s+data='([^']+)'\s*\/>/g;
+
+function parseViewerLocators(text: string): { cleanText: string; locators: ViewerLocator[] } {
+  const locators: ViewerLocator[] = [];
+  for (const match of text.matchAll(LOCATOR_RE)) {
+    try { locators.push({ label: match[1], data: JSON.parse(match[2]) }); } catch { /* skip malformed */ }
+  }
+  return { cleanText: text.replace(LOCATOR_RE, "").trim(), locators };
+}
+
+function LocatorCardGroup({ locators }: { locators: ViewerLocator[] }) {
+  const setNavigateRequest = useStore((s) => s.setNavigateRequest);
+  const debugMode = useStore((s) => s.debugMode);
+  const [debugOpen, setDebugOpen] = useState(false);
+  return (
+    <div className="mt-2">
+      <div className="flex flex-wrap gap-1.5">
+        {locators.map((loc, i) => (
+          <button key={i} onClick={() => setNavigateRequest(loc)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-cc-primary/5 border border-cc-primary/20 hover:bg-cc-primary/15 hover:border-cc-primary/40 transition-all cursor-pointer text-xs group">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-primary shrink-0">
+              <circle cx="8" cy="8" r="3" />
+              <path d="M8 1v3M8 12v3M1 8h3M12 8h3" />
+            </svg>
+            <span className="text-cc-fg font-medium group-hover:text-cc-primary transition-colors">{loc.label}</span>
+          </button>
+        ))}
+      </div>
+      {debugMode && (
+        <div className="mt-1">
+          <button
+            onClick={() => setDebugOpen(!debugOpen)}
+            className="flex items-center gap-1 text-[10px] text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
+          >
+            <svg viewBox="0 0 16 16" fill="none" className={`w-3 h-3 transition-transform ${debugOpen ? "rotate-90" : ""}`}>
+              <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span>payload</span>
+          </button>
+          {debugOpen && (
+            <pre className="mt-1 text-[10px] font-mono-code bg-black/30 text-cc-code-fg rounded-md px-2.5 py-2 overflow-x-auto whitespace-pre-wrap max-h-40 overflow-y-auto">
+              {locators.map((loc) => `${loc.label}: ${JSON.stringify(loc.data)}`).join("\n")}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function MessageBubble({ message }: { message: ChatMessage }) {
   if (message.role === "system") {
@@ -325,11 +378,13 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
 
   // Fallback: no content blocks, just plain text
   if (blocks.length === 0 && message.content) {
+    const { cleanText, locators } = parseViewerLocators(message.content);
     return (
       <div className="flex items-start gap-3">
         <AssistantAvatar />
         <div className="flex-1 min-w-0">
-          <MarkdownContent text={message.content} />
+          {cleanText && <MarkdownContent text={cleanText} />}
+          {locators.length > 0 && <LocatorCardGroup locators={locators} />}
         </div>
       </div>
     );
@@ -597,6 +652,8 @@ function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
 // ─── MarkdownContent ───────────────────────────────────────────────────────
 
 export function MarkdownContent({ text, showCursor = false }: { text: string; showCursor?: boolean }) {
+  // Strip locator tags so they don't render as raw HTML during streaming
+  const cleanText = text.replace(/<viewer-locator\s[^>]*\/>/g, "");
   return (
     <div className="markdown-body text-[14px] text-cc-fg leading-relaxed overflow-hidden font-chat">
       <Markdown
@@ -692,7 +749,7 @@ export function MarkdownContent({ text, showCursor = false }: { text: string; sh
           ),
         }}
       >
-        {text}
+        {cleanText}
       </Markdown>
       {showCursor && (
         <span
@@ -713,7 +770,13 @@ function ContentBlockRenderer({
   toolUseById: Map<string, ToolUseInfo>;
 }) {
   if (block.type === "text") {
-    return <MarkdownContent text={block.text} />;
+    const { cleanText, locators } = parseViewerLocators(block.text);
+    return (
+      <>
+        {cleanText && <MarkdownContent text={cleanText} />}
+        {locators.length > 0 && <LocatorCardGroup locators={locators} />}
+      </>
+    );
   }
 
   if (block.type === "thinking") {
