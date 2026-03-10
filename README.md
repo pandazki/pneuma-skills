@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/pneuma-logo-helix_2.png" alt="Pneuma" width="120" />
+</p>
+
 <h1 align="center">Pneuma Skills</h1>
 <p align="center"><strong>Co-creation Infrastructure for Humans × Code Agents</strong></p>
 <p align="center">Visual environment, skills, continuous learning, and distribution — <br>everything humans and agents need to build content together.</p>
@@ -5,6 +9,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/pneuma-skills"><img src="https://img.shields.io/npm/v/pneuma-skills.svg" alt="npm version" /></a>
   <a href="https://www.npmjs.com/package/pneuma-skills"><img src="https://img.shields.io/npm/dm/pneuma-skills.svg" alt="npm downloads" /></a>
+  <a href="https://github.com/pandazki/pneuma-skills/releases"><img src="https://img.shields.io/github/v/release/pandazki/pneuma-skills?label=desktop" alt="Desktop release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" /></a>
 </p>
 
@@ -18,48 +23,57 @@
 
 > **"pneuma"** — Greek *pneuma*, meaning soul, breath, life force.
 
-When humans and code agents co-create content, they need more than a chat window — they need shared infrastructure. Pneuma provides four pillars for this **isomorphic collaboration**, built atop mainstream code agents (currently [Claude Code](https://docs.anthropic.com/en/docs/claude-code)):
+When humans and code agents co-create content, they need more than a chat window — they need shared infrastructure. Pneuma provides four pillars for **isomorphic collaboration**, built atop mainstream code agents (currently [Claude Code](https://docs.anthropic.com/en/docs/claude-code)):
 
-**Visual Environment** — The agent edits files on disk; you see, select, and guide the rendered result in a live, bidirectional workspace. Both human and agent operate on the same content representation in real-time.
-
-**Skills** — Domain-specific knowledge and seed templates injected into the agent per mode. A presentation skill teaches layout, rhythm, and export; a document skill teaches prose and structure. Skills version and evolve with each release, and sessions persist across runs — the agent picks up where it left off.
-
-**Continuous Learning** — Skills aren't static presets. The Evolution Agent mines cross-session conversation history to extract user preferences and style patterns, then augments the preset skill with learned knowledge. Run `pneuma evolve <mode>` to analyze your history, review AI-generated proposals with evidence citations, and apply them to personalize your experience.
-
-**Distribution** — A complete ecosystem for sharing capabilities. Build a custom mode with AI assistance via Mode Maker, publish to the marketplace, and let anyone `pneuma mode add` it instantly.
+| Pillar | What it does |
+|--------|-------------|
+| **Visual Environment** | Agent edits files on disk; you see, select, and guide the rendered result in a live, bidirectional workspace |
+| **Skills** | Domain-specific knowledge and seed templates injected per mode. Sessions persist across runs — the agent picks up where it left off |
+| **Continuous Learning** | Evolution Agent mines conversation history to extract preferences, then augments skills with learned knowledge |
+| **Distribution** | Build custom modes with AI via Mode Maker, publish to the marketplace, share with `pneuma mode add` |
 
 ## Built-in Modes
 
 | Mode | What it does |
 |------|-------------|
-| **webcraft** | Live web development with [Impeccable](https://impeccable.style) AI design intelligence — 17 design commands, responsive preview, element selection, export |
+| **webcraft** | Live web development with [Impeccable](https://impeccable.style) AI design intelligence — 17 design commands, responsive preview, export |
 | **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export |
 | **doc** | Markdown documents with live preview — the simplest mode, a minimal example of the mode system |
-| **draw** | Diagrams and visual thinking on an [Excalidraw](https://excalidraw.com) canvas — showcasing viewer extensibility with a rich third-party component |
+| **draw** | Diagrams and visual thinking on an [Excalidraw](https://excalidraw.com) canvas |
 | **mode-maker** | Create custom modes with AI — fork, play-test, publish |
 | **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback |
 
-## Prerequisites
+## Getting Started
 
-- [Bun](https://bun.sh) >= 1.3.5 (required for PTY terminal support)
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated (`claude` command available in PATH)
+### Desktop App (recommended)
 
-## Quick Start
+Download the latest release for your platform:
+
+| Platform | Download |
+|----------|----------|
+| macOS (Apple Silicon + Intel) | [`.dmg`](https://github.com/pandazki/pneuma-skills/releases/latest) |
+| Windows x64 | [`.exe` installer](https://github.com/pandazki/pneuma-skills/releases/latest) |
+| Linux x64 | [`.AppImage`](https://github.com/pandazki/pneuma-skills/releases/latest) / [`.deb`](https://github.com/pandazki/pneuma-skills/releases/latest) |
+
+The desktop app bundles Bun — no runtime install needed. Just install [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) and you're ready to go.
+
+### CLI
 
 ```bash
-# Install Bun if you haven't: curl -fsSL https://bun.sh/install | bash
+# Prerequisites: Bun >= 1.3.5, Claude Code CLI
 
-# Open the Launcher (marketplace UI — browse, discover, resume sessions)
+# Open the Launcher (marketplace UI)
 bunx pneuma-skills
 
-# Start with a fresh workspace (recommended)
+# Start a mode with a fresh workspace
 bunx pneuma-skills slide --workspace ./my-first-pneuma-slide
 
-# Or use the current directory (files will be created here)
+# Or use the current directory
 bunx pneuma-skills doc
 ```
 
-Or install from source:
+<details>
+<summary><strong>Install from source</strong></summary>
 
 ```bash
 git clone https://github.com/pandazki/pneuma-skills.git
@@ -68,12 +82,7 @@ bun install
 bun run dev doc --workspace ~/my-notes
 ```
 
-This will:
-
-1. Load the Doc Mode manifest and install its skill prompt into `<workspace>/.claude/skills/`
-2. Start the Pneuma server on `http://localhost:17996`
-3. Spawn a Claude Code CLI session connected via WebSocket
-4. Open your browser with the editor UI
+</details>
 
 ## CLI Usage
 
@@ -82,171 +91,60 @@ pneuma-skills [mode] [options]
 
 Modes:
   (no argument)                Open the Launcher (marketplace UI)
-  webcraft                     Web design with Impeccable.style — 17 AI design commands, responsive preview, export
-  slide                        HTML presentations — content sets, drag-reorder, presenter mode, export
-  doc                          Markdown with live preview — simplest mode, minimal example of the mode system
-  draw                         Excalidraw canvas — viewer extensibility showcase with third-party component
-  mode-maker                   Create and develop custom modes with AI
-  evolve                       Launch the Evolution Agent for skill learning
-  /path/to/mode                Load mode from a local directory
-  github:user/repo             Load mode from a GitHub repository
-  github:user/repo#branch      Load mode from a specific branch/tag
-  https://...tar.gz            Load mode from a URL
+  webcraft                     Web design with Impeccable.style
+  slide                        HTML presentations
+  doc                          Markdown with live preview
+  draw                         Excalidraw canvas
+  mode-maker                   Create custom modes with AI
+  evolve                       Launch the Evolution Agent
+  /path/to/mode                Load from a local directory
+  github:user/repo             Load from GitHub
+  https://...tar.gz            Load from URL
 
 Options:
-  --workspace <path>   Target workspace directory (default: current directory)
+  --workspace <path>   Target workspace directory (default: cwd)
   --port <number>      Server port (default: 17996)
   --no-open            Don't auto-open the browser
-  --no-prompt          Non-interactive mode (used by launcher)
-  --skip-skill         Skip skill installation (session resume without update)
-  --debug              Enable debug mode (inspect enriched CLI payloads)
+  --skip-skill         Skip skill installation
+  --debug              Enable debug mode
   --dev                Force dev mode (Vite)
 
 Subcommands:
   evolve <mode>        Analyze history and propose skill improvements
-  mode add <url>       Install a remote mode to ~/.pneuma/modes/
-  mode list            List published modes on the R2 registry
-  mode publish         Publish the current workspace as a mode
-  snapshot push        Upload workspace snapshot to R2
-  snapshot pull        Download workspace snapshot from R2
+  mode add <url>       Install a remote mode
+  mode list            List published modes
+  mode publish         Publish current workspace as a mode
+  snapshot push/pull   Upload/download workspace snapshot
 ```
-
-### Remote / External Modes
-
-Pneuma supports loading modes from outside the built-in `modes/` directory:
-
-```bash
-# Load from a local directory (must contain manifest.ts and pneuma-mode.ts)
-bunx pneuma-skills /path/to/my-custom-mode --workspace ~/project
-
-# Load from a GitHub repository
-bunx pneuma-skills github:pandazki/pneuma-mode-canvas --workspace ~/project
-
-# Load from a specific branch or tag
-bunx pneuma-skills github:pandazki/pneuma-mode-canvas#develop --workspace ~/project
-
-# Install a published mode from URL
-pneuma mode add https://example.com/my-mode.tar.gz
-```
-
-GitHub repositories are cloned to `~/.pneuma/modes/` and cached locally. Subsequent runs will fetch the latest changes. Published modes can be browsed in the Launcher or installed via `pneuma mode add`.
-
-A mode package must contain:
-- `manifest.ts` — default export of `ModeManifest`
-- `pneuma-mode.ts` — default export of `ModeDefinition`
-- `viewer/` — React preview components
-- `skill/` — Skill files (optional)
 
 ## Architecture
 
-Pneuma is organized in four layers, each with a clear contract boundary:
-
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Launcher (marketplace UI)                              │
+│  Desktop / Launcher                                     │
 │  Browse → Discover → Launch → Resume                    │
 ├─────────────────────────────────────────────────────────┤
-│  Mode Resolution                                        │
-│  builtin | local | github | url → manifest.ts on disk   │
-├─────────────────────────────────────────────────────────┤
 │  Layer 4: Mode Protocol                                 │
-│  ModeManifest — "what capability, what config, what UI" │
+│  ModeManifest — skill + viewer config + agent prefs     │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 3: Content Viewer                                │
-│  ViewerContract — "how to render, select, align"        │
+│  ViewerContract — render, select, agent-callable actions│
 ├─────────────────────────────────────────────────────────┤
 │  Layer 2: Agent Bridge                                  │
-│  AgentBackend — "how to launch, communicate, lifecycle" │
+│  AgentBackend — launch, communicate, lifecycle          │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 1: Runtime Shell                                 │
 │  HTTP, WebSocket, PTY, File Watch, Frontend             │
 └─────────────────────────────────────────────────────────┘
 ```
 
-The server maintains dual WebSocket channels:
-- **Browser channel** (`/ws/browser/:sessionId`) — JSON messages for the React UI
-- **CLI channel** (`/ws/cli/:sessionId`) — NDJSON messages for Claude Code's `--sdk-url` protocol
-
-When Claude Code edits files, chokidar detects the changes and pushes updated content to the browser for live preview.
-
-## Three Core Contracts
+Three core contracts in `core/types/`:
 
 | Contract | Responsibility | Extend to... |
 |----------|---------------|-------------|
-| **ModeManifest** | Declares skill, viewer config, agent preferences, init seeds | Add new modes (mindmap, canvas, etc.) |
-| **ViewerContract** | Preview component, context extraction, file workspace model, agent-callable actions | Custom renderers, viewport tracking, action protocols |
+| **ModeManifest** | Skill, viewer config, agent preferences, init seeds | New modes (mindmap, canvas, etc.) |
+| **ViewerContract** | Preview component, context extraction, action protocol | Custom renderers, viewport tracking |
 | **AgentBackend** | Launch, resume, kill, capability declaration | Other agents (Codex, Aider) |
-
-Contracts are defined in `core/types/` with 316 tests across 20 test files.
-
-## Project Structure
-
-```
-pneuma-skills/
-├── bin/pneuma.ts              # CLI entry — orchestrates mode + agent + server
-├── core/
-│   ├── types/                 # Contract definitions
-│   │   ├── mode-manifest.ts   #   ModeManifest, SkillConfig, ViewerConfig, ViewerApi
-│   │   ├── viewer-contract.ts #   ViewerContract, FileWorkspaceModel, ViewerAction*
-│   │   ├── agent-backend.ts   #   AgentBackend, AgentCapabilities
-│   │   ├── mode-definition.ts #   ModeDefinition (manifest + viewer)
-│   │   └── index.ts           #   Re-exports
-│   ├── mode-loader.ts         # Dynamic mode discovery and loading (builtin + external)
-│   ├── mode-resolver.ts       # Mode source resolution (builtin/local/github/url)
-│   └── __tests__/             # Contract tests
-├── modes/
-│   ├── doc/                   # Doc Mode — markdown editing
-│   ├── slide/                 # Slide Mode — presentation editing
-│   ├── draw/                  # Draw Mode — Excalidraw whiteboard
-│   ├── webcraft/              # WebCraft Mode — live web dev + Impeccable design AI
-│   ├── mode-maker/            # Mode Maker — create custom modes with AI
-│   └── evolve/                # Evolve Mode — evolution agent dashboard
-│       ├── manifest.ts        # Mode manifest (fork, play, publish workflow)
-│       ├── seed/              # Template files for new modes
-│       ├── skill/             # Skill prompt for mode development
-│       └── viewer/            # Mode development preview UI
-├── backends/
-│   └── claude-code/
-│       ├── index.ts           # ClaudeCodeBackend implements AgentBackend
-│       └── cli-launcher.ts    # Process spawner (Bun.spawn + --sdk-url)
-├── server/
-│   ├── index.ts               # Hono HTTP server + WS routing + content/viewer APIs
-│   ├── ws-bridge.ts           # Dual WebSocket bridge (browser JSON ↔ CLI NDJSON)
-│   ├── ws-bridge-viewer.ts    # Viewer action request/response routing
-│   ├── ws-bridge-*.ts         # Controls, replay, browser handlers, types
-│   ├── file-watcher.ts        # chokidar watcher (manifest-driven patterns)
-│   ├── skill-installer.ts     # Copies skill prompts + template engine
-│   ├── terminal-manager.ts    # PTY terminal sessions
-│   ├── path-resolver.ts       # Binary PATH resolution (cross-platform)
-│   ├── system-bridge.ts       # OS-level operations (open, reveal, openUrl)
-│   ├── mode-maker-routes.ts   # Mode Maker API routes (fork, play, publish, reset)
-│   ├── evolution-agent.ts     # Evolution Agent launcher (spawns CC with analysis tools)
-│   ├── evolution-proposal.ts  # Proposal CRUD + apply/rollback + CLAUDE.md sync
-│   └── evolution-routes.ts    # Evolution API routes (/api/evolve/*)
-├── src/
-│   ├── App.tsx                # Root layout (dynamic viewer from store)
-│   ├── store.ts               # Zustand state (session, messages, viewer)
-│   ├── ws.ts                  # Browser WebSocket client
-│   └── components/
-│       ├── Launcher.tsx       # Mode marketplace + recent sessions + local modes
-│       ├── ChatPanel.tsx      # Chat message feed
-│       ├── ChatInput.tsx      # Message composer with image upload
-│       ├── MessageBubble.tsx  # Rich messages (markdown, tools, thinking, context card)
-│       ├── ContextPanel.tsx   # Session stats, tasks, MCP servers, tools
-│       ├── TerminalPanel.tsx  # Integrated xterm.js terminal
-│       ├── ToolBlock.tsx      # Expandable tool call cards
-│       ├── PermissionBanner.tsx # Tool permission approval UI
-│       └── TopBar.tsx         # Tabs (Chat/Context/Terminal) + status
-├── snapshot/                  # Snapshot push/pull via Cloudflare R2
-│   ├── push.ts                # Pack and upload workspace
-│   ├── pull.ts                # Download and extract workspace
-│   ├── r2.ts                  # R2 storage client
-│   └── mode-publish.ts        # Mode package publishing to R2 registry
-└── docs/
-    ├── adr/                   # Architecture Decision Records
-    ├── images/                # Screenshots and visual assets
-    └── archive/               # Completed design docs & references
-```
 
 ## Tech Stack
 
@@ -254,68 +152,11 @@ pneuma-skills/
 |-------|-----------|
 | Runtime | [Bun](https://bun.sh) >= 1.3.5 |
 | Server | [Hono](https://hono.dev) |
-| Frontend | React 19 + [Vite](https://vite.dev) 6 |
-| Styling | [Tailwind CSS](https://tailwindcss.com) 4 |
-| State | [Zustand](https://zustand.docs.pmnd.rs) 5 |
-| Markdown | [react-markdown](https://github.com/remarkjs/react-markdown) + remark-gfm |
+| Frontend | React 19 + [Vite](https://vite.dev) 6 + [Tailwind CSS](https://tailwindcss.com) 4 |
+| Desktop | [Electron](https://www.electronjs.org) 35 + electron-builder + electron-updater |
 | Terminal | [xterm.js](https://xtermjs.org) + Bun native PTY |
-| File Watching | [chokidar](https://github.com/paulmillr/chokidar) 4 |
-| Drawing | [Excalidraw](https://excalidraw.com) 0.18 |
+| Drawing | [Excalidraw](https://excalidraw.com) |
 | Agent | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) via `--sdk-url` |
-
-## Features
-
-- **Launcher marketplace UI** — Browse builtin, published, and local modes; one-click launch or resume
-- **Live visual workspace** — Agent edits files, you see rendered results instantly in a bidirectional canvas
-- **Mode Maker** — Create and develop custom modes with AI assistance (fork, play-test, publish)
-- **Content sets** — Multiple content sets per workspace with unread change indicators
-- **WebCraft + Impeccable** — 17 AI design commands, responsive viewport preview, export to HTML/ZIP/PDF
-- **Next-gen visual design** — Ethereal Tech aesthetic with glassmorphism, neon orange accents, cinematic dark UI
-- **Export & capture** — Slide export to HTML/images via `@zumer/snapdom`
-- **Launcher process management** — Monitor and kill child processes spawned from the launcher
-- **Element selection** — Click any block to select it, then instruct changes on that specific element
-- **Inline editing** — Edit content directly in the preview (edit mode)
-- **Rich chat UI** — Streaming text, expandable tool calls, collapsible thinking, context visualization
-- **Integrated terminal** — Full PTY terminal with xterm.js
-- **Session history** — Persist sessions, resume with one-click, skill update detection on resume
-- **Local mode management** — Install modes via `pneuma mode add`, delete from launcher UI
-- **Mode publishing** — Publish custom modes to R2 registry via `pneuma mode publish`
-- **Permission control** — Review and approve/deny tool use requests
-- **Task tracking** — Visualize Claude's TodoWrite/TaskCreate progress
-- **Background processes** — Monitor long-running background commands
-- **Context visualization** — Rich `/context` card with category breakdown and stacked bar
-- **Image upload** — Drag & drop or paste images into chat
-- **Viewer context enrichment** — `<viewer-context>` XML blocks align agent perception with user viewport
-- **Viewer action protocol** — Agent can invoke viewer capabilities (navigate, toggle UI, capture)
-- **Evolution Agent** — `pneuma evolve <mode>` analyzes conversation history, proposes skill improvements with evidence
-- **Proposal lifecycle** — Review, apply, rollback, discard, or fork proposals into custom modes
-- **Windows compatibility** — Cross-platform PATH resolution, terminal, browser opening, process management
-- **Debug mode** — `--debug` flag shows enriched CLI payloads for each message
-
-## Roadmap
-
-- [x] Doc Mode — Markdown editing with live visual preview
-- [x] Slide Mode — Presentation editing with iframe preview, drag-reorder, AI image generation
-- [x] Draw Mode — Excalidraw whiteboard with `.excalidraw` file editing
-- [x] Element selection & inline editing
-- [x] Session persistence & resume
-- [x] Terminal, tasks, context panel
-- [x] v1.0 contract architecture (ModeManifest, ViewerContract, AgentBackend)
-- [x] ViewerContract v2 — Agent-Human alignment protocol (workspace model, action protocol, context enrichment)
-- [x] Remote mode loading — `pneuma github:user/repo` or local path
-- [x] Launcher marketplace UI — Browse, discover, launch, resume sessions
-- [x] Mode Maker — Create custom modes with AI (fork, play-test, publish)
-- [x] Mode publishing — `pneuma mode publish` to R2 registry
-- [x] Windows compatibility — Cross-platform PATH, terminal, browser, process management
-- [x] Content sets — Multiple content sets per workspace with unread indicators
-- [x] WebCraft Mode — Live web development with Impeccable.style AI design intelligence
-- [x] Launcher process management — Monitor and kill child processes
-- [x] Next-gen visual redesign — Ethereal Tech aesthetic (glassmorphism, cinematic dark UI)
-- [x] Export & image capture — Slide export via `@zumer/snapdom`
-- [x] Evolution Agent — AI-native continuous skill learning (`pneuma evolve <mode>`)
-- [x] Skill effectiveness optimization — standardized claudeMdSection + YAML frontmatter for native skill discovery
-- [ ] Additional agent backends — Codex CLI, custom agents
-- [ ] In-session adaptation — agent refines its approach in real-time based on feedback within a session
 
 ## Acknowledgements
 
