@@ -1,28 +1,37 @@
 {
   "title": "Blog & Documentation Heroes",
-  "description": "Hero images and header illustrations for Pneuma blog posts and documentation pages. Cinematic wide-format visuals that capture the essence of human-AI co-creation. Dark ethereal aesthetic with warm orange highlights.",
+  "description": "Cinematic wide-format hero images for Pneuma blog posts and documentation. Dark ethereal aesthetic (#09090b) with warm orange (#f97316) highlights, glassmorphism surfaces, and volumetric lighting.",
   "rows": [
     {
       "id": "row-hero-images",
-      "label": "Blog Post Heroes",
+      "label": "Blog Post Heroes — Cinematic Pneuma Aesthetic",
       "items": [
         {
           "file": "images/hero-launch.png",
           "title": "Launch Announcement Hero",
-          "prompt": "A cinematic hero image for a product launch blog post. A vast dark space (#09090b) with a single luminous point of warm orange light (#f97316) at center, from which geometric panels radiate outward like an unfolding interface — each panel showing fragments of documents, slides, drawings, and code. The panels have frosted glass (glassmorphism) edges with subtle white borders. Tiny particles of light drift between panels suggesting data flow. Ethereal, expansive, optimistic. Ultra-wide cinematic format. Professional tech marketing visual.",
+          "prompt": "A stunning wide-format hero image of a futuristic AI creative studio. A vast dark workspace (#09090b) where floating holographic screens display paintings, photographs, 3D models, and typography in mid-creation. At the center, streams of warm orange (#f97316) and golden (#fdba74) light particles converge into a brilliant nexus point, from which finished artworks emerge and drift outward. The screens have frosted glassmorphism edges with subtle reflections. Small geometric shapes and code fragments float in the ambient space like digital fireflies. Cinematic volumetric lighting with deep purple (#3b0764) atmospheric haze. Ultra-wide format, dramatic depth of field, professional digital art, highly detailed.",
           "aspectRatio": "21:9",
           "resolution": "2K",
           "style": "cinematic",
-          "tags": ["hero", "launch", "announcement", "cinematic"]
+          "tags": ["hero", "launch", "studio", "cinematic"]
         },
         {
           "file": "images/hero-co-creation.png",
-          "title": "Co-Creation Manifesto",
-          "prompt": "A hero image illustrating human-AI co-creation. Two hands reaching toward each other (reminiscent of Michelangelo's Creation of Adam but modernized) — one human hand, one made of flowing orange (#f97316) digital particles and code fragments. Where they almost touch, a bright spark creates a beautiful document or design that floats between them. Dark background with deep purple and orange gradient undertones. Wide format, dramatic lighting. Artistic, not photorealistic — stylized digital illustration.",
+          "title": "Human × AI Co-Creation",
+          "prompt": "A cinematic wide-format image showing a luminous workspace where human creativity meets AI. On the left, a designer's hand sketches on a glowing tablet, trails of warm orange (#f97316) ink flowing from the stylus. On the right, an AI presence visualized as a constellation of golden particles (#fdba74) mirrors the sketch, adding depth, color, and detail in real-time. Between them, a shared canvas floats — half hand-drawn, half AI-rendered, seamlessly blending. Dark background (#09090b) with glassmorphism panels showing code and design tools. Volumetric orange light beams cross the scene. Ultra-wide cinematic composition, dramatic lighting, professional digital art.",
           "aspectRatio": "21:9",
           "resolution": "2K",
-          "style": "artistic",
-          "tags": ["hero", "co-creation", "hands", "artistic"]
+          "style": "cinematic",
+          "tags": ["hero", "co-creation", "human-ai", "cinematic"]
+        },
+        {
+          "file": "images/hero-skills.png",
+          "title": "Skills & Continuous Learning",
+          "prompt": "A cinematic wide-format visualization of an evolving knowledge system. A dark void (#09090b) where a central glowing orb of warm orange (#f97316) energy pulses like a heartbeat, connected by flowing light streams to orbiting crystalline skill modules — each module is a frosted glassmorphism hexagon containing miniature scenes: a presentation, a document, a drawing, an illustration. The streams carry tiny glowing text fragments and learned patterns flowing back into the orb, suggesting continuous learning. Faint concentric rings radiate outward like ripples. Deep purple (#3b0764) nebula clouds in the background. Ultra-wide format, volumetric lighting, sci-fi aesthetic, highly detailed.",
+          "aspectRatio": "21:9",
+          "resolution": "2K",
+          "style": "cinematic",
+          "tags": ["hero", "skills", "learning", "evolution"]
         }
       ]
     },
@@ -31,31 +40,22 @@
       "label": "Documentation Section Headers",
       "items": [
         {
-          "file": "images/doc-getting-started.png",
-          "title": "Getting Started Header",
-          "prompt": "A documentation header illustration for 'Getting Started'. A rocket ship made of geometric shapes lifting off from a terminal window, trailing warm orange (#f97316) and gold (#fdba74) particles. The rocket is composed of overlapping translucent panels (glassmorphism). Below it, a simple command line shows 'curl -fsSL https://claude.ai/install.sh | bash'. Dark background (#09090b), wide format. Playful yet professional, clean vector style.",
-          "aspectRatio": "16:9",
-          "resolution": "1K",
-          "style": "playful-tech",
-          "tags": ["doc", "header", "getting-started", "rocket"]
-        },
-        {
           "file": "images/doc-architecture.png",
-          "title": "Architecture Header",
-          "prompt": "A documentation header for 'Architecture'. An elegant cross-section view of four horizontal layers, each slightly translucent: Layer 1 (bottom, blue) 'Runtime Shell', Layer 2 (teal) 'Agent Bridge', Layer 3 (orange) 'Content Viewer', Layer 4 (top, bright orange #f97316) 'Mode Protocol'. Subtle connecting lines between layers. Each layer has tiny icons representing its components. Dark background (#09090b), isometric perspective. Technical illustration, blueprint aesthetic.",
+          "title": "Architecture Overview",
+          "prompt": "A wide-format technical illustration of a layered software architecture. Four horizontal translucent glass layers float in a dark void (#09090b), stacked with gaps between them, viewed at a slight isometric angle. Bottom layer glows cool blue (Runtime Shell), second layer teal (Agent Bridge), third layer warm orange (#f97316, Content Viewer), top layer bright golden (#fdba74, Mode Protocol). Thin luminous lines connect the layers like neural pathways. Each layer contains tiny floating icons — terminals, websockets, react components, config files. Volumetric orange light illuminates from the top layer downward. Professional tech illustration, blueprint aesthetic with glassmorphism.",
           "aspectRatio": "16:9",
           "resolution": "1K",
           "style": "blueprint",
-          "tags": ["doc", "header", "architecture", "layers"]
+          "tags": ["doc", "architecture", "layers", "technical"]
         },
         {
           "file": "images/doc-modes.png",
-          "title": "Modes Ecosystem Header",
-          "prompt": "A documentation header for 'Mode Ecosystem'. Five floating cards arranged in a gentle arc, each representing a Pneuma mode: a document icon, a slide deck, a drawing canvas, a paintbrush (illustrate), and a gear (mode-maker). Each card has a distinct color accent but shares the orange (#f97316) border glow. Connected by thin dotted lines suggesting modularity and pluggability. Dark background (#09090b), centered composition. Clean, modern tech illustration.",
+          "title": "Mode Ecosystem",
+          "prompt": "A wide-format illustration of a modular plugin ecosystem. Six floating glassmorphism cards arranged in a hexagonal pattern against a dark background (#09090b). Each card glows softly and contains a distinct miniature scene: a markdown document, an HTML slide deck, an Excalidraw diagram, an AI-generated illustration canvas, a gear-and-code mode builder, and a DNA helix evolution agent. Warm orange (#f97316) connection lines link all cards to a central Pneuma logo that pulses with golden (#fdba74) light. Subtle particle trails flow between cards suggesting interoperability. Volumetric lighting, modern tech aesthetic, professional quality.",
           "aspectRatio": "16:9",
           "resolution": "1K",
           "style": "card-grid",
-          "tags": ["doc", "header", "modes", "ecosystem"]
+          "tags": ["doc", "modes", "ecosystem", "modular"]
         }
       ]
     }
