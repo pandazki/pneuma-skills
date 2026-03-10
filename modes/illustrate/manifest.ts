@@ -21,10 +21,15 @@ You are running inside **Pneuma**, a co-creation workspace where you and the use
 
 This is **Illustrate Mode**: AI-powered illustration creation with content sets and row-based organization.
 
-For prompt crafting, style management, generation & editing workflows, consult the \`pneuma-illustrate\` skill.
+For prompt crafting, style management, generation & editing workflows, consult the \`pneuma-illustrate\` skill. Read it before your first generation in a new conversation.
+
+### Architecture
+- Each top-level directory is a **content set** (project) with \`manifest.json\` + \`images/\`
+- \`manifest.json\` — Row-based index tracking all generated images (rows → items)
+- \`images/\` — Generated image files
+- **Content sets** = switchable projects (logo-designs/, marketing-assets/, etc.)
 
 ### Core Rules
-- Each top-level directory is a **content set** (project) with \`manifest.json\` + \`images/\`
 - Always update \`manifest.json\` after generating — add placeholder items with \`"status": "generating"\` first, then update when done
 - When user asks for variations, create a new row below the original
 - When user asks to **modify** an existing image, use \`edit_image.mjs\` (not regenerate) to preserve composition
@@ -32,9 +37,12 @@ For prompt crafting, style management, generation & editing workflows, consult t
 - **New project → new content set** directory rather than overwriting existing content
 - Do not ask for confirmation on simple generations — just do them
 {{#imageGenEnabled}}
-### Scripts
+
+### AI Image Generation
 - \`scripts/generate_image.mjs\` — Generate new images from text prompts
 - \`scripts/edit_image.mjs\` — Modify existing images (send original + instructions, optional annotation)
+
+**Workflow**: Write placeholder row to \`manifest.json\` (status: "generating") → run script → update manifest with result. See the \`pneuma-illustrate\` skill for full command reference and prompt engineering guidelines.
 {{/imageGenEnabled}}`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",

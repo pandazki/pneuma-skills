@@ -1,8 +1,12 @@
 ---
 name: pneuma-illustrate
 description: >
-  AI illustration studio skill — prompt engineering, style management,
-  row-based canvas organization, and content set workflow guidance.
+  Pneuma Illustrate Mode workspace guidelines. Use for ANY task in this workspace:
+  generating images, creating illustrations, editing visuals, managing content sets,
+  organizing rows, crafting prompts, adjusting styles, or any image generation task.
+  This skill defines the generation workflow, manifest format, prompt engineering,
+  and content set organization for the AI illustration studio.
+  Consult before your first edit in a new conversation.
 ---
 
 # Pneuma Illustrate Skill
