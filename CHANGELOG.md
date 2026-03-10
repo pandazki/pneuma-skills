@@ -2,10 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2.4.5] - 2026-03-10
+## [2.4.6] - 2026-03-10
 
 ### Fixed
 - **Mode Maker play missing deps on `bunx`** — reverted mode-specific deps (@tailwindcss/typography, @xyflow/react, etc.) back to `dependencies`; play uses Vite dev mode which needs all frontend deps at runtime
+- **macOS desktop build failure** — electron-builder universal merge crashes on broken symlinks in `node_modules/.bin/`; `prepare-deps.mjs` now removes `.bin/` directory (Bun runtime doesn't need it)
 
 ## [2.4.4] - 2026-03-10
 
