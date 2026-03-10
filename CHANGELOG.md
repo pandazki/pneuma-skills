@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.7] - 2026-03-10
+
+### Fixed
+- **macOS code signing** — set `identity: null` to skip code signing in CI (no Apple Developer certificate)
+
 ## [2.3.6] - 2026-03-10
 
 ### Fixed

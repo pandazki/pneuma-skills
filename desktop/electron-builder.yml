@@ -44,6 +44,7 @@ asar: true
 mac:
   icon: resources/icon.icns
   category: public.app-category.developer-tools
+  identity: null
   target:
     - target: dmg
       arch:
