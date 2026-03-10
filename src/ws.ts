@@ -6,7 +6,7 @@
 import { useStore, nextId } from "./store.js";
 import type { ElementSelection } from "./store.js";
 import type { BrowserIncomingMessage, BrowserOutgoingMessage, ContentBlock, ChatMessage, SelectionContext, SelectionType, Annotation } from "./types.js";
-import type { ViewerSelectionContext } from "../core/types/viewer-contract.js";
+import type { ViewerSelectionContext, ContentSet } from "../core/types/viewer-contract.js";
 
 let socket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -818,12 +818,14 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
     const context = viewer.extractContext(viewerSelection, viewerFiles);
     if (context) {
       let enrichedContext = context;
-      // Inject content-set attribute into <viewer-context> tag
+      // Inject content-set info into <viewer-context> tag
       if (activeContentSet && enrichedContext.startsWith("<viewer-context ")) {
         enrichedContext = enrichedContext.replace(
           "<viewer-context ",
           `<viewer-context content-set="${activeContentSet}" `,
         );
+        // Append content set listing to body
+        enrichedContext = injectContentSetListing(enrichedContext, store.contentSets, activeContentSet);
       }
       enrichedContent = enrichedContext + "\n\n" + content;
     }
@@ -965,6 +967,29 @@ export function sendViewerActionResponse(
 }
 
 /**
+ * Inject content set listing into a <viewer-context> block body.
+ * Shows available content sets and marks the active one, so the agent
+ * knows which content set the user is viewing and what else is available.
+ */
+function injectContentSetListing(
+  contextXml: string,
+  contentSets: ContentSet[],
+  activePrefix: string,
+): string {
+  if (contentSets.length < 2) return contextXml;
+  const active = contentSets.find((cs) => cs.prefix === activePrefix);
+  const activeLabel = active && active.label !== active.prefix
+    ? `"${active.label}" (${active.prefix}/)`
+    : `${active?.prefix || activePrefix}/`;
+  const line = `Active content set: ${activeLabel}`;
+  // Insert at the start of body (after opening tag)
+  return contextXml.replace(
+    /(<viewer-context [^>]*>)\n/,
+    `$1\n${line}\n`,
+  );
+}
+
+/**
  * Build a <viewer-context> prefix from the current viewer state.
  * Used to enrich both user messages and viewer notifications with
  * what the user is currently looking at (active file, content set).
@@ -1006,6 +1031,7 @@ function buildViewerContextPrefix(): string {
       "<viewer-context ",
       `<viewer-context content-set="${activeContentSet}" `,
     );
+    enrichedContext = injectContentSetListing(enrichedContext, store.contentSets, activeContentSet);
   }
 
   return enrichedContext + "\n\n";
