@@ -2,10 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2.4.7] - 2026-03-10
+## [2.4.8] - 2026-03-10
 
 ### Fixed
 - **Mode Maker play on `bunx`** — seed `package.json` Vite toolchain moved to `dependencies` (not devDeps) so they're installed; `vite.config.ts` React alias uses `require.resolve` for hoisted node_modules; all frontend deps restored to root `dependencies` (Vite dev mode needs them at runtime)
+- **macOS desktop build** — switched from universal to arm64-only; universal merge fails with native binaries (esbuild) because `prepare-deps` runs on a single architecture; also removed `.bin/` symlinks from bundled node_modules
 - **macOS desktop build failure** — `prepare-deps.mjs` recursively removes all `.bin/` directories from production node_modules; broken symlinks in nested `.bin/` crashed electron-builder's universal merge
 - **Desktop `.gitignore` typo** — removed duplicate trailing slash in `pneuma-node-modules//`
 

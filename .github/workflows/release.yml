@@ -115,8 +115,8 @@ jobs:
           - os: macos-latest
             os-label: macOS
             platform: darwin
-            arch: universal
-            electron-args: "--mac --universal"
+            arch: arm64
+            electron-args: "--mac --arm64"
           - os: windows-latest
             os-label: Windows x64
             platform: win32
@@ -157,14 +157,7 @@ jobs:
       - name: Download Bun binary for target
         working-directory: desktop
         shell: bash
-        run: |
-          if [ "${{ matrix.arch }}" = "universal" ]; then
-            # macOS universal: need both arm64 and x64
-            node scripts/download-bun.mjs --platform ${{ matrix.platform }} --arch arm64
-            node scripts/download-bun.mjs --platform ${{ matrix.platform }} --arch x64
-          else
-            node scripts/download-bun.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
-          fi
+        run: node scripts/download-bun.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
 
       - name: Prepare production node_modules
         working-directory: desktop

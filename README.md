@@ -52,7 +52,7 @@ Download the latest release for your platform:
 
 | Platform | Download |
 |----------|----------|
-| macOS (Apple Silicon + Intel) | [`.dmg`](https://github.com/pandazki/pneuma-skills/releases/latest) |
+| macOS (Apple Silicon) | [`.dmg`](https://github.com/pandazki/pneuma-skills/releases/latest) |
 | Windows x64 | [`.exe` installer](https://github.com/pandazki/pneuma-skills/releases/latest) |
 | Windows ARM64 | [`.exe` installer](https://github.com/pandazki/pneuma-skills/releases/latest) |
 | Linux x64 | [`.AppImage`](https://github.com/pandazki/pneuma-skills/releases/latest) / [`.deb`](https://github.com/pandazki/pneuma-skills/releases/latest) |
