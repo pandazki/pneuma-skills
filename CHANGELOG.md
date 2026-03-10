@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.8] - 2026-03-10
+
+### Fixed
+- **Mode Maker fork** — builtin mode import now rewrites escaping relative imports (`../../../src/store.js`) to correct paths, so forked viewers resolve correctly
+- **Mode Maker play** — always use Vite dev mode to prevent Zustand store duplication from Bun.build bundling `src/store.ts` separately
+- **External mode resolve** — Vite plugin and Bun.build plugin now redirect both `/src/` and `/core/` imports to pneuma project root (previously only `/core/`)
+- **react-dom vendor shim** — export `createPortal`, `flushSync`, `createRoot`, `hydrateRoot` as named exports for production external mode bundles
+- **Mode name validation** — sanitize input to only allow lowercase letters, numbers, and hyphens
+
 ## [2.3.7] - 2026-03-10
 
 ### Fixed
