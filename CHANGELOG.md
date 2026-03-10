@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.4.1] - 2026-03-10
+
+### Fixed
+- **Illustrate skill not activating** — updated SKILL.md description to use the "Use for ANY task in this workspace" trigger pattern, so Claude Code's skill matching loads it on first interaction
+- **Illustrate claudeMdSection too thin** — added Architecture and AI Image Generation sections with command reference so the agent has enough context even without the skill loaded
+
+### Improved
+- **Blog-heroes seed images** — regenerated all 5 images with cinematic Pneuma aesthetic (dark background, orange particles, glassmorphism, volumetric lighting)
+
 ## [2.4.0] - 2026-03-10
 
 ### Added
