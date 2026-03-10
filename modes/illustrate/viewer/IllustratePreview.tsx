@@ -265,8 +265,12 @@ const SHIMMER_KEYFRAMES = `
 const ImageCardNode = memo(({ data, selected }: NodeProps<Node<ImageNodeData>>) => {
   const [hovered, setHovered] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
   const { item, contentSet, imageVersion, isAnnotated, mode } = data;
   const isGenerating = item.status === "generating";
+
+  // Reset error state when image version changes (new image generated)
+  useEffect(() => { setErrored(false); setLoaded(false); }, [imageVersion]);
 
   const ringColor = mode === "annotate" ? COLORS.annotateRing : mode === "select" ? COLORS.selectRing : COLORS.primary;
 
@@ -312,13 +316,26 @@ const ImageCardNode = memo(({ data, selected }: NodeProps<Node<ImageNodeData>>) 
         </div>
       ) : (
         <>
-          {/* Loading skeleton */}
+          {/* Loading / not-generated placeholder */}
           {!loaded && (
             <div style={{
-              position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
+              position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center", gap: 6,
               background: `linear-gradient(135deg, ${COLORS.surfaceSolid} 0%, #27272a 100%)`,
             }}>
-              <div style={{ color: COLORS.textDim, fontSize: 12 }}>Loading…</div>
+              {errored ? (
+                <>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={COLORS.textDim} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21 15 16 10 5 21" />
+                  </svg>
+                  <div style={{ color: COLORS.textDim, fontSize: 11 }}>Not yet generated</div>
+                  <div style={{ color: COLORS.textDim, fontSize: 10, maxWidth: "80%", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</div>
+                </>
+              ) : (
+                <div style={{ color: COLORS.textDim, fontSize: 12 }}>Loading…</div>
+              )}
             </div>
           )}
 
@@ -327,10 +344,11 @@ const ImageCardNode = memo(({ data, selected }: NodeProps<Node<ImageNodeData>>) 
             alt={item.title}
             draggable={false}
             loading="lazy"
-            onLoad={() => setLoaded(true)}
+            onLoad={() => { setLoaded(true); setErrored(false); }}
+            onError={() => setErrored(true)}
             style={{
               width: "100%", height: "100%", objectFit: "cover",
-              opacity: loaded ? 1 : 0, transition: "opacity 0.3s", display: "block",
+              opacity: loaded && !errored ? 1 : 0, transition: "opacity 0.3s", display: "block",
             }}
           />
 

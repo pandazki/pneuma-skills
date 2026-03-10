@@ -939,7 +939,8 @@ async function main() {
             if (statSync(fileSrc).isDirectory()) continue;
             const fileDst = join(workspace, dst, relFile);
             mkdirSync(dirname(fileDst), { recursive: true });
-            if (hasParams) {
+            const isBinary = /\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|mp[34]|wav|ogg|zip|gz|tar|pdf)$/i.test(relFile);
+            if (hasParams && !isBinary) {
               let content = readFileSync(fileSrc, "utf-8");
               content = applyTemplateParams(content, resolvedParams);
               writeFileSync(fileDst, content, "utf-8");

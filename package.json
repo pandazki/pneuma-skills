@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.0.1",
+    "@xyflow/react": "^12.10.1",
     "@zumer/snapdom": "^2.0.2",
     "chokidar": "^4.0.0",
     "diff": "^8.0.3",
