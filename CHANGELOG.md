@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.9] - 2026-03-10
+
+### Added
+- **Content set context** — active content set (label + prefix) is now injected into `<viewer-context>` for all modes, so the agent knows which content variant the user is viewing
+
 ## [2.3.8] - 2026-03-10
 
 ### Fixed
