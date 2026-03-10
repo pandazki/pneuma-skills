@@ -2,22 +2,26 @@
 
 Default design system for Pneuma Slide Mode presentations. Use these conventions when the user has no explicit style preferences.
 
+> **For aesthetic principles** — font selection philosophy, OKLCH color theory, visual hierarchy techniques, and refinement practices — see `{SKILL_PATH}/references/aesthetics.md`.
+
 ---
 
 ## Default Design Philosophy
 
-**Apple HIG-inspired minimalism**: Clean, professional, spacious. Content speaks for itself.
+**Intentional and coherent.** The default values below are a starting point, not a destination. Adapt them to match the deck's purpose, audience, and personality.
 
 - Generous whitespace over dense layouts
-- Clear visual hierarchy via size, weight, and color
-- Subtle depth via shadows and surface colors (not gradients)
+- Clear visual hierarchy via multiple dimensions — size, weight, color, space (see aesthetics.md § Visual Hierarchy)
 - Consistent spacing scale throughout
+- Every visual choice should be deliberate (see aesthetics.md § Design Direction)
 
 ---
 
 ## Color Palettes
 
 ### Dark Mode (Default)
+
+These are sensible defaults. See aesthetics.md § Color for guidance on building palettes intentionally — including when to use OKLCH, how to handle neutrals, and dark vs light considerations.
 
 ```css
 :root {
@@ -63,6 +67,8 @@ Default design system for Pneuma Slide Mode presentations. Use these conventions
 ## Typography
 
 ### Font Stack
+
+The default stack below is a safe starting point. See aesthetics.md § Typography for guidance on choosing fonts that match the deck's specific character.
 
 ```css
 --font-sans: "Inter", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;

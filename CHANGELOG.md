@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.4.9] - 2026-03-10
+
+### Added
+- **Slide mode aesthetics guide** — new `references/aesthetics.md` with design thinking for typography selection, OKLCH color theory, visual hierarchy, presentation writing, and AI image usage (conditionally loaded when image generation is enabled)
+- **Slide refinement workflow** — six refinement practices (critique, polish, distill, bolder, quieter, colorize) adapted for the fixed-viewport slide context, triggered by natural language requests
+
+### Improved
+- **Slide style reference** — default color palettes and font stacks now reference the aesthetics guide for intentional customization; design philosophy reframed from prescriptive ("Apple HIG minimalism") to principle-based ("intentional and coherent")
+- **Slide core principles** — added "Design with intention" as a first-class principle with link to aesthetics reference
+
 ## [2.4.8] - 2026-03-10
 
 ### Fixed
