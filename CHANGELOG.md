@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.4.0] - 2026-03-10
+
+### Added
+- **Illustrate mode** — new builtin mode with React Flow canvas viewer, AI image generation skill (OpenRouter/fal.ai), 3 seed content sets (pneuma-brand, feature-cards, blog-heroes) with 16 generated images
+- **Viewer locator system** — `<viewer-locator>` tags in agent messages render as clickable navigation cards; supports cross-content-set navigation with auto-detection and prefix stripping
+- **Resilient manifest parsing** — `useResilientParse` hook catches JSON parse errors and notifies agent instead of crashing viewer
+- **Debug locator payload** — collapsible JSON payload display under locator cards in `--debug` mode
+
+### Fixed
+- **Binary seed file corruption** — seed copy now skips UTF-8 template param processing for image/font/media files
+- **Illustrate image error handling** — shows "Not yet generated" placeholder instead of infinite "Loading..." when images are missing
+- **Slide context fallback** — `extractContext` falls back to first slide when no selection exists
+- **Content set context filtering** — `ws.ts` filters files by active content set and strips prefixes before passing to viewer
+
+### Improved
+- **Desktop setup wizard** — larger window (720x600), platform-specific install instructions
+- **React Flow fitView** — `requestAnimationFrame` wrapper ensures internal store sync before `fitView` calls
+
 ## [2.3.9] - 2026-03-10
 
 ### Added
