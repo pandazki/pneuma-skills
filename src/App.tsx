@@ -74,6 +74,9 @@ function useViewerProps(): ViewerPreviewProps {
   const workspaceItems = useStore((s) => s.workspaceItems);
   const actionRequest = useStore((s) => s.actionRequest);
   const setActionRequest = useStore((s) => s.setActionRequest);
+  const navigateRequest = useStore((s) => s.navigateRequest);
+  const setNavigateRequest = useStore((s) => s.setNavigateRequest);
+  const contentSets = useStore((s) => s.contentSets);
 
   // Filter and remap files based on active content set
   const files = useMemo(() => {
@@ -140,6 +143,8 @@ function useViewerProps(): ViewerPreviewProps {
       // Queue — will be flushed when CC goes idle (see useFlushViewerNotification)
       useStore.getState().setPendingViewerNotification(notification);
     },
+    navigateRequest,
+    onNavigateComplete: () => setNavigateRequest(null),
   };
 }
 

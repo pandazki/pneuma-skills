@@ -86,6 +86,15 @@ When the user provides original content (uploaded files, pasted HTML, or a URL t
       hasActiveFile: true,
       manifestFile: "manifest.json",
     },
+    locatorDescription: 'After creating or editing pages, embed locator cards so the user can jump to them. Navigate to page: `data=\'{"page":"about.html"}\'`. Switch content set: `data=\'{"contentSet":"site-2"}\'`. Switch content set and page: `data=\'{"contentSet":"site-2","page":"about.html"}\'`.',
+    scaffold: {
+      description: "Initialize workspace with HTML pages from a site structure spec.",
+      params: {
+        title: { type: "string", description: "Site or project title", required: true },
+        pages: { type: "string", description: "JSON array of {name, title?} for each HTML page", required: true },
+      },
+      clearPatterns: ["**/*.html", "**/manifest.json"],
+    },
     actions: [
       // Setup
       {

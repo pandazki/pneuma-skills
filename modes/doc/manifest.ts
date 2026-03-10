@@ -45,6 +45,7 @@ For editing conventions, context format, and workspace constraints, consult the 
 
   viewerApi: {
     workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: false },
+    locatorDescription: 'After creating or editing documents, embed locator cards so the user can jump to them. Navigate to file: `data=\'{"file":"notes.md"}\'`.',
     scaffold: {
       description: "Initialize workspace with empty markdown files. Clears only the currently viewed files.",
       params: {

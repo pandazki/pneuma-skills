@@ -81,8 +81,8 @@ function showSetupWizard() {
   }
 
   setupWindow = new BrowserWindow({
-    width: 560,
-    height: 480,
+    width: 720,
+    height: 600,
     resizable: false,
     maximizable: false,
     backgroundColor: "#09090b",

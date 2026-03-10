@@ -68,7 +68,7 @@ export function startServer(options: ServerOptions) {
       const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
 
       // Parse builtin mode manifests for metadata (icon, description, etc.)
-      const builtinNames = ["webcraft", "slide", "doc", "draw"];
+      const builtinNames = ["webcraft", "slide", "doc", "draw", "illustrate"];
       const builtins = builtinNames.map((name) => {
         const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
         let parsed: ReturnType<typeof parseManifestTs> = {};
@@ -80,7 +80,7 @@ export function startServer(options: ServerOptions) {
           icon: parsed.icon,
           version: "builtin",
           type: "builtin" as const,
-          ...(name === "slide" ? { hasInitParams: true } : {}),
+          ...((name === "slide" || name === "illustrate") ? { hasInitParams: true } : {}),
         };
       });
 

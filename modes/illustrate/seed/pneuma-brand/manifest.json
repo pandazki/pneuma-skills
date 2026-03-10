@@ -1,0 +1,63 @@
+{
+  "title": "Pneuma Brand Identity",
+  "description": "Brand assets for Pneuma Skills — logo concepts, icon variations, and visual identity explorations. Warm neon-orange (#f97316) on deep dark backgrounds, blending humanistic warmth with technical precision.",
+  "rows": [
+    {
+      "id": "row-logo-concepts",
+      "label": "Logo Concepts — Flame & Breath",
+      "items": [
+        {
+          "file": "images/logo-flame-abstract.png",
+          "title": "Abstract Flame Mark",
+          "prompt": "A minimalist abstract logo mark for 'Pneuma' (meaning breath/spirit). Stylized flame shape composed of overlapping translucent layers in neon orange (#f97316) and deep amber (#ea580c) gradients on pure black (#09090b) background. The flame subtly suggests a speech bubble or thought balloon — representing the 'breath' of AI communication. Clean geometric construction, no text, suitable for app icon at 64px. Professional brand identity design.",
+          "aspectRatio": "1:1",
+          "resolution": "1K",
+          "style": "minimal-geometric",
+          "tags": ["logo", "brand", "flame", "icon"]
+        },
+        {
+          "file": "images/logo-breath-flow.png",
+          "title": "Flowing Breath Lines",
+          "prompt": "A modern logo mark for 'Pneuma' — three flowing curved lines suggesting breath or wind, transitioning from neon orange (#f97316) to warm gold (#fdba74). Lines flow from left to right, creating a sense of dynamic movement and creative energy. Deep zinc-black background (#09090b). Minimalist, single-color gradient, no text. Corporate tech brand identity, vector-clean edges.",
+          "aspectRatio": "1:1",
+          "resolution": "1K",
+          "style": "flowing-lines",
+          "tags": ["logo", "brand", "breath", "flow"]
+        },
+        {
+          "file": "images/logo-layers-stack.png",
+          "title": "Layer Stack",
+          "prompt": "A geometric logo mark representing Pneuma's 4-layer architecture. Four horizontal rounded rectangles stacked with slight offset, each layer progressively more opaque — from translucent orange-10% at bottom to solid neon orange (#f97316) at top. Suggests both a document stack and a tech stack. Deep black background (#09090b), clean edges, no text. Modern SaaS brand identity.",
+          "aspectRatio": "1:1",
+          "resolution": "1K",
+          "style": "geometric-layers",
+          "tags": ["logo", "brand", "layers", "architecture"]
+        }
+      ]
+    },
+    {
+      "id": "row-wordmark",
+      "label": "Wordmark Explorations",
+      "items": [
+        {
+          "file": "images/wordmark-clean.png",
+          "title": "Clean Wordmark",
+          "prompt": "The word 'Pneuma' in a clean, modern sans-serif typeface (similar to Plus Jakarta Sans). Neon orange (#f97316) text on deep black (#09090b) background. Slightly heavier weight on the 'P', subtle letter-spacing of -0.02em. Below the wordmark, a thin horizontal line in orange-20% opacity. Professional tech brand typography, no icon, centered composition. Wide format.",
+          "aspectRatio": "16:9",
+          "resolution": "2K",
+          "style": "typography",
+          "tags": ["wordmark", "typography", "brand"]
+        },
+        {
+          "file": "images/wordmark-glow.png",
+          "title": "Glow Wordmark",
+          "prompt": "The word 'Pneuma' rendered with a soft neon glow effect. Letters in warm white (#fafafa) with a diffused orange (#f97316) glow halo behind them, creating a warm luminous feeling against deep black (#09090b) background. The glow suggests the 'ethereal tech' aesthetic — spiritual meets digital. Subtle mesh gradient in background with orange and purple undertones. Modern brand identity.",
+          "aspectRatio": "16:9",
+          "resolution": "2K",
+          "style": "neon-glow",
+          "tags": ["wordmark", "glow", "brand", "ethereal"]
+        }
+      ]
+    }
+  ]
+}

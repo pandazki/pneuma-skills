@@ -236,6 +236,8 @@ export default function DocPreview({
   onActiveFileChange,
   workspaceItems,
   activeFile,
+  navigateRequest,
+  onNavigateComplete,
 }: ViewerPreviewProps) {
 
   // Notify framework of initial active file when files arrive and nothing selected
@@ -244,6 +246,16 @@ export default function DocPreview({
       onActiveFileChange?.(files[0].path);
     }
   }, [files]);
+
+  // ── Locator navigation from chat cards ──────────────────────────────────
+  useEffect(() => {
+    if (!navigateRequest) return;
+    const { data } = navigateRequest;
+    if (data.file) {
+      onActiveFileChange?.(data.file as string);
+    }
+    onNavigateComplete?.();
+  }, [navigateRequest]);
 
   const activeFiles = activeFile && files.length > 1
     ? files.filter((f) => f.path === activeFile)

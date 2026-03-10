@@ -114,21 +114,34 @@ export function getClaudeInstallInstructions(): {
   steps: string[];
   links: { label: string; url: string }[];
 } {
+  const installCmd =
+    process.platform === "win32"
+      ? 'Run in PowerShell: <code>irm https://claude.ai/install.ps1 | iex</code>'
+      : 'Run in terminal: <code>curl -fsSL https://claude.ai/install.sh | bash</code>';
+
+  const altMethod =
+    process.platform === "darwin"
+      ? 'Or install via Homebrew: <code>brew install --cask claude-code</code>'
+      : process.platform === "win32"
+        ? 'Or install via WinGet: <code>winget install Anthropic.ClaudeCode</code>'
+        : 'The native installer auto-updates in the background';
+
   return {
     title: "Claude Code CLI Required",
     steps: [
-      'Install Claude Code CLI via npm: <code>npm install -g @anthropic-ai/claude-code</code>',
-      "Or use the official installer from Anthropic's website",
-      'Once installed, click <strong>"Check Installation"</strong> below',
+      installCmd,
+      altMethod,
+      'Run <code>claude</code> once to log in and complete setup',
+      'Then click <strong>"Check Installation"</strong> below',
     ],
     links: [
       {
-        label: "Claude Code Documentation",
-        url: "https://docs.anthropic.com/en/docs/claude-code",
+        label: "Quickstart Guide",
+        url: "https://code.claude.com/docs/en/quickstart",
       },
       {
-        label: "npm Package",
-        url: "https://www.npmjs.com/package/@anthropic-ai/claude-code",
+        label: "Claude Code Documentation",
+        url: "https://docs.anthropic.com/en/docs/claude-code",
       },
     ],
   };

@@ -151,6 +151,9 @@ export interface ViewerApiConfig {
     params?: Record<string, { type: "string" | "number" | "boolean"; description: string; required?: boolean }>;
     description?: string;
   }>;
+  /** Locator cards — clickable navigation targets in agent messages.
+   *  When set, instructions for `<viewer-locator>` tags are injected into CLAUDE.md. */
+  locatorDescription?: string;
   /** Scaffold — workspace initialization/reset capability. Requires user confirmation in browser. */
   scaffold?: {
     description: string;

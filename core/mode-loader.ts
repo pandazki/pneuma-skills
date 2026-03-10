@@ -75,6 +75,13 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/webcraft/pneuma-mode.js").then((m) => m.default),
   },
+  illustrate: {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/illustrate/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/illustrate/pneuma-mode.js").then((m) => m.default),
+  },
 };
 
 /** 外部 mode 注册表 — 由 CLI 在启动时通过 registerExternalMode 注册 */

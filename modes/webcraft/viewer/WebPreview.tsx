@@ -14,6 +14,7 @@ import type {
   ViewerPreviewProps,
   ViewerSelectionContext,
 } from "../../../core/types/viewer-contract.js";
+import { useResilientParse } from "../../../core/hooks/use-resilient-parse.js";
 import { buildSelectionScript } from "../../../core/iframe-selection/index.js";
 import { useStore } from "../../../src/store.js";
 
@@ -793,6 +794,8 @@ export default function WebPreview({
   activeFile,
   onActiveFileChange,
   onNotifyAgent,
+  navigateRequest,
+  onNavigateComplete,
 }: ViewerPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -814,30 +817,34 @@ export default function WebPreview({
     rect: { left: number; top: number; right: number; bottom: number; width: number; height: number };
   } | null>(null);
 
-  // Parse manifest.json for page list, fallback to raw HTML files
-  const pageEntries = useMemo<PageEntry[]>(() => {
-    const manifestFile = files.find(
+  // Parse manifest.json for page list with resilient fallback
+  const manifestPages = useResilientParse<PageEntry[]>(files, (files) => {
+    const mf = files.find(
       (f) => f.path === "manifest.json" || f.path.endsWith("/manifest.json"),
     );
-    if (manifestFile) {
-      try {
-        const parsed = JSON.parse(manifestFile.content);
-        if (Array.isArray(parsed.pages) && parsed.pages.length > 0) {
-          return parsed.pages.map((p: { file: string; title?: string }) => ({
-            file: p.file,
-            title: p.title || p.file.replace(/\.html$/i, "").replace(/^.*\//, ""),
-          }));
-        }
-      } catch { /* ignore */ }
-    }
-    // Fallback: list all HTML files
+    if (!mf) return { data: null };
+    // Let JSON.parse throw — useResilientParse catches it
+    const parsed = JSON.parse(mf.content);
+    if (!Array.isArray(parsed.pages) || parsed.pages.length === 0) return { data: null };
+    return {
+      data: parsed.pages.map((p: { file: string; title?: string }) => ({
+        file: p.file,
+        title: p.title || p.file.replace(/\.html$/i, "").replace(/^.*\//, ""),
+      })),
+      file: mf.path,
+    };
+  }, onNotifyAgent);
+
+  // Fallback to raw HTML files when no manifest exists
+  const pageEntries = useMemo<PageEntry[]>(() => {
+    if (manifestPages) return manifestPages;
     return files
       .filter((f) => /\.html$/i.test(f.path))
       .map((f) => ({
         file: f.path,
         title: f.path.replace(/\.html$/i, "").replace(/^.*\//, ""),
       }));
-  }, [files]);
+  }, [manifestPages, files]);
 
   const htmlFiles = useMemo(
     () => pageEntries.map((p) => p.file),
@@ -1081,6 +1088,19 @@ export default function WebPreview({
     },
     [onActiveFileChange, onSelect],
   );
+
+  // ── Locator navigation from chat cards ──────────────────────────────────────
+  useEffect(() => {
+    if (!navigateRequest) return;
+    const { data } = navigateRequest;
+    if (data.page || data.file) {
+      const target = (data.page || data.file) as string;
+      if (htmlFiles.includes(target)) {
+        handlePageChange(target);
+      }
+    }
+    onNavigateComplete?.();
+  }, [navigateRequest]);
 
   // ── Viewport preset handling ─────────────────────────────────────────────────
 

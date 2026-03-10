@@ -158,6 +158,17 @@ export interface ViewerNotification {
   summary?: string;
 }
 
+// ── Viewer Locator (navigable link cards in agent messages) ────────────────
+
+/** Viewer 定位器 — Agent 消息中嵌入的可点击导航卡片。
+ *  点击后 viewer 定位到对应位置（纯前端，不走 server roundtrip）。*/
+export interface ViewerLocator {
+  /** 卡片显示文字 */
+  label: string;
+  /** Mode-specific 定位数据 */
+  data: Record<string, unknown>;
+}
+
 // ── Preview Props & Contract ───────────────────────────────────────────────
 
 /** 预览组件的 Props */
@@ -190,6 +201,10 @@ export interface ViewerPreviewProps {
   onNotifyAgent?: (notification: ViewerNotification) => void;
   /** 框架当前选中的活跃文件（store.activeFile） */
   activeFile?: string | null;
+  /** 定位请求 — 由聊天中的 locator 卡片点击触发 */
+  navigateRequest?: ViewerLocator | null;
+  /** Viewer 完成定位后调用，清除请求 */
+  onNavigateComplete?: () => void;
 }
 
 /** 内容查看器的 UI 契约 */
@@ -222,4 +237,7 @@ export interface ViewerContract {
 
   /** 捕获当前视窗截图（可选，由 PreviewComponent 在 mount 后动态注入实现） */
   captureViewport?: () => Promise<{ data: string; media_type: string } | null>;
+
+  /** Locator 格式描述 — 注入到 CLAUDE.md 指导 agent 生成 <viewer-locator> 标记 */
+  locatorDescription?: string;
 }

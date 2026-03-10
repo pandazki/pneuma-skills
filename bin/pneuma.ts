@@ -224,6 +224,7 @@ function checkBunVersion() {
 }
 
 async function checkForUpdate(currentVersion: string) {
+  if (process.env.PNEUMA_SKIP_UPDATE) return;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
@@ -270,7 +271,8 @@ function checkClaudeCode() {
     p.cancel(
       "Claude Code CLI not found.\n" +
       "  Pneuma requires Claude Code to be installed and authenticated.\n" +
-      "  Install it from: https://docs.anthropic.com/en/docs/claude-code"
+      "  Install: curl -fsSL https://claude.ai/install.sh | bash\n" +
+      "  Quickstart: https://code.claude.com/docs/en/quickstart"
     );
     process.exit(1);
   }

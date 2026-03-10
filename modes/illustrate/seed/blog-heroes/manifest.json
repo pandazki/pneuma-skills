@@ -1,0 +1,63 @@
+{
+  "title": "Blog & Documentation Heroes",
+  "description": "Hero images and header illustrations for Pneuma blog posts and documentation pages. Cinematic wide-format visuals that capture the essence of human-AI co-creation. Dark ethereal aesthetic with warm orange highlights.",
+  "rows": [
+    {
+      "id": "row-hero-images",
+      "label": "Blog Post Heroes",
+      "items": [
+        {
+          "file": "images/hero-launch.png",
+          "title": "Launch Announcement Hero",
+          "prompt": "A cinematic hero image for a product launch blog post. A vast dark space (#09090b) with a single luminous point of warm orange light (#f97316) at center, from which geometric panels radiate outward like an unfolding interface — each panel showing fragments of documents, slides, drawings, and code. The panels have frosted glass (glassmorphism) edges with subtle white borders. Tiny particles of light drift between panels suggesting data flow. Ethereal, expansive, optimistic. Ultra-wide cinematic format. Professional tech marketing visual.",
+          "aspectRatio": "21:9",
+          "resolution": "2K",
+          "style": "cinematic",
+          "tags": ["hero", "launch", "announcement", "cinematic"]
+        },
+        {
+          "file": "images/hero-co-creation.png",
+          "title": "Co-Creation Manifesto",
+          "prompt": "A hero image illustrating human-AI co-creation. Two hands reaching toward each other (reminiscent of Michelangelo's Creation of Adam but modernized) — one human hand, one made of flowing orange (#f97316) digital particles and code fragments. Where they almost touch, a bright spark creates a beautiful document or design that floats between them. Dark background with deep purple and orange gradient undertones. Wide format, dramatic lighting. Artistic, not photorealistic — stylized digital illustration.",
+          "aspectRatio": "21:9",
+          "resolution": "2K",
+          "style": "artistic",
+          "tags": ["hero", "co-creation", "hands", "artistic"]
+        }
+      ]
+    },
+    {
+      "id": "row-doc-headers",
+      "label": "Documentation Section Headers",
+      "items": [
+        {
+          "file": "images/doc-getting-started.png",
+          "title": "Getting Started Header",
+          "prompt": "A documentation header illustration for 'Getting Started'. A rocket ship made of geometric shapes lifting off from a terminal window, trailing warm orange (#f97316) and gold (#fdba74) particles. The rocket is composed of overlapping translucent panels (glassmorphism). Below it, a simple command line shows 'curl -fsSL https://claude.ai/install.sh | bash'. Dark background (#09090b), wide format. Playful yet professional, clean vector style.",
+          "aspectRatio": "16:9",
+          "resolution": "1K",
+          "style": "playful-tech",
+          "tags": ["doc", "header", "getting-started", "rocket"]
+        },
+        {
+          "file": "images/doc-architecture.png",
+          "title": "Architecture Header",
+          "prompt": "A documentation header for 'Architecture'. An elegant cross-section view of four horizontal layers, each slightly translucent: Layer 1 (bottom, blue) 'Runtime Shell', Layer 2 (teal) 'Agent Bridge', Layer 3 (orange) 'Content Viewer', Layer 4 (top, bright orange #f97316) 'Mode Protocol'. Subtle connecting lines between layers. Each layer has tiny icons representing its components. Dark background (#09090b), isometric perspective. Technical illustration, blueprint aesthetic.",
+          "aspectRatio": "16:9",
+          "resolution": "1K",
+          "style": "blueprint",
+          "tags": ["doc", "header", "architecture", "layers"]
+        },
+        {
+          "file": "images/doc-modes.png",
+          "title": "Modes Ecosystem Header",
+          "prompt": "A documentation header for 'Mode Ecosystem'. Five floating cards arranged in a gentle arc, each representing a Pneuma mode: a document icon, a slide deck, a drawing canvas, a paintbrush (illustrate), and a gear (mode-maker). Each card has a distinct color accent but shares the orange (#f97316) border glow. Connected by thin dotted lines suggesting modularity and pluggability. Dark background (#09090b), centered composition. Clean, modern tech illustration.",
+          "aspectRatio": "16:9",
+          "resolution": "1K",
+          "style": "card-grid",
+          "tags": ["doc", "header", "modes", "ecosystem"]
+        }
+      ]
+    }
+  ]
+}

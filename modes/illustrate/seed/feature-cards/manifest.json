@@ -1,0 +1,72 @@
+{
+  "title": "Pneuma Feature Cards",
+  "description": "Visual feature cards for Pneuma Skills documentation and marketing. Each card illustrates a core concept: the shared workspace, mode system, viewer context, and evolution engine. Designed for dark backgrounds with glassmorphism aesthetics.",
+  "rows": [
+    {
+      "id": "row-four-pillars",
+      "label": "The Four Pillars of Pneuma",
+      "items": [
+        {
+          "file": "images/pillar-visual-env.png",
+          "title": "Visual Environment",
+          "prompt": "A conceptual illustration for 'Visual Environment' — a split-screen composition showing a code terminal on the left and a beautiful live preview on the right, connected by flowing orange (#f97316) energy lines. The preview shows a rich document with images and formatted text materializing in real-time. Dark background (#09090b) with subtle grid pattern. Glassmorphism card aesthetic with frosted glass panels. Warm orange and purple accent lighting. Modern tech illustration, clean vector style.",
+          "aspectRatio": "4:3",
+          "resolution": "2K",
+          "style": "tech-illustration",
+          "tags": ["pillar", "visual-env", "split-screen", "live-preview"]
+        },
+        {
+          "file": "images/pillar-skills.png",
+          "title": "Skills & Domain Knowledge",
+          "prompt": "A conceptual illustration for 'Skills' — an open book or scroll emanating golden particles that transform into structured knowledge blocks (like puzzle pieces) floating around a glowing brain or neural network. The knowledge blocks have tiny icons representing different domains: documents, slides, drawings, illustrations. Dark background (#09090b) with warm orange (#f97316) and gold (#fdba74) lighting. Glassmorphism aesthetic, modern tech illustration.",
+          "aspectRatio": "4:3",
+          "resolution": "2K",
+          "style": "tech-illustration",
+          "tags": ["pillar", "skills", "knowledge", "domain"]
+        },
+        {
+          "file": "images/pillar-evolution.png",
+          "title": "Continuous Learning",
+          "prompt": "A conceptual illustration for 'Continuous Learning' — a spiral DNA helix made of conversation bubbles and code snippets, evolving upward. At the base are raw conversations, at the top they've crystallized into polished skill documents. Color progression from cool blue at bottom to warm orange (#f97316) at top. Dark background (#09090b). Represents cross-session preference extraction and skill augmentation. Modern tech illustration, clean vector style.",
+          "aspectRatio": "4:3",
+          "resolution": "2K",
+          "style": "tech-illustration",
+          "tags": ["pillar", "evolution", "learning", "dna"]
+        },
+        {
+          "file": "images/pillar-distribution.png",
+          "title": "Distribution & Marketplace",
+          "prompt": "A conceptual illustration for 'Distribution' — a hexagonal grid of mode cards floating in space, some glowing and connected by thin orange (#f97316) lines suggesting a network or marketplace. Each card has a distinct icon (document, slide, paintbrush, code). One card is highlighted with a 'Launch' glow effect. Dark background (#09090b) with subtle purple mesh gradient. Represents the mode marketplace and sharing ecosystem. Modern tech illustration.",
+          "aspectRatio": "4:3",
+          "resolution": "2K",
+          "style": "tech-illustration",
+          "tags": ["pillar", "distribution", "marketplace", "network"]
+        }
+      ]
+    },
+    {
+      "id": "row-viewer-context",
+      "label": "Viewer Context — How the Agent Sees",
+      "items": [
+        {
+          "file": "images/viewer-context-flow.png",
+          "title": "Selection → Context → Response",
+          "prompt": "A horizontal flow diagram illustration: Left panel shows a user clicking an element on a slide preview (orange selection ring around a heading), middle shows the element transforming into structured XML text (<viewer-context> block with file, tag, content attributes), right shows an AI agent icon receiving and processing this context. Connected by flowing arrows with particle effects in neon orange (#f97316). Dark background (#09090b). Wide panoramic format. Clean infographic style, not a screenshot.",
+          "aspectRatio": "21:9",
+          "resolution": "2K",
+          "style": "infographic",
+          "tags": ["viewer-context", "flow", "selection", "architecture"]
+        },
+        {
+          "file": "images/viewer-context-before-after.png",
+          "title": "Before & After Pneuma",
+          "prompt": "A split comparison illustration. Left side (muted, desaturated): a frustrated developer looking at a terminal full of text, with a thought bubble showing '???' — the agent has no visual awareness. Right side (vibrant, warm orange): the same developer smiling, with a rich split-screen showing live preview and chat, orange glow connecting the two panels — the agent can see what the user sees. Dividing line in the center with 'Before / After' label. Dark background (#09090b). Stylized, not photorealistic.",
+          "aspectRatio": "16:9",
+          "resolution": "2K",
+          "style": "comparison",
+          "tags": ["viewer-context", "before-after", "comparison"]
+        }
+      ]
+    }
+  ]
+}

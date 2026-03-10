@@ -65,7 +65,7 @@ const drawMode: ModeDefinition = {
       selection: ViewerSelectionContext | null,
       files: ViewerFileContent[],
     ): string {
-      const file = selection?.file || files[0]?.path || "";
+      const file = selection?.file || files.find((f) => f.path.endsWith(".excalidraw"))?.path || files[0]?.path || "";
       if (!file) return "";
 
       // Annotations mode — multiple annotated elements with comments

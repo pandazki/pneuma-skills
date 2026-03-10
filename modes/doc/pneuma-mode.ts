@@ -46,7 +46,7 @@ const docMode: ModeDefinition = {
       selection: ViewerSelectionContext | null,
       files: ViewerFileContent[],
     ): string {
-      const file = selection?.file || files[0]?.path || "";
+      const file = selection?.file || files.find((f) => /\.(md|markdown)$/i.test(f.path))?.path || files[0]?.path || "";
       if (!file) return "";
 
       // Annotations mode — multiple annotated elements with comments

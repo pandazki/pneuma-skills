@@ -27,6 +27,7 @@ import type {
   ViewerPreviewProps,
   ViewerSelectionContext,
 } from "../../../core/types/viewer-contract.js";
+import { useResilientParse } from "../../../core/hooks/use-resilient-parse.js";
 import { buildSelectionScript } from "../../../core/iframe-selection/index.js";
 import { useStore } from "../../../src/store.js";
 import { useSlideThumbnails, sanitizeHtmlQuotes } from "../hooks/useSlideThumbnails.js";
@@ -51,16 +52,13 @@ type NavigatorPosition = "left" | "bottom" | "hidden";
 /** Parse manifest.json from the files array */
 function parseManifest(
   files: ViewerPreviewProps["files"],
-): SlideManifest | null {
-  const manifestFile = files.find(
+) {
+  const mf = files.find(
     (f) => f.path === "manifest.json" || f.path.endsWith("/manifest.json"),
   );
-  if (!manifestFile) return null;
-  try {
-    return JSON.parse(manifestFile.content) as SlideManifest;
-  } catch {
-    return null;
-  }
+  if (!mf) return { data: null };
+  // Let JSON.parse throw — useResilientParse catches it
+  return { data: JSON.parse(mf.content) as SlideManifest, file: mf.path };
 }
 
 /** Find theme.css content from files array */
@@ -468,6 +466,8 @@ export default function SlidePreview({
   actionRequest,
   onActionResult,
   onNotifyAgent,
+  navigateRequest,
+  onNavigateComplete,
 }: ViewerPreviewProps) {
   const setPreviewMode = useStore((s) => s.setPreviewMode);
   const pushUserAction = useStore((s) => s.pushUserAction);
@@ -504,7 +504,7 @@ export default function SlidePreview({
   const [showHighlighter, setShowHighlighter] = useState(false);
 
   const [highlightSelector, setHighlightSelector] = useState<string | null>(null);
-  const manifest = useMemo(() => parseManifest(files), [files]);
+  const manifest = useResilientParse(files, parseManifest, onNotifyAgent);
   const themeCSS = useMemo(() => findThemeCSS(files), [files]);
   const isSelectMode = previewMode === "select" || previewMode === "annotate";
   const isEditMode = previewMode === "edit";
@@ -887,6 +887,20 @@ export default function SlidePreview({
         });
     }
   }, [actionRequest]);
+
+  // ── Locator navigation from chat cards ──────────────────────────────────
+  useEffect(() => {
+    if (!navigateRequest) return;
+    const { data } = navigateRequest;
+    if (data.file) {
+      const index = slides.findIndex((s) => s.file === data.file);
+      if (index !== -1) setActiveSlideIndex(index);
+    } else if (typeof data.index === "number") {
+      const idx = (data.index as number) - 1; // 1-based to 0-based
+      if (idx >= 0 && idx < slides.length) setActiveSlideIndex(idx);
+    }
+    onNavigateComplete?.();
+  }, [navigateRequest]);
 
   // Navigate to slide + highlight when external selection arrives (e.g. clicking historical SelectionCard)
   // Use a stamp counter to detect genuine selection changes from the store
@@ -1762,7 +1776,7 @@ const SortableSlideItem = forwardRef<
       } ${isDragging ? "opacity-70 scale-105 shadow-lg" : ""}`}
     >
       {deleteBtn}
-      <SlideThumbnail imageUrl={imageUrl} srcdoc={srcdoc} isActive={isActive} virtualWidth={virtualWidth} virtualHeight={virtualHeight} />
+      <SlideThumbnail imageUrl={imageUrl} isActive={isActive} virtualWidth={virtualWidth} virtualHeight={virtualHeight} />
       <div className="flex items-baseline gap-1.5 px-0.5">
         <span
           className={`text-[10px] font-mono shrink-0 ${
