@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.4.2] - 2026-03-10
+
+### Added
+- **Windows ARM64 desktop build** — NSIS installer for Windows on ARM (Snapdragon laptops etc.)
+
 ## [2.4.1] - 2026-03-10
 
 ### Fixed

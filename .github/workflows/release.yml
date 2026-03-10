@@ -122,6 +122,11 @@ jobs:
             platform: win32
             arch: x64
             electron-args: "--win --x64"
+          - os: windows-latest
+            os-label: Windows ARM64
+            platform: win32
+            arch: arm64
+            electron-args: "--win --arm64"
           - os: ubuntu-latest
             os-label: Linux x64
             platform: linux

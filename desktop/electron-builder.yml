@@ -68,12 +68,13 @@ win:
     - target: nsis
       arch:
         - x64
+        - arm64
 
 nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
-  artifactName: "${productName}-${version}-Setup.exe"
+  artifactName: "${productName}-${version}-${arch}-Setup.exe"
 
 linux:
   icon: resources/icon.png

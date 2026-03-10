@@ -54,6 +54,7 @@ Download the latest release for your platform:
 |----------|----------|
 | macOS (Apple Silicon + Intel) | [`.dmg`](https://github.com/pandazki/pneuma-skills/releases/latest) |
 | Windows x64 | [`.exe` installer](https://github.com/pandazki/pneuma-skills/releases/latest) |
+| Windows ARM64 | [`.exe` installer](https://github.com/pandazki/pneuma-skills/releases/latest) |
 | Linux x64 | [`.AppImage`](https://github.com/pandazki/pneuma-skills/releases/latest) / [`.deb`](https://github.com/pandazki/pneuma-skills/releases/latest) |
 
 The desktop app bundles Bun — no runtime install needed. Just install [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) and you're ready to go.
