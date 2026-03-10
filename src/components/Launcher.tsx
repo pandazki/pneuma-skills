@@ -1086,7 +1086,6 @@ export default function Launcher() {
       <div className="max-w-7xl mx-auto px-6 py-20 relative z-10">
         {/* Header */}
         <div className="text-center mb-16" style={{ animation: "warmFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1)" }}>
-          <img src="/logo.png" alt="Pneuma" className="w-24 h-24 mx-auto mb-6 drop-shadow-[0_0_30px_rgba(249,115,22,0.4)]" />
           <h1 className="text-6xl font-extrabold mb-4 tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-cc-fg via-cc-primary to-indigo-400 animate-text-gradient-flow">
             Pneuma
           </h1>
