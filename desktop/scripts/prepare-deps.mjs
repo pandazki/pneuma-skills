@@ -82,6 +82,13 @@ try {
 // Move node_modules to output location
 cpSync(resolve(tmpDir, "node_modules"), outputDir, { recursive: true });
 
+// Remove .bin symlinks — desktop app uses Bun, not node_modules/.bin
+const binDir = resolve(outputDir, ".bin");
+if (existsSync(binDir)) {
+  rmSync(binDir, { recursive: true, force: true });
+  console.log("Removed .bin directory (not needed for Bun runtime)");
+}
+
 // Clean up temp dir
 rmSync(tmpDir, { recursive: true, force: true });
 
