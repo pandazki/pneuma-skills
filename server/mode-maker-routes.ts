@@ -81,13 +81,52 @@ function clearWorkspace(workspace: string): number {
 
 /** Recursively copy a directory tree, applying template params to text files. */
 const TEMPLATE_EXTENSIONS = new Set([".md", ".txt", ".html", ".css", ".json", ".ts", ".tsx", ".js", ".jsx"]);
+const CODE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx"]);
+
+/**
+ * Rewrite imports that escape the source directory to use correct relative paths
+ * from the destination. This handles forking builtin modes whose viewer files
+ * import shared code via relative paths like `../../../src/store.js`.
+ */
+function rewriteEscapingImports(
+  text: string,
+  srcFilePath: string,
+  srcRoot: string,
+  dstFilePath: string,
+): string {
+  // Match: import/export ... from "relative-path"
+  // Also match: dynamic import("relative-path")
+  return text.replace(
+    /((?:from|import\()\s*["'])(\.\.\/[^"']+)(["'])/g,
+    (match, prefix, importPath, suffix) => {
+      // Resolve the import path against the source file's directory
+      const resolved = resolve(dirname(srcFilePath), importPath);
+      // Check if it escapes the source mode directory
+      if (resolved.startsWith(srcRoot + "/") || resolved === srcRoot) {
+        return match; // stays within mode dir, no rewrite needed
+      }
+      // Compute new relative path from the destination file
+      const newRel = relative(dirname(dstFilePath), resolved);
+      const newImport = newRel.startsWith(".") ? newRel : `./${newRel}`;
+      return `${prefix}${newImport}${suffix}`;
+    },
+  );
+}
+
+interface CopyOptions {
+  params?: Record<string, number | string>;
+  /** When set, rewrite imports that escape srcRoot to correct relative paths from dst */
+  rewriteImports?: boolean;
+}
 
 function copyDirRecursive(
   src: string,
   dst: string,
-  params?: Record<string, number | string>,
+  options?: CopyOptions,
 ): { files: string[]; count: number } {
+  const { params, rewriteImports } = options || {};
   const files: string[] = [];
+  const resolvedSrc = resolve(src);
 
   function walk(srcDir: string, dstDir: string, relBase: string) {
     let entries: ReturnType<typeof readdirSync>;
@@ -106,19 +145,23 @@ function copyDirRecursive(
         walk(srcPath, dstPath, rel);
       } else {
         mkdirSync(dirname(dstPath), { recursive: true });
-        let content = readFileSync(srcPath);
-        // Apply template params to text files
-        if (params && Object.keys(params).length > 0) {
-          const ext = entry.name.slice(entry.name.lastIndexOf(".")).toLowerCase();
-          if (TEMPLATE_EXTENSIONS.has(ext)) {
-            const text = content.toString("utf-8");
-            const replaced = applyTemplateParams(text, params);
-            writeFileSync(dstPath, replaced, "utf-8");
-            files.push(rel);
-            continue;
+        const ext = entry.name.slice(entry.name.lastIndexOf(".")).toLowerCase();
+        const isText = TEMPLATE_EXTENSIONS.has(ext);
+
+        if (isText) {
+          let text = readFileSync(srcPath, "utf-8");
+          // Apply template params
+          if (params && Object.keys(params).length > 0) {
+            text = applyTemplateParams(text, params);
           }
+          // Rewrite escaping imports in code files
+          if (rewriteImports && CODE_EXTENSIONS.has(ext)) {
+            text = rewriteEscapingImports(text, srcPath, resolvedSrc, dstPath);
+          }
+          writeFileSync(dstPath, text, "utf-8");
+        } else {
+          writeFileSync(dstPath, readFileSync(srcPath));
         }
-        writeFileSync(dstPath, content);
         files.push(rel);
       }
     }
@@ -252,8 +295,8 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
         });
       }
 
-      // Copy all files from source mode to workspace
-      const { files, count } = copyDirRecursive(sourceDir, workspace);
+      // Copy all files from source mode to workspace, rewriting escaping imports
+      const { files, count } = copyDirRecursive(sourceDir, workspace, { rewriteImports: true });
       return c.json({ success: true, filesWritten: count, files });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -352,21 +395,18 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
       const tmpDir = join(tmpdir(), `pneuma-play-${uuid8}`);
       mkdirSync(tmpDir, { recursive: true });
 
-      // Launch subprocess: workspace path acts as local mode source
-      // In dev mode: --dev forces Vite so /@fs/ imports work for external mode files
-      // In prod mode: no --dev, external mode compiled via Bun.build(), single-server
-      const args = ["bun", join(projectRoot, "bin", "pneuma.ts"), workspace, "--workspace", tmpDir, "--port", String(PLAY_PORT), "--no-open", "--no-prompt"];
-      if (opts.isDev) args.push("--dev");
+      // Launch subprocess: workspace path acts as local mode source.
+      // Always use --dev (Vite) for play — Bun.build would duplicate src/store.ts
+      // creating a separate Zustand store instance, breaking host state sharing.
+      // Vite deduplicates modules by file path, so useStore is shared correctly.
+      const args = ["bun", join(projectRoot, "bin", "pneuma.ts"), workspace, "--workspace", tmpDir, "--port", String(PLAY_PORT), "--no-open", "--no-prompt", "--dev"];
 
       const childEnv: Record<string, string> = {
         ...process.env as Record<string, string>,
         // Don't inherit CLAUDECODE env var
         CLAUDECODE: "",
+        PNEUMA_VITE_PORT: String(PLAY_VITE_PORT),
       };
-      // Only set dedicated Vite port in dev mode (prod doesn't spawn Vite)
-      if (opts.isDev) {
-        childEnv.PNEUMA_VITE_PORT = String(PLAY_VITE_PORT);
-      }
 
       const proc = Bun.spawn(args, {
           cwd: projectRoot,
@@ -378,8 +418,7 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
 
       // Wait for the subprocess to print its ready URL (up to 30s — Vite startup can be slow)
       const readyPromise = new Promise<string>((resolve) => {
-        const fallbackPort = opts.isDev ? PLAY_VITE_PORT : PLAY_PORT;
-        const fallbackUrl = `http://localhost:${fallbackPort}?mode=${encodeURIComponent(basename(workspace))}`;
+        const fallbackUrl = `http://localhost:${PLAY_VITE_PORT}?mode=${encodeURIComponent(basename(workspace))}`;
         const timeout = setTimeout(() => resolve(fallbackUrl), 30_000);
         const readStream = async (stream: ReadableStream<Uint8Array>) => {
           const reader = stream.getReader();
@@ -591,7 +630,7 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
       let filesWritten = 0;
 
       if (existsSync(seedDir)) {
-        const result = copyDirRecursive(seedDir, workspace, params);
+        const result = copyDirRecursive(seedDir, workspace, { params });
         seedFiles.push(...result.files);
         filesWritten = result.count;
       }

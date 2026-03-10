@@ -51,12 +51,14 @@ function pneumaWorkspaceResolve(): Plugin {
       const cleanSource = source.split("?")[0];
 
       if (cleanSource.startsWith(".")) {
-        // Relative import — check if it resolves outside workspace to a core/ path
+        // Relative import — check if it resolves outside workspace to a core/ or src/ path
         const resolved = path.resolve(path.dirname(cleanImporter), cleanSource);
-        const coreIdx = resolved.indexOf("/core/");
-        if (coreIdx !== -1 && !resolved.startsWith(projectRoot)) {
-          // Redirect: /some/random/path/core/types/... → <projectRoot>/core/types/...
-          return projectRoot + resolved.slice(coreIdx);
+        for (const prefix of ["/core/", "/src/"]) {
+          const idx = resolved.indexOf(prefix);
+          if (idx !== -1 && !resolved.startsWith(projectRoot)) {
+            // Redirect: /some/random/path/core/types/... → <projectRoot>/core/types/...
+            return projectRoot + resolved.slice(idx);
+          }
         }
       } else if (!cleanSource.startsWith("/") && !cleanSource.startsWith("\0")) {
         // Bare specifier (npm package) — resolve from project's node_modules

@@ -1023,9 +1023,12 @@ async function main() {
                   return;
                 }
                 const abs = resolve(dirname(args.importer), args.path);
-                const coreIdx = abs.indexOf("/core/");
-                if (coreIdx !== -1 && !abs.startsWith(PROJECT_ROOT)) {
-                  return { path: PROJECT_ROOT + abs.slice(coreIdx) };
+                // Redirect imports that reference pneuma project internals (core/, src/)
+                for (const prefix of ["/core/", "/src/"]) {
+                  const idx = abs.indexOf(prefix);
+                  if (idx !== -1 && !abs.startsWith(PROJECT_ROOT)) {
+                    return { path: PROJECT_ROOT + abs.slice(idx) };
+                  }
                 }
               });
             },

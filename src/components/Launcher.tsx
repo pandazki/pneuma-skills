@@ -880,7 +880,11 @@ function LaunchDialog({
                   value={paramValues[param.name] ?? param.defaultValue}
                   disabled={!!existingSession}
                   onChange={(e) => {
-                    const val = param.type === "number" ? Number(e.target.value) : e.target.value;
+                    let val: string | number = param.type === "number" ? Number(e.target.value) : e.target.value;
+                    // Sanitize modeName: only allow lowercase letters, numbers, and hyphens
+                    if (param.name === "modeName" && typeof val === "string") {
+                      val = val.toLowerCase().replace(/[^a-z0-9-]/g, "");
+                    }
                     const next: Record<string, string | number> = { ...paramValues, [param.name]: val };
                     // Auto-sync displayName from modeName
                     if (param.name === "modeName" && typeof val === "string" && !displayNameTouchedRef.current) {

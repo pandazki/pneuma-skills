@@ -2133,7 +2133,10 @@ export const jsxDEV = J.jsx;
 export const Fragment = J.Fragment;`;
 
     app.get("/vendor/react.js", (c) => new Response(REACT_SHIM, { headers: { "Content-Type": "application/javascript" } }));
-    app.get("/vendor/react-dom.js", (c) => new Response(`export default window.__PNEUMA_REACT_DOM__;`, { headers: { "Content-Type": "application/javascript" } }));
+    const REACT_DOM_SHIM = `const RD = window.__PNEUMA_REACT_DOM__;
+export default RD;
+export const { createPortal, flushSync, createRoot, hydrateRoot } = RD;`;
+    app.get("/vendor/react-dom.js", (c) => new Response(REACT_DOM_SHIM, { headers: { "Content-Type": "application/javascript" } }));
     app.get("/vendor/react-jsx-runtime.js", (c) => new Response(JSX_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));
     app.get("/vendor/react-jsx-dev-runtime.js", (c) => new Response(JSX_DEV_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));
 
