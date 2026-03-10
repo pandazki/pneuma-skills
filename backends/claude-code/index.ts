@@ -15,7 +15,7 @@ import { CliLauncher } from "./cli-launcher.js";
 import type { SdkSessionInfo, LaunchOptions } from "./cli-launcher.js";
 
 export class ClaudeCodeBackend implements AgentBackend {
-  readonly name = "claude-code";
+  readonly name = "claude-code" as const;
 
   readonly capabilities: AgentCapabilities = {
     streaming: true,

@@ -21,6 +21,7 @@ function modelDisplay(modelId: string): { label: string; icon: string } {
 
 export default function ModelSwitcher() {
   const model = useStore((s) => s.session?.model ?? "");
+  const canSwitchModel = useStore((s) => s.session?.agent_capabilities.modelSwitch ?? false);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -34,6 +35,20 @@ export default function ModelSwitcher() {
   }, [open]);
 
   const current = modelDisplay(model);
+
+  if (!canSwitchModel) {
+    return (
+      <div
+        className="flex items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 bg-neutral-800 rounded"
+        title={model || "Model switching unavailable for this backend"}
+      >
+        <span className="w-4 h-4 rounded bg-neutral-800 flex items-center justify-center text-[10px] font-bold text-neutral-400">
+          {current.icon}
+        </span>
+        <span>{current.label}</span>
+      </div>
+    );
+  }
 
   return (
     <div ref={ref} className="relative">

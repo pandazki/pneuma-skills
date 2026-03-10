@@ -1,17 +1,23 @@
 /**
- * AgentBackend — Agent 通信抽象
+ * AgentBackend — Agent 运行时抽象
  *
- * 以 Claude Code 协议为事实标准。
- * 接口按 Claude Code 的实际能力画出，其他 Agent 通过适配层向此标准靠拢。
+ * 当前实现以 Claude Code 作为首个参考 backend，但对外契约已经拆成两层：
+ * - AgentBackend: 生命周期与能力声明
+ * - AgentProtocolAdapter: 后端私有协议到运行时标准消息的翻译
  *
- * 分为两个层面：
- * - AgentBackend: 生命周期管理 (launch/resume/kill)
- * - AgentProtocolAdapter: 消息协议适配 (parse/encode)
- *
- * 当前唯一实现: backends/claude-code/
+ * 前端和大部分服务端逻辑依赖的是标准 session 状态，而不是具体 backend 的 wire protocol。
  */
 
 // ── Agent 生命周期 ───────────────────────────────────────────────────────────
+
+export type AgentBackendType = "claude-code" | "codex";
+
+export interface AgentBackendDescriptor {
+  type: AgentBackendType;
+  label: string;
+  description: string;
+  implemented: boolean;
+}
 
 /** Agent 会话信息 */
 export interface AgentSessionInfo {
@@ -50,7 +56,7 @@ export interface AgentLaunchOptions {
 /** Agent 后端 — 管理 Agent 进程的生命周期 */
 export interface AgentBackend {
   /** 后端唯一标识 */
-  readonly name: string;
+  readonly name: AgentBackendType;
 
   /** 能力声明 */
   readonly capabilities: AgentCapabilities;
@@ -97,21 +103,19 @@ export interface AgentCapabilities {
 // ── Agent 协议适配 ───────────────────────────────────────────────────────────
 
 /**
- * 标准消息类型 — ws-bridge 和前端之间的标准格式。
+ * 标准消息类型 — ws-bridge 和前端之间的运行时格式。
  *
- * 以 Claude Code 的消息类型为事实标准，直接复用 session-types.ts 中的类型。
- * 其他 Agent 的适配层负责将自己的消息格式转为这些标准类型。
+ * v1 仍然直接复用现有 session/browser 类型，而不是单独抽一层 StandardMessage AST。
+ * 这保持 Claude 路径零回归，也给第二个 backend 留出了适配点。
  *
- * 注意: v1.0 中不重新定义标准消息格式，直接复用现有的 CLIMessage / BrowserMessage 类型。
- * 理由: 只有一个 Agent 实现时，引入中间层是过度抽象。当第二个 Agent 出现时再提取公共子集。
+ * 当第二个 backend 需要的消息映射明显超出当前类型表达能力时，再提取更正式的标准消息子集。
  */
 
 /**
  * AgentProtocolAdapter — 消息协议适配器
  *
- * 负责将 Agent 的原始消息格式与 ws-bridge 的标准格式互转。
- * v1.0 中 Claude Code 直接使用 NDJSON，adapter 几乎是直通。
- * 未来其他 Agent 需要实现自己的 adapter。
+ * 负责将 Agent 的原始消息格式与 ws-bridge 的运行时格式互转。
+ * Claude Code 当前基本是 NDJSON 直通，未来其他 backend 则通过各自 adapter 适配。
  */
 export interface AgentProtocolAdapter {
   /** 将 Agent 发来的原始数据解析为结构化消息 (null = 跳过此消息) */

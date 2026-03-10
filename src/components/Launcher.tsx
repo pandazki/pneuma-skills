@@ -3,6 +3,23 @@ import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import SpotlightCard from "./reactbits/SpotlightCard";
 import Galaxy from "./reactbits/Galaxy";
 
+type BackendType = "claude-code" | "codex";
+
+interface BackendOption {
+  type: BackendType;
+  label: string;
+  description: string;
+  implemented: boolean;
+}
+
+const FALLBACK_BACKENDS: BackendOption[] = [
+  {
+    type: "claude-code",
+    label: "Claude Code",
+    description: "Anthropic Claude Code CLI via --sdk-url WebSocket transport.",
+    implemented: true,
+  },
+];
 
 interface BuiltinMode {
   name: string;
@@ -48,6 +65,7 @@ interface RecentSession {
   mode: string;
   displayName: string;
   workspace: string;
+  backendType: BackendType;
   lastAccessed: number;
   hasThumbnail?: boolean;
 }
@@ -332,6 +350,10 @@ function runningDuration(startedAt: number): string {
 function shortenPath(path: string, homeDir: string): string {
   if (path.startsWith(homeDir)) return "~" + path.slice(homeDir.length);
   return path;
+}
+
+function backendLabel(backendType: BackendType): string {
+  return backendType === "claude-code" ? "Claude" : "Codex";
 }
 
 // ── ShowcaseCarousel ─────────────────────────────────────────────────────
@@ -959,7 +981,12 @@ function CompactSessionRow({
         <span className="text-sm font-medium text-cc-fg/90 truncate block">
           {launching ? "Launching..." : session.displayName}
         </span>
-        <p className="text-[10px] text-cc-muted/40 font-mono truncate">{shortenPath(session.workspace, homeDir)}</p>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[10px] px-1 py-0.5 rounded bg-cc-surface/80 text-cc-muted/60 uppercase tracking-wide shrink-0">
+            {backendLabel(session.backendType)}
+          </span>
+          <p className="text-[10px] text-cc-muted/40 font-mono truncate">{shortenPath(session.workspace, homeDir)}</p>
+        </div>
       </div>
       <span className="text-[10px] text-cc-muted/40 shrink-0">{timeAgo(session.lastAccessed)}</span>
       <div className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1644,6 +1671,8 @@ function LaunchDialog({
   showcase,
   defaultWorkspace,
   defaultInitParams,
+  backendOptions,
+  defaultBackendType,
   homeDir,
   onClose,
   closing,
@@ -1655,6 +1684,8 @@ function LaunchDialog({
   showcase?: BuiltinMode["showcase"];
   defaultWorkspace?: string;
   defaultInitParams?: Record<string, string>;
+  backendOptions: BackendOption[];
+  defaultBackendType: BackendType;
   homeDir: string;
   onClose: () => void;
   closing?: boolean;
@@ -1672,7 +1703,12 @@ function LaunchDialog({
   const [preparing, setPreparing] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [browsing, setBrowsing] = useState(false);
-  const [existingSession, setExistingSession] = useState<{ mode: string; config: Record<string, string | number> } | null>(null);
+  const [selectedBackendType, setSelectedBackendType] = useState<BackendType>(defaultBackendType);
+  const [existingSession, setExistingSession] = useState<{
+    mode: string;
+    backendType: BackendType;
+    config: Record<string, string | number>;
+  } | null>(null);
   const { resolved: dialogTheme } = useTheme();
   const isLight = dialogTheme === "light";
 
@@ -1683,13 +1719,17 @@ function LaunchDialog({
       const res = await fetch(`${getApiBase()}/api/workspace-check?path=${encodeURIComponent(path)}`);
       const data = await res.json();
       if (data.hasSession) {
-        setExistingSession({ mode: data.mode, config: data.config || {} });
+        const backendType = (data.backendType || defaultBackendType) as BackendType;
+        setExistingSession({ mode: data.mode, backendType, config: data.config || {} });
+        setSelectedBackendType(backendType);
         if (data.config && Object.keys(data.config).length > 0) {
           setParamValues(data.config);
         }
+      } else {
+        setSelectedBackendType(defaultBackendType);
       }
     } catch { }
-  }, []);
+  }, [defaultBackendType]);
 
   useEffect(() => {
     const prepare = async () => {
@@ -1731,6 +1771,7 @@ function LaunchDialog({
         body: JSON.stringify({
           specifier,
           workspace,
+          backendType: existingSession?.backendType || selectedBackendType,
           initParams: {
             ...(defaultInitParams || {}),
             ...(Object.keys(paramValues).length > 0 ? paramValues : {}),
@@ -1750,7 +1791,7 @@ function LaunchDialog({
       setError(err instanceof Error ? err.message : "Launch failed");
       setLoading(false);
     }
-  }, [specifier, workspace, paramValues, onClose]);
+  }, [specifier, workspace, selectedBackendType, existingSession, paramValues, onClose]);
 
   const [activeHighlight, setActiveHighlight] = useState(0);
   const highlights = showcase?.highlights;
@@ -1818,12 +1859,47 @@ function LaunchDialog({
         <p className="text-sm text-cc-muted mb-4">Loading configuration...</p>
       )}
 
+      <div className="mb-4">
+        <label className="block text-sm text-cc-muted mb-2">Backend</label>
+        <div className="grid gap-2">
+          {backendOptions.map((backend) => {
+            const active = (existingSession?.backendType || selectedBackendType) === backend.type;
+            const disabled = !!existingSession || !backend.implemented;
+            return (
+              <button
+                key={backend.type}
+                type="button"
+                disabled={disabled}
+                onClick={() => setSelectedBackendType(backend.type)}
+                className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
+                  active
+                    ? "border-cc-primary/50 bg-cc-primary/10 text-cc-fg"
+                    : "border-cc-border bg-cc-input-bg text-cc-muted hover:text-cc-fg hover:border-cc-border"
+                } ${disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium">{backend.label}</span>
+                  {!backend.implemented && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 uppercase tracking-wide">
+                      Coming Soon
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-cc-muted mt-1">{backend.description}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {existingSession && (
         <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-cc-primary/5 border border-cc-primary/15">
           <svg className="w-4 h-4 text-cc-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span className="text-xs text-cc-primary">Existing workspace — will resume session</span>
+          <span className="text-xs text-cc-primary">
+            Existing workspace — will resume {backendLabel(existingSession.backendType)} session
+          </span>
         </div>
       )}
 
@@ -2006,6 +2082,8 @@ function LaunchDialog({
 export default function Launcher() {
   const { preference: themePref, resolved: theme, cycle: cycleTheme } = useTheme();
   const isLight = theme === "light";
+  const [backendOptions, setBackendOptions] = useState<BackendOption[]>(FALLBACK_BACKENDS);
+  const [defaultBackendType, setDefaultBackendType] = useState<BackendType>("claude-code");
   const [builtins, setBuiltins] = useState<BuiltinMode[]>([]);
   const [published, setPublished] = useState<PublishedMode[]>([]);
   const [local, setLocal] = useState<LocalMode[]>([]);
@@ -2094,11 +2172,16 @@ export default function Launcher() {
 
   useEffect(() => {
     Promise.all([
+      fetch(`${getApiBase()}/api/backends`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/registry`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/sessions`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/processes/children`).then((r) => r.json()),
     ])
-      .then(([registryData, sessionsData, runningData]) => {
+      .then(([backendData, registryData, sessionsData, runningData]) => {
+        setBackendOptions(backendData.backends || []);
+        if (backendData.defaultBackendType) {
+          setDefaultBackendType(backendData.defaultBackendType);
+        }
         setBuiltins(registryData.builtins || []);
         setPublished(registryData.published || []);
         setLocal(registryData.local || []);
@@ -2155,12 +2238,23 @@ export default function Launcher() {
     } catch { }
   }, [refreshRunning]);
 
-  const directLaunch = useCallback(async (specifier: string, workspace: string, skipSkill?: boolean) => {
+  // Direct launch for session resume — no dialog, just go
+  const directLaunch = useCallback(async (
+    specifier: string,
+    workspace: string,
+    backendType: BackendType,
+    skipSkill?: boolean,
+  ) => {
     try {
       const res = await fetch(`${getApiBase()}/api/launch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ specifier, workspace, ...(skipSkill ? { skipSkill: true } : {}) }),
+        body: JSON.stringify({
+          specifier,
+          workspace,
+          backendType,
+          ...(skipSkill ? { skipSkill: true } : {}),
+        }),
       });
       const data = await res.json();
       if (data.url) {
@@ -2385,7 +2479,7 @@ export default function Launcher() {
                                 isRunning
                                 isLight={isLight}
                                 runningProcess={item.process}
-                                onResume={item.session ? (skipSkill) => directLaunch(item.session!.mode, item.session!.workspace, skipSkill) : undefined}
+                                onResume={item.session ? (skipSkill) => directLaunch(item.session!.mode, item.session!.workspace, item.session!.backendType, skipSkill) : undefined}
                                 onDelete={item.session ? () => deleteSession(item.session!.id) : undefined}
                                 onStop={item.process ? () => stopProcess(item.process!.pid, item.process!.url) : undefined}
                                 onOpen={item.process ? () => window.open(item.process!.url, "_blank") : undefined}
@@ -2412,7 +2506,7 @@ export default function Launcher() {
                         session={item.session!}
                         homeDir={homeDir}
                         icon={iconMap[item.modeName]}
-                        onResume={(skipSkill) => directLaunch(item.session!.mode, item.session!.workspace, skipSkill)}
+                        onResume={(skipSkill) => directLaunch(item.session!.mode, item.session!.workspace, item.session!.backendType, skipSkill)}
                         onDelete={() => deleteSession(item.session!.id)}
                       />
                     </motion.div>
@@ -2509,7 +2603,7 @@ export default function Launcher() {
           onClose={() => setShowAllSessions(false)}
           onResume={async (session, skipSkill) => {
             setShowAllSessions(false);
-            await directLaunch(session.mode, session.workspace, skipSkill);
+            await directLaunch(session.mode, session.workspace, session.backendType, skipSkill);
           }}
           onDelete={(id) => deleteSession(id)}
           className={isLight ? "launcher-light" : ""}
@@ -2528,6 +2622,8 @@ export default function Launcher() {
           showcase={lastLaunchTarget.current.showcase}
           defaultWorkspace={lastLaunchTarget.current.defaultWorkspace}
           defaultInitParams={lastLaunchTarget.current.defaultInitParams}
+          backendOptions={backendOptions}
+          defaultBackendType={defaultBackendType}
           homeDir={homeDir}
           onClose={() => setLaunchTarget(null)}
           closing={launchAnim.closing}

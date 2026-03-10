@@ -1,5 +1,9 @@
-// Types for the WebSocket bridge between Claude Code CLI and the browser
-// Ported from Companion, stripped of Codex/Docker/Git/Cron/Agent types
+// Types for the current browser/session bridge.
+// Claude Code remains the active transport source, but SessionState now carries
+// backend identity and capability flags so the UI does not depend on Claude-only assumptions.
+
+import type { AgentBackendType } from "../core/types/agent-backend.js";
+import type { AgentCapabilities } from "../core/types/agent-backend.js";
 
 // ─── CLI Message Types (NDJSON from Claude Code CLI) ──────────────────────────
 
@@ -320,10 +324,13 @@ export interface BufferedBrowserEvent {
 
 export interface SessionState {
   session_id: string;
+  backend_type: AgentBackendType;
+  agent_capabilities: AgentCapabilities;
   model: string;
   cwd: string;
   tools: string[];
   permissionMode: string;
+  agent_version: string;
   claude_code_version: string;
   mcp_servers: { name: string; status: string }[];
   agents: string[];

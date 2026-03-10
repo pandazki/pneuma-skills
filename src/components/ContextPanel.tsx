@@ -22,8 +22,11 @@ function SessionStatsSection() {
         <span className="text-cc-muted">Model</span>
         <span className="text-cc-fg truncate">{session.model || "—"}</span>
 
+        <span className="text-cc-muted">Backend</span>
+        <span className="text-cc-fg truncate">{session.backend_type || "—"}</span>
+
         <span className="text-cc-muted">Version</span>
-        <span className="text-cc-fg truncate">{session.claude_code_version || "—"}</span>
+        <span className="text-cc-fg truncate">{session.agent_version || session.claude_code_version || "—"}</span>
 
         <span className="text-cc-muted">Working dir</span>
         <span className="text-cc-fg truncate" title={session.cwd}>{session.cwd || "—"}</span>

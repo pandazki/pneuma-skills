@@ -23,6 +23,8 @@ import type {
   BrowserSocketData,
 } from "./ws-bridge-types.js";
 import { makeDefaultState } from "./ws-bridge-types.js";
+import type { AgentBackendType } from "../core/types/agent-backend.js";
+import { getBackendCapabilities } from "../backends/index.js";
 export type { SocketData } from "./ws-bridge-types.js";
 import {
   isDuplicateClientMessage,
@@ -122,14 +124,14 @@ export class WsBridge {
 
   // ── Session management ──────────────────────────────────────────────────
 
-  getOrCreateSession(sessionId: string): Session {
+  getOrCreateSession(sessionId: string, backendType?: AgentBackendType): Session {
     let session = this.sessions.get(sessionId);
     if (!session) {
       session = {
         id: sessionId,
         cliSocket: null,
         browserSockets: new Set(),
-        state: makeDefaultState(sessionId),
+        state: makeDefaultState(sessionId, backendType),
         pendingPermissions: new Map(),
         pendingControlRequests: new Map(),
         pendingViewerActions: new Map(),
@@ -143,6 +145,9 @@ export class WsBridge {
         processedClientMessageIdSet: new Set(),
       };
       this.sessions.set(sessionId, session);
+    } else if (backendType) {
+      session.state.backend_type = backendType;
+      session.state.agent_capabilities = getBackendCapabilities(backendType);
     }
     return session;
   }
@@ -389,6 +394,7 @@ export class WsBridge {
       session.state.cwd = msg.cwd;
       session.state.tools = msg.tools;
       session.state.permissionMode = msg.permissionMode;
+      session.state.agent_version = msg.claude_code_version;
       session.state.claude_code_version = msg.claude_code_version;
       session.state.mcp_servers = msg.mcp_servers;
       session.state.agents = msg.agents ?? [];

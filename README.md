@@ -23,7 +23,7 @@
 
 > **"pneuma"** — Greek *pneuma*, meaning soul, breath, life force.
 
-When humans and code agents co-create content, they need more than a chat window — they need shared infrastructure. Pneuma provides four pillars for **isomorphic collaboration**, built atop mainstream code agents (currently [Claude Code](https://docs.anthropic.com/en/docs/claude-code)):
+When humans and code agents co-create content, they need more than a chat window — they need shared infrastructure. Pneuma provides four pillars for **isomorphic collaboration**, built atop mainstream code agents. Today the production path is [Claude Code](https://docs.anthropic.com/en/docs/claude-code); the runtime now exposes a startup-selectable backend layer so additional agents can be integrated without rewriting the UI shell.
 
 | Pillar | What it does |
 |--------|-------------|
@@ -57,7 +57,7 @@ Download the latest release for your platform:
 | Windows ARM64 | [`.exe` installer](https://github.com/pandazki/pneuma-skills/releases/latest) |
 | Linux x64 | [`.AppImage`](https://github.com/pandazki/pneuma-skills/releases/latest) / [`.deb`](https://github.com/pandazki/pneuma-skills/releases/latest) |
 
-The desktop app bundles Bun — no runtime install needed. Just install [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) and you're ready to go.
+The desktop app bundles Bun — no runtime install needed. Install [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) and you're ready to go. The launcher also exposes other backend slots, but only Claude Code is implemented today.
 
 ### CLI
 
@@ -69,6 +69,9 @@ bunx pneuma-skills
 
 # Start a mode with a fresh workspace
 bunx pneuma-skills slide --workspace ./my-first-pneuma-slide
+
+# Explicit backend selection at startup
+bunx pneuma-skills doc --backend claude-code
 
 # Or use the current directory
 bunx pneuma-skills doc
@@ -107,6 +110,7 @@ Modes:
 Options:
   --workspace <path>   Target workspace directory (default: cwd)
   --port <number>      Server port (default: 17996)
+  --backend <type>     Agent backend to launch (default: claude-code)
   --no-open            Don't auto-open the browser
   --skip-skill         Skip skill installation
   --debug              Enable debug mode
@@ -133,8 +137,8 @@ Subcommands:
 │  Layer 3: Content Viewer                                │
 │  ViewerContract — render, select, agent-callable actions│
 ├─────────────────────────────────────────────────────────┤
-│  Layer 2: Agent Bridge                                  │
-│  AgentBackend — launch, communicate, lifecycle          │
+│  Layer 2: Agent Runtime                                 │
+│  Backend registry + protocol bridge + normalized state  │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 1: Runtime Shell                                 │
 │  HTTP, WebSocket, PTY, File Watch, Frontend             │
@@ -149,6 +153,13 @@ Three core contracts in `core/types/`:
 | **ViewerContract** | Preview component, context extraction, action protocol | Custom renderers, viewport tracking |
 | **AgentBackend** | Launch, resume, kill, capability declaration | Other agents (Codex, Aider) |
 
+The backend contract is intentionally split in two layers:
+
+- Process lifecycle: `AgentBackend` owns launch, resume, exit, and capability declaration.
+- Session/UI contract: the browser consumes normalized session state (`backend_type`, `agent_capabilities`, `agent_version`) rather than backend-specific wire details.
+
+That means backend-specific protocols stay in `backends/<name>/`, while the UI and most server code depend on a stable session model.
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -160,13 +171,20 @@ Three core contracts in `core/types/`:
 | Terminal | [xterm.js](https://xtermjs.org) + Bun native PTY |
 | Drawing | [Excalidraw](https://excalidraw.com) |
 | Canvas | [React Flow](https://reactflow.dev) (Illustrate mode) |
-| Agent | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) via `--sdk-url` |
+| Agent | Claude Code via `--sdk-url`; multi-backend registry prepared for Codex app-server |
+
+## Backend Model
+
+- Backend is selected once at launch with `--backend` or in the launcher modal.
+- The selected backend is persisted in `<workspace>/.pneuma/session.json` and `~/.pneuma/sessions.json`.
+- Existing workspaces are backend-locked. Pneuma resumes the same backend for the lifetime of that workspace session instead of switching mid-stream.
+- Frontend features now read `agent_capabilities` from session state. Claude-only features such as Schedules are hidden or downgraded for non-Claude backends.
 
 ## Acknowledgements
 
-This project's WebSocket bridge, NDJSON protocol handling, and chat UI rendering are heavily ~~inspired by~~ copied from [Companion](https://github.com/The-Vibe-Company/companion) by The Vibe Company. To be honest, the entire technical approach was basically Claude Code reading Companion's source code and reproducing it here. We stand on the shoulders of giants — or more accurately, we asked an AI to stand on their shoulders for us.
+This project's Claude transport layer, NDJSON handling, and much of the initial chat bridge were heavily informed by [Companion](https://github.com/The-Vibe-Company/companion) by The Vibe Company.
 
-Thank you Companion for figuring out the undocumented `--sdk-url` protocol so we didn't have to.
+Companion remains the reference for Claude Code's undocumented `--sdk-url` transport. Pneuma's newer backend layer keeps that Claude-specific protocol inside `backends/claude-code/` so future backends can plug in through their own adapters instead of inheriting Claude wire assumptions everywhere.
 
 ## License
 

@@ -13,39 +13,34 @@ import { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync, statS
 import { homedir } from "node:os";
 import * as p from "@clack/prompts";
 import { startServer } from "../server/index.js";
-import { ClaudeCodeBackend } from "../backends/claude-code/index.js";
+import { createBackend, getDefaultBackendType } from "../backends/index.js";
 import { installSkill } from "../server/skill-installer.js";
 import { startFileWatcher } from "../server/file-watcher.js";
 import { loadModeManifest, listBuiltinModes, registerExternalMode } from "../core/mode-loader.js";
 import type { ModeManifest } from "../core/types/mode-manifest.js";
+import type { AgentBackendType } from "../core/types/agent-backend.js";
 import { applyTemplateParams } from "../server/skill-installer.js";
 import { resolveMode as resolveModeSource, isExternalMode } from "../core/mode-resolver.js";
 import type { ResolvedMode } from "../core/mode-resolver.js";
 import { resolveBinary } from "../server/path-resolver.js";
+import {
+  normalizePersistedSession,
+  normalizeSessionRecord,
+  parseCliArgs,
+  resolveWorkspaceBackendType,
+  type PersistedSession,
+  type SessionRecord,
+} from "./pneuma-cli-helpers.js";
 
 const PROJECT_ROOT = resolve(dirname(import.meta.path), "..");
 
 // ── Session persistence ──────────────────────────────────────────────────────
 
-interface PersistedSession {
-  sessionId: string;
-  /** Agent's internal session ID (e.g. Claude Code's --resume ID) */
-  agentSessionId?: string;
-  mode: string;
-  createdAt: number;
-}
-
 function loadSession(workspace: string): PersistedSession | null {
   const filePath = join(workspace, ".pneuma", "session.json");
   try {
     const content = readFileSync(filePath, "utf-8");
-    const data = JSON.parse(content);
-    // Backward compat: rename cliSessionId → agentSessionId
-    if (data.cliSessionId && !data.agentSessionId) {
-      data.agentSessionId = data.cliSessionId;
-      delete data.cliSessionId;
-    }
-    return data;
+    return normalizePersistedSession(JSON.parse(content));
   } catch {
     return null;
   }
@@ -75,19 +70,14 @@ function saveHistory(workspace: string, history: unknown[]): void {
 
 // ── Session registry (global, for launcher "Recent Sessions") ───────────────
 
-interface SessionRecord {
-  id: string; // `${workspace}::${mode}`
-  mode: string;
-  displayName: string;
-  workspace: string;
-  lastAccessed: number;
-}
-
 const SESSIONS_REGISTRY = join(homedir(), ".pneuma", "sessions.json");
 
 function loadSessionsRegistry(): SessionRecord[] {
   try {
-    return JSON.parse(readFileSync(SESSIONS_REGISTRY, "utf-8"));
+    const records = JSON.parse(readFileSync(SESSIONS_REGISTRY, "utf-8"));
+    return Array.isArray(records)
+      ? records.map((record) => normalizeSessionRecord(record))
+      : [];
   } catch {
     return [];
   }
@@ -99,11 +89,16 @@ function saveSessionsRegistry(records: SessionRecord[]): void {
   writeFileSync(SESSIONS_REGISTRY, JSON.stringify(records, null, 2));
 }
 
-function recordSession(mode: string, displayName: string, workspace: string): void {
+function recordSession(
+  mode: string,
+  displayName: string,
+  workspace: string,
+  backendType: AgentBackendType,
+): void {
   const id = `${workspace}::${mode}`;
   const records = loadSessionsRegistry();
   const existing = records.findIndex((r) => r.id === id);
-  const entry: SessionRecord = { id, mode, displayName, workspace, lastAccessed: Date.now() };
+  const entry: SessionRecord = { id, mode, displayName, workspace, backendType, lastAccessed: Date.now() };
   if (existing >= 0) {
     records[existing] = entry;
   } else {
@@ -111,43 +106,6 @@ function recordSession(mode: string, displayName: string, workspace: string): vo
   }
   // Cap at 50 entries
   saveSessionsRegistry(records.slice(0, 50));
-}
-
-// ── CLI arg parsing ──────────────────────────────────────────────────────────
-
-function parseArgs(argv: string[]) {
-  const args = argv.slice(2); // skip bun + script path
-  let mode = "";
-  let workspace = process.cwd();
-  let port = 0; // 0 = auto-detect based on mode
-  let noOpen = false;
-  let debug = false;
-  let forceDev = false;
-  let noPrompt = false;
-  let skipSkill = false;
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--workspace" && i + 1 < args.length) {
-      workspace = args[++i];
-    } else if (arg === "--port" && i + 1 < args.length) {
-      port = Number(args[++i]);
-    } else if (arg === "--no-open") {
-      noOpen = true;
-    } else if (arg === "--no-prompt") {
-      noPrompt = true;
-    } else if (arg === "--skip-skill") {
-      skipSkill = true;
-    } else if (arg === "--debug") {
-      debug = true;
-    } else if (arg === "--dev") {
-      forceDev = true;
-    } else if (!arg.startsWith("--")) {
-      mode = arg;
-    }
-  }
-
-  return { mode, workspace: resolve(workspace), port, noOpen, debug, forceDev, noPrompt, skipSkill };
 }
 
 // ── Init params persistence ──────────────────────────────────────────────────
@@ -267,23 +225,30 @@ async function checkForUpdate(currentVersion: string) {
   }
 }
 
-function checkClaudeCode() {
-  const resolved = resolveBinary("claude");
-  if (!resolved) {
-    p.cancel(
-      "Claude Code CLI not found.\n" +
-      "  Pneuma requires Claude Code to be installed and authenticated.\n" +
-      "  Install: curl -fsSL https://claude.ai/install.sh | bash\n" +
-      "  Quickstart: https://code.claude.com/docs/en/quickstart"
-    );
-    process.exit(1);
+function checkBackendRequirements(backendType: AgentBackendType) {
+  if (backendType === "claude-code") {
+    const resolved = resolveBinary("claude");
+    if (!resolved) {
+      p.cancel(
+        "Claude Code CLI not found.\n" +
+        "  Pneuma requires Claude Code to be installed and authenticated.\n" +
+        "  Install: curl -fsSL https://claude.ai/install.sh | bash\n" +
+        "  Quickstart: https://code.claude.com/docs/en/quickstart"
+      );
+      process.exit(1);
+    }
+    return;
   }
+
+  p.cancel(`Backend "${backendType}" is not implemented yet.`);
+  process.exit(1);
 }
 
 async function handleEvolveCommand(args: string[]) {
   let workspace = process.cwd();
   let modeName = "";
   let subAction = ""; // "apply", "rollback", "show", or "" (propose)
+  let backendType: AgentBackendType = getDefaultBackendType();
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -291,6 +256,8 @@ async function handleEvolveCommand(args: string[]) {
       workspace = resolve(args[++i]);
     } else if (arg === "--mode" && i + 1 < args.length) {
       modeName = args[++i];
+    } else if (arg === "--backend" && i + 1 < args.length) {
+      backendType = args[++i] as AgentBackendType;
     } else if (["apply", "rollback", "show", "list"].includes(arg)) {
       subAction = arg;
     }
@@ -413,6 +380,7 @@ async function handleEvolveCommand(args: string[]) {
     const session = loadSession(workspace);
     if (session?.mode) {
       modeName = session.mode;
+      backendType = session.backendType;
     } else {
       // Check if targetMode was passed via config (from Launcher)
       const configPath = join(workspace, ".pneuma", "config.json");
@@ -427,7 +395,7 @@ async function handleEvolveCommand(args: string[]) {
     }
   }
 
-  checkClaudeCode();
+  checkBackendRequirements(backendType);
 
   // 1. Resolve target mode and build evolution data
   let resolved: ResolvedMode;
@@ -494,8 +462,8 @@ async function handleEvolveCommand(args: string[]) {
     initParams: metadata as unknown as Record<string, string | number>,
   });
 
-  // 6. Launch agent via ClaudeCodeBackend (fresh session, bypassPermissions)
-  const backend = new ClaudeCodeBackend(actualPort);
+  // 6. Launch agent via the selected backend (fresh session, bypassPermissions)
+  const backend = createBackend(backendType, actualPort);
   const session = backend.launch({
     cwd: workspace,
     permissionMode: "bypassPermissions",
@@ -590,6 +558,42 @@ async function handleEvolveCommand(args: string[]) {
 async function main() {
   const pkgPath = join(PROJECT_ROOT, "package.json");
   const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+  const parsedArgs = parseCliArgs(process.argv);
+
+  if (parsedArgs.showVersion) {
+    console.log(`pneuma-skills v${pkg.version}`);
+    return;
+  }
+
+  if (parsedArgs.showHelp) {
+    console.log(`pneuma-skills [mode] [options]
+
+Modes:
+  (no argument)                Open the Launcher (marketplace UI)
+  webcraft                     Web design with Impeccable.style
+  slide                        HTML presentations
+  doc                          Markdown with live preview
+  draw                         Excalidraw canvas
+  illustrate                   AI illustration studio
+  mode-maker                   Create custom modes with AI
+  evolve                       Launch the Evolution Agent
+  /path/to/mode                Load from a local directory
+  github:user/repo             Load from GitHub
+  https://...tar.gz            Load from URL
+
+Options:
+  --workspace <path>           Target workspace directory (default: cwd)
+  --port <number>              Preferred server port
+  --backend <type>             Agent backend to launch (default: claude-code)
+  --no-open                    Don't auto-open the browser
+  --no-prompt                  Non-interactive mode
+  --skip-skill                 Skip skill installation
+  --debug                      Enable debug mode
+  --dev                        Force dev mode (Vite)
+  --help, -h                   Show this help
+  --version, -v                Show version`);
+    return;
+  }
 
   p.intro(`pneuma-skills v${pkg.version}`);
 
@@ -672,7 +676,7 @@ async function main() {
     return;
   }
 
-  const { mode, workspace, port, noOpen, debug, forceDev, noPrompt, skipSkill } = parseArgs(process.argv);
+  const { mode, workspace, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill } = parsedArgs;
 
   // Launcher mode — no mode arg → start marketplace UI
   if (!mode) {
@@ -680,7 +684,6 @@ async function main() {
     const launcherPort = port || 17996;
     const distDir = resolve(PROJECT_ROOT, "dist");
     const isDev = forceDev || !existsSync(join(distDir, "index.html"));
-
     const { server, port: actualPort, childProcesses } = startServer({
       port: isDev ? 17007 : launcherPort,
       workspace: homedir(),
@@ -795,8 +798,8 @@ async function main() {
     process.exit(1);
   }
 
-  // Verify Claude Code CLI is available before proceeding
-  checkClaudeCode();
+  // Verify the selected backend is available before proceeding
+  checkBackendRequirements(backendType);
 
   if (!existsSync(workspace)) {
     if (noPrompt) {
@@ -1071,8 +1074,16 @@ async function main() {
     modeName,
   });
 
-  // 4. Launch Agent backend (driven by manifest)
-  const backend = new ClaudeCodeBackend(actualPort);
+  // 4. Launch Agent backend (selected at startup, fixed for the session lifetime)
+  const existing = loadSession(workspace);
+  const backendSelection = resolveWorkspaceBackendType(backendType, existing);
+  if (backendSelection.mismatchMessage) {
+    p.cancel(backendSelection.mismatchMessage);
+    process.exit(1);
+  }
+  const sessionBackendType = backendSelection.backendType;
+
+  const backend = createBackend(sessionBackendType, actualPort);
 
   // When the CLI reports its internal session_id, persist it
   wsBridge.onCLISessionIdReceived((sessionId, agentSessionId) => {
@@ -1086,8 +1097,6 @@ async function main() {
     }
   });
 
-  // Check for existing session to resume
-  const existing = loadSession(workspace);
   let resuming = false;
 
   // Build env map from envMapping (init param values → env vars for agent process)
@@ -1125,13 +1134,15 @@ async function main() {
     sessionId: session.sessionId,
     agentSessionId: existing?.agentSessionId,
     mode: modeName,
+    backendType: sessionBackendType,
     createdAt: existing?.createdAt || Date.now(),
   });
 
   // Record to global sessions registry for launcher "Recent Sessions"
-  recordSession(modeName, manifest.displayName, workspace);
+  recordSession(modeName, manifest.displayName, workspace, sessionBackendType);
 
   p.log.info(`Agent session: ${session.sessionId}`);
+  wsBridge.getOrCreateSession(session.sessionId, sessionBackendType);
 
   // Auto-greeting for fresh sessions (driven by manifest)
   if (!resuming && manifest.agent?.greeting) {
@@ -1160,9 +1171,13 @@ async function main() {
     if (exitCode !== 0 && exitCode !== 143 /* SIGTERM = normal shutdown */) {
       let errorMsg: string;
       if (exitCode === 127) {
-        errorMsg = "Claude Code CLI not found. Please install it: https://docs.anthropic.com/claude-code";
+        errorMsg = sessionBackendType === "claude-code"
+          ? "Claude Code CLI not found. Please install it: https://docs.anthropic.com/claude-code"
+          : `Backend "${sessionBackendType}" CLI not found.`;
       } else {
-        errorMsg = `Claude Code exited unexpectedly (code ${exitCode}). Check CLI installation and subscription status.`;
+        errorMsg = sessionBackendType === "claude-code"
+          ? `Claude Code exited unexpectedly (code ${exitCode}). Check CLI installation and subscription status.`
+          : `${sessionBackendType} exited unexpectedly (code ${exitCode}).`;
       }
       wsBridge.broadcastToSession(exitedId, { type: "error", message: errorMsg });
     }
