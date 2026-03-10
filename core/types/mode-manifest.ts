@@ -203,6 +203,32 @@ export interface EvolutionTool {
   config: Record<string, unknown>;
 }
 
+/** Showcase highlight — a single feature to display in the carousel */
+export interface ShowcaseHighlight {
+  /** Feature title (e.g. "Responsive Preview") */
+  title: string;
+  /** Short description (1-2 sentences) */
+  description: string;
+  /** Media file path relative to showcase/ directory */
+  media: string;
+  /** Media type — determines rendering (default: "image") */
+  mediaType?: "image" | "gif" | "video";
+}
+
+/**
+ * Mode showcase configuration — rich marketing content for the launcher gallery.
+ * Assets are stored in the mode's `showcase/` directory and served via
+ * `GET /api/modes/:name/showcase/*`.
+ */
+export interface ModeShowcase {
+  /** Short tagline shown under the mode name (e.g. "17 AI design commands") */
+  tagline?: string;
+  /** Hero image path relative to showcase/ directory (16:9 recommended) */
+  hero?: string;
+  /** Feature highlights — displayed as a carousel with hover-to-switch */
+  highlights?: ShowcaseHighlight[];
+}
+
 /** Mode 的完整声明式描述 */
 export interface ModeManifest {
   /** Mode 唯一标识 (e.g. "doc", "slide") */
@@ -228,4 +254,6 @@ export interface ModeManifest {
   viewerApi?: ViewerApiConfig;
   /** Skill 演进配置 — 定义 Evolution Agent 的演进方向 (可选) */
   evolution?: EvolutionConfig;
+  /** Showcase — rich marketing content for launcher gallery (optional) */
+  showcase?: ModeShowcase;
 }

@@ -6,6 +6,14 @@
   letter-spacing: 0.02em;
 }
 
+.font-display {
+  font-family: "Instrument Serif", Georgia, serif;
+}
+
+.font-body {
+  font-family: "DM Sans", system-ui, -apple-system, sans-serif;
+}
+
 @theme {
   --color-cc-bg: #09090b;
   /* Zinc 950 essentially */
@@ -32,6 +40,29 @@
   --color-cc-warning: #facc15;
   --color-cc-glow: rgba(249, 115, 22, 0.15);
   --color-cc-primary-muted: rgba(249, 115, 22, 0.15);
+}
+
+/* ── Launcher light theme ── */
+.launcher-light {
+  --color-cc-bg: #faf9f7;
+  --color-cc-surface: #f0eeeb;
+  --color-cc-card: rgba(245, 243, 240, 0.6);
+  --color-cc-fg: #1c1917;
+  --color-cc-primary: #ea580c;
+  --color-cc-primary-hover: #c2410c;
+  --color-cc-user-bubble: #e7e5e4;
+  --color-cc-border: rgba(0, 0, 0, 0.08);
+  --color-cc-muted: #78716c;
+  --color-cc-input-bg: rgba(245, 243, 240, 0.8);
+  --color-cc-code-bg: #f5f5f4;
+  --color-cc-code-fg: #292524;
+  --color-cc-hover: rgba(0, 0, 0, 0.03);
+  --color-cc-active: rgba(0, 0, 0, 0.06);
+  --color-cc-success: #16a34a;
+  --color-cc-error: #dc2626;
+  --color-cc-warning: #ca8a04;
+  --color-cc-glow: rgba(234, 88, 12, 0.08);
+  --color-cc-primary-muted: rgba(234, 88, 12, 0.08);
 }
 
 @keyframes fadeSlideIn {
@@ -221,6 +252,30 @@
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes launcherFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes launcherSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

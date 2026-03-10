@@ -73,6 +73,14 @@ export function startServer(options: ServerOptions) {
         const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
         let parsed: ReturnType<typeof parseManifestTs> = {};
         try { parsed = parseManifestTs(readFileSync(manifestPath, "utf-8")); } catch { }
+        // Load showcase data from showcase/showcase.json if it exists
+        let showcase: { tagline?: string; hero?: string; highlights?: Array<{ title: string; description: string; media: string; mediaType?: string }> } | undefined;
+        try {
+          const showcasePath = join(projectRoot, "modes", name, "showcase", "showcase.json");
+          if (existsSync(showcasePath)) {
+            showcase = JSON.parse(readFileSync(showcasePath, "utf-8"));
+          }
+        } catch { }
         return {
           name,
           displayName: parsed.displayName || name,
@@ -81,6 +89,7 @@ export function startServer(options: ServerOptions) {
           version: "builtin",
           type: "builtin" as const,
           ...((name === "slide" || name === "illustrate") ? { hasInitParams: true } : {}),
+          ...(showcase ? { showcase } : {}),
         };
       });
 
@@ -141,6 +150,39 @@ export function startServer(options: ServerOptions) {
       const { rmSync } = await import("node:fs");
       rmSync(targetDir, { recursive: true, force: true });
       return c.json({ ok: true });
+    });
+
+    // Serve mode showcase assets (images, gifs, videos)
+    app.get("/api/modes/:name/showcase/*", async (c) => {
+      const name = c.req.param("name");
+      const assetPath = c.req.path.split("/showcase/").slice(1).join("/showcase/");
+      if (!name || !assetPath || name.includes("..") || assetPath.includes("..")) {
+        return c.json({ error: "Invalid path" }, 400);
+      }
+      const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
+      // Check builtin modes first, then local modes
+      let fullPath = join(projectRoot, "modes", name, "showcase", assetPath);
+      if (!existsSync(fullPath)) {
+        const localPath = join(homedir(), ".pneuma", "modes", name, "showcase", assetPath);
+        if (existsSync(localPath)) {
+          fullPath = localPath;
+        } else {
+          return c.notFound();
+        }
+      }
+      // Determine content type
+      const ext = assetPath.split(".").pop()?.toLowerCase();
+      const contentTypes: Record<string, string> = {
+        png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+        webp: "image/webp", svg: "image/svg+xml", mp4: "video/mp4", webm: "video/webm",
+      };
+      const contentType = contentTypes[ext || ""] || "application/octet-stream";
+      try {
+        const file = Bun.file(fullPath);
+        return new Response(file, { headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=3600" } });
+      } catch {
+        return c.notFound();
+      }
     });
 
     // List recent sessions
