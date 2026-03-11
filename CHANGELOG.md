@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.5.2] - 2026-03-11
+
+### Improved
+- **CI actions** — upgraded `actions/checkout` and `actions/setup-node` from v4 to v5 for Node.js 24 compatibility
+
 ## [2.5.1] - 2026-03-11
 
 ### Added
