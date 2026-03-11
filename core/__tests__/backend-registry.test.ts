@@ -41,7 +41,7 @@ describe("backend registry", () => {
       resume: true,
       permissions: true,
       toolProgress: false,
-      modelSwitch: false,
+      modelSwitch: true,
     });
   });
 
@@ -55,7 +55,7 @@ describe("backend registry", () => {
     const backend = createBackend("codex", 17007);
     expect(backend.name).toBe("codex");
     expect(backend.capabilities.streaming).toBe(true);
-    expect(backend.capabilities.modelSwitch).toBe(false);
+    expect(backend.capabilities.modelSwitch).toBe(true);
     expect(backend.capabilities.toolProgress).toBe(false);
   });
 });

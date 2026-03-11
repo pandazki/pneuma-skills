@@ -341,9 +341,8 @@ describe("installSkill", () => {
     expect(existsSync(agentsMdPath)).toBe(true);
 
     const agentsMd = readFileSync(agentsMdPath, "utf-8");
-    const claudeMd = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
-    expect(agentsMd).toBe(claudeMd);
     expect(agentsMd).toContain("Use the test skill.");
+    expect(existsSync(join(workspace, "CLAUDE.md"))).toBe(false);
   });
 
   test("does not write AGENTS.md for non-codex backends", () => {

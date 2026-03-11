@@ -8,7 +8,7 @@ describe("WsBridge backend identity", () => {
     const session = bridge.getOrCreateSession("session-1", "codex");
 
     expect(session.state.backend_type).toBe("codex");
-    expect(session.state.agent_capabilities.modelSwitch).toBe(false);
+    expect(session.state.agent_capabilities.modelSwitch).toBe(true);
   });
 
   test("updates an existing session when backend type is provided later", () => {
@@ -19,6 +19,6 @@ describe("WsBridge backend identity", () => {
 
     expect(session.state.backend_type).toBe("codex");
     expect(session.state.agent_capabilities.permissions).toBe(true);
-    expect(session.state.agent_capabilities.modelSwitch).toBe(false);
+    expect(session.state.agent_capabilities.modelSwitch).toBe(true);
   });
 });

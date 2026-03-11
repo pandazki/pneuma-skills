@@ -15,7 +15,7 @@ describe("WsBridge Codex integration", () => {
     expect(session.state.agent_capabilities.streaming).toBe(true);
     expect(session.state.agent_capabilities.resume).toBe(true);
     expect(session.state.agent_capabilities.permissions).toBe(true);
-    expect(session.state.agent_capabilities.modelSwitch).toBe(false);
+    expect(session.state.agent_capabilities.modelSwitch).toBe(true);
     expect(session.state.agent_capabilities.toolProgress).toBe(false);
   });
 
