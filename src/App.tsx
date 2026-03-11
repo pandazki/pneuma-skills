@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, lazy, Suspense } from "react";
+import { useEffect, useState, useMemo, useRef, lazy, Suspense } from "react";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import TopBar from "./components/TopBar.js";
 import ChatPanel from "./components/ChatPanel.js";
@@ -14,6 +14,7 @@ import { loadMode, registerExternalMode } from "../core/mode-loader.js";
 import { useSystemPreferences } from "./hooks/useSystemPreferences.js";
 import { selectBestContentSet } from "../core/utils/content-set-matcher.js";
 import type { ViewerPreviewProps } from "../core/types/viewer-contract.js";
+import { useThumbnailCapture } from "./hooks/useThumbnailCapture.js";
 
 const EditorPanel = lazy(() => import("./components/EditorPanel.js"));
 const TerminalPanel = lazy(() => import("./components/TerminalPanel.js"));
@@ -171,6 +172,7 @@ export default function App() {
   }
 
   const PreviewComponent = useStore((s) => s.modeViewer?.PreviewComponent);
+  const captureViewport = useStore((s) => s.modeViewer?.captureViewport);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -310,6 +312,12 @@ export default function App() {
 
   const viewerProps = useViewerProps();
 
+  // Thumbnail capture — snapshot the preview panel periodically
+  const previewRef = useRef<HTMLDivElement>(null);
+  const imageTick = useStore((s) => s.imageTick);
+  const fileCount = useStore((s) => s.files.length);
+  useThumbnailCapture(previewRef, !!PreviewComponent, imageTick + fileCount, captureViewport);
+
   return (
     <div className="flex flex-col h-screen bg-cc-bg text-cc-fg relative overflow-hidden p-4 sm:p-6 md:p-8">
       {/* Immersive mesh gradient background element */}
@@ -320,11 +328,13 @@ export default function App() {
         <TopBar />
         <Group orientation="horizontal" className="flex-1">
           <Panel defaultSize={65} minSize={30}>
-            {PreviewComponent ? (
-              <PreviewComponent {...viewerProps} />
-            ) : (
-              <LazyFallback />
-            )}
+            <div ref={previewRef} className="h-full w-full">
+              {PreviewComponent ? (
+                <PreviewComponent {...viewerProps} />
+              ) : (
+                <LazyFallback />
+              )}
+            </div>
           </Panel>
           <Separator className="w-[1px] bg-cc-border/40 hover:w-1 hover:bg-cc-primary/40 transition-all duration-300 cursor-col-resize z-10" />
           <Panel defaultSize={35} minSize={20}>

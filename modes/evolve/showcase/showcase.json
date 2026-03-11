@@ -1,0 +1,24 @@
+{
+  "tagline": "Learn from your sessions, evolve your skills",
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": "Session Analysis",
+      "description": "The evolution agent scans your Claude Code conversation history — across sessions and projects — to find recurring preferences and corrections.",
+      "media": "analysis.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Evidence-Based Proposals",
+      "description": "Every proposed change cites your actual words as evidence. Review diffs, expand quotes, and decide what fits before anything changes.",
+      "media": "proposal.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Apply or Rollback",
+      "description": "Apply changes to your skill files with full backup. Not happy? One-click rollback restores everything. Or fork into a custom evolved mode.",
+      "media": "rollback.png",
+      "mediaType": "image"
+    }
+  ]
+}

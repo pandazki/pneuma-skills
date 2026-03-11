@@ -1,0 +1,24 @@
+{
+  "tagline": "Web design powered by Impeccable.style intelligence",
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": "17 Design Commands",
+      "description": "Audit, critique, polish, animate, colorize, distill — a full design toolkit built into the agent. Each command follows Impeccable.style principles.",
+      "media": "design-commands.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Anti-Slop Detection",
+      "description": "Automatic checks for AI-generated design clich\u00e9s — gradient text, glassmorphism, neon-on-dark, identical card grids. Your interfaces look human-made.",
+      "media": "anti-slop.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Responsive & Adaptive",
+      "description": "Mobile-first fluid design with container queries. Live preview updates as you edit — see changes on every breakpoint instantly.",
+      "media": "responsive.png",
+      "mediaType": "image"
+    }
+  ]
+}

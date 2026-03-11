@@ -7,4 +7,5 @@ contextBridge.exposeInMainWorld("pneumaDesktop", {
   recheckClaude: () => ipcRenderer.invoke("pneuma:recheck-claude"),
   showOpenDialog: (options: { title?: string; defaultPath?: string; buttonLabel?: string }) =>
     ipcRenderer.invoke("pneuma:show-open-dialog", options),
+  closeModeWindow: (url: string) => ipcRenderer.invoke("pneuma:close-mode-window", url),
 });

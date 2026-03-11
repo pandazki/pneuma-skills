@@ -1,0 +1,24 @@
+{
+  "tagline": "Excalidraw whiteboard for visual thinking",
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": "Describe → Diagram",
+      "description": "Tell the agent what you need — flowcharts, architectures, mind maps — and watch shapes and arrows appear on the canvas.",
+      "media": "ai-diagrams.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Hand-Drawn Style",
+      "description": "Excalidraw's signature sketchy aesthetic makes diagrams feel approachable. Toggle roughness for clean or hand-drawn looks.",
+      "media": "canvas.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Select & Refine",
+      "description": "Click any shape to select it — the agent sees what you picked (with a thumbnail). Say 'change this color' and it just works.",
+      "media": "bidirectional.png",
+      "mediaType": "image"
+    }
+  ]
+}

@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.5.0] - 2026-03-11
+
+### Added
+- **Launcher redesign** — editorial layout with mode showcase system (carousel images per mode), light/dark theme toggle, sticky header with animated close button
+- **Smart thumbnail capture** — generic 3-tier strategy (canvas → img elements → snapdom) eliminates per-viewer captureViewport implementations; works for Excalidraw, React Flow, and DOM-based viewers automatically
+- **Session card animations** — framer-motion powered transitions for running/recent state changes in Continue section
+- **Mode showcase system** — `showcase/` directories with curated images for each builtin mode, displayed in LaunchDialog carousel
+
+### Improved
+- **Gallery card expand/collapse** — replaced janky grid-template-rows with height-based animation using RAF measurement for silky smooth transitions
+- **LaunchDialog** — theme-aware showcase captions, vertically centered form layout, streamlined button styling
+- **Overlay system** — Gallery and AllSessions render below sticky header with Escape key dismissal and animated header close button; removed redundant per-overlay close buttons
+- **Thumbnail refresh** — debounce reduced from 30s to 10s with dedup (skip upload if identical to last capture)
+- **UI polish** — globally disabled image dragging, focus outlines, and logo text selection; light/dark aware running badge; compact header with centered content
+
 ## [2.4.10] - 2026-03-10
 
 ### Improved

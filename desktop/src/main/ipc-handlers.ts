@@ -1,4 +1,5 @@
 import { ipcMain, app, shell, dialog, BrowserWindow } from "electron";
+import { closeModeWindowByUrl } from "./window-manager.js";
 
 export function registerIpcHandlers() {
   ipcMain.handle("pneuma:get-app-version", () => {
@@ -11,6 +12,10 @@ export function registerIpcHandlers() {
 
   ipcMain.handle("pneuma:open-external", (_event, url: string) => {
     return shell.openExternal(url);
+  });
+
+  ipcMain.handle("pneuma:close-mode-window", (_event, url: string) => {
+    closeModeWindowByUrl(url);
   });
 
   ipcMain.handle(

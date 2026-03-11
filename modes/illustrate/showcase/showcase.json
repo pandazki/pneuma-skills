@@ -1,0 +1,24 @@
+{
+  "tagline": "AI image generation on a row-based canvas",
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": "Prompt → Images",
+      "description": "Describe what you need and the agent generates 1-4 variations. Shimmer placeholders show progress before results land.",
+      "media": "text-to-image.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Row-Based Canvas",
+      "description": "Images organized in labeled rows — each row is a generation batch. Pan, zoom, and compare like a mood board with minimap navigation.",
+      "media": "row-canvas.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Region Editing",
+      "description": "Hold Cmd and draw on any image to highlight a region. The agent edits just that area — fix colors, details, or composition without regenerating.",
+      "media": "region-edit.png",
+      "mediaType": "image"
+    }
+  ]
+}

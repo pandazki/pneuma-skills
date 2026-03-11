@@ -1,6 +1,6 @@
 {
   "name": "pneuma-skills",
-  "version": "2.4.10",
+  "version": "2.5.0",
   "type": "module",
   "description": "Co-creation infrastructure for humans and code agents — visual environment, skills, continuous learning, and distribution.",
   "license": "MIT",
@@ -59,7 +59,10 @@
     "@zumer/snapdom": "^2.0.2",
     "chokidar": "^4.0.0",
     "diff": "^8.0.3",
+    "framer-motion": "^12.35.2",
     "hono": "^4.7.0",
+    "motion": "^12.35.2",
+    "ogl": "^1.0.11",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",

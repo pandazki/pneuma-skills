@@ -73,6 +73,14 @@ export function startServer(options: ServerOptions) {
         const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
         let parsed: ReturnType<typeof parseManifestTs> = {};
         try { parsed = parseManifestTs(readFileSync(manifestPath, "utf-8")); } catch { }
+        // Load showcase data from showcase/showcase.json if it exists
+        let showcase: { tagline?: string; hero?: string; highlights?: Array<{ title: string; description: string; media: string; mediaType?: string }> } | undefined;
+        try {
+          const showcasePath = join(projectRoot, "modes", name, "showcase", "showcase.json");
+          if (existsSync(showcasePath)) {
+            showcase = JSON.parse(readFileSync(showcasePath, "utf-8"));
+          }
+        } catch { }
         return {
           name,
           displayName: parsed.displayName || name,
@@ -81,6 +89,7 @@ export function startServer(options: ServerOptions) {
           version: "builtin",
           type: "builtin" as const,
           ...((name === "slide" || name === "illustrate") ? { hasInitParams: true } : {}),
+          ...(showcase ? { showcase } : {}),
         };
       });
 
@@ -143,6 +152,39 @@ export function startServer(options: ServerOptions) {
       return c.json({ ok: true });
     });
 
+    // Serve mode showcase assets (images, gifs, videos)
+    app.get("/api/modes/:name/showcase/*", async (c) => {
+      const name = c.req.param("name");
+      const assetPath = c.req.path.split("/showcase/").slice(1).join("/showcase/");
+      if (!name || !assetPath || name.includes("..") || assetPath.includes("..")) {
+        return c.json({ error: "Invalid path" }, 400);
+      }
+      const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
+      // Check builtin modes first, then local modes
+      let fullPath = join(projectRoot, "modes", name, "showcase", assetPath);
+      if (!existsSync(fullPath)) {
+        const localPath = join(homedir(), ".pneuma", "modes", name, "showcase", assetPath);
+        if (existsSync(localPath)) {
+          fullPath = localPath;
+        } else {
+          return c.notFound();
+        }
+      }
+      // Determine content type
+      const ext = assetPath.split(".").pop()?.toLowerCase();
+      const contentTypes: Record<string, string> = {
+        png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+        webp: "image/webp", svg: "image/svg+xml", mp4: "video/mp4", webm: "video/webm",
+      };
+      const contentType = contentTypes[ext || ""] || "application/octet-stream";
+      try {
+        const file = Bun.file(fullPath);
+        return new Response(file, { headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=3600" } });
+      } catch {
+        return c.notFound();
+      }
+    });
+
     // List recent sessions
     app.get("/api/sessions", (c) => {
       const registryPath = join(homedir(), ".pneuma", "sessions.json");
@@ -154,7 +196,31 @@ export function startServer(options: ServerOptions) {
       sessions = sessions.filter((s) => existsSync(s.workspace));
       // Sort by lastAccessed descending
       sessions.sort((a, b) => b.lastAccessed - a.lastAccessed);
-      return c.json({ sessions, homeDir: homedir() });
+      // Check for thumbnails
+      const sessionsWithThumbs = sessions.map((s) => ({
+        ...s,
+        hasThumbnail: existsSync(join(s.workspace, ".pneuma", "thumbnail.png")),
+      }));
+      return c.json({ sessions: sessionsWithThumbs, homeDir: homedir() });
+    });
+
+    // Serve session thumbnail
+    app.get("/api/sessions/thumbnail", (c) => {
+      const workspace = c.req.query("workspace");
+      if (!workspace) return c.json({ error: "Missing workspace" }, 400);
+      const thumbPath = join(workspace, ".pneuma", "thumbnail.png");
+      try {
+        if (!existsSync(thumbPath)) return c.notFound();
+        const file = Bun.file(thumbPath);
+        return new Response(file, {
+          headers: {
+            "Content-Type": "image/png",
+            "Cache-Control": "no-cache",
+          },
+        });
+      } catch {
+        return c.notFound();
+      }
     });
 
     // Delete a session record
@@ -426,13 +492,18 @@ export function startServer(options: ServerOptions) {
     // Serve frontend assets in launcher mode too
     if (options.distDir) {
       const distDir = options.distDir;
-      app.get("/assets/*", async (c) => {
-        const filePath = join(distDir, c.req.path);
+      // Serve static assets (JS/CSS bundles + public files like logo.png, favicon)
+      app.get("*", async (c, next) => {
+        const p = c.req.path;
+        if (p.startsWith("/api/")) return next();
+        const filePath = join(distDir, p);
         const file = Bun.file(filePath);
-        if (await file.exists()) return new Response(file);
-        return c.notFound();
+        if (await file.exists() && !p.endsWith("/")) return new Response(file);
+        return next();
       });
-      app.get("*", async (c) => {
+      // SPA fallback
+      app.get("*", async (c, next) => {
+        if (c.req.path.startsWith("/api/")) return next();
         const html = await Bun.file(join(distDir, "index.html")).text();
         return new Response(html, { headers: { "Content-Type": "text/html" } });
       });
@@ -470,6 +541,23 @@ export function startServer(options: ServerOptions) {
   // Return the current active session ID so browsers can auto-connect
   app.get("/api/session", (c) => {
     return c.json({ sessionId: wsBridge.getActiveSessionId() });
+  });
+
+  // Save session thumbnail
+  app.post("/api/session/thumbnail", async (c) => {
+    try {
+      const body = await c.req.json();
+      const { data } = body; // base64 PNG data
+      if (!data) return c.json({ error: "Missing data" }, 400);
+      const thumbDir = join(workspace, ".pneuma");
+      if (!existsSync(thumbDir)) mkdirSync(thumbDir, { recursive: true });
+      const thumbPath = join(thumbDir, "thumbnail.png");
+      const buffer = Buffer.from(data, "base64");
+      writeFileSync(thumbPath, buffer);
+      return c.json({ ok: true });
+    } catch (err) {
+      return c.json({ error: "Failed to save thumbnail" }, 500);
+    }
   });
 
   // Return mode init params for the frontend
@@ -2160,18 +2248,26 @@ export const { createPortal, flushSync, createRoot, hydrateRoot } = RD;`;
     const distDir = options.distDir;
     const hasModeBundleDir = !!options.modeBundleDir;
 
-    app.get("/assets/*", async (c) => {
-      const filePath = join(distDir, c.req.path);
-      const file = Bun.file(filePath);
-      if (await file.exists()) {
-        return new Response(file);
+    // Serve static assets (JS/CSS bundles + public files like logo.png, favicon)
+    // Skip paths handled by dedicated routes (/content/*, /api/*, /ws/*, /export/*)
+    app.get("*", async (c, next) => {
+      const p = c.req.path;
+      if (p.startsWith("/content/") || p.startsWith("/api/") || p.startsWith("/ws/") || p.startsWith("/export/")) {
+        return next();
       }
-      return c.notFound();
+      const filePath = join(distDir, p);
+      const file = Bun.file(filePath);
+      if (await file.exists() && !p.endsWith("/")) return new Response(file);
+      return next();
     });
 
-    // SPA fallback — serve index.html for all non-API routes
+    // SPA fallback — serve index.html for all non-API/content routes
     // When external mode bundle exists, inject importmap for React resolution
-    app.get("*", async (c) => {
+    app.get("*", async (c, next) => {
+      const p = c.req.path;
+      if (p.startsWith("/content/") || p.startsWith("/api/") || p.startsWith("/ws/") || p.startsWith("/export/")) {
+        return next();
+      }
       let html = await Bun.file(join(distDir, "index.html")).text();
 
       if (hasModeBundleDir) {
