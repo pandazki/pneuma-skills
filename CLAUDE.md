@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Pneuma Skills is co-creation infrastructure for humans and code agents. It provides four pillars for isomorphic collaboration: a **visual environment** (live bidirectional workspace), **skills** (domain knowledge + seed templates + session persistence), **continuous learning** (evolution agent for cross-session preference extraction and skill augmentation), and **distribution** (mode marketplace, publishing, sharing). Built atop mainstream code agents (currently Claude Code via `--sdk-url`), Pneuma doesn't replace your agent — it gives both of you a shared workspace to think in.
+Pneuma Skills is co-creation infrastructure for humans and code agents. It provides four pillars for isomorphic collaboration: a **visual environment** (live bidirectional workspace), **skills** (domain knowledge + seed templates + session persistence), **continuous learning** (evolution agent for cross-session preference extraction and skill augmentation), and **distribution** (mode marketplace, publishing, sharing). The current production backend is Claude Code via `--sdk-url`, but the runtime now exposes a startup-selectable backend layer so additional agents can be integrated without rewriting the shell.
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
@@ -21,7 +21,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 | File Watching | chokidar 4 |
 | Drawing | @excalidraw/excalidraw 0.18 |
 | Desktop | Electron 41 + electron-builder + electron-updater |
-| Agent | Claude Code CLI via `--sdk-url` WebSocket protocol |
+| Agent | Claude Code CLI via `--sdk-url`; backend registry prepared for Codex app-server |
 
 ## CLI Commands
 
@@ -30,7 +30,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 bun run dev              # Launcher UI (no mode arg)
 bun run dev doc          # Doc Mode (cwd as workspace)
 bun run dev slide        # Slide Mode
-bun run dev doc --workspace ~/notes --port 17996 --no-open --debug
+bun run dev doc --workspace ~/notes --port 17996 --backend claude-code --no-open --debug
 bun run build            # Vite production build
 bun test                 # All tests (bun:test)
 
@@ -53,6 +53,7 @@ pneuma snapshot pull     # Download workspace from R2
 |------|-------------|
 | `--workspace <path>` | Workspace directory (default: cwd) |
 | `--port <n>` | Server port (default: auto) |
+| `--backend <type>` | Select backend at startup (`claude-code` today; session stays fixed to it) |
 | `--no-open` | Don't open browser |
 | `--no-prompt` | Non-interactive mode (launcher uses this) |
 | `--skip-skill` | Skip skill installation (session resume without update) |
@@ -61,9 +62,10 @@ pneuma snapshot pull     # Download workspace from R2
 
 ## Ports
 
-- **17996** — Vite dev server / production server
-- **17007** — Hono backend (dev mode only, Vite proxies to it)
-- Dev: browser → 17996 (Vite HMR), WebSocket → 17007 directly (Vite WS proxy broken with Bun)
+- **17996** — default Vite dev server / production server
+- **17007** — default Hono backend in dev mode
+- Dev: browser → Vite, WebSocket → backend directly (`Vite` WS proxy is bypassed)
+- Launcher child sessions auto-increment both ports when the defaults are occupied
 - Both servers bind `hostname: "0.0.0.0"` to avoid IPv4/IPv6 dual-stack port collision
 
 ## Project Structure
@@ -77,7 +79,9 @@ pneuma-skills/
 │   ├── mode-resolver.ts       # Source resolution (builtin/local/github/url → disk path)
 │   └── utils/manifest-parser.ts  # Regex-based manifest.ts metadata extraction
 ├── modes/{webcraft,doc,slide,draw,mode-maker,evolve}/  # Builtin modes
-├── backends/claude-code/      # AgentBackend impl — Bun.spawn with --sdk-url
+├── backends/
+│   ├── index.ts               # Backend registry + descriptors + capabilities
+│   └── claude-code/           # Claude backend — Bun.spawn with --sdk-url
 ├── server/
 │   ├── index.ts               # Hono server + launcher endpoints + WS routing
 │   ├── ws-bridge*.ts          # Dual WebSocket bridge (browser JSON ↔ CLI NDJSON)
@@ -116,7 +120,7 @@ pneuma-skills/
 ```
 Layer 4: Mode Protocol     — ModeManifest (skill + viewer + agent config)
 Layer 3: Content Viewer    — ViewerContract (render, select, agent-callable actions)
-Layer 2: Agent Bridge      — AgentBackend (launch, resume, kill)
+Layer 2: Agent Runtime     — AgentBackend + normalized session state + protocol bridge
 Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 ```
 
@@ -129,11 +133,24 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 | **AgentBackend** | `core/types/agent-backend.ts` | Launch, resume, kill, capabilities |
 | **EvolutionConfig** | `core/types/mode-manifest.ts` | Evolution directive, tools (part of ModeManifest) |
 
+### Backend Abstraction
+
+Current implementation separates backend concerns into two layers:
+
+1. **Lifecycle layer** — `AgentBackend` starts, resumes, tracks, and kills agent processes.
+2. **Session contract layer** — the browser and most of the server consume normalized session fields:
+   - `backend_type`
+   - `agent_capabilities`
+   - `agent_version`
+
+Claude-specific wire details still live in the Claude transport path, but frontend feature gating no longer assumes every backend behaves like Claude.
+
 ### Communication
 
-- Dual WebSocket: Browser (`/ws/browser/:sessionId`, JSON) ↔ Server ↔ CLI (`/ws/cli/:sessionId`, NDJSON)
+- Dual WebSocket: Browser (`/ws/browser/:sessionId`, JSON) ↔ Server ↔ CLI transport (`/ws/cli/:sessionId`)
 - File changes: chokidar → WebSocket push to browser
-- CLI: `claude --sdk-url ws://... --print --output-format stream-json --input-format stream-json --verbose -p ""`
+- Claude transport: `claude --sdk-url ws://... --print --output-format stream-json --input-format stream-json --verbose -p ""`
+- Browser session init carries normalized backend identity and capabilities so UI can degrade backend-specific features cleanly
 
 ## Mode Lifecycle
 
@@ -157,7 +174,7 @@ CLI Entry (bin/pneuma.ts)
       │   → ModeManifest (skill, viewer, agent config, init params)
       │
       ├─ 3. Session: load or create .pneuma/session.json
-      │   → sessionId, agentSessionId
+      │   → sessionId, agentSessionId, backendType
       │
       ├─ 4. Skill install: skill-installer.ts
       │   modes/<mode>/skill/ → workspace/.claude/skills/<installName>/
@@ -167,13 +184,16 @@ CLI Entry (bin/pneuma.ts)
       ├─ 5. Server start: server/index.ts
       │   Hono HTTP + dual WebSocket (browser JSON / CLI NDJSON)
       │
-      ├─ 6. Agent launch: backends/claude-code/cli-launcher.ts
-      │   claude --sdk-url ws://localhost:PORT/ws/cli/SESSION
+      ├─ 6. Backend selection: startup-only, workspace-locked
+      │   existing workspace backend cannot be switched mid-session
       │
-      ├─ 7. Frontend: mode-loader.ts → dynamic import viewer
+      ├─ 7. Agent launch: backends/<backend>/
+      │   Claude today: claude --sdk-url ws://localhost:PORT/ws/cli/SESSION
+      │
+      ├─ 8. Frontend: mode-loader.ts → dynamic import viewer
       │   External modes: registerExternalMode() → Bun.build() → import map
       │
-      └─ 8. Preview loop
+      └─ 9. Preview loop
           Agent edits → chokidar → WS → browser → viewer render
           User selects → <viewer-context> → agent message
           User actions → viewer notification → agent
@@ -207,7 +227,7 @@ A mode package must contain `manifest.ts` exporting a `ModeManifest`.
 Global session history for the launcher "Recent Sessions" feature:
 
 - **File:** `~/.pneuma/sessions.json`
-- **Record:** `{ id: "${workspace}::${mode}", mode, displayName, workspace, lastAccessed }`
+- **Record:** `{ id: "${workspace}::${mode}", mode, displayName, workspace, backendType, lastAccessed }`
 - Upserted on every mode launch, capped at 50 entries
 - Launcher shows recent sessions with one-click resume (no dialog)
 
@@ -217,7 +237,7 @@ Stored in `<workspace>/.pneuma/`:
 
 | File | Purpose |
 |------|---------|
-| `session.json` | sessionId, agentSessionId, mode, createdAt |
+| `session.json` | sessionId, agentSessionId, mode, backendType, createdAt |
 | `history.json` | Message history (auto-saved every 5s) |
 | `config.json` | Init params (e.g. slideWidth, API keys) |
 | `skill-version.json` | `{ mode, version }` — installed skill version for update detection |
@@ -248,6 +268,7 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/registry` | Returns `{ builtins, published, local }` |
+| `GET /api/backends` | Returns backend descriptors + default backend |
 | `GET /api/sessions` | Returns `{ sessions, homeDir }` — filtered by existing workspace |
 | `DELETE /api/sessions/:id` | Remove a session record |
 | `DELETE /api/modes/:name` | Delete a local mode from `~/.pneuma/modes/` |
@@ -262,6 +283,7 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 2. **Built-in Modes** — doc, slide, draw
 3. **Local Modes** — scanned from `~/.pneuma/modes/`, with delete
 4. **Published Modes** — fetched from R2 registry
+5. **Backend Picker** — choose backend at launch; existing workspaces stay locked to their original backend
 
 ## Server API Reference
 
@@ -373,6 +395,7 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 - **Bun APIs** over Node.js (Bun.spawn, Bun.file, etc.)
 - **Contract-first**: changes to contracts → update `core/types/` + `core/__tests__/`
 - **No hardcoded mode knowledge** in server/CLI — driven by ModeManifest
+- **Backend selected at startup only** — do not add runtime backend switching to the session UI
 - **Zustand** single store (`src/store.ts`), mode viewers in `modes/<mode>/viewer/`
 - **Design tokens**: "Ethereal Tech" theme via `cc-*` CSS custom properties (deep zinc bg `#09090b`, neon orange primary `#f97316`, glassmorphism surfaces with `backdrop-blur`)
 
@@ -399,6 +422,7 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **Stale `dist/`**: If `dist/index.html` exists, the server falls back to production mode. Launcher-spawned children auto-inherit `--dev` from the parent, but direct CLI usage without `--dev` may still hit this. Delete `dist/` or pass `--dev` explicitly.
 - **Bun.serve dual-stack**: Must set `hostname: "0.0.0.0"` to avoid IPv6/IPv4 port collision on macOS.
 - **CLAUDECODE env var**: Must be unset when spawning Claude Code CLI.
+- **Backend persistence**: `backendType` in `.pneuma/session.json` and `~/.pneuma/sessions.json` is part of resume identity.
 - **NDJSON**: Each message to CLI must end with `\n`.
 - **Empty assistant messages**: `MessageBubble` returns null when content is empty (tool_use-only messages).
 - **modelUsage cumulative**: Use delta (current - previous) for per-turn cost.

@@ -67,7 +67,7 @@ function SessionInfo() {
   return (
     <div className="flex items-center gap-2 text-xs text-cc-muted">
       <span>{session.model || "no model"}</span>
-      {session.total_cost_usd > 0 && (
+      {session.backend_type !== "codex" && session.total_cost_usd > 0 && (
         <>
           <span className="text-cc-border">&middot;</span>
           <span>${session.total_cost_usd.toFixed(4)}</span>

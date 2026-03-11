@@ -1,8 +1,8 @@
 /**
- * ClaudeCodeBackend — AgentBackend 的 Claude Code 实现。
+ * CodexBackend — AgentBackend implementation for OpenAI Codex CLI.
  *
- * 包装 CliLauncher，实现标准 AgentBackend 接口。
- * 以 Claude Code 协议为事实标准。
+ * Wraps CodexCliLauncher, implements the standard AgentBackend interface.
+ * Uses stdio JSON-RPC transport (not WebSocket) to communicate with Codex app-server.
  */
 
 import type {
@@ -11,33 +11,34 @@ import type {
   AgentLaunchOptions,
   AgentCapabilities,
 } from "../../core/types/agent-backend.js";
-import { CliLauncher } from "./cli-launcher.js";
-import type { SdkSessionInfo, LaunchOptions } from "./cli-launcher.js";
+import { CodexCliLauncher } from "./cli-launcher.js";
+import type { CodexSessionInfo, CodexLaunchOptions } from "./cli-launcher.js";
+import type { CodexAdapter } from "./codex-adapter.js";
 
-export class ClaudeCodeBackend implements AgentBackend {
-  readonly name = "claude-code" as const;
+export class CodexBackend implements AgentBackend {
+  readonly name = "codex" as const;
 
   readonly capabilities: AgentCapabilities = {
     streaming: true,
     resume: true,
     permissions: true,
-    toolProgress: true,
-    modelSwitch: true,
+    toolProgress: false,
+    modelSwitch: false,
   };
 
-  private launcher: CliLauncher;
+  private launcher: CodexCliLauncher;
 
-  constructor(port: number) {
-    this.launcher = new CliLauncher(port);
+  constructor() {
+    this.launcher = new CodexCliLauncher();
   }
 
   launch(options: AgentLaunchOptions): AgentSessionInfo {
-    const launchOpts: LaunchOptions = {
+    const launchOpts: CodexLaunchOptions = {
       cwd: options.cwd,
       permissionMode: options.permissionMode,
       model: options.model,
       sessionId: options.sessionId,
-      resumeSessionId: options.resumeSessionId,
+      resumeThreadId: options.resumeSessionId,
       env: options.env,
     };
 
@@ -59,7 +60,7 @@ export class ClaudeCodeBackend implements AgentBackend {
   }
 
   setAgentSessionId(sessionId: string, agentSessionId: string): void {
-    this.launcher.setCLISessionId(sessionId, agentSessionId);
+    this.launcher.setThreadId(sessionId, agentSessionId);
   }
 
   async kill(sessionId: string): Promise<boolean> {
@@ -74,11 +75,20 @@ export class ClaudeCodeBackend implements AgentBackend {
     this.launcher.onSessionExited(cb);
   }
 
-  /** SdkSessionInfo → AgentSessionInfo 映射 */
-  private toAgentSessionInfo(info: SdkSessionInfo): AgentSessionInfo {
+  /** Register a callback for when a CodexAdapter is created (WsBridge needs to attach it). */
+  onAdapterCreated(cb: (sessionId: string, adapter: CodexAdapter) => void): void {
+    this.launcher.onAdapterCreated(cb);
+  }
+
+  /** Get the CodexAdapter for a session (for WsBridge integration). */
+  getAdapter(sessionId: string): CodexAdapter | undefined {
+    return this.launcher.getAdapter(sessionId);
+  }
+
+  private toAgentSessionInfo(info: CodexSessionInfo): AgentSessionInfo {
     return {
       sessionId: info.sessionId,
-      agentSessionId: info.cliSessionId,
+      agentSessionId: info.threadId,
       pid: info.pid,
       state: info.state,
       exitCode: info.exitCode,

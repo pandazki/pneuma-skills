@@ -1,6 +1,6 @@
 # Network Topology & Port Reference
 
-> Last updated: 2026-03-06 (v1.18.7)
+> Last updated: 2026-03-10 (backend abstraction refresh)
 
 ## Port Allocation
 
@@ -22,7 +22,7 @@ All servers bind to `0.0.0.0` to avoid IPv4/IPv6 dual-stack port collision on ma
 | **Prod Normal** | `pneuma doc` | 17996 | — | `localhost:17996` | `ws://localhost:17996/ws/cli/:id` |
 | **Dev Launcher** | `bun run dev` | 17007 | 17996 | `localhost:17996` | — (no agent) |
 | **Prod Launcher** | `pneuma` | 17996 | — | `localhost:17996` | — (no agent) |
-| **Launcher → Child** | (spawned) | auto | auto | auto | auto |
+| **Launcher → Child** | (spawned) | auto | auto | auto | backend-specific |
 | **Play (mode-maker)** | (spawned) | 18997 | 18996 | `localhost:18996` | `ws://localhost:18997/ws/cli/:id` |
 | **Custom port** | `--port 9000` | 9000 | 17996* | `localhost:17996` | `ws://localhost:9000/ws/cli/:id` |
 
@@ -99,7 +99,8 @@ Launcher (:17996 / :17007)
     POST /api/launch
     │
     ├─ Resolve mode
-    ├─ Spawn: bun pneuma.ts <mode> --workspace <path> --port <auto> --no-open --no-prompt [--dev] [--debug]
+    ├─ Resolve backendType
+    ├─ Spawn: bun pneuma.ts <mode> --workspace <path> --port <auto> --backend <type> --no-open --no-prompt [--dev] [--debug]
     │
     ├─ Wait for child stdout: [pneuma] ready http://localhost:<port>?...
     │
@@ -108,6 +109,7 @@ Launcher (:17996 / :17007)
 
 The child process gets:
 - `--port`: chosen by launcher (the launcher server's actual port, allowing auto-increment)
+- `--backend`: launcher-selected backend, persisted for the workspace session
 - `--dev`: inherited if parent is in dev mode
 - `--debug`: inherited if parent has `--debug`
 - `--no-open --no-prompt`: non-interactive
@@ -145,7 +147,7 @@ Ports 18996/18997 are hardcoded constants in `server/mode-maker-routes.ts`.
 | Path | Protocol | Client | Purpose |
 |------|----------|--------|---------|
 | `/ws/browser/:sessionId` | JSON | Browser UI | User messages, permissions, viewer actions |
-| `/ws/cli/:sessionId` | NDJSON | Claude Code CLI | Tool use, streaming, agent events |
+| `/ws/cli/:sessionId` | transport-specific | Current backend CLI | Tool use, streaming, agent events |
 | `/ws/terminal/:terminalId` | Binary | Terminal UI | PTY I/O (xterm.js) |
 
 Browser WebSocket URL construction (`src/ws.ts`):
@@ -163,6 +165,8 @@ CLI WebSocket URL construction (`backends/claude-code/cli-launcher.ts`):
 const sdkUrl = `ws://localhost:${this.port}/ws/cli/${sessionId}`;
 // Passed as: claude --sdk-url <sdkUrl>
 ```
+
+`/ws/cli/:sessionId` remains the server-side transport entrypoint, but the runtime session layer is backend-neutral. Browser session state carries `backend_type`, `agent_capabilities`, and `agent_version` so frontend feature gating does not depend on Claude-specific transport details.
 
 ## Environment Variable Flow
 

@@ -6,6 +6,8 @@ import { join, resolve, relative, basename, extname, dirname, sep } from "node:p
 import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { WsBridge } from "./ws-bridge.js";
+import { getBackendDescriptors, getDefaultBackendType, detectBackendAvailability } from "../backends/index.js";
+import type { AgentBackendType } from "../core/types/agent-backend.js";
 import type { SocketData } from "./ws-bridge.js";
 import type { TerminalSocketData } from "./ws-bridge-types.js";
 import type { ServerWebSocket } from "bun";
@@ -132,6 +134,16 @@ export function startServer(options: ServerOptions) {
       return c.json({ builtins, published, local });
     });
 
+    app.get("/api/backends", (c) => {
+      const descriptors = getBackendDescriptors();
+      const availability = detectBackendAvailability();
+      const backends = descriptors.map((desc) => {
+        const avail = availability.find((a) => a.type === desc.type);
+        return { ...desc, available: avail?.available ?? false, reason: avail?.reason };
+      });
+      return c.json({ backends, defaultBackendType: getDefaultBackendType() });
+    });
+
     // Delete a local mode
     app.delete("/api/modes/:name", async (c) => {
       const name = c.req.param("name");
@@ -188,10 +200,21 @@ export function startServer(options: ServerOptions) {
     // List recent sessions
     app.get("/api/sessions", (c) => {
       const registryPath = join(homedir(), ".pneuma", "sessions.json");
-      let sessions: Array<{ id: string; mode: string; displayName: string; workspace: string; lastAccessed: number }> = [];
+      let sessions: Array<{
+        id: string;
+        mode: string;
+        displayName: string;
+        workspace: string;
+        backendType?: AgentBackendType;
+        lastAccessed: number;
+      }> = [];
       try {
         sessions = JSON.parse(readFileSync(registryPath, "utf-8"));
       } catch { }
+      sessions = sessions.map((session) => ({
+        ...session,
+        backendType: session.backendType || getDefaultBackendType(),
+      }));
       // Filter out sessions whose workspace no longer exists
       sessions = sessions.filter((s) => existsSync(s.workspace));
       // Sort by lastAccessed descending
@@ -227,7 +250,14 @@ export function startServer(options: ServerOptions) {
     app.delete("/api/sessions/:id", (c) => {
       const id = decodeURIComponent(c.req.param("id"));
       const registryPath = join(homedir(), ".pneuma", "sessions.json");
-      let sessions: Array<{ id: string; mode: string; displayName: string; workspace: string; lastAccessed: number }> = [];
+      let sessions: Array<{
+        id: string;
+        mode: string;
+        displayName: string;
+        workspace: string;
+        backendType?: AgentBackendType;
+        lastAccessed: number;
+      }> = [];
       try {
         sessions = JSON.parse(readFileSync(registryPath, "utf-8"));
       } catch { }
@@ -273,7 +303,12 @@ export function startServer(options: ServerOptions) {
         const session = JSON.parse(readFileSync(sessionPath, "utf-8"));
         let config: Record<string, string | number> = {};
         try { config = JSON.parse(readFileSync(configPath, "utf-8")); } catch { }
-        return c.json({ hasSession: true, mode: session.mode, config });
+        return c.json({
+          hasSession: true,
+          mode: session.mode,
+          backendType: session.backendType || getDefaultBackendType(),
+          config,
+        });
       } catch {
         return c.json({ hasSession: false });
       }
@@ -361,11 +396,12 @@ export function startServer(options: ServerOptions) {
     });
 
     app.post("/api/launch", async (c) => {
-      const { specifier, workspace: targetWorkspace, initParams, skipSkill } = await c.req.json<{
+      const { specifier, workspace: targetWorkspace, initParams, skipSkill, backendType } = await c.req.json<{
         specifier: string;
         workspace: string;
         initParams?: Record<string, string | number>;
         skipSkill?: boolean;
+        backendType?: AgentBackendType;
       }>();
 
       try {
@@ -385,6 +421,7 @@ export function startServer(options: ServerOptions) {
         const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
         const pneumaBin = join(projectRoot, "bin", "pneuma.ts");
         const args = ["bun", pneumaBin, specifier, "--workspace", resolvedWorkspace, "--no-prompt", "--no-open"];
+        args.push("--backend", backendType || getDefaultBackendType());
         if (skipSkill) args.push("--skip-skill");
         if (options.debug) args.push("--debug");
         if (options.forceDev) args.push("--dev");
@@ -532,8 +569,8 @@ export function startServer(options: ServerOptions) {
       }
     }
 
-    console.log(`[server] Launcher server running on http://localhost:${server.port}`);
-    return { server, wsBridge, terminalManager, port: server.port as number, modeMakerCleanup: undefined, childProcesses };
+    console.log(`[server] Launcher server running on http://localhost:${serverPort}`);
+    return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup: undefined, childProcesses };
   }
 
   // ── API Routes ─────────────────────────────────────────────────────────
@@ -2382,10 +2419,10 @@ export const { createPortal, flushSync, createRoot, hydrateRoot } = RD;`;
     }
   }
 
-  console.log(`[server] Pneuma server running on http://localhost:${server.port}`);
+  console.log(`[server] Pneuma server running on http://localhost:${serverPort}`);
   console.log(`[server] Workspace: ${workspace}`);
-  console.log(`[server] CLI WebSocket:     ws://localhost:${server.port}/ws/cli/:sessionId`);
-  console.log(`[server] Browser WebSocket: ws://localhost:${server.port}/ws/browser/:sessionId`);
+  console.log(`[server] CLI WebSocket:     ws://localhost:${serverPort}/ws/cli/:sessionId`);
+  console.log(`[server] Browser WebSocket: ws://localhost:${serverPort}/ws/browser/:sessionId`);
 
-  return { server, wsBridge, terminalManager, port: server.port as number, modeMakerCleanup };
+  return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup };
 }

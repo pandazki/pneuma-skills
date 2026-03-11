@@ -3,6 +3,26 @@ import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import SpotlightCard from "./reactbits/SpotlightCard";
 import Galaxy from "./reactbits/Galaxy";
 
+type BackendType = "claude-code" | "codex";
+
+interface BackendOption {
+  type: BackendType;
+  label: string;
+  description: string;
+  implemented: boolean;
+  available?: boolean;
+  reason?: string;
+}
+
+const FALLBACK_BACKENDS: BackendOption[] = [
+  {
+    type: "claude-code",
+    label: "Claude Code",
+    description: "Anthropic Claude Code CLI via --sdk-url WebSocket transport.",
+    implemented: true,
+    available: true,
+  },
+];
 
 interface BuiltinMode {
   name: string;
@@ -48,6 +68,7 @@ interface RecentSession {
   mode: string;
   displayName: string;
   workspace: string;
+  backendType: BackendType;
   lastAccessed: number;
   hasThumbnail?: boolean;
 }
@@ -332,6 +353,26 @@ function runningDuration(startedAt: number): string {
 function shortenPath(path: string, homeDir: string): string {
   if (path.startsWith(homeDir)) return "~" + path.slice(homeDir.length);
   return path;
+}
+
+function backendLabel(backendType: BackendType): string {
+  return backendType === "claude-code" ? "Claude" : "Codex";
+}
+
+function BackendLogo({ type, className }: { type: BackendType; className?: string }) {
+  if (type === "claude-code") {
+    return (
+      <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+        <path d="M17.303 3.073a.75.75 0 01.573.88l-1.97 10.236a5.156 5.156 0 01-1.402 2.776l-2.2 2.279a.75.75 0 01-1.08 0l-2.2-2.279a5.156 5.156 0 01-1.402-2.776L5.652 3.953a.75.75 0 011.476-.284l1.97 10.236a3.656 3.656 0 00.994 1.968L12 17.878l1.908-2.005a3.656 3.656 0 00.994-1.968l1.97-10.236a.75.75 0 01.431-.596z" />
+      </svg>
+    );
+  }
+  // Codex — terminal-style icon
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3M4.5 19.5h15a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5h-15A1.5 1.5 0 003 6v12a1.5 1.5 0 001.5 1.5z" />
+    </svg>
+  );
 }
 
 // ── ShowcaseCarousel ─────────────────────────────────────────────────────
@@ -709,6 +750,7 @@ function SessionCard({
   onStop,
   onOpen,
   isLight,
+  backendUnavailableReason,
 }: {
   session?: RecentSession;
   homeDir: string;
@@ -720,6 +762,7 @@ function SessionCard({
   onStop?: () => void;
   onOpen?: () => void;
   isLight?: boolean;
+  backendUnavailableReason?: string;
 }) {
   const [launching, setLaunching] = useState(false);
   const [skillUpdate, setSkillUpdate] = useState<{
@@ -735,6 +778,7 @@ function SessionCard({
   }, [runningProcess]);
 
   const handleClick = async () => {
+    if (backendUnavailableReason) return;
     if (isRunning && onOpen) {
       onOpen();
       return;
@@ -833,6 +877,18 @@ function SessionCard({
           {/* Soft vignette — feathers thumbnail edges into card bg */}
           <div className="absolute inset-0 pointer-events-none rounded-lg session-card-vignette" />
 
+        {/* Backend unavailable overlay */}
+        {backendUnavailableReason && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm rounded-lg">
+            <div className="text-center px-4">
+              <svg className="w-6 h-6 text-red-400 mx-auto mb-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+              <p className="text-xs text-red-300 font-medium">{backendUnavailableReason}</p>
+            </div>
+          </div>
+        )}
+
         {/* Running badge */}
         {isRunning && (
           <div className={`absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-full backdrop-blur-sm ${
@@ -913,18 +969,20 @@ function CompactSessionRow({
   icon,
   onResume,
   onDelete,
+  backendUnavailableReason,
 }: {
   session: RecentSession;
   homeDir: string;
   icon?: string;
   onResume: (skipSkill?: boolean) => Promise<void>;
   onDelete: () => void;
+  backendUnavailableReason?: string;
 }) {
   const [launching, setLaunching] = useState(false);
   const [skillUpdate, setSkillUpdate] = useState<{ currentVersion: string; installedVersion: string } | null>(null);
 
   const handleClick = async () => {
-    if (launching || skillUpdate) return;
+    if (backendUnavailableReason || launching || skillUpdate) return;
     setLaunching(true);
     try {
       const res = await fetch(`${getApiBase()}/api/launch/skill-check`, {
@@ -948,9 +1006,14 @@ function CompactSessionRow({
   return (
     <div
       onClick={handleClick}
-      className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-cc-hover/50 transition-colors ${
-        launching ? "opacity-50 pointer-events-none" : ""
+      className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+        backendUnavailableReason
+          ? "opacity-50 cursor-not-allowed"
+          : launching
+            ? "opacity-50 pointer-events-none"
+            : "cursor-pointer hover:bg-cc-hover/50"
       }`}
+      title={backendUnavailableReason || undefined}
     >
       <div className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg bg-cc-surface/60">
         <ModeIcon svg={icon} className="w-4 h-4 text-cc-muted/40" />
@@ -959,7 +1022,16 @@ function CompactSessionRow({
         <span className="text-sm font-medium text-cc-fg/90 truncate block">
           {launching ? "Launching..." : session.displayName}
         </span>
-        <p className="text-[10px] text-cc-muted/40 font-mono truncate">{shortenPath(session.workspace, homeDir)}</p>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={`text-[10px] px-1 py-0.5 rounded uppercase tracking-wide shrink-0 ${
+            backendUnavailableReason
+              ? "bg-red-500/10 text-red-400"
+              : "bg-cc-surface/80 text-cc-muted/60"
+          }`}>
+            {backendLabel(session.backendType)}
+          </span>
+          <p className="text-[10px] text-cc-muted/40 font-mono truncate">{shortenPath(session.workspace, homeDir)}</p>
+        </div>
       </div>
       <span className="text-[10px] text-cc-muted/40 shrink-0">{timeAgo(session.lastAccessed)}</span>
       <div className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1002,6 +1074,7 @@ function AllSessions({
   onClose,
   onResume,
   onDelete,
+  getBackendUnavailableReason,
   className,
   closing,
   headerHeight = 0,
@@ -1012,6 +1085,7 @@ function AllSessions({
   onClose: () => void;
   onResume: (session: RecentSession, skipSkill?: boolean) => Promise<void>;
   onDelete: (id: string) => void;
+  getBackendUnavailableReason: (type: BackendType) => string | undefined;
   className?: string;
   closing?: boolean;
   headerHeight?: number;
@@ -1047,6 +1121,7 @@ function AllSessions({
                   isRunning
                   isLight={isLight}
                   runningProcess={item.process}
+                  backendUnavailableReason={item.session ? getBackendUnavailableReason(item.session.backendType) : undefined}
                   onResume={item.session ? (skipSkill) => onResume(item.session!, skipSkill) : undefined}
                   onDelete={item.session ? () => onDelete(item.session!.id) : undefined}
                   onStop={item.process ? () => {
@@ -1075,6 +1150,7 @@ function AllSessions({
                   icon={iconMap[item.modeName]}
                   onResume={(skipSkill) => onResume(item.session!, skipSkill)}
                   onDelete={() => onDelete(item.session!.id)}
+                  backendUnavailableReason={getBackendUnavailableReason(item.session!.backendType)}
                 />
               ))}
             </div>
@@ -1644,6 +1720,8 @@ function LaunchDialog({
   showcase,
   defaultWorkspace,
   defaultInitParams,
+  backendOptions,
+  defaultBackendType,
   homeDir,
   onClose,
   closing,
@@ -1655,6 +1733,8 @@ function LaunchDialog({
   showcase?: BuiltinMode["showcase"];
   defaultWorkspace?: string;
   defaultInitParams?: Record<string, string>;
+  backendOptions: BackendOption[];
+  defaultBackendType: BackendType;
   homeDir: string;
   onClose: () => void;
   closing?: boolean;
@@ -1672,7 +1752,18 @@ function LaunchDialog({
   const [preparing, setPreparing] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [browsing, setBrowsing] = useState(false);
-  const [existingSession, setExistingSession] = useState<{ mode: string; config: Record<string, string | number> } | null>(null);
+  const [selectedBackendType, setSelectedBackendType] = useState<BackendType>(() => {
+    // Auto-select first available backend if default isn't available
+    const defaultAvail = backendOptions.find((b) => b.type === defaultBackendType);
+    if (defaultAvail?.available !== false) return defaultBackendType;
+    const firstAvail = backendOptions.find((b) => b.available && b.implemented);
+    return firstAvail?.type ?? defaultBackendType;
+  });
+  const [existingSession, setExistingSession] = useState<{
+    mode: string;
+    backendType: BackendType;
+    config: Record<string, string | number>;
+  } | null>(null);
   const { resolved: dialogTheme } = useTheme();
   const isLight = dialogTheme === "light";
 
@@ -1683,13 +1774,17 @@ function LaunchDialog({
       const res = await fetch(`${getApiBase()}/api/workspace-check?path=${encodeURIComponent(path)}`);
       const data = await res.json();
       if (data.hasSession) {
-        setExistingSession({ mode: data.mode, config: data.config || {} });
+        const backendType = (data.backendType || defaultBackendType) as BackendType;
+        setExistingSession({ mode: data.mode, backendType, config: data.config || {} });
+        setSelectedBackendType(backendType);
         if (data.config && Object.keys(data.config).length > 0) {
           setParamValues(data.config);
         }
+      } else {
+        setSelectedBackendType(defaultBackendType);
       }
     } catch { }
-  }, []);
+  }, [defaultBackendType]);
 
   useEffect(() => {
     const prepare = async () => {
@@ -1731,6 +1826,7 @@ function LaunchDialog({
         body: JSON.stringify({
           specifier,
           workspace,
+          backendType: existingSession?.backendType || selectedBackendType,
           initParams: {
             ...(defaultInitParams || {}),
             ...(Object.keys(paramValues).length > 0 ? paramValues : {}),
@@ -1750,7 +1846,7 @@ function LaunchDialog({
       setError(err instanceof Error ? err.message : "Launch failed");
       setLoading(false);
     }
-  }, [specifier, workspace, paramValues, onClose]);
+  }, [specifier, workspace, selectedBackendType, existingSession, paramValues, onClose]);
 
   const [activeHighlight, setActiveHighlight] = useState(0);
   const highlights = showcase?.highlights;
@@ -1818,12 +1914,51 @@ function LaunchDialog({
         <p className="text-sm text-cc-muted mb-4">Loading configuration...</p>
       )}
 
+      {backendOptions.length > 1 && (
+        <div className="mb-4">
+          <label className="block text-xs text-cc-muted/60 mb-2">Agent</label>
+          <div className="flex gap-2">
+            {backendOptions.map((backend) => {
+              const active = (existingSession?.backendType || selectedBackendType) === backend.type;
+              const unavailable = !backend.implemented || backend.available === false;
+              const disabled = !!existingSession || unavailable;
+              return (
+                <button
+                  key={backend.type}
+                  type="button"
+                  disabled={disabled}
+                  title={unavailable ? (backend.reason || "Not available") : backend.label}
+                  onClick={() => setSelectedBackendType(backend.type)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                    active && !unavailable
+                      ? "border-cc-primary/50 bg-cc-primary/10 text-cc-fg"
+                      : unavailable
+                        ? "border-cc-border/30 bg-cc-surface/20 text-cc-muted/40"
+                        : "border-cc-border bg-cc-input-bg text-cc-muted hover:text-cc-fg hover:border-cc-border"
+                  } ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
+                >
+                  <BackendLogo type={backend.type} className="w-4 h-4 shrink-0" />
+                  <span className="font-medium">{backend.label}</span>
+                  {unavailable && (
+                    <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/10 text-red-400 uppercase tracking-wide leading-none">
+                      {!backend.implemented ? "Soon" : "N/A"}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {existingSession && (
         <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-cc-primary/5 border border-cc-primary/15">
           <svg className="w-4 h-4 text-cc-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span className="text-xs text-cc-primary">Existing workspace — will resume session</span>
+          <span className="text-xs text-cc-primary">
+            Existing workspace — will resume {backendLabel(existingSession.backendType)} session
+          </span>
         </div>
       )}
 
@@ -1955,7 +2090,7 @@ function LaunchDialog({
             </div>
             {/* Right: form panel — header top, form centered, buttons pinned */}
             <div className="w-1/2 flex flex-col min-h-0">
-              <div className="flex items-center justify-between px-6 pt-6 shrink-0">
+              <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
                 <div className="flex items-center gap-3">
                   <ModeIcon svg={icon} className="w-8 h-8 text-cc-primary" />
                   <div>
@@ -1966,8 +2101,8 @@ function LaunchDialog({
                   </div>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto px-6 flex flex-col justify-center">
-                <div>{formContent}</div>
+              <div className="flex-1 overflow-y-auto px-6 py-4">
+                {formContent}
               </div>
               <div className="shrink-0 px-6 py-5 border-t border-cc-border/20">
                 {actionButtons}
@@ -2006,6 +2141,8 @@ function LaunchDialog({
 export default function Launcher() {
   const { preference: themePref, resolved: theme, cycle: cycleTheme } = useTheme();
   const isLight = theme === "light";
+  const [backendOptions, setBackendOptions] = useState<BackendOption[]>(FALLBACK_BACKENDS);
+  const [defaultBackendType, setDefaultBackendType] = useState<BackendType>("claude-code");
   const [builtins, setBuiltins] = useState<BuiltinMode[]>([]);
   const [published, setPublished] = useState<PublishedMode[]>([]);
   const [local, setLocal] = useState<LocalMode[]>([]);
@@ -2094,11 +2231,16 @@ export default function Launcher() {
 
   useEffect(() => {
     Promise.all([
+      fetch(`${getApiBase()}/api/backends`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/registry`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/sessions`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/processes/children`).then((r) => r.json()),
     ])
-      .then(([registryData, sessionsData, runningData]) => {
+      .then(([backendData, registryData, sessionsData, runningData]) => {
+        setBackendOptions(backendData.backends || []);
+        if (backendData.defaultBackendType) {
+          setDefaultBackendType(backendData.defaultBackendType);
+        }
         setBuiltins(registryData.builtins || []);
         setPublished(registryData.published || []);
         setLocal(registryData.local || []);
@@ -2155,12 +2297,35 @@ export default function Launcher() {
     } catch { }
   }, [refreshRunning]);
 
-  const directLaunch = useCallback(async (specifier: string, workspace: string, skipSkill?: boolean) => {
+  // Backend availability lookup for session cards
+  const getBackendUnavailableReason = useCallback(
+    (type: BackendType) => {
+      const b = backendOptions.find((o) => o.type === type);
+      if (!b) return `Unknown backend "${type}"`;
+      if (!b.implemented) return "Coming soon";
+      if (b.available === false) return b.reason || "Not available";
+      return undefined;
+    },
+    [backendOptions],
+  );
+
+  // Direct launch for session resume — no dialog, just go
+  const directLaunch = useCallback(async (
+    specifier: string,
+    workspace: string,
+    backendType: BackendType,
+    skipSkill?: boolean,
+  ) => {
     try {
       const res = await fetch(`${getApiBase()}/api/launch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ specifier, workspace, ...(skipSkill ? { skipSkill: true } : {}) }),
+        body: JSON.stringify({
+          specifier,
+          workspace,
+          backendType,
+          ...(skipSkill ? { skipSkill: true } : {}),
+        }),
       });
       const data = await res.json();
       if (data.url) {
@@ -2385,7 +2550,8 @@ export default function Launcher() {
                                 isRunning
                                 isLight={isLight}
                                 runningProcess={item.process}
-                                onResume={item.session ? (skipSkill) => directLaunch(item.session!.mode, item.session!.workspace, skipSkill) : undefined}
+                                backendUnavailableReason={item.session ? getBackendUnavailableReason(item.session.backendType) : undefined}
+                                onResume={item.session ? (skipSkill) => directLaunch(item.session!.mode, item.session!.workspace, item.session!.backendType, skipSkill) : undefined}
                                 onDelete={item.session ? () => deleteSession(item.session!.id) : undefined}
                                 onStop={item.process ? () => stopProcess(item.process!.pid, item.process!.url) : undefined}
                                 onOpen={item.process ? () => window.open(item.process!.url, "_blank") : undefined}
@@ -2412,8 +2578,9 @@ export default function Launcher() {
                         session={item.session!}
                         homeDir={homeDir}
                         icon={iconMap[item.modeName]}
-                        onResume={(skipSkill) => directLaunch(item.session!.mode, item.session!.workspace, skipSkill)}
+                        onResume={(skipSkill) => directLaunch(item.session!.mode, item.session!.workspace, item.session!.backendType, skipSkill)}
                         onDelete={() => deleteSession(item.session!.id)}
+                        backendUnavailableReason={getBackendUnavailableReason(item.session!.backendType)}
                       />
                     </motion.div>
                   ))}
@@ -2509,9 +2676,10 @@ export default function Launcher() {
           onClose={() => setShowAllSessions(false)}
           onResume={async (session, skipSkill) => {
             setShowAllSessions(false);
-            await directLaunch(session.mode, session.workspace, skipSkill);
+            await directLaunch(session.mode, session.workspace, session.backendType, skipSkill);
           }}
           onDelete={(id) => deleteSession(id)}
+          getBackendUnavailableReason={getBackendUnavailableReason}
           className={isLight ? "launcher-light" : ""}
           closing={allSessionsAnim.closing}
           headerHeight={headerH}
@@ -2528,6 +2696,8 @@ export default function Launcher() {
           showcase={lastLaunchTarget.current.showcase}
           defaultWorkspace={lastLaunchTarget.current.defaultWorkspace}
           defaultInitParams={lastLaunchTarget.current.defaultInitParams}
+          backendOptions={backendOptions}
+          defaultBackendType={defaultBackendType}
           homeDir={homeDir}
           onClose={() => setLaunchTarget(null)}
           closing={launchAnim.closing}

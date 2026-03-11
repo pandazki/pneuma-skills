@@ -5,7 +5,9 @@ import type {
   SessionState,
   BufferedBrowserEvent,
 } from "./session-types.js";
+import type { AgentBackendType } from "../core/types/agent-backend.js";
 import type { ViewerActionResult } from "../core/types/viewer-contract.js";
+import { getBackendCapabilities } from "../backends/index.js";
 
 export interface CLISocketData {
   kind: "cli";
@@ -51,13 +53,19 @@ export interface Session {
   processedClientMessageIdSet: Set<string>;
 }
 
-export function makeDefaultState(sessionId: string): SessionState {
+export function makeDefaultState(
+  sessionId: string,
+  backendType: AgentBackendType = "claude-code",
+): SessionState {
   return {
     session_id: sessionId,
+    backend_type: backendType,
+    agent_capabilities: getBackendCapabilities(backendType),
     model: "",
     cwd: "",
     tools: [],
     permissionMode: "default",
+    agent_version: "",
     claude_code_version: "",
     mcp_servers: [],
     agents: [],

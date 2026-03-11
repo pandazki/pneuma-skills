@@ -55,8 +55,10 @@ function versionCompare(a: string, b: string): number {
 export default function SchedulePanel() {
   const cronJobs = useStore((s) => s.cronJobs);
   const turnInProgress = useStore((s) => s.turnInProgress);
-  const ccVersion = useStore((s) => s.session?.claude_code_version);
-  const needsUpgrade = ccVersion ? versionCompare(ccVersion, MIN_CC_VERSION) < 0 : false;
+  const backendType = useStore((s) => s.session?.backend_type);
+  const agentVersion = useStore((s) => s.session?.agent_version || s.session?.claude_code_version);
+  const isClaudeBackend = !backendType || backendType === "claude-code";
+  const needsUpgrade = isClaudeBackend && agentVersion ? versionCompare(agentVersion, MIN_CC_VERSION) < 0 : false;
 
   const handleDelete = (jobId: string) => {
     sendUserMessage(`Please cancel the scheduled job with id "${jobId}" using CronDelete.`);
@@ -75,7 +77,7 @@ export default function SchedulePanel() {
         </span>
         <button
           onClick={handleRefresh}
-          disabled={turnInProgress || needsUpgrade}
+          disabled={turnInProgress || needsUpgrade || !isClaudeBackend}
           className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400
             hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -84,6 +86,17 @@ export default function SchedulePanel() {
       </div>
 
       {/* Version warning */}
+      {!isClaudeBackend && (
+        <div className="mx-3 mt-3 px-3 py-2.5 rounded-lg bg-neutral-800/40 border border-neutral-700/80">
+          <div className="text-xs font-medium text-neutral-300 mb-1">
+            Backend-specific feature
+          </div>
+          <div className="text-[11px] text-neutral-400 leading-relaxed">
+            Scheduled tasks currently depend on Claude Code cron tools and are unavailable for the active backend.
+          </div>
+        </div>
+      )}
+
       {needsUpgrade && (
         <div className="mx-3 mt-3 px-3 py-2.5 rounded-lg bg-amber-400/5 border border-amber-400/20">
           <div className="flex items-center gap-2 text-amber-400 text-xs font-medium mb-1">
@@ -93,7 +106,7 @@ export default function SchedulePanel() {
             Claude Code upgrade required
           </div>
           <div className="text-[11px] text-neutral-400 leading-relaxed">
-            Scheduled tasks require Claude Code {MIN_CC_VERSION}+. Current version: {ccVersion}.
+            Scheduled tasks require Claude Code {MIN_CC_VERSION}+. Current version: {agentVersion}.
             Run <span className="font-mono text-neutral-300">claude update</span> to upgrade.
           </div>
         </div>

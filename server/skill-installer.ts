@@ -1,6 +1,7 @@
 /**
- * Skill installer — copies mode-specific skill to .claude/skills/ and
- * injects Pneuma configuration into CLAUDE.md.
+ * Skill installer — copies mode-specific skill to the appropriate skills directory
+ * (.claude/skills/ for Claude Code, .agents/skills/ for Codex) and
+ * injects Pneuma configuration into CLAUDE.md / AGENTS.md.
  *
  * Parameterized by SkillConfig from ModeManifest — no hardcoded mode knowledge.
  */
@@ -8,6 +9,16 @@
 import { mkdirSync, existsSync, readFileSync, writeFileSync, cpSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, extname } from "node:path";
 import type { SkillConfig, ViewerApiConfig, McpServerConfig, SkillDependency } from "../core/types/mode-manifest.js";
+
+/** Return the workspace-relative skills directory for a given backend. */
+function skillsDir(backendType?: string): string {
+  return backendType === "codex" ? join(".agents", "skills") : join(".claude", "skills");
+}
+
+/** Return the instructions filename for a given backend. */
+function instructionsFile(backendType?: string): string {
+  return backendType === "codex" ? "AGENTS.md" : "CLAUDE.md";
+}
 
 const PNEUMA_MARKER_START = "<!-- pneuma:start -->";
 const PNEUMA_MARKER_END = "<!-- pneuma:end -->";
@@ -299,14 +310,15 @@ export function installMcpServers(
 /**
  * Install skill dependencies declared by a mode.
  *
- * Copies each dependency's source directory into .claude/skills/<name>/,
- * applies template params, and returns CLAUDE.md snippet lines for injection.
+ * Copies each dependency's source directory into the backend-appropriate skills dir,
+ * applies template params, and returns instruction file snippet lines for injection.
  */
 export function installSkillDependencies(
   workspace: string,
   dependencies: SkillDependency[],
   modeSourceDir: string,
   params?: Record<string, number | string>,
+  backendType?: string,
 ): string[] {
   const snippets: string[] = [];
 
@@ -317,7 +329,7 @@ export function installSkillDependencies(
     }
 
     const depSource = join(modeSourceDir, dep.sourceDir);
-    const depTarget = join(workspace, ".claude", "skills", dep.name);
+    const depTarget = join(workspace, skillsDir(backendType), dep.name);
 
     mkdirSync(depTarget, { recursive: true });
     if (existsSync(depSource)) {
@@ -357,6 +369,7 @@ export function installSkillDependencies(
  * @param modeSourceDir — Absolute path to the mode package directory (e.g. /path/to/modes/doc)
  * @param params — Optional init params for template replacement
  * @param viewerApi — Optional viewer self-describing API (auto-injected as independent CLAUDE.md section)
+ * @param backendType — Backend type ("claude-code" | "codex"). When "codex", also writes AGENTS.md.
  */
 export function installSkill(
   workspace: string,
@@ -364,10 +377,11 @@ export function installSkill(
   modeSourceDir: string,
   params?: Record<string, number | string>,
   viewerApi?: ViewerApiConfig,
+  backendType?: string,
 ): void {
-  // 1. Copy skill to .claude/skills/{installName}/
+  // 1. Copy skill to the backend-appropriate skills directory
   const skillSource = join(modeSourceDir, skillConfig.sourceDir);
-  const skillTarget = join(workspace, ".claude", "skills", skillConfig.installName);
+  const skillTarget = join(workspace, skillsDir(backendType), skillConfig.installName);
   mkdirSync(skillTarget, { recursive: true });
 
   if (existsSync(skillSource)) {
@@ -403,15 +417,16 @@ export function installSkill(
   // 1c. Install skill dependencies
   let skillSnippets: string[] = [];
   if (skillConfig.skillDependencies && skillConfig.skillDependencies.length > 0) {
-    skillSnippets = installSkillDependencies(workspace, skillConfig.skillDependencies, modeSourceDir, params);
+    skillSnippets = installSkillDependencies(workspace, skillConfig.skillDependencies, modeSourceDir, params, backendType);
   }
 
-  // 2. Inject/update CLAUDE.md with pneuma configuration
-  const claudeMdPath = join(workspace, "CLAUDE.md");
+  // 2. Inject/update instructions file with pneuma configuration
+  //    Claude Code uses CLAUDE.md, Codex uses AGENTS.md
+  const primaryInstructionsPath = join(workspace, instructionsFile(backendType));
   let content = "";
 
-  if (existsSync(claudeMdPath)) {
-    content = readFileSync(claudeMdPath, "utf-8");
+  if (existsSync(primaryInstructionsPath)) {
+    content = readFileSync(primaryInstructionsPath, "utf-8");
   }
 
   let sectionContent = skillConfig.claudeMdSection;
@@ -489,10 +504,10 @@ export function installSkill(
     }
   }
 
-  // Ensure .claude directory exists
-  mkdirSync(dirname(claudeMdPath), { recursive: true });
-  writeFileSync(claudeMdPath, content, "utf-8");
-  console.log(`[skill-installer] Updated ${claudeMdPath}`);
+  // Write instructions file
+  mkdirSync(dirname(primaryInstructionsPath), { recursive: true });
+  writeFileSync(primaryInstructionsPath, content, "utf-8");
+  console.log(`[skill-installer] Updated ${primaryInstructionsPath}`);
 
   // 3. Ensure .pneuma/ is in .gitignore
   ensureGitignore(workspace);

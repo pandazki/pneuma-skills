@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useStore } from "../store.js";
 import ContentSetSelector from "./ContentSetSelector.js";
 
@@ -24,6 +24,7 @@ function getApiBase(): string {
 export default function TopBar() {
   const activeTab = useStore((s) => s.activeTab);
   const setActiveTab = useStore((s) => s.setActiveTab);
+  const backendType = useStore((s) => s.session?.backend_type);
   const gitAvailable = useStore((s) => s.gitAvailable);
   const cronJobCount = useStore((s) => s.cronJobs.length);
   const contentSets = useStore((s) => s.contentSets);
@@ -33,8 +34,16 @@ export default function TopBar() {
   const activeFile = useStore((s) => s.activeFile);
   const topBarNav = useStore((s) => s.modeViewer?.workspace?.topBarNavigation);
   const createEmpty = useStore((s) => s.modeViewer?.workspace?.createEmpty);
+  const scheduleAvailable = !backendType || backendType === "claude-code";
+  const visibleTabs = scheduleAvailable ? TABS : TABS.filter((tab) => tab.id !== "schedules");
 
   const showItemSelector = topBarNav && contentSets.length <= 1 && workspaceItems.length > 1;
+
+  useEffect(() => {
+    if (!scheduleAvailable && activeTab === "schedules") {
+      setActiveTab("chat");
+    }
+  }, [activeTab, scheduleAvailable, setActiveTab]);
 
   const handleCreateEmpty = useCallback(async () => {
     if (!createEmpty) return;
@@ -121,7 +130,7 @@ export default function TopBar() {
 
       {/* Center: tabs */}
       <div className="flex items-center gap-1 mx-auto bg-cc-bg/80 border border-cc-border/50 rounded-full p-1 shadow-inner">
-        {TABS.map((tab) => {
+        {visibleTabs.map((tab) => {
           const disabled = tab.id === "diff" && gitAvailable === false;
           const badge = tab.id === "schedules" && cronJobCount > 0 ? cronJobCount : 0;
           return (

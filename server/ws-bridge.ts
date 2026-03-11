@@ -23,6 +23,8 @@ import type {
   BrowserSocketData,
 } from "./ws-bridge-types.js";
 import { makeDefaultState } from "./ws-bridge-types.js";
+import type { AgentBackendType } from "../core/types/agent-backend.js";
+import { getBackendCapabilities } from "../backends/index.js";
 export type { SocketData } from "./ws-bridge-types.js";
 import {
   isDuplicateClientMessage,
@@ -40,6 +42,8 @@ import {
   handlePermissionResponse,
 } from "./ws-bridge-browser.js";
 import { handleViewerActionResponse } from "./ws-bridge-viewer.js";
+import type { CodexAdapter } from "../backends/codex/codex-adapter.js";
+import { attachCodexAdapterHandlers } from "./ws-bridge-codex.js";
 
 // ─── Bridge ───────────────────────────────────────────────────────────────────
 
@@ -52,6 +56,7 @@ export class WsBridge {
     "interrupt",
   ]);
   private sessions = new Map<string, Session>();
+  private codexAdapters = new Map<string, CodexAdapter>();
   private onCLISessionId: ((sessionId: string, cliSessionId: string) => void) | null = null;
   private userMsgCounter = 0;
   private workspace = "";
@@ -63,12 +68,62 @@ export class WsBridge {
   }
 
   /**
+   * Attach a Codex adapter to a session.
+   * Called when a Codex backend launches — wires adapter events to the bridge.
+   */
+  attachCodexAdapter(sessionId: string, adapter: CodexAdapter): void {
+    const session = this.getOrCreateSession(sessionId, "codex");
+    this.codexAdapters.set(sessionId, adapter);
+
+    attachCodexAdapterHandlers(sessionId, session, adapter, {
+      broadcastToBrowsers: (s, msg) => this.broadcastToBrowsers(s, msg),
+    });
+
+    // Wire session metadata (thread ID) back to the bridge
+    adapter.onSessionMeta((meta) => {
+      if (meta.cliSessionId && this.onCLISessionId) {
+        this.onCLISessionId(sessionId, meta.cliSessionId);
+      }
+    });
+
+    // When the adapter connects, treat it like CLI connected
+    this.broadcastToBrowsers(session, { type: "cli_connected" });
+
+    // Flush any queued messages — parse NDJSON and send through the adapter
+    if (session.pendingMessages.length > 0) {
+      console.log(`[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) via Codex adapter for session ${sessionId}`);
+      const queued = session.pendingMessages.splice(0);
+      for (const ndjson of queued) {
+        try {
+          const msg = JSON.parse(ndjson);
+          adapter.sendBrowserMessage(msg);
+        } catch (err) {
+          console.error(`[ws-bridge] Failed to parse/send queued message for session ${sessionId}:`, err);
+        }
+      }
+    }
+  }
+
+  /** Check if a session is using the Codex adapter (vs CLI WebSocket). */
+  isCodexSession(sessionId: string): boolean {
+    return this.codexAdapters.has(sessionId);
+  }
+
+  /**
    * Send a greeting message to the CLI without recording it in messageHistory.
-   * The user never sees the prompt — only Claude's response appears in chat.
+   * The user never sees the prompt — only the agent's response appears in chat.
    */
   injectGreeting(sessionId: string, content: string): void {
     const session = this.getOrCreateSession(sessionId);
     session.cliIdle = false;
+
+    // For Codex sessions, route through the adapter
+    const codexAdapter = this.codexAdapters.get(sessionId);
+    if (codexAdapter) {
+      codexAdapter.sendBrowserMessage({ type: "user_message", content });
+      return;
+    }
+
     const ndjson = JSON.stringify({
       type: "user",
       message: { role: "user", content },
@@ -122,14 +177,14 @@ export class WsBridge {
 
   // ── Session management ──────────────────────────────────────────────────
 
-  getOrCreateSession(sessionId: string): Session {
+  getOrCreateSession(sessionId: string, backendType?: AgentBackendType): Session {
     let session = this.sessions.get(sessionId);
     if (!session) {
       session = {
         id: sessionId,
         cliSocket: null,
         browserSockets: new Set(),
-        state: makeDefaultState(sessionId),
+        state: makeDefaultState(sessionId, backendType),
         pendingPermissions: new Map(),
         pendingControlRequests: new Map(),
         pendingViewerActions: new Map(),
@@ -143,6 +198,9 @@ export class WsBridge {
         processedClientMessageIdSet: new Set(),
       };
       this.sessions.set(sessionId, session);
+    } else if (backendType) {
+      session.state.backend_type = backendType;
+      session.state.agent_capabilities = getBackendCapabilities(backendType);
     }
     return session;
   }
@@ -189,6 +247,13 @@ export class WsBridge {
   closeSession(sessionId: string) {
     const session = this.sessions.get(sessionId);
     if (!session) return;
+
+    // Clean up Codex adapter if present
+    const codexAdapter = this.codexAdapters.get(sessionId);
+    if (codexAdapter) {
+      codexAdapter.disconnect().catch(() => {});
+      this.codexAdapters.delete(sessionId);
+    }
 
     if (session.cliSocket) {
       try { session.cliSocket.close(); } catch {}
@@ -389,6 +454,7 @@ export class WsBridge {
       session.state.cwd = msg.cwd;
       session.state.tools = msg.tools;
       session.state.permissionMode = msg.permissionMode;
+      session.state.agent_version = msg.claude_code_version;
       session.state.claude_code_version = msg.claude_code_version;
       session.state.mcp_servers = msg.mcp_servers;
       session.state.agents = msg.agents ?? [];
@@ -726,6 +792,33 @@ export class WsBridge {
       );
     }
 
+    // For Codex sessions, route applicable messages through the adapter
+    const codexAdapter = this.codexAdapters.get(session.id);
+    if (codexAdapter) {
+      switch (msg.type) {
+        case "user_message":
+          this.handleCodexUserMessage(session, codexAdapter, msg);
+          return;
+        case "permission_response":
+          codexAdapter.sendBrowserMessage(msg);
+          session.pendingPermissions.delete(msg.request_id);
+          return;
+        case "interrupt":
+          codexAdapter.sendBrowserMessage(msg);
+          return;
+        case "set_model":
+          codexAdapter.sendBrowserMessage(msg);
+          session.state.model = (msg as { model: string }).model;
+          return;
+        case "viewer_action_response":
+          handleViewerActionResponse(session, msg);
+          return;
+        case "viewer_notification":
+          this.handleViewerNotification(session, msg);
+          return;
+      }
+    }
+
     switch (msg.type) {
       case "user_message":
         this.handleUserMessage(session, msg);
@@ -818,6 +911,32 @@ export class WsBridge {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  /**
+   * Handle user messages for Codex sessions — records history then routes
+   * through the CodexAdapter, which translates to JSON-RPC turn/start.
+   */
+  private handleCodexUserMessage(
+    session: Session,
+    adapter: CodexAdapter,
+    msg: { type: "user_message"; content: string; session_id?: string; images?: { media_type: string; data: string }[]; files?: { name: string; media_type: string; data: string; size: number }[] },
+  ): void {
+    // Record in history for replay
+    const ts = Date.now();
+    session.messageHistory.push({
+      type: "user_message",
+      content: msg.content,
+      timestamp: ts,
+      id: `user-${ts}-${this.userMsgCounter++}`,
+    });
+
+    session.cliIdle = false;
+    adapter.sendBrowserMessage({
+      type: "user_message",
+      content: msg.content,
+      images: msg.images,
+    });
   }
 
   private handleUserMessage(
