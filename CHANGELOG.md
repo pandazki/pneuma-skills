@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.5.1] - 2026-03-11
+
+### Added
+- **Desktop frameless launcher** — hidden title bar with macOS traffic lights, custom drag region on header
+- **Tray icon redesign** — logo intaglio (white circle + logo cutout), high visibility on both light and dark menu bars
+- **Tray session switcher** — live running session list fetched from launcher API, click to activate window
+- **Close window → kill session** — closing a mode window in Electron automatically kills the corresponding session process
+- **Window reuse** — opening the same session URL reuses the existing window instead of creating duplicates
+- **Splash loading screen** — solid-background splash with animated logo while launcher starts
+
+### Fixed
+- **Production image 404** — SPA fallback was intercepting `/content/*` requests, returning `index.html` instead of workspace files; added path exclusions for `/content/`, `/api/`, `/ws/`, `/export/`
+- **Production logo 404** — static file catch-all now serves all `dist/` files, not just `/assets/*`
+- **Desktop tray icons missing in packaged app** — added tray icon files to `extraResources` in electron-builder config
+
+### Improved
+- **Tray menu** — left-click and right-click both show menu (previously left-click opened launcher directly)
+- **Desktop icons** — regenerated all icons (icns, ico, png, tray) from new logo
+
 ## [2.5.0] - 2026-03-11
 
 ### Added
