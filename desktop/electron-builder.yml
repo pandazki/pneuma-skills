@@ -10,6 +10,15 @@ files:
   - "package.json"
 
 extraResources:
+  # Tray icons (loaded at runtime from resourcesPath)
+  - from: "resources/tray-iconTemplate.png"
+    to: "tray-iconTemplate.png"
+  - from: "resources/tray-iconTemplate@2x.png"
+    to: "tray-iconTemplate@2x.png"
+  - from: "resources/tray-icon.png"
+    to: "tray-icon.png"
+  - from: "resources/tray-icon@2x.png"
+    to: "tray-icon@2x.png"
   # Bundled Bun binary (downloaded at build time)
   - from: "resources/bun-${platform}-${arch}"
     to: "bun"

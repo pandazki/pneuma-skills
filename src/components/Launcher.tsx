@@ -1051,6 +1051,9 @@ function AllSessions({
                   onDelete={item.session ? () => onDelete(item.session!.id) : undefined}
                   onStop={item.process ? () => {
                     fetch(`${getApiBase()}/api/processes/children/${item.process!.pid}/kill`, { method: "POST" });
+                    if (item.process!.url && (window as any).pneumaDesktop?.closeModeWindow) {
+                      (window as any).pneumaDesktop.closeModeWindow(item.process!.url);
+                    }
                   } : undefined}
                   onOpen={item.process ? () => window.open(item.process!.url, "_blank") : undefined}
                 />
@@ -2141,9 +2144,13 @@ export default function Launcher() {
     } catch { }
   }, [refreshSessions]);
 
-  const stopProcess = useCallback(async (pid: number) => {
+  const stopProcess = useCallback(async (pid: number, url?: string) => {
     try {
       await fetch(`${getApiBase()}/api/processes/children/${pid}/kill`, { method: "POST" });
+      // In Electron, close the corresponding session window
+      if (url && (window as any).pneumaDesktop?.closeModeWindow) {
+        (window as any).pneumaDesktop.closeModeWindow(url);
+      }
       refreshRunning();
     } catch { }
   }, [refreshRunning]);
@@ -2264,10 +2271,11 @@ export default function Launcher() {
         />
       )}
 
-      {/* Header — sticky above overlays */}
-      <div ref={headerRef} className="sticky top-0 z-[60] bg-cc-bg/80 backdrop-blur-md" style={{ animation: "launcherFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+      {/* Header — sticky above overlays, draggable in Electron */}
+      <div ref={headerRef} className="sticky top-0 z-[60] bg-cc-bg/80 backdrop-blur-md" style={{ animation: "launcherFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1)", WebkitAppRegion: "drag" } as React.CSSProperties}>
       <header
         className="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between"
+        style={(window as any).pneumaDesktop ? { paddingLeft: "5rem" } : undefined}
       >
         <div className="flex items-center gap-3">
           <img
@@ -2279,7 +2287,7 @@ export default function Launcher() {
           />
           <span className="font-logo text-2xl text-cc-fg tracking-tight select-none">Pneuma</span>
         </div>
-        <div className="flex items-center">
+        <div className="flex items-center" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
           <div className={`flex items-center gap-1 transition-transform duration-300 ease-out ${hasOverlay ? "" : "translate-x-5"}`}>
             <ThemeToggle preference={themePref} onClick={cycleTheme} />
             <a
@@ -2379,7 +2387,7 @@ export default function Launcher() {
                                 runningProcess={item.process}
                                 onResume={item.session ? (skipSkill) => directLaunch(item.session!.mode, item.session!.workspace, skipSkill) : undefined}
                                 onDelete={item.session ? () => deleteSession(item.session!.id) : undefined}
-                                onStop={item.process ? () => stopProcess(item.process!.pid) : undefined}
+                                onStop={item.process ? () => stopProcess(item.process!.pid, item.process!.url) : undefined}
                                 onOpen={item.process ? () => window.open(item.process!.url, "_blank") : undefined}
                               />
                             </motion.div>

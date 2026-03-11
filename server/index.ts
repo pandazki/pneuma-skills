@@ -494,13 +494,16 @@ export function startServer(options: ServerOptions) {
       const distDir = options.distDir;
       // Serve static assets (JS/CSS bundles + public files like logo.png, favicon)
       app.get("*", async (c, next) => {
-        const filePath = join(distDir, c.req.path);
+        const p = c.req.path;
+        if (p.startsWith("/api/")) return next();
+        const filePath = join(distDir, p);
         const file = Bun.file(filePath);
-        if (await file.exists() && !c.req.path.endsWith("/")) return new Response(file);
+        if (await file.exists() && !p.endsWith("/")) return new Response(file);
         return next();
       });
       // SPA fallback
-      app.get("*", async (c) => {
+      app.get("*", async (c, next) => {
+        if (c.req.path.startsWith("/api/")) return next();
         const html = await Bun.file(join(distDir, "index.html")).text();
         return new Response(html, { headers: { "Content-Type": "text/html" } });
       });
@@ -2246,16 +2249,25 @@ export const { createPortal, flushSync, createRoot, hydrateRoot } = RD;`;
     const hasModeBundleDir = !!options.modeBundleDir;
 
     // Serve static assets (JS/CSS bundles + public files like logo.png, favicon)
+    // Skip paths handled by dedicated routes (/content/*, /api/*, /ws/*, /export/*)
     app.get("*", async (c, next) => {
-      const filePath = join(distDir, c.req.path);
+      const p = c.req.path;
+      if (p.startsWith("/content/") || p.startsWith("/api/") || p.startsWith("/ws/") || p.startsWith("/export/")) {
+        return next();
+      }
+      const filePath = join(distDir, p);
       const file = Bun.file(filePath);
-      if (await file.exists() && !c.req.path.endsWith("/")) return new Response(file);
+      if (await file.exists() && !p.endsWith("/")) return new Response(file);
       return next();
     });
 
-    // SPA fallback — serve index.html for all non-API routes
+    // SPA fallback — serve index.html for all non-API/content routes
     // When external mode bundle exists, inject importmap for React resolution
-    app.get("*", async (c) => {
+    app.get("*", async (c, next) => {
+      const p = c.req.path;
+      if (p.startsWith("/content/") || p.startsWith("/api/") || p.startsWith("/ws/") || p.startsWith("/export/")) {
+        return next();
+      }
       let html = await Bun.file(join(distDir, "index.html")).text();
 
       if (hasModeBundleDir) {

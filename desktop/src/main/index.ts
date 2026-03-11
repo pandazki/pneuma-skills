@@ -12,7 +12,6 @@ import {
   spawnLauncherProcess,
   killAllProcesses,
   getLauncherUrl,
-  getRunningSessionsForTray,
 } from "./bun-process.js";
 import { detectClaude, getClaudeInstallInstructions } from "./claude-detector.js";
 import { registerIpcHandlers } from "./ipc-handlers.js";
@@ -39,14 +38,11 @@ app.on("second-instance", () => {
   }
 });
 
-// macOS: hide dock icon when no windows visible
-if (process.platform === "darwin") {
-  app.dock?.hide();
-}
+// macOS: dock icon is shown by default, hidden when all windows close
 
 async function showLauncher() {
   if (process.platform === "darwin") {
-    app.dock?.show();
+    await app.dock?.show();
   }
 
   const launcherUrl = getLauncherUrl();
@@ -69,9 +65,7 @@ async function showLauncher() {
   });
 
   win.on("closed", () => {
-    if (getAllModeWindows().length === 0 && process.platform === "darwin") {
-      app.dock?.hide();
-    }
+    // Dock stays visible — managed by window-all-closed handler
   });
 }
 
@@ -182,11 +176,19 @@ app.whenReady().then(async () => {
 
   registerIpcHandlers();
 
+  if (process.platform === "darwin") {
+    await app.dock?.show();
+  }
+
+  // Show splash screen while loading
+  const splash = createSplashWindow();
+
   // Start the launcher Bun process first
   try {
     await spawnLauncherProcess();
   } catch (err) {
     console.error("Failed to start launcher process:", err);
+    splash.destroy();
     app.quit();
     return;
   }
@@ -197,24 +199,53 @@ app.whenReady().then(async () => {
   // Create tray
   createTray({
     onShowLauncher: showLauncher,
-    onGetSessions: getRunningSessionsForTray,
-    onFocusSession: (pid: number) => {
+    onFocusSession: async (_pid: number, url?: string) => {
+      if (process.platform === "darwin") {
+        await app.dock?.show();
+      }
+      app.focus({ steal: true });
+
+      if (url) {
+        // Match by port (each session has a unique port)
+        try {
+          const targetPort = new URL(url).port;
+          const windows = getAllModeWindows();
+          for (const w of windows) {
+            if (w.isDestroyed()) continue;
+            const winUrl = (w as any).__url as string | undefined;
+            if (winUrl && new URL(winUrl).port === targetPort) {
+              if (w.isMinimized()) w.restore();
+              w.show();
+              w.focus();
+              return;
+            }
+          }
+        } catch {}
+      }
+
+      // Fallback: focus first mode window
       const windows = getAllModeWindows();
-      const win = windows.find((w) => (w as any).__pid === pid);
-      if (win) {
-        if (win.isMinimized()) win.restore();
-        win.focus();
+      if (windows.length > 0) {
+        const w = windows[0];
+        if (w.isMinimized()) w.restore();
+        w.show();
+        w.focus();
       }
     },
     onCheckUpdates: () => checkForUpdatesManual(),
     onQuit: () => app.quit(),
   });
 
+  // Show the real window BEFORE destroying splash to avoid
+  // window-all-closed → dock.hide() race condition
   if (!claude.found) {
     showSetupWizard();
   } else {
     showLauncher();
   }
+
+  // Destroy splash after the new window exists
+  splash.destroy();
 
   // Auto-update: silent check on startup
   setupAutoUpdater();
@@ -223,10 +254,7 @@ app.whenReady().then(async () => {
 
 // Stay alive in tray when all windows close
 app.on("window-all-closed", () => {
-  if (process.platform === "darwin") {
-    app.dock?.hide();
-  }
-  // Don't quit — stay in tray
+  // Don't quit — stay in tray. Dock stays visible.
 });
 
 app.on("activate", () => {
@@ -249,6 +277,78 @@ ipcMain.handle("pneuma:recheck-claude", async () => {
   }
   return result;
 });
+
+// ── Splash screen ───────────────────────────────────────────────────────────
+
+function createSplashWindow(): BrowserWindow {
+  const win = new BrowserWindow({
+    width: 280,
+    height: 280,
+    frame: false,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    center: true,
+    backgroundColor: "#09090b",
+    roundedCorners: true,
+    webPreferences: { contextIsolation: true, nodeIntegration: false },
+  });
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100vh; background: #09090b; -webkit-app-region: drag;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  .logo {
+    width: 64px; height: 64px; border-radius: 16px;
+    animation: breathe 2s ease-in-out infinite;
+  }
+  @keyframes breathe {
+    0%, 100% { filter: brightness(1); transform: scale(1); }
+    50% { filter: brightness(1.1); transform: scale(1.03); }
+  }
+  .text {
+    margin-top: 20px;
+    color: #a1a1aa; font-size: 13px; font-weight: 500; letter-spacing: 0.02em;
+  }
+  .dots { display: inline-flex; gap: 4px; margin-left: 4px; }
+  .dots span {
+    width: 3px; height: 3px; border-radius: 50%; background: #f97316;
+    animation: dot 1.2s ease-in-out infinite;
+  }
+  .dots span:nth-child(2) { animation-delay: 0.2s; }
+  .dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dot {
+    0%, 60%, 100% { opacity: 0.3; transform: scale(1); }
+    30% { opacity: 1; transform: scale(1.3); }
+  }
+</style></head>
+<body>
+  <img class="logo" src="data:image/png;base64,${getSplashLogoBase64()}" />
+  <div class="text">Loading<span class="dots"><span></span><span></span><span></span></span></div>
+</body></html>`;
+
+  win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  return win;
+}
+
+function getSplashLogoBase64(): string {
+  try {
+    const logoPath = app.isPackaged
+      ? path.join(process.resourcesPath, "pneuma", "dist", "logo.png")
+      : path.join(__dirname, "..", "..", "..", "public", "logo.png");
+    const fs = require("node:fs");
+    return fs.readFileSync(logoPath).toString("base64");
+  } catch {
+    return ""; // Fallback: empty image
+  }
+}
 
 // ── Auto-updater with dialog UI ──────────────────────────────────────────────
 

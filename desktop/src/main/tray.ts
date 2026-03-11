@@ -1,17 +1,12 @@
 import { Tray, Menu, nativeImage, app } from "electron";
 import path from "node:path";
+import { getLauncherUrl } from "./bun-process.js";
 
 let tray: Tray | null = null;
 
 interface TrayCallbacks {
   onShowLauncher: () => void;
-  onGetSessions: () => Array<{
-    pid: number;
-    specifier: string;
-    workspace: string;
-    url: string;
-  }>;
-  onFocusSession: (pid: number) => void;
+  onFocusSession: (pid: number, url?: string) => void;
   onCheckUpdates: () => void;
   onQuit: () => void;
 }
@@ -51,26 +46,37 @@ export function createTray(cbs: TrayCallbacks) {
   tray = new Tray(icon);
   tray.setToolTip("Pneuma Skills");
 
-  if (process.platform === "darwin") {
-    // macOS: left-click opens launcher, right-click shows menu.
-    // Don't use setContextMenu — it hijacks left-click too.
-    tray.on("click", () => {
-      callbacks.onShowLauncher();
-    });
-    tray.on("right-click", () => {
-      tray?.popUpContextMenu(buildTrayMenu());
-    });
-  } else {
-    // Windows/Linux: left-click opens launcher, right-click shows context menu
-    tray.on("click", () => {
-      callbacks.onShowLauncher();
-    });
-    updateTrayMenu();
+  // Both left-click and right-click show the menu
+  tray.on("click", () => showTrayMenu());
+  tray.on("right-click", () => showTrayMenu());
+}
+
+async function showTrayMenu() {
+  if (!tray || !callbacks) return;
+  const menu = await buildTrayMenu();
+  tray.popUpContextMenu(menu);
+}
+
+async function fetchRunningSessions(): Promise<
+  Array<{ pid: number; specifier: string; workspace: string; url: string }>
+> {
+  try {
+    const launcherUrl = getLauncherUrl();
+    if (!launcherUrl) return [];
+    const origin = new URL(launcherUrl).origin;
+    const res = await fetch(`${origin}/api/processes/children`);
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      processes: Array<{ pid: number; specifier: string; workspace: string; url: string }>;
+    };
+    return data.processes || [];
+  } catch {
+    return [];
   }
 }
 
-function buildTrayMenu(): Electron.Menu {
-  const sessions = callbacks.onGetSessions();
+async function buildTrayMenu(): Promise<Electron.Menu> {
+  const sessions = await fetchRunningSessions();
 
   const sessionItems: Electron.MenuItemConstructorOptions[] =
     sessions.length > 0
@@ -79,7 +85,7 @@ function buildTrayMenu(): Electron.Menu {
           { label: "Running Sessions", enabled: false },
           ...sessions.map((s) => ({
             label: `${s.specifier} — ${path.basename(s.workspace)}`,
-            click: () => callbacks.onFocusSession(s.pid),
+            click: () => callbacks.onFocusSession(s.pid, s.url),
           })),
         ]
       : [];
@@ -104,18 +110,12 @@ function buildTrayMenu(): Electron.Menu {
 }
 
 export function updateTrayMenu() {
-  if (!tray || !callbacks) return;
-  // On macOS we use popUpContextMenu on right-click, no need to set it
-  if (process.platform !== "darwin") {
-    tray.setContextMenu(buildTrayMenu());
-  }
+  // No-op — menu is built on demand when clicked
 }
 
 function createFallbackIcon(): Electron.NativeImage {
-  // Create a simple 22x22 PNG with an orange circle
-  // This is a minimal valid PNG
   const size = 22;
-  const canvas = Buffer.alloc(size * size * 4); // RGBA
+  const canvas = Buffer.alloc(size * size * 4);
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -126,13 +126,11 @@ function createFallbackIcon(): Electron.NativeImage {
       const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
 
       if (dist < r) {
-        // Orange: #f97316
-        canvas[idx] = 249;     // R
-        canvas[idx + 1] = 115; // G
-        canvas[idx + 2] = 22;  // B
-        canvas[idx + 3] = 255; // A
+        canvas[idx] = 249;
+        canvas[idx + 1] = 115;
+        canvas[idx + 2] = 22;
+        canvas[idx + 3] = 255;
       } else if (dist < r + 1) {
-        // Anti-aliased edge
         const alpha = Math.max(0, Math.round(255 * (1 - (dist - r))));
         canvas[idx] = 249;
         canvas[idx + 1] = 115;
