@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.0] - 2026-03-12
+
+### Added
+- **Codex agent backend** — full OpenAI Codex integration via `app-server` stdio JSON-RPC transport, including session lifecycle, streaming, permission approval, and file change tracking
+- **Dynamic model switching for Codex** — fetches available models from Codex `model/list` API, applies selected model per-turn via `turn/start` params
+- **Codex slash commands** — fetches skills from Codex `skills/list` API and populates the composer's "/" menu dynamically
+- **Backend availability detection** — launcher checks if CLI binaries (`claude`/`codex`) exist on PATH and grays out unavailable backends in session cards and launch dialog
+- **Backend-aware skill installation** — skills install to `.agents/skills/` with `AGENTS.md` for Codex, `.claude/skills/` with `CLAUDE.md` for Claude Code
+
+### Fixed
+- **Codex session crash** — adapter's partial session state (missing `agent_capabilities`) was broadcast directly to browser, causing React crash in ModelSwitcher; now merges with server's full state before broadcasting
+- **Cross-platform PATH delimiter** — Codex CLI launcher now uses `node:path` delimiter instead of hardcoded `:`
+
+### Improved
+- **ModelSwitcher** — rewritten to be backend-agnostic with dynamic model list support from `SessionState.available_models`
+- **Launcher backend picker** — compact pill-style buttons with backend logos, auto-selects first available backend
+- **Session cards** — show unavailable overlay with reason when backend CLI is not found
+
 ## [2.5.5] - 2026-03-11
 
 ### Improved

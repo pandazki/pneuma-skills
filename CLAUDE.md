@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.5.5
+**Version:** 2.6.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `mode-maker`, `evolve`
 
@@ -21,7 +21,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 | File Watching | chokidar 4 |
 | Drawing | @excalidraw/excalidraw 0.18 |
 | Desktop | Electron 41 + electron-builder + electron-updater |
-| Agent | Claude Code CLI via `--sdk-url`; backend registry prepared for Codex app-server |
+| Agent | Claude Code CLI via `--sdk-url`; Codex CLI via `app-server` stdio JSON-RPC |
 
 ## CLI Commands
 
@@ -80,12 +80,13 @@ pneuma-skills/
 │   └── utils/manifest-parser.ts  # Regex-based manifest.ts metadata extraction
 ├── modes/{webcraft,doc,slide,draw,mode-maker,evolve}/  # Builtin modes
 ├── backends/
-│   ├── index.ts               # Backend registry + descriptors + capabilities
-│   └── claude-code/           # Claude backend — Bun.spawn with --sdk-url
+│   ├── index.ts               # Backend registry + descriptors + capabilities + availability
+│   ├── claude-code/           # Claude backend — Bun.spawn with --sdk-url
+│   └── codex/                 # Codex backend — stdio JSON-RPC via app-server
 ├── server/
 │   ├── index.ts               # Hono server + launcher endpoints + WS routing
 │   ├── ws-bridge*.ts          # Dual WebSocket bridge (browser JSON ↔ CLI NDJSON)
-│   ├── skill-installer.ts     # Skill copy + template engine + CLAUDE.md injection
+│   ├── skill-installer.ts     # Skill copy + template engine + instructions injection (CLAUDE.md / AGENTS.md)
 │   ├── file-watcher.ts        # chokidar watcher (manifest-driven)
 │   ├── terminal-manager.ts    # PTY terminal sessions
 │   ├── path-resolver.ts       # Binary PATH resolution (cross-platform)
@@ -150,6 +151,7 @@ Claude-specific wire details still live in the Claude transport path, but fronte
 - Dual WebSocket: Browser (`/ws/browser/:sessionId`, JSON) ↔ Server ↔ CLI transport (`/ws/cli/:sessionId`)
 - File changes: chokidar → WebSocket push to browser
 - Claude transport: `claude --sdk-url ws://... --print --output-format stream-json --input-format stream-json --verbose -p ""`
+- Codex transport: `codex app-server` with stdio JSON-RPC; `CodexAdapter` translates between Codex protocol and Pneuma `BrowserIncomingMessage` format via `ws-bridge-codex.ts`
 - Browser session init carries normalized backend identity and capabilities so UI can degrade backend-specific features cleanly
 
 ## Mode Lifecycle
@@ -177,9 +179,9 @@ CLI Entry (bin/pneuma.ts)
       │   → sessionId, agentSessionId, backendType
       │
       ├─ 4. Skill install: skill-installer.ts
-      │   modes/<mode>/skill/ → workspace/.claude/skills/<installName>/
+      │   modes/<mode>/skill/ → workspace skills dir (backend-aware)
+      │   Claude: .claude/skills/ + CLAUDE.md; Codex: .agents/skills/ + AGENTS.md
       │   Template: {{key}}, {{viewerCapabilities}}
-      │   CLAUDE.md injection: <!-- pneuma:start/end -->
       │
       ├─ 5. Server start: server/index.ts
       │   Hono HTTP + dual WebSocket (browser JSON / CLI NDJSON)
@@ -188,7 +190,8 @@ CLI Entry (bin/pneuma.ts)
       │   existing workspace backend cannot be switched mid-session
       │
       ├─ 7. Agent launch: backends/<backend>/
-      │   Claude today: claude --sdk-url ws://localhost:PORT/ws/cli/SESSION
+      │   Claude: claude --sdk-url ws://localhost:PORT/ws/cli/SESSION
+      │   Codex: codex app-server (stdio JSON-RPC)
       │
       ├─ 8. Frontend: mode-loader.ts → dynamic import viewer
       │   External modes: registerExternalMode() → Bun.build() → import map
@@ -246,7 +249,11 @@ Stored in `<workspace>/.pneuma/`:
 
 ### Skill Installation & Update Detection
 
-On startup, skills are copied from `modes/<mode>/skill/` to `<workspace>/.claude/skills/<installName>/`. Template params (`{{key}}`, `{{viewerCapabilities}}`) are applied. Two sections are injected into CLAUDE.md:
+On startup, skills are copied to the backend-appropriate directory:
+- Claude Code: `<workspace>/.claude/skills/<installName>/` + `CLAUDE.md`
+- Codex: `<workspace>/.agents/skills/<installName>/` + `AGENTS.md`
+
+Template params (`{{key}}`, `{{viewerCapabilities}}`) are applied. Two sections are injected into the instructions file:
 - `<!-- pneuma:start -->` / `<!-- pneuma:end -->` — Skill prompt
 - `<!-- pneuma:viewer-api:start -->` / `<!-- pneuma:viewer-api:end -->` — Viewer API description
 
@@ -268,7 +275,7 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/registry` | Returns `{ builtins, published, local }` |
-| `GET /api/backends` | Returns backend descriptors + default backend |
+| `GET /api/backends` | Returns backend descriptors + availability + default backend |
 | `GET /api/sessions` | Returns `{ sessions, homeDir }` — filtered by existing workspace |
 | `DELETE /api/sessions/:id` | Remove a session record |
 | `DELETE /api/modes/:name` | Delete a local mode from `~/.pneuma/modes/` |
@@ -423,6 +430,7 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **Bun.serve dual-stack**: Must set `hostname: "0.0.0.0"` to avoid IPv6/IPv4 port collision on macOS.
 - **CLAUDECODE env var**: Must be unset when spawning Claude Code CLI.
 - **Backend persistence**: `backendType` in `.pneuma/session.json` and `~/.pneuma/sessions.json` is part of resume identity.
+- **Codex session state merge**: `ws-bridge-codex.ts` must merge adapter's partial session with server's full state before broadcasting to browser — adapter omits `agent_capabilities`, which causes UI crashes if sent raw.
 - **NDJSON**: Each message to CLI must end with `\n`.
 - **Empty assistant messages**: `MessageBubble` returns null when content is empty (tool_use-only messages).
 - **modelUsage cumulative**: Use delta (current - previous) for per-turn cost.
