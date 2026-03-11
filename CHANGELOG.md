@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.1] - 2026-03-12
+
+### Fixed
+- **CI test failures** — updated test expectations for Codex `modelSwitch: true` and backend-aware skill install (no `CLAUDE.md` for Codex sessions)
+
 ## [2.6.0] - 2026-03-12
 
 ### Added
