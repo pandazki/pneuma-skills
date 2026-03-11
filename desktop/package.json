@@ -1,7 +1,7 @@
 {
   "name": "pneuma-skills-desktop",
   "productName": "Pneuma Skills",
-  "version": "2.5.0",
+  "version": "2.5.4",
   "description": "Pneuma Skills — Desktop Client",
   "author": {
     "name": "pandazki",
@@ -25,11 +25,11 @@
     "dist:linux": "npm run prepare-deps && npm run build:main && electron-builder --linux"
   },
   "dependencies": {
-    "electron-updater": "^6.3.9"
+    "electron-updater": "^6.8.3"
   },
   "devDependencies": {
-    "electron": "^35.1.2",
-    "electron-builder": "^26.0.0",
+    "electron": "^41.0.0",
+    "electron-builder": "^26.8.1",
     "tsup": "^8.4.0",
     "typescript": "^5.9.3"
   }

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.5.5] - 2026-03-11
+
+### Improved
+- **Dependency upgrades** — Electron 35→41, Vite 6→7, chokidar 4→5, @vitejs/plugin-react 4→5, electron-builder and electron-updater to latest
+- **Thumbnail capture quality** — rewrote image capture strategy to use high-resolution source images (e.g. slide thumbnails at native 2560×1440) instead of compositing from small display sizes
+
+### Fixed
+- **Evolve mode fails to launch** — launcher now passes `targetMode` via initParams so the evolve CLI knows which mode to analyze
+- **Vite 7 HMR** — updated `server.ws.send` to `server.hot.send` for workspace file change notifications
+
 ## [2.5.4] - 2026-03-11
 
 ### Fixed

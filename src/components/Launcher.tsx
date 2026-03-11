@@ -2490,6 +2490,7 @@ export default function Launcher() {
               specifier: "evolve",
               displayName: `Evolve: ${mode.displayName}`,
               defaultWorkspace: workspace,
+              defaultInitParams: { targetMode: mode.name },
             });
           }}
           onDeleteLocal={deleteLocalMode}

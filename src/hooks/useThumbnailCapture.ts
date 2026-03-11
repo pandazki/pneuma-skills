@@ -17,8 +17,8 @@
 import { useEffect, useRef } from "react";
 import snapdom from "@zumer/snapdom";
 
-const THUMB_WIDTH = 640;
-const THUMB_HEIGHT = 400;
+const THUMB_WIDTH = 1280;
+const THUMB_HEIGHT = 800;
 const INITIAL_DELAY = 2_000;
 const DEBOUNCE_DELAY = 10_000;
 
@@ -114,16 +114,15 @@ function captureViaCanvas(el: HTMLElement): string | null {
  */
 async function captureViaImages(el: HTMLElement): Promise<string | null> {
   const imgs = el.querySelectorAll("img");
-  // Filter to visible, loaded images with real dimensions
-  const visible: { img: HTMLImageElement; rect: DOMRect }[] = [];
   const containerRect = el.getBoundingClientRect();
+  const containerArea = containerRect.width * containerRect.height;
 
+  // Collect visible, loaded images with real dimensions
+  const visible: { img: HTMLImageElement; rect: DOMRect }[] = [];
   imgs.forEach((img) => {
     if (!img.complete || img.naturalWidth === 0) return;
     const rect = img.getBoundingClientRect();
-    // Skip tiny images (icons, etc.)
     if (rect.width < 40 || rect.height < 40) return;
-    // Skip images fully outside the container
     if (rect.right < containerRect.left || rect.left > containerRect.right) return;
     if (rect.bottom < containerRect.top || rect.top > containerRect.bottom) return;
     visible.push({ img, rect });
@@ -131,49 +130,38 @@ async function captureViaImages(el: HTMLElement): Promise<string | null> {
 
   if (visible.length === 0) return null;
 
-  // Compute bounding box relative to container
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const { rect } of visible) {
-    minX = Math.min(minX, rect.left - containerRect.left);
-    minY = Math.min(minY, rect.top - containerRect.top);
-    maxX = Math.max(maxX, rect.right - containerRect.left);
-    maxY = Math.max(maxY, rect.bottom - containerRect.top);
+  // Strategy A: If there's a single high-res image that dominates the container,
+  // use it directly (e.g. Illustrate's main image, or a full-screen photo).
+  const dominant = visible.find(({ rect }) =>
+    rect.width * rect.height >= containerArea * 0.3
+  );
+  if (dominant) {
+    const canvas = document.createElement("canvas");
+    canvas.width = dominant.img.naturalWidth;
+    canvas.height = dominant.img.naturalHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    try { ctx.drawImage(dominant.img, 0, 0); } catch { return null; }
+    return canvas.toDataURL("image/png");
   }
 
-  const totalW = maxX - minX;
-  const totalH = maxY - minY;
-  if (totalW <= 0 || totalH <= 0) return null;
-
-  // Scale to fit within 800px
-  const scale = Math.min(800 / totalW, 800 / totalH, 1);
-  const canvasW = Math.ceil(totalW * scale);
-  const canvasH = Math.ceil(totalH * scale);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = canvasW;
-  canvas.height = canvasH;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-
-  // Fill background with viewer bg
-  const bgColor = getComputedStyle(el).backgroundColor;
-  ctx.fillStyle = bgColor && bgColor !== "rgba(0, 0, 0, 0)" ? bgColor : "#18181b";
-  ctx.fillRect(0, 0, canvasW, canvasH);
-
-  // Draw each image at its relative position
-  for (const { img, rect } of visible) {
-    const dx = (rect.left - containerRect.left - minX) * scale;
-    const dy = (rect.top - containerRect.top - minY) * scale;
-    const dw = rect.width * scale;
-    const dh = rect.height * scale;
-    try {
-      ctx.drawImage(img, dx, dy, dw, dh);
-    } catch {
-      // Cross-origin image — skip
-    }
+  // Strategy B: Pick the highest-resolution image by natural dimensions.
+  // Useful when viewer shows hi-res thumbnails at small display sizes (e.g. Slide).
+  const best = visible.reduce((a, b) =>
+    (a.img.naturalWidth * a.img.naturalHeight) > (b.img.naturalWidth * b.img.naturalHeight) ? a : b
+  );
+  // Only use it if the natural resolution is meaningfully large
+  if (best.img.naturalWidth >= THUMB_WIDTH && best.img.naturalHeight >= THUMB_HEIGHT) {
+    const canvas = document.createElement("canvas");
+    canvas.width = best.img.naturalWidth;
+    canvas.height = best.img.naturalHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    try { ctx.drawImage(best.img, 0, 0); } catch { return null; }
+    return canvas.toDataURL("image/png");
   }
 
-  return canvas.toDataURL("image/png");
+  return null;
 }
 
 /**
@@ -181,8 +169,9 @@ async function captureViaImages(el: HTMLElement): Promise<string | null> {
  */
 async function captureViaSnapdom(el: HTMLElement): Promise<string | null> {
   try {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const result = await snapdom(el, { embedFonts: false });
-    const png = await result.toPng();
+    const png = await result.toPng({ scale: dpr });
     return png.src;
   } catch {
     return null;

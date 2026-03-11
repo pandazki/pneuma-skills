@@ -103,7 +103,7 @@ function pneumaWorkspaceResolve(): Plugin {
           }
         }
         // Notify browser via custom HMR event — PreviewTab listens for this
-        server.ws.send({ type: "custom", event: "pneuma:workspace-update" });
+        server.hot.send({ type: "custom", event: "pneuma:workspace-update" });
       };
 
       watcher.on("change", invalidate);

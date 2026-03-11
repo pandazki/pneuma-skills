@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.5.4
+**Version:** 2.5.5
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `mode-maker`, `evolve`
 
@@ -16,11 +16,11 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 |-------|-----------|
 | Runtime | Bun >= 1.3.5 |
 | Server | Hono 4.7 |
-| Frontend | React 19 + Vite 6 + Tailwind CSS 4 + Zustand 5 |
+| Frontend | React 19 + Vite 7 + Tailwind CSS 4 + Zustand 5 |
 | Terminal | xterm.js 6 + Bun native PTY |
 | File Watching | chokidar 4 |
 | Drawing | @excalidraw/excalidraw 0.18 |
-| Desktop | Electron 35 + electron-builder + electron-updater |
+| Desktop | Electron 41 + electron-builder + electron-updater |
 | Agent | Claude Code CLI via `--sdk-url` WebSocket protocol |
 
 ## CLI Commands
