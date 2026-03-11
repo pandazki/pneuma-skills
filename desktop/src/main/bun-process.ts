@@ -93,7 +93,7 @@ export async function spawnLauncherProcess(): Promise<void> {
   console.log(`[bun-process] Starting launcher: ${bunPath} ${entryPoint}`);
   console.log(`[bun-process] Project root: ${getPneumaProjectRoot()}`);
 
-  const args = [entryPoint, "--no-open", "--port", String(port)];
+  const args = [entryPoint, "--no-open", "--no-prompt", "--port", String(port)];
 
   // In dev mode, pass --dev for Vite HMR
   if (!app.isPackaged) {

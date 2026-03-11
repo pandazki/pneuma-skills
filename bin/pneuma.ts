@@ -225,6 +225,8 @@ function checkBunVersion() {
 
 async function checkForUpdate(currentVersion: string) {
   if (process.env.PNEUMA_SKIP_UPDATE) return;
+  // Skip interactive update prompt in non-interactive mode (e.g. Electron desktop)
+  if (process.argv.includes("--no-prompt")) return;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
