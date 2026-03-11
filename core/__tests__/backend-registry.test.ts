@@ -18,13 +18,13 @@ describe("backend registry", () => {
         type: "codex",
         label: "Codex",
         description: "OpenAI Codex CLI via app-server transport.",
-        implemented: false,
+        implemented: true,
       },
     ]);
   });
 
-  test("implemented backends only include Claude Code for now", () => {
-    expect(getImplementedBackends().map((backend) => backend.type)).toEqual(["claude-code"]);
+  test("implemented backends include both Claude Code and Codex", () => {
+    expect(getImplementedBackends().map((backend) => backend.type)).toEqual(["claude-code", "codex"]);
   });
 
   test("exposes capability defaults per backend type", () => {
@@ -37,9 +37,9 @@ describe("backend registry", () => {
     });
 
     expect(getBackendCapabilities("codex")).toEqual({
-      streaming: false,
-      resume: false,
-      permissions: false,
+      streaming: true,
+      resume: true,
+      permissions: true,
       toolProgress: false,
       modelSwitch: false,
     });
@@ -51,7 +51,11 @@ describe("backend registry", () => {
     expect(backend.capabilities.streaming).toBe(true);
   });
 
-  test("createBackend rejects unimplemented Codex backend", () => {
-    expect(() => createBackend("codex", 17007)).toThrow("Codex backend is not implemented yet.");
+  test("createBackend instantiates Codex backend", () => {
+    const backend = createBackend("codex", 17007);
+    expect(backend.name).toBe("codex");
+    expect(backend.capabilities.streaming).toBe(true);
+    expect(backend.capabilities.modelSwitch).toBe(false);
+    expect(backend.capabilities.toolProgress).toBe(false);
   });
 });

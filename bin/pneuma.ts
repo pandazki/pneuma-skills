@@ -240,6 +240,19 @@ function checkBackendRequirements(backendType: AgentBackendType) {
     return;
   }
 
+  if (backendType === "codex") {
+    const resolved = resolveBinary("codex");
+    if (!resolved) {
+      p.cancel(
+        "Codex CLI not found.\n" +
+        "  Pneuma requires Codex to be installed and authenticated.\n" +
+        "  Install: npm install -g @openai/codex"
+      );
+      process.exit(1);
+    }
+    return;
+  }
+
   p.cancel(`Backend "${backendType}" is not implemented yet.`);
   process.exit(1);
 }
@@ -397,6 +410,16 @@ async function handleEvolveCommand(args: string[]) {
 
   checkBackendRequirements(backendType);
 
+  // Evolution mode only supports Claude Code backend
+  const evolveManifestCheck = await loadModeManifest("evolve");
+  if (evolveManifestCheck.supportedBackends && !evolveManifestCheck.supportedBackends.includes(backendType)) {
+    p.cancel(
+      `Evolve mode only supports backends: ${evolveManifestCheck.supportedBackends.join(", ")}. ` +
+      `Selected backend "${backendType}" is not compatible.`
+    );
+    process.exit(1);
+  }
+
   // 1. Resolve target mode and build evolution data
   let resolved: ResolvedMode;
   try {
@@ -470,6 +493,23 @@ async function handleEvolveCommand(args: string[]) {
   });
 
   p.log.info(`Agent session: ${session.sessionId}`);
+  wsBridge.getOrCreateSession(session.sessionId, backendType);
+
+  // Wire Codex adapter if applicable
+  if (backendType === "codex") {
+    const { CodexBackend } = await import("../backends/codex/index.js");
+    if (backend instanceof CodexBackend) {
+      const existingAdapter = backend.getAdapter(session.sessionId);
+      if (existingAdapter) {
+        wsBridge.attachCodexAdapter(session.sessionId, existingAdapter);
+      }
+      backend.onAdapterCreated((sid, adapter) => {
+        if (sid === session.sessionId) {
+          wsBridge.attachCodexAdapter(sid, adapter);
+        }
+      });
+    }
+  }
 
   // 7. Inject evolution prompt as greeting (dynamic, not from manifest)
   wsBridge.injectGreeting(session.sessionId, evolutionPrompt);
@@ -801,6 +841,17 @@ Options:
   // Verify the selected backend is available before proceeding
   checkBackendRequirements(backendType);
 
+  // Check if the mode supports the selected backend
+  if (manifest.supportedBackends && manifest.supportedBackends.length > 0) {
+    if (!manifest.supportedBackends.includes(backendType)) {
+      p.cancel(
+        `Mode "${modeName}" only supports backends: ${manifest.supportedBackends.join(", ")}. ` +
+        `Selected backend "${backendType}" is not compatible.`
+      );
+      process.exit(1);
+    }
+  }
+
   if (!existsSync(workspace)) {
     if (noPrompt) {
       mkdirSync(workspace, { recursive: true });
@@ -906,7 +957,7 @@ Options:
     }
 
     p.log.step("Installing skill and preparing environment...");
-    installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi);
+    installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, backendType);
     // Record installed skill version for update detection
     const skillVersionPath = join(workspace, ".pneuma", "skill-version.json");
     mkdirSync(join(workspace, ".pneuma"), { recursive: true });
@@ -1144,6 +1195,24 @@ Options:
   p.log.info(`Agent session: ${session.sessionId}`);
   wsBridge.getOrCreateSession(session.sessionId, sessionBackendType);
 
+  // For Codex backend, wire the CodexAdapter into the WsBridge
+  if (sessionBackendType === "codex") {
+    const { CodexBackend } = await import("../backends/codex/index.js");
+    if (backend instanceof CodexBackend) {
+      // The adapter may already be created (launch is sync, but init is async)
+      const existingAdapter = backend.getAdapter(session.sessionId);
+      if (existingAdapter) {
+        wsBridge.attachCodexAdapter(session.sessionId, existingAdapter);
+      }
+      // Also listen for future adapter creation (e.g. relaunch)
+      backend.onAdapterCreated((sid, adapter) => {
+        if (sid === session.sessionId) {
+          wsBridge.attachCodexAdapter(sid, adapter);
+        }
+      });
+    }
+  }
+
   // Auto-greeting for fresh sessions (driven by manifest)
   if (!resuming && manifest.agent?.greeting) {
     wsBridge.injectGreeting(session.sessionId, manifest.agent.greeting);
@@ -1173,10 +1242,14 @@ Options:
       if (exitCode === 127) {
         errorMsg = sessionBackendType === "claude-code"
           ? "Claude Code CLI not found. Please install it: https://docs.anthropic.com/claude-code"
+          : sessionBackendType === "codex"
+          ? "Codex CLI not found. Please install it: npm install -g @openai/codex"
           : `Backend "${sessionBackendType}" CLI not found.`;
       } else {
         errorMsg = sessionBackendType === "claude-code"
           ? `Claude Code exited unexpectedly (code ${exitCode}). Check CLI installation and subscription status.`
+          : sessionBackendType === "codex"
+          ? `Codex exited unexpectedly (code ${exitCode}). Check CLI installation and login status.`
           : `${sessionBackendType} exited unexpectedly (code ${exitCode}).`;
       }
       wsBridge.broadcastToSession(exitedId, { type: "error", message: errorMsg });

@@ -18,6 +18,7 @@ describe("WsBridge backend identity", () => {
     const session = bridge.getOrCreateSession("session-2", "codex");
 
     expect(session.state.backend_type).toBe("codex");
-    expect(session.state.agent_capabilities.permissions).toBe(false);
+    expect(session.state.agent_capabilities.permissions).toBe(true);
+    expect(session.state.agent_capabilities.modelSwitch).toBe(false);
   });
 });

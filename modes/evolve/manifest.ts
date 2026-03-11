@@ -43,6 +43,9 @@ For the full evolution process, data access scripts, proposal format, and intera
     permissionMode: "bypassPermissions",
     // No greeting — dynamically injected by CLI with evolution prompt
   },
+
+  // Evolution currently relies on Claude Code features (--sdk-url, NDJSON protocol)
+  supportedBackends: ["claude-code"],
 };
 
 export default evolveManifest;

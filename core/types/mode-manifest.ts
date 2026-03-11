@@ -256,4 +256,6 @@ export interface ModeManifest {
   evolution?: EvolutionConfig;
   /** Showcase — rich marketing content for launcher gallery (optional) */
   showcase?: ModeShowcase;
+  /** Supported agent backends. When omitted, all implemented backends are allowed. */
+  supportedBackends?: string[];
 }

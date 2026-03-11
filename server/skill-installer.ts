@@ -357,6 +357,7 @@ export function installSkillDependencies(
  * @param modeSourceDir — Absolute path to the mode package directory (e.g. /path/to/modes/doc)
  * @param params — Optional init params for template replacement
  * @param viewerApi — Optional viewer self-describing API (auto-injected as independent CLAUDE.md section)
+ * @param backendType — Backend type ("claude-code" | "codex"). When "codex", also writes AGENTS.md.
  */
 export function installSkill(
   workspace: string,
@@ -364,6 +365,7 @@ export function installSkill(
   modeSourceDir: string,
   params?: Record<string, number | string>,
   viewerApi?: ViewerApiConfig,
+  backendType?: string,
 ): void {
   // 1. Copy skill to .claude/skills/{installName}/
   const skillSource = join(modeSourceDir, skillConfig.sourceDir);
@@ -493,6 +495,13 @@ export function installSkill(
   mkdirSync(dirname(claudeMdPath), { recursive: true });
   writeFileSync(claudeMdPath, content, "utf-8");
   console.log(`[skill-installer] Updated ${claudeMdPath}`);
+
+  // 2d. Write AGENTS.md for Codex backend (reads AGENTS.md instead of CLAUDE.md)
+  if (backendType === "codex") {
+    const agentsMdPath = join(workspace, "AGENTS.md");
+    writeFileSync(agentsMdPath, content, "utf-8");
+    console.log(`[skill-installer] Updated ${agentsMdPath} (Codex backend)`);
+  }
 
   // 3. Ensure .pneuma/ is in .gitignore
   ensureGitignore(workspace);

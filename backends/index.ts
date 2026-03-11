@@ -5,6 +5,7 @@ import type {
   AgentBackendType,
 } from "../core/types/agent-backend.js";
 import { ClaudeCodeBackend } from "./claude-code/index.js";
+import { CodexBackend } from "./codex/index.js";
 
 const BACKEND_DESCRIPTORS: AgentBackendDescriptor[] = [
   {
@@ -17,7 +18,7 @@ const BACKEND_DESCRIPTORS: AgentBackendDescriptor[] = [
     type: "codex",
     label: "Codex",
     description: "OpenAI Codex CLI via app-server transport.",
-    implemented: false,
+    implemented: true,
   },
 ];
 
@@ -30,9 +31,9 @@ const BACKEND_CAPABILITIES: Record<AgentBackendType, AgentCapabilities> = {
     modelSwitch: true,
   },
   codex: {
-    streaming: false,
-    resume: false,
-    permissions: false,
+    streaming: true,
+    resume: true,
+    permissions: true,
     toolProgress: false,
     modelSwitch: false,
   },
@@ -59,6 +60,6 @@ export function createBackend(type: AgentBackendType, port: number): AgentBacken
     case "claude-code":
       return new ClaudeCodeBackend(port);
     case "codex":
-      throw new Error("Codex backend is not implemented yet.");
+      return new CodexBackend();
   }
 }
