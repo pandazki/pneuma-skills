@@ -492,12 +492,14 @@ export function startServer(options: ServerOptions) {
     // Serve frontend assets in launcher mode too
     if (options.distDir) {
       const distDir = options.distDir;
-      app.get("/assets/*", async (c) => {
+      // Serve static assets (JS/CSS bundles + public files like logo.png, favicon)
+      app.get("*", async (c, next) => {
         const filePath = join(distDir, c.req.path);
         const file = Bun.file(filePath);
-        if (await file.exists()) return new Response(file);
-        return c.notFound();
+        if (await file.exists() && !c.req.path.endsWith("/")) return new Response(file);
+        return next();
       });
+      // SPA fallback
       app.get("*", async (c) => {
         const html = await Bun.file(join(distDir, "index.html")).text();
         return new Response(html, { headers: { "Content-Type": "text/html" } });
@@ -2243,13 +2245,12 @@ export const { createPortal, flushSync, createRoot, hydrateRoot } = RD;`;
     const distDir = options.distDir;
     const hasModeBundleDir = !!options.modeBundleDir;
 
-    app.get("/assets/*", async (c) => {
+    // Serve static assets (JS/CSS bundles + public files like logo.png, favicon)
+    app.get("*", async (c, next) => {
       const filePath = join(distDir, c.req.path);
       const file = Bun.file(filePath);
-      if (await file.exists()) {
-        return new Response(file);
-      }
-      return c.notFound();
+      if (await file.exists() && !c.req.path.endsWith("/")) return new Response(file);
+      return next();
     });
 
     // SPA fallback — serve index.html for all non-API routes
