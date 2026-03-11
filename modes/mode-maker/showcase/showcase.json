@@ -1,0 +1,24 @@
+{
+  "tagline": "Build, test, and publish Pneuma modes",
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": "Overview Dashboard",
+      "description": "See your mode's completeness at a glance — manifest, viewer, skill, seed — with expandable cards showing each component's details.",
+      "media": "fork.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Fork & Play",
+      "description": "Import any builtin mode as a starting point. Hit Play to launch a test instance in a temp workspace — instant feedback without leaving the editor.",
+      "media": "play-test.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "One-Click Publish",
+      "description": "Package your mode and upload to the Pneuma registry. Share with a single command — version conflicts detected automatically.",
+      "media": "publish.png",
+      "mediaType": "image"
+    }
+  ]
+}

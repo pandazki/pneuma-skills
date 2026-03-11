@@ -1,0 +1,24 @@
+{
+  "tagline": "HTML presentations — pixel-perfect on a 1280×720 canvas",
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": "Fixed-Viewport Slides",
+      "description": "Each slide is crafted HTML on a precise 1280×720 canvas — no scrolling, just clean layouts with theme.css design tokens.",
+      "media": "canvas.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Thumbnail Navigator",
+      "description": "Drag slide thumbnails to reorder your story. Switch between content sets for locale variants or theme experiments.",
+      "media": "drag-reorder.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Highlighter & Export",
+      "description": "Draw freehand on any slide to mark areas for the agent. Export your deck as HTML or print to PDF when ready.",
+      "media": "export.png",
+      "mediaType": "image"
+    }
+  ]
+}

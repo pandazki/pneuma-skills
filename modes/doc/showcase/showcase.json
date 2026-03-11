@@ -1,0 +1,24 @@
+{
+  "tagline": "Markdown documents with live preview",
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": "Live Split View",
+      "description": "Left panel renders your markdown in real-time — headings, code blocks, tables, and images appear as the agent writes.",
+      "media": "live-preview.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Click to Select",
+      "description": "Click any paragraph, heading, or code block to tell the agent exactly what you mean by 'this section' or 'here'.",
+      "media": "select-mode.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Inline Editing",
+      "description": "Switch to Edit mode for a full markdown editor with formatting toolbar — bold, headings, code, lists, links — all auto-saved.",
+      "media": "edit-mode.png",
+      "mediaType": "image"
+    }
+  ]
+}

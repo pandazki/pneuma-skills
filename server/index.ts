@@ -196,7 +196,31 @@ export function startServer(options: ServerOptions) {
       sessions = sessions.filter((s) => existsSync(s.workspace));
       // Sort by lastAccessed descending
       sessions.sort((a, b) => b.lastAccessed - a.lastAccessed);
-      return c.json({ sessions, homeDir: homedir() });
+      // Check for thumbnails
+      const sessionsWithThumbs = sessions.map((s) => ({
+        ...s,
+        hasThumbnail: existsSync(join(s.workspace, ".pneuma", "thumbnail.png")),
+      }));
+      return c.json({ sessions: sessionsWithThumbs, homeDir: homedir() });
+    });
+
+    // Serve session thumbnail
+    app.get("/api/sessions/thumbnail", (c) => {
+      const workspace = c.req.query("workspace");
+      if (!workspace) return c.json({ error: "Missing workspace" }, 400);
+      const thumbPath = join(workspace, ".pneuma", "thumbnail.png");
+      try {
+        if (!existsSync(thumbPath)) return c.notFound();
+        const file = Bun.file(thumbPath);
+        return new Response(file, {
+          headers: {
+            "Content-Type": "image/png",
+            "Cache-Control": "no-cache",
+          },
+        });
+      } catch {
+        return c.notFound();
+      }
     });
 
     // Delete a session record
@@ -512,6 +536,23 @@ export function startServer(options: ServerOptions) {
   // Return the current active session ID so browsers can auto-connect
   app.get("/api/session", (c) => {
     return c.json({ sessionId: wsBridge.getActiveSessionId() });
+  });
+
+  // Save session thumbnail
+  app.post("/api/session/thumbnail", async (c) => {
+    try {
+      const body = await c.req.json();
+      const { data } = body; // base64 PNG data
+      if (!data) return c.json({ error: "Missing data" }, 400);
+      const thumbDir = join(workspace, ".pneuma");
+      if (!existsSync(thumbDir)) mkdirSync(thumbDir, { recursive: true });
+      const thumbPath = join(thumbDir, "thumbnail.png");
+      const buffer = Buffer.from(data, "base64");
+      writeFileSync(thumbPath, buffer);
+      return c.json({ ok: true });
+    } catch (err) {
+      return c.json({ error: "Failed to save thumbnail" }, 500);
+    }
   });
 
   // Return mode init params for the frontend

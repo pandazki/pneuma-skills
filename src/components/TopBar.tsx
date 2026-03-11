@@ -85,7 +85,10 @@ export default function TopBar() {
     <div className="flex items-center px-4 pt-4 pb-2 bg-transparent text-sm select-none z-20 relative">
       {/* Left: logo + selectors */}
       <div className="flex items-center gap-3 bg-cc-surface/50 border border-white/5 backdrop-blur-md px-4 py-1.5 rounded-full shadow-sm min-w-0 shrink-0">
-        <span className="text-cc-primary font-bold text-sm tracking-tight">Pneuma</span>
+        <div className="flex items-center gap-1.5">
+          <img src="/logo.png" alt="" className="w-5 h-5 rounded" />
+          <span className="font-logo text-sm text-cc-fg tracking-tight">Pneuma</span>
+        </div>
         {contentSets.length > 1 && (
           <ContentSetSelector
             items={contentSets.map((cs) => ({ id: cs.prefix, label: cs.label }))}
