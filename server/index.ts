@@ -6,7 +6,7 @@ import { join, resolve, relative, basename, extname, dirname, sep } from "node:p
 import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { WsBridge } from "./ws-bridge.js";
-import { getBackendDescriptors, getDefaultBackendType } from "../backends/index.js";
+import { getBackendDescriptors, getDefaultBackendType, detectBackendAvailability } from "../backends/index.js";
 import type { AgentBackendType } from "../core/types/agent-backend.js";
 import type { SocketData } from "./ws-bridge.js";
 import type { TerminalSocketData } from "./ws-bridge-types.js";
@@ -135,10 +135,13 @@ export function startServer(options: ServerOptions) {
     });
 
     app.get("/api/backends", (c) => {
-      return c.json({
-        backends: getBackendDescriptors(),
-        defaultBackendType: getDefaultBackendType(),
+      const descriptors = getBackendDescriptors();
+      const availability = detectBackendAvailability();
+      const backends = descriptors.map((desc) => {
+        const avail = availability.find((a) => a.type === desc.type);
+        return { ...desc, available: avail?.available ?? false, reason: avail?.reason };
       });
+      return c.json({ backends, defaultBackendType: getDefaultBackendType() });
     });
 
     // Delete a local mode

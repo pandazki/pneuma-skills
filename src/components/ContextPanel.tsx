@@ -31,18 +31,26 @@ function SessionStatsSection() {
         <span className="text-cc-muted">Working dir</span>
         <span className="text-cc-fg truncate" title={session.cwd}>{session.cwd || "—"}</span>
 
-        <span className="text-cc-muted">Cost</span>
-        <span className="text-cc-fg">${session.total_cost_usd.toFixed(4)}</span>
+        {session.backend_type !== "codex" && (
+          <>
+            <span className="text-cc-muted">Cost</span>
+            <span className="text-cc-fg">${session.total_cost_usd.toFixed(4)}</span>
+          </>
+        )}
 
         <span className="text-cc-muted">Turns</span>
         <span className="text-cc-fg">{session.num_turns}</span>
 
-        <span className="text-cc-muted">Lines</span>
-        <span className="text-cc-fg">
-          <span className="text-green-400">+{session.total_lines_added}</span>
-          {" / "}
-          <span className="text-red-400">-{session.total_lines_removed}</span>
-        </span>
+        {session.backend_type !== "codex" && (
+          <>
+            <span className="text-cc-muted">Lines</span>
+            <span className="text-cc-fg">
+              <span className="text-green-400">+{session.total_lines_added}</span>
+              {" / "}
+              <span className="text-red-400">-{session.total_lines_removed}</span>
+            </span>
+          </>
+        )}
       </div>
     </section>
   );

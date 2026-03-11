@@ -89,10 +89,18 @@ export class WsBridge {
     // When the adapter connects, treat it like CLI connected
     this.broadcastToBrowsers(session, { type: "cli_connected" });
 
-    // Flush any queued messages
+    // Flush any queued messages — parse NDJSON and send through the adapter
     if (session.pendingMessages.length > 0) {
       console.log(`[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) via Codex adapter for session ${sessionId}`);
-      session.pendingMessages.splice(0);
+      const queued = session.pendingMessages.splice(0);
+      for (const ndjson of queued) {
+        try {
+          const msg = JSON.parse(ndjson);
+          adapter.sendBrowserMessage(msg);
+        } catch (err) {
+          console.error(`[ws-bridge] Failed to parse/send queued message for session ${sessionId}:`, err);
+        }
+      }
     }
   }
 
@@ -799,7 +807,8 @@ export class WsBridge {
           codexAdapter.sendBrowserMessage(msg);
           return;
         case "set_model":
-          console.warn("[ws-bridge] Runtime model switching not supported for Codex sessions");
+          codexAdapter.sendBrowserMessage(msg);
+          session.state.model = (msg as { model: string }).model;
           return;
         case "viewer_action_response":
           handleViewerActionResponse(session, msg);

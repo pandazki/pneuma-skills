@@ -6,7 +6,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { resolve, join } from "node:path";
+import { resolve, join, delimiter } from "node:path";
 import { existsSync, realpathSync, readFileSync } from "node:fs";
 import type { Subprocess } from "bun";
 import { resolveBinary, getEnrichedPath } from "../../server/path-resolver.js";
@@ -126,7 +126,7 @@ export class CodexCliLauncher {
     const binaryDir = resolve(binary, "..");
     const siblingNode = join(binaryDir, "node");
     const enrichedPath = getEnrichedPath();
-    const spawnPath = [binaryDir, ...enrichedPath.split(":")].filter(Boolean).join(":");
+    const spawnPath = [binaryDir, ...enrichedPath.split(delimiter)].filter(Boolean).join(delimiter);
 
     let spawnCmd: string[];
     const useSiblingNode = existsSync(siblingNode) && isTextScript(binary);

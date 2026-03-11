@@ -342,6 +342,8 @@ export interface SessionState {
   is_compacting: boolean;
   total_lines_added: number;
   total_lines_removed: number;
+  /** Available models for switching (populated by backends that support model/list). */
+  available_models?: { id: string; name?: string }[];
 }
 
 // ─── Permission Types ────────────────────────────────────────────────────────

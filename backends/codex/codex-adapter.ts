@@ -402,8 +402,8 @@ export class CodexAdapter {
         this.handleOutgoingInterrupt();
         return true;
       case "set_model":
-        console.warn("[codex-adapter] Runtime model switching not supported by Codex");
-        return false;
+        this.handleOutgoingSetModel(msg as { type: "set_model"; model: string });
+        return true;
       default:
         return false;
     }
@@ -556,8 +556,10 @@ export class CodexAdapter {
 
       this.emit({ type: "session_init", session: state as SessionState });
 
-      // Best-effort: fetch rate limits (non-blocking)
+      // Best-effort: fetch rate limits, model list, skills (non-blocking)
       this.transport.call("account/rateLimits/read", {}).catch(() => {});
+      this.fetchAvailableModels();
+      this.fetchSkills();
 
       // Flush queued messages
       this.flushPendingOutgoing();
@@ -604,6 +606,7 @@ export class CodexAdapter {
         cwd: this.options.cwd || "",
         approvalPolicy: this.mapApprovalPolicy(this.currentPermissionMode),
         sandboxPolicy: this.mapSandboxPolicyObject(this.currentPermissionMode),
+        model: this.activeModel || undefined,
       };
       const result = await this.transport.call("turn/start", turnParams) as { turn: { id: string } };
       this.currentTurnId = result.turn.id;
@@ -620,7 +623,7 @@ export class CodexAdapter {
   }
 
   private async handleOutgoingPermissionResponse(
-    msg: { type: "permission_response"; request_id: string; behavior: "allow" | "deny"; updated_input?: Record<string, unknown> },
+    msg: { type: "permission_response"; request_id: string; behavior: "allow" | "deny" | "allowAlways"; updated_input?: Record<string, unknown> },
   ): Promise<void> {
     const jsonRpcId = this.pendingApprovals.get(msg.request_id);
     if (jsonRpcId === undefined) {
@@ -633,13 +636,13 @@ export class CodexAdapter {
     // Review decisions (applyPatchApproval / execCommandApproval) need ReviewDecision
     if (this.pendingReviewDecisions.has(msg.request_id)) {
       this.pendingReviewDecisions.delete(msg.request_id);
-      const decision = msg.behavior === "allow" ? "approved" : "denied";
+      const decision = (msg.behavior === "allow" || msg.behavior === "allowAlways") ? "approved" : "denied";
       await this.transport.respond(jsonRpcId, { decision });
       return;
     }
 
     // Standard item/*/requestApproval — uses accept/decline
-    const decision = msg.behavior === "allow" ? "accept" : "decline";
+    const decision = (msg.behavior === "allow" || msg.behavior === "allowAlways") ? "accept" : "decline";
     await this.transport.respond(jsonRpcId, { decision });
   }
 
@@ -652,6 +655,67 @@ export class CodexAdapter {
       });
     } catch (err) {
       console.warn("[codex-adapter] Interrupt failed:", err);
+    }
+  }
+
+  private handleOutgoingSetModel(msg: { type: "set_model"; model: string }): void {
+    this.activeModel = msg.model;
+    console.log(`[codex-adapter] Model set to ${msg.model} — will apply on next turn`);
+    // Codex applies model per-turn via turn/start params, so we just store it.
+    // Emit session update so the browser UI reflects the change immediately.
+    this.emitSessionUpdate({ model: this.activeModel });
+  }
+
+  /** Fetch available models from Codex and send to browser as session update. */
+  private async fetchAvailableModels(): Promise<void> {
+    try {
+      // Codex model/list returns { data: Model[] } where Model has { id, model, displayName, hidden, isDefault, ... }
+      const result = await this.transport.call("model/list", {}) as {
+        data?: { id: string; model?: string; displayName?: string; hidden?: boolean; isDefault?: boolean }[];
+      };
+      const models = result?.data || [];
+      if (Array.isArray(models) && models.length > 0) {
+        const available = models
+          .filter((m) => !m.hidden)
+          .map((m) => ({ id: m.id, name: m.displayName || m.id }));
+        console.log(`[codex-adapter] Available models: ${available.map((m) => `${m.id} (${m.name})`).join(", ")}`);
+        this.emitSessionUpdate({ available_models: available });
+        // If no active model set yet, use the default
+        if (!this.activeModel) {
+          const defaultModel = models.find((m) => m.isDefault);
+          if (defaultModel) {
+            this.activeModel = defaultModel.id;
+            this.emitSessionUpdate({ model: defaultModel.id });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[codex-adapter] Failed to fetch model list:", err);
+    }
+  }
+
+  /** Fetch skills from Codex and expose as slash_commands. */
+  private async fetchSkills(): Promise<void> {
+    try {
+      // Codex skills/list returns { data: [{ cwd, skills: SkillMetadata[], errors }] }
+      // where SkillMetadata has { name, description, enabled, path, scope, ... }
+      const result = await this.transport.call("skills/list", {
+        cwds: [this.options.cwd || ""],
+      }) as {
+        data?: { cwd: string; skills: { name: string; enabled: boolean; description?: string }[]; errors: unknown[] }[];
+      };
+      console.log("[codex-adapter] skills/list response:", JSON.stringify(result).slice(0, 500));
+      const allSkills = result?.data?.flatMap((entry) => entry.skills) || [];
+      const enabledNames = allSkills
+        .filter((s) => s.enabled)
+        .map((s) => s.name)
+        .filter(Boolean);
+      if (enabledNames.length > 0) {
+        console.log(`[codex-adapter] Skills: ${enabledNames.join(", ")}`);
+        this.emitSessionUpdate({ slash_commands: enabledNames, skills: enabledNames });
+      }
+    } catch (err) {
+      console.warn("[codex-adapter] Failed to fetch skills:", err);
     }
   }
 

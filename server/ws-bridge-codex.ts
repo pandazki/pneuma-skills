@@ -33,13 +33,21 @@ export function attachCodexAdapterHandlers(
   deps: CodexBridgeDeps,
 ): void {
   adapter.onBrowserMessage((msg) => {
-    // Update session state for init/update messages
+    // Update session state for init/update messages.
+    // The adapter's partial session is merged with the server's full state
+    // (which includes agent_capabilities etc.) — then we broadcast the merged
+    // state so the browser receives all fields.
     if (msg.type === "session_init") {
       session.state = { ...session.state, ...msg.session, backend_type: "codex" };
       deps.persistSession?.(session);
+      // Broadcast merged state (adapter's partial may lack agent_capabilities)
+      deps.broadcastToBrowsers(session, { type: "session_init", session: session.state });
+      return;
     } else if (msg.type === "session_update") {
       session.state = { ...session.state, ...msg.session, backend_type: "codex" };
       deps.persistSession?.(session);
+      deps.broadcastToBrowsers(session, { type: "session_update", session: session.state });
+      return;
     } else if (msg.type === "status_change") {
       session.state.is_compacting = msg.status === "compacting";
       session.cliIdle = msg.status === "idle";
