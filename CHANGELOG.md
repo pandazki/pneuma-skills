@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.5.4] - 2026-03-11
+
+### Fixed
+- **Windows ARM64 desktop build** — electron-builder config listed both x64 and arm64 under one target, causing the x64 CI job to build both archs and the ARM64 job to fail on duplicate asset upload; each CI job now builds only its own arch
+
 ## [2.5.3] - 2026-03-11
 
 ### Fixed
