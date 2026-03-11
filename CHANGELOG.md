@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.5.3] - 2026-03-11
+
+### Fixed
+- **Desktop app fails to start** — CLI update checker blocked Electron startup with an interactive prompt; now skipped in non-interactive mode (`--no-prompt`)
+
 ## [2.5.2] - 2026-03-11
 
 ### Improved
