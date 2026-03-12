@@ -1,8 +1,8 @@
 # Pneuma 2.0: Evolution Agent — AI-Native Skill 演进
 
 > **日期**: 2026-03-06
-> **基于**: v1.18.9 → Implemented in v2.0.0
-> **状态**: Implemented (merged in PR #41)
+> **基于**: v1.18.9 → Implemented in v2.0.0, UI in v2.2.0, Evolve mode in v2.3.0
+> **状态**: Implemented — CLI, API, Evolve mode viewer, apply/rollback/discard/fork
 > **替代**: `proposal-v2-continuous-learning.md`（已归档至 `archive/`）
 
 ---

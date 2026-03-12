@@ -86,7 +86,7 @@ Claude-specific 字段暂时继续保留兼容，例如 `claude_code_version`，
 当前声明：
 
 - `claude-code` — 已实现
-- `codex` — 已声明，未实现
+- `codex` — 已实现（v2.6.0，JSON-RPC over stdio）
 
 ### 3.2 Session 持久化兼容
 

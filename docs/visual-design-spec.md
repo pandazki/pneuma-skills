@@ -1,5 +1,7 @@
 # Pneuma Skills: Next-Gen Visual Design Specification
 
+> **状态**: Implemented — "Ethereal Tech" theme is the current production design. Phase 2 partially implemented (ambient shell, floating chat input).
+
 ## 1. Design Philosophy
 The redesign moves Pneuma from a "traditional dashboard" to an **Ethereal Ethereal Tech (Next-Gen AI)** aesthetic. As a "WYSIWYG Delivery Platform for Code Agents", the interface should feel immersive, intelligent, and fluid—minimizing cognitive load while maximizing the sense of collaborating with an advanced AI entity.
 

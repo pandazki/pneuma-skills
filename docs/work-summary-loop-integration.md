@@ -1,5 +1,7 @@
 # Work Summary: Claude Code Cron/Loop Integration
 
+> **状态**: Implemented — merged to main in v2.5.0
+
 **Branch:** `feat/loop-integration`
 **Worktree:** `../pneuma-skills-loop`
 **Date:** 2026-03-09

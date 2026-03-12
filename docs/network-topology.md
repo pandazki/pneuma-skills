@@ -1,6 +1,6 @@
 # Network Topology & Port Reference
 
-> Last updated: 2026-03-10 (backend abstraction refresh)
+> Last updated: 2026-03-12 (Codex transport clarification)
 
 ## Port Allocation
 
@@ -53,7 +53,8 @@ isDev = forceDev (--dev flag) || !existsSync(dist/index.html)
 │                                                    │            │
 │                          ws://localhost:17007/ws/cli/:id         │
 │                                                    │            │
-│                                          Claude Code CLI        │
+│                                          Agent Backend            │
+│                                          (Claude: WS, Codex: stdio)│
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -61,6 +62,7 @@ Key points:
 - Vite proxies REST (`/api/*`, `/content/*`) to backend
 - WebSocket **bypasses** Vite proxy — browser connects directly to `:17007`
 - Vite env var `VITE_API_PORT` tells frontend which backend port to use
+- Codex backend uses stdio (JSON-RPC), not WebSocket — managed by `CodexAdapter` + `ws-bridge-codex.ts`
 
 ### Production Mode — single process
 
@@ -76,7 +78,8 @@ Key points:
 │                                  ├─ /ws/browser/:id             │
 │                                  └─ /ws/cli/:id                 │
 │                                          │                      │
-│                                    Claude Code CLI              │
+│                                    Agent Backend                │
+│                              (Claude: WS, Codex: stdio)        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -147,7 +150,8 @@ Ports 18996/18997 are hardcoded constants in `server/mode-maker-routes.ts`.
 | Path | Protocol | Client | Purpose |
 |------|----------|--------|---------|
 | `/ws/browser/:sessionId` | JSON | Browser UI | User messages, permissions, viewer actions |
-| `/ws/cli/:sessionId` | transport-specific | Current backend CLI | Tool use, streaming, agent events |
+| `/ws/cli/:sessionId` | NDJSON (Claude) | Claude Code CLI | Tool use, streaming, agent events |
+| *(stdio, no WS)* | JSON-RPC (Codex) | Codex app-server | Managed by CodexAdapter, not WS-routed |
 | `/ws/terminal/:terminalId` | Binary | Terminal UI | PTY I/O (xterm.js) |
 
 Browser WebSocket URL construction (`src/ws.ts`):
@@ -166,7 +170,16 @@ const sdkUrl = `ws://localhost:${this.port}/ws/cli/${sessionId}`;
 // Passed as: claude --sdk-url <sdkUrl>
 ```
 
-`/ws/cli/:sessionId` remains the server-side transport entrypoint, but the runtime session layer is backend-neutral. Browser session state carries `backend_type`, `agent_capabilities`, and `agent_version` so frontend feature gating does not depend on Claude-specific transport details.
+Codex transport (`backends/codex/codex-adapter.ts`):
+
+```typescript
+// Codex uses stdio JSON-RPC, not WebSocket
+// codex --app-server spawns a child process
+// CodexAdapter communicates via stdin/stdout JSON-RPC
+// ws-bridge-codex.ts bridges browser WS ↔ CodexAdapter events
+```
+
+The runtime session layer is backend-neutral. Browser session state carries `backend_type`, `agent_capabilities`, and `agent_version` so frontend feature gating does not depend on transport details.
 
 ## Environment Variable Flow
 
@@ -244,5 +257,7 @@ Note: WebSocket is **not** proxied through Vite — the browser connects directl
 | Frontend port resolution | `src/ws.ts` | `getWsUrl()` |
 | Frontend API base | `src/App.tsx` | `getApiBase()` |
 | CLI WebSocket URL | `backends/claude-code/cli-launcher.ts` | `sdkUrl` |
+| Codex stdio transport | `backends/codex/codex-adapter.ts` | `JsonRpcTransport` |
+| Codex WS bridge | `server/ws-bridge-codex.ts` | Browser ↔ CodexAdapter |
 | Play ports | `server/mode-maker-routes.ts` | `PLAY_PORT`, `PLAY_VITE_PORT` |
 | Launcher child spawn | `server/index.ts` | `POST /api/launch` |
