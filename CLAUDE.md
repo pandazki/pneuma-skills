@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Pneuma Skills is co-creation infrastructure for humans and code agents. It provides four pillars for isomorphic collaboration: a **visual environment** (live bidirectional workspace), **skills** (domain knowledge + seed templates + session persistence), **continuous learning** (evolution agent for cross-session preference extraction and skill augmentation), and **distribution** (mode marketplace, publishing, sharing). The current production backend is Claude Code via `--sdk-url`, but the runtime now exposes a startup-selectable backend layer so additional agents can be integrated without rewriting the shell.
+Pneuma Skills is co-creation infrastructure for humans and code agents. It provides four pillars for isomorphic collaboration: a **visual environment** (live bidirectional workspace), **skills** (domain knowledge + seed templates + session persistence), **continuous learning** (evolution agent for cross-session preference extraction and skill augmentation), and **distribution** (mode marketplace, publishing, sharing). The runtime supports multiple agent backends (Claude Code, Codex) selected at startup.
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
@@ -18,7 +18,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 | Server | Hono 4.7 |
 | Frontend | React 19 + Vite 7 + Tailwind CSS 4 + Zustand 5 |
 | Terminal | xterm.js 6 + Bun native PTY |
-| File Watching | chokidar 4 |
+| File Watching | chokidar 5 |
 | Drawing | @excalidraw/excalidraw 0.18 |
 | Desktop | Electron 41 + electron-builder + electron-updater |
 | Agent | Claude Code CLI via `--sdk-url`; Codex CLI via `app-server` stdio JSON-RPC |
@@ -53,7 +53,7 @@ pneuma snapshot pull     # Download workspace from R2
 |------|-------------|
 | `--workspace <path>` | Workspace directory (default: cwd) |
 | `--port <n>` | Server port (default: auto) |
-| `--backend <type>` | Select backend at startup (`claude-code` today; session stays fixed to it) |
+| `--backend <type>` | Select backend at startup (`claude-code` or `codex`; session stays fixed to it) |
 | `--no-open` | Don't open browser |
 | `--no-prompt` | Non-interactive mode (launcher uses this) |
 | `--skip-skill` | Skip skill installation (session resume without update) |
@@ -78,7 +78,7 @@ pneuma-skills/
 │   ├── mode-loader.ts         # Mode discovery & loading (builtin + external)
 │   ├── mode-resolver.ts       # Source resolution (builtin/local/github/url → disk path)
 │   └── utils/manifest-parser.ts  # Regex-based manifest.ts metadata extraction
-├── modes/{webcraft,doc,slide,draw,mode-maker,evolve}/  # Builtin modes
+├── modes/{webcraft,doc,slide,draw,illustrate,mode-maker,evolve}/  # Builtin modes
 ├── backends/
 │   ├── index.ts               # Backend registry + descriptors + capabilities + availability
 │   ├── claude-code/           # Claude backend — Bun.spawn with --sdk-url
@@ -151,11 +151,11 @@ Current implementation separates backend concerns into two layers:
    - `agent_capabilities`
    - `agent_version`
 
-Claude-specific wire details still live in the Claude transport path, but frontend feature gating no longer assumes every backend behaves like Claude.
+Backend-specific wire details live in `backends/<name>/` and `server/ws-bridge*.ts`. Frontend feature gating uses `agent_capabilities` instead of assuming backend behavior.
 
 ### Communication
 
-- Dual WebSocket: Browser (`/ws/browser/:sessionId`, JSON) ↔ Server ↔ CLI transport (`/ws/cli/:sessionId`)
+- Browser WebSocket: `/ws/browser/:sessionId` (JSON) ↔ Server ↔ backend transport (Claude: `/ws/cli/:sessionId` NDJSON; Codex: stdio JSON-RPC)
 - File changes: chokidar → WebSocket push to browser
 - Claude transport: `claude --sdk-url ws://... --print --output-format stream-json --input-format stream-json --verbose -p ""`
 - Codex transport: `codex app-server` with stdio JSON-RPC; `CodexAdapter` translates between Codex protocol and Pneuma `BrowserIncomingMessage` format via `ws-bridge-codex.ts`
@@ -191,7 +191,7 @@ CLI Entry (bin/pneuma.ts)
       │   Template: {{key}}, {{viewerCapabilities}}
       │
       ├─ 5. Server start: server/index.ts
-      │   Hono HTTP + dual WebSocket (browser JSON / CLI NDJSON)
+      │   Hono HTTP + WebSocket + backend transport bridge
       │
       ├─ 6. Backend selection: startup-only, workspace-locked
       │   existing workspace backend cannot be switched mid-session
@@ -217,7 +217,7 @@ Modes can come from four sources, resolved by `core/mode-resolver.ts`:
 
 | Type | Specifier | Resolved Path |
 |------|-----------|---------------|
-| **builtin** | `doc`, `slide`, `draw`, `mode-maker`, `evolve` | `modes/<name>/` |
+| **builtin** | `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `mode-maker`, `evolve` | `modes/<name>/` |
 | **local** | `/abs/path`, `./rel` | As-is |
 | **github** | `github:user/repo` | `~/.pneuma/modes/<user>-<repo>/` |
 | **url** | `https://...tar.gz` | `~/.pneuma/modes/<name>/` |
@@ -283,9 +283,13 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 |----------|-------------|
 | `GET /api/registry` | Returns `{ builtins, published, local }` |
 | `GET /api/backends` | Returns backend descriptors + availability + default backend |
+| `GET /api/modes/:name/showcase/*` | Serve mode showcase assets |
 | `GET /api/sessions` | Returns `{ sessions, homeDir }` — filtered by existing workspace |
+| `GET /api/sessions/thumbnail` | Get session thumbnail image |
 | `DELETE /api/sessions/:id` | Remove a session record |
 | `DELETE /api/modes/:name` | Delete a local mode from `~/.pneuma/modes/` |
+| `GET /api/browse-dirs` | List directories for workspace picker |
+| `GET /api/workspace-check` | Check if workspace has existing session |
 | `POST /api/launch/prepare` | Resolve mode, return initParams |
 | `POST /api/launch/skill-check` | Compare installed vs current skill version |
 | `POST /api/launch/skill-dismiss` | Record dismissed version |
@@ -294,7 +298,7 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 ### Launcher UI Sections (Launcher.tsx)
 
 1. **Recent Sessions** — one-click resume, inline delete, skill update prompt
-2. **Built-in Modes** — doc, slide, draw
+2. **Built-in Modes** — webcraft, doc, slide, draw, illustrate
 3. **Local Modes** — scanned from `~/.pneuma/modes/`, with delete
 4. **Published Modes** — fetched from R2 registry
 5. **Backend Picker** — choose backend at launch; existing workspaces stay locked to their original backend
@@ -306,8 +310,11 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/session` | Current active session ID |
+| POST | `/api/session/thumbnail` | Upload session thumbnail |
 | GET | `/api/config` | Mode init params |
 | GET | `/api/mode-info` | External mode info |
+| GET | `/api/viewer-state` | Persisted viewer position (content set + file) |
+| POST | `/api/viewer-state` | Save viewer position |
 
 ### Files
 
@@ -364,20 +371,25 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 | GET | `/mode-assets/*` | Compiled mode bundle (production) |
 | GET | `/vendor/*` | React shims for external modes (react.js, react-dom.js, jsx-runtime) |
 
-### Export (Slide Mode)
+### Export
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/export/slides` | Slide export HTML |
 | GET | `/export/slides/download` | Download slides as HTML file |
+| GET | `/export/webcraft` | Webcraft export HTML |
+| GET | `/export/webcraft/download` | Download webcraft as HTML file |
+| GET | `/export/webcraft/zip` | Download webcraft as ZIP archive |
 
 ### WebSocket
 
 | Path | Protocol | Description |
 |------|----------|-------------|
 | `/ws/browser/:sessionId` | JSON | Browser ↔ server |
-| `/ws/cli/:sessionId` | NDJSON | CLI ↔ server |
+| `/ws/cli/:sessionId` | NDJSON | Claude Code CLI ↔ server |
 | `/ws/terminal/:terminalId` | binary | PTY terminal |
+
+Note: Codex uses stdio JSON-RPC (not WebSocket). `CodexAdapter` bridges Codex ↔ browser via `ws-bridge-codex.ts`.
 
 ### Evolution API (when mode = evolve)
 
@@ -430,7 +442,7 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 
 ## Known Gotchas
 
-- **chokidar v4 glob broken**: Watch directory path, filter in callback. Don't use `watch("**/*.md", { cwd })`.
+- **chokidar glob**: Watch directory path, filter in callback. Don't use `watch("**/*.md", { cwd })`.
 - **react-resizable-panels v4.6**: `Group` not `PanelGroup`, `Separator` not `PanelResizeHandle`, `orientation` not `direction`.
 - **Vite WS proxy + Bun.serve**: Browser WS connects directly to backend port, bypassing Vite.
 - **Stale `dist/`**: If `dist/index.html` exists, the server falls back to production mode. Launcher-spawned children auto-inherit `--dev` from the parent, but direct CLI usage without `--dev` may still hit this. Delete `dist/` or pass `--dev` explicitly.
