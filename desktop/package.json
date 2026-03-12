@@ -28,6 +28,8 @@
     "electron-updater": "^6.8.3"
   },
   "devDependencies": {
+    "@electron/notarize": "^3.0.0",
+    "dotenv": "^17.3.0",
     "electron": "^41.0.0",
     "electron-builder": "^26.8.1",
     "tsup": "^8.4.0",

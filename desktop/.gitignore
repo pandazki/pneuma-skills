@@ -4,3 +4,4 @@ release/
 resources/bun-*
 pneuma-node-modules/
 *.tsbuildinfo
+.env

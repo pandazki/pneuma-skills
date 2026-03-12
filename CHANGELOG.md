@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.3] - 2026-03-12
+
+### Fixed
+- **Light mode scrollbars** — scrollbar colors now properly follow light/dark theme switching across all child elements
+
+### Added
+- **macOS code signing & notarization** — desktop builds are now signed with Developer ID and notarized with Apple, eliminating Gatekeeper warnings
+- **CI signing pipeline** — GitHub Actions workflow imports signing certificate and notarizes macOS builds automatically
+
 ## [2.6.2] - 2026-03-12
 
 ### Improved

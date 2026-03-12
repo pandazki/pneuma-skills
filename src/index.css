@@ -221,7 +221,8 @@ img {
 }
 
 /* Light mode scrollbars */
-.launcher-light {
+.launcher-light,
+.launcher-light * {
   scrollbar-color: oklch(70% 0.01 55 / 0.2) transparent;
 }
 
