@@ -113,8 +113,15 @@ pneuma-skills/
 │   └── electron-builder.yml   # Packaging config (mac/win/linux)
 ├── snapshot/                  # R2 push/pull for workspace snapshots + mode publishing
 │   └── mode-publish.ts        # Mode package publishing to R2 registry
-└── docs/                      # Architecture docs + ADRs
+└── docs/                      # Supplementary documentation
+    ├── design/                # Active design docs (current/next version)
+    ├── reference/             # Stable technical references (maintained)
+    ├── adr/                   # Architecture Decision Records (immutable)
+    └── archive/               # Historical: proposals, work summaries, legacy
 ```
+
+> **Documentation hierarchy:** `README.md` / `CLAUDE.md` / `AGENT.md` are the source of truth.
+> `docs/` contains supplementary material — see `docs/README.md` for the reading guide.
 
 ## Architecture
 

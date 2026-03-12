@@ -1,73 +1,71 @@
-# Documentation Index
+# Documentation
 
-> Pneuma Skills v2.x 文档体系
+## 阅读顺序
 
-## 核心文档（始终保持与代码同步）
+**新人从这里开始：**
 
-| 文档 | 位置 | 说明 |
-|------|------|------|
-| **CLAUDE.md** | `/CLAUDE.md` | 项目主文档：架构、API、约定、结构 |
-| **AGENT.md** | `/AGENT.md` | Agent 工作指引：runtime contract、feature gating、文档策略 |
-| **README.md** | `/README.md` | 用户面向：安装、使用、功能介绍 |
-| **CHANGELOG.md** | `/CHANGELOG.md` | 版本发布记录 |
+1. **[README.md](../README.md)** — 项目是什么、怎么安装、怎么用
+2. **[CLAUDE.md](../CLAUDE.md)** — 完整技术文档：架构、API、约定、结构（也是 Agent 的项目指引）
+3. **[AGENT.md](../AGENT.md)** — Agent 工作准则：runtime contract、feature gating、文档策略
 
-## 架构决策记录 (ADR)
+这三个根文件是 Pneuma 的 **single source of truth**，始终与代码同步。`docs/` 下的所有内容都是补充材料。
 
-历史性文档，记录关键架构决策的背景、方案对比和影响。不随实现演进而修改。
+## 目录结构
 
-→ [ADR 索引](./adr/README.md)
+```
+docs/
+├── design/        正在设计或即将实施的功能
+├── reference/     长期有效的技术参考（持续维护）
+├── adr/           架构决策记录（历史性，不修改）
+└── archive/       完成使命的历史文档
+    ├── proposals/       已实现的设计提案
+    ├── work-summaries/  已合并的工作记录
+    └── legacy/          早期草稿、调研、被替代的文档
+```
 
-| 阶段 | ADR | 核心决策 |
-|------|-----|---------|
-| **v1 基础** | ADR-001 ~ 011 | 整体架构、WebSocket 协议、Mode 插件、Skill 安装、Session、权限、文件监听 |
-| **v2 抽象** | ADR-012 | Backend Registry — 启动时选择 backend、能力 gating、session 标准化 |
+## 管理规则
 
-## 设计文档（实现参考）
+| 目录 | 放入时机 | 移出时机 |
+|------|---------|---------|
+| `design/` | 开始设计一个新功能或新版本 | 功能发布后 → `archive/proposals/` |
+| `reference/` | 文档内容长期有效，需要持续维护 | 过时后重写或删除 |
+| `adr/` | 做出架构决策时 | 不移动，只标 Deprecated/Superseded |
+| `archive/` | 文档完成使命后 | 不移动 |
 
-| 文档 | 状态 | 说明 |
-|------|------|------|
-| [visual-design-spec.md](./visual-design-spec.md) | **已实现** | "Ethereal Tech" 视觉设计规范 |
-| [network-topology.md](./network-topology.md) | **已实现** | 端口分配、通信拓扑、环境变量 |
-| [cron-protocol.md](./cron-protocol.md) | **已实现** | Claude Code Cron 协议逆向文档 |
+**关键原则：**
+- 根文件（README / CLAUDE.md / AGENT.md）是活文档，每次发版同步更新
+- `design/` 里只放当前或下一版在做的东西，不堆积
+- 已实现的提案不删除，移入 `archive/proposals/` 保留决策历史
+- 工作记录合并后移入 `archive/work-summaries/`，不留在顶层
 
-## 提案文档（设计 → 实现追踪）
+## 当前活跃文档
 
-| 文档 | 状态 | 说明 |
-|------|------|------|
-| [proposal-v2-evolution-agent.md](./proposal-v2-evolution-agent.md) | **已实现** | Evolution Agent 设计 — CLI + API + Evolve mode viewer |
-| [mode-proposals-2026.md](./mode-proposals-2026.md) | **部分实现** | 三个 Mode 提案：`webcraft`（原 site）已实现，`chart` / `flow` 待实现 |
-
-## 工作记录
+### design/
 
 | 文档 | 说明 |
 |------|------|
-| [work-summary-loop-integration.md](./work-summary-loop-integration.md) | Cron/Loop 集成工作记录 |
+| [pneuma-3.0-design.md](design/pneuma-3.0-design.md) | 3.0 AI-native 微应用平台设计 |
 
-## 归档 (archive/)
+### reference/
 
-历史文档，已被后续设计替代或合并。保留作为决策演进参考。
+| 文档 | 说明 |
+|------|------|
+| [network-topology.md](reference/network-topology.md) | 端口分配、通信拓扑、环境变量 |
+| [cron-protocol.md](reference/cron-protocol.md) | Claude Code Cron 协议逆向文档 |
 
-| 文档 | 被替代为 |
-|------|---------|
-| `draft.md` | CLAUDE.md + ADR 系列 |
-| `architecture-review-v1/v2/v3.md` | 迭代审查记录，结论已融入 CLAUDE.md |
-| `companion-features-reference.md` | 初期调研参考，不再维护 |
-| `phase1-internal-decoupling.md` | 已完成，结论在 ADR-004/005 |
-| `proposal-v2-continuous-learning.md` | 被 `proposal-v2-evolution-agent.md` 替代 |
-| `slide-skill-upgrade.md` | 已完成合并 |
-| `slide-viewer-enhancements.md` | 已完成合并 |
-| `viewer-contract-v2.md` | 结论在 ADR-004 + `core/types/viewer-contract.ts` |
+### adr/
 
-## 2.x 里程碑总结
+→ [ADR 索引](adr/README.md) — 12 个架构决策记录（ADR-001 ~ 012）
 
-Pneuma 2.0 ~ 2.6 完成了从单一 Claude Code 工具到 **通用 Agent 共创基础设施** 的演进：
+### archive/
 
-1. **Mode 系统成熟** — 7 个内置 Mode（webcraft, doc, slide, draw, illustrate, mode-maker, evolve），外部 Mode 支持（local/github/url/published）
-2. **Backend 抽象** — 从 Claude Code 硬绑定到 startup-selectable backend，Codex 已实现
-3. **Skill 演进** — Evolution Agent 实现跨会话偏好学习，propose → review → apply 工作流
-4. **Launcher 市场化** — 内置/本地/已发布 Mode 浏览，最近会话一键恢复，backend 选择
-5. **调度能力** — Cron/Loop 集成，Schedule Panel
-6. **桌面应用** — Electron 封装，系统托盘，自动更新
-7. **分发基础设施** — R2 快照、Mode 发布、npm CLI
+已实现提案：
+- [proposal-v2-evolution-agent.md](archive/proposals/proposal-v2-evolution-agent.md) — Evolution Agent 设计（已实现）
+- [mode-proposals-2026.md](archive/proposals/mode-proposals-2026.md) — Mode 提案（webcraft 已实现，chart/flow 待定）
+- [visual-design-spec.md](archive/proposals/visual-design-spec.md) — Ethereal Tech 视觉规范（已实现）
 
-核心架构公式不变：`ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
+工作记录：
+- [work-summary-loop-integration.md](archive/work-summaries/work-summary-loop-integration.md) — Cron/Loop 集成（已合并）
+
+早期文档：
+- `archive/legacy/` — 初期草稿、架构审查迭代、被替代的提案

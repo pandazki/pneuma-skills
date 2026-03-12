@@ -39,9 +39,32 @@ Do not spread backend-specific conditionals throughout unrelated components if t
 
 ## Documentation Policy
 
-- Historical ADRs should not be rewritten to describe current implementation drift.
-- For architecture changes, add a new ADR instead of mutating old ones.
-- Keep `README.md` and `CLAUDE.md` aligned with the current implementation.
+### Root Files (single source of truth)
+
+| File | Audience | Content |
+|------|----------|---------|
+| `README.md` | Users / newcomers | What this is, how to install, how to use |
+| `CLAUDE.md` | Agents / developers | Full technical doc: architecture, API, conventions, structure |
+| `AGENT.md` | Agents | Working guidelines: runtime contract, feature gating, doc policy |
+
+These three files are always kept in sync with the current codebase. Update them on every release.
+
+### docs/ Structure
+
+| Directory | Purpose | Lifecycle |
+|-----------|---------|-----------|
+| `docs/design/` | Active design docs for current/next version | Feature ships → `archive/proposals/` |
+| `docs/reference/` | Stable technical references, maintained long-term | Rewrite or delete when outdated |
+| `docs/adr/` | Architecture Decision Records | Never move; mark Deprecated if superseded |
+| `docs/archive/` | Historical: implemented proposals, work summaries, legacy drafts | Final resting place |
+
+### Rules
+
+- Do not rewrite historical ADRs to match current implementation — add a new ADR instead.
+- `docs/design/` should only contain docs for work in progress. Do not let implemented designs accumulate here.
+- Implemented proposals move to `docs/archive/proposals/`, not deleted — they preserve decision history.
+- Work summaries move to `docs/archive/work-summaries/` after the branch merges.
+- See `docs/README.md` for the full reading guide.
 
 ## Verification
 
