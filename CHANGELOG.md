@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.2] - 2026-03-12
+
+### Improved
+- **Documentation hierarchy** — restructured `docs/` into `design/`, `reference/`, `adr/`, and `archive/` with clear lifecycle rules
+- **CLAUDE.md accuracy** — fixed stale content: missing builtin modes (webcraft, illustrate), outdated "dual WebSocket" references, missing API endpoints, chokidar version
+- **Root file roles** — clarified `CLAUDE.md` (Claude Code) vs `AGENT.md` (Codex/other agents) as same-role files for different backends
+- **3.0 design document** — initial design for AI-native micro-app platform with app layout and agent bubble
+
 ## [2.6.1] - 2026-03-12
 
 ### Fixed
