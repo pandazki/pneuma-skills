@@ -6,7 +6,7 @@ Project-local guidance for agents working in `pneuma-skills`.
 
 ## Current Backend Model
 
-- Claude Code is the only implemented runtime backend today.
+- Claude Code and Codex are the two implemented runtime backends.
 - Backend selection happens only at startup.
 - Backend identity is persisted in:
   - `<workspace>/.pneuma/session.json`
@@ -31,7 +31,8 @@ If a feature is not guaranteed across backends, gate it through capabilities or 
 
 Current examples:
 
-- `ModelSwitcher` depends on `agent_capabilities.modelSwitch`
+- `ModelSwitcher` depends on `agent_capabilities.modelSwitch` and `session.available_models`
+- `ContextPanel` hides cost/lines stats for backends that don't provide them (Codex)
 - `Schedules` is Claude-specific
 
 Do not spread backend-specific conditionals throughout unrelated components if the behavior can be centralized in session/capability handling.

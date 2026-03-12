@@ -57,12 +57,12 @@ Download the latest release for your platform:
 | Windows ARM64 | [`.exe` installer](https://github.com/pandazki/pneuma-skills/releases/latest) |
 | Linux x64 | [`.AppImage`](https://github.com/pandazki/pneuma-skills/releases/latest) / [`.deb`](https://github.com/pandazki/pneuma-skills/releases/latest) |
 
-The desktop app bundles Bun — no runtime install needed. Install [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) and you're ready to go. The launcher also exposes other backend slots, but only Claude Code is implemented today.
+The desktop app bundles Bun — no runtime install needed. Install [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) and you're ready to go. The launcher shows available backends — currently Claude Code and Codex are implemented.
 
 ### CLI
 
 ```bash
-# Prerequisites: Bun >= 1.3.5, Claude Code CLI
+# Prerequisites: Bun >= 1.3.5, Claude Code CLI and/or Codex CLI
 
 # Open the Launcher (marketplace UI)
 bunx pneuma-skills
@@ -151,7 +151,7 @@ Three core contracts in `core/types/`:
 |----------|---------------|-------------|
 | **ModeManifest** | Skill, viewer config, agent preferences, init seeds | New modes (mindmap, canvas, etc.) |
 | **ViewerContract** | Preview component, context extraction, action protocol | Custom renderers, viewport tracking |
-| **AgentBackend** | Launch, resume, kill, capability declaration | Other agents (Codex, Aider) |
+| **AgentBackend** | Launch, resume, kill, capability declaration | Other agents (Aider, etc.) |
 
 The backend contract is intentionally split in two layers:
 
@@ -166,19 +166,19 @@ That means backend-specific protocols stay in `backends/<name>/`, while the UI a
 |-------|-----------|
 | Runtime | [Bun](https://bun.sh) >= 1.3.5 |
 | Server | [Hono](https://hono.dev) |
-| Frontend | React 19 + [Vite](https://vite.dev) 6 + [Tailwind CSS](https://tailwindcss.com) 4 |
-| Desktop | [Electron](https://www.electronjs.org) 35 + electron-builder + electron-updater |
+| Frontend | React 19 + [Vite](https://vite.dev) 7 + [Tailwind CSS](https://tailwindcss.com) 4 |
+| Desktop | [Electron](https://www.electronjs.org) 41 + electron-builder + electron-updater |
 | Terminal | [xterm.js](https://xtermjs.org) + Bun native PTY |
 | Drawing | [Excalidraw](https://excalidraw.com) |
 | Canvas | [React Flow](https://reactflow.dev) (Illustrate mode) |
-| Agent | Claude Code via `--sdk-url`; multi-backend registry prepared for Codex app-server |
+| Agent | Claude Code via `--sdk-url`; Codex CLI via app-server |
 
 ## Backend Model
 
 - Backend is selected once at launch with `--backend` or in the launcher modal.
 - The selected backend is persisted in `<workspace>/.pneuma/session.json` and `~/.pneuma/sessions.json`.
 - Existing workspaces are backend-locked. Pneuma resumes the same backend for the lifetime of that workspace session instead of switching mid-stream.
-- Frontend features now read `agent_capabilities` from session state. Claude-only features such as Schedules are hidden or downgraded for non-Claude backends.
+- Frontend features now read `agent_capabilities` from session state. Claude-only features such as Schedules and cost tracking are hidden for non-Claude backends.
 
 ## Acknowledgements
 
