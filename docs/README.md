@@ -4,11 +4,11 @@
 
 **新人从这里开始：**
 
-1. **[README.md](../README.md)** — 项目是什么、怎么安装、怎么用
-2. **[CLAUDE.md](../CLAUDE.md)** — 完整技术文档：架构、API、约定、结构（也是 Agent 的项目指引）
-3. **[AGENT.md](../AGENT.md)** — Agent 工作准则：runtime contract、feature gating、文档策略
+1. **[README.md](../README.md)** — 项目是什么、怎么安装、怎么用（面向人类）
+2. **[CLAUDE.md](../CLAUDE.md)** — 项目指引：架构、API、约定、结构（Claude Code 读取）
+3. **[AGENT.md](../AGENT.md)** — 项目指引：runtime contract、feature gating、文档策略（Codex / 其他 coding agent 读取）
 
-这三个根文件是 Pneuma 的 **single source of truth**，始终与代码同步。`docs/` 下的所有内容都是补充材料。
+`CLAUDE.md` 和 `AGENT.md` 是同一角色（agent 项目指引），分别给不同 backend 的 agent 读。三个根文件是 Pneuma 的 **single source of truth**，始终与代码同步。`docs/` 下的所有内容都是补充材料。
 
 ## 目录结构
 

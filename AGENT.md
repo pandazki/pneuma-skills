@@ -41,13 +41,15 @@ Do not spread backend-specific conditionals throughout unrelated components if t
 
 ### Root Files (single source of truth)
 
-| File | Audience | Content |
-|------|----------|---------|
-| `README.md` | Users / newcomers | What this is, how to install, how to use |
-| `CLAUDE.md` | Agents / developers | Full technical doc: architecture, API, conventions, structure |
-| `AGENT.md` | Agents | Working guidelines: runtime contract, feature gating, doc policy |
+| File | Read by | Purpose |
+|------|---------|---------|
+| `README.md` | Humans | User-facing: what this is, install, usage |
+| `CLAUDE.md` | Claude Code | Project instructions for Claude Code agent |
+| `AGENT.md` | Codex / other coding agents | Project instructions for non-Claude agents |
 
-These three files are always kept in sync with the current codebase. Update them on every release.
+`CLAUDE.md` and `AGENT.md` serve the same role — project-level agent instructions — for different backends. Keep their content aligned where applicable (architecture, conventions, contracts). Backend-specific guidance goes in the respective file only.
+
+All three files are kept in sync with the codebase. Update on every release.
 
 ### docs/ Structure
 
