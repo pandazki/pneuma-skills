@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.4] - 2026-03-15
+
+### Added
+- **WebCraft screenshot export** — "Screenshot PNG" button on the export page captures all pages as full-height images via snapdom, stitches them vertically, and downloads as a single long PNG
+- **Local snapdom vendor route** — `/vendor/snapdom.js` serves snapdom from node_modules, eliminating CDN dependency for export pages
+
 ## [2.6.3] - 2026-03-12
 
 ### Fixed

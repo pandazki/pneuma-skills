@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.6.3
+**Version:** 2.6.4
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `mode-maker`, `evolve`
 
@@ -369,7 +369,7 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 |--------|------|-------------|
 | GET | `/content/*` | Serve workspace files |
 | GET | `/mode-assets/*` | Compiled mode bundle (production) |
-| GET | `/vendor/*` | React shims for external modes (react.js, react-dom.js, jsx-runtime) |
+| GET | `/vendor/*` | React shims for external modes (react.js, react-dom.js, jsx-runtime) + snapdom.js |
 
 ### Export
 

@@ -1383,6 +1383,7 @@ ${slidePages}${downloadScript}${imageModeScript}
       <button class="btn-primary" onclick="downloadHtml()">Download HTML</button>
       <button class="btn-secondary" onclick="downloadZip()">Download ZIP</button>
       <div class="print-divider"></div>
+      <button class="btn-secondary" onclick="captureScreenshot()">Screenshot PNG</button>
       <button class="btn-secondary" onclick="window.print()">Print / Save PDF</button>
     </div>
   </div>
@@ -1461,6 +1462,61 @@ function setViewport(vp){
       wrapper.style.margin='0 auto';
     }
   });
+}
+async function captureScreenshot(){
+  var btns=document.querySelectorAll('.export-toolbar-actions button');
+  var btn=btns[2]; // Screenshot PNG button
+  var origText=btn.textContent;
+  btn.textContent='Capturing...';btn.disabled=true;
+  var prevVP=currentVP;
+  try{
+    if(currentVP!=='full')setViewport('full');
+    await new Promise(function(r){setTimeout(r,300)});
+    var frames=document.querySelectorAll('.page-frame-wrapper iframe');
+    var images=[];var totalHeight=0;var maxWidth=0;var gap=40;
+    for(var i=0;i<frames.length;i++){
+      var frame=frames[i];
+      try{
+        var doc=frame.contentDocument;
+        var fullH=doc.documentElement.scrollHeight;
+        frame.style.height=fullH+'px';
+        await new Promise(function(r){setTimeout(r,200)});
+        var result=await snapdom(doc.body,{embedFonts:true});
+        var png=await result.toPng();
+        var img=await new Promise(function(resolve,reject){
+          var im=new Image();im.onload=function(){resolve(im)};im.onerror=reject;im.src=png.src;
+        });
+        images.push(img);
+        totalHeight+=img.naturalHeight;
+        maxWidth=Math.max(maxWidth,img.naturalWidth);
+      }catch(e){console.error('Capture failed for frame '+i,e)}
+    }
+    if(images.length===0){alert('No pages captured');return}
+    totalHeight+=gap*(images.length-1);
+    var canvas=document.createElement('canvas');
+    canvas.width=maxWidth;canvas.height=totalHeight;
+    var ctx=canvas.getContext('2d');
+    ctx.fillStyle='#f5f5f5';ctx.fillRect(0,0,maxWidth,totalHeight);
+    var y=0;
+    for(var j=0;j<images.length;j++){
+      ctx.drawImage(images[j],0,y);
+      y+=images[j].naturalHeight+gap;
+    }
+    await new Promise(function(resolve){
+      canvas.toBlob(function(blob){
+        var a=document.createElement('a');var url=URL.createObjectURL(blob);
+        a.href=url;
+        a.download='${title.replace(/"/g, "")}.png';
+        a.click();
+        setTimeout(function(){URL.revokeObjectURL(url)},1000);
+        resolve();
+      },'image/png');
+    });
+  }catch(e){alert('Screenshot failed: '+e.message)}
+  finally{
+    if(prevVP!=='full')setViewport(prevVP);
+    btn.textContent=origText;btn.disabled=false;
+  }
 }
 updatePrintStyle('full');
 <\/script>`;
@@ -1790,6 +1846,7 @@ body {
   }
 }
 </style>
+<script src="/vendor/snapdom.js"><\/script>
 </head>
 <body>${toolbarHtml}
 ${pageSectionsHtml}${downloadScript}${pageInitScript}
@@ -1798,6 +1855,12 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
 
     return { html: exportHtml, title };
   }
+
+  app.get("/vendor/snapdom.js", async (c) => {
+    const f = Bun.file(join(import.meta.dir, "..", "node_modules", "@zumer", "snapdom", "dist", "snapdom.js"));
+    if (!(await f.exists())) return c.text("snapdom not found", 404);
+    return new Response(f, { headers: { "Content-Type": "application/javascript", "Cache-Control": "public, max-age=86400" } });
+  });
 
   app.get("/export/webcraft", (c) => {
     const contentSet = c.req.query("contentSet") || undefined;
