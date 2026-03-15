@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, Menu, nativeTheme } from "electron";
 import { autoUpdater } from "electron-updater";
 import path from "node:path";
-import { createTray, updateTrayMenu } from "./tray.js";
+import { createTray, updateTrayMenu, setTrayTitle, setTrayTooltip } from "./tray.js";
 import {
   createLauncherWindow,
   createModeWindow,
@@ -355,6 +355,7 @@ function getSplashLogoBase64(): string {
 let isCheckingForUpdates = false;
 
 function setupAutoUpdater() {
+  autoUpdater.logger = console;
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
@@ -372,9 +373,21 @@ function setupAutoUpdater() {
       })
       .then(({ response }) => {
         if (response === 0) {
-          autoUpdater.downloadUpdate();
+          // Keep isCheckingForUpdates true during download so errors are shown
+          autoUpdater.downloadUpdate().catch((err) => {
+            console.error("[auto-updater] Download failed:", err.message);
+            dialog.showMessageBox({
+              type: "error",
+              title: "Download Failed",
+              message: "Failed to download update",
+              detail: err.message,
+              buttons: ["OK"],
+            });
+            isCheckingForUpdates = false;
+          });
+        } else {
+          isCheckingForUpdates = false;
         }
-        isCheckingForUpdates = false;
       });
   });
 
@@ -392,6 +405,9 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("download-progress", (progress) => {
+    const pct = Math.round(progress.percent);
+    setTrayTitle(`↓ ${pct}%`);
+    setTrayTooltip(`Pneuma Skills — Downloading update: ${pct}%`);
     const launcher = getLauncherWindow();
     if (launcher && !launcher.isDestroyed()) {
       launcher.setProgressBar(progress.percent / 100);
@@ -399,6 +415,9 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("update-downloaded", (info) => {
+    isCheckingForUpdates = false;
+    setTrayTitle("");
+    setTrayTooltip(`Pneuma Skills — Update v${info.version} ready`);
     const launcher = getLauncherWindow();
     if (launcher && !launcher.isDestroyed()) {
       launcher.setProgressBar(-1); // Remove progress bar
@@ -422,6 +441,8 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("error", (err) => {
+    setTrayTitle("");
+    setTrayTooltip("Pneuma Skills");
     if (isCheckingForUpdates) {
       dialog.showMessageBox({
         type: "error",

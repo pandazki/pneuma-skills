@@ -113,6 +113,14 @@ export function updateTrayMenu() {
   // No-op — menu is built on demand when clicked
 }
 
+export function setTrayTitle(title: string) {
+  if (tray) tray.setTitle(title);
+}
+
+export function setTrayTooltip(tooltip: string) {
+  if (tray) tray.setToolTip(tooltip);
+}
+
 function createFallbackIcon(): Electron.NativeImage {
   const size = 22;
   const canvas = Buffer.alloc(size * size * 4);

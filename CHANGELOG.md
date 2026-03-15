@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.5] - 2026-03-15
+
+### Fixed
+- **Auto-updater silent failures** — download errors were silently swallowed because `isCheckingForUpdates` was reset before download completed; now properly shows error dialog on download failure
+- **Auto-updater logging** — enabled `electron-updater` console logging for diagnosing update issues
+
+### Added
+- **Tray download progress** — tray icon shows download percentage (`↓ 42%`) during update download, and "Update ready" tooltip when complete
+
 ## [2.6.4] - 2026-03-15
 
 ### Added
