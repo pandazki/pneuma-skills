@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.6] - 2026-03-16
+
+### Fixed
+- **WebCraft hash anchor navigation** — clicking `href="#section"` links in preview iframe no longer triggers "MacOS does not support sending non-regular files" error; anchor links now scroll in-place via injected `scrollIntoView` handler instead of navigating away from srcdoc
+- **Content route resilience** — `/content/*` endpoint now rejects empty paths and non-regular files (directories) with 404 instead of crashing
+
 ## [2.6.5] - 2026-03-15
 
 ### Fixed

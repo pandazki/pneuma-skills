@@ -361,8 +361,23 @@ function ImpeccableAttribution({ collapsed }: { collapsed: boolean }) {
  * Injects <base href> for correct relative asset resolution and
  * the dormant selection script (controlled via postMessage).
  */
+// Intercept hash-only anchor clicks so they scroll in-place instead of
+// navigating away from the srcdoc (which <base href> would otherwise cause).
+const HASH_NAV_FIX = `<script>
+document.addEventListener('click',function(e){
+  var a=e.target.closest('a[href^="#"]');
+  if(!a)return;
+  var hash=a.getAttribute('href');
+  if(!hash||hash.length<2)return;
+  e.preventDefault();
+  var target=document.querySelector(hash)||document.getElementById(hash.slice(1));
+  if(target)target.scrollIntoView({behavior:'smooth'});
+});
+</script>`;
+
 function buildSrcdoc(html: string, baseHref: string): string {
   const isFullDoc = /<!DOCTYPE|<html/i.test(html);
+  const injectedScripts = HASH_NAV_FIX + SELECTION_SCRIPT;
 
   if (isFullDoc) {
     let result = html;
@@ -373,11 +388,11 @@ function buildSrcdoc(html: string, baseHref: string): string {
     } else if (/<html[^>]*>/i.test(result)) {
       result = result.replace(/<html([^>]*)>/i, `<html$1><head>${baseTag}</head>`);
     }
-    // Inject selection script before </body>
+    // Inject scripts before </body>
     if (/<\/body>/i.test(result)) {
-      result = result.replace(/<\/body>/i, `${SELECTION_SCRIPT}</body>`);
+      result = result.replace(/<\/body>/i, `${injectedScripts}</body>`);
     } else {
-      result += SELECTION_SCRIPT;
+      result += injectedScripts;
     }
     return result;
   }
@@ -392,7 +407,7 @@ function buildSrcdoc(html: string, baseHref: string): string {
 </head>
 <body>
 ${html}
-${SELECTION_SCRIPT}
+${injectedScripts}
 </body>
 </html>`;
 }

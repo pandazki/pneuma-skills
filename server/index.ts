@@ -2283,12 +2283,20 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
   // ── Static content serving (workspace files) ──────────────────────────
   app.get("/content/*", async (c) => {
     const relPath = decodeURIComponent(c.req.path.replace(/^\/content\//, ""));
+    if (!relPath) return c.text("Not found", 404);
     const absPath = join(workspace, relPath);
     // Basic path traversal protection
     if (!pathStartsWith(absPath, workspace)) {
       return c.text("Forbidden", 403);
     }
     if (!existsSync(absPath)) {
+      return c.text("Not found", 404);
+    }
+    // Bun.file() fails on directories / non-regular files on macOS
+    try {
+      const stat = statSync(absPath);
+      if (!stat.isFile()) return c.text("Not found", 404);
+    } catch {
       return c.text("Not found", 404);
     }
     try {
