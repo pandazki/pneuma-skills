@@ -47,6 +47,9 @@ interface AppState {
   /** True from user message send until result received — controls input disable */
   turnInProgress: boolean;
 
+  // Pending message queue (queued while agent is busy)
+  pendingMessages: { id: string; text: string }[];
+
   // Messages
   messages: ChatMessage[];
   streaming: string | null;
@@ -132,6 +135,11 @@ interface AppState {
   setCliConnected: (connected: boolean) => void;
   setSessionStatus: (status: "idle" | "running" | "compacting" | null) => void;
   setTurnInProgress: (v: boolean) => void;
+
+  // Actions — pending message queue
+  addPendingMessage: (text: string) => void;
+  removePendingMessage: (id: string) => void;
+  shiftPendingMessage: () => { id: string; text: string } | undefined;
 
   // Actions — messages
   appendMessage: (msg: ChatMessage) => void;
@@ -269,6 +277,7 @@ export const useStore = create<AppState>((set) => ({
   cliConnected: false,
   sessionStatus: null,
   turnInProgress: false,
+  pendingMessages: [],
   messages: [],
   streaming: null,
   activity: null,
@@ -314,6 +323,22 @@ export const useStore = create<AppState>((set) => ({
   setCliConnected: (connected) => set({ cliConnected: connected }),
   setSessionStatus: (status) => set({ sessionStatus: status }),
   setTurnInProgress: (v) => set({ turnInProgress: v }),
+
+  addPendingMessage: (text) =>
+    set((s) => ({
+      pendingMessages: [...s.pendingMessages, { id: crypto.randomUUID(), text }],
+    })),
+  removePendingMessage: (id) =>
+    set((s) => ({
+      pendingMessages: s.pendingMessages.filter((m) => m.id !== id),
+    })),
+  shiftPendingMessage: () => {
+    const s = useStore.getState();
+    if (s.pendingMessages.length === 0) return undefined;
+    const [first, ...rest] = s.pendingMessages;
+    set({ pendingMessages: rest });
+    return first;
+  },
 
   appendMessage: (msg) =>
     set((s) => {

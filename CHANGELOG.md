@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.0] - 2026-03-16
+
+### Added
+- **Message queue** — users can type and submit messages while the agent is working; messages appear as pending pills above the input and auto-send one-at-a-time when each turn completes
+- **Reconnect button** — status pill shows a clickable ↻ icon when WebSocket is disconnected, allowing manual reconnection instead of waiting for auto-retry
+
 ## [2.6.11] - 2026-03-16
 
 ### Fixed

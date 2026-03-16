@@ -404,6 +404,14 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       currentTurnUserInitiated = false; // Reset for next turn — if no user message, it's cron
       seenTaskBlockIds.clear();
 
+      // Auto-flush pending message queue (one message per turn)
+      if (store.pendingMessages.length > 0) {
+        setTimeout(() => {
+          const next = useStore.getState().shiftPendingMessage();
+          if (next) sendUserMessage(next.text);
+        }, 150);
+      }
+
       if (r.is_error && r.errors?.length) {
         store.appendMessage({
           id: nextId(),
@@ -705,6 +713,13 @@ function scheduleReconnect(sessionId: string) {
     reconnectTimer = null;
     connect(sessionId);
   }, WS_RECONNECT_DELAY_MS);
+}
+
+export function forceReconnect() {
+  if (socket) { socket.close(); socket = null; }
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  const sessionId = useStore.getState().sessionId;
+  if (sessionId) connect(sessionId);
 }
 
 export function disconnect() {

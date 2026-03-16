@@ -76,6 +76,9 @@ export default function ChatInput() {
 
   const cliConnected = useStore((s) => s.cliConnected);
   const turnInProgress = useStore((s) => s.turnInProgress);
+  const pendingMessages = useStore((s) => s.pendingMessages);
+  const addPendingMessage = useStore((s) => s.addPendingMessage);
+  const removePendingMessage = useStore((s) => s.removePendingMessage);
   const selection = useStore((s) => s.selection);
   const setSelection = useStore((s) => s.setSelection);
   const annotations = useStore((s) => s.annotations);
@@ -125,6 +128,20 @@ export default function ChatInput() {
     const trimmed = text.trim();
     const hasAnnotations = annotations.length > 0;
     if (!trimmed && attachments.length === 0 && !hasAnnotations) return;
+
+    if (isBusy) {
+      // Agent is working — queue the message (text only)
+      if (trimmed) {
+        addPendingMessage(trimmed);
+        setText("");
+        setSlashOpen(false);
+        if (textareaRef.current) {
+          textareaRef.current.style.height = "auto";
+        }
+      }
+      return;
+    }
+
     const imageAtts = attachments.filter((a) => a.kind === "image");
     const fileAtts = attachments.filter((a) => a.kind === "file");
     const imgPayload = imageAtts.length > 0
@@ -144,7 +161,7 @@ export default function ChatInput() {
     }
     // Immediately show busy state — disable input + show Stop button
     useStore.getState().setTurnInProgress(true);
-  }, [text, attachments, selection, setSelection, annotations, clearAnnotations]);
+  }, [text, attachments, selection, setSelection, annotations, clearAnnotations, isBusy, addPendingMessage]);
 
   const handleKeyDown = (e: KeyboardEvent) => {
     // Slash menu navigation
@@ -343,6 +360,28 @@ export default function ChatInput() {
         </div>
       )}
 
+      {/* Pending message queue */}
+      {pendingMessages.length > 0 && (
+        <div className="flex flex-col gap-1 mb-2 px-1">
+          {pendingMessages.map((msg) => (
+            <div
+              key={msg.id}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-cc-surface/40 border border-cc-border/30 rounded-lg group"
+            >
+              <span className="text-[10px] text-cc-primary/60 font-medium shrink-0">queued</span>
+              <span className="text-xs text-cc-muted truncate flex-1">{msg.text}</span>
+              <button
+                onClick={() => removePendingMessage(msg.id)}
+                className="shrink-0 text-cc-muted/40 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                title="Remove from queue"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Attachment thumbnails */}
       {attachments.length > 0 && (
         <div className="flex items-center gap-2 mb-2 px-1 overflow-x-auto">
@@ -396,7 +435,7 @@ export default function ChatInput() {
             !cliConnected
               ? "Waiting for CLI connection..."
               : isBusy
-                ? "Claude is working..."
+                ? "Type to queue next message..."
                 : hasAnnotations
                   ? "Add notes (optional)..."
                   : selection
@@ -405,7 +444,7 @@ export default function ChatInput() {
                       ? "Click elements to annotate, then send..."
                       : "Send a message... (drop files, paste images, type / for commands)"
           }
-          disabled={!cliConnected || isBusy}
+          disabled={!cliConnected}
           rows={1}
           className="w-full bg-cc-surface/80 backdrop-blur-xl text-cc-fg rounded-2xl px-4 py-3 text-sm resize-none placeholder-cc-muted/50 border border-cc-border/50 shadow-inner focus:outline-none focus:border-cc-primary/60 focus:ring-1 focus:ring-cc-primary/30 disabled:opacity-50 transition-all"
         />
@@ -434,23 +473,22 @@ export default function ChatInput() {
           />
         </div>
 
-        <div>
-          {isBusy ? (
+        <div className="flex items-center gap-2">
+          {isBusy && (
             <button
               onClick={sendInterrupt}
               className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-medium text-xs rounded-full transition-all shadow-[0_0_12px_rgba(220,38,38,0.4)]"
             >
               Stop
             </button>
-          ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={(!text.trim() && attachments.length === 0 && !hasAnnotations) || !cliConnected}
-              className="px-5 py-2 bg-cc-primary hover:bg-cc-primary-hover text-cc-bg font-medium text-xs rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(249,115,22,0.4)] disabled:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Send
-            </button>
           )}
+          <button
+            onClick={handleSubmit}
+            disabled={(!text.trim() && attachments.length === 0 && !hasAnnotations) || !cliConnected}
+            className="px-5 py-2 bg-cc-primary hover:bg-cc-primary-hover text-cc-bg font-medium text-xs rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(249,115,22,0.4)] disabled:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isBusy ? "Queue" : "Send"}
+          </button>
         </div>
       </div>
     </div>

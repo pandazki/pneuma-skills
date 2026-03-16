@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { useStore } from "../store.js";
+import { forceReconnect } from "../ws.js";
 import MessageBubble from "./MessageBubble.js";
 import StreamingText from "./StreamingText.js";
 import ActivityIndicator from "./ActivityIndicator.js";
@@ -52,10 +53,21 @@ function StatusDot() {
             ? "Compacting"
             : "Idle";
 
+  const isDisconnected = connectionStatus !== "connected" || !cliConnected;
+
   return (
     <div className="flex items-center gap-1.5" title={text}>
       <div className={`w-2 h-2 rounded-full ${color}`} />
       <span className="text-cc-muted text-xs">{text}</span>
+      {isDisconnected && (
+        <button
+          onClick={forceReconnect}
+          className="text-cc-muted hover:text-cc-primary text-xs transition-colors cursor-pointer"
+          title="Reconnect"
+        >
+          ↻
+        </button>
+      )}
     </div>
   );
 }
