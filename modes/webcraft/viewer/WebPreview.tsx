@@ -892,15 +892,16 @@ export default function WebPreview({
     return buildSrcdoc(fileContent.content, baseHref);
   }, [currentFile, files, baseHref]);
 
-  // Track content version changes to avoid unnecessary iframe remounts
-  const prevSrcdocRef = useRef("");
+  // Stable srcdoc: only update when the actual file content changes (not on
+  // every `files` array reference change).  This prevents the iframe from
+  // reloading — and resetting scroll position — due to unrelated store updates.
+  const stableSrcdocRef = useRef("");
 
-  // Update iframe srcdoc when content changes
   useEffect(() => {
     if (!iframeRef.current || !srcdoc) return;
-    if (prevSrcdocRef.current !== srcdoc) {
+    if (stableSrcdocRef.current !== srcdoc) {
+      stableSrcdocRef.current = srcdoc;
       iframeRef.current.srcdoc = srcdoc;
-      prevSrcdocRef.current = srcdoc;
     }
   }, [srcdoc]);
 
@@ -1121,16 +1122,17 @@ export default function WebPreview({
 
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
-  // Track container size for viewport scaling
+  // Track container size for viewport scaling (skip no-op updates to avoid re-renders)
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setContainerSize({
-          width: entry.contentRect.width,
-          height: entry.contentRect.height,
-        });
+        const w = Math.round(entry.contentRect.width);
+        const h = Math.round(entry.contentRect.height);
+        setContainerSize((prev) =>
+          prev.width === w && prev.height === h ? prev : { width: w, height: h },
+        );
       }
     });
     observer.observe(container);
@@ -1394,7 +1396,6 @@ export default function WebPreview({
               >
                 <iframe
                   ref={iframeRef}
-                  srcDoc={srcdoc}
                   style={{
                     width: "100%",
                     height: "100%",
@@ -1411,7 +1412,6 @@ export default function WebPreview({
               /* Full mode: iframe fills container */
               <iframe
                 ref={iframeRef}
-                srcDoc={srcdoc}
                 style={{
                   width: "100%",
                   height: "100%",

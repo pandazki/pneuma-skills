@@ -12,6 +12,30 @@ import type { ViewerConfig } from "../core/types/mode-manifest.js";
 
 const DEBOUNCE_MS = 300;
 
+/** OS junk, editor swap/backup, and VCS files that should never trigger updates. */
+const DEFAULT_IGNORE = [
+  "**/.DS_Store",
+  "**/Thumbs.db",
+  "**/.git/**",
+  "**/.svn/**",
+  "**/.hg/**",
+  // Editor swap / backup files
+  "**/*~",
+  "**/*.swp",
+  "**/*.swo",
+  "**/*.swn",
+  "**/.*.swp",
+  "**/#*#",
+  "**/.#*",
+  // IDE metadata
+  "**/.idea/**",
+  "**/.vscode/**",
+  // Pneuma internal
+  "**/.pneuma/**",
+  "**/.claude/**",
+  "**/.agents/**",
+];
+
 export interface FileUpdate {
   path: string;
   content: string;
@@ -62,8 +86,9 @@ export function startFileWatcher(
   // Derive watch extensions from ViewerConfig patterns
   const watchExtensions = extractWatchExtensions(viewerConfig.watchPatterns);
 
-  // Combine ignore patterns — normalize for chokidar
+  // Combine default + mode-specific ignore patterns
   const ignorePatterns = [
+    ...DEFAULT_IGNORE,
     ...(viewerConfig.ignorePatterns || []).map((p) =>
       // chokidar works best with **/ prefix for directory patterns
       p.includes("/") && !p.startsWith("**/") && !p.startsWith("/") ? `**/${p}` : p,

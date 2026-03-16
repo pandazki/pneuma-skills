@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.9] - 2026-03-16
+
+### Fixed
+- **WebCraft scroll preservation** — iframe no longer resets scroll position when unrelated file changes occur; `srcDoc` React prop removed in favor of imperative-only updates with content equality check
+- **File watcher noise** — added default ignore list for OS junk (`.DS_Store`, `Thumbs.db`), editor swap files (`*.swp`, `*~`, `#*#`), VCS directories (`.git/`), IDE metadata (`.idea/`, `.vscode/`), and Pneuma internals (`.pneuma/`, `.claude/`, `.agents/`)
+
+### Improved
+- **ResizeObserver efficiency** — container size updates are rounded and deduplicated, preventing unnecessary re-renders from sub-pixel changes
+
 ## [2.6.8] - 2026-03-16
 
 ### Fixed
