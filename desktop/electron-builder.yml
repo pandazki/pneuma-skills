@@ -53,6 +53,7 @@ asar: true
 mac:
   icon: resources/icon.icns
   category: public.app-category.developer-tools
+  artifactName: "Pneuma-Skills-${version}-${arch}-mac.${ext}"
   target:
     - target: dmg
     - target: zip
@@ -64,7 +65,6 @@ mac:
 
 dmg:
   sign: false
-  artifactName: "${productName}-${version}-${arch}.dmg"
 
 win:
   icon: resources/icon.ico
@@ -75,7 +75,7 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
-  artifactName: "${productName}-${version}-${arch}-Setup.exe"
+  artifactName: "Pneuma-Skills-${version}-${arch}-Setup.exe"
 
 linux:
   icon: resources/icon.png

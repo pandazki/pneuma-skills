@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.7] - 2026-03-16
+
+### Fixed
+- **Desktop auto-update 404** — release artifact filenames now use consistent `Pneuma-Skills` naming (no spaces/dots) so `latest-mac.yml` URLs match actual GitHub Release assets
+
 ## [2.6.6] - 2026-03-16
 
 ### Fixed
