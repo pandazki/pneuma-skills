@@ -315,15 +315,16 @@ const SELECTION_SCRIPT = buildSelectionScript({
  *   inject <base>, sizing CSS, and selection script.
  * - Fragments: wrap in our template with themeCSS.
  */
-function buildSrcdoc(slideHtml: string, themeCSS: string): string {
+function buildSrcdoc(slideHtml: string, themeCSS: string, contentBase = ""): string {
   slideHtml = sanitizeHtmlQuotes(slideHtml);
   const baseUrl = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
+  const baseHref = `${baseUrl}/content/${contentBase}`;
   const isFullDoc =
     slideHtml.includes("<!DOCTYPE") || slideHtml.includes("<html");
 
   if (isFullDoc) {
     let doc = slideHtml;
-    const inject = `<base href="${baseUrl}/content/"><style>html,body{width:100%;height:100%;margin:0;padding:0;overflow:hidden;}</style>`;
+    const inject = `<base href="${baseHref}"><style>html,body{width:100%;height:100%;margin:0;padding:0;overflow:hidden;}</style>`;
     if (doc.includes("</head>")) {
       doc = doc.replace("</head>", `${inject}</head>`);
     } else if (/<body/i.test(doc)) {
@@ -342,7 +343,7 @@ function buildSrcdoc(slideHtml: string, themeCSS: string): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<base href="${baseUrl}/content/">
+<base href="${baseHref}">
 <style>${themeCSS}</style>
 <style>
 html, body {
@@ -505,7 +506,13 @@ export default function SlidePreview({
 
   const [highlightSelector, setHighlightSelector] = useState<string | null>(null);
   const manifest = useResilientParse(files, parseManifest, onNotifyAgent);
+  const activeContentSet = useStore((s) => s.activeContentSet);
+  const contentBase = activeContentSet ? activeContentSet + "/" : "";
   const themeCSS = useMemo(() => findThemeCSS(files), [files]);
+  const boundBuildSrcdoc = useCallback(
+    (html: string, css: string) => buildSrcdoc(html, css, contentBase),
+    [contentBase],
+  );
   const isSelectMode = previewMode === "select" || previewMode === "annotate";
   const isEditMode = previewMode === "edit";
 
@@ -937,7 +944,7 @@ export default function SlidePreview({
   const VIRTUAL_H = (initParams?.slideHeight as number) || 720;
 
   // Capture slide thumbnails as PNG data URL images via snapdom
-  const thumbnailImages = useSlideThumbnails(slides, files, themeCSS, VIRTUAL_W, VIRTUAL_H);
+  const thumbnailImages = useSlideThumbnails(slides, files, themeCSS, VIRTUAL_W, VIRTUAL_H, contentBase);
 
   // ── Auto content-fit check on file changes ─────────────────────────────
   // When files change, wait for iframes to render, then check if any slide
@@ -1218,6 +1225,7 @@ export default function SlidePreview({
           VIRTUAL_W_VAL,
           VIRTUAL_H_VAL,
           region,
+          contentBase,
         );
 
         // Composite highlighter strokes on top of the slide screenshot
@@ -1383,7 +1391,7 @@ export default function SlidePreview({
             imageVersion={imageVersion}
             onSelect={handleSelect}
             onTextEdit={handleTextEdit}
-            buildSrcdoc={buildSrcdoc}
+            buildSrcdoc={boundBuildSrcdoc}
             findSlideContent={findSlideContent}
             highlightSelector={highlightSelector}
             annotationSelectors={annotationSelectors}
@@ -1480,7 +1488,7 @@ export default function SlidePreview({
       <div ref={fullscreenRef} className="flex flex-col h-full bg-black">
         <div className="flex-1 flex items-center justify-center">
           <iframe
-            srcDoc={buildSrcdoc(currentSlide ? findSlideContent(files, currentSlide.file) : "", themeCSS)}
+            srcDoc={boundBuildSrcdoc(currentSlide ? findSlideContent(files, currentSlide.file) : "", themeCSS)}
             title={currentSlide?.title || "Slide"}
             className="w-full h-full border-0"
             sandbox="allow-scripts"

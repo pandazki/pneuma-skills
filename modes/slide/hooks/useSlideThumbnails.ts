@@ -109,9 +109,11 @@ export async function captureSlideToSvg(
   themeCSS: string,
   width: number,
   height: number,
+  contentBase = "",
 ): Promise<string> {
   slideHtml = sanitizeHtmlQuotes(slideHtml);
   const baseUrl = getBaseUrl();
+  const baseHref = `${baseUrl}/content/${contentBase}`;
   const isFullDoc =
     slideHtml.includes("<!DOCTYPE") || slideHtml.includes("<html");
 
@@ -120,7 +122,7 @@ export async function captureSlideToSvg(
   if (isFullDoc) {
     // Full document: inject <base> and sizing CSS, keep everything else
     srcdoc = slideHtml;
-    const inject = `<base href="${baseUrl}/content/"><style>html,body{width:${width}px;height:${height}px;margin:0;padding:0;overflow:hidden;}</style>`;
+    const inject = `<base href="${baseHref}"><style>html,body{width:${width}px;height:${height}px;margin:0;padding:0;overflow:hidden;}</style>`;
     if (srcdoc.includes("</head>")) {
       srcdoc = srcdoc.replace("</head>", `${inject}</head>`);
     } else if (/<body/i.test(srcdoc)) {
@@ -129,7 +131,7 @@ export async function captureSlideToSvg(
   } else {
     // Fragment: wrap in our template
     const bodyContent = stripHtmlWrapper(slideHtml);
-    srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base href="${baseUrl}/content/"><style>${themeCSS}</style><style>html,body{width:${width}px;height:${height}px;margin:0;padding:0;overflow:hidden;}</style></head><body>${bodyContent}</body></html>`;
+    srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base href="${baseHref}"><style>${themeCSS}</style><style>html,body{width:${width}px;height:${height}px;margin:0;padding:0;overflow:hidden;}</style></head><body>${bodyContent}</body></html>`;
   }
 
   // Render in hidden iframe (full isolation — scripts, external CSS all load)
@@ -160,6 +162,7 @@ export function useSlideThumbnails(
   themeCSS: string,
   virtualWidth: number,
   virtualHeight: number,
+  contentBase = "",
 ): Map<string, string> {
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(new Map());
   const hashesRef = useRef<Map<string, number>>(new Map());
@@ -220,6 +223,7 @@ export function useSlideThumbnails(
             themeCSS,
             virtualWidth,
             virtualHeight,
+            contentBase,
           );
           if (controller.signal.aborted) return;
           hashesRef.current.set(file, hash);
@@ -240,7 +244,7 @@ export function useSlideThumbnails(
     return () => {
       controller.abort();
     };
-  }, [slides, files, themeCSS, virtualWidth, virtualHeight]);
+  }, [slides, files, themeCSS, virtualWidth, virtualHeight, contentBase]);
 
   // Clean up the shared capture iframe on unmount
   useEffect(() => {

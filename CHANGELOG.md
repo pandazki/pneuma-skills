@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.1] - 2026-03-16
+
+### Fixed
+- **Slide subdirectory image paths** — images in content sets stored in subdirectories (e.g. `sop-report/assets/`) now resolve correctly; `<base href>` uses the active content set prefix from the store instead of deriving it from the (already-stripped) manifest path
+
 ## [2.7.0] - 2026-03-16
 
 ### Added

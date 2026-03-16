@@ -37,9 +37,11 @@ export async function captureSlideRegion(
   virtualW: number,
   virtualH: number,
   region: CaptureRegion,
+  contentBase = "",
 ): Promise<string> {
   slideHtml = sanitizeHtmlQuotes(slideHtml);
   const baseUrl = getBaseUrl();
+  const baseHref = `${baseUrl}/content/${contentBase}`;
   const isFullDoc =
     slideHtml.includes("<!DOCTYPE") || slideHtml.includes("<html");
 
@@ -47,7 +49,7 @@ export async function captureSlideRegion(
   let srcdoc: string;
   if (isFullDoc) {
     srcdoc = slideHtml;
-    const inject = `<base href="${baseUrl}/content/"><style>html,body{width:${virtualW}px;height:${virtualH}px;margin:0;padding:0;overflow:hidden;}</style>`;
+    const inject = `<base href="${baseHref}"><style>html,body{width:${virtualW}px;height:${virtualH}px;margin:0;padding:0;overflow:hidden;}</style>`;
     if (srcdoc.includes("</head>")) {
       srcdoc = srcdoc.replace("</head>", `${inject}</head>`);
     } else if (/<body/i.test(srcdoc)) {
@@ -55,7 +57,7 @@ export async function captureSlideRegion(
     }
   } else {
     const bodyContent = stripHtmlWrapper(slideHtml);
-    srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base href="${baseUrl}/content/"><style>${themeCSS}</style><style>html,body{width:${virtualW}px;height:${virtualH}px;margin:0;padding:0;overflow:hidden;}</style></head><body>${bodyContent}</body></html>`;
+    srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base href="${baseHref}"><style>${themeCSS}</style><style>html,body{width:${virtualW}px;height:${virtualH}px;margin:0;padding:0;overflow:hidden;}</style></head><body>${bodyContent}</body></html>`;
   }
 
   // Render in hidden iframe
