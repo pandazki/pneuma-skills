@@ -29,6 +29,25 @@ You are working in Pneuma WebCraft Mode — a live web development environment w
 - Prefer CSS custom properties for theming and consistency
 - Keep files organized — separate concerns when complexity warrants it
 
+## Multi-Page Sites
+
+For sites with multiple pages, create a `manifest.json` so the viewer shows page tabs at the bottom:
+
+```json
+{
+  "title": "My Project",
+  "pages": [
+    { "file": "index.html", "title": "Home" },
+    { "file": "about.html", "title": "About" },
+    { "file": "contact.html", "title": "Contact" }
+  ]
+}
+```
+
+- Use `pages` array with `file` (path) and `title` (display name) for each entry
+- The first page is shown by default
+- Update the manifest whenever you add or remove pages
+
 ## Editing Guidelines
 
 - Use the `Edit` tool (preferred) for surgical changes to existing content

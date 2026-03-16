@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.11] - 2026-03-16
+
+### Fixed
+- **WebCraft multi-page tabs** — page navigator now accepts both `pages`/`files` array keys and `file`/`path` entry keys in `manifest.json`, so AI-generated manifests in either format are correctly parsed
+
+### Improved
+- **WebCraft skill guidance** — added "Multi-Page Sites" section to SKILL.md with explicit `manifest.json` format example, preventing AI from using incompatible key names
+
 ## [2.6.10] - 2026-03-16
 
 ### Fixed

@@ -840,11 +840,13 @@ export default function WebPreview({
     if (!mf) return { data: null };
     // Let JSON.parse throw — useResilientParse catches it
     const parsed = JSON.parse(mf.content);
-    if (!Array.isArray(parsed.pages) || parsed.pages.length === 0) return { data: null };
+    // Accept both { pages: [...] } and { files: [...] } formats
+    const entries: any[] | undefined = parsed.pages || parsed.files;
+    if (!Array.isArray(entries) || entries.length === 0) return { data: null };
     return {
-      data: parsed.pages.map((p: { file: string; title?: string }) => ({
-        file: p.file,
-        title: p.title || p.file.replace(/\.html$/i, "").replace(/^.*\//, ""),
+      data: entries.map((p: { file?: string; path?: string; title?: string }) => ({
+        file: p.file || p.path || "",
+        title: p.title || (p.file || p.path || "").replace(/\.html$/i, "").replace(/^.*\//, ""),
       })),
       file: mf.path,
     };
