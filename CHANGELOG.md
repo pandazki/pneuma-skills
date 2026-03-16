@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.8] - 2026-03-16
+
+### Fixed
+- **Tray "Check for Updates" freeze** — update dialogs now attach to a visible parent window; if launcher is hidden it's shown first, preventing macOS app-modal dialog from freezing the process
+
 ## [2.6.7] - 2026-03-16
 
 ### Fixed

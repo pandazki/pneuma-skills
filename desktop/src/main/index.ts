@@ -354,6 +354,19 @@ function getSplashLogoBase64(): string {
 
 let isCheckingForUpdates = false;
 
+/** Show a dialog attached to the launcher window (or any visible window) to avoid macOS app-modal freeze. */
+function showUpdateDialog(options: Electron.MessageBoxOptions): Promise<Electron.MessageBoxReturnValue> {
+  const launcher = getLauncherWindow();
+  if (launcher && !launcher.isDestroyed()) {
+    if (!launcher.isVisible()) launcher.show();
+    return dialog.showMessageBox(launcher, options);
+  }
+  // Fallback: find any visible window
+  const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.isVisible());
+  if (win) return dialog.showMessageBox(win, options);
+  return dialog.showMessageBox(options);
+}
+
 function setupAutoUpdater() {
   autoUpdater.logger = console;
   autoUpdater.autoDownload = false;
@@ -361,39 +374,37 @@ function setupAutoUpdater() {
 
   autoUpdater.on("update-available", (info) => {
     const currentVersion = app.getVersion();
-    dialog
-      .showMessageBox({
-        type: "info",
-        title: "Update Available",
-        message: `New version available: v${info.version}`,
-        detail: `Current version: v${currentVersion}\n\nWould you like to download the update now?`,
-        buttons: ["Download", "Later"],
-        defaultId: 0,
-        cancelId: 1,
-      })
-      .then(({ response }) => {
-        if (response === 0) {
-          // Keep isCheckingForUpdates true during download so errors are shown
-          autoUpdater.downloadUpdate().catch((err) => {
-            console.error("[auto-updater] Download failed:", err.message);
-            dialog.showMessageBox({
-              type: "error",
-              title: "Download Failed",
-              message: "Failed to download update",
-              detail: err.message,
-              buttons: ["OK"],
-            });
-            isCheckingForUpdates = false;
+    showUpdateDialog({
+      type: "info",
+      title: "Update Available",
+      message: `New version available: v${info.version}`,
+      detail: `Current version: v${currentVersion}\n\nWould you like to download the update now?`,
+      buttons: ["Download", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+    }).then(({ response }) => {
+      if (response === 0) {
+        // Keep isCheckingForUpdates true during download so errors are shown
+        autoUpdater.downloadUpdate().catch((err) => {
+          console.error("[auto-updater] Download failed:", err.message);
+          showUpdateDialog({
+            type: "error",
+            title: "Download Failed",
+            message: "Failed to download update",
+            detail: err.message,
+            buttons: ["OK"],
           });
-        } else {
           isCheckingForUpdates = false;
-        }
-      });
+        });
+      } else {
+        isCheckingForUpdates = false;
+      }
+    });
   });
 
   autoUpdater.on("update-not-available", () => {
     if (isCheckingForUpdates) {
-      dialog.showMessageBox({
+      showUpdateDialog({
         type: "info",
         title: "No Updates",
         message: "You're up to date!",
@@ -423,28 +434,26 @@ function setupAutoUpdater() {
       launcher.setProgressBar(-1); // Remove progress bar
     }
 
-    dialog
-      .showMessageBox({
-        type: "info",
-        title: "Update Ready",
-        message: `v${info.version} has been downloaded`,
-        detail: "The update will be installed when you restart the app.",
-        buttons: ["Restart Now", "Later"],
-        defaultId: 0,
-        cancelId: 1,
-      })
-      .then(({ response }) => {
-        if (response === 0) {
-          autoUpdater.quitAndInstall();
-        }
-      });
+    showUpdateDialog({
+      type: "info",
+      title: "Update Ready",
+      message: `v${info.version} has been downloaded`,
+      detail: "The update will be installed when you restart the app.",
+      buttons: ["Restart Now", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+    }).then(({ response }) => {
+      if (response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
   });
 
   autoUpdater.on("error", (err) => {
     setTrayTitle("");
     setTrayTooltip("Pneuma Skills");
     if (isCheckingForUpdates) {
-      dialog.showMessageBox({
+      showUpdateDialog({
         type: "error",
         title: "Update Error",
         message: "Failed to check for updates",
@@ -461,7 +470,7 @@ function setupAutoUpdater() {
 function checkForUpdatesManual() {
   isCheckingForUpdates = true;
   autoUpdater.checkForUpdates().catch((err) => {
-    dialog.showMessageBox({
+    showUpdateDialog({
       type: "error",
       title: "Update Error",
       message: "Failed to check for updates",
