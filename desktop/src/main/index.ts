@@ -354,7 +354,12 @@ function getSplashLogoBase64(): string {
 
 let isCheckingForUpdates = false;
 
-/** Show a dialog attached to the launcher window (or any visible window) to avoid macOS app-modal freeze. */
+/**
+ * Show a dialog attached to a visible window to avoid macOS app-modal freeze.
+ * On macOS, dialog.showMessageBox() without a parent window creates an
+ * app-modal dialog that freezes the entire process when no window is focused.
+ * As a last resort we create a tiny off-screen window as the dialog parent.
+ */
 function showUpdateDialog(options: Electron.MessageBoxOptions): Promise<Electron.MessageBoxReturnValue> {
   const launcher = getLauncherWindow();
   if (launcher && !launcher.isDestroyed()) {
@@ -364,7 +369,13 @@ function showUpdateDialog(options: Electron.MessageBoxOptions): Promise<Electron
   // Fallback: find any visible window
   const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.isVisible());
   if (win) return dialog.showMessageBox(win, options);
-  return dialog.showMessageBox(options);
+
+  // Last resort: create a temporary hidden window as dialog parent to prevent
+  // macOS app-modal freeze when no windows exist
+  const tmp = new BrowserWindow({ width: 1, height: 1, show: false, skipTaskbar: true });
+  return dialog.showMessageBox(tmp, options).finally(() => {
+    if (!tmp.isDestroyed()) tmp.destroy();
+  });
 }
 
 function setupAutoUpdater() {

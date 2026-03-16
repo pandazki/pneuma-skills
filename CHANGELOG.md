@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.10] - 2026-03-16
+
+### Fixed
+- **Tray "Check for Updates" freeze (for real)** — when no windows exist, a temporary hidden window is created as the dialog parent, preventing macOS app-modal dialog from freezing the process
+
 ## [2.6.9] - 2026-03-16
 
 ### Fixed
