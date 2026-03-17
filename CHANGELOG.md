@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.3] - 2026-03-17
+
+### Fixed
+- **Content set persistence** — reopening a session now correctly restores the last active content set; fixed a race condition where files loaded before the mode viewer, causing `resolveContentSets` to return empty and skipping the saved state restore
+
 ## [2.7.2] - 2026-03-17
 
 ### Fixed
