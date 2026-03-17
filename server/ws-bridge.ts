@@ -954,6 +954,7 @@ export class WsBridge {
 
     // Save non-image files to disk and build notification
     const savedImagePaths: string[] = [];
+    const largeImagePaths = new Set<string>(); // images too large for inline content blocks
     const savedFiles: { path: string; name: string; size: number; mediaType: string; inlineContent?: string }[] = [];
 
     if (this.workspace && msg.files?.length) {
@@ -980,30 +981,41 @@ export class WsBridge {
       }
     }
 
-    // Build content: if images are present, use content block array; otherwise plain string
+    // Build content: if images are present, use content block array; otherwise plain string.
+    // Large images (>5 MB base64) are saved to disk only — not inlined as content blocks —
+    // to avoid exceeding WebSocket payload limits.
+    const IMAGE_INLINE_LIMIT = 5 * 1024 * 1024; // 5 MB base64 chars ≈ 3.75 MB raw
     let content: string | unknown[];
     if (msg.images?.length) {
       const blocks: unknown[] = [];
 
       for (const img of msg.images) {
-        blocks.push({
-          type: "image",
-          source: { type: "base64", media_type: img.media_type, data: img.data },
-        });
         if (this.workspace) {
           try {
-            savedImagePaths.push(this.saveImageToDisk(img.media_type, img.data));
+            const savedPath = this.saveImageToDisk(img.media_type, img.data);
+            savedImagePaths.push(savedPath);
+            if (img.data.length > IMAGE_INLINE_LIMIT) {
+              largeImagePaths.add(savedPath);
+            }
           } catch (err) {
             console.warn("[ws-bridge] Failed to save uploaded image to disk:", err);
           }
         }
+        // Only inline small images as content blocks
+        if (img.data.length <= IMAGE_INLINE_LIMIT) {
+          blocks.push({
+            type: "image",
+            source: { type: "base64", media_type: img.media_type, data: img.data },
+          });
+        }
       }
 
       let textContent = msg.content;
-      textContent = this.buildUploadNotification(savedImagePaths, savedFiles) + textContent;
+      textContent = this.buildUploadNotification(savedImagePaths, savedFiles, largeImagePaths) + textContent;
 
       blocks.push({ type: "text", text: textContent });
-      content = blocks;
+      // Only use content block array if we actually have inline images
+      content = blocks.length > 1 ? blocks : textContent;
     } else if (savedFiles.length > 0) {
       content = this.buildUploadNotification(savedImagePaths, savedFiles) + msg.content;
     } else {
@@ -1023,6 +1035,7 @@ export class WsBridge {
   private buildUploadNotification(
     imagePaths: string[],
     files: { path: string; name: string; size: number; mediaType: string; inlineContent?: string }[],
+    largeImagePaths?: Set<string>,
   ): string {
     if (imagePaths.length === 0 && files.length === 0) return "";
 
@@ -1035,7 +1048,11 @@ export class WsBridge {
 
     if (imagePaths.length > 0) {
       for (const p of imagePaths) {
-        lines.push(`  <image path="${toRel(p)}" />`);
+        if (largeImagePaths?.has(p)) {
+          lines.push(`  <image path="${toRel(p)}" large="true" hint="Image too large for inline preview. Use the Read tool to view it." />`);
+        } else {
+          lines.push(`  <image path="${toRel(p)}" />`);
+        }
       }
     }
 

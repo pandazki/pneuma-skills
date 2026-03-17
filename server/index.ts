@@ -2457,6 +2457,7 @@ export const { createPortal, flushSync, createRoot, hydrateRoot } = RD;`;
           return app.fetch(req, server);
         },
         websocket: {
+          maxPayloadLength: 64 * 1024 * 1024, // 64 MB — safety net for large file attachments
           open(ws: ServerWebSocket<SocketData>) {
             const data = ws.data;
             if (data.kind === "cli") {
