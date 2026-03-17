@@ -60,6 +60,63 @@ Visible section: Getting Started
 
 This enables the Agent to understand references like "this section", "here", etc.
 
+## Theme CSS Best Practices
+
+Modes that use custom styling (e.g. `theme.css` for slides) should follow these conventions. The platform automatically scopes theme CSS to the content container (`.slide-page`, etc.) during export, but how you write the CSS determines how cleanly that scoping works.
+
+### Use CSS custom properties for design tokens
+
+Define colors, fonts, and spacing as `:root` variables. The platform extracts `:root` blocks to keep them global, so content inside containers can reference them via `var()`.
+
+```css
+/* GOOD — variables in :root, applied via class selectors */
+:root {
+  --color-fg: #2D2A26;
+  --color-bg: #FAF6F1;
+  --font-sans: 'Inter', sans-serif;
+}
+.slide { font-family: var(--font-sans); color: var(--color-fg); }
+
+/* BAD — global element selectors leak into export chrome */
+body { font-family: 'Inter'; color: #2D2A26; }
+h1 { font-size: 2rem; }
+```
+
+### Scope styles to content classes
+
+Use the mode's semantic class names (`.slide`, `.slide-content`, `.slide-title`) instead of bare element selectors (`h1`, `p`, `ul`). This prevents style leakage even without platform scoping.
+
+```css
+/* GOOD */
+.slide h1 { font-size: 2rem; margin-bottom: 0.5em; }
+.slide p  { line-height: 1.6; }
+
+/* AVOID — bare element selectors affect everything on the page */
+h1 { font-size: 2rem; }
+p  { line-height: 1.6; }
+```
+
+### Avoid global resets in theme files
+
+The `* { margin: 0; padding: 0 }` pattern is common but pollutes the export page. Scope it to your content container:
+
+```css
+/* GOOD */
+.slide *, .slide *::before, .slide *::after { box-sizing: border-box; }
+
+/* AVOID */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+```
+
+### How platform scoping works (for reference)
+
+During export, the platform:
+1. Extracts `@import` and `:root { ... }` blocks — kept global
+2. Wraps everything else in `.slide-page { ... }` using CSS nesting
+3. Export chrome (toolbar, layout) uses its own `--color-cc-*` variables, fully isolated
+
+This means `body { color: red }` in theme CSS becomes `.slide-page body { ... }` — which never matches (body is not inside `.slide-page`). The content container inherits from `.slide-page` instead.
+
 ## System Bridge API
 
 The Pneuma runtime provides HTTP endpoints for OS-level operations that browser code cannot perform directly. Viewer components can call these from the frontend:

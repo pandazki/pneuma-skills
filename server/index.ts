@@ -847,6 +847,15 @@ export function startServer(options: ServerOptions) {
     // Read theme.css and patch font stacks for CJK print compatibility
     const themePath = join(baseDir, "theme.css");
     let themeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
+    // Scope theme CSS to .slide-page so it doesn't pollute the export toolbar.
+    // Extract :root blocks (CSS variables) to keep them global.
+    if (themeCSS) {
+      const globals: string[] = [];
+      // Extract @import and :root blocks — they must stay at top level
+      let scoped = themeCSS.replace(/@import\s+[^;]+;/g, (m) => { globals.push(m); return ""; });
+      scoped = scoped.replace(/:root\s*\{[^}]*\}/g, (m) => { globals.push(m); return ""; });
+      themeCSS = globals.join("\n") + "\n.slide-page {\n" + scoped + "\n}";
+    }
     const CJK_FONTS = '"PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei"';
     themeCSS = themeCSS.replace(
       /(--font-sans\s*:\s*)([^;]*?)(,\s*)(sans-serif\s*;)/,

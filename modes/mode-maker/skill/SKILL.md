@@ -123,6 +123,10 @@ Modes can use any npm package in their viewer. Install with `bun add <package>`,
 | **Slide** | `slides/*.html`, `manifest.json`, `theme.css` | iframe + srcdoc | `manifest`, ordered |
 | **Draw** | `**/*.excalidraw` | Excalidraw React component | `all`, multi-file, topBarNavigation |
 
+## Theme CSS Hygiene
+
+Modes with custom styling (e.g. `theme.css`) must scope their CSS to content classes — not bare elements like `h1`, `body`, `*`. The platform scopes theme CSS automatically during export, but using semantic class selectors (`.slide h1` instead of `h1`) and `:root` variables is critical for clean isolation. See `{SKILL_PATH}/references/viewer-guide.md` → "Theme CSS Best Practices" for the full guide.
+
 ## What NOT to Do
 
 - Do not modify `.claude/` or `.pneuma/` — managed by the runtime, edits get overwritten
