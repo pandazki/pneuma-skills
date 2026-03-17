@@ -52,6 +52,59 @@ export function getBaseUrl(): string {
   return import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
 }
 
+/**
+ * CSS injected into capture iframes:
+ * - object-fit: fill — snapdom can't reproduce cover/contain in foreignObject,
+ *   but fill (stretch) is close enough at thumbnail sizes.
+ */
+export const CAPTURE_OVERRIDE_CSS = "img[style*='position'][style*='absolute'],img[style*='position'][style*='fixed']{display:none!important;}img{object-fit:fill!important;}";
+
+
+/** Convert a Blob to a data URL */
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Inline external <img src="..."> as data URLs in the HTML string.
+ *
+ * srcdoc iframes have origin "null", making all localhost images cross-origin.
+ * snapdom can't embed cross-origin images. By pre-fetching from the main window
+ * (same origin) and inlining as data URLs, the images become part of the document.
+ */
+export async function inlineImagesInHtml(html: string, baseHref: string): Promise<string> {
+  // Match src attribute values in <img> tags
+  const imgSrcRegex = /<img\s[^>]*?\bsrc=["']([^"']+)["']/gi;
+  const replacements: [string, string][] = [];
+
+  for (const match of html.matchAll(imgSrcRegex)) {
+    const originalSrc = match[1];
+    if (originalSrc.startsWith("data:")) continue;
+
+    const fullUrl = new URL(originalSrc, baseHref).href;
+    try {
+      const resp = await fetch(fullUrl);
+      if (!resp.ok) continue;
+      const blob = await resp.blob();
+      const dataUrl = await blobToDataUrl(blob);
+      replacements.push([originalSrc, dataUrl]);
+    } catch {
+      // Failed to fetch — leave original src (snapdom's best effort)
+    }
+  }
+
+  let result = html;
+  for (const [original, dataUrl] of replacements) {
+    result = result.replaceAll(original, dataUrl);
+  }
+  return result;
+}
+
 // ── Capture iframe management ────────────────────────────────────────────────
 
 let captureIframe: HTMLIFrameElement | null = null;
@@ -114,6 +167,12 @@ export async function captureSlideToSvg(
   slideHtml = sanitizeHtmlQuotes(slideHtml);
   const baseUrl = getBaseUrl();
   const baseHref = `${baseUrl}/content/${contentBase}`;
+
+  // Pre-fetch and inline external images as data URLs.
+  // srcdoc iframes have origin "null" — all localhost images are cross-origin
+  // and won't be embedded by snapdom. Inlining fixes this.
+  slideHtml = await inlineImagesInHtml(slideHtml, baseHref);
+
   const isFullDoc =
     slideHtml.includes("<!DOCTYPE") || slideHtml.includes("<html");
 
@@ -122,7 +181,7 @@ export async function captureSlideToSvg(
   if (isFullDoc) {
     // Full document: inject <base> and sizing CSS, keep everything else
     srcdoc = slideHtml;
-    const inject = `<base href="${baseHref}"><style>html,body{width:${width}px;height:${height}px;margin:0;padding:0;overflow:hidden;}</style>`;
+    const inject = `<base href="${baseHref}"><style>html,body{width:${width}px;height:${height}px;margin:0;padding:0;overflow:hidden;}${CAPTURE_OVERRIDE_CSS}</style>`;
     if (srcdoc.includes("</head>")) {
       srcdoc = srcdoc.replace("</head>", `${inject}</head>`);
     } else if (/<body/i.test(srcdoc)) {
@@ -131,7 +190,7 @@ export async function captureSlideToSvg(
   } else {
     // Fragment: wrap in our template
     const bodyContent = stripHtmlWrapper(slideHtml);
-    srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base href="${baseHref}"><style>${themeCSS}</style><style>html,body{width:${width}px;height:${height}px;margin:0;padding:0;overflow:hidden;}</style></head><body>${bodyContent}</body></html>`;
+    srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base href="${baseHref}"><style>${themeCSS}</style><style>html,body{width:${width}px;height:${height}px;margin:0;padding:0;overflow:hidden;}${CAPTURE_OVERRIDE_CSS}</style></head><body>${bodyContent}</body></html>`;
   }
 
   // Render in hidden iframe (full isolation — scripts, external CSS all load)

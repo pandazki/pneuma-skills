@@ -2291,6 +2291,9 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
   }
 
   // ── Static content serving (workspace files) ──────────────────────────
+  // CORS needed for slide thumbnail capture: Vite dev server (different port)
+  // fetches images via inlineImagesInHtml() before passing to snapdom.
+  app.use("/content/*", cors({ origin: "*" }));
   app.get("/content/*", async (c) => {
     const relPath = decodeURIComponent(c.req.path.replace(/^\/content\//, ""));
     if (!relPath) return c.text("Not found", 404);

@@ -36,32 +36,29 @@ List all slides in order with type annotations:
 
 ## Per-Slide Content
 
+For each slide, plan the **content → composition → visual** as one spatial decision, not separately.
+
 ### Slide 1: Cover
 - **Type**: Cover
-- **Title**: "..."
-- **Subtitle**: "..."
-- **Visual**: [Background gradient / hero image / logo placement]
+- **Content**: Title "...", subtitle "..."
+- **Composition**: Centered, generous whitespace, [background gradient / hero image / logo]
 - **Notes**: [Any special requirements]
 
 ### Slide 2: {Title}
 - **Type**: Content
-- **Headline**: "..."
-- **Key points**:
-  - Point 1 with supporting detail
-  - Point 2 with supporting detail
-  - Point 3 with supporting detail
-- **Layout**: [Single column / Two-column / Card grid / Chart + text]
-- **Visual elements**: [Icon list / Bar chart / Diagram]
-- **Image needs**: [Description of any images needed, or "none"]
+- **Content**: Headline "...", 3 key points with supporting detail
+- **Composition**: [e.g. "heading top, 3 cards centered in remaining space" / "split: text left, diagram right, columns vertically centered" / "dense — content fills naturally, top-aligned"]
+- **Visual**: [e.g. "icon per card" / "bar chart right column, ~300px tall" / "full-bleed background with gradient overlay" / "none — typography only"]
 
 ### Slide 3: {Title}
 ...
 
-## Image Requirements
+## Image & Visual Plan
 
 - **Overall style**: [Photographic / Illustrated / Minimal / Data-heavy]
 - **User-provided images**: [List any images the user has in assets/]
-- **Images to create**: [Description of any images that need to be created via CSS/SVG]
+- **Images to generate**: [Description, purpose, which slide, approximate size/position]
+- **CSS/SVG visuals**: [Diagrams, charts, decorative elements that can be built in code]
 
 ## Additional Constraints
 
@@ -77,5 +74,7 @@ List all slides in order with type annotations:
 1. **Be specific about content**: Don't just write "data slide" — specify which data points, what chart type, what conclusion to draw
 2. **Think about flow**: Each slide should logically lead to the next. The narrative should work without a presenter
 3. **Plan density carefully**: One key idea per slide for presentations; more density OK for read-along decks
-4. **Include layout hints**: Mentioning "two-column with chart on left" helps generate better slides
-5. **Specify language explicitly**: If the user writes in Chinese but wants English slides (or vice versa), note this clearly
+4. **Composition is a per-slide decision**: Think about how much content you have and where it belongs in the 592px vertical space. A slide with 2 cards needs different spatial treatment than one with 8 items. See `{SKILL_PATH}/references/layout-patterns.md` → Composition
+5. **Plan visuals alongside layout**: A "split: text left, chart right" slide needs to know the chart exists at outline time — the visual is part of the composition, not an afterthought
+6. **Use image generation when available**: If you have access to AI image generation (check the Image Handling section in SKILL.md), proactively plan generated images in the outline — cover hero images, section mood visuals, illustrative photos. Write concrete descriptions in "Images to generate" rather than defaulting to "none". A deck with well-chosen images is significantly more engaging than CSS-only.
+7. **Specify language explicitly**: If the user writes in Chinese but wants English slides (or vice versa), note this clearly

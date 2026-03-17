@@ -79,6 +79,22 @@ Base layout classes and **when to use each**:
 
 **Decision rule**: If total content height < 70% of available height ({{slideHeight-128}}px), use `.slide` (centered). Only use `.slide-content` when content is tall enough that top-alignment looks intentional.
 
+**Default: use `.slide` (centered) and do NOT override `justify-content`.** The entire content group (heading + body) centers vertically as a unit. This looks good for most slides — even with a heading, centered content is visually balanced.
+
+Only for **dense slides** (content fills 70%+ of vertical space), use the heading-top + body-centered pattern:
+
+```html
+<div class="slide" style="justify-content: flex-start;">
+  <h2>Heading</h2>
+  <p>Subtitle</p>
+  <div style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+    <!-- dense content here -->
+  </div>
+</div>
+```
+
+**Do NOT use this pattern for light/medium content.** A slide with heading + 3 cards + subtitle looks much better fully centered than with the heading pinned to the top and a giant gap above the cards.
+
 ---
 
 ## Workflow: Creating a New Deck
@@ -265,12 +281,11 @@ For deck-wide style changes: edit `theme.css`. All slides inherit changes immedi
 
 ## Image Handling
 
-### Priority: HTML/CSS First, Images Second
+### Visual Approach by Type
 
-Always prefer CSS and SVG over raster images:
-- **Use CSS**: Geometric shapes, gradients, backgrounds, decorative patterns
-- **Use SVG/Icons**: Icons (Lucide/Material), simple diagrams, logos
-- **Use images only when needed**: Photographs, complex illustrations, product shots
+- **CSS/SVG**: Geometric shapes, gradients, backgrounds, decorative patterns, icons (Lucide/inline SVG)
+- **AI-generated images**: Photographs, complex illustrations, hero visuals, product shots, mood imagery
+- **User-provided images**: Screenshots, logos, brand assets — place in `assets/`
 
 ### Using Images
 
@@ -282,26 +297,30 @@ Place image files in `assets/` and reference them in HTML:
 
 The viewer resolves `assets/` paths relative to the workspace. The export endpoint uses `<base href="/content/">` for correct resolution.
 
-### Image Quantity Guideline
+### Image Quantity Per Slide
 
-- **0 images**: Most slides work perfectly without images
-- **1 image**: Usually sufficient (hero image or background)
-- **2 images**: Maximum for typical slides
+- **1 image**: Most common — hero, background, or supporting visual
+- **2 images**: Side-by-side comparison or illustration + detail
 - **3+ images**: Only if explicitly requested by the user
+- **0 images**: Fine for data-heavy, diagram, or typography-focused slides
 
 {{#imageGenEnabled}}
 ### AI Image Generation
 
-You have access to an AI image generation script that creates contextual illustrations using Gemini 3 Pro Image.
+You have access to an AI image generation script. **Use it proactively** — don't wait for the user to ask. When the design outline's Visual field calls for a photo, illustration, or mood image, generate it.
 
-**When to use AI images**:
-- The user requests a photo, illustration, or visual that can't be created with CSS/SVG
-- A slide needs a hero image, background photo, or product-style illustration
-- The design outline specifies visual elements that require generated images
+**When to generate**:
+- The design outline specifies a visual that CSS/SVG can't achieve (photos, illustrations, mood imagery)
+- A slide would benefit from a hero image or background visual
+- The content calls for real-world imagery (people, places, products, scenes)
+
+**When NOT to generate**:
+- The slide is diagram/chart/data-focused — use CSS/SVG instead
+- The slide is typography-only by design intent
 
 **Workflow**:
 
-1. **Analyze context**: What does the slide need? Match the deck's visual tone and the slide's content
+1. **Plan in outline**: The design outline's Visual field should already specify which slides need generated images and what kind
 2. **Craft a detailed prompt**: Include subject, style, composition, mood, and technical details
 3. **Generate**:
 

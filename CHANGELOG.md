@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.4] - 2026-03-17
+
+### Fixed
+- **Slide thumbnail misalignment** — full-bleed background images (`position: absolute`) caused snapdom to produce shifted thumbnails; now hidden via CSS during capture so foreground content renders correctly
+- **Slide export CSS scoping** — theme CSS in exported slides no longer pollutes toolbar/UI styles
+- **Large file attachment crash** — prevented oversized file attachments from crashing the CLI WebSocket connection
+- **CORS for `/content/*`** — added CORS headers to workspace file serving, enabling cross-origin image inlining for thumbnail capture in dev mode
+
+### Improved
+- **Slide layout guidance** — strengthened vertical centering as the default; `.slide` (centered) is now the clear default for light/medium content, with heading-top + body-centered pattern reserved for dense slides only
+- **Slide image generation guidance** — rewritten to encourage proactive AI image generation instead of CSS-first default; design outline template now includes image planning tips
+- **Slide thumbnail image handling** — external images are pre-fetched and inlined as data URLs before snapdom capture, working around srcdoc iframe cross-origin limitations
+
 ## [2.7.3] - 2026-03-17
 
 ### Fixed
