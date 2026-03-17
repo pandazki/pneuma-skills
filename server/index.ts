@@ -758,11 +758,11 @@ export function startServer(options: ServerOptions) {
   };
 
   /** Read a workspace-relative file and return as a data: URI, or null on failure. */
-  function readAsDataUri(ref: string): string | null {
+  function readAsDataUri(ref: string, resolveBase = workspace): string | null {
     let cleaned = ref.split("?")[0].split("#")[0];
     if (cleaned.startsWith("/content/")) cleaned = cleaned.slice(9);
     if (cleaned.startsWith("/")) return null;
-    const absPath = join(workspace, cleaned);
+    const absPath = join(resolveBase, cleaned);
     if (!pathStartsWith(absPath, workspace) || !existsSync(absPath)) return null;
     try {
       const ext = extname(cleaned).toLowerCase();
@@ -775,7 +775,7 @@ export function startServer(options: ServerOptions) {
   }
 
   /** Replace local asset references with inline data: URIs. */
-  function inlineAssets(html: string): string {
+  function inlineAssets(html: string, resolveBase = workspace): string {
     // Inline <link rel="stylesheet" href="..."> as <style> blocks
     html = html.replace(/<link\b[^>]*rel\s*=\s*["']stylesheet["'][^>]*>/gi, (match) => {
       const hrefMatch = match.match(/href\s*=\s*["']([^"']+)["']/i);
@@ -785,7 +785,7 @@ export function startServer(options: ServerOptions) {
       let cleaned = ref.split("?")[0].split("#")[0];
       if (cleaned.startsWith("/content/")) cleaned = cleaned.slice(9);
       if (cleaned.startsWith("/")) return match;
-      const absPath = join(workspace, cleaned);
+      const absPath = join(resolveBase, cleaned);
       if (!pathStartsWith(absPath, workspace) || !existsSync(absPath)) return match;
       try {
         const css = readFileSync(absPath, "utf-8");
@@ -798,14 +798,14 @@ export function startServer(options: ServerOptions) {
     // Inline src="..." attributes pointing to local files
     html = html.replace(/(src\s*=\s*["'])([^"']+)(["'])/gi, (match, prefix, ref, suffix) => {
       if (/^(https?:|data:|\/\/|#)/i.test(ref)) return match;
-      const dataUri = readAsDataUri(ref);
+      const dataUri = readAsDataUri(ref, resolveBase);
       return dataUri ? `${prefix}${dataUri}${suffix}` : match;
     });
 
     // Inline url(...) in CSS pointing to local files
     html = html.replace(/url\(\s*["']?([^"')]+?)["']?\s*\)/gi, (match, ref) => {
       if (/^(https?:|data:|\/\/|#)/i.test(ref)) return match;
-      const dataUri = readAsDataUri(ref);
+      const dataUri = readAsDataUri(ref, resolveBase);
       return dataUri ? `url("${dataUri}")` : match;
     });
 
@@ -904,7 +904,8 @@ export function startServer(options: ServerOptions) {
     const headResources = Array.from(headResourceSet).join("\n");
 
     const title = manifest.title || "Slides";
-    const baseTag = opts.inline ? "" : '\n<base href="/content/">';
+    const contentBase = opts.contentSet ? `${opts.contentSet}/` : "";
+    const baseTag = opts.inline ? "" : `\n<base href="/content/${contentBase}">`;
     const toolbarHtml = opts.inline
       ? ""
       : `\n<div class="export-toolbar-wrapper">
@@ -1223,7 +1224,7 @@ ${slidePages}${downloadScript}${imageModeScript}
 </html>`;
 
     if (opts.inline) {
-      exportHtml = inlineAssets(exportHtml);
+      exportHtml = inlineAssets(exportHtml, baseDir);
     }
 
     return { html: exportHtml, title };

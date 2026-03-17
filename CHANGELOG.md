@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.2] - 2026-03-17
+
+### Fixed
+- **Slide export subdirectory images** — export page and downloaded HTML now correctly resolve image paths for content sets in subdirectories (same root cause as 2.7.1 viewer fix, applied to server-side export with `<base href>` and inline data URI resolution)
+
 ## [2.7.1] - 2026-03-16
 
 ### Fixed
