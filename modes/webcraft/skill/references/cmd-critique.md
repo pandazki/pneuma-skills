@@ -8,9 +8,13 @@ args:
 user-invokable: true
 ---
 
-Conduct a holistic design critique, evaluating whether the interface actually works—not just technically, but as a designed experience. Think like a design director giving feedback.
+## MANDATORY PREPARATION
 
-**First**: Use the frontend-design skill for design principles and anti-patterns.
+Use the frontend-design skill — it contains design principles, anti-patterns, and the **Context Gathering Protocol**. Follow the protocol before proceeding — if no design context exists yet, you MUST run teach-impeccable first. Additionally gather: what the interface is trying to accomplish.
+
+---
+
+Conduct a holistic design critique, evaluating whether the interface actually works—not just technically, but as a designed experience. Think like a design director giving feedback.
 
 ## Design Critique
 

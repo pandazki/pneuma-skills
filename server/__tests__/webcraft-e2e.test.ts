@@ -4,13 +4,13 @@
  * Verifies the full flow:
  * 1. Mode loading via manifest import
  * 2. Manifest validation (required fields, viewer actions, watch patterns)
- * 3. Skill installation (SKILL.md + 24 reference files)
- * 4. SKILL.md content (Impeccable principles, 17 commands, AI slop test)
- * 5. Reference file completeness (7 design + 17 command references)
+ * 3. Skill installation (SKILL.md + 27 reference files)
+ * 4. SKILL.md content (Impeccable principles, 20 commands, AI slop test)
+ * 5. Reference file completeness (7 design + 20 command references)
  * 6. CLAUDE.md injection with pneuma markers
  * 7. Seed file (index.html) for empty workspaces
  * 8. Seed quality (OKLCH, fluid typography, semantic HTML, responsive, reduced motion)
- * 9. Viewer actions (all 17 Impeccable commands)
+ * 9. Viewer actions (all 20 Impeccable commands)
  * 10. Watch patterns (HTML, CSS, JS, images)
  * 11. Template placeholder resolution
  */
@@ -72,7 +72,7 @@ describe("mode loading", () => {
 describe("manifest validation", () => {
   it("has all required top-level fields", () => {
     expect(webcraftManifest.name).toBe("webcraft");
-    expect(webcraftManifest.version).toBe("1.0.0");
+    expect(webcraftManifest.version).toBe("1.1.0");
     expect(webcraftManifest.displayName).toBe("WebCraft");
     expect(webcraftManifest.description).toContain("Impeccable");
     expect(webcraftManifest.icon).toContain("<svg");
@@ -115,7 +115,7 @@ describe("skill installation", () => {
     expect(content.length).toBeGreaterThan(100);
   });
 
-  it("installs all 24 reference files", () => {
+  it("installs all 27 reference files", () => {
     const ws = makeWorkspace("install-refs");
     installWebcraftSkill(ws);
 
@@ -123,7 +123,7 @@ describe("skill installation", () => {
     expect(existsSync(refsDir)).toBe(true);
 
     const files = readdirSync(refsDir).filter((f) => f.endsWith(".md"));
-    expect(files.length).toBe(24);
+    expect(files.length).toBe(27);
   });
 
   it("creates CLAUDE.md in workspace root", () => {
@@ -264,6 +264,8 @@ describe("reference file completeness", () => {
     "cmd-polish.md",
     "cmd-distill.md",
     "cmd-clarify.md",
+    "cmd-typeset.md",
+    "cmd-arrange.md",
     "cmd-optimize.md",
     "cmd-harden.md",
     "cmd-animate.md",
@@ -271,6 +273,7 @@ describe("reference file completeness", () => {
     "cmd-bolder.md",
     "cmd-quieter.md",
     "cmd-delight.md",
+    "cmd-overdrive.md",
     "cmd-extract.md",
     "cmd-adapt.md",
     "cmd-onboard.md",
@@ -280,8 +283,8 @@ describe("reference file completeness", () => {
     expect(designReferences.length).toBe(7);
   });
 
-  it("has exactly 17 command reference files", () => {
-    expect(commandReferences.length).toBe(17);
+  it("has exactly 20 command reference files", () => {
+    expect(commandReferences.length).toBe(20);
   });
 
   it("all 7 design references exist and have content", () => {
@@ -516,9 +519,9 @@ describe("seed quality — Impeccable principles", () => {
   });
 });
 
-// ── 9. Viewer Actions ────────────────────────────────────────────────────────
+// ── 9. Viewer Commands ───────────────────────────────────────────────────────
 
-describe("viewer actions", () => {
+describe("viewer commands", () => {
   const expectedCommandIds = [
     "teach-impeccable",
     "audit",
@@ -527,6 +530,8 @@ describe("viewer actions", () => {
     "polish",
     "distill",
     "clarify",
+    "typeset",
+    "arrange",
     "optimize",
     "harden",
     "animate",
@@ -534,40 +539,33 @@ describe("viewer actions", () => {
     "bolder",
     "quieter",
     "delight",
+    "overdrive",
     "extract",
     "adapt",
     "onboard",
   ];
 
-  it("defines exactly 17 viewer actions", () => {
-    expect(webcraftManifest.viewerApi!.actions!.length).toBe(17);
+  it("defines exactly 20 viewer commands", () => {
+    expect(webcraftManifest.viewerApi!.commands!.length).toBe(20);
   });
 
-  it("all 17 Impeccable commands are defined as viewer actions", () => {
-    const actionIds = webcraftManifest.viewerApi!.actions!.map((a) => a.id);
+  it("all 20 Impeccable commands are declared", () => {
+    const commandIds = webcraftManifest.viewerApi!.commands!.map((c) => c.id);
     for (const cmd of expectedCommandIds) {
-      expect(actionIds).toContain(cmd);
+      expect(commandIds).toContain(cmd);
     }
   });
 
-  it("all actions have category 'custom'", () => {
-    for (const action of webcraftManifest.viewerApi!.actions!) {
-      expect(action.category).toBe("custom");
-    }
+  it("has no agent-invocable actions (webcraft uses commands only)", () => {
+    expect(webcraftManifest.viewerApi!.actions ?? []).toEqual([]);
   });
 
-  it("all actions are not agent-invocable (user-triggered only)", () => {
-    for (const action of webcraftManifest.viewerApi!.actions!) {
-      expect(action.agentInvocable).toBe(false);
-    }
-  });
-
-  it("all actions have a label and description", () => {
-    for (const action of webcraftManifest.viewerApi!.actions!) {
-      expect(action.label).toBeTruthy();
-      expect(action.description).toBeTruthy();
-      expect(action.label!.length).toBeGreaterThan(0);
-      expect(action.description!.length).toBeGreaterThan(10);
+  it("all commands have a label and description", () => {
+    for (const cmd of webcraftManifest.viewerApi!.commands!) {
+      expect(cmd.label).toBeTruthy();
+      expect(cmd.description).toBeTruthy();
+      expect(cmd.label.length).toBeGreaterThan(0);
+      expect(cmd.description!.length).toBeGreaterThan(10);
     }
   });
 });

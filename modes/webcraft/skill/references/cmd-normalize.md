@@ -10,6 +10,12 @@ user-invokable: true
 
 Analyze and redesign the feature to perfectly match our design system standards, aesthetics, and established patterns.
 
+## MANDATORY PREPARATION
+
+Use the frontend-design skill — it contains design principles, anti-patterns, and the **Context Gathering Protocol**. Follow the protocol before proceeding — if no design context exists yet, you MUST run teach-impeccable first.
+
+---
+
 ## Plan
 
 Before making changes, deeply understand the context:

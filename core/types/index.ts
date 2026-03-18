@@ -31,6 +31,7 @@ export type {
   ViewerActionDescriptor,
   ViewerActionRequest,
   ViewerActionResult,
+  ViewerCommandDescriptor,
   ViewerLocator,
 } from "./viewer-contract.js";
 
