@@ -169,9 +169,15 @@ async function captureViaImages(el: HTMLElement): Promise<string | null> {
  */
 async function captureViaSnapdom(el: HTMLElement): Promise<string | null> {
   try {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // Scale down so the rendered image doesn't exceed thumbnail dimensions.
+    // On a fullscreen viewer (e.g. app layout) the element can be very large;
+    // capturing at DPR 2 would create a huge bitmap and OOM the tab.
+    const rect = el.getBoundingClientRect();
+    const maxDim = Math.max(rect.width, rect.height);
+    const scale = maxDim > 0 ? Math.min(THUMB_WIDTH / rect.width, THUMB_HEIGHT / rect.height, 1) : 0.5;
+
     const result = await snapdom(el, { embedFonts: false });
-    const png = await result.toPng({ scale: dpr });
+    const png = await result.toPng({ scale });
     return png.src;
   } catch {
     return null;
@@ -190,9 +196,15 @@ async function captureGeneric(el: HTMLElement): Promise<string | null> {
   const imgResult = await captureViaImages(el);
   if (imgResult) return scaleToThumb(imgResult);
 
-  // 3. DOM snapshot fallback
-  const snapResult = await captureViaSnapdom(el);
-  if (snapResult) return scaleToThumb(snapResult);
+  // 3. DOM snapshot fallback — skip for very large elements (e.g. fullscreen app layout)
+  //    snapdom clones the entire DOM tree which can OOM on complex viewers
+  const rect = el.getBoundingClientRect();
+  const elArea = rect.width * rect.height;
+  const screenArea = window.innerWidth * window.innerHeight;
+  if (elArea <= screenArea * 0.8) {
+    const snapResult = await captureViaSnapdom(el);
+    if (snapResult) return scaleToThumb(snapResult);
+  }
 
   return null;
 }

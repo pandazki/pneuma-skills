@@ -34,6 +34,11 @@ const DEFAULT_IGNORE = [
   "**/.pneuma/**",
   "**/.claude/**",
   "**/.agents/**",
+  // Build artifacts & dependencies
+  "**/node_modules/**",
+  "**/dist/**",
+  "**/.vite/**",
+  "**/build/**",
 ];
 
 export interface FileUpdate {
