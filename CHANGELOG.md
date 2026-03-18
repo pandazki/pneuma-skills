@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.8.1] - 2026-03-18
+
+### Fixed
+- **File watcher flooding** — added `node_modules`, `dist`, `.vite`, and `build` to the default ignore list so chokidar doesn't push irrelevant file changes to the browser
+- **Thumbnail capture OOM** — snapdom now scales to thumbnail dimensions instead of device pixel ratio, and skips DOM cloning entirely for fullscreen/near-fullscreen viewers
+
 ## [2.8.0] - 2026-03-18
 
 ### Added
