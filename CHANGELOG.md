@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.8.0] - 2026-03-18
+
+### Added
+- **3 new Impeccable commands** — `typeset` (typography), `arrange` (layout & spacing), `overdrive` (technically ambitious implementations) — WebCraft now has 20 design commands
+- **Action/Command protocol separation** — new `ViewerCommandDescriptor` type for User → Agent commands, distinct from `ViewerActionDescriptor` (Agent → Viewer actions); manifest gains `viewerApi.commands[]` field
+- **Viewer-Agent Protocol doc** — `docs/reference/viewer-agent-protocol.md` documenting the 6 communication directions between User, Viewer, and Agent with architectural diagrams
+
+### Improved
+- **Impeccable v1.5 sync** — updated 13 existing command references and design principles from upstream; typography reference now distinguishes fixed type scales (app UI) from fluid typography (marketing pages)
+- **Viewer decoupled from manifest** — WebCraft viewer reads commands from `props.commands` (runtime-injected) instead of importing manifest directly; sidebar built via `useMemo` from props
+- **Richer design anti-patterns** — DON'T guidelines now include explanations (e.g. "modals are lazy", "hero metric layout template"), Context Gathering Protocol added for design work
+
 ## [2.7.4] - 2026-03-17
 
 ### Fixed

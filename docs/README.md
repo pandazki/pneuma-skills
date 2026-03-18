@@ -50,6 +50,7 @@ docs/
 
 | 文档 | 说明 |
 |------|------|
+| [viewer-agent-protocol.md](reference/viewer-agent-protocol.md) | Viewer–Agent 协议架构：三方角色、6 个通信方向、契约类型 |
 | [network-topology.md](reference/network-topology.md) | 端口分配、通信拓扑、环境变量 |
 | [cron-protocol.md](reference/cron-protocol.md) | Claude Code Cron 协议逆向文档 |
 
