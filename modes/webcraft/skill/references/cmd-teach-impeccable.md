@@ -64,6 +64,8 @@ Synthesize your findings and the user's answers into a `## Design Context` secti
 [3-5 principles derived from the conversation that should guide all design decisions]
 ```
 
-Write this section to {{config_file}} in the project root. If the file exists, append or update the Design Context section.
+Write this section to `.impeccable.md` in the project root. If the file already exists, update the Design Context section in place.
+
+Then {{ask_instruction}} whether they'd also like the Design Context appended to {{config_file}}. If yes, append or update the section there as well.
 
 Confirm completion and summarize the key design principles that will now guide all future work.

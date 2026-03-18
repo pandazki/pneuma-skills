@@ -105,7 +105,7 @@ export interface FileWorkspaceModel {
   createEmpty?: (files: ViewerFileContent[]) => { path: string; content: string }[] | null;
 }
 
-// ── Viewer Action (能力对齐) ───────────────────────────────────────────────
+// ── Viewer Action (Agent → Viewer 能力对齐) ─────────────────────────────────
 
 /** Viewer 操作参数描述 */
 export interface ViewerActionParam {
@@ -115,7 +115,7 @@ export interface ViewerActionParam {
 }
 
 /**
- * Viewer 操作描述 — 能力对齐的基本单元。
+ * Viewer 操作描述 — Agent → Viewer 方向。
  *
  * Viewer 声明自己支持的操作，Agent 通过执行通道调用。
  * 无论是 "导航到第 3 页"、"收起 outline"、还是 "截图当前视图"，
@@ -127,6 +127,21 @@ export interface ViewerActionDescriptor {
   category: "file" | "navigate" | "ui" | "custom";
   agentInvocable: boolean;
   params?: Record<string, ViewerActionParam>;
+  description?: string;
+}
+
+// ── Viewer Command (User → Agent 命令) ──────────────────────────────────────
+
+/**
+ * Viewer 命令描述 — User → Agent 方向。
+ *
+ * Mode 声明 UI 上可触发的命令，用户点击后通过 onNotifyAgent 发给 Agent。
+ * 与 ViewerAction 方向相反：Action 是 Agent 请求 Viewer 执行操作，
+ * Command 是用户通过 Viewer UI 触发 Agent 执行任务。
+ */
+export interface ViewerCommandDescriptor {
+  id: string;
+  label: string;
   description?: string;
 }
 
@@ -205,6 +220,8 @@ export interface ViewerPreviewProps {
   navigateRequest?: ViewerLocator | null;
   /** Viewer 完成定位后调用，清除请求 */
   onNavigateComplete?: () => void;
+  /** Manifest 声明的 viewer commands (user → agent) — runtime 从 manifest 注入，viewer 可用于渲染命令菜单等 UI */
+  commands?: ViewerCommandDescriptor[];
 }
 
 /** 内容查看器的 UI 契约 */

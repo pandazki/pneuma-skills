@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { SessionState, PermissionRequest, ChatMessage, FileContent, SelectionContext, ContentBlock, UserAction, Annotation } from "./types.js";
-import type { ViewerContract, WorkspaceItem, ViewerActionRequest, ContentSet, ViewerLocator } from "../core/types/viewer-contract.js";
+import type { ViewerContract, ViewerCommandDescriptor, WorkspaceItem, ViewerActionRequest, ContentSet, ViewerLocator } from "../core/types/viewer-contract.js";
 
 export interface Activity {
   phase: "thinking" | "responding" | "tool";
@@ -100,6 +100,8 @@ interface AppState {
   // Mode viewer (loaded dynamically via mode-loader)
   modeViewer: ViewerContract | null;
   modeDisplayName: string;
+  /** Manifest-declared viewer commands (user → agent) — passed to viewer via props */
+  modeCommands: ViewerCommandDescriptor[];
 
   // Init params (immutable per session, from mode manifest)
   initParams: Record<string, number | string>;
@@ -195,6 +197,7 @@ interface AppState {
   // Actions — mode viewer
   setModeViewer: (viewer: ViewerContract) => void;
   setModeDisplayName: (name: string) => void;
+  setModeCommands: (commands: ViewerCommandDescriptor[]) => void;
 
   // Actions — init params
   setInitParams: (params: Record<string, number | string>) => void;
@@ -301,6 +304,7 @@ export const useStore = create<AppState>((set) => ({
   viewportRange: null,
   modeViewer: null,
   modeDisplayName: "",
+  modeCommands: [],
   initParams: {},
   debugMode: false,
   workspaceItems: [],
@@ -452,6 +456,7 @@ export const useStore = create<AppState>((set) => ({
       };
     }),
   setModeDisplayName: (modeDisplayName) => set({ modeDisplayName }),
+  setModeCommands: (modeCommands) => set({ modeCommands }),
 
   setInitParams: (initParams) => set({ initParams }),
 

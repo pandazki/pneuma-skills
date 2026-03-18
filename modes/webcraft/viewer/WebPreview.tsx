@@ -142,6 +142,9 @@ const Icons = {
   package:    <svg {...svgProps}><path d="M16.5 9.4l-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27,6.96 12,12.01 20.73,6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
   layoutGrid: <svg {...svgProps}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>,
   userPlus:   <svg {...svgProps}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>,
+  type:       <svg {...svgProps}><polyline points="4,7 4,4 20,4 20,7"/><line x1="9.5" y1="20" x2="14.5" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>,
+  columns:    <svg {...svgProps}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg>,
+  bolt:       <svg {...svgProps}><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/><circle cx="12" cy="12" r="10" fill="none"/></svg>,
 };
 
 interface ViewportPreset {
@@ -159,76 +162,67 @@ const VIEWPORT_PRESETS: ViewportPreset[] = [
   { id: "desktop", label: "Desktop", icon: Icons.monitor, width: 1280, height: 800 },
 ];
 
-// ── Impeccable Command Definitions ──────────────────────────────────────────
+// ── Impeccable Command Sidebar (built from props.actions) ───────────────────
 
-interface ImpeccableCommand {
-  id: string;
-  label: string;
-  icon: React.ReactNode;
-  description: string;
-}
+/** Icon lookup by action id — UI concern, lives in viewer */
+const ACTION_ICONS: Record<string, React.ReactNode> = {
+  "teach-impeccable": Icons.graduationCap,
+  "audit":       Icons.clipboardCheck,
+  "critique":    Icons.messageCircle,
+  "normalize":   Icons.ruler,
+  "polish":      Icons.gem,
+  "distill":     Icons.flask,
+  "clarify":     Icons.lightbulb,
+  "typeset":     Icons.type,
+  "arrange":     Icons.columns,
+  "optimize":    Icons.gauge,
+  "harden":      Icons.shield,
+  "animate":     Icons.play,
+  "colorize":    Icons.droplets,
+  "bolder":      Icons.flame,
+  "quieter":     Icons.leaf,
+  "delight":     Icons.heart,
+  "overdrive":   Icons.bolt,
+  "extract":     Icons.package,
+  "adapt":       Icons.layoutGrid,
+  "onboard":     Icons.userPlus,
+};
+
+/** Group definitions — order and categorization for sidebar UI */
+const COMMAND_GROUPS: { name: string; icon: React.ReactNode; actionIds: string[] }[] = [
+  { name: "Setup",        icon: Icons.settings, actionIds: ["teach-impeccable"] },
+  { name: "Review",       icon: Icons.search,   actionIds: ["audit", "critique"] },
+  { name: "Refine",       icon: Icons.sparkles,  actionIds: ["normalize", "polish", "distill", "clarify", "typeset", "arrange"] },
+  { name: "Performance",  icon: Icons.zap,       actionIds: ["optimize", "harden"] },
+  { name: "Style",        icon: Icons.palette,   actionIds: ["animate", "colorize", "bolder", "quieter", "delight", "overdrive"] },
+  { name: "Architecture", icon: Icons.building,  actionIds: ["extract", "adapt", "onboard"] },
+];
 
 interface CommandCategory {
   name: string;
   icon: React.ReactNode;
-  commands: ImpeccableCommand[];
+  commands: { id: string; label: string; icon: React.ReactNode; description: string }[];
 }
 
-const COMMAND_CATEGORIES: CommandCategory[] = [
-  {
-    name: "Setup",
-    icon: Icons.settings,
-    commands: [
-      { id: "teach-impeccable", label: "Teach", icon: Icons.graduationCap, description: "Gather design context" },
-    ],
-  },
-  {
-    name: "Review",
-    icon: Icons.search,
-    commands: [
-      { id: "audit", label: "Audit", icon: Icons.clipboardCheck, description: "Quality audit" },
-      { id: "critique", label: "Critique", icon: Icons.messageCircle, description: "Design review" },
-    ],
-  },
-  {
-    name: "Refine",
-    icon: Icons.sparkles,
-    commands: [
-      { id: "normalize", label: "Normalize", icon: Icons.ruler, description: "Match design system" },
-      { id: "polish", label: "Polish", icon: Icons.gem, description: "Final quality pass" },
-      { id: "distill", label: "Distill", icon: Icons.flask, description: "Strip to essence" },
-      { id: "clarify", label: "Clarify", icon: Icons.lightbulb, description: "Improve copy" },
-    ],
-  },
-  {
-    name: "Performance",
-    icon: Icons.zap,
-    commands: [
-      { id: "optimize", label: "Optimize", icon: Icons.gauge, description: "Speed & performance" },
-      { id: "harden", label: "Harden", icon: Icons.shield, description: "Error & edge cases" },
-    ],
-  },
-  {
-    name: "Style",
-    icon: Icons.palette,
-    commands: [
-      { id: "animate", label: "Animate", icon: Icons.play, description: "Add motion" },
-      { id: "colorize", label: "Colorize", icon: Icons.droplets, description: "Add color" },
-      { id: "bolder", label: "Bolder", icon: Icons.flame, description: "More impact" },
-      { id: "quieter", label: "Quieter", icon: Icons.leaf, description: "More refined" },
-      { id: "delight", label: "Delight", icon: Icons.heart, description: "Add joy" },
-    ],
-  },
-  {
-    name: "Architecture",
-    icon: Icons.building,
-    commands: [
-      { id: "extract", label: "Extract", icon: Icons.package, description: "Design system" },
-      { id: "adapt", label: "Adapt", icon: Icons.layoutGrid, description: "Responsive" },
-      { id: "onboard", label: "Onboard", icon: Icons.userPlus, description: "First-time UX" },
-    ],
-  },
-];
+/** Build sidebar categories from runtime-injected actions + local icon/group mappings */
+function buildCommandCategories(actions: { id: string; label: string; description?: string }[]): CommandCategory[] {
+  const actionMap = new Map(actions.map((a) => [a.id, a]));
+  return COMMAND_GROUPS.map((group) => ({
+    name: group.name,
+    icon: group.icon,
+    commands: group.actionIds
+      .filter((id) => actionMap.has(id))
+      .map((id) => {
+        const action = actionMap.get(id)!;
+        return {
+          id: action.id,
+          label: action.label,
+          icon: ACTION_ICONS[action.id] ?? Icons.sparkles,
+          description: action.description ?? "",
+        };
+      }),
+  })).filter((cat) => cat.commands.length > 0);
+}
 
 // ── Attribution ──────────────────────────────────────────────────────────────
 
@@ -811,12 +805,19 @@ export default function WebPreview({
   onNotifyAgent,
   navigateRequest,
   onNavigateComplete,
+  commands: manifestCommands,
 }: ViewerPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedFile, setSelectedFile] = useState<string>("");
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [commandBarCollapsed, setCommandBarCollapsed] = useState(false);
+
+  // Build command categories from manifest commands (runtime-injected via props)
+  const commandCategories = useMemo(
+    () => buildCommandCategories(manifestCommands ?? []),
+    [manifestCommands],
+  );
   const [viewport, setViewport] = useState<string>("full");
 
   // Access store for activeContentSet, preview mode, and annotations
@@ -1185,7 +1186,7 @@ export default function WebPreview({
   const handleCommand = useCallback(
     (commandId: string) => {
       if (!onNotifyAgent) return;
-      const allCommands = COMMAND_CATEGORIES.flatMap((c) => c.commands);
+      const allCommands = commandCategories.flatMap((c) => c.commands);
       const cmd = allCommands.find((c) => c.id === commandId);
       if (!cmd) return;
       // Viewer context is automatically prepended by sendViewerNotification
@@ -1265,7 +1266,7 @@ export default function WebPreview({
 
         {/* Command Categories */}
         <div style={{ flex: 1, overflowY: "auto", padding: commandBarCollapsed ? "4px 2px" : "4px 0" }}>
-          {COMMAND_CATEGORIES.map((category) => (
+          {commandCategories.map((category) => (
             <div key={category.name}>
               {/* Category Header */}
               <button

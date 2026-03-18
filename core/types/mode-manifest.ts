@@ -143,12 +143,19 @@ export interface ViewerApiConfig {
     /** If true, the workspace supports multiple content sets (e.g. locale/theme directories) */
     supportsContentSets?: boolean;
   };
+  /** Agent → Viewer actions — agent 可请求 viewer 执行的操作（导航、缩放等） */
   actions?: Array<{
     id: string;
     label: string;
     category: "file" | "navigate" | "ui" | "custom";
     agentInvocable: boolean;
     params?: Record<string, { type: "string" | "number" | "boolean"; description: string; required?: boolean }>;
+    description?: string;
+  }>;
+  /** User → Agent commands — viewer UI 上可触发的命令，用户点击后发给 agent 执行 */
+  commands?: Array<{
+    id: string;
+    label: string;
     description?: string;
   }>;
   /** Locator cards — clickable navigation targets in agent messages.

@@ -146,6 +146,7 @@ function useViewerProps(): ViewerPreviewProps {
     },
     navigateRequest,
     onNavigateComplete: () => setNavigateRequest(null),
+    commands: useStore((s) => s.modeCommands),
   };
 }
 
@@ -200,6 +201,7 @@ export default function App() {
       const def = await loadMode(modeName);
       useStore.getState().setModeViewer(def.viewer);
       useStore.getState().setModeDisplayName(def.manifest.displayName);
+      useStore.getState().setModeCommands(def.manifest.viewerApi?.commands ?? []);
     };
 
     // Load mode viewer first, then files + viewer state restore
