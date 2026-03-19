@@ -1,21 +1,21 @@
 /**
- * Content Set Resolver — 从工作区文件树发现可编辑的内容集合。
+ * Content Set Resolver — discovers editable content sets from the workspace file tree.
  *
- * 内容集合 = 顶层目录，目录名按约定解析 locale 和 theme。
- * Mode 一行接入: `resolveContentSets: createDirectoryContentSetResolver()`
+ * Content set = top-level directory, with directory names parsed by convention for locale and theme.
+ * One-line Mode integration: `resolveContentSets: createDirectoryContentSetResolver()`
  */
 
 import type { ContentSet, ContentSetTraits, ViewerFileContent } from "../types/viewer-contract.js";
 
 export interface DirectoryContentSetOptions {
   /**
-   * 自定义目录名解析。返回 null 表示排除该目录。
-   * 默认: 按 "-"/"_" 分割，识别已知 locale 和 theme。
+   * Custom directory name parser. Returns null to exclude the directory.
+   * Default: splits on "-"/"_", recognizes known locales and themes.
    */
   parseName?: (dirName: string) => (ContentSetTraits & { label?: string }) | null;
-  /** 目录至少包含多少文件才算有效内容集合 (默认 1) */
+  /** Minimum number of files for a directory to be a valid content set (default 1) */
   minFiles?: number;
-  /** 只考虑匹配此正则的目录 */
+  /** Only consider directories matching this regex */
   dirPattern?: RegExp;
 }
 

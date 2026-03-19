@@ -1,21 +1,21 @@
 /**
- * Mode Loader — 解析、安装、加载 Mode。
+ * Mode Loader — resolve, install, and load Modes.
  *
- * 支持三种来源:
- * - builtin: 内置 mode，从 modes/ 目录动态 import
- * - local: 本地文件系统路径
- * - github: GitHub 仓库 (通过 mode-resolver 克隆到本地缓存)
+ * Supports three sources:
+ * - builtin: built-in modes, dynamically imported from the modes/ directory
+ * - local: local filesystem path
+ * - github: GitHub repository (cloned to local cache via mode-resolver)
  *
- * 核心流程: resolveMode → ensureInstalled → loadFromSource
+ * Core flow: resolveMode → ensureInstalled → loadFromSource
  */
 
 import type { ModeManifest } from "./types/mode-manifest.js";
 import type { ModeDefinition } from "./types/mode-definition.js";
 
 /**
- * Mode 来源类型:
- * - "builtin" — 内置 mode，从 modes/ 目录动态 import
- * - "external" — 外部 mode，从绝对路径动态 import (local path 或 github clone)
+ * Mode source type:
+ * - "builtin" — built-in mode, dynamically imported from the modes/ directory
+ * - "external" — external mode, dynamically imported from an absolute path (local path or github clone)
  */
 type ModeSource =
   | {
@@ -31,7 +31,7 @@ type ModeSource =
       definitionLoader: () => Promise<ModeDefinition>;
     };
 
-/** 内置 mode 注册表 — 全部使用动态 import */
+/** Built-in mode registry — all use dynamic import */
 const builtinModes: Record<string, ModeSource> = {
   doc: {
     type: "builtin",
@@ -84,14 +84,14 @@ const builtinModes: Record<string, ModeSource> = {
   },
 };
 
-/** 外部 mode 注册表 — 由 CLI 在启动时通过 registerExternalMode 注册 */
+/** External mode registry — registered by the CLI at startup via registerExternalMode */
 const externalModes: Record<string, ModeSource> = {};
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * 加载 Mode 的完整定义 (manifest + viewer)。
- * 前端使用 — 需要 PreviewComponent。
+ * Load a Mode's full definition (manifest + viewer).
+ * Used by the frontend — requires PreviewComponent.
  */
 export async function loadMode(name: string): Promise<ModeDefinition> {
   const source = resolveMode(name);
@@ -100,8 +100,8 @@ export async function loadMode(name: string): Promise<ModeDefinition> {
 }
 
 /**
- * 只加载 Mode 的 manifest (不含 React 组件)。
- * 后端使用 — 只需要配置信息。
+ * Load only the Mode's manifest (without React components).
+ * Used by the backend — only needs config information.
  */
 export async function loadModeManifest(name: string): Promise<ModeManifest> {
   const source = resolveMode(name);
@@ -110,27 +110,27 @@ export async function loadModeManifest(name: string): Promise<ModeManifest> {
 }
 
 /**
- * 列出所有已注册的 mode 名称 (包括 builtin 和已注册的 external)。
+ * List all registered mode names (including builtin and registered external).
  */
 export function listModes(): string[] {
   return [...Object.keys(builtinModes), ...Object.keys(externalModes)];
 }
 
 /**
- * 列出内置 mode 名称。
+ * List built-in mode names.
  */
 export function listBuiltinModes(): string[] {
   return Object.keys(builtinModes);
 }
 
 /**
- * 注册外部 mode (由 CLI 在启动时调用)。
+ * Register an external mode (called by the CLI at startup).
  *
- * Backend context (Bun): 直接用 import() 加载绝对路径。
- * Frontend context (browser/Vite): 用 /@fs/ URL 加载。
+ * Backend context (Bun): uses import() with absolute path.
+ * Frontend context (browser/Vite): uses /@fs/ URL.
  *
- * @param name — Mode 名称 (用于注册和查找)
- * @param absPath — Mode 包的绝对路径
+ * @param name — Mode name (for registration and lookup)
+ * @param absPath — Absolute path to the Mode package
  */
 export function registerExternalMode(name: string, absPath: string): void {
   const isBrowser = typeof window !== "undefined";
@@ -185,7 +185,7 @@ export function registerExternalMode(name: string, absPath: string): void {
 
 // ── Internal ─────────────────────────────────────────────────────────────────
 
-/** 解析 mode 来源 (查 builtin 和 external 注册表) */
+/** Resolve mode source (checks builtin and external registries) */
 function resolveMode(name: string): ModeSource {
   // Check external modes first (allows overriding builtin names)
   const external = externalModes[name];
@@ -200,13 +200,13 @@ function resolveMode(name: string): ModeSource {
   );
 }
 
-/** 确保 mode 已安装 (builtin 直接跳过，external 已由 mode-resolver 处理) */
+/** Ensure mode is installed (builtin skips directly, external already handled by mode-resolver) */
 async function ensureInstalled(_source: ModeSource): Promise<void> {
   // Both builtin and external modes are already resolved to local paths
   return;
 }
 
-/** 从已安装的 source 加载完整 ModeDefinition */
+/** Load full ModeDefinition from an installed source */
 async function loadDefinition(source: ModeSource): Promise<ModeDefinition> {
   return source.definitionLoader();
 }

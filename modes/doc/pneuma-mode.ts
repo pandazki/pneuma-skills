@@ -1,8 +1,8 @@
 /**
- * Doc Mode — 完整的 ModeDefinition。
+ * Doc Mode — Complete ModeDefinition.
  *
- * 绑定 manifest (声明式配置) + viewer (React 组件)。
- * 由前端通过 mode-loader 动态 import。
+ * Binds manifest (declarative config) + viewer (React component).
+ * Dynamically imported by the frontend via mode-loader.
  */
 
 import type { ModeDefinition } from "../../core/types/mode-definition.js";

@@ -1,8 +1,8 @@
 /**
- * ModeDefinition — 运行时 Mode 对象
+ * ModeDefinition — Runtime Mode object
  *
- * 将 ModeManifest (声明式配置) 和 ViewerContract (UI 组件) 绑定在一起。
- * 由 Mode 包的入口文件默认导出。
+ * Binds ModeManifest (declarative config) and ViewerContract (UI component) together.
+ * Default-exported from the Mode package's entry file.
  *
  * @example
  * ```typescript
@@ -21,10 +21,10 @@
 import type { ModeManifest } from "./mode-manifest.js";
 import type { ViewerContract } from "./viewer-contract.js";
 
-/** 运行时的完整 Mode 定义 */
+/** Complete runtime Mode definition */
 export interface ModeDefinition {
-  /** 声明式配置 */
+  /** Declarative configuration */
   manifest: ModeManifest;
-  /** 内容查看器实现 */
+  /** Content viewer implementation */
   viewer: ViewerContract;
 }

@@ -1,16 +1,16 @@
 /**
- * ModeManifest 契约测试
+ * ModeManifest contract tests
  *
- * 验证 ModeManifest 类型约束：
- * - 必填字段完整性
- * - 可选字段默认值语义
- * - 字段值的业务约束
+ * Validates ModeManifest type constraints:
+ * - Required field completeness
+ * - Optional field default value semantics
+ * - Business constraints on field values
  */
 
 import { describe, test, expect } from "bun:test";
 import type { ModeManifest, SkillConfig, ViewerConfig } from "../types/index.js";
 
-// ── 辅助：创建最小合法 manifest ──────────────────────────────────────────────
+// ── Helper: create minimal valid manifest ────────────────────────────────────
 
 function createMinimalManifest(overrides?: Partial<ModeManifest>): ModeManifest {
   return {
@@ -31,7 +31,7 @@ function createMinimalManifest(overrides?: Partial<ModeManifest>): ModeManifest 
   };
 }
 
-// ── ModeManifest 必填字段 ────────────────────────────────────────────────────
+// ── ModeManifest required fields ─────────────────────────────────────────────
 
 describe("ModeManifest required fields", () => {
   test("minimal manifest has all required fields", () => {

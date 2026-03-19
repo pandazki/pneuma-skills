@@ -310,7 +310,7 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 ### Launcher UI Sections (Launcher.tsx)
 
 1. **Recent Sessions** — one-click resume, inline delete, skill update prompt
-2. **Built-in Modes** — webcraft, doc, slide, draw, illustrate
+2. **Built-in Modes** — webcraft, doc, slide, draw, illustrate, mode-maker, evolve
 3. **Local Modes** — scanned from `~/.pneuma/modes/`, with delete
 4. **Published Modes** — fetched from R2 registry
 5. **Backend Picker** — choose backend at launch; existing workspaces stay locked to their original backend
@@ -436,6 +436,7 @@ Note: Codex uses stdio JSON-RPC (not WebSocket). `CodexAdapter` bridges Codex �
 - **Backend selected at startup only** — do not add runtime backend switching to the session UI
 - **Zustand** sliced store (`src/store/`), mode viewers in `modes/<mode>/viewer/`
 - **Design tokens**: "Ethereal Tech" theme via `cc-*` CSS custom properties (deep zinc bg `#09090b`, neon orange primary `#f97316`, glassmorphism surfaces with `backdrop-blur`)
+- **English only** in source code — all comments, JSDoc, variable names, commit messages, and documentation in `core/`, `server/`, `src/`, `backends/`, `bin/`. Chinese is allowed only in mode seed templates (e.g. `zh-light/`, `zh-dark/`), showcase content, and `docs/` archive
 
 ## Release Process
 

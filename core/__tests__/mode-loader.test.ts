@@ -1,20 +1,20 @@
 /**
- * Mode Loader 测试
+ * Mode Loader tests
  *
- * 验证 mode 加载机制：
- * - 加载内置 mode 成功
- * - 加载未知 mode 报错
- * - 加载的 mode 符合 ModeDefinition 契约
+ * Validates mode loading mechanics:
+ * - Successfully loads built-in modes
+ * - Throws error for unknown modes
+ * - Loaded modes conform to the ModeDefinition contract
  */
 
 import { describe, test, expect } from "bun:test";
 import type { ModeDefinition } from "../types/index.js";
 
-// ── Mode Loader 本身还未实现，这里用 mock 定义预期行为 ─────────────────────────
+// ── Mode Loader not yet implemented; using mocks to define expected behavior ──
 
 /**
- * Mock mode loader — 定义 loadMode 的预期行为。
- * 实际实现在 core/mode-loader.ts (v1.0 代码阶段创建)。
+ * Mock mode loader — defines the expected behavior of loadMode.
+ * Actual implementation is in core/mode-loader.ts (created during v1.0 code phase).
  */
 const builtinModes: Record<string, ModeDefinition> = {};
 
@@ -35,7 +35,7 @@ function listModes(): string[] {
   return Object.keys(builtinModes);
 }
 
-// ── 辅助：创建最小合法 ModeDefinition ────────────────────────────────────────
+// ── Helper: create minimal valid ModeDefinition ─────────────────────────────
 
 function createMockModeDefinition(name: string): ModeDefinition {
   return {

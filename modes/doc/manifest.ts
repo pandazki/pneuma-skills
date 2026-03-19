@@ -1,6 +1,6 @@
 /**
- * Doc Mode Manifest — 纯数据声明，无 React 依赖。
- * 可被 backend (pneuma.ts) 和 frontend (pneuma-mode.ts) 安全导入。
+ * Doc Mode Manifest — Pure data declaration, no React dependencies.
+ * Can be safely imported by both backend (pneuma.ts) and frontend (pneuma-mode.ts).
  */
 
 import type { ModeManifest } from "../../core/types/mode-manifest.js";

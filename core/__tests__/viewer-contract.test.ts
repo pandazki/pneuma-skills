@@ -1,13 +1,13 @@
 /**
- * ViewerContract 契约测试
+ * ViewerContract contract tests
  *
- * 验证 ViewerContract 接口约束：
- * - PreviewComponent 是有效的 React 组件类型
- * - extractContext 返回格式正确的上下文字符串
- * - updateStrategy 是合法枚举值
- * - workspace model 约束
- * - action descriptors 结构
- * - 向后兼容
+ * Validates ViewerContract interface constraints:
+ * - PreviewComponent is a valid React component type
+ * - extractContext returns a properly formatted context string
+ * - updateStrategy is a valid enum value
+ * - workspace model constraints
+ * - action descriptor structure
+ * - backward compatibility
  */
 
 import { describe, test, expect } from "bun:test";
@@ -21,7 +21,7 @@ import type {
   ViewerActionDescriptor,
 } from "../types/index.js";
 
-// ── 辅助：创建 mock viewer ─────────────────────────────────────────────────
+// ── Helper: create mock viewer ───────────────────────────────────────────────
 
 function createMockViewer(
   overrides?: Partial<ViewerContract>,
@@ -34,7 +34,7 @@ function createMockViewer(
   };
 }
 
-// ── ViewerContract 基本约束 ─────────────────────────────────────────────────
+// ── ViewerContract basic constraints ─────────────────────────────────────────
 
 describe("ViewerContract", () => {
   test("PreviewComponent is a function (React component)", () => {
@@ -91,7 +91,7 @@ describe("ViewerContract", () => {
   });
 });
 
-// ── ViewerPreviewProps 完整性 ───────────────────────────────────────────────
+// ── ViewerPreviewProps completeness ──────────────────────────────────────────
 
 describe("ViewerPreviewProps shape", () => {
   test("contains all required fields", () => {
@@ -118,7 +118,7 @@ describe("ViewerPreviewProps shape", () => {
   });
 });
 
-// ── extractContext 边界条件 ──────────────────────────────────────────────────
+// ── extractContext edge cases ────────────────────────────────────────────────
 
 describe("extractContext edge cases", () => {
   test("handles selection without file context", () => {

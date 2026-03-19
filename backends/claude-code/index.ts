@@ -1,8 +1,8 @@
 /**
- * ClaudeCodeBackend — AgentBackend 的 Claude Code 实现。
+ * ClaudeCodeBackend — Claude Code implementation of AgentBackend.
  *
- * 包装 CliLauncher，实现标准 AgentBackend 接口。
- * 以 Claude Code 协议为事实标准。
+ * Wraps CliLauncher and implements the standard AgentBackend interface.
+ * Uses the Claude Code protocol as the source of truth.
  */
 
 import type {
@@ -74,7 +74,7 @@ export class ClaudeCodeBackend implements AgentBackend {
     this.launcher.onSessionExited(cb);
   }
 
-  /** SdkSessionInfo → AgentSessionInfo 映射 */
+  /** SdkSessionInfo → AgentSessionInfo mapping */
   private toAgentSessionInfo(info: SdkSessionInfo): AgentSessionInfo {
     return {
       sessionId: info.sessionId,

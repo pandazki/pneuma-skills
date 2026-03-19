@@ -1,12 +1,12 @@
 /**
- * AgentBackend 契约测试
+ * AgentBackend contract tests
  *
- * 验证 AgentBackend 接口约束：
- * - 生命周期管理 (launch/kill/getSession)
- * - 能力声明完整性
- * - 协议适配器契约
+ * Validates AgentBackend interface constraints:
+ * - Lifecycle management (launch/kill/getSession)
+ * - Capability declaration completeness
+ * - Protocol adapter contract
  *
- * 基于 Claude Code 作为事实标准设计。
+ * Designed with Claude Code as the de facto standard.
  */
 
 import { describe, test, expect } from "bun:test";
@@ -18,7 +18,7 @@ import type {
   AgentProtocolAdapter,
 } from "../types/index.js";
 
-// ── Mock AgentBackend (模拟 ClaudeCodeBackend 的行为) ────────────────────────
+// ── Mock AgentBackend (simulates ClaudeCodeBackend behavior) ─────────────────
 
 function createMockBackend(): AgentBackend {
   const sessions = new Map<string, AgentSessionInfo>();
@@ -90,7 +90,7 @@ function createMockBackend(): AgentBackend {
   };
 }
 
-// ── AgentBackend 生命周期 ────────────────────────────────────────────────────
+// ── AgentBackend lifecycle ───────────────────────────────────────────────────
 
 describe("AgentBackend lifecycle", () => {
   test("launch creates a session in starting state", () => {

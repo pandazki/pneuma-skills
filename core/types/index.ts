@@ -1,10 +1,10 @@
 /**
- * Core type exports — Pneuma Skills v1.0 契约层
+ * Core type exports — Pneuma Skills v1.0 contract layer
  *
- * 三层契约:
- * - Layer 4: ModeManifest + ModeDefinition (能力描述协议)
- * - Layer 3: ViewerContract (内容查看器契约)
- * - Layer 2: AgentBackend + AgentProtocolAdapter (Agent 通信抽象)
+ * Three-layer contracts:
+ * - Layer 4: ModeManifest + ModeDefinition (capability declaration protocol)
+ * - Layer 3: ViewerContract (content viewer contract)
+ * - Layer 2: AgentBackend + AgentProtocolAdapter (Agent communication abstraction)
  */
 
 export type {

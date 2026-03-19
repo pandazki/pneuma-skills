@@ -1,7 +1,7 @@
 /**
- * Content Set Matcher — 基于系统偏好自动选择最佳内容集合。
+ * Content Set Matcher — automatically selects the best content set based on system preferences.
  *
- * Locale 权重远高于 theme（语言是硬约束，主题是偏好）。
+ * Locale weight is much higher than theme (language is a hard constraint, theme is a preference).
  */
 
 import type { ContentSet } from "../types/viewer-contract.js";

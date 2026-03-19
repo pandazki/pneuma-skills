@@ -1,10 +1,10 @@
 /**
- * DocPreview — Doc Mode 的内容查看器组件。
+ * DocPreview — Content viewer component for Doc Mode.
  *
- * 实现 ViewerContract 的 PreviewComponent。
- * 接收 ViewerPreviewProps，通过 props 获取数据而非直接读 store。
+ * Implements ViewerContract's PreviewComponent.
+ * Receives ViewerPreviewProps; data is obtained via props, not by reading the store directly.
  *
- * 从 src/components/MarkdownPreview.tsx 迁移而来。
+ * Migrated from src/components/MarkdownPreview.tsx.
  */
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
@@ -14,8 +14,8 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import type { ViewerPreviewProps, ViewerSelectionContext } from "../../../core/types/viewer-contract.js";
 
-// v1.0: DocPreview 仍引用 store 来控制 previewMode toggle。
-// 这是一个务实的耦合，未来可通过 onModeChange callback 解耦。
+// v1.0: DocPreview still references the store to control previewMode toggle.
+// This is a pragmatic coupling that can be decoupled via an onModeChange callback in the future.
 import { useStore } from "../../../src/store.js";
 import { generateDocScaffold, type DocFileSpec, type ScaffoldFile } from "./scaffold.js";
 import ScaffoldConfirm from "../../../src/components/ScaffoldConfirm.js";
@@ -260,7 +260,7 @@ export default function DocPreview({
   const activeFiles = activeFile && files.length > 1
     ? files.filter((f) => f.path === activeFile)
     : files;
-  // v1.0: setPreviewMode 仍通过 store 控制 (toolbar toggle)
+  // v1.0: setPreviewMode is still controlled via store (toolbar toggle)
   const setPreviewMode = useStore((s) => s.setPreviewMode);
   const pushUserAction = useStore((s) => s.pushUserAction);
   const annotations = useStore((s) => s.annotations);

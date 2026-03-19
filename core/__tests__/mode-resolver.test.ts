@@ -1,11 +1,11 @@
 /**
- * Mode Resolver 测试
+ * Mode Resolver tests
  *
- * 验证 mode 来源解析:
- * - builtin mode 名称识别
- * - local path 解析 (绝对路径、相对路径、~ 展开)
- * - github 格式解析
- * - 错误处理
+ * Validates mode source resolution:
+ * - Built-in mode name recognition
+ * - Local path resolution (absolute paths, relative paths, ~ expansion)
+ * - GitHub format parsing
+ * - Error handling
  */
 
 import { describe, test, expect } from "bun:test";

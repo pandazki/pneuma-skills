@@ -1,14 +1,14 @@
 /**
- * AgentBackend — Agent 运行时抽象
+ * AgentBackend — Agent runtime abstraction
  *
- * 当前实现以 Claude Code 作为首个参考 backend，但对外契约已经拆成两层：
- * - AgentBackend: 生命周期与能力声明
- * - AgentProtocolAdapter: 后端私有协议到运行时标准消息的翻译
+ * The current implementation uses Claude Code as the first reference backend, but the external contract is split into two layers:
+ * - AgentBackend: lifecycle and capability declarations
+ * - AgentProtocolAdapter: translation from backend-specific protocol to runtime standard messages
  *
- * 前端和大部分服务端逻辑依赖的是标准 session 状态，而不是具体 backend 的 wire protocol。
+ * The frontend and most server-side logic depend on normalized session state, not a specific backend's wire protocol.
  */
 
-// ── Agent 生命周期 ───────────────────────────────────────────────────────────
+// ── Agent Lifecycle ──────────────────────────────────────────────────────────
 
 export type AgentBackendType = "claude-code" | "codex";
 
@@ -19,108 +19,108 @@ export interface AgentBackendDescriptor {
   implemented: boolean;
 }
 
-/** Agent 会话信息 */
+/** Agent session info */
 export interface AgentSessionInfo {
-  /** Server 路由用 session ID (UUID) */
+  /** Server routing session ID (UUID) */
   sessionId: string;
-  /** Agent 内部的 session ID (用于 resume，如 Claude Code 的 --resume) */
+  /** Agent's internal session ID (for resume, e.g. Claude Code's --resume) */
   agentSessionId?: string;
-  /** 进程 PID (如果是子进程模式) */
+  /** Process PID (if using child process mode) */
   pid?: number;
-  /** 会话状态 */
+  /** Session state */
   state: "starting" | "connected" | "running" | "exited";
-  /** 退出码 (state=exited 时有值) */
+  /** Exit code (present when state=exited) */
   exitCode?: number | null;
-  /** 工作目录 */
+  /** Working directory */
   cwd: string;
-  /** 创建时间 */
+  /** Creation timestamp */
   createdAt: number;
 }
 
-/** Agent 启动选项 */
+/** Agent launch options */
 export interface AgentLaunchOptions {
-  /** 工作目录 */
+  /** Working directory */
   cwd: string;
-  /** 权限模式 */
+  /** Permission mode */
   permissionMode?: string;
-  /** 模型 */
+  /** Model */
   model?: string;
-  /** 复用已有的 server session ID (而非生成新的) */
+  /** Reuse an existing server session ID (instead of generating a new one) */
   sessionId?: string;
-  /** Agent 内部 session ID (用于恢复之前的会话) */
+  /** Agent's internal session ID (for resuming a previous session) */
   resumeSessionId?: string;
-  /** 额外环境变量 */
+  /** Additional environment variables */
   env?: Record<string, string>;
 }
 
-/** Agent 后端 — 管理 Agent 进程的生命周期 */
+/** Agent backend — manages the Agent process lifecycle */
 export interface AgentBackend {
-  /** 后端唯一标识 */
+  /** Unique backend identifier */
   readonly name: AgentBackendType;
 
-  /** 能力声明 */
+  /** Capability declarations */
   readonly capabilities: AgentCapabilities;
 
-  /** 启动一个新的 Agent 会话 */
+  /** Launch a new Agent session */
   launch(options: AgentLaunchOptions): AgentSessionInfo;
 
-  /** 获取会话信息 */
+  /** Get session info */
   getSession(sessionId: string): AgentSessionInfo | undefined;
 
-  /** 会话是否存活 */
+  /** Check if a session is alive */
   isAlive(sessionId: string): boolean;
 
-  /** 标记会话为已连接 (WS 建立时调用) */
+  /** Mark session as connected (called when WS is established) */
   markConnected(sessionId: string): void;
 
-  /** 存储 Agent 内部 session ID (从 Agent 初始化消息中获取) */
+  /** Store the Agent's internal session ID (obtained from the Agent's init message) */
   setAgentSessionId(sessionId: string, agentSessionId: string): void;
 
-  /** 终止一个会话 */
+  /** Kill a session */
   kill(sessionId: string): Promise<boolean>;
 
-  /** 终止所有会话 */
+  /** Kill all sessions */
   killAll(): Promise<void>;
 
-  /** 注册退出回调 */
+  /** Register exit callback */
   onSessionExited(cb: (sessionId: string, exitCode: number | null) => void): void;
 }
 
-/** Agent 能力声明 — 描述此 Agent 支持哪些功能 */
+/** Agent capability declarations — describes which features this Agent supports */
 export interface AgentCapabilities {
-  /** 支持 token 级流式输出 */
+  /** Supports token-level streaming output */
   streaming: boolean;
-  /** 支持会话恢复 (--resume) */
+  /** Supports session resume (--resume) */
   resume: boolean;
-  /** 支持权限审批流程 (control_request → permission_request) */
+  /** Supports permission approval flow (control_request → permission_request) */
   permissions: boolean;
-  /** 支持工具执行进度报告 (tool_progress) */
+  /** Supports tool execution progress reporting (tool_progress) */
   toolProgress: boolean;
-  /** 支持运行时切换模型 */
+  /** Supports runtime model switching */
   modelSwitch: boolean;
 }
 
-// ── Agent 协议适配 ───────────────────────────────────────────────────────────
+// ── Agent Protocol Adaptation ────────────────────────────────────────────────
 
 /**
- * 标准消息类型 — ws-bridge 和前端之间的运行时格式。
+ * Standard message types — runtime format between ws-bridge and the frontend.
  *
- * v1 仍然直接复用现有 session/browser 类型，而不是单独抽一层 StandardMessage AST。
- * 这保持 Claude 路径零回归，也给第二个 backend 留出了适配点。
+ * v1 still directly reuses existing session/browser types rather than extracting a separate StandardMessage AST.
+ * This keeps the Claude path zero-regression and leaves an adaptation point for the second backend.
  *
- * 当第二个 backend 需要的消息映射明显超出当前类型表达能力时，再提取更正式的标准消息子集。
+ * When the second backend's message mapping clearly exceeds the current type's expressiveness, a more formal standard message subset will be extracted.
  */
 
 /**
- * AgentProtocolAdapter — 消息协议适配器
+ * AgentProtocolAdapter — message protocol adapter
  *
- * 负责将 Agent 的原始消息格式与 ws-bridge 的运行时格式互转。
- * Claude Code 当前基本是 NDJSON 直通，未来其他 backend 则通过各自 adapter 适配。
+ * Translates between the Agent's raw message format and the ws-bridge runtime format.
+ * Claude Code currently uses near-passthrough NDJSON; other backends adapt through their own adapters.
  */
 export interface AgentProtocolAdapter {
-  /** 将 Agent 发来的原始数据解析为结构化消息 (null = 跳过此消息) */
+  /** Parse raw data from the Agent into structured messages (null = skip this message) */
   parseIncoming(raw: string): unknown | null;
 
-  /** 将标准消息编码为 Agent 可接收的格式 */
+  /** Encode standard messages into a format the Agent can accept */
   encodeOutgoing(msg: unknown): string;
 }

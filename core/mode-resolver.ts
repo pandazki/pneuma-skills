@@ -1,12 +1,12 @@
 /**
- * Mode Resolver — 解析 mode 来源并确保本地可用。
+ * Mode Resolver — resolve mode sources and ensure local availability.
  *
- * 支持三种 mode 来源:
- * - builtin: "doc", "slide" — 内置 mode，从 modes/ 目录加载
- * - local: "/abs/path" 或 "./rel/path" — 本地文件系统路径
- * - github: "github:user/repo" 或 "github:user/repo#branch" — GitHub 仓库
+ * Supports three mode sources:
+ * - builtin: "doc", "slide" — built-in modes, loaded from the modes/ directory
+ * - local: "/abs/path" or "./rel/path" — local filesystem path
+ * - github: "github:user/repo" or "github:user/repo#branch" — GitHub repository
  *
- * GitHub 仓库会被 clone 到 ~/.pneuma/modes/{user}-{repo}/ 缓存目录。
+ * GitHub repositories are cloned to the ~/.pneuma/modes/{user}-{repo}/ cache directory.
  */
 
 import { resolve, join, basename } from "node:path";

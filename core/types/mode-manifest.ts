@@ -1,8 +1,8 @@
 /**
- * ModeManifest — 能力描述协议
+ * ModeManifest — Capability Declaration Protocol
  *
- * Mode 的声明式描述，定义了一个 Mode 的完整配置。
- * 由 Mode 包提供，Runtime Shell 读取并驱动启动流程。
+ * Declarative description of a Mode, defining its complete configuration.
+ * Provided by the Mode package; read by the Runtime Shell to drive the startup flow.
  *
  * @example
  * ```typescript
@@ -17,122 +17,122 @@
  * ```
  */
 
-/** MCP 服务器声明 — skill 安装时自动注册到 workspace 的 .mcp.json */
+/** MCP server declaration — automatically registered to the workspace's .mcp.json during skill installation */
 export interface McpServerConfig {
-  /** 服务器名称（.mcp.json 中 mcpServers 的 key） */
+  /** Server name (key under mcpServers in .mcp.json) */
   name: string;
-  /** stdio: 执行命令 */
+  /** stdio: command to execute */
   command?: string;
-  /** stdio: 命令参数（支持 {{param}} 模板） */
+  /** stdio: command arguments (supports {{param}} templates) */
   args?: string[];
   /**
-   * 环境变量。值支持：
-   * - {{param}} — 替换为 init param 值
-   * - ${VAR} — 原样写入，Claude Code 运行时从进程 env 解析
+   * Environment variables. Values support:
+   * - {{param}} — replaced with init param value
+   * - ${VAR} — written as-is, resolved from process env at Claude Code runtime
    */
   env?: Record<string, string>;
-  /** HTTP 服务器 URL */
+  /** HTTP server URL */
   url?: string;
-  /** HTTP 请求头（支持 {{param}} 模板） */
+  /** HTTP headers (supports {{param}} templates) */
   headers?: Record<string, string>;
 }
 
-/** 外部 Skill 依赖声明 — skill 安装时自动拷贝到 .claude/skills/ */
+/** External skill dependency declaration — automatically copied to .claude/skills/ during skill installation */
 export interface SkillDependency {
-  /** Skill 名称（安装到 .claude/skills/<name>/） */
+  /** Skill name (installed to .claude/skills/<name>/) */
   name: string;
-  /** Skill 来源：相对于 mode 包根目录的路径（包含 SKILL.md 的目录） */
+  /** Skill source: path relative to mode package root (directory containing SKILL.md) */
   sourceDir: string;
   /**
-   * 注入 CLAUDE.md 的描述片段（可选）。
-   * 放在 <!-- pneuma:skills:start --> / <!-- pneuma:skills:end --> 标记内。
-   * 如果不提供，自动从 SKILL.md 第一行 heading 提取摘要。
+   * Description snippet injected into CLAUDE.md (optional).
+   * Placed inside <!-- pneuma:skills:start --> / <!-- pneuma:skills:end --> markers.
+   * If not provided, a summary is automatically extracted from the first heading of SKILL.md.
    */
   claudeMdSnippet?: string;
 }
 
-/** Skill 注入配置 — 描述如何将 Mode 的领域知识安装到 workspace */
+/** Skill injection config — describes how to install a Mode's domain knowledge into the workspace */
 export interface SkillConfig {
-  /** Skill 源目录 (相对于 mode 包根目录) */
+  /** Skill source directory (relative to mode package root) */
   sourceDir: string;
-  /** 安装到 .claude/skills/ 下的目录名 (e.g. "pneuma-doc") */
+  /** Directory name under .claude/skills/ (e.g. "pneuma-doc") */
   installName: string;
-  /** 注入 CLAUDE.md 的内容片段 (不含 marker 注释) */
+  /** Content snippet injected into CLAUDE.md (excluding marker comments) */
   claudeMdSection: string;
   /**
-   * 环境变量文件映射 — 安装 skill 时自动生成 .env 文件。
-   * key: 环境变量名 (e.g. "OPENROUTER_API_KEY")
-   * value: 对应的 init param 名 (e.g. "openrouterApiKey")
-   * 只有非空值的参数才会写入 .env。
+   * Environment variable file mapping — automatically generates .env during skill installation.
+   * key: environment variable name (e.g. "OPENROUTER_API_KEY")
+   * value: corresponding init param name (e.g. "openrouterApiKey")
+   * Only params with non-empty values are written to .env.
    */
   envMapping?: Record<string, string>;
-  /** MCP 服务器声明 — 安装时自动写入 workspace 的 .mcp.json */
+  /** MCP server declarations — automatically written to workspace's .mcp.json during installation */
   mcpServers?: McpServerConfig[];
-  /** 外部 Skill 依赖 — 安装时自动拷贝到 .claude/skills/ */
+  /** External skill dependencies — automatically copied to .claude/skills/ during installation */
   skillDependencies?: SkillDependency[];
 }
 
-/** 内容查看器配置 — 描述 Mode 的文件监听和服务规则 */
+/** Content viewer config — describes the Mode's file watching and serving rules */
 export interface ViewerConfig {
-  /** 文件监听的 glob patterns (e.g. ["**\/*.md"]) */
+  /** Glob patterns for file watching (e.g. ["**\/*.md"]) */
   watchPatterns: string[];
-  /** 忽略的 glob patterns (e.g. ["node_modules/**"]) */
+  /** Glob patterns to ignore (e.g. ["node_modules/**"]) */
   ignorePatterns: string[];
-  /** 需要 HTTP 服务的子目录 (相对于 workspace，默认 ".") */
+  /** Subdirectory to serve via HTTP (relative to workspace, defaults to ".") */
   serveDir?: string;
 }
 
-/** Agent 偏好配置 — 描述 Mode 对 Agent 行为的期望 */
+/** Agent preferences — describes the Mode's expectations for Agent behavior */
 export interface AgentPreferences {
-  /** 权限模式 (默认 "bypassPermissions") */
+  /** Permission mode (defaults to "bypassPermissions") */
   permissionMode?: string;
-  /** 新会话自动问候语模板 (由 Agent 生成回复) */
+  /** Greeting template for new sessions (Agent generates a response) */
   greeting?: string;
 }
 
-/** 模式初始化参数声明 — 在首次启动时交互式询问用户 */
+/** Mode init parameter declaration — interactively prompted on first launch */
 export interface InitParam {
-  /** 参数名，同时作为模板占位符 key (e.g. "slideWidth") */
+  /** Parameter name, also used as template placeholder key (e.g. "slideWidth") */
   name: string;
-  /** 交互式询问时的显示标签 (e.g. "Slide width") */
+  /** Display label for interactive prompt (e.g. "Slide width") */
   label: string;
-  /** 补充说明 (e.g. "pixels") */
+  /** Additional description (e.g. "pixels") */
   description?: string;
-  /** 参数类型 */
+  /** Parameter type */
   type: "number" | "string";
-  /** 默认值 */
+  /** Default value */
   defaultValue: number | string;
-  /** 标记为敏感值 (API key 等)，snapshot 打包时会被清空 */
+  /** Mark as sensitive value (API keys, etc.), cleared during snapshot packaging */
   sensitive?: boolean;
 }
 
-/** 工作区初始化配置 — 描述空 workspace 时的初始化行为 */
+/** Workspace initialization config — describes initialization behavior for empty workspaces */
 export interface InitConfig {
   /**
-   * 判断 workspace 是否有内容的 glob pattern。
-   * 匹配到至少一个非空文件时认为有内容，跳过种子文件。
+   * Glob pattern to check if the workspace has content.
+   * If at least one non-empty file matches, seed files are skipped.
    */
   contentCheckPattern?: string;
   /**
-   * 空 workspace 时的种子文件。
-   * key: 目标相对路径 (相对于 workspace)
-   * value: 源文件相对路径 (相对于项目根目录)
+   * Seed files for an empty workspace.
+   * key: target relative path (relative to workspace)
+   * value: source file relative path (relative to project root)
    */
   seedFiles?: Record<string, string>;
   /**
-   * 模式初始化参数。首次启动时交互式询问用户，结果持久化到 .pneuma/config.json。
-   * 参数值通过 {{name}} 模板替换注入到 skill 文件和 seed 文件中。
+   * Mode init parameters. Interactively prompted on first launch; results persisted to .pneuma/config.json.
+   * Parameter values are injected into skill and seed files via {{name}} template substitution.
    */
   params?: InitParam[];
   /**
-   * 从用户提供的参数派生额外参数。
-   * 在交互式参数收集之后、模板替换之前调用。
-   * 用于计算条件变量 (e.g. imageGenEnabled) 等衍生值。
+   * Derive additional parameters from user-provided ones.
+   * Called after interactive parameter collection but before template substitution.
+   * Used to compute conditional variables (e.g. imageGenEnabled) and other derived values.
    */
   deriveParams?: (params: Record<string, number | string>) => Record<string, number | string>;
 }
 
-/** Viewer 自描述 API — 纯数据声明，后端 (pneuma.ts / skill-installer) 可读 */
+/** Viewer self-describing API — pure data declaration, readable by backend (pneuma.ts / skill-installer) */
 export interface ViewerApiConfig {
   workspace?: {
     type: "all" | "manifest" | "single";
@@ -143,7 +143,7 @@ export interface ViewerApiConfig {
     /** If true, the workspace supports multiple content sets (e.g. locale/theme directories) */
     supportsContentSets?: boolean;
   };
-  /** Agent → Viewer actions — agent 可请求 viewer 执行的操作（导航、缩放等） */
+  /** Agent → Viewer actions — operations the agent can request the viewer to perform (navigation, zoom, etc.) */
   actions?: Array<{
     id: string;
     label: string;
@@ -152,7 +152,7 @@ export interface ViewerApiConfig {
     params?: Record<string, { type: "string" | "number" | "boolean"; description: string; required?: boolean }>;
     description?: string;
   }>;
-  /** User → Agent commands — viewer UI 上可触发的命令，用户点击后发给 agent 执行 */
+  /** User → Agent commands — commands triggerable from the viewer UI, sent to the agent when clicked */
   commands?: Array<{
     id: string;
     label: string;
@@ -170,15 +170,15 @@ export interface ViewerApiConfig {
 }
 
 /**
- * Skill 演进配置 — 定义 Evolution Agent 的目标方向和可用工具。
+ * Skill evolution config — defines the Evolution Agent's target direction and available tools.
  *
- * Evolution Agent 是一个独立的 Agent 过程，分析用户历史并增强 skill 文件。
- * 它输出一个 proposal（附带证据和引用），用户审核后可 apply 或取消。
+ * The Evolution Agent is a separate agent process that analyzes user history and augments skill files.
+ * It outputs a proposal (with evidence and citations) that the user can review, then apply or discard.
  */
 export interface EvolutionConfig {
   /**
-   * 演进方向 — 给 Evolution Agent 的目标描述。
-   * 告诉 Agent 这个 Mode 的 skill 应该朝什么方向个性化。
+   * Evolution directive — target description for the Evolution Agent.
+   * Tells the agent what direction this Mode's skill should be personalized toward.
    *
    * @example
    * "Learn the user's presentation style preferences: typography choices,
@@ -189,24 +189,24 @@ export interface EvolutionConfig {
   directive: string;
 
   /**
-   * 额外的数据获取工具（预留，第一版不实现）。
-   * 框架已内置基础工具（读取 CC 历史等），这里声明 Mode 特有的。
+   * Additional data-fetching tools (reserved, not implemented in v1).
+   * The framework provides built-in tools (e.g. reading CC history); declare Mode-specific ones here.
    */
   tools?: EvolutionTool[];
 }
 
 /**
- * Evolution Agent 可用的外部数据获取工具（预留）。
- * 第一版不实现，框架内置工具足够。
+ * External data-fetching tools available to the Evolution Agent (reserved).
+ * Not implemented in v1; built-in framework tools are sufficient.
  */
 export interface EvolutionTool {
-  /** 工具名称 */
+  /** Tool name */
   name: string;
-  /** 工具描述（给 Agent 看的） */
+  /** Tool description (shown to the Agent) */
   description: string;
-  /** 实现方式 */
+  /** Implementation type */
   type: "command" | "http" | "mcp";
-  /** 具体配置 */
+  /** Specific configuration */
   config: Record<string, unknown>;
 }
 
@@ -236,38 +236,38 @@ export interface ModeShowcase {
   highlights?: ShowcaseHighlight[];
 }
 
-/** Mode 的完整声明式描述 */
+/** Complete declarative description of a Mode */
 export interface ModeManifest {
-  /** Mode 唯一标识 (e.g. "doc", "slide") */
+  /** Unique Mode identifier (e.g. "doc", "slide") */
   name: string;
-  /** 语义化版本号 */
+  /** Semantic version number */
   version: string;
-  /** 人类可读的显示名 (e.g. "Document") */
+  /** Human-readable display name (e.g. "Document") */
   displayName: string;
-  /** 简短描述 */
+  /** Short description */
   description: string;
   /** Mode icon as inline SVG string (e.g. `<svg viewBox="0 0 24 24">...</svg>`) */
   icon?: string;
 
-  /** Skill 注入配置 */
+  /** Skill injection config */
   skill: SkillConfig;
-  /** 内容查看器配置 */
+  /** Content viewer config */
   viewer: ViewerConfig;
-  /** Agent 偏好配置 (可选) */
+  /** Agent preferences (optional) */
   agent?: AgentPreferences;
-  /** 工作区初始化配置 (可选) */
+  /** Workspace initialization config (optional) */
   init?: InitConfig;
-  /** Viewer 自描述 API — 纯数据声明，后端可读，自动注入 CLAUDE.md */
+  /** Viewer self-describing API — pure data declaration, readable by backend, auto-injected into CLAUDE.md */
   viewerApi?: ViewerApiConfig;
-  /** Skill 演进配置 — 定义 Evolution Agent 的演进方向 (可选) */
+  /** Skill evolution config — defines the Evolution Agent's direction (optional) */
   evolution?: EvolutionConfig;
   /** Showcase — rich marketing content for launcher gallery (optional) */
   showcase?: ModeShowcase;
   /** Supported agent backends. When omitted, all implemented backends are allowed. */
   supportedBackends?: string[];
 
-  /** Layout: "editor" = 双面板 (默认), "app" = Viewer 全屏 + Agent 悬浮气泡 */
+  /** Layout: "editor" = dual panel (default), "app" = fullscreen Viewer + floating Agent bubble */
   layout?: "editor" | "app";
-  /** 窗口尺寸偏好 (app 布局 + Electron 场景) */
+  /** Window size preference (app layout + Electron) */
   window?: { width: number; height: number };
 }

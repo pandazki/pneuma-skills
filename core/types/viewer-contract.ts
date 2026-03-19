@@ -1,23 +1,23 @@
 /**
  * ViewerContract — Agent-Human Alignment Protocol
  *
- * ViewerContract 的核心职责是 Agent-Human 对齐：
- * 1. 感知对齐 — Agent 能看到 User 看到的东西 (extractContext, workspace)
- * 2. 能力对齐 — Agent 能做到 User 能做到的事情 (actions)
+ * The core responsibility of ViewerContract is Agent-Human alignment:
+ * 1. Perception alignment — Agent can see what the User sees (extractContext, workspace)
+ * 2. Capability alignment — Agent can do what the User can do (actions)
  *
- * 每个 Mode 提供一个实现此接口的对象。
- * Runtime Shell 通过此接口渲染预览、处理用户交互、桥接 Agent 操作。
+ * Each Mode provides an object implementing this interface.
+ * The Runtime Shell uses this interface to render previews, handle user interactions, and bridge Agent operations.
  */
 
 import type { ComponentType } from "react";
 
-/** 文件内容 (与 src/types.ts 中的 FileContent 保持一致) */
+/** File content (kept in sync with FileContent in src/types.ts) */
 export interface ViewerFileContent {
   path: string;
   content: string;
 }
 
-/** 选中上下文 (与 src/types.ts 中的 SelectionContext 保持一致) */
+/** Selection context (kept in sync with SelectionContext in src/types.ts) */
 export interface ViewerSelectionContext {
   type: string;
   content: string;
@@ -37,7 +37,7 @@ export interface ViewerSelectionContext {
   nearbyText?: string;
   /** Accessibility attributes summary (e.g. 'role="heading", focusable') */
   accessibility?: string;
-  /** 可见视窗行范围（仅 Doc 等文本 mode 使用） */
+  /** Visible viewport line range (used only by text-based modes like Doc) */
   viewport?: { startLine: number; endLine: number; heading?: string };
   /** Annotations (annotate mode) — multiple selected elements with user feedback */
   annotations?: {
@@ -49,7 +49,7 @@ export interface ViewerSelectionContext {
 
 // ── File Workspace Model ───────────────────────────────────────────────────
 
-/** 工作区项 — 文件导航模型中的一个逻辑单元 */
+/** Workspace item — a logical unit in the file navigation model */
 export interface WorkspaceItem {
   path: string;
   label: string;
@@ -57,7 +57,7 @@ export interface WorkspaceItem {
   metadata?: Record<string, unknown>;
 }
 
-/** 内容集合特征 — 从目录名解析或显式声明 */
+/** Content set traits — parsed from directory name or explicitly declared */
 export interface ContentSetTraits {
   /** BCP-47 locale code, e.g. "en", "ja" */
   locale?: string;
@@ -67,47 +67,47 @@ export interface ContentSetTraits {
   custom?: Record<string, string>;
 }
 
-/** 内容集合 — 工作区中一套可编辑的完整内容 (对应一个顶层目录) */
+/** Content set — a complete editable content unit in the workspace (corresponds to a top-level directory) */
 export interface ContentSet {
-  /** 目录前缀 (不含尾部 /), e.g. "en-dark" */
+  /** Directory prefix (without trailing /), e.g. "en-dark" */
   prefix: string;
-  /** 显示名, e.g. "EN Dark" */
+  /** Display name, e.g. "EN Dark" */
   label: string;
-  /** 解析出的特征 */
+  /** Parsed traits */
   traits: ContentSetTraits;
 }
 
 /**
- * 文件工作区模型 — 描述 Viewer 如何组织文件。
+ * File workspace model — describes how the Viewer organizes files.
  *
- * - "all": 所有匹配文件平等展示 (Doc: 每个 .md 独立)
- * - "manifest": 由索引文件定义结构和顺序 (Slide: manifest.json)
- * - "single": 只操作一个主文件 (Draw: 单个 .excalidraw)
+ * - "all": all matching files displayed equally (Doc: each .md is independent)
+ * - "manifest": structure and order defined by an index file (Slide: manifest.json)
+ * - "single": operates on a single main file (Draw: single .excalidraw)
  */
 export interface FileWorkspaceModel {
   type: "all" | "manifest" | "single";
   multiFile: boolean;
   ordered: boolean;
   hasActiveFile: boolean;
-  /** type="manifest" 时的索引文件 */
+  /** Index file when type="manifest" */
   manifestFile?: string;
-  /** 从文件列表解析工作区项（前端运行时使用） */
+  /** Resolve workspace items from the file list (used at frontend runtime) */
   resolveItems?: (files: ViewerFileContent[]) => WorkspaceItem[];
-  /** 从文件列表发现内容集合 (e.g. 多语言/多主题目录) */
+  /** Discover content sets from the file list (e.g. multi-locale/multi-theme directories) */
   resolveContentSets?: (files: ViewerFileContent[]) => ContentSet[];
-  /** 当没有 content sets 时，workspace items 是否显示在 TopBar。
-   *  true → 框架在 TopBar 渲染 item 选择器，驱动 activeFile。
-   *  false/undefined → viewer 自行处理文件导航（如 SlideNavigator）。*/
+  /** Whether workspace items appear in TopBar when no content sets exist.
+   *  true → framework renders item selector in TopBar, driving activeFile.
+   *  false/undefined → viewer handles file navigation itself (e.g. SlideNavigator). */
   topBarNavigation?: boolean;
-  /** 生成一个空的新内容项（与 scaffold/clear 配套）。
-   *  返回要写入磁盘的文件列表，框架通过 /api/workspace/scaffold 写入。
-   *  返回 null 表示该 mode 不支持新建。*/
+  /** Generate an empty new content item (used with scaffold/clear).
+   *  Returns files to write to disk; the framework writes them via /api/workspace/scaffold.
+   *  Returns null if this mode does not support creation. */
   createEmpty?: (files: ViewerFileContent[]) => { path: string; content: string }[] | null;
 }
 
-// ── Viewer Action (Agent → Viewer 能力对齐) ─────────────────────────────────
+// ── Viewer Action (Agent → Viewer capability alignment) ──────────────────────
 
-/** Viewer 操作参数描述 */
+/** Viewer action parameter descriptor */
 export interface ViewerActionParam {
   type: "string" | "number" | "boolean";
   description: string;
@@ -115,11 +115,11 @@ export interface ViewerActionParam {
 }
 
 /**
- * Viewer 操作描述 — Agent → Viewer 方向。
+ * Viewer action descriptor — Agent → Viewer direction.
  *
- * Viewer 声明自己支持的操作，Agent 通过执行通道调用。
- * 无论是 "导航到第 3 页"、"收起 outline"、还是 "截图当前视图"，
- * 对框架来说都是 action。
+ * The Viewer declares its supported actions; the Agent invokes them via the execution channel.
+ * Whether it's "navigate to page 3", "collapse outline", or "capture current viewport",
+ * from the framework's perspective they are all actions.
  */
 export interface ViewerActionDescriptor {
   id: string;
@@ -130,14 +130,14 @@ export interface ViewerActionDescriptor {
   description?: string;
 }
 
-// ── Viewer Command (User → Agent 命令) ──────────────────────────────────────
+// ── Viewer Command (User → Agent commands) ──────────────────────────────────
 
 /**
- * Viewer 命令描述 — User → Agent 方向。
+ * Viewer command descriptor — User → Agent direction.
  *
- * Mode 声明 UI 上可触发的命令，用户点击后通过 onNotifyAgent 发给 Agent。
- * 与 ViewerAction 方向相反：Action 是 Agent 请求 Viewer 执行操作，
- * Command 是用户通过 Viewer UI 触发 Agent 执行任务。
+ * A Mode declares commands available in the UI; when the user clicks one, it is sent to the Agent via onNotifyAgent.
+ * This is the reverse direction of ViewerAction: Actions are Agent requesting Viewer to perform operations,
+ * Commands are user triggering Agent tasks through the Viewer UI.
  */
 export interface ViewerCommandDescriptor {
   id: string;
@@ -145,14 +145,14 @@ export interface ViewerCommandDescriptor {
   description?: string;
 }
 
-/** 执行通道中的请求 */
+/** Action request in the execution channel */
 export interface ViewerActionRequest {
   requestId: string;
   actionId: string;
   params?: Record<string, unknown>;
 }
 
-/** 执行结果 */
+/** Action result */
 export interface ViewerActionResult {
   success: boolean;
   message?: string;
@@ -161,100 +161,100 @@ export interface ViewerActionResult {
 
 // ── Viewer Notification (Viewer → Agent proactive channel) ────────────────
 
-/** Viewer 主动向 Agent 发送的通知 */
+/** Notification proactively sent from the Viewer to the Agent */
 export interface ViewerNotification {
-  /** 通知类型标识，如 "contentFitCheck" */
+  /** Notification type identifier, e.g. "contentFitCheck" */
   type: string;
-  /** 通知内容，会作为系统消息发送给 Agent */
+  /** Notification content, sent to the Agent as a system message */
   message: string;
-  /** 严重级别 — info 仅记录，warning 发送给 agent */
+  /** Severity level — info is logged only, warning is sent to the agent */
   severity: "info" | "warning";
-  /** 面向用户的简短摘要（一句话，用于 UI 显示） */
+  /** User-facing short summary (one sentence, for UI display) */
   summary?: string;
 }
 
 // ── Viewer Locator (navigable link cards in agent messages) ────────────────
 
-/** Viewer 定位器 — Agent 消息中嵌入的可点击导航卡片。
- *  点击后 viewer 定位到对应位置（纯前端，不走 server roundtrip）。*/
+/** Viewer locator — clickable navigation cards embedded in agent messages.
+ *  Clicking navigates the viewer to the target position (frontend-only, no server roundtrip). */
 export interface ViewerLocator {
-  /** 卡片显示文字 */
+  /** Card display text */
   label: string;
-  /** Mode-specific 定位数据 */
+  /** Mode-specific location data */
   data: Record<string, unknown>;
 }
 
 // ── Preview Props & Contract ───────────────────────────────────────────────
 
-/** 预览组件的 Props */
+/** Props for the preview component */
 export interface ViewerPreviewProps {
-  /** 工作区文件列表 */
+  /** Workspace file list */
   files: ViewerFileContent[];
-  /** 当前选中的元素 */
+  /** Currently selected element */
   selection: ViewerSelectionContext | null;
-  /** 选中元素回调 */
+  /** Selection callback */
   onSelect: (selection: ViewerSelectionContext | null) => void;
-  /** 预览模式: view (只读) / edit (行内编辑) / select (选中捕捉) / annotate (批注) */
+  /** Preview mode: view (read-only) / edit (inline editing) / select (selection capture) / annotate (annotation) */
   mode: "view" | "edit" | "select" | "annotate";
-  /** 内容版本号 (文件变更时递增，用于缓存失效) — 可选，部分 Viewer 不需要 */
+  /** Content version number (incremented on file changes, used for cache invalidation) — optional, some Viewers don't need it */
   contentVersion?: number;
-  /** 图片版本号 (图片变更时递增，用于图片缓存失效) */
+  /** Image version number (incremented on image changes, used for image cache invalidation) */
   imageVersion: number;
-  /** Mode 初始化参数（不可变，会话生命周期内固定） */
+  /** Mode init parameters (immutable, fixed for the session lifetime) */
   initParams?: Record<string, number | string>;
-  /** 当前查看的文件变更时的回调（用于追踪活跃文件上下文） */
+  /** Callback when the currently viewed file changes (used to track active file context) */
   onActiveFileChange?: (file: string | null) => void;
-  /** 由 runtime 通过 workspace.resolveItems 计算后传入 */
+  /** Computed by the runtime via workspace.resolveItems and passed in */
   workspaceItems?: WorkspaceItem[];
-  /** Runtime 下发的 action 请求，Viewer 执行后调用 onActionResult 返回结果 */
+  /** Action request dispatched by the runtime; Viewer calls onActionResult after execution */
   actionRequest?: ViewerActionRequest | null;
-  /** Viewer 执行 action 后返回结果的回调 */
+  /** Callback for the Viewer to return action results */
   onActionResult?: (requestId: string, result: ViewerActionResult) => void;
-  /** 视窗变更回调 — Viewer 上报当前可见范围 */
+  /** Viewport change callback — Viewer reports its current visible range */
   onViewportChange?: (viewport: { file: string; startLine: number; endLine: number; heading?: string }) => void;
-  /** Viewer 主动向 Agent 发送通知（如自检结果、状态变更等） */
+  /** Proactively send notifications from the Viewer to the Agent (e.g. self-check results, state changes) */
   onNotifyAgent?: (notification: ViewerNotification) => void;
-  /** 框架当前选中的活跃文件（store.activeFile） */
+  /** Currently active file selected by the framework (store.activeFile) */
   activeFile?: string | null;
-  /** 定位请求 — 由聊天中的 locator 卡片点击触发 */
+  /** Navigation request — triggered by clicking a locator card in chat */
   navigateRequest?: ViewerLocator | null;
-  /** Viewer 完成定位后调用，清除请求 */
+  /** Called after the Viewer completes navigation, clears the request */
   onNavigateComplete?: () => void;
-  /** Manifest 声明的 viewer commands (user → agent) — runtime 从 manifest 注入，viewer 可用于渲染命令菜单等 UI */
+  /** Viewer commands declared in the manifest (user → agent) — injected by the runtime from the manifest, used by the viewer to render command menus, etc. */
   commands?: ViewerCommandDescriptor[];
 }
 
-/** 内容查看器的 UI 契约 */
+/** UI contract for the content viewer */
 export interface ViewerContract {
-  /** 预览组件 — 渲染内容的 React 组件 */
+  /** Preview component — React component that renders the content */
   PreviewComponent: ComponentType<ViewerPreviewProps>;
 
   /**
-   * 从用户选中状态提取上下文文本。
-   * 返回的文本会被注入到 user_message 的前缀中，
-   * 让 Agent 了解用户当前的视觉焦点。
+   * Extract context text from the user's selection state.
+   * The returned text is injected as a prefix into user_message,
+   * letting the Agent understand the user's current visual focus.
    *
-   * @param selection 当前选中的元素 (null 表示无选中)
-   * @param files 当前工作区文件列表
-   * @returns 上下文文本 (空字符串表示无上下文)
+   * @param selection Currently selected element (null means no selection)
+   * @param files Current workspace file list
+   * @returns Context text (empty string means no context)
    */
   extractContext(
     selection: ViewerSelectionContext | null,
     files: ViewerFileContent[],
   ): string;
 
-  /** 文件变更时的更新策略 */
+  /** Update strategy on file changes */
   updateStrategy: "full-reload" | "incremental";
 
-  /** 文件工作区模型 — 描述 Viewer 如何组织文件 */
+  /** File workspace model — describes how the Viewer organizes files */
   workspace?: FileWorkspaceModel;
 
-  /** Viewer 支持的操作 — Agent 可通过执行通道调用 */
+  /** Viewer-supported actions — Agent can invoke via the execution channel */
   actions?: ViewerActionDescriptor[];
 
-  /** 捕获当前视窗截图（可选，由 PreviewComponent 在 mount 后动态注入实现） */
+  /** Capture current viewport screenshot (optional, dynamically injected by PreviewComponent after mount) */
   captureViewport?: () => Promise<{ data: string; media_type: string } | null>;
 
-  /** Locator 格式描述 — 注入到 CLAUDE.md 指导 agent 生成 <viewer-locator> 标记 */
+  /** Locator format description — injected into CLAUDE.md to guide the agent in generating <viewer-locator> tags */
   locatorDescription?: string;
 }

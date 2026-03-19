@@ -1,7 +1,7 @@
 /**
  * Mode Loader — External mode registration tests
  *
- * 验证 registerExternalMode 和 loadModeManifest 对外部 mode 的支持。
+ * Validates registerExternalMode and loadModeManifest support for external modes.
  */
 
 import { describe, test, expect } from "bun:test";
