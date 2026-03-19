@@ -129,7 +129,7 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
     if (themeCSS) {
       const globals: string[] = [];
       // Extract @import and :root blocks — they must stay at top level
-      let scoped = themeCSS.replace(/@import\s+[^;]+;/g, (m) => { globals.push(m); return ""; });
+      let scoped = themeCSS.replace(/@import\s+url\([^)]*\)\s*;|@import\s+[^;]+;/g, (m) => { globals.push(m); return ""; });
       scoped = scoped.replace(/:root\s*\{[^}]*\}/g, (m) => { globals.push(m); return ""; });
       themeCSS = globals.join("\n") + "\n.slide-page {\n" + scoped + "\n}";
     }
@@ -205,8 +205,6 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
       <div class="print-group">
         <button class="mode-btn active" id="mode-img" onclick="setMode('image')">Image</button>
         <button class="mode-btn" id="mode-html" onclick="setMode('html')">HTML</button>
-        <div class="print-divider"></div>
-        <button class="print-action" id="print-btn" onclick="window.print()">Print / Save PDF</button>
       </div>
     </div>
   </div>
@@ -232,7 +230,7 @@ function downloadSlides(){
 
     const imageModeScript = opts.inline
       ? ""
-      : `\n<script src="https://unpkg.com/@zumer/snapdom/dist/snapdom.js"><\/script>
+      : `\n<script src="/vendor/snapdom.js"><\/script>
 <script>
 var originalSlides=[],converting=false,metaOriginal='';
 
@@ -248,11 +246,15 @@ async function convertToImages(){
     if(meta)meta.textContent='Converting '+(i+1)+'/'+pages.length+'...';
     var page=pages[i];
     if(!originalSlides[i])originalSlides[i]=page.innerHTML;
-    var result=await snapdom(page,{scale:2,embedFonts:true});
-    var png=await result.toPng();
-    page.innerHTML='';
-    png.style.cssText='width:100%;height:100%;display:block';
-    page.appendChild(png);
+    try{
+      var result=await snapdom(page,{scale:2,embedFonts:true});
+      var png=await result.toPng();
+      page.innerHTML='';
+      png.style.cssText='width:100%;height:100%;display:block';
+      page.appendChild(png);
+    }catch(e){
+      console.warn('Slide '+(i+1)+' capture failed:',e.message);
+    }
   }
   converting=false;if(meta)meta.textContent=metaOriginal;
   if(printBtn){printBtn.disabled=false;printBtn.textContent='Print / Save PDF'}
@@ -615,7 +617,6 @@ ${slidePages}${downloadScript}${imageModeScript}
       <button class="btn-secondary" onclick="downloadZip()">Download ZIP</button>
       <div class="print-divider"></div>
       <button class="btn-secondary" onclick="captureScreenshot()">Screenshot PNG</button>
-      <button class="btn-secondary" onclick="window.print()">Print / Save PDF</button>
     </div>
   </div>
 </div>`;
