@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.9.1] - 2026-03-20
+
+### Fixed
+- **Electron export kill-on-close** — opening export pages (slide/webcraft) in Electron no longer kills the session process when the export window is closed; `/export/` paths now open in a lightweight window without the kill-on-close handler
+- **Slide export CSS broken** — `@import` regex now correctly handles `url()` containing semicolons (e.g. Google Fonts `wght@300;400;500`), which previously truncated the import and invalidated the entire `<style>` block
+- **Slide snapdom conversion hang** — added try-catch around each slide capture so an `EncodingError` on one slide no longer freezes the entire conversion loop at "Converting X/Y..."
+- **Slide snapdom CDN dependency** — replaced external unpkg CDN reference with local `/vendor/snapdom.js` for reliability in iframe and offline contexts
+
+### Removed
+- **Print / Save PDF buttons** — removed from both slide and webcraft export pages due to unreliable behavior in iframe and Electron contexts
+
 ## [2.9.0] - 2026-03-19
 
 ### Added
