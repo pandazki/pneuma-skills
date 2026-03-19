@@ -133,7 +133,14 @@ export function createModeWindow(
   // Intercept child window.open (mode pages might open sub-windows)
   win.webContents.setWindowOpenHandler(({ url: openUrl }) => {
     if (openUrl.startsWith("http://localhost:") || openUrl.startsWith("http://127.0.0.1:")) {
-      createModeWindow(openUrl);
+      // Export/utility pages served by the same session server should open
+      // in a lightweight window WITHOUT the kill-on-close behavior.
+      const urlPath = new URL(openUrl).pathname;
+      if (urlPath.startsWith("/export/")) {
+        openExportWindow(openUrl);
+      } else {
+        createModeWindow(openUrl);
+      }
       return { action: "deny" };
     }
     shell.openExternal(openUrl);
@@ -191,6 +198,42 @@ async function killSessionByUrl(url?: string) {
   } catch (err) {
     console.error("[window-manager] Failed to kill session:", err);
   }
+}
+
+/**
+ * Open an export/utility page in a lightweight window that does NOT
+ * kill the session process when closed.
+ */
+function openExportWindow(url: string): BrowserWindow {
+  const win = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    minWidth: 600,
+    minHeight: 400,
+    backgroundColor: "#ffffff",
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      spellcheck: false,
+    },
+  });
+
+  win.once("ready-to-show", () => {
+    win.show();
+  });
+
+  win.loadURL(url);
+
+  // External links → system browser
+  win.webContents.on("will-navigate", (event, navUrl) => {
+    if (!navUrl.startsWith("http://localhost:") && !navUrl.startsWith("http://127.0.0.1:")) {
+      event.preventDefault();
+      shell.openExternal(navUrl);
+    }
+  });
+
+  return win;
 }
 
 export function getAllModeWindows(): BrowserWindow[] {
