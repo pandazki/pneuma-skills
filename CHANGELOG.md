@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2.9.1] - 2026-03-20
+## [2.9.2] - 2026-03-20
 
 ### Fixed
 - **Electron export kill-on-close** — opening export pages (slide/webcraft) in Electron no longer kills the session process when the export window is closed; `/export/` paths now open in a lightweight window without the kill-on-close handler
