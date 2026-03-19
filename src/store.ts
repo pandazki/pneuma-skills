@@ -106,6 +106,9 @@ interface AppState {
   // Init params (immutable per session, from mode manifest)
   initParams: Record<string, number | string>;
 
+  /** Layout mode: "editor" = split panel (default), "app" = fullscreen viewer + agent bubble */
+  layout: "editor" | "app";
+
   // Debug
   debugMode: boolean;
 
@@ -199,8 +202,9 @@ interface AppState {
   setModeDisplayName: (name: string) => void;
   setModeCommands: (commands: ViewerCommandDescriptor[]) => void;
 
-  // Actions — init params
+  // Actions — init params & layout
   setInitParams: (params: Record<string, number | string>) => void;
+  setLayout: (layout: "editor" | "app") => void;
 
   // Actions — debug
   setDebugMode: (v: boolean) => void;
@@ -306,6 +310,7 @@ export const useStore = create<AppState>((set) => ({
   modeDisplayName: "",
   modeCommands: [],
   initParams: {},
+  layout: "editor",
   debugMode: false,
   workspaceItems: [],
   actionRequest: null,
@@ -459,6 +464,7 @@ export const useStore = create<AppState>((set) => ({
   setModeCommands: (modeCommands) => set({ modeCommands }),
 
   setInitParams: (initParams) => set({ initParams }),
+  setLayout: (layout) => set({ layout }),
 
   setDebugMode: (debugMode) => set({ debugMode }),
 

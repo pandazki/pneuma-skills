@@ -1123,6 +1123,8 @@ Options:
     ...(modeBundleDir ? { modeBundleDir } : {}),
     projectRoot: PROJECT_ROOT,
     modeName,
+    layout: manifest.layout,
+    window: manifest.window,
   });
 
   // 4. Launch Agent backend (selected at startup, fixed for the session lifetime)
