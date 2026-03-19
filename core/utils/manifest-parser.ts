@@ -14,6 +14,7 @@ export interface ParsedManifest {
   watchPatterns?: string[];
   installName?: string;
   workspaceType?: string;
+  layout?: string;
 }
 
 /** Extract a single string field value: `fieldName: "value"` or `fieldName: 'value'` */
@@ -56,5 +57,6 @@ export function parseManifestTs(content: string): ParsedManifest {
     watchPatterns: extractStringArray(content, "watchPatterns"),
     installName: extractString(content, "installName"),
     workspaceType: extractString(content, "type"),
+    layout: extractString(content, "layout"),
   };
 }

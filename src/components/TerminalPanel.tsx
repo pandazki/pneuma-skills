@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
+import { getApiBase } from "../utils/api.js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
@@ -29,13 +30,6 @@ function getWsUrl(terminalId: string): string {
     ? `${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`
     : location.host;
   return `${proto}//${host}/ws/terminal/${terminalId}`;
-}
-
-function getApiBase(): string {
-  if (import.meta.env.DEV) {
-    return `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`;
-  }
-  return "";
 }
 
 export default function TerminalPanel() {

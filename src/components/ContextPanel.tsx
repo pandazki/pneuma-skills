@@ -1,13 +1,7 @@
 import { useState, useEffect } from "react";
 import { useStore } from "../store.js";
+import { getApiBase } from "../utils/api.js";
 import type { TaskItem } from "../store.js";
-
-function getApiBase(): string {
-  if (import.meta.env.DEV) {
-    return `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`;
-  }
-  return "";
-}
 
 // ── Section: Session Stats ──────────────────────────────────────────────────
 

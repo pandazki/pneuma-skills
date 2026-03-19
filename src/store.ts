@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { getApiBase } from "./utils/api.js";
 import type { SessionState, PermissionRequest, ChatMessage, FileContent, SelectionContext, ContentBlock, UserAction, Annotation } from "./types.js";
 import type { ViewerContract, ViewerCommandDescriptor, WorkspaceItem, ViewerActionRequest, ContentSet, ViewerLocator } from "../core/types/viewer-contract.js";
 
@@ -106,6 +107,9 @@ interface AppState {
   // Init params (immutable per session, from mode manifest)
   initParams: Record<string, number | string>;
 
+  /** Layout mode: "editor" = split panel (default), "app" = fullscreen viewer + agent bubble */
+  layout: "editor" | "app";
+
   // Debug
   debugMode: boolean;
 
@@ -199,8 +203,9 @@ interface AppState {
   setModeDisplayName: (name: string) => void;
   setModeCommands: (commands: ViewerCommandDescriptor[]) => void;
 
-  // Actions — init params
+  // Actions — init params & layout
   setInitParams: (params: Record<string, number | string>) => void;
+  setLayout: (layout: "editor" | "app") => void;
 
   // Actions — debug
   setDebugMode: (v: boolean) => void;
@@ -306,6 +311,7 @@ export const useStore = create<AppState>((set) => ({
   modeDisplayName: "",
   modeCommands: [],
   initParams: {},
+  layout: "editor",
   debugMode: false,
   workspaceItems: [],
   actionRequest: null,
@@ -459,6 +465,7 @@ export const useStore = create<AppState>((set) => ({
   setModeCommands: (modeCommands) => set({ modeCommands }),
 
   setInitParams: (initParams) => set({ initParams }),
+  setLayout: (layout) => set({ layout }),
 
   setDebugMode: (debugMode) => set({ debugMode }),
 
@@ -641,11 +648,6 @@ export const useStore = create<AppState>((set) => ({
 
 // ── Viewer state persistence (debounced) ──────────────────────────────────
 let _viewerStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
-function getApiBase() {
-  return import.meta.env.DEV
-    ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`
-    : "";
-}
 function saveViewerState() {
   if (_viewerStateSaveTimer) clearTimeout(_viewerStateSaveTimer);
   _viewerStateSaveTimer = setTimeout(() => {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { getApiBase } from "../utils/api.js";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import SpotlightCard from "./reactbits/SpotlightCard";
 import Galaxy from "./reactbits/Galaxy";
@@ -104,13 +105,6 @@ type AnyMode = {
   hasInitParams?: boolean;
   showcase?: BuiltinMode["showcase"];
 };
-
-function getApiBase(): string {
-  if (import.meta.env.DEV) {
-    return `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`;
-  }
-  return "";
-}
 
 // ── Theme ────────────────────────────────────────────────────────────────
 

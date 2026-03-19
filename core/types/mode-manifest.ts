@@ -265,4 +265,9 @@ export interface ModeManifest {
   showcase?: ModeShowcase;
   /** Supported agent backends. When omitted, all implemented backends are allowed. */
   supportedBackends?: string[];
+
+  /** Layout: "editor" = 双面板 (默认), "app" = Viewer 全屏 + Agent 悬浮气泡 */
+  layout?: "editor" | "app";
+  /** 窗口尺寸偏好 (app 布局 + Electron 场景) */
+  window?: { width: number; height: number };
 }

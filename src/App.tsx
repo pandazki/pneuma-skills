@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef, lazy, Suspense } from "react";
+import { getApiBase } from "./utils/api.js";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import TopBar from "./components/TopBar.js";
 import ChatPanel from "./components/ChatPanel.js";
@@ -19,6 +20,7 @@ import { useThumbnailCapture } from "./hooks/useThumbnailCapture.js";
 const EditorPanel = lazy(() => import("./components/EditorPanel.js"));
 const TerminalPanel = lazy(() => import("./components/TerminalPanel.js"));
 const Launcher = lazy(() => import("./components/Launcher.js"));
+const AgentBubble = lazy(() => import("./components/AgentBubble.js"));
 
 function LazyFallback() {
   return (
@@ -150,13 +152,6 @@ function useViewerProps(): ViewerPreviewProps {
   };
 }
 
-function getApiBase(): string {
-  if (import.meta.env.DEV) {
-    return `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`;
-  }
-  return "";
-}
-
 export default function App() {
   // Launcher mode — lightweight marketplace UI
   const [isLauncher] = useState(() => {
@@ -249,6 +244,7 @@ export default function App() {
       .then((r) => r.json())
       .then((d) => {
         if (d.initParams) useStore.getState().setInitParams(d.initParams);
+        if (d.layout) useStore.getState().setLayout(d.layout);
       })
       .catch(() => { });
 
@@ -314,12 +310,34 @@ export default function App() {
   }, [contentSets, systemPrefs]); // activeContentSet intentionally excluded
 
   const viewerProps = useViewerProps();
+  const layout = useStore((s) => s.layout);
 
   // Thumbnail capture — snapshot the preview panel periodically
   const previewRef = useRef<HTMLDivElement>(null);
   const imageTick = useStore((s) => s.imageTick);
   const fileCount = useStore((s) => s.files.length);
   useThumbnailCapture(previewRef, !!PreviewComponent, imageTick + fileCount, captureViewport);
+
+  // ── App layout: Viewer fullscreen + floating AgentBubble ───────────────
+
+  if (layout === "app") {
+    return (
+      <div className="h-screen w-screen bg-cc-bg text-cc-fg relative overflow-hidden">
+        <div ref={previewRef} className="h-full w-full">
+          {PreviewComponent ? (
+            <PreviewComponent {...viewerProps} />
+          ) : (
+            <LazyFallback />
+          )}
+        </div>
+        <Suspense fallback={null}>
+          <AgentBubble />
+        </Suspense>
+      </div>
+    );
+  }
+
+  // ── Editor layout: split panel (2.x default) ──────────────────────────
 
   return (
     <div className="flex flex-col h-screen bg-cc-bg text-cc-fg relative overflow-hidden p-4 sm:p-6 md:p-8">
