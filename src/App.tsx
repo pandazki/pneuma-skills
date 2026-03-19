@@ -19,6 +19,7 @@ import { useThumbnailCapture } from "./hooks/useThumbnailCapture.js";
 const EditorPanel = lazy(() => import("./components/EditorPanel.js"));
 const TerminalPanel = lazy(() => import("./components/TerminalPanel.js"));
 const Launcher = lazy(() => import("./components/Launcher.js"));
+const AgentBubble = lazy(() => import("./components/AgentBubble.js"));
 
 function LazyFallback() {
   return (
@@ -249,6 +250,7 @@ export default function App() {
       .then((r) => r.json())
       .then((d) => {
         if (d.initParams) useStore.getState().setInitParams(d.initParams);
+        if (d.layout) useStore.getState().setLayout(d.layout);
       })
       .catch(() => { });
 
@@ -314,12 +316,34 @@ export default function App() {
   }, [contentSets, systemPrefs]); // activeContentSet intentionally excluded
 
   const viewerProps = useViewerProps();
+  const layout = useStore((s) => s.layout);
 
   // Thumbnail capture — snapshot the preview panel periodically
   const previewRef = useRef<HTMLDivElement>(null);
   const imageTick = useStore((s) => s.imageTick);
   const fileCount = useStore((s) => s.files.length);
   useThumbnailCapture(previewRef, !!PreviewComponent, imageTick + fileCount, captureViewport);
+
+  // ── App layout: Viewer fullscreen + floating AgentBubble ───────────────
+
+  if (layout === "app") {
+    return (
+      <div className="h-screen w-screen bg-cc-bg text-cc-fg relative overflow-hidden">
+        <div ref={previewRef} className="h-full w-full">
+          {PreviewComponent ? (
+            <PreviewComponent {...viewerProps} />
+          ) : (
+            <LazyFallback />
+          )}
+        </div>
+        <Suspense fallback={null}>
+          <AgentBubble />
+        </Suspense>
+      </div>
+    );
+  }
+
+  // ── Editor layout: split panel (2.x default) ──────────────────────────
 
   return (
     <div className="flex flex-col h-screen bg-cc-bg text-cc-fg relative overflow-hidden p-4 sm:p-6 md:p-8">

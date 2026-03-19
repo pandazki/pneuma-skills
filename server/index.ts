@@ -35,6 +35,8 @@ export interface ServerOptions {
   modeBundleDir?: string; // Pre-compiled mode bundle directory (production external modes)
   projectRoot?: string; // Pneuma project root (for mode-maker routes to access builtin modes)
   modeName?: string; // Current mode name (for conditional route registration)
+  layout?: "editor" | "app"; // Layout mode from manifest (default: "editor")
+  window?: { width: number; height: number }; // Window size preference (app layout + Electron)
   launcherMode?: boolean; // Lightweight launcher server (no workspace, no agent, no watcher)
   debug?: boolean; // Pass --debug to child processes
   forceDev?: boolean; // Pass --dev to child processes
@@ -599,7 +601,11 @@ export function startServer(options: ServerOptions) {
 
   // Return mode init params for the frontend
   app.get("/api/config", (c) => {
-    return c.json({ initParams: options.initParams || {} });
+    return c.json({
+      initParams: options.initParams || {},
+      layout: options.layout || "editor",
+      ...(options.window ? { window: options.window } : {}),
+    });
   });
 
   // Return external mode info for the frontend (needed for /@fs/ imports)
