@@ -28,6 +28,7 @@ import {
   normalizeSessionRecord,
   parseCliArgs,
   resolveWorkspaceBackendType,
+  startViteDev,
   type PersistedSession,
   type SessionRecord,
 } from "./pneuma-cli-helpers.js";
@@ -522,46 +523,13 @@ async function handleEvolveCommand(args: string[]) {
   if (isDev) {
     const VITE_PORT = 17996;
     p.log.step(`Starting Vite dev server on port ${VITE_PORT}...`);
-
-    const viteEnv: Record<string, string> = {
-      ...process.env as Record<string, string>,
-      VITE_API_PORT: String(actualPort),
-    };
-
-    viteProc = Bun.spawn(
-      ["bunx", "vite", "--port", String(VITE_PORT)],
-      { cwd: PROJECT_ROOT, stdout: "pipe", stderr: "pipe", env: viteEnv },
-    );
-
-    let vitePortResolved = false;
-    browserPort = await new Promise<number>((resolvePort) => {
-      const timeout = setTimeout(() => {
-        if (!vitePortResolved) { vitePortResolved = true; resolvePort(VITE_PORT); }
-      }, 10_000);
-
-      const pipeAndParse = async (stream: ReadableStream<Uint8Array>) => {
-        const reader = stream.getReader();
-        const decoder = new TextDecoder();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const text = decoder.decode(value, { stream: true });
-          for (const line of text.split("\n")) {
-            if (line.trim()) console.log(`[vite] ${line}`);
-            if (!vitePortResolved) {
-              const match = line.match(/Local:\s+https?:\/\/[^:]+:(\d+)/);
-              if (match) {
-                vitePortResolved = true;
-                clearTimeout(timeout);
-                resolvePort(parseInt(match[1], 10));
-              }
-            }
-          }
-        }
-      };
-      if (viteProc!.stdout && typeof viteProc!.stdout !== "number") pipeAndParse(viteProc!.stdout);
-      if (viteProc!.stderr && typeof viteProc!.stderr !== "number") pipeAndParse(viteProc!.stderr);
+    const viteResult = await startViteDev({
+      projectRoot: PROJECT_ROOT,
+      port: VITE_PORT,
+      env: { ...process.env as Record<string, string>, VITE_API_PORT: String(actualPort) },
     });
+    viteProc = viteResult.proc;
+    browserPort = viteResult.port;
   }
 
   // 9. Open browser with evolution mode dashboard
@@ -747,46 +715,13 @@ Options:
     if (isDev) {
       const VITE_PORT = 17996;
       p.log.step(`Starting Vite dev server on port ${VITE_PORT}...`);
-
-      const viteEnv: Record<string, string> = {
-        ...process.env as Record<string, string>,
-        VITE_API_PORT: String(actualPort),
-      };
-
-      const viteProc = Bun.spawn(
-        ["bunx", "vite", "--port", String(VITE_PORT)],
-        { cwd: PROJECT_ROOT, stdout: "pipe", stderr: "pipe", env: viteEnv },
-      );
-
-      let vitePortResolved = false;
-      browserPort = await new Promise<number>((resolvePort) => {
-        const timeout = setTimeout(() => {
-          if (!vitePortResolved) { vitePortResolved = true; resolvePort(VITE_PORT); }
-        }, 10_000);
-
-        const pipeAndParse = async (stream: ReadableStream<Uint8Array>) => {
-          const reader = stream.getReader();
-          const decoder = new TextDecoder();
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const text = decoder.decode(value, { stream: true });
-            for (const line of text.split("\n")) {
-              if (line.trim()) console.log(`[vite] ${line}`);
-              if (!vitePortResolved) {
-                const match = line.match(/Local:\s+https?:\/\/[^:]+:(\d+)/);
-                if (match) {
-                  vitePortResolved = true;
-                  clearTimeout(timeout);
-                  resolvePort(parseInt(match[1], 10));
-                }
-              }
-            }
-          }
-        };
-        if (viteProc.stdout && typeof viteProc.stdout !== "number") pipeAndParse(viteProc.stdout);
-        if (viteProc.stderr && typeof viteProc.stderr !== "number") pipeAndParse(viteProc.stderr);
+      const viteResult = await startViteDev({
+        projectRoot: PROJECT_ROOT,
+        port: VITE_PORT,
+        env: { ...process.env as Record<string, string>, VITE_API_PORT: String(actualPort) },
       });
+      const viteProc = viteResult.proc;
+      browserPort = viteResult.port;
 
       process.on("SIGINT", () => { killChildProcesses(); viteProc.kill(); server.stop(true); process.exit(0); });
       process.on("SIGTERM", () => { killChildProcesses(); viteProc.kill(); server.stop(true); process.exit(0); });
@@ -1303,51 +1238,13 @@ Options:
       viteEnv.VITE_MODE_MAKER_WORKSPACE = workspace;
     }
 
-    viteProc = Bun.spawn(
-      ["bunx", "vite", "--port", String(VITE_PORT)],
-      {
-        cwd: PROJECT_ROOT,
-        stdout: "pipe",
-        stderr: "pipe",
-        env: viteEnv,
-      }
-    );
-
-    // Parse Vite stdout to detect the actual port (may differ if VITE_PORT is occupied)
-    let vitePortResolved = false;
-    const vitePortPromise = new Promise<number>((resolvePort) => {
-      const timeout = setTimeout(() => {
-        if (!vitePortResolved) {
-          vitePortResolved = true;
-          resolvePort(VITE_PORT);
-        }
-      }, 10_000);
-
-      const pipeAndParse = async (stream: ReadableStream<Uint8Array>) => {
-        const reader = stream.getReader();
-        const decoder = new TextDecoder();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const text = decoder.decode(value, { stream: true });
-          for (const line of text.split("\n")) {
-            if (line.trim()) console.log(`[vite] ${line}`);
-            // Vite outputs: "  ➜  Local:   http://localhost:17996/"
-            if (!vitePortResolved) {
-              const match = line.match(/Local:\s+https?:\/\/[^:]+:(\d+)/);
-              if (match) {
-                vitePortResolved = true;
-                clearTimeout(timeout);
-                resolvePort(parseInt(match[1], 10));
-              }
-            }
-          }
-        }
-      };
-      if (viteProc!.stdout && typeof viteProc!.stdout !== "number") pipeAndParse(viteProc!.stdout);
-      if (viteProc!.stderr && typeof viteProc!.stderr !== "number") pipeAndParse(viteProc!.stderr);
+    const viteResult = await startViteDev({
+      projectRoot: PROJECT_ROOT,
+      port: VITE_PORT,
+      env: viteEnv,
     });
-    browserPort = await vitePortPromise;
+    viteProc = viteResult.proc;
+    browserPort = viteResult.port;
   }
 
   // 7. Open browser (include mode in URL for frontend)

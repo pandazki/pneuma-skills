@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { getApiBase } from "./utils/api.js";
 import type { SessionState, PermissionRequest, ChatMessage, FileContent, SelectionContext, ContentBlock, UserAction, Annotation } from "./types.js";
 import type { ViewerContract, ViewerCommandDescriptor, WorkspaceItem, ViewerActionRequest, ContentSet, ViewerLocator } from "../core/types/viewer-contract.js";
 
@@ -647,11 +648,6 @@ export const useStore = create<AppState>((set) => ({
 
 // ── Viewer state persistence (debounced) ──────────────────────────────────
 let _viewerStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
-function getApiBase() {
-  return import.meta.env.DEV
-    ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`
-    : "";
-}
 function saveViewerState() {
   if (_viewerStateSaveTimer) clearTimeout(_viewerStateSaveTimer);
   _viewerStateSaveTimer = setTimeout(() => {

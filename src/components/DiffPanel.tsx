@@ -1,17 +1,11 @@
 import { useState, useEffect } from "react";
 import { useStore } from "../store.js";
+import { getApiBase } from "../utils/api.js";
 import DiffViewer from "./DiffViewer.js";
 
 interface ChangedFile {
   path: string;
   status: string; // A, M, D
-}
-
-function getApiBase(): string {
-  if (import.meta.env.DEV) {
-    return `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`;
-  }
-  return "";
 }
 
 function statusBadge(status: string) {

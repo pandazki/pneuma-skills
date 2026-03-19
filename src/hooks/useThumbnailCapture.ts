@@ -1,3 +1,5 @@
+import { getApiBase } from "../utils/api.js";
+
 /**
  * useThumbnailCapture — periodically captures the viewer panel as a PNG thumbnail.
  *
@@ -21,13 +23,6 @@ const THUMB_WIDTH = 1280;
 const THUMB_HEIGHT = 800;
 const INITIAL_DELAY = 2_000;
 const DEBOUNCE_DELAY = 10_000;
-
-function getApiBase(): string {
-  if (import.meta.env.DEV) {
-    return `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`;
-  }
-  return "";
-}
 
 /**
  * Scale a source image data URL to thumbnail dimensions (cover-fit).

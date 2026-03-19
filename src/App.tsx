@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef, lazy, Suspense } from "react";
+import { getApiBase } from "./utils/api.js";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import TopBar from "./components/TopBar.js";
 import ChatPanel from "./components/ChatPanel.js";
@@ -149,13 +150,6 @@ function useViewerProps(): ViewerPreviewProps {
     onNavigateComplete: () => setNavigateRequest(null),
     commands: useStore((s) => s.modeCommands),
   };
-}
-
-function getApiBase(): string {
-  if (import.meta.env.DEV) {
-    return `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`;
-  }
-  return "";
 }
 
 export default function App() {

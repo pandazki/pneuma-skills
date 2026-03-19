@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { getApiBase } from "../utils/api.js";
 import CodeMirror from "@uiw/react-codemirror";
 import { EditorView } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
@@ -53,13 +54,6 @@ interface TreeNode {
   path: string;
   type: "file" | "directory";
   children?: TreeNode[];
-}
-
-function getApiBase(): string {
-  if (import.meta.env.DEV) {
-    return `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`;
-  }
-  return "";
 }
 
 function langForPath(path: string) {

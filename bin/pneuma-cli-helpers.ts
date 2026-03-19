@@ -127,3 +127,50 @@ export function resolveWorkspaceBackendType(
 
   return { backendType: existingSession.backendType };
 }
+
+/**
+ * Spawn Vite dev server and resolve the actual port from its stdout.
+ * Returns { proc, port } where port is the actual port Vite bound to.
+ */
+export async function startViteDev(opts: {
+  projectRoot: string;
+  port: number;
+  env: Record<string, string>;
+}): Promise<{ proc: ReturnType<typeof Bun.spawn>; port: number }> {
+  const proc = Bun.spawn(
+    ["bunx", "vite", "--port", String(opts.port)],
+    { cwd: opts.projectRoot, stdout: "pipe", stderr: "pipe", env: opts.env },
+  );
+
+  let resolved = false;
+  const port = await new Promise<number>((resolvePort) => {
+    const timeout = setTimeout(() => {
+      if (!resolved) { resolved = true; resolvePort(opts.port); }
+    }, 10_000);
+
+    const pipeAndParse = async (stream: ReadableStream<Uint8Array>) => {
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value, { stream: true });
+        for (const line of text.split("\n")) {
+          if (line.trim()) console.log(`[vite] ${line}`);
+          if (!resolved) {
+            const match = line.match(/Local:\s+https?:\/\/[^:]+:(\d+)/);
+            if (match) {
+              resolved = true;
+              clearTimeout(timeout);
+              resolvePort(parseInt(match[1], 10));
+            }
+          }
+        }
+      }
+    };
+    if (proc.stdout && typeof proc.stdout !== "number") pipeAndParse(proc.stdout);
+    if (proc.stderr && typeof proc.stderr !== "number") pipeAndParse(proc.stderr);
+  });
+
+  return { proc, port };
+}

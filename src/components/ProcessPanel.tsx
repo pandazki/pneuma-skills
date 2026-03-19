@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useStore } from "../store.js";
+import { getApiBase } from "../utils/api.js";
 
 export interface ProcessItem {
   taskId: string;
@@ -20,13 +21,6 @@ interface SystemProcess {
   ports: number[];
   cwd?: string;
   startedAt?: number;
-}
-
-function getApiBase(): string {
-  if (import.meta.env.DEV) {
-    return `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`;
-  }
-  return "";
 }
 
 function formatDuration(ms: number): string {
