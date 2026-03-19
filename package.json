@@ -35,6 +35,7 @@
     "dev": "bun bin/pneuma.ts --dev",
     "build": "vite build",
     "start": "bun bin/pneuma.ts",
+    "test": "bun test",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {

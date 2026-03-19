@@ -1,0 +1,3 @@
+[test]
+# Exclude vendored Electron node_modules and release builds — their tests have missing deps
+pathIgnorePatterns = ["desktop/**"]
