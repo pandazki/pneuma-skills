@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.9.0] - 2026-03-19
+
+### Added
+- **App layout mode** — new `layout: "app"` option in ModeManifest renders the viewer fullscreen with a floating agent bubble instead of the default split-panel editor layout; existing modes unaffected (default `"editor"`)
+
+### Fixed
+- **Security: path traversal & command injection** — patched thumbnail endpoint validation, showcase asset path resolution, and process kill to prevent path traversal (C1-C2) and command injection (C3); added 15 security tests
+
+### Improved
+- **Zustand store architecture** — split monolithic 681-line store into 7 protocol-aligned slices (session, chat, workspace, viewer, mode, agent-data, ui) with zero consumer-facing changes
+- **Server decomposition** — extracted export routes (1275 lines) into `server/routes/export.ts` and shared utilities into `server/utils.ts`, halving `server/index.ts`
+- **Code deduplication** — consolidated `getApiBase()` (10 copies → 1 in `src/utils/api.ts`) and `startViteDev()` (3 copies → 1 in `bin/pneuma-cli-helpers.ts`)
+- **Test discovery** — added `bunfig.toml` to exclude `desktop/` from test runner, preventing false failures from vendored modules
+
 ## [2.8.1] - 2026-03-18
 
 ### Fixed

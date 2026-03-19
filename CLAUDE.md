@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.8.1
+**Version:** 2.9.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `mode-maker`, `evolve`
 
@@ -73,6 +73,7 @@ pneuma snapshot pull     # Download workspace from R2
 ```
 pneuma-skills/
 ├── bin/pneuma.ts              # CLI entry — mode resolution, agent launch, session registry
+├── bin/pneuma-cli-helpers.ts  # Shared CLI helpers (startViteDev, etc.)
 ├── core/
 │   ├── types/                 # Contract types (ModeManifest, ViewerContract, AgentBackend)
 │   ├── mode-loader.ts         # Mode discovery & loading (builtin + external)
@@ -85,6 +86,8 @@ pneuma-skills/
 │   └── codex/                 # Codex backend — stdio JSON-RPC via app-server
 ├── server/
 │   ├── index.ts               # Hono server + launcher endpoints + WS routing
+│   ├── routes/export.ts       # Slide + webcraft export routes
+│   ├── utils.ts               # Shared server utilities (pathStartsWith, isWin)
 │   ├── ws-bridge*.ts          # Dual WebSocket bridge (browser JSON ↔ CLI NDJSON)
 │   ├── skill-installer.ts     # Skill copy + template engine + instructions injection (CLAUDE.md / AGENTS.md)
 │   ├── file-watcher.ts        # chokidar watcher (manifest-driven)
@@ -97,7 +100,16 @@ pneuma-skills/
 │   └── evolution-routes.ts    # Evolution API routes (/api/evolve/*)
 ├── src/                       # React frontend (Vite)
 │   ├── App.tsx                # Root layout, dynamic viewer loading
-│   ├── store.ts               # Zustand store
+│   ├── store/                 # Zustand store (7 protocol-aligned slices)
+│   │   ├── index.ts           # Combined store + re-export barrel
+│   │   ├── session-slice.ts   # Connection, agent session lifecycle
+│   │   ├── chat-slice.ts      # Messages, streaming, permissions
+│   │   ├── workspace-slice.ts # Files, content sets, workspace items
+│   │   ├── viewer-slice.ts    # Selection, annotations, navigation, actions
+│   │   ├── mode-slice.ts      # Viewer config, commands, layout
+│   │   ├── agent-data-slice.ts # Tasks, cron jobs, processes, git state
+│   │   └── ui-slice.ts        # Active tab, terminal, debug mode
+│   ├── utils/api.ts           # Shared getApiBase() utility
 │   ├── ws.ts                  # WebSocket client
 │   └── components/
 │       ├── Launcher.tsx       # Mode marketplace + recent sessions + local modes
@@ -422,7 +434,7 @@ Note: Codex uses stdio JSON-RPC (not WebSocket). `CodexAdapter` bridges Codex �
 - **Contract-first**: changes to contracts → update `core/types/` + `core/__tests__/`
 - **No hardcoded mode knowledge** in server/CLI — driven by ModeManifest
 - **Backend selected at startup only** — do not add runtime backend switching to the session UI
-- **Zustand** single store (`src/store.ts`), mode viewers in `modes/<mode>/viewer/`
+- **Zustand** sliced store (`src/store/`), mode viewers in `modes/<mode>/viewer/`
 - **Design tokens**: "Ethereal Tech" theme via `cc-*` CSS custom properties (deep zinc bg `#09090b`, neon orange primary `#f97316`, glassmorphism surfaces with `backdrop-blur`)
 
 ## Release Process
