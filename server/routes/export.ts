@@ -205,6 +205,8 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
       <div class="print-group">
         <button class="mode-btn active" id="mode-img" onclick="setMode('image')">Image</button>
         <button class="mode-btn" id="mode-html" onclick="setMode('html')">HTML</button>
+        <div class="print-divider"></div>
+        <button class="print-action" id="print-btn" onclick="window.print()">Print / Save PDF</button>
       </div>
     </div>
   </div>

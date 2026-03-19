@@ -10,8 +10,11 @@ All notable changes to this project will be documented in this file.
 - **Slide snapdom conversion hang** — added try-catch around each slide capture so an `EncodingError` on one slide no longer freezes the entire conversion loop at "Converting X/Y..."
 - **Slide snapdom CDN dependency** — replaced external unpkg CDN reference with local `/vendor/snapdom.js` for reliability in iframe and offline contexts
 
+### Improved
+- **Electron export window** — export pages now open maximized for a full-screen experience
+
 ### Removed
-- **Print / Save PDF buttons** — removed from both slide and webcraft export pages due to unreliable behavior in iframe and Electron contexts
+- **WebCraft Print / Save PDF button** — removed from webcraft export page due to unreliable behavior in multi-page contexts; slide export retains its Print button
 
 ## [2.9.0] - 2026-03-19
 

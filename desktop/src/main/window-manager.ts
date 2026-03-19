@@ -220,6 +220,7 @@ function openExportWindow(url: string): BrowserWindow {
   });
 
   win.once("ready-to-show", () => {
+    win.maximize();
     win.show();
   });
 
