@@ -145,3 +145,10 @@ export async function listCheckpoints(workspace: string): Promise<CheckpointEntr
     .filter((line) => line.trim())
     .map((line) => JSON.parse(line) as CheckpointEntry);
 }
+
+/** Get the hash of the latest checkpoint (last line of checkpoints.jsonl) */
+export async function getLatestCheckpointHash(workspace: string): Promise<string | null> {
+  const entries = await listCheckpoints(workspace);
+  if (entries.length === 0) return null;
+  return entries[entries.length - 1].hash;
+}

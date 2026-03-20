@@ -210,6 +210,8 @@ export default function TopBar() {
   const activeFile = useStore((s) => s.activeFile);
   const topBarNav = useStore((s) => s.modeViewer?.workspace?.topBarNavigation);
   const createEmpty = useStore((s) => s.modeViewer?.workspace?.createEmpty);
+  const replayMode = useStore((s) => s.replayMode);
+  const replayMetadata = useStore((s) => s.replayMetadata);
   const scheduleAvailable = !backendType || backendType === "claude-code";
   const visibleTabs = scheduleAvailable ? TABS : TABS.filter((tab) => tab.id !== "schedules");
 
@@ -290,7 +292,7 @@ export default function TopBar() {
             icon="file"
           />
         )}
-        {createEmpty && (
+        {createEmpty && !replayMode && (
           <button
             onClick={handleCreateEmpty}
             title="New empty content"
@@ -332,8 +334,22 @@ export default function TopBar() {
         })}
       </div>
 
-      {/* Right: share dropdown */}
-      <ShareDropdown />
+      {/* Right: share dropdown or replay badge */}
+      {replayMode ? (
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cc-primary/10 border border-cc-primary/20 text-cc-primary text-xs font-medium">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+              <path d="M4 2l10 6-10 6V2z"/>
+            </svg>
+            Replay
+          </span>
+          {replayMetadata?.title && (
+            <span className="text-cc-muted/60 text-xs truncate max-w-[200px]">{replayMetadata.title}</span>
+          )}
+        </div>
+      ) : (
+        <ShareDropdown />
+      )}
     </div>
   );
 }

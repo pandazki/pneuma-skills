@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useStore } from "../store/index";
 import { startPlayback, stopPlayback, seekTo } from "../replay-engine";
+import { getApiBase } from "../utils/api";
 
 export function ReplayPlayer() {
   const {
@@ -114,7 +116,47 @@ export function ReplayPlayer() {
 
         <div className="flex-1" />
         <span className="text-cc-muted/60 text-[10px]">{replayMetadata.title}</span>
+        <ContinueWorkButton />
       </div>
     </div>
+  );
+}
+
+function ContinueWorkButton() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleContinue = async () => {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+
+    try {
+      stopPlayback();
+      const resp = await fetch(`${getApiBase()}/api/replay/continue`, { method: "POST" });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+
+      // Reload page without replay param — cleanest transition to normal session.
+      // The agent was launched by the server callback; page loads as normal session.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("replay");
+      window.location.href = url.toString();
+    } catch (err: any) {
+      console.error("[continue-work]", err);
+      setError(err.message || "Continue failed");
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleContinue}
+      disabled={loading}
+      title={error || "Switch to normal editing mode and continue working"}
+      className="ml-2 px-4 py-1.5 rounded-lg bg-cc-primary text-white text-xs font-medium hover:brightness-110 transition-all whitespace-nowrap disabled:opacity-50 cursor-pointer"
+    >
+      {loading ? "Starting..." : error ? `Retry (${error})` : "Continue Work"}
+    </button>
   );
 }

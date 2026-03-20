@@ -16,7 +16,6 @@ import { loadMode, registerExternalMode } from "../core/mode-loader.js";
 import { useSystemPreferences } from "./hooks/useSystemPreferences.js";
 import { selectBestContentSet } from "../core/utils/content-set-matcher.js";
 import { ReplayPlayer } from "./components/ReplayPlayer";
-import { ReplayTimeline } from "./components/ReplayTimeline";
 import type { ViewerPreviewProps } from "../core/types/viewer-contract.js";
 import { useThumbnailCapture } from "./hooks/useThumbnailCapture.js";
 
@@ -83,6 +82,7 @@ function useViewerProps(): ViewerPreviewProps {
   const navigateRequest = useStore((s) => s.navigateRequest);
   const setNavigateRequest = useStore((s) => s.setNavigateRequest);
   const contentSets = useStore((s) => s.contentSets);
+  const replayMode = useStore((s) => s.replayMode);
 
   // Filter and remap files based on active content set
   const files = useMemo(() => {
@@ -152,6 +152,7 @@ function useViewerProps(): ViewerPreviewProps {
     navigateRequest,
     onNavigateComplete: () => setNavigateRequest(null),
     commands: useStore((s) => s.modeCommands),
+    readonly: replayMode,
   };
 }
 
@@ -238,11 +239,8 @@ export default function App() {
         console.error(`[app] Failed to load mode "${modeName}":`, err);
       });
 
-    // Connect to session (independent of mode loading)
-    if (replayPath) {
-      // Replay mode — no WebSocket connection needed
-      // loadReplay handles everything
-    } else if (explicitSession) {
+    // Connect to session (always — even in replay mode, for Continue Work transition)
+    if (explicitSession) {
       connect(explicitSession);
     } else {
       fetch(`${getApiBase()}/api/session`)
@@ -348,12 +346,7 @@ export default function App() {
         <Suspense fallback={null}>
           <AgentBubble />
         </Suspense>
-        {replayMode && (
-          <>
-            <ReplayTimeline />
-            <ReplayPlayer />
-          </>
-        )}
+        {replayMode && <ReplayPlayer />}
       </div>
     );
   }
@@ -384,12 +377,7 @@ export default function App() {
           </Panel>
         </Group>
       </div>
-      {replayMode && (
-        <>
-          <ReplayTimeline />
-          <ReplayPlayer />
-        </>
-      )}
+      {replayMode && <ReplayPlayer />}
     </div>
   );
 }

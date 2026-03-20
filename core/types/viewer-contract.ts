@@ -222,6 +222,9 @@ export interface ViewerPreviewProps {
   onNavigateComplete?: () => void;
   /** Viewer commands declared in the manifest (user → agent) — injected by the runtime from the manifest, used by the viewer to render command menus, etc. */
   commands?: ViewerCommandDescriptor[];
+  /** When true, viewer should suppress editing, selection, and annotation modes.
+   *  Used during replay mode. Each mode implements its own readonly behavior. */
+  readonly?: boolean;
 }
 
 /** UI contract for the content viewer */

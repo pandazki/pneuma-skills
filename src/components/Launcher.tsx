@@ -72,6 +72,7 @@ interface RecentSession {
   backendType: BackendType;
   lastAccessed: number;
   hasThumbnail?: boolean;
+  hasReplayData?: boolean;
 }
 
 interface ChildProcess {
@@ -741,6 +742,7 @@ function SessionCard({
   runningProcess,
   onResume,
   onDelete,
+  onReplay,
   onStop,
   onOpen,
   isLight,
@@ -753,6 +755,7 @@ function SessionCard({
   runningProcess?: ChildProcess;
   onResume?: (skipSkill?: boolean) => Promise<void>;
   onDelete?: () => void;
+  onReplay?: () => void;
   onStop?: () => void;
   onOpen?: () => void;
   isLight?: boolean;
@@ -906,6 +909,15 @@ function SessionCard({
               stopPropagation
             />
           )}
+          {!isRunning && onReplay && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onReplay(); }}
+              className="p-1.5 rounded-md bg-black/40 backdrop-blur-sm text-cc-muted/70 hover:text-cc-primary hover:bg-black/60 transition-colors cursor-pointer"
+              title="Replay"
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M4.5 2.5a.75.75 0 011.2-.6l8 6a.75.75 0 010 1.2l-8 6a.75.75 0 01-1.2-.6v-12z" /></svg>
+            </button>
+          )}
           {!isRunning && onDelete && (
             <ConfirmButton
               icon={<svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" /></svg>}
@@ -963,6 +975,7 @@ function CompactSessionRow({
   icon,
   onResume,
   onDelete,
+  onReplay,
   backendUnavailableReason,
 }: {
   session: RecentSession;
@@ -970,6 +983,7 @@ function CompactSessionRow({
   icon?: string;
   onResume: (skipSkill?: boolean) => Promise<void>;
   onDelete: () => void;
+  onReplay?: () => void;
   backendUnavailableReason?: string;
 }) {
   const [launching, setLaunching] = useState(false);
@@ -1028,7 +1042,16 @@ function CompactSessionRow({
         </div>
       </div>
       <span className="text-[10px] text-cc-muted/40 shrink-0">{timeAgo(session.lastAccessed)}</span>
-      <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+        {onReplay && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onReplay(); }}
+            className="p-1 rounded text-cc-muted/50 hover:text-cc-primary transition-colors cursor-pointer"
+            title="Replay"
+          >
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M4.5 2.5a.75.75 0 011.2-.6l8 6a.75.75 0 010 1.2l-8 6a.75.75 0 01-1.2-.6v-12z" /></svg>
+          </button>
+        )}
         <ConfirmButton
           icon={<svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" /></svg>}
           label="Remove"
@@ -1068,6 +1091,7 @@ function AllSessions({
   onClose,
   onResume,
   onDelete,
+  onReplay,
   getBackendUnavailableReason,
   className,
   closing,
@@ -1079,6 +1103,7 @@ function AllSessions({
   onClose: () => void;
   onResume: (session: RecentSession, skipSkill?: boolean) => Promise<void>;
   onDelete: (id: string) => void;
+  onReplay: (session: RecentSession) => void;
   getBackendUnavailableReason: (type: BackendType) => string | undefined;
   className?: string;
   closing?: boolean;
@@ -1118,6 +1143,7 @@ function AllSessions({
                   backendUnavailableReason={item.session ? getBackendUnavailableReason(item.session.backendType) : undefined}
                   onResume={item.session ? (skipSkill) => onResume(item.session!, skipSkill) : undefined}
                   onDelete={item.session ? () => onDelete(item.session!.id) : undefined}
+                  onReplay={item.session?.hasReplayData ? () => onReplay(item.session!) : undefined}
                   onStop={item.process ? () => {
                     fetch(`${getApiBase()}/api/processes/children/${item.process!.pid}/kill`, { method: "POST" });
                     if (item.process!.url && (window as any).pneumaDesktop?.closeModeWindow) {
@@ -1144,6 +1170,7 @@ function AllSessions({
                   icon={iconMap[item.modeName]}
                   onResume={(skipSkill) => onResume(item.session!, skipSkill)}
                   onDelete={() => onDelete(item.session!.id)}
+                  onReplay={item.session!.hasReplayData ? () => onReplay(item.session!) : undefined}
                   backendUnavailableReason={getBackendUnavailableReason(item.session!.backendType)}
                 />
               ))}
@@ -2419,6 +2446,7 @@ function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }
 
 function ImportDialog({ open, onClose, onImported }: { open: boolean; onClose: () => void; onImported?: () => void }) {
   const [url, setUrl] = useState("");
+  const [workspace, setWorkspace] = useState("");
   const [status, setStatus] = useState<"idle" | "importing" | "done" | "error">("idle");
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState("");
@@ -2427,6 +2455,8 @@ function ImportDialog({ open, onClose, onImported }: { open: boolean; onClose: (
   useEffect(() => {
     if (open) {
       setUrl("");
+      const tag = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 13);
+      setWorkspace(`~/pneuma-projects/import-${tag}`);
       setStatus("idle");
       setResult(null);
       setError("");
@@ -2442,11 +2472,12 @@ function ImportDialog({ open, onClose, onImported }: { open: boolean; onClose: (
       const resp = await fetch(`${getApiBase()}/api/import`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ url: url.trim(), workspace: workspace.trim() || undefined }),
       });
       const data = await resp.json();
       if (data.error) throw new Error(data.error);
       setResult(data);
+      setWorkspace(data.path || "");
       setStatus("done");
       onImported?.(); // Refresh sessions list
     } catch (err: any) {
@@ -2457,13 +2488,14 @@ function ImportDialog({ open, onClose, onImported }: { open: boolean; onClose: (
 
   const handleLaunchImported = async (withReplay: boolean) => {
     if (!result) return;
+    const targetWorkspace = workspace.trim() || result.path;
     try {
       const resp = await fetch(`${getApiBase()}/api/launch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           specifier: result.mode || "webcraft",
-          workspace: result.path,
+          workspace: targetWorkspace,
           ...(withReplay && result.replayPackagePath ? { replayPackage: result.replayPackagePath } : {}),
         }),
       });
@@ -2496,6 +2528,15 @@ function ImportDialog({ open, onClose, onImported }: { open: boolean; onClose: (
                   onKeyDown={(e) => e.key === "Enter" && handleImport()}
                   className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
                 />
+                <div>
+                  <label className="text-[10px] text-cc-muted block mb-1">Workspace directory (optional)</label>
+                  <input
+                    placeholder="~/pneuma-projects/my-project"
+                    value={workspace}
+                    onChange={(e) => setWorkspace(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
+                  />
+                </div>
                 <div className="flex justify-end gap-2">
                   <button onClick={onClose} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">Cancel</button>
                   <button onClick={handleImport} disabled={!url.trim()}
@@ -2696,6 +2737,25 @@ export default function Launcher() {
       refreshSessions();
     } catch { }
   }, [refreshSessions]);
+
+  const handleReplaySession = useCallback(async (session: RecentSession) => {
+    try {
+      const res = await fetch(`${getApiBase()}/api/launch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          specifier: session.mode,
+          workspace: session.workspace,
+          backend: session.backendType || "claude-code",
+          replaySource: session.workspace,
+        }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch { }
+  }, []);
 
   const stopProcess = useCallback(async (pid: number, url?: string) => {
     try {
@@ -2982,6 +3042,7 @@ export default function Launcher() {
                                 backendUnavailableReason={item.session ? getBackendUnavailableReason(item.session.backendType) : undefined}
                                 onResume={item.session ? (skipSkill) => directLaunch(item.session!.mode, item.session!.workspace, item.session!.backendType, skipSkill) : undefined}
                                 onDelete={item.session ? () => deleteSession(item.session!.id) : undefined}
+                                onReplay={item.session?.hasReplayData ? () => handleReplaySession(item.session!) : undefined}
                                 onStop={item.process ? () => stopProcess(item.process!.pid, item.process!.url) : undefined}
                                 onOpen={item.process ? () => window.open(item.process!.url, "_blank") : undefined}
                               />
@@ -3009,6 +3070,7 @@ export default function Launcher() {
                         icon={iconMap[item.modeName]}
                         onResume={(skipSkill) => directLaunch(item.session!.mode, item.session!.workspace, item.session!.backendType, skipSkill)}
                         onDelete={() => deleteSession(item.session!.id)}
+                        onReplay={item.session!.hasReplayData ? () => handleReplaySession(item.session!) : undefined}
                         backendUnavailableReason={getBackendUnavailableReason(item.session!.backendType)}
                       />
                     </motion.div>
@@ -3110,6 +3172,7 @@ export default function Launcher() {
             await directLaunch(session.mode, session.workspace, session.backendType, skipSkill);
           }}
           onDelete={(id) => deleteSession(id)}
+          onReplay={(session) => handleReplaySession(session)}
           getBackendUnavailableReason={getBackendUnavailableReason}
           className={isLight ? "launcher-light" : ""}
           closing={allSessionsAnim.closing}

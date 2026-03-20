@@ -32,6 +32,7 @@ export interface ParsedCliArgs {
   noPrompt: boolean;
   skipSkill: boolean;
   replayPackage: string;
+  replaySource: string; // Source workspace path for existing session replay
 }
 
 export function normalizePersistedSession(data: Record<string, unknown>): PersistedSession {
@@ -67,6 +68,7 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
   let noPrompt = false;
   let skipSkill = false;
   let replayPackage = "";
+  let replaySource = "";
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -92,6 +94,8 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
       forceDev = true;
     } else if (arg === "--replay" && i + 1 < args.length) {
       replayPackage = args[++i];
+    } else if (arg === "--replay-source" && i + 1 < args.length) {
+      replaySource = resolve(cwd, args[++i]);
     } else if (!arg.startsWith("--")) {
       mode = arg;
     }
@@ -110,6 +114,7 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
     noPrompt,
     skipSkill,
     replayPackage,
+    replaySource,
   };
 }
 

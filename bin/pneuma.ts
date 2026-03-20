@@ -733,7 +733,8 @@ Options:
     return;
   }
 
-  const { mode, workspace, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replayPackage } = parsedArgs;
+  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource } = parsedArgs;
+  let { workspace, replayPackage } = parsedArgs;
 
   // Launcher mode — no mode arg → start marketplace UI
   if (!mode) {
@@ -895,7 +896,7 @@ Options:
   // Use resolved path for external modes, PROJECT_ROOT/modes/{name} for builtin
   const modeSourceDir = resolved.path;
   const skillTarget = join(workspace, ".claude", "skills", manifest.skill.installName);
-  let skipSkillInstall = skipSkill; // --skip-skill from CLI (session resume without update)
+  let skipSkillInstall = skipSkill || !!replayPackage; // Skip for replay — installed on Continue Work
 
   // Compute the effective API port (same logic as server startup in step 3)
   // Dev mode: backend on 17007, Prod mode: backend on 17996
@@ -948,11 +949,13 @@ Options:
     writeFileSync(skillVersionPath, JSON.stringify({ mode: modeName, version: manifest.version }));
   }
 
-  // Initialize shadow git for checkpoint tracking
-  await initShadowGit(workspace);
+  // Initialize shadow git for checkpoint tracking (skip for replay — done on Continue Work)
+  if (!replayPackage) {
+    await initShadowGit(workspace);
+  }
 
-  // 1.5 Seed default content if workspace has no meaningful files
-  if (manifest.init && manifest.init.contentCheckPattern) {
+  // 1.5 Seed default content if workspace has no meaningful files (skip for replay)
+  if (!replayPackage && manifest.init && manifest.init.contentCheckPattern) {
     const checkPattern = manifest.init.contentCheckPattern;
     const contentFiles = Array.from(
       new Bun.Glob(checkPattern).scanSync({ cwd: workspace, absolute: false })
@@ -1093,15 +1096,28 @@ Options:
     }
   }
 
+  // 2.8 Handle --replay-source: export from existing workspace, set replayPackage
+  if (replaySource && !replayPackage) {
+    p.log.step(`Exporting replay data from: ${replaySource}`);
+    const { exportHistory } = await import("../server/history-export.js");
+    try {
+      const result = await exportHistory(replaySource, { title: `Replay of ${modeName}` });
+      replayPackage = result.outputPath;
+      p.log.info(`Exported replay package: ${replayPackage}`);
+    } catch (err: any) {
+      p.log.warn(`Failed to export replay from source: ${err.message}. Continuing without replay.`);
+    }
+  }
+
   // 3. Start server
   //    Dev mode:  backend on 17007, Vite on 17996 (user-facing)
   //    Prod mode: backend on 17996 (serves everything)
   const serverPort = effectiveApiPort;
-  const { server, wsBridge, port: actualPort, modeMakerCleanup } = startServer({
+  const { server, wsBridge, port: actualPort, modeMakerCleanup, onReplayContinue } = startServer({
     port: serverPort,
     workspace,
-    watchPatterns: replayPackage ? [] : manifest.viewer.watchPatterns,
-    ...(replayPackage ? { replayPackagePath: replayPackage } : {}),
+    watchPatterns: manifest.viewer.watchPatterns,
+    ...(replayPackage ? { replayPackagePath: replayPackage, replayMode: true } : {}),
     ...(isDev ? {} : { distDir }),
     ...(Object.keys(resolvedParams).length > 0 ? { initParams: resolvedParams } : {}),
     // Pass external mode info for the /api/mode-info endpoint
@@ -1122,15 +1138,120 @@ Options:
 
   if (replayPackage) {
     // Replay mode — no agent, no greeting, no file watcher
-    sessionId = `replay-${Date.now()}`;
-    wsBridge.getOrCreateSession(sessionId, "claude-code");
+    // But real workspace + real session for Continue Work transition
+    sessionId = crypto.randomUUID();
+    wsBridge.getOrCreateSession(sessionId, backendType);
 
-    // Persist minimal session
+    // Persist session
     saveSession(workspace, {
       sessionId,
       mode: modeName,
-      backendType: "claude-code",
+      backendType,
       createdAt: Date.now(),
+    });
+
+    // Register Continue Work callback — launches agent when user clicks Continue
+    onReplayContinue!(async () => {
+      console.log(`[pneuma] Continue Work triggered. sessionId=${sessionId}, workspace=${workspace}`);
+
+      // Restore API keys from global storage into workspace config
+      if (manifest.skill.envMapping) {
+        const { getApiKeys } = await import("../server/share.js");
+        const globalKeys = getApiKeys();
+        for (const [envVar, paramName] of Object.entries(manifest.skill.envMapping)) {
+          if (globalKeys[envVar] && !resolvedParams[paramName]) {
+            resolvedParams[paramName] = globalKeys[envVar];
+          }
+        }
+        // Re-derive params (e.g. imageGenEnabled)
+        if (manifest.init?.deriveParams) {
+          resolvedParams = manifest.init.deriveParams(resolvedParams);
+        }
+        // Save config with restored keys
+        saveConfig(workspace, resolvedParams);
+      }
+
+      p.log.step("Continue Work: installing skill...");
+      installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, backendType);
+
+      // Record installed skill version
+      const skillVersionPath = join(workspace, ".pneuma", "skill-version.json");
+      writeFileSync(skillVersionPath, JSON.stringify({ mode: modeName, version: manifest.version }));
+
+      // Initialize shadow-git for new session (prepareWorkspaceForContinue already does this)
+      // Launch agent backend
+      backend = createBackend(backendType, actualPort);
+      const agentEnv: Record<string, string> = {
+        PNEUMA_API: `http://localhost:${actualPort}`,
+      };
+      if (manifest.skill.envMapping) {
+        for (const [envVar, paramName] of Object.entries(manifest.skill.envMapping)) {
+          const value = resolvedParams[paramName];
+          if (value !== undefined && String(value).trim() !== "") {
+            agentEnv[envVar] = String(value);
+          }
+        }
+      }
+      // Reuse the replay session ID so the browser WS stays connected
+      const agentSession = backend.launch({
+        cwd: workspace,
+        sessionId: sessionId,
+        permissionMode: manifest.agent?.permissionMode,
+        env: agentEnv,
+      });
+      console.log(`[pneuma] Agent launched: ${agentSession.sessionId}`);
+
+      // The WS session already exists from replay; just update backend type
+      wsBridge.getOrCreateSession(sessionId, backendType);
+
+      // Wire CLI session ID persistence
+      wsBridge.onCLISessionIdReceived((sid, agentSessionId) => {
+        backend!.setAgentSessionId(sid, agentSessionId);
+        const persisted = loadSession(workspace);
+        if (persisted && persisted.sessionId === sid) {
+          persisted.agentSessionId = agentSessionId;
+          saveSession(workspace, persisted);
+        }
+      });
+
+      // Wire Codex adapter if needed
+      if (backendType === "codex") {
+        const { CodexBackend } = await import("../backends/codex/index.js");
+        if (backend instanceof CodexBackend) {
+          const existingAdapter = backend.getAdapter(sessionId);
+          if (existingAdapter) wsBridge.attachCodexAdapter(sessionId, existingAdapter);
+          backend.onAdapterCreated((sid, adapter) => {
+            if (sid === sessionId) wsBridge.attachCodexAdapter(sid, adapter);
+          });
+        }
+      }
+
+      // Persist session (keep same sessionId)
+      saveSession(workspace, {
+        sessionId,
+        mode: modeName,
+        backendType,
+        createdAt: Date.now(),
+      });
+      recordSession(modeName, manifest.displayName, workspace, backendType);
+
+      // Start file watcher
+      startFileWatcher(workspace, manifest.viewer, (files) => {
+        wsBridge.broadcastToSession(sessionId, { type: "content_update", files });
+      });
+
+      // Start history persistence
+      historyInterval = setInterval(() => {
+        const history = wsBridge.getMessageHistory(sessionId);
+        if (history.length > 0) saveHistory(workspace, history);
+      }, 5_000);
+
+      // Send greeting for continued session
+      if (manifest.agent?.greeting) {
+        wsBridge.injectGreeting(sessionId, manifest.agent.greeting);
+      }
+
+      p.log.success("Continue Work: agent launched, session active");
     });
 
     p.log.info(`Replay mode: ${replayPackage}`);

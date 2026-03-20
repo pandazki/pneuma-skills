@@ -40,6 +40,7 @@ export interface ServerOptions {
   debug?: boolean; // Pass --debug to child processes
   forceDev?: boolean; // Pass --dev to child processes
   replayPackagePath?: string; // Path to replay package — pre-loads replay data on server start
+  replayMode?: boolean; // Server starts in replay mode (delays agent launch until Continue Work)
 }
 
 export function startServer(options: ServerOptions) {
@@ -231,6 +232,14 @@ export function startServer(options: ServerOptions) {
       const sessionsWithThumbs = sessions.map((s) => ({
         ...s,
         hasThumbnail: existsSync(join(s.workspace, ".pneuma", "thumbnail.png")),
+        hasReplayData: existsSync(join(s.workspace, ".pneuma", "shadow.git", "HEAD"))
+          && existsSync(join(s.workspace, ".pneuma", "checkpoints.jsonl"))
+          && (() => {
+            try {
+              const content = readFileSync(join(s.workspace, ".pneuma", "checkpoints.jsonl"), "utf-8").trim();
+              return content.length > 0;
+            } catch { return false; }
+          })(),
       }));
       return c.json({ sessions: sessionsWithThumbs, homeDir: homedir() });
     });
@@ -452,13 +461,14 @@ export function startServer(options: ServerOptions) {
     });
 
     app.post("/api/launch", async (c) => {
-      const { specifier, workspace: targetWorkspace, initParams, skipSkill, backendType, replayPackage: replayPkg } = await c.req.json<{
+      const { specifier, workspace: targetWorkspace, initParams, skipSkill, backendType, replayPackage: replayPkg, replaySource } = await c.req.json<{
         specifier: string;
         workspace: string;
         initParams?: Record<string, string | number>;
         skipSkill?: boolean;
         backendType?: AgentBackendType;
         replayPackage?: string;
+        replaySource?: string; // Source workspace for existing session replay
       }>();
 
       try {
@@ -481,6 +491,7 @@ export function startServer(options: ServerOptions) {
         args.push("--backend", backendType || getDefaultBackendType());
         if (skipSkill) args.push("--skip-skill");
         if (replayPkg) args.push("--replay", replayPkg);
+        if (replaySource) args.push("--replay-source", replaySource);
         if (options.debug) args.push("--debug");
         if (options.forceDev) args.push("--dev");
 
@@ -670,7 +681,7 @@ export function startServer(options: ServerOptions) {
     // Import shared content
     app.post("/api/import", async (c) => {
       try {
-        const body = await c.req.json<{ url: string }>();
+        const body = await c.req.json<{ url: string; workspace?: string }>();
         const downloadPath = await downloadShare(body.url);
 
         // Determine type by checking if it contains manifest.json (process) or not (result)
@@ -678,9 +689,10 @@ export function startServer(options: ServerOptions) {
         const listing = await new Response(checkProc.stdout).text();
         const isProcess = listing.includes("manifest.json") && listing.includes("messages.jsonl");
 
-        // Generate a workspace name under ~/pneuma-projects/import-{timestamp}
-        const timeTag = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 13);
-        const targetDir = join(homedir(), "pneuma-projects", `import-${timeTag}`);
+        // Use user-specified workspace or generate a default under ~/pneuma-projects/
+        const targetDir = body.workspace
+          ? resolve(body.workspace.replace(/^~/, homedir()))
+          : join(homedir(), "pneuma-projects", `import-${new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 13)}`);
         mkdirSync(targetDir, { recursive: true });
 
         // Extract to a staging dir first
@@ -828,10 +840,12 @@ export function startServer(options: ServerOptions) {
     }
 
     console.log(`[server] Launcher server running on http://localhost:${serverPort}`);
-    return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup: undefined, childProcesses };
+    return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup: undefined, childProcesses, onReplayContinue: undefined };
   }
 
   let replayPackage: Awaited<ReturnType<typeof importHistory>> | null = null;
+  let serverReplayMode = options.replayMode ?? !!options.replayPackagePath;
+  let replayContinueCallback: (() => Promise<void>) | null = null;
 
   // Pre-load replay package if path was provided at startup
   if (options.replayPackagePath) {
@@ -936,6 +950,7 @@ export function startServer(options: ServerOptions) {
   app.post("/api/replay/checkout/:hash", async (c) => {
     if (!replayPackage) return c.json({ error: "No replay loaded" }, 400);
     const hash = c.req.param("hash");
+    // Extract to replay-checkout (clean slate each time) so /content/* serves correct per-checkpoint state
     const outDir = join(workspace, ".pneuma", "replay-checkout");
     try {
       const { rmSync: rm } = await import("node:fs");
@@ -962,12 +977,63 @@ export function startServer(options: ServerOptions) {
     }
   });
 
+  // Replay status — frontend queries to know current replay state
+  app.get("/api/replay/status", (c) => {
+    return c.json({ replayMode: serverReplayMode });
+  });
+
+  // Continue Work — transition from replay to normal session
+  app.post("/api/replay/continue", async (c) => {
+    if (!serverReplayMode) {
+      return c.json({ error: "Not in replay mode" }, 400);
+    }
+
+    try {
+      const { prepareWorkspaceForContinue } = await import("./replay-continue.js");
+
+      // 1. Apply final checkpoint files directly to workspace
+      if (replayPackage) {
+        const checkpoints = replayPackage.manifest.checkpoints;
+        const lastCheckpoint = checkpoints[checkpoints.length - 1];
+        if (lastCheckpoint) {
+          await replayPackage.extractCheckpointFiles(lastCheckpoint.hash, workspace);
+        }
+      }
+
+      // 2. Prepare workspace (clear replay state, re-init shadow-git, write context)
+      const summary = replayPackage?.manifest.summary ?? {
+        overview: "", keyDecisions: [], workspaceFiles: [], recentConversation: "",
+      };
+      const originalMode = replayPackage?.manifest.metadata.mode ?? options.modeName ?? "unknown";
+      await prepareWorkspaceForContinue(workspace, { originalMode, summary });
+
+      // 3. Clear replay package reference
+      replayPackage = null;
+      serverReplayMode = false;
+
+      // 4. Trigger agent launch callback (registered by CLI)
+      console.log(`[server] Continue Work: replayContinueCallback=${!!replayContinueCallback}`);
+      if (replayContinueCallback) {
+        await replayContinueCallback();
+        console.log("[server] Continue Work: callback completed");
+      } else {
+        console.warn("[server] Continue Work: NO callback registered!");
+      }
+
+      return c.json({ ok: true, workspace, mode: options.modeName });
+    } catch (err: any) {
+      console.error("[server] Continue Work failed:", err);
+      return c.json({ error: err.message || String(err) }, 500);
+    }
+  });
+
   // Return mode init params for the frontend
   app.get("/api/config", (c) => {
     return c.json({
       initParams: options.initParams || {},
       layout: options.layout || "editor",
       ...(options.window ? { window: options.window } : {}),
+      replayMode: serverReplayMode,
     });
   });
 
@@ -1416,9 +1482,13 @@ export function startServer(options: ServerOptions) {
   app.get("/content/*", async (c) => {
     const relPath = decodeURIComponent(c.req.path.replace(/^\/content\//, ""));
     if (!relPath) return c.text("Not found", 404);
-    const absPath = join(workspace, relPath);
+    // In replay mode, serve from replay-checkout dir (clean per-checkpoint state)
+    const contentRoot = serverReplayMode
+      ? join(workspace, ".pneuma", "replay-checkout")
+      : workspace;
+    const absPath = join(contentRoot, relPath);
     // Basic path traversal protection
-    if (!pathStartsWith(absPath, workspace)) {
+    if (!pathStartsWith(absPath, contentRoot)) {
       return c.text("Forbidden", 403);
     }
     if (!existsSync(absPath)) {
@@ -1543,7 +1613,7 @@ export const { createPortal, flushSync, createRoot, hydrateRoot } = RD;`;
           const url = new URL(req.url);
 
           // CLI WebSocket — Claude Code CLI connects here via --sdk-url
-          const cliMatch = url.pathname.match(/^\/ws\/cli\/([a-f0-9-]+)$/);
+          const cliMatch = url.pathname.match(/^\/ws\/cli\/([a-zA-Z0-9_-]+)$/);
           if (cliMatch) {
             const sessionId = cliMatch[1];
             const upgraded = server.upgrade(req, {
@@ -1554,7 +1624,7 @@ export const { createPortal, flushSync, createRoot, hydrateRoot } = RD;`;
           }
 
           // Browser WebSocket — connects to a specific session
-          const browserMatch = url.pathname.match(/^\/ws\/browser\/([a-f0-9-]+)$/);
+          const browserMatch = url.pathname.match(/^\/ws\/browser\/([a-zA-Z0-9_-]+)$/);
           if (browserMatch) {
             const sessionId = browserMatch[1];
             const upgraded = server.upgrade(req, {
@@ -1628,5 +1698,9 @@ export const { createPortal, flushSync, createRoot, hydrateRoot } = RD;`;
   console.log(`[server] CLI WebSocket:     ws://localhost:${serverPort}/ws/cli/:sessionId`);
   console.log(`[server] Browser WebSocket: ws://localhost:${serverPort}/ws/browser/:sessionId`);
 
-  return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup };
+  const onReplayContinue = (cb: () => Promise<void>) => {
+    replayContinueCallback = cb;
+  };
+
+  return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup, onReplayContinue };
 }
