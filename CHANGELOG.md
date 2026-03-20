@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.9.3] - 2026-03-20
+
+### Fixed
+- **Codex protocol compatibility** — handle 6 breaking changes in codex-cli 0.114+: `thread/status/changed` object format, `turn/completed` restructured payload, `initialize` response, MCP field renames, token usage format, new server request types
+- **Codex session resume** — fall back to new thread when `thread/resume` fails (e.g. rollout not found after CLI upgrade), instead of crashing
+- **Codex browser connection** — fix `cli_disconnected` being sent on browser connect for Codex sessions (uses stdio, not WebSocket), which prevented the UI from sending messages
+- **Codex session routing** — `getActiveSessionId` now recognizes Codex adapter sessions, fixing viewer actions and other features that depend on finding the active session
+- **Bun subprocess stdout bug** — Codex launcher switched from `Bun.spawn` to `node:child_process` to work around Bun's `ReadableStream` from `proc.stdout` closing prematurely while the process is still alive
+
+### Improved
+- **Codex security** — unknown JSON-RPC request types now default to decline instead of auto-accept; added explicit handlers for `item/permissions/requestApproval`, `item/tool/requestUserInput`, `mcpServer/elicitation/request`
+- **Codex model tracking** — handle `model/rerouted` notification to update active model; parse version from new `userAgent` response format
+
 ## [2.9.2] - 2026-03-20
 
 ### Fixed

@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.9.2
+**Version:** 2.9.3
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `mode-maker`, `evolve`
 
@@ -21,7 +21,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 | File Watching | chokidar 5 |
 | Drawing | @excalidraw/excalidraw 0.18 |
 | Desktop | Electron 41 + electron-builder + electron-updater |
-| Agent | Claude Code CLI via `--sdk-url`; Codex CLI via `app-server` stdio JSON-RPC |
+| Agent | Claude Code CLI via `--sdk-url`; Codex CLI via `app-server` stdio JSON-RPC (`node:child_process`) |
 
 ## CLI Commands
 
@@ -83,7 +83,7 @@ pneuma-skills/
 ├── backends/
 │   ├── index.ts               # Backend registry + descriptors + capabilities + availability
 │   ├── claude-code/           # Claude backend — Bun.spawn with --sdk-url
-│   └── codex/                 # Codex backend — stdio JSON-RPC via app-server
+│   └── codex/                 # Codex backend — stdio JSON-RPC via node:child_process
 ├── server/
 │   ├── index.ts               # Hono server + launcher endpoints + WS routing
 │   ├── routes/export.ts       # Slide + webcraft export routes
@@ -170,7 +170,7 @@ Backend-specific wire details live in `backends/<name>/` and `server/ws-bridge*.
 - Browser WebSocket: `/ws/browser/:sessionId` (JSON) ↔ Server ↔ backend transport (Claude: `/ws/cli/:sessionId` NDJSON; Codex: stdio JSON-RPC)
 - File changes: chokidar → WebSocket push to browser
 - Claude transport: `claude --sdk-url ws://... --print --output-format stream-json --input-format stream-json --verbose -p ""`
-- Codex transport: `codex app-server` with stdio JSON-RPC; `CodexAdapter` translates between Codex protocol and Pneuma `BrowserIncomingMessage` format via `ws-bridge-codex.ts`
+- Codex transport: `codex app-server` via `node:child_process` stdio JSON-RPC (Bun.spawn avoided due to premature ReadableStream closure); `CodexAdapter` translates between Codex protocol and Pneuma `BrowserIncomingMessage` format via `ws-bridge-codex.ts`
 - Browser session init carries normalized backend identity and capabilities so UI can degrade backend-specific features cleanly
 
 ## Mode Lifecycle
@@ -463,6 +463,8 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **CLAUDECODE env var**: Must be unset when spawning Claude Code CLI.
 - **Backend persistence**: `backendType` in `.pneuma/session.json` and `~/.pneuma/sessions.json` is part of resume identity.
 - **Codex session state merge**: `ws-bridge-codex.ts` must merge adapter's partial session with server's full state before broadcasting to browser — adapter omits `agent_capabilities`, which causes UI crashes if sent raw.
+- **Bun.spawn stdout ReadableStream**: Bun's `proc.stdout` ReadableStream may close prematurely while the process is still alive (`exitCode=null, killed=false`). Codex launcher uses `node:child_process` instead to avoid this. Do not switch back to `Bun.spawn` for Codex without verifying the Bun bug is fixed.
+- **Codex WsBridge routing**: Codex uses stdio (no `cliSocket`), so `handleBrowserOpen` and `getActiveSessionId` must check `codexAdapters` map in addition to `cliSocket` to avoid sending `cli_disconnected` or returning null.
 - **NDJSON**: Each message to CLI must end with `\n`.
 - **Empty assistant messages**: `MessageBubble` returns null when content is empty (tool_use-only messages).
 - **modelUsage cumulative**: Use delta (current - previous) for per-turn cost.
