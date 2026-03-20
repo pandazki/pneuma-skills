@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.9.3
+**Version:** 2.10.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `mode-maker`, `evolve`
 
@@ -45,6 +45,11 @@ pneuma mode publish      # Publish current workspace as mode
 # Snapshot
 pneuma snapshot push     # Upload workspace to R2
 pneuma snapshot pull     # Download workspace from R2
+
+# History sharing & replay
+pneuma history export [--output FILE]  # Export session as shareable .tar.gz
+pneuma history share [--title NAME]    # Export + upload to R2, return link
+pneuma history open <path-or-url>      # Download/prepare replay package
 ```
 
 ### CLI Flags
@@ -59,6 +64,8 @@ pneuma snapshot pull     # Download workspace from R2
 | `--skip-skill` | Skip skill installation (session resume without update) |
 | `--debug` | Enable debug mode |
 | `--dev` | Force dev mode (Vite) |
+| `--replay <path>` | Load a replay package on startup (enters replay mode) |
+| `--replay-source <path>` | Source workspace for existing session replay (exports + replays) |
 
 ## Ports
 
@@ -75,7 +82,7 @@ pneuma-skills/
 ├── bin/pneuma.ts              # CLI entry — mode resolution, agent launch, session registry
 ├── bin/pneuma-cli-helpers.ts  # Shared CLI helpers (startViteDev, etc.)
 ├── core/
-│   ├── types/                 # Contract types (ModeManifest, ViewerContract, AgentBackend)
+│   ├── types/                 # Contract types (ModeManifest, ViewerContract, AgentBackend, SharedHistory)
 │   ├── mode-loader.ts         # Mode discovery & loading (builtin + external)
 │   ├── mode-resolver.ts       # Source resolution (builtin/local/github/url → disk path)
 │   └── utils/manifest-parser.ts  # Regex-based manifest.ts metadata extraction
@@ -95,12 +102,19 @@ pneuma-skills/
 │   ├── path-resolver.ts       # Binary PATH resolution (cross-platform)
 │   ├── system-bridge.ts       # OS-level operations (open, reveal, openUrl)
 │   ├── mode-maker-routes.ts   # Mode Maker API routes (fork, play, publish, reset)
+│   ├── shadow-git.ts          # Shadow git init, checkpoint capture, bundle export
+│   ├── history-export.ts      # Bundle messages + checkpoints into shareable .tar.gz
+│   ├── history-import.ts      # Load and parse shared history packages
+│   ├── history-summary.ts     # Mechanical session summary generation
+│   ├── replay-continue.ts     # Prepare workspace for replay → normal transition
+│   ├── share.ts               # R2 upload/download, API key management
 │   ├── evolution-agent.ts     # Evolution Agent launcher (spawns CC with analysis tools)
 │   ├── evolution-proposal.ts  # Proposal CRUD + apply/rollback + CLAUDE.md sync
 │   └── evolution-routes.ts    # Evolution API routes (/api/evolve/*)
 ├── src/                       # React frontend (Vite)
 │   ├── App.tsx                # Root layout, dynamic viewer loading
-│   ├── store/                 # Zustand store (7 protocol-aligned slices)
+│   ├── replay-engine.ts       # Replay playback engine (checkpoint switching, auto-navigate)
+│   ├── store/                 # Zustand store (8 protocol-aligned slices)
 │   │   ├── index.ts           # Combined store + re-export barrel
 │   │   ├── session-slice.ts   # Connection, agent session lifecycle
 │   │   ├── chat-slice.ts      # Messages, streaming, permissions
@@ -108,7 +122,8 @@ pneuma-skills/
 │   │   ├── viewer-slice.ts    # Selection, annotations, navigation, actions
 │   │   ├── mode-slice.ts      # Viewer config, commands, layout
 │   │   ├── agent-data-slice.ts # Tasks, cron jobs, processes, git state
-│   │   └── ui-slice.ts        # Active tab, terminal, debug mode
+│   │   ├── ui-slice.ts        # Active tab, terminal, debug mode
+│   │   └── replay-slice.ts   # Replay mode state, playback controls
 │   ├── utils/api.ts           # Shared getApiBase() utility
 │   ├── ws.ts                  # WebSocket client
 │   └── components/
@@ -117,6 +132,7 @@ pneuma-skills/
 │       ├── ChatInput.tsx      # Message composer + image upload
 │       ├── PermissionBanner.tsx  # Tool permissions + AskUserQuestion UI
 │       ├── ContextPanel.tsx   # Session stats, tasks, MCP, git
+│       ├── ReplayPlayer.tsx   # Replay controls bar (progress, speed, Continue Work)
 │       └── ...                # TopBar, ToolBlock, Terminal, Diff, Editor panels
 ├── desktop/                   # Electron desktop client
 │   ├── src/main/              # Main process (tray, windows, Bun spawner, Claude detector)
@@ -124,7 +140,8 @@ pneuma-skills/
 │   ├── scripts/               # Build scripts (download-bun.mjs)
 │   └── electron-builder.yml   # Packaging config (mac/win/linux)
 ├── snapshot/                  # R2 push/pull for workspace snapshots + mode publishing
-│   └── mode-publish.ts        # Mode package publishing to R2 registry
+│   ├── mode-publish.ts        # Mode package publishing to R2 registry
+│   └── history-share.ts       # History package push/pull via R2
 └── docs/                      # Supplementary documentation
     ├── design/                # Active design docs (current/next version)
     ├── reference/             # Stable technical references (maintained)
@@ -152,6 +169,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 | **ViewerContract** | `core/types/viewer-contract.ts` | Preview component, context extraction, workspace model |
 | **AgentBackend** | `core/types/agent-backend.ts` | Launch, resume, kill, capabilities |
 | **EvolutionConfig** | `core/types/mode-manifest.ts` | Evolution directive, tools (part of ModeManifest) |
+| **SharedHistoryPackage** | `core/types/shared-history.ts` | Exported session bundle: messages, checkpoints, metadata, summary |
 
 ### Backend Abstraction
 
@@ -264,6 +282,10 @@ Stored in `<workspace>/.pneuma/`:
 | `config.json` | Init params (e.g. slideWidth, API keys) |
 | `skill-version.json` | `{ mode, version }` — installed skill version for update detection |
 | `skill-dismissed.json` | `{ version }` — dismissed skill update version |
+| `shadow.git/` | Bare git repo for workspace change tracking (per-turn checkpoints) |
+| `checkpoints.jsonl` | Checkpoint index: `{ turn, ts, hash }` per line |
+| `replay-checkout/` | Temp extraction dir for checkpoint files during replay |
+| `resumed-context.xml` | Injected context when continuing from replay |
 | `evolution/` | Evolution proposals, backups, and CLAUDE.md snapshots |
 
 ### Skill Installation & Update Detection
@@ -346,6 +368,32 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 | GET | `/api/git/changed-files` | Changed files list |
 | GET | `/api/git/diff` | File diff vs HEAD/branch |
 | GET | `/api/git/status` | Git status --porcelain |
+
+### History & Checkpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/history/checkpoints` | List shadow-git checkpoints |
+| POST | `/api/history/export` | Export session as shareable .tar.gz |
+
+### Replay
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/replay/load` | Load a replay package from local path |
+| GET | `/api/replay/messages` | Get all messages from loaded replay |
+| POST | `/api/replay/checkout/:hash` | Extract checkpoint files, return file list |
+| GET | `/api/replay/status` | Check if server is in replay mode |
+| POST | `/api/replay/continue` | Transition from replay to normal session |
+
+### Sharing
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/share/result` | Upload workspace files to R2 |
+| POST | `/api/share/process` | Upload full history package to R2 |
+| GET | `/api/r2/status` | Check R2 configuration status |
+| POST | `/api/import` | Download shared package, prepare workspace |
 
 ### Workspace & Viewer
 
@@ -476,6 +524,10 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
   - `system-bridge.ts`: `cmd /c start "" url` for browser opening, `explorer /select,` for revealing
   - `server/index.ts`: `NUL` for null device, `taskkill /F /PID` for process kill, lsof/ps gracefully return empty list
   - Path comparison is case-insensitive on win32
+- **Shadow-git checkpoint queue**: All checkpoint operations are serialized via Promise chain to prevent `index.lock` conflicts. Do not parallelize shadow-git operations.
+- **Replay mode deferred agent launch**: When `--replay` is passed, agent launch is deferred until `/api/replay/continue` is called. The server holds a `replayContinueCallback` registered by the CLI.
+- **Replay checkout isolation**: Each `/api/replay/checkout/:hash` cleans `.pneuma/replay-checkout/` before extracting, so `/content/*` serves checkpoint-accurate file state. Continue Work extracts final checkpoint to workspace root.
+- **Replay auto-navigate timing**: File navigation in replay must run AFTER checkpoint loads (not during `displayMessage`), because content sets aren't computed until `setFiles` completes.
 
 <!-- pneuma:viewer-api:start -->
 ## Viewer API

@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.10.0] - 2026-03-21
+
+### Added
+- **Shadow-git checkpoints** — auto-snapshot workspace at each agent turn via isolated `.pneuma/shadow.git` bare repo; serial queue prevents git lock conflicts; graceful degradation if git unavailable
+- **History export** — bundle messages + checkpoints into shareable `.tar.gz` packages (`pneuma history export`); mechanical session summary generation (overview, key decisions, recent conversation)
+- **History sharing** — upload process packages to R2 (`pneuma history share`); download and import from URL via Launcher import dialog with custom workspace picker
+- **Replay player** — time-travel playback with progress bar, checkpoint dots, speed control (1x/2x/4x/8x); auto-navigate to edited files after checkpoint loads
+- **Two-phase replay session** — replay is a phase within a normal session; "Continue Work" applies final checkpoint, installs skill, restores API keys from global storage, launches agent (irreversible transition)
+- **Viewer readonly mode** — all 5 mode viewers (webcraft/doc/slide/draw/illustrate) suppress editing, selection, and annotation when `readonly` prop is true; navigation (scroll, zoom, page switch) preserved
+- **Replay tab restrictions** — all TopBar tabs except Chat disabled during replay; auto-switch to Chat on replay entry
+- **Launcher replay button** — sessions with shadow-git data show a replay icon on hover; launches replay in the session's workspace
+- **CLI history commands** — `pneuma history export`, `pneuma history share`, `pneuma history open <path-or-url>`
+- **CLI replay flags** — `--replay <path>` loads a replay package; `--replay-source <path>` replays from an existing workspace's shadow-git
+
+### Fixed
+- **Share dropdown z-index** — ChatPanel status bar no longer overlaps the Share dropdown menu
+- **Replay progress bar overflow** — removed `backdrop-blur` (containing block gotcha), clamped progress to 0–100%
+- **Replay content set navigation** — auto-navigate runs after checkpoint loads so newly created content sets are matched correctly
+
 ## [2.9.3] - 2026-03-20
 
 ### Fixed
