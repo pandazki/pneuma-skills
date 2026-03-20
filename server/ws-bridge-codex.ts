@@ -13,10 +13,12 @@ import type {
 } from "./session-types.js";
 import type { CodexAdapter } from "../backends/codex/codex-adapter.js";
 import type { Session } from "./ws-bridge-types.js";
+import { enqueueCheckpoint, isShadowGitAvailable, nextTurnIndex } from "./shadow-git.js";
 
 export interface CodexBridgeDeps {
   broadcastToBrowsers: (session: Session, msg: BrowserIncomingMessage) => void;
   persistSession?: (session: Session) => void;
+  workspace?: string;  // For shadow git checkpoint capture
 }
 
 /**
@@ -76,6 +78,11 @@ export function attachCodexAdapterHandlers(
     } else if (msg.type === "result") {
       session.messageHistory.push(msg);
       deps.persistSession?.(session);
+
+      // Capture shadow git checkpoint
+      if (deps.workspace && isShadowGitAvailable(deps.workspace)) {
+        enqueueCheckpoint(deps.workspace, nextTurnIndex(deps.workspace));
+      }
     }
 
     // Track permission requests

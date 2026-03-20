@@ -11,9 +11,12 @@ import SchedulePanel from "./components/SchedulePanel.js";
 import { useStore, nextId } from "./store.js";
 import type { SelectionType } from "./types.js";
 import { connect, sendViewerNotification } from "./ws.js";
+import { loadReplay } from "./replay-engine.js";
 import { loadMode, registerExternalMode } from "../core/mode-loader.js";
 import { useSystemPreferences } from "./hooks/useSystemPreferences.js";
 import { selectBestContentSet } from "../core/utils/content-set-matcher.js";
+import { ReplayPlayer } from "./components/ReplayPlayer";
+import { ReplayTimeline } from "./components/ReplayTimeline";
 import type { ViewerPreviewProps } from "../core/types/viewer-contract.js";
 import { useThumbnailCapture } from "./hooks/useThumbnailCapture.js";
 
@@ -201,34 +204,45 @@ export default function App() {
 
     // Load mode viewer first, then files + viewer state restore
     // (viewer must be loaded before setFiles so resolveContentSets is available)
+    const replayPath = params.get("replay");
+
     loadModeAsync()
-      .then(() =>
-        fetch(`${getApiBase()}/api/files`)
-          .then((r) => r.json())
-          .then(async (d) => {
-            if (d.files?.length) useStore.getState().setFiles(d.files);
-            // Restore persisted viewer position (content set + active file)
-            try {
-              const vs = await fetch(`${getApiBase()}/api/viewer-state`).then((r) => r.json());
-              const store = useStore.getState();
-              if (vs.contentSet && store.contentSets.some((cs: { prefix: string }) => cs.prefix === vs.contentSet)) {
-                store.setActiveContentSet(vs.contentSet);
+      .then(async () => {
+        if (replayPath) {
+          // Replay mode — skip disk files, let loadReplay control the viewer
+          console.log("[app] Auto-loading replay from:", replayPath);
+          await loadReplay(replayPath).catch((err) =>
+            console.error("[app] Failed to load replay:", err)
+          );
+        } else {
+          // Normal mode — load workspace files from disk
+          const d = await fetch(`${getApiBase()}/api/files`).then((r) => r.json());
+          if (d.files?.length) useStore.getState().setFiles(d.files);
+          // Restore persisted viewer position (content set + active file)
+          try {
+            const vs = await fetch(`${getApiBase()}/api/viewer-state`).then((r) => r.json());
+            const store = useStore.getState();
+            if (vs.contentSet && store.contentSets.some((cs: { prefix: string }) => cs.prefix === vs.contentSet)) {
+              store.setActiveContentSet(vs.contentSet);
+            }
+            if (vs.file) {
+              const items = useStore.getState().workspaceItems;
+              if (items.some((item: { path: string }) => item.path === vs.file)) {
+                useStore.getState().setActiveFile(vs.file);
               }
-              if (vs.file) {
-                const items = useStore.getState().workspaceItems;
-                if (items.some((item: { path: string }) => item.path === vs.file)) {
-                  useStore.getState().setActiveFile(vs.file);
-                }
-              }
-            } catch { /* no saved state — auto-selection will handle it */ }
-          })
-      )
+            }
+          } catch { /* no saved state — auto-selection will handle it */ }
+        }
+      })
       .catch((err) => {
         console.error(`[app] Failed to load mode "${modeName}":`, err);
       });
 
     // Connect to session (independent of mode loading)
-    if (explicitSession) {
+    if (replayPath) {
+      // Replay mode — no WebSocket connection needed
+      // loadReplay handles everything
+    } else if (explicitSession) {
       connect(explicitSession);
     } else {
       fetch(`${getApiBase()}/api/session`)
@@ -311,6 +325,7 @@ export default function App() {
 
   const viewerProps = useViewerProps();
   const layout = useStore((s) => s.layout);
+  const replayMode = useStore((s) => s.replayMode);
 
   // Thumbnail capture — snapshot the preview panel periodically
   const previewRef = useRef<HTMLDivElement>(null);
@@ -333,6 +348,12 @@ export default function App() {
         <Suspense fallback={null}>
           <AgentBubble />
         </Suspense>
+        {replayMode && (
+          <>
+            <ReplayTimeline />
+            <ReplayPlayer />
+          </>
+        )}
       </div>
     );
   }
@@ -363,6 +384,12 @@ export default function App() {
           </Panel>
         </Group>
       </div>
+      {replayMode && (
+        <>
+          <ReplayTimeline />
+          <ReplayPlayer />
+        </>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { serveStatic } from "hono/bun";
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, unlinkSync, mkdirSync } from "node:fs";
 import { join, resolve, relative, basename, dirname, sep } from "node:path";
 import { execSync } from "node:child_process";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { WsBridge } from "./ws-bridge.js";
 import { getBackendDescriptors, getDefaultBackendType, detectBackendAvailability } from "../backends/index.js";
 import type { AgentBackendType } from "../core/types/agent-backend.js";
@@ -17,6 +17,10 @@ import { registerEvolutionRoutes } from "./evolution-routes.js";
 import { openPath, revealPath, openUrl } from "./system-bridge.js";
 import { pathStartsWith, isWin } from "./utils.js";
 import { registerExportRoutes } from "./routes/export.js";
+import { listCheckpoints } from "./shadow-git.js";
+import { exportHistory } from "./history-export.js";
+import { importHistory } from "./history-import.js";
+import { getR2Config, saveR2Config, isR2Configured, shareResult, shareProcess, downloadShare, getApiKeys, saveApiKeys } from "./share.js";
 
 const DEFAULT_PORT = 17007;
 
@@ -35,6 +39,7 @@ export interface ServerOptions {
   launcherMode?: boolean; // Lightweight launcher server (no workspace, no agent, no watcher)
   debug?: boolean; // Pass --debug to child processes
   forceDev?: boolean; // Pass --dev to child processes
+  replayPackagePath?: string; // Path to replay package — pre-loads replay data on server start
 }
 
 export function startServer(options: ServerOptions) {
@@ -405,10 +410,40 @@ export function startServer(options: ServerOptions) {
         const { loadModeManifest } = await import("../core/mode-loader.js");
         const manifest = await loadModeManifest(resolved.name);
 
+        // Auto-fill initParams defaults from stored API keys
+        // Match by: exact name, UPPER_SNAKE_CASE → camelCase, camelCase → UPPER_SNAKE_CASE
+        const storedKeys = getApiKeys();
+        const camelFromSnake = (s: string) =>
+          s.toLowerCase().replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
+        const snakeFromCamel = (s: string) =>
+          s.replace(/[A-Z]/g, (c: string) => `_${c}`).toUpperCase();
+
+        const params = (manifest.init?.params || []).map((p: any) => {
+          let matchedValue: string | null = null;
+
+          if (storedKeys[p.name]) {
+            matchedValue = storedKeys[p.name];
+          } else {
+            for (const [storedName, storedValue] of Object.entries(storedKeys)) {
+              if (camelFromSnake(storedName) === p.name || snakeFromCamel(p.name) === storedName) {
+                matchedValue = storedValue;
+                break;
+              }
+            }
+          }
+
+          if (matchedValue) {
+            // Return actual value for launch, but mark as auto-filled with masked preview
+            const masked = matchedValue.slice(0, 4) + "****" + matchedValue.slice(-4);
+            return { ...p, defaultValue: matchedValue, autoFilled: true, maskedPreview: masked };
+          }
+          return p;
+        });
+
         return c.json({
           name: resolved.name,
           displayName: manifest.displayName,
-          initParams: manifest.init?.params || [],
+          initParams: params,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -417,12 +452,13 @@ export function startServer(options: ServerOptions) {
     });
 
     app.post("/api/launch", async (c) => {
-      const { specifier, workspace: targetWorkspace, initParams, skipSkill, backendType } = await c.req.json<{
+      const { specifier, workspace: targetWorkspace, initParams, skipSkill, backendType, replayPackage: replayPkg } = await c.req.json<{
         specifier: string;
         workspace: string;
         initParams?: Record<string, string | number>;
         skipSkill?: boolean;
         backendType?: AgentBackendType;
+        replayPackage?: string;
       }>();
 
       try {
@@ -444,6 +480,7 @@ export function startServer(options: ServerOptions) {
         const args = ["bun", pneumaBin, specifier, "--workspace", resolvedWorkspace, "--no-prompt", "--no-open"];
         args.push("--backend", backendType || getDefaultBackendType());
         if (skipSkill) args.push("--skip-skill");
+        if (replayPkg) args.push("--replay", replayPkg);
         if (options.debug) args.push("--debug");
         if (options.forceDev) args.push("--dev");
 
@@ -514,7 +551,7 @@ export function startServer(options: ServerOptions) {
           childProcesses.delete(pid);
         });
 
-        return c.json({ url: readyUrl });
+        return c.json({ url: readyUrl, workspace: resolvedWorkspace, mode: specifier });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return c.json({ error: message }, 500);
@@ -545,6 +582,206 @@ export function startServer(options: ServerOptions) {
         childProcesses.delete(pid);
       } catch { }
       return c.json({ ok: true });
+    });
+
+    // R2 Configuration
+    app.get("/api/r2/status", (c) => {
+      const config = getR2Config();
+      return c.json({
+        configured: !!config,
+        publicUrl: config?.publicUrl ?? null,
+      });
+    });
+
+    app.get("/api/r2/config", (c) => {
+      const config = getR2Config();
+      if (!config) return c.json({ configured: false });
+      return c.json({
+        configured: true,
+        accountId: config.accountId,
+        bucket: config.bucket,
+        publicUrl: config.publicUrl,
+        // Don't expose secrets
+        accessKeyId: config.accessKeyId.slice(0, 6) + "***",
+        secretAccessKey: "***",
+      });
+    });
+
+    app.post("/api/r2/config", async (c) => {
+      try {
+        const body = await c.req.json<{
+          accountId: string;
+          accessKeyId: string;
+          secretAccessKey: string;
+          bucket: string;
+          publicUrl: string;
+        }>();
+        saveR2Config({
+          accountId: body.accountId,
+          accessKeyId: body.accessKeyId,
+          secretAccessKey: body.secretAccessKey,
+          bucket: body.bucket,
+          publicUrl: body.publicUrl.replace(/\/$/, ""),
+        });
+        return c.json({ ok: true });
+      } catch (err: any) {
+        return c.json({ error: err.message }, 500);
+      }
+    });
+
+    // API Keys
+    app.get("/api/keys", (c) => {
+      const keys = getApiKeys();
+      // Mask values for display
+      const masked: Record<string, string> = {};
+      for (const [name, value] of Object.entries(keys)) {
+        masked[name] = value.slice(0, 8) + "***";
+      }
+      return c.json({ keys: masked });
+    });
+
+    app.post("/api/keys", async (c) => {
+      try {
+        const body = await c.req.json<{ keys: Record<string, string> }>();
+        saveApiKeys(body.keys);
+        return c.json({ ok: true });
+      } catch (err: any) {
+        return c.json({ error: err.message }, 500);
+      }
+    });
+
+    app.put("/api/keys/:name", async (c) => {
+      const name = c.req.param("name");
+      const body = await c.req.json<{ value: string }>();
+      const keys = getApiKeys();
+      keys[name] = body.value;
+      saveApiKeys(keys);
+      return c.json({ ok: true });
+    });
+
+    app.delete("/api/keys/:name", (c) => {
+      const name = c.req.param("name");
+      const keys = getApiKeys();
+      delete keys[name];
+      saveApiKeys(keys);
+      return c.json({ ok: true });
+    });
+
+    // Import shared content
+    app.post("/api/import", async (c) => {
+      try {
+        const body = await c.req.json<{ url: string }>();
+        const downloadPath = await downloadShare(body.url);
+
+        // Determine type by checking if it contains manifest.json (process) or not (result)
+        const checkProc = Bun.spawn(["tar", "tzf", downloadPath], { stdout: "pipe", stderr: "ignore" });
+        const listing = await new Response(checkProc.stdout).text();
+        const isProcess = listing.includes("manifest.json") && listing.includes("messages.jsonl");
+
+        // Generate a workspace name under ~/pneuma-projects/import-{timestamp}
+        const timeTag = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 13);
+        const targetDir = join(homedir(), "pneuma-projects", `import-${timeTag}`);
+        mkdirSync(targetDir, { recursive: true });
+
+        // Extract to a staging dir first
+        const stageDir = join(tmpdir(), `pneuma-import-stage-${Date.now()}`);
+        mkdirSync(stageDir, { recursive: true });
+        await Bun.spawn(["tar", "xzf", downloadPath, "-C", stageDir], { stdout: "ignore" }).exited;
+
+        // Detect mode and restore workspace files
+        let mode = "webcraft";
+        let displayName = "Imported";
+        if (isProcess) {
+          // Process package: manifest.json + messages.jsonl + repo.bundle
+          try {
+            const manifest = JSON.parse(readFileSync(join(stageDir, "manifest.json"), "utf-8"));
+            mode = manifest.metadata?.mode || mode;
+            displayName = manifest.metadata?.title || displayName;
+
+            // Restore workspace files from the last checkpoint in the bundle
+            const bundlePath = join(stageDir, "repo.bundle");
+            if (existsSync(bundlePath)) {
+              // Clone bundle to a temp bare repo
+              const bareRepo = join(stageDir, ".bare-repo");
+              await Bun.spawn(["git", "clone", "--bare", bundlePath, bareRepo], { stdout: "ignore", stderr: "ignore" }).exited;
+
+              // Get the HEAD commit (latest checkpoint)
+              const headProc = Bun.spawn(["git", `--git-dir=${bareRepo}`, "rev-parse", "HEAD"], { stdout: "pipe", stderr: "ignore" });
+              const headHash = (await new Response(headProc.stdout).text()).trim();
+
+              if (headHash) {
+                // Extract file tree from HEAD to the target workspace
+                const archive = Bun.spawn(["git", `--git-dir=${bareRepo}`, "archive", headHash], { stdout: "pipe", stderr: "ignore" });
+                const extract = Bun.spawn(["tar", "x", "-C", targetDir], { stdin: archive.stdout, stdout: "ignore", stderr: "ignore" });
+                await extract.exited;
+              }
+            }
+
+            // Save process package to .pneuma/replay/ for replay capability
+            const pneumaDir = join(targetDir, ".pneuma");
+            mkdirSync(pneumaDir, { recursive: true });
+            const replayDir = join(pneumaDir, "replay");
+            mkdirSync(replayDir, { recursive: true });
+            // Copy manifest, messages, and bundle to replay dir
+            const { copyFileSync } = await import("node:fs");
+            try { copyFileSync(join(stageDir, "manifest.json"), join(replayDir, "manifest.json")); } catch {}
+            try { copyFileSync(join(stageDir, "messages.jsonl"), join(replayDir, "messages.jsonl")); } catch {}
+            try { copyFileSync(join(stageDir, "repo.bundle"), join(replayDir, "repo.bundle")); } catch {}
+
+            // Write session.json for the imported workspace
+            writeFileSync(join(pneumaDir, "session.json"), JSON.stringify({
+              sessionId: crypto.randomUUID(),
+              mode,
+              backendType: manifest.metadata?.backendType || "claude-code",
+              createdAt: Date.now(),
+              importedFrom: manifest.metadata?.id,
+              hasReplay: true,
+            }));
+          } catch (err) {
+            console.warn("[import] Failed to restore process package:", err);
+          }
+        } else {
+          // Result package: just workspace files — copy directly
+          // Move all files from stageDir to targetDir
+          await Bun.spawn(["sh", "-c", `cp -a "${stageDir}"/. "${targetDir}"/`], { stdout: "ignore", stderr: "ignore" }).exited;
+
+          // Detect mode
+          try {
+            const session = JSON.parse(readFileSync(join(targetDir, ".pneuma", "session.json"), "utf-8"));
+            mode = session.mode || mode;
+          } catch {}
+          try {
+            const snap = JSON.parse(readFileSync(join(targetDir, ".pneuma-snapshot.json"), "utf-8"));
+            mode = snap.mode || mode;
+          } catch {}
+        }
+
+        // Clean up staging dir
+        try { const { rmSync: rm } = await import("node:fs"); rm(stageDir, { recursive: true, force: true }); } catch {}
+
+        // Register as a session so it shows in Continue list
+        const registryPath = join(homedir(), ".pneuma", "sessions.json");
+        let sessions: any[] = [];
+        try { sessions = JSON.parse(readFileSync(registryPath, "utf-8")); } catch {}
+        const sessionId = `${targetDir}::${mode}`;
+        sessions = sessions.filter((s: any) => s.id !== sessionId);
+        sessions.unshift({
+          id: sessionId,
+          mode,
+          displayName: `${displayName} (imported)`,
+          workspace: targetDir,
+          backendType: getDefaultBackendType(),
+          lastAccessed: Date.now(),
+        });
+        writeFileSync(registryPath, JSON.stringify(sessions, null, 2));
+
+        try { const { unlinkSync } = await import("node:fs"); unlinkSync(downloadPath); } catch {}
+
+        const replayPackagePath = isProcess ? join(targetDir, ".pneuma", "replay") : undefined;
+        return c.json({ ok: true, type: isProcess ? "process" : "result", path: targetDir, mode, displayName, replayPackagePath });
+      } catch (err: any) {
+        return c.json({ error: err.message }, 500);
+      }
     });
 
     // Serve frontend assets in launcher mode too
@@ -594,6 +831,18 @@ export function startServer(options: ServerOptions) {
     return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup: undefined, childProcesses };
   }
 
+  let replayPackage: Awaited<ReturnType<typeof importHistory>> | null = null;
+
+  // Pre-load replay package if path was provided at startup
+  if (options.replayPackagePath) {
+    importHistory(options.replayPackagePath).then(pkg => {
+      replayPackage = pkg;
+      console.log(`[server] Pre-loaded replay package from ${options.replayPackagePath}`);
+    }).catch(err => {
+      console.error(`[server] Failed to pre-load replay package: ${err.message}`);
+    });
+  }
+
   // ── API Routes ─────────────────────────────────────────────────────────
 
   // Return the current active session ID so browsers can auto-connect
@@ -615,6 +864,101 @@ export function startServer(options: ServerOptions) {
       return c.json({ ok: true });
     } catch (err) {
       return c.json({ error: "Failed to save thumbnail" }, 500);
+    }
+  });
+
+  app.get("/api/history/checkpoints", async (c) => {
+    const checkpoints = await listCheckpoints(workspace);
+    return c.json({ checkpoints });
+  });
+
+  app.post("/api/history/export", async (c) => {
+    try {
+      const body = await c.req.json<{ title?: string; description?: string }>();
+      const result = await exportHistory(workspace, {
+        title: body.title,
+        description: body.description,
+      });
+      return c.json(result);
+    } catch (err: any) {
+      return c.json({ error: err.message ?? "Export failed" }, 500);
+    }
+  });
+
+  // --- R2 Config ---
+  app.get("/api/r2/status", (c) => {
+    const config = getR2Config();
+    return c.json({
+      configured: !!config,
+      publicUrl: config?.publicUrl ?? null,
+    });
+  });
+
+  // --- Unified Share ---
+  app.post("/api/share/result", async (c) => {
+    try {
+      const body = await c.req.json<{ title?: string }>();
+      const result = await shareResult(workspace, body.title);
+      return c.json(result);
+    } catch (err: any) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  app.post("/api/share/process", async (c) => {
+    try {
+      const body = await c.req.json<{ title?: string }>();
+      const result = await shareProcess(workspace, body.title);
+      return c.json(result);
+    } catch (err: any) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  app.post("/api/replay/load", async (c) => {
+    try {
+      const body = await c.req.json<{ path: string }>();
+      replayPackage = await importHistory(body.path);
+      return c.json({
+        manifest: replayPackage.manifest,
+        messageCount: replayPackage.messages.length,
+      });
+    } catch (err: any) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  app.get("/api/replay/messages", (c) => {
+    if (!replayPackage) return c.json({ error: "No replay loaded" }, 400);
+    return c.json({ messages: replayPackage.messages });
+  });
+
+  app.post("/api/replay/checkout/:hash", async (c) => {
+    if (!replayPackage) return c.json({ error: "No replay loaded" }, 400);
+    const hash = c.req.param("hash");
+    const outDir = join(workspace, ".pneuma", "replay-checkout");
+    try {
+      const { rmSync: rm } = await import("node:fs");
+      rm(outDir, { recursive: true, force: true });
+    } catch {}
+    try {
+      await replayPackage.extractCheckpointFiles(hash, outDir);
+      const files: { path: string; content: string }[] = [];
+      function walk(dir: string, prefix: string) {
+        for (const entry of readdirSync(dir)) {
+          const full = join(dir, entry);
+          const rel = prefix ? `${prefix}/${entry}` : entry;
+          const stat = statSync(full);
+          if (stat.isDirectory()) walk(full, rel);
+          else if (stat.size < 500_000) {
+            try { files.push({ path: rel, content: readFileSync(full, "utf-8") }); } catch {}
+          }
+        }
+      }
+      walk(outDir, "");
+      return c.json({ files });
+    } catch (err: any) {
+      return c.json({ error: err.message }, 500);
     }
   });
 

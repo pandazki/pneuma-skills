@@ -511,4 +511,46 @@ export function installSkill(
 
   // 3. Ensure .pneuma/ is in .gitignore
   ensureGitignore(workspace);
+
+  // 4. Inject resumed context if present
+  injectResumedContext(workspace, backendType ?? "claude-code");
+}
+
+/**
+ * Inject resumed session context from shared history into the instructions file.
+ * Reads `.pneuma/resumed-context.xml` and injects it before `<!-- pneuma:end -->`.
+ */
+export function injectResumedContext(workspace: string, backendType: string): void {
+  const contextPath = join(workspace, ".pneuma", "resumed-context.xml");
+  if (!existsSync(contextPath)) return;
+
+  const context = readFileSync(contextPath, "utf-8");
+  const markerStart = "<!-- pneuma:resumed:start -->";
+  const markerEnd = "<!-- pneuma:resumed:end -->";
+  const section = `${markerStart}\n${context}\n${markerEnd}`;
+
+  const instructionsPath = backendType === "codex"
+    ? join(workspace, "AGENTS.md")
+    : join(workspace, "CLAUDE.md");
+
+  if (!existsSync(instructionsPath)) return;
+
+  let content = readFileSync(instructionsPath, "utf-8");
+
+  // Remove existing resumed section if present
+  const existingStart = content.indexOf(markerStart);
+  const existingEnd = content.indexOf(markerEnd);
+  if (existingStart !== -1 && existingEnd !== -1) {
+    content = content.slice(0, existingStart) + content.slice(existingEnd + markerEnd.length);
+  }
+
+  // Inject before <!-- pneuma:end --> if it exists, otherwise append
+  const pneumaEnd = content.indexOf("<!-- pneuma:end -->");
+  if (pneumaEnd !== -1) {
+    content = content.slice(0, pneumaEnd) + section + "\n" + content.slice(pneumaEnd);
+  } else {
+    content += "\n" + section;
+  }
+
+  writeFileSync(instructionsPath, content);
 }

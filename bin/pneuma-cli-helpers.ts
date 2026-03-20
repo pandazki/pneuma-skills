@@ -31,6 +31,7 @@ export interface ParsedCliArgs {
   forceDev: boolean;
   noPrompt: boolean;
   skipSkill: boolean;
+  replayPackage: string;
 }
 
 export function normalizePersistedSession(data: Record<string, unknown>): PersistedSession {
@@ -65,6 +66,7 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
   let forceDev = false;
   let noPrompt = false;
   let skipSkill = false;
+  let replayPackage = "";
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -88,6 +90,8 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
       debug = true;
     } else if (arg === "--dev") {
       forceDev = true;
+    } else if (arg === "--replay" && i + 1 < args.length) {
+      replayPackage = args[++i];
     } else if (!arg.startsWith("--")) {
       mode = arg;
     }
@@ -105,6 +109,7 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
     forceDev,
     noPrompt,
     skipSkill,
+    replayPackage,
   };
 }
 

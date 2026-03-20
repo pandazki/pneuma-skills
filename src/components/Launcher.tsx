@@ -1793,6 +1793,7 @@ function LaunchDialog({
           setError(data.error);
         } else if (data.initParams?.length) {
           setInitParams(data.initParams);
+          // Server pre-fills defaults from stored API keys
           const defaults: Record<string, string | number> = {};
           for (const p of data.initParams) {
             defaults[p.name] = p.defaultValue;
@@ -1962,16 +1963,35 @@ function LaunchDialog({
             Parameters
             {existingSession && <span className="text-xs text-cc-muted font-normal ml-2">(read-only)</span>}
           </p>
-          {initParams.map((param) => (
+          {initParams.map((param: any) => (
             <div key={param.name}>
               <label className="block text-sm text-cc-muted mb-1">
                 {param.label}
-                {param.description && (
+                {param.autoFilled && (
+                  <span className="text-cc-success/70 text-xs ml-2">from global keys</span>
+                )}
+                {param.description && !param.autoFilled && (
                   <span className="text-cc-muted/60"> — {param.description}</span>
                 )}
               </label>
+              {param.autoFilled && paramValues[param.name] === param.defaultValue ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={param.maskedPreview}
+                    disabled
+                    className="flex-1 px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-muted text-sm opacity-70 cursor-not-allowed"
+                  />
+                  <button
+                    onClick={() => setParamValues({ ...paramValues, [param.name]: "" })}
+                    className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    Clear
+                  </button>
+                </div>
+              ) : (
               <input
-                type={param.type === "number" ? "number" : "text"}
+                type={param.type === "number" ? "number" : param.sensitive ? "password" : "text"}
                 value={paramValues[param.name] ?? param.defaultValue}
                 disabled={!!existingSession}
                 onChange={(e) => {
@@ -1998,6 +2018,7 @@ function LaunchDialog({
                   existingSession ? "opacity-60 cursor-not-allowed" : ""
                 }`}
               />
+              )}
             </div>
           ))}
         </div>
@@ -2130,6 +2151,400 @@ function LaunchDialog({
   );
 }
 
+// ── Settings Panel (slide-out) ────────────────────────────────────────────
+
+function BackendsSection() {
+  const [backends, setBackends] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch(`${getApiBase()}/api/backends`)
+      .then((r) => r.json())
+      .then((data) => setBackends(data.backends || []))
+      .catch(() => {});
+  }, []);
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">Backends</h3>
+      <div className="space-y-2">
+        {backends.map((b: any) => (
+          <div key={b.type} className="flex items-center justify-between p-3 rounded-lg border border-cc-border bg-cc-surface/30">
+            <div>
+              <div className="text-sm text-cc-fg">{b.label}</div>
+              <div className="text-[10px] text-cc-muted mt-0.5">{b.description}</div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full ${b.available ? "bg-cc-success" : "bg-cc-muted/30"}`} />
+              <span className="text-[10px] text-cc-muted">{b.available ? "Ready" : "Not found"}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ApiKeysSection() {
+  const [keys, setKeys] = useState<Record<string, string>>({});
+  const [addingName, setAddingName] = useState("");
+  const [addingValue, setAddingValue] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
+
+  const refreshKeys = useCallback(() => {
+    fetch(`${getApiBase()}/api/keys`)
+      .then((r) => r.json())
+      .then((data) => setKeys(data.keys || {}))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => { refreshKeys(); }, [refreshKeys]);
+
+  const saveKey = async (name: string, value: string) => {
+    await fetch(`${getApiBase()}/api/keys/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value }),
+    });
+    refreshKeys();
+    setAddingName("");
+    setAddingValue("");
+    setShowAddForm(false);
+  };
+
+  const removeKey = async (name: string) => {
+    await fetch(`${getApiBase()}/api/keys/${encodeURIComponent(name)}`, { method: "DELETE" });
+    refreshKeys();
+  };
+
+  const keyEntries = Object.entries(keys);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">API Keys</h3>
+        {!showAddForm && (
+          <button onClick={() => setShowAddForm(true)} className="text-[10px] text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">+ Add</button>
+        )}
+      </div>
+      <p className="text-[10px] text-cc-muted/60 leading-relaxed">
+        Keys are stored locally on your machine (encrypted). When a project needs a matching key name, it will be auto-imported.
+      </p>
+
+      {keyEntries.length > 0 && (
+        <div className="space-y-2">
+          {keyEntries.map(([name, maskedValue]) => (
+            <div key={name} className="flex items-center justify-between p-3 rounded-lg border border-cc-border bg-cc-surface/30">
+              <div>
+                <div className="text-xs text-cc-fg font-mono">{name}</div>
+                <div className="text-[10px] text-cc-muted mt-0.5">{maskedValue}</div>
+              </div>
+              <button onClick={() => removeKey(name)} className="text-[10px] text-cc-muted/50 hover:text-cc-error transition-colors cursor-pointer">Remove</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {keyEntries.length === 0 && !showAddForm && (
+        <div className="text-[10px] text-cc-muted/40 py-2">No keys configured yet.</div>
+      )}
+
+      {showAddForm && (
+        <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30 space-y-2">
+          <input
+            autoFocus
+            placeholder="Key name (e.g. OPENROUTER_API_KEY)"
+            value={addingName}
+            onChange={(e) => setAddingName(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))}
+            className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg font-mono placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
+          />
+          <input
+            type="password"
+            placeholder="Value"
+            value={addingValue}
+            onChange={(e) => setAddingValue(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addingName && addingValue && saveKey(addingName, addingValue)}
+            className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
+          />
+          <div className="flex gap-2">
+            <button onClick={() => addingName && addingValue && saveKey(addingName, addingValue)}
+              disabled={!addingName || !addingValue}
+              className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer">Save</button>
+            <button onClick={() => { setShowAddForm(false); setAddingName(""); setAddingValue(""); }}
+              className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CloudStorageSection() {
+  const [status, setStatus] = useState<"loading" | "configured" | "unconfigured" | "editing">("loading");
+  const [config, setConfig] = useState<any>(null);
+  const [form, setForm] = useState({ accountId: "", accessKeyId: "", secretAccessKey: "", bucket: "pneuma-playground", publicUrl: "" });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch(`${getApiBase()}/api/r2/config`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.configured) { setConfig(data); setStatus("configured"); }
+        else setStatus("unconfigured");
+      })
+      .catch(() => setStatus("unconfigured"));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await fetch(`${getApiBase()}/api/r2/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const resp = await fetch(`${getApiBase()}/api/r2/config`);
+      const data = await resp.json();
+      setConfig(data); setStatus("configured");
+    } catch { }
+    setSaving(false);
+  };
+
+  if (status === "loading") return null;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">Cloud Storage</h3>
+        {status === "configured" && (
+          <button onClick={() => { setForm({ accountId: config?.accountId || "", accessKeyId: "", secretAccessKey: "", bucket: config?.bucket || "pneuma-playground", publicUrl: config?.publicUrl || "" }); setStatus("editing"); }}
+            className="text-[10px] text-cc-muted/50 hover:text-cc-fg transition-colors cursor-pointer">Edit</button>
+        )}
+      </div>
+      <p className="text-[10px] text-cc-muted/60 leading-relaxed">
+        Cloudflare R2 storage for sharing and snapshots. You manage your own bucket — data stays under your control.
+      </p>
+
+      {status === "configured" && config && (
+        <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-cc-success" />
+            <span className="text-xs text-cc-fg">Connected</span>
+          </div>
+          <div className="text-[10px] text-cc-muted">Bucket: {config.bucket}</div>
+          <div className="text-[10px] text-cc-muted truncate">URL: {config.publicUrl}</div>
+        </div>
+      )}
+
+      {(status === "unconfigured" || status === "editing") && (
+        <div className="space-y-3">
+          {status === "unconfigured" && (
+            <div className="text-[10px] text-cc-muted/60 leading-relaxed">
+              Create a Cloudflare R2 bucket with public access at <span className="text-cc-fg">dash.cloudflare.com</span>, then enter credentials below.
+            </div>
+          )}
+          <div className="space-y-2">
+            {[
+              { key: "accountId", placeholder: "Account ID", type: "text" },
+              { key: "accessKeyId", placeholder: "Access Key ID", type: "text" },
+              { key: "secretAccessKey", placeholder: "Secret Access Key", type: "password" },
+              { key: "bucket", placeholder: "Bucket name", type: "text" },
+              { key: "publicUrl", placeholder: "Public URL (e.g. https://pub-xxx.r2.dev)", type: "text" },
+            ].map(({ key, placeholder, type }) => (
+              <input
+                key={key}
+                placeholder={placeholder}
+                type={type}
+                value={(form as any)[key]}
+                onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
+              />
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleSave} disabled={saving || !form.accountId || !form.accessKeyId || !form.secretAccessKey || !form.publicUrl}
+              className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer">
+              {saving ? "Saving..." : "Save"}
+            </button>
+            {status === "editing" && (
+              <button onClick={() => setStatus("configured")}
+                className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">
+                Cancel
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+  if (!open) return null;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+        style={{ animation: "overlayFadeIn 200ms ease" }}
+        onClick={onClose}
+      />
+      {/* Panel */}
+      <div
+        className="fixed top-0 right-0 bottom-0 z-50 w-[400px] max-w-[90vw] bg-cc-bg border-l border-cc-border shadow-2xl overflow-y-auto"
+        style={{ animation: "slideInRight 250ms cubic-bezier(0.16, 1, 0.3, 1)" }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-cc-border sticky top-0 bg-cc-bg/95 backdrop-blur-md z-10">
+          <h2 className="text-sm font-semibold text-cc-fg">Settings</h2>
+          <button onClick={onClose} className="text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+              <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Sections */}
+        <div className="p-6 space-y-8">
+          <BackendsSection />
+          <ApiKeysSection />
+          <CloudStorageSection />
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Import Dialog ─────────────────────────────────────────────────────────
+
+function ImportDialog({ open, onClose, onImported }: { open: boolean; onClose: () => void; onImported?: () => void }) {
+  const [url, setUrl] = useState("");
+  const [status, setStatus] = useState<"idle" | "importing" | "done" | "error">("idle");
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState("");
+
+  // Reset state when dialog opens
+  useEffect(() => {
+    if (open) {
+      setUrl("");
+      setStatus("idle");
+      setResult(null);
+      setError("");
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  const handleImport = async () => {
+    if (!url.trim()) return;
+    setStatus("importing");
+    try {
+      const resp = await fetch(`${getApiBase()}/api/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      setResult(data);
+      setStatus("done");
+      onImported?.(); // Refresh sessions list
+    } catch (err: any) {
+      setError(err.message || "Import failed");
+      setStatus("error");
+    }
+  };
+
+  const handleLaunchImported = async (withReplay: boolean) => {
+    if (!result) return;
+    try {
+      const resp = await fetch(`${getApiBase()}/api/launch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          specifier: result.mode || "webcraft",
+          workspace: result.path,
+          ...(withReplay && result.replayPackagePath ? { replayPackage: result.replayPackagePath } : {}),
+        }),
+      });
+      const data = await resp.json();
+      if (data.url) {
+        window.open(data.url, "_blank");
+        onClose();
+      }
+    } catch {}
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" style={{ animation: "overlayFadeIn 200ms ease" }} onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+        <div className="bg-cc-bg border border-cc-border rounded-xl shadow-2xl w-[440px] max-w-[90vw] pointer-events-auto"
+          style={{ animation: "warmFadeIn 200ms ease" }}>
+          <div className="px-5 py-4 border-b border-cc-border">
+            <h3 className="text-sm font-semibold text-cc-fg">Import from Share</h3>
+            <p className="text-[10px] text-cc-muted mt-1">Paste a share URL to continue someone's work.</p>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            {status === "idle" && (
+              <>
+                <input
+                  autoFocus
+                  placeholder="https://..."
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleImport()}
+                  className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
+                />
+                <div className="flex justify-end gap-2">
+                  <button onClick={onClose} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">Cancel</button>
+                  <button onClick={handleImport} disabled={!url.trim()}
+                    className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 transition-all cursor-pointer">Import</button>
+                </div>
+              </>
+            )}
+            {status === "importing" && <div className="text-xs text-cc-muted animate-pulse py-2">Importing...</div>}
+            {status === "done" && result && (
+              <div className="space-y-3">
+                <div className="text-xs text-cc-success">Imported successfully!</div>
+                <div className="text-[10px] text-cc-muted">
+                  {result.displayName && <span className="text-cc-fg">{result.displayName}</span>}
+                </div>
+                {result.type === "process" ? (
+                  <>
+                    <p className="text-[10px] text-cc-muted/60">This share includes the creation process with chat history and checkpoints.</p>
+                    <div className="flex justify-end gap-2">
+                      <button onClick={onClose} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">Close</button>
+                      <button onClick={() => handleLaunchImported(false)}
+                        className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-fg hover:border-cc-primary hover:text-cc-primary transition-colors cursor-pointer">Continue Working</button>
+                      <button onClick={() => handleLaunchImported(true)}
+                        className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 transition-all cursor-pointer">Replay</button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-end gap-2">
+                    <button onClick={onClose} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">Close</button>
+                    <button onClick={() => handleLaunchImported(false)}
+                      className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 transition-all cursor-pointer">Open</button>
+                  </div>
+                )}
+              </div>
+            )}
+            {status === "error" && (
+              <div className="space-y-2">
+                <div className="text-xs text-cc-error">{error}</div>
+                <div className="flex justify-end">
+                  <button onClick={() => setStatus("idle")} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">Try again</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ── Main Launcher ────────────────────────────────────────────────────────
 
 export default function Launcher() {
@@ -2146,6 +2561,8 @@ export default function Launcher() {
   const [loading, setLoading] = useState(true);
   const [showGallery, setShowGallery] = useState(false);
   const [showAllSessions, setShowAllSessions] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const [launchTarget, setLaunchTarget] = useState<{
     specifier: string;
     displayName: string;
@@ -2448,6 +2865,16 @@ export default function Launcher() {
         </div>
         <div className="flex items-center" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
           <div className={`flex items-center gap-1 transition-transform duration-300 ease-out ${hasOverlay ? "" : "translate-x-5"}`}>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="p-2 text-cc-muted/70 hover:text-cc-fg transition-colors cursor-pointer"
+              title="Settings"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
             <ThemeToggle preference={themePref} onClick={cycleTheme} />
             <a
               href="https://github.com/pandazki/pneuma-skills"
@@ -2504,14 +2931,22 @@ export default function Launcher() {
             >
               <div className="flex items-baseline justify-between mb-5">
                 <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide">Continue</h2>
-                {allContinueItems.length > 3 && (
+                <div className="flex items-center gap-3">
                   <button
-                    onClick={() => setShowAllSessions(true)}
-                    className="text-xs text-cc-muted/50 hover:text-cc-fg transition-colors cursor-pointer"
+                    onClick={() => setShowImportDialog(true)}
+                    className="text-xs text-cc-muted/50 hover:text-cc-primary transition-colors cursor-pointer"
                   >
-                    All Sessions ({allContinueItems.length})
+                    Import
                   </button>
-                )}
+                  {allContinueItems.length > 3 && (
+                    <button
+                      onClick={() => setShowAllSessions(true)}
+                      className="text-xs text-cc-muted/50 hover:text-cc-fg transition-colors cursor-pointer"
+                    >
+                      All Sessions ({allContinueItems.length})
+                    </button>
+                  )}
+                </div>
               </div>
               <LayoutGroup>
                 {/* Running items — thumbnail cards with ChromaGrid spotlight */}
@@ -2626,6 +3061,8 @@ export default function Launcher() {
               />
             </div>
           </section>
+
+          {/* (Import & R2 moved to SettingsPanel + ImportDialog) */}
         </main>
       )}
 
@@ -2697,6 +3134,12 @@ export default function Launcher() {
           closing={launchAnim.closing}
         />
       )}
+
+      {/* Settings slide-out panel */}
+      <SettingsPanel open={showSettings} onClose={() => setShowSettings(false)} />
+
+      {/* Import dialog */}
+      <ImportDialog open={showImportDialog} onClose={() => setShowImportDialog(false)} onImported={refreshSessions} />
     </div>
   );
 }

@@ -44,6 +44,7 @@ export type { ChatSlice } from "./chat-slice.js";
 export type { ModeSlice } from "./mode-slice.js";
 export type { ViewerSlice } from "./viewer-slice.js";
 export type { WorkspaceSlice } from "./workspace-slice.js";
+export type { ReplaySlice } from "./replay-slice.js";
 
 import type { UiSlice } from "./ui-slice.js";
 import type { SessionSlice } from "./session-slice.js";
@@ -52,5 +53,6 @@ import type { ChatSlice } from "./chat-slice.js";
 import type { ModeSlice } from "./mode-slice.js";
 import type { ViewerSlice } from "./viewer-slice.js";
 import type { WorkspaceSlice } from "./workspace-slice.js";
+import type { ReplaySlice } from "./replay-slice.js";
 
-export type AppState = UiSlice & SessionSlice & AgentDataSlice & ChatSlice & ModeSlice & ViewerSlice & WorkspaceSlice;
+export type AppState = UiSlice & SessionSlice & AgentDataSlice & ChatSlice & ModeSlice & ViewerSlice & WorkspaceSlice & ReplaySlice;
