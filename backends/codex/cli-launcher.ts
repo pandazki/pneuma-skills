@@ -9,7 +9,6 @@ import { randomUUID } from "node:crypto";
 import { resolve, join, delimiter } from "node:path";
 import { existsSync, realpathSync, readFileSync } from "node:fs";
 import { spawn as nodeSpawn, type ChildProcess } from "node:child_process";
-import type { Subprocess } from "bun";
 import { resolveBinary, getEnrichedPath } from "../../server/path-resolver.js";
 import { CodexAdapter, StdioTransport } from "./codex-adapter.js";
 import type { CodexAdapterOptions } from "./codex-adapter.js";
@@ -65,7 +64,6 @@ function isTextScript(filePath: string): boolean {
  */
 export class CodexCliLauncher {
   private sessions = new Map<string, CodexSessionInfo>();
-  private processes = new Map<string, Subprocess>();
   private nodeProcesses = new Map<string, ChildProcess>();
   private adapters = new Map<string, CodexAdapter>();
   private exitHandlers: ((sessionId: string, exitCode: number | null) => void)[] = [];
@@ -268,72 +266,23 @@ export class CodexCliLauncher {
       this.adapters.delete(sessionId);
     }
 
-    // Try node process first, then Bun process
     const nodeProc = this.nodeProcesses.get(sessionId);
-    if (nodeProc) {
-      nodeProc.kill("SIGTERM");
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(() => { nodeProc.kill("SIGKILL"); resolve(); }, 5000);
-        nodeProc.once("exit", () => { clearTimeout(timer); resolve(); });
-      });
-      const session = this.sessions.get(sessionId);
-      if (session) { session.state = "exited"; session.exitCode = -1; }
-      this.nodeProcesses.delete(sessionId);
-      return true;
-    }
+    if (!nodeProc) return false;
 
-    const proc = this.processes.get(sessionId);
-    if (!proc) return false;
-
-    if (process.platform === "win32") {
-      proc.kill();
-    } else {
-      proc.kill("SIGTERM");
-    }
-
-    const exited = await Promise.race([
-      proc.exited.then(() => true),
-      new Promise<false>((resolve) => setTimeout(() => resolve(false), 5_000)),
-    ]);
-
-    if (!exited) {
-      if (process.platform === "win32") {
-        proc.kill();
-      } else {
-        proc.kill("SIGKILL");
-      }
-    }
+    nodeProc.kill("SIGTERM");
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { nodeProc.kill("SIGKILL"); resolve(); }, 5000);
+      nodeProc.once("exit", () => { clearTimeout(timer); resolve(); });
+    });
 
     const session = this.sessions.get(sessionId);
-    if (session) {
-      session.state = "exited";
-      session.exitCode = -1;
-    }
-    this.processes.delete(sessionId);
+    if (session) { session.state = "exited"; session.exitCode = -1; }
+    this.nodeProcesses.delete(sessionId);
     return true;
   }
 
   async killAll(): Promise<void> {
-    const ids = [...new Set([...this.processes.keys(), ...this.nodeProcesses.keys()])];
+    const ids = [...this.nodeProcesses.keys()];
     await Promise.all(ids.map((id) => this.kill(id)));
-  }
-
-  private async pipeStderr(sessionId: string, proc: Subprocess): Promise<void> {
-    const stderr = proc.stderr;
-    if (!stderr || typeof stderr === "number") return;
-    const reader = (stderr as ReadableStream<Uint8Array>).getReader();
-    const decoder = new TextDecoder();
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const text = decoder.decode(value);
-        if (text.trim()) {
-          console.error(`[codex:${sessionId}:stderr] ${text.trimEnd()}`);
-        }
-      }
-    } catch {
-      // stream closed
-    }
   }
 }

@@ -90,24 +90,20 @@ export class StdioTransport implements ICodexTransport {
   private requestHandler: ((method: string, id: number, params: Record<string, unknown>) => void) | null = null;
   /** Node.js Writable stream for stdin. */
   private nodeStdin: import("node:stream").Writable | null = null;
-  /** Direct reference to Bun FileSink for writing. */
-  private stdinSink: { write(data: Uint8Array): number; flush(): number | Promise<number> } | null = null;
-  /** Fallback WritableStream writer for non-FileSink stdin. */
+  /** Fallback WritableStream writer for non-Node stdin (tests). */
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private connected = true;
   private buffer = "";
 
+  /**
+   * Constructor for test usage with WritableStream/ReadableStream.
+   * Production code should use `StdioTransport.fromNodeStreams()`.
+   */
   constructor(
     stdin: WritableStream<Uint8Array> | { write(data: Uint8Array): number },
     stdout: ReadableStream<Uint8Array>,
   ) {
-    // Prefer direct FileSink access (Bun subprocess stdin) to avoid WritableStream buffering issues
-    if ("write" in stdin && "flush" in stdin
-      && typeof (stdin as { write?: unknown }).write === "function"
-      && typeof (stdin as { flush?: unknown }).flush === "function") {
-      this.stdinSink = stdin as { write(data: Uint8Array): number; flush(): number | Promise<number> };
-    } else if ("write" in stdin && typeof stdin.write === "function") {
-      // Has write but no flush — wrap in WritableStream
+    if ("write" in stdin && typeof stdin.write === "function") {
       const writable = new WritableStream({
         write(chunk) {
           (stdin as { write(data: Uint8Array): number }).write(chunk);
@@ -175,59 +171,19 @@ export class StdioTransport implements ICodexTransport {
     this.pending.clear();
   }
 
+  /** Read from a web ReadableStream (used by tests; production uses readNodeStdout). */
   private async readStdout(stdout: ReadableStream<Uint8Array>): Promise<void> {
+    const reader = stdout.getReader();
     const decoder = new TextDecoder();
-    let totalReads = 0;
     try {
-      // Bun may prematurely close the ReadableStream while the process is still alive.
-      // When this happens, re-acquire from proc.stdout and continue reading.
-      let currentStream: ReadableStream<Uint8Array> = stdout;
-      let retries = 0;
-      const MAX_RECONNECT_RETRIES = 10;
-
-      while (retries < MAX_RECONNECT_RETRIES) {
-        const reader = currentStream.getReader();
-        let streamEnded = false;
-
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-              streamEnded = true;
-              break;
-            }
-            totalReads++;
-            this.buffer += decoder.decode(value, { stream: true });
-            this.processBuffer();
-          }
-        } finally {
-          try { reader.releaseLock(); } catch {}
-        }
-
-        if (!streamEnded) break;
-
-        // Check if the process is actually still alive
-        if (!this.proc || this.proc.exitCode !== null || this.proc.killed) {
-          console.error(`[codex-adapter] stdout ended, process exited (reads=${totalReads})`);
-          break;
-        }
-
-        // Process alive but stream ended — Bun ReadableStream bug.
-        // Try to re-acquire stdout from the process.
-        retries++;
-        console.warn(`[codex-adapter] stdout stream ended prematurely after ${totalReads} reads (process alive, pid=${this.proc.pid}), reconnecting (attempt ${retries})`);
-        await new Promise((r) => setTimeout(r, 200));
-
-        // Re-acquire stdout — Bun may return a new ReadableStream backed by the same pipe
-        const newStdout = this.proc.stdout;
-        if (!newStdout || typeof newStdout === "number") {
-          console.error(`[codex-adapter] Cannot re-acquire stdout`);
-          break;
-        }
-        currentStream = newStdout as ReadableStream<Uint8Array>;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        this.buffer += decoder.decode(value, { stream: true });
+        this.processBuffer();
       }
     } catch (err) {
-      console.error(`[codex-adapter] stdout reader error after ${totalReads} reads:`, err);
+      console.error("[codex-adapter] stdout reader error:", err);
     } finally {
       this.closeTransport();
     }
@@ -331,19 +287,14 @@ export class StdioTransport implements ICodexTransport {
       throw new Error("Transport closed");
     }
     if (this.nodeStdin) {
-      // Node.js Writable stream
       return new Promise<void>((resolve, reject) => {
         this.nodeStdin!.write(data, "utf-8", (err) => {
           if (err) reject(err); else resolve();
         });
       });
     }
-    const encoded = new TextEncoder().encode(data);
-    if (this.stdinSink) {
-      this.stdinSink.write(encoded);
-      await this.stdinSink.flush();
-    } else if (this.writer) {
-      await this.writer.write(encoded);
+    if (this.writer) {
+      await this.writer.write(new TextEncoder().encode(data));
     } else {
       throw new Error("No stdin writer available");
     }
@@ -450,11 +401,7 @@ export class CodexAdapter {
         };
       }
 
-      // Hold a reference to the proc so we can check its state when stdout closes
-      (this.transport as StdioTransport).proc = proc;
-
-      proc.exited.then((code) => {
-        console.error(`[codex-adapter] Process exited (code=${code}, initialized=${this.initialized}, threadId=${this.threadId})`);
+      proc.exited.then(() => {
         this.connected = false;
         this.disconnectCb?.();
       });
