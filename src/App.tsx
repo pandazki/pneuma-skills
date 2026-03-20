@@ -18,6 +18,7 @@ import { selectBestContentSet } from "../core/utils/content-set-matcher.js";
 import { ReplayPlayer } from "./components/ReplayPlayer";
 import type { ViewerPreviewProps } from "../core/types/viewer-contract.js";
 import { useThumbnailCapture } from "./hooks/useThumbnailCapture.js";
+import { normalizeViewerState } from "./utils/viewer-state.js";
 
 const EditorPanel = lazy(() => import("./components/EditorPanel.js"));
 const TerminalPanel = lazy(() => import("./components/TerminalPanel.js"));
@@ -223,13 +224,14 @@ export default function App() {
           try {
             const vs = await fetch(`${getApiBase()}/api/viewer-state`).then((r) => r.json());
             const store = useStore.getState();
-            if (vs.contentSet && store.contentSets.some((cs: { prefix: string }) => cs.prefix === vs.contentSet)) {
-              store.setActiveContentSet(vs.contentSet);
+            const normalized = normalizeViewerState(vs, store.contentSets);
+            if (normalized.contentSet && store.contentSets.some((cs: { prefix: string }) => cs.prefix === normalized.contentSet)) {
+              store.setActiveContentSet(normalized.contentSet);
             }
-            if (vs.file) {
+            if (normalized.file) {
               const items = useStore.getState().workspaceItems;
-              if (items.some((item: { path: string }) => item.path === vs.file)) {
-                useStore.getState().setActiveFile(vs.file);
+              if (items.some((item: { path: string }) => item.path === normalized.file)) {
+                useStore.getState().setActiveFile(normalized.file);
               }
             }
           } catch { /* no saved state — auto-selection will handle it */ }
