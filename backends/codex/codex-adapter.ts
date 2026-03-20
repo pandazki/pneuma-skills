@@ -88,28 +88,90 @@ export class StdioTransport implements ICodexTransport {
   private pendingTimers = new Map<number, ReturnType<typeof setTimeout>>();
   private notificationHandler: ((method: string, params: Record<string, unknown>) => void) | null = null;
   private requestHandler: ((method: string, id: number, params: Record<string, unknown>) => void) | null = null;
-  private writer: WritableStreamDefaultWriter<Uint8Array>;
+  /** Node.js Writable stream for stdin. */
+  private nodeStdin: import("node:stream").Writable | null = null;
+  /** Fallback WritableStream writer for non-Node stdin (tests). */
+  private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private connected = true;
   private buffer = "";
 
+  /**
+   * Constructor for test usage with WritableStream/ReadableStream.
+   * Production code should use `StdioTransport.fromNodeStreams()`.
+   */
   constructor(
     stdin: WritableStream<Uint8Array> | { write(data: Uint8Array): number },
     stdout: ReadableStream<Uint8Array>,
   ) {
-    let writable: WritableStream<Uint8Array>;
     if ("write" in stdin && typeof stdin.write === "function") {
-      writable = new WritableStream({
+      const writable = new WritableStream({
         write(chunk) {
           (stdin as { write(data: Uint8Array): number }).write(chunk);
         },
       });
+      this.writer = writable.getWriter();
     } else {
-      writable = stdin as WritableStream<Uint8Array>;
+      this.writer = (stdin as WritableStream<Uint8Array>).getWriter();
     }
-    this.writer = writable.getWriter();
     this.readStdout(stdout);
   }
 
+  /**
+   * Create a StdioTransport from Node.js child_process streams.
+   * Avoids Bun's ReadableStream bug where proc.stdout prematurely closes.
+   */
+  static fromNodeStreams(
+    stdin: import("node:stream").Writable,
+    stdout: import("node:stream").Readable,
+  ): StdioTransport {
+    const transport = Object.create(StdioTransport.prototype) as StdioTransport;
+    transport.nextId = 1;
+    transport.pending = new Map();
+    transport.pendingTimers = new Map();
+    transport.notificationHandler = null;
+    transport.requestHandler = null;
+    transport.stdinSink = null;
+    transport.writer = null;
+    transport.nodeStdin = stdin;
+    transport.connected = true;
+    transport.buffer = "";
+    transport.readNodeStdout(stdout);
+    return transport;
+  }
+
+  private readNodeStdout(stdout: import("node:stream").Readable): void {
+    stdout.on("data", (chunk: Buffer) => {
+      this.buffer += chunk.toString("utf-8");
+      this.processBuffer();
+    });
+    stdout.on("end", () => {
+      console.error(`[codex-adapter] Node stdout stream ended`);
+      this.closeTransport();
+    });
+    stdout.on("error", (err) => {
+      console.error(`[codex-adapter] Node stdout error:`, err);
+      this.closeTransport();
+    });
+  }
+
+  private closeTransport(): void {
+    if (!this.connected) return;
+    const pendingCount = this.pending.size;
+    if (pendingCount > 0) {
+      console.error(`[codex-adapter] Transport closed with ${pendingCount} pending RPC call(s)`);
+    }
+    this.connected = false;
+    for (const [, timer] of this.pendingTimers) {
+      clearTimeout(timer);
+    }
+    this.pendingTimers.clear();
+    for (const [, { reject }] of this.pending) {
+      reject(new Error("Transport closed"));
+    }
+    this.pending.clear();
+  }
+
+  /** Read from a web ReadableStream (used by tests; production uses readNodeStdout). */
   private async readStdout(stdout: ReadableStream<Uint8Array>): Promise<void> {
     const reader = stdout.getReader();
     const decoder = new TextDecoder();
@@ -123,15 +185,7 @@ export class StdioTransport implements ICodexTransport {
     } catch (err) {
       console.error("[codex-adapter] stdout reader error:", err);
     } finally {
-      this.connected = false;
-      for (const [, timer] of this.pendingTimers) {
-        clearTimeout(timer);
-      }
-      this.pendingTimers.clear();
-      for (const [, { reject }] of this.pending) {
-        reject(new Error("Transport closed"));
-      }
-      this.pending.clear();
+      this.closeTransport();
     }
   }
 
@@ -232,7 +286,18 @@ export class StdioTransport implements ICodexTransport {
     if (!this.connected) {
       throw new Error("Transport closed");
     }
-    await this.writer.write(new TextEncoder().encode(data));
+    if (this.nodeStdin) {
+      return new Promise<void>((resolve, reject) => {
+        this.nodeStdin!.write(data, "utf-8", (err) => {
+          if (err) reject(err); else resolve();
+        });
+      });
+    }
+    if (this.writer) {
+      await this.writer.write(new TextEncoder().encode(data));
+    } else {
+      throw new Error("No stdin writer available");
+    }
   }
 }
 
@@ -460,9 +525,15 @@ export class CodexAdapter {
         capabilities: {
           experimentalApi: true,
         },
-      }) as { serverInfo?: { name?: string; version?: string } } | undefined;
+      }) as { serverInfo?: { name?: string; version?: string }; userAgent?: string } | undefined;
 
-      const serverVersion = initResult?.serverInfo?.version || "";
+      // v0.114+: response has `userAgent` instead of `serverInfo`
+      let serverVersion = initResult?.serverInfo?.version || "";
+      if (!serverVersion && initResult?.userAgent) {
+        // Parse version from userAgent string like "pneuma-skills/0.114.0 (...)"
+        const match = initResult.userAgent.match(/\/([\d.]+)/);
+        if (match) serverVersion = match[1];
+      }
 
       // Step 2: Send initialized notification
       await this.transport.notify("initialized", {});
@@ -482,14 +553,27 @@ export class CodexAdapter {
 
         try {
           if (this.options.threadId) {
-            threadResult = await this.transport.call("thread/resume", {
-              threadId: this.options.threadId,
-              model: this.options.model,
-              cwd: this.options.cwd || "",
-              approvalPolicy: this.mapApprovalPolicy(this.currentPermissionMode),
-              sandbox: this.mapSandboxPolicy(this.currentPermissionMode),
-            }) as { thread: { id: string }; model?: string; model_provider?: string };
-            this.threadId = threadResult.thread.id;
+            try {
+              threadResult = await this.transport.call("thread/resume", {
+                threadId: this.options.threadId,
+                model: this.options.model,
+                cwd: this.options.cwd || "",
+                approvalPolicy: this.mapApprovalPolicy(this.currentPermissionMode),
+                sandbox: this.mapSandboxPolicy(this.currentPermissionMode),
+              }) as { thread: { id: string }; model?: string; model_provider?: string };
+              this.threadId = threadResult.thread.id;
+            } catch (resumeErr) {
+              // Thread not found (e.g. rollout file cleaned up, version upgrade) — fall back to new thread
+              console.warn(`[codex-adapter] thread/resume failed: ${resumeErr}, falling back to thread/start`);
+              this.options.threadId = undefined;
+              threadResult = await this.transport.call("thread/start", {
+                model: this.options.model,
+                cwd: this.options.cwd || "",
+                approvalPolicy: this.mapApprovalPolicy(this.currentPermissionMode),
+                sandbox: this.mapSandboxPolicy(this.currentPermissionMode),
+              }) as { thread: { id: string }; model?: string; model_provider?: string };
+              this.threadId = threadResult.thread.id;
+            }
           } else {
             threadResult = await this.transport.call("thread/start", {
               model: this.options.model,
@@ -727,10 +811,19 @@ export class CodexAdapter {
         break; // We already got the thread ID from the RPC response
 
       case "thread/status/changed": {
-        const status = params.status as string;
-        if (status === "running") {
+        // v0.114+: status is an object { type: "active"|"idle"|"systemError"|"notLoaded", activeFlags?: [] }
+        // Legacy: status was a plain string
+        const rawStatus = params.status;
+        const statusType = typeof rawStatus === "object" && rawStatus !== null
+          ? (rawStatus as Record<string, unknown>).type as string
+          : rawStatus as string;
+
+        if (statusType === "active" || statusType === "running") {
           this.emit({ type: "status_change", status: "running" });
-        } else if (status === "idle" || status === "completed") {
+        } else if (statusType === "idle" || statusType === "completed" || statusType === "notLoaded") {
+          this.emit({ type: "status_change", status: "idle" });
+        } else if (statusType === "systemError") {
+          this.emit({ type: "error", message: "Codex reported a system error" } as BrowserIncomingMessage);
           this.emit({ type: "status_change", status: "idle" });
         }
         // Extract model if reported in status
@@ -755,12 +848,19 @@ export class CodexAdapter {
         // Update turn count
         this.turnCount++;
 
-        // Extract usage from turn/completed
-        const status = params.status as string;
+        // v0.114+: status is in params.turn.status; legacy: params.status
+        const turn = params.turn as { status?: string; error?: { message?: string } } | undefined;
+        const status = turn?.status ?? params.status as string ?? "completed";
+        // Legacy: params.usage; v0.114+: usage arrives via thread/tokenUsage/updated
         const usage = params.usage as Record<string, number> | undefined;
         if (usage) {
           this.cumulativeInputTokens += usage.inputTokens ?? 0;
           this.cumulativeOutputTokens += usage.outputTokens ?? 0;
+        }
+
+        // Surface turn errors
+        if (turn?.error?.message) {
+          this.emit({ type: "error", message: turn.error.message } as BrowserIncomingMessage);
         }
 
         // Build a synthetic result message
@@ -821,6 +921,7 @@ export class CodexAdapter {
       // ── Reasoning / thinking ──
       case "item/reasoning/textDelta":
       case "item/reasoning/textSummaryDelta":
+      case "item/reasoning/summaryTextDelta":
         this.handleReasoningDelta(params);
         break;
 
@@ -858,7 +959,8 @@ export class CodexAdapter {
       }
 
       case "codex/event/mcp_startup_complete":
-        // MCP servers finished loading — could fetch server list in the future
+      case "codex/event/mcp_startup_update":
+        // MCP servers loading / finished loading
         break;
 
       case "codex/event/user_message":
@@ -872,12 +974,50 @@ export class CodexAdapter {
         break;
       }
 
+      // v0.114+: model rerouted — update active model
+      case "model/rerouted": {
+        const toModel = params.toModel as string | undefined;
+        if (toModel) {
+          this.activeModel = toModel;
+          this.emitSessionUpdate({ model: toModel });
+        }
+        break;
+      }
+
+      // v0.114+: context compacted via notification (not just item)
+      case "thread/compacted":
+        this.emitSessionUpdate({ is_compacting: false });
+        break;
+
+      // v0.114+: hooks, plans, diffs, server request resolved — informational
+      case "hook/started":
+      case "hook/completed":
+      case "turn/diff/updated":
+      case "turn/plan/updated":
+      case "item/plan/delta":
+      case "serverRequest/resolved":
+      case "deprecationNotice":
+      case "configWarning":
+      case "thread/started":
+      case "thread/closed":
+      case "thread/archived":
+      case "thread/unarchived":
+      case "thread/name/updated":
+      case "skills/changed":
+      case "item/mcpToolCall/progress":
+        // Known notifications — no action needed
+        break;
+
       default:
         // Silently ignore known event prefixes, log truly unknown ones
         if (!method.startsWith("account/")
           && !method.startsWith("codex/event/")
           && !method.startsWith("rawResponseItem/")
-          && method !== "turn/diff/updated") {
+          && !method.startsWith("fuzzyFileSearch/")
+          && !method.startsWith("thread/realtime/")
+          && !method.startsWith("app/")
+          && !method.startsWith("mcpServer/")
+          && !method.startsWith("windows")) {
           console.log(`[codex-adapter] Unhandled notification: ${method}`);
         }
         break;
@@ -918,12 +1058,14 @@ export class CodexAdapter {
         const requestId = randomUUID();
         this.pendingApprovals.set(requestId, id);
 
-        const serverName = params.serverName as string || "";
-        const toolName = params.toolName as string || "";
+        // v0.114+: `server`/`tool`/`arguments`; legacy: `serverName`/`toolName`/`args`
+        const serverName = (params.server ?? params.serverName) as string || "";
+        const toolName = (params.tool ?? params.toolName) as string || "";
+        const toolArgs = (params.arguments ?? params.args) as Record<string, unknown> || {};
         const perm: PermissionRequest = {
           request_id: requestId,
           tool_name: `mcp:${serverName}:${toolName}`,
-          input: (params.args as Record<string, unknown>) || {},
+          input: toolArgs,
           description: `MCP tool: ${serverName}/${toolName}`,
           tool_use_id: (params.itemId as string) || randomUUID(),
           timestamp: Date.now(),
@@ -955,10 +1097,77 @@ export class CodexAdapter {
         break;
       }
 
+      // v0.114+: permissions approval request
+      case "item/permissions/requestApproval": {
+        const requestId = randomUUID();
+        this.pendingApprovals.set(requestId, id);
+        const reason = params.reason as string || "Permission request";
+        const permissions = params.permissions as Record<string, unknown> || {};
+        const perm: PermissionRequest = {
+          request_id: requestId,
+          tool_name: "Permissions",
+          input: permissions,
+          description: reason,
+          tool_use_id: (params.itemId as string) || randomUUID(),
+          timestamp: Date.now(),
+        };
+        this.emit({ type: "permission_request", request: perm });
+        break;
+      }
+
+      // v0.114+: tool requests user input — treat as permission request
+      case "item/tool/requestUserInput": {
+        const requestId = randomUUID();
+        this.pendingApprovals.set(requestId, id);
+        const questions = params.questions as Array<{ text?: string }> | undefined;
+        const desc = questions?.map((q) => q.text).filter(Boolean).join("; ") || "Tool requests input";
+        const perm: PermissionRequest = {
+          request_id: requestId,
+          tool_name: "UserInput",
+          input: { questions: questions || [] },
+          description: desc,
+          tool_use_id: (params.itemId as string) || randomUUID(),
+          timestamp: Date.now(),
+        };
+        this.emit({ type: "permission_request", request: perm });
+        break;
+      }
+
+      // v0.114+: MCP server elicitation
+      case "mcpServer/elicitation/request": {
+        const requestId = randomUUID();
+        this.pendingApprovals.set(requestId, id);
+        const serverName = params.serverName as string || "";
+        const message = params.message as string || "MCP server elicitation";
+        const perm: PermissionRequest = {
+          request_id: requestId,
+          tool_name: `mcp:${serverName}:elicitation`,
+          input: params,
+          description: message,
+          tool_use_id: randomUUID(),
+          timestamp: Date.now(),
+        };
+        this.emit({ type: "permission_request", request: perm });
+        break;
+      }
+
+      // v0.114+: dynamic tool call — execute client-side
+      case "item/tool/call": {
+        // We don't support client-side dynamic tools — decline gracefully
+        console.log(`[codex-adapter] Dynamic tool call not supported: ${params.tool}`);
+        this.transport.respond(id, { error: "Dynamic tools not supported by this client" }).catch(() => {});
+        break;
+      }
+
+      // Account token refresh — respond silently
+      case "account/chatgptAuthTokens/refresh":
+        this.transport.respond(id, {}).catch(() => {});
+        break;
+
       default:
-        // Unknown request — auto-accept to avoid blocking
-        console.warn(`[codex-adapter] Unknown request method: ${method}, auto-accepting`);
-        this.transport.respond(id, { decision: "accept" }).catch(() => {});
+        // Unknown request — log and reject to avoid silently approving dangerous operations
+        console.warn(`[codex-adapter] Unknown request method: ${method}, rejecting`);
+        this.transport.respond(id, { decision: "decline" }).catch(() => {});
         break;
     }
   }
@@ -1018,11 +1227,11 @@ export class CodexAdapter {
         const toolUseId = item.id;
         if (!this.emittedToolUseIds.has(toolUseId)) {
           this.emittedToolUseIds.add(toolUseId);
-          const serverName = item.serverName as string || "";
-          const toolName = item.toolName as string || "";
-          this.emitToolUse(toolUseId, `mcp:${serverName}:${toolName}`, {
-            ...(item.args as Record<string, unknown> || {}),
-          });
+          // v0.114+: `server`/`tool`/`arguments`; legacy: `serverName`/`toolName`/`args`
+          const serverName = (item.server ?? item.serverName) as string || "";
+          const toolName = (item.tool ?? item.toolName) as string || "";
+          const toolArgs = (item.arguments ?? item.args) as Record<string, unknown> || {};
+          this.emitToolUse(toolUseId, `mcp:${serverName}:${toolName}`, { ...toolArgs });
         }
         break;
       }
@@ -1069,7 +1278,8 @@ export class CodexAdapter {
 
         // Emit tool_result with output
         const exitCode = item.exitCode as number | undefined;
-        const output = item.output as string | undefined;
+        // v0.114+: `aggregatedOutput`; legacy: `output`
+        const output = (item.aggregatedOutput ?? item.output) as string | undefined;
         const isError = item.status === "failed" || (exitCode !== undefined && exitCode !== 0);
         const resultText = output
           ? output.substring(0, 2000) + (output.length > 2000 ? "\n…truncated" : "")
@@ -1128,12 +1338,17 @@ export class CodexAdapter {
         const toolUseId = item.id;
         if (!this.emittedToolUseIds.has(toolUseId)) {
           this.emittedToolUseIds.add(toolUseId);
-          const serverName = item.serverName as string || "";
-          const toolName = item.toolName as string || "";
+          // v0.114+: `server`/`tool`; legacy: `serverName`/`toolName`
+          const serverName = (item.server ?? item.serverName) as string || "";
+          const toolName = (item.tool ?? item.toolName) as string || "";
           this.emitToolUse(toolUseId, `mcp:${serverName}:${toolName}`, {});
         }
         const isError = item.status === "failed";
-        const output = item.output as string || item.error as string || "MCP call completed";
+        // v0.114+: error is { message: string }; result is { content: [...] }
+        const errorObj = item.error as { message?: string } | string | undefined;
+        const errorStr = typeof errorObj === "string" ? errorObj : errorObj?.message;
+        const resultObj = item.result as { content?: unknown[] } | undefined;
+        const output = item.output as string || errorStr || (resultObj?.content ? JSON.stringify(resultObj.content) : undefined) || "MCP call completed";
         this.emitToolResult(toolUseId, typeof output === "string" ? output : JSON.stringify(output), isError);
         break;
       }
@@ -1226,11 +1441,39 @@ export class CodexAdapter {
   }
 
   private handleTokenUsageUpdated(params: Record<string, unknown>): void {
-    const inputTokens = (params.inputTokens as number) || 0;
-    const outputTokens = (params.outputTokens as number) || 0;
-    const modelContextWindow = (params.modelContextWindow as number) || 128_000;
-    const costUsd = (params.costUsd as number) || 0;
-    const model = params.model as string | undefined;
+    // v0.114+: params.tokenUsage = { total: { totalTokens, inputTokens, ... }, last: {...}, modelContextWindow }
+    // Legacy: flat params.inputTokens, params.outputTokens, etc.
+    const tokenUsage = params.tokenUsage as {
+      total?: { totalTokens?: number; inputTokens?: number; outputTokens?: number; cachedInputTokens?: number; reasoningOutputTokens?: number };
+      last?: { totalTokens?: number; inputTokens?: number; outputTokens?: number };
+      modelContextWindow?: number | null;
+    } | undefined;
+
+    let inputTokens: number;
+    let outputTokens: number;
+    let modelContextWindow: number;
+    let costUsd: number;
+    let model: string | undefined;
+
+    if (tokenUsage?.total) {
+      // v0.114+ format
+      inputTokens = tokenUsage.total.inputTokens ?? 0;
+      outputTokens = tokenUsage.total.outputTokens ?? 0;
+      modelContextWindow = tokenUsage.modelContextWindow ?? 128_000;
+      costUsd = (params.costUsd as number) || 0;
+      model = params.model as string | undefined;
+
+      // Update cumulative counters from total
+      this.cumulativeInputTokens = inputTokens;
+      this.cumulativeOutputTokens = outputTokens;
+    } else {
+      // Legacy flat format
+      inputTokens = (params.inputTokens as number) || 0;
+      outputTokens = (params.outputTokens as number) || 0;
+      modelContextWindow = (params.modelContextWindow as number) || 128_000;
+      costUsd = (params.costUsd as number) || 0;
+      model = params.model as string | undefined;
+    }
 
     // Update cumulative cost if provided
     if (costUsd > 0) {
@@ -1254,7 +1497,8 @@ export class CodexAdapter {
   // ── Helper methods ──────────────────────────────────────────────────────
 
   private emit(msg: BrowserIncomingMessage): void {
-    this.browserMessageCb?.(msg);
+    if (!this.browserMessageCb) return;
+    this.browserMessageCb(msg);
   }
 
   private emitSessionUpdate(fields: Partial<SessionState>): void {

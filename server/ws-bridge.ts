@@ -170,7 +170,8 @@ export class WsBridge {
   /** Return the session ID that currently has a CLI connection, if any. */
   getActiveSessionId(): string | null {
     for (const [id, session] of this.sessions) {
-      if (session.cliSocket) return id;
+      // CLI WebSocket (Claude) or Codex adapter (stdio)
+      if (session.cliSocket || this.codexAdapters.has(id)) return id;
     }
     return null;
   }
@@ -352,8 +353,8 @@ export class WsBridge {
       this.sendToBrowser(ws, { type: "permission_request", request: perm });
     }
 
-    // Notify if CLI is not connected
-    if (!session.cliSocket) {
+    // Notify if CLI is not connected (skip for Codex — it uses stdio, not WebSocket)
+    if (!session.cliSocket && !this.codexAdapters.has(sessionId)) {
       this.sendToBrowser(ws, { type: "cli_disconnected" });
     }
   }
@@ -1128,6 +1129,10 @@ export class WsBridge {
         WsBridge.EVENT_BUFFER_LIMIT,
       ),
     );
+
+    if (session.browserSockets.size === 0 && (globalThis as Record<string, unknown>).PNEUMA_DEBUG) {
+      console.warn(`[ws-bridge] No browser sockets for session ${session.id} — dropping ${msg.type}`);
+    }
 
     for (const ws of session.browserSockets) {
       try {
