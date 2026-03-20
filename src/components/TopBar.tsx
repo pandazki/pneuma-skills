@@ -223,6 +223,13 @@ export default function TopBar() {
     }
   }, [activeTab, scheduleAvailable, setActiveTab]);
 
+  // Auto-switch to Chat when entering replay mode
+  useEffect(() => {
+    if (replayMode && activeTab !== "chat") {
+      setActiveTab("chat");
+    }
+  }, [replayMode, activeTab, setActiveTab]);
+
   const handleCreateEmpty = useCallback(async () => {
     if (!createEmpty) return;
     const store = useStore.getState();
@@ -309,13 +316,15 @@ export default function TopBar() {
       {/* Center: tabs */}
       <div className="flex items-center gap-1 mx-auto bg-cc-bg/80 border border-cc-border/50 rounded-full p-1 shadow-inner">
         {visibleTabs.map((tab) => {
-          const disabled = tab.id === "diff" && gitAvailable === false;
+          const disabledByReplay = replayMode && tab.id !== "chat";
+          const disabledByGit = tab.id === "diff" && gitAvailable === false;
+          const disabled = disabledByReplay || disabledByGit;
           const badge = tab.id === "schedules" && cronJobCount > 0 ? cronJobCount : 0;
           return (
             <button
               key={tab.id}
               onClick={() => !disabled && setActiveTab(tab.id)}
-              title={disabled ? "Diffs require a git repository. Run `git init` in the workspace." : undefined}
+              title={disabledByReplay ? "Not available in replay mode" : disabledByGit ? "Diffs require a git repository. Run `git init` in the workspace." : undefined}
               className={`relative px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${disabled
                 ? "text-cc-muted/30 cursor-not-allowed"
                 : activeTab === tab.id

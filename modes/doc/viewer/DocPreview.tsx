@@ -227,8 +227,8 @@ async function saveFile(path: string, content: string): Promise<boolean> {
 export default function DocPreview({
   files,
   selection,
-  onSelect,
-  mode: previewMode,
+  onSelect: rawOnSelect,
+  mode: rawPreviewMode,
   imageVersion,
   actionRequest,
   onActionResult,
@@ -238,7 +238,11 @@ export default function DocPreview({
   activeFile,
   navigateRequest,
   onNavigateComplete,
+  readonly,
 }: ViewerPreviewProps) {
+  // Readonly mode: force view, suppress selection
+  const previewMode = readonly ? "view" : rawPreviewMode;
+  const onSelect = readonly ? (() => {}) : rawOnSelect;
 
   // Notify framework of initial active file when files arrive and nothing selected
   useEffect(() => {
@@ -652,6 +656,7 @@ export default function DocPreview({
           onToggleTheme={toggleTheme}
           previewMode={previewMode}
           onSetPreviewMode={setPreviewMode}
+          readonly={readonly}
         />
         <div className="flex items-center justify-center flex-1 text-neutral-500">
           No markdown files in workspace
@@ -941,11 +946,13 @@ function PreviewToolbar({
   onToggleTheme,
   previewMode,
   onSetPreviewMode,
+  readonly,
 }: {
   theme: PreviewTheme;
   onToggleTheme: () => void;
   previewMode: PreviewMode;
   onSetPreviewMode: (mode: PreviewMode) => void;
+  readonly?: boolean;
 }) {
   const isDark = theme === "dark";
 
@@ -958,7 +965,7 @@ function PreviewToolbar({
 
   return (
     <div className="flex items-center justify-end gap-1.5 px-3 py-1.5 border-b border-cc-border bg-cc-card/50 shrink-0">
-      <div className="flex items-center bg-cc-bg/60 rounded-md p-0.5">
+      {!readonly && <div className="flex items-center bg-cc-bg/60 rounded-md p-0.5">
         {modes.map((m) => (
           <button
             key={m.value}
@@ -979,8 +986,8 @@ function PreviewToolbar({
             <span>{m.label}</span>
           </button>
         ))}
-      </div>
-      <div className="w-px h-4 bg-cc-border mx-0.5" />
+      </div>}
+      {!readonly && <div className="w-px h-4 bg-cc-border mx-0.5" />}
       <button
         onClick={onToggleTheme}
         className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"

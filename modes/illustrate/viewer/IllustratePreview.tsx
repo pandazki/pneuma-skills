@@ -582,12 +582,14 @@ function CanvasToolbar({
   imageCount,
   rowCount,
   selectionCount,
+  readonly,
 }: {
   previewMode: string;
   onSetPreviewMode: (mode: PreviewMode) => void;
   imageCount: number;
   rowCount: number;
   selectionCount?: number;
+  readonly?: boolean;
 }) {
   const modes: { value: PreviewMode; label: string; icon: React.ReactNode }[] = [
     { value: "view", label: "View", icon: <EyeIcon /> },
@@ -618,8 +620,8 @@ function CanvasToolbar({
         )}
       </div>
 
-      {/* Right: mode toggle */}
-      <div style={{ display: "flex", alignItems: "center", gap: 2, background: `${COLORS.bg}99`, borderRadius: 6, padding: 2 }}>
+      {/* Right: mode toggle — hidden in readonly (replay) mode */}
+      {!readonly && <div style={{ display: "flex", alignItems: "center", gap: 2, background: `${COLORS.bg}99`, borderRadius: 6, padding: 2 }}>
         {modes.map((m) => {
           const isActive = previewMode === m.value;
           return (
@@ -646,7 +648,7 @@ function CanvasToolbar({
             </button>
           );
         })}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -1148,10 +1150,14 @@ function EmptyCanvas() {
 
 function CanvasInner(props: ViewerPreviewProps) {
   const {
-    files, selection, onSelect, mode: previewMode, imageVersion,
-    actionRequest, onActionResult, onActiveFileChange, onNotifyAgent,
-    navigateRequest, onNavigateComplete,
+    files, selection, onSelect: rawOnSelect, mode: rawPreviewMode, imageVersion,
+    actionRequest, onActionResult, onActiveFileChange, onNotifyAgent: rawOnNotifyAgent,
+    navigateRequest, onNavigateComplete, readonly,
   } = props;
+  // Readonly mode: force view, suppress selection and agent notifications
+  const previewMode = readonly ? "view" : rawPreviewMode;
+  const onSelect = readonly ? (() => {}) : rawOnSelect;
+  const onNotifyAgent = readonly ? undefined : rawOnNotifyAgent;
 
   const annotations = useStore((s) => s.annotations);
   const addAnnotation = useStore((s) => s.addAnnotation);
@@ -1482,7 +1488,7 @@ function CanvasInner(props: ViewerPreviewProps) {
   if (!manifest) {
     return (
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: COLORS.bg }}>
-        <CanvasToolbar previewMode={previewMode} onSetPreviewMode={setPreviewMode} imageCount={0} rowCount={0} />
+        <CanvasToolbar previewMode={previewMode} onSetPreviewMode={setPreviewMode} imageCount={0} rowCount={0} readonly={readonly} />
         <EmptyCanvas />
       </div>
     );
@@ -1491,7 +1497,7 @@ function CanvasInner(props: ViewerPreviewProps) {
   if (manifest.rows.length === 0) {
     return (
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: COLORS.bg }}>
-        <CanvasToolbar previewMode={previewMode} onSetPreviewMode={setPreviewMode} imageCount={0} rowCount={0} />
+        <CanvasToolbar previewMode={previewMode} onSetPreviewMode={setPreviewMode} imageCount={0} rowCount={0} readonly={readonly} />
         <EmptyCanvas />
       </div>
     );
@@ -1505,6 +1511,7 @@ function CanvasInner(props: ViewerPreviewProps) {
         imageCount={imageCount}
         rowCount={manifest.rows.length}
         selectionCount={previewMode === "select" ? selectedFiles.size : undefined}
+        readonly={readonly}
       />
       <style dangerouslySetInnerHTML={{ __html: RF_DARK_OVERRIDES }} />
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
