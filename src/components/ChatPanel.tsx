@@ -100,6 +100,7 @@ export default function ChatPanel() {
   const streaming = useStore((s) => s.streaming);
   const activity = useStore((s) => s.activity);
   const cliConnected = useStore((s) => s.cliConnected);
+  const replayMode = useStore((s) => s.replayMode);
   const permSize = useStore((s) => s.pendingPermissions.size);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -110,13 +111,15 @@ export default function ChatPanel() {
 
   return (
     <div className="flex flex-col h-full relative">
-      {/* Agent status bar (floating pill) */}
-      <div className="absolute top-4 right-4 z-20 flex items-center gap-3 px-4 py-1.5 bg-cc-surface/60 backdrop-blur-md border border-white/5 rounded-full shadow-sm">
-        <StatusDot />
-        <SessionInfo />
-      </div>
+      {/* Agent status bar (floating pill) — hide in replay mode */}
+      {!replayMode && (
+        <div className="absolute top-4 right-4 z-10 flex items-center gap-3 px-4 py-1.5 bg-cc-surface/60 backdrop-blur-md border border-white/5 rounded-full shadow-sm">
+          <StatusDot />
+          <SessionInfo />
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto bg-grid-pattern p-4 pt-16 space-y-4 pb-36">
-        {messages.length === 0 && !streaming && !activity && (
+        {messages.length === 0 && !streaming && !activity && !replayMode && (
           <div className="text-cc-muted text-sm text-center mt-8">
             {cliConnected ? "Send a message to start editing" : "Connecting to Claude..."}
           </div>
@@ -132,10 +135,12 @@ export default function ChatPanel() {
         {streaming ? <StreamingText /> : activity ? <ActivityIndicator /> : null}
         <div ref={bottomRef} className="h-4" />
       </div>
-      <div className="absolute bottom-4 left-4 right-4 z-10 space-y-2">
-        <PermissionBanner />
-        <ChatInput />
-      </div>
+      {!replayMode && (
+        <div className="absolute bottom-4 left-4 right-4 z-10 space-y-2">
+          <PermissionBanner />
+          <ChatInput />
+        </div>
+      )}
     </div>
   );
 }

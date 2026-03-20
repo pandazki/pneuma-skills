@@ -18,6 +18,7 @@
 | [ADR-010](./adr-010-cli-entry-startup.md) | CLI 入口与启动流程 | Accepted | 2026-02-26 |
 | [ADR-011](./adr-011-slide-mode-mvp.md) | Slide Mode MVP 详细设计 | Accepted | 2026-02-26 |
 | [ADR-012](./adr-012-backend-runtime-abstraction.md) | Backend Registry 与运行时会话抽象 | Accepted | 2026-03-10 |
+| [ADR-013](./adr-013-history-sharing-replay.md) | History 分享与重放 | Proposed | 2026-03-20 |
 
 ## 约定
 

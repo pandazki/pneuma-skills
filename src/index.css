@@ -372,6 +372,16 @@ img {
   }
 }
 
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
 @keyframes text-gradient-flow {
   0% {
     background-position: 0% 50%;

@@ -8,6 +8,7 @@ import { createChatSlice } from "./chat-slice.js";
 import { createModeSlice } from "./mode-slice.js";
 import { createViewerSlice } from "./viewer-slice.js";
 import { createWorkspaceSlice } from "./workspace-slice.js";
+import { createReplaySlice } from "./replay-slice.js";
 
 export const useStore = create<AppState>()((...a) => ({
   ...createUiSlice(...a),
@@ -17,6 +18,7 @@ export const useStore = create<AppState>()((...a) => ({
   ...createModeSlice(...a),
   ...createViewerSlice(...a),
   ...createWorkspaceSlice(...a),
+  ...createReplaySlice(...a),
 }));
 
 // ── Viewer state persistence (debounced) ──────────────────────────────────

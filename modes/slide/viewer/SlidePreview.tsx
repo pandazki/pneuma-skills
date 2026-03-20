@@ -459,17 +459,22 @@ function AnnotationPopover({
 export default function SlidePreview({
   files,
   selection,
-  onSelect,
-  mode: previewMode,
+  onSelect: rawOnSelect,
+  mode: rawPreviewMode,
   imageVersion,
   initParams,
   onActiveFileChange,
   actionRequest,
   onActionResult,
-  onNotifyAgent,
+  onNotifyAgent: rawOnNotifyAgent,
   navigateRequest,
   onNavigateComplete,
+  readonly,
 }: ViewerPreviewProps) {
+  // Readonly mode: force view, suppress selection and agent notifications
+  const previewMode = readonly ? "view" : rawPreviewMode;
+  const onSelect = readonly ? (() => {}) : rawOnSelect;
+  const onNotifyAgent = readonly ? undefined : rawOnNotifyAgent;
   const setPreviewMode = useStore((s) => s.setPreviewMode);
   const pushUserAction = useStore((s) => s.pushUserAction);
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
@@ -1358,8 +1363,8 @@ export default function SlidePreview({
       slides={slides}
       activeIndex={activeSlideIndex}
       onSelect={goToSlide}
-      onReorder={handleReorder}
-      onDelete={isEditMode ? handleDeleteSlide : undefined}
+      onReorder={readonly ? () => {} : handleReorder}
+      onDelete={isEditMode && !readonly ? handleDeleteSlide : undefined}
       thumbnailImages={thumbnailImages}
       position={navPosition}
       virtualWidth={VIRTUAL_W}
@@ -1521,6 +1526,7 @@ export default function SlidePreview({
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}
         onZoomFit={zoomFit}
+        readonly={readonly}
       />
       {navPosition === "left" ? (
         <div className="flex flex-1 min-h-0">
@@ -1874,6 +1880,7 @@ function SlideToolbar({
   onZoomOut,
   onZoomFit,
   onScaffold,
+  readonly,
 }: {
   previewMode: PreviewMode;
   onSetPreviewMode: (mode: PreviewMode) => void;
@@ -1892,6 +1899,7 @@ function SlideToolbar({
   onZoomOut: () => void;
   onZoomFit: () => void;
   onScaffold?: () => void;
+  readonly?: boolean;
 }) {
   const [isJumping, setIsJumping] = useState(false);
   const [jumpValue, setJumpValue] = useState("");
@@ -2029,7 +2037,7 @@ function SlideToolbar({
 
       {/* Right: mode toggle + fullscreen */}
       <div className="flex items-center gap-1.5">
-        <div className="flex items-center bg-cc-bg/60 rounded-md p-0.5">
+        {!readonly && <div className="flex items-center bg-cc-bg/60 rounded-md p-0.5">
           {modes.map((m) => (
             <button
               key={m.value}
@@ -2053,8 +2061,8 @@ function SlideToolbar({
               <span>{m.label}</span>
             </button>
           ))}
-        </div>
-        <div className="w-px h-4 bg-cc-border" />
+        </div>}
+        {!readonly && <div className="w-px h-4 bg-cc-border" />}
         <button
           onClick={onToggleGridView}
           className={`flex items-center justify-center w-7 h-7 rounded transition-colors cursor-pointer ${

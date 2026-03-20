@@ -131,8 +131,8 @@ function serializeToFile(elements: any[], appState: any, files: any): string {
 export default function DrawPreview({
   files,
   selection,
-  onSelect,
-  mode: previewMode,
+  onSelect: rawOnSelect,
+  mode: rawPreviewMode,
   imageVersion,
   actionRequest,
   onActionResult,
@@ -140,7 +140,11 @@ export default function DrawPreview({
   activeFile,
   navigateRequest,
   onNavigateComplete,
+  readonly,
 }: ViewerPreviewProps) {
+  // Readonly mode: force view, suppress selection and editing
+  const previewMode = readonly ? "view" : rawPreviewMode;
+  const onSelect = readonly ? (() => {}) : rawOnSelect;
   const setPreviewMode = useStore((s) => s.setPreviewMode);
   const pushUserAction = useStore((s) => s.pushUserAction);
   const annotations = useStore((s) => s.annotations);
@@ -673,6 +677,7 @@ export default function DrawPreview({
           onToggleTheme={toggleTheme}
           previewMode={previewMode}
           onSetPreviewMode={setPreviewMode}
+          readonly={readonly}
         />
         <div className="flex items-center justify-center flex-1 text-neutral-500">
           Loading Excalidraw...
@@ -689,6 +694,7 @@ export default function DrawPreview({
           onToggleTheme={toggleTheme}
           previewMode={previewMode}
           onSetPreviewMode={setPreviewMode}
+          readonly={readonly}
         />
         <div className="flex items-center justify-center flex-1 text-neutral-500">
           No .excalidraw files in workspace
@@ -705,6 +711,7 @@ export default function DrawPreview({
         previewMode={previewMode}
         onSetPreviewMode={setPreviewMode}
         filePath={activeFilePath || undefined}
+        readonly={readonly}
       />
       <div
         ref={canvasContainerRef}
@@ -754,12 +761,14 @@ function DrawToolbar({
   previewMode,
   onSetPreviewMode,
   filePath,
+  readonly,
 }: {
   theme: "light" | "dark";
   onToggleTheme: () => void;
   previewMode: PreviewMode;
   onSetPreviewMode: (mode: PreviewMode) => void;
   filePath?: string;
+  readonly?: boolean;
 }) {
   const isDark = theme === "dark";
 
@@ -780,7 +789,7 @@ function DrawToolbar({
         )}
       </div>
       <div className="flex items-center gap-1.5">
-        <div className="flex items-center bg-cc-bg/60 rounded-md p-0.5">
+        {!readonly && <div className="flex items-center bg-cc-bg/60 rounded-md p-0.5">
           {modes.map((m) => (
             <button
               key={m.value}
@@ -801,8 +810,8 @@ function DrawToolbar({
               <span>{m.label}</span>
             </button>
           ))}
-        </div>
-        <div className="w-px h-4 bg-cc-border mx-0.5" />
+        </div>}
+        {!readonly && <div className="w-px h-4 bg-cc-border mx-0.5" />}
         <button
           onClick={onToggleTheme}
           className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"

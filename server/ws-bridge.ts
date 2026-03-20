@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { enqueueCheckpoint, isShadowGitAvailable } from "./shadow-git.js";
 import type { ServerWebSocket } from "bun";
 import type {
   CLIMessage,
@@ -77,6 +78,7 @@ export class WsBridge {
 
     attachCodexAdapterHandlers(sessionId, session, adapter, {
       broadcastToBrowsers: (s, msg) => this.broadcastToBrowsers(s, msg),
+      workspace: this.workspace,
     });
 
     // Wire session metadata (thread ID) back to the bridge
@@ -641,6 +643,12 @@ export class WsBridge {
         total_lines_removed: session.state.total_lines_removed,
       },
     });
+
+    // Capture shadow git checkpoint after turn completes
+    if (this.workspace && isShadowGitAvailable(this.workspace)) {
+      const turnIndex = session.state.num_turns ?? 0;
+      enqueueCheckpoint(this.workspace, turnIndex);
+    }
 
   }
 

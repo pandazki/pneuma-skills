@@ -570,12 +570,14 @@ function ViewportToolbar({
   previewMode,
   onSetPreviewMode,
   onExport,
+  readonly,
 }: {
   activePreset: string;
   onPresetChange: (presetId: string) => void;
   previewMode: PreviewMode;
   onSetPreviewMode: (mode: PreviewMode) => void;
   onExport: () => void;
+  readonly?: boolean;
 }) {
   const currentPreset = VIEWPORT_PRESETS.find((p) => p.id === activePreset);
   const showDimensions = currentPreset && currentPreset.width > 0;
@@ -640,8 +642,8 @@ function ViewportToolbar({
         )}
       </div>
 
-      {/* Center: Mode toggle */}
-      <div
+      {/* Center: Mode toggle — hidden in readonly (replay) mode */}
+      {!readonly && <div
         style={{
           display: "flex",
           alignItems: "center",
@@ -684,7 +686,7 @@ function ViewportToolbar({
             <span>{m.label}</span>
           </button>
         ))}
-      </div>
+      </div>}
 
       {/* Right: Export */}
       <button
@@ -796,17 +798,22 @@ function AnnotationPopover({
 export default function WebPreview({
   files,
   selection,
-  onSelect,
-  mode: previewMode,
+  onSelect: rawOnSelect,
+  mode: rawPreviewMode,
   contentVersion,
   imageVersion,
   activeFile,
   onActiveFileChange,
-  onNotifyAgent,
+  onNotifyAgent: rawOnNotifyAgent,
   navigateRequest,
   onNavigateComplete,
   commands: manifestCommands,
+  readonly,
 }: ViewerPreviewProps) {
+  // Readonly mode: force view, suppress selection and agent notifications
+  const previewMode = readonly ? "view" : rawPreviewMode;
+  const onSelect = readonly ? (() => {}) : rawOnSelect;
+  const onNotifyAgent = readonly ? undefined : rawOnNotifyAgent;
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedFile, setSelectedFile] = useState<string>("");
@@ -1206,8 +1213,8 @@ export default function WebPreview({
 
   return (
     <div style={{ display: "flex", height: "100%", width: "100%", overflow: "hidden" }}>
-      {/* Command Bar */}
-      <div
+      {/* Command Bar — hidden in readonly (replay) mode */}
+      {!readonly && <div
         style={{
           width: commandBarCollapsed ? "36px" : "180px",
           minWidth: commandBarCollapsed ? "36px" : "180px",
@@ -1356,7 +1363,7 @@ export default function WebPreview({
 
         {/* Attribution Footer */}
         <ImpeccableAttribution collapsed={commandBarCollapsed} />
-      </div>
+      </div>}
 
       {/* Main Preview Area */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -1367,6 +1374,7 @@ export default function WebPreview({
           previewMode={previewMode}
           onSetPreviewMode={setPreviewMode}
           onExport={handleExport}
+          readonly={readonly}
         />
 
         {/* Iframe Preview Container */}
