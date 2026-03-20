@@ -8,6 +8,7 @@
 import { randomUUID } from "node:crypto";
 import { resolve, join, delimiter } from "node:path";
 import { existsSync, realpathSync, readFileSync } from "node:fs";
+import { spawn as nodeSpawn, type ChildProcess } from "node:child_process";
 import type { Subprocess } from "bun";
 import { resolveBinary, getEnrichedPath } from "../../server/path-resolver.js";
 import { CodexAdapter, StdioTransport } from "./codex-adapter.js";
@@ -65,6 +66,7 @@ function isTextScript(filePath: string): boolean {
 export class CodexCliLauncher {
   private sessions = new Map<string, CodexSessionInfo>();
   private processes = new Map<string, Subprocess>();
+  private nodeProcesses = new Map<string, ChildProcess>();
   private adapters = new Map<string, CodexAdapter>();
   private exitHandlers: ((sessionId: string, exitCode: number | null) => void)[] = [];
   private adapterCreatedHandlers: ((sessionId: string, adapter: CodexAdapter) => void)[] = [];
@@ -151,21 +153,26 @@ export class CodexCliLauncher {
 
     console.log(`[codex-launcher] Spawning session ${sessionId}: ${spawnCmd.join(" ")}`);
 
-    const proc = Bun.spawn(spawnCmd, {
+    // Use node:child_process instead of Bun.spawn to avoid Bun's ReadableStream
+    // prematurely closing stdout while the process is still alive.
+    const cleanEnv: Record<string, string> = {};
+    for (const [k, v] of Object.entries(spawnEnv)) {
+      if (v !== undefined) cleanEnv[k] = v;
+    }
+
+    const nodeProc = nodeSpawn(spawnCmd[0], spawnCmd.slice(1), {
       cwd: info.cwd,
-      env: spawnEnv,
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
+      env: cleanEnv,
+      stdio: ["pipe", "pipe", "inherit"],
     });
 
-    info.pid = proc.pid;
-    this.processes.set(sessionId, proc);
+    info.pid = nodeProc.pid;
+    this.nodeProcesses.set(sessionId, nodeProc);
 
-    // Pipe stderr for debugging
-    this.pipeStderr(sessionId, proc);
+    // Create a StdioTransport from Node.js streams
+    const transport = StdioTransport.fromNodeStreams(nodeProc.stdin!, nodeProc.stdout!);
 
-    // Create adapter — this handles init, thread start, and all JSON-RPC communication
+    // Create adapter with the transport directly
     const adapterOptions: CodexAdapterOptions = {
       model: options.model,
       cwd: info.cwd,
@@ -174,16 +181,16 @@ export class CodexCliLauncher {
       threadId: options.resumeThreadId,
       killProcess: async () => {
         try {
-          proc.kill("SIGTERM");
-          await Promise.race([
-            proc.exited,
-            new Promise((r) => setTimeout(r, 5000)),
-          ]);
+          nodeProc.kill("SIGTERM");
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(() => { nodeProc.kill("SIGKILL"); resolve(); }, 5000);
+            nodeProc.once("exit", () => { clearTimeout(timer); resolve(); });
+          });
         } catch {}
       },
     };
 
-    const adapter = new CodexAdapter(proc, sessionId, adapterOptions);
+    const adapter = new CodexAdapter(transport, sessionId, adapterOptions);
     this.adapters.set(sessionId, adapter);
 
     // Wire adapter callbacks
@@ -211,14 +218,15 @@ export class CodexCliLauncher {
     }
 
     // Monitor process exit
-    proc.exited.then((exitCode) => {
-      console.log(`[codex-launcher] Session ${sessionId} exited (code=${exitCode})`);
+    nodeProc.once("exit", (exitCode) => {
       const session = this.sessions.get(sessionId);
+      const uptime = session ? Math.round((Date.now() - session.createdAt) / 1000) : 0;
+      console.error(`[codex-launcher] Session ${sessionId} process exited (code=${exitCode}, uptime=${uptime}s, state=${session?.state})`);
       if (session) {
         session.state = "exited";
         session.exitCode = exitCode;
       }
-      this.processes.delete(sessionId);
+      this.nodeProcesses.delete(sessionId);
       this.adapters.delete(sessionId);
       for (const handler of this.exitHandlers) {
         try { handler(sessionId, exitCode); } catch {}
@@ -260,6 +268,20 @@ export class CodexCliLauncher {
       this.adapters.delete(sessionId);
     }
 
+    // Try node process first, then Bun process
+    const nodeProc = this.nodeProcesses.get(sessionId);
+    if (nodeProc) {
+      nodeProc.kill("SIGTERM");
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => { nodeProc.kill("SIGKILL"); resolve(); }, 5000);
+        nodeProc.once("exit", () => { clearTimeout(timer); resolve(); });
+      });
+      const session = this.sessions.get(sessionId);
+      if (session) { session.state = "exited"; session.exitCode = -1; }
+      this.nodeProcesses.delete(sessionId);
+      return true;
+    }
+
     const proc = this.processes.get(sessionId);
     if (!proc) return false;
 
@@ -292,7 +314,7 @@ export class CodexCliLauncher {
   }
 
   async killAll(): Promise<void> {
-    const ids = [...this.processes.keys()];
+    const ids = [...new Set([...this.processes.keys(), ...this.nodeProcesses.keys()])];
     await Promise.all(ids.map((id) => this.kill(id)));
   }
 
