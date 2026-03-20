@@ -5,6 +5,40 @@ import type { ChatMessage } from "./types";
 
 let playbackTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** Navigate viewer to the file being edited in a tool_use message */
+function navigateToEditedFile(msg: any) {
+  const content = msg.message?.content || msg.content || [];
+  const toolUseBlocks = content.filter((b: any) => b.type === "tool_use");
+  for (const tool of toolUseBlocks) {
+    const rawPath = tool.input?.file_path || tool.input?.path;
+    if (rawPath && typeof rawPath === "string") {
+      const s = useStore.getState();
+      // Match content set — handle both relative and absolute paths
+      const matchingCs = s.contentSets.find((cs: any) =>
+        rawPath.startsWith(cs.prefix + "/") || rawPath.includes("/" + cs.prefix + "/")
+      );
+      if (matchingCs && s.activeContentSet !== matchingCs.prefix) {
+        s.setActiveContentSet(matchingCs.prefix);
+      }
+      // Extract relative file path within content set
+      let itemPath = rawPath;
+      if (matchingCs) {
+        const csIdx = rawPath.indexOf(matchingCs.prefix + "/");
+        if (csIdx >= 0) {
+          itemPath = rawPath.slice(csIdx + matchingCs.prefix.length + 1);
+        }
+      }
+      const matchingItem = s.workspaceItems.find((item: any) =>
+        item.path === itemPath || rawPath.endsWith("/" + item.path)
+      );
+      if (matchingItem) {
+        s.setActiveFile(matchingItem.path);
+      }
+      break;
+    }
+  }
+}
+
 export function startPlayback() {
   const store = useStore.getState();
   if (!store.replayMode || store.isPlaying) return;
@@ -43,6 +77,7 @@ async function scheduleNext() {
   // Switch checkpoint when an assistant message contains Edit/Write tool_use
   // This makes files change as the agent describes its edits, not after
   const checkpoints = store.replayCheckpoints as any[];
+  let checkpointSwitched = false;
   if (checkpoints.length > 0 && msg.type === "assistant") {
     const hasFileEdit = (msg as any).message?.content?.some((b: any) =>
       b.type === "tool_use" && (b.name === "Edit" || b.name === "Write" || b.name === "NotebookEdit")
@@ -64,9 +99,15 @@ async function scheduleNext() {
         if (targetCp && store.activeCheckpointHash !== targetCp.hash) {
           await checkoutCheckpoint(targetCp.hash);
           store.setActiveCheckpoint(targetCp.hash);
+          checkpointSwitched = true;
         }
       }
     }
+  }
+
+  // Auto-navigate to edited file AFTER checkpoint loads (content sets need to be current)
+  if (checkpointSwitched && msg.type === "assistant") {
+    navigateToEditedFile(msg);
   }
 
   store.setCurrentSeq(currentSeq + 1);
@@ -121,26 +162,8 @@ function displayMessage(raw: any) {
     };
     store.appendMessage(chatMsg);
 
-    // Auto-navigate to file being edited (detect from tool_use blocks)
-    const toolUseBlocks = (msg.content || []).filter((b: any) => b.type === "tool_use");
-    for (const tool of toolUseBlocks) {
-      const filePath = tool.input?.file_path || tool.input?.path;
-      if (filePath && typeof filePath === "string") {
-        // Find matching content set and switch to it
-        const s = useStore.getState();
-        const matchingCs = s.contentSets.find((cs: any) => filePath.startsWith(cs.prefix));
-        if (matchingCs && s.activeContentSet !== matchingCs.prefix) {
-          s.setActiveContentSet(matchingCs.prefix);
-        }
-        // Set active file (strip content set prefix for the workspace item path)
-        const itemPath = matchingCs ? filePath.slice(matchingCs.prefix.length) : filePath;
-        const matchingItem = s.workspaceItems.find((item: any) => item.path === itemPath || item.path === filePath);
-        if (matchingItem) {
-          s.setActiveFile(matchingItem.path);
-        }
-        break; // Only switch to the first file reference
-      }
-    }
+    // Note: auto-navigation to edited files is done in scheduleNext() AFTER checkpoint loads,
+    // so content sets are up-to-date when we try to match paths.
   } else if (raw.type === "content_update" && raw.files) {
     // File updates — push to viewer
     store.updateFiles(raw.files);

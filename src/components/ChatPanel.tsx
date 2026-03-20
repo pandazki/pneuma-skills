@@ -113,7 +113,7 @@ export default function ChatPanel() {
     <div className="flex flex-col h-full relative">
       {/* Agent status bar (floating pill) — hide in replay mode */}
       {!replayMode && (
-        <div className="absolute top-4 right-4 z-20 flex items-center gap-3 px-4 py-1.5 bg-cc-surface/60 backdrop-blur-md border border-white/5 rounded-full shadow-sm">
+        <div className="absolute top-4 right-4 z-10 flex items-center gap-3 px-4 py-1.5 bg-cc-surface/60 backdrop-blur-md border border-white/5 rounded-full shadow-sm">
           <StatusDot />
           <SessionInfo />
         </div>

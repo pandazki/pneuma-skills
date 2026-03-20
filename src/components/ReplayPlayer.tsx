@@ -13,8 +13,8 @@ export function ReplayPlayer() {
   if (!replayMode || !replayMetadata) return null;
 
   const totalMessages = replayMessages.length;
-  const rawProgress = totalMessages > 1 ? currentSeq / (totalMessages - 1) : 0;
-  const progress = 0.02 + rawProgress * 0.96;
+  const rawProgress = totalMessages > 1 ? Math.min(1, currentSeq / (totalMessages - 1)) : 0;
+  const progress = rawProgress;
 
   // Checkpoint dots at Edit/Write message positions
   const checkpointPositions = (() => {
@@ -34,7 +34,7 @@ export function ReplayPlayer() {
         : (idx + 1) / (replayCheckpoints.length + 1);
       return {
         hash: cp.hash,
-        position: 0.02 + Math.max(0, Math.min(1, position)) * 0.96,
+        position: Math.max(0, Math.min(1, position)),
         label: cp.label || `Step ${idx + 1}`,
       };
     });
@@ -61,9 +61,9 @@ export function ReplayPlayer() {
   };
 
   return (
-    <div className="border-t border-cc-border bg-cc-surface/80 backdrop-blur">
+    <div className="border-t border-cc-border bg-cc-surface overflow-hidden shrink-0 w-full">
       {/* Progress bar */}
-      <div className="px-4 h-6 flex items-center">
+      <div className="px-4 h-6 flex items-center min-w-0">
         <div
           className="relative flex-1 h-6 flex items-center cursor-pointer"
           onClick={(e) => {
@@ -90,8 +90,8 @@ export function ReplayPlayer() {
       </div>
 
       {/* Controls */}
-      <div className="flex items-center gap-3 px-4 pb-2 text-xs">
-        <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-3 px-4 pb-2 text-xs min-w-0">
+        <div className="flex items-center gap-0.5 shrink-0">
           <button onClick={prevTurn} className="w-6 h-6 flex items-center justify-center rounded hover:bg-cc-hover text-cc-muted transition-colors cursor-pointer" title="Previous turn">
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M13 13V3L8 8zm-5 0V3L3 8z" /></svg>
           </button>
@@ -114,8 +114,8 @@ export function ReplayPlayer() {
           {playbackSpeed}x
         </button>
 
-        <div className="flex-1" />
-        <span className="text-cc-muted/60 text-[10px]">{replayMetadata.title}</span>
+        <div className="flex-1 min-w-0" />
+        <span className="text-cc-muted/60 text-[10px] truncate shrink min-w-0">{replayMetadata.title}</span>
         <ContinueWorkButton />
       </div>
     </div>

@@ -343,10 +343,13 @@ export default function App() {
             <LazyFallback />
           )}
         </div>
-        <Suspense fallback={null}>
-          <AgentBubble />
-        </Suspense>
-        {replayMode && <ReplayPlayer />}
+        {replayMode ? (
+          <ReplayPlayer />
+        ) : (
+          <Suspense fallback={null}>
+            <AgentBubble />
+          </Suspense>
+        )}
       </div>
     );
   }
@@ -361,7 +364,7 @@ export default function App() {
 
       <div className="relative z-10 flex flex-col flex-1 border border-cc-primary/20 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(249,115,22,0.15)] ring-1 ring-white/5 before:absolute before:inset-0 before:bg-cc-surface/40 before:backdrop-blur-3xl before:-z-10">
         <TopBar />
-        <Group orientation="horizontal" className="flex-1">
+        <Group orientation="horizontal" className="flex-1 min-h-0">
           <Panel defaultSize={65} minSize={30}>
             <div ref={previewRef} className="h-full w-full">
               {PreviewComponent ? (
@@ -376,8 +379,8 @@ export default function App() {
             <RightPanel />
           </Panel>
         </Group>
+        {replayMode && <ReplayPlayer />}
       </div>
-      {replayMode && <ReplayPlayer />}
     </div>
   );
 }
