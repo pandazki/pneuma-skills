@@ -303,6 +303,27 @@ export function startServer(options: ServerOptions) {
       return c.json({ ok: true });
     });
 
+    // Rename a session
+    app.patch("/api/sessions/:id", async (c) => {
+      const id = decodeURIComponent(c.req.param("id"));
+      const { sessionName } = await c.req.json<{ sessionName: string }>();
+      if (!sessionName || typeof sessionName !== "string") {
+        return c.json({ error: "sessionName is required" }, 400);
+      }
+      const registryPath = join(homedir(), ".pneuma", "sessions.json");
+      let sessions: Array<Record<string, unknown>> = [];
+      try {
+        sessions = JSON.parse(readFileSync(registryPath, "utf-8"));
+      } catch { }
+      const idx = sessions.findIndex((s) => s.id === id);
+      if (idx < 0) return c.json({ error: "Session not found" }, 404);
+      sessions[idx].sessionName = sessionName.trim();
+      try {
+        writeFileSync(registryPath, JSON.stringify(sessions, null, 2));
+      } catch { }
+      return c.json({ ok: true });
+    });
+
     // Browse directories for workspace path picker
     app.get("/api/browse-dirs", (c) => {
       const raw = (c.req.query("path") || "").trim() || homedir();
@@ -461,7 +482,7 @@ export function startServer(options: ServerOptions) {
     });
 
     app.post("/api/launch", async (c) => {
-      const { specifier, workspace: targetWorkspace, initParams, skipSkill, backendType, replayPackage: replayPkg, replaySource } = await c.req.json<{
+      const { specifier, workspace: targetWorkspace, initParams, skipSkill, backendType, replayPackage: replayPkg, replaySource, sessionName } = await c.req.json<{
         specifier: string;
         workspace: string;
         initParams?: Record<string, string | number>;
@@ -469,6 +490,7 @@ export function startServer(options: ServerOptions) {
         backendType?: AgentBackendType;
         replayPackage?: string;
         replaySource?: string; // Source workspace for existing session replay
+        sessionName?: string;
       }>();
 
       try {
@@ -492,6 +514,7 @@ export function startServer(options: ServerOptions) {
         if (skipSkill) args.push("--skip-skill");
         if (replayPkg) args.push("--replay", replayPkg);
         if (replaySource) args.push("--replay-source", replaySource);
+        if (sessionName) args.push("--session-name", sessionName);
         if (options.debug) args.push("--debug");
         if (options.forceDev) args.push("--dev");
 

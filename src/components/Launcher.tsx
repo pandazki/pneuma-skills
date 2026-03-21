@@ -68,6 +68,7 @@ interface RecentSession {
   id: string;
   mode: string;
   displayName: string;
+  sessionName?: string;
   workspace: string;
   backendType: BackendType;
   lastAccessed: number;
@@ -745,6 +746,7 @@ function SessionCard({
   onReplay,
   onStop,
   onOpen,
+  onRename,
   isLight,
   backendUnavailableReason,
 }: {
@@ -758,6 +760,7 @@ function SessionCard({
   onReplay?: () => void;
   onStop?: () => void;
   onOpen?: () => void;
+  onRename?: (name: string) => void;
   isLight?: boolean;
   backendUnavailableReason?: string;
 }) {
@@ -766,6 +769,8 @@ function SessionCard({
     currentVersion: string;
     installedVersion: string;
   } | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState("");
   const [duration, setDuration] = useState(runningProcess ? runningDuration(runningProcess.startedAt) : "");
 
   useEffect(() => {
@@ -823,7 +828,7 @@ function SessionCard({
     setLaunching(false);
   };
 
-  const displayName = session?.displayName || runningProcess?.specifier.split("/").pop() || "Unknown";
+  const displayName = session?.sessionName || session?.displayName || runningProcess?.specifier.split("/").pop() || "Unknown";
   const workspace = session?.workspace || runningProcess?.workspace || "";
 
   const cardGradient = isLight
@@ -934,10 +939,38 @@ function SessionCard({
       <div className="px-3 py-2.5">
         <div className="flex items-center gap-2">
           <ModeIcon svg={icon} className={`w-4 h-4 shrink-0 ${isRunning ? "text-cc-primary/60" : "text-cc-muted/50"}`} />
-          <span className="text-sm font-medium text-cc-fg/90 truncate">
-            {launching ? "Launching..." : displayName}
-          </span>
-          {session && !isRunning && (
+          {editing ? (
+            <input
+              autoFocus
+              className="flex-1 min-w-0 text-sm font-medium text-cc-fg/90 bg-transparent border-b border-cc-primary/50 outline-none px-0 py-0"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={() => {
+                const trimmed = editValue.trim();
+                if (trimmed && trimmed !== displayName && onRename) onRename(trimmed);
+                setEditing(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                if (e.key === "Escape") { setEditValue(displayName); setEditing(false); }
+              }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span className="text-sm font-medium text-cc-fg/90 truncate">
+              {launching ? "Launching..." : displayName}
+            </span>
+          )}
+          {!editing && session && !isRunning && onRename && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setEditValue(displayName); setEditing(true); }}
+              className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-cc-muted/40 hover:text-cc-primary transition-all cursor-pointer shrink-0"
+              title="Rename"
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25a1.75 1.75 0 01.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L3.464 11.1a.25.25 0 00-.064.108l-.457 1.6 1.6-.457a.25.25 0 00.108-.064l8.609-8.609a.25.25 0 000-.354l-1.086-1.086z" /></svg>
+            </button>
+          )}
+          {!editing && session && !isRunning && (
             <span className="text-[10px] text-cc-muted/40 shrink-0 ml-auto">{timeAgo(session.lastAccessed)}</span>
           )}
         </div>
@@ -976,6 +1009,7 @@ function CompactSessionRow({
   onResume,
   onDelete,
   onReplay,
+  onRename,
   backendUnavailableReason,
 }: {
   session: RecentSession;
@@ -984,9 +1018,12 @@ function CompactSessionRow({
   onResume: (skipSkill?: boolean) => Promise<void>;
   onDelete: () => void;
   onReplay?: () => void;
+  onRename?: (name: string) => void;
   backendUnavailableReason?: string;
 }) {
   const [launching, setLaunching] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState("");
   const [skillUpdate, setSkillUpdate] = useState<{ currentVersion: string; installedVersion: string } | null>(null);
 
   const handleClick = async () => {
@@ -1027,9 +1064,39 @@ function CompactSessionRow({
         <ModeIcon svg={icon} className="w-4 h-4 text-cc-muted/40" />
       </div>
       <div className="flex-1 min-w-0">
-        <span className="text-sm font-medium text-cc-fg/90 truncate block">
-          {launching ? "Launching..." : session.displayName}
-        </span>
+        <div className="flex items-center gap-1.5">
+          {editing ? (
+            <input
+              autoFocus
+              className="flex-1 min-w-0 text-sm font-medium text-cc-fg/90 bg-transparent border-b border-cc-primary/50 outline-none px-0 py-0"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={() => {
+                const trimmed = editValue.trim();
+                if (trimmed && trimmed !== (session.sessionName || session.displayName) && onRename) onRename(trimmed);
+                setEditing(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                if (e.key === "Escape") { setEditValue(session.sessionName || session.displayName); setEditing(false); }
+              }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span className="text-sm font-medium text-cc-fg/90 truncate block">
+              {launching ? "Launching..." : (session.sessionName || session.displayName)}
+            </span>
+          )}
+          {!editing && onRename && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setEditValue(session.sessionName || session.displayName); setEditing(true); }}
+              className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-cc-muted/40 hover:text-cc-primary transition-all cursor-pointer shrink-0"
+              title="Rename"
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25a1.75 1.75 0 01.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L3.464 11.1a.25.25 0 00-.064.108l-.457 1.6 1.6-.457a.25.25 0 00.108-.064l8.609-8.609a.25.25 0 000-.354l-1.086-1.086z" /></svg>
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-2 min-w-0">
           <span className={`text-[10px] px-1 py-0.5 rounded uppercase tracking-wide shrink-0 ${
             backendUnavailableReason
@@ -1092,6 +1159,7 @@ function AllSessions({
   onResume,
   onDelete,
   onReplay,
+  onRename,
   getBackendUnavailableReason,
   className,
   closing,
@@ -1104,12 +1172,25 @@ function AllSessions({
   onResume: (session: RecentSession, skipSkill?: boolean) => Promise<void>;
   onDelete: (id: string) => void;
   onReplay: (session: RecentSession) => void;
+  onRename: (id: string, name: string) => void;
   getBackendUnavailableReason: (type: BackendType) => string | undefined;
   className?: string;
   closing?: boolean;
   headerHeight?: number;
 }) {
   const isLight = className?.includes("launcher-light") ?? false;
+  const [search, setSearch] = useState("");
+  const query = search.toLowerCase().trim();
+  const filtered = query
+    ? items.filter((i) => {
+        const s = i.session;
+        if (!s) return i.process?.specifier.toLowerCase().includes(query);
+        return (s.sessionName || "").toLowerCase().includes(query)
+          || s.displayName.toLowerCase().includes(query)
+          || s.workspace.toLowerCase().includes(query)
+          || s.mode.toLowerCase().includes(query);
+      })
+    : items;
   return (
     <div
       className={`fixed left-0 right-0 bottom-0 z-50 bg-cc-bg overflow-y-auto font-body ${className || ""}`}
@@ -1121,17 +1202,31 @@ function AllSessions({
       <div className="sticky top-0 z-10 bg-cc-bg/80 backdrop-blur-sm border-b border-cc-border/30">
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center gap-4">
           <h1 className="font-display text-lg text-cc-fg">All Sessions</h1>
-          <span className="text-xs text-cc-muted/50 ml-auto">{items.length} sessions</span>
+          <div className="flex-1 max-w-xs ml-4">
+            <div className="relative">
+              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-cc-muted/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search sessions..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-sm bg-cc-input-bg border border-cc-border/50 rounded-lg text-cc-fg placeholder:text-cc-muted/40 focus:outline-none focus:border-cc-primary/50"
+              />
+            </div>
+          </div>
+          <span className="text-xs text-cc-muted/50 ml-auto">{filtered.length}{query ? ` / ${items.length}` : ""} sessions</span>
         </div>
       </div>
 
       <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Running */}
-        {items.some((i) => i.type === "running") && (
+        {filtered.some((i) => i.type === "running") && (
           <div className="mb-10">
             <h2 className="text-xs font-medium text-cc-muted/60 uppercase tracking-widest mb-4">Running</h2>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-              {items.filter((i) => i.type === "running").map((item) => (
+              {filtered.filter((i) => i.type === "running").map((item) => (
                 <SessionCard
                   key={item.key}
                   session={item.session}
@@ -1144,6 +1239,7 @@ function AllSessions({
                   onResume={item.session ? (skipSkill) => onResume(item.session!, skipSkill) : undefined}
                   onDelete={item.session ? () => onDelete(item.session!.id) : undefined}
                   onReplay={item.session?.hasReplayData ? () => onReplay(item.session!) : undefined}
+                  onRename={item.session ? (name) => onRename(item.session!.id, name) : undefined}
                   onStop={item.process ? () => {
                     fetch(`${getApiBase()}/api/processes/children/${item.process!.pid}/kill`, { method: "POST" });
                     if (item.process!.url && (window as any).pneumaDesktop?.closeModeWindow) {
@@ -1158,11 +1254,11 @@ function AllSessions({
         )}
 
         {/* Recent */}
-        {items.some((i) => i.type === "recent") && (
+        {filtered.some((i) => i.type === "recent") && (
           <div>
             <h2 className="text-xs font-medium text-cc-muted/60 uppercase tracking-widest mb-4">Recent</h2>
             <div className="flex flex-col gap-0.5">
-              {items.filter((i) => i.type === "recent").map((item) => (
+              {filtered.filter((i) => i.type === "recent").map((item) => (
                 <CompactSessionRow
                   key={item.key}
                   session={item.session!}
@@ -1171,6 +1267,7 @@ function AllSessions({
                   onResume={(skipSkill) => onResume(item.session!, skipSkill)}
                   onDelete={() => onDelete(item.session!.id)}
                   onReplay={item.session!.hasReplayData ? () => onReplay(item.session!) : undefined}
+                  onRename={(name) => onRename(item.session!.id, name)}
                   backendUnavailableReason={getBackendUnavailableReason(item.session!.backendType)}
                 />
               ))}
@@ -1178,8 +1275,8 @@ function AllSessions({
           </div>
         )}
 
-        {items.length === 0 && (
-          <p className="text-center text-cc-muted/60 py-20">No sessions yet.</p>
+        {filtered.length === 0 && (
+          <p className="text-center text-cc-muted/60 py-20">{query ? "No matching sessions." : "No sessions yet."}</p>
         )}
       </div>
     </div>
@@ -1765,7 +1862,9 @@ function LaunchDialog({
   const fallback = homeDir
     ? `${homeDir.replace(/[\\/]+$/, "")}/pneuma-projects/${safeName}-${timeTag}`
     : `~/pneuma-projects/${safeName}-${timeTag}`;
+  const defaultSessionName = `${safeName}-${timeTag}`;
   const [workspace, setWorkspace] = useState(defaultWorkspace || fallback);
+  const [sessionNameValue, setSessionNameValue] = useState(defaultSessionName);
   const [initParams, setInitParams] = useState<InitParam[]>([]);
   const [paramValues, setParamValues] = useState<Record<string, string | number>>({});
   const displayNameTouchedRef = useRef(false);
@@ -1849,6 +1948,7 @@ function LaunchDialog({
           specifier,
           workspace,
           backendType: existingSession?.backendType || selectedBackendType,
+          sessionName: sessionNameValue.trim() || undefined,
           initParams: {
             ...(defaultInitParams || {}),
             ...(Object.keys(paramValues).length > 0 ? paramValues : {}),
@@ -1931,6 +2031,19 @@ function LaunchDialog({
           />
         )}
       </div>
+
+      {!existingSession && (
+        <>
+          <label className="block text-sm text-cc-muted mb-1">Session name</label>
+          <input
+            type="text"
+            value={sessionNameValue}
+            onChange={(e) => setSessionNameValue(e.target.value)}
+            className="w-full px-3 py-2 mb-4 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50"
+            placeholder={defaultSessionName}
+          />
+        </>
+      )}
 
       {preparing && (
         <p className="text-sm text-cc-muted mb-4">Loading configuration...</p>
@@ -2738,6 +2851,17 @@ export default function Launcher() {
     } catch { }
   }, [refreshSessions]);
 
+  const renameSession = useCallback(async (id: string, sessionName: string) => {
+    try {
+      await fetch(`${getApiBase()}/api/sessions/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionName }),
+      });
+      refreshSessions();
+    } catch { }
+  }, [refreshSessions]);
+
   const handleReplaySession = useCallback(async (session: RecentSession) => {
     try {
       const res = await fetch(`${getApiBase()}/api/launch`, {
@@ -3043,6 +3167,7 @@ export default function Launcher() {
                                 onResume={item.session ? (skipSkill) => directLaunch(item.session!.mode, item.session!.workspace, item.session!.backendType, skipSkill) : undefined}
                                 onDelete={item.session ? () => deleteSession(item.session!.id) : undefined}
                                 onReplay={item.session?.hasReplayData ? () => handleReplaySession(item.session!) : undefined}
+                                onRename={item.session ? (name) => renameSession(item.session!.id, name) : undefined}
                                 onStop={item.process ? () => stopProcess(item.process!.pid, item.process!.url) : undefined}
                                 onOpen={item.process ? () => window.open(item.process!.url, "_blank") : undefined}
                               />
@@ -3071,6 +3196,7 @@ export default function Launcher() {
                         onResume={(skipSkill) => directLaunch(item.session!.mode, item.session!.workspace, item.session!.backendType, skipSkill)}
                         onDelete={() => deleteSession(item.session!.id)}
                         onReplay={item.session!.hasReplayData ? () => handleReplaySession(item.session!) : undefined}
+                        onRename={(name) => renameSession(item.session!.id, name)}
                         backendUnavailableReason={getBackendUnavailableReason(item.session!.backendType)}
                       />
                     </motion.div>
@@ -3173,6 +3299,7 @@ export default function Launcher() {
           }}
           onDelete={(id) => deleteSession(id)}
           onReplay={(session) => handleReplaySession(session)}
+          onRename={(id, name) => renameSession(id, name)}
           getBackendUnavailableReason={getBackendUnavailableReason}
           className={isLight ? "launcher-light" : ""}
           closing={allSessionsAnim.closing}

@@ -14,6 +14,7 @@ export interface SessionRecord {
   id: string;
   mode: string;
   displayName: string;
+  sessionName?: string;
   workspace: string;
   backendType: AgentBackendType;
   lastAccessed: number;
@@ -33,6 +34,7 @@ export interface ParsedCliArgs {
   skipSkill: boolean;
   replayPackage: string;
   replaySource: string; // Source workspace path for existing session replay
+  sessionName: string;
 }
 
 export function normalizePersistedSession(data: Record<string, unknown>): PersistedSession {
@@ -69,6 +71,7 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
   let skipSkill = false;
   let replayPackage = "";
   let replaySource = "";
+  let sessionName = "";
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -96,6 +99,8 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
       replayPackage = args[++i];
     } else if (arg === "--replay-source" && i + 1 < args.length) {
       replaySource = resolve(cwd, args[++i]);
+    } else if (arg === "--session-name" && i + 1 < args.length) {
+      sessionName = args[++i];
     } else if (!arg.startsWith("--")) {
       mode = arg;
     }
@@ -115,6 +120,7 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
     skipSkill,
     replayPackage,
     replaySource,
+    sessionName,
   };
 }
 

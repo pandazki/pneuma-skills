@@ -96,11 +96,18 @@ function recordSession(
   displayName: string,
   workspace: string,
   backendType: AgentBackendType,
+  sessionName?: string,
 ): void {
   const id = `${workspace}::${mode}`;
   const records = loadSessionsRegistry();
   const existing = records.findIndex((r) => r.id === id);
   const entry: SessionRecord = { id, mode, displayName, workspace, backendType, lastAccessed: Date.now() };
+  if (sessionName) {
+    entry.sessionName = sessionName;
+  } else if (existing >= 0 && records[existing].sessionName) {
+    // Preserve existing sessionName on resume
+    entry.sessionName = records[existing].sessionName;
+  }
   if (existing >= 0) {
     records[existing] = entry;
   } else {
@@ -733,7 +740,7 @@ Options:
     return;
   }
 
-  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource } = parsedArgs;
+  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource, sessionName } = parsedArgs;
   let { workspace, replayPackage } = parsedArgs;
 
   // Launcher mode — no mode arg → start marketplace UI
@@ -1233,7 +1240,7 @@ Options:
         backendType,
         createdAt: Date.now(),
       });
-      recordSession(modeName, manifest.displayName, workspace, backendType);
+      recordSession(modeName, manifest.displayName, workspace, backendType, sessionName || undefined);
 
       // Start file watcher
       startFileWatcher(workspace, manifest.viewer, (files) => {
@@ -1323,7 +1330,7 @@ Options:
     });
 
     // Record to global sessions registry for launcher "Recent Sessions"
-    recordSession(modeName, manifest.displayName, workspace, sessionBackendType);
+    recordSession(modeName, manifest.displayName, workspace, sessionBackendType, sessionName || undefined);
 
     p.log.info(`Agent session: ${session.sessionId}`);
     wsBridge.getOrCreateSession(session.sessionId, sessionBackendType);
