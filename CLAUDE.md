@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.10.0
+**Version:** 2.11.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `mode-maker`, `evolve`
 
@@ -66,6 +66,7 @@ pneuma history open <path-or-url>      # Download/prepare replay package
 | `--dev` | Force dev mode (Vite) |
 | `--replay <path>` | Load a replay package on startup (enters replay mode) |
 | `--replay-source <path>` | Source workspace for existing session replay (exports + replays) |
+| `--session-name <name>` | Custom session display name (default: `{mode}-{timeTag}`) |
 
 ## Ports
 
@@ -321,6 +322,7 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 | `GET /api/sessions` | Returns `{ sessions, homeDir }` — filtered by existing workspace |
 | `GET /api/sessions/thumbnail` | Get session thumbnail image |
 | `DELETE /api/sessions/:id` | Remove a session record |
+| `PATCH /api/sessions/:id` | Rename a session (`{ sessionName }`) |
 | `DELETE /api/modes/:name` | Delete a local mode from `~/.pneuma/modes/` |
 | `GET /api/browse-dirs` | List directories for workspace picker |
 | `GET /api/workspace-check` | Check if workspace has existing session |
@@ -331,7 +333,7 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 
 ### Launcher UI Sections (Launcher.tsx)
 
-1. **Recent Sessions** — one-click resume, inline delete, skill update prompt
+1. **Recent Sessions** — one-click resume, inline rename/delete, search, skill update prompt
 2. **Built-in Modes** — webcraft, doc, slide, draw, illustrate, mode-maker, evolve
 3. **Local Modes** — scanned from `~/.pneuma/modes/`, with delete
 4. **Published Modes** — fetched from R2 registry

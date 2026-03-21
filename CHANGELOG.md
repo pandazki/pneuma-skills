@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.11.0] - 2026-03-22
+
+### Added
+- **Session naming** — sessions can be given custom names at creation time (default: `{mode}-{timeTag}`); names are stored in `sessionName` field on `SessionRecord`, independent of mode `displayName`
+- **Session rename** — inline rename via pencil icon on hover in both card and compact session views; `PATCH /api/sessions/:id` endpoint; Enter/blur to save, Escape to cancel
+- **Session search** — search bar in All Sessions overlay; filters by session name, mode name, and workspace path (case-insensitive)
+- **`--session-name` CLI flag** — pass custom session name when launching from CLI or launcher
+
+### Fixed
+- **Webcraft viewer state normalization** — fix viewer state not being properly normalized on load
+
 ## [2.10.0] - 2026-03-21
 
 ### Added
