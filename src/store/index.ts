@@ -9,6 +9,7 @@ import { createModeSlice } from "./mode-slice.js";
 import { createViewerSlice } from "./viewer-slice.js";
 import { createWorkspaceSlice } from "./workspace-slice.js";
 import { createReplaySlice } from "./replay-slice.js";
+import { normalizeViewerState } from "../utils/viewer-state.js";
 
 export const useStore = create<AppState>()((...a) => ({
   ...createUiSlice(...a),
@@ -26,11 +27,15 @@ let _viewerStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
 function saveViewerState() {
   if (_viewerStateSaveTimer) clearTimeout(_viewerStateSaveTimer);
   _viewerStateSaveTimer = setTimeout(() => {
-    const { activeContentSet, activeFile } = useStore.getState();
+    const { activeContentSet, activeFile, contentSets } = useStore.getState();
+    const normalized = normalizeViewerState(
+      { contentSet: activeContentSet, file: activeFile },
+      contentSets,
+    );
     fetch(`${getApiBase()}/api/viewer-state`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contentSet: activeContentSet, file: activeFile }),
+      body: JSON.stringify(normalized),
     }).catch(() => { /* ignore */ });
   }, 500);
 }
