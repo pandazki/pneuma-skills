@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const SHADOW_DIR_NAME = "shadow.git";
@@ -96,7 +96,22 @@ async function captureCheckpointInner(workspace: string, turnIndex: number): Pro
   await shadowGit(workspace, ["commit", "-m", `turn-${turnIndex}`]).exited;
 
   const hashProc = shadowGit(workspace, ["rev-parse", "--short", "HEAD"], { stdout: "pipe" });
-  const hash = (await new Response(hashProc.stdout).text()).trim();
+  let hash = (await new Response(hashProc.stdout).text()).trim();
+
+  // Fallback: read hash directly from git ref file if spawn stdout was empty
+  if (!hash) {
+    try {
+      const headRef = readFileSync(join(gitDir(workspace), "HEAD"), "utf-8").trim();
+      if (headRef.startsWith("ref: ")) {
+        const refPath = join(gitDir(workspace), headRef.slice(5));
+        hash = readFileSync(refPath, "utf-8").trim().slice(0, 7);
+      } else {
+        hash = headRef.slice(0, 7);
+      }
+    } catch {
+      // Last resort — still write entry without hash
+    }
+  }
 
   const entry = JSON.stringify({ turn: turnIndex, ts: Date.now(), hash }) + "\n";
   appendFileSync(checkpointsIndexPath(workspace), entry);
