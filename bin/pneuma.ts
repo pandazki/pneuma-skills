@@ -956,11 +956,6 @@ Options:
     writeFileSync(skillVersionPath, JSON.stringify({ mode: modeName, version: manifest.version }));
   }
 
-  // Initialize shadow git for checkpoint tracking (skip for replay — done on Continue Work)
-  if (!replayPackage) {
-    await initShadowGit(workspace);
-  }
-
   // 1.5 Seed default content if workspace has no meaningful files (skip for replay)
   if (!replayPackage && manifest.init && manifest.init.contentCheckPattern) {
     const checkPattern = manifest.init.contentCheckPattern;
@@ -1028,6 +1023,12 @@ Options:
         await proc.exited;
       }
     }
+  }
+
+  // Initialize shadow git for checkpoint tracking AFTER seed (so initial commit includes seed files)
+  // Skip for replay — done on Continue Work
+  if (!replayPackage) {
+    await initShadowGit(workspace);
   }
 
   // 2. Detect dev vs production mode (distDir, isDev computed earlier for port)

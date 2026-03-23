@@ -82,6 +82,13 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/illustrate/pneuma-mode.js").then((m) => m.default),
   },
+  remotion: {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/remotion/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/remotion/pneuma-mode.js").then((m) => m.default),
+  },
 };
 
 /** External mode registry — registered by the CLI at startup via registerExternalMode */
