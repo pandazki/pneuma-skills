@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.12.0] - 2026-03-24
+
+### Added
+- **Remotion mode** — new built-in mode for programmatic video creation with React; JIT compilation via `@remotion/player` + `@babel/standalone` with live preview
+- **Custom playback controls** — timeline scrubber, play/pause, speed selector (0.5–2×), fullscreen; keyboard shortcuts (Space, [, ], I, O, L, arrows)
+- **Loop range markers** — set in/out points on timeline for section loop playback; locator cards support frame ranges (`{"file":"X","inFrame":0,"outFrame":90}`)
+- **Remotion content sets** — multiple Remotion projects detected by `src/Root.tsx`; compositions appear as workspace items in TopBar
+- **Resolution init params** — `compositionWidth`/`compositionHeight` choosable at launch (default 1280×720)
+- **Impeccable.style design references** — 5 reference files (typography, color, spatial, motion, ux-writing) guide agent toward high-quality video aesthetics
+- **37 Remotion API rule files** — official Remotion skill rules for animations, timing, transitions, audio, 3D, charts, and more
+- **PneumaSkills seed** — demo composition (45s, 8 scenes) with 4 image assets as starter template
+
+### Fixed
+- **Shadow-git init ordering** — move `initShadowGit()` after seed + bun install so initial checkpoint includes seed files (affects all modes' replay)
+- **Rev-parse stdout fallback** — read git ref file directly when `Bun.spawn` stdout pipe returns empty (prevents empty checkpoint hashes)
+- **Launcher number input** — hide browser-default spinner arrows on number type inputs in init params
+
 ## [2.11.0] - 2026-03-22
 
 ### Added

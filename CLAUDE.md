@@ -6,9 +6,9 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.11.0
+**Version:** 2.12.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
-**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `mode-maker`, `evolve`
+**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `remotion`, `mode-maker`, `evolve`
 
 ## Tech Stack
 
@@ -20,6 +20,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 | Terminal | xterm.js 6 + Bun native PTY |
 | File Watching | chokidar 5 |
 | Drawing | @excalidraw/excalidraw 0.18 |
+| Video | remotion 4.0 + @remotion/player + @babel/standalone |
 | Desktop | Electron 41 + electron-builder + electron-updater |
 | Agent | Claude Code CLI via `--sdk-url`; Codex CLI via `app-server` stdio JSON-RPC (`node:child_process`) |
 
@@ -87,7 +88,7 @@ pneuma-skills/
 │   ├── mode-loader.ts         # Mode discovery & loading (builtin + external)
 │   ├── mode-resolver.ts       # Source resolution (builtin/local/github/url → disk path)
 │   └── utils/manifest-parser.ts  # Regex-based manifest.ts metadata extraction
-├── modes/{webcraft,doc,slide,draw,illustrate,mode-maker,evolve}/  # Builtin modes
+├── modes/{webcraft,doc,slide,draw,illustrate,remotion,mode-maker,evolve}/  # Builtin modes
 ├── backends/
 │   ├── index.ts               # Backend registry + descriptors + capabilities + availability
 │   ├── claude-code/           # Claude backend — Bun.spawn with --sdk-url
@@ -248,7 +249,7 @@ Modes can come from four sources, resolved by `core/mode-resolver.ts`:
 
 | Type | Specifier | Resolved Path |
 |------|-----------|---------------|
-| **builtin** | `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `mode-maker`, `evolve` | `modes/<name>/` |
+| **builtin** | `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `remotion`, `mode-maker`, `evolve` | `modes/<name>/` |
 | **local** | `/abs/path`, `./rel` | As-is |
 | **github** | `github:user/repo` | `~/.pneuma/modes/<user>-<repo>/` |
 | **url** | `https://...tar.gz` | `~/.pneuma/modes/<name>/` |
