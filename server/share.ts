@@ -117,6 +117,18 @@ export async function shareResult(workspace: string, title?: string): Promise<{ 
   const archiveName = `result-${name}-${timestamp}.tar.gz`;
   const archivePath = join(tmpdir(), archiveName);
 
+  // Read session metadata for mode info
+  let mode = "unknown";
+  try {
+    const session = JSON.parse(readFileSync(join(workspace, ".pneuma", "session.json"), "utf-8"));
+    mode = session.mode;
+  } catch {}
+
+  // Write a lightweight snapshot metadata file so importers can detect the mode
+  const snapshotPath = join(workspace, ".pneuma-snapshot.json");
+  const hadSnapshot = existsSync(snapshotPath);
+  writeFileSync(snapshotPath, JSON.stringify({ mode, createdAt: new Date().toISOString() }));
+
   // Create tar.gz of workspace files (excluding .pneuma, node_modules, .git, etc.)
   const excludes = [".pneuma", "node_modules", ".git", ".claude", ".agents", "dist", ".DS_Store", ".env"];
   const excludeFlags = excludes.flatMap((e) => ["--exclude", e]);
@@ -125,12 +137,10 @@ export async function shareResult(workspace: string, title?: string): Promise<{ 
     { stdout: "ignore", stderr: "ignore" },
   ).exited;
 
-  // Read session metadata for mode info
-  let mode = "unknown";
-  try {
-    const session = JSON.parse(readFileSync(join(workspace, ".pneuma", "session.json"), "utf-8"));
-    mode = session.mode;
-  } catch {}
+  // Clean up the snapshot file if we created it
+  if (!hadSnapshot) {
+    try { const { unlinkSync } = await import("node:fs"); unlinkSync(snapshotPath); } catch {}
+  }
 
   const key = `shares/${archiveName}`;
   const url = await uploadToR2(archivePath, key, config);
