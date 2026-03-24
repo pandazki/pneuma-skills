@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, Menu, nativeTheme } from "electron";
 import { autoUpdater } from "electron-updater";
+import { net } from "electron";
 import path from "node:path";
 import { createTray, updateTrayMenu, setTrayTitle, setTrayTooltip } from "./tray.js";
 import {
@@ -247,9 +248,11 @@ app.whenReady().then(async () => {
   // Destroy splash after the new window exists
   splash.destroy();
 
-  // Auto-update: silent check on startup
+  // Auto-update: silent check on startup (skip if platform asset not yet uploaded)
   setupAutoUpdater();
-  autoUpdater.checkForUpdates().catch(() => {});
+  isPlatformAssetReady().then((ready) => {
+    if (ready) autoUpdater.checkForUpdates().catch(() => {});
+  });
 });
 
 // Stay alive in tray when all windows close
@@ -478,17 +481,52 @@ function setupAutoUpdater() {
   });
 }
 
+/**
+ * Check if the platform-specific update metadata file exists on the latest release.
+ * CI builds each platform artifact separately, so the release tag may exist
+ * before the current platform's asset is uploaded (10+ min window).
+ * Returns true if the asset is reachable, false otherwise.
+ */
+async function isPlatformAssetReady(): Promise<boolean> {
+  const metaFile =
+    process.platform === "darwin"
+      ? "latest-mac.yml"
+      : process.platform === "win32"
+        ? "latest.yml"
+        : "latest-linux.yml";
+  const url = `https://github.com/pandazki/pneuma-skills/releases/latest/download/${metaFile}`;
+  try {
+    const resp = await net.fetch(url, { method: "HEAD" });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
 function checkForUpdatesManual() {
   isCheckingForUpdates = true;
-  autoUpdater.checkForUpdates().catch((err) => {
-    showUpdateDialog({
-      type: "error",
-      title: "Update Error",
-      message: "Failed to check for updates",
-      detail: err.message,
-      buttons: ["OK"],
+  isPlatformAssetReady().then((ready) => {
+    if (!ready) {
+      showUpdateDialog({
+        type: "info",
+        title: "No Updates",
+        message: "You're up to date!",
+        detail: `Current version: v${app.getVersion()}\n\n(A new release may be building — check back in a few minutes.)`,
+        buttons: ["OK"],
+      });
+      isCheckingForUpdates = false;
+      return;
+    }
+    autoUpdater.checkForUpdates().catch((err) => {
+      showUpdateDialog({
+        type: "error",
+        title: "Update Error",
+        message: "Failed to check for updates",
+        detail: err.message,
+        buttons: ["OK"],
+      });
+      isCheckingForUpdates = false;
     });
-    isCheckingForUpdates = false;
   });
 }
 
