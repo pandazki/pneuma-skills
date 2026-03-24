@@ -490,7 +490,8 @@ export default function RemotionPreview({
         <button
           onClick={() => {
             const base = getApiBase();
-            window.open(`${base}/export/remotion`, "_blank");
+            const compId = activeComp?.id;
+            window.open(`${base}/export/remotion${compId ? `?composition=${encodeURIComponent(compId)}` : ""}`, "_blank");
           }}
           className="flex items-center gap-1 px-2 h-5 rounded text-[10px] font-medium transition-colors cursor-pointer"
           style={{ color: "var(--cc-text-tertiary, #52525b)", background: "transparent" }}

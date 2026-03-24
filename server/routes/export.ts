@@ -1259,6 +1259,7 @@ const FILES = JSON.parse(document.getElementById('__remotion-files').textContent
 const COMPOSITIONS = JSON.parse(document.getElementById('__remotion-compositions').textContent);
 const ASSETS = JSON.parse(document.getElementById('__remotion-assets').textContent);
 const IS_STANDALONE = document.documentElement.dataset.standalone === '1';
+const URL_COMPOSITION = new URLSearchParams(location.search).get('composition');
 
 // ── Module Linker (adapted from remotion-compiler.ts) ──
 
@@ -1450,7 +1451,13 @@ function Dropdown({ value, options, onChange }) {
 }
 
 function ExportApp() {
-  const [activeId, setActiveId] = useState(COMPOSITIONS[0]?.id);
+  // If a specific composition was requested via ?composition=, filter to it
+  const filteredComps = URL_COMPOSITION
+    ? COMPOSITIONS.filter(c => c.id === URL_COMPOSITION)
+    : COMPOSITIONS;
+  const activeComps = filteredComps.length > 0 ? filteredComps : COMPOSITIONS;
+
+  const [activeId, setActiveId] = useState(activeComps[0]?.id);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [exportError, setExportError] = useState(null);
@@ -1458,9 +1465,9 @@ function ExportApp() {
   const [quality, setQuality] = useState('high');
   const playerRef = useRef(null);
   const [frame, setFrame] = useState(0);
-  const [playing, setPlaying] = useState(false);
+  const [playing, setPlaying] = useState(true);
 
-  const comp = COMPOSITIONS.find(c => c.id === activeId) || COMPOSITIONS[0];
+  const comp = activeComps.find(c => c.id === activeId) || activeComps[0];
   const Component = comp ? COMPONENTS.get(comp.componentName) : null;
 
   // Player event listeners
@@ -1543,8 +1550,8 @@ function ExportApp() {
           h('span', { className: 'meta' },
             comp.width + '\u00d7' + comp.height + ' \u00b7 ' + comp.fps + 'fps \u00b7 ' + duration + 's')
         ),
-        COMPOSITIONS.length > 1 && h('div', { className: 'comp-selector' },
-          ...COMPOSITIONS.map(c => h('button', {
+        activeComps.length > 1 && h('div', { className: 'comp-selector' },
+          ...activeComps.map(c => h('button', {
             key: c.id, className: 'comp-btn' + (c.id === activeId ? ' active' : ''),
             onClick: () => setActiveId(c.id),
           }, c.id))
