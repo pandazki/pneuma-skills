@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.13.0] - 2026-03-24
+
+### Added
+- **Remotion export page** — standalone HTML export with embedded player, MP4/WebM video export via `@remotion/web-renderer` (WebCodecs API), format and quality selectors, custom playback controls
+- **Remotion viewer export button** — one-click export of the currently selected composition from the preview info bar
+
+### Improved
+- **Remotion skill rewrite** — restructured as a content-first workflow guide (Research → Motion Intent → Design Outline) instead of a system prompt, following skill best practices
+
+### Fixed
+- **Remotion asset refresh** — preview now auto-refreshes when `public/` images are replaced (content hash includes asset paths + cache-busting on `staticFile()` URLs)
+- **Export composition filtering** — export page receives the selected composition from viewer, no redundant selector
+- **Autoplay button state** — play/pause button now correctly reflects autoplay-on-load state
+
 ## [2.12.2] - 2026-03-24
 
 ### Fixed

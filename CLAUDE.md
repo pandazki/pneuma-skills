@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.12.2
+**Version:** 2.13.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `remotion`, `mode-maker`, `evolve`
 
@@ -20,7 +20,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 | Terminal | xterm.js 6 + Bun native PTY |
 | File Watching | chokidar 5 |
 | Drawing | @excalidraw/excalidraw 0.18 |
-| Video | remotion 4.0 + @remotion/player + @babel/standalone |
+| Video | remotion 4.0 + @remotion/player + @remotion/web-renderer + @babel/standalone |
 | Desktop | Electron 41 + electron-builder + electron-updater |
 | Agent | Claude Code CLI via `--sdk-url`; Codex CLI via `app-server` stdio JSON-RPC (`node:child_process`) |
 
@@ -443,6 +443,8 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 | GET | `/export/webcraft` | Webcraft export HTML |
 | GET | `/export/webcraft/download` | Download webcraft as HTML file |
 | GET | `/export/webcraft/zip` | Download webcraft as ZIP archive |
+| GET | `/export/remotion` | Remotion export HTML with player + MP4/WebM export |
+| GET | `/export/remotion/download` | Download Remotion as standalone HTML file |
 
 ### WebSocket
 
