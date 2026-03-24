@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.12.1] - 2026-03-24
+
+### Fixed
+- **Viewer action abort** — viewer-triggered agent commands now set `turnInProgress`, enabling the Stop button during agent response
+
 ## [2.12.0] - 2026-03-24
 
 ### Added
