@@ -279,6 +279,8 @@ export default function App() {
 
     // Send to server
     sendViewerNotification(pendingNotification);
+    // Mark turn in progress so Stop button appears (same as ChatInput sendUserMessage)
+    store.setTurnInProgress(true);
 
     // Parse affected files from notification message
     const fileMatches = [...pendingNotification.message.matchAll(/\(([^)]+\.html)\)/g)];
