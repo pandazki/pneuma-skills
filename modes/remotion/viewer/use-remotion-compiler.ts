@@ -52,12 +52,18 @@ export function useRemotionCompiler(files: ViewerFileContent[]): CompilationResu
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const cacheKeyRef = useRef<string>("");
 
-  // Compute content hash for cache invalidation
+  // Compute content hash for cache invalidation (includes image paths to bust cache on asset changes)
   const contentKey = useMemo(() => {
-    return files
+    const codeKey = files
       .filter((f) => /\.(tsx?|jsx?)$/.test(f.path))
       .map((f) => `${f.path}:${f.content.length}:${simpleHash(f.content)}`)
       .join("|");
+    // Include non-code file paths so image replacements trigger recompilation
+    const assetKey = files
+      .filter((f) => !/\.(tsx?|jsx?)$/.test(f.path))
+      .map((f) => f.path)
+      .join(",");
+    return `${codeKey}||${assetKey}`;
   }, [files]);
 
   useEffect(() => {
@@ -69,10 +75,12 @@ export function useRemotionCompiler(files: ViewerFileContent[]): CompilationResu
 
       try {
         // Override staticFile to resolve through Pneuma's /content/ endpoint
+        // Append cache-busting timestamp so replaced images reload immediately
         const apiBase = getApiBase();
+        const cacheBust = Date.now();
         const patchedRemotion = {
           ...remotionModules,
-          staticFile: (path: string) => `${apiBase}/content/public/${path.replace(/^\//, "")}`,
+          staticFile: (path: string) => `${apiBase}/content/public/${path.replace(/^\//, "")}?t=${cacheBust}`,
         };
 
         const externalModules: Record<string, unknown> = {
