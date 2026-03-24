@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.15.1] - 2026-03-24
+
+### Added
+- **Remotion showcase** — launcher gallery images for Remotion mode (hero, live preview, frame-perfect animation, export to video)
+- **`/showcase` command** — reusable slash command for generating mode showcase materials with contextual illustration
+
 ## [2.15.0] - 2026-03-24
 
 ### Added
