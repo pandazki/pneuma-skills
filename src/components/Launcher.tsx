@@ -2729,8 +2729,21 @@ export default function Launcher() {
   const [showGallery, setShowGallery] = useState(false);
   const [showAllSessions, setShowAllSessions] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [showImportDialog, setShowImportDialog] = useState(false);
-  const [importInitialUrl, setImportInitialUrl] = useState<string | undefined>();
+  const [showImportDialog, setShowImportDialog] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.has("importUrl");
+  });
+  const [importInitialUrl, setImportInitialUrl] = useState<string | undefined>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const url = params.get("importUrl");
+    if (url) {
+      // Clean up the URL so it doesn't re-trigger on refresh
+      const clean = new URL(window.location.href);
+      clean.searchParams.delete("importUrl");
+      window.history.replaceState({}, "", clean.pathname + clean.search);
+    }
+    return url || undefined;
+  });
   const [launchTarget, setLaunchTarget] = useState<{
     specifier: string;
     displayName: string;
@@ -2748,20 +2761,6 @@ export default function Launcher() {
     const ro = new ResizeObserver(([e]) => setHeaderH(e.contentRect.height));
     ro.observe(headerRef.current);
     return () => ro.disconnect();
-  }, []);
-
-  // Auto-open import dialog when launched with ?importUrl= query param
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const importUrl = params.get("importUrl");
-    if (importUrl) {
-      setImportInitialUrl(importUrl);
-      setShowImportDialog(true);
-      // Clean up the URL so it doesn't re-trigger on refresh
-      const clean = new URL(window.location.href);
-      clean.searchParams.delete("importUrl");
-      window.history.replaceState({}, "", clean.pathname + clean.search);
-    }
   }, []);
 
   const galleryAnim = useAnimatedMount(showGallery);
