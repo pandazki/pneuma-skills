@@ -52,6 +52,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@excalidraw/excalidraw": "^0.18.0",
     "@remotion/player": "4.0.438",
+    "@remotion/web-renderer": "4.0.438",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.0.0",
     "@uiw/react-codemirror": "^4.25.5",

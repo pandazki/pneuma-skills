@@ -1,14 +1,15 @@
 /**
- * Export routes — Slide export + WebCraft export + file listing.
+ * Export routes — Slide export + WebCraft export + Remotion export + file listing.
  *
  * Registered for all non-launcher modes.
- * Includes: /export/slides, /export/webcraft, /api/files (GET).
+ * Includes: /export/slides, /export/webcraft, /export/remotion, /api/files (GET).
  */
 
 import type { Hono } from "hono";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, extname } from "node:path";
 import { pathStartsWith } from "../utils.js";
+import { parseCompositions } from "../../modes/remotion/viewer/composition-parser.js";
 
 export interface ExportOptions {
   workspace: string;
@@ -1190,6 +1191,668 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
     } catch {
       return c.text("Export failed", 500);
     }
+  });
+
+  // ── Remotion export ──────────────────────────────────────────────────
+
+  /** Collect all public/ assets as data URIs for embedding in export HTML. */
+  function collectPublicAssets(): Record<string, string> {
+    const publicDir = join(workspace, "public");
+    if (!existsSync(publicDir)) return {};
+    const assets: Record<string, string> = {};
+    const scanDir = (dir: string, prefix: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          scanDir(join(dir, entry.name), prefix ? `${prefix}/${entry.name}` : entry.name);
+        } else {
+          const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+          const dataUri = readAsDataUri(`public/${relPath}`);
+          if (dataUri) assets[relPath] = dataUri;
+        }
+      }
+    };
+    try { scanDir(publicDir, ""); } catch { /* ignore */ }
+    return assets;
+  }
+
+  /** Read and transpile all src/*.tsx files for Remotion export. */
+  function collectRemotionSources(): { path: string; content: string }[] | { error: string; status: number } {
+    const srcDir = join(workspace, "src");
+    if (!existsSync(srcDir)) return { error: "No src/ directory found", status: 404 };
+    const rootPath = join(srcDir, "Root.tsx");
+    if (!existsSync(rootPath)) return { error: "No src/Root.tsx found", status: 404 };
+
+    const transpiler = new Bun.Transpiler({
+      loader: "tsx",
+      tsconfig: JSON.stringify({ compilerOptions: { jsx: "react" } }),
+    });
+    const files: { path: string; content: string }[] = [];
+
+    const scanSrc = (dir: string, prefix: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          scanSrc(join(dir, entry.name), `${prefix}${entry.name}/`);
+        } else if (/\.(tsx?|jsx?)$/.test(entry.name) && !/\bindex\.(tsx?|jsx?)$/.test(entry.name)) {
+          const relPath = `src/${prefix}${entry.name}`;
+          const source = readFileSync(join(dir, entry.name), "utf-8");
+          try {
+            files.push({ path: relPath, content: transpiler.transformSync(source) });
+          } catch {
+            files.push({ path: relPath, content: source });
+          }
+        }
+      }
+    };
+    try { scanSrc(srcDir, ""); } catch { /* ignore */ }
+    return files;
+  }
+
+  // Client-side module linker + React app (uses String.raw to preserve regex backslashes)
+  const REMOTION_CLIENT_JS = String.raw`
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createRoot } from 'react-dom/client';
+import * as remotionModules from 'remotion';
+import * as jsxRuntime from 'react/jsx-runtime';
+import { Player } from '@remotion/player';
+
+const FILES = JSON.parse(document.getElementById('__remotion-files').textContent);
+const COMPOSITIONS = JSON.parse(document.getElementById('__remotion-compositions').textContent);
+const ASSETS = JSON.parse(document.getElementById('__remotion-assets').textContent);
+const IS_STANDALONE = document.documentElement.dataset.standalone === '1';
+
+// ── Module Linker (adapted from remotion-compiler.ts) ──
+
+function parseImports(source) {
+  const imports = [];
+  const re = /import\s+(?:(\*\s+as\s+(\w+))|(?:\{([^}]+)\})|(\w+)(?:\s*,\s*\{([^}]+)\})?)\s+from\s+["']([^"']+)["']/g;
+  let m;
+  while ((m = re.exec(source)) !== null) {
+    const src = m[6], specifiers = [];
+    let isDefault = false;
+    if (m[1]) specifiers.push({ imported: '*', local: m[2] });
+    if (m[3]) for (const s of m[3].split(',')) {
+      const p = s.trim().split(/\s+as\s+/);
+      if (p[0]) specifiers.push({ imported: p[0].trim(), local: (p[1] || p[0]).trim() });
+    }
+    if (m[4]) { specifiers.push({ imported: 'default', local: m[4] }); isDefault = true; }
+    if (m[5]) for (const s of m[5].split(',')) {
+      const p = s.trim().split(/\s+as\s+/);
+      if (p[0]) specifiers.push({ imported: p[0].trim(), local: (p[1] || p[0]).trim() });
+    }
+    imports.push({ source: src, specifiers, isDefault });
+  }
+  return imports;
+}
+
+function rewriteForEval(source) {
+  let code = source;
+  code = code.replace(/import\s+(?:[\s\S]*?)\s+from\s+["'][^"']+["'];?\n?/g, '');
+  code = code.replace(/import\s+type\s+[\s\S]*?from\s+["'][^"']+["'];?\n?/g, '');
+  code = code.replace(/export\s+const\s+(\w+)/g, '__exports.$1');
+  code = code.replace(/export\s+function\s+(\w+)/g, '__exports.$1 = function $1');
+  code = code.replace(/export\s+class\s+(\w+)/g, '__exports.$1 = class $1');
+  code = code.replace(/export\s+default\s+/g, '__exports.default = ');
+  code = code.replace(/export\s+\{([^}]+)\};?/g, (_, names) =>
+    names.split(',').map(n => {
+      const p = n.trim().split(/\s+as\s+/);
+      const local = p[0]?.trim(), exported = (p[1] || p[0])?.trim();
+      return local && exported ? '__exports.' + exported + ' = ' + local + ';' : '';
+    }).join('\n')
+  );
+  return code;
+}
+
+function resolveLocalPath(from, importPath, available) {
+  const dir = from.includes('/') ? from.substring(0, from.lastIndexOf('/')) : '.';
+  const base = importPath.startsWith('./') ? dir + '/' + importPath.slice(2) : importPath;
+  for (const c of [base, base+'.tsx', base+'.ts', base+'.jsx', base+'.js', base+'/index.tsx', base+'/index.ts']) {
+    if (available.has(c)) return c;
+  }
+  return null;
+}
+
+function resolveImportOrder(files) {
+  const srcFiles = files.filter(f => /\.(tsx?|jsx?)$/.test(f.path));
+  const available = new Set(srcFiles.map(f => f.path));
+  const fileMap = new Map(srcFiles.map(f => [f.path, f]));
+  const deps = new Map();
+  for (const file of srcFiles) {
+    const localDeps = new Set();
+    for (const imp of parseImports(file.content)) {
+      if (imp.source.startsWith('.')) {
+        const resolved = resolveLocalPath(file.path, imp.source, available);
+        if (resolved) localDeps.add(resolved);
+      }
+    }
+    deps.set(file.path, localDeps);
+  }
+  const sorted = [], visited = new Set(), visiting = new Set();
+  function visit(path) {
+    if (visited.has(path) || visiting.has(path)) return;
+    visiting.add(path);
+    for (const dep of deps.get(path) ?? []) visit(dep);
+    visiting.delete(path);
+    visited.add(path);
+    const file = fileMap.get(path);
+    if (file) sorted.push(file);
+  }
+  for (const file of srcFiles) visit(file.path);
+  return sorted;
+}
+
+function compileModule(source, filename, externalModules, localModules) {
+  const imports = parseImports(source);
+  const preamble = [];
+  for (const imp of imports) {
+    const isLocal = imp.source.startsWith('.');
+    let moduleObj;
+    if (isLocal) {
+      const key = Object.keys(localModules || {}).find(k =>
+        k === imp.source || k.endsWith('/' + imp.source.replace('./', '')) ||
+        k.endsWith('/' + imp.source.replace('./', '') + '.tsx') ||
+        k.endsWith('/' + imp.source.replace('./', '') + '.ts')
+      );
+      if (!key || !localModules[key]) throw new Error('[' + filename + '] Cannot resolve "' + imp.source + '"');
+      moduleObj = '__local_' + imp.source.replace(/[^a-zA-Z0-9]/g, '_');
+      preamble.push('var ' + moduleObj + ' = __localModules["' + key + '"];');
+    } else if (imp.source in (externalModules || {})) {
+      moduleObj = '__ext_' + imp.source.replace(/[^a-zA-Z0-9]/g, '_');
+      preamble.push('var ' + moduleObj + ' = __externalModules["' + imp.source + '"];');
+    } else {
+      throw new Error('[' + filename + '] Unknown import "' + imp.source + '"');
+    }
+    for (const spec of imp.specifiers) {
+      if (spec.imported === '*') preamble.push('var ' + spec.local + ' = ' + moduleObj + ';');
+      else if (spec.imported === 'default') preamble.push('var ' + spec.local + ' = ' + moduleObj + '.default ?? ' + moduleObj + ';');
+      else preamble.push('var ' + spec.local + ' = ' + moduleObj + '["' + spec.imported + '"];');
+    }
+  }
+  const rewritten = rewriteForEval(source);
+  if (externalModules['react'] && !preamble.some(p => p.includes('var React')))
+    preamble.unshift('var React = __externalModules["react"];');
+  const fullCode = preamble.join('\n') + '\nvar __exports = {};\n' + rewritten + '\nreturn __exports;';
+  try {
+    return new Function('__externalModules', '__localModules', fullCode)(externalModules, localModules || {});
+  } catch (err) {
+    throw new Error('[' + filename + '] Runtime error: ' + err.message);
+  }
+}
+
+function buildModuleMap(files, externalModules) {
+  const ordered = resolveImportOrder(files);
+  const moduleMap = new Map(), localLookup = {};
+  for (const file of ordered) {
+    try {
+      const exports = compileModule(file.content, file.path, externalModules, localLookup);
+      moduleMap.set(file.path, exports);
+      localLookup[file.path] = exports;
+      localLookup['./' + file.path] = exports;
+      const noExt = file.path.replace(/\.(tsx?|jsx?)$/, '');
+      localLookup[noExt] = exports;
+      localLookup['./' + noExt] = exports;
+    } catch (err) {
+      moduleMap.set(file.path, { __error: err.message });
+    }
+  }
+  return moduleMap;
+}
+
+// ── Compile compositions ──
+
+const patchedRemotion = { ...remotionModules, staticFile: (p) => ASSETS[p.replace(/^\//, '')] || p };
+const externalModules = { remotion: patchedRemotion, react: React, 'react/jsx-runtime': jsxRuntime };
+const moduleMap = buildModuleMap(FILES, externalModules);
+const COMPONENTS = new Map();
+const compileErrors = [];
+
+for (const [path, exports] of moduleMap) {
+  if (exports.__error) compileErrors.push({ file: path, message: exports.__error });
+}
+for (const comp of COMPOSITIONS) {
+  for (const [, exports] of moduleMap) {
+    if (exports[comp.componentName] && typeof exports[comp.componentName] === 'function') {
+      COMPONENTS.set(comp.componentName, exports[comp.componentName]);
+      break;
+    }
+  }
+}
+
+// ── React App ──
+
+const h = React.createElement;
+
+// Custom dropdown to replace native <select>
+function Dropdown({ value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const label = options.find(o => o.value === value)?.label || value;
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  return h('div', { ref, className: 'dropdown', style: { position: 'relative' } },
+    h('button', {
+      className: 'dropdown-trigger',
+      onClick: () => setOpen(!open),
+    }, label, h('svg', { width: 10, height: 6, viewBox: '0 0 10 6', style: { marginLeft: 6, opacity: 0.5 } },
+      h('path', { d: 'M1 1l4 4 4-4', stroke: 'currentColor', strokeWidth: 1.5, fill: 'none', strokeLinecap: 'round' }))),
+    open && h('div', { className: 'dropdown-menu' },
+      ...options.map(o => h('button', {
+        key: o.value, className: 'dropdown-item' + (o.value === value ? ' active' : ''),
+        onClick: () => { onChange(o.value); setOpen(false); },
+      }, o.label))
+    )
+  );
+}
+
+function ExportApp() {
+  const [activeId, setActiveId] = useState(COMPOSITIONS[0]?.id);
+  const [exporting, setExporting] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [exportError, setExportError] = useState(null);
+  const [format, setFormat] = useState('mp4');
+  const [quality, setQuality] = useState('high');
+  const playerRef = useRef(null);
+  const [frame, setFrame] = useState(0);
+  const [playing, setPlaying] = useState(false);
+
+  const comp = COMPOSITIONS.find(c => c.id === activeId) || COMPOSITIONS[0];
+  const Component = comp ? COMPONENTS.get(comp.componentName) : null;
+
+  // Player event listeners
+  useEffect(() => {
+    const p = playerRef.current;
+    if (!p) return;
+    const onFrame = () => setFrame(p.getCurrentFrame());
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    p.addEventListener('frameupdate', onFrame);
+    p.addEventListener('play', onPlay);
+    p.addEventListener('pause', onPause);
+    return () => { p.removeEventListener('frameupdate', onFrame); p.removeEventListener('play', onPlay); p.removeEventListener('pause', onPause); };
+  }, [Component]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function onKey(e) {
+      const p = playerRef.current;
+      if (!p || e.target.tagName === 'SELECT') return;
+      if (e.key === ' ') { e.preventDefault(); p.toggle(); }
+      if (e.key === 'ArrowLeft') p.seekTo(Math.max(0, p.getCurrentFrame() - (e.shiftKey ? 10 : 1)));
+      if (e.key === 'ArrowRight') p.seekTo(Math.min((comp?.durationInFrames || 1) - 1, p.getCurrentFrame() + (e.shiftKey ? 10 : 1)));
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [comp]);
+
+  const CODEC_MAP = { mp4: 'h264', webm: 'vp8' };
+
+  const handleExport = useCallback(async () => {
+    if (!comp || !Component || exporting) return;
+    setExporting(true); setProgress(0); setExportError(null);
+    try {
+      const { renderMediaOnWeb } = await import('@remotion/web-renderer');
+      const result = await renderMediaOnWeb({
+        composition: {
+          component: Component, id: comp.id,
+          width: comp.width, height: comp.height,
+          fps: comp.fps, durationInFrames: comp.durationInFrames,
+        },
+        container: format,
+        videoCodec: CODEC_MAP[format] || 'h264',
+        videoBitrate: quality,
+        onProgress: (p) => setProgress(p.progress),
+      });
+      const blob = await result.getBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = comp.id + '.' + format; a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err.message);
+    } finally {
+      setExporting(false);
+    }
+  }, [comp, Component, exporting, format, quality]);
+
+  if (compileErrors.length > 0) {
+    return h('div', { className: 'error-page' },
+      h('h2', null, 'Compilation Errors'),
+      ...compileErrors.map((e, i) => h('pre', { key: i, className: 'error-block' }, e.file + ': ' + e.message))
+    );
+  }
+  if (!comp || !Component) {
+    return h('div', { className: 'empty-page' }, 'No compositions found');
+  }
+
+  const duration = (comp.durationInFrames / comp.fps).toFixed(1);
+  const lastFrame = Math.max(1, comp.durationInFrames - 1);
+  const progressPct = (frame / lastFrame) * 100;
+  const timeSec = (frame / comp.fps).toFixed(1);
+
+  return h('div', { className: 'export-root' },
+    // Toolbar
+    h('div', { className: 'export-toolbar-wrapper' },
+      h('div', { className: 'export-toolbar' },
+        h('div', { className: 'header-left' },
+          h('h1', null, comp.id),
+          h('span', { className: 'meta' },
+            comp.width + '\u00d7' + comp.height + ' \u00b7 ' + comp.fps + 'fps \u00b7 ' + duration + 's')
+        ),
+        COMPOSITIONS.length > 1 && h('div', { className: 'comp-selector' },
+          ...COMPOSITIONS.map(c => h('button', {
+            key: c.id, className: 'comp-btn' + (c.id === activeId ? ' active' : ''),
+            onClick: () => setActiveId(c.id),
+          }, c.id))
+        ),
+        h('div', { className: 'export-toolbar-actions' },
+          h(Dropdown, { value: format, onChange: setFormat, options: [
+            { value: 'mp4', label: 'MP4' }, { value: 'webm', label: 'WebM' },
+          ]}),
+          h(Dropdown, { value: quality, onChange: setQuality, options: [
+            { value: 'very-high', label: 'Very High' }, { value: 'high', label: 'High' },
+            { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' },
+          ]}),
+          h('button', { className: 'btn-primary', onClick: handleExport, disabled: exporting },
+            exporting ? 'Exporting ' + Math.round(progress * 100) + '%' : 'Export ' + format.toUpperCase()),
+          !IS_STANDALONE && h('button', { className: 'btn-secondary',
+            onClick: () => window.open('/export/remotion/download', '_blank') }, 'Download HTML'),
+        )
+      )
+    ),
+    // Error banner
+    exportError && h('div', { className: 'export-error-banner' }, exportError),
+    // Player area
+    h('div', { className: 'player-wrapper' },
+      h('div', { className: 'player-canvas', style: { aspectRatio: comp.width + ' / ' + comp.height } },
+        h(Player, {
+          ref: playerRef,
+          component: Component,
+          compositionWidth: comp.width, compositionHeight: comp.height,
+          durationInFrames: comp.durationInFrames, fps: comp.fps,
+          autoPlay: true, controls: false, loop: true, acknowledgeRemotionLicense: true,
+          style: { width: '100%', height: '100%' },
+        })
+      ),
+      // Custom playback controls
+      h('div', { className: 'playback-bar' },
+        // Timeline
+        h('div', { className: 'timeline', onClick: (e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+          playerRef.current?.seekTo(Math.round(ratio * lastFrame));
+        }},
+          h('div', { className: 'timeline-fill', style: { width: progressPct + '%' } }),
+          h('div', { className: 'timeline-thumb', style: { left: progressPct + '%' } }),
+        ),
+        // Controls row
+        h('div', { className: 'controls-row' },
+          h('button', { className: 'ctrl-btn', onClick: () => playerRef.current?.toggle() },
+            playing
+              ? h('svg', { width: 16, height: 16, viewBox: '0 0 16 16', fill: 'currentColor' },
+                  h('rect', { x: 3, y: 2, width: 3.5, height: 12, rx: 1 }),
+                  h('rect', { x: 9.5, y: 2, width: 3.5, height: 12, rx: 1 }))
+              : h('svg', { width: 16, height: 16, viewBox: '0 0 16 16', fill: 'currentColor' },
+                  h('path', { d: 'M4 2.5v11l9-5.5z' }))
+          ),
+          h('span', { className: 'time-display' }, timeSec + 's / ' + duration + 's'),
+          h('div', { style: { flex: 1 } }),
+          h('button', { className: 'ctrl-btn', onClick: () => playerRef.current?.requestFullscreen(), title: 'Fullscreen' },
+            h('svg', { width: 16, height: 16, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round' },
+              h('path', { d: 'M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4' }))
+          ),
+        )
+      )
+    ),
+  );
+}
+
+createRoot(document.getElementById('root')).render(h(ExportApp));
+`;
+
+  function buildRemotionExportHtml(opts: { inline: boolean }): { html: string; title: string } | { error: string; status: number } {
+    // 1. Read and parse compositions
+    const rootPath = join(workspace, "src", "Root.tsx");
+    if (!existsSync(rootPath)) return { error: "No src/Root.tsx found in workspace", status: 404 };
+    const rootSource = readFileSync(rootPath, "utf-8");
+    const compositions = parseCompositions(rootSource);
+    if (!compositions.length) return { error: "No <Composition> declarations found in Root.tsx", status: 404 };
+
+    // 2. Read and transpile source files
+    const sourcesResult = collectRemotionSources();
+    if ("error" in sourcesResult) return sourcesResult;
+    const files = sourcesResult;
+
+    // 3. Collect public assets as data URIs
+    const assets = collectPublicAssets();
+
+    // 4. Build HTML
+    const title = compositions[0].id;
+    const htmlTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const escape = (s: string) => s.replace(/<\/script>/gi, "<\\/script>");
+    const filesJson = escape(JSON.stringify(files));
+    const compositionsJson = escape(JSON.stringify(compositions));
+    const assetsJson = escape(JSON.stringify(assets));
+
+    const importmap = JSON.stringify({
+      imports: {
+        "react": "https://esm.sh/react@19",
+        "react/jsx-runtime": "https://esm.sh/react@19/jsx-runtime",
+        "react-dom": "https://esm.sh/react-dom@19?external=react",
+        "react-dom/client": "https://esm.sh/react-dom@19/client?external=react",
+        "remotion": "https://esm.sh/remotion@4.0.438?external=react",
+        "remotion/no-react": "https://esm.sh/remotion@4.0.438/no-react?external=react",
+        "remotion/version": "https://esm.sh/remotion@4.0.438/version",
+        "@remotion/player": "https://esm.sh/@remotion/player@4.0.438?external=react,react-dom,remotion",
+        "@remotion/web-renderer": "https://esm.sh/@remotion/web-renderer@4.0.438?external=react,remotion",
+      },
+    });
+
+    const html = `<!DOCTYPE html>
+<html${opts.inline ? ' data-standalone="1"' : ""}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${htmlTitle} \u2014 Remotion Export</title>
+<script type="importmap">${importmap}<\/script>
+<style>
+:root {
+  --color-cc-bg: #09090b;
+  --color-cc-surface: #18181b;
+  --color-cc-card: rgba(24, 24, 27, 0.6);
+  --color-cc-primary: #f97316;
+  --color-cc-primary-hover: #fdba74;
+  --color-cc-fg: #fafafa;
+  --color-cc-muted: #a1a1aa;
+  --color-cc-border: rgba(255, 255, 255, 0.08);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--color-cc-bg); font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
+#root { height: 100%; }
+.export-root {
+  display: flex; flex-direction: column; height: 100vh;
+  background: radial-gradient(circle at 50% 0%, rgba(249,115,22,0.08) 0%, transparent 60%);
+}
+.export-toolbar-wrapper {
+  position: sticky; top: 0; z-index: 100;
+  padding: 16px 24px 0; pointer-events: none;
+}
+.export-toolbar {
+  pointer-events: auto;
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  padding: 10px 20px;
+  background: var(--color-cc-card);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--color-cc-border);
+  border-radius: 999px;
+  color: var(--color-cc-fg);
+  max-width: 900px; margin: 0 auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.header-left { display: flex; align-items: baseline; gap: 10px; margin-right: auto; }
+.export-toolbar h1 { font-size: 15px; font-weight: 500; margin: 0; letter-spacing: -0.01em; }
+.export-toolbar .meta { font-size: 13px; color: var(--color-cc-muted); font-family: ui-monospace, monospace; }
+.comp-selector {
+  display: flex; align-items: center;
+  background: rgba(255,255,255,0.04);
+  border-radius: 999px; border: 1px solid rgba(255,255,255,0.08);
+  padding: 2px; gap: 1px;
+}
+.comp-btn {
+  padding: 5px 12px; border: none; border-radius: 999px;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  background: transparent; color: var(--color-cc-muted);
+  transition: all 0.2s ease; white-space: nowrap;
+}
+.comp-btn:hover { color: var(--color-cc-fg); }
+.comp-btn.active { background: rgba(249,115,22,0.15); color: var(--color-cc-primary); }
+.export-toolbar-actions { display: flex; gap: 6px; align-items: center; }
+.export-toolbar-actions button {
+  padding: 6px 14px; border: none; border-radius: 999px;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  transition: all 0.3s ease-out; white-space: nowrap;
+}
+.btn-primary {
+  background: var(--color-cc-primary); color: #fff;
+  box-shadow: 0 2px 12px rgba(249,115,22,0.2);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-cc-primary-hover);
+  box-shadow: 0 4px 16px rgba(249,115,22,0.4);
+  transform: translateY(-1px);
+}
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.btn-secondary {
+  background: rgba(255,255,255,0.05); color: var(--color-cc-fg);
+  border: 1px solid rgba(255,255,255,0.1) !important;
+}
+.btn-secondary:hover { background: rgba(255,255,255,0.1); }
+.dropdown-trigger {
+  display: flex; align-items: center; gap: 2px;
+  padding: 5px 10px; border: 1px solid rgba(255,255,255,0.1); border-radius: 999px;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  background: rgba(255,255,255,0.06); color: var(--color-cc-fg);
+  transition: all 0.15s; white-space: nowrap;
+}
+.dropdown-trigger:hover { background: rgba(255,255,255,0.1); }
+.dropdown-menu {
+  position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  min-width: 120px; padding: 4px;
+  background: rgba(30,30,34,0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5); z-index: 200;
+}
+.dropdown-item {
+  display: block; width: 100%; padding: 6px 12px; border: none;
+  background: transparent; color: var(--color-cc-muted);
+  font-size: 12px; font-weight: 500; text-align: left;
+  border-radius: 6px; cursor: pointer; transition: all 0.1s;
+}
+.dropdown-item:hover { background: rgba(255,255,255,0.08); color: var(--color-cc-fg); }
+.dropdown-item.active { color: var(--color-cc-primary); }
+.player-wrapper {
+  flex: 1; display: flex; flex-direction: column; justify-content: center;
+  padding: 20px 40px 40px;
+  max-width: 1200px; width: 100%; margin: 0 auto;
+  min-height: 0;
+}
+.player-canvas {
+  width: 100%; overflow: hidden;
+  background: #000; border-radius: 12px 12px 0 0;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.6), 0 0 0 1px var(--color-cc-border);
+}
+.playback-bar {
+  width: 100%; background: var(--color-cc-surface);
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.6), 0 0 0 1px var(--color-cc-border);
+  padding: 0 16px 10px;
+}
+.timeline {
+  position: relative; height: 20px; cursor: pointer;
+  display: flex; align-items: center;
+}
+.timeline::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%;
+  transform: translateY(-50%); height: 4px; border-radius: 2px;
+  background: rgba(255,255,255,0.1);
+}
+.timeline-fill {
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  height: 4px; border-radius: 2px; background: var(--color-cc-primary);
+  opacity: 0.7; pointer-events: none;
+}
+.timeline-thumb {
+  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  opacity: 0; transition: opacity 0.15s;
+}
+.timeline:hover .timeline-thumb { opacity: 1; }
+.controls-row {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--color-cc-muted);
+}
+.ctrl-btn {
+  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; color: var(--color-cc-muted);
+  border-radius: 6px; cursor: pointer; transition: all 0.15s;
+}
+.ctrl-btn:hover { background: rgba(255,255,255,0.08); color: var(--color-cc-fg); }
+.time-display { font-size: 12px; font-family: ui-monospace, monospace; min-width: 100px; }
+.export-error-banner {
+  padding: 8px 20px; font-size: 13px;
+  color: #ef4444; background: rgba(239,68,68,0.1);
+  text-align: center; font-family: ui-monospace, monospace;
+}
+.error-page {
+  padding: 40px; color: #ef4444; font-family: ui-monospace, monospace;
+  background: var(--color-cc-bg); min-height: 100vh;
+}
+.error-page h2 { font-size: 16px; margin-bottom: 16px; }
+.error-block {
+  font-size: 12px; padding: 12px; background: var(--color-cc-surface);
+  border-radius: 8px; margin-bottom: 8px; white-space: pre-wrap;
+}
+.empty-page {
+  display: flex; align-items: center; justify-content: center;
+  height: 100vh; background: var(--color-cc-bg); color: var(--color-cc-muted);
+}
+button:focus-visible { outline: 2px solid var(--color-cc-primary); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="application/json" id="__remotion-files">${filesJson}<\/script>
+<script type="application/json" id="__remotion-compositions">${compositionsJson}<\/script>
+<script type="application/json" id="__remotion-assets">${assetsJson}<\/script>
+<script type="module">${REMOTION_CLIENT_JS}<\/script>
+</body>
+</html>`;
+
+    return { html, title };
+  }
+
+  app.get("/export/remotion", (c) => {
+    const result = buildRemotionExportHtml({ inline: false });
+    if ("error" in result) return c.text(result.error, result.status as any);
+    return c.html(result.html);
+  });
+
+  app.get("/export/remotion/download", (c) => {
+    const result = buildRemotionExportHtml({ inline: true });
+    if ("error" in result) return c.text(result.error, result.status as any);
+    const safeFilename = result.title.replace(/[^\w\s.-]/g, "_") + ".html";
+    const utf8Filename = encodeURIComponent(result.title + ".html");
+    return new Response(result.html, {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${safeFilename}"; filename*=UTF-8''${utf8Filename}`,
+      },
+    });
   });
 
   app.get("/api/files", (c) => {
