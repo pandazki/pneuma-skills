@@ -6,3 +6,6 @@ dist/
 .env.*
 !.env.example
 .pneuma/
+
+# Landing page deploy config
+web/.deploy.env

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pneuma — Co-creation infrastructure for humans and code agents</title>
+  <meta name="description" content="Visual environment, skills, continuous learning, and distribution for human-agent collaboration.">
+  <meta property="og:title" content="Pneuma">
+  <meta property="og:description" content="Co-creation infrastructure for humans and code agents">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="assets/pneuma-logo.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <div class="hero">
+      <img src="assets/pneuma-logo.png" alt="Pneuma" class="logo" />
+      <h1 class="wordmark">Pneuma</h1>
+      <p class="tagline">Co-creation infrastructure for humans and code agents</p>
+      <p class="description">Visual environment, skills, continuous learning, and distribution — all in one workspace.</p>
+
+      <div id="open-app-section" class="open-app-section" hidden>
+        <!-- Populated by script.js when ?action= param present -->
+      </div>
+
+      <div id="download-section" class="download-section">
+        <!-- Populated by script.js with OS-specific button -->
+      </div>
+
+      <div class="cli-install">
+        <span class="cli-label">or install via CLI</span>
+        <code class="cli-command">bunx pneuma-skills</code>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="footer-links">
+      <a href="https://github.com/pandazki/pneuma-skills" target="_blank" rel="noopener">GitHub</a>
+      <span class="separator">·</span>
+      <a href="https://github.com/pandazki/pneuma-skills/releases" target="_blank" rel="noopener">Releases</a>
+      <span class="separator">·</span>
+      <a href="https://www.npmjs.com/package/pneuma-skills" target="_blank" rel="noopener">npm</a>
+    </div>
+    <p class="copyright">MIT License</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
