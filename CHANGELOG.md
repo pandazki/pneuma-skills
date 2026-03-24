@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.15.0] - 2026-03-24
+
+### Added
+- **`pneuma://import` deep link** — one-click import of shared workspaces via URL scheme; landing page supports `?action=import&url=...` to show "Import in Pneuma" button
+
+### Fixed
+- **Result share mode detection** — shared result packages now include `.pneuma-snapshot.json` with mode metadata, fixing incorrect fallback to webcraft on import
+- **Import URL encoding** — share URLs in `pneuma://import/` are properly `encodeURIComponent`'d to prevent URL parsing errors
+
 ## [2.14.0] - 2026-03-24
 
 ### Added
