@@ -14,6 +14,7 @@ import type {
   ViewerNotification,
 } from "../../../core/types/viewer-contract.js";
 import { useRemotionCompiler } from "./use-remotion-compiler.js";
+import { getApiBase } from "../../../src/utils/api.js";
 import RemotionControls from "./RemotionControls.js";
 
 // ── Error Boundary ──────────────────────────────────────────────────────────
@@ -480,12 +481,29 @@ export default function RemotionPreview({
 
   return (
     <div className="flex flex-col h-full" style={{ background: "var(--cc-bg, #09090b)" }}>
-      {/* Info bar — resolution + duration (composition switching is in TopBar) */}
-      <div className="flex items-center px-3 h-7 shrink-0"
+      {/* Info bar — resolution + duration + export (composition switching is in TopBar) */}
+      <div className="flex items-center justify-between px-3 h-7 shrink-0"
         style={{ background: "#000" }}>
         <span className="text-[10px] font-mono" style={{ color: "var(--cc-text-tertiary, #52525b)" }}>
           {activeComp.width}×{activeComp.height} · {activeComp.fps}fps · {(activeComp.durationInFrames / activeComp.fps).toFixed(1)}s
         </span>
+        <button
+          onClick={() => {
+            const base = getApiBase();
+            window.open(`${base}/export/remotion`, "_blank");
+          }}
+          className="flex items-center gap-1 px-2 h-5 rounded text-[10px] font-medium transition-colors cursor-pointer"
+          style={{ color: "var(--cc-text-tertiary, #52525b)", background: "transparent" }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--cc-text, #fafafa)"; e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--cc-text-tertiary, #52525b)"; e.currentTarget.style.background = "transparent"; }}
+          title="Export video — open export page"
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+            <path d="M8 2v8M5 7l3 3 3-3" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Export
+        </button>
       </div>
 
       {/* Player canvas */}
