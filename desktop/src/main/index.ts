@@ -66,9 +66,17 @@ function handlePneumaUrl(url: string) {
     const parsed = new URL(url);
     switch (parsed.hostname) {
       case 'open': {
-        const mode = parsed.pathname.replace(/^\//, '') || undefined;
-        // For now, just open/focus launcher — mode pre-selection is future work
         showLauncher();
+        break;
+      }
+      case 'import': {
+        // pneuma://import/https://example.com/shares/result.tar.gz
+        const shareUrl = parsed.pathname.replace(/^\//, '') + parsed.search + parsed.hash;
+        if (shareUrl) {
+          showLauncherWithImport(shareUrl);
+        } else {
+          showLauncher();
+        }
         break;
       }
       default:
@@ -77,6 +85,31 @@ function handlePneumaUrl(url: string) {
   } catch {
     showLauncher();
   }
+}
+
+async function showLauncherWithImport(shareUrl: string) {
+  const launcherUrl = getLauncherUrl();
+  if (!launcherUrl) {
+    console.error("Launcher process not ready");
+    return;
+  }
+
+  if (process.platform === "darwin") {
+    await app.dock?.show();
+  }
+
+  // Open launcher with import query param — frontend handles the rest
+  const urlWithImport = `${launcherUrl}?importUrl=${encodeURIComponent(shareUrl)}`;
+  const win = createLauncherWindow(urlWithImport);
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("http://localhost:") || url.startsWith("http://127.0.0.1:")) {
+      createModeWindow(url);
+      return { action: "deny" };
+    }
+    shell.openExternal(url);
+    return { action: "deny" };
+  });
 }
 
 // macOS: open-url fires before app.whenReady() on cold launch

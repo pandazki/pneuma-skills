@@ -43,27 +43,46 @@
     `;
   }
 
-  function handleOpenAppParam() {
+  function handleActionParam() {
     const params = new URLSearchParams(window.location.search);
     const action = params.get('action');
-    if (action !== 'open') return;
+    if (!action) return;
 
-    const mode = params.get('mode') || '';
     const section = document.getElementById('open-app-section');
     if (!section) return;
 
-    const schemeUrl = mode ? `pneuma://open/${mode}` : 'pneuma://open';
-    const label = mode ? `Open ${mode} in Pneuma` : 'Open in Pneuma';
+    let schemeUrl = '';
+    let label = '';
+    let hint = 'If Pneuma is installed, it will open automatically.';
+
+    switch (action) {
+      case 'open': {
+        const mode = params.get('mode') || '';
+        schemeUrl = mode ? `pneuma://open/${mode}` : 'pneuma://open';
+        label = mode ? `Open ${mode} in Pneuma` : 'Open in Pneuma';
+        break;
+      }
+      case 'import': {
+        const url = params.get('url') || '';
+        if (!url) return;
+        schemeUrl = `pneuma://import/${url}`;
+        label = 'Import in Pneuma';
+        hint = 'Opens Pneuma and imports this shared workspace.';
+        break;
+      }
+      default:
+        return;
+    }
 
     section.removeAttribute('hidden');
     section.innerHTML = `
       <a href="${schemeUrl}" class="open-app-btn">${label}</a>
-      <p class="open-app-hint">If Pneuma is installed, it will open automatically.</p>
+      <p class="open-app-hint">${hint}</p>
     `;
   }
 
   document.addEventListener('DOMContentLoaded', function () {
     renderDownloadSection();
-    handleOpenAppParam();
+    handleActionParam();
   });
 })();

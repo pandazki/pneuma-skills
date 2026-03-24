@@ -2557,47 +2557,60 @@ function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }
 
 // ── Import Dialog ─────────────────────────────────────────────────────────
 
-function ImportDialog({ open, onClose, onImported }: { open: boolean; onClose: () => void; onImported?: () => void }) {
+function ImportDialog({ open, onClose, onImported, initialUrl }: { open: boolean; onClose: () => void; onImported?: () => void; initialUrl?: string }) {
   const [url, setUrl] = useState("");
   const [workspace, setWorkspace] = useState("");
   const [status, setStatus] = useState<"idle" | "importing" | "done" | "error">("idle");
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState("");
+  const autoImportTriggered = useRef(false);
 
   // Reset state when dialog opens
   useEffect(() => {
     if (open) {
-      setUrl("");
+      setUrl(initialUrl || "");
       const tag = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 13);
       setWorkspace(`~/pneuma-projects/import-${tag}`);
       setStatus("idle");
       setResult(null);
       setError("");
+      autoImportTriggered.current = false;
     }
-  }, [open]);
+  }, [open, initialUrl]);
+
+  // Auto-import when opened with initialUrl
+  useEffect(() => {
+    if (open && initialUrl && url && !autoImportTriggered.current && status === "idle") {
+      autoImportTriggered.current = true;
+      // Trigger import on next tick so state is settled
+      setTimeout(() => handleImportFn(url, workspace), 0);
+    }
+  }, [open, initialUrl, url, status]);
 
   if (!open) return null;
 
-  const handleImport = async () => {
-    if (!url.trim()) return;
+  const handleImportFn = async (importUrl: string, importWorkspace: string) => {
+    if (!importUrl.trim()) return;
     setStatus("importing");
     try {
       const resp = await fetch(`${getApiBase()}/api/import`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim(), workspace: workspace.trim() || undefined }),
+        body: JSON.stringify({ url: importUrl.trim(), workspace: importWorkspace.trim() || undefined }),
       });
       const data = await resp.json();
       if (data.error) throw new Error(data.error);
       setResult(data);
       setWorkspace(data.path || "");
       setStatus("done");
-      onImported?.(); // Refresh sessions list
+      onImported?.();
     } catch (err: any) {
       setError(err.message || "Import failed");
       setStatus("error");
     }
   };
+
+  const handleImport = () => handleImportFn(url, workspace);
 
   const handleLaunchImported = async (withReplay: boolean) => {
     if (!result) return;
@@ -2717,6 +2730,7 @@ export default function Launcher() {
   const [showAllSessions, setShowAllSessions] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importInitialUrl, setImportInitialUrl] = useState<string | undefined>();
   const [launchTarget, setLaunchTarget] = useState<{
     specifier: string;
     displayName: string;
@@ -2734,6 +2748,20 @@ export default function Launcher() {
     const ro = new ResizeObserver(([e]) => setHeaderH(e.contentRect.height));
     ro.observe(headerRef.current);
     return () => ro.disconnect();
+  }, []);
+
+  // Auto-open import dialog when launched with ?importUrl= query param
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const importUrl = params.get("importUrl");
+    if (importUrl) {
+      setImportInitialUrl(importUrl);
+      setShowImportDialog(true);
+      // Clean up the URL so it doesn't re-trigger on refresh
+      const clean = new URL(window.location.href);
+      clean.searchParams.delete("importUrl");
+      window.history.replaceState({}, "", clean.pathname + clean.search);
+    }
   }, []);
 
   const galleryAnim = useAnimatedMount(showGallery);
@@ -3329,7 +3357,7 @@ export default function Launcher() {
       <SettingsPanel open={showSettings} onClose={() => setShowSettings(false)} />
 
       {/* Import dialog */}
-      <ImportDialog open={showImportDialog} onClose={() => setShowImportDialog(false)} onImported={refreshSessions} />
+      <ImportDialog open={showImportDialog} onClose={() => { setShowImportDialog(false); setImportInitialUrl(undefined); }} onImported={refreshSessions} initialUrl={importInitialUrl} />
     </div>
   );
 }
