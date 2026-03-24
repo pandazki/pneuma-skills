@@ -65,7 +65,7 @@
       case 'import': {
         const url = params.get('url') || '';
         if (!url) return;
-        schemeUrl = `pneuma://import/${url}`;
+        schemeUrl = `pneuma://import/${encodeURIComponent(url)}`;
         label = 'Import in Pneuma';
         hint = 'Opens Pneuma and imports this shared workspace.';
         break;

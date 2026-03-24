@@ -70,8 +70,8 @@ function handlePneumaUrl(url: string) {
         break;
       }
       case 'import': {
-        // pneuma://import/https://example.com/shares/result.tar.gz
-        const shareUrl = parsed.pathname.replace(/^\//, '') + parsed.search + parsed.hash;
+        // pneuma://import/{encodedUrl} — share URL is encodeURIComponent'd
+        const shareUrl = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
         if (shareUrl) {
           showLauncherWithImport(shareUrl);
         } else {
