@@ -2,6 +2,11 @@ appId: com.pneuma.skills
 productName: Pneuma Skills
 copyright: Copyright © 2024-2026 Pneuma Skills
 
+protocols:
+  - name: Pneuma
+    schemes:
+      - pneuma
+
 directories:
   output: release
 

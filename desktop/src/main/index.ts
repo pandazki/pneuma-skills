@@ -26,10 +26,27 @@ if (!gotLock) {
   app.quit();
 }
 
+// ── Custom protocol handler (pneuma://) ──────────────────────────────────────
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('pneuma', process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient('pneuma');
+}
+
 // Keep reference to prevent GC
 let setupWindow: BrowserWindow | null = null;
 
-app.on("second-instance", () => {
+app.on("second-instance", (_event, argv) => {
+  // Check for pneuma:// URL in args (Windows/Linux deep link)
+  const url = argv.find(arg => arg.startsWith('pneuma://'));
+  if (url) {
+    handlePneumaUrl(url);
+    return;
+  }
+
+  // Default: focus launcher
   const launcher = getLauncherWindow();
   if (launcher) {
     if (launcher.isMinimized()) launcher.restore();
@@ -40,6 +57,37 @@ app.on("second-instance", () => {
 });
 
 // macOS: dock icon is shown by default, hidden when all windows close
+
+// ── URL scheme handler ────────────────────────────────────────────────────────
+let pendingPneumaUrl: string | null = null;
+
+function handlePneumaUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    switch (parsed.hostname) {
+      case 'open': {
+        const mode = parsed.pathname.replace(/^\//, '') || undefined;
+        // For now, just open/focus launcher — mode pre-selection is future work
+        showLauncher();
+        break;
+      }
+      default:
+        showLauncher();
+    }
+  } catch {
+    showLauncher();
+  }
+}
+
+// macOS: open-url fires before app.whenReady() on cold launch
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  if (app.isReady()) {
+    handlePneumaUrl(url);
+  } else {
+    pendingPneumaUrl = url;
+  }
+});
 
 async function showLauncher() {
   if (process.platform === "darwin") {
@@ -247,6 +295,12 @@ app.whenReady().then(async () => {
 
   // Destroy splash after the new window exists
   splash.destroy();
+
+  // Process any URL that arrived before app was ready (macOS cold launch)
+  if (pendingPneumaUrl) {
+    handlePneumaUrl(pendingPneumaUrl);
+    pendingPneumaUrl = null;
+  }
 
   // Auto-update: silent check on startup (skip if platform asset not yet uploaded)
   setupAutoUpdater();
