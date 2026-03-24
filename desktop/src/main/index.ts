@@ -98,18 +98,25 @@ async function showLauncherWithImport(shareUrl: string) {
     await app.dock?.show();
   }
 
-  // Open launcher with import query param — frontend handles the rest
   const urlWithImport = `${launcherUrl}?importUrl=${encodeURIComponent(shareUrl)}`;
-  const win = createLauncherWindow(urlWithImport);
+  const existing = getLauncherWindow();
 
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("http://localhost:") || url.startsWith("http://127.0.0.1:")) {
-      createModeWindow(url);
+  if (existing) {
+    // Launcher already open — navigate to the import URL instead of just focusing
+    existing.loadURL(urlWithImport);
+    if (existing.isMinimized()) existing.restore();
+    existing.focus();
+  } else {
+    const win = createLauncherWindow(urlWithImport);
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      if (url.startsWith("http://localhost:") || url.startsWith("http://127.0.0.1:")) {
+        createModeWindow(url);
+        return { action: "deny" };
+      }
+      shell.openExternal(url);
       return { action: "deny" };
-    }
-    shell.openExternal(url);
-    return { action: "deny" };
-  });
+    });
+  }
 }
 
 // macOS: open-url fires before app.whenReady() on cold launch
