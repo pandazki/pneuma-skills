@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.15.2] - 2026-03-24
+
+### Fixed
+- **Import deep link with existing launcher** — `pneuma://import` now works when the launcher window is already open, navigating to the import URL instead of just focusing
+
 ## [2.15.1] - 2026-03-24
 
 ### Added
