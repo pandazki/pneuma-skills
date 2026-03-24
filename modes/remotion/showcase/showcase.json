@@ -1,3 +1,24 @@
 {
-  "tagline": "Programmatic video creation with React"
+  "tagline": "Programmatic video creation with React",
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": "Live Preview",
+      "description": "Write React components, see your video update instantly. No dev server, no build step — the viewer compiles and plays as you code.",
+      "media": "live-preview.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Frame-Perfect Animation",
+      "description": "Every frame is deterministic. Use interpolate(), spring(), and Sequence to build precise, reproducible motion — no CSS hacks.",
+      "media": "frame-animation.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Export to Video",
+      "description": "Render compositions to MP4 or WebM directly in the browser. Choose format, quality, and download — no command line needed.",
+      "media": "export-video.png",
+      "mediaType": "image"
+    }
+  ]
 }
