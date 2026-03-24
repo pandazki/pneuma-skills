@@ -1,16 +1,17 @@
 import { Composition } from "remotion";
-import { PneumaSkills } from "./PneumaSkills";
+import { PneumaIntro } from "./PneumaIntro";
 
 export const RemotionRoot: React.FC = () => {
+  // PneumaIntro: 5.5+5+7+6+6+6+6+11+7.5 = 60s = 1800 frames
   return (
     <>
       <Composition
-        id="PneumaSkills"
-        component={PneumaSkills}
-        durationInFrames={1350}
+        id="PneumaIntro"
+        component={PneumaIntro}
+        durationInFrames={1800}
         fps={30}
-        width={{{compositionWidth}}}
-        height={{{compositionHeight}}}
+        width={1280}
+        height={720}
       />
     </>
   );

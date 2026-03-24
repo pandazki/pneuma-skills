@@ -67,6 +67,8 @@ export function useRemotionCompiler(files: ViewerFileContent[]): CompilationResu
   }, [files]);
 
   useEffect(() => {
+    // Skip compilation when files haven't loaded yet (avoids flash of "Root.tsx not found")
+    if (files.length === 0) return;
     if (contentKey === cacheKeyRef.current) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);

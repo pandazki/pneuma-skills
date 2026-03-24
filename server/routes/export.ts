@@ -1259,7 +1259,7 @@ const FILES = JSON.parse(document.getElementById('__remotion-files').textContent
 const COMPOSITIONS = JSON.parse(document.getElementById('__remotion-compositions').textContent);
 const ASSETS = JSON.parse(document.getElementById('__remotion-assets').textContent);
 const IS_STANDALONE = document.documentElement.dataset.standalone === '1';
-const URL_COMPOSITION = new URLSearchParams(location.search).get('composition');
+const URL_COMPOSITION = document.documentElement.dataset.composition || new URLSearchParams(location.search).get('composition');
 
 // ── Module Linker (adapted from remotion-compiler.ts) ──
 
@@ -1542,8 +1542,8 @@ function ExportApp() {
   const timeSec = (frame / comp.fps).toFixed(1);
 
   return h('div', { className: 'export-root' },
-    // Toolbar
-    h('div', { className: 'export-toolbar-wrapper' },
+    // Toolbar — hidden in standalone (downloaded HTML)
+    !IS_STANDALONE && h('div', { className: 'export-toolbar-wrapper' },
       h('div', { className: 'export-toolbar' },
         h('div', { className: 'header-left' },
           h('h1', null, comp.id),
@@ -1566,13 +1566,13 @@ function ExportApp() {
           ]}),
           h('button', { className: 'btn-primary', onClick: handleExport, disabled: exporting },
             exporting ? 'Exporting ' + Math.round(progress * 100) + '%' : 'Export ' + format.toUpperCase()),
-          !IS_STANDALONE && h('button', { className: 'btn-secondary',
-            onClick: () => window.open('/export/remotion/download', '_blank') }, 'Download HTML'),
+          h('button', { className: 'btn-secondary',
+            onClick: () => window.open('/export/remotion/download' + (URL_COMPOSITION ? '?composition=' + encodeURIComponent(URL_COMPOSITION) : ''), '_blank') }, 'Download HTML'),
         )
       )
     ),
     // Error banner
-    exportError && h('div', { className: 'export-error-banner' }, exportError),
+    !IS_STANDALONE && exportError && h('div', { className: 'export-error-banner' }, exportError),
     // Player area
     h('div', { className: 'player-wrapper' },
       h('div', { className: 'player-canvas', style: { aspectRatio: comp.width + ' / ' + comp.height } },
@@ -1621,7 +1621,7 @@ function ExportApp() {
 createRoot(document.getElementById('root')).render(h(ExportApp));
 `;
 
-  function buildRemotionExportHtml(opts: { inline: boolean }): { html: string; title: string } | { error: string; status: number } {
+  function buildRemotionExportHtml(opts: { inline: boolean; composition?: string }): { html: string; title: string } | { error: string; status: number } {
     // 1. Read and parse compositions
     const rootPath = join(workspace, "src", "Root.tsx");
     if (!existsSync(rootPath)) return { error: "No src/Root.tsx found in workspace", status: 404 };
@@ -1638,7 +1638,9 @@ createRoot(document.getElementById('root')).render(h(ExportApp));
     const assets = collectPublicAssets();
 
     // 4. Build HTML
-    const title = compositions[0].id;
+    const title = opts.composition
+      ? (compositions.find((c) => c.id === opts.composition)?.id ?? compositions[0].id)
+      : compositions[0].id;
     const htmlTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const escape = (s: string) => s.replace(/<\/script>/gi, "<\\/script>");
     const filesJson = escape(JSON.stringify(files));
@@ -1660,7 +1662,7 @@ createRoot(document.getElementById('root')).render(h(ExportApp));
     });
 
     const html = `<!DOCTYPE html>
-<html${opts.inline ? ' data-standalone="1"' : ""}>
+<html${opts.inline ? ' data-standalone="1"' : ""}${opts.composition ? ` data-composition="${opts.composition.replace(/"/g, "&quot;")}"` : ""}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1850,7 +1852,8 @@ button:focus-visible { outline: 2px solid var(--color-cc-primary); outline-offse
   });
 
   app.get("/export/remotion/download", (c) => {
-    const result = buildRemotionExportHtml({ inline: true });
+    const composition = c.req.query("composition") || undefined;
+    const result = buildRemotionExportHtml({ inline: true, composition });
     if ("error" in result) return c.text(result.error, result.status as any);
     const safeFilename = result.title.replace(/[^\w\s.-]/g, "_") + ".html";
     const utf8Filename = encodeURIComponent(result.title + ".html");

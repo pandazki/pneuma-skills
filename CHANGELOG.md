@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.13.1] - 2026-03-24
+
+### Fixed
+- **Download HTML is pure player** — standalone HTML export now hides all toolbar controls (composition selector, export buttons, format/quality options), showing only the player with playback bar
+- **Compiler flash on startup** — skip compilation when files haven't loaded yet, preventing brief "Root.tsx not found" error
+
+### Improved
+- **Remotion seed updated** — replaced PneumaSkills demo with PneumaIntro (60s, 9 scenes) featuring editorial typography, illustration reveals, and matter.js physics; 14 curated public assets
+
 ## [2.13.0] - 2026-03-24
 
 ### Added
