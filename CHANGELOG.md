@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.12.2] - 2026-03-24
+
+### Fixed
+- **Auto-update asset check** — desktop app now verifies platform-specific update artifact exists before checking for updates, preventing 404 errors during CI build window
+
 ## [2.12.1] - 2026-03-24
 
 ### Fixed
