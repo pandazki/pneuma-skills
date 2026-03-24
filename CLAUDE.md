@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.13.1
+**Version:** 2.14.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `remotion`, `mode-maker`, `evolve`
 
@@ -141,6 +141,11 @@ pneuma-skills/
 │   ├── src/preload/           # contextBridge for renderer
 │   ├── scripts/               # Build scripts (download-bun.mjs)
 │   └── electron-builder.yml   # Packaging config (mac/win/linux)
+├── web/                       # Landing page (static site, CF Pages deployment)
+│   ├── index.html             # Single-page landing with OS-specific download
+│   ├── styles.css             # Ethereal Tech themed styles
+│   ├── script.js              # OS detection, download links, deep link handling
+│   └── deploy.sh              # CF Pages publish script (.deploy.env gitignored)
 ├── snapshot/                  # R2 push/pull for workspace snapshots + mode publishing
 │   ├── mode-publish.ts        # Mode package publishing to R2 registry
 │   └── history-share.ts       # History package push/pull via R2

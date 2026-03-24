@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.14.0] - 2026-03-24
+
+### Added
+- **Landing page** — standalone static site at `web/` introducing Pneuma Skills with OS-specific download buttons, CLI install snippet, and deep link support; deployed to Cloudflare Pages
+- **`pneuma://` URL scheme** — desktop client registers custom protocol handler for deep linking; supports `pneuma://open` and `pneuma://open/{mode}` routes with cold-launch queuing on macOS
+- **Deep link landing UX** — landing page accepts `?action=open&mode=webcraft` query params to show an "Open in Pneuma" button alongside download CTA
+
 ## [2.13.1] - 2026-03-24
 
 ### Fixed
