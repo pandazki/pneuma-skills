@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.16.0] - 2026-03-25
+
+### Added
+- **Inspired by attribution** — modes can declare an `inspiredBy` field with name + URL; displayed as a small tag with GitHub/X.com icon in the launcher (gallery, featured header, launch dialog)
+- **Remotion attribution** — credits `troyhua/claude-code-remotion` as inspiration
+
 ## [2.15.2] - 2026-03-24
 
 ### Fixed
