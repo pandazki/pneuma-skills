@@ -53,6 +53,7 @@ export default function AgentBubble() {
           </div>
           <button
             onClick={close}
+            title="Close chat"
             className="w-6 h-6 rounded-full bg-cc-surface/60 border border-white/10
                        flex items-center justify-center text-cc-muted
                        hover:text-cc-fg hover:border-cc-primary/30 transition-all text-xs"
@@ -74,6 +75,7 @@ export default function AgentBubble() {
   return (
     <button
       onClick={open}
+      title="Open agent chat"
       className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full
                  bg-cc-surface border-2
                  flex items-center justify-center

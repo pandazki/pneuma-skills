@@ -101,6 +101,7 @@ export default function ChatPanel() {
   const activity = useStore((s) => s.activity);
   const cliConnected = useStore((s) => s.cliConnected);
   const replayMode = useStore((s) => s.replayMode);
+  const focusMode = useStore((s) => s.focusMode);
   const permSize = useStore((s) => s.pendingPermissions.size);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -111,14 +112,14 @@ export default function ChatPanel() {
 
   return (
     <div className="flex flex-col h-full relative">
-      {/* Agent status bar (floating pill) — hide in replay mode */}
-      {!replayMode && (
+      {/* Agent status bar (floating pill) — hide in replay and focus modes */}
+      {!replayMode && !focusMode && (
         <div className="absolute top-4 right-4 z-10 flex items-center gap-3 px-4 py-1.5 bg-cc-surface/60 backdrop-blur-md border border-white/5 rounded-full shadow-sm">
           <StatusDot />
           <SessionInfo />
         </div>
       )}
-      <div className="flex-1 overflow-y-auto bg-grid-pattern p-4 pt-16 space-y-4 pb-36">
+      <div className={`flex-1 overflow-y-auto bg-grid-pattern p-4 space-y-4 pb-36 ${focusMode ? "pt-4" : "pt-16"}`}>
         {messages.length === 0 && !streaming && !activity && !replayMode && (
           <div className="text-cc-muted text-sm text-center mt-8">
             {cliConnected ? "Send a message to start editing" : "Connecting to Claude..."}

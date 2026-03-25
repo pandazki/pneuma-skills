@@ -62,7 +62,7 @@ function ProcessRow({ proc, onKill }: { proc: ProcessItem; onKill: () => void })
         {proc.status === "running" ? formatDuration(elapsed) : proc.status}
       </span>
       {proc.status === "running" && (
-        <button onClick={onKill} className="shrink-0 text-red-400 hover:text-red-300 px-1">
+        <button onClick={onKill} title="Kill this process" className="shrink-0 text-red-400 hover:text-red-300 px-1">
           Kill
         </button>
       )}
@@ -92,7 +92,7 @@ function SystemProcessRow({ proc, onKill }: { proc: SystemProcess; onKill: () =>
           </a>
         ))}
         <span className="text-neutral-600">PID {proc.pid}</span>
-        <button onClick={onKill} className="text-red-400 hover:text-red-300 px-1">
+        <button onClick={onKill} title="Kill this process" className="text-red-400 hover:text-red-300 px-1">
           Kill
         </button>
       </div>
@@ -166,6 +166,7 @@ export default function ProcessPanel() {
           <button
             onClick={scanSystemProcesses}
             disabled={scanning}
+            title="Scan for running dev servers"
             className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 hover:text-neutral-200"
           >
             {scanning ? "Scanning..." : "Scan"}

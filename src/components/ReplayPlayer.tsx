@@ -97,6 +97,7 @@ export function ReplayPlayer() {
           </button>
           <button
             onClick={() => isPlaying ? stopPlayback() : startPlayback()}
+            title={isPlaying ? "Pause replay" : "Play replay"}
             className="w-7 h-7 flex items-center justify-center rounded-full bg-cc-primary text-white hover:brightness-110 transition-all cursor-pointer"
           >
             {isPlaying ? (
@@ -110,7 +111,7 @@ export function ReplayPlayer() {
           </button>
         </div>
 
-        <button onClick={nextSpeed} className="px-2 py-1 rounded-full border border-cc-border text-cc-muted hover:text-cc-fg hover:border-cc-muted transition-colors cursor-pointer tabular-nums text-[10px] font-medium">
+        <button onClick={nextSpeed} title="Change playback speed" className="px-2 py-1 rounded-full border border-cc-border text-cc-muted hover:text-cc-fg hover:border-cc-muted transition-colors cursor-pointer tabular-nums text-[10px] font-medium">
           {playbackSpeed}x
         </button>
 

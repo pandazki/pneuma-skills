@@ -36,6 +36,8 @@ import HighlighterCanvas from "./HighlighterCanvas.js";
 import { captureSlideRegion } from "./captureSlideRegion.js";
 import { generateSlideScaffold, type SlideSpec, type ScaffoldFile } from "./scaffold.js";
 import ScaffoldConfirm from "../../../src/components/ScaffoldConfirm.js";
+import ContentSetSelector from "../../../src/components/ContentSetSelector.js";
+import ShareDropdown from "../../../src/components/ShareDropdown.js";
 
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -1965,10 +1967,104 @@ function SlideToolbar({
         ? "Navigator: bottom (click to hide)"
         : "Navigator: hidden (click to show)";
 
+  const focusMode = useStore((s) => s.focusMode);
+  const setFocusMode = useStore((s) => s.setFocusMode);
+  const contentSets = useStore((s) => s.contentSets);
+  const activeContentSet = useStore((s) => s.activeContentSet);
+  const contentSetUnread = useStore((s) => s.contentSetUnread);
+  const workspaceItems = useStore((s) => s.workspaceItems);
+  const activeFile = useStore((s) => s.activeFile);
+  const topBarNav = useStore((s) => s.modeViewer?.workspace?.topBarNavigation);
+  const createEmpty = useStore((s) => s.modeViewer?.workspace?.createEmpty);
+  const showItemSelector = topBarNav && contentSets.length <= 1 && workspaceItems.length > 1;
+
+  const handleCreateEmpty = useCallback(async () => {
+    if (!createEmpty) return;
+    const store = useStore.getState();
+    const rawFiles = store.files;
+    const hasContentSets = store.contentSets.length >= 1;
+    const prefix = hasContentSets ? null : store.activeContentSet;
+    const files = prefix
+      ? rawFiles.filter((f) => f.path.startsWith(prefix + "/")).map((f) => ({ path: f.path.slice(prefix.length + 1), content: f.content }))
+      : rawFiles.map((f) => ({ path: f.path, content: f.content }));
+    const result = createEmpty(files);
+    if (!result || result.length === 0) return;
+    const diskFiles = prefix
+      ? result.map((f) => ({ path: `${prefix}/${f.path}`, content: f.content }))
+      : result;
+    try {
+      const apiBase = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
+      const res = await fetch(`${apiBase}/api/workspace/scaffold`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clear: [], files: diskFiles }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTimeout(() => {
+          if (hasContentSets) {
+            const firstPath = result[0].path;
+            const slashIdx = firstPath.indexOf("/");
+            if (slashIdx > 0) store.setActiveContentSet(firstPath.slice(0, slashIdx));
+          } else {
+            store.setActiveFile(result[0].path);
+          }
+        }, 300);
+      }
+    } catch { /* ignore */ }
+  }, [createEmpty]);
+
   return (
     <div className="flex items-center justify-between px-3 py-1.5 border-b border-cc-border bg-cc-card/50 shrink-0">
-      {/* Left: nav toggle + slide navigation */}
+      {/* Left: focus mode items + nav toggle + slide navigation */}
       <div className="flex items-center gap-1.5">
+        {focusMode && (
+          <>
+            <div className="flex items-center gap-1.5 mr-1">
+              <img src="/logo.png" alt="" className="w-4 h-4 rounded" />
+              <span className="font-logo text-xs text-cc-fg tracking-tight">Pneuma</span>
+            </div>
+            {contentSets.length > 1 && (
+              <ContentSetSelector
+                items={contentSets.map((cs: { prefix: string; label: string }) => ({ id: cs.prefix, label: cs.label }))}
+                activeId={activeContentSet}
+                onSelect={(id: string) => useStore.getState().setActiveContentSet(id)}
+                unread={contentSetUnread}
+              />
+            )}
+            {showItemSelector && (
+              <ContentSetSelector
+                items={workspaceItems.map((wi: { path: string; label: string }) => ({ id: wi.path, label: wi.label }))}
+                activeId={activeFile}
+                onSelect={(id: string) => useStore.getState().setActiveFile(id)}
+                icon="file"
+              />
+            )}
+            {createEmpty && (
+              <button
+                onClick={handleCreateEmpty}
+                title="New empty content"
+                className="flex items-center justify-center w-5 h-5 rounded text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+                  <path d="M8 3v10M3 8h10" />
+                </svg>
+              </button>
+            )}
+            <div className="w-px h-4 bg-cc-border mx-0.5" />
+            <button
+              onClick={() => setFocusMode(false)}
+              title="Switch to full view"
+              className="flex items-center gap-1.5 px-1 py-0.5 rounded-md text-xs cursor-pointer hover:bg-cc-hover transition-colors"
+            >
+              <div className="relative w-7 h-4 rounded-full bg-cc-primary transition-colors duration-200">
+                <div className="absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm translate-x-3.5 transition-transform duration-200" />
+              </div>
+              <span className="font-medium text-cc-fg">Focus</span>
+            </button>
+            <div className="w-px h-4 bg-cc-border mx-0.5" />
+          </>
+        )}
         <button
           onClick={onCycleNav}
           className="flex items-center justify-center w-7 h-7 rounded text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
@@ -2099,6 +2195,7 @@ function SlideToolbar({
         >
           <ExportIcon />
         </button>
+        {focusMode && <ShareDropdown />}
         {onScaffold && (
           <>
             <div className="w-px h-4 bg-cc-border" />

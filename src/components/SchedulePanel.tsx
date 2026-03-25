@@ -78,6 +78,7 @@ export default function SchedulePanel() {
         <button
           onClick={handleRefresh}
           disabled={turnInProgress || needsUpgrade || !isClaudeBackend}
+          title="Refresh scheduled jobs list"
           className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400
             hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
         >
