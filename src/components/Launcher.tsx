@@ -33,6 +33,7 @@ interface BuiltinMode {
   type: "builtin";
   hasInitParams?: boolean;
   icon?: string;
+  inspiredBy?: { name: string; url: string };
   showcase?: {
     tagline?: string;
     hero?: string;
@@ -106,6 +107,7 @@ type AnyMode = {
   archiveUrl?: string;
   hasInitParams?: boolean;
   showcase?: BuiltinMode["showcase"];
+  inspiredBy?: BuiltinMode["inspiredBy"];
 };
 
 // ── Theme ────────────────────────────────────────────────────────────────
@@ -114,6 +116,36 @@ type Theme = "light" | "dark" | "system";
 
 function getSystemTheme(): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+}
+
+// ── InspiredByTag ─────────────────────────────────────────────────────────
+
+function getUrlIcon(url: string) {
+  if (url.includes("github.com")) return (
+    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+  );
+  if (url.includes("x.com") || url.includes("twitter.com")) return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+  );
+  return null;
+}
+
+function InspiredByTag({ name, url, className = "" }: { name: string; url: string; className?: string }) {
+  const icon = getUrlIcon(url);
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-cc-muted/60 hover:text-cc-muted bg-cc-surface/30 hover:bg-cc-surface/50 border border-cc-border/20 transition-colors ${className}`}
+      onClick={(e) => e.stopPropagation()}
+      title={`Inspired by ${name}`}
+    >
+      {icon}
+      <span className="opacity-60">inspired by</span>
+      <span>{name}</span>
+    </a>
+  );
 }
 
 function getInitialTheme(): Theme {
@@ -667,6 +699,7 @@ function FeaturedMode({
             <div className="flex items-center gap-3 mb-2">
               <ModeIcon svg={mode.icon} className="w-6 h-6 text-cc-primary" />
               <h2 className="font-display text-3xl text-cc-fg tracking-tight">{mode.displayName}</h2>
+              {mode.inspiredBy && <InspiredByTag name={mode.inspiredBy.name} url={mode.inspiredBy.url} />}
             </div>
             {mode.showcase?.tagline && (
               <p className="font-chat text-base text-cc-muted/80 italic mb-3">
@@ -1583,6 +1616,7 @@ function GalleryModeCard({
             {mode.showcase?.tagline && (
               <span className="text-xs text-cc-muted/60 hidden sm:inline">{mode.showcase.tagline}</span>
             )}
+            {mode.inspiredBy && <InspiredByTag name={mode.inspiredBy.name} url={mode.inspiredBy.url} />}
           </div>
           <p className="text-sm text-cc-muted/70 truncate">{mode.description}</p>
         </div>
@@ -1836,6 +1870,7 @@ function LaunchDialog({
   description,
   icon,
   showcase,
+  inspiredBy,
   defaultWorkspace,
   defaultInitParams,
   backendOptions,
@@ -1849,6 +1884,7 @@ function LaunchDialog({
   description?: string;
   icon?: string;
   showcase?: BuiltinMode["showcase"];
+  inspiredBy?: BuiltinMode["inspiredBy"];
   defaultWorkspace?: string;
   defaultInitParams?: Record<string, string>;
   backendOptions: BackendOption[];
@@ -2249,7 +2285,10 @@ function LaunchDialog({
                 <div className="flex items-center gap-3">
                   <ModeIcon svg={icon} className="w-8 h-8 text-cc-primary" />
                   <div>
-                    <h2 className="font-display text-lg text-cc-fg">{displayName}</h2>
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-display text-lg text-cc-fg">{displayName}</h2>
+                      {inspiredBy && <InspiredByTag name={inspiredBy.name} url={inspiredBy.url} />}
+                    </div>
                     {showcase?.tagline && (
                       <p className="text-xs text-cc-muted/60 mt-0.5">{showcase.tagline}</p>
                     )}
@@ -2271,7 +2310,10 @@ function LaunchDialog({
               <div className="flex items-center gap-3">
                 <ModeIcon svg={icon} className="w-8 h-8 text-cc-primary" />
                 <div>
-                  <h2 className="font-display text-xl text-cc-fg">{displayName}</h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-display text-xl text-cc-fg">{displayName}</h2>
+                    {inspiredBy && <InspiredByTag name={inspiredBy.name} url={inspiredBy.url} />}
+                  </div>
                   {description && (
                     <p className="text-sm text-cc-muted/70 mt-0.5">{description}</p>
                   )}
@@ -3030,6 +3072,7 @@ export default function Launcher() {
       description: mode.description,
       icon: mode.icon,
       showcase: mode.showcase,
+      inspiredBy: mode.inspiredBy,
     });
   };
 
@@ -3129,6 +3172,7 @@ export default function Launcher() {
                 description: featuredMode.description,
                 icon: featuredMode.icon,
                 showcase: featuredMode.showcase,
+                inspiredBy: featuredMode.inspiredBy,
               })}
               onExplore={() => setShowGallery(true)}
             />
@@ -3261,6 +3305,7 @@ export default function Launcher() {
                     description: mode.description,
                     icon: mode.icon,
                     showcase: mode.showcase,
+                    inspiredBy: mode.inspiredBy,
                   })}
                 />
               ))}
@@ -3342,6 +3387,7 @@ export default function Launcher() {
           description={lastLaunchTarget.current.description}
           icon={lastLaunchTarget.current.icon}
           showcase={lastLaunchTarget.current.showcase}
+          inspiredBy={lastLaunchTarget.current.inspiredBy}
           defaultWorkspace={lastLaunchTarget.current.defaultWorkspace}
           defaultInitParams={lastLaunchTarget.current.defaultInitParams}
           backendOptions={backendOptions}

@@ -95,6 +95,7 @@ export function startServer(options: ServerOptions) {
           type: "builtin" as const,
           ...((name === "slide" || name === "illustrate") ? { hasInitParams: true } : {}),
           ...(showcase ? { showcase } : {}),
+          ...(parsed.inspiredBy ? { inspiredBy: parsed.inspiredBy } : {}),
         };
       });
 

@@ -12,6 +12,10 @@ const remotionManifest: ModeManifest = {
   description: "Programmatic video creation with React — live preview with custom Player",
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/><line x1="12" y1="3" x2="12" y2="21" opacity="0.3"/></svg>`,
   supportedBackends: ["claude-code"],
+  inspiredBy: {
+    name: "troyhua/claude-code-remotion",
+    url: "https://github.com/troyhua/claude-code-remotion",
+  },
   layout: "editor",
 
   skill: {

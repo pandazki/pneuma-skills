@@ -266,6 +266,14 @@ export interface ModeManifest {
   /** Supported agent backends. When omitted, all implemented backends are allowed. */
   supportedBackends?: string[];
 
+  /** Attribution — credit the project or person that inspired this mode (optional) */
+  inspiredBy?: {
+    /** Display name (e.g. "troyhua/claude-code-remotion") */
+    name: string;
+    /** URL to the source (GitHub, X/Twitter, website, etc.) */
+    url: string;
+  };
+
   /** Layout: "editor" = dual panel (default), "app" = fullscreen Viewer + floating Agent bubble */
   layout?: "editor" | "app";
   /** Window size preference (app layout + Electron) */

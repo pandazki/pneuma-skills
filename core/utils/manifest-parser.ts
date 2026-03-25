@@ -15,6 +15,7 @@ export interface ParsedManifest {
   installName?: string;
   workspaceType?: string;
   layout?: string;
+  inspiredBy?: { name: string; url: string };
 }
 
 /** Extract a single string field value: `fieldName: "value"` or `fieldName: 'value'` */
@@ -47,6 +48,18 @@ function extractStringArray(source: string, field: string): string[] | undefined
  * Parse a manifest.ts source file and extract key metadata.
  * Uses regex — no TS compiler or eval needed.
  */
+/** Extract the inspiredBy object: `inspiredBy: { name: "...", url: "..." }` */
+function extractInspiredBy(source: string): { name: string; url: string } | undefined {
+  const re = /inspiredBy:\s*\{([^}]*)\}/s;
+  const match = re.exec(source);
+  if (!match) return undefined;
+  const block = match[1];
+  const name = extractString(block, "name");
+  const url = extractString(block, "url");
+  if (name && url) return { name, url };
+  return undefined;
+}
+
 export function parseManifestTs(content: string): ParsedManifest {
   return {
     name: extractString(content, "name"),
@@ -58,5 +71,6 @@ export function parseManifestTs(content: string): ParsedManifest {
     installName: extractString(content, "installName"),
     workspaceType: extractString(content, "type"),
     layout: extractString(content, "layout"),
+    inspiredBy: extractInspiredBy(content),
   };
 }
