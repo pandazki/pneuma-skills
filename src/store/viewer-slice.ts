@@ -16,7 +16,6 @@ export interface ViewerSlice {
   viewportRange: { file: string; startLine: number; endLine: number; heading?: string } | null;
   actionRequest: ViewerActionRequest | null;
   navigateRequest: ViewerLocator | null;
-  pendingViewerNotification: { type: string; message: string; severity: "info" | "warning"; summary?: string } | null;
   userActions: UserAction[];
 
   setSelection: (s: ElementSelection | null) => void;
@@ -29,7 +28,6 @@ export interface ViewerSlice {
   clearAnnotations: () => void;
   setActionRequest: (req: ViewerActionRequest | null) => void;
   setNavigateRequest: (req: ViewerLocator | null) => void;
-  setPendingViewerNotification: (n: { type: string; message: string; severity: "info" | "warning" } | null) => void;
   pushUserAction: (action: UserAction) => void;
   drainUserActions: () => UserAction[];
 }
@@ -43,7 +41,6 @@ export const createViewerSlice: StateCreator<AppState, [], [], ViewerSlice> = (s
   viewportRange: null,
   actionRequest: null,
   navigateRequest: null,
-  pendingViewerNotification: null,
   userActions: [],
 
   setSelection: (selection) => set((s) => ({ selection, selectionStamp: selection ? s.selectionStamp + 1 : s.selectionStamp })),
@@ -115,7 +112,6 @@ export const createViewerSlice: StateCreator<AppState, [], [], ViewerSlice> = (s
     }
   },
 
-  setPendingViewerNotification: (n) => set({ pendingViewerNotification: n }),
 
   pushUserAction: (action) => set((s) => ({ userActions: [...s.userActions, action] })),
   drainUserActions: (): UserAction[] => {

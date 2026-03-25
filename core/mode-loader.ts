@@ -89,6 +89,13 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/remotion/pneuma-mode.js").then((m) => m.default),
   },
+  gridboard: {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/gridboard/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/gridboard/pneuma-mode.js").then((m) => m.default),
+  },
 };
 
 /** External mode registry — registered by the CLI at startup via registerExternalMode */

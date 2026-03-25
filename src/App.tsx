@@ -10,7 +10,7 @@ import SchedulePanel from "./components/SchedulePanel.js";
 
 import { useStore, nextId } from "./store.js";
 import type { SelectionType } from "./types.js";
-import { connect, sendViewerNotification } from "./ws.js";
+import { connect } from "./ws.js";
 import { loadReplay } from "./replay-engine.js";
 import { loadMode, registerExternalMode } from "../core/mode-loader.js";
 import { useSystemPreferences } from "./hooks/useSystemPreferences.js";
@@ -147,8 +147,8 @@ function useViewerProps(): ViewerPreviewProps {
       setActionRequest(null);
     },
     onNotifyAgent: (notification) => {
-      // Queue — will be flushed when CC goes idle (see useFlushViewerNotification)
-      useStore.getState().setPendingViewerNotification(notification);
+      // Unified queue — if agent is idle, send immediately; otherwise queue for flush on idle
+      useStore.getState().addPendingNotification(notification);
     },
     navigateRequest,
     onNavigateComplete: () => setNavigateRequest(null),
@@ -269,40 +269,7 @@ export default function App() {
       .catch(() => useStore.getState().setGitAvailable(false));
   }, []);
 
-  // Flush queued viewer notification when CC goes idle
-  const sessionStatus = useStore((s) => s.sessionStatus);
-  const pendingNotification = useStore((s) => s.pendingViewerNotification);
-  useEffect(() => {
-    if (sessionStatus !== "idle" || !pendingNotification) return;
-    const store = useStore.getState();
-    store.setPendingViewerNotification(null);
-
-    // Send to server
-    sendViewerNotification(pendingNotification);
-    // Mark turn in progress so Stop button appears (same as ChatInput sendUserMessage)
-    store.setTurnInProgress(true);
-
-    // Parse affected files from notification message
-    const fileMatches = [...pendingNotification.message.matchAll(/\(([^)]+\.html)\)/g)];
-    const affectedFiles = fileMatches.map((m) => m[1]);
-
-    // Show as user-side bubble with context card
-    const msg: import("./types.js").ChatMessage = {
-      id: nextId(),
-      role: "user",
-      content: "",
-      timestamp: Date.now(),
-      viewerNotification: {
-        type: pendingNotification.type,
-        summary: pendingNotification.summary || pendingNotification.type,
-        files: affectedFiles.length > 0 ? affectedFiles : undefined,
-      },
-    };
-    if (store.debugMode) {
-      msg.debugPayload = { enrichedContent: pendingNotification.message };
-    }
-    store.appendMessage(msg);
-  }, [sessionStatus, pendingNotification]);
+  // Pending queue flush is handled by store subscriber in store/index.ts (tryFlushPendingQueue)
 
   // Workspace item auto-selection (topBarNavigation modes)
   const topBarNav = useStore((s) => s.modeViewer?.workspace?.topBarNavigation);

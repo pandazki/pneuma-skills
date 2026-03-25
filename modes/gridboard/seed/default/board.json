@@ -1,0 +1,70 @@
+{
+  "board": {
+    "width": {{boardWidth}},
+    "height": {{boardHeight}},
+    "columns": {{columns}},
+    "rows": {{rows}}
+  },
+  "tiles": {
+    "clock": {
+      "label": "Clock",
+      "component": "tiles/clock/Tile.tsx",
+      "status": "active",
+      "position": { "col": 0, "row": 0 },
+      "size": { "cols": 2, "rows": 2 }
+    },
+    "weather": {
+      "label": "Weather",
+      "component": "tiles/weather/Tile.tsx",
+      "status": "active",
+      "position": { "col": 2, "row": 0 },
+      "size": { "cols": 3, "rows": 2 }
+    },
+    "todo": {
+      "label": "Todo List",
+      "component": "tiles/todo/Tile.tsx",
+      "status": "active",
+      "position": { "col": 5, "row": 0 },
+      "size": { "cols": 3, "rows": 4 }
+    },
+    "ai-news": {
+      "label": "AI News",
+      "component": "tiles/ai-news/Tile.tsx",
+      "status": "active",
+      "position": { "col": 0, "row": 2 },
+      "size": { "cols": 5, "rows": 3 }
+    },
+    "crypto-ticker": {
+      "label": "Crypto Ticker",
+      "component": "tiles/crypto-ticker/Tile.tsx",
+      "status": "active",
+      "position": { "col": 0, "row": 5 },
+      "size": { "cols": 5, "rows": 3 }
+    },
+    "pomodoro": {
+      "label": "Pomodoro Timer",
+      "component": "tiles/pomodoro/Tile.tsx",
+      "status": "available"
+    },
+    "countdown": {
+      "label": "Countdown",
+      "component": "tiles/countdown/Tile.tsx",
+      "status": "available"
+    },
+    "quotes": {
+      "label": "Daily Quote",
+      "component": "tiles/quotes/Tile.tsx",
+      "status": "available"
+    },
+    "world-clock": {
+      "label": "World Clock",
+      "component": "tiles/world-clock/Tile.tsx",
+      "status": "available"
+    },
+    "habit-tracker": {
+      "label": "Habit Tracker",
+      "component": "tiles/habit-tracker/Tile.tsx",
+      "status": "available"
+    }
+  }
+}
