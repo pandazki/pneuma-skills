@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.17.0] - 2026-03-25
+
+### Added
+- **PPTX export for Slide mode** — "Download PPTX" button in the slide export toolbar; uses `dom-to-pptx` (PptxGenJS) in-browser to convert slides into an editable PowerPoint file, no external server needed
+- **SVG preprocessing for PPTX** — inline SVGs are converted to data URI images with CSS variable resolution, `currentColor` expansion, and `getBBox`-based viewBox fitting for accurate positioning
+- **PPTX CSS compatibility layer** — export preprocessor resolves CSS custom properties, converts `display: grid` to flexbox, bakes `opacity` into color alpha channels, and strips unsupported `backdrop-filter`
+
 ## [2.16.1] - 2026-03-25
 
 ### Improved

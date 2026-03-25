@@ -203,6 +203,7 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
     </div>
     <div class="export-toolbar-actions">
       <button class="btn-primary" onclick="downloadSlides()">Download HTML</button>
+      <button class="btn-secondary" onclick="downloadPptx()">Download PPTX</button>
       <div class="print-group">
         <button class="mode-btn active" id="mode-img" onclick="setMode('image')">Image</button>
         <button class="mode-btn" id="mode-html" onclick="setMode('html')">HTML</button>
@@ -228,6 +229,279 @@ function downloadSlides(){
     URL.revokeObjectURL(a.href);
   }).catch(function(e){alert("Download failed: "+e.message)})
   .finally(function(){btn.textContent="Download HTML";btn.disabled=false});
+}
+<\/script>`;
+
+    const pptxScript = opts.inline
+      ? ""
+      : `\n<script>
+var pptxLoaded=false;
+function downloadPptx(){
+  var btn=document.querySelector('.btn-secondary');
+  btn.textContent='Preparing...';btn.disabled=true;
+  var meta=document.querySelector('.meta');var metaOrig=meta?meta.textContent:'';
+  function updateMeta(t){if(meta)meta.textContent=t}
+
+  function prepareSlidesForPptx(pages){
+    // Clone slides into an offscreen container for preprocessing
+    var wrapper=document.createElement('div');
+    wrapper.style.cssText='position:absolute;left:-9999px;top:0;width:${W}px';
+    document.body.appendChild(wrapper);
+    var clones=[];
+    for(var i=0;i<pages.length;i++){
+      var clone=pages[i].cloneNode(true);
+      clone.style.width='${W}px';
+      clone.style.height='${H}px';
+      clone.style.overflow='hidden';
+      clone.style.position='relative';
+      wrapper.appendChild(clone);
+      clones.push(clone);
+    }
+
+    // 1. Resolve CSS custom properties to computed values on all elements
+    clones.forEach(function(slide){
+      var all=slide.querySelectorAll('*');
+      [slide].concat(Array.from(all)).forEach(function(el){
+        var cs=getComputedStyle(el);
+        var inlineStyle=el.style;
+        // Resolve color properties that commonly use CSS vars
+        ['color','backgroundColor','borderColor','borderTopColor','borderRightColor','borderBottomColor','borderLeftColor'].forEach(function(prop){
+          var val=cs[prop];
+          if(val&&val!=='rgba(0, 0, 0, 0)'&&val!=='transparent'){
+            inlineStyle[prop]=val;
+          }
+        });
+        // Resolve font-family
+        if(cs.fontFamily) inlineStyle.fontFamily=cs.fontFamily;
+      });
+    });
+
+    // 2. Convert display:grid to display:flex with explicit child widths
+    clones.forEach(function(slide){
+      slide.querySelectorAll('*').forEach(function(el){
+        var cs=getComputedStyle(el);
+        if(cs.display==='grid'){
+          var cols=cs.gridTemplateColumns.split(/\\s+/).length;
+          el.style.display='flex';
+          el.style.flexWrap='wrap';
+          var gap=parseFloat(cs.gap)||0;
+          var children=Array.from(el.children);
+          var childWidth=cols>1?'calc('+(100/cols).toFixed(2)+'% - '+gap*(cols-1)/cols+'px)':'100%';
+          children.forEach(function(ch){ch.style.width=childWidth;ch.style.minWidth=childWidth;ch.style.flexShrink='0'});
+        }
+      });
+    });
+
+    // 3. Bake opacity into color/backgroundColor so dom-to-pptx sees it
+    //    Skip SVG child elements — they handle opacity via SVG attributes
+    function applyOpacity(rgbaStr,opacity){
+      var m=rgbaStr.match(/rgba?\\(([\\d.]+),\\s*([\\d.]+),\\s*([\\d.]+)(?:,\\s*([\\d.]+))?\\)/);
+      if(!m)return rgbaStr;
+      var a=parseFloat(m[4]!=null?m[4]:'1')*opacity;
+      return 'rgba('+m[1]+', '+m[2]+', '+m[3]+', '+a.toFixed(4)+')';
+    }
+    clones.forEach(function(slide){
+      slide.querySelectorAll('*').forEach(function(el){
+        if(el.closest('svg'))return;
+        var cs=getComputedStyle(el);
+        var op=parseFloat(cs.opacity);
+        if(op>0&&op<1){
+          var hasBg=cs.backgroundColor&&cs.backgroundColor!=='rgba(0, 0, 0, 0)'&&cs.backgroundColor!=='transparent';
+          var hasColor=cs.color&&cs.color!=='transparent';
+          if(hasColor) el.style.color=applyOpacity(cs.color,op);
+          if(hasBg) el.style.backgroundColor=applyOpacity(cs.backgroundColor,op);
+          // Propagate opacity to child SVGs so step 4 can bake it into the img
+          var childSvgs=el.querySelectorAll('svg');
+          if(childSvgs.length){
+            childSvgs.forEach(function(s){
+              var sOp=parseFloat(getComputedStyle(s).opacity)||1;
+              s.style.opacity=String(sOp*op);
+            });
+          }
+          el.style.opacity='1';
+        }
+      });
+    });
+
+    // 4. Convert inline SVGs to <img> data URIs for reliable PPTX rendering
+    clones.forEach(function(slide){
+      // Use Array.from to get a static list (replaceChild modifies live NodeList)
+      Array.from(slide.querySelectorAll('svg')).forEach(function(svg){
+        try{
+          var cs=getComputedStyle(svg);
+          // Resolve CSS vars in stroke/fill attributes before serialization
+          function resolveVar(val){
+            if(!val||val.indexOf('var(')===-1)return val;
+            var tmp=document.createElement('div');
+            tmp.style.color=val;
+            document.body.appendChild(tmp);
+            var resolved=getComputedStyle(tmp).color;
+            document.body.removeChild(tmp);
+            return resolved||val;
+          }
+          // Resolve on all descendant elements
+          Array.from(svg.querySelectorAll('[stroke],[fill]')).forEach(function(el){
+            ['stroke','fill'].forEach(function(attr){
+              var val=el.getAttribute(attr);
+              if(val)el.setAttribute(attr,resolveVar(val));
+            });
+          });
+          // Also on the svg element itself
+          ['stroke','fill'].forEach(function(attr){
+            var val=svg.getAttribute(attr);
+            if(val)svg.setAttribute(attr,resolveVar(val));
+          });
+          // Resolve currentColor
+          var parentEl=svg.parentElement;
+          var parentColor=(parentEl?getComputedStyle(parentEl).color:null)||'#000000';
+          Array.from(svg.querySelectorAll('*')).forEach(function(el){
+            ['stroke','fill'].forEach(function(attr){
+              if(el.getAttribute(attr)==='currentColor')el.setAttribute(attr,parentColor);
+            });
+          });
+          if(svg.getAttribute('stroke')==='currentColor')svg.setAttribute('stroke',parentColor);
+          if(svg.getAttribute('fill')==='currentColor')svg.setAttribute('fill',parentColor);
+
+          // Snapshot computed values BEFORE any DOM mutations
+          var svgPos=cs.position;
+          var svgTop=cs.top;
+          var svgRight=cs.right;
+          var svgBottom=cs.bottom;
+          var svgLeft=cs.left;
+          var svgZIndex=cs.zIndex;
+          var svgOp=parseFloat(cs.opacity);
+          var svgCsW=parseFloat(cs.width);
+          var svgCsH=parseFloat(cs.height);
+
+          // Use getBBox to get actual content bounds (respects overflow:visible)
+          var bbox;
+          try{bbox=svg.getBBox()}catch(e){bbox=null}
+          var origW=parseFloat(svg.getAttribute('width'))||svgCsW||100;
+          var origH=parseFloat(svg.getAttribute('height'))||svgCsH||100;
+
+          // Compute viewBox from content bbox with padding for stroke-width
+          var pad=4;
+          var vx,vy,vw,vh;
+          if(bbox&&(bbox.width>0||bbox.height>0)){
+            vx=bbox.x-pad; vy=bbox.y-pad;
+            vw=bbox.width+pad*2; vh=bbox.height+pad*2;
+          }else{
+            vx=0;vy=0;vw=origW;vh=origH;
+          }
+          svg.setAttribute('viewBox',vx+' '+vy+' '+vw+' '+vh);
+
+          var scale=origW/vw;
+          var imgW=vw*scale;
+          var imgH=vh*scale;
+
+          svg.setAttribute('width',String(vw));
+          svg.setAttribute('height',String(vh));
+          svg.setAttribute('xmlns','http://www.w3.org/2000/svg');
+
+          var offsetX=(vx)*scale;
+          var offsetY=(vy)*scale;
+
+          // Bake opacity into individual SVG elements via stroke-opacity/fill-opacity
+          // Clamp minimum to 0.15 — anything lower is invisible in PPTX rendering
+          if(svgOp<1){
+            var clampedOp=Math.max(svgOp,0.15);
+            Array.from(svg.querySelectorAll('*')).concat([svg]).forEach(function(el){
+              var stroke=el.getAttribute('stroke');
+              if(stroke&&stroke!=='none'&&stroke!=='transparent'){
+                var existing=parseFloat(el.getAttribute('stroke-opacity'))||1;
+                el.setAttribute('stroke-opacity',String(existing*clampedOp));
+              }
+              var fill=el.getAttribute('fill');
+              if(fill&&fill!=='none'&&fill!=='transparent'){
+                var existingF=parseFloat(el.getAttribute('fill-opacity'))||1;
+                el.setAttribute('fill-opacity',String(existingF*clampedOp));
+              }
+              var childOp=el.getAttribute('opacity');
+              if(childOp){
+                el.setAttribute('opacity',String(Math.max(parseFloat(childOp)*svgOp,0.15)));
+              }
+            });
+          }
+
+          // Remove style attribute (positioning is on the img, not in the SVG)
+          svg.removeAttribute('style');
+
+          var svgStr=new XMLSerializer().serializeToString(svg);
+          var dataUri='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svgStr);
+
+          var img=document.createElement('img');
+          img.src=dataUri;
+          img.style.width=imgW+'px';
+          img.style.height=imgH+'px';
+          // Preserve positioning using snapshotted values
+          if(svgPos==='absolute'){
+            img.style.position='absolute';
+            var origTop=parseFloat(svgTop);
+            var origLeft=parseFloat(svgLeft);
+            var origRight=svgRight;
+            var origBottom=svgBottom;
+            if(!isNaN(origTop)){
+              img.style.top=(origTop+offsetY)+'px';
+            }else if(origBottom&&origBottom!=='auto'){
+              img.style.bottom=origBottom;
+            }
+            if(!isNaN(origLeft)){
+              img.style.left=(origLeft+offsetX)+'px';
+            }else if(origRight&&origRight!=='auto'){
+              var rightVal=parseFloat(origRight);
+              if(!isNaN(rightVal)){
+                img.style.right=(rightVal-(imgW-origW)-offsetX)+'px';
+              }else{
+                img.style.right=origRight;
+              }
+            }
+            img.style.zIndex=svgZIndex;
+          }
+          // Opacity already baked into stroke-opacity/fill-opacity inside SVG — don't double-apply
+
+          svg.parentNode.replaceChild(img,svg);
+        }catch(e){console.warn('SVG conversion failed:',e)}
+      });
+    });
+
+    // 5. Strip backdrop-filter (unsupported)
+    clones.forEach(function(slide){
+      slide.querySelectorAll('*').forEach(function(el){
+        el.style.backdropFilter='none';
+        el.style.webkitBackdropFilter='none';
+      });
+    });
+
+    return {clones:clones,wrapper:wrapper};
+  }
+
+  function doExport(){
+    updateMeta('Restoring slides...');
+    restoreHTML();
+    var pages=document.querySelectorAll('.slide-page');
+    if(!pages.length){btn.textContent='Download PPTX';btn.disabled=false;updateMeta(metaOrig);return}
+    updateMeta('Preparing slides...');
+    var prepared=prepareSlidesForPptx(pages);
+    updateMeta('Converting to PPTX...');
+    window.domToPptx.exportToPptx(prepared.clones,{skipDownload:true,autoEmbedFonts:true}).then(function(blob){
+      var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+      a.download=(document.title.replace(/\\s*\\u2014\\s*Export$/,'')||'slides')+'.pptx';
+      document.body.appendChild(a);a.click();document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    }).catch(function(e){alert('PPTX export failed: '+e.message)})
+    .finally(function(){
+      if(prepared.wrapper.parentNode)prepared.wrapper.parentNode.removeChild(prepared.wrapper);
+      btn.textContent='Download PPTX';btn.disabled=false;updateMeta(metaOrig);
+    });
+  }
+
+  if(pptxLoaded){doExport();return}
+  updateMeta('Loading PPTX library...');
+  var s=document.createElement('script');
+  s.src='/vendor/dom-to-pptx.bundle.js';
+  s.onload=function(){pptxLoaded=true;doExport()};
+  s.onerror=function(){btn.textContent='Download PPTX';btn.disabled=false;updateMeta(metaOrig);alert('Failed to load PPTX library')};
+  document.head.appendChild(s);
 }
 <\/script>`;
 
@@ -510,7 +784,7 @@ ${opts.inline ? `
 </style>
 </head>
 <body>${toolbarHtml}
-${slidePages}${downloadScript}${imageModeScript}
+${slidePages}${downloadScript}${pptxScript}${imageModeScript}
 </body>
 </html>`;
 
@@ -1094,6 +1368,12 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
   app.get("/vendor/snapdom.js", async (c) => {
     const f = Bun.file(join(import.meta.dir, "..", "..", "node_modules", "@zumer", "snapdom", "dist", "snapdom.js"));
     if (!(await f.exists())) return c.text("snapdom not found", 404);
+    return new Response(f, { headers: { "Content-Type": "application/javascript", "Cache-Control": "public, max-age=86400" } });
+  });
+
+  app.get("/vendor/dom-to-pptx.bundle.js", async (c) => {
+    const f = Bun.file(join(import.meta.dir, "..", "..", "vendor", "dom-to-pptx.bundle.js"));
+    if (!(await f.exists())) return c.text("dom-to-pptx not found", 404);
     return new Response(f, { headers: { "Content-Type": "application/javascript", "Cache-Control": "public, max-age=86400" } });
   });
 
