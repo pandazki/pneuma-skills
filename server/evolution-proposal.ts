@@ -39,7 +39,7 @@ export interface ProposedChange {
   file: string;
 
   /** What kind of change */
-  action: "modify" | "create";
+  action: "modify" | "create" | "remove";
 
   /** Human-readable description of the change */
   description: string;
@@ -47,7 +47,10 @@ export interface ProposedChange {
   /** Evidence from user history that supports this change */
   evidence: Evidence[];
 
-  /** The content to write (for "create") or append (for "modify") */
+  /** Evidence strength: high (multi-session explicit), medium (clear pattern), low (single implicit signal) */
+  confidence?: "high" | "medium" | "low";
+
+  /** The content to write (for "create"), append (for "modify"), or match and remove (for "remove") */
   content: string;
 
   /**
@@ -176,6 +179,12 @@ export function applyProposal(workspace: string, proposalId: string): {
     if (change.action === "create") {
       mkdirSync(join(targetPath, ".."), { recursive: true });
       writeFileSync(targetPath, change.content, "utf-8");
+    } else if (change.action === "remove") {
+      if (existsSync(targetPath)) {
+        const existing = readFileSync(targetPath, "utf-8");
+        const removed = removeMatchedContent(existing, change.content);
+        writeFileSync(targetPath, removed, "utf-8");
+      }
     } else if (change.action === "modify") {
       let existing = "";
       if (existsSync(targetPath)) {
@@ -353,6 +362,22 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Remove matched content from a file. The content field is used as a literal
+ * substring match. Surrounding blank lines are collapsed after removal.
+ */
+function removeMatchedContent(fileContent: string, contentToRemove: string): string {
+  const trimmed = contentToRemove.trim();
+  const idx = fileContent.indexOf(trimmed);
+  if (idx === -1) return fileContent; // No match — leave unchanged
+
+  const before = fileContent.slice(0, idx);
+  const after = fileContent.slice(idx + trimmed.length);
+
+  // Collapse multiple blank lines at the join point
+  return (before.replace(/\n{2,}$/, "\n\n") + after.replace(/^\n{2,}/, "\n")).replace(/\n{3,}/g, "\n\n");
+}
+
 // ── Proposal Display (for CLI) ──────────────────────────────────────────────
 
 export function formatProposalForDisplay(proposal: EvolutionProposal): string {
@@ -372,7 +397,8 @@ export function formatProposalForDisplay(proposal: EvolutionProposal): string {
 
   for (let i = 0; i < proposal.changes.length; i++) {
     const change = proposal.changes[i];
-    lines.push(`  ── Change ${i + 1}: ${change.action.toUpperCase()} ${change.file} ──`);
+    const confidenceTag = change.confidence ? ` [${change.confidence}]` : "";
+    lines.push(`  ── Change ${i + 1}: ${change.action.toUpperCase()} ${change.file}${confidenceTag} ──`);
     lines.push(`  ${change.description}`);
     lines.push("");
 
@@ -386,7 +412,8 @@ export function formatProposalForDisplay(proposal: EvolutionProposal): string {
       }
     }
 
-    lines.push(`  Content to ${change.action === "create" ? "write" : "add"}:`);
+    const actionLabel = change.action === "create" ? "write" : change.action === "remove" ? "remove" : "add";
+    lines.push(`  Content to ${actionLabel}:`);
     lines.push(`  ┌─────────────────────────────────────────────────────────`);
     for (const contentLine of change.content.split("\n")) {
       lines.push(`  │ ${contentLine}`);

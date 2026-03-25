@@ -26,9 +26,10 @@ interface Evidence {
 
 interface ProposalChange {
   file: string;
-  action: "modify" | "create";
+  action: "modify" | "create" | "remove";
   description: string;
   evidence: Evidence[];
+  confidence?: "high" | "medium" | "low";
   content: string;
   insertAt?: string;
 }
@@ -129,17 +130,34 @@ function ContentPreview({ content }: { content: string }) {
 
 // ── Change Card ──────────────────────────────────────────────────────────────
 
+const ACTION_STYLES: Record<string, string> = {
+  create: "bg-emerald-500/20 text-emerald-400",
+  modify: "bg-blue-500/20 text-blue-400",
+  remove: "bg-red-500/20 text-red-400",
+};
+
+const CONFIDENCE_STYLES: Record<string, string> = {
+  high: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  medium: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+  low: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+};
+
 function ChangeCard({ change }: { change: ProposalChange }) {
   const [showEvidence, setShowEvidence] = useState(true);
 
   return (
-    <div className="border border-cc-border/20 rounded-lg bg-cc-bg/30 p-3">
+    <div className={`border rounded-lg bg-cc-bg/30 p-3 ${change.action === "remove" ? "border-red-500/20" : "border-cc-border/20"}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium uppercase ${change.action === "create" ? "bg-emerald-500/20 text-emerald-400" : "bg-blue-500/20 text-blue-400"}`}>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium uppercase ${ACTION_STYLES[change.action] || ACTION_STYLES.modify}`}>
               {change.action}
             </span>
+            {change.confidence && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded border ${CONFIDENCE_STYLES[change.confidence]}`}>
+                {change.confidence}
+              </span>
+            )}
             <span className="text-xs text-cc-fg/80 font-mono truncate">{change.file}</span>
           </div>
           <p className="text-xs text-cc-muted mt-1">{change.description}</p>
@@ -181,12 +199,14 @@ function ProposalCard({
 }: {
   proposal: Proposal;
   onApply: (id: string) => void;
-  onFork: (id: string) => void;
+  onFork: (id: string, options?: { name: string; description: string }) => void;
   onDiscard: (id: string) => void;
   onRollback: (id: string) => void;
 }) {
   const [confirmAction, setConfirmAction] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [forkName, setForkName] = useState("");
+  const [forkDescription, setForkDescription] = useState("");
 
   const handleAction = useCallback(
     async (action: string, handler: (id: string) => void) => {
@@ -204,6 +224,18 @@ function ProposalCard({
     },
     [confirmAction, proposal.id],
   );
+
+  const handleForkSubmit = useCallback(() => {
+    if (!forkName.trim()) return;
+    setActionLoading(true);
+    onFork(proposal.id, { name: forkName.trim(), description: forkDescription.trim() });
+    setTimeout(() => {
+      setConfirmAction(null);
+      setActionLoading(false);
+      setForkName("");
+      setForkDescription("");
+    }, 1000);
+  }, [proposal.id, forkName, forkDescription, onFork]);
 
   const createdDate = new Date(proposal.createdAt).toLocaleString();
 
@@ -242,6 +274,44 @@ function ProposalCard({
         </div>
       )}
 
+      {/* Fork Form */}
+      {confirmAction === "fork" && proposal.status === "pending" && (
+        <div className="px-4 py-3 border-t border-cc-border/20 space-y-2">
+          <p className="text-xs text-cc-muted font-medium">Fork as Custom Mode</p>
+          <input
+            type="text"
+            placeholder="Mode name (e.g. retro-slide)"
+            value={forkName}
+            onChange={(e) => setForkName(e.target.value)}
+            className="w-full text-xs px-3 py-1.5 rounded-lg bg-cc-bg/50 border border-cc-border/30 text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cyan-500/50"
+            autoFocus
+          />
+          <input
+            type="text"
+            placeholder="Description (optional)"
+            value={forkDescription}
+            onChange={(e) => setForkDescription(e.target.value)}
+            className="w-full text-xs px-3 py-1.5 rounded-lg bg-cc-bg/50 border border-cc-border/30 text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cyan-500/50"
+            onKeyDown={(e) => e.key === "Enter" && forkName.trim() && handleForkSubmit()}
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleForkSubmit}
+              disabled={actionLoading || !forkName.trim()}
+              className="text-xs px-3 py-1.5 rounded-lg bg-cyan-500 text-white transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Confirm Fork
+            </button>
+            <button
+              onClick={() => { setConfirmAction(null); setForkName(""); setForkDescription(""); }}
+              className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Actions */}
       <div className="px-4 py-3 border-t border-cc-border/20 flex items-center gap-2 flex-wrap">
         {proposal.status === "pending" && (
@@ -258,15 +328,11 @@ function ProposalCard({
               {confirmAction === "apply" ? "Confirm Apply" : "\u2713 Apply to Workspace"}
             </button>
             <button
-              onClick={() => handleAction("fork", onFork)}
+              onClick={() => setConfirmAction("fork")}
               disabled={actionLoading}
-              className={`text-xs px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                confirmAction === "fork"
-                  ? "bg-cyan-500 text-white"
-                  : "bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 border border-cyan-500/30"
-              }`}
+              className="text-xs px-3 py-1.5 rounded-lg transition-all cursor-pointer bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 border border-cyan-500/30"
             >
-              {confirmAction === "fork" ? "Confirm Fork" : "\uD83D\uDD00 Fork as Custom Mode"}
+              {"\uD83D\uDD00 Fork as Custom Mode"}
             </button>
             <button
               onClick={() => handleAction("discard", onDiscard)}
@@ -294,7 +360,7 @@ function ProposalCard({
             {confirmAction === "rollback" ? "Confirm Rollback" : "\u21A9 Rollback"}
           </button>
         )}
-        {confirmAction && (
+        {confirmAction && confirmAction !== "fork" && (
           <button
             onClick={() => setConfirmAction(null)}
             className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
@@ -355,9 +421,13 @@ export default function EvolutionPreview(props: ViewerPreviewProps) {
   );
 
   const handleFork = useCallback(
-    async (id: string) => {
+    async (id: string, options?: { name: string; description: string }) => {
       try {
-        const res = await fetch(`${getApiBase()}/api/evolve/fork/${id}`, { method: "POST" });
+        const res = await fetch(`${getApiBase()}/api/evolve/fork/${id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(options || {}),
+        });
         const data = await res.json();
         if (data.error) {
           setError(data.error);

@@ -128,13 +128,15 @@ If the user's workspace has no `theme.css`, create one. Read `{SKILL_PATH}/refer
 
 **Use the scaffold viewer action** to create the deck skeleton instantly. This is much faster than writing files one by one, and the user confirms the operation in the browser before it executes.
 
+**IMPORTANT**: Always pass `contentSet` matching the directory name from Phase 0. Without it, scaffold will overwrite the currently active content set (e.g. a seed template) instead of creating files in your new directory.
+
 1. **Invoke scaffold** via the viewer action API (see Viewer API → Scaffold section in CLAUDE.md):
    ```bash
    curl -s -X POST http://localhost:PORT/api/viewer/action \
      -H 'Content-Type: application/json' \
-     -d '{"actionId":"scaffold","params":{"title":"DECK TITLE","slides":"[{\"title\":\"Slide 1\"},{\"title\":\"Slide 2\"}]"}}'
+     -d '{"actionId":"scaffold","params":{"title":"DECK TITLE","contentSet":"my-deck","slides":"[{\"title\":\"Slide 1\"},{\"title\":\"Slide 2\"}]"}}'
    ```
-   The browser will show a confirmation dialog. Once the user confirms, all slide placeholder files and manifest.json are created instantly.
+   The browser will show a confirmation dialog. Once the user confirms, all slide placeholder files and manifest.json are created in the specified content set directory.
 2. **Update theme.css** — Set up the theme before filling content
 
 Now the viewer shows the full deck structure. The user can browse all slides and see the outline taking shape.

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.16.1] - 2026-03-25
+
+### Improved
+- **Evolution dual analysis** — evolve agent now detects stale skill instructions to prune (not just add), with confidence ratings (high/medium/low) on each proposed change
+- **Evolution fork naming** — fork dialog now requires a custom name and optional description instead of auto-generating opaque directory names
+- **Visual verification convention** — CLAUDE.md now instructs using chrome-devtools-mcp to screenshot-verify frontend changes before reporting completion
+
+### Fixed
+- **Slide scaffold content set scoping** — scaffold action now accepts a `contentSet` parameter; creating a new deck no longer clears the active seed content set
+
 ## [2.16.0] - 2026-03-25
 
 ### Added

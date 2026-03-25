@@ -92,10 +92,11 @@ The user just opened the workspace. You are ready to assist with presentation cr
     ],
     locatorDescription: 'After creating or editing slides, embed locator cards so the user can jump to them. Navigate by file: `data=\'{"file":"slides/slide-03.html"}\'`. Navigate by number: `data=\'{"index":3}\'`. Switch content set: `data=\'{"contentSet":"deck-2"}\'`. Switch content set and slide: `data=\'{"contentSet":"deck-2","index":1}\'`.',
     scaffold: {
-      description: "Initialize workspace with slide scaffolding from a structure spec.",
+      description: "Initialize workspace with slide scaffolding from a structure spec. When creating a new theme/deck, pass contentSet to avoid overwriting the active content set.",
       params: {
         title: { type: "string", description: "Presentation title", required: true },
         slides: { type: "string", description: "JSON array of {title, subtitle?}", required: true },
+        contentSet: { type: "string", description: "Target content set name (e.g. 'my-theme'). If omitted, overwrites the active content set.", required: false },
       },
       clearPatterns: ["slides/*.html", "manifest.json"],
     },

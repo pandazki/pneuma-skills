@@ -281,6 +281,7 @@ The proposal MUST follow this exact JSON schema:
       "file": ".claude/skills/${installName}/SKILL.md",
       "action": "modify",
       "description": "What this change does",
+      "confidence": "high",
       "evidence": [
         {
           "sessionFile": "<uuid>.jsonl",
@@ -299,9 +300,10 @@ The proposal MUST follow this exact JSON schema:
 
 - \`file\`: Relative path from workspace root. Only files under \`.claude/skills/\` are allowed.
   - **Do NOT include CLAUDE.md in your proposal changes.** The system automatically syncs CLAUDE.md when proposals are applied.
-- \`action\`: "modify" (add content to existing file) or "create" (new file).
+- \`action\`: "modify" (add content to existing file), "create" (new file), or "remove" (prune stale content).
+- \`confidence\`: Required. "high" (multi-session explicit evidence), "medium" (clear pattern), or "low" (single implicit signal).
 - \`evidence\`: At least one evidence item per change. Quote the user's actual words.
-- \`content\`: The actual content to add. Use markdown. Start with a clear section heading.
+- \`content\`: For "modify"/"create" — the content to add. For "remove" — the text to match and remove from the file.
   - Mark evolved content with \`<!-- evolved: YYYY-MM-DD -->\` so users can identify and remove it.
 - \`insertAt\`: For "modify" — "append" (end of file) or "section:<heading>" (after a specific section).
 
@@ -485,17 +487,33 @@ Pneuma provides "Modes" (doc, slide, draw, etc.) that inject domain-specific kno
 
 Skills ship as static presets — identical for every user. But each user has distinct style preferences, work habits, and aesthetic sensibilities. By mining conversation history, you can discover these personal traits and propose augmentations that make the agent's output match what this specific user considers "good."
 
+## Dual Analysis: Augment AND Prune
+
+Every skill instruction encodes an assumption about what the model can't do on its own. As models improve, some assumptions become stale. Your analysis should cover both directions:
+
+**Augmentation:** Find what's missing — corrections the user repeats, preferences they declare, patterns they follow.
+
+**Pruning:** Find what's stale — instructions the agent already follows without being told, instructions the user actively overrides, constraints from older model limitations. Use \`"remove"\` as the action for these.
+
 ## Your Constraints
 
 1. You write a proposal file to disk — you do NOT modify skill files directly
 2. Every proposed change MUST cite specific evidence from the user's history
 3. Evidence must include direct quotes from user messages
-4. Propose only changes with strong supporting evidence — when in doubt, leave it out
-5. Your augmentations should be "defaults, not rules" — the user's explicit instructions always take priority
-6. Be incremental — add to existing skill content, never rewrite it`;
+4. Every change must include a \`confidence\` rating: "high", "medium", or "low"
+5. Omit low-confidence findings unless the potential impact is significant
+6. Your augmentations should be "defaults, not rules" — the user's explicit instructions always take priority
+7. Be incremental — add to existing skill content, never rewrite it
+8. Pruning changes require the same evidence standards as additions`;
 
-export const DEFAULT_DIRECTIVE = `Analyze the user's usage patterns and extract meaningful style preferences and work habits.
-Focus on:
+export const DEFAULT_DIRECTIVE = `Analyze the user's usage patterns and evolve the skill in both directions.
+
+Augment — find what's missing:
 - Patterns the user repeatedly corrects the agent on
 - Explicit preference declarations by the user
-- Recurring request patterns and content style choices`;
+- Recurring request patterns and content style choices
+
+Prune — find what's stale:
+- Skill instructions the agent already follows correctly without being told
+- Instructions the user actively contradicts or overrides
+- Constraints from older model limitations that current models handle natively`;

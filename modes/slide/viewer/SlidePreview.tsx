@@ -491,6 +491,7 @@ export default function SlidePreview({
   const [scaffoldPending, setScaffoldPending] = useState<{
     files: ScaffoldFile[];
     clearPatterns: string[];
+    targetContentSet?: string;
     resolve: (result: { success: boolean; message?: string }) => void;
     source: "agent" | "user";
   } | null>(null);
@@ -722,17 +723,27 @@ export default function SlidePreview({
   const executeScaffold = useCallback(async (
     scaffoldFiles: ScaffoldFile[],
     clearPatterns: string[],
+    targetContentSet?: string,
   ): Promise<{ success: boolean; message?: string }> => {
     const baseUrl = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
+    // When targetContentSet is explicitly provided (e.g. agent creating a new theme),
+    // use it instead of activeContentSet. For new content sets, skip clearing since
+    // the target directory doesn't exist yet.
+    const effectiveContentSet = targetContentSet ?? useStore.getState().activeContentSet ?? undefined;
+    const effectiveClear = targetContentSet ? [] : clearPatterns;
     try {
       const res = await fetch(`${baseUrl}/api/workspace/scaffold`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clear: clearPatterns, files: scaffoldFiles, contentSet: useStore.getState().activeContentSet || undefined }),
+        body: JSON.stringify({ clear: effectiveClear, files: scaffoldFiles, contentSet: effectiveContentSet }),
       });
       const data = await res.json();
       if (data.success) {
         setActiveSlideIndex(0);
+        // Auto-switch to the new content set if one was created
+        if (targetContentSet) {
+          setTimeout(() => useStore.getState().setActiveContentSet(targetContentSet), 300);
+        }
         return { success: true, message: `Created ${data.filesWritten} files` };
       }
       return { success: false, message: data.message || "Scaffold failed" };
@@ -781,10 +792,12 @@ export default function SlidePreview({
           break;
         }
         const scaffoldFiles = generateSlideScaffold(title, slideSpecs);
+        const targetContentSet = actionRequest.params?.contentSet as string | undefined;
         const reqId = actionRequest.requestId;
         setScaffoldPending({
           files: scaffoldFiles,
           clearPatterns: ["slides/*.html", "manifest.json"],
+          targetContentSet,
           source: "agent",
           resolve: (result) => {
             onActionResult?.(reqId, result);
@@ -1258,9 +1271,9 @@ export default function SlidePreview({
   // Scaffold confirm/cancel handlers (must be before early returns to satisfy Rules of Hooks)
   const handleScaffoldConfirm = useCallback(async () => {
     if (!scaffoldPending) return;
-    const { files: sFiles, clearPatterns, resolve, source } = scaffoldPending;
+    const { files: sFiles, clearPatterns, targetContentSet, resolve, source } = scaffoldPending;
     setScaffoldPending(null);
-    const result = await executeScaffold(sFiles, clearPatterns);
+    const result = await executeScaffold(sFiles, clearPatterns, targetContentSet);
     resolve(result);
     if (result.success && source === "user") {
       pushUserAction({

@@ -93,7 +93,12 @@ export function registerEvolutionRoutes(app: Hono, opts: EvolutionRouteOptions):
     }
 
     try {
-      const forkPath = await forkProposalIntoMode(workspace, proposal);
+      const body = await c.req.json().catch(() => ({}));
+      const forkOptions = {
+        name: typeof body.name === "string" ? body.name.trim() : undefined,
+        description: typeof body.description === "string" ? body.description.trim() : undefined,
+      };
+      const forkPath = await forkProposalIntoMode(workspace, proposal, forkOptions);
 
       // Mark proposal as forked
       proposal.status = "forked";
@@ -122,7 +127,7 @@ export function registerEvolutionRoutes(app: Hono, opts: EvolutionRouteOptions):
 async function forkProposalIntoMode(workspace: string, proposal: {
   mode: string;
   changes: Array<{ file: string; action: string; content: string; insertAt?: string }>;
-}): Promise<string> {
+}, options?: { name?: string; description?: string }): Promise<string> {
   // 1. Resolve the target mode's source
   const { resolveMode } = await import("../core/mode-resolver.js");
   const projectRoot = resolve(dirname(import.meta.path), "..");
@@ -136,9 +141,13 @@ async function forkProposalIntoMode(workspace: string, proposal: {
     throw new Error(`Mode source not found: ${sourceDir}`);
   }
 
-  // 2. Copy to ~/.pneuma/modes/<name>-evolved-<YYYYMMDD>/
+  // 2. Copy to ~/.pneuma/modes/<name>/
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const forkName = `${proposal.mode}-evolved-${date}`;
+  // Use user-provided name (sanitized) or auto-generate from mode + date
+  const sanitizedName = options?.name
+    ? options.name.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "")
+    : "";
+  const forkName = sanitizedName || `${proposal.mode}-evolved-${date}`;
   const modesDir = join(homedir(), ".pneuma", "modes");
   let forkPath = join(modesDir, forkName);
 
@@ -215,7 +224,7 @@ export default evolvedMode;
     }
   }
 
-  // 6. Update the manifest version + seedFiles paths in the forked mode
+  // 6. Update the manifest version, displayName, description, and seedFiles paths
   const manifestPath = join(forkPath, "manifest.ts");
   if (existsSync(manifestPath)) {
     let manifestContent = readFileSync(manifestPath, "utf-8");
@@ -223,10 +232,17 @@ export default evolvedMode;
       /version:\s*["']([^"']+)["']/,
       (_, v) => `version: "${v}-evolved"`,
     );
+    const displayName = options?.name || null;
     manifestContent = manifestContent.replace(
       /displayName:\s*["']([^"']+)["']/,
-      (_, name) => `displayName: "${name} (Evolved)"`,
+      (_, name) => `displayName: "${displayName || `${name} (Evolved)`}"`,
     );
+    if (options?.description) {
+      manifestContent = manifestContent.replace(
+        /description:\s*["']([^"']+)["']/,
+        () => `description: "${options.description!.replace(/"/g, '\\"')}"`,
+      );
+    }
     // Rewrite seedFiles paths from "modes/<mode>/seed/..." to "seed/..."
     // External modes resolve seed paths relative to the mode directory
     manifestContent = manifestContent.replace(
