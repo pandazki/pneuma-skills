@@ -134,6 +134,28 @@ and data presentation style (level of detail, labeling conventions, update frequ
 Augment the skill to guide the main agent toward these preferences as defaults while always
 respecting the user's explicit instructions.`,
   },
+
+  showcase: {
+    tagline: "Build personal dashboards with draggable tile grids",
+    hero: "hero.png",
+    highlights: [
+      {
+        title: "Drag & Drop Grid",
+        description: "Arrange tiles on a snapping grid canvas. Move by dragging, resize from edges — the board adapts instantly.",
+        media: "drag-drop-grid.png",
+      },
+      {
+        title: "Smart Resize",
+        description: "Tiles declare their size breakpoints. When resized beyond them, the agent gets a screenshot and optimizes the layout automatically.",
+        media: "smart-resize.png",
+      },
+      {
+        title: "Live Data Tiles",
+        description: "10 built-in tiles with real-time APIs, interactive state, and SVG data viz — from crypto sparklines to habit trackers.",
+        media: "live-data-tiles.png",
+      },
+    ],
+  },
 };
 
 export default gridboardManifest;
