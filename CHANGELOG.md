@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.21.0] - 2026-03-26
+
+### Added
+- **Native bridge** — generic Electron API bridge at `/api/native/:module/:method`. Dynamic module-level proxy auto-discovers methods from Electron modules (clipboard, shell, app, screen, nativeTheme) with override map for special cases (NativeImage serialization, os/process, BrowserWindow, Notification). Web environments gracefully return `{ available: false }`
+- **Native bridge agent awareness** — skill-installer auto-injects native API docs into CLAUDE.md with discovery endpoint. Agent calls `GET /api/native` to list capabilities, then invokes methods via REST
+- **Clipboard image support** — `clipboard.readImage` returns base64 PNG, `clipboard.writeImage` accepts base64 PNG
+
 ## [2.20.0] - 2026-03-26
 
 ### Added
