@@ -18,6 +18,23 @@ export function registerIpcHandlers() {
     closeModeWindowByUrl(url);
   });
 
+  ipcMain.handle("pneuma:set-editing", (_event, editing: boolean, opts?: { width?: number; height?: number; resizable?: boolean }) => {
+    const win = BrowserWindow.fromWebContents(_event.sender);
+    if (!win) return;
+    if (editing) {
+      win.setResizable(true);
+      win.maximize();
+    } else {
+      if (win.isFullScreen()) win.setFullScreen(false);
+      if (win.isMaximized()) win.unmaximize();
+      const w = opts?.width;
+      const h = opts?.height;
+      if (w && h) win.setSize(w, h, true);
+      win.setResizable(opts?.resizable ?? false);
+      win.center();
+    }
+  });
+
   ipcMain.handle(
     "pneuma:show-open-dialog",
     async (event, options: { title?: string; defaultPath?: string; buttonLabel?: string }) => {

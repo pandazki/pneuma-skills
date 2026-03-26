@@ -147,6 +147,44 @@ Runtime 在 Agent 空闲时 flush notification，作为系统消息注入。
 
 ---
 
+## Editing 状态
+
+`editing` 是协议层的顶层布尔状态，描述当前 session 处于**创作**还是**消费**阶段。
+
+```
+editing: true    创作阶段 — Agent 在场可编辑，Viewer 显示编辑 UI
+editing: false   消费阶段 — Agent 不主动编辑，Viewer 锁定编辑功能，保留内容交互
+```
+
+### 三方行为
+
+| 角色 | `editing: true` | `editing: false` |
+|------|----------------|-----------------|
+| **User** | 通过 Chat 与 Agent 协作，在 Viewer 中选择/拖拽/编辑 | 消费内容（阅读文档、使用 dashboard、浏览幻灯片） |
+| **Viewer** | 显示编辑 UI（拖拽手柄、网格线、Gallery 等） | 隐藏编辑 UI，保留内容交互（tile 内部点击、链接跳转等） |
+| **Agent** | 全力工作 — 编辑文件、调用工具 | 不主动修改（具体行为由 mode skill 定义） |
+
+### 数据流
+
+- **持久化:** `editing` 存储在 `.pneuma/session.json` 和 `~/.pneuma/sessions.json`
+- **Server:** `GET /api/config` 返回 `editing`，`POST /api/session/editing` 切换
+- **Viewer:** 通过 `props.editing` 读取，各 mode 自行适配
+- **Agent:** skill-installer 将当前 `editing` 状态注入 CLAUDE.md
+- **CLI:** `--viewing` flag 启动时直接进入 `editing: false`
+
+### Opt-in
+
+不是所有 mode 都需要区分 editing 状态。未声明的 mode 永远处于 `editing: true`，对用户和 Agent 无感知。Mode 通过 manifest 声明支持：
+
+```typescript
+// manifest.ts
+{
+  editing: { supported: true }  // 启用 editing 切换
+}
+```
+
+---
+
 ## 设计原则
 
 1. **方向明确** — 6 个通信方向各有命名和契约，不混用同一类型服务多个方向

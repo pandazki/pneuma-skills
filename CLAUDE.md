@@ -68,6 +68,7 @@ pneuma history open <path-or-url>      # Download/prepare replay package
 | `--replay <path>` | Load a replay package on startup (enters replay mode) |
 | `--replay-source <path>` | Source workspace for existing session replay (exports + replays) |
 | `--session-name <name>` | Custom session display name (default: `{mode}-{timeTag}`) |
+| `--viewing` | Start in viewing mode (`editing: false` — skip skill install + agent spawn) |
 
 ## Ports
 
@@ -353,6 +354,7 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 |--------|------|-------------|
 | GET | `/api/session` | Current active session ID |
 | POST | `/api/session/thumbnail` | Upload session thumbnail |
+| POST | `/api/session/editing` | Toggle editing state (`{ editing: bool }` — launches/kills agent) |
 | GET | `/api/config` | Mode init params |
 | GET | `/api/mode-info` | External mode info |
 | GET | `/api/viewer-state` | Persisted viewer position (content set + file) |
@@ -549,6 +551,9 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **Proxy methods**: Default allowed method is GET only. POST/PUT/PATCH require explicit `"methods"` in config.
 - **Proxy content-encoding**: Bun's `fetch()` auto-decompresses gzip/br responses. The proxy strips `content-encoding` from upstream response headers to prevent browsers from double-decompressing. If you add new response header filtering, keep `content-encoding` in the strip list.
 - **GridBoard JSX tag limitation**: The tile compiler (Babel + eval) cannot resolve locally-defined components as JSX tags. `<MyComponent />` throws "not defined" even if defined in the same file. Use plain function calls `{renderMyComponent(...)}` instead. This is a runtime scope limitation, not a hoisting issue.
+- **`editing` state**: `editing` is a top-level session boolean (`true` = creating, `false` = consuming). Persisted in `.pneuma/session.json` and `~/.pneuma/sessions.json`. Modes opt in via `editing: { supported: true }` in manifest; unsupported modes are always `editing: true`.
+- **Editing agent lifecycle**: When `editing: false`, no agent process runs. Switching to `editing: true` triggers a full agent launch (skill install + spawn). Switching back kills the agent. The server process stays alive throughout.
+- **`editing` vs `readonly`**: `readonly` disables ALL interactions (replay). `editing: false` only disables Pneuma editing UI (drag/resize/select/gallery), while content-internal interactions remain fully functional (tile clicks, links, etc.).
 
 <!-- pneuma:viewer-api:start -->
 ## Viewer API

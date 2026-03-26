@@ -9,12 +9,16 @@ export interface ModeSlice {
   modeCommands: ViewerCommandDescriptor[];
   initParams: Record<string, number | string>;
   layout: "editor" | "app";
+  editing: boolean;
+  editingSupported: boolean;
 
   setModeViewer: (viewer: ViewerContract) => void;
   setModeDisplayName: (name: string) => void;
   setModeCommands: (commands: ViewerCommandDescriptor[]) => void;
   setInitParams: (params: Record<string, number | string>) => void;
   setLayout: (layout: "editor" | "app") => void;
+  setEditing: (editing: boolean) => void;
+  setEditingSupported: (v: boolean) => void;
 }
 
 export const createModeSlice: StateCreator<AppState, [], [], ModeSlice> = (set) => ({
@@ -23,6 +27,8 @@ export const createModeSlice: StateCreator<AppState, [], [], ModeSlice> = (set) 
   modeCommands: [],
   initParams: {},
   layout: "editor",
+  editing: true,
+  editingSupported: false,
 
   setModeViewer: (modeViewer) =>
     set((s) => {
@@ -47,4 +53,6 @@ export const createModeSlice: StateCreator<AppState, [], [], ModeSlice> = (set) 
   setModeCommands: (modeCommands) => set({ modeCommands }),
   setInitParams: (initParams) => set({ initParams }),
   setLayout: (layout) => set({ layout }),
+  setEditing: (editing) => set({ editing }),
+  setEditingSupported: (editingSupported) => set({ editingSupported }),
 });

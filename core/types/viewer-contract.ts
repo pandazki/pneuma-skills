@@ -225,6 +225,11 @@ export interface ViewerPreviewProps {
   /** When true, viewer should suppress editing, selection, and annotation modes.
    *  Used during replay mode. Each mode implements its own readonly behavior. */
   readonly?: boolean;
+  /** Whether the session is in editing mode.
+   *  true (default): all editing interactions enabled — drag, resize, select, etc.
+   *  false: editing UI hidden/locked, content-internal interactions preserved.
+   *  Distinct from `readonly` which disables ALL interactions (replay). */
+  editing?: boolean;
 }
 
 /** UI contract for the content viewer */

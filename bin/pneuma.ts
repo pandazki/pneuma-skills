@@ -97,6 +97,7 @@ function recordSession(
   workspace: string,
   backendType: AgentBackendType,
   sessionName?: string,
+  editing?: boolean,
 ): void {
   const id = `${workspace}::${mode}`;
   const records = loadSessionsRegistry();
@@ -108,6 +109,7 @@ function recordSession(
     // Preserve existing sessionName on resume
     entry.sessionName = records[existing].sessionName;
   }
+  if (editing !== undefined) entry.editing = editing;
   if (existing >= 0) {
     records[existing] = entry;
   } else {
@@ -740,7 +742,7 @@ Options:
     return;
   }
 
-  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource, sessionName } = parsedArgs;
+  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource, sessionName, viewing } = parsedArgs;
   let { workspace, replayPackage } = parsedArgs;
 
   // Launcher mode — no mode arg → start marketplace UI
@@ -799,6 +801,56 @@ Options:
       } catch { }
     }
     p.log.success(`Marketplace → ${url}`);
+
+    // Auto-start use-mode app sessions
+    const appRecords = loadSessionsRegistry().filter(
+      (s) => s.layout === "app" && s.editing === false && existsSync(s.workspace)
+    );
+    if (appRecords.length > 0) {
+      const pneumaBin = join(PROJECT_ROOT, "bin", "pneuma.ts");
+      for (const rec of appRecords) {
+        const launchArgs = ["bun", pneumaBin, rec.mode, "--workspace", rec.workspace, "--viewing", "--no-prompt", "--no-open"];
+        launchArgs.push("--backend", rec.backendType || "claude-code");
+        if (debug) launchArgs.push("--debug");
+        if (isDev) launchArgs.push("--dev");
+
+        const child = Bun.spawn(launchArgs, {
+          stdout: "pipe",
+          stderr: "pipe",
+          env: { ...process.env as Record<string, string> },
+        });
+
+        // Wait for ready signal and register in childProcesses
+        const decoder = new TextDecoder();
+        const readStream = async (stream: ReadableStream<Uint8Array>) => {
+          const reader = stream.getReader();
+          let buffer = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+            for (const line of lines) {
+              const match = line.match(/\[pneuma\] ready (.+)/);
+              if (match && childProcesses) {
+                childProcesses.set(child.pid, {
+                  proc: child,
+                  specifier: rec.mode,
+                  workspace: rec.workspace,
+                  url: match[1],
+                  startedAt: Date.now(),
+                });
+                child.exited.then(() => childProcesses?.delete(child.pid));
+              }
+            }
+          }
+        };
+        if (child.stdout) readStream(child.stdout);
+        p.log.info(`Auto-starting app: ${rec.sessionName || rec.displayName} (${rec.workspace})`);
+      }
+    }
+
     return;
   }
 
@@ -903,7 +955,7 @@ Options:
   // Use resolved path for external modes, PROJECT_ROOT/modes/{name} for builtin
   const modeSourceDir = resolved.path;
   const skillTarget = join(workspace, ".claude", "skills", manifest.skill.installName);
-  let skipSkillInstall = skipSkill || !!replayPackage; // Skip for replay — installed on Continue Work
+  let skipSkillInstall = skipSkill || !!replayPackage || viewing; // Skip for replay/viewing — installed on Continue Work or edit switch
 
   // Compute the effective API port (same logic as server startup in step 3)
   // Dev mode: backend on 17007, Prod mode: backend on 17996
@@ -1121,7 +1173,11 @@ Options:
   //    Dev mode:  backend on 17007, Vite on 17996 (user-facing)
   //    Prod mode: backend on 17996 (serves everything)
   const serverPort = effectiveApiPort;
-  const { server, wsBridge, port: actualPort, modeMakerCleanup, onReplayContinue } = startServer({
+  // Determine initial editing: --viewing flag > existing session > default true
+  const existingSession = loadSession(workspace);
+  const initialEditing: boolean = viewing ? false : (existingSession?.editing ?? true);
+
+  const { server, wsBridge, port: actualPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill } = startServer({
     port: serverPort,
     workspace,
     watchPatterns: manifest.viewer.watchPatterns,
@@ -1138,6 +1194,8 @@ Options:
     modeName,
     layout: manifest.layout,
     window: manifest.window,
+    editing: initialEditing,
+    editingSupported: !!manifest.editing?.supported,
   });
 
   // 4. Launch Agent backend or set up replay mode
@@ -1274,146 +1332,251 @@ Options:
     }
     const sessionBackendType = backendSelection.backendType;
 
-    backend = createBackend(sessionBackendType, actualPort);
-
-    // When the CLI reports its internal session_id, persist it
-    wsBridge.onCLISessionIdReceived((sid, agentSessionId) => {
-      backend!.setAgentSessionId(sid, agentSessionId);
-      // Persist to .pneuma/session.json
-      const persisted = loadSession(workspace);
-      if (persisted && persisted.sessionId === sid) {
-        persisted.agentSessionId = agentSessionId;
-        saveSession(workspace, persisted);
-        console.log(`[pneuma] Saved agentSessionId for resume: ${agentSessionId}`);
+    // Helper: build agent env map from envMapping
+    const buildAgentEnv = (): Record<string, string> => {
+      const env: Record<string, string> = {
+        PNEUMA_API: `http://localhost:${actualPort}`,
+      };
+      if (manifest.skill.envMapping) {
+        for (const [envVar, paramName] of Object.entries(manifest.skill.envMapping)) {
+          const value = resolvedParams[paramName];
+          if (value !== undefined && String(value).trim() !== "") {
+            env[envVar] = String(value);
+          }
+        }
       }
-    });
-
-    let resuming = false;
-
-    // Build env map from envMapping (init param values → env vars for agent process)
-    const agentEnv: Record<string, string> = {
-      PNEUMA_API: `http://localhost:${actualPort}`,
+      return env;
     };
-    if (manifest.skill.envMapping) {
-      for (const [envVar, paramName] of Object.entries(manifest.skill.envMapping)) {
-        const value = resolvedParams[paramName];
-        if (value !== undefined && String(value).trim() !== "") {
-          agentEnv[envVar] = String(value);
+
+    // Helper: wire CLI session ID persistence
+    const wireCLISessionId = () => {
+      wsBridge.onCLISessionIdReceived((sid, agentSessionId) => {
+        backend!.setAgentSessionId(sid, agentSessionId);
+        const persisted = loadSession(workspace);
+        if (persisted && persisted.sessionId === sid) {
+          persisted.agentSessionId = agentSessionId;
+          saveSession(workspace, persisted);
+          console.log(`[pneuma] Saved agentSessionId for resume: ${agentSessionId}`);
+        }
+      });
+    };
+
+    // Helper: wire Codex adapter if needed
+    const wireCodexAdapter = async (sid: string) => {
+      if (sessionBackendType === "codex") {
+        const { CodexBackend } = await import("../backends/codex/index.js");
+        if (backend instanceof CodexBackend) {
+          const existingAdapter = backend.getAdapter(sid);
+          if (existingAdapter) {
+            wsBridge.attachCodexAdapter(sid, existingAdapter);
+          }
+          backend.onAdapterCreated((adapterId, adapter) => {
+            if (adapterId === sid) wsBridge.attachCodexAdapter(adapterId, adapter);
+          });
         }
       }
-    }
+    };
 
-    const permissionMode = manifest.agent?.permissionMode;
-    const session = backend.launch({
-      cwd: workspace,
-      permissionMode,
-      // Reuse sessionId for stable WS routing
-      ...(existing?.agentSessionId ? {
-        sessionId: existing.sessionId,
-        resumeSessionId: existing.agentSessionId,
-      } : {}),
-      env: agentEnv,
-    });
-
-    sessionId = session.sessionId;
-
-    if (existing?.agentSessionId) {
-      resuming = true;
-      p.log.info(`Resuming session: ${existing.agentSessionId}`);
-    }
-
-    // Persist session info
-    saveSession(workspace, {
-      sessionId: session.sessionId,
-      agentSessionId: existing?.agentSessionId,
-      mode: modeName,
-      backendType: sessionBackendType,
-      createdAt: existing?.createdAt || Date.now(),
-    });
-
-    // Record to global sessions registry for launcher "Recent Sessions"
-    recordSession(modeName, manifest.displayName, workspace, sessionBackendType, sessionName || undefined);
-
-    p.log.info(`Agent session: ${session.sessionId}`);
-    wsBridge.getOrCreateSession(session.sessionId, sessionBackendType);
-
-    // For Codex backend, wire the CodexAdapter into the WsBridge
-    if (sessionBackendType === "codex") {
-      const { CodexBackend } = await import("../backends/codex/index.js");
-      if (backend instanceof CodexBackend) {
-        // The adapter may already be created (launch is sync, but init is async)
-        const existingAdapter = backend.getAdapter(session.sessionId);
-        if (existingAdapter) {
-          wsBridge.attachCodexAdapter(session.sessionId, existingAdapter);
-        }
-        // Also listen for future adapter creation (e.g. relaunch)
-        backend.onAdapterCreated((sid, adapter) => {
-          if (sid === session.sessionId) {
-            wsBridge.attachCodexAdapter(sid, adapter);
+    // Helper: wire agent exit handler
+    const wireAgentExitHandler = (agentSessionId: string, resuming: boolean) => {
+      backend!.onSessionExited((exitedId, exitCode) => {
+        if (exitCode !== 0 && exitCode !== 143 /* SIGTERM = normal shutdown */) {
+          let errorMsg: string;
+          if (exitCode === 127) {
+            errorMsg = sessionBackendType === "claude-code"
+              ? "Claude Code CLI not found. Please install it: https://docs.anthropic.com/claude-code"
+              : sessionBackendType === "codex"
+              ? "Codex CLI not found. Please install it: npm install -g @openai/codex"
+              : `Backend "${sessionBackendType}" CLI not found.`;
+          } else {
+            errorMsg = sessionBackendType === "claude-code"
+              ? `Claude Code exited unexpectedly (code ${exitCode}). Check CLI installation and subscription status.`
+              : sessionBackendType === "codex"
+              ? `Codex exited unexpectedly (code ${exitCode}). Check CLI installation and login status.`
+              : `${sessionBackendType} exited unexpectedly (code ${exitCode}).`;
           }
+          wsBridge.broadcastToSession(exitedId, { type: "error", message: errorMsg });
+        }
+
+        if (exitedId === agentSessionId && resuming) {
+          const info = backend!.getSession(exitedId);
+          if (info && !info.agentSessionId) {
+            const persisted = loadSession(workspace);
+            if (persisted) {
+              persisted.agentSessionId = undefined;
+              saveSession(workspace, persisted);
+              console.log("[pneuma] Resume failed, cleared agentSessionId. Restart for fresh session.");
+            }
+          }
+        }
+      });
+    };
+
+    if (!initialEditing) {
+      // ── Viewing mode: no agent, dashboard only ──────────────────────────────
+      sessionId = existing?.sessionId || crypto.randomUUID();
+      wsBridge.getOrCreateSession(sessionId, sessionBackendType);
+
+      // Persist session
+      saveSession(workspace, {
+        sessionId,
+        agentSessionId: existing?.agentSessionId,
+        mode: modeName,
+        backendType: sessionBackendType,
+        createdAt: existing?.createdAt || Date.now(),
+        editing: false,
+      });
+      recordSession(modeName, manifest.displayName, workspace, sessionBackendType, sessionName || undefined, false);
+
+      // Load persisted message history
+      const savedHistory = loadHistory(workspace);
+      if (savedHistory.length > 0) {
+        wsBridge.loadMessageHistory(sessionId, savedHistory as any);
+        console.log(`[pneuma] Restored ${savedHistory.length} messages from history`);
+      }
+
+      // History persistence
+      historyInterval = setInterval(() => {
+        const history = wsBridge.getMessageHistory(sessionId);
+        if (history.length > 0) saveHistory(workspace, history);
+      }, 5_000);
+
+      // Register launch callback for viewing → edit switching
+      onEditingLaunch!(async () => {
+        p.log.step("Switching to edit mode: installing skill and launching agent...");
+        installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, sessionBackendType, manifest.proxy);
+        const skillVersionPath = join(workspace, ".pneuma", "skill-version.json");
+        writeFileSync(skillVersionPath, JSON.stringify({ mode: modeName, version: manifest.version }));
+
+        backend = createBackend(sessionBackendType, actualPort);
+        wireCLISessionId();
+
+        const agentEnv = buildAgentEnv();
+        const permissionMode = manifest.agent?.permissionMode;
+        const agentSession = backend.launch({
+          cwd: workspace,
+          sessionId,
+          permissionMode,
+          env: agentEnv,
         });
+
+        wsBridge.getOrCreateSession(sessionId, sessionBackendType);
+        await wireCodexAdapter(sessionId);
+        wireAgentExitHandler(agentSession.sessionId, false);
+
+        // Register kill callback for edit → viewing switching
+        onEditingKill!(async () => {
+          p.log.step("Switching to viewing mode: stopping agent...");
+          backend!.kill(sessionId);
+          backend = null;
+        });
+
+        p.log.success("Edit mode: agent launched");
+      });
+
+      p.log.info("Viewing mode: dashboard only, no agent");
+    } else {
+      // ── Edit mode: full agent launch ──────────────────────────────────
+      backend = createBackend(sessionBackendType, actualPort);
+      wireCLISessionId();
+
+      let resuming = false;
+      const agentEnv = buildAgentEnv();
+      const permissionMode = manifest.agent?.permissionMode;
+      const session = backend.launch({
+        cwd: workspace,
+        permissionMode,
+        ...(existing?.agentSessionId ? {
+          sessionId: existing.sessionId,
+          resumeSessionId: existing.agentSessionId,
+        } : {}),
+        env: agentEnv,
+      });
+
+      sessionId = session.sessionId;
+
+      if (existing?.agentSessionId) {
+        resuming = true;
+        p.log.info(`Resuming session: ${existing.agentSessionId}`);
       }
+
+      // Persist session info
+      saveSession(workspace, {
+        sessionId: session.sessionId,
+        agentSessionId: existing?.agentSessionId,
+        mode: modeName,
+        backendType: sessionBackendType,
+        createdAt: existing?.createdAt || Date.now(),
+        editing: true,
+      });
+      recordSession(modeName, manifest.displayName, workspace, sessionBackendType, sessionName || undefined, true);
+
+      p.log.info(`Agent session: ${session.sessionId}`);
+      wsBridge.getOrCreateSession(session.sessionId, sessionBackendType);
+      await wireCodexAdapter(session.sessionId);
+
+      // Auto-greeting for fresh sessions (driven by manifest)
+      if (!resuming && manifest.agent?.greeting) {
+        wsBridge.injectGreeting(session.sessionId, manifest.agent.greeting);
+        console.log("[pneuma] Sent auto-greeting for fresh session");
+      }
+
+      // Load persisted message history
+      const savedHistory = loadHistory(workspace);
+      if (savedHistory.length > 0) {
+        wsBridge.loadMessageHistory(session.sessionId, savedHistory as any);
+        console.log(`[pneuma] Restored ${savedHistory.length} messages from history`);
+      }
+
+      // History persistence
+      historyInterval = setInterval(() => {
+        const history = wsBridge.getMessageHistory(session.sessionId);
+        if (history.length > 0) saveHistory(workspace, history);
+      }, 5_000);
+
+      wireAgentExitHandler(session.sessionId, resuming);
+
+      // Register kill callback for edit → viewing switching
+      onEditingKill!(async () => {
+        p.log.step("Switching to viewing mode: stopping agent...");
+        backend!.kill(session.sessionId);
+        backend = null;
+
+        // Register launch callback for subsequent viewing → edit switch
+        onEditingLaunch!(async () => {
+          p.log.step("Switching to edit mode: installing skill and launching agent...");
+          installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, sessionBackendType, manifest.proxy);
+
+          backend = createBackend(sessionBackendType, actualPort);
+          wireCLISessionId();
+
+          const freshEnv = buildAgentEnv();
+          const agentSession = backend.launch({
+            cwd: workspace,
+            sessionId,
+            permissionMode,
+            env: freshEnv,
+          });
+
+          wsBridge.getOrCreateSession(sessionId, sessionBackendType);
+          await wireCodexAdapter(sessionId);
+          wireAgentExitHandler(agentSession.sessionId, false);
+
+          // Re-register kill callback for next edit → viewing switch
+          onEditingKill!(async () => {
+            p.log.step("Switching to viewing mode: stopping agent...");
+            backend!.kill(sessionId);
+            backend = null;
+          });
+
+          p.log.success("Edit mode: agent launched");
+        });
+      });
     }
 
-    // Auto-greeting for fresh sessions (driven by manifest)
-    if (!resuming && manifest.agent?.greeting) {
-      wsBridge.injectGreeting(session.sessionId, manifest.agent.greeting);
-      console.log("[pneuma] Sent auto-greeting for fresh session");
-    }
-
-    // Load persisted message history into WsBridge
-    const savedHistory = loadHistory(workspace);
-    if (savedHistory.length > 0) {
-      wsBridge.loadMessageHistory(session.sessionId, savedHistory as any);
-      console.log(`[pneuma] Restored ${savedHistory.length} messages from history`);
-    }
-
-    // Periodically persist message history (debounced — every 5s)
-    historyInterval = setInterval(() => {
-      const history = wsBridge.getMessageHistory(session.sessionId);
-      if (history.length > 0) {
-        saveHistory(workspace, history);
-      }
-    }, 5_000);
-
-    // Handle Agent exit: surface errors + clear stale resume state
-    backend.onSessionExited((exitedId, exitCode) => {
-      // Broadcast Agent errors to browser
-      if (exitCode !== 0 && exitCode !== 143 /* SIGTERM = normal shutdown */) {
-        let errorMsg: string;
-        if (exitCode === 127) {
-          errorMsg = sessionBackendType === "claude-code"
-            ? "Claude Code CLI not found. Please install it: https://docs.anthropic.com/claude-code"
-            : sessionBackendType === "codex"
-            ? "Codex CLI not found. Please install it: npm install -g @openai/codex"
-            : `Backend "${sessionBackendType}" CLI not found.`;
-        } else {
-          errorMsg = sessionBackendType === "claude-code"
-            ? `Claude Code exited unexpectedly (code ${exitCode}). Check CLI installation and subscription status.`
-            : sessionBackendType === "codex"
-            ? `Codex exited unexpectedly (code ${exitCode}). Check CLI installation and login status.`
-            : `${sessionBackendType} exited unexpectedly (code ${exitCode}).`;
-        }
-        wsBridge.broadcastToSession(exitedId, { type: "error", message: errorMsg });
-      }
-
-      // If resume fails (Agent exits quickly), clear agentSessionId from persistence
-      if (exitedId === session.sessionId && resuming) {
-        const info = backend!.getSession(exitedId);
-        if (info && !info.agentSessionId) {
-          const persisted = loadSession(workspace);
-          if (persisted) {
-            persisted.agentSessionId = undefined;
-            saveSession(workspace, persisted);
-            console.log("[pneuma] Resume failed, cleared agentSessionId. Restart for fresh session.");
-          }
-        }
-      }
-    });
-
-    // 5. Start file watcher (driven by manifest)
+    // 5. Start file watcher (driven by manifest — shared for both edit and use modes)
     startFileWatcher(workspace, manifest.viewer, (files) => {
-      wsBridge.broadcastToSession(session.sessionId, {
+      wsBridge.broadcastToSession(sessionId, {
         type: "content_update",
         files,
       });
@@ -1456,7 +1619,9 @@ Options:
   // 7. Open browser (include mode in URL for frontend)
   const debugParam = debug ? "&debug=1" : "";
   const replayParam = replayPackage ? `&replay=${encodeURIComponent(replayPackage)}` : "";
-  const browserUrl = `http://localhost:${browserPort}?session=${sessionId}&mode=${modeName}${debugParam}${replayParam}`;
+  const layoutParam = manifest.layout ? `&layout=${manifest.layout}` : "";
+  const windowParam = manifest.window ? `&w=${manifest.window.width}&h=${manifest.window.height}` : "";
+  const browserUrl = `http://localhost:${browserPort}?session=${sessionId}&mode=${modeName}${debugParam}${replayParam}${layoutParam}${windowParam}`;
   // Always print ready message (used by mode-maker play to detect startup)
   console.log(`[pneuma] ready ${browserUrl}`);
 
