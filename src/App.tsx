@@ -24,6 +24,7 @@ const EditorPanel = lazy(() => import("./components/EditorPanel.js"));
 const TerminalPanel = lazy(() => import("./components/TerminalPanel.js"));
 const Launcher = lazy(() => import("./components/Launcher.js"));
 const AgentBubble = lazy(() => import("./components/AgentBubble.js"));
+const AppModeToggle = lazy(() => import("./components/AppModeToggle.js"));
 
 function LazyFallback() {
   return (
@@ -259,6 +260,8 @@ export default function App() {
       .then((d) => {
         if (d.initParams) useStore.getState().setInitParams(d.initParams);
         if (d.layout) useStore.getState().setLayout(d.layout);
+        if (d.editing !== undefined) useStore.getState().setEditing(d.editing);
+        if (d.editingSupported) useStore.getState().setEditingSupported(d.editingSupported);
       })
       .catch(() => { });
 
@@ -295,6 +298,7 @@ export default function App() {
   const viewerProps = useViewerProps();
   const layout = useStore((s) => s.layout);
   const replayMode = useStore((s) => s.replayMode);
+  const editing = useStore((s) => s.editing);
 
   // Thumbnail capture — snapshot the preview panel periodically
   const previewRef = useRef<HTMLDivElement>(null);
@@ -302,14 +306,18 @@ export default function App() {
   const fileCount = useStore((s) => s.files.length);
   useThumbnailCapture(previewRef, !!PreviewComponent, imageTick + fileCount, captureViewport);
 
-  // ── App layout: Viewer fullscreen + floating AgentBubble ───────────────
+  // ── App layout (use mode only): Viewer fullscreen, no editor chrome ─────
+  //    Edit mode falls through to the editor layout below for full editing experience.
 
-  if (layout === "app") {
+  if (layout === "app" && !editing) {
     return (
       <div className="h-screen w-screen bg-cc-bg text-cc-fg relative overflow-hidden">
         <div ref={previewRef} className="h-full w-full">
           {PreviewComponent ? (
-            <PreviewComponent {...viewerProps} />
+            <PreviewComponent
+              {...viewerProps}
+              editing={false}
+            />
           ) : (
             <LazyFallback />
           )}
@@ -318,7 +326,7 @@ export default function App() {
           <ReplayPlayer />
         ) : (
           <Suspense fallback={null}>
-            <AgentBubble />
+            <AppModeToggle />
           </Suspense>
         )}
       </div>

@@ -38,6 +38,10 @@ For tile component patterns, layout rules, and theming conventions, consult the 
 - Do not ask for confirmation on simple edits — just do them`,
   },
 
+  layout: "app",
+  editing: { supported: true },
+  window: { width: 1080, height: 800 },
+
   viewer: {
     watchPatterns: [
       "board.json",

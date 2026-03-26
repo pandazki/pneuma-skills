@@ -45,6 +45,8 @@ export interface ServerOptions {
   replayPackagePath?: string; // Path to replay package — pre-loads replay data on server start
   replayMode?: boolean; // Server starts in replay mode (delays agent launch until Continue Work)
   manifestProxy?: Record<string, ProxyRoute>; // Manifest-declared proxy routes
+  editing?: boolean; // Initial editing state (from session.json or --viewing flag)
+  editingSupported?: boolean; // Mode supports editing ↔ viewing toggle
 }
 
 export function startServer(options: ServerOptions) {
@@ -487,7 +489,7 @@ export function startServer(options: ServerOptions) {
     });
 
     app.post("/api/launch", async (c) => {
-      const { specifier, workspace: targetWorkspace, initParams, skipSkill, backendType, replayPackage: replayPkg, replaySource, sessionName } = await c.req.json<{
+      const { specifier, workspace: targetWorkspace, initParams, skipSkill, backendType, replayPackage: replayPkg, replaySource, sessionName, viewing } = await c.req.json<{
         specifier: string;
         workspace: string;
         initParams?: Record<string, string | number>;
@@ -496,6 +498,7 @@ export function startServer(options: ServerOptions) {
         replayPackage?: string;
         replaySource?: string; // Source workspace for existing session replay
         sessionName?: string;
+        viewing?: boolean;
       }>();
 
       try {
@@ -517,6 +520,7 @@ export function startServer(options: ServerOptions) {
         const args = ["bun", pneumaBin, specifier, "--workspace", resolvedWorkspace, "--no-prompt", "--no-open"];
         args.push("--backend", backendType || getDefaultBackendType());
         if (skipSkill) args.push("--skip-skill");
+        if (viewing) args.push("--viewing");
         if (replayPkg) args.push("--replay", replayPkg);
         if (replaySource) args.push("--replay-source", replaySource);
         if (sessionName) args.push("--session-name", sessionName);
@@ -901,6 +905,9 @@ export function startServer(options: ServerOptions) {
   let replayPackage: Awaited<ReturnType<typeof importHistory>> | null = null;
   let serverReplayMode = options.replayMode ?? !!options.replayPackagePath;
   let replayContinueCallback: (() => Promise<void>) | null = null;
+  let currentEditing: boolean = options.editing ?? true;
+  let editingLaunchCallback: (() => Promise<void>) | null = null;
+  let editingKillCallback: (() => Promise<void>) | null = null;
 
   // Pre-load replay package if path was provided at startup
   if (options.replayPackagePath) {
@@ -934,6 +941,83 @@ export function startServer(options: ServerOptions) {
     } catch (err) {
       return c.json({ error: "Failed to save thumbnail" }, 500);
     }
+  });
+
+  // ── Editing state switching (app layout only) ──────────────────────────
+  app.post("/api/session/editing", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const newEditing: boolean = body.editing;
+    if (typeof newEditing !== "boolean") {
+      return c.json({ error: "editing must be a boolean" }, 400);
+    }
+
+    const oldEditing = currentEditing;
+    currentEditing = newEditing;
+
+    // Persist to session.json
+    try {
+      const sessionPath = join(workspace, ".pneuma", "session.json");
+      if (existsSync(sessionPath)) {
+        const session = JSON.parse(readFileSync(sessionPath, "utf-8"));
+        session.editing = newEditing;
+        writeFileSync(sessionPath, JSON.stringify(session, null, 2));
+      }
+    } catch (err) {
+      console.error("[server] Failed to persist editing:", err);
+    }
+
+    // Agent lifecycle: launch when editing, kill when not editing
+    let agentStatus: "launched" | "killed" | "unchanged" = "unchanged";
+
+    if (newEditing === true && oldEditing === false) {
+      if (editingLaunchCallback) {
+        try {
+          await editingLaunchCallback();
+          agentStatus = "launched";
+        } catch (err) {
+          console.error("[server] Failed to launch agent:", err);
+          return c.json({ error: "Failed to launch agent" }, 500);
+        }
+      }
+    } else if (newEditing === false && oldEditing === true) {
+      const activeId = wsBridge.getActiveSessionId();
+      if (activeId) wsBridge.broadcastToSession(activeId, { type: "cli_disconnected" });
+      agentStatus = "killed";
+      if (editingKillCallback) {
+        try {
+          await editingKillCallback();
+        } catch (err) {
+          console.error("[server] Failed to kill agent:", err);
+        }
+      }
+    }
+
+    console.log(`[server] Editing: ${oldEditing} → ${newEditing} (agent: ${agentStatus})`);
+    return c.json({ ok: true, agentStatus });
+  });
+
+  // ── App settings (window size, resizable, etc.) ────────────────────────
+  const appSettingsPath = join(workspace, ".pneuma", "app-settings.json");
+
+  const loadAppSettings = () => {
+    try {
+      return JSON.parse(readFileSync(appSettingsPath, "utf-8"));
+    } catch {
+      return {};
+    }
+  };
+
+  app.get("/api/app-settings", (c) => {
+    return c.json(loadAppSettings());
+  });
+
+  app.post("/api/app-settings", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const current = loadAppSettings();
+    const merged = { ...current, ...body };
+    mkdirSync(join(workspace, ".pneuma"), { recursive: true });
+    writeFileSync(appSettingsPath, JSON.stringify(merged, null, 2));
+    return c.json({ ok: true, settings: merged });
   });
 
   app.get("/api/history/checkpoints", async (c) => {
@@ -1089,6 +1173,9 @@ export function startServer(options: ServerOptions) {
       layout: options.layout || "editor",
       ...(options.window ? { window: options.window } : {}),
       replayMode: serverReplayMode,
+      editing: currentEditing,
+      editingSupported: options.editingSupported ?? false,
+      appSettings: (() => { try { return JSON.parse(readFileSync(join(workspace, ".pneuma", "app-settings.json"), "utf-8")); } catch { return {}; } })(),
     });
   });
 
@@ -1766,6 +1853,8 @@ export const { createPortal, flushSync, createRoot, hydrateRoot } = RD;`;
   const onReplayContinue = (cb: () => Promise<void>) => {
     replayContinueCallback = cb;
   };
+  const onEditingLaunch = (cb: () => Promise<void>) => { editingLaunchCallback = cb; };
+  const onEditingKill = (cb: () => Promise<void>) => { editingKillCallback = cb; };
 
-  return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup, onReplayContinue };
+  return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill };
 }

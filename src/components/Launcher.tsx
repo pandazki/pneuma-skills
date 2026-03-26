@@ -75,6 +75,8 @@ interface RecentSession {
   lastAccessed: number;
   hasThumbnail?: boolean;
   hasReplayData?: boolean;
+  editing?: boolean;
+  layout?: "editor" | "app";
 }
 
 interface ChildProcess {
@@ -2979,6 +2981,7 @@ export default function Launcher() {
     workspace: string,
     backendType: BackendType,
     skipSkill?: boolean,
+    viewing?: boolean,
   ) => {
     try {
       const res = await fetch(`${getApiBase()}/api/launch`, {
@@ -2989,6 +2992,7 @@ export default function Launcher() {
           workspace,
           backendType,
           ...(skipSkill ? { skipSkill: true } : {}),
+          ...(viewing ? { viewing: true } : {}),
         }),
       });
       const data = await res.json();
@@ -3011,20 +3015,26 @@ export default function Launcher() {
     return map;
   }, [builtins, local, published]);
 
+  // Separate app sessions (layout=app, not editing) from regular sessions
+  const appSessions = sessions.filter((s) => s.layout === "app" && s.editing === false);
+  const appWorkspaces = new Set(appSessions.map((s) => s.workspace));
+
   // Merge sessions + running for the "Continue" section (max 3 on homepage)
   const runningWorkspaces = new Set(running.map((r) => r.workspace));
   const allContinueItems = [
-    // Running processes first
-    ...running.map((proc) => ({
-      type: "running" as const,
-      key: proc.workspace,
-      process: proc,
-      session: sessions.find((s) => s.workspace === proc.workspace),
-      modeName: proc.specifier.split("/").pop() || proc.specifier,
-    })),
-    // Then recent sessions (not currently running)
+    // Running processes first (exclude app sessions)
+    ...running
+      .filter((proc) => !appWorkspaces.has(proc.workspace))
+      .map((proc) => ({
+        type: "running" as const,
+        key: proc.workspace,
+        process: proc,
+        session: sessions.find((s) => s.workspace === proc.workspace),
+        modeName: proc.specifier.split("/").pop() || proc.specifier,
+      })),
+    // Then recent sessions (not currently running, not app sessions)
     ...sessions
-      .filter((s) => !runningWorkspaces.has(s.workspace))
+      .filter((s) => !runningWorkspaces.has(s.workspace) && !appWorkspaces.has(s.workspace))
       .map((s) => ({
         type: "recent" as const,
         key: s.workspace,
@@ -3176,6 +3186,49 @@ export default function Launcher() {
               })}
               onExplore={() => setShowGallery(true)}
             />
+          )}
+
+          {/* My Apps — app-layout sessions in use mode */}
+          {appSessions.length > 0 && (
+            <section
+              className="mb-10 pt-8 border-t border-cc-border"
+              style={{ animation: "launcherFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both" }}
+            >
+              <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide mb-5">My Apps</h2>
+              <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+                {appSessions.map((s) => {
+                  const isAppRunning = running.some((r) => r.workspace === s.workspace);
+                  const icon = iconMap[s.mode];
+                  return (
+                    <button
+                      key={s.id}
+                      className="group relative flex items-center gap-3 p-3 rounded-lg border border-cc-border bg-cc-bg-secondary hover:border-cc-primary/40 transition-all cursor-pointer text-left"
+                      onClick={() => {
+                        if (isAppRunning) {
+                          const proc = running.find((r) => r.workspace === s.workspace);
+                          if (proc?.url) window.open(proc.url, "_blank");
+                        } else {
+                          directLaunch(s.mode, s.workspace, s.backendType, false, true);
+                        }
+                      }}
+                    >
+                      {icon && <img src={icon} alt="" className="w-8 h-8 rounded" />}
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-cc-fg truncate">
+                          {s.sessionName || s.displayName}
+                        </div>
+                        <div className="text-xs text-cc-muted truncate">
+                          {shortenPath(s.workspace, homeDir)}
+                        </div>
+                      </div>
+                      {isAppRunning && (
+                        <span className="flex-shrink-0 w-2 h-2 rounded-full bg-emerald-400" title="Running" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
           )}
 
           {/* Continue — max 3, running as cards, recent as compact rows */}

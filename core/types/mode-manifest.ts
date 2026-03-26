@@ -290,6 +290,9 @@ export interface ModeManifest {
   layout?: "editor" | "app";
   /** Window size preference (app layout + Electron) */
   window?: { width: number; height: number };
+  /** Opt-in to editing state switching. When declared, the mode supports toggling
+   *  between editing (creating) and viewing (consuming) states. */
+  editing?: { supported: true };
   /** Reverse proxy routes — forwards /proxy/<name>/* to external APIs, avoiding CORS */
   proxy?: Record<string, ProxyRoute>;
 }

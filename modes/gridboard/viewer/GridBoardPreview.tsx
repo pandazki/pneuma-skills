@@ -195,10 +195,13 @@ export default function GridBoardPreview({
   onNavigateComplete,
   commands,
   readonly,
+  editing,
 }: ViewerPreviewProps) {
   // Readonly mode: suppress interactions
-  const onSelect = readonly ? (() => {}) : rawOnSelect;
-  const onNotifyAgent = readonly ? undefined : rawOnNotifyAgent;
+  const isViewMode = !readonly && editing === false;
+  const editingDisabled = readonly || isViewMode;
+  const onSelect = editingDisabled ? (() => {}) : rawOnSelect;
+  const onNotifyAgent = editingDisabled ? undefined : rawOnNotifyAgent;
 
   // ── Parse board config & theme ──────────────────────────────────────────
   const boardConfig = useMemo(() => parseBoardJson(files) ?? DEFAULT_BOARD, [files]);
@@ -415,7 +418,7 @@ export default function GridBoardPreview({
   // ── Tile Selection ────────────────────────────────────────────────────
   const handleTileSelect = useCallback(
     (tileId: string) => {
-      if (readonly) return;
+      if (editingDisabled) return;
       setSelectedTileId(tileId);
       const tile = boardConfig.tiles[tileId] as TileConfig | undefined;
       if (tile) {
@@ -426,7 +429,7 @@ export default function GridBoardPreview({
         });
       }
     },
-    [boardConfig, onSelect, readonly],
+    [boardConfig, onSelect, editingDisabled],
   );
 
   const handleBackgroundClick = useCallback(
@@ -444,7 +447,7 @@ export default function GridBoardPreview({
   // ── Drag Move ─────────────────────────────────────────────────────────
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
-      if (readonly) return;
+      if (editingDisabled) return;
       const handle = (e.target as HTMLElement).closest("[data-drag-handle]");
       if (!handle) return;
 
@@ -465,7 +468,7 @@ export default function GridBoardPreview({
         currentPos: { ...tile.position },
       });
     },
-    [boardConfig, readonly],
+    [boardConfig, editingDisabled],
   );
 
   useEffect(() => {
@@ -542,7 +545,7 @@ export default function GridBoardPreview({
   // ── Drag Resize ───────────────────────────────────────────────────────
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
-      if (readonly) return;
+      if (editingDisabled) return;
       const handle = (e.target as HTMLElement).closest("[data-resize-handle]");
       if (!handle) return;
 
@@ -569,7 +572,7 @@ export default function GridBoardPreview({
         currentPos: { ...tile.position },
       });
     },
-    [boardConfig, readonly],
+    [boardConfig, editingDisabled],
   );
 
   useEffect(() => {
@@ -866,7 +869,7 @@ export default function GridBoardPreview({
   // ── Remove tile from board (→ available) ─────────────────────────────
   const handleRemoveTile = useCallback(
     async (tileId: string) => {
-      if (readonly) return;
+      if (editingDisabled) return;
       const tile = boardConfig.tiles[tileId] as TileConfig | undefined;
       if (!tile) return;
       // Optimistic: hide immediately
@@ -882,7 +885,7 @@ export default function GridBoardPreview({
       delete updatedConfig.tiles[tileId].size;
       await saveFile("board.json", JSON.stringify(updatedConfig, null, 2));
     },
-    [boardConfig, readonly, selectedTileId, onSelect],
+    [boardConfig, editingDisabled, selectedTileId, onSelect],
   );
 
   // ── Gallery: non-active tiles ─────────────────────────────────────────
@@ -909,7 +912,7 @@ export default function GridBoardPreview({
   // ── Gallery: Add tile to board ────────────────────────────────────────
   const handleAddTile = useCallback(
     async (tileId: string) => {
-      if (readonly) return;
+      if (editingDisabled) return;
       const tile = boardConfig.tiles[tileId] as TileConfig | undefined;
       if (!tile) return;
 
@@ -943,12 +946,12 @@ export default function GridBoardPreview({
       };
       await saveFile("board.json", JSON.stringify(updatedConfig, null, 2));
     },
-    [boardConfig, compilation, readonly, onNotifyAgent],
+    [boardConfig, compilation, editingDisabled, onNotifyAgent],
   );
 
   // ── Gallery: Create new tile via agent ────────────────────────────────
   const handleCreateTile = useCallback((description: string) => {
-    if (readonly) return;
+    if (editingDisabled) return;
     onNotifyAgent?.({
       type: "create-tile",
       message: `The user wants to create a new tile: "${description}". Generate a tile component in tiles/<id>/Tile.tsx using defineTile() and register it in board.json. Pick a short, descriptive ID based on their description.`,
@@ -956,7 +959,7 @@ export default function GridBoardPreview({
       summary: `Create tile: ${description}`,
     });
     setGalleryOpen(false);
-  }, [readonly, onNotifyAgent]);
+  }, [editingDisabled, onNotifyAgent]);
 
   // ── Clear pending overrides when boardConfig catches up ─────────────
   useEffect(() => {
@@ -1111,11 +1114,11 @@ export default function GridBoardPreview({
       <div
         style={{
           flex: 1,
-          overflow: "auto",
+          overflow: isViewMode ? "hidden" : "auto",
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 24,
+          alignItems: isViewMode ? undefined : "center",
+          justifyContent: isViewMode ? undefined : "center",
+          padding: isViewMode ? 0 : 24,
         }}
       >
         {hasNoBoard ? (
@@ -1158,15 +1161,15 @@ export default function GridBoardPreview({
           <div
             ref={boardRef}
             style={{
-              width: boardConfig.board.width,
-              height: boardConfig.board.height,
-              minWidth: boardConfig.board.width,
-              minHeight: boardConfig.board.height,
+              width: isViewMode ? "100%" : boardConfig.board.width,
+              height: isViewMode ? "100%" : boardConfig.board.height,
+              minWidth: isViewMode ? undefined : boardConfig.board.width,
+              minHeight: isViewMode ? undefined : boardConfig.board.height,
               position: "relative",
               background: "var(--board-bg, #09090b)",
-              backgroundImage: showGrid ? generateGridBackground(boardConfig) : undefined,
-              borderRadius: 8,
-              border: "1px solid rgba(255,255,255,0.06)",
+              backgroundImage: (showGrid && !isViewMode) ? generateGridBackground(boardConfig) : undefined,
+              borderRadius: isViewMode ? 0 : 8,
+              border: isViewMode ? "none" : "1px solid rgba(255,255,255,0.06)",
               boxSizing: "border-box",
             }}
             onClick={handleBackgroundClick}
@@ -1192,7 +1195,7 @@ export default function GridBoardPreview({
                 }}
               >
                 <span>No active tiles</span>
-                {!readonly && (
+                {!editingDisabled && (
                   <span style={{ fontSize: 11 }}>Open the Gallery to add tiles</span>
                 )}
               </div>
@@ -1285,7 +1288,7 @@ export default function GridBoardPreview({
       </div>
 
       {/* Gallery panel — pushes board aside */}
-      {!readonly && (
+      {!editingDisabled && (
         <TileGallery
           isOpen={galleryOpen}
           onClose={() => setGalleryOpen(false)}
@@ -1297,14 +1300,16 @@ export default function GridBoardPreview({
 
       </div>{/* end Board + Gallery row */}
 
-      {/* Bottom toolbar */}
-      <GridToolbar
-        onToggleGallery={() => setGalleryOpen((v) => !v)}
-        isGalleryOpen={galleryOpen}
-        onToggleGrid={() => setShowGrid((v) => !v)}
-        showGrid={showGrid}
-        boardInfo={boardInfo}
-      />
+      {/* Bottom toolbar — hidden in view mode */}
+      {!isViewMode && (
+        <GridToolbar
+          onToggleGallery={() => setGalleryOpen((v) => !v)}
+          isGalleryOpen={galleryOpen}
+          onToggleGrid={() => setShowGrid((v) => !v)}
+          showGrid={showGrid}
+          boardInfo={boardInfo}
+        />
+      )}
 
       {/* Compilation errors toast */}
       {compilation.errors.length > 0 && (

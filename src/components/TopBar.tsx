@@ -1,7 +1,96 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, lazy, Suspense } from "react";
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
 import ContentSetSelector from "./ContentSetSelector.js";
+
+const AppSettings = lazy(() => import("./AppSettings.js"));
+
+const desktop = (window as any).pneumaDesktop as {
+  setEditing?: (editing: boolean, opts?: { width?: number; height?: number; resizable?: boolean }) => Promise<void>;
+} | undefined;
+
+function EditingToggle() {
+  const editingSupported = useStore((s) => s.editingSupported);
+  const editing = useStore((s) => s.editing);
+  const setEditing = useStore((s) => s.setEditing);
+  const [switching, setSwitching] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+
+  if (!editingSupported) return null;
+
+  const switchTo = async (newEditing: boolean) => {
+    setSwitching(true);
+    try {
+      const res = await fetch(`${getApiBase()}/api/session/editing`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ editing: newEditing }),
+      });
+      if (res.ok) {
+        setEditing(newEditing);
+        if (desktop?.setEditing) {
+          if (newEditing) {
+            desktop.setEditing(true);
+          } else {
+            const settings = await fetch(`${getApiBase()}/api/app-settings`).then((r) => r.json()).catch(() => ({}));
+            const params = new URLSearchParams(location.search);
+            desktop.setEditing(false, {
+              width: settings.windowWidth || parseInt(params.get("w") || "", 10) || undefined,
+              height: settings.windowHeight || parseInt(params.get("h") || "", 10) || undefined,
+              resizable: settings.resizable ?? false,
+            });
+          }
+        }
+      }
+    } catch { /* ignore */ }
+    setSwitching(false);
+  };
+
+  return (
+    <>
+      <div className="relative flex items-center gap-1">
+        {/* Settings gear */}
+        <button
+          onClick={() => setShowSettings((v) => !v)}
+          className="w-6 h-6 rounded-md flex items-center justify-center text-cc-muted/50 hover:text-cc-primary hover:bg-cc-primary/10 transition-colors cursor-pointer"
+          title="App settings"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+
+        {/* View toggle */}
+        <button
+          onClick={() => switchTo(!editing)}
+          disabled={switching}
+          className="h-6 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-medium text-cc-muted/60 hover:text-cc-primary hover:bg-cc-primary/10 transition-colors cursor-pointer disabled:opacity-50"
+          title={editing ? "Switch to viewing" : "Switch to editing"}
+        >
+          {switching ? (
+            <div className="w-3 h-3 border-[1.5px] border-cc-primary/30 border-t-cc-primary rounded-full animate-spin" />
+          ) : editing ? (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          ) : (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+            </svg>
+          )}
+          {editing ? "View" : "Edit"}
+        </button>
+        {showSettings && (
+          <Suspense fallback={null}>
+            <AppSettings onClose={() => setShowSettings(false)} />
+          </Suspense>
+        )}
+      </div>
+    </>
+  );
+}
 
 function ShareDropdown() {
   const [open, setOpen] = useState(false);
@@ -357,7 +446,10 @@ export default function TopBar() {
           )}
         </div>
       ) : (
-        <ShareDropdown />
+        <div className="flex items-center gap-2 shrink-0">
+          <EditingToggle />
+          <ShareDropdown />
+        </div>
       )}
     </div>
   );

@@ -122,7 +122,6 @@ export function createModeWindow(
   (win as any).__url = url;
   urlToWindow.set(url, win);
 
-  // Mode windows open maximized for a full-app experience
   win.once("ready-to-show", () => {
     win.maximize();
     win.show();
