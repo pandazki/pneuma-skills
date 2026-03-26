@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.19.1
+**Version:** 2.20.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `remotion`, `gridboard`, `mode-maker`, `evolve`
 
@@ -136,6 +136,8 @@ pneuma-skills/
 │       ├── PermissionBanner.tsx  # Tool permissions + AskUserQuestion UI
 │       ├── ContextPanel.tsx   # Session stats, tasks, MCP, git
 │       ├── ReplayPlayer.tsx   # Replay controls bar (progress, speed, Continue Work)
+│       ├── AppModeToggle.tsx  # Hover-reveal Edit button for viewing (app) layout
+│       ├── AppSettings.tsx    # App settings popover (window size, resizable)
 │       └── ...                # TopBar, ToolBlock, Terminal, Diff, Editor panels
 ├── desktop/                   # Electron desktop client
 │   ├── src/main/              # Main process (tray, windows, Bun spawner, Claude detector)
@@ -355,7 +357,9 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 | GET | `/api/session` | Current active session ID |
 | POST | `/api/session/thumbnail` | Upload session thumbnail |
 | POST | `/api/session/editing` | Toggle editing state (`{ editing: bool }` — launches/kills agent) |
-| GET | `/api/config` | Mode init params |
+| GET | `/api/app-settings` | Per-workspace app settings (window size, resizable) |
+| POST | `/api/app-settings` | Update app settings (merges with existing) |
+| GET | `/api/config` | Mode init params, layout, editing state, app settings |
 | GET | `/api/mode-info` | External mode info |
 | GET | `/api/viewer-state` | Persisted viewer position (content set + file) |
 | POST | `/api/viewer-state` | Save viewer position |

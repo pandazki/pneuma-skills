@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.20.0] - 2026-03-26
+
+### Added
+- **Editing state** — protocol-level `editing: boolean` toggle for creating vs consuming. When `editing: false`, Agent stops, Viewer hides editing UI (drag/resize/grid/gallery), content interactions preserved. Modes opt in via `editing: { supported: true }` in manifest
+- **Editing toggle in TopBar** — eye/pencil icon + "View"/"Edit" label, left of share button. Only appears for modes that support editing state
+- **App settings popover** — gear icon in TopBar opens settings for window size and resizable toggle, persisted per-workspace in `.pneuma/app-settings.json`
+- **Viewing layout** — `layout: "app"` modes with `editing: false` render full-screen viewer with hover-reveal Edit button (zero visual footprint until mouse approaches top edge)
+- **`--viewing` CLI flag** — cold-start in viewing mode (skips skill install + agent spawn)
+- **`POST /api/session/editing`** — toggle editing state with agent lifecycle management (launch on true, kill on false)
+- **`GET/POST /api/app-settings`** — per-workspace app window configuration
+- **Launcher "My Apps" section** — filters `editing: false` sessions, auto-starts them on launcher boot
+- **Electron window IPC** — `pneuma:set-editing` switches between maximized (editing) and fixed-size centered (viewing)
+- **GridBoard app mode** — `layout: "app"` + `editing: { supported: true }` in manifest; viewing mode fills board to container, no scrollbars
+
+### Improved
+- **Viewer-Agent protocol docs** — new "Editing state" section documenting three-party behavior, data flow, and opt-in mechanism
+
 ## [2.19.1] - 2026-03-26
 
 ### Improved
