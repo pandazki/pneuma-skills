@@ -6,9 +6,9 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.17.0
+**Version:** 2.18.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
-**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `remotion`, `mode-maker`, `evolve`
+**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `remotion`, `gridboard`, `mode-maker`, `evolve`
 
 ## Tech Stack
 
@@ -88,7 +88,7 @@ pneuma-skills/
 │   ├── mode-loader.ts         # Mode discovery & loading (builtin + external)
 │   ├── mode-resolver.ts       # Source resolution (builtin/local/github/url → disk path)
 │   └── utils/manifest-parser.ts  # Regex-based manifest.ts metadata extraction
-├── modes/{webcraft,doc,slide,draw,illustrate,remotion,mode-maker,evolve}/  # Builtin modes
+├── modes/{webcraft,doc,slide,draw,illustrate,remotion,gridboard,mode-maker,evolve}/  # Builtin modes
 ├── backends/
 │   ├── index.ts               # Backend registry + descriptors + capabilities + availability
 │   ├── claude-code/           # Claude backend — Bun.spawn with --sdk-url

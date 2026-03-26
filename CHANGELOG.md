@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.18.0] - 2026-03-26
+
+### Added
+- **GridBoard mode** — interactive dashboard builder with draggable tile grid on a fixed-size canvas (8×8 default). Tiles are React components defined via `defineTile()` protocol, compiled JIT in the browser with @babel/standalone
+- **10 built-in seed tiles** — clock, weather (wttr.in), todo, AI news (HN Algolia), crypto ticker (CoinGecko), pomodoro, countdown, quotes, world clock, habit tracker
+- **Shadow DOM tile isolation** — each tile renders in its own Shadow DOM; CSS custom properties penetrate for theming
+- **Smart resize** — tiles declare `isOptimizedFor()` size breakpoints; resizing beyond them captures a snapdom screenshot and notifies the agent for visual optimization
+- **Tile Gallery** — slide-in panel showing available and disabled tiles with live mini-previews and "Create New Tile" with inline description input
+- **Capture viewer actions** — `capture-tile` and `capture-board` actions take snapdom screenshots, save to `.pneuma/captures/`, and return the path to the agent
+- **Viewer notification queue** — user messages and viewer notifications share a unified pending queue with store-subscriber auto-flush; ws-bridge queues notifications when CLI is busy
+
+### Improved
+- **Gallery create flow** — "Create New Tile" now prompts for a description inline before sending to the agent, eliminating the agent round-trip question
+- **Optimistic tile operations** — drag positions, resize sizes, and tile removals update the UI immediately before file save completes
+
+### Fixed
+- **Data fetch interval stability** — tile refresh intervals no longer reset on every recompilation; uses stable dependency key derived from active tile set
+- **Crypto ticker API** — switched from Binance (blocked in some regions) to CoinGecko free API
+
 ## [2.17.0] - 2026-03-25
 
 ### Added
