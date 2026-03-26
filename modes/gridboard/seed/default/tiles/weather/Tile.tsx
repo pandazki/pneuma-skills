@@ -24,15 +24,16 @@ export default defineTile({
   isOptimizedFor: () => false,
 
   params: {
-    city: { type: "string", default: "Tokyo", label: "City" },
+    city: { type: "string", default: "", label: "City (empty = auto-detect)" },
     unit: { type: "string", default: "C", label: "Unit (C or F)" },
   },
 
   dataSource: {
     refreshInterval: 600,
     async fetch({ signal, params }) {
-      const city = encodeURIComponent(String(params.city || "Tokyo"));
-      const res = await fetch(`/proxy/wttr/${city}?format=j1`, { signal });
+      const city = String(params.city || "").trim();
+      const path = city ? `/${encodeURIComponent(city)}` : "";
+      const res = await fetch(`/proxy/wttr${path}?format=j1`, { signal });
       if (!res.ok) throw new Error(`Weather fetch failed: ${res.status}`);
       return res.json() as Promise<WeatherData>;
     },
