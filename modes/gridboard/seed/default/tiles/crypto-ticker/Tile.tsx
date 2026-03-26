@@ -110,39 +110,45 @@ export default defineTile({
   isOptimizedFor: () => true,
 
   dataSource: {
-    refreshInterval: 120,
+    refreshInterval: 300, // 5 min — CoinGecko free tier rate limit friendly
     async fetch({ signal }) {
-      const COINS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
-      const COIN_IDS = ["bitcoin", "ethereum", "solana"];
+      const IDS = "bitcoin,ethereum,solana";
 
-      const tickerRes = await fetch(
-        `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(COINS))}`,
+      // CoinGecko free API — no key, no region restrictions
+      const priceRes = await fetch(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${IDS}&vs_currencies=usd&include_24hr_change=true&include_24hr_high_low=true&include_24hr_vol=true`,
         { signal },
       );
-      if (!tickerRes.ok) throw new Error(`Binance ticker: ${tickerRes.status}`);
-      const tickers = await tickerRes.json();
+      if (!priceRes.ok) throw new Error(`CoinGecko: ${priceRes.status}`);
+      const priceData = await priceRes.json();
 
-      const klineResults = await Promise.all(
-        COINS.map(sym =>
-          fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1d&limit=7`, { signal })
-            .then(r => r.ok ? r.json() : []).catch(() => [])
-        ),
-      );
+      // Fetch 7-day sparklines
+      const sparkRes = await fetch(
+        `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${IDS}&sparkline=true&price_change_percentage=24h`,
+        { signal },
+      ).then(r => r.ok ? r.json() : []).catch(() => []);
+
+      const sparkMap: Record<string, number[]> = {};
+      for (const coin of sparkRes) {
+        if (coin.sparkline_in_7d?.price) {
+          // Sample every 24th point (hourly data → daily)
+          const pts = coin.sparkline_in_7d.price;
+          sparkMap[coin.id] = pts.filter((_: number, i: number) => i % 24 === 0 || i === pts.length - 1);
+        }
+      }
 
       const prices: Record<string, CoinPrice> = {};
-      for (let i = 0; i < COINS.length; i++) {
-        const t = tickers.find((x: any) => x.symbol === COINS[i]);
-        if (t) {
-          const klines = klineResults[i] || [];
-          prices[COIN_IDS[i]] = {
-            usd: parseFloat(t.lastPrice),
-            usd_24h_change: parseFloat(t.priceChangePercent),
-            high: parseFloat(t.highPrice),
-            low: parseFloat(t.lowPrice),
-            volume: formatVolume(parseFloat(t.quoteVolume)),
-            sparkline: klines.map((k: any) => parseFloat(k[4])),
-          };
-        }
+      for (const id of ["bitcoin", "ethereum", "solana"]) {
+        const d = priceData[id];
+        if (!d) continue;
+        prices[id] = {
+          usd: d.usd ?? 0,
+          usd_24h_change: d.usd_24h_change ?? 0,
+          high: d.usd_24h_high ?? 0,
+          low: d.usd_24h_low ?? 0,
+          volume: formatVolume(d.usd_24h_vol ?? 0),
+          sparkline: sparkMap[id] ?? [],
+        };
       }
       return { prices } as CryptoData;
     },
