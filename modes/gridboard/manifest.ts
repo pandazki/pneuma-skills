@@ -68,6 +68,13 @@ For tile component patterns, layout rules, and theming conventions, consult the 
       target: "https://hn.algolia.com",
       description: "Hacker News search API",
     },
+    bilibili: {
+      target: "https://api.bilibili.com",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      },
+      description: "Bilibili API (requires browser UA)",
+    },
   },
 
   agent: {
