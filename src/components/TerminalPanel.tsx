@@ -185,6 +185,7 @@ export default function TerminalPanel() {
         {terminalId && (
           <button
             onClick={killTerminal}
+            title="Kill terminal session"
             className="text-xs px-2 py-0.5 rounded bg-cc-hover hover:bg-cc-active text-cc-muted hover:text-cc-error transition-colors"
           >
             Kill
@@ -192,6 +193,7 @@ export default function TerminalPanel() {
         )}
         <button
           onClick={spawnTerminal}
+          title="Open new terminal"
           className="text-xs px-2 py-0.5 rounded bg-cc-hover hover:bg-cc-active text-cc-muted hover:text-cc-fg transition-colors"
         >
           New

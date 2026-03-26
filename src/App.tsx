@@ -295,6 +295,7 @@ export default function App() {
   const viewerProps = useViewerProps();
   const layout = useStore((s) => s.layout);
   const replayMode = useStore((s) => s.replayMode);
+  const focusMode = useStore((s) => s.focusMode);
 
   // Thumbnail capture — snapshot the preview panel periodically
   const previewRef = useRef<HTMLDivElement>(null);
@@ -335,8 +336,8 @@ export default function App() {
 
       <div className="relative z-10 flex flex-col flex-1 border border-cc-primary/20 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(249,115,22,0.15)] ring-1 ring-white/5 before:absolute before:inset-0 before:bg-cc-surface/40 before:backdrop-blur-3xl before:-z-10">
         <TopBar />
-        <Group orientation="horizontal" className="flex-1 min-h-0">
-          <Panel defaultSize={65} minSize={30}>
+        <Group key={focusMode ? "focus" : "full"} orientation="horizontal" className="flex-1 min-h-0">
+          <Panel defaultSize={focusMode ? 75 : 65} minSize={30}>
             <div ref={previewRef} className="h-full w-full">
               {PreviewComponent ? (
                 <PreviewComponent {...viewerProps} />
@@ -346,7 +347,7 @@ export default function App() {
             </div>
           </Panel>
           <Separator className="w-[1px] bg-cc-border/40 hover:w-1 hover:bg-cc-primary/40 transition-all duration-300 cursor-col-resize z-10" />
-          <Panel defaultSize={35} minSize={20}>
+          <Panel defaultSize={focusMode ? 25 : 35} minSize={15}>
             <RightPanel />
           </Panel>
         </Group>

@@ -86,6 +86,7 @@ export default function ChatInput() {
   const updateAnnotationComment = useStore((s) => s.updateAnnotationComment);
   const clearAnnotations = useStore((s) => s.clearAnnotations);
   const previewMode = useStore((s) => s.previewMode);
+  const focusMode = useStore((s) => s.focusMode);
   const slashCommands = useStore((s) => s.session?.slash_commands ?? EMPTY_STRINGS);
   const skills = useStore((s) => s.session?.skills ?? EMPTY_STRINGS);
 
@@ -296,6 +297,7 @@ export default function ChatInput() {
             </span>
             <button
               onClick={clearAnnotations}
+              title="Remove all annotations"
               className="text-[11px] text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
             >
               Clear all
@@ -446,7 +448,7 @@ export default function ChatInput() {
                     ? "Tell Claude what to change..."
                     : previewMode === "annotate"
                       ? "Click elements to annotate, then send..."
-                      : "Send a message... (drop files, paste images, type / for commands)"
+                      : "Send a message... (drop files, paste images, / for commands)"
           }
           disabled={!cliConnected}
           rows={1}
@@ -457,7 +459,7 @@ export default function ChatInput() {
       {/* Action bar: model switcher + file picker | send/stop */}
       <div className="flex items-center justify-between mt-2">
         <div className="flex items-center gap-2">
-          <ModelSwitcher />
+          {!focusMode && <ModelSwitcher />}
           <button
             onClick={handleFilePickerClick}
             className="flex items-center gap-1 px-2 py-1 text-xs text-cc-muted hover:text-cc-fg bg-cc-card hover:bg-cc-hover rounded transition-colors"
@@ -481,6 +483,7 @@ export default function ChatInput() {
           {isBusy && (
             <button
               onClick={sendInterrupt}
+              title="Stop agent execution"
               className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-medium text-xs rounded-full transition-all shadow-[0_0_12px_rgba(220,38,38,0.4)]"
             >
               Stop
@@ -489,6 +492,7 @@ export default function ChatInput() {
           <button
             onClick={handleSubmit}
             disabled={(!text.trim() && attachments.length === 0 && !hasAnnotations) || !cliConnected}
+            title={isBusy ? "Queue message for when agent finishes" : "Send message"}
             className="px-5 py-2 bg-cc-primary hover:bg-cc-primary-hover text-cc-bg font-medium text-xs rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(249,115,22,0.4)] disabled:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isBusy ? "Queue" : "Send"}
