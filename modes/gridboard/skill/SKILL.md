@@ -21,6 +21,7 @@ You are working in Pneuma GridBoard Mode — a live dashboard editor where the u
 4. **Theme consistency**: Use CSS custom properties from `theme.css` for all colors, fonts, and spacing — no hardcoded values
 5. **Size with intention**: Choose tile sizes that fit the content — charts need room for axes, stat cards can be compact
 6. **Adapt on resize**: When a tile's dimensions change, restructure content meaningfully — never just CSS scale
+7. **Design, don't just lay out**: Tiles should feel crafted, not templated. Visual richness (inline SVG icons, CSS animations, gradient accents, data visualization) is the difference between a dashboard and a spreadsheet
 
 ---
 
@@ -259,33 +260,51 @@ Choose initial tile sizes based on content type. When unsure, go slightly larger
 
 ## Resize Adaptation Rules
 
-The `render` function receives the tile's current pixel `width` and `height`. **Always adapt content meaningfully to these dimensions** — do not just let CSS clip or scroll.
+The `render` function receives the tile's current pixel `width` and `height`. Resize is the core interaction of GridBoard — it should feel like a reveal, not just a reflow.
 
-### Width changes
+### The resize philosophy
 
-- **Wider** → show more columns in tables, add detail columns, expand descriptions, un-truncate labels
-- **Narrower** → hide secondary columns, truncate to key info, stack layout vertically, abbreviate labels
+**Small tiles show data. Large tiles show craft.**
 
-### Height changes
+When a tile grows, don't just rearrange the same elements with more padding. Each size tier should feel like a deliberate design for that space:
 
-- **Taller** → show more list items, add secondary sections, expand descriptions, show chart legend
-- **Shorter** → show fewer items, hide chart legend, condense to single key value, remove subtitles
+| Small (2x2) | Medium (3x3) | Large (4x3+) |
+|-------------|-------------|-------------|
+| Key value only | Structured layout | Full visual experience |
+| City + temperature | + weather description, humidity, wind | + inline SVG weather icons, condition-specific color gradients, animated elements, forecast chart |
+| Single number | + trend indicator, label | + sparkline SVG, comparison data, contextual visualization |
+| Headline list | + source badges, timestamps | + category colors, rich metadata, visual hierarchy with varied typography |
 
 ### Breakpoint approach
 
-Define named size tiers in the render function rather than continuous calculations:
+Define named size tiers that switch **visual treatments**, not just layout:
 
 ```tsx
-const compact  = width < 180 || height < 120;   // minimal — key value only
-const medium   = !compact && (width < 280 || height < 200);  // standard layout
-const expanded = !compact && !medium;             // full detail
+const compact  = width < 180 || height < 120;   // data-dense: key value, no decoration
+const medium   = !compact && (width < 280 || height < 200);  // structured: labels, secondary info
+const expanded = !compact && !medium;             // crafted: icons, visualizations, animations
 ```
 
-Use these tiers to switch layout variants, not just font sizes.
+### Visual richness by tier
 
-### Never just scale
+**Compact** — pure information density. A number, a label, a trend arrow. No decoration.
 
-Do not use CSS `transform: scale()` or simply change font sizes without restructuring the layout. The tile should look intentionally designed at every size.
+**Medium** — structured data with typographic hierarchy. Add secondary data points, use font weight and size contrast to create visual rhythm.
+
+**Expanded** — this is where you show craft:
+- **Inline SVG icons** that match the data (weather conditions, trend arrows, category symbols). Draw them directly in JSX, don't use emoji or text symbols.
+- **CSS animations** for dynamic data (pulsing indicators, smooth transitions, number counting).
+- **Color gradients** that respond to data (temperature heatmap, positive/negative trends, category-specific palettes).
+- **Data visualization** with SVG (sparklines, mini bar charts, progress arcs, radial gauges).
+- **Typographic contrast** — mix large bold numbers with small muted labels, use `var(--font-mono)` for data and `var(--font-family)` for labels.
+
+### What NOT to do
+
+- Don't just add more padding when the tile gets larger
+- Don't repeat the same layout at every size with different font sizes
+- Don't use `transform: scale()` — it's lazy and blurry
+- Don't use emoji as icons — draw inline SVGs or use CSS shapes
+- Don't use the same gray-on-dark aesthetic for everything — let data inform the visual treatment
 
 ---
 
@@ -367,6 +386,32 @@ dataSource: {
   },
 }
 ```
+
+---
+
+## Design Quality
+
+Tiles are the medium — your job is to make each one feel like it was designed by someone who cares. A dashboard of well-crafted tiles creates delight; a dashboard of text-with-padding creates boredom.
+
+### Visual toolkit (all available in TSX)
+
+- **Inline SVG** — draw icons, charts, gauges, decorative elements directly in JSX. Weather conditions, trend arrows, category badges, progress rings, sparklines. SVG is your primary visual tool.
+- **CSS custom properties** — `var(--accent)`, `var(--success)`, `var(--error)` for semantic color. Modify `theme.css` when the user wants a different palette.
+- **CSS animations** — `@keyframes` via `<style dangerouslySetInnerHTML>` inside the tile. Pulsing indicators, shimmer effects, smooth number transitions. Use sparingly for high-impact moments.
+- **Gradients** — `linear-gradient` and `radial-gradient` for backgrounds that respond to data. A weather tile can shift from warm amber to cool blue based on temperature.
+- **Typography contrast** — large bold `var(--font-mono)` for primary data, small muted `var(--font-family)` for labels. Create visual hierarchy through weight and size, not just position.
+
+### Avoid AI slop
+
+- No emoji as visual elements — draw SVG icons instead
+- No rounded rectangles with generic drop shadows as the only design choice
+- No identical card layouts repeated across tiles — each tile's content should drive its design
+- No purple-to-blue gradients, no glassmorphism-everywhere, no "futuristic dashboard" cliches
+- No decoration without purpose — every visual element should communicate data or aid comprehension
+
+### Aspiration level
+
+Ask yourself: would someone screenshot this tile to show a friend? If the answer is no, you haven't gone far enough. A weather tile at large size should have a hand-drawn SVG sun or rain icon, temperature-driven color shifts, and a layout that makes the data feel alive — not just more of the same text in a wider box.
 
 ---
 
