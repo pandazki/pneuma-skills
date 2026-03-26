@@ -13,9 +13,15 @@ const PASSTHROUGH_REQUEST_HEADERS = [
   "accept-language",
 ];
 
-/** Hop-by-hop headers that must NOT be forwarded from upstream response */
-const HOP_BY_HOP_HEADERS = new Set([
+/**
+ * Response headers to strip before forwarding to the browser.
+ * Includes hop-by-hop headers plus content-encoding — Bun's fetch() auto-decompresses
+ * gzip/br responses, so the body is already plain text. Forwarding the original
+ * content-encoding header would cause the browser to attempt double decompression.
+ */
+const STRIP_RESPONSE_HEADERS = new Set([
   "transfer-encoding",
+  "content-encoding",
   "connection",
   "keep-alive",
   "proxy-authenticate",
@@ -123,7 +129,7 @@ export function createProxyMiddleware(configRef: ProxyConfigRef) {
       // Build response headers, filtering hop-by-hop
       const responseHeaders = new Headers();
       upstream.headers.forEach((value, key) => {
-        if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
+        if (!STRIP_RESPONSE_HEADERS.has(key.toLowerCase())) {
           responseHeaders.set(key, value);
         }
       });
