@@ -547,6 +547,7 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **Replay auto-navigate timing**: File navigation in replay must run AFTER checkpoint loads (not during `displayMessage`), because content sets aren't computed until `setFiles` completes.
 - **Proxy hot reload**: `proxy.json` changes are picked up by chokidar. The proxy middleware reads config from memory on each request, so no server restart is needed.
 - **Proxy methods**: Default allowed method is GET only. POST/PUT/PATCH require explicit `"methods"` in config.
+- **Proxy content-encoding**: Bun's `fetch()` auto-decompresses gzip/br responses. The proxy strips `content-encoding` from upstream response headers to prevent browsers from double-decompressing. If you add new response header filtering, keep `content-encoding` in the strip list.
 
 <!-- pneuma:viewer-api:start -->
 ## Viewer API
