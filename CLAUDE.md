@@ -410,6 +410,12 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 | POST | `/api/workspace/scaffold` | Write/clear workspace files |
 | POST | `/api/viewer/action` | Dispatch viewer action |
 
+### Proxy
+
+| Method | Path | Description |
+|--------|------|-------------|
+| ALL | `/proxy/<name>/*` | Reverse proxy to external API (config from manifest + proxy.json) |
+
 ### System
 
 | Method | Path | Description |
@@ -539,6 +545,8 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **Replay mode deferred agent launch**: When `--replay` is passed, agent launch is deferred until `/api/replay/continue` is called. The server holds a `replayContinueCallback` registered by the CLI.
 - **Replay checkout isolation**: Each `/api/replay/checkout/:hash` cleans `.pneuma/replay-checkout/` before extracting, so `/content/*` serves checkpoint-accurate file state. Continue Work extracts final checkpoint to workspace root.
 - **Replay auto-navigate timing**: File navigation in replay must run AFTER checkpoint loads (not during `displayMessage`), because content sets aren't computed until `setFiles` completes.
+- **Proxy hot reload**: `proxy.json` changes are picked up by chokidar. The proxy middleware reads config from memory on each request, so no server restart is needed.
+- **Proxy methods**: Default allowed method is GET only. POST/PUT/PATCH require explicit `"methods"` in config.
 
 <!-- pneuma:viewer-api:start -->
 ## Viewer API
