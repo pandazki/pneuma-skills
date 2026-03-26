@@ -56,8 +56,8 @@ For tile component patterns, layout rules, and theming conventions, consult the 
   },
 
   proxy: {
-    coingecko: {
-      target: "https://api.coingecko.com",
+    cryptocompare: {
+      target: "https://min-api.cryptocompare.com",
       description: "Cryptocurrency price and market data",
     },
     wttr: {
