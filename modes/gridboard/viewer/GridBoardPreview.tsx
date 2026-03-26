@@ -325,19 +325,44 @@ export default function GridBoardPreview({
   );
 
   // ── Data Fetching ─────────────────────────────────────────────────────
+  // Keep a ref to compilation.tiles so the fetch effect can read latest
+  // definitions without re-running whenever the Map reference changes.
+  const compilationTilesRef = useRef(compilation.tiles);
+  compilationTilesRef.current = compilation.tiles;
+
+  // Stable dependency key: only re-run when the set of active tiles with
+  // dataSources actually changes, not on every recompilation.
+  const fetchKey = useMemo(() => {
+    if (!boardConfig) return "";
+    const parts: string[] = [];
+    for (const [tileId, compiled] of compilation.tiles) {
+      const def = compiled.definition;
+      if (!def?.dataSource) continue;
+      const tile = boardConfig.tiles[tileId] as TileConfig | undefined;
+      if (!tile || tile.status !== "active") continue;
+      parts.push(`${tileId}:${def.dataSource.refreshInterval}`);
+    }
+    return parts.sort().join(",");
+  }, [compilation.tiles, boardConfig]);
+
   useEffect(() => {
-    if (!boardConfig || !compilation.tiles.size) return;
+    if (!boardConfig || !fetchKey) return;
 
     const controllers = new Map<string, AbortController>();
     const intervals = new Map<string, ReturnType<typeof setInterval>>();
 
-    for (const [tileId, compiled] of compilation.tiles) {
+    for (const [tileId, compiled] of compilationTilesRef.current) {
       const def = compiled.definition;
       if (!def?.dataSource) continue;
       const tile = boardConfig.tiles[tileId] as TileConfig | undefined;
       if (!tile || tile.status !== "active") continue;
 
       const doFetch = async () => {
+        // Read latest definition from ref (may have been recompiled)
+        const latestDef = compilationTilesRef.current.get(tileId)?.definition;
+        const ds = latestDef?.dataSource ?? def.dataSource;
+        if (!ds) return;
+
         const ctrl = new AbortController();
         controllers.set(tileId, ctrl);
         setTileData((prev) => {
@@ -347,12 +372,13 @@ export default function GridBoardPreview({
         });
         try {
           const params: Record<string, unknown> = {};
-          if (def.params) {
-            for (const [k, v] of Object.entries(def.params)) {
+          const paramDefs = latestDef?.params ?? def.params;
+          if (paramDefs) {
+            for (const [k, v] of Object.entries(paramDefs)) {
               params[k] = v.default;
             }
           }
-          const data = await def.dataSource!.fetch({ signal: ctrl.signal, params });
+          const data = await ds.fetch({ signal: ctrl.signal, params });
           setTileData((prev) => {
             const m = new Map(prev);
             m.set(tileId, { data, loading: false, error: null });
@@ -378,7 +404,7 @@ export default function GridBoardPreview({
       controllers.forEach((c) => c.abort());
       intervals.forEach((i) => clearInterval(i));
     };
-  }, [compilation.tiles, boardConfig]);
+  }, [fetchKey, boardConfig]);
 
   // ── Tile Selection ────────────────────────────────────────────────────
   const handleTileSelect = useCallback(
@@ -894,13 +920,13 @@ export default function GridBoardPreview({
   );
 
   // ── Gallery: Create new tile via agent ────────────────────────────────
-  const handleCreateTile = useCallback(() => {
+  const handleCreateTile = useCallback((description: string) => {
     if (readonly) return;
     onNotifyAgent?.({
       type: "create-tile",
-      message: "The user clicked \"Create New Tile\" in the gallery. Please ask what kind of tile they want, then generate a new tile component file in tiles/<id>/Tile.tsx and register it in board.json.",
+      message: `The user wants to create a new tile: "${description}". Generate a tile component in tiles/<id>/Tile.tsx using defineTile() and register it in board.json. Pick a short, descriptive ID based on their description.`,
       severity: "warning",
-      summary: "User wants to create a new tile",
+      summary: `Create tile: ${description}`,
     });
     setGalleryOpen(false);
   }, [readonly, onNotifyAgent]);
@@ -1050,6 +1076,9 @@ export default function GridBoardPreview({
     >
       {/* Theme CSS injection */}
       {themeCSS && <style>{themeCSS}</style>}
+
+      {/* Board + Gallery row */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
       {/* Board area */}
       <div
@@ -1228,7 +1257,7 @@ export default function GridBoardPreview({
         )}
       </div>
 
-      {/* Gallery panel */}
+      {/* Gallery panel — pushes board aside */}
       {!readonly && (
         <TileGallery
           isOpen={galleryOpen}
@@ -1238,6 +1267,8 @@ export default function GridBoardPreview({
           onCreateTile={handleCreateTile}
         />
       )}
+
+      </div>{/* end Board + Gallery row */}
 
       {/* Bottom toolbar */}
       <GridToolbar

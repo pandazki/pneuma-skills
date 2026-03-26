@@ -5,7 +5,7 @@
  * or create new ones via an agent command.
  */
 
-import React, { type CSSProperties } from "react";
+import React, { useState, useRef, useEffect, type CSSProperties } from "react";
 import type { TileDefinition } from "./tile-compiler.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -25,7 +25,7 @@ interface TileGalleryProps {
   onClose: () => void;
   tiles: Map<string, GalleryTile>;
   onAddTile: (tileId: string) => void;
-  onCreateTile: () => void;
+  onCreateTile: (description: string) => void;
 }
 
 // ── Inline SVG Icons ─────────────────────────────────────────────────────────
@@ -67,21 +67,17 @@ const LayoutGridIcon = () => (
 // ── Styles ───────────────────────────────────────────────────────────────────
 
 const panelStyle = (isOpen: boolean): CSSProperties => ({
-  position: "absolute",
-  top: 0,
-  right: 0,
-  bottom: 0,
   width: 280,
+  minWidth: 280,
+  height: "100%",
   background: "rgba(24, 24, 27, 0.97)",
-  backdropFilter: "blur(12px)",
-  WebkitBackdropFilter: "blur(12px)",
   borderLeft: "1px solid #27272a",
   display: "flex",
   flexDirection: "column",
-  transform: isOpen ? "translateX(0)" : "translateX(100%)",
-  transition: "transform 0.22s cubic-bezier(0.4, 0, 0.2, 1)",
-  zIndex: 50,
   overflow: "hidden",
+  flexShrink: 0,
+  marginRight: isOpen ? 0 : -280,
+  transition: "margin-right 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
 });
 
 const headerStyle: CSSProperties = {
@@ -318,6 +314,23 @@ export function TileGallery({ isOpen, onClose, tiles, onAddTile, onCreateTile }:
   const disabled = tileList.filter((t) => t.status === "disabled");
   const isEmpty = tileList.length === 0;
 
+  const [showCreateInput, setShowCreateInput] = useState(false);
+  const [createText, setCreateText] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-focus textarea when shown
+  useEffect(() => {
+    if (showCreateInput) inputRef.current?.focus();
+  }, [showCreateInput]);
+
+  const handleSubmitCreate = () => {
+    const text = createText.trim();
+    if (!text) return;
+    onCreateTile(text);
+    setCreateText("");
+    setShowCreateInput(false);
+  };
+
   return (
     <div style={panelStyle(isOpen)} aria-hidden={!isOpen}>
       {/* Header */}
@@ -343,20 +356,67 @@ export function TileGallery({ isOpen, onClose, tiles, onAddTile, onCreateTile }:
 
       {/* Body */}
       <div style={bodyStyle}>
-        {/* Create New button */}
-        <button
-          style={createBtnStyle}
-          onClick={onCreateTile}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "#ea6c0a";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "#f97316";
-          }}
-        >
-          <PlusIcon />
-          Create New Tile
-        </button>
+        {/* Create New Tile */}
+        {!showCreateInput ? (
+          <button
+            style={createBtnStyle}
+            onClick={() => setShowCreateInput(true)}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = "#ea6c0a";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = "#f97316";
+            }}
+          >
+            <PlusIcon />
+            Create New Tile
+          </button>
+        ) : (
+          <div style={{
+            display: "flex", flexDirection: "column", gap: 6,
+            background: "#27272a", border: "1px solid #f97316", borderRadius: 8, padding: 10,
+          }}>
+            <textarea
+              ref={inputRef}
+              value={createText}
+              onChange={(e) => setCreateText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmitCreate(); }
+                if (e.key === "Escape") { setShowCreateInput(false); setCreateText(""); }
+              }}
+              placeholder="Describe the tile you want..."
+              rows={2}
+              style={{
+                width: "100%", resize: "none", background: "#18181b", color: "#fafafa",
+                border: "1px solid #3f3f46", borderRadius: 6, padding: "8px 10px",
+                fontSize: 12, lineHeight: 1.5, fontFamily: "inherit", outline: "none",
+              }}
+            />
+            <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => { setShowCreateInput(false); setCreateText(""); }}
+                style={{
+                  padding: "5px 10px", background: "transparent", border: "1px solid #3f3f46",
+                  borderRadius: 5, color: "#71717a", fontSize: 11, fontWeight: 500, cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitCreate}
+                disabled={!createText.trim()}
+                style={{
+                  padding: "5px 10px", background: createText.trim() ? "#f97316" : "#3f3f46",
+                  border: "none", borderRadius: 5, color: "#fff", fontSize: 11,
+                  fontWeight: 600, cursor: createText.trim() ? "pointer" : "default",
+                  transition: "background 0.15s",
+                }}
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Empty state */}
         {isEmpty && (
