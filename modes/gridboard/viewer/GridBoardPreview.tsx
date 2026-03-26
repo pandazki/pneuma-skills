@@ -828,12 +828,31 @@ export default function GridBoardPreview({
   }, [navigateRequest]);
 
   // ── Scroll tile into view ─────────────────────────────────────────────
+  // Uses manual scroll calculation instead of scrollIntoView to avoid
+  // scrolling ancestor containers (which would expose the hidden gallery panel).
   const scrollTileIntoView = useCallback(
     (tileId: string) => {
-      const el = boardRef.current?.querySelector(`[data-tile-id="${tileId}"]`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-      }
+      const board = boardRef.current;
+      const el = board?.querySelector(`[data-tile-id="${tileId}"]`) as HTMLElement | null;
+      const scrollContainer = board?.parentElement;
+      if (!el || !scrollContainer) return;
+
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+
+      // Calculate scroll offset to center the tile in the visible area
+      const targetScrollTop = scrollContainer.scrollTop
+        + (elRect.top - containerRect.top)
+        - (containerRect.height - elRect.height) / 2;
+      const targetScrollLeft = scrollContainer.scrollLeft
+        + (elRect.left - containerRect.left)
+        - (containerRect.width - elRect.width) / 2;
+
+      scrollContainer.scrollTo({
+        top: Math.max(0, targetScrollTop),
+        left: Math.max(0, targetScrollLeft),
+        behavior: "smooth",
+      });
     },
     [],
   );
