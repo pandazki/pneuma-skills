@@ -268,6 +268,27 @@ export function generateProxySection(
 }
 
 /**
+ * Generate a CLAUDE.md section describing the native bridge API.
+ * Always injected — the API gracefully returns "not available" in non-desktop environments.
+ */
+export function generateNativeBridgeSection(): string {
+  return [
+    "### Native Desktop APIs",
+    "",
+    "The runtime provides native desktop capabilities via `/api/native/`. Available when running inside the Pneuma desktop app.",
+    "",
+    "**Discovery:** `curl -s $PNEUMA_API/api/native` — returns `{ available: true, capabilities: { module: [methods...] } }` or `{ available: false }`.",
+    "Always check this first to see what's available — the capability list is dynamic and auto-generated from Electron modules.",
+    "",
+    "**Invoke:** `curl -s -X POST $PNEUMA_API/api/native/<module>/<method> -H 'Content-Type: application/json' -d '[...args]'`",
+    "Returns `{ ok: true, result: ... }` or `{ ok: false, error: \"...\" }`.",
+    "",
+    "**Common modules:** `clipboard` (readText, writeText, readImage→base64, writeImage←base64, ...), `shell` (openPath, openExternal, ...), `app` (getVersion, getPath, ...), `system` (platform, cpus, totalMemory, hostname, ...), `screen`, `nativeTheme`, `notification` (show, isSupported), `window` (minimize, maximize, setAlwaysOnTop, getBounds, ...)",
+    "",
+  ].join("\n");
+}
+
+/**
  * Install MCP servers declared by a mode into workspace's .mcp.json.
  *
  * Management strategy: uses .pneuma/managed-mcp.json to track which servers
@@ -509,6 +530,12 @@ export function installSkill(
     viewerApiContent = viewerApiContent
       ? viewerApiContent + "\n" + proxyContent
       : proxyContent;
+  }
+  const nativeContent = generateNativeBridgeSection();
+  if (nativeContent) {
+    viewerApiContent = viewerApiContent
+      ? viewerApiContent + "\n" + nativeContent
+      : nativeContent;
   }
   if (viewerApiContent) {
     const viewerSection = `${VIEWER_API_MARKER_START}\n${viewerApiContent}\n${VIEWER_API_MARKER_END}`;

@@ -327,11 +327,16 @@ describe("installSkill", () => {
     expect(content2).toContain("<!-- pneuma:start -->");
   });
 
-  test("no viewer API section when viewerApi is undefined", () => {
+  test("native bridge section always present even without viewerApi", () => {
     installSkill(workspace, defaultSkillConfig, modeSourceDir);
 
     const content = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
-    expect(content).not.toContain("<!-- pneuma:viewer-api:start -->");
+    // Native bridge docs are always injected (universal capability)
+    expect(content).toContain("<!-- pneuma:viewer-api:start -->");
+    expect(content).toContain("Native Desktop APIs");
+    // But no mode-specific viewer sections (actions, workspace, etc.)
+    expect(content).not.toContain("### Workspace");
+    expect(content).not.toContain("### Actions");
   });
 
   test("writes AGENTS.md when backendType is codex", () => {

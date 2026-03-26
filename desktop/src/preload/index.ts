@@ -10,4 +10,7 @@ contextBridge.exposeInMainWorld("pneumaDesktop", {
   closeModeWindow: (url: string) => ipcRenderer.invoke("pneuma:close-mode-window", url),
   setEditing: (editing: boolean, opts?: { width?: number; height?: number; resizable?: boolean }) =>
     ipcRenderer.invoke("pneuma:set-editing", editing, opts),
+  invoke: (capability: string, method: string, ...args: unknown[]) =>
+    ipcRenderer.invoke("pneuma:native", capability, method, ...args),
+  capabilities: () => ipcRenderer.invoke("pneuma:native:capabilities"),
 });

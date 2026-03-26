@@ -1,5 +1,6 @@
 import { ipcMain, app, shell, dialog, BrowserWindow } from "electron";
 import { closeModeWindowByUrl } from "./window-manager.js";
+import { handleNativeInvoke, listCapabilities } from "./native-bridge.js";
 
 export function registerIpcHandlers() {
   ipcMain.handle("pneuma:get-app-version", () => {
@@ -51,4 +52,17 @@ export function registerIpcHandlers() {
       return result.filePaths[0];
     }
   );
+
+  ipcMain.handle("pneuma:native", async (_event, capability: string, method: string, ...args: unknown[]) => {
+    try {
+      const result = await handleNativeInvoke(capability, method, ...args);
+      return { ok: true, result };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle("pneuma:native:capabilities", () => {
+    return listCapabilities();
+  });
 }
