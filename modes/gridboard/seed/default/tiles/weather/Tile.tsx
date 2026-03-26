@@ -20,8 +20,8 @@ export default defineTile({
   description: "Current weather conditions fetched from wttr.in",
   minSize: { cols: 2, rows: 2 },
   maxSize: { cols: 6, rows: 4 },
-  // responsive breakpoints cover all sizes within min/max
-  isOptimizedFor: () => true,
+  // Always trigger agent redesign on resize — demonstrates AI-adaptive tiles
+  isOptimizedFor: () => false,
 
   params: {
     city: { type: "string", default: "Tokyo", label: "City" },
