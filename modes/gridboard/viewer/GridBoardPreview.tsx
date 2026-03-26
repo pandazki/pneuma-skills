@@ -716,6 +716,43 @@ export default function GridBoardPreview({
         onActionResult?.(actionRequest.requestId, { success: true });
         break;
       }
+      case "capture-tile": {
+        const tileId = actionRequest.params?.tileId as string;
+        const tileEl = boardRef.current?.querySelector(`[data-tile-id="${tileId}"]`) as HTMLElement | null;
+        if (!tileEl) {
+          onActionResult?.(actionRequest.requestId, { success: false, message: `Tile "${tileId}" not found` });
+          break;
+        }
+        captureElementToPng(tileEl).then(async (img) => {
+          if (!img) {
+            onActionResult?.(actionRequest.requestId, { success: false, message: "Screenshot capture failed" });
+            return;
+          }
+          const filename = `tile-${tileId}-${Date.now()}.png`;
+          const path = `.pneuma/captures/${filename}`;
+          await saveFile(path, `data:${img.media_type};base64,${img.data}`);
+          onActionResult?.(actionRequest.requestId, { success: true, message: path, data: { path } });
+        });
+        break;
+      }
+      case "capture-board": {
+        const boardEl = boardRef.current;
+        if (!boardEl) {
+          onActionResult?.(actionRequest.requestId, { success: false, message: "Board element not found" });
+          break;
+        }
+        captureElementToPng(boardEl).then(async (img) => {
+          if (!img) {
+            onActionResult?.(actionRequest.requestId, { success: false, message: "Screenshot capture failed" });
+            return;
+          }
+          const filename = `board-${Date.now()}.png`;
+          const path = `.pneuma/captures/${filename}`;
+          await saveFile(path, `data:${img.media_type};base64,${img.data}`);
+          onActionResult?.(actionRequest.requestId, { success: true, message: path, data: { path } });
+        });
+        break;
+      }
       case "lock-tile": {
         const tileId = actionRequest.params?.tileId as string;
         if (tileId) {

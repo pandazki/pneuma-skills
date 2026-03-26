@@ -101,6 +101,22 @@ The user just opened the workspace. You are ready to assist with dashboard creat
         params: { tileId: { type: "string", description: "Tile ID to unlock", required: true } },
         description: "Remove the 'modifying' overlay from a tile after editing is complete",
       },
+      {
+        id: "capture-tile",
+        label: "Capture Tile Screenshot",
+        category: "custom",
+        agentInvocable: true,
+        params: { tileId: { type: "string", description: "Tile ID to screenshot", required: true } },
+        description: "Take a screenshot of a specific tile and return it as an image. Use this to visually inspect a tile's current rendering.",
+      },
+      {
+        id: "capture-board",
+        label: "Capture Board Screenshot",
+        category: "custom",
+        agentInvocable: true,
+        params: {},
+        description: "Take a screenshot of the entire board and return it as an image. Use this to review the overall dashboard layout.",
+      },
     ],
     commands: [
       {
