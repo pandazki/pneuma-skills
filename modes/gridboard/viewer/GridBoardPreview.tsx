@@ -272,6 +272,8 @@ export default function GridBoardPreview({
 
     const errors: { key: string; message: string; summary: string }[] = [];
     for (const err of compilation.errors) {
+      // Skip errors for locked tiles — agent is mid-edit, intermediate states are expected
+      if (resizingTileIds.has(err.tileId)) continue;
       errors.push({
         key: `compile:${err.tileId}:${err.message}`,
         message: `Compilation error in tile "${err.tileId}": ${err.message}\nPlease fix the tile component and save.`,
@@ -280,6 +282,8 @@ export default function GridBoardPreview({
     }
     for (const [tileId, compiled] of compilation.tiles) {
       if (!compiled.error) continue;
+      // Skip errors for locked tiles
+      if (resizingTileIds.has(tileId)) continue;
       errors.push({
         key: `compile:${tileId}:${compiled.error}`,
         message: `Compilation error in tile "${tileId}": ${compiled.error}\nPlease fix the tile component and save.`,
@@ -304,12 +308,14 @@ export default function GridBoardPreview({
         summary: err.summary,
       });
     }
-  }, [compilation, onNotifyAgent]);
+  }, [compilation, onNotifyAgent, resizingTileIds]);
 
   // Callback for TileSlot render errors → notify agent (queued by ws-bridge)
+  // Suppressed for locked tiles — agent is mid-edit, errors are expected.
   const handleTileRenderError = useCallback(
     (tileId: string, error: Error) => {
       if (!onNotifyAgent) return;
+      if (resizingTileIds.has(tileId)) return; // locked → skip
       const key = `render:${tileId}:${error.message}`;
       if (notifiedErrorsRef.current.has(key)) return;
       notifiedErrorsRef.current.add(key);
@@ -321,7 +327,7 @@ export default function GridBoardPreview({
         summary: `Tile "${tileId}" render error`,
       });
     },
-    [onNotifyAgent, boardConfig],
+    [onNotifyAgent, boardConfig, resizingTileIds],
   );
 
   // ── Data Fetching ─────────────────────────────────────────────────────
