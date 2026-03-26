@@ -69,6 +69,30 @@ When the user wants to bundle an external skill:
 
 The skill gets bundled with the mode — consumers don't need marketplace access.
 
+## Proxy for External APIs
+
+If the mode's viewer needs to fetch external APIs (weather data, stock prices, third-party services), declare a `proxy` field in `manifest.ts`. This enables a server-side reverse proxy that avoids CORS issues and can inject headers (auth tokens, User-Agent).
+
+```typescript
+proxy: {
+  myapi: {
+    target: "https://api.example.com",
+    headers: { "User-Agent": "Mozilla/5.0 ..." },  // optional
+    methods: ["GET"],                                // optional, default GET only
+    description: "Example API",                      // shown in CLAUDE.md
+  },
+},
+```
+
+**What this does:**
+- Pneuma auto-generates a "Proxy" section in CLAUDE.md, so the agent knows to use `/proxy/myapi/...` in viewer code
+- Server forwards `/proxy/myapi/path` → `https://api.example.com/path` with configured headers
+- Users can add more proxies at runtime by writing `proxy.json` in the workspace
+
+**When to use:** Any time the viewer fetches data from an external domain. Even APIs that work without proxy today may break in other browsers or environments. The proxy also enables header injection (auth, UA) without exposing secrets in viewer code.
+
+See `manifest-reference.md` for the full `proxy` field schema.
+
 ## Template Variables
 
 Seed files and skill files support `{{key}}` template variables from init params. Use `{{modeName}}` and `{{displayName}}` for mode identity. Conditional blocks: `{{#key}}...{{/key}}` (rendered only if key is non-empty).

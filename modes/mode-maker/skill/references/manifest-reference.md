@@ -60,6 +60,21 @@ const manifest: ModeManifest = {
     scaffold: { ... },    // Workspace initialization capability (optional)
   },
 
+  // Reverse proxy for viewer API access (optional)
+  // When declared, a "Proxy" section is auto-injected into CLAUDE.md
+  // telling the agent to use /proxy/<name>/<path> instead of absolute URLs.
+  proxy: {
+    "api-name": {
+      target: "https://api.example.com",       // Upstream base URL (required)
+      headers: {                                // Injected on every request (optional)
+        "Authorization": "Bearer {{API_KEY}}",  //   {{ENV_VAR}} resolved from process.env
+        "User-Agent": "Mozilla/5.0 ...",        //   Useful for APIs that block non-browser UA
+      },
+      methods: ["GET", "POST"],                 // Allowed methods (default: ["GET"])
+      description: "Description for CLAUDE.md", // Human-readable (optional)
+    },
+  },
+
   // Agent preferences (optional)
   agent: {
     permissionMode: "bypassPermissions",   // "bypassPermissions" recommended

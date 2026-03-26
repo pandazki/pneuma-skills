@@ -219,6 +219,55 @@ export function generateViewerApiSection(
 }
 
 /**
+ * Generate a CLAUDE.md section describing the proxy mechanism.
+ * Only generated when the mode declares proxy config (manifest.proxy).
+ * Modes without proxy config don't need this — their viewers don't fetch external APIs.
+ *
+ * Pure function — no side effects.
+ */
+export function generateProxySection(
+  proxy: Record<string, import("../core/types/mode-manifest.js").ProxyRoute> | undefined,
+): string {
+  if (!proxy) return "";
+
+  const hasPresets = Object.keys(proxy).length > 0;
+
+  const lines: string[] = [
+    "### Proxy",
+    "",
+    "The runtime provides a reverse proxy at `/proxy/<name>/<path>` to avoid CORS issues when viewer code fetches external APIs.",
+    "**Always use the proxy for external API access** — never use absolute URLs directly in viewer code.",
+    "",
+  ];
+
+  // Preset routes table
+  if (hasPresets) {
+    lines.push("**Available proxies (from mode defaults):**");
+    lines.push("");
+    lines.push("| Name | Target | Description |");
+    lines.push("|------|--------|-------------|");
+    for (const [name, route] of Object.entries(proxy)) {
+      lines.push(`| \`${name}\` | \`${route.target}\` | ${route.description ?? "—"} |`);
+    }
+    lines.push("");
+    lines.push("**Usage in viewer code:**");
+    lines.push(`- Example: \`fetch("/proxy/${Object.keys(proxy)[0]}/path/to/resource")\``);
+  } else {
+    lines.push("**Usage in viewer code:**");
+    lines.push("- Example: `fetch(\"/proxy/myapi/path/to/resource\")`");
+  }
+  lines.push("");
+
+  // Adding new proxies — use fenced code block to avoid template resolution
+  lines.push("**Adding or overriding proxies at runtime:**");
+  lines.push("Write `proxy.json` in workspace root (takes effect immediately, no restart).");
+  lines.push("Fields: `target` (required, upstream base URL), `headers` (optional, supports env var templates), `methods` (optional, defaults to GET only).");
+  lines.push("");
+
+  return lines.join("\n");
+}
+
+/**
  * Install MCP servers declared by a mode into workspace's .mcp.json.
  *
  * Management strategy: uses .pneuma/managed-mcp.json to track which servers
@@ -378,6 +427,7 @@ export function installSkill(
   params?: Record<string, number | string>,
   viewerApi?: ViewerApiConfig,
   backendType?: string,
+  proxyConfig?: Record<string, import("../core/types/mode-manifest.js").ProxyRoute>,
 ): void {
   // 1. Copy skill to the backend-appropriate skills directory
   const skillSource = join(modeSourceDir, skillConfig.sourceDir);
@@ -453,7 +503,13 @@ export function installSkill(
   }
 
   // 2b. Inject/update Viewer API section (independent marker, Viewer-owned)
-  const viewerApiContent = generateViewerApiSection(viewerApi);
+  let viewerApiContent = generateViewerApiSection(viewerApi);
+  const proxyContent = generateProxySection(proxyConfig);
+  if (proxyContent) {
+    viewerApiContent = viewerApiContent
+      ? viewerApiContent + "\n" + proxyContent
+      : proxyContent;
+  }
   if (viewerApiContent) {
     const viewerSection = `${VIEWER_API_MARKER_START}\n${viewerApiContent}\n${VIEWER_API_MARKER_END}`;
     const vStart = content.indexOf(VIEWER_API_MARKER_START);

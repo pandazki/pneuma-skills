@@ -16,6 +16,7 @@ export type {
   ViewerApiConfig,
   EvolutionConfig,
   EvolutionTool,
+  ProxyRoute,
 } from "./mode-manifest.js";
 
 export type {

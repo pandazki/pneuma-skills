@@ -150,3 +150,46 @@ describe("ModeManifest optional fields", () => {
     expect(manifest.init?.seedFiles?.["README.md"]).toBe("README.md");
   });
 });
+
+// ── ProxyRoute ────────────────────────────────────────────────────────────────
+
+describe("ProxyRoute", () => {
+  test("manifest can declare proxy routes", () => {
+    const manifest = createMinimalManifest({
+      proxy: {
+        github: {
+          target: "https://api.github.com",
+          headers: { Authorization: "Bearer {{GITHUB_TOKEN}}" },
+          methods: ["GET", "POST"],
+          description: "GitHub REST API",
+        },
+      },
+    });
+    expect(manifest.proxy?.github.target).toBe("https://api.github.com");
+    expect(manifest.proxy?.github.methods).toEqual(["GET", "POST"]);
+  });
+
+  test("proxy is optional", () => {
+    const manifest = createMinimalManifest();
+    expect(manifest.proxy).toBeUndefined();
+  });
+
+  test("proxy route target must be a URL string", () => {
+    const manifest = createMinimalManifest({
+      proxy: {
+        weather: { target: "https://wttr.in" },
+      },
+    });
+    expect(manifest.proxy?.weather.target).toMatch(/^https?:\/\//);
+  });
+
+  test("methods defaults semantically to GET only", () => {
+    const manifest = createMinimalManifest({
+      proxy: {
+        api: { target: "https://api.example.com" },
+      },
+    });
+    expect(manifest.proxy?.api.methods).toBeUndefined();
+    // Runtime should treat undefined as ["GET"]
+  });
+});

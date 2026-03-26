@@ -21,6 +21,9 @@ import { listCheckpoints } from "./shadow-git.js";
 import { exportHistory } from "./history-export.js";
 import { importHistory } from "./history-import.js";
 import { getR2Config, saveR2Config, isR2Configured, shareResult, shareProcess, downloadShare, getApiKeys, saveApiKeys } from "./share.js";
+import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./proxy-middleware.js";
+import type { ProxyRoute } from "../core/types/mode-manifest.js";
+import { startProxyWatcher } from "./file-watcher.js";
 
 const DEFAULT_PORT = 17007;
 
@@ -41,6 +44,7 @@ export interface ServerOptions {
   forceDev?: boolean; // Pass --dev to child processes
   replayPackagePath?: string; // Path to replay package — pre-loads replay data on server start
   replayMode?: boolean; // Server starts in replay mode (delays agent launch until Continue Work)
+  manifestProxy?: Record<string, ProxyRoute>; // Manifest-declared proxy routes
 }
 
 export function startServer(options: ServerOptions) {
@@ -867,6 +871,33 @@ export function startServer(options: ServerOptions) {
     return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup: undefined, childProcesses, onReplayContinue: undefined };
   }
 
+  // ── Proxy config (hot-reloadable) ────────────────────────────────────
+  const proxyConfigRef: ProxyConfigRef = { current: new Map() };
+
+  // Load workspace proxy.json if it exists
+  const proxyJsonPath = join(workspace, "proxy.json");
+  let workspaceProxy: Record<string, ProxyRoute> | undefined;
+  if (existsSync(proxyJsonPath)) {
+    try {
+      workspaceProxy = JSON.parse(readFileSync(proxyJsonPath, "utf-8"));
+    } catch (err) {
+      console.error(`[proxy] Failed to parse proxy.json: ${err}`);
+    }
+  }
+  proxyConfigRef.current = mergeProxyConfig(options.manifestProxy, workspaceProxy);
+  if (proxyConfigRef.current.size > 0) {
+    console.log(`[proxy] Loaded ${proxyConfigRef.current.size} proxy route(s): ${[...proxyConfigRef.current.keys()].join(", ")}`);
+  }
+
+  // Watch proxy.json for hot reload
+  startProxyWatcher(workspace, (config) => {
+    proxyConfigRef.current = mergeProxyConfig(
+      options.manifestProxy,
+      config as Record<string, ProxyRoute> | undefined,
+    );
+    console.log(`[proxy] Config reloaded: ${proxyConfigRef.current.size} route(s)`);
+  });
+
   let replayPackage: Awaited<ReturnType<typeof importHistory>> | null = null;
   let serverReplayMode = options.replayMode ?? !!options.replayPackagePath;
   let replayContinueCallback: (() => Promise<void>) | null = null;
@@ -1505,6 +1536,9 @@ export function startServer(options: ServerOptions) {
   if (options.modeName === "evolve") {
     registerEvolutionRoutes(app, { workspace });
   }
+
+  // ── Reverse proxy for viewer API access ────────────────────────────────
+  app.all("/proxy/*", createProxyMiddleware(proxyConfigRef));
 
   // ── Static content serving (workspace files) ──────────────────────────
   // CORS needed for slide thumbnail capture: Vite dev server (different port)

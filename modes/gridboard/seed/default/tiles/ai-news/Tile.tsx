@@ -21,7 +21,7 @@ export default defineTile({
     async fetch(ctx) {
       // Use HN Algolia API for AI news — reliable, no key needed
       const res = await fetch(
-        "https://hn.algolia.com/api/v1/search?query=AI+LLM+GPT&tags=story&hitsPerPage=10",
+        "/proxy/hn/api/v1/search?query=AI+LLM+GPT&tags=story&hitsPerPage=10",
         { signal: ctx.signal },
       );
       if (!res.ok) throw new Error(`News API: ${res.status}`);

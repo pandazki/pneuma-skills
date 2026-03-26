@@ -65,6 +65,11 @@
       "label": "Habit Tracker",
       "component": "tiles/habit-tracker/Tile.tsx",
       "status": "available"
+    },
+    "bilibili-hot": {
+      "label": "Bilibili Hot",
+      "component": "tiles/bilibili-hot/Tile.tsx",
+      "status": "available"
     }
   }
 }
