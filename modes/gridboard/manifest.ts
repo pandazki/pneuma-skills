@@ -55,6 +55,21 @@ For tile component patterns, layout rules, and theming conventions, consult the 
     serveDir: ".",
   },
 
+  proxy: {
+    coingecko: {
+      target: "https://api.coingecko.com",
+      description: "Cryptocurrency price and market data",
+    },
+    wttr: {
+      target: "https://wttr.in",
+      description: "Weather forecast data (JSON format)",
+    },
+    hn: {
+      target: "https://hn.algolia.com",
+      description: "Hacker News search API",
+    },
+  },
+
   agent: {
     permissionMode: "bypassPermissions",
     greeting: `<system-info pneuma-mode="Pneuma GridBoard Mode" skill="pneuma-gridboard" session="new"></system-info>
