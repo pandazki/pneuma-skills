@@ -134,12 +134,14 @@ Runtime 在 Agent 空闲时 flush notification，作为系统消息注入。
 | `viewerApi.workspace` | ② Viewer → User | 工作区文件组织模型 |
 | `viewerApi.scaffold` | ① User → Viewer | 工作区初始化/重置能力 |
 | `viewerApi.locatorDescription` | ⑤ Agent → Viewer | 定位卡片格式说明（注入 CLAUDE.md） |
+| `proxy` | ② Viewer → User | 反向代理路由，解决 Viewer fetch 外部 API 的 CORS 问题 |
 | `skill` | ③④⑤⑥ | Agent 的领域知识和行为指导 |
 
 **Runtime** 是中枢 — 读取 manifest、分发数据、桥接所有通道：
 
-- **skill-installer**: manifest → CLAUDE.md（注入 skill prompt + action descriptions + viewer API）
+- **skill-installer**: manifest → CLAUDE.md（注入 skill prompt + action descriptions + viewer API + proxy docs）
 - **store + props**: manifest → Viewer props（注入 commands、actions、files、workspace items）
+- **proxy middleware**: manifest.proxy + workspace proxy.json → `/proxy/<name>/*` 反向代理（Viewer 用相对路径访问外部 API，Runtime 服务端转发）
 - **WS bridge**: browser JSON ↔ backend transport（Claude NDJSON / Codex stdio JSON-RPC）
 - **context injection**: `extractContext()` → `<viewer-context>` 注入到 user message
 
