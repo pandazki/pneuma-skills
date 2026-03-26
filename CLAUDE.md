@@ -548,6 +548,7 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **Proxy hot reload**: `proxy.json` changes are picked up by chokidar. The proxy middleware reads config from memory on each request, so no server restart is needed.
 - **Proxy methods**: Default allowed method is GET only. POST/PUT/PATCH require explicit `"methods"` in config.
 - **Proxy content-encoding**: Bun's `fetch()` auto-decompresses gzip/br responses. The proxy strips `content-encoding` from upstream response headers to prevent browsers from double-decompressing. If you add new response header filtering, keep `content-encoding` in the strip list.
+- **GridBoard JSX tag limitation**: The tile compiler (Babel + eval) cannot resolve locally-defined components as JSX tags. `<MyComponent />` throws "not defined" even if defined in the same file. Use plain function calls `{renderMyComponent(...)}` instead. This is a runtime scope limitation, not a hoisting issue.
 
 <!-- pneuma:viewer-api:start -->
 ## Viewer API

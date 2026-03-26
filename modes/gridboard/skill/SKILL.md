@@ -381,6 +381,18 @@ Tiles are the medium — your job is to make each one feel crafted, not template
 
 - Do not import React — it is available as a global
 - Use `import { defineTile } from "gridboard"` as the only gridboard import
+- **No JSX tags for local components** — the tile runtime cannot resolve locally-defined components as JSX tags. `<WeatherIcon />` will throw "WeatherIcon is not defined" even if defined in the same file. Use plain function calls instead:
+  ```tsx
+  // BAD — will crash at runtime
+  function WeatherIcon({ type }: { type: string }) { return <svg>...</svg>; }
+  // ... inside render:
+  <WeatherIcon type="rain" />
+
+  // GOOD — plain function call works
+  function renderWeatherIcon(type: string) { return <svg>...</svg>; }
+  // ... inside render:
+  {renderWeatherIcon("rain")}
+  ```
 - Do not create files outside `tiles/`, `board.json`, and `theme.css` unless explicitly asked
 - Do not run long-running background processes
 - `refreshInterval` must be at least 30 seconds — do not poll more frequently
