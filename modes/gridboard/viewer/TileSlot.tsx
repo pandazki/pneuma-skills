@@ -101,6 +101,14 @@ export default function TileSlot({
   const contentWidth = width;
   const contentHeight = height - HEADER_HEIGHT;
 
+  // Track definition changes to reset error boundary on recompilation
+  const definitionVersionRef = useRef(0);
+  const prevDefinitionRef = useRef(definition);
+  if (definition !== prevDefinitionRef.current) {
+    definitionVersionRef.current++;
+    prevDefinitionRef.current = definition;
+  }
+
   // Shadow DOM refs
   const shadowContainerRef = useRef<HTMLDivElement>(null);
   const [mountTarget, setMountTarget] = useState<HTMLElement | null>(null);
@@ -191,7 +199,7 @@ export default function TileSlot({
       data: unknown; width: number; height: number; loading: boolean; error: Error | null; params: Record<string, unknown>;
     }>;
     tileContent = (
-      <TileErrorBoundary tileId={tileId} onError={onRenderError}>
+      <TileErrorBoundary key={definitionVersionRef.current} tileId={tileId} onError={onRenderError}>
         <RenderFn data={data} width={contentWidth} height={contentHeight} loading={loading} error={error} params={params} />
       </TileErrorBoundary>
     );
