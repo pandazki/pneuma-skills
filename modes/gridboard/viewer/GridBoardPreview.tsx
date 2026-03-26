@@ -236,12 +236,28 @@ export default function GridBoardPreview({
   const outerRef = useRef<HTMLDivElement>(null);
 
 
-  // ── Active tiles (status === "active") ─────────────────────────────────
+  // Optimistic removals — tiles hidden instantly before file watcher catches up
+  const [optimisticRemovals, setOptimisticRemovals] = useState<Set<string>>(new Set());
+
+  // Clear optimistic removals when boardConfig catches up
+  useEffect(() => {
+    if (optimisticRemovals.size === 0) return;
+    setOptimisticRemovals((prev) => {
+      const next = new Set(prev);
+      for (const id of prev) {
+        const tile = boardConfig.tiles[id] as TileConfig | undefined;
+        if (!tile || tile.status !== "active") next.delete(id);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [boardConfig, optimisticRemovals]);
+
+  // ── Active tiles (status === "active", minus optimistic removals) ─────
   const activeTiles = useMemo(() => {
     return Object.entries(boardConfig.tiles).filter(
-      ([, tile]) => (tile as TileConfig).status === "active",
+      ([id, tile]) => (tile as TileConfig).status === "active" && !optimisticRemovals.has(id),
     ) as [string, TileConfig][];
-  }, [boardConfig]);
+  }, [boardConfig, optimisticRemovals]);
 
   // Resizing overlay is now agent-controlled via lock-tile / unlock-tile actions.
   // No automatic tracking needed.
@@ -763,15 +779,18 @@ export default function GridBoardPreview({
       if (readonly) return;
       const tile = boardConfig.tiles[tileId] as TileConfig | undefined;
       if (!tile) return;
+      // Optimistic: hide immediately
+      setOptimisticRemovals((prev) => new Set(prev).add(tileId));
+      if (selectedTileId === tileId) {
+        setSelectedTileId(null);
+        onSelect(null);
+      }
+      // Then persist
       const updatedConfig = JSON.parse(JSON.stringify(boardConfig));
       updatedConfig.tiles[tileId].status = "available";
       delete updatedConfig.tiles[tileId].position;
       delete updatedConfig.tiles[tileId].size;
       await saveFile("board.json", JSON.stringify(updatedConfig, null, 2));
-      if (selectedTileId === tileId) {
-        setSelectedTileId(null);
-        onSelect(null);
-      }
     },
     [boardConfig, readonly, selectedTileId, onSelect],
   );
