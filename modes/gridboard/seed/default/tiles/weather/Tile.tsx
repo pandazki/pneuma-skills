@@ -32,7 +32,7 @@ export default defineTile({
     refreshInterval: 600,
     async fetch({ signal, params }) {
       const city = encodeURIComponent(String(params.city || "Tokyo"));
-      const res = await fetch(`https://wttr.in/${city}?format=j1`, { signal });
+      const res = await fetch(`/proxy/wttr/${city}?format=j1`, { signal });
       if (!res.ok) throw new Error(`Weather fetch failed: ${res.status}`);
       return res.json() as Promise<WeatherData>;
     },

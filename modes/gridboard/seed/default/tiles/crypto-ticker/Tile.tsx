@@ -116,7 +116,7 @@ export default defineTile({
 
       // CoinGecko free API — no key, no region restrictions
       const priceRes = await fetch(
-        `https://api.coingecko.com/api/v3/simple/price?ids=${IDS}&vs_currencies=usd&include_24hr_change=true&include_24hr_high_low=true&include_24hr_vol=true`,
+        `/proxy/coingecko/api/v3/simple/price?ids=${IDS}&vs_currencies=usd&include_24hr_change=true&include_24hr_high_low=true&include_24hr_vol=true`,
         { signal },
       );
       if (!priceRes.ok) throw new Error(`CoinGecko: ${priceRes.status}`);
@@ -124,7 +124,7 @@ export default defineTile({
 
       // Fetch 7-day sparklines
       const sparkRes = await fetch(
-        `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${IDS}&sparkline=true&price_change_percentage=24h`,
+        `/proxy/coingecko/api/v3/coins/markets?vs_currency=usd&ids=${IDS}&sparkline=true&price_change_percentage=24h`,
         { signal },
       ).then(r => r.ok ? r.json() : []).catch(() => []);
 

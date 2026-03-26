@@ -60,6 +60,10 @@ interface TileFetchContext {
   params: Record<string, unknown>;        // User-configurable params (see TileDefinition.params)
 }
 
+> **Proxy for external APIs:** Use `/proxy/<name>/<path>` instead of absolute URLs to avoid CORS issues.
+> Available proxies are listed in the Viewer API section of CLAUDE.md. To add new ones, write a `proxy.json`
+> file in the workspace root. See the Proxy section in CLAUDE.md for details.
+
 interface TileDefinition {
   label: string;
   description: string;
@@ -97,7 +101,8 @@ export default defineTile({
   dataSource: {
     refreshInterval: 60,
     fetch: async ({ signal, params }) => {
-      const res = await fetch("/api/metrics/revenue", { signal });
+      // Use /proxy/<name>/ to avoid CORS — proxied by pneuma runtime
+      const res = await fetch("/proxy/myapi/metrics/revenue", { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.json();
     },
