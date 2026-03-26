@@ -160,3 +160,43 @@ export function startFileWatcher(
   const patternDesc = viewerConfig.watchPatterns.join(", ");
   console.log(`[file-watcher] Watching ${workspace} for ${patternDesc} changes`);
 }
+
+/**
+ * Watch proxy.json for changes and call the update callback with parsed config.
+ * Separate from the content file watcher — proxy config has its own lifecycle.
+ */
+export function startProxyWatcher(
+  workspace: string,
+  onUpdate: (config: Record<string, unknown> | null) => void,
+): void {
+  const proxyPath = join(workspace, "proxy.json");
+
+  const watcher = watch(proxyPath, {
+    persistent: true,
+    ignoreInitial: true,
+    awaitWriteFinish: {
+      stabilityThreshold: 200,
+      pollInterval: 50,
+    },
+  });
+
+  const reload = () => {
+    if (existsSync(proxyPath)) {
+      try {
+        const content = readFileSync(proxyPath, "utf-8");
+        const parsed = JSON.parse(content);
+        console.log(`[proxy] proxy.json updated, reloading config`);
+        onUpdate(parsed);
+      } catch (err) {
+        console.error(`[proxy] Failed to parse proxy.json: ${err}`);
+      }
+    } else {
+      console.log(`[proxy] proxy.json removed, clearing workspace proxy config`);
+      onUpdate(null);
+    }
+  };
+
+  watcher.on("change", reload);
+  watcher.on("add", reload);
+  watcher.on("unlink", reload);
+}

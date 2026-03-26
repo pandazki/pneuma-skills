@@ -1125,6 +1125,7 @@ Options:
     port: serverPort,
     workspace,
     watchPatterns: manifest.viewer.watchPatterns,
+    manifestProxy: manifest.proxy,
     ...(replayPackage ? { replayPackagePath: replayPackage, replayMode: true } : {}),
     ...(isDev ? {} : { distDir }),
     ...(Object.keys(resolvedParams).length > 0 ? { initParams: resolvedParams } : {}),
