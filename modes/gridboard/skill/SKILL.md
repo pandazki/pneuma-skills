@@ -60,10 +60,6 @@ interface TileFetchContext {
   params: Record<string, unknown>;        // User-configurable params (see TileDefinition.params)
 }
 
-> **Proxy for external APIs:** Use `/proxy/<name>/<path>` instead of absolute URLs to avoid CORS issues.
-> Available proxies are listed in the Viewer API section of CLAUDE.md. To add new ones, write a `proxy.json`
-> file in the workspace root. See the Proxy section in CLAUDE.md for details.
-
 interface TileDefinition {
   label: string;
   description: string;
@@ -308,6 +304,71 @@ Do not use CSS `transform: scale()` or simply change font sizes without restruct
 2. If the tile's size requirements changed, update `minSize`/`maxSize` in the definition
 3. If position or size on the board changed, update `board.json`
 4. Never modify `.claude/` or `.pneuma/` — managed by the runtime
+
+## External API Access (Proxy)
+
+Tile code runs in the browser. Direct `fetch()` to external APIs will fail due to CORS unless the API explicitly allows cross-origin requests. **Always use the proxy for external APIs.**
+
+### Decision Rule
+
+```
+Need to fetch data from an external API?
+  ├─ Is it already in the proxy list (see CLAUDE.md Proxy section)?
+  │   └─ Yes → use /proxy/<name>/<path>
+  └─ No → add it to proxy.json first, then use /proxy/<name>/<path>
+```
+
+**Never use absolute URLs** like `https://api.example.com/...` in tile fetch code. Even if an API works without proxy today (e.g. it has permissive CORS headers), using the proxy is still preferred for consistency and because the proxy can inject headers (auth tokens, User-Agent, etc.).
+
+### Adding a New Proxy
+
+Write `proxy.json` in the workspace root. It takes effect immediately — no restart needed.
+
+```json
+{
+  "myapi": {
+    "target": "https://api.example.com",
+    "headers": {
+      "Authorization": "Bearer {{API_KEY}}",
+      "User-Agent": "Mozilla/5.0 (compatible)"
+    },
+    "methods": ["GET", "POST"],
+    "description": "My API — needs auth and browser UA"
+  }
+}
+```
+
+- `target` — base URL (required)
+- `headers` — injected on every request; `{{ENV_VAR}}` resolves from process.env (optional)
+- `methods` — allowed HTTP methods, defaults to `["GET"]` only (optional)
+- Workspace `proxy.json` merges with mode defaults; same name overrides the default
+
+### Common Patterns
+
+| Scenario | What to do |
+|----------|-----------|
+| API needs auth header | Add `"headers": { "Authorization": "Bearer {{TOKEN}}" }` to proxy config |
+| API blocks non-browser requests | Add `"User-Agent": "Mozilla/5.0 ..."` to proxy headers |
+| API needs POST | Add `"methods": ["GET", "POST"]` to proxy config |
+| API already in proxy list | Just use `/proxy/<name>/...` directly |
+
+### Example
+
+```tsx
+dataSource: {
+  refreshInterval: 300,
+  async fetch({ signal }) {
+    // ✅ Always go through proxy
+    const res = await fetch("/proxy/bilibili/x/web-interface/popular?ps=10&pn=1", { signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.code !== 0) throw new Error(json.message);
+    return json.data.list;
+  },
+}
+```
+
+---
 
 ## Constraints
 
