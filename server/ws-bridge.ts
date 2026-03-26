@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { enqueueCheckpoint, isShadowGitAvailable } from "./shadow-git.js";
+import { setBridgeSocket, handleBridgeResult } from "./native-bridge.js";
 import type { ServerWebSocket } from "bun";
 import type {
   CLIMessage,
@@ -376,6 +377,20 @@ export class WsBridge {
       return;
     }
 
+    if ((msg as any).type === "native_bridge_register") {
+      setBridgeSocket(ws as any, (msg as any).capabilities);
+      console.log("[ws-bridge] Native bridge registered");
+      return;
+    }
+    if ((msg as any).type === "native_result") {
+      handleBridgeResult((msg as any).requestId, {
+        ok: (msg as any).ok,
+        result: (msg as any).result,
+        error: (msg as any).error,
+      });
+      return;
+    }
+
     this.routeBrowserMessage(session, msg, ws);
   }
 
@@ -386,6 +401,8 @@ export class WsBridge {
 
     session.browserSockets.delete(ws);
     console.log(`[ws-bridge] Browser disconnected for session ${sessionId} (${session.browserSockets.size} browsers)`);
+    // Clean up native bridge if the desktop renderer disconnected
+    setBridgeSocket(null);
   }
 
   // ── CLI message routing ─────────────────────────────────────────────────

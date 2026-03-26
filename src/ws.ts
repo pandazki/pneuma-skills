@@ -7,6 +7,7 @@ import { useStore, nextId } from "./store.js";
 import type { ElementSelection } from "./store.js";
 import type { BrowserIncomingMessage, BrowserOutgoingMessage, ContentBlock, ChatMessage, SelectionContext, SelectionType, Annotation } from "./types.js";
 import type { ViewerSelectionContext, ContentSet } from "../core/types/viewer-contract.js";
+import { getNativeCapabilities, handleNativeRequest } from "./native-bridge.js";
 
 let socket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -673,6 +674,12 @@ export function connect(sessionId: string) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
     }
+    // Register native bridge capabilities (Electron only)
+    getNativeCapabilities().then(caps => {
+      if (caps && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "native_bridge_register", capabilities: caps }));
+      }
+    });
   };
 
   ws.onmessage = (event) => {
@@ -680,6 +687,14 @@ export function connect(sessionId: string) {
     try {
       data = JSON.parse(event.data);
     } catch {
+      return;
+    }
+
+    // Handle native bridge requests (Electron only)
+    if ((data as any).type === "native_request") {
+      handleNativeRequest(data as any, (resp) => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(resp));
+      });
       return;
     }
 

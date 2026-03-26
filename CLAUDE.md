@@ -463,6 +463,17 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 | GET | `/export/remotion` | Remotion export HTML with player + MP4/WebM export |
 | GET | `/export/remotion/download` | Download Remotion as standalone HTML file |
 
+### Native (Electron desktop only)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/native` | List available capabilities (or `{ available: false }` in web) |
+| POST | `/api/native/:capability/:method` | Invoke a native method (body: JSON args array) |
+
+Available capabilities when running in desktop app: `clipboard` (readText, writeText, readHTML, writeHTML, readImage→base64 PNG, writeImage←base64, availableFormats), `shell` (openPath, openExternal, showItemInFolder, beep), `app` (getVersion, getName, getPath, getLocale), `system` (platform, arch, cpus, totalMemory, freeMemory, hostname, homedir, tmpdir, uptime), `theme` (shouldUseDarkColors, themeSource), `screen` (getPrimaryDisplay, getAllDisplays, getCursorScreenPoint), `notification` (show, isSupported), `window` (minimize, maximize, isMaximized, isFullScreen, setAlwaysOnTop, getBounds).
+
+Architecture: Server → WS `native_request` → Browser → Electron IPC → result → WS `native_result` → Server.
+
 ### WebSocket
 
 | Path | Protocol | Description |
@@ -558,6 +569,7 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **`editing` state**: `editing` is a top-level session boolean (`true` = creating, `false` = consuming). Persisted in `.pneuma/session.json` and `~/.pneuma/sessions.json`. Modes opt in via `editing: { supported: true }` in manifest; unsupported modes are always `editing: true`.
 - **Editing agent lifecycle**: When `editing: false`, no agent process runs. Switching to `editing: true` triggers a full agent launch (skill install + spawn). Switching back kills the agent. The server process stays alive throughout.
 - **`editing` vs `readonly`**: `readonly` disables ALL interactions (replay). `editing: false` only disables Pneuma editing UI (drag/resize/select/gallery), while content-internal interactions remain fully functional (tile clicks, links, etc.).
+- **Native bridge availability**: `/api/native/*` endpoints only work inside the Electron desktop app. Web environments return `{ available: false }`. The bridge routes through the browser WS connection — if no browser tab is connected, native calls timeout after 10s.
 
 <!-- pneuma:viewer-api:start -->
 ## Viewer API

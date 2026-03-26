@@ -24,6 +24,7 @@ import { getR2Config, saveR2Config, isR2Configured, shareResult, shareProcess, d
 import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./proxy-middleware.js";
 import type { ProxyRoute } from "../core/types/mode-manifest.js";
 import { startProxyWatcher } from "./file-watcher.js";
+import { mountNativeRoutes } from "./native-bridge.js";
 
 const DEFAULT_PORT = 17007;
 
@@ -1019,6 +1020,9 @@ export function startServer(options: ServerOptions) {
     writeFileSync(appSettingsPath, JSON.stringify(merged, null, 2));
     return c.json({ ok: true, settings: merged });
   });
+
+  // ── Native bridge (Electron desktop APIs) ───────────────────────────
+  mountNativeRoutes(app);
 
   app.get("/api/history/checkpoints", async (c) => {
     const checkpoints = await listCheckpoints(workspace);
