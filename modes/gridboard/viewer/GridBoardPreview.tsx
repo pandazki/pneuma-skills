@@ -821,6 +821,8 @@ export default function GridBoardPreview({
         setSelectedTileId(tileId);
         scrollTileIntoView(tileId);
       }
+    } else if (data.action === "open-gallery") {
+      setGalleryOpen(true);
     }
     onNavigateComplete?.();
   }, [navigateRequest]);
