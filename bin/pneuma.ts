@@ -949,7 +949,7 @@ Options:
     }
 
     p.log.step("Installing skill and preparing environment...");
-    installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, backendType);
+    installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, backendType, manifest.proxy);
     // Record installed skill version for update detection
     const skillVersionPath = join(workspace, ".pneuma", "skill-version.json");
     mkdirSync(join(workspace, ".pneuma"), { recursive: true });
@@ -1181,7 +1181,7 @@ Options:
       }
 
       p.log.step("Continue Work: installing skill...");
-      installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, backendType);
+      installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, backendType, manifest.proxy);
 
       // Record installed skill version
       const skillVersionPath = join(workspace, ".pneuma", "skill-version.json");

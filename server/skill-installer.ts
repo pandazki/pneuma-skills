@@ -219,6 +219,48 @@ export function generateViewerApiSection(
 }
 
 /**
+ * Generate a CLAUDE.md section describing available proxy routes.
+ * Pure function — no side effects.
+ */
+export function generateProxySection(
+  proxy: Record<string, import("../core/types/mode-manifest.js").ProxyRoute> | undefined,
+): string {
+  if (!proxy || Object.keys(proxy).length === 0) return "";
+
+  const lines: string[] = [
+    "### Proxy",
+    "",
+    "The runtime provides a reverse proxy to avoid CORS issues when fetching external APIs from viewer code.",
+    "",
+    "**Available proxies (from mode defaults):**",
+    "",
+    "| Name | Target | Description |",
+    "|------|--------|-------------|",
+  ];
+
+  for (const [name, route] of Object.entries(proxy)) {
+    lines.push(`| \`${name}\` | \`${route.target}\` | ${route.description ?? "—"} |`);
+  }
+
+  lines.push("");
+  lines.push("**Usage in viewer code:**");
+  lines.push("- Use `/proxy/<name>/<path>` instead of absolute URLs");
+  lines.push("- Example: `fetch(\"/proxy/" + Object.keys(proxy)[0] + "/path/to/resource\")`");
+  lines.push("");
+  lines.push("**Adding new proxies at runtime:**");
+  lines.push("- Write `proxy.json` in workspace root:");
+  lines.push("  ```json");
+  lines.push('  { "myapi": { "target": "https://api.example.com", "headers": { "Authorization": "Bearer {{API_KEY}}" } } }');
+  lines.push("  ```");
+  lines.push("- Immediately available at `/proxy/myapi/...` (no restart needed)");
+  lines.push("- Headers support `{{ENV_VAR}}` for secrets from environment variables");
+  lines.push('- Allowed methods default to GET only; add `"methods": ["GET","POST"]` if needed');
+  lines.push("");
+
+  return lines.join("\n");
+}
+
+/**
  * Install MCP servers declared by a mode into workspace's .mcp.json.
  *
  * Management strategy: uses .pneuma/managed-mcp.json to track which servers
@@ -378,6 +420,7 @@ export function installSkill(
   params?: Record<string, number | string>,
   viewerApi?: ViewerApiConfig,
   backendType?: string,
+  proxyConfig?: Record<string, import("../core/types/mode-manifest.js").ProxyRoute>,
 ): void {
   // 1. Copy skill to the backend-appropriate skills directory
   const skillSource = join(modeSourceDir, skillConfig.sourceDir);
@@ -453,7 +496,13 @@ export function installSkill(
   }
 
   // 2b. Inject/update Viewer API section (independent marker, Viewer-owned)
-  const viewerApiContent = generateViewerApiSection(viewerApi);
+  let viewerApiContent = generateViewerApiSection(viewerApi);
+  const proxyContent = generateProxySection(proxyConfig);
+  if (proxyContent) {
+    viewerApiContent = viewerApiContent
+      ? viewerApiContent + "\n" + proxyContent
+      : proxyContent;
+  }
   if (viewerApiContent) {
     const viewerSection = `${VIEWER_API_MARKER_START}\n${viewerApiContent}\n${VIEWER_API_MARKER_END}`;
     const vStart = content.indexOf(VIEWER_API_MARKER_START);
