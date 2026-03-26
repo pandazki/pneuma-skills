@@ -368,8 +368,12 @@ export default function ChatInput() {
               key={msg.id}
               className="flex items-center gap-1.5 px-2.5 py-1.5 bg-cc-surface/40 border border-cc-border/30 rounded-lg group"
             >
-              <span className="text-[10px] text-cc-primary/60 font-medium shrink-0">queued</span>
-              <span className="text-xs text-cc-muted truncate flex-1">{msg.text}</span>
+              <span className={`text-[10px] font-medium shrink-0 ${msg.kind === "notification" ? "text-amber-500/70" : "text-cc-primary/60"}`}>
+                {msg.kind === "notification" ? "viewer" : "queued"}
+              </span>
+              <span className="text-xs text-cc-muted truncate flex-1">
+                {msg.kind === "user" ? msg.text : msg.notification.summary || msg.notification.type}
+              </span>
               <button
                 onClick={() => removePendingMessage(msg.id)}
                 className="shrink-0 text-cc-muted/40 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"

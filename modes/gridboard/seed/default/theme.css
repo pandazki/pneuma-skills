@@ -1,0 +1,38 @@
+/* GridBoard Theme — Ethereal Tech Design System */
+
+:root {
+  /* Board */
+  --board-bg: #09090b;
+  --board-grid-line: rgba(255, 255, 255, 0.04);
+
+  /* Tiles */
+  --tile-bg: rgba(24, 24, 27, 0.85);
+  --tile-border: rgba(255, 255, 255, 0.08);
+  --tile-border-hover: rgba(249, 115, 22, 0.4);
+  --tile-radius: 10px;
+  --tile-padding: 14px;
+  --tile-header-height: 32px;
+
+  /* Text */
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-muted: #52525b;
+
+  /* Accent & Status */
+  --accent: #f97316;
+  --accent-dim: rgba(249, 115, 22, 0.15);
+  --success: #22c55e;
+  --warning: #eab308;
+  --error: #ef4444;
+
+  /* Typography */
+  --font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+
+  /* Selection */
+  --selection-color: #09090b;
+  --selection-bg: #f97316;
+
+  /* Overlay */
+  --overlay-bg: rgba(9, 9, 11, 0.72);
+}

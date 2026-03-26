@@ -73,7 +73,7 @@ export function startServer(options: ServerOptions) {
       const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
 
       // Parse builtin mode manifests for metadata (icon, description, etc.)
-      const builtinNames = ["webcraft", "slide", "doc", "draw", "illustrate", "remotion"];
+      const builtinNames = ["webcraft", "slide", "doc", "draw", "illustrate", "remotion", "gridboard"];
       const builtins = builtinNames.map((name) => {
         const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
         let parsed: ReturnType<typeof parseManifestTs> = {};
@@ -1216,7 +1216,14 @@ export function startServer(options: ServerOptions) {
       return c.json({ error: "Forbidden" }, 403);
     }
     try {
-      writeFileSync(absPath, body.content, "utf-8");
+      mkdirSync(dirname(absPath), { recursive: true });
+      // Support data URL content — decode to binary
+      const dataUrlMatch = body.content.match(/^data:[^;]+;base64,(.+)$/);
+      if (dataUrlMatch) {
+        writeFileSync(absPath, Buffer.from(dataUrlMatch[1], "base64"));
+      } else {
+        writeFileSync(absPath, body.content, "utf-8");
+      }
       return c.json({ ok: true });
     } catch (err) {
       return c.json({ error: "Failed to write file" }, 500);

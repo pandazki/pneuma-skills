@@ -404,13 +404,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       currentTurnUserInitiated = false; // Reset for next turn — if no user message, it's cron
       seenTaskBlockIds.clear();
 
-      // Auto-flush pending message queue (one message per turn)
-      if (store.pendingMessages.length > 0) {
-        setTimeout(() => {
-          const next = useStore.getState().shiftPendingMessage();
-          if (next) sendUserMessage(next.text);
-        }, 150);
-      }
+      // Pending queue flush is handled by the store subscriber (flushPendingQueue)
 
       if (r.is_error && r.errors?.length) {
         store.appendMessage({
@@ -1072,11 +1066,16 @@ function buildViewerContextPrefix(): string {
 
 export function sendViewerNotification(
   notification: { type: string; message: string; severity: "info" | "warning" },
+  images?: { media_type: string; data: string }[],
 ) {
   // Enrich notification message with viewer context (active file, content set)
   const prefix = buildViewerContextPrefix();
   const enriched = prefix
     ? { ...notification, message: prefix + notification.message }
     : notification;
-  send({ type: "viewer_notification", notification: enriched });
+  send({
+    type: "viewer_notification",
+    notification: enriched,
+    ...(images?.length ? { images } : {}),
+  });
 }

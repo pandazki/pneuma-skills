@@ -1,0 +1,24 @@
+{
+  "tagline": "Build personal dashboards with draggable tile grids",
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": "Drag & Drop Grid",
+      "description": "Arrange tiles on a snapping grid canvas. Move by dragging, resize from edges — the board adapts instantly.",
+      "media": "drag-drop-grid.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Smart Resize",
+      "description": "Tiles declare their size breakpoints. When resized beyond them, the agent gets a screenshot and optimizes the layout automatically.",
+      "media": "smart-resize.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Live Data Tiles",
+      "description": "10 built-in tiles with real-time APIs, interactive state, and SVG data viz — from crypto sparklines to habit trackers.",
+      "media": "live-data-tiles.png",
+      "mediaType": "image"
+    }
+  ]
+}

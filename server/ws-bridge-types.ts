@@ -44,6 +44,8 @@ export interface Session {
   pendingViewerActions: Map<string, { resolve: (result: ViewerActionResult) => void }>;
   /** Whether CLI is idle (not processing a turn). Used to gate viewer notifications. */
   cliIdle: boolean;
+  /** Queued viewer notifications to send when CLI becomes idle. */
+  pendingNotifications: Array<{ type: string; message: string; severity: "info" | "warning"; images?: { media_type: string; data: string }[] }>;
   messageHistory: BrowserIncomingMessage[];
   pendingMessages: string[];
   nextEventSeq: number;

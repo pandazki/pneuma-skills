@@ -192,6 +192,7 @@ export class WsBridge {
         pendingControlRequests: new Map(),
         pendingViewerActions: new Map(),
         cliIdle: true,
+        pendingNotifications: [],
         messageHistory: [],
         pendingMessages: [],
         nextEventSeq: 1,
@@ -650,6 +651,15 @@ export class WsBridge {
       enqueueCheckpoint(this.workspace, turnIndex);
     }
 
+    // Flush queued viewer notifications (send only the first; it will trigger a new turn,
+    // and subsequent notifications will be sent when that turn completes)
+    if (session.pendingNotifications?.length > 0) {
+      const next = session.pendingNotifications.shift()!;
+      const { images, ...notification } = next;
+      console.log(`[ws-bridge] Flushing queued viewer notification: ${next.type} (${session.pendingNotifications.length} remaining)`);
+      this.sendViewerNotificationToCLI(session, notification, images);
+    }
+
   }
 
   private handleStreamEvent(session: Session, msg: CLIStreamEventMessage) {
@@ -1083,34 +1093,51 @@ export class WsBridge {
 
   private handleViewerNotification(
     session: Session,
-    msg: { type: "viewer_notification"; notification: { type: string; message: string; severity: "info" | "warning" } },
+    msg: {
+      type: "viewer_notification";
+      notification: { type: string; message: string; severity: "info" | "warning" };
+      images?: { media_type: string; data: string }[];
+    },
   ) {
     // Only handle warning-level notifications
     if (msg.notification.severity !== "warning") return;
 
     if (!session.cliIdle) {
-      // CLI busy — drop. Frontend will re-detect on next auto-check cycle after CLI goes idle.
-      console.log(`[ws-bridge] Viewer notification dropped (CLI busy): ${msg.notification.type}`);
+      // CLI busy — queue for delivery when CLI becomes idle
+      if (!session.pendingNotifications) session.pendingNotifications = [];
+      session.pendingNotifications.push({ ...msg.notification, images: msg.images });
+      console.log(`[ws-bridge] Viewer notification queued (CLI busy): ${msg.notification.type} (${session.pendingNotifications.length} in queue)`);
       return;
     }
 
-    this.sendViewerNotificationToCLI(session, msg.notification);
+    this.sendViewerNotificationToCLI(session, msg.notification, msg.images);
   }
 
   /** Send a viewer notification to CLI as a user message (not recorded in messageHistory). */
   private sendViewerNotificationToCLI(
     session: Session,
     notification: { type: string; message: string; severity: "info" | "warning" },
+    images?: { media_type: string; data: string }[],
   ) {
     session.cliIdle = false;
-    const ndjson = JSON.stringify({
-      type: "user",
-      message: { role: "user", content: notification.message },
-      parent_tool_use_id: null,
-      session_id: session.state.session_id || "",
-    });
-    this.sendToCLI(session, ndjson);
-    console.log(`[ws-bridge] Viewer notification forwarded to CLI: ${notification.type}`);
+
+    if (images?.length) {
+      // Use the same path as regular user messages so images get converted to content blocks
+      this.handleUserMessage(session, {
+        type: "user_message",
+        content: notification.message,
+        images,
+      });
+    } else {
+      const ndjson = JSON.stringify({
+        type: "user",
+        message: { role: "user", content: notification.message },
+        parent_tool_use_id: null,
+        session_id: session.state.session_id || "",
+      });
+      this.sendToCLI(session, ndjson);
+    }
+    console.log(`[ws-bridge] Viewer notification forwarded to CLI: ${notification.type}${images?.length ? ` (with ${images.length} image(s))` : ""}`);
   }
 
   // ── Transport helpers ───────────────────────────────────────────────────

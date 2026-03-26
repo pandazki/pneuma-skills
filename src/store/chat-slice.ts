@@ -3,11 +3,16 @@ import type { ChatMessage, PermissionRequest } from "../types.js";
 import type { AppState, Activity, AnsweredQuestion } from "./types.js";
 import { mergeAssistantMessage } from "./helpers.js";
 
+/** Unified pending message — user text, viewer notification, or notification with image */
+export type PendingMessage =
+  | { id: string; kind: "user"; text: string }
+  | { id: string; kind: "notification"; notification: { type: string; message: string; severity: "info" | "warning"; summary?: string }; images?: { media_type: string; data: string }[] };
+
 export interface ChatSlice {
   messages: ChatMessage[];
   streaming: string | null;
   activity: Activity | null;
-  pendingMessages: { id: string; text: string }[];
+  pendingMessages: PendingMessage[];
   pendingPermissions: Map<string, PermissionRequest>;
   answeredQuestions: Map<string, AnsweredQuestion>;
 
@@ -16,8 +21,9 @@ export interface ChatSlice {
   setStreaming: (text: string | null) => void;
   setActivity: (activity: Activity | null) => void;
   addPendingMessage: (text: string) => void;
+  addPendingNotification: (notification: { type: string; message: string; severity: "info" | "warning"; summary?: string }, images?: { media_type: string; data: string }[]) => string;
   removePendingMessage: (id: string) => void;
-  shiftPendingMessage: () => { id: string; text: string } | undefined;
+  shiftPendingMessage: () => PendingMessage | undefined;
   addPermission: (perm: PermissionRequest) => void;
   removePermission: (requestId: string) => void;
   recordAnsweredQuestion: (toolUseId: string, pairs: { question: string; answer: string }[]) => void;
@@ -50,8 +56,15 @@ export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, 
 
   addPendingMessage: (text) =>
     set((s) => ({
-      pendingMessages: [...s.pendingMessages, { id: crypto.randomUUID(), text }],
+      pendingMessages: [...s.pendingMessages, { id: crypto.randomUUID(), kind: "user", text }],
     })),
+  addPendingNotification: (notification, images) => {
+    const id = crypto.randomUUID();
+    set((s) => ({
+      pendingMessages: [...s.pendingMessages, { id, kind: "notification", notification, images }],
+    }));
+    return id;
+  },
   removePendingMessage: (id) =>
     set((s) => ({
       pendingMessages: s.pendingMessages.filter((m) => m.id !== id),
