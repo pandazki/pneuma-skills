@@ -219,42 +219,49 @@ export function generateViewerApiSection(
 }
 
 /**
- * Generate a CLAUDE.md section describing available proxy routes.
+ * Generate a CLAUDE.md section describing the proxy mechanism.
+ * Only generated when the mode declares proxy config (manifest.proxy).
+ * Modes without proxy config don't need this — their viewers don't fetch external APIs.
+ *
  * Pure function — no side effects.
  */
 export function generateProxySection(
   proxy: Record<string, import("../core/types/mode-manifest.js").ProxyRoute> | undefined,
 ): string {
-  if (!proxy || Object.keys(proxy).length === 0) return "";
+  if (!proxy) return "";
+
+  const hasPresets = Object.keys(proxy).length > 0;
 
   const lines: string[] = [
     "### Proxy",
     "",
-    "The runtime provides a reverse proxy to avoid CORS issues when fetching external APIs from viewer code.",
+    "The runtime provides a reverse proxy at `/proxy/<name>/<path>` to avoid CORS issues when viewer code fetches external APIs.",
+    "**Always use the proxy for external API access** — never use absolute URLs directly in viewer code.",
     "",
-    "**Available proxies (from mode defaults):**",
-    "",
-    "| Name | Target | Description |",
-    "|------|--------|-------------|",
   ];
 
-  for (const [name, route] of Object.entries(proxy)) {
-    lines.push(`| \`${name}\` | \`${route.target}\` | ${route.description ?? "—"} |`);
+  // Preset routes table
+  if (hasPresets) {
+    lines.push("**Available proxies (from mode defaults):**");
+    lines.push("");
+    lines.push("| Name | Target | Description |");
+    lines.push("|------|--------|-------------|");
+    for (const [name, route] of Object.entries(proxy)) {
+      lines.push(`| \`${name}\` | \`${route.target}\` | ${route.description ?? "—"} |`);
+    }
+    lines.push("");
+    lines.push("**Usage in viewer code:**");
+    lines.push(`- Example: \`fetch("/proxy/${Object.keys(proxy)[0]}/path/to/resource")\``);
+  } else {
+    lines.push("**Usage in viewer code:**");
+    lines.push("- Example: `fetch(\"/proxy/myapi/path/to/resource\")`");
   }
+  lines.push("");
 
-  lines.push("");
-  lines.push("**Usage in viewer code:**");
-  lines.push("- Use `/proxy/<name>/<path>` instead of absolute URLs");
-  lines.push("- Example: `fetch(\"/proxy/" + Object.keys(proxy)[0] + "/path/to/resource\")`");
-  lines.push("");
-  lines.push("**Adding new proxies at runtime:**");
-  lines.push("- Write `proxy.json` in workspace root:");
-  lines.push("  ```json");
-  lines.push('  { "myapi": { "target": "https://api.example.com", "headers": { "Authorization": "Bearer {{API_KEY}}" } } }');
-  lines.push("  ```");
-  lines.push("- Immediately available at `/proxy/myapi/...` (no restart needed)");
-  lines.push("- Headers support `{{ENV_VAR}}` for secrets from environment variables");
-  lines.push('- Allowed methods default to GET only; add `"methods": ["GET","POST"]` if needed');
+  // Adding new proxies — use fenced code block to avoid template resolution
+  lines.push("**Adding or overriding proxies at runtime:**");
+  lines.push("Write `proxy.json` in workspace root (takes effect immediately, no restart).");
+  lines.push("Fields: `target` (required, upstream base URL), `headers` (optional, supports env var templates), `methods` (optional, defaults to GET only).");
   lines.push("");
 
   return lines.join("\n");

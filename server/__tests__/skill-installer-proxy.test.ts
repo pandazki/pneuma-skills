@@ -3,15 +3,18 @@ import type { ProxyRoute } from "../../core/types/mode-manifest.js";
 import { generateProxySection } from "../skill-installer.js";
 
 describe("generateProxySection", () => {
-  test("returns empty string when no proxy config", () => {
+  test("returns empty string when proxy is undefined", () => {
     expect(generateProxySection(undefined)).toBe("");
   });
 
-  test("returns empty string for empty proxy config", () => {
-    expect(generateProxySection({})).toBe("");
+  test("outputs core docs for empty proxy config (mode opted in but no presets)", () => {
+    const result = generateProxySection({});
+    expect(result).toContain("### Proxy");
+    expect(result).toContain("proxy.json");
+    expect(result).not.toContain("Available proxies");
   });
 
-  test("generates markdown table for proxy routes", () => {
+  test("includes preset routes table when config has entries", () => {
     const proxy: Record<string, ProxyRoute> = {
       github: {
         target: "https://api.github.com",
@@ -24,11 +27,11 @@ describe("generateProxySection", () => {
     };
     const result = generateProxySection(proxy);
     expect(result).toContain("### Proxy");
+    expect(result).toContain("Available proxies (from mode defaults)");
     expect(result).toContain("`github`");
     expect(result).toContain("https://api.github.com");
     expect(result).toContain("GitHub REST API");
     expect(result).toContain("`weather`");
-    expect(result).toContain("/proxy/<name>/<path>");
     expect(result).toContain("proxy.json");
   });
 
