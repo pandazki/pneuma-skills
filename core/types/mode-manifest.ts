@@ -236,6 +236,18 @@ export interface ModeShowcase {
   highlights?: ShowcaseHighlight[];
 }
 
+/** Reverse proxy route — forwards /proxy/<name>/* to target, avoiding CORS in viewer code */
+export interface ProxyRoute {
+  /** Target base URL (e.g. "https://api.github.com") */
+  target: string;
+  /** Additional request headers. Values support {{ENV_VAR}} template syntax resolved from process.env at request time. */
+  headers?: Record<string, string>;
+  /** Allowed HTTP methods (default: ["GET"]) */
+  methods?: string[];
+  /** Human-readable description (injected into CLAUDE.md for agent awareness) */
+  description?: string;
+}
+
 /** Complete declarative description of a Mode */
 export interface ModeManifest {
   /** Unique Mode identifier (e.g. "doc", "slide") */
@@ -278,4 +290,6 @@ export interface ModeManifest {
   layout?: "editor" | "app";
   /** Window size preference (app layout + Electron) */
   window?: { width: number; height: number };
+  /** Reverse proxy routes — forwards /proxy/<name>/* to external APIs, avoiding CORS */
+  proxy?: Record<string, ProxyRoute>;
 }
