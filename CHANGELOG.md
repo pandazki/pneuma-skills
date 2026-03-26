@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.19.1] - 2026-03-26
+
+### Improved
+- **GridBoard seed redesign** — new onboarding layout: intro card (8x3 with shimmer title, contextual illustration, 4-tier responsive) + small weather tile that triggers agent redesign on resize, teaching the core interaction
+- **Design philosophy in SKILL.md** — "Small tiles show data, large tiles show craft" resize philosophy; visual toolkit guidance (inline SVG, data-driven color, typography contrast); anti-slop rules
+- **Design references** — `references/tile-visual-design.md` and `references/resize-adaptation.md` following webcraft's skill organization pattern
+- **Weather auto-detect** — weather tile defaults to IP-based geolocation instead of hardcoded Tokyo
+
+### Fixed
+- **Error boundary reset** — tile error boundary now resets on recompilation so fixed code renders immediately instead of staying stuck on the error screen
+- **Locked tile error suppression** — compilation and render errors are suppressed while a tile is locked (agent mid-edit), eliminating noisy intermediate-state notifications
+- **Locator gallery leak** — `scrollIntoView()` was scrolling ancestor containers, exposing the hidden gallery panel; replaced with scoped scroll calculation
+- **Locator open-gallery action** — navigate request handler now processes `action:"open-gallery"` locators correctly
+
+### Added
+- **JSX tag limitation docs** — documented that locally-defined components cannot be used as JSX tags in tiles (runtime scope limitation); added to SKILL.md constraints and CLAUDE.md gotchas
+
 ## [2.19.0] - 2026-03-26
 
 ### Added
