@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.19.0] - 2026-03-26
+
+### Added
+- **Workspace proxy** — reverse proxy middleware at `/proxy/<name>/*` solves CORS issues when viewer components fetch external APIs. Mode authors declare routes in `manifest.proxy`; agents/users can add more at runtime via `proxy.json` (hot-reloaded, no restart needed)
+- **Proxy header injection** — proxy routes support `headers` config with `{{ENV_VAR}}` template syntax for auth tokens, User-Agent, and other request headers
+- **Proxy agent awareness** — skill installer auto-generates proxy docs in CLAUDE.md; gridboard SKILL.md includes decision rules and patterns; mode-maker skill + manifest reference document the proxy field
+- **Bilibili Hot tile** — new gridboard seed tile showcasing proxy header injection (Bilibili API requires browser User-Agent)
+
+### Changed
+- **Crypto ticker tile** — switched from CoinGecko (unreachable in many regions) to CryptoCompare free API
+
 ## [2.18.0] - 2026-03-26
 
 ### Added
