@@ -916,7 +916,18 @@ ${slidePages}${downloadScript}${pptxScript}${imageModeScript}
     <div id="vercel-status-msg"></div>
     <div id="vercel-form" style="display:none">
       <label>Project Name<input id="vercel-project-name" type="text" placeholder="my-project" /></label>
-      <label>Team<select id="vercel-team"><option value="">Personal</option></select></label>
+      <label>Team
+        <div class="custom-select" id="vercel-team-wrap">
+          <button type="button" class="custom-select-trigger" id="vercel-team-trigger" onclick="toggleTeamSelect()">
+            <span id="vercel-team-label">Personal</span>
+            <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="custom-select-options" id="vercel-team-options" style="display:none">
+            <div class="custom-select-option selected" data-value="" onclick="selectTeam('','Personal')">Personal</div>
+          </div>
+          <input type="hidden" id="vercel-team" value="" />
+        </div>
+      </label>
       <div class="deploy-actions">
         <button class="btn-primary" onclick="executeDeploy()">Deploy</button>
         <button class="btn-secondary" onclick="closeVercelModal()">Cancel</button>
@@ -1108,6 +1119,10 @@ function closeDeployMenu(){
 document.addEventListener("click", function(e){
   var wrap = document.getElementById("deploy-wrap");
   if(wrap && !wrap.contains(e.target)) closeDeployMenu();
+  var teamWrap = document.getElementById("vercel-team-wrap");
+  if(teamWrap && !teamWrap.contains(e.target)) {
+    document.getElementById("vercel-team-options").style.display = "none";
+  }
 });
 
 function openVercelDeploy(){
@@ -1132,17 +1147,35 @@ function openVercelDeploy(){
 
   if(_vercelStatus && _vercelStatus.method === "token") {
     fetch("/api/vercel/teams").then(function(r){return r.json()}).then(function(data){
-      var sel = document.getElementById("vercel-team");
-      if(sel.options.length <= 1) {
+      var optionsEl = document.getElementById("vercel-team-options");
+      if(optionsEl.children.length <= 1) {
         (data.teams||[]).forEach(function(t){
-          var opt = document.createElement("option");
-          opt.value = t.id; opt.textContent = t.name;
-          sel.appendChild(opt);
+          var div = document.createElement("div");
+          div.className = "custom-select-option";
+          div.setAttribute("data-value", t.id);
+          div.textContent = t.name;
+          div.onclick = function(){ selectTeam(t.id, t.name); };
+          optionsEl.appendChild(div);
         });
       }
-      if(_vercelBinding && _vercelBinding.teamId) sel.value = _vercelBinding.teamId;
+      if(_vercelBinding && _vercelBinding.teamId) {
+        selectTeam(_vercelBinding.teamId, _vercelBinding.teamId);
+      }
     }).catch(function(){});
   }
+}
+
+function toggleTeamSelect(){
+  var opts = document.getElementById("vercel-team-options");
+  opts.style.display = opts.style.display === "none" ? "block" : "none";
+}
+
+function selectTeam(val, label){
+  document.getElementById("vercel-team").value = val;
+  document.getElementById("vercel-team-label").textContent = label;
+  document.getElementById("vercel-team-options").style.display = "none";
+  var items = document.querySelectorAll("#vercel-team-options .custom-select-option");
+  items.forEach(function(it){ it.classList.toggle("selected", it.getAttribute("data-value") === val); });
 }
 
 function closeVercelModal(){
@@ -1620,14 +1653,60 @@ body {
     transition: border-color 0.2s;
     font-family: inherit;
   }
-  .deploy-modal-content select {
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23a1a1aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    padding-right: 32px;
+  .custom-select {
+    position: relative;
+    margin-top: 6px;
+  }
+  .custom-select-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 9px 12px !important;
+    font-size: 13px !important;
+    background: var(--color-cc-bg) !important;
+    border: 1px solid var(--color-cc-border) !important;
+    border-radius: 10px !important;
+    color: var(--color-cc-fg);
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    transition: border-color 0.2s;
+  }
+  .custom-select-trigger svg {
+    color: var(--color-cc-muted);
+    flex-shrink: 0;
+  }
+  .custom-select-trigger:hover {
+    border-color: rgba(255, 255, 255, 0.15) !important;
+  }
+  .custom-select-options {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: var(--color-cc-surface);
+    border: 1px solid var(--color-cc-border);
+    border-radius: 10px;
+    padding: 4px;
+    z-index: 10;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    max-height: 160px;
+    overflow-y: auto;
+  }
+  .custom-select-option {
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--color-cc-fg);
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .custom-select-option:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .custom-select-option.selected {
+    color: var(--color-cc-primary);
   }
   .deploy-modal-content input:focus,
   .deploy-modal-content select:focus {
