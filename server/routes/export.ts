@@ -1612,17 +1612,26 @@ body {
     padding: 9px 12px;
     font-size: 13px;
     background: var(--color-cc-bg);
-    border: 1px solid var(--color-cc-border);
-    border-radius: 10px;
+    border: 1px solid var(--color-cc-border) !important;
+    border-radius: 10px !important;
     color: var(--color-cc-fg);
     outline: none;
     box-sizing: border-box;
     transition: border-color 0.2s;
     font-family: inherit;
   }
+  .deploy-modal-content select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23a1a1aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+  }
   .deploy-modal-content input:focus,
   .deploy-modal-content select:focus {
-    border-color: rgba(249, 115, 22, 0.4);
+    border-color: rgba(249, 115, 22, 0.4) !important;
     box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.08);
   }
   .deploy-actions {
@@ -1630,11 +1639,29 @@ body {
     gap: 8px;
     margin-top: 20px;
   }
+  .deploy-actions button {
+    padding: 8px 18px !important;
+    border-radius: 10px !important;
+    font-size: 13px !important;
+    font-weight: 500;
+    border: none !important;
+  }
   .deploy-actions .btn-primary {
-    border: none;
+    background: var(--color-cc-primary) !important;
+    color: #fff;
+    box-shadow: 0 2px 12px rgba(249, 115, 22, 0.25);
+  }
+  .deploy-actions .btn-primary:hover {
+    box-shadow: 0 4px 16px rgba(249, 115, 22, 0.4);
   }
   .deploy-actions .btn-secondary {
-    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid var(--color-cc-border) !important;
+    color: var(--color-cc-muted);
+  }
+  .deploy-actions .btn-secondary:hover {
+    color: var(--color-cc-fg);
+    background: rgba(255, 255, 255, 0.1) !important;
   }
   .deploy-progress {
     display: flex;
