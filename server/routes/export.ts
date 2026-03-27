@@ -897,7 +897,7 @@ ${slidePages}${downloadScript}${pptxScript}${imageModeScript}
       <div class="print-divider"></div>
       <div class="deploy-dropdown-wrap" id="deploy-wrap">
         <button class="btn-deploy-trigger" id="vercel-btn" onclick="toggleDeployMenu()" disabled title="Deploy">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/><path d="M12 13v6"/><path d="m9 17 3-3 3 3"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/><path d="M12 13v6"/><path d="m9 17 3-3 3 3"/></svg>
         </button>
         <div class="deploy-dropdown" id="deploy-dropdown" style="display:none">
           <button class="deploy-dropdown-item" onclick="closeDeployMenu();openVercelDeploy()">
@@ -1512,12 +1512,12 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    border-radius: 999px;
+    width: 26px;
+    height: 26px;
+    padding: 0 !important;
+    border-radius: 999px !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.05) !important;
     color: var(--color-cc-fg);
     cursor: pointer;
     transition: all 0.2s ease;
