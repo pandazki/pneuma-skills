@@ -116,7 +116,9 @@ async function deployViaCli(req: CfDeployRequest): Promise<CfDeployResult> {
     const exitCode = await proc.exited;
 
     if (exitCode !== 0) {
-      throw new Error(`wrangler deploy failed: ${stderr || stdout}`);
+      // Strip ANSI escape codes from error output
+      const cleanErr = (stderr || stdout).replace(/\x1b\[[0-9;]*m/g, "").trim();
+      throw new Error(`wrangler deploy failed: ${cleanErr}`);
     }
 
     // Parse deployment URL from output: "https://xxx.project.pages.dev"
