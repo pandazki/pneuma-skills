@@ -246,16 +246,20 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
       );
     }
 
-    const args = ["vercel", "deploy", "--prod", "--yes"];
-    if (req.projectName && !req.projectId) {
-      args.push("--name", req.projectName);
-    }
+    // First deploy: preview first (--prod on first deploy fails with "Project Settings are invalid")
+    // Subsequent deploys: direct --prod
+    const isFirstDeploy = !req.projectId;
+    const args = ["vercel", "deploy", "--yes"];
+    if (!isFirstDeploy) args.push("--prod");
+
+    const env: Record<string, string> = { ...process.env as Record<string, string> };
+    if (req.teamId) env.VERCEL_ORG_ID = req.teamId;
 
     const proc = Bun.spawn(args, {
       cwd: tmpDir,
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, VERCEL_ORG_ID: req.teamId ?? "" },
+      env,
     });
 
     const [stdout, stderr] = await Promise.all([
@@ -268,10 +272,24 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
       throw new Error(`vercel deploy failed: ${stderr || stdout}`);
     }
 
-    const deploymentUrl =
-      stdout.trim().split("\n").pop()?.trim() ?? "";
+    let deploymentUrl = stdout.trim().split("\n").pop()?.trim() ?? "";
     if (!deploymentUrl.startsWith("http")) {
       throw new Error(`Unexpected vercel output: ${stdout}`);
+    }
+
+    // For first deploy: promote to production
+    if (isFirstDeploy) {
+      const promoteProc = Bun.spawn(["vercel", "--prod", "--yes"], {
+        cwd: tmpDir,
+        stdout: "pipe",
+        stderr: "pipe",
+        env,
+      });
+      const promoteOut = await new Response(promoteProc.stdout).text();
+      const promoteExit = await promoteProc.exited;
+      if (promoteExit === 0 && promoteOut.trim().startsWith("http")) {
+        deploymentUrl = promoteOut.trim().split("\n").pop()?.trim() ?? deploymentUrl;
+      }
     }
 
     let projectId = req.projectId ?? "";
