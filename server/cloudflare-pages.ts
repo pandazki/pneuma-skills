@@ -101,12 +101,21 @@ async function deployViaCli(req: CfDeployRequest): Promise<CfDeployResult> {
     }
 
     const name = req.projectName ?? "pneuma-deploy";
+    const env = process.env as Record<string, string>;
+
+    // Ensure project exists (wrangler < 4.78 doesn't auto-create)
+    const checkProc = Bun.spawn(
+      ["wrangler", "pages", "project", "create", name, "--production-branch", "main"],
+      { stdout: "pipe", stderr: "pipe", env },
+    );
+    await checkProc.exited; // Ignore exit code — fails if project already exists
+
     const args = ["wrangler", "pages", "deploy", tmpDir, "--project-name", name, "--branch", "main"];
 
     const proc = Bun.spawn(args, {
       stdout: "pipe",
       stderr: "pipe",
-      env: process.env as Record<string, string>,
+      env,
     });
 
     const [stdout, stderr] = await Promise.all([
@@ -116,7 +125,6 @@ async function deployViaCli(req: CfDeployRequest): Promise<CfDeployResult> {
     const exitCode = await proc.exited;
 
     if (exitCode !== 0) {
-      // Strip ANSI escape codes from error output
       const cleanErr = (stderr || stdout).replace(/\x1b\[[0-9;]*m/g, "").trim();
       throw new Error(`wrangler deploy failed: ${cleanErr}`);
     }
