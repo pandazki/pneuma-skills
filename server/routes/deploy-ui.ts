@@ -321,13 +321,17 @@ export function getDeployCSS(): string {
 export function getDeployToolbarHTML(): string {
   return `<div class="print-divider"></div>
       <div class="deploy-dropdown-wrap" id="deploy-wrap">
-        <button class="btn-deploy-trigger" id="vercel-btn" onclick="toggleDeployMenu()" disabled title="Deploy">
+        <button class="btn-deploy-trigger" id="deploy-trigger-btn" onclick="toggleDeployMenu()" disabled title="Deploy">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/><path d="M12 13v6"/><path d="m9 17 3-3 3 3"/></svg>
         </button>
         <div class="deploy-dropdown" id="deploy-dropdown" style="display:none">
-          <button class="deploy-dropdown-item" onclick="closeDeployMenu();openVercelDeploy()">
+          <button class="deploy-dropdown-item" onclick="closeDeployMenu();openDeploy('vercel')">
             <svg width="14" height="14" viewBox="0 0 76 65" fill="currentColor"><path d="M37.5274 0L75.0548 65H0L37.5274 0Z"/></svg>
             <span id="vercel-label">Vercel</span>
+          </button>
+          <button class="deploy-dropdown-item" onclick="closeDeployMenu();openDeploy('cf-pages')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <span id="cf-pages-label">Cloudflare Pages</span>
           </button>
         </div>
       </div>`;
@@ -401,23 +405,35 @@ export function getDeployModalHTML(): string {
  */
 export function getDeployScript(): string {
   return `
-var _vercelBinding = null;
-var _vercelStatus = null;
+var _deployBindings = { vercel: null, "cf-pages": null };
+var _deployStatuses = { vercel: null, "cf-pages": null };
+var _deployProvider = "vercel";
 var _deployContentSet = new URLSearchParams(location.search).get("contentSet") || "";
+
+var _providerConfig = {
+  vercel: { name: "Vercel", statusApi: "/api/vercel/status", bindingApi: "/api/vercel/binding", deployApi: "/api/vercel/deploy", labelId: "vercel-label", hasTeams: true },
+  "cf-pages": { name: "Cloudflare Pages", statusApi: "/api/cf-pages/status", bindingApi: "/api/cf-pages/binding", deployApi: "/api/cf-pages/deploy", labelId: "cf-pages-label", hasTeams: false },
+};
 
 (function(){
   var bindingQs = _deployContentSet ? "?contentSet=" + encodeURIComponent(_deployContentSet) : "";
-  fetch("/api/vercel/status").then(function(r){return r.json()}).then(function(s){
-    _vercelStatus = s;
-    var btn = document.getElementById("vercel-btn");
-    if(s.available) btn.disabled = false;
-    return fetch("/api/vercel/binding" + bindingQs).then(function(r){return r.json()});
-  }).then(function(b){
-    if(b && b.projectId) {
-      _vercelBinding = b;
-      document.getElementById("vercel-label").textContent = "Update: " + b.projectName;
-    }
-  }).catch(function(){});
+  var btn = document.getElementById("deploy-trigger-btn");
+  var anyAvailable = false;
+
+  Object.keys(_providerConfig).forEach(function(key){
+    var cfg = _providerConfig[key];
+    fetch(cfg.statusApi).then(function(r){return r.json()}).then(function(s){
+      _deployStatuses[key] = s;
+      if(s.available) { anyAvailable = true; btn.disabled = false; }
+      return fetch(cfg.bindingApi + bindingQs).then(function(r){return r.json()});
+    }).then(function(b){
+      if(b && (b.projectId || b.projectName)) {
+        _deployBindings[key] = b;
+        var label = document.getElementById(cfg.labelId);
+        if(label) label.textContent = cfg.name + ": " + (b.projectName || "linked");
+      }
+    }).catch(function(){});
+  });
 })();
 
 function toggleDeployMenu(){
@@ -436,19 +452,33 @@ document.addEventListener("click", function(e){
   }
 });
 
-function openVercelDeploy(){
+function openDeploy(provider){
+  _deployProvider = provider;
+  var cfg = _providerConfig[provider];
+  var binding = _deployBindings[provider];
+
   var modal = document.getElementById("vercel-modal");
   modal.style.display = "flex";
+  modal.querySelector("h3").textContent = "Deploy to " + cfg.name;
   ["vercel-form","vercel-progress","vercel-result","vercel-error"].forEach(function(id){
     document.getElementById(id).style.display="none";
   });
 
+  // Show/hide team selector (Vercel only)
+  var teamLabel = document.getElementById("vercel-team-wrap")?.closest("label");
+  if(teamLabel) teamLabel.style.display = cfg.hasTeams ? "" : "none";
+
   document.getElementById("vercel-form").style.display = "block";
 
   var nameInput = document.getElementById("vercel-project-name");
-  if(_vercelBinding) {
-    nameInput.value = _vercelBinding.projectName;
-    document.getElementById("vercel-status-msg").innerHTML = 'Linked to <a href="https://vercel.com/' + _vercelBinding.projectName + '" target="_blank" style="color:var(--color-cc-primary);text-decoration:none">' + _vercelBinding.projectName + '</a>';
+  if(binding) {
+    nameInput.value = binding.projectName;
+    var linkUrl = binding.dashboardUrl || (provider === "vercel" ? "https://vercel.com" : "");
+    if(linkUrl) {
+      document.getElementById("vercel-status-msg").innerHTML = 'Linked to <a href="' + linkUrl + '" target="_blank" style="color:var(--color-cc-primary);text-decoration:none">' + binding.projectName + '</a>';
+    } else {
+      document.getElementById("vercel-status-msg").textContent = "Linked to " + binding.projectName;
+    }
   } else {
     document.getElementById("vercel-status-msg").textContent = "";
     if(!nameInput.value) {
@@ -456,7 +486,7 @@ function openVercelDeploy(){
     }
   }
 
-  if(_vercelStatus && _vercelStatus.method === "token") {
+  if(provider === "vercel" && _deployStatuses.vercel && _deployStatuses.vercel.method === "token") {
     fetch("/api/vercel/teams").then(function(r){return r.json()}).then(function(data){
       var optionsEl = document.getElementById("vercel-team-options");
       if(optionsEl.children.length <= 1) {
@@ -469,12 +499,13 @@ function openVercelDeploy(){
           optionsEl.appendChild(div);
         });
       }
-      if(_vercelBinding && _vercelBinding.teamId) {
-        selectTeam(_vercelBinding.teamId, _vercelBinding.teamId);
-      }
+      if(binding && binding.teamId) selectTeam(binding.teamId, binding.teamId);
     }).catch(function(){});
   }
 }
+
+// Keep backward compat
+function openVercelDeploy(){ openDeploy("vercel"); }
 
 function toggleTeamSelect(){
   var opts = document.getElementById("vercel-team-options");
@@ -502,35 +533,37 @@ function deployLog(logEl, msg, cls){
 }
 
 function executeDeploy(){
+  var cfg = _providerConfig[_deployProvider];
+  var binding = _deployBindings[_deployProvider];
+
   document.getElementById("vercel-form").style.display = "none";
   document.getElementById("vercel-progress").style.display = "block";
   document.getElementById("vercel-status-msg").textContent = "";
   var logEl = document.getElementById("deploy-log");
   logEl.innerHTML = "";
 
-  // collectDeployFiles() must be defined by each mode.
-  // Returns Promise<Array<{ path: string, content: string }>>
   collectDeployFiles(logEl).then(function(files){
     deployLog(logEl, "Total: " + files.length + " files");
 
-    var body = { files: files, framework: null, contentSet: _deployContentSet || undefined };
+    var body = { files: files, contentSet: _deployContentSet || undefined };
+    var pName = document.getElementById("vercel-project-name").value;
+    body.projectName = pName;
 
-    if(_vercelBinding) {
-      body.projectId = _vercelBinding.projectId;
-      body.projectName = _vercelBinding.projectName;
-      body.orgId = _vercelBinding.orgId || null;
-      body.teamId = _vercelBinding.teamId;
-      deployLog(logEl, "Updating project: " + _vercelBinding.projectName, "info");
-    } else {
-      body.projectName = document.getElementById("vercel-project-name").value;
-      var teamSel = document.getElementById("vercel-team");
-      body.teamId = teamSel.value || null;
-      deployLog(logEl, "Creating project: " + body.projectName, "info");
+    if(_deployProvider === "vercel") {
+      body.framework = null;
+      if(binding) {
+        body.projectId = binding.projectId;
+        body.orgId = binding.orgId || null;
+        body.teamId = binding.teamId;
+      } else {
+        var teamSel = document.getElementById("vercel-team");
+        body.teamId = teamSel.value || null;
+      }
     }
 
-    deployLog(logEl, "Uploading to Vercel...", "info");
+    deployLog(logEl, (binding ? "Updating" : "Creating") + " on " + cfg.name + "...", "info");
 
-    return fetch("/api/vercel/deploy", {
+    return fetch(cfg.deployApi, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -538,24 +571,31 @@ function executeDeploy(){
   }).then(function(result){
     if(result.error) throw new Error(result.error);
 
+    var prodUrl = result.productionUrl || result.url;
     deployLog(logEl, "Deployed!", "ok");
-    deployLog(logEl, result.url, "ok");
+    deployLog(logEl, prodUrl, "ok");
 
-    var pName = document.getElementById("vercel-project-name")?.value || _vercelBinding?.projectName || "pneuma-deploy";
-    _vercelBinding = {
+    var pName = document.getElementById("vercel-project-name")?.value || binding?.projectName || "pneuma-deploy";
+    _deployBindings[_deployProvider] = {
       projectId: result.projectId,
-      orgId: result.orgId || _vercelBinding?.orgId || null,
+      orgId: result.orgId || (binding ? binding.orgId : null),
       projectName: pName,
-      url: result.url,
+      productionUrl: prodUrl,
+      dashboardUrl: result.dashboardUrl,
+      url: prodUrl,
     };
 
-    document.getElementById("vercel-label").textContent = "Update: " + pName;
-    document.getElementById("vercel-console-link").dataset.href = result.dashboardUrl || "https://vercel.com";
+    var label = document.getElementById(cfg.labelId);
+    if(label) label.textContent = cfg.name + ": " + pName;
+
+    var dashBtn = document.getElementById("vercel-console-link");
+    dashBtn.dataset.href = result.dashboardUrl || "";
+    dashBtn.style.display = result.dashboardUrl ? "" : "none";
 
     document.getElementById("result-log").innerHTML = logEl.innerHTML;
     document.getElementById("vercel-progress").style.display = "none";
     document.getElementById("vercel-result").style.display = "block";
-    document.getElementById("vercel-url").textContent = result.url;
+    document.getElementById("vercel-url").textContent = prodUrl;
   }).catch(function(err){
     deployLog(logEl, "Failed: " + err.message, "err");
     document.getElementById("error-log").innerHTML = logEl.innerHTML;

@@ -22,6 +22,7 @@ import { exportHistory } from "./history-export.js";
 import { importHistory } from "./history-import.js";
 import { getR2Config, saveR2Config, isR2Configured, shareResult, shareProcess, downloadShare, getApiKeys, saveApiKeys } from "./share.js";
 import { getVercelConfig, saveVercelConfig, getVercelStatus, getVercelTeams, deployToVercel, getDeployBinding, saveDeployBinding } from "./vercel.js";
+import { getCfPagesConfig, saveCfPagesConfig, getCfPagesStatus, deployCfPages } from "./cloudflare-pages.js";
 import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./proxy-middleware.js";
 import type { ProxyRoute } from "../core/types/mode-manifest.js";
 import { startProxyWatcher } from "./file-watcher.js";
@@ -705,6 +706,32 @@ export function startServer(options: ServerOptions) {
       return c.json({ teams });
     });
 
+    // Cloudflare Pages Configuration
+    app.get("/api/cf-pages/status", async (c) => {
+      const status = await getCfPagesStatus();
+      return c.json(status);
+    });
+
+    app.get("/api/cf-pages/config", (c) => {
+      const config = getCfPagesConfig();
+      if (!config) return c.json({ configured: false });
+      return c.json({
+        configured: true,
+        accountId: config.accountId,
+        apiToken: config.apiToken.slice(0, 6) + "***",
+      });
+    });
+
+    app.post("/api/cf-pages/config", async (c) => {
+      try {
+        const body = await c.req.json<{ apiToken: string; accountId: string }>();
+        saveCfPagesConfig({ apiToken: body.apiToken, accountId: body.accountId });
+        return c.json({ ok: true });
+      } catch (err: any) {
+        return c.json({ error: err.message }, 500);
+      }
+    });
+
     // API Keys
     app.get("/api/keys", (c) => {
       const keys = getApiKeys();
@@ -1160,6 +1187,44 @@ export function startServer(options: ServerOptions) {
     if (binding.vercel) delete binding.vercel[key];
     saveDeployBinding(workspace, binding);
     return c.json({ ok: true });
+  });
+
+  // --- Cloudflare Pages Deploy ---
+  app.get("/api/cf-pages/status", async (c) => {
+    const status = await getCfPagesStatus();
+    return c.json(status);
+  });
+
+  app.get("/api/cf-pages/binding", (c) => {
+    const key = (c.req.query("contentSet") || "_default");
+    const binding = getDeployBinding(workspace);
+    return c.json(binding.cfPages?.[key] ?? null);
+  });
+
+  app.post("/api/cf-pages/deploy", async (c) => {
+    try {
+      const body = await c.req.json<{
+        files: Array<{ path: string; content: string }>;
+        projectName?: string;
+        contentSet?: string;
+      }>();
+      const result = await deployCfPages(body);
+
+      const key = body.contentSet || "_default";
+      const binding = getDeployBinding(workspace);
+      if (!binding.cfPages) binding.cfPages = {};
+      binding.cfPages[key] = {
+        projectName: result.projectName,
+        productionUrl: result.productionUrl,
+        dashboardUrl: result.dashboardUrl,
+        lastDeployedAt: new Date().toISOString(),
+      };
+      saveDeployBinding(workspace, binding);
+
+      return c.json(result);
+    } catch (err: any) {
+      return c.json({ error: err.message }, 500);
+    }
   });
 
   app.post("/api/replay/load", async (c) => {

@@ -95,8 +95,16 @@ export interface VercelProjectBinding {
   lastDeployedAt: string;
 }
 
+export interface CfPagesBinding {
+  projectName: string;
+  productionUrl: string;
+  dashboardUrl: string;
+  lastDeployedAt: string;
+}
+
 export interface DeployBinding {
   vercel?: Record<string, VercelProjectBinding>;
+  cfPages?: Record<string, CfPagesBinding>;
 }
 
 export function getDeployBinding(workspace: string): DeployBinding {
