@@ -317,27 +317,21 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
     let prodUrl = deploymentUrl;
     let dashboardUrl = "";
     const inspect = await runVercel(["vercel", "inspect", deploymentUrl]);
-    // `vercel inspect` outputs human-readable text to stderr, parse it
-    const inspectText = inspect.stderr || inspect.stdout;
-    // Look for "Production" alias line or any alias
-    const aliasMatch = inspectText.match(/https?:\/\/[\w.-]+\.vercel\.app/);
-    if (aliasMatch) {
-      // Find the shortest URL (production alias, not deployment URL)
-      const allUrls = inspectText.match(/https?:\/\/[\w.-]+\.vercel\.app/g) ?? [];
-      const sorted = allUrls.sort((a, b) => a.length - b.length);
-      if (sorted[0] && sorted[0].length < deploymentUrl.length) {
-        prodUrl = sorted[0];
-      }
+    const inspectText = inspect.stdout + "\n" + inspect.stderr;
+
+    // Parse aliases — shortest .vercel.app URL is the production alias
+    const allUrls = inspectText.match(/https?:\/\/[\w.-]+\.vercel\.app/g) ?? [];
+    if (allUrls.length > 0) {
+      const sorted = [...new Set(allUrls)].sort((a, b) => a.length - b.length);
+      prodUrl = sorted[0];
     }
-    // Dashboard: look for inspectorUrl in output
-    const inspectorMatch = inspectText.match(/https:\/\/vercel\.com\/[^\s]+/);
-    if (inspectorMatch) {
-      // Strip deployment-specific part to get project dashboard
-      const parts = inspectorMatch[0].split("/");
-      // https://vercel.com/{scope}/{project}/{deployId} → drop deployId
-      if (parts.length >= 5) {
-        dashboardUrl = parts.slice(0, 5).join("/");
-      }
+
+    // Parse scope from "Fetching deployment ... in {scope}" line
+    const scopeMatch = inspectText.match(/in\s+([\w-]+)\s*$/m);
+    // Parse project name from "name\t{name}" line
+    const nameMatch = inspectText.match(/name\s+([\w-]+)/);
+    if (scopeMatch && nameMatch) {
+      dashboardUrl = `https://vercel.com/${scopeMatch[1]}/${nameMatch[1]}`;
     }
 
     return {
