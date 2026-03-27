@@ -156,6 +156,7 @@ export interface DeployResult {
   projectId: string;
   orgId: string;
   deploymentUrl: string;
+  dashboardUrl: string;
 }
 
 async function deployViaApi(
@@ -217,16 +218,25 @@ async function deployViaApi(
     alias?: string[];
     projectId?: string;
     ownerId?: string;
+    inspectorUrl?: string;
   };
   const prodUrl = data.alias?.[0]
     ? `https://${data.alias[0]}`
     : `https://${data.url}`;
+
+  // inspectorUrl = https://vercel.com/{scope}/{project}/{deployId}
+  // project dashboard = drop the last segment
+  const inspectorUrl = data.inspectorUrl ?? "";
+  const dashboardUrl = inspectorUrl
+    ? inspectorUrl.split("/").slice(0, -1).join("/")
+    : "";
 
   return {
     url: prodUrl,
     projectId: data.projectId ?? projectId ?? "",
     orgId: data.ownerId ?? req.teamId ?? "",
     deploymentUrl: `https://${data.url}`,
+    dashboardUrl,
   };
 }
 
@@ -308,26 +318,28 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
       /* ignore */
     }
 
-    // Get production alias via `vercel inspect`
+    // Get production alias + inspectorUrl via `vercel inspect`
     let prodUrl = deploymentUrl;
+    let dashboardUrl = "";
     try {
       const inspectProc = Bun.spawn(
         ["vercel", "inspect", deploymentUrl, "--json"],
         { cwd: tmpDir, stdout: "pipe", stderr: "pipe", env },
       );
       const inspectOut = await new Response(inspectProc.stdout).text();
-      await inspectProc.exited;
-      // stderr has the JSON (vercel inspect outputs to stderr in --json mode)
       const inspectErr = await new Response(inspectProc.stderr).text();
+      await inspectProc.exited;
       const jsonStr = inspectErr || inspectOut;
       try {
         const info = JSON.parse(jsonStr);
         if (info.alias?.length) {
           prodUrl = "https://" + info.alias[0];
-        } else if (info.url) {
-          prodUrl = "https://" + info.url;
         }
-      } catch { /* not valid JSON, keep deploymentUrl */ }
+        // inspectorUrl = https://vercel.com/{scope}/{project}/{deployId}
+        if (info.inspectorUrl) {
+          dashboardUrl = info.inspectorUrl.split("/").slice(0, -1).join("/");
+        }
+      } catch { /* not valid JSON */ }
     } catch { /* ignore */ }
 
     return {
@@ -335,6 +347,7 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
       projectId,
       orgId,
       deploymentUrl,
+      dashboardUrl,
     };
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });

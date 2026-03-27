@@ -1134,13 +1134,6 @@ export function startServer(options: ServerOptions) {
       }>();
       const result = await deployToVercel(body);
 
-      // Build dashboard URL
-      const status = await getVercelStatus();
-      const scope = status.user ?? "";
-      const dashboardUrl = scope
-        ? `https://vercel.com/${scope}/${body.projectName ?? "pneuma-deploy"}`
-        : "https://vercel.com";
-
       // Save binding keyed by contentSet
       const key = body.contentSet || "_default";
       const binding = getDeployBinding(workspace);
@@ -1155,7 +1148,7 @@ export function startServer(options: ServerOptions) {
       };
       saveDeployBinding(workspace, binding);
 
-      return c.json({ ...result, dashboardUrl });
+      return c.json(result);
     } catch (err: any) {
       return c.json({ error: err.message }, 500);
     }
