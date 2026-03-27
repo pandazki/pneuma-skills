@@ -260,52 +260,49 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
       writeFileSync(join(vercelDir, "project.json"), JSON.stringify(projConfig));
     }
 
-    // First deploy: preview first (--prod on first deploy fails with "Project Settings are invalid")
-    // Subsequent deploys: direct --prod
     const isFirstDeploy = !req.projectId;
-    const args = ["vercel", "deploy", "--yes"];
-    if (!isFirstDeploy) args.push("--prod");
-
     const env: Record<string, string> = { ...process.env as Record<string, string> };
     if (req.teamId) env.VERCEL_ORG_ID = req.teamId;
 
-    const proc = Bun.spawn(args, {
-      cwd: tmpDir,
-      stdout: "pipe",
-      stderr: "pipe",
-      env,
-    });
-
-    const [stdout, stderr] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ]);
-    const exitCode = await proc.exited;
-
-    if (exitCode !== 0) {
-      throw new Error(`vercel deploy failed: ${stderr || stdout}`);
+    // Helper to run vercel CLI and get output
+    async function runVercel(args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+      const p = Bun.spawn(args, { cwd: tmpDir, stdout: "pipe", stderr: "pipe", env });
+      const [stdout, stderr] = await Promise.all([
+        new Response(p.stdout).text(),
+        new Response(p.stderr).text(),
+      ]);
+      return { stdout, stderr, exitCode: await p.exited };
     }
 
-    let deploymentUrl = stdout.trim().split("\n").pop()?.trim() ?? "";
+    // Step 1: Deploy
+    // First deploy: preview first (--prod on first deploy fails with "Project Settings are invalid")
+    // Then promote to production in a second step.
+    const deployArgs = ["vercel", "deploy", "--yes"];
+    if (!isFirstDeploy) deployArgs.push("--prod");
+    if (req.projectName) deployArgs.push("--name", req.projectName);
+
+    const deploy = await runVercel(deployArgs);
+    if (deploy.exitCode !== 0) {
+      throw new Error(`vercel deploy failed: ${deploy.stderr || deploy.stdout}`);
+    }
+
+    let deploymentUrl = deploy.stdout.trim().split("\n").pop()?.trim() ?? "";
     if (!deploymentUrl.startsWith("http")) {
-      throw new Error(`Unexpected vercel output: ${stdout}`);
+      throw new Error(`Unexpected vercel output: ${deploy.stdout}`);
     }
 
-    // For first deploy: promote to production
+    // Step 2: For first deploy, promote to production
     if (isFirstDeploy) {
-      const promoteProc = Bun.spawn(["vercel", "--prod", "--yes"], {
-        cwd: tmpDir,
-        stdout: "pipe",
-        stderr: "pipe",
-        env,
-      });
-      const promoteOut = await new Response(promoteProc.stdout).text();
-      const promoteExit = await promoteProc.exited;
-      if (promoteExit === 0 && promoteOut.trim().startsWith("http")) {
-        deploymentUrl = promoteOut.trim().split("\n").pop()?.trim() ?? deploymentUrl;
+      const promote = await runVercel(["vercel", "deploy", "--prod", "--yes"]);
+      if (promote.exitCode === 0) {
+        const promoteUrl = promote.stdout.trim().split("\n").pop()?.trim() ?? "";
+        if (promoteUrl.startsWith("http")) {
+          deploymentUrl = promoteUrl;
+        }
       }
     }
 
+    // Step 3: Read project.json for IDs
     let projectId = req.projectId ?? "";
     let orgId = req.orgId ?? "";
     try {
@@ -314,33 +311,34 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
       );
       projectId = projJson.projectId ?? projectId;
       orgId = projJson.orgId ?? orgId;
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
 
-    // Get production alias + inspectorUrl via `vercel inspect`
+    // Step 4: Get production alias + dashboard URL via `vercel inspect`
     let prodUrl = deploymentUrl;
     let dashboardUrl = "";
-    try {
-      const inspectProc = Bun.spawn(
-        ["vercel", "inspect", deploymentUrl, "--json"],
-        { cwd: tmpDir, stdout: "pipe", stderr: "pipe", env },
-      );
-      const inspectOut = await new Response(inspectProc.stdout).text();
-      const inspectErr = await new Response(inspectProc.stderr).text();
-      await inspectProc.exited;
-      const jsonStr = inspectErr || inspectOut;
-      try {
-        const info = JSON.parse(jsonStr);
-        if (info.alias?.length) {
-          prodUrl = "https://" + info.alias[0];
-        }
-        // inspectorUrl = https://vercel.com/{scope}/{project}/{deployId}
-        if (info.inspectorUrl) {
-          dashboardUrl = info.inspectorUrl.split("/").slice(0, -1).join("/");
-        }
-      } catch { /* not valid JSON */ }
-    } catch { /* ignore */ }
+    const inspect = await runVercel(["vercel", "inspect", deploymentUrl]);
+    // `vercel inspect` outputs human-readable text to stderr, parse it
+    const inspectText = inspect.stderr || inspect.stdout;
+    // Look for "Production" alias line or any alias
+    const aliasMatch = inspectText.match(/https?:\/\/[\w.-]+\.vercel\.app/);
+    if (aliasMatch) {
+      // Find the shortest URL (production alias, not deployment URL)
+      const allUrls = inspectText.match(/https?:\/\/[\w.-]+\.vercel\.app/g) ?? [];
+      const sorted = allUrls.sort((a, b) => a.length - b.length);
+      if (sorted[0] && sorted[0].length < deploymentUrl.length) {
+        prodUrl = sorted[0];
+      }
+    }
+    // Dashboard: look for inspectorUrl in output
+    const inspectorMatch = inspectText.match(/https:\/\/vercel\.com\/[^\s]+/);
+    if (inspectorMatch) {
+      // Strip deployment-specific part to get project dashboard
+      const parts = inspectorMatch[0].split("/");
+      // https://vercel.com/{scope}/{project}/{deployId} → drop deployId
+      if (parts.length >= 5) {
+        dashboardUrl = parts.slice(0, 5).join("/");
+      }
+    }
 
     return {
       url: prodUrl,
