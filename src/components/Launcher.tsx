@@ -2562,6 +2562,130 @@ function CloudStorageSection() {
   );
 }
 
+function VercelSection() {
+  const [status, setStatus] = useState<"loading" | "configured" | "unconfigured" | "editing">("loading");
+  const [vercelStatus, setVercelStatus] = useState<{ available: boolean; method: "cli" | "token" | null; user?: string } | null>(null);
+  const [config, setConfig] = useState<any>(null);
+  const [form, setForm] = useState({ token: "", teamId: "" });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      fetch(`${getApiBase()}/api/vercel/status`).then((r) => r.json()),
+      fetch(`${getApiBase()}/api/vercel/config`).then((r) => r.json()),
+    ]).then(([vs, cfg]) => {
+      setVercelStatus(vs);
+      if (cfg.configured) { setConfig(cfg); setStatus("configured"); }
+      else if (vs.available && vs.method === "cli") { setStatus("configured"); }
+      else setStatus("unconfigured");
+    }).catch(() => setStatus("unconfigured"));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await fetch(`${getApiBase()}/api/vercel/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: form.token, teamId: form.teamId || null }),
+      });
+      const [vs, cfg] = await Promise.all([
+        fetch(`${getApiBase()}/api/vercel/status`).then((r) => r.json()),
+        fetch(`${getApiBase()}/api/vercel/config`).then((r) => r.json()),
+      ]);
+      setVercelStatus(vs);
+      setConfig(cfg);
+      setStatus("configured");
+    } catch { }
+    setSaving(false);
+  };
+
+  if (status === "loading") return null;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">Vercel Deploy</h3>
+        {status === "configured" && (
+          <button onClick={() => { setForm({ token: "", teamId: "" }); setStatus("editing"); }}
+            className="text-[10px] text-cc-muted/50 hover:text-cc-fg transition-colors cursor-pointer">Edit</button>
+        )}
+      </div>
+      <p className="text-[10px] text-cc-muted/60 leading-relaxed">
+        Deploy projects to Vercel. Uses Vercel CLI if installed, or configure a token below.
+      </p>
+
+      {/* CLI status indicator */}
+      {vercelStatus && vercelStatus.method === "cli" && (
+        <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-cc-success" />
+            <span className="text-xs text-cc-fg">CLI connected as {vercelStatus.user}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Token configured */}
+      {status === "configured" && vercelStatus?.method === "token" && (
+        <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-cc-success" />
+            <span className="text-xs text-cc-fg">Token connected as {vercelStatus.user}</span>
+          </div>
+          {config?.teamId && <div className="text-[10px] text-cc-muted">Team: {config.teamId}</div>}
+        </div>
+      )}
+
+      {/* Not available — show hint */}
+      {status === "configured" && !vercelStatus?.available && (
+        <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-yellow-500" />
+            <span className="text-xs text-cc-fg">Token saved but could not verify</span>
+          </div>
+        </div>
+      )}
+
+      {(status === "unconfigured" || status === "editing") && (
+        <div className="space-y-3">
+          {status === "unconfigured" && !vercelStatus?.available && (
+            <div className="text-[10px] text-cc-muted/60 leading-relaxed">
+              Install <span className="text-cc-fg">Vercel CLI</span> (<code className="text-cc-primary">npm i -g vercel</code> then <code className="text-cc-primary">vercel login</code>), or create a token at <span className="text-cc-fg">vercel.com/account/tokens</span>.
+            </div>
+          )}
+          <div className="space-y-2">
+            {[
+              { key: "token", placeholder: "Vercel Token", type: "password" },
+              { key: "teamId", placeholder: "Team ID (optional, leave blank for personal)", type: "text" },
+            ].map(({ key, placeholder, type }) => (
+              <input
+                key={key}
+                placeholder={placeholder}
+                type={type}
+                value={(form as any)[key]}
+                onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
+              />
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleSave} disabled={saving || !form.token}
+              className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer">
+              {saving ? "Saving..." : "Save"}
+            </button>
+            {status === "editing" && (
+              <button onClick={() => setStatus("configured")}
+                className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">
+                Cancel
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   if (!open) return null;
 
@@ -2593,6 +2717,7 @@ function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }
           <BackendsSection />
           <ApiKeysSection />
           <CloudStorageSection />
+          <VercelSection />
         </div>
       </div>
     </>
