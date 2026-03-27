@@ -21,6 +21,7 @@ import { listCheckpoints } from "./shadow-git.js";
 import { exportHistory } from "./history-export.js";
 import { importHistory } from "./history-import.js";
 import { getR2Config, saveR2Config, isR2Configured, shareResult, shareProcess, downloadShare, getApiKeys, saveApiKeys } from "./share.js";
+import { getVercelConfig, saveVercelConfig, getVercelStatus, getVercelTeams, deployToVercel, getDeployBinding, saveDeployBinding } from "./vercel.js";
 import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./proxy-middleware.js";
 import type { ProxyRoute } from "../core/types/mode-manifest.js";
 import { startProxyWatcher } from "./file-watcher.js";
@@ -673,6 +674,37 @@ export function startServer(options: ServerOptions) {
       }
     });
 
+    // Vercel Configuration
+    app.get("/api/vercel/status", async (c) => {
+      const status = await getVercelStatus();
+      return c.json(status);
+    });
+
+    app.get("/api/vercel/config", (c) => {
+      const config = getVercelConfig();
+      if (!config) return c.json({ configured: false });
+      return c.json({
+        configured: true,
+        token: config.token.slice(0, 6) + "***",
+        teamId: config.teamId ?? null,
+      });
+    });
+
+    app.post("/api/vercel/config", async (c) => {
+      try {
+        const body = await c.req.json<{ token: string; teamId?: string | null }>();
+        saveVercelConfig({ token: body.token, teamId: body.teamId ?? null });
+        return c.json({ ok: true });
+      } catch (err: any) {
+        return c.json({ error: err.message }, 500);
+      }
+    });
+
+    app.get("/api/vercel/teams", async (c) => {
+      const teams = await getVercelTeams();
+      return c.json({ teams });
+    });
+
     // API Keys
     app.get("/api/keys", (c) => {
       const keys = getApiKeys();
@@ -1070,6 +1102,57 @@ export function startServer(options: ServerOptions) {
     } catch (err: any) {
       return c.json({ error: err.message }, 500);
     }
+  });
+
+  // --- Vercel Deploy ---
+  app.get("/api/vercel/status", async (c) => {
+    const status = await getVercelStatus();
+    return c.json(status);
+  });
+
+  app.get("/api/vercel/teams", async (c) => {
+    const teams = await getVercelTeams();
+    return c.json({ teams });
+  });
+
+  app.get("/api/vercel/binding", (c) => {
+    const binding = getDeployBinding(workspace);
+    return c.json(binding.vercel ?? null);
+  });
+
+  app.post("/api/vercel/deploy", async (c) => {
+    try {
+      const body = await c.req.json<{
+        files: Array<{ path: string; content: string }>;
+        projectName?: string;
+        projectId?: string;
+        teamId?: string | null;
+        framework?: string | null;
+      }>();
+      const result = await deployToVercel(body);
+
+      // Save binding
+      const binding = getDeployBinding(workspace);
+      binding.vercel = {
+        projectId: result.projectId,
+        projectName: body.projectName ?? "pneuma-deploy",
+        teamId: body.teamId ?? null,
+        url: result.url,
+        lastDeployedAt: new Date().toISOString(),
+      };
+      saveDeployBinding(workspace, binding);
+
+      return c.json(result);
+    } catch (err: any) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  app.delete("/api/vercel/binding", (c) => {
+    const binding = getDeployBinding(workspace);
+    delete binding.vercel;
+    saveDeployBinding(workspace, binding);
+    return c.json({ ok: true });
   });
 
   app.post("/api/replay/load", async (c) => {
