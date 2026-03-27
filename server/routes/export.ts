@@ -894,6 +894,42 @@ ${slidePages}${downloadScript}${pptxScript}${imageModeScript}
       <button class="btn-secondary" onclick="downloadZip()">Download ZIP</button>
       <div class="print-divider"></div>
       <button class="btn-secondary" onclick="captureScreenshot()">Screenshot PNG</button>
+      <div class="print-divider"></div>
+      <button class="btn-vercel" id="vercel-btn" onclick="openVercelDeploy()" disabled>
+        <svg width="14" height="14" viewBox="0 0 76 65" fill="currentColor"><path d="M37.5274 0L75.0548 65H0L37.5274 0Z"/></svg>
+        Deploy
+      </button>
+    </div>
+  </div>
+</div>
+<div id="vercel-modal" class="deploy-modal" style="display:none">
+  <div class="deploy-modal-backdrop" onclick="closeVercelModal()"></div>
+  <div class="deploy-modal-content">
+    <h3>Deploy to Vercel</h3>
+    <div id="vercel-status-msg"></div>
+    <div id="vercel-form" style="display:none">
+      <label>Project Name<input id="vercel-project-name" type="text" placeholder="my-project" /></label>
+      <label>Team<select id="vercel-team"><option value="">Personal</option></select></label>
+      <div class="deploy-actions">
+        <button class="btn-primary" onclick="executeDeploy()">Deploy</button>
+        <button class="btn-secondary" onclick="closeVercelModal()">Cancel</button>
+      </div>
+    </div>
+    <div id="vercel-progress" style="display:none">
+      <div class="deploy-spinner"></div>
+      <span>Deploying...</span>
+    </div>
+    <div id="vercel-result" style="display:none">
+      <div class="deploy-success">Deployed!</div>
+      <input id="vercel-url" type="text" readonly onclick="this.select()" />
+      <div class="deploy-actions">
+        <button class="btn-secondary" onclick="window.open(document.getElementById('vercel-url').value)">Open</button>
+        <button class="btn-secondary" onclick="closeVercelModal()">Close</button>
+      </div>
+    </div>
+    <div id="vercel-error" style="display:none">
+      <div class="deploy-error-msg"></div>
+      <button class="btn-secondary" onclick="closeVercelModal()">Close</button>
     </div>
   </div>
 </div>`;
@@ -1028,6 +1064,142 @@ async function captureScreenshot(){
   }
 }
 updatePrintStyle('full');
+
+var _vercelBinding = null;
+var _vercelStatus = null;
+
+(function(){
+  fetch("/api/vercel/status").then(function(r){return r.json()}).then(function(s){
+    _vercelStatus = s;
+    var btn = document.getElementById("vercel-btn");
+    if(s.available) btn.disabled = false;
+    return fetch("/api/vercel/binding").then(function(r){return r.json()});
+  }).then(function(b){
+    if(b && b.projectId) {
+      _vercelBinding = b;
+      var btn = document.getElementById("vercel-btn");
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 76 65" fill="currentColor"><path d="M37.5274 0L75.0548 65H0L37.5274 0Z"><\\/path><\\/svg> Update';
+    }
+  }).catch(function(){});
+})();
+
+function openVercelDeploy(){
+  var modal = document.getElementById("vercel-modal");
+  modal.style.display = "flex";
+  ["vercel-form","vercel-progress","vercel-result","vercel-error"].forEach(function(id){
+    document.getElementById(id).style.display="none";
+  });
+
+  if(_vercelBinding) {
+    document.getElementById("vercel-status-msg").textContent = "Updating " + _vercelBinding.projectName + "...";
+    executeDeploy();
+    return;
+  }
+
+  document.getElementById("vercel-status-msg").textContent = "";
+  document.getElementById("vercel-form").style.display = "block";
+
+  var nameInput = document.getElementById("vercel-project-name");
+  if(!nameInput.value) {
+    nameInput.value = document.title.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "pneuma-webcraft";
+  }
+
+  if(_vercelStatus && _vercelStatus.method === "token") {
+    fetch("/api/vercel/teams").then(function(r){return r.json()}).then(function(data){
+      var sel = document.getElementById("vercel-team");
+      (data.teams||[]).forEach(function(t){
+        var opt = document.createElement("option");
+        opt.value = t.id; opt.textContent = t.name;
+        sel.appendChild(opt);
+      });
+    }).catch(function(){});
+  }
+}
+
+function closeVercelModal(){
+  document.getElementById("vercel-modal").style.display = "none";
+}
+
+function executeDeploy(){
+  document.getElementById("vercel-form").style.display = "none";
+  document.getElementById("vercel-progress").style.display = "flex";
+  document.getElementById("vercel-status-msg").textContent = "";
+
+  var qs = new URLSearchParams(location.search);
+  var contentSet = qs.get("contentSet") || "";
+
+  var filePromises = pages.map(function(page){
+    var dlQs = contentSet ? "?contentSet=" + encodeURIComponent(contentSet) + "&page=" + encodeURIComponent(page.file) : "?page=" + encodeURIComponent(page.file);
+    return fetch("/export/webcraft/download" + dlQs).then(function(r){ return r.text(); }).then(function(html){
+      var dir = contentSet || "pages";
+      return { path: dir + "/" + page.file, content: html };
+    });
+  });
+
+  Promise.all(filePromises).then(function(pageFileList){
+    var indexHtml = buildAggregationPage(pageFileList);
+    var files = [{ path: "index.html", content: indexHtml }].concat(pageFileList);
+
+    var body = { files: files, framework: null };
+
+    if(_vercelBinding) {
+      body.projectId = _vercelBinding.projectId;
+      body.projectName = _vercelBinding.projectName;
+      body.teamId = _vercelBinding.teamId;
+    } else {
+      body.projectName = document.getElementById("vercel-project-name").value;
+      var teamSel = document.getElementById("vercel-team");
+      body.teamId = teamSel.value || null;
+    }
+
+    return fetch("/api/vercel/deploy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(function(r){ return r.json(); });
+  }).then(function(result){
+    if(result.error) throw new Error(result.error);
+
+    _vercelBinding = {
+      projectId: result.projectId,
+      projectName: document.getElementById("vercel-project-name")?.value || _vercelBinding?.projectName || "pneuma-deploy",
+      url: result.url,
+    };
+
+    var btn = document.getElementById("vercel-btn");
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 76 65" fill="currentColor"><path d="M37.5274 0L75.0548 65H0L37.5274 0Z"><\\/path><\\/svg> Update';
+
+    document.getElementById("vercel-progress").style.display = "none";
+    document.getElementById("vercel-result").style.display = "block";
+    document.getElementById("vercel-url").value = result.url;
+  }).catch(function(err){
+    document.getElementById("vercel-progress").style.display = "none";
+    document.getElementById("vercel-error").style.display = "block";
+    document.querySelector(".deploy-error-msg").textContent = err.message;
+  });
+}
+
+function buildAggregationPage(pageFiles){
+  var cards = pageFiles.map(function(f){
+    var name = f.path.split("/").pop().replace(/\\.html$/i, "");
+    var title = name.charAt(0).toUpperCase() + name.slice(1).replace(/-/g, " ");
+    return '<a href="' + f.path + '" class="agg-card"><div class="agg-card-title">' + title + '<\\/div><\\/a>';
+  }).join("\\n");
+
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + (document.title || "WebCraft") + '<\\/title><style>'
+    + 'body{margin:0;background:#09090b;color:#fff;font-family:system-ui,-apple-system,sans-serif;padding:40px;}'
+    + '.agg-header{margin-bottom:32px;}'
+    + '.agg-header h1{font-size:28px;font-weight:700;margin:0 0 8px;}'
+    + '.agg-header p{color:#a1a1aa;font-size:14px;margin:0;}'
+    + '.agg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}'
+    + '.agg-card{display:block;padding:24px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);text-decoration:none;color:#fff;transition:all 0.15s;}'
+    + '.agg-card:hover{background:rgba(255,255,255,0.08);border-color:rgba(249,115,22,0.3);}'
+    + '.agg-card-title{font-size:15px;font-weight:500;}'
+    + '<\\/style><\\/head><body>'
+    + '<div class="agg-header"><h1>' + (document.title || "WebCraft") + '<\\/h1><p>' + pageFiles.length + ' page' + (pageFiles.length > 1 ? 's' : '') + '<\\/p><\\/div>'
+    + '<div class="agg-grid">' + cards + '<\\/div>'
+    + '<\\/body><\\/html>';
+}
 <\/script>`;
 
     // Escape </script> inside JSON to prevent premature script block closure
@@ -1274,6 +1446,24 @@ body {
     height: 16px;
     background: rgba(255, 255, 255, 0.12);
   }
+
+  .btn-vercel { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.08); color:#fff; transition:all 0.15s; }
+  .btn-vercel:hover:not(:disabled) { background:rgba(255,255,255,0.15); }
+  .btn-vercel:disabled { opacity:0.3; cursor:not-allowed; }
+  .deploy-modal { position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center; }
+  .deploy-modal-backdrop { position:absolute; inset:0; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); }
+  .deploy-modal-content { position:relative; background:#18181b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:24px; min-width:360px; max-width:420px; }
+  .deploy-modal-content h3 { margin:0 0 16px; font-size:15px; font-weight:600; color:#fff; }
+  .deploy-modal-content label { display:block; font-size:12px; color:#a1a1aa; margin-bottom:12px; }
+  .deploy-modal-content input, .deploy-modal-content select { display:block; width:100%; margin-top:4px; padding:8px 12px; font-size:13px; background:#09090b; border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#fff; outline:none; box-sizing:border-box; }
+  .deploy-modal-content input:focus, .deploy-modal-content select:focus { border-color:rgba(249,115,22,0.5); }
+  .deploy-actions { display:flex; gap:8px; margin-top:16px; }
+  .deploy-spinner { display:inline-block; width:16px; height:16px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f97316; border-radius:50%; animation:spin 0.6s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .deploy-success { color:#22c55e; font-size:14px; font-weight:500; margin-bottom:8px; }
+  .deploy-error-msg { color:#ef4444; font-size:13px; margin-bottom:12px; }
+  #vercel-url { cursor:text; margin-bottom:4px; }
+  #vercel-status-msg { font-size:12px; color:#a1a1aa; margin-bottom:12px; }
 
   .page-section {
     max-width: 960px;
