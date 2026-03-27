@@ -308,8 +308,30 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
       /* ignore */
     }
 
+    // Get production alias via `vercel inspect`
+    let prodUrl = deploymentUrl;
+    try {
+      const inspectProc = Bun.spawn(
+        ["vercel", "inspect", deploymentUrl, "--json"],
+        { cwd: tmpDir, stdout: "pipe", stderr: "pipe", env },
+      );
+      const inspectOut = await new Response(inspectProc.stdout).text();
+      await inspectProc.exited;
+      // stderr has the JSON (vercel inspect outputs to stderr in --json mode)
+      const inspectErr = await new Response(inspectProc.stderr).text();
+      const jsonStr = inspectErr || inspectOut;
+      try {
+        const info = JSON.parse(jsonStr);
+        if (info.alias?.length) {
+          prodUrl = "https://" + info.alias[0];
+        } else if (info.url) {
+          prodUrl = "https://" + info.url;
+        }
+      } catch { /* not valid JSON, keep deploymentUrl */ }
+    } catch { /* ignore */ }
+
     return {
-      url: deploymentUrl,
+      url: prodUrl,
       projectId,
       orgId,
       deploymentUrl,

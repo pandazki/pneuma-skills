@@ -262,6 +262,41 @@ export function getDeployCSS(): string {
     margin-bottom: 12px;
   }
   .deploy-success svg { flex-shrink: 0; }
+  .deploy-url-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 9px 12px;
+    background: var(--color-cc-bg);
+    border: 1px solid var(--color-cc-border);
+    border-radius: 10px;
+  }
+  .deploy-url-text {
+    flex: 1;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    color: var(--color-cc-fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .deploy-url-copy {
+    flex-shrink: 0;
+    padding: 3px 10px !important;
+    font-size: 11px !important;
+    border-radius: 6px !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid var(--color-cc-border) !important;
+    color: var(--color-cc-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .deploy-url-copy:hover {
+    color: var(--color-cc-fg);
+    background: rgba(255, 255, 255, 0.1) !important;
+  }
   .deploy-error-msg {
     color: #ef4444;
     font-size: 12px;
@@ -271,12 +306,6 @@ export function getDeployCSS(): string {
     background: rgba(239, 68, 68, 0.06);
     border: 1px solid rgba(239, 68, 68, 0.15);
     border-radius: 10px;
-  }
-  #vercel-url {
-    cursor: text;
-    margin-bottom: 4px;
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 12px;
   }
   #vercel-status-msg {
     font-size: 12px;
@@ -339,15 +368,14 @@ export function getDeployModalHTML(): string {
     </div>
     <div id="vercel-result" style="display:none">
       <div class="deploy-success"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.06 0l4.25-4.25z"/></svg> Deployed</div>
-      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
-        <input id="vercel-url" type="text" readonly onclick="this.select()" style="flex:1;margin:0" />
-        <a id="vercel-console-link" href="#" target="_blank" title="Open Vercel Dashboard" style="flex-shrink:0;color:var(--color-cc-muted);transition:color 0.15s" onmouseover="this.style.color='var(--color-cc-primary)'" onmouseout="this.style.color='var(--color-cc-muted)'">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-        </a>
+      <div class="deploy-url-row">
+        <span id="vercel-url" class="deploy-url-text"></span>
+        <button class="deploy-url-copy" onclick="navigator.clipboard.writeText(document.getElementById('vercel-url').textContent);this.textContent='Copied';var b=this;setTimeout(function(){b.textContent='Copy'},1500)" title="Copy URL">Copy</button>
       </div>
       <div id="result-log" class="deploy-log"></div>
       <div class="deploy-actions">
-        <button class="btn-primary" onclick="window.open(document.getElementById('vercel-url').value)" style="border:none">Open Site</button>
+        <button class="btn-primary" onclick="window.open(document.getElementById('vercel-url').textContent)" style="border:none">Open Site</button>
+        <button class="btn-secondary" id="vercel-console-link" onclick="window.open(this.dataset.href)">Dashboard</button>
         <button class="btn-secondary" onclick="closeVercelModal()">Done</button>
       </div>
     </div>
@@ -522,12 +550,12 @@ function executeDeploy(){
     };
 
     document.getElementById("vercel-label").textContent = "Update: " + pName;
-    document.getElementById("vercel-console-link").href = result.dashboardUrl || "https://vercel.com";
+    document.getElementById("vercel-console-link").dataset.href = result.dashboardUrl || "https://vercel.com";
 
     document.getElementById("result-log").innerHTML = logEl.innerHTML;
     document.getElementById("vercel-progress").style.display = "none";
     document.getElementById("vercel-result").style.display = "block";
-    document.getElementById("vercel-url").value = result.url;
+    document.getElementById("vercel-url").textContent = result.url;
   }).catch(function(err){
     deployLog(logEl, "Failed: " + err.message, "err");
     document.getElementById("error-log").innerHTML = logEl.innerHTML;
