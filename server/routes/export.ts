@@ -211,9 +211,11 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
         <div class="print-divider"></div>
         <button class="print-action" id="print-btn" onclick="window.print()">Print / Save PDF</button>
       </div>
+      ${getDeployToolbarHTML()}
     </div>
   </div>
-</div>`;
+</div>
+${getDeployModalHTML()}`;
 
     const downloadScript = opts.inline
       ? ""
@@ -750,6 +752,7 @@ ${opts.inline ? `
     opacity: 0.5;
     cursor: not-allowed;
   }
+  ${getDeployCSS()}
 }
 `}
 /* Print: set body width, preserve slide backgrounds */
@@ -785,7 +788,18 @@ ${opts.inline ? `
 </style>
 </head>
 <body>${toolbarHtml}
-${slidePages}${downloadScript}${pptxScript}${imageModeScript}
+${slidePages}${downloadScript}${pptxScript}${imageModeScript}${opts.inline ? "" : `\n<script>
+function collectDeployFiles(logEl){
+  deployLog(logEl, "Collecting slides...", "info");
+  var qs = new URLSearchParams(location.search).get("contentSet") || "";
+  var dlQs = qs ? "?contentSet=" + encodeURIComponent(qs) : "";
+  return fetch("/export/slides/download" + dlQs).then(function(r){ return r.text(); }).then(function(html){
+    deployLog(logEl, "  + index.html");
+    return [{ path: "index.html", content: html }];
+  });
+}
+${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
+<\/script>`}
 </body>
 </html>`;
 
@@ -1899,6 +1913,18 @@ function ExportApp() {
             exporting ? 'Exporting ' + Math.round(progress * 100) + '%' : 'Export ' + format.toUpperCase()),
           h('button', { className: 'btn-secondary',
             onClick: () => window.open('/export/remotion/download' + (URL_COMPOSITION ? '?composition=' + encodeURIComponent(URL_COMPOSITION) : ''), '_blank') }, 'Download HTML'),
+          h('div', { className: 'print-divider' }),
+          h('div', { className: 'deploy-dropdown-wrap', id: 'deploy-wrap' },
+            h('button', { className: 'btn-deploy-trigger', id: 'vercel-btn', onClick: () => window.toggleDeployMenu && window.toggleDeployMenu(), disabled: !window._vercelStatus?.available, title: 'Deploy' },
+              h('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                h('path', { d: 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z' }),
+                h('path', { d: 'M12 13v6' }),
+                h('path', { d: 'm9 17 3-3 3 3' }))),
+            h('div', { className: 'deploy-dropdown', id: 'deploy-dropdown', style: { display: 'none' } },
+              h('button', { className: 'deploy-dropdown-item', onClick: () => { window.closeDeployMenu && window.closeDeployMenu(); window.openVercelDeploy && window.openVercelDeploy(); } },
+                h('svg', { width: 14, height: 14, viewBox: '0 0 76 65', fill: 'currentColor' },
+                  h('path', { d: 'M37.5274 0L75.0548 65H0L37.5274 0Z' })),
+                h('span', { id: 'vercel-label' }, 'Vercel')))),
         )
       )
     ),
@@ -2162,14 +2188,29 @@ html, body { height: 100%; background: var(--color-cc-bg); font-family: system-u
   height: 100vh; background: var(--color-cc-bg); color: var(--color-cc-muted);
 }
 button:focus-visible { outline: 2px solid var(--color-cc-primary); outline-offset: 2px; }
+${getDeployCSS()}
+.print-divider { width: 1px; height: 16px; background: rgba(255,255,255,0.12); }
 </style>
 </head>
 <body>
 <div id="root"></div>
+${opts.inline ? "" : getDeployModalHTML()}
 <script type="application/json" id="__remotion-files">${filesJson}<\/script>
 <script type="application/json" id="__remotion-compositions">${compositionsJson}<\/script>
 <script type="application/json" id="__remotion-assets">${assetsJson}<\/script>
 <script type="module">${REMOTION_CLIENT_JS}<\/script>
+${opts.inline ? "" : `<script>
+function collectDeployFiles(logEl){
+  deployLog(logEl, "Collecting remotion export...", "info");
+  var qs = new URLSearchParams(location.search).get("composition") || "";
+  var dlQs = qs ? "?composition=" + encodeURIComponent(qs) : "";
+  return fetch("/export/remotion/download" + dlQs).then(function(r){ return r.text(); }).then(function(html){
+    deployLog(logEl, "  + index.html");
+    return [{ path: "index.html", content: html }];
+  });
+}
+${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
+<\\/script>`}
 </body>
 </html>`;
 
