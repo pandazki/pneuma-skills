@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.22.1] - 2026-03-27
+
+### Improved
+- **Deploy dropdown** — show linked project name inline (right-aligned, truncated), auto-fit width (min 200px, max 360px)
+
 ## [2.22.0] - 2026-03-27
 
 ### Added
