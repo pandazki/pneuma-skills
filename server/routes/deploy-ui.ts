@@ -42,7 +42,9 @@ export function getDeployCSS(): string {
     border: 1px solid var(--color-cc-border);
     border-radius: 12px;
     padding: 6px;
-    min-width: 320px;
+    min-width: 200px;
+    max-width: 360px;
+    width: max-content;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
     z-index: 200;
   }
