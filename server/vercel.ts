@@ -90,6 +90,7 @@ export interface DeployBinding {
   vercel?: {
     projectId: string;
     projectName: string;
+    orgId?: string | null;
     teamId?: string | null;
     url: string;
     lastDeployedAt: string;
@@ -143,6 +144,7 @@ export interface DeployRequest {
   files: Array<{ path: string; content: string }>;
   projectName?: string;
   projectId?: string;
+  orgId?: string | null;
   teamId?: string | null;
   framework?: string | null;
 }
@@ -150,6 +152,7 @@ export interface DeployRequest {
 export interface DeployResult {
   url: string;
   projectId: string;
+  orgId: string;
   deploymentUrl: string;
 }
 
@@ -211,6 +214,7 @@ async function deployViaApi(
     url: string;
     alias?: string[];
     projectId?: string;
+    ownerId?: string;
   };
   const prodUrl = data.alias?.[0]
     ? `https://${data.alias[0]}`
@@ -219,6 +223,7 @@ async function deployViaApi(
   return {
     url: prodUrl,
     projectId: data.projectId ?? projectId ?? "",
+    orgId: data.ownerId ?? req.teamId ?? "",
     deploymentUrl: `https://${data.url}`,
   };
 }
@@ -237,13 +242,10 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
     if (req.projectId) {
       const vercelDir = join(tmpDir, ".vercel");
       mkdirSync(vercelDir, { recursive: true });
-      writeFileSync(
-        join(vercelDir, "project.json"),
-        JSON.stringify({
-          projectId: req.projectId,
-          orgId: req.teamId ?? undefined,
-        }),
-      );
+      const projConfig: Record<string, string> = { projectId: req.projectId };
+      if (req.orgId) projConfig.orgId = req.orgId;
+      else if (req.teamId) projConfig.orgId = req.teamId;
+      writeFileSync(join(vercelDir, "project.json"), JSON.stringify(projConfig));
     }
 
     // First deploy: preview first (--prod on first deploy fails with "Project Settings are invalid")
@@ -293,11 +295,13 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
     }
 
     let projectId = req.projectId ?? "";
+    let orgId = req.orgId ?? "";
     try {
       const projJson = JSON.parse(
         readFileSync(join(tmpDir, ".vercel", "project.json"), "utf-8"),
       );
       projectId = projJson.projectId ?? projectId;
+      orgId = projJson.orgId ?? orgId;
     } catch {
       /* ignore */
     }
@@ -305,6 +309,7 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
     return {
       url: deploymentUrl,
       projectId,
+      orgId,
       deploymentUrl,
     };
   } finally {

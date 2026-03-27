@@ -488,6 +488,7 @@ function executeDeploy(){
     if(_vercelBinding) {
       body.projectId = _vercelBinding.projectId;
       body.projectName = _vercelBinding.projectName;
+      body.orgId = _vercelBinding.orgId || null;
       body.teamId = _vercelBinding.teamId;
       deployLog(logEl, "Updating project: " + _vercelBinding.projectName, "info");
     } else {
@@ -513,12 +514,13 @@ function executeDeploy(){
     var pName = document.getElementById("vercel-project-name")?.value || _vercelBinding?.projectName || "pneuma-deploy";
     _vercelBinding = {
       projectId: result.projectId,
+      orgId: result.orgId || _vercelBinding?.orgId || null,
       projectName: pName,
       url: result.url,
     };
 
     document.getElementById("vercel-label").textContent = "Update: " + pName;
-    document.getElementById("vercel-console-link").href = "https://vercel.com/" + pName;
+    document.getElementById("vercel-console-link").href = result.dashboardUrl || "https://vercel.com";
 
     document.getElementById("result-log").innerHTML = logEl.innerHTML;
     document.getElementById("vercel-progress").style.display = "none";

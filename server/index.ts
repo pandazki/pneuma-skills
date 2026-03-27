@@ -1126,23 +1126,32 @@ export function startServer(options: ServerOptions) {
         files: Array<{ path: string; content: string }>;
         projectName?: string;
         projectId?: string;
+        orgId?: string | null;
         teamId?: string | null;
         framework?: string | null;
       }>();
       const result = await deployToVercel(body);
+
+      // Build dashboard URL
+      const status = await getVercelStatus();
+      const scope = status.user ?? "";
+      const dashboardUrl = scope
+        ? `https://vercel.com/${scope}/${body.projectName ?? "pneuma-deploy"}`
+        : "https://vercel.com";
 
       // Save binding
       const binding = getDeployBinding(workspace);
       binding.vercel = {
         projectId: result.projectId,
         projectName: body.projectName ?? "pneuma-deploy",
+        orgId: result.orgId || body.orgId || null,
         teamId: body.teamId ?? null,
         url: result.url,
         lastDeployedAt: new Date().toISOString(),
       };
       saveDeployBinding(workspace, binding);
 
-      return c.json(result);
+      return c.json({ ...result, dashboardUrl });
     } catch (err: any) {
       return c.json({ error: err.message }, 500);
     }
