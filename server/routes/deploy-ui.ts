@@ -65,6 +65,14 @@ export function getDeployCSS(): string {
   .deploy-dropdown-item:hover {
     background: rgba(255, 255, 255, 0.06);
   }
+  .deploy-dropdown-item .deploy-linked-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #22c55e;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
 
   /* Deploy Modal */
   .deploy-modal {
@@ -429,8 +437,13 @@ var _providerConfig = {
     }).then(function(b){
       if(b && (b.projectId || b.projectName)) {
         _deployBindings[key] = b;
-        var label = document.getElementById(cfg.labelId);
-        if(label) label.textContent = cfg.name + ": " + (b.projectName || "linked");
+        var item = document.getElementById(cfg.labelId)?.closest(".deploy-dropdown-item");
+        if(item && !item.querySelector(".deploy-linked-dot")) {
+          var dot = document.createElement("span");
+          dot.className = "deploy-linked-dot";
+          dot.title = b.projectName || "linked";
+          item.appendChild(dot);
+        }
       }
     }).catch(function(){});
   });
@@ -585,8 +598,13 @@ function executeDeploy(){
       url: prodUrl,
     };
 
-    var label = document.getElementById(cfg.labelId);
-    if(label) label.textContent = cfg.name + ": " + pName;
+    var item = document.getElementById(cfg.labelId)?.closest(".deploy-dropdown-item");
+    if(item && !item.querySelector(".deploy-linked-dot")) {
+      var dot = document.createElement("span");
+      dot.className = "deploy-linked-dot";
+      dot.title = pName;
+      item.appendChild(dot);
+    }
 
     var dashBtn = document.getElementById("vercel-console-link");
     dashBtn.dataset.href = result.dashboardUrl || "";

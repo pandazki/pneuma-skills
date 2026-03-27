@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.22.0] - 2026-03-27
+
+### Added
+- **Vercel deployment** — deploy projects to Vercel directly from export pages. CLI (`vercel deploy`) prioritized, API token as fallback. Config in Launcher settings, deploy binding per contentSet in `.pneuma/deploy.json`
+- **Cloudflare Pages deployment** — deploy to CF Pages via Wrangler CLI or Direct Upload API. Multipart form with SHA-256 manifest for file deduplication. Compatible with wrangler < 4.78 (auto-creates project)
+- **Shared deploy UI** — `server/routes/deploy-ui.ts` provides reusable CSS, toolbar button (cloud icon + provider dropdown), modal (form/progress log/result/error), and deploy script. Modes only implement `collectDeployFiles()`
+- **Deploy on all export pages** — webcraft (multi-page site with aggregation index), slides (single inline HTML), and remotion (standalone player HTML) all support both Vercel and Cloudflare Pages
+- **Deploy log** — real-time progress output during deployment (collecting files, uploading, result)
+- **Deploy binding per contentSet** — each contentSet deploys to its own project independently, stored as `vercel[contentSet]` and `cfPages[contentSet]` in `.pneuma/deploy.json`
+- **Launcher settings** — Vercel (token + team) and Cloudflare Pages (API token + account ID) configuration sections
+
 ## [2.21.0] - 2026-03-26
 
 ### Added

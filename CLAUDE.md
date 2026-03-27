@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.21.0
+**Version:** 2.22.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `remotion`, `gridboard`, `mode-maker`, `evolve`
 
@@ -96,7 +96,10 @@ pneuma-skills/
 │   └── codex/                 # Codex backend — stdio JSON-RPC via node:child_process
 ├── server/
 │   ├── index.ts               # Hono server + launcher endpoints + WS routing
-│   ├── routes/export.ts       # Slide + webcraft export routes
+│   ├── routes/export.ts       # Slide + webcraft + remotion export routes
+│   ├── routes/deploy-ui.ts    # Shared deploy UI (CSS, HTML, JS) for export pages
+│   ├── vercel.ts              # Vercel deploy: config, CLI detection, deploy (CLI + API)
+│   ├── cloudflare-pages.ts    # CF Pages deploy: config, wrangler CLI, Direct Upload API
 │   ├── utils.ts               # Shared server utilities (pathStartsWith, isWin)
 │   ├── ws-bridge*.ts          # Dual WebSocket bridge (browser JSON ↔ CLI NDJSON)
 │   ├── skill-installer.ts     # Skill copy + template engine + instructions injection (CLAUDE.md / AGENTS.md)
@@ -297,6 +300,7 @@ Stored in `<workspace>/.pneuma/`:
 | `replay-checkout/` | Temp extraction dir for checkpoint files during replay |
 | `resumed-context.xml` | Injected context when continuing from replay |
 | `evolution/` | Evolution proposals, backups, and CLAUDE.md snapshots |
+| `deploy.json` | Deploy bindings keyed by contentSet: `{ vercel: { _default: {...} }, cfPages: { _default: {...} } }` |
 
 ### Skill Installation & Update Detection
 
@@ -408,6 +412,28 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 | POST | `/api/share/process` | Upload full history package to R2 |
 | GET | `/api/r2/status` | Check R2 configuration status |
 | POST | `/api/import` | Download shared package, prepare workspace |
+
+### Deploy (Vercel)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/vercel/status` | Check Vercel availability (CLI or token) |
+| GET | `/api/vercel/config` | Get Vercel token config (masked) |
+| POST | `/api/vercel/config` | Save Vercel token |
+| GET | `/api/vercel/teams` | List Vercel teams |
+| GET | `/api/vercel/binding` | Get deploy binding for contentSet |
+| POST | `/api/vercel/deploy` | Deploy files to Vercel |
+| DELETE | `/api/vercel/binding` | Clear deploy binding |
+
+### Deploy (Cloudflare Pages)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/cf-pages/status` | Check CF Pages availability (CLI or token) |
+| GET | `/api/cf-pages/config` | Get CF Pages config (masked) |
+| POST | `/api/cf-pages/config` | Save CF Pages API token + account ID |
+| GET | `/api/cf-pages/binding` | Get deploy binding for contentSet |
+| POST | `/api/cf-pages/deploy` | Deploy files to Cloudflare Pages |
 
 ### Workspace & Viewer
 
