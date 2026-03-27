@@ -42,7 +42,7 @@ export function getDeployCSS(): string {
     border: 1px solid var(--color-cc-border);
     border-radius: 12px;
     padding: 6px;
-    min-width: 180px;
+    min-width: 260px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
     z-index: 200;
   }
@@ -61,17 +61,19 @@ export function getDeployCSS(): string {
     cursor: pointer;
     transition: background 0.15s;
     font-family: inherit;
+    white-space: nowrap;
   }
   .deploy-dropdown-item:hover {
     background: rgba(255, 255, 255, 0.06);
   }
-  .deploy-dropdown-item .deploy-linked-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #22c55e;
-    flex-shrink: 0;
+  .deploy-dropdown-item .deploy-linked-name {
     margin-left: auto;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--color-cc-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
   }
 
   /* Deploy Modal */
@@ -438,11 +440,11 @@ var _providerConfig = {
       if(b && (b.projectId || b.projectName)) {
         _deployBindings[key] = b;
         var item = document.getElementById(cfg.labelId)?.closest(".deploy-dropdown-item");
-        if(item && !item.querySelector(".deploy-linked-dot")) {
-          var dot = document.createElement("span");
-          dot.className = "deploy-linked-dot";
-          dot.title = b.projectName || "linked";
-          item.appendChild(dot);
+        if(item && !item.querySelector(".deploy-linked-name")) {
+          var nameEl = document.createElement("span");
+          nameEl.className = "deploy-linked-name";
+          nameEl.textContent = b.projectName || "";
+          item.appendChild(nameEl);
         }
       }
     }).catch(function(){});
@@ -599,11 +601,13 @@ function executeDeploy(){
     };
 
     var item = document.getElementById(cfg.labelId)?.closest(".deploy-dropdown-item");
-    if(item && !item.querySelector(".deploy-linked-dot")) {
-      var dot = document.createElement("span");
-      dot.className = "deploy-linked-dot";
-      dot.title = pName;
-      item.appendChild(dot);
+    var nameEl = item?.querySelector(".deploy-linked-name");
+    if(nameEl) { nameEl.textContent = pName; }
+    else if(item) {
+      var ne = document.createElement("span");
+      ne.className = "deploy-linked-name";
+      ne.textContent = pName;
+      item.appendChild(ne);
     }
 
     var dashBtn = document.getElementById("vercel-console-link");
