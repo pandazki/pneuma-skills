@@ -1116,8 +1116,9 @@ export function startServer(options: ServerOptions) {
   });
 
   app.get("/api/vercel/binding", (c) => {
+    const key = (c.req.query("contentSet") || "_default");
     const binding = getDeployBinding(workspace);
-    return c.json(binding.vercel ?? null);
+    return c.json(binding.vercel?.[key] ?? null);
   });
 
   app.post("/api/vercel/deploy", async (c) => {
@@ -1129,6 +1130,7 @@ export function startServer(options: ServerOptions) {
         orgId?: string | null;
         teamId?: string | null;
         framework?: string | null;
+        contentSet?: string;
       }>();
       const result = await deployToVercel(body);
 
@@ -1139,9 +1141,11 @@ export function startServer(options: ServerOptions) {
         ? `https://vercel.com/${scope}/${body.projectName ?? "pneuma-deploy"}`
         : "https://vercel.com";
 
-      // Save binding
+      // Save binding keyed by contentSet
+      const key = body.contentSet || "_default";
       const binding = getDeployBinding(workspace);
-      binding.vercel = {
+      if (!binding.vercel) binding.vercel = {};
+      binding.vercel[key] = {
         projectId: result.projectId,
         projectName: body.projectName ?? "pneuma-deploy",
         orgId: result.orgId || body.orgId || null,
@@ -1158,8 +1162,9 @@ export function startServer(options: ServerOptions) {
   });
 
   app.delete("/api/vercel/binding", (c) => {
+    const key = (c.req.query("contentSet") || "_default");
     const binding = getDeployBinding(workspace);
-    delete binding.vercel;
+    if (binding.vercel) delete binding.vercel[key];
     saveDeployBinding(workspace, binding);
     return c.json({ ok: true });
   });

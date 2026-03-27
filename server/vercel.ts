@@ -86,15 +86,17 @@ export async function getVercelStatus(): Promise<VercelStatus> {
 
 // --- Deploy Binding ---
 
+export interface VercelProjectBinding {
+  projectId: string;
+  projectName: string;
+  orgId?: string | null;
+  teamId?: string | null;
+  url: string;
+  lastDeployedAt: string;
+}
+
 export interface DeployBinding {
-  vercel?: {
-    projectId: string;
-    projectName: string;
-    orgId?: string | null;
-    teamId?: string | null;
-    url: string;
-    lastDeployedAt: string;
-  };
+  vercel?: Record<string, VercelProjectBinding>;
 }
 
 export function getDeployBinding(workspace: string): DeployBinding {

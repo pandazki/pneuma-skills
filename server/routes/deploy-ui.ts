@@ -375,13 +375,15 @@ export function getDeployScript(): string {
   return `
 var _vercelBinding = null;
 var _vercelStatus = null;
+var _deployContentSet = new URLSearchParams(location.search).get("contentSet") || "";
 
 (function(){
+  var bindingQs = _deployContentSet ? "?contentSet=" + encodeURIComponent(_deployContentSet) : "";
   fetch("/api/vercel/status").then(function(r){return r.json()}).then(function(s){
     _vercelStatus = s;
     var btn = document.getElementById("vercel-btn");
     if(s.available) btn.disabled = false;
-    return fetch("/api/vercel/binding").then(function(r){return r.json()});
+    return fetch("/api/vercel/binding" + bindingQs).then(function(r){return r.json()});
   }).then(function(b){
     if(b && b.projectId) {
       _vercelBinding = b;
@@ -483,7 +485,7 @@ function executeDeploy(){
   collectDeployFiles(logEl).then(function(files){
     deployLog(logEl, "Total: " + files.length + " files");
 
-    var body = { files: files, framework: null };
+    var body = { files: files, framework: null, contentSet: _deployContentSet || undefined };
 
     if(_vercelBinding) {
       body.projectId = _vercelBinding.projectId;
