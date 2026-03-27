@@ -163,7 +163,7 @@ export function getDeployCSS(): string {
     border: 1px solid var(--color-cc-border);
     border-radius: 10px;
     padding: 4px;
-    z-index: 10;
+    z-index: 100;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     max-height: 160px;
     overflow-y: auto;
@@ -186,6 +186,8 @@ export function getDeployCSS(): string {
     display: flex;
     gap: 8px;
     margin-top: 20px;
+    position: relative;
+    z-index: 1;
   }
   .deploy-actions button {
     padding: 8px 18px !important;
