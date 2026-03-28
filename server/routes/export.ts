@@ -203,6 +203,8 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
       <span class="meta">${manifest.slides.length} slides \u00b7 ${W}\u00d7${H}</span>
     </div>
     <div class="export-toolbar-actions">
+      <button class="btn-secondary" onclick="previewPlayer()">Preview</button>
+      <div class="print-divider"></div>
       <button class="btn-primary" onclick="downloadSlides()">Download HTML</button>
       <button class="btn-secondary" onclick="downloadPptx()">Download PPTX</button>
       <div class="print-group">
@@ -220,6 +222,10 @@ ${getDeployModalHTML()}`;
     const downloadScript = opts.inline
       ? ""
       : `\n<script>
+function previewPlayer(){
+  var qs=new URLSearchParams(location.search).get("contentSet");
+  window.open("/export/slides/player"+(qs?"?contentSet="+encodeURIComponent(qs):""),"_blank");
+}
 function downloadSlides(){
   var btn=document.querySelector('.btn-primary');btn.textContent="Preparing...";btn.disabled=true;
   var qs=new URLSearchParams(location.search).get("contentSet");
@@ -906,6 +912,7 @@ ${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
     const outlineMiniScale = 120 / W;
 
     // Inline assets for standalone page
+    const thumbScale = 130 / W;
     let playerHtml = `<!DOCTYPE html>
 <html>
 <head>
@@ -930,10 +937,6 @@ html, body { height: 100%; overflow: hidden; background: var(--color-bg); color:
 /* Layout */
 .player-root { display: flex; height: 100%; }
 .player-root.outline-hidden .outline { display: none; }
-.player-root.outline-bottom { flex-direction: column; }
-.player-root.outline-bottom .outline { border-right: none; border-top: 1px solid var(--color-border); height: auto; overflow-x: auto; overflow-y: hidden; }
-.player-root.outline-bottom .outline-list { flex-direction: row; padding: 10px; gap: 8px; }
-.player-root.outline-bottom .outline-item .mini { width: 100px; }
 
 /* Outline */
 .outline { width: 200px; flex-shrink: 0; background: var(--color-surface); border-right: 1px solid var(--color-border); overflow-y: auto; overflow-x: hidden; }
@@ -943,31 +946,34 @@ html, body { height: 100%; overflow: hidden; background: var(--color-bg); color:
 .outline-item.active { border-color: var(--color-primary); background: rgba(249,115,22,0.05); }
 .outline-num { font-size: 11px; font-weight: 600; color: var(--color-muted); min-width: 20px; text-align: center; flex-shrink: 0; }
 .outline-item.active .outline-num { color: var(--color-primary); }
-.mini { width: 130px; aspect-ratio: ${W} / ${H}; overflow: hidden; border-radius: 4px; background: #000; flex-shrink: 0; pointer-events: none; }
-.mini-inner { width: ${W}px; height: ${H}px; transform: scale(${outlineMiniScale}); transform-origin: top left; }
+.mini { width: 130px; aspect-ratio: ${W} / ${H}; overflow: hidden; border-radius: 4px; background: var(--color-bg, #000); flex-shrink: 0; pointer-events: none; }
+.mini-inner { width: ${W}px; height: ${H}px; transform: scale(${thumbScale}); transform-origin: top left; overflow: hidden; isolation: isolate; }
 
 /* Stage */
 .stage { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; min-width: 0; }
 .slide-frame { position: relative; width: ${W}px; height: ${H}px; transform-origin: center center; }
-.slide-page { position: absolute; inset: 0; width: ${W}px; height: ${H}px; overflow: hidden; isolation: isolate; background-color: var(--color-bg, #fff) !important; display: none; border-radius: 8px; box-shadow: 0 12px 48px rgba(0,0,0,0.6); }
-.slide-page.active { display: block; }
+#frame .slide-page { position: absolute; inset: 0; width: ${W}px; height: ${H}px; overflow: hidden; isolation: isolate; display: none; border-radius: 8px; box-shadow: 0 12px 48px rgba(0,0,0,0.6); }
+#frame .slide-page.active { display: block; }
 
-/* Bottom bar */
-.bottom-bar { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: rgba(24,24,27,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--color-border); border-radius: 999px; z-index: 10; }
+/* Bottom bar — auto-hide */
+.bottom-bar { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: rgba(24,24,27,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--color-border); border-radius: 999px; z-index: 10; transition: opacity 0.3s, visibility 0.3s; }
+.bottom-bar.hidden { opacity: 0; visibility: hidden; }
 .bar-btn { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: none; border-radius: 999px; background: transparent; color: var(--color-muted); cursor: pointer; transition: all 0.15s; }
 .bar-btn:hover { color: var(--color-fg); background: rgba(255,255,255,0.08); }
 .bar-btn.active { color: var(--color-primary); background: rgba(249,115,22,0.12); }
 .bar-counter { font-size: 12px; color: var(--color-muted); min-width: 48px; text-align: center; font-variant-numeric: tabular-nums; }
 .bar-divider { width: 1px; height: 16px; background: rgba(255,255,255,0.1); }
+.zoom-label { font-size: 11px; color: var(--color-muted); min-width: 36px; text-align: center; cursor: pointer; }
+.zoom-label:hover { color: var(--color-fg); }
 </style>
 </head>
 <body>
 <div class="player-root outline-left" id="root">
   <div class="outline" id="outline">
     <div class="outline-list">
-${slides.map((s, i) => `      <div class="outline-item${i === 0 ? " active" : ""}" data-i="${i}" onclick="go(${i})">
+${slides.map((s, i) => `      <div class="outline-item${i === 0 ? " active" : ""}" onclick="go(${i})">
         <span class="outline-num">${i + 1}</span>
-        <div class="mini"><div class="mini-inner slide-page" style="${s.style}">${s.body}</div></div>
+        <div class="mini"><div class="mini-inner slide-page${s.cls ? " " + s.cls : ""}"${s.style ? ` style="${s.style}"` : ""}>${s.body}</div></div>
       </div>`).join("\n")}
     </div>
   </div>
@@ -975,56 +981,91 @@ ${slides.map((s, i) => `      <div class="outline-item${i === 0 ? " active" : ""
     <div class="slide-frame" id="frame">
 ${slides.map((s, i) => `      <div class="slide-page${i === 0 ? " active" : ""}${s.cls ? " " + s.cls : ""}"${s.style ? ` style="${s.style}"` : ""}>${s.body}</div>`).join("\n")}
     </div>
-    <div class="bottom-bar">
+    <div class="bottom-bar" id="bar">
       <button class="bar-btn" onclick="go(cur-1)" title="Previous"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
       <span class="bar-counter" id="counter">1 / ${totalSlides}</span>
       <button class="bar-btn" onclick="go(cur+1)" title="Next"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>
       <div class="bar-divider"></div>
-      <button class="bar-btn" id="ol-left" onclick="setOL('left')" title="Outline left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg></button>
-      <button class="bar-btn" id="ol-bottom" onclick="setOL('bottom')" title="Outline bottom"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="15" x2="21" y2="15"/></svg></button>
+      <button class="bar-btn" onclick="zoomOut()" title="Zoom out"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      <span class="zoom-label" id="zoom-label" onclick="zoomFit()" title="Click to fit">Fit</span>
+      <button class="bar-btn" onclick="zoomIn()" title="Zoom in"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      <div class="bar-divider"></div>
+      <button class="bar-btn" id="ol-left" onclick="setOL('left')" title="Outline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg></button>
       <button class="bar-btn" id="ol-hidden" onclick="setOL('hidden')" title="Hide outline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></button>
     </div>
   </div>
 </div>
 <script>
 var cur=0,total=${totalSlides},W=${W},H=${H};
-var slides=document.querySelectorAll("#frame .slide-page");
+var _slides=document.querySelectorAll("#frame .slide-page");
 var thumbs=document.querySelectorAll(".outline-item");
+var _zoomMode="fit"; // "fit" or number (percentage/100)
+var _zoomScale=1;
 
 function go(i){
   if(i<0||i>=total)return;
-  slides[cur].classList.remove("active");
+  _slides[cur].classList.remove("active");
   cur=i;
-  slides[cur].classList.add("active");
+  _slides[cur].classList.add("active");
   document.getElementById("counter").textContent=(cur+1)+" / "+total;
   thumbs.forEach(function(t,j){t.classList.toggle("active",j===i)});
   thumbs[i].scrollIntoView({block:"nearest",inline:"nearest",behavior:"smooth"});
+  showBar();
 }
 
-function fit(){
+function calcFitScale(){
   var stage=document.getElementById("stage");
   var sw=stage.clientWidth-48,sh=stage.clientHeight-48;
-  var scale=Math.min(sw/W,sh/H,1);
-  var frame=document.getElementById("frame");
-  frame.style.transform="scale("+scale+")";
+  return Math.min(sw/W,sh/H,1);
+}
+
+function applyZoom(){
+  var scale=_zoomMode==="fit"?calcFitScale():_zoomMode;
+  _zoomScale=scale;
+  document.getElementById("frame").style.transform="scale("+scale+")";
+  document.getElementById("zoom-label").textContent=_zoomMode==="fit"?"Fit":Math.round(scale*100)+"%";
+}
+
+function zoomFit(){ _zoomMode="fit"; applyZoom(); }
+function zoomIn(){
+  var s=_zoomMode==="fit"?calcFitScale():_zoomMode;
+  var steps=[0.5,0.75,1,1.25,1.5,2];
+  for(var j=0;j<steps.length;j++){if(steps[j]>s+0.01){_zoomMode=steps[j];applyZoom();return;}}
+}
+function zoomOut(){
+  var s=_zoomMode==="fit"?calcFitScale():_zoomMode;
+  var steps=[0.5,0.75,1,1.25,1.5,2];
+  for(var j=steps.length-1;j>=0;j--){if(steps[j]<s-0.01){_zoomMode=steps[j];applyZoom();return;}}
 }
 
 function setOL(pos){
   var root=document.getElementById("root");
   root.className="player-root outline-"+pos;
   localStorage.setItem("slide-ol",pos);
-  ["left","bottom","hidden"].forEach(function(p){
+  ["left","hidden"].forEach(function(p){
     var b=document.getElementById("ol-"+p);
     if(b)b.classList.toggle("active",p===pos);
   });
-  setTimeout(fit,50);
+  setTimeout(applyZoom,50);
 }
+
+// Bar auto-hide
+var _barTimer=null;
+function showBar(){
+  var bar=document.getElementById("bar");
+  bar.classList.remove("hidden");
+  clearTimeout(_barTimer);
+  _barTimer=setTimeout(function(){bar.classList.add("hidden")},2500);
+}
+document.addEventListener("mousemove",showBar);
+document.addEventListener("click",showBar);
 
 // Init
 var savedOL=localStorage.getItem("slide-ol")||"left";
 setOL(savedOL);
-fit();
-window.addEventListener("resize",fit);
+applyZoom();
+showBar();
+window.addEventListener("resize",function(){if(_zoomMode==="fit")applyZoom()});
 
 document.addEventListener("keydown",function(e){
   if(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA")return;
