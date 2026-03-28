@@ -203,8 +203,6 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
       <span class="meta">${manifest.slides.length} slides \u00b7 ${W}\u00d7${H}</span>
     </div>
     <div class="export-toolbar-actions">
-      <button class="btn-secondary" onclick="previewPlayer()">Preview</button>
-      <div class="print-divider"></div>
       <button class="btn-primary" onclick="downloadSlides()">Download HTML</button>
       <button class="btn-secondary" onclick="downloadPptx()">Download PPTX</button>
       <div class="print-group">
@@ -213,7 +211,7 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
         <div class="print-divider"></div>
         <button class="print-action" id="print-btn" onclick="window.print()">Print / Save PDF</button>
       </div>
-      ${getDeployToolbarHTML()}
+      ${getDeployToolbarHTML({ previewUrl: `/export/slides/player${opts.contentSet ? "?contentSet=" + encodeURIComponent(opts.contentSet) : ""}` })}
     </div>
   </div>
 </div>
@@ -222,10 +220,6 @@ ${getDeployModalHTML()}`;
     const downloadScript = opts.inline
       ? ""
       : `\n<script>
-function previewPlayer(){
-  var qs=new URLSearchParams(location.search).get("contentSet");
-  window.open("/export/slides/player"+(qs?"?contentSet="+encodeURIComponent(qs):""),"_blank");
-}
 function downloadSlides(){
   var btn=document.querySelector('.btn-primary');btn.textContent="Preparing...";btn.disabled=true;
   var qs=new URLSearchParams(location.search).get("contentSet");
@@ -1010,13 +1004,12 @@ function go(i){
   document.getElementById("counter").textContent=(cur+1)+" / "+total;
   thumbs.forEach(function(t,j){t.classList.toggle("active",j===i)});
   thumbs[i].scrollIntoView({block:"nearest",inline:"nearest",behavior:"smooth"});
-  showBar();
 }
 
 function calcFitScale(){
   var stage=document.getElementById("stage");
   var sw=stage.clientWidth-48,sh=stage.clientHeight-48;
-  return Math.min(sw/W,sh/H,1);
+  return Math.min(sw/W,sh/H);
 }
 
 function applyZoom(){
@@ -1058,7 +1051,6 @@ function showBar(){
   _barTimer=setTimeout(function(){bar.classList.add("hidden")},2500);
 }
 document.addEventListener("mousemove",showBar);
-document.addEventListener("click",showBar);
 
 // Init
 var savedOL=localStorage.getItem("slide-ol")||"left";
