@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.23.1] - 2026-03-28
+
+### Added
+- **Import local archives** — launcher import dialog now supports selecting local `.tar.gz` files alongside share URLs. New `POST /api/import/upload` endpoint for multipart file upload
+
 ## [2.23.0] - 2026-03-28
 
 ### Added
