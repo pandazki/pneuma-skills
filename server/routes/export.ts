@@ -91,6 +91,40 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
     return html;
   }
 
+  // --- Shared slide helpers ---
+
+  /** Extract head/body content from a slide HTML file */
+  function extractSlideContent(filePath: string): { headContent: string; bodyContent: string; bodyStyle: string; bodyClass: string } {
+    let html = existsSync(filePath) ? readFileSync(filePath, "utf-8") : `<p>Missing: ${filePath}</p>`;
+    let headContent = "", bodyContent = html, bodyStyle = "", bodyClass = "";
+    if (html.includes("<!DOCTYPE") || html.includes("<html")) {
+      const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+      if (headMatch) headContent = headMatch[1];
+      const bodyTagMatch = html.match(/<body([^>]*)>/i);
+      if (bodyTagMatch) {
+        const attrs = bodyTagMatch[1];
+        const sm = attrs.match(/style\s*=\s*["']([^"']*)["']/i);
+        if (sm) bodyStyle = sm[1];
+        const cm = attrs.match(/class\s*=\s*["']([^"']*)["']/i);
+        if (cm) bodyClass = cm[1];
+      }
+      const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      bodyContent = bodyMatch ? bodyMatch[1].trim() : html.replace(/<!DOCTYPE[^>]*>/gi, "").replace(/<\/?html[^>]*>/gi, "").replace(/<head[\s\S]*?<\/head>/gi, "").replace(/<\/?body[^>]*>/gi, "").trim();
+    }
+    return { headContent, bodyContent, bodyStyle, bodyClass };
+  }
+
+  /** Adapt CSS selectors for shadow DOM: :root/body/html → :host */
+  function adaptCssForShadow(html: string): string {
+    return html.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_match, css: string) => {
+      const adapted = css
+        .replace(/(^|[},;\s]):root\b/g, "$1:host")
+        .replace(/(^|[},;\s])body\b/g, "$1:host")
+        .replace(/(^|[},;\s])html\b/g, "$1:host");
+      return `<style>${adapted}</style>`;
+    });
+  }
+
   /** Build the full export HTML. When inline=true, assets are inlined and toolbar/base removed. */
   function buildExportHtml(opts: { inline: boolean; contentSet?: string }): { html: string; title: string } | { error: string; status: number } {
     // Resolve base directory: workspace root or content set subdirectory
@@ -127,71 +161,55 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
 
     // Read theme.css and patch font stacks for CJK print compatibility
     const themePath = join(baseDir, "theme.css");
-    let themeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
-    // Scope theme CSS to .slide-page so it doesn't pollute the export toolbar.
-    // Extract :root blocks (CSS variables) to keep them global.
+    let rawThemeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
+    const CJK_FONTS = '"PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei"';
+    rawThemeCSS = rawThemeCSS.replace(
+      /(--font-sans\s*:\s*)([^;]*?)(,\s*)(sans-serif\s*;)/,
+      `$1$2, ${CJK_FONTS}$3$4`,
+    );
+    // Adapt theme CSS for shadow DOM injection (:root → :host)
+    const themeCSSForShadow = rawThemeCSS ? adaptCssForShadow(`<style>${rawThemeCSS}</style>`) : "";
+    // Scope theme CSS for outer page (.slide-page wrapper) — only used for print styles
+    let themeCSS = rawThemeCSS;
     if (themeCSS) {
       const globals: string[] = [];
-      // Extract @import and :root blocks — they must stay at top level
       let scoped = themeCSS.replace(/@import\s+url\([^)]*\)\s*;|@import\s+[^;]+;/g, (m) => { globals.push(m); return ""; });
       scoped = scoped.replace(/:root\s*\{[^}]*\}/g, (m) => { globals.push(m); return ""; });
       themeCSS = globals.join("\n") + "\n.slide-page {\n" + scoped + "\n}";
     }
-    const CJK_FONTS = '"PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei"';
-    themeCSS = themeCSS.replace(
-      /(--font-sans\s*:\s*)([^;]*?)(,\s*)(sans-serif\s*;)/,
-      `$1$2, ${CJK_FONTS}$3$4`,
-    );
 
     const W = (options.initParams?.slideWidth as number) || 1280;
     const H = (options.initParams?.slideHeight as number) || 720;
 
-    // Read each slide HTML, extract <head> resources, and build page sections
+    const slideDataArray = manifest.slides.map((slide: any) => {
+      const slidePath = join(baseDir, slide.file);
+      return extractSlideContent(slidePath);
+    });
+
+    // Collect external head resources (fonts, shared stylesheets) for the outer page
     const headResourceSet = new Set<string>();
-    const slidePages = manifest.slides
-      .map((slide) => {
-        const slidePath = join(baseDir, slide.file);
-        let html = existsSync(slidePath) ? readFileSync(slidePath, "utf-8") : `<p>Missing: ${slide.file}</p>`;
-        let bodyStyle = "";
-        let bodyClass = "";
-        if (html.includes("<!DOCTYPE") || html.includes("<html")) {
-          const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
-          if (headMatch) {
-            const headContent = headMatch[1];
-            const resourceRe = /<(link\b[^>]*(?:\/>|>)|script\b[^>]*>[\s\S]*?<\/script>|style\b[^>]*>[\s\S]*?<\/style>)/gi;
-            let m;
-            while ((m = resourceRe.exec(headContent)) !== null) {
-              const tag = m[0].trim();
-              if (/<link\b/i.test(tag) && !/rel\s*=\s*["']stylesheet["']/i.test(tag) && !/\.css/i.test(tag)) continue;
-              headResourceSet.add(tag);
-            }
-          }
-          const bodyTagMatch = html.match(/<body([^>]*)>/i);
-          if (bodyTagMatch) {
-            const attrs = bodyTagMatch[1];
-            const styleMatch = attrs.match(/style\s*=\s*["']([^"']*)["']/i);
-            if (styleMatch) bodyStyle = styleMatch[1];
-            const classMatch = attrs.match(/class\s*=\s*["']([^"']*)["']/i);
-            if (classMatch) bodyClass = classMatch[1];
-          }
-          const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-          if (bodyMatch) {
-            html = bodyMatch[1].trim();
-          } else {
-            html = html
-              .replace(/<!DOCTYPE[^>]*>/gi, "")
-              .replace(/<\/?html[^>]*>/gi, "")
-              .replace(/<head[\s\S]*?<\/head>/gi, "")
-              .replace(/<\/?body[^>]*>/gi, "")
-              .trim();
-          }
-        }
-        const wrapStyle = bodyStyle ? ` style="${bodyStyle}"` : "";
-        const wrapClass = bodyClass ? ` ${bodyClass}` : "";
-        return `<div class="slide-page${wrapClass}"${wrapStyle}>${html}</div>`;
-      })
-      .join("\n");
+    for (const sd of slideDataArray) {
+      const resourceRe = /<(link\b[^>]*(?:\/>|>)|style\b[^>]*>[\s\S]*?<\/style>)/gi;
+      let m;
+      while ((m = resourceRe.exec(sd.headContent)) !== null) {
+        const tag = m[0].trim();
+        // Only keep font links for the outer page (needed for snapdom image capture)
+        if (/<link\b/i.test(tag) && /fonts/i.test(tag)) headResourceSet.add(tag);
+      }
+    }
     const headResources = Array.from(headResourceSet).join("\n");
+
+    // Build shadow DOM content for each slide
+    const slideShadowHtmls = slideDataArray.map((sd) => {
+      const hostStyle = `:host{display:block;width:100%;height:100%;overflow:hidden;position:relative;isolation:isolate;background-color:var(--color-bg,#fff)}`;
+      const content = adaptCssForShadow(`${sd.headContent}${sd.bodyContent}`);
+      return `<style>${hostStyle}</style>${themeCSSForShadow}${content}`;
+    });
+
+    // Slide containers (empty — shadow DOM injected by JS)
+    const slidePages = slideDataArray.map((_sd: any, i: number) =>
+      `<div class="slide-page" data-slide="${i}"></div>`
+    ).join("\n");
 
     const title = manifest.title || "Slides";
     const contentBase = resolvedContentSet ? `${resolvedContentSet}/` : "";
@@ -514,7 +532,7 @@ function downloadPptx(){
       ? ""
       : `\n<script src="/vendor/snapdom.js"><\/script>
 <script>
-var originalSlides=[],converting=false,metaOriginal='';
+var originalShadows=[],converting=false,metaOriginal='';
 
 async function convertToImages(){
   if(converting)return;converting=true;
@@ -527,13 +545,14 @@ async function convertToImages(){
   for(var i=0;i<pages.length;i++){
     if(meta)meta.textContent='Converting '+(i+1)+'/'+pages.length+'...';
     var page=pages[i];
-    if(!originalSlides[i])originalSlides[i]=page.innerHTML;
+    if(!originalShadows[i]&&page.shadowRoot)originalShadows[i]=page.shadowRoot.innerHTML;
     try{
       var result=await snapdom(page,{scale:2,embedFonts:true});
       var png=await result.toPng();
-      page.innerHTML='';
+      if(page.shadowRoot)page.shadowRoot.innerHTML='';
       png.style.cssText='width:100%;height:100%;display:block';
-      page.appendChild(png);
+      if(page.shadowRoot)page.shadowRoot.appendChild(png);
+      else{page.innerHTML='';page.appendChild(png)}
     }catch(e){
       console.warn('Slide '+(i+1)+' capture failed:',e.message);
     }
@@ -543,7 +562,7 @@ async function convertToImages(){
 }
 function restoreHTML(){
   var pages=document.querySelectorAll('.slide-page');
-  for(var i=0;i<pages.length;i++){if(originalSlides[i]!=null)pages[i].innerHTML=originalSlides[i]}
+  for(var i=0;i<pages.length;i++){if(originalShadows[i]!=null&&pages[i].shadowRoot)pages[i].shadowRoot.innerHTML=originalShadows[i]}
 }
 function setMode(mode){
   document.getElementById('mode-img').classList.toggle('active',mode==='image');
@@ -605,6 +624,7 @@ body {
   overflow: hidden;
   break-after: page;
   position: relative;
+  box-sizing: border-box;
   /* Prevent blending issues with background */
   isolation: isolate;
   background-color: var(--color-bg, #ffffff) !important;
@@ -790,7 +810,21 @@ ${opts.inline ? `
 </style>
 </head>
 <body>${toolbarHtml}
-${slidePages}${downloadScript}${pptxScript}${imageModeScript}${opts.inline ? "" : `\n<script>
+${slidePages}
+<script type="application/json" id="__slide-data">${JSON.stringify(slideShadowHtmls).replace(/<\/script>/gi, "<\\/script>")}</script>
+<script>
+(function(){
+  var data=JSON.parse(document.getElementById('__slide-data').textContent);
+  document.querySelectorAll('.slide-page[data-slide]').forEach(function(el){
+    var i=parseInt(el.dataset.slide);
+    if(data[i]!=null){
+      var shadow=el.attachShadow({mode:'open'});
+      shadow.innerHTML=data[i];
+    }
+  });
+})();
+<\/script>
+${downloadScript}${pptxScript}${imageModeScript}${opts.inline ? "" : `\n<script>
 function collectDeployFiles(logEl){
   deployLog(logEl, "Building slide player...", "info");
   var qs = new URLSearchParams(location.search).get("contentSet") || "";
@@ -861,51 +895,31 @@ ${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
     const H = (options.initParams?.slideHeight as number) || 720;
     const title = manifest.title || "Slides";
 
-    // Read theme CSS
+    // Read theme CSS — for chrome color detection + injection into shadow DOM
     const themePath = join(baseDir, "theme.css");
-    let themeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
-    if (themeCSS) {
-      const globals: string[] = [];
-      let scoped = themeCSS.replace(/@import\s+url\([^)]*\)\s*;|@import\s+[^;]+;/g, (m) => { globals.push(m); return ""; });
-      scoped = scoped.replace(/:root\s*\{[^}]*\}/g, (m) => { globals.push(m); return ""; });
-      themeCSS = globals.join("\n") + "\n.slide-page {\n" + scoped + "\n}";
-    }
+    let playerThemeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
+    playerThemeCSS = playerThemeCSS.replace(
+      /(--font-sans\s*:\s*)([^;]*?)(,\s*)(sans-serif\s*;)/,
+      `$1$2, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei"$3$4`,
+    );
+    const playerThemeShadow = playerThemeCSS ? adaptCssForShadow(`<style>${playerThemeCSS}</style>`) : "";
+    // Alias for chrome color detection below
+    const themeCSS = playerThemeCSS;
 
-    // Read head resources + slide bodies
-    const headResourceSet = new Set<string>();
-    const slides = manifest.slides.map((slide, i) => {
-      const slidePath = join(baseDir, slide.file);
-      let html = existsSync(slidePath) ? readFileSync(slidePath, "utf-8") : `<p>Missing: ${slide.file}</p>`;
-      if (html.includes("<!DOCTYPE") || html.includes("<html")) {
-        const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
-        if (headMatch) {
-          const re = /<(link\b[^>]*(?:\/>|>)|script\b[^>]*>[\s\S]*?<\/script>|style\b[^>]*>[\s\S]*?<\/style>)/gi;
-          let m;
-          while ((m = re.exec(headMatch[1])) !== null) {
-            const tag = m[0].trim();
-            if (/<link\b/i.test(tag) && !/rel\s*=\s*["']stylesheet["']/i.test(tag) && !/\.css/i.test(tag)) continue;
-            headResourceSet.add(tag);
-          }
-        }
-        let bodyStyle = "", bodyClass = "";
-        const bodyTagMatch = html.match(/<body([^>]*)>/i);
-        if (bodyTagMatch) {
-          const attrs = bodyTagMatch[1];
-          const sm = attrs.match(/style\s*=\s*["']([^"']*)["']/i);
-          if (sm) bodyStyle = sm[1];
-          const cm = attrs.match(/class\s*=\s*["']([^"']*)["']/i);
-          if (cm) bodyClass = cm[1];
-        }
-        const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-        html = bodyMatch ? bodyMatch[1].trim() : html.replace(/<!DOCTYPE[^>]*>/gi, "").replace(/<\/?html[^>]*>/gi, "").replace(/<head[\s\S]*?<\/head>/gi, "").replace(/<\/?body[^>]*>/gi, "").trim();
-        return { body: html, style: bodyStyle, cls: bodyClass, title: slide.title || `Slide ${i + 1}` };
-      }
-      return { body: html, style: "", cls: "", title: slide.title || `Slide ${i + 1}` };
+    // Read slides using shared extractSlideContent
+    const playerHeadResources = new Set<string>();
+    const playerSlideData = manifest.slides.map((slide: any, i: number) => {
+      const sd = extractSlideContent(join(baseDir, slide.file));
+      const fontRe = /<link\b[^>]*fonts[^>]*(?:\/>|>)/gi;
+      let m;
+      while ((m = fontRe.exec(sd.headContent)) !== null) playerHeadResources.add(m[0]);
+      const hostStyle = `:host{display:block;width:100%;height:100%;overflow:hidden;position:relative;isolation:isolate;background-color:var(--color-bg,#fff)}`;
+      const content = adaptCssForShadow(`${sd.headContent}${sd.bodyContent}`);
+      const shadowHtml = `<style>${hostStyle}</style>${playerThemeShadow}${content}`;
+      return { shadowHtml, title: slide.title || `Slide ${i + 1}` };
     });
-
-    const headResources = Array.from(headResourceSet).join("\n");
-    const totalSlides = slides.length;
-    const outlineMiniScale = 120 / W;
+    const headResources = Array.from(playerHeadResources).join("\n");
+    const totalSlides = playerSlideData.length;
     const thumbScale = 130 / W;
 
     // Detect theme from CSS variables for player chrome colors
@@ -957,11 +971,12 @@ html, body { height: 100%; overflow: hidden; background: ${pBg}; color: ${pFg}; 
 .outline-num { font-size: 11px; font-weight: 600; color: ${pMuted}; min-width: 20px; text-align: center; flex-shrink: 0; }
 .outline-item.active .outline-num { color: ${pPrimary}; }
 .mini { width: 130px; aspect-ratio: ${W} / ${H}; overflow: hidden; border-radius: 4px; background: ${pSurface}; flex-shrink: 0; pointer-events: none; border: 1px solid ${pBorder}; }
-.mini-inner { width: ${W}px; height: ${H}px; transform: scale(${thumbScale}); transform-origin: top left; overflow: hidden; isolation: isolate; }
+.mini-thumb { width: ${W}px; height: ${H}px; transform: scale(${thumbScale}); transform-origin: top left; overflow: hidden; }
 
 /* Stage */
 .stage { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; min-width: 0; }
-.slide-frame { position: relative; width: ${W}px; height: ${H}px; transform-origin: center center; }
+.slide-frame-wrap { overflow: hidden; }
+.slide-frame { position: relative; width: ${W}px; height: ${H}px; transform-origin: top left; }
 #frame .slide-page { position: absolute; inset: 0; width: ${W}px; height: ${H}px; overflow: hidden; isolation: isolate; display: none; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,${isLightBg ? "0.15" : "0.6"}); background-color: var(--color-bg, #fff); }
 #frame .slide-page.active { display: block; }
 
@@ -981,15 +996,17 @@ html, body { height: 100%; overflow: hidden; background: ${pBg}; color: ${pFg}; 
 <div class="player-root outline-left" id="root">
   <div class="outline" id="outline">
     <div class="outline-list">
-${slides.map((s, i) => `      <div class="outline-item${i === 0 ? " active" : ""}" onclick="go(${i})">
+${playerSlideData.map((_s: any, i: number) => `      <div class="outline-item${i === 0 ? " active" : ""}" onclick="go(${i})">
         <span class="outline-num">${i + 1}</span>
-        <div class="mini"><div class="mini-inner slide-page${s.cls ? " " + s.cls : ""}"${s.style ? ` style="${s.style}"` : ""}>${s.body}</div></div>
+        <div class="mini"><div class="mini-thumb" data-thumb="${i}"></div></div>
       </div>`).join("\n")}
     </div>
   </div>
   <div class="stage" id="stage">
-    <div class="slide-frame" id="frame">
-${slides.map((s, i) => `      <div class="slide-page${i === 0 ? " active" : ""}${s.cls ? " " + s.cls : ""}"${s.style ? ` style="${s.style}"` : ""}>${s.body}</div>`).join("\n")}
+    <div class="slide-frame-wrap" id="frame-wrap">
+      <div class="slide-frame" id="frame">
+${playerSlideData.map((_s: any, i: number) => `        <div class="slide-page${i === 0 ? " active" : ""}" data-slide="${i}"></div>`).join("\n")}
+      </div>
     </div>
     <div class="bottom-bar" id="bar">
       <button class="bar-btn" onclick="go(cur-1)" title="Previous"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
@@ -1031,7 +1048,11 @@ function calcFitScale(){
 function applyZoom(){
   var scale=_zoomMode==="fit"?calcFitScale():_zoomMode;
   _zoomScale=scale;
-  document.getElementById("frame").style.transform="scale("+scale+")";
+  var frame=document.getElementById("frame");
+  var wrap=document.getElementById("frame-wrap");
+  frame.style.transform="scale("+scale+")";
+  wrap.style.width=Math.round(W*scale)+"px";
+  wrap.style.height=Math.round(H*scale)+"px";
   document.getElementById("zoom-label").textContent=_zoomMode==="fit"?"Fit":Math.round(scale*100)+"%";
 }
 
@@ -1082,6 +1103,22 @@ document.addEventListener("keydown",function(e){
   if(e.key==="Home"){e.preventDefault();go(0)}
   if(e.key==="End"){e.preventDefault();go(total-1)}
 });
+</script>
+<script type="application/json" id="__slide-data">${JSON.stringify(playerSlideData.map((s: any) => s.shadowHtml)).replace(/<\/script>/gi, "<\\/script>")}</script>
+<script>
+(function(){
+  var data=JSON.parse(document.getElementById('__slide-data').textContent);
+  // Main slides
+  document.querySelectorAll('#frame .slide-page[data-slide]').forEach(function(el){
+    var i=parseInt(el.dataset.slide);
+    if(data[i]!=null){var sh=el.attachShadow({mode:'open'});sh.innerHTML=data[i]}
+  });
+  // Outline thumbnails
+  document.querySelectorAll('.mini-thumb[data-thumb]').forEach(function(el){
+    var i=parseInt(el.dataset.thumb);
+    if(data[i]!=null){var sh=el.attachShadow({mode:'open'});sh.innerHTML=data[i]}
+  });
+})();
 </script>
 </body>
 </html>`;
