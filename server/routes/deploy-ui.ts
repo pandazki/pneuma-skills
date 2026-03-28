@@ -330,14 +330,21 @@ export function getDeployCSS(): string {
  * Returns the deploy toolbar button HTML (cloud icon + dropdown).
  * Insert inside .export-toolbar-actions, typically after a .print-divider.
  */
-export function getDeployToolbarHTML(): string {
+export function getDeployToolbarHTML(opts?: { previewUrl?: string }): string {
+  const previewItem = opts?.previewUrl
+    ? `          <button class="deploy-dropdown-item" onclick="closeDeployMenu();window.open('${opts.previewUrl}','_blank')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span>Preview</span>
+          </button>
+          <div style="height:1px;background:var(--color-cc-border,rgba(255,255,255,0.08));margin:4px 0"></div>\n`
+    : "";
   return `<div class="print-divider"></div>
       <div class="deploy-dropdown-wrap" id="deploy-wrap">
-        <button class="btn-deploy-trigger" id="deploy-trigger-btn" onclick="toggleDeployMenu()" disabled title="Deploy">
+        <button class="btn-deploy-trigger" id="deploy-trigger-btn" onclick="toggleDeployMenu()" disabled title="Publish">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/><path d="M12 13v6"/><path d="m9 17 3-3 3 3"/></svg>
         </button>
         <div class="deploy-dropdown" id="deploy-dropdown" style="display:none">
-          <button class="deploy-dropdown-item" onclick="closeDeployMenu();openDeploy('vercel')">
+${previewItem}          <button class="deploy-dropdown-item" onclick="closeDeployMenu();openDeploy('vercel')">
             <svg width="14" height="14" viewBox="0 0 76 65" fill="currentColor"><path d="M37.5274 0L75.0548 65H0L37.5274 0Z"/></svg>
             <span id="vercel-label">Vercel</span>
           </button>

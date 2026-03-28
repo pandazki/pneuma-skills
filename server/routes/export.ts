@@ -95,6 +95,7 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
   function buildExportHtml(opts: { inline: boolean; contentSet?: string }): { html: string; title: string } | { error: string; status: number } {
     // Resolve base directory: workspace root or content set subdirectory
     let baseDir = workspace;
+    let resolvedContentSet = opts.contentSet;
     if (opts.contentSet) {
       baseDir = join(workspace, opts.contentSet);
     } else if (!existsSync(join(workspace, "manifest.json"))) {
@@ -103,6 +104,7 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
         for (const entry of readdirSync(workspace, { withFileTypes: true })) {
           if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
             baseDir = join(workspace, entry.name);
+            resolvedContentSet = entry.name;
             break;
           }
         }
@@ -192,7 +194,7 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
     const headResources = Array.from(headResourceSet).join("\n");
 
     const title = manifest.title || "Slides";
-    const contentBase = opts.contentSet ? `${opts.contentSet}/` : "";
+    const contentBase = resolvedContentSet ? `${resolvedContentSet}/` : "";
     const baseTag = opts.inline ? "" : `\n<base href="/content/${contentBase}">`;
     const toolbarHtml = opts.inline
       ? ""
@@ -211,7 +213,7 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
         <div class="print-divider"></div>
         <button class="print-action" id="print-btn" onclick="window.print()">Print / Save PDF</button>
       </div>
-      ${getDeployToolbarHTML()}
+      ${getDeployToolbarHTML({ previewUrl: `/export/slides/player${resolvedContentSet ? "?contentSet=" + encodeURIComponent(resolvedContentSet) : ""}` })}
     </div>
   </div>
 </div>
@@ -790,11 +792,11 @@ ${opts.inline ? `
 <body>${toolbarHtml}
 ${slidePages}${downloadScript}${pptxScript}${imageModeScript}${opts.inline ? "" : `\n<script>
 function collectDeployFiles(logEl){
-  deployLog(logEl, "Collecting slides...", "info");
+  deployLog(logEl, "Building slide player...", "info");
   var qs = new URLSearchParams(location.search).get("contentSet") || "";
   var dlQs = qs ? "?contentSet=" + encodeURIComponent(qs) : "";
-  return fetch("/export/slides/download" + dlQs).then(function(r){ return r.text(); }).then(function(html){
-    deployLog(logEl, "  + index.html");
+  return fetch("/export/slides/player" + dlQs).then(function(r){ return r.text(); }).then(function(html){
+    deployLog(logEl, "  + index.html (player)");
     return [{ path: "index.html", content: html }];
   });
 }
@@ -829,6 +831,270 @@ ${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
         "Content-Disposition": `attachment; filename = "${safeFilename}"; filename *= UTF - 8''${utf8Filename} `,
       },
     });
+  });
+
+  // ── Slide player (for deploy) ────────────────────────────────────────
+
+  function buildSlidePlayerHtml(opts: { contentSet?: string }): { html: string; title: string } | { error: string; status: number } {
+    // Reuse the same manifest/baseDir resolution as buildExportHtml
+    let baseDir = workspace;
+    if (opts.contentSet) {
+      baseDir = join(workspace, opts.contentSet);
+    } else if (!existsSync(join(workspace, "manifest.json"))) {
+      try {
+        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
+          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
+            baseDir = join(workspace, entry.name);
+            break;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    const manifestPath = join(baseDir, "manifest.json");
+    if (!existsSync(manifestPath)) return { error: "No manifest.json found", status: 404 };
+    let manifest: { title: string; slides: { file: string; title: string }[] };
+    try { manifest = JSON.parse(readFileSync(manifestPath, "utf-8")); } catch { return { error: "Failed to parse manifest.json", status: 500 }; }
+    if (!manifest.slides?.length) return { error: "No slides", status: 404 };
+
+    const W = (options.initParams?.slideWidth as number) || 1280;
+    const H = (options.initParams?.slideHeight as number) || 720;
+    const title = manifest.title || "Slides";
+
+    // Read theme CSS
+    const themePath = join(baseDir, "theme.css");
+    let themeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
+    if (themeCSS) {
+      const globals: string[] = [];
+      let scoped = themeCSS.replace(/@import\s+url\([^)]*\)\s*;|@import\s+[^;]+;/g, (m) => { globals.push(m); return ""; });
+      scoped = scoped.replace(/:root\s*\{[^}]*\}/g, (m) => { globals.push(m); return ""; });
+      themeCSS = globals.join("\n") + "\n.slide-page {\n" + scoped + "\n}";
+    }
+
+    // Read head resources + slide bodies
+    const headResourceSet = new Set<string>();
+    const slides = manifest.slides.map((slide, i) => {
+      const slidePath = join(baseDir, slide.file);
+      let html = existsSync(slidePath) ? readFileSync(slidePath, "utf-8") : `<p>Missing: ${slide.file}</p>`;
+      if (html.includes("<!DOCTYPE") || html.includes("<html")) {
+        const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+        if (headMatch) {
+          const re = /<(link\b[^>]*(?:\/>|>)|script\b[^>]*>[\s\S]*?<\/script>|style\b[^>]*>[\s\S]*?<\/style>)/gi;
+          let m;
+          while ((m = re.exec(headMatch[1])) !== null) {
+            const tag = m[0].trim();
+            if (/<link\b/i.test(tag) && !/rel\s*=\s*["']stylesheet["']/i.test(tag) && !/\.css/i.test(tag)) continue;
+            headResourceSet.add(tag);
+          }
+        }
+        let bodyStyle = "", bodyClass = "";
+        const bodyTagMatch = html.match(/<body([^>]*)>/i);
+        if (bodyTagMatch) {
+          const attrs = bodyTagMatch[1];
+          const sm = attrs.match(/style\s*=\s*["']([^"']*)["']/i);
+          if (sm) bodyStyle = sm[1];
+          const cm = attrs.match(/class\s*=\s*["']([^"']*)["']/i);
+          if (cm) bodyClass = cm[1];
+        }
+        const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        html = bodyMatch ? bodyMatch[1].trim() : html.replace(/<!DOCTYPE[^>]*>/gi, "").replace(/<\/?html[^>]*>/gi, "").replace(/<head[\s\S]*?<\/head>/gi, "").replace(/<\/?body[^>]*>/gi, "").trim();
+        return { body: html, style: bodyStyle, cls: bodyClass, title: slide.title || `Slide ${i + 1}` };
+      }
+      return { body: html, style: "", cls: "", title: slide.title || `Slide ${i + 1}` };
+    });
+
+    const headResources = Array.from(headResourceSet).join("\n");
+    const totalSlides = slides.length;
+    const outlineMiniScale = 120 / W;
+    const thumbScale = 130 / W;
+
+    // Detect theme from CSS variables for player chrome colors
+    const bgMatch = themeCSS.match(/--color-bg\s*:\s*([^;]+)/);
+    const primaryMatch = themeCSS.match(/--color-primary\s*:\s*([^;]+)/);
+    const isLightBg = (() => {
+      const v = (bgMatch?.[1] || "").trim().replace("#", "");
+      if (v.length !== 6 && v.length !== 3) return false;
+      const hex = v.length === 3 ? v[0]+v[0]+v[1]+v[1]+v[2]+v[2] : v;
+      const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
+      return (r * 299 + g * 587 + b * 114) / 1000 > 128;
+    })();
+    const pBg = isLightBg ? "#f0f0f0" : "#09090b";
+    const pSurface = isLightBg ? "#e5e5e5" : "#18181b";
+    const pBorder = isLightBg ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.08)";
+    const pFg = isLightBg ? "#1a1a1a" : "#fafafa";
+    const pMuted = isLightBg ? "#737373" : "#a1a1aa";
+    const pPrimary = (primaryMatch?.[1] || "#f97316").trim();
+    const pBarBg = isLightBg ? "rgba(255,255,255,0.88)" : "rgba(24,24,27,0.85)";
+    const pItemHover = isLightBg ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.03)";
+
+    // Inline assets for standalone page
+    let playerHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${title}</title>
+${headResources}
+<style>
+${themeCSS}
+
+/* Player chrome — colors derived from slide theme */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+*:focus { outline: none; }
+html, body { height: 100%; overflow: hidden; background: ${pBg}; color: ${pFg}; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+.outline::-webkit-scrollbar { display: none; }
+.outline { scrollbar-width: none; }
+
+.player-root { display: flex; height: 100%; }
+.player-root.outline-hidden .outline { display: none; }
+
+/* Outline */
+.outline { width: 200px; flex-shrink: 0; background: ${pSurface}; border-right: 1px solid ${pBorder}; overflow-y: auto; overflow-x: hidden; }
+.outline-list { display: flex; flex-direction: column; gap: 6px; padding: 12px; }
+.outline-item { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 8px; cursor: pointer; border: 2px solid transparent; transition: all 0.15s; flex-shrink: 0; }
+.outline-item:hover { background: ${pItemHover}; }
+.outline-item.active { border-color: ${pPrimary}; background: ${pItemHover}; }
+.outline-num { font-size: 11px; font-weight: 600; color: ${pMuted}; min-width: 20px; text-align: center; flex-shrink: 0; }
+.outline-item.active .outline-num { color: ${pPrimary}; }
+.mini { width: 130px; aspect-ratio: ${W} / ${H}; overflow: hidden; border-radius: 4px; background: ${pSurface}; flex-shrink: 0; pointer-events: none; border: 1px solid ${pBorder}; }
+.mini-inner { width: ${W}px; height: ${H}px; transform: scale(${thumbScale}); transform-origin: top left; overflow: hidden; isolation: isolate; }
+
+/* Stage */
+.stage { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; min-width: 0; }
+.slide-frame { position: relative; width: ${W}px; height: ${H}px; transform-origin: center center; }
+#frame .slide-page { position: absolute; inset: 0; width: ${W}px; height: ${H}px; overflow: hidden; isolation: isolate; display: none; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,${isLightBg ? "0.15" : "0.6"}); background-color: var(--color-bg, #fff); }
+#frame .slide-page.active { display: block; }
+
+/* Bottom bar — auto-hide */
+.bottom-bar { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: ${pBarBg}; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid ${pBorder}; border-radius: 999px; z-index: 10; transition: opacity 0.3s, visibility 0.3s; }
+.bottom-bar.hidden { opacity: 0; visibility: hidden; }
+.bar-btn { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: none; border-radius: 999px; background: transparent; color: ${pMuted}; cursor: pointer; transition: all 0.15s; }
+.bar-btn:hover { color: ${pFg}; background: ${pItemHover}; }
+.bar-btn.active { color: ${pPrimary}; }
+.bar-counter { font-size: 12px; color: ${pMuted}; min-width: 48px; text-align: center; font-variant-numeric: tabular-nums; }
+.bar-divider { width: 1px; height: 16px; background: ${pBorder}; }
+.zoom-label { font-size: 11px; color: ${pMuted}; min-width: 36px; text-align: center; cursor: pointer; }
+.zoom-label:hover { color: ${pFg}; }
+</style>
+</head>
+<body>
+<div class="player-root outline-left" id="root">
+  <div class="outline" id="outline">
+    <div class="outline-list">
+${slides.map((s, i) => `      <div class="outline-item${i === 0 ? " active" : ""}" onclick="go(${i})">
+        <span class="outline-num">${i + 1}</span>
+        <div class="mini"><div class="mini-inner slide-page${s.cls ? " " + s.cls : ""}"${s.style ? ` style="${s.style}"` : ""}>${s.body}</div></div>
+      </div>`).join("\n")}
+    </div>
+  </div>
+  <div class="stage" id="stage">
+    <div class="slide-frame" id="frame">
+${slides.map((s, i) => `      <div class="slide-page${i === 0 ? " active" : ""}${s.cls ? " " + s.cls : ""}"${s.style ? ` style="${s.style}"` : ""}>${s.body}</div>`).join("\n")}
+    </div>
+    <div class="bottom-bar" id="bar">
+      <button class="bar-btn" onclick="go(cur-1)" title="Previous"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <span class="bar-counter" id="counter">1 / ${totalSlides}</span>
+      <button class="bar-btn" onclick="go(cur+1)" title="Next"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>
+      <div class="bar-divider"></div>
+      <button class="bar-btn" onclick="zoomOut()" title="Zoom out"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      <span class="zoom-label" id="zoom-label" onclick="zoomFit()" title="Click to fit">Fit</span>
+      <button class="bar-btn" onclick="zoomIn()" title="Zoom in"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      <div class="bar-divider"></div>
+      <button class="bar-btn" id="ol-left" onclick="setOL('left')" title="Outline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg></button>
+      <button class="bar-btn" id="ol-hidden" onclick="setOL('hidden')" title="Hide outline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></button>
+    </div>
+  </div>
+</div>
+<script>
+var cur=0,total=${totalSlides},W=${W},H=${H};
+var _slides=document.querySelectorAll("#frame .slide-page");
+var thumbs=document.querySelectorAll(".outline-item");
+var _zoomMode="fit"; // "fit" or number (percentage/100)
+var _zoomScale=1;
+
+function go(i){
+  if(i<0||i>=total)return;
+  _slides[cur].classList.remove("active");
+  cur=i;
+  _slides[cur].classList.add("active");
+  document.getElementById("counter").textContent=(cur+1)+" / "+total;
+  thumbs.forEach(function(t,j){t.classList.toggle("active",j===i)});
+  thumbs[i].scrollIntoView({block:"nearest",inline:"nearest",behavior:"smooth"});
+}
+
+function calcFitScale(){
+  var stage=document.getElementById("stage");
+  var sw=stage.clientWidth-48,sh=stage.clientHeight-48;
+  return Math.min(sw/W,sh/H);
+}
+
+function applyZoom(){
+  var scale=_zoomMode==="fit"?calcFitScale():_zoomMode;
+  _zoomScale=scale;
+  document.getElementById("frame").style.transform="scale("+scale+")";
+  document.getElementById("zoom-label").textContent=_zoomMode==="fit"?"Fit":Math.round(scale*100)+"%";
+}
+
+function zoomFit(){ _zoomMode="fit"; applyZoom(); }
+function zoomIn(){
+  var s=_zoomMode==="fit"?calcFitScale():_zoomMode;
+  var steps=[0.5,0.75,1,1.25,1.5,2];
+  for(var j=0;j<steps.length;j++){if(steps[j]>s+0.01){_zoomMode=steps[j];applyZoom();return;}}
+}
+function zoomOut(){
+  var s=_zoomMode==="fit"?calcFitScale():_zoomMode;
+  var steps=[0.5,0.75,1,1.25,1.5,2];
+  for(var j=steps.length-1;j>=0;j--){if(steps[j]<s-0.01){_zoomMode=steps[j];applyZoom();return;}}
+}
+
+function setOL(pos){
+  var root=document.getElementById("root");
+  root.className="player-root outline-"+pos;
+  localStorage.setItem("slide-ol",pos);
+  ["left","hidden"].forEach(function(p){
+    var b=document.getElementById("ol-"+p);
+    if(b)b.classList.toggle("active",p===pos);
+  });
+  setTimeout(applyZoom,50);
+}
+
+// Bar auto-hide
+var _barTimer=null;
+function showBar(){
+  var bar=document.getElementById("bar");
+  bar.classList.remove("hidden");
+  clearTimeout(_barTimer);
+  _barTimer=setTimeout(function(){bar.classList.add("hidden")},2500);
+}
+document.addEventListener("mousemove",showBar);
+
+// Init
+var savedOL=localStorage.getItem("slide-ol")||"left";
+setOL(savedOL);
+applyZoom();
+showBar();
+window.addEventListener("resize",function(){if(_zoomMode==="fit")applyZoom()});
+
+document.addEventListener("keydown",function(e){
+  if(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA")return;
+  if(e.key==="ArrowRight"||e.key==="ArrowDown"){e.preventDefault();go(cur+1)}
+  if(e.key==="ArrowLeft"||e.key==="ArrowUp"){e.preventDefault();go(cur-1)}
+  if(e.key==="Home"){e.preventDefault();go(0)}
+  if(e.key==="End"){e.preventDefault();go(total-1)}
+});
+</script>
+</body>
+</html>`;
+
+    playerHtml = inlineAssets(playerHtml, baseDir);
+    return { html: playerHtml, title };
+  }
+
+  app.get("/export/slides/player", (c) => {
+    const contentSet = c.req.query("contentSet") || undefined;
+    const result = buildSlidePlayerHtml({ contentSet });
+    if ("error" in result) return c.text(result.error, result.status as any);
+    return c.html(result.html);
   });
 
   // ── WebCraft export ──────────────────────────────────────────────────
