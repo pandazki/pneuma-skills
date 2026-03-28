@@ -146,8 +146,8 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
 
     // Read each slide HTML, extract <head> resources, and build page sections
     const headResourceSet = new Set<string>();
-    const slidePages = manifest.slides
-      .map((slide) => {
+    const slidePageArray = manifest.slides
+      .map((slide: any) => {
         const slidePath = join(baseDir, slide.file);
         let html = existsSync(slidePath) ? readFileSync(slidePath, "utf-8") : `<p>Missing: ${slide.file}</p>`;
         let bodyStyle = "";
@@ -186,9 +186,10 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
         }
         const wrapStyle = bodyStyle ? ` style="${bodyStyle}"` : "";
         const wrapClass = bodyClass ? ` ${bodyClass}` : "";
-        return `<div class="slide-page${wrapClass}"${wrapStyle}>${html}</div>`;
-      })
-      .join("\n");
+        return { wrapped: `<div class="slide-page${wrapClass}"${wrapStyle}>${html}</div>`, bodyHtml: html };
+      });
+    const slidePages = slidePageArray.map((s: any) => s.wrapped).join("\n");
+    const slideHtmls = slidePageArray.map((s: any) => s.bodyHtml);
     const headResources = Array.from(headResourceSet).join("\n");
 
     const title = manifest.title || "Slides";
@@ -200,9 +201,32 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
   <div class="export-toolbar">
     <div class="header-left">
       <h1>${title}</h1>
-      <span class="meta">${manifest.slides.length} slides \u00b7 ${W}\u00d7${H}</span>
+      <span class="meta" id="slide-counter">1 / ${manifest.slides.length}</span>
     </div>
     <div class="export-toolbar-actions">
+      <div class="nav-group">
+        <button class="nav-btn" onclick="goPrev()" title="Previous">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <button class="nav-btn" onclick="goNext()" title="Next">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      </div>
+      <div class="print-divider"></div>
+      <div class="outline-toggle-group">
+        <button class="mode-btn" id="nav-left" onclick="setOutline('left')" title="Outline left">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+        </button>
+        <button class="mode-btn" id="nav-bottom" onclick="setOutline('bottom')" title="Outline bottom">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+        </button>
+        <button class="mode-btn" id="nav-hidden" onclick="setOutline('hidden')" title="Hide outline">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+        </button>
+      </div>
+      <div class="print-divider"></div>
+      <button class="btn-secondary" onclick="toggleView()" id="view-toggle-btn">Overview</button>
+      <div class="print-divider"></div>
       <button class="btn-primary" onclick="downloadSlides()">Download HTML</button>
       <button class="btn-secondary" onclick="downloadPptx()">Download PPTX</button>
       <div class="print-group">
@@ -622,15 +646,16 @@ ${opts.inline ? `
   }
 }
 ` : `
-/* Screen preview: next-gen glassmorphic chrome */
+/* Screen preview: player mode with glassmorphic chrome */
 @media screen {
-  body { 
-    padding: 0 0 40px 0; 
-    min-height: 100vh;
-    background: radial-gradient(circle at 50% 0%, rgba(249, 115, 22, 0.08) 0%, transparent 60%);
+  body {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    overflow: hidden;
+    background: var(--color-cc-bg);
   }
   .slide-page {
-    margin: 32px auto;
     box-shadow: 0 12px 48px rgba(0,0,0,0.6), 0 0 0 1px var(--color-cc-border);
     border-radius: 8px;
   }
@@ -752,6 +777,175 @@ ${opts.inline ? `
     opacity: 0.5;
     cursor: not-allowed;
   }
+  /* Nav buttons */
+  .nav-group {
+    display: flex;
+    gap: 2px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 2px;
+  }
+  .nav-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-cc-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .nav-btn:hover { color: var(--color-cc-fg); background: rgba(255, 255, 255, 0.1); }
+
+  .outline-toggle-group {
+    display: flex;
+    gap: 2px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 2px;
+  }
+  .outline-toggle-group .mode-btn { padding: 4px 8px; }
+  .outline-toggle-group .mode-btn svg { display: block; }
+
+  /* Player layout */
+  .player-layout {
+    display: flex;
+    height: calc(100vh - 72px);
+    overflow: hidden;
+  }
+  .player-layout.overview-mode {
+    display: block;
+    height: auto;
+    overflow: auto;
+    padding-bottom: 40px;
+  }
+  .player-layout.overview-mode .outline-panel { display: none; }
+  .player-layout.overview-mode .slide-stage {
+    display: block;
+    overflow: auto;
+  }
+  .player-layout.overview-mode .slide-container {
+    width: auto;
+    height: auto;
+    transform: none !important;
+  }
+  .player-layout.overview-mode .slide-page {
+    margin: 32px auto;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.6), 0 0 0 1px var(--color-cc-border);
+    border-radius: 8px;
+    display: block !important;
+  }
+
+  /* Slide stage */
+  .slide-stage {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 24px;
+    min-width: 0;
+  }
+  .slide-container {
+    transform-origin: top left;
+    position: relative;
+    width: ${W}px;
+    height: ${H}px;
+  }
+  .player-layout:not(.overview-mode) .slide-page {
+    position: absolute;
+    inset: 0;
+    display: none;
+  }
+  .player-layout:not(.overview-mode) .slide-page.active {
+    display: block;
+  }
+
+  /* Outline panel */
+  .outline-panel {
+    background: var(--color-cc-surface);
+    border-right: 1px solid var(--color-cc-border);
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex-shrink: 0;
+  }
+  .outline-left .outline-panel {
+    width: 180px;
+    border-right: 1px solid var(--color-cc-border);
+    border-bottom: none;
+  }
+  .outline-bottom .outline-panel {
+    width: 100%;
+    border-right: none;
+    border-top: 1px solid var(--color-cc-border);
+    overflow-y: hidden;
+    overflow-x: auto;
+  }
+  .outline-hidden .outline-panel { display: none; }
+
+  .outline-bottom { flex-direction: column; }
+  .outline-bottom .outline-slides {
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    padding: 12px;
+  }
+  .outline-left .outline-slides {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .outline-thumb {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .outline-thumb:hover { background: rgba(255, 255, 255, 0.04); }
+  .outline-thumb.active {
+    border-color: var(--color-cc-primary);
+    background: rgba(249, 115, 22, 0.06);
+  }
+  .outline-num {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-cc-muted);
+    min-width: 18px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .outline-thumb.active .outline-num { color: var(--color-cc-primary); }
+
+  .outline-mini {
+    width: 120px;
+    aspect-ratio: ${W} / ${H};
+    overflow: hidden;
+    border-radius: 4px;
+    background: #000;
+    flex-shrink: 0;
+    pointer-events: none;
+  }
+  .outline-bottom .outline-mini { width: 100px; }
+  .outline-mini-inner {
+    width: ${W}px;
+    height: ${H}px;
+    transform: scale(${120 / W});
+    transform-origin: top left;
+  }
+
   ${getDeployCSS()}
 }
 `}
@@ -788,7 +982,102 @@ ${opts.inline ? `
 </style>
 </head>
 <body>${toolbarHtml}
-${slidePages}${downloadScript}${pptxScript}${imageModeScript}${opts.inline ? "" : `\n<script>
+<div id="player-layout" class="player-layout outline-left">
+  <div id="outline-panel" class="outline-panel">
+    <div class="outline-slides">${manifest.slides.map((_s: any, i: number) => `<div class="outline-thumb${i === 0 ? " active" : ""}" onclick="goToSlide(${i})" data-index="${i}"><span class="outline-num">${i + 1}</span><div class="outline-mini"><div class="outline-mini-inner">${slideHtmls[i] || ""}</div></div></div>`).join("")}</div>
+  </div>
+  <div id="slide-stage" class="slide-stage">
+    <div id="slide-container" class="slide-container">
+      ${slidePages}
+    </div>
+  </div>
+</div>
+${downloadScript}${pptxScript}${imageModeScript}${opts.inline ? "" : `\n<script>
+var _currentSlide = 0;
+var _totalSlides = ${manifest.slides.length};
+var _outlinePos = localStorage.getItem("pneuma-export-outline") || "left";
+var _isOverview = false;
+
+function initPlayer(){
+  var slides = document.querySelectorAll(".slide-page");
+  if(slides[0]) slides[0].classList.add("active");
+  setOutline(_outlinePos);
+  fitSlide();
+  window.addEventListener("resize", fitSlide);
+}
+
+function fitSlide(){
+  if(_isOverview) return;
+  var stage = document.getElementById("slide-stage");
+  if(!stage) return;
+  var sw = stage.clientWidth - 48;
+  var sh = stage.clientHeight - 48;
+  var scale = Math.min(sw / ${W}, sh / ${H});
+  var container = document.getElementById("slide-container");
+  container.style.transform = "scale(" + scale + ")";
+  container.style.width = "${W}px";
+  container.style.height = "${H}px";
+  // Center via margin
+  var actualW = ${W} * scale;
+  var actualH = ${H} * scale;
+  container.style.marginLeft = ((sw - actualW) / 2 + 24) + "px";
+  container.style.marginTop = ((sh - actualH) / 2 + 24) + "px";
+}
+
+function goToSlide(idx){
+  if(idx < 0 || idx >= _totalSlides) return;
+  var slides = document.querySelectorAll(".slide-page");
+  slides[_currentSlide].classList.remove("active");
+  _currentSlide = idx;
+  slides[_currentSlide].classList.add("active");
+  document.getElementById("slide-counter").textContent = (_currentSlide + 1) + " / " + _totalSlides;
+  // Update outline
+  var thumbs = document.querySelectorAll(".outline-thumb");
+  thumbs.forEach(function(t,i){ t.classList.toggle("active", i === idx); });
+  // Scroll active thumb into view
+  var activeThumb = thumbs[idx];
+  if(activeThumb) activeThumb.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+}
+function goNext(){ goToSlide(_currentSlide + 1); }
+function goPrev(){ goToSlide(_currentSlide - 1); }
+
+function setOutline(pos){
+  _outlinePos = pos;
+  localStorage.setItem("pneuma-export-outline", pos);
+  var layout = document.getElementById("player-layout");
+  layout.className = layout.className.replace(/outline-\\S+/g, "").trim() + " outline-" + pos;
+  if(!_isOverview) setTimeout(fitSlide, 50);
+  // Update toggle active state
+  ["left","bottom","hidden"].forEach(function(p){
+    var btn = document.getElementById("nav-" + p);
+    if(btn) btn.classList.toggle("active", p === pos);
+  });
+}
+
+function toggleView(){
+  _isOverview = !_isOverview;
+  var layout = document.getElementById("player-layout");
+  layout.classList.toggle("overview-mode", _isOverview);
+  document.getElementById("view-toggle-btn").textContent = _isOverview ? "Player" : "Overview";
+  if(!_isOverview){
+    // Re-show only active slide
+    var slides = document.querySelectorAll(".slide-page");
+    slides.forEach(function(s,i){ s.classList.toggle("active", i === _currentSlide); });
+    setTimeout(fitSlide, 50);
+  }
+}
+
+document.addEventListener("keydown", function(e){
+  if(e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+  if(document.getElementById("vercel-modal")?.style.display === "flex") return;
+  if(e.key === "ArrowRight" || e.key === "ArrowDown"){ e.preventDefault(); goNext(); }
+  if(e.key === "ArrowLeft" || e.key === "ArrowUp"){ e.preventDefault(); goPrev(); }
+  if(e.key === "Home"){ e.preventDefault(); goToSlide(0); }
+  if(e.key === "End"){ e.preventDefault(); goToSlide(_totalSlides - 1); }
+});
+
+document.addEventListener("DOMContentLoaded", initPlayer);
+
 function collectDeployFiles(logEl){
   deployLog(logEl, "Collecting slides...", "info");
   var qs = new URLSearchParams(location.search).get("contentSet") || "";
