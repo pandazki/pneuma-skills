@@ -2959,7 +2959,7 @@ function ImportDialog({ open, onClose, onImported, initialUrl }: { open: boolean
                   <span className="text-[10px] text-cc-muted/40">or</span>
                   <label className="px-3 py-2.5 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg hover:border-cc-muted/30 transition-colors cursor-pointer whitespace-nowrap">
                     Local file
-                    <input type="file" accept=".tar.gz,.tgz" className="hidden" onChange={(e) => {
+                    <input type="file" accept=".tar.gz,.tgz,.gz,application/gzip,application/x-gzip,application/x-tar" className="hidden" onChange={(e) => {
                       const f = e.target.files?.[0];
                       if (f) handleFileUpload(f);
                     }} />
