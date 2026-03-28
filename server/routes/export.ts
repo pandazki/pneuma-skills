@@ -940,7 +940,10 @@ ${themeCSS}
 
 /* Player chrome — colors derived from slide theme */
 * { box-sizing: border-box; margin: 0; padding: 0; }
+*:focus { outline: none; }
 html, body { height: 100%; overflow: hidden; background: ${pBg}; color: ${pFg}; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+.outline::-webkit-scrollbar { display: none; }
+.outline { scrollbar-width: none; }
 
 .player-root { display: flex; height: 100%; }
 .player-root.outline-hidden .outline { display: none; }
