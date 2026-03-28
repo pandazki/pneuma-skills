@@ -2892,6 +2892,25 @@ function ImportDialog({ open, onClose, onImported, initialUrl }: { open: boolean
     }
   };
 
+  const handleFileUpload = async (file: File) => {
+    setStatus("importing");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      if (workspace.trim()) form.append("workspace", workspace.trim());
+      const resp = await fetch(`${getApiBase()}/api/import/upload`, { method: "POST", body: form });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      setResult(data);
+      setWorkspace(data.path || "");
+      setStatus("done");
+      onImported?.();
+    } catch (err: any) {
+      setError(err.message || "Import failed");
+      setStatus("error");
+    }
+  };
+
   const handleImport = () => handleImportFn(url, workspace);
 
   const handleLaunchImported = async (withReplay: boolean) => {
@@ -2922,20 +2941,30 @@ function ImportDialog({ open, onClose, onImported, initialUrl }: { open: boolean
         <div className="bg-cc-bg border border-cc-border rounded-xl shadow-2xl w-[440px] max-w-[90vw] pointer-events-auto"
           style={{ animation: "warmFadeIn 200ms ease" }}>
           <div className="px-5 py-4 border-b border-cc-border">
-            <h3 className="text-sm font-semibold text-cc-fg">Import from Share</h3>
-            <p className="text-[10px] text-cc-muted mt-1">Paste a share URL to continue someone's work.</p>
+            <h3 className="text-sm font-semibold text-cc-fg">Import</h3>
+            <p className="text-[10px] text-cc-muted mt-1">Paste a share URL or select a local archive (.tar.gz).</p>
           </div>
           <div className="px-5 py-4 space-y-3">
             {status === "idle" && (
               <>
-                <input
-                  autoFocus
-                  placeholder="https://..."
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleImport()}
-                  className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
-                />
+                <div className="flex gap-2 items-center">
+                  <input
+                    autoFocus
+                    placeholder="https://..."
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleImport()}
+                    className="flex-1 px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
+                  />
+                  <span className="text-[10px] text-cc-muted/40">or</span>
+                  <label className="px-3 py-2.5 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg hover:border-cc-muted/30 transition-colors cursor-pointer whitespace-nowrap">
+                    Local file
+                    <input type="file" accept=".tar.gz,.tgz" className="hidden" onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleFileUpload(f);
+                    }} />
+                  </label>
+                </div>
                 <div>
                   <label className="text-[10px] text-cc-muted block mb-1">Workspace directory (optional)</label>
                   <input

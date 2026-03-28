@@ -771,118 +771,121 @@ export function startServer(options: ServerOptions) {
     });
 
     // Import shared content
+    // Shared import logic: processes a local archive file
+    async function processImportArchive(archivePath: string, workspaceOverride?: string, cleanupArchive = false) {
+      const checkProc = Bun.spawn(["tar", "tzf", archivePath], { stdout: "pipe", stderr: "ignore" });
+      const listing = await new Response(checkProc.stdout).text();
+      const isProcess = listing.includes("manifest.json") && listing.includes("messages.jsonl");
+
+      const targetDir = workspaceOverride
+        ? resolve(workspaceOverride.replace(/^~/, homedir()))
+        : join(homedir(), "pneuma-projects", `import-${new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 13)}`);
+      mkdirSync(targetDir, { recursive: true });
+
+      const stageDir = join(tmpdir(), `pneuma-import-stage-${Date.now()}`);
+      mkdirSync(stageDir, { recursive: true });
+      await Bun.spawn(["tar", "xzf", archivePath, "-C", stageDir], { stdout: "ignore" }).exited;
+
+      let mode = "webcraft";
+      let displayName = "Imported";
+      if (isProcess) {
+        try {
+          const manifest = JSON.parse(readFileSync(join(stageDir, "manifest.json"), "utf-8"));
+          mode = manifest.metadata?.mode || mode;
+          displayName = manifest.metadata?.title || displayName;
+
+          const bundlePath = join(stageDir, "repo.bundle");
+          if (existsSync(bundlePath)) {
+            const bareRepo = join(stageDir, ".bare-repo");
+            await Bun.spawn(["git", "clone", "--bare", bundlePath, bareRepo], { stdout: "ignore", stderr: "ignore" }).exited;
+            const headProc = Bun.spawn(["git", `--git-dir=${bareRepo}`, "rev-parse", "HEAD"], { stdout: "pipe", stderr: "ignore" });
+            const headHash = (await new Response(headProc.stdout).text()).trim();
+            if (headHash) {
+              const archive = Bun.spawn(["git", `--git-dir=${bareRepo}`, "archive", headHash], { stdout: "pipe", stderr: "ignore" });
+              const extract = Bun.spawn(["tar", "x", "-C", targetDir], { stdin: archive.stdout, stdout: "ignore", stderr: "ignore" });
+              await extract.exited;
+            }
+          }
+
+          const pneumaDir = join(targetDir, ".pneuma");
+          mkdirSync(pneumaDir, { recursive: true });
+          const replayDir = join(pneumaDir, "replay");
+          mkdirSync(replayDir, { recursive: true });
+          const { copyFileSync } = await import("node:fs");
+          try { copyFileSync(join(stageDir, "manifest.json"), join(replayDir, "manifest.json")); } catch {}
+          try { copyFileSync(join(stageDir, "messages.jsonl"), join(replayDir, "messages.jsonl")); } catch {}
+          try { copyFileSync(join(stageDir, "repo.bundle"), join(replayDir, "repo.bundle")); } catch {}
+
+          writeFileSync(join(pneumaDir, "session.json"), JSON.stringify({
+            sessionId: crypto.randomUUID(),
+            mode,
+            backendType: manifest.metadata?.backendType || "claude-code",
+            createdAt: Date.now(),
+            importedFrom: manifest.metadata?.id,
+            hasReplay: true,
+          }));
+        } catch (err) {
+          console.warn("[import] Failed to restore process package:", err);
+        }
+      } else {
+        await Bun.spawn(["sh", "-c", `cp -a "${stageDir}"/. "${targetDir}"/`], { stdout: "ignore", stderr: "ignore" }).exited;
+        try {
+          const session = JSON.parse(readFileSync(join(targetDir, ".pneuma", "session.json"), "utf-8"));
+          mode = session.mode || mode;
+        } catch {}
+        try {
+          const snap = JSON.parse(readFileSync(join(targetDir, ".pneuma-snapshot.json"), "utf-8"));
+          mode = snap.mode || mode;
+        } catch {}
+      }
+
+      try { const { rmSync: rm } = await import("node:fs"); rm(stageDir, { recursive: true, force: true }); } catch {}
+      if (cleanupArchive) { try { const { unlinkSync } = await import("node:fs"); unlinkSync(archivePath); } catch {} }
+
+      const registryPath = join(homedir(), ".pneuma", "sessions.json");
+      let sessions: any[] = [];
+      try { sessions = JSON.parse(readFileSync(registryPath, "utf-8")); } catch {}
+      const sessionId = `${targetDir}::${mode}`;
+      sessions = sessions.filter((s: any) => s.id !== sessionId);
+      sessions.unshift({
+        id: sessionId,
+        mode,
+        displayName: `${displayName} (imported)`,
+        workspace: targetDir,
+        backendType: getDefaultBackendType(),
+        lastAccessed: Date.now(),
+      });
+      writeFileSync(registryPath, JSON.stringify(sessions, null, 2));
+
+      const replayPackagePath = isProcess ? join(targetDir, ".pneuma", "replay") : undefined;
+      return { ok: true, type: isProcess ? "process" : "result", path: targetDir, mode, displayName, replayPackagePath };
+    }
+
     app.post("/api/import", async (c) => {
       try {
         const body = await c.req.json<{ url: string; workspace?: string }>();
         const downloadPath = await downloadShare(body.url);
+        const result = await processImportArchive(downloadPath, body.workspace, true);
+        return c.json(result);
+      } catch (err: any) {
+        return c.json({ error: err.message }, 500);
+      }
+    });
 
-        // Determine type by checking if it contains manifest.json (process) or not (result)
-        const checkProc = Bun.spawn(["tar", "tzf", downloadPath], { stdout: "pipe", stderr: "ignore" });
-        const listing = await new Response(checkProc.stdout).text();
-        const isProcess = listing.includes("manifest.json") && listing.includes("messages.jsonl");
+    app.post("/api/import/upload", async (c) => {
+      try {
+        const formData = await c.req.formData();
+        const file = formData.get("file") as File | null;
+        const workspace = formData.get("workspace") as string | null;
+        if (!file) return c.json({ error: "No file provided" }, 400);
 
-        // Use user-specified workspace or generate a default under ~/pneuma-projects/
-        const targetDir = body.workspace
-          ? resolve(body.workspace.replace(/^~/, homedir()))
-          : join(homedir(), "pneuma-projects", `import-${new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 13)}`);
-        mkdirSync(targetDir, { recursive: true });
+        // Save uploaded file to temp
+        const tempPath = join(tmpdir(), `pneuma-upload-${Date.now()}-${file.name}`);
+        const buf = await file.arrayBuffer();
+        writeFileSync(tempPath, Buffer.from(buf));
 
-        // Extract to a staging dir first
-        const stageDir = join(tmpdir(), `pneuma-import-stage-${Date.now()}`);
-        mkdirSync(stageDir, { recursive: true });
-        await Bun.spawn(["tar", "xzf", downloadPath, "-C", stageDir], { stdout: "ignore" }).exited;
-
-        // Detect mode and restore workspace files
-        let mode = "webcraft";
-        let displayName = "Imported";
-        if (isProcess) {
-          // Process package: manifest.json + messages.jsonl + repo.bundle
-          try {
-            const manifest = JSON.parse(readFileSync(join(stageDir, "manifest.json"), "utf-8"));
-            mode = manifest.metadata?.mode || mode;
-            displayName = manifest.metadata?.title || displayName;
-
-            // Restore workspace files from the last checkpoint in the bundle
-            const bundlePath = join(stageDir, "repo.bundle");
-            if (existsSync(bundlePath)) {
-              // Clone bundle to a temp bare repo
-              const bareRepo = join(stageDir, ".bare-repo");
-              await Bun.spawn(["git", "clone", "--bare", bundlePath, bareRepo], { stdout: "ignore", stderr: "ignore" }).exited;
-
-              // Get the HEAD commit (latest checkpoint)
-              const headProc = Bun.spawn(["git", `--git-dir=${bareRepo}`, "rev-parse", "HEAD"], { stdout: "pipe", stderr: "ignore" });
-              const headHash = (await new Response(headProc.stdout).text()).trim();
-
-              if (headHash) {
-                // Extract file tree from HEAD to the target workspace
-                const archive = Bun.spawn(["git", `--git-dir=${bareRepo}`, "archive", headHash], { stdout: "pipe", stderr: "ignore" });
-                const extract = Bun.spawn(["tar", "x", "-C", targetDir], { stdin: archive.stdout, stdout: "ignore", stderr: "ignore" });
-                await extract.exited;
-              }
-            }
-
-            // Save process package to .pneuma/replay/ for replay capability
-            const pneumaDir = join(targetDir, ".pneuma");
-            mkdirSync(pneumaDir, { recursive: true });
-            const replayDir = join(pneumaDir, "replay");
-            mkdirSync(replayDir, { recursive: true });
-            // Copy manifest, messages, and bundle to replay dir
-            const { copyFileSync } = await import("node:fs");
-            try { copyFileSync(join(stageDir, "manifest.json"), join(replayDir, "manifest.json")); } catch {}
-            try { copyFileSync(join(stageDir, "messages.jsonl"), join(replayDir, "messages.jsonl")); } catch {}
-            try { copyFileSync(join(stageDir, "repo.bundle"), join(replayDir, "repo.bundle")); } catch {}
-
-            // Write session.json for the imported workspace
-            writeFileSync(join(pneumaDir, "session.json"), JSON.stringify({
-              sessionId: crypto.randomUUID(),
-              mode,
-              backendType: manifest.metadata?.backendType || "claude-code",
-              createdAt: Date.now(),
-              importedFrom: manifest.metadata?.id,
-              hasReplay: true,
-            }));
-          } catch (err) {
-            console.warn("[import] Failed to restore process package:", err);
-          }
-        } else {
-          // Result package: just workspace files — copy directly
-          // Move all files from stageDir to targetDir
-          await Bun.spawn(["sh", "-c", `cp -a "${stageDir}"/. "${targetDir}"/`], { stdout: "ignore", stderr: "ignore" }).exited;
-
-          // Detect mode
-          try {
-            const session = JSON.parse(readFileSync(join(targetDir, ".pneuma", "session.json"), "utf-8"));
-            mode = session.mode || mode;
-          } catch {}
-          try {
-            const snap = JSON.parse(readFileSync(join(targetDir, ".pneuma-snapshot.json"), "utf-8"));
-            mode = snap.mode || mode;
-          } catch {}
-        }
-
-        // Clean up staging dir
-        try { const { rmSync: rm } = await import("node:fs"); rm(stageDir, { recursive: true, force: true }); } catch {}
-
-        // Register as a session so it shows in Continue list
-        const registryPath = join(homedir(), ".pneuma", "sessions.json");
-        let sessions: any[] = [];
-        try { sessions = JSON.parse(readFileSync(registryPath, "utf-8")); } catch {}
-        const sessionId = `${targetDir}::${mode}`;
-        sessions = sessions.filter((s: any) => s.id !== sessionId);
-        sessions.unshift({
-          id: sessionId,
-          mode,
-          displayName: `${displayName} (imported)`,
-          workspace: targetDir,
-          backendType: getDefaultBackendType(),
-          lastAccessed: Date.now(),
-        });
-        writeFileSync(registryPath, JSON.stringify(sessions, null, 2));
-
-        try { const { unlinkSync } = await import("node:fs"); unlinkSync(downloadPath); } catch {}
-
-        const replayPackagePath = isProcess ? join(targetDir, ".pneuma", "replay") : undefined;
-        return c.json({ ok: true, type: isProcess ? "process" : "result", path: targetDir, mode, displayName, replayPackagePath });
+        const result = await processImportArchive(tempPath, workspace || undefined, true);
+        return c.json(result);
       } catch (err: any) {
         return c.json({ error: err.message }, 500);
       }
