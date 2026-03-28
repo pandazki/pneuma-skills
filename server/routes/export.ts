@@ -790,11 +790,11 @@ ${opts.inline ? `
 <body>${toolbarHtml}
 ${slidePages}${downloadScript}${pptxScript}${imageModeScript}${opts.inline ? "" : `\n<script>
 function collectDeployFiles(logEl){
-  deployLog(logEl, "Collecting slides...", "info");
+  deployLog(logEl, "Building slide player...", "info");
   var qs = new URLSearchParams(location.search).get("contentSet") || "";
   var dlQs = qs ? "?contentSet=" + encodeURIComponent(qs) : "";
-  return fetch("/export/slides/download" + dlQs).then(function(r){ return r.text(); }).then(function(html){
-    deployLog(logEl, "  + index.html");
+  return fetch("/export/slides/player" + dlQs).then(function(r){ return r.text(); }).then(function(html){
+    deployLog(logEl, "  + index.html (player)");
     return [{ path: "index.html", content: html }];
   });
 }
@@ -829,6 +829,223 @@ ${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
         "Content-Disposition": `attachment; filename = "${safeFilename}"; filename *= UTF - 8''${utf8Filename} `,
       },
     });
+  });
+
+  // ── Slide player (for deploy) ────────────────────────────────────────
+
+  function buildSlidePlayerHtml(opts: { contentSet?: string }): { html: string; title: string } | { error: string; status: number } {
+    // Reuse the same manifest/baseDir resolution as buildExportHtml
+    let baseDir = workspace;
+    if (opts.contentSet) {
+      baseDir = join(workspace, opts.contentSet);
+    } else if (!existsSync(join(workspace, "manifest.json"))) {
+      try {
+        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
+          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
+            baseDir = join(workspace, entry.name);
+            break;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    const manifestPath = join(baseDir, "manifest.json");
+    if (!existsSync(manifestPath)) return { error: "No manifest.json found", status: 404 };
+    let manifest: { title: string; slides: { file: string; title: string }[] };
+    try { manifest = JSON.parse(readFileSync(manifestPath, "utf-8")); } catch { return { error: "Failed to parse manifest.json", status: 500 }; }
+    if (!manifest.slides?.length) return { error: "No slides", status: 404 };
+
+    const W = (options.initParams?.slideWidth as number) || 1280;
+    const H = (options.initParams?.slideHeight as number) || 720;
+    const title = manifest.title || "Slides";
+
+    // Read theme CSS
+    const themePath = join(baseDir, "theme.css");
+    let themeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
+    if (themeCSS) {
+      const globals: string[] = [];
+      let scoped = themeCSS.replace(/@import\s+url\([^)]*\)\s*;|@import\s+[^;]+;/g, (m) => { globals.push(m); return ""; });
+      scoped = scoped.replace(/:root\s*\{[^}]*\}/g, (m) => { globals.push(m); return ""; });
+      themeCSS = globals.join("\n") + "\n.slide-page {\n" + scoped + "\n}";
+    }
+
+    // Read head resources + slide bodies
+    const headResourceSet = new Set<string>();
+    const slides = manifest.slides.map((slide, i) => {
+      const slidePath = join(baseDir, slide.file);
+      let html = existsSync(slidePath) ? readFileSync(slidePath, "utf-8") : `<p>Missing: ${slide.file}</p>`;
+      if (html.includes("<!DOCTYPE") || html.includes("<html")) {
+        const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+        if (headMatch) {
+          const re = /<(link\b[^>]*(?:\/>|>)|script\b[^>]*>[\s\S]*?<\/script>|style\b[^>]*>[\s\S]*?<\/style>)/gi;
+          let m;
+          while ((m = re.exec(headMatch[1])) !== null) {
+            const tag = m[0].trim();
+            if (/<link\b/i.test(tag) && !/rel\s*=\s*["']stylesheet["']/i.test(tag) && !/\.css/i.test(tag)) continue;
+            headResourceSet.add(tag);
+          }
+        }
+        let bodyStyle = "", bodyClass = "";
+        const bodyTagMatch = html.match(/<body([^>]*)>/i);
+        if (bodyTagMatch) {
+          const attrs = bodyTagMatch[1];
+          const sm = attrs.match(/style\s*=\s*["']([^"']*)["']/i);
+          if (sm) bodyStyle = sm[1];
+          const cm = attrs.match(/class\s*=\s*["']([^"']*)["']/i);
+          if (cm) bodyClass = cm[1];
+        }
+        const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        html = bodyMatch ? bodyMatch[1].trim() : html.replace(/<!DOCTYPE[^>]*>/gi, "").replace(/<\/?html[^>]*>/gi, "").replace(/<head[\s\S]*?<\/head>/gi, "").replace(/<\/?body[^>]*>/gi, "").trim();
+        return { body: html, style: bodyStyle, cls: bodyClass, title: slide.title || `Slide ${i + 1}` };
+      }
+      return { body: html, style: "", cls: "", title: slide.title || `Slide ${i + 1}` };
+    });
+
+    const headResources = Array.from(headResourceSet).join("\n");
+    const totalSlides = slides.length;
+    const outlineMiniScale = 120 / W;
+
+    // Inline assets for standalone page
+    let playerHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${title}</title>
+${headResources}
+<style>
+${themeCSS}
+
+:root {
+  --color-bg: #09090b;
+  --color-surface: #18181b;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-fg: #fafafa;
+  --color-muted: #a1a1aa;
+  --color-primary: #f97316;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; background: var(--color-bg); color: var(--color-fg); font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+
+/* Layout */
+.player-root { display: flex; height: 100%; }
+.player-root.outline-hidden .outline { display: none; }
+.player-root.outline-bottom { flex-direction: column; }
+.player-root.outline-bottom .outline { border-right: none; border-top: 1px solid var(--color-border); height: auto; overflow-x: auto; overflow-y: hidden; }
+.player-root.outline-bottom .outline-list { flex-direction: row; padding: 10px; gap: 8px; }
+.player-root.outline-bottom .outline-item .mini { width: 100px; }
+
+/* Outline */
+.outline { width: 200px; flex-shrink: 0; background: var(--color-surface); border-right: 1px solid var(--color-border); overflow-y: auto; overflow-x: hidden; }
+.outline-list { display: flex; flex-direction: column; gap: 6px; padding: 12px; }
+.outline-item { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 8px; cursor: pointer; border: 2px solid transparent; transition: all 0.15s; flex-shrink: 0; }
+.outline-item:hover { background: rgba(255,255,255,0.03); }
+.outline-item.active { border-color: var(--color-primary); background: rgba(249,115,22,0.05); }
+.outline-num { font-size: 11px; font-weight: 600; color: var(--color-muted); min-width: 20px; text-align: center; flex-shrink: 0; }
+.outline-item.active .outline-num { color: var(--color-primary); }
+.mini { width: 130px; aspect-ratio: ${W} / ${H}; overflow: hidden; border-radius: 4px; background: #000; flex-shrink: 0; pointer-events: none; }
+.mini-inner { width: ${W}px; height: ${H}px; transform: scale(${outlineMiniScale}); transform-origin: top left; }
+
+/* Stage */
+.stage { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; min-width: 0; }
+.slide-frame { position: relative; width: ${W}px; height: ${H}px; transform-origin: center center; }
+.slide-page { position: absolute; inset: 0; width: ${W}px; height: ${H}px; overflow: hidden; isolation: isolate; background-color: var(--color-bg, #fff) !important; display: none; border-radius: 8px; box-shadow: 0 12px 48px rgba(0,0,0,0.6); }
+.slide-page.active { display: block; }
+
+/* Bottom bar */
+.bottom-bar { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: rgba(24,24,27,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--color-border); border-radius: 999px; z-index: 10; }
+.bar-btn { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: none; border-radius: 999px; background: transparent; color: var(--color-muted); cursor: pointer; transition: all 0.15s; }
+.bar-btn:hover { color: var(--color-fg); background: rgba(255,255,255,0.08); }
+.bar-btn.active { color: var(--color-primary); background: rgba(249,115,22,0.12); }
+.bar-counter { font-size: 12px; color: var(--color-muted); min-width: 48px; text-align: center; font-variant-numeric: tabular-nums; }
+.bar-divider { width: 1px; height: 16px; background: rgba(255,255,255,0.1); }
+</style>
+</head>
+<body>
+<div class="player-root outline-left" id="root">
+  <div class="outline" id="outline">
+    <div class="outline-list">
+${slides.map((s, i) => `      <div class="outline-item${i === 0 ? " active" : ""}" data-i="${i}" onclick="go(${i})">
+        <span class="outline-num">${i + 1}</span>
+        <div class="mini"><div class="mini-inner slide-page" style="${s.style}">${s.body}</div></div>
+      </div>`).join("\n")}
+    </div>
+  </div>
+  <div class="stage" id="stage">
+    <div class="slide-frame" id="frame">
+${slides.map((s, i) => `      <div class="slide-page${i === 0 ? " active" : ""}${s.cls ? " " + s.cls : ""}"${s.style ? ` style="${s.style}"` : ""}>${s.body}</div>`).join("\n")}
+    </div>
+    <div class="bottom-bar">
+      <button class="bar-btn" onclick="go(cur-1)" title="Previous"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <span class="bar-counter" id="counter">1 / ${totalSlides}</span>
+      <button class="bar-btn" onclick="go(cur+1)" title="Next"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>
+      <div class="bar-divider"></div>
+      <button class="bar-btn" id="ol-left" onclick="setOL('left')" title="Outline left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg></button>
+      <button class="bar-btn" id="ol-bottom" onclick="setOL('bottom')" title="Outline bottom"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="15" x2="21" y2="15"/></svg></button>
+      <button class="bar-btn" id="ol-hidden" onclick="setOL('hidden')" title="Hide outline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></button>
+    </div>
+  </div>
+</div>
+<script>
+var cur=0,total=${totalSlides},W=${W},H=${H};
+var slides=document.querySelectorAll("#frame .slide-page");
+var thumbs=document.querySelectorAll(".outline-item");
+
+function go(i){
+  if(i<0||i>=total)return;
+  slides[cur].classList.remove("active");
+  cur=i;
+  slides[cur].classList.add("active");
+  document.getElementById("counter").textContent=(cur+1)+" / "+total;
+  thumbs.forEach(function(t,j){t.classList.toggle("active",j===i)});
+  thumbs[i].scrollIntoView({block:"nearest",inline:"nearest",behavior:"smooth"});
+}
+
+function fit(){
+  var stage=document.getElementById("stage");
+  var sw=stage.clientWidth-48,sh=stage.clientHeight-48;
+  var scale=Math.min(sw/W,sh/H,1);
+  var frame=document.getElementById("frame");
+  frame.style.transform="scale("+scale+")";
+}
+
+function setOL(pos){
+  var root=document.getElementById("root");
+  root.className="player-root outline-"+pos;
+  localStorage.setItem("slide-ol",pos);
+  ["left","bottom","hidden"].forEach(function(p){
+    var b=document.getElementById("ol-"+p);
+    if(b)b.classList.toggle("active",p===pos);
+  });
+  setTimeout(fit,50);
+}
+
+// Init
+var savedOL=localStorage.getItem("slide-ol")||"left";
+setOL(savedOL);
+fit();
+window.addEventListener("resize",fit);
+
+document.addEventListener("keydown",function(e){
+  if(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA")return;
+  if(e.key==="ArrowRight"||e.key==="ArrowDown"){e.preventDefault();go(cur+1)}
+  if(e.key==="ArrowLeft"||e.key==="ArrowUp"){e.preventDefault();go(cur-1)}
+  if(e.key==="Home"){e.preventDefault();go(0)}
+  if(e.key==="End"){e.preventDefault();go(total-1)}
+});
+</script>
+</body>
+</html>`;
+
+    playerHtml = inlineAssets(playerHtml, baseDir);
+    return { html: playerHtml, title };
+  }
+
+  app.get("/export/slides/player", (c) => {
+    const contentSet = c.req.query("contentSet") || undefined;
+    const result = buildSlidePlayerHtml({ contentSet });
+    if ("error" in result) return c.text(result.error, result.status as any);
+    return c.html(result.html);
   });
 
   // ── WebCraft export ──────────────────────────────────────────────────
