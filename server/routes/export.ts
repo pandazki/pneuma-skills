@@ -956,7 +956,7 @@ html, body { height: 100%; overflow: hidden; background: ${pBg}; color: ${pFg}; 
 .outline-item.active { border-color: ${pPrimary}; background: ${pItemHover}; }
 .outline-num { font-size: 11px; font-weight: 600; color: ${pMuted}; min-width: 20px; text-align: center; flex-shrink: 0; }
 .outline-item.active .outline-num { color: ${pPrimary}; }
-.mini { width: 130px; aspect-ratio: ${W} / ${H}; overflow: hidden; border-radius: 4px; background: ${pSurface}; flex-shrink: 0; pointer-events: none; }
+.mini { width: 130px; aspect-ratio: ${W} / ${H}; overflow: hidden; border-radius: 4px; background: ${pSurface}; flex-shrink: 0; pointer-events: none; border: 1px solid ${pBorder}; }
 .mini-inner { width: ${W}px; height: ${H}px; transform: scale(${thumbScale}); transform-origin: top left; overflow: hidden; isolation: isolate; }
 
 /* Stage */
