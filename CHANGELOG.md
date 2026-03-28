@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.23.0] - 2026-03-28
+
+### Added
+- **Slide presentation player** — new `/export/slides/player` route generates a self-contained interactive player for deployed slides. Single-slide view with auto-fit scaling, outline panel (left/hidden), keyboard navigation (arrows/Home/End), zoom controls (50-200% + Fit), and auto-hiding bottom bar for immersive viewing
+- **Theme-adaptive player chrome** — player auto-detects light/dark mode from `theme.css` (`--color-bg` luminance) and adapts all UI colors. Accent color from `--color-primary`. Each deck gets its own visual style
+- **Preview in deploy dropdown** — slides export page deploy menu includes Preview button to open player in new tab before publishing
+- **Deploy dropdown preview support** — `getDeployToolbarHTML()` accepts optional `previewUrl` for mode-specific preview pages
+
+### Improved
+- **Deploy dropdown** — auto-fit width, linked project name shown inline
+
 ## [2.22.1] - 2026-03-27
 
 ### Improved
