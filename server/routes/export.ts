@@ -95,6 +95,7 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
   function buildExportHtml(opts: { inline: boolean; contentSet?: string }): { html: string; title: string } | { error: string; status: number } {
     // Resolve base directory: workspace root or content set subdirectory
     let baseDir = workspace;
+    let resolvedContentSet = opts.contentSet;
     if (opts.contentSet) {
       baseDir = join(workspace, opts.contentSet);
     } else if (!existsSync(join(workspace, "manifest.json"))) {
@@ -103,6 +104,7 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
         for (const entry of readdirSync(workspace, { withFileTypes: true })) {
           if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
             baseDir = join(workspace, entry.name);
+            resolvedContentSet = entry.name;
             break;
           }
         }
@@ -192,7 +194,7 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
     const headResources = Array.from(headResourceSet).join("\n");
 
     const title = manifest.title || "Slides";
-    const contentBase = opts.contentSet ? `${opts.contentSet}/` : "";
+    const contentBase = resolvedContentSet ? `${resolvedContentSet}/` : "";
     const baseTag = opts.inline ? "" : `\n<base href="/content/${contentBase}">`;
     const toolbarHtml = opts.inline
       ? ""
@@ -211,7 +213,7 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
         <div class="print-divider"></div>
         <button class="print-action" id="print-btn" onclick="window.print()">Print / Save PDF</button>
       </div>
-      ${getDeployToolbarHTML({ previewUrl: `/export/slides/player${opts.contentSet ? "?contentSet=" + encodeURIComponent(opts.contentSet) : ""}` })}
+      ${getDeployToolbarHTML({ previewUrl: `/export/slides/player${resolvedContentSet ? "?contentSet=" + encodeURIComponent(resolvedContentSet) : ""}` })}
     </div>
   </div>
 </div>
