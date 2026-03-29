@@ -118,9 +118,9 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
   function adaptCssForShadow(html: string): string {
     return html.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_match, css: string) => {
       const adapted = css
-        .replace(/(^|[},;\s]):root\b/g, "$1:host")
-        .replace(/(^|[},;\s])body\b/g, "$1:host")
-        .replace(/(^|[},;\s])html\b/g, "$1:host");
+        .replace(/(^|[},;\s]):root(?![-\w])/g, "$1:host")
+        .replace(/(^|[},;\s])body(?![-\w])/g, "$1:host")
+        .replace(/(^|[},;\s])html(?![-\w])/g, "$1:host");
       return `<style>${adapted}</style>`;
     });
   }
@@ -201,15 +201,17 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
 
     // Build shadow DOM content for each slide
     const slideShadowHtmls = slideDataArray.map((sd) => {
-      const hostStyle = `:host{display:block;width:100%;height:100%;overflow:hidden;position:relative;isolation:isolate;background-color:var(--color-bg,#fff)}`;
+      const extraHostStyle = sd.bodyStyle ? `;${sd.bodyStyle}` : "";
+      const hostStyle = `:host{display:block;width:100%;height:100%;overflow:hidden;position:relative;isolation:isolate;background-color:var(--color-bg,#fff)${extraHostStyle}}`;
       const content = adaptCssForShadow(`${sd.headContent}${sd.bodyContent}`);
       return `<style>${hostStyle}</style>${themeCSSForShadow}${content}`;
     });
 
     // Slide containers (empty — shadow DOM injected by JS)
-    const slidePages = slideDataArray.map((_sd: any, i: number) =>
-      `<div class="slide-page" data-slide="${i}"></div>`
-    ).join("\n");
+    const slidePages = slideDataArray.map((sd: any, i: number) => {
+      const cls = sd.bodyClass ? ` ${sd.bodyClass}` : "";
+      return `<div class="slide-page${cls}" data-slide="${i}"></div>`;
+    }).join("\n");
 
     const title = manifest.title || "Slides";
     const contentBase = resolvedContentSet ? `${resolvedContentSet}/` : "";
@@ -534,6 +536,17 @@ function downloadPptx(){
 <script>
 var originalShadows=[],converting=false,metaOriginal='';
 
+var _captureFrame=null;
+
+function getCaptureFrame(){
+  if(_captureFrame&&_captureFrame.parentNode)return _captureFrame;
+  var f=document.createElement('iframe');
+  f.style.cssText='position:fixed;top:-9999px;left:-9999px;width:${W + 4}px;height:${H}px;border:none;opacity:0;pointer-events:none';
+  document.body.appendChild(f);
+  _captureFrame=f;
+  return f;
+}
+
 async function convertToImages(){
   if(converting)return;converting=true;
   var printBtn=document.getElementById('print-btn');
@@ -542,19 +555,40 @@ async function convertToImages(){
   if(!pages.length){converting=false;if(printBtn){printBtn.disabled=false;printBtn.textContent='Print / Save PDF'}return}
   var meta=document.querySelector('.meta');
   if(meta&&!metaOriginal)metaOriginal=meta.textContent||'';
+  var iframe=getCaptureFrame();
   for(var i=0;i<pages.length;i++){
     if(meta)meta.textContent='Converting '+(i+1)+'/'+pages.length+'...';
     var page=pages[i];
     if(!originalShadows[i]&&page.shadowRoot)originalShadows[i]=page.shadowRoot.innerHTML;
     try{
-      var result=await snapdom(page,{scale:2,embedFonts:true});
+      /* Flatten shadow DOM into an iframe for snapdom capture.
+         Replace :host with body so styles apply in the iframe context. */
+      var shadowHtml=page.shadowRoot?page.shadowRoot.innerHTML:page.innerHTML;
+      var flatHtml=shadowHtml.replace(/<style([^>]*)>([\\s\\S]*?)<\\/style>/gi,function(_,attr,css){
+        var fixed=css.replace(/(^|[},;\\s]):host(?![-\\w])/g,'$1body');
+        return '<style'+attr+'>'+fixed+'<\\/style>';
+      });
+      var doc=iframe.contentDocument;
+      doc.open();
+      doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0}</style><\\/head><body>'+flatHtml+'<\\/body><\\/html>');
+      doc.close();
+      await new Promise(function(r){iframe.onload=r;setTimeout(r,200)});
+      await document.fonts.ready;
+      /* Widen body by 2px to compensate for snapdom's SVG foreignObject
+         rendering text slightly wider than native HTML */
+      var origW=doc.body.style.width;
+      doc.body.style.width=(doc.body.offsetWidth+2)+'px';
+      var result=await snapdom(doc.body,{scale:2,embedFonts:true});
+      doc.body.style.width=origW;
       var png=await result.toPng();
       if(page.shadowRoot)page.shadowRoot.innerHTML='';
+      else page.innerHTML='';
       png.style.cssText='width:100%;height:100%;display:block';
       if(page.shadowRoot)page.shadowRoot.appendChild(png);
-      else{page.innerHTML='';page.appendChild(png)}
+      else page.appendChild(png);
     }catch(e){
       console.warn('Slide '+(i+1)+' capture failed:',e.message);
+      if(originalShadows[i]&&page.shadowRoot){page.shadowRoot.innerHTML=originalShadows[i]}
     }
   }
   converting=false;if(meta)meta.textContent=metaOriginal;
@@ -913,10 +947,11 @@ ${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
       const fontRe = /<link\b[^>]*fonts[^>]*(?:\/>|>)/gi;
       let m;
       while ((m = fontRe.exec(sd.headContent)) !== null) playerHeadResources.add(m[0]);
-      const hostStyle = `:host{display:block;width:100%;height:100%;overflow:hidden;position:relative;isolation:isolate;background-color:var(--color-bg,#fff)}`;
+      const extraHostStyle = sd.bodyStyle ? `;${sd.bodyStyle}` : "";
+      const hostStyle = `:host{display:block;width:100%;height:100%;overflow:hidden;position:relative;isolation:isolate;background-color:var(--color-bg,#fff)${extraHostStyle}}`;
       const content = adaptCssForShadow(`${sd.headContent}${sd.bodyContent}`);
       const shadowHtml = `<style>${hostStyle}</style>${playerThemeShadow}${content}`;
-      return { shadowHtml, title: slide.title || `Slide ${i + 1}` };
+      return { shadowHtml, bodyClass: sd.bodyClass, title: slide.title || `Slide ${i + 1}` };
     });
     const headResources = Array.from(playerHeadResources).join("\n");
     const totalSlides = playerSlideData.length;
@@ -952,10 +987,12 @@ ${headResources}
 <style>
 ${themeCSS}
 
-/* Player chrome — colors derived from slide theme */
-* { box-sizing: border-box; margin: 0; padding: 0; }
+/* Player chrome — colors derived from slide theme.
+   IMPORTANT: .slide-page is a shadow DOM host — outer CSS must not set layout props on it.
+   All layout (display, margin, padding, overflow, width, height) comes from :host inside shadow DOM. */
+*:not(.slide-page):not(.mini-thumb) { box-sizing: border-box; }
 *:focus { outline: none; }
-html, body { height: 100%; overflow: hidden; background: ${pBg}; color: ${pFg}; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+html, body { height: 100%; overflow: hidden; background: ${pBg}; color: ${pFg}; font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; padding: 0; }
 .outline::-webkit-scrollbar { display: none; }
 .outline { scrollbar-width: none; }
 
@@ -975,10 +1012,11 @@ html, body { height: 100%; overflow: hidden; background: ${pBg}; color: ${pFg}; 
 
 /* Stage */
 .stage { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; min-width: 0; }
-.slide-frame-wrap { overflow: hidden; }
+.slide-frame-wrap { overflow: hidden; border-radius: 8px; }
 .slide-frame { position: relative; width: ${W}px; height: ${H}px; transform-origin: top left; }
-#frame .slide-page { position: absolute; inset: 0; width: ${W}px; height: ${H}px; overflow: hidden; isolation: isolate; display: none; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,${isLightBg ? "0.15" : "0.6"}); background-color: var(--color-bg, #fff); }
-#frame .slide-page.active { display: block; }
+/* Outer CSS on .slide-page: ONLY positioning + visibility. All layout props come from shadow DOM :host */
+#frame .slide-page { position: absolute; inset: 0; visibility: hidden; z-index: 0; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,${isLightBg ? "0.15" : "0.6"}); }
+#frame .slide-page.active { visibility: visible; z-index: 1; }
 
 /* Bottom bar — auto-hide */
 .bottom-bar { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: ${pBarBg}; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid ${pBorder}; border-radius: 999px; z-index: 10; transition: opacity 0.3s, visibility 0.3s; }
@@ -996,16 +1034,22 @@ html, body { height: 100%; overflow: hidden; background: ${pBg}; color: ${pFg}; 
 <div class="player-root outline-left" id="root">
   <div class="outline" id="outline">
     <div class="outline-list">
-${playerSlideData.map((_s: any, i: number) => `      <div class="outline-item${i === 0 ? " active" : ""}" onclick="go(${i})">
+${playerSlideData.map((s: any, i: number) => {
+      const cls = s.bodyClass ? ` ${s.bodyClass}` : "";
+      return `      <div class="outline-item${i === 0 ? " active" : ""}" onclick="go(${i})">
         <span class="outline-num">${i + 1}</span>
-        <div class="mini"><div class="mini-thumb" data-thumb="${i}"></div></div>
-      </div>`).join("\n")}
+        <div class="mini"><div class="mini-thumb${cls}" data-thumb="${i}"></div></div>
+      </div>`;
+    }).join("\n")}
     </div>
   </div>
   <div class="stage" id="stage">
     <div class="slide-frame-wrap" id="frame-wrap">
       <div class="slide-frame" id="frame">
-${playerSlideData.map((_s: any, i: number) => `        <div class="slide-page${i === 0 ? " active" : ""}" data-slide="${i}"></div>`).join("\n")}
+${playerSlideData.map((s: any, i: number) => {
+        const cls = s.bodyClass ? ` ${s.bodyClass}` : "";
+        return `        <div class="slide-page${cls}${i === 0 ? " active" : ""}" data-slide="${i}"></div>`;
+      }).join("\n")}
       </div>
     </div>
     <div class="bottom-bar" id="bar">
