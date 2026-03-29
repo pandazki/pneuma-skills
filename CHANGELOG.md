@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.23.2] - 2026-03-29
+
+### Fixed
+- **Slide export CSS isolation** — each slide now renders inside a shadow DOM boundary, preventing inline `<style>` blocks from polluting the export toolbar and other slides. Applied to both export page and player page
+- **Image mode pseudo-elements** — `::before`/`::after` elements (e.g. decorative bars) were lost during snapdom capture inside shadow DOM. Fixed by flattening shadow content into a hidden iframe before capture
+- **Body attribute preservation** — `<body style>` and `<body class>` attributes from slide HTML are now propagated into shadow DOM `:host` styles and host element classes
+
+### Improved
+- **Player slide switching** — uses `visibility`/`z-index` instead of `display:none/block` for smoother transitions
+- **CSS selector rewriting** — `adaptCssForShadow` regex hardened with negative lookahead to avoid matching identifiers like `body-text`
+
 ## [2.23.1] - 2026-03-28
 
 ### Added
