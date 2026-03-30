@@ -459,3 +459,9 @@ For detailed guidance, read these files from the skill directory on demand:
 - `{SKILL_PATH}/references/design-outline.md` — Full template for creating design outlines. Read during Phase 1.
 - `{SKILL_PATH}/references/layout-patterns.md` — Common layout patterns with height calculations and examples. Read when dealing with overflow or complex layouts.
 - `{SKILL_PATH}/layout_check.js` — Overflow detection script for browser-based validation.
+
+---
+
+## Acknowledgements
+
+Portions of the style control and design guidelines in this skill were informed by [frontend-slides](https://github.com/zarazhangrui/frontend-slides) by @zarazhangrui.

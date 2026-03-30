@@ -186,6 +186,8 @@ This project's Claude transport layer, NDJSON handling, and much of the initial 
 
 Companion remains the reference for Claude Code's undocumented `--sdk-url` transport. Pneuma's newer backend layer keeps that Claude-specific protocol inside `backends/claude-code/` so future backends can plug in through their own adapters instead of inheriting Claude wire assumptions everywhere.
 
+Slide Mode's skill references the style control and design guidelines from [frontend-slides](https://github.com/zarazhangrui/frontend-slides) by @zarazhangrui — a Claude Code skill for creating HTML presentations. The two projects take different architectural approaches, but portions of the presentation design guidance in Slide Mode's skill were informed by frontend-slides.
+
 ## License
 
 [MIT](LICENSE)
