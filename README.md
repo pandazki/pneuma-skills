@@ -37,7 +37,7 @@ When humans and code agents co-create content, they need more than a chat window
 | Mode | What it does |
 |------|-------------|
 | **webcraft** | Live web development with [Impeccable](https://impeccable.style) AI design intelligence — 20 design commands, responsive preview, export |
-| **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export |
+| **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export. Skill design guidelines informed by [frontend-slides](https://github.com/zarazhangrui/frontend-slides) |
 | **doc** | Markdown documents with live preview — the simplest mode, a minimal example of the mode system |
 | **draw** | Diagrams and visual thinking on an [Excalidraw](https://excalidraw.com) canvas |
 | **illustrate** | AI illustration studio — generate and curate visual assets on a row-based canvas with content sets |
@@ -185,8 +185,6 @@ That means backend-specific protocols stay in `backends/<name>/`, while the UI a
 This project's Claude transport layer, NDJSON handling, and much of the initial chat bridge were heavily informed by [Companion](https://github.com/The-Vibe-Company/companion) by The Vibe Company.
 
 Companion remains the reference for Claude Code's undocumented `--sdk-url` transport. Pneuma's newer backend layer keeps that Claude-specific protocol inside `backends/claude-code/` so future backends can plug in through their own adapters instead of inheriting Claude wire assumptions everywhere.
-
-Slide Mode's skill references the style control and design guidelines from [frontend-slides](https://github.com/zarazhangrui/frontend-slides) by @zarazhangrui — a Claude Code skill for creating HTML presentations. The two projects take different architectural approaches, but portions of the presentation design guidance in Slide Mode's skill were informed by frontend-slides.
 
 ## License
 
