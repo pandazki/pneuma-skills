@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect, useRef } from "react";
-import snapdom from "@zumer/snapdom";
+import { snapdom } from "@zumer/snapdom";
 import type { ViewerPreviewProps } from "../../../core/types/viewer-contract.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -105,6 +105,46 @@ export async function inlineImagesInHtml(html: string, baseHref: string): Promis
   return result;
 }
 
+/**
+ * Crop a captured PNG to the expected slide dimensions.
+ * snapdom may produce a larger image when elements overflow the body bounds
+ * (e.g. decorative glow/blur elements with negative offsets).
+ * Returns the original src if the image already matches the expected size.
+ */
+function cropToSlideSize(img: HTMLImageElement, targetW: number, targetH: number): Promise<string> {
+  return new Promise((resolve) => {
+    const ready = () => {
+      const imgW = img.naturalWidth;
+      const imgH = img.naturalHeight;
+      const ratio = targetW / targetH;
+      const actualRatio = imgW / imgH;
+      // No crop needed if aspect ratio matches
+      if (Math.abs(actualRatio - ratio) < 0.01) {
+        resolve(img.src);
+        return;
+      }
+      // Crop to expected aspect ratio from top-left
+      let cropW: number, cropH: number;
+      if (actualRatio > ratio) {
+        cropH = imgH;
+        cropW = Math.round(imgH * ratio);
+      } else {
+        cropW = imgW;
+        cropH = Math.round(imgW / ratio);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = cropW;
+      canvas.height = cropH;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { resolve(img.src); return; }
+      ctx.drawImage(img, 0, 0, cropW, cropH, 0, 0, cropW, cropH);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    if (img.complete && img.naturalWidth > 0) ready();
+    else { img.onload = ready; img.onerror = () => resolve(img.src); }
+  });
+}
+
 // ── Capture iframe management ────────────────────────────────────────────────
 
 let captureIframe: HTMLIFrameElement | null = null;
@@ -135,14 +175,20 @@ function destroyCaptureIframe(): void {
   captureIframe = null;
 }
 
-/** Load srcdoc into iframe and wait for rendering to complete */
+/** Load srcdoc into iframe and wait for rendering + fonts to complete */
 export function loadIframe(iframe: HTMLIFrameElement, srcdoc: string): Promise<void> {
   return new Promise((resolve) => {
     const timeout = setTimeout(resolve, 5000); // max 5s fallback
-    iframe.onload = () => {
+    iframe.onload = async () => {
       clearTimeout(timeout);
       // Buffer for async CSS generation (Tailwind CDN processes DOM after load)
-      setTimeout(resolve, 150);
+      await new Promise((r) => setTimeout(r, 150));
+      // Wait for fonts to load — prevents text reflow during capture
+      try {
+        const doc = iframe.contentDocument;
+        if (doc?.fonts?.ready) await Promise.race([doc.fonts.ready, new Promise((r) => setTimeout(r, 3000))]);
+      } catch { /* cross-origin or unavailable — proceed anyway */ }
+      resolve();
     };
     iframe.srcdoc = srcdoc;
   });
@@ -200,10 +246,14 @@ export async function captureSlideToSvg(
   const iframeDoc = iframe.contentDocument;
   if (!iframeDoc) throw new Error("Cannot access capture iframe document");
 
-  // Use snapdom to capture the iframe body (handles CSS, fonts, images automatically)
+  // Hide iframe during capture — snapdom produces more accurate text metrics
+  // when the source element is not in layout (avoids foreignObject text reflow).
+  // See: https://github.com/zumerlab/snapdom/issues/351
+  iframe.style.display = "none";
   const result = await snapdom(iframeDoc.body, { embedFonts: true });
+  iframe.style.display = "";
   const png = await result.toPng();
-  return png.src;
+  return cropToSlideSize(png, width, height);
 }
 
 // ── Hook ─────────────────────────────────────────────────────────────────────

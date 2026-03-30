@@ -12,7 +12,7 @@ import type {
 } from "../../../core/types/viewer-contract.js";
 import { getApiBase } from "../../../src/utils/api.js";
 import { useStore } from "../../../src/store.js";
-import snapdom from "@zumer/snapdom";
+import { snapdom } from "@zumer/snapdom";
 import { useTileCompiler, type BoardConfig } from "./use-tile-compiler.js";
 import type { TileDefinition } from "./tile-compiler.js";
 import TileSlot from "./TileSlot.js";

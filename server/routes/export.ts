@@ -245,8 +245,8 @@ ${bodyHtml}
       <button class="btn-primary" onclick="downloadSlides()">Download HTML</button>
       <button class="btn-secondary" onclick="downloadPptx()">Download PPTX</button>
       <div class="print-group">
-        <button class="mode-btn active" id="mode-img" onclick="setMode('image')">Image</button>
-        <button class="mode-btn" id="mode-html" onclick="setMode('html')">HTML</button>
+        <button class="mode-btn" id="mode-img" onclick="setMode('image')">Image</button>
+        <button class="mode-btn active" id="mode-html" onclick="setMode('html')">HTML</button>
         <div class="print-divider"></div>
         <button class="print-action" id="print-btn" onclick="printSlides()">Print / Save PDF</button>
       </div>
@@ -565,6 +565,21 @@ function getSlidePages(){
   return Array.from(document.querySelectorAll('.slide-host'));
 }
 
+function cropToSlideSize(img,tw,th){
+  var iw=img.naturalWidth,ih=img.naturalHeight;
+  var ratio=tw/th;
+  var actualRatio=iw/ih;
+  if(Math.abs(actualRatio-ratio)<0.01)return img.src;
+  var cropW,cropH;
+  if(actualRatio>ratio){cropH=ih;cropW=Math.round(ih*ratio);}
+  else{cropW=iw;cropH=Math.round(iw/ratio);}
+  var c=document.createElement('canvas');c.width=cropW;c.height=cropH;
+  var ctx=c.getContext('2d');
+  if(!ctx)return img.src;
+  ctx.drawImage(img,0,0,cropW,cropH,0,0,cropW,cropH);
+  return c.toDataURL('image/png');
+}
+
 function getFrame(page){
   return page.querySelector('.slide-frame');
 }
@@ -696,9 +711,13 @@ async function convertToImages(){
           var doc=frame.contentDocument;
           var target=(doc&&doc.body)||null;
           if(!target)throw new Error('Slide document unavailable');
+          try{if(doc.fonts&&doc.fonts.ready)await Promise.race([doc.fonts.ready,new Promise(function(r){setTimeout(r,3000)})]);}catch(e){}
+          var prevDisplay=frame.style.display;
+          frame.style.display='none';
           var result=await snapdom(target,{scale:2,embedFonts:true});
+          frame.style.display=prevDisplay;
           var png=await result.toPng();
-          img.src=png.src;
+          img.src=cropToSlideSize(png,${W},${H});
         }catch(e){
           console.warn('Slide '+(i+1)+' capture failed:',e.message);
           continue;
@@ -786,8 +805,7 @@ initSlides();
       ? slideRenderScript
       : `${slideRenderScript}\n<script src="/vendor/snapdom.js"><\/script>
 <script>
-if(document.readyState==='complete')convertToImages();
-else window.addEventListener('load',function(){convertToImages()});
+/* Auto-conversion removed: user clicks Image button to trigger */
 <\/script>`;
 
     let exportHtml = `<!DOCTYPE html>

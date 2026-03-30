@@ -60,7 +60,7 @@
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "@xyflow/react": "^12.10.1",
-    "@zumer/snapdom": "^2.0.2",
+    "@zumer/snapdom": "^2.7.0",
     "chokidar": "^5.0.0",
     "diff": "^8.0.3",
     "framer-motion": "^12.35.2",

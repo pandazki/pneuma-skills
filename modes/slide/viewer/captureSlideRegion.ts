@@ -5,7 +5,7 @@
  * via canvas drawImage with source coordinates.
  */
 
-import snapdom from "@zumer/snapdom";
+import { snapdom } from "@zumer/snapdom";
 import {
   getOrCreateCaptureIframe,
   loadIframe,

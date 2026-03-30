@@ -17,7 +17,7 @@ import { getApiBase } from "../utils/api.js";
  */
 
 import { useEffect, useRef } from "react";
-import snapdom from "@zumer/snapdom";
+import { snapdom } from "@zumer/snapdom";
 
 const THUMB_WIDTH = 1280;
 const THUMB_HEIGHT = 800;
