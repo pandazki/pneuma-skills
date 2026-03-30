@@ -1,0 +1,27 @@
+/* Notebook Tabs — Editorial, organized, tactile */
+
+@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@400;500&display=swap');
+
+:root {
+  --color-bg: #f8f6f1;
+  --color-fg: #1a1a1a;
+  --color-primary: #98d4bb;
+  --color-secondary: #c7b8ea;
+  --color-accent: #f4b8c5;
+  --color-muted: #666666;
+  --color-surface: #ffffff;
+  --color-border: rgba(0, 0, 0, 0.08);
+
+  --font-sans: "DM Sans", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", monospace;
+
+  --slide-padding: 64px;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3 {
+  font-family: "Bodoni Moda", var(--font-sans);
+  font-weight: 700;
+}

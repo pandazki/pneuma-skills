@@ -1,0 +1,27 @@
+/* Electric Studio — Bold, clean, professional */
+
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --color-bg: #0a0a0a;
+  --color-fg: #ffffff;
+  --color-primary: #4361ee;
+  --color-secondary: #7c8cf8;
+  --color-accent: #00d4ff;
+  --color-muted: rgba(255, 255, 255, 0.5);
+  --color-surface: #1a1a1a;
+  --color-border: rgba(255, 255, 255, 0.1);
+
+  --font-sans: "Manrope", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", monospace;
+
+  --slide-padding: 64px;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3 {
+  font-family: "Manrope", var(--font-sans);
+  font-weight: 800;
+}
