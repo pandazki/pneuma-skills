@@ -161,57 +161,74 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
 
     // Read theme.css and patch font stacks for CJK print compatibility
     const themePath = join(baseDir, "theme.css");
-    let rawThemeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
+    let slideThemeCSS = existsSync(themePath) ? readFileSync(themePath, "utf-8") : "";
     const CJK_FONTS = '"PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei"';
-    rawThemeCSS = rawThemeCSS.replace(
+    slideThemeCSS = slideThemeCSS.replace(
       /(--font-sans\s*:\s*)([^;]*?)(,\s*)(sans-serif\s*;)/,
       `$1$2, ${CJK_FONTS}$3$4`,
     );
-    // Adapt theme CSS for shadow DOM injection (:root → :host)
-    const themeCSSForShadow = rawThemeCSS ? adaptCssForShadow(`<style>${rawThemeCSS}</style>`) : "";
-    // Scope theme CSS for outer page (.slide-page wrapper) — only used for print styles
-    let themeCSS = rawThemeCSS;
-    if (themeCSS) {
+    let exportThemeCSS = "";
+    if (slideThemeCSS) {
       const globals: string[] = [];
-      let scoped = themeCSS.replace(/@import\s+url\([^)]*\)\s*;|@import\s+[^;]+;/g, (m) => { globals.push(m); return ""; });
+      let scoped = slideThemeCSS.replace(/@import\s+url\([^)]*\)\s*;|@import\s+[^;]+;/g, (m) => { globals.push(m); return ""; });
       scoped = scoped.replace(/:root\s*\{[^}]*\}/g, (m) => { globals.push(m); return ""; });
-      themeCSS = globals.join("\n") + "\n.slide-page {\n" + scoped + "\n}";
+      exportThemeCSS = globals.join("\n") + "\n.slide-page {\n" + scoped + "\n}";
     }
 
     const W = (options.initParams?.slideWidth as number) || 1280;
     const H = (options.initParams?.slideHeight as number) || 720;
 
-    const slideDataArray = manifest.slides.map((slide: any) => {
+    // Build each slide as an isolated HTML document for iframe rendering.
+    const slideDocuments = manifest.slides.map((slide) => {
       const slidePath = join(baseDir, slide.file);
-      return extractSlideContent(slidePath);
-    });
-
-    // Collect external head resources (fonts, shared stylesheets) for the outer page
-    const headResourceSet = new Set<string>();
-    for (const sd of slideDataArray) {
-      const resourceRe = /<(link\b[^>]*(?:\/>|>)|style\b[^>]*>[\s\S]*?<\/style>)/gi;
-      let m;
-      while ((m = resourceRe.exec(sd.headContent)) !== null) {
-        const tag = m[0].trim();
-        // Only keep font links for the outer page (needed for snapdom image capture)
-        if (/<link\b/i.test(tag) && /fonts/i.test(tag)) headResourceSet.add(tag);
+      const sourceHtml = existsSync(slidePath) ? readFileSync(slidePath, "utf-8") : `<p>Missing: ${slide.file}</p>`;
+      let headContent = "";
+      let bodyAttrs = "";
+      let bodyHtml = sourceHtml;
+      if (sourceHtml.includes("<!DOCTYPE") || sourceHtml.includes("<html")) {
+        const headMatch = sourceHtml.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+        if (headMatch) {
+          headContent = headMatch[1].trim();
+        }
+        const bodyTagMatch = sourceHtml.match(/<body([^>]*)>/i);
+        if (bodyTagMatch) {
+          bodyAttrs = bodyTagMatch[1] || "";
+        }
+        const bodyMatch = sourceHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        if (bodyMatch) {
+          bodyHtml = bodyMatch[1].trim();
+        } else {
+          bodyHtml = sourceHtml
+            .replace(/<!DOCTYPE[^>]*>/gi, "")
+            .replace(/<\/?html[^>]*>/gi, "")
+            .replace(/<head[\s\S]*?<\/head>/gi, "")
+            .replace(/<\/?body[^>]*>/gi, "")
+            .trim();
+        }
       }
-    }
-    const headResources = Array.from(headResourceSet).join("\n");
-
-    // Build shadow DOM content for each slide
-    const slideShadowHtmls = slideDataArray.map((sd) => {
-      const extraHostStyle = sd.bodyStyle ? `;${sd.bodyStyle}` : "";
-      const hostStyle = `:host{display:block;width:100%;height:100%;overflow:hidden;position:relative;isolation:isolate;background-color:var(--color-bg,#fff)${extraHostStyle}}`;
-      const content = adaptCssForShadow(`${sd.headContent}${sd.bodyContent}`);
-      return `<style>${hostStyle}</style>${themeCSSForShadow}${content}`;
+      const slideBaseTag = opts.inline ? "" : `\n<base href="/content/${resolvedContentSet ? `${resolvedContentSet}/` : ""}">`;
+      let html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=${W}, initial-scale=1">${slideBaseTag}
+<style>
+${slideThemeCSS}
+</style>
+${headContent}
+</head>
+<body${bodyAttrs}>
+${bodyHtml}
+</body>
+</html>`;
+      if (opts.inline) {
+        html = inlineAssets(html, baseDir);
+      }
+      return { file: slide.file, title: slide.title, html };
     });
-
-    // Slide containers (empty — shadow DOM injected by JS)
-    const slidePages = slideDataArray.map((sd: any, i: number) => {
-      const cls = sd.bodyClass ? ` ${sd.bodyClass}` : "";
-      return `<div class="slide-page${cls}" data-slide="${i}"></div>`;
-    }).join("\n");
+    const slidePages = slideDocuments
+      .map((slide) => `<div class="slide-page slide-host${opts.inline ? " inline-slide" : ""}"><iframe class="slide-frame" sandbox="allow-same-origin allow-scripts" referrerpolicy="no-referrer"></iframe><img class="slide-image" alt="${slide.title || slide.file}" /></div>`)
+      .join("\n");
 
     const title = manifest.title || "Slides";
     const contentBase = resolvedContentSet ? `${resolvedContentSet}/` : "";
@@ -231,7 +248,7 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
         <button class="mode-btn active" id="mode-img" onclick="setMode('image')">Image</button>
         <button class="mode-btn" id="mode-html" onclick="setMode('html')">HTML</button>
         <div class="print-divider"></div>
-        <button class="print-action" id="print-btn" onclick="window.print()">Print / Save PDF</button>
+        <button class="print-action" id="print-btn" onclick="printSlides()">Print / Save PDF</button>
       </div>
       ${getDeployToolbarHTML({ previewUrl: `/export/slides/player${resolvedContentSet ? "?contentSet=" + encodeURIComponent(resolvedContentSet) : ""}` })}
     </div>
@@ -500,24 +517,30 @@ function downloadPptx(){
     return {clones:clones,wrapper:wrapper};
   }
 
-  function doExport(){
-    updateMeta('Restoring slides...');
-    restoreHTML();
-    var pages=document.querySelectorAll('.slide-page');
-    if(!pages.length){btn.textContent='Download PPTX';btn.disabled=false;updateMeta(metaOrig);return}
+  async function doExport(){
     updateMeta('Preparing slides...');
-    var prepared=prepareSlidesForPptx(pages);
-    updateMeta('Converting to PPTX...');
-    window.domToPptx.exportToPptx(prepared.clones,{skipDownload:true,autoEmbedFonts:true}).then(function(blob){
+    restoreHTML();
+    var materialized=null;
+    var prepared=null;
+    try{
+      materialized=await createMaterializedSlides();
+      if(!materialized.slides.length){
+        throw new Error('No slides available for export');
+      }
+      prepared=prepareSlidesForPptx(materialized.slides);
+      updateMeta('Converting to PPTX...');
+      var blob=await window.domToPptx.exportToPptx(prepared.clones,{skipDownload:true,autoEmbedFonts:true});
       var a=document.createElement('a');a.href=URL.createObjectURL(blob);
       a.download=(document.title.replace(/\\s*\\u2014\\s*Export$/,'')||'slides')+'.pptx';
       document.body.appendChild(a);a.click();document.body.removeChild(a);
       URL.revokeObjectURL(a.href);
-    }).catch(function(e){alert('PPTX export failed: '+e.message)})
-    .finally(function(){
-      if(prepared.wrapper.parentNode)prepared.wrapper.parentNode.removeChild(prepared.wrapper);
+    }catch(e){
+      alert('PPTX export failed: '+e.message);
+    }finally{
+      if(materialized&&materialized.wrapper.parentNode)materialized.wrapper.parentNode.removeChild(materialized.wrapper);
+      if(prepared&&prepared.wrapper.parentNode)prepared.wrapper.parentNode.removeChild(prepared.wrapper);
       btn.textContent='Download PPTX';btn.disabled=false;updateMeta(metaOrig);
-    });
+    }
   }
 
   if(pptxLoaded){doExport();return}
@@ -530,79 +553,239 @@ function downloadPptx(){
 }
 <\/script>`;
 
-    const imageModeScript = opts.inline
-      ? ""
-      : `\n<script src="/vendor/snapdom.js"><\/script>
-<script>
-var originalShadows=[],converting=false,metaOriginal='';
+    const slidesJson = JSON.stringify(slideDocuments).replace(/<\/script>/gi, "<\\/script>");
+    const slideRenderScript = `\n<script>
+var pages = ${slidesJson};
+var currentMode = 'html';
+var converting = false;
+var metaOriginal = '';
+var printMaterialized = null;
 
-var _captureFrame=null;
+function getSlidePages(){
+  return Array.from(document.querySelectorAll('.slide-host'));
+}
 
-function getCaptureFrame(){
-  if(_captureFrame&&_captureFrame.parentNode)return _captureFrame;
-  var f=document.createElement('iframe');
-  f.style.cssText='position:fixed;top:-9999px;left:-9999px;width:${W + 4}px;height:${H}px;border:none;opacity:0;pointer-events:none';
-  document.body.appendChild(f);
-  _captureFrame=f;
-  return f;
+function getFrame(page){
+  return page.querySelector('.slide-frame');
+}
+
+function getImage(page){
+  return page.querySelector('.slide-image');
+}
+
+function setSlideView(page,mode){
+  var frame=getFrame(page);
+  var img=getImage(page);
+  if(frame)frame.style.display=mode==='html'?'block':'none';
+  if(img)img.style.display=mode==='image'&&img.getAttribute('src')?'block':'none';
+}
+
+function resizeFrame(frame){
+  try{
+    var doc=frame.contentDocument;
+    if(!doc)return;
+    var body=doc.body;
+    if(body){
+      body.style.margin='0';
+      body.style.width='${W}px';
+      body.style.height='${H}px';
+      body.style.overflow='hidden';
+    }
+    if(doc.documentElement){
+      doc.documentElement.style.width='${W}px';
+      doc.documentElement.style.height='${H}px';
+      doc.documentElement.style.overflow='hidden';
+    }
+  }catch(e){}
+}
+
+function waitForFrameReady(frame){
+  if(!frame)return Promise.reject(new Error('Missing frame'));
+  if(frame.dataset.ready==='1'&&frame.contentDocument&&frame.contentDocument.body){
+    resizeFrame(frame);
+    return new Promise(function(resolve){requestAnimationFrame(function(){setTimeout(resolve,80);});});
+  }
+  return new Promise(function(resolve,reject){
+    var done=false;
+    var failTimer=setTimeout(function(){
+      if(done)return;
+      done=true;
+      reject(new Error('Frame load timed out'));
+    },10000);
+    frame.addEventListener('load',function(){
+      if(done)return;
+      done=true;
+      clearTimeout(failTimer);
+      frame.dataset.ready='1';
+      resizeFrame(frame);
+      requestAnimationFrame(function(){setTimeout(resolve,80);});
+    },{once:true});
+  });
+}
+
+function initSlides(){
+  getSlidePages().forEach(function(page,i){
+    var frame=getFrame(page);
+    if(!frame)return;
+    frame.dataset.ready='0';
+    frame.addEventListener('load',function(){
+      frame.dataset.ready='1';
+      resizeFrame(frame);
+    });
+    frame.srcdoc=pages[i].html;
+    setSlideView(page,'html');
+  });
+}
+
+async function createMaterializedSlides(){
+  var wrapper=document.createElement('div');
+  wrapper.style.cssText='position:absolute;left:-9999px;top:0;width:${W}px;pointer-events:none;';
+  document.body.appendChild(wrapper);
+  var dedupe=new Set();
+  var renderedSlides=[];
+  var slidePages=getSlidePages();
+  for(var i=0;i<slidePages.length;i++){
+    var page=slidePages[i];
+    var frame=getFrame(page);
+    await waitForFrameReady(frame);
+    var doc=frame.contentDocument;
+    if(!doc||!doc.body)continue;
+    Array.from(doc.head.children).forEach(function(node){
+      var tag=node.tagName||'';
+      if(tag!=='STYLE'&&tag!=='LINK')return;
+      if(tag==='LINK'&&((node.getAttribute('rel')||'').toLowerCase()!=='stylesheet'))return;
+      var key=node.outerHTML;
+      if(dedupe.has(key))return;
+      dedupe.add(key);
+      wrapper.appendChild(node.cloneNode(true));
+    });
+    var slide=document.createElement('div');
+    slide.className='slide-page print-slide-page';
+    slide.style.cssText=doc.body.getAttribute('style')||'';
+    if(doc.body.className)slide.className+=' '+doc.body.className;
+    slide.innerHTML=doc.body.innerHTML;
+    wrapper.appendChild(slide);
+    renderedSlides.push(slide);
+  }
+  return {wrapper:wrapper,slides:renderedSlides};
 }
 
 async function convertToImages(){
-  if(converting)return;converting=true;
+  if(converting)return;
+  converting=true;
   var printBtn=document.getElementById('print-btn');
   if(printBtn){printBtn.disabled=true;printBtn.textContent='Converting...'}
-  var pages=document.querySelectorAll('.slide-page');
-  if(!pages.length){converting=false;if(printBtn){printBtn.disabled=false;printBtn.textContent='Print / Save PDF'}return}
+  var slidePages=getSlidePages();
+  if(!slidePages.length){
+    converting=false;
+    if(printBtn){printBtn.disabled=false;printBtn.textContent='Print / Save PDF'}
+    return;
+  }
   var meta=document.querySelector('.meta');
   if(meta&&!metaOriginal)metaOriginal=meta.textContent||'';
-  var iframe=getCaptureFrame();
-  for(var i=0;i<pages.length;i++){
-    if(meta)meta.textContent='Converting '+(i+1)+'/'+pages.length+'...';
-    var page=pages[i];
-    if(!originalShadows[i]&&page.shadowRoot)originalShadows[i]=page.shadowRoot.innerHTML;
-    try{
-      /* Flatten shadow DOM into an iframe for snapdom capture.
-         Replace :host with body so styles apply in the iframe context. */
-      var shadowHtml=page.shadowRoot?page.shadowRoot.innerHTML:page.innerHTML;
-      var flatHtml=shadowHtml.replace(/<style([^>]*)>([\\s\\S]*?)<\\/style>/gi,function(_,attr,css){
-        var fixed=css.replace(/(^|[},;\\s]):host(?![-\\w])/g,'$1body');
-        return '<style'+attr+'>'+fixed+'<\\/style>';
-      });
-      var doc=iframe.contentDocument;
-      doc.open();
-      doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0}</style><\\/head><body>'+flatHtml+'<\\/body><\\/html>');
-      doc.close();
-      await new Promise(function(r){iframe.onload=r;setTimeout(r,200)});
-      await document.fonts.ready;
-      /* Widen body by 2px to compensate for snapdom's SVG foreignObject
-         rendering text slightly wider than native HTML */
-      var origW=doc.body.style.width;
-      doc.body.style.width=(doc.body.offsetWidth+2)+'px';
-      var result=await snapdom(doc.body,{scale:2,embedFonts:true});
-      doc.body.style.width=origW;
-      var png=await result.toPng();
-      if(page.shadowRoot)page.shadowRoot.innerHTML='';
-      else page.innerHTML='';
-      png.style.cssText='width:100%;height:100%;display:block';
-      if(page.shadowRoot)page.shadowRoot.appendChild(png);
-      else page.appendChild(png);
-    }catch(e){
-      console.warn('Slide '+(i+1)+' capture failed:',e.message);
-      if(originalShadows[i]&&page.shadowRoot){page.shadowRoot.innerHTML=originalShadows[i]}
+  try{
+    for(var i=0;i<slidePages.length;i++){
+      if(meta)meta.textContent='Converting '+(i+1)+'/'+slidePages.length+'...';
+      var page=slidePages[i];
+      var frame=getFrame(page);
+      var img=getImage(page);
+      if(!frame||!img)continue;
+      if(!img.getAttribute('src')){
+        await waitForFrameReady(frame);
+        try{
+          var doc=frame.contentDocument;
+          var target=(doc&&doc.body)||null;
+          if(!target)throw new Error('Slide document unavailable');
+          var result=await snapdom(target,{scale:2,embedFonts:true});
+          var png=await result.toPng();
+          img.src=png.src;
+        }catch(e){
+          console.warn('Slide '+(i+1)+' capture failed:',e.message);
+          continue;
+        }
+      }
+      setSlideView(page,'image');
     }
+    currentMode='image';
+  } finally {
+    converting=false;
+    if(meta)meta.textContent=metaOriginal;
+    if(printBtn){printBtn.disabled=false;printBtn.textContent='Print / Save PDF'}
   }
-  converting=false;if(meta)meta.textContent=metaOriginal;
-  if(printBtn){printBtn.disabled=false;printBtn.textContent='Print / Save PDF'}
 }
+
 function restoreHTML(){
-  var pages=document.querySelectorAll('.slide-page');
-  for(var i=0;i<pages.length;i++){if(originalShadows[i]!=null&&pages[i].shadowRoot)pages[i].shadowRoot.innerHTML=originalShadows[i]}
+  currentMode='html';
+  getSlidePages().forEach(function(page){setSlideView(page,'html');});
 }
+
 function setMode(mode){
+  currentMode=mode;
   document.getElementById('mode-img').classList.toggle('active',mode==='image');
   document.getElementById('mode-html').classList.toggle('active',mode==='html');
   if(mode==='image')convertToImages();else restoreHTML();
 }
+
+async function printSlides(){
+  if(currentMode!=='html'){
+    window.print();
+    return;
+  }
+  try{
+    if(!printMaterialized){
+      printMaterialized=await createMaterializedSlides();
+      getSlidePages().forEach(function(page){
+        var frame=getFrame(page);
+        if(frame)frame.style.display='none';
+      });
+      printMaterialized.slides.forEach(function(slide,i){
+        var host=getSlidePages()[i];
+        if(host)host.appendChild(slide);
+      });
+    }
+    window.print();
+  }catch(e){
+    console.warn('Print materialization failed:',e.message);
+    window.print();
+  }
+}
+
+window.addEventListener('beforeprint',function(){
+  if(currentMode!=='html' || printMaterialized)return;
+  createMaterializedSlides().then(function(result){
+    printMaterialized=result;
+    getSlidePages().forEach(function(page){
+      var frame=getFrame(page);
+      if(frame)frame.style.display='none';
+    });
+    result.slides.forEach(function(slide,i){
+      var host=getSlidePages()[i];
+      if(host)host.appendChild(slide);
+    });
+  }).catch(function(e){
+    console.warn('Print materialization failed:',e.message);
+  });
+});
+
+window.addEventListener('afterprint',function(){
+  if(!printMaterialized)return;
+  getSlidePages().forEach(function(page){
+    var materialized=page.querySelector('.print-slide-page');
+    if(materialized)materialized.remove();
+    setSlideView(page,currentMode);
+  });
+  if(printMaterialized.wrapper&&printMaterialized.wrapper.parentNode){
+    printMaterialized.wrapper.parentNode.removeChild(printMaterialized.wrapper);
+  }
+  printMaterialized=null;
+});
+
+initSlides();
+</script>`;
+    const imageModeScript = opts.inline
+      ? slideRenderScript
+      : `${slideRenderScript}\n<script src="/vendor/snapdom.js"><\/script>
+<script>
 if(document.readyState==='complete')convertToImages();
 else window.addEventListener('load',function(){convertToImages()});
 <\/script>`;
@@ -613,9 +796,8 @@ else window.addEventListener('load',function(){convertToImages()});
 <meta charset="utf-8">
 <meta name="viewport" content="width=${W}, initial-scale=1">${baseTag}
 <title>${title} \u2014 Export</title>
-${headResources}
 <style>
-${themeCSS}
+${opts.inline ? exportThemeCSS : ""}
 
 /* Force standard font stack for Next-Gen design */
 :root {
@@ -662,6 +844,18 @@ body {
   /* Prevent blending issues with background */
   isolation: isolate;
   background-color: var(--color-bg, #ffffff) !important;
+}
+.slide-frame,
+.slide-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border: none;
+  background: #ffffff;
+}
+.slide-image {
+  display: none;
+  object-fit: contain;
 }
 ${opts.inline ? `
 /* Standalone: same preview chrome but no toolbar gap at top */
@@ -845,19 +1039,6 @@ ${opts.inline ? `
 </head>
 <body>${toolbarHtml}
 ${slidePages}
-<script type="application/json" id="__slide-data">${JSON.stringify(slideShadowHtmls).replace(/<\/script>/gi, "<\\/script>")}</script>
-<script>
-(function(){
-  var data=JSON.parse(document.getElementById('__slide-data').textContent);
-  document.querySelectorAll('.slide-page[data-slide]').forEach(function(el){
-    var i=parseInt(el.dataset.slide);
-    if(data[i]!=null){
-      var shadow=el.attachShadow({mode:'open'});
-      shadow.innerHTML=data[i];
-    }
-  });
-})();
-<\/script>
 ${downloadScript}${pptxScript}${imageModeScript}${opts.inline ? "" : `\n<script>
 function collectDeployFiles(logEl){
   deployLog(logEl, "Building slide player...", "info");
