@@ -371,6 +371,25 @@ When the user asks to improve, polish, refine, or critique a deck, follow the pr
 
 ---
 
+## Inspiration Pool (Style Presets)
+
+The viewer includes an **Inspiration Pool** — a panel of curated style presets the user can browse when they need design direction. This is opt-in; most users will describe their vision directly.
+
+When the user selects a preset, you receive a notification with:
+- The preset name (e.g. "Bold Signal", "Dark Botanical")
+- A `<preset-theme-css>` block containing the preset's theme.css
+
+**How to use preset selections:**
+1. Read the provided theme CSS as a **design reference**, not a template to copy verbatim
+2. Apply the color palette and font choices to the current deck's `theme.css`
+3. Adapt the styling to fit the content — a preset designed for bold keynotes may need adjustment for a data-heavy deck
+4. Follow the design principles in `{SKILL_PATH}/references/design-guide.md` to make informed adaptations
+5. If the deck already has slides, update them to match the new theme
+
+**Do NOT** mechanically copy-paste the preset CSS. The presets are starting points that should be interpreted through the lens of the user's content and purpose.
+
+---
+
 ## Quality Checklist
 
 Before considering a slide "done", verify:

@@ -1,0 +1,27 @@
+/* Bold Signal — Confident, bold, modern */
+
+@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root {
+  --color-bg: #1a1a1a;
+  --color-fg: #ffffff;
+  --color-primary: #FF5722;
+  --color-secondary: #FF8A65;
+  --color-accent: #FFD740;
+  --color-muted: rgba(255, 255, 255, 0.5);
+  --color-surface: #2d2d2d;
+  --color-border: rgba(255, 255, 255, 0.1);
+
+  --font-sans: "Space Grotesk", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", monospace;
+
+  --slide-padding: 64px;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3 {
+  font-family: "Archivo Black", var(--font-sans);
+  font-weight: 900;
+}

@@ -1,0 +1,27 @@
+/* Dark Botanical — Elegant, sophisticated, premium */
+
+@import url('https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Sans:wght@300;400&display=swap');
+
+:root {
+  --color-bg: #0f0f0f;
+  --color-fg: #e8e4df;
+  --color-primary: #d4a574;
+  --color-secondary: #e8b4b8;
+  --color-accent: #c9b896;
+  --color-muted: #9a9590;
+  --color-surface: #1a1a1a;
+  --color-border: rgba(255, 255, 255, 0.08);
+
+  --font-sans: "IBM Plex Sans", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", monospace;
+
+  --slide-padding: 64px;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3 {
+  font-family: "Cormorant", var(--font-sans);
+  font-weight: 500;
+}

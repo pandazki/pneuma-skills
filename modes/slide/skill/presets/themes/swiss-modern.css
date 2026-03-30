@@ -1,0 +1,27 @@
+/* Swiss Modern — Clean, precise, Bauhaus */
+
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&family=Nunito:wght@400;500;600&display=swap');
+
+:root {
+  --color-bg: #ffffff;
+  --color-fg: #000000;
+  --color-primary: #ff3300;
+  --color-secondary: #333333;
+  --color-accent: #ff3300;
+  --color-muted: #999999;
+  --color-surface: #f5f5f5;
+  --color-border: rgba(0, 0, 0, 0.1);
+
+  --font-sans: "Nunito", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", monospace;
+
+  --slide-padding: 64px;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3 {
+  font-family: "Archivo", var(--font-sans);
+  font-weight: 800;
+}

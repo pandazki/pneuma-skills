@@ -982,6 +982,38 @@ export function startServer(options: ServerOptions) {
     });
   }
 
+  // ── Slide Preset API ─────────────────────────────────────────────────
+  const presetsDir = resolve(dirname(import.meta.path), "../modes/slide/skill/presets");
+
+  app.get("/api/slide-presets", async (c) => {
+    try {
+      const data = await Bun.file(join(presetsDir, "index.json")).text();
+      return c.json({ presets: JSON.parse(data) });
+    } catch {
+      return c.json({ presets: [] });
+    }
+  });
+
+  app.get("/api/slide-presets/preview-slides", async (c) => {
+    try {
+      const data = await Bun.file(join(presetsDir, "preview-slides.json")).text();
+      return c.json({ slides: JSON.parse(data) });
+    } catch {
+      return c.json({ slides: [] });
+    }
+  });
+
+  app.get("/api/slide-presets/:id/theme", async (c) => {
+    const id = c.req.param("id");
+    if (!/^[a-z0-9-]+$/.test(id)) return c.json({ error: "Invalid preset ID" }, 400);
+    try {
+      const css = await Bun.file(join(presetsDir, `themes/${id}.css`)).text();
+      return c.json({ css });
+    } catch {
+      return c.json({ error: "Preset not found" }, 404);
+    }
+  });
+
   // ── API Routes ─────────────────────────────────────────────────────────
 
   // Return the current active session ID so browsers can auto-connect

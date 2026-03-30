@@ -1,0 +1,66 @@
+[
+  {
+    "id": "bold-signal",
+    "name": "Bold Signal",
+    "description": "Confident, bold, modern — colored card on dark gradient with large section numbers",
+    "moods": ["confident", "bold"],
+    "fonts": { "display": "Archivo Black", "body": "Space Grotesk" },
+    "preview": { "bg": "#1a1a1a", "accent": "#FF5722", "fg": "#ffffff" }
+  },
+  {
+    "id": "electric-studio",
+    "name": "Electric Studio",
+    "description": "Bold, clean, professional — electric blue on near-black with sharp grid lines",
+    "moods": ["professional", "clean"],
+    "fonts": { "display": "Manrope", "body": "Manrope" },
+    "preview": { "bg": "#0a0a0a", "accent": "#4361ee", "fg": "#ffffff" }
+  },
+  {
+    "id": "creative-voltage",
+    "name": "Creative Voltage",
+    "description": "Bold, creative, energetic — neon yellow-green on deep indigo with kinetic layout",
+    "moods": ["creative", "energetic"],
+    "fonts": { "display": "Syne", "body": "Space Mono" },
+    "preview": { "bg": "#1a1a2e", "accent": "#d4ff00", "fg": "#ffffff" }
+  },
+  {
+    "id": "dark-botanical",
+    "name": "Dark Botanical",
+    "description": "Elegant, sophisticated, premium — warm gold on near-black with refined serif typography",
+    "moods": ["elegant", "sophisticated"],
+    "fonts": { "display": "Cormorant", "body": "IBM Plex Sans" },
+    "preview": { "bg": "#0f0f0f", "accent": "#d4a574", "fg": "#e8e4df" }
+  },
+  {
+    "id": "notebook-tabs",
+    "name": "Notebook Tabs",
+    "description": "Editorial, organized, tactile — pastel accents on warm cream with structured tab layout",
+    "moods": ["editorial", "organized"],
+    "fonts": { "display": "Bodoni Moda", "body": "DM Sans" },
+    "preview": { "bg": "#f8f6f1", "accent": "#98d4bb", "fg": "#1a1a1a" }
+  },
+  {
+    "id": "neon-cyber",
+    "name": "Neon Cyber",
+    "description": "Futuristic, techy — cyan glow on deep navy with scanline texture and glitch energy",
+    "moods": ["futuristic", "techy"],
+    "fonts": { "display": "Orbitron", "body": "Inter Tight" },
+    "preview": { "bg": "#0a0f1c", "accent": "#00ffcc", "fg": "#ffffff" }
+  },
+  {
+    "id": "swiss-modern",
+    "name": "Swiss Modern",
+    "description": "Clean, precise, Bauhaus — bold red on pure white with strict grid and geometric forms",
+    "moods": ["clean", "precise"],
+    "fonts": { "display": "Archivo", "body": "Nunito" },
+    "preview": { "bg": "#ffffff", "accent": "#ff3300", "fg": "#000000" }
+  },
+  {
+    "id": "paper-ink",
+    "name": "Paper & Ink",
+    "description": "Editorial, literary — deep crimson on warm paper with classical serif elegance",
+    "moods": ["editorial", "literary"],
+    "fonts": { "display": "Cormorant Garamond", "body": "Source Serif 4" },
+    "preview": { "bg": "#faf9f7", "accent": "#c41e3a", "fg": "#1a1a1a" }
+  }
+]

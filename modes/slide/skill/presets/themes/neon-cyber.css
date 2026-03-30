@@ -1,0 +1,27 @@
+/* Neon Cyber — Futuristic, techy */
+
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;800;900&family=Inter+Tight:wght@400;500;600&display=swap');
+
+:root {
+  --color-bg: #0a0f1c;
+  --color-fg: #ffffff;
+  --color-primary: #00ffcc;
+  --color-secondary: #ff00aa;
+  --color-accent: #00ffcc;
+  --color-muted: rgba(255, 255, 255, 0.4);
+  --color-surface: #141b2d;
+  --color-border: rgba(0, 255, 204, 0.15);
+
+  --font-sans: "Inter Tight", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", monospace;
+
+  --slide-padding: 64px;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3 {
+  font-family: "Orbitron", var(--font-sans);
+  font-weight: 700;
+}

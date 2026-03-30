@@ -1,0 +1,27 @@
+/* Creative Voltage — Bold, creative, energetic */
+
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Space+Mono:wght@400;700&display=swap');
+
+:root {
+  --color-bg: #1a1a2e;
+  --color-fg: #ffffff;
+  --color-primary: #0066ff;
+  --color-secondary: #d4ff00;
+  --color-accent: #d4ff00;
+  --color-muted: rgba(255, 255, 255, 0.5);
+  --color-surface: #252547;
+  --color-border: rgba(255, 255, 255, 0.1);
+
+  --font-sans: "Space Mono", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "Space Mono", ui-monospace, monospace;
+
+  --slide-padding: 64px;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3 {
+  font-family: "Syne", var(--font-sans);
+  font-weight: 800;
+}

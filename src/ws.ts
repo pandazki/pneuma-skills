@@ -537,6 +537,11 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
 
     case "cli_connected": {
       store.setCliConnected(true);
+      // Restore idle status — cli_disconnected sets sessionStatus to null,
+      // and we need to re-enable the pending message queue flush
+      if (store.sessionStatus === null) {
+        store.setSessionStatus("idle");
+      }
       break;
     }
 
