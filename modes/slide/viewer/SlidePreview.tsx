@@ -33,6 +33,7 @@ import { useStore } from "../../../src/store.js";
 import { useSlideThumbnails, sanitizeHtmlQuotes } from "../hooks/useSlideThumbnails.js";
 import SlideIframePool from "./SlideIframePool.js";
 import HighlighterCanvas from "./HighlighterCanvas.js";
+import InspirationPool from "./InspirationPool.js";
 import { captureSlideRegion } from "./captureSlideRegion.js";
 import { generateSlideScaffold, type SlideSpec, type ScaffoldFile } from "./scaffold.js";
 import ScaffoldConfirm from "../../../src/components/ScaffoldConfirm.js";
@@ -483,6 +484,7 @@ export default function SlidePreview({
   const [isGridView, setIsGridView] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number | null>(null); // null = pending first fit
   const [autoFit, setAutoFit] = useState(true); // continuous fit mode
+  const [showInspirationPool, setShowInspirationPool] = useState(false);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
   const fullscreenRef = useRef<HTMLDivElement>(null);
   const iframeRefsRef = useRef<Map<string, HTMLIFrameElement>>(new Map());
@@ -1361,6 +1363,8 @@ export default function SlidePreview({
           onZoomOut={zoomOut}
           onZoomFit={zoomFit}
           onScaffold={handleUserScaffold}
+          showInspirationPool={showInspirationPool}
+          onToggleInspirationPool={() => setShowInspirationPool((v) => !v)}
         />
         <div className="flex items-center justify-center flex-1 text-neutral-500">
           {!manifest
@@ -1470,6 +1474,8 @@ export default function SlidePreview({
           onZoomOut={zoomOut}
           onZoomFit={zoomFit}
           onScaffold={handleUserScaffold}
+          showInspirationPool={showInspirationPool}
+          onToggleInspirationPool={() => setShowInspirationPool((v) => !v)}
         />
         <div className="flex-1 overflow-auto bg-neutral-900 p-4">
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
@@ -1539,6 +1545,8 @@ export default function SlidePreview({
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}
         onZoomFit={zoomFit}
+        showInspirationPool={showInspirationPool}
+        onToggleInspirationPool={readonly ? undefined : () => setShowInspirationPool((v) => !v)}
         readonly={readonly}
       />
       {navPosition === "left" ? (
@@ -1554,6 +1562,15 @@ export default function SlidePreview({
       ) : (
         /* hidden */
         <div className="flex flex-1 min-h-0">{viewerEl}</div>
+      )}
+      {showInspirationPool && createPortal(
+        <InspirationPool
+          open={showInspirationPool}
+          onClose={() => setShowInspirationPool(false)}
+          onSelect={handlePresetSelect}
+          apiBase={apiBase}
+        />,
+        document.body,
       )}
       {scaffoldPending && createPortal(
         <ScaffoldConfirm
@@ -1893,6 +1910,8 @@ function SlideToolbar({
   onZoomOut,
   onZoomFit,
   onScaffold,
+  showInspirationPool,
+  onToggleInspirationPool,
   readonly,
 }: {
   previewMode: PreviewMode;
@@ -1912,6 +1931,8 @@ function SlideToolbar({
   onZoomOut: () => void;
   onZoomFit: () => void;
   onScaffold?: () => void;
+  showInspirationPool?: boolean;
+  onToggleInspirationPool?: () => void;
   readonly?: boolean;
 }) {
   const [isJumping, setIsJumping] = useState(false);
@@ -1957,6 +1978,21 @@ function SlideToolbar({
     const qs = cs ? `?contentSet=${encodeURIComponent(cs)}` : "";
     window.open(`${baseUrl}/export/slides${qs}`, "_blank");
   }, []);
+
+  const apiBase = useMemo(() => {
+    return import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
+  }, []);
+
+  const handlePresetSelect = useCallback((presetId: string, presetName: string, themeCSS: string) => {
+    setShowInspirationPool(false);
+    if (onNotifyAgent) {
+      onNotifyAgent({
+        type: "inspirationPreset",
+        message: `User selected style preset "${presetName}" from the Inspiration Pool. Use this as a design starting point — adapt the colors, fonts, and styling to the user's content.\n\n<preset-theme-css>\n${themeCSS}\n</preset-theme-css>`,
+        summary: `Style preset selected: ${presetName}`,
+      });
+    }
+  }, [onNotifyAgent]);
 
   const navTitle =
     navPosition === "left"
@@ -2076,6 +2112,17 @@ function SlideToolbar({
           ))}
         </div>}
         {!readonly && <div className="w-px h-4 bg-cc-border" />}
+        {!readonly && onToggleInspirationPool && (
+          <button
+            onClick={onToggleInspirationPool}
+            className={`flex items-center justify-center w-7 h-7 rounded transition-colors cursor-pointer ${
+              showInspirationPool ? "bg-cc-primary/20 text-cc-primary" : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+            }`}
+            title="Inspiration Pool — browse style presets"
+          >
+            <LightbulbIcon />
+          </button>
+        )}
         <button
           onClick={onToggleGridView}
           className={`flex items-center justify-center w-7 h-7 rounded transition-colors cursor-pointer ${
@@ -2181,6 +2228,14 @@ function PlusIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
       <path d="M8 3v10M3 8h10" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function LightbulbIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+      <path d="M6 13.5h4M6.5 12h3M8 1.5a4.5 4.5 0 012.7 8.1c-.4.3-.7.9-.7 1.4v1H6v-1c0-.5-.3-1.1-.7-1.4A4.5 4.5 0 018 1.5z" strokeLinejoin="round" />
     </svg>
   );
 }
