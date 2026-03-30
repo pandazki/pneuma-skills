@@ -28,15 +28,10 @@ export const useStore = create<AppState>()((...a) => ({
 // no flicker (item doesn't appear in queue UI if agent is idle).
 let _flushScheduled = false;
 
-function isAgentIdle(status: string | null, turnInProgress: boolean): boolean {
-  // null = initial state (agent not yet run) — treat as idle for queue flush
-  return (status === "idle" || status === null) && !turnInProgress;
-}
-
 function tryFlushPendingQueue() {
   if (_flushScheduled) return;
   const state = useStore.getState();
-  if (!isAgentIdle(state.sessionStatus, state.turnInProgress)) return;
+  if (state.sessionStatus !== "idle" || state.turnInProgress) return;
   if (state.pendingMessages.length === 0) return;
 
   _flushScheduled = true;
@@ -44,7 +39,7 @@ function tryFlushPendingQueue() {
   queueMicrotask(() => {
     _flushScheduled = false;
     const store = useStore.getState();
-    if (!isAgentIdle(store.sessionStatus, store.turnInProgress)) return;
+    if (store.sessionStatus !== "idle" || store.turnInProgress) return;
     const next = store.shiftPendingMessage();
     if (!next) return;
 
@@ -86,9 +81,7 @@ function tryFlushPendingQueue() {
 useStore.subscribe(
   (state, prevState) => {
     // Flush when: agent becomes idle, turnInProgress clears, or queue grows
-    const nowIdle = state.sessionStatus === "idle" || state.sessionStatus === null;
-    const wasIdle = prevState.sessionStatus === "idle" || prevState.sessionStatus === null;
-    const becameIdle = nowIdle && !wasIdle;
+    const becameIdle = state.sessionStatus === "idle" && prevState.sessionStatus !== "idle";
     const turnCleared = !state.turnInProgress && prevState.turnInProgress;
     const queueGrew = state.pendingMessages.length > prevState.pendingMessages.length;
     if (becameIdle || turnCleared || queueGrew) {
