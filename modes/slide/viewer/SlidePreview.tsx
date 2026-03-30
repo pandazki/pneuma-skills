@@ -485,6 +485,23 @@ export default function SlidePreview({
   const [zoomLevel, setZoomLevel] = useState<number | null>(null); // null = pending first fit
   const [autoFit, setAutoFit] = useState(true); // continuous fit mode
   const [showInspirationPool, setShowInspirationPool] = useState(false);
+
+  const apiBase = useMemo(() => {
+    return import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
+  }, []);
+
+  const handlePresetSelect = useCallback((presetId: string, presetName: string, themeCSS: string) => {
+    setShowInspirationPool(false);
+    if (onNotifyAgent) {
+      onNotifyAgent({
+        type: "inspirationPreset",
+        severity: "warning",
+        message: `User selected style preset "${presetName}" from the Inspiration Pool. Use this as a design starting point — adapt the colors, fonts, and styling to the user's content.\n\n<preset-theme-css>\n${themeCSS}\n</preset-theme-css>`,
+        summary: `Style preset selected: ${presetName}`,
+      });
+    }
+  }, [onNotifyAgent]);
+
   const viewerContainerRef = useRef<HTMLDivElement>(null);
   const fullscreenRef = useRef<HTMLDivElement>(null);
   const iframeRefsRef = useRef<Map<string, HTMLIFrameElement>>(new Map());
@@ -1978,21 +1995,6 @@ function SlideToolbar({
     const qs = cs ? `?contentSet=${encodeURIComponent(cs)}` : "";
     window.open(`${baseUrl}/export/slides${qs}`, "_blank");
   }, []);
-
-  const apiBase = useMemo(() => {
-    return import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
-  }, []);
-
-  const handlePresetSelect = useCallback((presetId: string, presetName: string, themeCSS: string) => {
-    setShowInspirationPool(false);
-    if (onNotifyAgent) {
-      onNotifyAgent({
-        type: "inspirationPreset",
-        message: `User selected style preset "${presetName}" from the Inspiration Pool. Use this as a design starting point — adapt the colors, fonts, and styling to the user's content.\n\n<preset-theme-css>\n${themeCSS}\n</preset-theme-css>`,
-        summary: `Style preset selected: ${presetName}`,
-      });
-    }
-  }, [onNotifyAgent]);
 
   const navTitle =
     navPosition === "left"
