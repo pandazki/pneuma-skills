@@ -714,7 +714,7 @@ async function convertToImages(){
           try{if(doc.fonts&&doc.fonts.ready)await Promise.race([doc.fonts.ready,new Promise(function(r){setTimeout(r,3000)})]);}catch(e){}
           var prevDisplay=frame.style.display;
           frame.style.display='none';
-          var result=await snapdom(target,{scale:2,embedFonts:true});
+          var result=await snapdom(target,{embedFonts:true});
           frame.style.display=prevDisplay;
           var png=await result.toPng();
           img.src=cropToSlideSize(png,${W},${H});
