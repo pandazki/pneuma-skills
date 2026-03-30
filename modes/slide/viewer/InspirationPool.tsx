@@ -1,13 +1,12 @@
 /**
  * InspirationPool — Curated style preset browser for slide mode.
  *
- * Renders as a modal overlay with a grid of preset cards.
- * Each card shows a color-coded preview, preset name, and description.
- * When the user selects a preset, the theme CSS is fetched and passed
- * to the agent as a design starting point.
+ * Split layout: left scrollable list of compact preset cards,
+ * right side shows large preview of the selected preset's slides
+ * rendered in iframes with the preset's theme CSS.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 
 interface PresetInfo {
   id: string;
@@ -16,6 +15,12 @@ interface PresetInfo {
   moods: string[];
   fonts: { display: string; body: string };
   preview: { bg: string; accent: string; fg: string };
+}
+
+interface PreviewSlide {
+  id: string;
+  label: string;
+  html: string;
 }
 
 interface InspirationPoolProps {
@@ -27,27 +32,47 @@ interface InspirationPoolProps {
 
 export default function InspirationPool({ open, onClose, onSelect, apiBase }: InspirationPoolProps) {
   const [presets, setPresets] = useState<PresetInfo[]>([]);
+  const [previewSlides, setPreviewSlides] = useState<PreviewSlide[]>([]);
+  const [themeCSSCache, setThemeCSSCache] = useState<Record<string, string>>({});
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeSlideIdx, setActiveSlideIdx] = useState(0);
   const [loading, setLoading] = useState(false);
 
+  // Load presets + preview slides on first open
   useEffect(() => {
     if (!open || presets.length > 0) return;
     setLoading(true);
-    fetch(`${apiBase}/api/slide-presets`)
-      .then((r) => r.json())
-      .then((data) => setPresets(data.presets || []))
+    Promise.all([
+      fetch(`${apiBase}/api/slide-presets`).then((r) => r.json()),
+      fetch(`${apiBase}/api/slide-presets/preview-slides`).then((r) => r.json()),
+    ])
+      .then(([presetsData, slidesData]) => {
+        const p = presetsData.presets || [];
+        setPresets(p);
+        setPreviewSlides(slidesData.slides || []);
+        if (p.length > 0) setSelectedId(p[0].id);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [open, apiBase, presets.length]);
 
-  const handleSelect = useCallback(async (preset: PresetInfo) => {
-    try {
-      const res = await fetch(`${apiBase}/api/slide-presets/${preset.id}/theme`);
-      const { css } = await res.json();
-      onSelect(preset.id, preset.name, css || "");
-    } catch {
-      onSelect(preset.id, preset.name, "");
-    }
-  }, [apiBase, onSelect]);
+  // Fetch theme CSS on selection change
+  useEffect(() => {
+    if (!selectedId || themeCSSCache[selectedId]) return;
+    fetch(`${apiBase}/api/slide-presets/${selectedId}/theme`)
+      .then((r) => r.json())
+      .then(({ css }) => {
+        if (css) setThemeCSSCache((prev) => ({ ...prev, [selectedId]: css }));
+      })
+      .catch(() => {});
+  }, [selectedId, apiBase, themeCSSCache]);
+
+  const handleApply = useCallback(async () => {
+    const preset = presets.find((p) => p.id === selectedId);
+    if (!preset) return;
+    const css = themeCSSCache[selectedId!] || "";
+    onSelect(preset.id, preset.name, css);
+  }, [presets, selectedId, themeCSSCache, onSelect]);
 
   // Close on Escape
   useEffect(() => {
@@ -59,104 +84,194 @@ export default function InspirationPool({ open, onClose, onSelect, apiBase }: In
     return () => window.removeEventListener("keydown", handleKey);
   }, [open, onClose]);
 
+  const selectedPreset = presets.find((p) => p.id === selectedId);
+  const currentThemeCSS = selectedId ? themeCSSCache[selectedId] : undefined;
+
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-cc-surface border border-cc-border rounded-xl shadow-2xl w-[720px] max-w-[90vw] max-h-[80vh] overflow-hidden flex flex-col"
+        className="bg-cc-surface border border-cc-border rounded-xl shadow-2xl flex flex-col overflow-hidden"
+        style={{ width: "min(960px, 90vw)", height: "min(640px, 85vh)" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-cc-border">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-cc-border shrink-0">
           <div>
             <h2 className="text-sm font-semibold text-cc-fg">Inspiration Pool</h2>
-            <p className="text-xs text-cc-muted mt-0.5">Choose a style as a starting point — the agent will adapt it to your content</p>
+            <p className="text-xs text-cc-muted mt-0.5">Browse styles, preview live, then apply</p>
           </div>
-          <button onClick={onClose} className="text-cc-muted hover:text-cc-fg transition-colors cursor-pointer p-1 rounded hover:bg-cc-hover">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
-              <path d="M4 4l8 8M12 4l-8 8" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-2">
+            {selectedPreset && (
+              <button
+                onClick={handleApply}
+                className="px-3 py-1.5 rounded-md text-xs font-medium bg-cc-primary text-white hover:bg-cc-primary-hover transition-colors cursor-pointer"
+              >
+                Apply "{selectedPreset.name}"
+              </button>
+            )}
+            <button onClick={onClose} className="text-cc-muted hover:text-cc-fg transition-colors cursor-pointer p-1 rounded hover:bg-cc-hover">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                <path d="M4 4l8 8M12 4l-8 8" />
+              </svg>
+            </button>
+          </div>
         </div>
 
-        {/* Grid */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {loading ? (
-            <div className="text-center text-cc-muted py-12 text-sm">Loading presets...</div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center text-cc-muted text-sm">Loading presets...</div>
+        ) : (
+          <div className="flex flex-1 min-h-0">
+            {/* Left: preset list */}
+            <div className="w-[220px] shrink-0 border-r border-cc-border overflow-y-auto">
               {presets.map((p) => (
-                <PresetCard key={p.id} preset={p} onSelect={handleSelect} />
+                <PresetListItem
+                  key={p.id}
+                  preset={p}
+                  selected={p.id === selectedId}
+                  onSelect={() => { setSelectedId(p.id); setActiveSlideIdx(0); }}
+                />
               ))}
             </div>
-          )}
-        </div>
+
+            {/* Right: preview area */}
+            <div className="flex-1 flex flex-col min-w-0">
+              {selectedPreset && currentThemeCSS != null ? (
+                <>
+                  {/* Slide tab bar */}
+                  <div className="flex items-center gap-1 px-4 pt-3 pb-2 shrink-0">
+                    {previewSlides.map((s, i) => (
+                      <button
+                        key={s.id}
+                        onClick={() => setActiveSlideIdx(i)}
+                        className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+                          i === activeSlideIdx
+                            ? "bg-cc-primary/20 text-cc-primary"
+                            : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Live preview iframe */}
+                  <div className="flex-1 px-4 pb-4 min-h-0">
+                    <div className="w-full h-full rounded-lg overflow-hidden border border-cc-border bg-neutral-900">
+                      <SlidePreviewFrame
+                        themeCSS={currentThemeCSS}
+                        slideHtml={previewSlides[activeSlideIdx]?.html || ""}
+                        fonts={selectedPreset.fonts}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-cc-muted text-sm">
+                  {selectedId ? "Loading preview..." : "Select a style"}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function PresetCard({ preset, onSelect }: { preset: PresetInfo; onSelect: (p: PresetInfo) => void }) {
-  const isLight = isLightColor(preset.preview.bg);
-
+/** Compact preset card for the left sidebar list */
+function PresetListItem({ preset, selected, onSelect }: { preset: PresetInfo; selected: boolean; onSelect: () => void }) {
   return (
     <button
-      onClick={() => onSelect(preset)}
-      className="group text-left rounded-lg border border-cc-border hover:border-cc-primary/50 transition-all cursor-pointer overflow-hidden"
+      onClick={onSelect}
+      className={`w-full text-left px-3 py-2.5 border-b border-cc-border/50 transition-colors cursor-pointer flex items-start gap-2.5 ${
+        selected ? "bg-cc-primary/10" : "hover:bg-cc-hover"
+      }`}
     >
-      {/* Color preview */}
-      <div className="h-28 relative overflow-hidden" style={{ background: preset.preview.bg }}>
-        {/* Accent bar */}
+      {/* Color swatch */}
+      <div
+        className="w-8 h-8 rounded-md shrink-0 mt-0.5 relative overflow-hidden"
+        style={{ background: preset.preview.bg }}
+      >
         <div className="absolute bottom-0 left-0 right-0 h-1" style={{ background: preset.preview.accent }} />
-        {/* Decorative accent shape */}
-        <div
-          className="absolute top-3 right-3 w-8 h-8 rounded-full opacity-30"
-          style={{ background: preset.preview.accent }}
-        />
-        {/* Typography preview */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center px-4">
-          <div className="text-xl font-bold tracking-tight" style={{ color: preset.preview.fg }}>Aa</div>
-          <div
-            className="text-[10px] mt-1.5 font-medium"
-            style={{ color: preset.preview.fg, opacity: 0.5 }}
-          >
-            {preset.fonts.display}
-            {preset.fonts.display !== preset.fonts.body && ` + ${preset.fonts.body}`}
-          </div>
-        </div>
-        {/* Mood tags */}
-        <div className="absolute bottom-2.5 left-2.5 flex gap-1">
-          {preset.moods.map((m) => (
-            <span
-              key={m}
-              className="text-[9px] px-1.5 py-0.5 rounded-full font-medium"
-              style={{
-                background: isLight ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.1)",
-                color: preset.preview.fg,
-                opacity: 0.7,
-              }}
-            >
-              {m}
-            </span>
-          ))}
-        </div>
       </div>
-      {/* Info */}
-      <div className="p-3 bg-cc-bg">
-        <div className="text-xs font-semibold text-cc-fg group-hover:text-cc-primary transition-colors">{preset.name}</div>
-        <div className="text-[11px] text-cc-muted mt-0.5 line-clamp-2">{preset.description}</div>
+      {/* Text */}
+      <div className="min-w-0">
+        <div className={`text-xs font-semibold truncate ${selected ? "text-cc-primary" : "text-cc-fg"}`}>
+          {preset.name}
+        </div>
+        <div className="text-[10px] text-cc-muted mt-0.5 line-clamp-2 leading-tight">
+          {preset.description}
+        </div>
       </div>
     </button>
   );
 }
 
-/** Simple luminance check to determine if a hex color is "light" */
-function isLightColor(hex: string): boolean {
-  const c = hex.replace("#", "");
-  if (c.length < 6) return false;
-  const r = parseInt(c.slice(0, 2), 16);
-  const g = parseInt(c.slice(2, 4), 16);
-  const b = parseInt(c.slice(4, 6), 16);
-  return (r * 299 + g * 587 + b * 114) / 1000 > 128;
+/** Renders a slide in an iframe with the given theme CSS */
+function SlidePreviewFrame({ themeCSS, slideHtml, fonts }: { themeCSS: string; slideHtml: string; fonts: { display: string; body: string } }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const srcdoc = useMemo(() => {
+    return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+${themeCSS}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body {
+  font-family: var(--font-sans, system-ui, sans-serif);
+  background: var(--color-bg, #0f0f0f);
+  color: var(--color-fg, #e8e6df);
+  -webkit-font-smoothing: antialiased;
+}
+.slide {
+  width: 1280px;
+  height: 720px;
+  transform-origin: top left;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+</style>
+</head>
+<body>
+${slideHtml}
+<script>
+(function(){
+  var s = document.querySelector('.slide');
+  if (!s) return;
+  function fit() {
+    var sx = window.innerWidth / 1280;
+    var sy = window.innerHeight / 720;
+    var scale = Math.min(sx, sy);
+    s.style.transform = 'scale(' + scale + ')';
+    s.style.position = 'absolute';
+    s.style.left = ((window.innerWidth - 1280 * scale) / 2) + 'px';
+    s.style.top = ((window.innerHeight - 720 * scale) / 2) + 'px';
+  }
+  fit();
+  window.addEventListener('resize', fit);
+})();
+<\/script>
+</body>
+</html>`;
+  }, [themeCSS, slideHtml]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      srcDoc={srcdoc}
+      className="w-full h-full border-0"
+      sandbox="allow-scripts"
+      title="Style preview"
+    />
+  );
 }

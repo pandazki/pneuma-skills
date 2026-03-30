@@ -994,6 +994,15 @@ export function startServer(options: ServerOptions) {
     }
   });
 
+  app.get("/api/slide-presets/preview-slides", async (c) => {
+    try {
+      const data = await Bun.file(join(presetsDir, "preview-slides.json")).text();
+      return c.json({ slides: JSON.parse(data) });
+    } catch {
+      return c.json({ slides: [] });
+    }
+  });
+
   app.get("/api/slide-presets/:id/theme", async (c) => {
     const id = c.req.param("id");
     if (!/^[a-z0-9-]+$/.test(id)) return c.json({ error: "Invalid preset ID" }, 400);
