@@ -2,10 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.23.3] - 2026-03-30
+
+### Improved
+- **Slide export isolation** — replaced shadow DOM with iframe-based rendering for export page slides. Each slide renders in its own `<iframe srcdoc>`, providing complete CSS/JS isolation and better snapdom compatibility for image capture
+- **Image mode caching** — captured PNG is cached in `<img>` elements; switching between HTML/Image modes no longer re-captures
+- **Print flow** — dedicated `printSlides()` with `createMaterializedSlides()` materializes iframe content for printing; `beforeprint`/`afterprint` event handling for automatic cleanup
+- **PPTX export** — refactored to async/await with proper materialization from iframe content
+
 ## [2.23.2] - 2026-03-29
 
 ### Fixed
-- **Slide export CSS isolation** — each slide now renders inside a shadow DOM boundary, preventing inline `<style>` blocks from polluting the export toolbar and other slides. Applied to both export page and player page
+- **Slide export CSS isolation (player)** — player page slides render inside shadow DOM boundaries, preventing inline `<style>` blocks from polluting the player chrome
 - **Image mode pseudo-elements** — `::before`/`::after` elements (e.g. decorative bars) were lost during snapdom capture inside shadow DOM. Fixed by flattening shadow content into a hidden iframe before capture
 - **Body attribute preservation** — `<body style>` and `<body class>` attributes from slide HTML are now propagated into shadow DOM `:host` styles and host element classes
 
