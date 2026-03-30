@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.24.1] - 2026-03-30
+
+### Fixed
+- **Slide export text reflow** — snapdom's foreignObject produced slightly wider text when capturing visible iframes, causing unexpected line breaks in slides with tight text (CJK + Latin mixed with letter-spacing). Fixed by hiding the capture iframe before snapdom runs, forcing CSS computed values instead of live layout metrics
+- **Slide thumbnail overflow crop** — decorative elements with negative offsets (e.g. glow effects at `right: -200px`) caused snapdom to capture beyond the slide bounds. Captured images are now cropped to the expected slide dimensions
+- **Export page font timing** — added `document.fonts.ready` wait before snapdom capture in both thumbnail and export paths to prevent text reflow from incomplete font rendering
+
+### Improved
+- **snapdom upgrade** — `@zumer/snapdom` 2.0.2 → 2.7.0 (plugin system, font stylesheet domains, Safari warmup, debug mode)
+- **Export page default mode** — export page now defaults to HTML mode instead of auto-converting to Image on load, avoiding stale captures from early rendering state
+
 ## [2.24.0] - 2026-03-30
 
 ### Added

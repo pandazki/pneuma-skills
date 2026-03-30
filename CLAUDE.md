@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.24.0
+**Version:** 2.24.1
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `remotion`, `gridboard`, `mode-maker`, `evolve`
 
@@ -672,7 +672,7 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **Empty assistant messages**: `MessageBubble` returns null when content is empty (tool_use-only messages).
 - **modelUsage cumulative**: Use delta (current - previous) for per-turn cost.
 - **`backdrop-filter` containing block**: `backdrop-filter` creates a containing block for fixed-positioned children, causing coordinate offset in Excalidraw. Avoid or account for it.
-- **`@zumer/snapdom`**: Used for slide thumbnail capture and export image mode. Renders DOM to canvas via snapshot cloning.
+- **`@zumer/snapdom`**: Used for slide thumbnail capture and export image mode. Renders DOM to canvas via snapshot cloning. **Important:** capture iframes must be `display: none` during snapdom calls — visible iframes cause foreignObject text reflow (wider text metrics, unexpected line breaks). See `useSlideThumbnails.ts` and `export.ts` for the pattern.
 - **Windows compatibility**: Cross-platform support via:
   - `path-resolver.ts`: `where` instead of `which`, builds PATH from `LOCALAPPDATA`/`APPDATA`/`ProgramFiles`
   - `terminal-manager.ts`: `COMSPEC`/`cmd.exe` as shell, no `-l` flag
