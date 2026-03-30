@@ -2,6 +2,7 @@
 import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
+import { resolveBinary, getEnrichedPath } from "./path-resolver.ts";
 
 // --- Vercel Token Config ---
 
@@ -36,11 +37,11 @@ interface CliStatus {
 
 export async function checkVercelCli(): Promise<CliStatus> {
   try {
-    const which = Bun.spawn(["which", "vercel"], { stdout: "pipe", stderr: "pipe" });
-    const whichExit = await which.exited;
-    if (whichExit !== 0) return { installed: false, loggedIn: false };
+    const vercelPath = resolveBinary("vercel");
+    if (!vercelPath) return { installed: false, loggedIn: false };
 
-    const whoami = Bun.spawn(["vercel", "whoami"], { stdout: "pipe", stderr: "pipe" });
+    const env = { ...process.env, PATH: getEnrichedPath() } as Record<string, string>;
+    const whoami = Bun.spawn([vercelPath, "whoami"], { stdout: "pipe", stderr: "pipe", env });
     const whoamiExit = await whoami.exited;
     if (whoamiExit !== 0) return { installed: true, loggedIn: false };
 
@@ -269,7 +270,7 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
     }
 
     const isFirstDeploy = !req.projectId;
-    const env: Record<string, string> = { ...process.env as Record<string, string> };
+    const env: Record<string, string> = { ...process.env as Record<string, string>, PATH: getEnrichedPath() };
     if (req.teamId) env.VERCEL_ORG_ID = req.teamId;
 
     // Helper to run vercel CLI and get output

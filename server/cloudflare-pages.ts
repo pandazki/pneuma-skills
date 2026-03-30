@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { createHash } from "node:crypto";
+import { resolveBinary, getEnrichedPath } from "./path-resolver.ts";
 
 // --- Config ---
 
@@ -36,10 +37,11 @@ interface CliStatus {
 
 export async function checkWranglerCli(): Promise<CliStatus> {
   try {
-    const which = Bun.spawn(["which", "wrangler"], { stdout: "pipe", stderr: "pipe" });
-    if ((await which.exited) !== 0) return { installed: false, loggedIn: false };
+    const wranglerPath = resolveBinary("wrangler");
+    if (!wranglerPath) return { installed: false, loggedIn: false };
 
-    const whoami = Bun.spawn(["wrangler", "whoami"], { stdout: "pipe", stderr: "pipe" });
+    const env = { ...process.env, PATH: getEnrichedPath() } as Record<string, string>;
+    const whoami = Bun.spawn([wranglerPath, "whoami"], { stdout: "pipe", stderr: "pipe", env });
     const out = await new Response(whoami.stdout).text();
     const exit = await whoami.exited;
     // wrangler whoami prints account info if logged in
@@ -101,7 +103,7 @@ async function deployViaCli(req: CfDeployRequest): Promise<CfDeployResult> {
     }
 
     const name = req.projectName ?? "pneuma-deploy";
-    const env = process.env as Record<string, string>;
+    const env = { ...process.env, PATH: getEnrichedPath() } as Record<string, string>;
 
     // Ensure project exists (wrangler < 4.78 doesn't auto-create)
     const checkProc = Bun.spawn(

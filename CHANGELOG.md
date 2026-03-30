@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.24.3] - 2026-03-31
+
+### Fixed
+- **Desktop CLI detection** — Vercel and Wrangler CLIs were not detected in the Electron desktop app because `checkVercelCli()` / `checkWranglerCli()` used bare `which` with the limited GUI process PATH. Now uses `resolveBinary()` and enriched PATH from `path-resolver.ts`, which captures the user's shell PATH and probes common install directories
+
 ## [2.24.2] - 2026-03-30
 
 ### Fixed
