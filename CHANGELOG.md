@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.24.0] - 2026-03-30
+
+### Added
+- **Slide Inspiration Pool** — opt-in style preset browser in the slide viewer toolbar. 8 curated styles (Bold Signal, Electric Studio, Creative Voltage, Dark Botanical, Notebook Tabs, Neon Cyber, Swiss Modern, Paper & Ink) with live iframe preview. Presets serve as design starting points — the agent adapts them to the user's content
+
+### Fixed
+- **Notification queue flush** — viewer notifications (e.g. preset selection) were stuck unsent on fresh sessions. Root cause: `cli_connected` didn't restore `sessionStatus` to `"idle"` after `cli_disconnected` set it to `null`
+
 ## [2.23.3] - 2026-03-30
 
 ### Improved
