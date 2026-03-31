@@ -86,6 +86,8 @@ export default function ChatInput() {
   const updateAnnotationComment = useStore((s) => s.updateAnnotationComment);
   const clearAnnotations = useStore((s) => s.clearAnnotations);
   const previewMode = useStore((s) => s.previewMode);
+  const promptSuggestions = useStore((s) => s.promptSuggestions);
+  const clearPromptSuggestions = useStore((s) => s.clearPromptSuggestions);
   const slashCommands = useStore((s) => s.session?.slash_commands ?? EMPTY_STRINGS);
   const skills = useStore((s) => s.session?.skills ?? EMPTY_STRINGS);
 
@@ -411,6 +413,25 @@ export default function ChatInput() {
                 <CloseIcon />
               </button>
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* Prompt suggestions */}
+      {promptSuggestions.length > 0 && (
+        <div className="flex flex-wrap gap-2 px-3 pb-2">
+          {promptSuggestions.map((suggestion, i) => (
+            <button
+              key={i}
+              onClick={() => {
+                sendUserMessage(suggestion);
+                clearPromptSuggestions();
+              }}
+              disabled={!cliConnected || isBusy}
+              className="px-3 py-1.5 text-xs bg-cc-surface/80 hover:bg-cc-surface text-cc-text border border-cc-border/50 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {suggestion}
+            </button>
           ))}
         </div>
       )}

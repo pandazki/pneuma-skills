@@ -15,6 +15,9 @@ export interface ChatSlice {
   pendingMessages: PendingMessage[];
   pendingPermissions: Map<string, PermissionRequest>;
   answeredQuestions: Map<string, AnsweredQuestion>;
+  promptSuggestions: string[];
+  setPromptSuggestions: (suggestions: string[]) => void;
+  clearPromptSuggestions: () => void;
 
   appendMessage: (msg: ChatMessage) => void;
   setMessages: (msgs: ChatMessage[]) => void;
@@ -36,6 +39,9 @@ export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, 
   pendingMessages: [],
   pendingPermissions: new Map(),
   answeredQuestions: new Map(),
+  promptSuggestions: [],
+  setPromptSuggestions: (suggestions) => set({ promptSuggestions: suggestions }),
+  clearPromptSuggestions: () => set({ promptSuggestions: [] }),
 
   appendMessage: (msg) =>
     set((s) => {
