@@ -464,7 +464,7 @@ function getGlobalSkillDependencies(): SkillDependency[] {
   return [{
     name: "pneuma-preferences",
     sourceDir: "skills/pneuma-preferences",
-    claudeMdSnippet: "**pneuma-preferences** — Read and maintain user preference profiles across sessions",
+    claudeMdSnippet: "**pneuma-preferences** — Persistent user preference memory. Consult BEFORE making design, style, or aesthetic decisions in any mode. Also use when starting creative work or when the user corrects your choices.",
   }];
 }
 
