@@ -49,7 +49,25 @@ export function extractPreferenceCritical(filePath: string): string | null {
 }
 
 /**
- * Ensure `.pneuma/` is listed in the workspace's .gitignore.
+ * Create a preference file with empty scaffold markers if it doesn't exist.
+ * If the file already exists, it is left untouched.
+ */
+function scaffoldPreferenceFile(filePath: string, title: string): void {
+  if (existsSync(filePath)) return;
+  const content = `# ${title}
+
+<!-- pneuma-critical:start -->
+<!-- pneuma-critical:end -->
+
+<!-- changelog:start -->
+## Changelog
+<!-- changelog:end -->
+`;
+  writeFileSync(filePath, content, "utf-8");
+}
+
+/**
+ * Ensure \`.pneuma/\` is listed in the workspace's .gitignore.
  */
 function ensureGitignore(workspace: string): void {
   const gitignorePath = join(workspace, ".gitignore");
@@ -541,8 +559,12 @@ export function installSkill(
     skillSnippets.push(...globalSnippets);
   }
 
-  // 1e. Ensure preferences directory exists
-  mkdirSync(join(homedir(), ".pneuma", "preferences"), { recursive: true });
+  // 1e. Ensure preferences directory and scaffold files exist
+  const prefsDir = join(homedir(), ".pneuma", "preferences");
+  mkdirSync(prefsDir, { recursive: true });
+  scaffoldPreferenceFile(join(prefsDir, "profile.md"), "User Profile");
+  const prefModeName = skillConfig.installName.replace(/^pneuma-/, "");
+  scaffoldPreferenceFile(join(prefsDir, `mode-${prefModeName}.md`), `${prefModeName} Mode Preferences`);
 
   // 2. Inject/update instructions file with pneuma configuration
   //    Claude Code uses CLAUDE.md, Codex uses AGENTS.md
