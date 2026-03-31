@@ -1653,8 +1653,22 @@ pages.forEach(function(page, i) {
     frame.srcdoc = page.html;
     frame.addEventListener('load', function() {
       try {
-        var h = frame.contentDocument.documentElement.scrollHeight;
-        frame.style.height = Math.max(h, 200) + 'px';
+        var doc = frame.contentDocument;
+        // Force all animations to their end state and trigger scroll-reveal
+        // classes. In export there's no scrolling, so IntersectionObserver
+        // never fires and elements with opacity:0 + scroll triggers stay hidden.
+        var style = doc.createElement('style');
+        style.textContent = '*, *::before, *::after { animation-fill-mode: forwards !important; animation-delay: 0s !important; animation-duration: 0s !important; transition-duration: 0s !important; }';
+        doc.head.appendChild(style);
+        // Trigger common scroll-reveal class patterns
+        doc.querySelectorAll('section, [class*="reveal"], [class*="fade"], [class*="scroll"], [class*="animate"]').forEach(function(el) {
+          el.classList.add('visible', 'revealed', 'in-view', 'is-visible', 'show', 'active');
+        });
+        // Wait a frame for layout to settle after overrides
+        requestAnimationFrame(function() {
+          var h = doc.documentElement.scrollHeight;
+          frame.style.height = Math.max(h, 200) + 'px';
+        });
       } catch(e) {}
     });
   }
