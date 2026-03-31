@@ -1658,7 +1658,32 @@ pages.forEach(function(page, i) {
         // classes. In export there's no scrolling, so IntersectionObserver
         // never fires and elements with opacity:0 + scroll triggers stay hidden.
         var style = doc.createElement('style');
-        style.textContent = '*, *::before, *::after { animation-fill-mode: forwards !important; animation-delay: 0s !important; animation-duration: 0s !important; transition-duration: 0s !important; }';
+        style.textContent = [
+          '*, *::before, *::after { animation-fill-mode: forwards !important; animation-delay: 0s !important; animation-duration: 0s !important; transition-duration: 0s !important; }',
+          // Collapse viewport-height layouts that cause excessive space in export iframes.
+          // In export, each page is a continuous document — full-screen hero sections
+          // should shrink to fit their content, not claim 100vh of the iframe.
+          ':where([class*="hero"], [class*="banner"], [class*="cover"], [class*="landing"], [class*="fullscreen"], [class*="full-screen"]) { min-height: auto !important; height: auto !important; }',
+        ].join('\\n');
+        // Also scan all stylesheets for vh-based rules and override inline
+        try {
+          Array.from(doc.styleSheets).forEach(function(ss) {
+            try {
+              Array.from(ss.cssRules).forEach(function(rule) {
+                if (rule.style) {
+                  var mh = rule.style.minHeight || '';
+                  var h = rule.style.height || '';
+                  if (mh.indexOf('vh') > -1 || mh.indexOf('svh') > -1 || mh.indexOf('dvh') > -1) {
+                    rule.style.setProperty('min-height', 'auto', 'important');
+                  }
+                  if (h.indexOf('vh') > -1 || h.indexOf('svh') > -1 || h.indexOf('dvh') > -1) {
+                    rule.style.setProperty('height', 'auto', 'important');
+                  }
+                }
+              });
+            } catch(e2) {}
+          });
+        } catch(e3) {}
         doc.head.appendChild(style);
         // Trigger common scroll-reveal class patterns
         doc.querySelectorAll('section, [class*="reveal"], [class*="fade"], [class*="scroll"], [class*="animate"]').forEach(function(el) {
