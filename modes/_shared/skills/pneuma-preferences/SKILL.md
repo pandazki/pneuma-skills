@@ -11,56 +11,82 @@ description: >
 
 # User Preferences
 
-You have persistent memory about this user's preferences stored in `~/.pneuma/preferences/`.
+You have persistent memory about this user stored in `~/.pneuma/preferences/`. This is your external memory — it survives across sessions, across workspaces, across modes.
 
-## Quick Start
+## Why This Matters
 
-1. **Read** `~/.pneuma/preferences/profile.md` and `~/.pneuma/preferences/mode-{current-mode}.md` (if they exist)
-2. **Apply** what you learn to your current task — style choices, tone, layout, density
-3. **Update** the files when you notice new stable patterns or the user states a preference
+Every session starts from zero. Without preferences, you guess at style choices, repeat mistakes the user already corrected, and miss patterns you've seen before. Preferences solve this:
 
-If the files don't exist yet, that's fine — create them when you have enough observations.
+- The user corrected you three sessions ago about font sizes → that's recorded, you won't repeat it
+- The user always chooses muted colors → you start there instead of guessing
+- The user prefers Chinese when writing content → you know before they have to say it again
+
+Preferences are not instructions. They're your understanding of who this user is and how they work. The better your understanding, the less friction in collaboration.
 
 ## Files
 
 | File | What goes in it |
 |------|----------------|
-| `profile.md` | Cross-mode preferences: aesthetics, language, collaboration style, cognitive patterns |
-| `mode-{name}.md` | Mode-specific habits: slide layout preferences, doc formatting style, color choices, etc. |
+| `~/.pneuma/preferences/profile.md` | Cross-mode: aesthetics, language, collaboration style, cognitive patterns, deep profile |
+| `~/.pneuma/preferences/mode-{name}.md` | Mode-specific: slide layout habits, doc formatting style, color choices, etc. |
 
-## Reading Preferences
+Files are created by you as needed. An absent file means no profile exists yet — not an error.
 
-Read preferences silently at the start of creative work. Do not announce it. Apply them naturally.
+## Three-Layer Model
 
-Key moments to check preferences:
-- Beginning of a session where you'll create or edit content
-- Before choosing a color scheme, theme, layout, or typographic style
-- When the user corrects a design or style choice — check if this is a known preference you missed
-- When the user says "I always want..." or "never do..." — that might already be recorded
+Preferences organize into three layers, each requiring different levels of evidence:
 
-## Updating Preferences
+**Layer 1 — Observable preferences** (profile.md): Surface patterns you can see directly. Language, aesthetic tendencies, collaboration style, cognitive approach. A few sessions of observation is enough.
 
-Update silently when you observe something worth recording. Do not ask permission.
+**Layer 2 — Deep profile** (profile.md, deeper section): What drives the surface patterns. Capability boundaries, value anchors (efficiency vs. craft, innovation vs. stability), latent habits, contradictions. This layer requires substantial observation — premature deep profiles are worse than none, because they create false confidence.
 
-- **User explicitly states a preference** → write it immediately, note "user-stated"
-- **You notice a recurring pattern across this session** → note it as "observed"
-- **An existing preference is contradicted** → revise or note the contradiction
-- Each update is a **full rewrite** of the file — reread everything, reconsider, rewrite what changed
+**Layer 3 — Per-mode preferences** (mode-{name}.md): Concrete habits in a specific mode. "Always uses light themes in slides", "prefers two-column layouts for comparison content". Distinguish what the user explicitly stated from what you inferred through observation.
 
-## Critical Constraints
+The layers exist because surface preferences are easy to spot but shallow, while deep patterns are powerful but require evidence. Jumping to Layer 2 from one session is the classic mistake — it produces labels, not understanding.
 
-Users can mark hard constraints that get auto-injected into every session:
+## Living Document Philosophy
+
+Preference files are living documents, not label databases. This distinction matters:
+
+- **Full rewrite, not append** — each update is a fresh look at the whole portrait, not a new line at the bottom. Reread everything, reconsider, rewrite what changed.
+- **Preserve contradictions** — people are not consistent. If behavior contradicts itself, record both sides. Forcing coherence is a lie that degrades your model.
+- **Everything is deletable** — any entry can be overturned by later observation. Nothing is permanent.
+- **Temporary vs. stable** — "this project needs dark theme" is not a preference. "Consistently chooses dark themes across projects" is.
+- **Describe, don't label** — "tends to request minimal text per slide" not "is a minimalist". Patterns, not personality types.
+
+Why full rewrite? Because appending creates a pile of contradictory observations. A living document forces you to reconcile or explicitly preserve tension. The result is a coherent portrait, not a changelog.
+
+## When to Read
+
+Read preferences silently. Do not announce it.
+
+- **Start of creative work** — before your first design decision in a session
+- **Before style choices** — colors, themes, layouts, density, typography, tone
+- **When the user corrects you** — check if this was a known preference you missed
+
+## When to Update
+
+Update silently. Do not ask permission.
+
+- **User explicitly states a preference** → write immediately, mark "user-stated"
+- **Recurring pattern observed** → note as "observed", not from a single instance
+- **Existing entry contradicted** → revise or annotate the contradiction
+- **After a full refresh** → update the changelog
+
+## Markers
+
+Two markers have system-level meaning in preference files:
+
+**Critical constraints** — auto-injected into the instructions file at every session startup:
 
     <!-- pneuma-critical:start -->
     - Never use dark backgrounds
-    - Always use simplified Chinese for content
+    - All content text in simplified Chinese
     <!-- pneuma-critical:end -->
 
-Only truly non-negotiable, user-confirmed rules go here. Everything else stays in the main body.
+Only truly non-negotiable, user-confirmed rules go here.
 
-## Changelog
-
-Maintain a changelog at the end of each preference file for incremental tracking:
+**Changelog** — tracks when and what changed, enabling incremental refresh:
 
     <!-- changelog:start -->
     ## Changelog
@@ -71,8 +97,8 @@ Maintain a changelog at the end of each preference file for incremental tracking
 
 ## Full Refresh
 
-When the user asks to analyze their preferences across sessions, or when you want to build/rebuild the preference profile from history, read `{SKILL_PATH}/references/analysis-method.md` for the detailed methodology — it covers the three-layer preference model, writing principles, analysis techniques, and step-by-step refresh instructions.
+When you need to build or rebuild the preference profile from session history (e.g., first time setup, or periodic deep analysis), read `{SKILL_PATH}/references/analysis-method.md` for the detailed methodology — it covers analysis techniques, data access scripts, and the step-by-step refresh process.
 
 ## Concurrency
 
-Multiple sessions may run simultaneously. Read the latest file content before rewriting to minimize overwrites.
+Multiple sessions may run simultaneously. Read the latest file content immediately before rewriting to minimize overwrites.
