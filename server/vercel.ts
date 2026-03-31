@@ -283,10 +283,13 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
       return { stdout, stderr, exitCode: await p.exited };
     }
 
+    // Resolve binary path for Electron/desktop compatibility
+    const vercelBin = resolveBinary("vercel") ?? "vercel";
+
     // Step 1: Deploy
     // First deploy: preview first (--prod on first deploy fails with "Project Settings are invalid")
     // Then promote to production in a second step.
-    const deployArgs = ["vercel", "deploy", "--yes"];
+    const deployArgs = [vercelBin, "deploy", "--yes"];
     if (!isFirstDeploy) deployArgs.push("--prod");
     if (req.projectName) deployArgs.push("--name", req.projectName);
 
@@ -295,18 +298,33 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
       throw new Error(`vercel deploy failed: ${deploy.stderr || deploy.stdout}`);
     }
 
-    let deploymentUrl = deploy.stdout.trim().split("\n").pop()?.trim() ?? "";
-    if (!deploymentUrl.startsWith("http")) {
+    // Parse deploy output — newer Vercel CLI outputs JSON, older outputs plain URL
+    let deploymentUrl = "";
+    let jsonResult: { deployment?: { url?: string; inspectorUrl?: string }; } | null = null;
+    const rawOut = deploy.stdout.trim();
+    try {
+      jsonResult = JSON.parse(rawOut);
+      deploymentUrl = jsonResult?.deployment?.url ?? "";
+      if (deploymentUrl && !deploymentUrl.startsWith("http")) deploymentUrl = `https://${deploymentUrl}`;
+    } catch {
+      // Legacy plain-text output: last line is the URL
+      deploymentUrl = rawOut.split("\n").pop()?.trim() ?? "";
+    }
+    if (!deploymentUrl || !deploymentUrl.startsWith("http")) {
       throw new Error(`Unexpected vercel output: ${deploy.stdout}`);
     }
 
     // Step 2: For first deploy, promote to production
     if (isFirstDeploy) {
-      const promote = await runVercel(["vercel", "deploy", "--prod", "--yes"]);
+      const promote = await runVercel([vercelBin, "deploy", "--prod", "--yes"]);
       if (promote.exitCode === 0) {
-        const promoteUrl = promote.stdout.trim().split("\n").pop()?.trim() ?? "";
-        if (promoteUrl.startsWith("http")) {
-          deploymentUrl = promoteUrl;
+        try {
+          const promoteJson = JSON.parse(promote.stdout.trim());
+          const u = promoteJson?.deployment?.url ?? "";
+          if (u) deploymentUrl = u.startsWith("http") ? u : `https://${u}`;
+        } catch {
+          const promoteUrl = promote.stdout.trim().split("\n").pop()?.trim() ?? "";
+          if (promoteUrl.startsWith("http")) deploymentUrl = promoteUrl;
         }
       }
     }
@@ -322,10 +340,18 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
       orgId = projJson.orgId ?? orgId;
     } catch { /* ignore */ }
 
-    // Step 4: Get production alias + dashboard URL via `vercel inspect`
+    // Step 4: Get production alias + dashboard URL
     let prodUrl = deploymentUrl;
     let dashboardUrl = "";
-    const inspect = await runVercel(["vercel", "inspect", deploymentUrl]);
+
+    // Try to extract from JSON result first (newer CLI)
+    if (jsonResult?.deployment?.inspectorUrl) {
+      const inspectorUrl = jsonResult.deployment.inspectorUrl;
+      dashboardUrl = inspectorUrl.split("/").slice(0, -1).join("/");
+    }
+
+    // Fall back to `vercel inspect` for aliases and dashboard URL
+    const inspect = await runVercel([vercelBin, "inspect", deploymentUrl]);
     const inspectText = inspect.stdout + "\n" + inspect.stderr;
 
     // Parse aliases — shortest .vercel.app URL is the production alias
@@ -335,12 +361,13 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
       prodUrl = sorted[0];
     }
 
-    // Parse scope from "Fetching deployment ... in {scope}" line
-    const scopeMatch = inspectText.match(/in\s+([\w-]+)\s*$/m);
-    // Parse project name from "name\t{name}" line
-    const nameMatch = inspectText.match(/name\s+([\w-]+)/);
-    if (scopeMatch && nameMatch) {
-      dashboardUrl = `https://vercel.com/${scopeMatch[1]}/${nameMatch[1]}`;
+    // Parse scope + project name for dashboard URL (if not already set from JSON)
+    if (!dashboardUrl) {
+      const scopeMatch = inspectText.match(/in\s+([\w-]+)\s*$/m);
+      const nameMatch = inspectText.match(/name\s+([\w-]+)/);
+      if (scopeMatch && nameMatch) {
+        dashboardUrl = `https://vercel.com/${scopeMatch[1]}/${nameMatch[1]}`;
+      }
     }
 
     return {
