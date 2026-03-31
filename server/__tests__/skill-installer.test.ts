@@ -705,7 +705,7 @@ describe("installSkill with mcpServers and skillDependencies", () => {
     expect(claudeMd).toContain("<!-- pneuma:skills:end -->");
   });
 
-  test("no skills section in CLAUDE.md when no dependencies", () => {
+  test("no mode-specific skills but global dependencies still present", () => {
     const config: SkillConfig = {
       sourceDir: "skill",
       installName: "pneuma-integ",
@@ -715,10 +715,12 @@ describe("installSkill with mcpServers and skillDependencies", () => {
     installSkill(workspace, config, modeSourceDir);
 
     const claudeMd = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
-    expect(claudeMd).not.toContain("<!-- pneuma:skills:start -->");
+    // Global dependencies (pneuma-preferences) are always installed
+    expect(claudeMd).toContain("<!-- pneuma:skills:start -->");
+    expect(claudeMd).toContain("pneuma-preferences");
   });
 
-  test("re-install removes stale skills section when dependencies removed", () => {
+  test("re-install removes mode-specific skills but keeps global dependencies", () => {
     // First install with dependency
     const configWithDeps: SkillConfig = {
       sourceDir: "skill",
@@ -734,8 +736,9 @@ describe("installSkill with mcpServers and skillDependencies", () => {
 
     let claudeMd = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
     expect(claudeMd).toContain("<!-- pneuma:skills:start -->");
+    expect(claudeMd).toContain("**helper** — A helper tool");
 
-    // Re-install without dependencies
+    // Re-install without mode-specific dependencies
     const configWithoutDeps: SkillConfig = {
       sourceDir: "skill",
       installName: "pneuma-integ",
@@ -744,7 +747,9 @@ describe("installSkill with mcpServers and skillDependencies", () => {
     installSkill(workspace, configWithoutDeps, modeSourceDir);
 
     claudeMd = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
-    expect(claudeMd).not.toContain("<!-- pneuma:skills:start -->");
+    // Mode-specific helper removed, but global deps remain
+    expect(claudeMd).not.toContain("**helper** — A helper tool");
+    expect(claudeMd).toContain("pneuma-preferences");
     expect(claudeMd).toContain("No deps now.");
   });
 });

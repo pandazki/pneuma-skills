@@ -90,6 +90,7 @@ pneuma-skills/
 │   ├── mode-resolver.ts       # Source resolution (builtin/local/github/url → disk path)
 │   └── utils/manifest-parser.ts  # Regex-based manifest.ts metadata extraction
 ├── modes/{webcraft,doc,slide,draw,illustrate,remotion,gridboard,mode-maker,evolve}/  # Builtin modes
+├── modes/_shared/skills/          # Global skills installed for all modes (e.g. pneuma-preferences)
 ├── backends/
 │   ├── index.ts               # Backend registry + descriptors + capabilities + availability
 │   ├── claude-code/           # Claude backend — Bun.spawn with --sdk-url
@@ -283,6 +284,19 @@ Global session history for the launcher "Recent Sessions" feature:
 - **Record:** `{ id: "${workspace}::${mode}", mode, displayName, workspace, backendType, lastAccessed }`
 - Upserted on every mode launch, capped at 50 entries
 - Launcher shows recent sessions with one-click resume (no dialog)
+
+### User Preferences
+
+Persistent user preference files managed by the agent:
+
+- **Directory:** `~/.pneuma/preferences/`
+- **Files:** `profile.md` (cross-mode), `mode-{name}.md` (per-mode)
+- **Format:** Agent-managed Markdown with two system markers:
+  - `<!-- pneuma-critical:start/end -->` — Hard constraints, extracted and injected into instructions file at startup
+  - `<!-- changelog:start/end -->` — Update log for incremental refresh
+- **Injection:** `<!-- pneuma:preferences:start/end -->` marker in CLAUDE.md/AGENTS.md (critical only)
+- **Skill:** `pneuma-preferences` installed as global dependency for all modes
+- **Source:** `modes/_shared/skills/pneuma-preferences/`
 
 ### Per-Workspace Persistence
 

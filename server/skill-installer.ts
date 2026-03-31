@@ -8,6 +8,7 @@
 
 import { mkdirSync, existsSync, readFileSync, writeFileSync, cpSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, extname } from "node:path";
+import { homedir } from "node:os";
 import type { SkillConfig, ViewerApiConfig, McpServerConfig, SkillDependency } from "../core/types/mode-manifest.js";
 
 /** Return the workspace-relative skills directory for a given backend. */
@@ -26,6 +27,26 @@ const VIEWER_API_MARKER_START = "<!-- pneuma:viewer-api:start -->";
 const VIEWER_API_MARKER_END = "<!-- pneuma:viewer-api:end -->";
 const SKILLS_MARKER_START = "<!-- pneuma:skills:start -->";
 const SKILLS_MARKER_END = "<!-- pneuma:skills:end -->";
+const PREFS_MARKER_START = "<!-- pneuma:preferences:start -->";
+const PREFS_MARKER_END = "<!-- pneuma:preferences:end -->";
+
+/**
+ * Extract critical preferences from a preference file.
+ * Returns trimmed content between <!-- pneuma-critical:start --> and <!-- pneuma-critical:end -->,
+ * or null if file doesn't exist or has no critical section.
+ */
+export function extractPreferenceCritical(filePath: string): string | null {
+  try {
+    const content = readFileSync(filePath, "utf-8");
+    const match = content.match(
+      /<!-- pneuma-critical:start -->\s*([\s\S]*?)\s*<!-- pneuma-critical:end -->/
+    );
+    const extracted = match?.[1]?.trim();
+    return extracted || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Ensure `.pneuma/` is listed in the workspace's .gitignore.
@@ -432,6 +453,22 @@ export function installSkillDependencies(
 }
 
 /**
+ * Returns framework-level skill dependencies installed for ALL modes.
+ * These provide universal agent capabilities (e.g., user preference analysis).
+ */
+function getGlobalSkillDependencies(): SkillDependency[] {
+  const sharedDir = join(import.meta.dirname, "..", "modes", "_shared");
+  const prefsDir = join(sharedDir, "skills", "pneuma-preferences");
+  if (!existsSync(prefsDir)) return [];
+
+  return [{
+    name: "pneuma-preferences",
+    sourceDir: "skills/pneuma-preferences",
+    claudeMdSnippet: "**pneuma-preferences** — Read and maintain user preference profiles across sessions",
+  }];
+}
+
+/**
  * Install a mode's skill and inject CLAUDE.md configuration.
  *
  * @param workspace  — User's project directory
@@ -490,6 +527,22 @@ export function installSkill(
   if (skillConfig.skillDependencies && skillConfig.skillDependencies.length > 0) {
     skillSnippets = installSkillDependencies(workspace, skillConfig.skillDependencies, modeSourceDir, params, backendType);
   }
+
+  // 1d. Install global skill dependencies (framework-level, all modes)
+  const globalDeps = getGlobalSkillDependencies();
+  if (globalDeps.length > 0) {
+    const globalSnippets = installSkillDependencies(
+      workspace,
+      globalDeps,
+      join(import.meta.dirname, "..", "modes", "_shared"),
+      params,
+      backendType,
+    );
+    skillSnippets.push(...globalSnippets);
+  }
+
+  // 1e. Ensure preferences directory exists
+  mkdirSync(join(homedir(), ".pneuma", "preferences"), { recursive: true });
 
   // 2. Inject/update instructions file with pneuma configuration
   //    Claude Code uses CLAUDE.md, Codex uses AGENTS.md
@@ -584,6 +637,41 @@ export function installSkill(
     if (sStart !== -1 && sEnd !== -1) {
       content = content.substring(0, sStart) +
         content.substring(sEnd + SKILLS_MARKER_END.length);
+    }
+  }
+
+  // 2d. Inject/update preferences critical section
+  {
+    const prefsDir = join(homedir(), ".pneuma", "preferences");
+    const globalCritical = extractPreferenceCritical(join(prefsDir, "profile.md"));
+    // Extract mode name from install name (e.g. "pneuma-slide" -> "slide")
+    const prefModeName = skillConfig.installName.replace(/^pneuma-/, "");
+    const modeCritical = extractPreferenceCritical(join(prefsDir, `mode-${prefModeName}.md`));
+
+    if (globalCritical || modeCritical) {
+      const prefsLines: string[] = ["### User Preferences (Critical)", ""];
+      if (globalCritical) {
+        prefsLines.push("**Global:**", globalCritical, "");
+      }
+      if (modeCritical) {
+        prefsLines.push(`**${prefModeName} Mode:**`, modeCritical);
+      }
+      const prefsSection = `${PREFS_MARKER_START}\n${prefsLines.join("\n")}\n${PREFS_MARKER_END}`;
+      const pStart = content.indexOf(PREFS_MARKER_START);
+      const pEnd = content.indexOf(PREFS_MARKER_END);
+      if (pStart !== -1 && pEnd !== -1) {
+        content = content.substring(0, pStart) + prefsSection + content.substring(pEnd + PREFS_MARKER_END.length);
+      } else {
+        if (content.length > 0 && !content.endsWith("\n")) content += "\n";
+        content += "\n" + prefsSection + "\n";
+      }
+    } else {
+      // Remove stale preferences section
+      const pStart = content.indexOf(PREFS_MARKER_START);
+      const pEnd = content.indexOf(PREFS_MARKER_END);
+      if (pStart !== -1 && pEnd !== -1) {
+        content = content.substring(0, pStart) + content.substring(pEnd + PREFS_MARKER_END.length);
+      }
     }
   }
 
