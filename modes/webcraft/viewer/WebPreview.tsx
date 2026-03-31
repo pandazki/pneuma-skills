@@ -911,9 +911,12 @@ export default function WebPreview({
     if (!iframeRef.current || !srcdoc) return;
     if (stableSrcdocRef.current !== srcdoc) {
       stableSrcdocRef.current = srcdoc;
-      iframeRef.current.srcdoc = srcdoc;
     }
-  }, [srcdoc]);
+    // Always assign srcdoc — the iframe DOM node may have been replaced by
+    // a viewport switch (Full ↔ Device) which conditionally renders different
+    // iframe structures.  Without this, the new iframe mounts blank.
+    iframeRef.current.srcdoc = srcdoc;
+  }, [srcdoc, iframeLayout.useTransform]);
 
   // ── Selection & edit mode handling ──────────────────────────────────────────
 
