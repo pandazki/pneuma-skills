@@ -916,7 +916,7 @@ export default function WebPreview({
     // a viewport switch (Full ↔ Device) which conditionally renders different
     // iframe structures.  Without this, the new iframe mounts blank.
     iframeRef.current.srcdoc = srcdoc;
-  }, [srcdoc, iframeLayout.useTransform]);
+  }, [srcdoc, viewport]);
 
   // ── Selection & edit mode handling ──────────────────────────────────────────
 
