@@ -105,14 +105,17 @@ async function deployViaCli(req: CfDeployRequest): Promise<CfDeployResult> {
     const name = req.projectName ?? "pneuma-deploy";
     const env = { ...process.env, PATH: getEnrichedPath() } as Record<string, string>;
 
+    // Resolve binary path for Electron/desktop compatibility
+    const wranglerBin = resolveBinary("wrangler") ?? "wrangler";
+
     // Ensure project exists (wrangler < 4.78 doesn't auto-create)
     const checkProc = Bun.spawn(
-      ["wrangler", "pages", "project", "create", name, "--production-branch", "main"],
+      [wranglerBin, "pages", "project", "create", name, "--production-branch", "main"],
       { stdout: "pipe", stderr: "pipe", env },
     );
     await checkProc.exited; // Ignore exit code — fails if project already exists
 
-    const args = ["wrangler", "pages", "deploy", tmpDir, "--project-name", name, "--branch", "main"];
+    const args = [wranglerBin, "pages", "deploy", tmpDir, "--project-name", name, "--branch", "main"];
 
     const proc = Bun.spawn(args, {
       stdout: "pipe",
@@ -144,7 +147,7 @@ async function deployViaCli(req: CfDeployRequest): Promise<CfDeployResult> {
       dashboardUrl = `https://dash.cloudflare.com/${config.accountId}/pages/view/${name}`;
     } else {
       // Try to get from wrangler whoami
-      const whoami = Bun.spawn(["wrangler", "whoami"], { stdout: "pipe", stderr: "pipe" });
+      const whoami = Bun.spawn([wranglerBin, "whoami"], { stdout: "pipe", stderr: "pipe", env });
       const whoamiOut = await new Response(whoami.stdout).text();
       await whoami.exited;
       const idMatch = whoamiOut.match(/([0-9a-f]{32})/);

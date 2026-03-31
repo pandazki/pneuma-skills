@@ -1149,7 +1149,10 @@ ${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
       const extraHostStyle = sd.bodyStyle ? `;${sd.bodyStyle}` : "";
       const hostStyle = `:host{display:block;width:100%;height:100%;overflow:hidden;position:relative;isolation:isolate;background-color:var(--color-bg,#fff)${extraHostStyle}}`;
       const content = adaptCssForShadow(`${sd.headContent}${sd.bodyContent}`);
-      const shadowHtml = `<style>${hostStyle}</style>${playerThemeShadow}${content}`;
+      let shadowHtml = `<style>${hostStyle}</style>${playerThemeShadow}${content}`;
+      // Inline local assets (images, fonts) before JSON encoding — after JSON.stringify
+      // the escaped quotes prevent inlineAssets regex from matching
+      shadowHtml = inlineAssets(shadowHtml, baseDir);
       return { shadowHtml, bodyClass: sd.bodyClass, title: slide.title || `Slide ${i + 1}` };
     });
     const headResources = Array.from(playerHeadResources).join("\n");
