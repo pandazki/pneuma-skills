@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.25.0] - 2026-03-31
+
+### Added
+- **User Preference Analysis** — all modes now ship with a `pneuma-preferences` global skill that gives agents persistent memory of user aesthetics, collaboration style, and per-mode habits. Preferences are stored in `~/.pneuma/preferences/` as agent-managed Markdown, with critical constraints auto-injected at session startup. Includes three-layer preference model, living-document philosophy, and incremental refresh via changelog tracking
+- **Preference file scaffolding** — first launch auto-creates `profile.md` and `mode-{name}.md` with empty `pneuma-critical` and `changelog` markers, so agents naturally fill in the structure
+
+### Fixed
+- **Webcraft viewport switch white screen** — switching between Full and Device viewport presets unmounted the iframe but the srcdoc effect didn't re-fire because its dependency list missed the viewport state change
+- **Webcraft export blank content** — scroll-reveal elements (IntersectionObserver-triggered fade-ins) stayed invisible in export iframes because there's no scrolling to trigger them. Export now forces animations to their end state and adds common reveal classes
+- **Webcraft export excessive whitespace** — pages with `min-height: 100vh` hero sections caused oversized iframes in export. Export now scans iframe stylesheets and overrides vh-based height rules to auto
+- **Deploy CLI resolution** — Vercel/Wrangler CLI detection and slide image inlining fixes
+
 ## [2.24.3] - 2026-03-31
 
 ### Fixed
