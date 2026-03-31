@@ -29,6 +29,7 @@ When humans and code agents co-create content, they need more than a chat window
 |--------|-------------|
 | **Visual Environment** | Agent edits files on disk; you see, select, and guide the rendered result in a live, bidirectional workspace |
 | **Skills** | Domain-specific knowledge and seed templates injected per mode. Sessions persist across runs — the agent picks up where it left off |
+| **User Preferences** | The agent builds and maintains a persistent portrait of your aesthetics, collaboration style, and per-mode habits — preferences survive across sessions, workspaces, and modes |
 | **Continuous Learning** | Evolution Agent mines conversation history to extract preferences, then augments skills with learned knowledge |
 | **Distribution** | Build custom modes with AI via Mode Maker, publish to the marketplace, share with `pneuma mode add` |
 
@@ -159,6 +160,33 @@ The backend contract is intentionally split in two layers:
 - Session/UI contract: the browser consumes normalized session state (`backend_type`, `agent_capabilities`, `agent_version`) rather than backend-specific wire details.
 
 That means backend-specific protocols stay in `backends/<name>/`, while the UI and most server code depend on a stable session model.
+
+## User Preferences
+
+Pneuma agents remember who you are. Every mode ships with a built-in preference skill that lets the agent build and maintain a persistent portrait of your tastes and habits:
+
+```
+~/.pneuma/preferences/
+├── profile.md        ← cross-mode: aesthetics, language, collaboration style
+├── mode-slide.md     ← slide-specific: layout density, color tendencies, font choices
+├── mode-webcraft.md  ← webcraft-specific: design patterns, component preferences
+└── ...
+```
+
+**How it works:**
+
+- The agent reads your preferences before making design or style decisions — silently, without asking
+- When it notices a stable pattern or you state a preference, it updates the files — silently, without announcing
+- Hard constraints (e.g. "never use dark backgrounds") are marked as **critical** and auto-injected into every session startup
+- A changelog at the end of each file lets the agent do incremental refreshes instead of re-analyzing everything
+
+**Three layers of understanding:**
+
+1. **Observable** — language, aesthetics, collaboration style (a few sessions)
+2. **Deep profile** — value anchors, latent patterns, contradictions (many sessions, evidence-required)
+3. **Per-mode** — concrete habits in each mode, with explicit user-stated vs. agent-observed distinction
+
+The preference files are living documents — full rewrites, not append-only logs. Contradictions are preserved, not resolved. Everything is deletable. The agent builds understanding over time, not a label database.
 
 ## Tech Stack
 
