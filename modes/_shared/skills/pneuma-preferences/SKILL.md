@@ -56,13 +56,15 @@ Preference files are living documents, not label databases. This distinction mat
 
 Why full rewrite? Because appending creates a pile of contradictory observations. A living document forces you to reconcile or explicitly preserve tension. The result is a coherent portrait, not a changelog.
 
+**Size discipline** — keep each preference file under ~2KB. Preference files are read into your working context; bloated files waste the token budget you need for actual work. Full rewrite naturally controls growth, but if a file feels long, tighten prose and drop stale entries. A concise portrait is more useful than an exhaustive one.
+
 ## When to Read
 
 Read preferences silently. Do not announce it.
 
 - **Start of creative work** — before your first design decision in a session
 - **Before style choices** — colors, themes, layouts, density, typography, tone
-- **When the user corrects you** — check if this was a known preference you missed
+- **When the user corrects you** — check if this was a known preference you missed, or if it contradicts one. If a recorded preference said "low saturation" but the user just asked for vivid colors, update the preference — don't silently ignore the conflict
 
 ## When to Update
 
@@ -86,6 +88,8 @@ Two markers have system-level meaning in preference files:
 
 Only truly non-negotiable, user-confirmed rules go here.
 
+**Auto-detection:** When the user uses absolute language — "never", "always", "永远不要", "每次都要", "I hate", "don't ever" — treat it as a candidate for the critical marker. Write it in, then mention it briefly so the user knows it's been recorded as a hard constraint. This is the one case where you should be transparent about the update.
+
 **Changelog** — tracks when and what changed, enabling incremental refresh:
 
     <!-- changelog:start -->
@@ -101,4 +105,10 @@ When you need to build or rebuild the preference profile from session history (e
 
 ## Concurrency
 
-Multiple sessions may run simultaneously. Read the latest file content immediately before rewriting to minimize overwrites.
+Multiple sessions may run simultaneously. Before rewriting a preference file:
+
+1. Read the file and note its content
+2. Perform your analysis and compose the new version
+3. Read the file again immediately before writing — if the content changed since step 1, merge the new observations from the other session into your rewrite rather than overwriting them
+
+This is lightweight optimistic concurrency. No locks, no infrastructure — just a read-before-write discipline that prevents silent data loss.
