@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.26.1] - 2026-04-01
+
+### Fixed
+- **Electron CLI deploy environment** — ensure HOME is set when spawning Vercel/Wrangler CLI in packaged Electron app, where launchd provides a minimal process environment
+- **CLAUDE.md injection cleanup** — removed accidentally committed skill prompt, viewer API, and endpoint tables that were injected by running Pneuma in its own project directory
+
+### Improved
+- **Single-page webcraft deploy** — skip the aggregation index page when deploying a single-page webcraft site; deploy the content directly as `index.html`
+- **CLAUDE.md optimization** — slimmed from 614 to 300 lines; replaced exhaustive API tables with source pointers, condensed flowcharts, consolidated related gotchas
+
 ## [2.26.0] - 2026-04-01
 
 ### Added
