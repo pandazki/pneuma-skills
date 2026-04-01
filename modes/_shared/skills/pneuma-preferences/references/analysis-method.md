@@ -74,3 +74,9 @@ If the evolve scripts are not available in the current workspace, you can also:
 - Read `~/.pneuma/sessions.json` for session listing (has workspace paths, modes, timestamps)
 - Read `{workspace}/.pneuma/history.json` for conversation data directly
 - These are JSON files readable with standard file operations
+
+## Integration with Evolution
+
+The evolve mode already scans session history for skill improvement proposals. A preference full refresh naturally fits into the same loop — when the evolution agent is analyzing sessions, it can simultaneously extract user preference signals at near-zero additional cost.
+
+If you are running inside evolve mode, consider combining skill evolution analysis with preference refresh into a single pass over the session data. This turns preference maintenance from an on-demand operation into a background consolidation cycle — analogous to "dreaming" in memory systems, where cross-session patterns are extracted and refined while the user isn't actively working.
