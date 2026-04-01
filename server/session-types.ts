@@ -22,6 +22,10 @@ export interface CLISystemInitMessage {
   agents?: string[];
   skills?: string[];
   output_style: string;
+  promptSuggestions?: boolean;
+  agentProgressSummaries?: boolean;
+  pid?: number;
+  fast_mode_state?: unknown;
   uuid: string;
 }
 
@@ -205,6 +209,10 @@ export interface CLIControlRequestMessage {
     description?: string;
     tool_use_id: string;
     agent_id?: string;
+    title?: string;
+    display_name?: string;
+    blocked_path?: string;
+    decision_reason?: string;
   };
 }
 
@@ -242,6 +250,40 @@ export interface CLIRateLimitMessage {
   [key: string]: unknown;
 }
 
+/** CLI cancels a pending permission request (e.g. tool_use was abandoned) */
+export interface CLIControlCancelRequestMessage {
+  type: "control_cancel_request";
+  request_id: string;
+  uuid: string;
+  session_id: string;
+}
+
+/** Streamlined text output (compact assistant text, no full message envelope) */
+export interface CLIStreamlinedTextMessage {
+  type: "streamlined_text";
+  text: string;
+  parent_tool_use_id?: string | null;
+  uuid: string;
+  session_id: string;
+}
+
+/** Streamlined tool use summary (compact summary of tool operations) */
+export interface CLIStreamlinedToolUseSummaryMessage {
+  type: "streamlined_tool_use_summary";
+  summary: string;
+  tool_use_ids: string[];
+  uuid: string;
+  session_id: string;
+}
+
+/** Prompt suggestions for the user to choose from */
+export interface CLIPromptSuggestionMessage {
+  type: "prompt_suggestion";
+  suggestions: string[];
+  uuid: string;
+  session_id: string;
+}
+
 export type CLIMessage =
   | CLISystemMessage
   | CLIAssistantMessage
@@ -254,7 +296,11 @@ export type CLIMessage =
   | CLIKeepAliveMessage
   | CLIAuthStatusMessage
   | CLIUserMessage
-  | CLIRateLimitMessage;
+  | CLIRateLimitMessage
+  | CLIControlCancelRequestMessage
+  | CLIStreamlinedTextMessage
+  | CLIStreamlinedToolUseSummaryMessage
+  | CLIPromptSuggestionMessage;
 
 // ─── Content Block Types ──────────────────────────────────────────────────────
 
@@ -275,7 +321,10 @@ export type BrowserOutgoingMessage =
   | { type: "interrupt"; client_msg_id?: string }
   | { type: "set_model"; model: string }
   | { type: "viewer_action_response"; request_id: string; result: { success: boolean; message?: string; data?: Record<string, unknown> } }
-  | { type: "viewer_notification"; notification: { type: string; message: string; severity: "info" | "warning" } };
+  | { type: "viewer_notification"; notification: { type: string; message: string; severity: "info" | "warning" } }
+  | { type: "end_session" }
+  | { type: "stop_task" }
+  | { type: "update_environment_variables"; variables: Record<string, string> };
 
 /** Messages the bridge sends to the browser */
 export type BrowserIncomingMessageBase =
@@ -309,7 +358,10 @@ export type BrowserIncomingMessageBase =
   | { type: "message_history"; messages: BrowserIncomingMessage[] }
   | { type: "event_replay"; events: BufferedBrowserEvent[] }
   | { type: "content_update"; files: { path: string; content: string }[] }
-  | { type: "viewer_action_request"; request_id: string; action_id: string; params?: Record<string, unknown> };
+  | { type: "viewer_action_request"; request_id: string; action_id: string; params?: Record<string, unknown> }
+  | { type: "prompt_suggestion"; suggestions: string[] }
+  | { type: "streamlined_text"; text: string; parent_tool_use_id?: string | null }
+  | { type: "streamlined_tool_use_summary"; summary: string; tool_use_ids: string[] };
 
 export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };
 
@@ -344,6 +396,8 @@ export interface SessionState {
   total_lines_removed: number;
   /** Available models for switching (populated by backends that support model/list). */
   available_models?: { id: string; name?: string }[];
+  pid?: number;
+  fast_mode_state?: unknown;
 }
 
 // ─── Permission Types ────────────────────────────────────────────────────────
@@ -366,5 +420,9 @@ export interface PermissionRequest {
   description?: string;
   tool_use_id: string;
   agent_id?: string;
+  title?: string;
+  display_name?: string;
+  blocked_path?: string;
+  decision_reason?: string;
   timestamp: number;
 }

@@ -660,6 +660,37 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       }
       break;
     }
+
+    case "prompt_suggestion": {
+      store.setPromptSuggestions(data.suggestions);
+      break;
+    }
+
+    case "streamlined_text": {
+      // Render as a lightweight assistant message
+      const streamlinedMsg: ChatMessage = {
+        id: `streamlined-${Date.now()}`,
+        role: "assistant",
+        content: data.text,
+        contentBlocks: [{ type: "text", text: data.text }],
+        timestamp: Date.now(),
+        parentToolUseId: data.parent_tool_use_id ?? null,
+      };
+      store.appendMessage(streamlinedMsg);
+      break;
+    }
+
+    case "streamlined_tool_use_summary": {
+      // Render as a tool use summary (same as existing tool_use_summary)
+      store.appendMessage({
+        id: `streamlined-summary-${Date.now()}`,
+        role: "system",
+        content: data.summary,
+        contentBlocks: [{ type: "text", text: data.summary }],
+        timestamp: Date.now(),
+      });
+      break;
+    }
   }
 }
 
@@ -770,6 +801,7 @@ export function sendSetModel(model: string) {
 export async function sendUserMessage(content: string, selection?: ElementSelection | null, images?: { media_type: string; data: string }[], annotations?: Annotation[], files?: { name: string; media_type: string; data: string; size: number }[]) {
   currentTurnUserInitiated = true;
   const store = useStore.getState();
+  store.clearPromptSuggestions();
   // Add user message to local store immediately (show original text)
   const msgId = nextId();
   store.appendMessage({

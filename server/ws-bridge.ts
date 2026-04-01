@@ -14,6 +14,10 @@ import type {
   CLIControlRequestMessage,
   CLIAuthStatusMessage,
   CLIUserMessage,
+  CLIControlCancelRequestMessage,
+  CLIStreamlinedTextMessage,
+  CLIStreamlinedToolUseSummaryMessage,
+  CLIPromptSuggestionMessage,
   BrowserOutgoingMessage,
   BrowserIncomingMessage,
   PermissionRequest,
@@ -458,6 +462,22 @@ export class WsBridge {
         // Silently consume rate limit events
         break;
 
+      case "control_cancel_request":
+        this.handleControlCancelRequest(session, msg);
+        break;
+
+      case "streamlined_text":
+        this.handleStreamlinedText(session, msg);
+        break;
+
+      case "streamlined_tool_use_summary":
+        this.handleStreamlinedToolUseSummary(session, msg);
+        break;
+
+      case "prompt_suggestion":
+        this.handlePromptSuggestion(session, msg);
+        break;
+
       default:
         console.warn(`[ws-bridge] Unhandled CLI message type: ${(msg as any).type}`);
         break;
@@ -481,6 +501,8 @@ export class WsBridge {
       session.state.agents = msg.agents ?? [];
       session.state.slash_commands = msg.slash_commands ?? [];
       session.state.skills = msg.skills ?? [];
+      if ((msg as any).pid) session.state.pid = (msg as any).pid;
+      if ((msg as any).fast_mode_state !== undefined) session.state.fast_mode_state = (msg as any).fast_mode_state;
 
       this.broadcastToBrowsers(session, {
         type: "session_init",
@@ -715,6 +737,10 @@ export class WsBridge {
         description: msg.request.description,
         tool_use_id: msg.request.tool_use_id,
         agent_id: msg.request.agent_id,
+        title: msg.request.title,
+        display_name: msg.request.display_name,
+        blocked_path: msg.request.blocked_path,
+        decision_reason: msg.request.decision_reason,
         timestamp: Date.now(),
       };
       session.pendingPermissions.set(msg.request_id, perm);
@@ -787,6 +813,38 @@ export class WsBridge {
       isAuthenticating: msg.isAuthenticating,
       output: msg.output,
       error: msg.error,
+    });
+  }
+
+  private handleControlCancelRequest(session: Session, msg: CLIControlCancelRequestMessage) {
+    // CLI cancelled a pending permission request — remove from pending and notify browser
+    session.pendingPermissions.delete(msg.request_id);
+    this.broadcastToBrowsers(session, {
+      type: "permission_cancelled",
+      request_id: msg.request_id,
+    });
+  }
+
+  private handleStreamlinedText(session: Session, msg: CLIStreamlinedTextMessage) {
+    this.broadcastToBrowsers(session, {
+      type: "streamlined_text",
+      text: msg.text,
+      parent_tool_use_id: msg.parent_tool_use_id ?? null,
+    });
+  }
+
+  private handleStreamlinedToolUseSummary(session: Session, msg: CLIStreamlinedToolUseSummaryMessage) {
+    this.broadcastToBrowsers(session, {
+      type: "streamlined_tool_use_summary",
+      summary: msg.summary,
+      tool_use_ids: msg.tool_use_ids,
+    });
+  }
+
+  private handlePromptSuggestion(session: Session, msg: CLIPromptSuggestionMessage) {
+    this.broadcastToBrowsers(session, {
+      type: "prompt_suggestion",
+      suggestions: msg.suggestions,
     });
   }
 
@@ -887,6 +945,33 @@ export class WsBridge {
       case "viewer_notification":
         this.handleViewerNotification(session, msg);
         break;
+
+      case "end_session": {
+        const ndjson = JSON.stringify({
+          type: "control_request",
+          request: { subtype: "end_session" },
+        });
+        this.sendToCLI(session, ndjson);
+        break;
+      }
+
+      case "stop_task": {
+        const ndjson = JSON.stringify({
+          type: "control_request",
+          request: { subtype: "stop_task" },
+        });
+        this.sendToCLI(session, ndjson);
+        break;
+      }
+
+      case "update_environment_variables": {
+        const ndjson = JSON.stringify({
+          type: "update_environment_variables",
+          variables: msg.variables,
+        });
+        this.sendToCLI(session, ndjson);
+        break;
+      }
     }
   }
 

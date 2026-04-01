@@ -21,14 +21,25 @@ export default function PermissionBanner() {
 }
 
 function ToolPermissionCard({ perm }: { perm: PermissionRequest }) {
+  const displayName = perm.display_name || perm.tool_name;
   return (
     <div className="bg-amber-900/40 border border-amber-700/50 rounded-lg p-3">
       <div className="text-sm font-medium text-amber-200 mb-1">
-        Permission Request: {perm.tool_name}
+        Permission Request: {displayName}
       </div>
+      {perm.title && (
+        <div className="text-xs text-amber-300/70 mb-1">
+          {perm.title}
+        </div>
+      )}
       {perm.description && (
         <div className="text-xs text-amber-300/80 mb-2">
           {perm.description}
+        </div>
+      )}
+      {perm.decision_reason && (
+        <div className="text-xs text-amber-300/60 italic mb-2">
+          {perm.decision_reason}
         </div>
       )}
       <div className="text-xs text-cc-muted mb-2 font-mono max-h-32 overflow-y-auto bg-cc-bg/50 rounded p-2">
