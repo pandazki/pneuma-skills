@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.26.0] - 2026-04-01
+
+### Added
+- **Claude Code protocol sync** — new message types for streamlined text, streamlined tool use summaries, prompt suggestions, and permission cancel requests. Enriched permission request fields (title, display name, blocked path, decision reason). System init now carries prompt suggestion and agent progress summary capabilities
+- **Preference skill CC memory insights** — file size discipline (~2KB), auto-detection of critical constraints from absolute user language, reverse verification when corrections conflict with recorded preferences, optimistic concurrency for multi-session safety, and evolution mode integration for background "dreaming" style preference refresh
+
 ## [2.25.0] - 2026-03-31
 
 ### Added
