@@ -1611,6 +1611,11 @@ function collectDeployFiles(logEl){
   });
 
   return Promise.all(filePromises).then(function(pageFileList){
+    if(pageFileList.length === 1){
+      // Single page: deploy directly as index.html, skip aggregation page
+      deployLog(logEl, "Single page — deploying directly", "info");
+      return [{ path: "index.html", content: pageFileList[0].content }];
+    }
     deployLog(logEl, "Generating index page...", "info");
     var indexHtml = buildAggregationPage(pageFileList);
     return [{ path: "index.html", content: indexHtml }].concat(pageFileList);

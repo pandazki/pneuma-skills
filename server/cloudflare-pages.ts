@@ -40,7 +40,7 @@ export async function checkWranglerCli(): Promise<CliStatus> {
     const wranglerPath = resolveBinary("wrangler");
     if (!wranglerPath) return { installed: false, loggedIn: false };
 
-    const env = { ...process.env, PATH: getEnrichedPath() } as Record<string, string>;
+    const env = { ...process.env, PATH: getEnrichedPath(), HOME: process.env.HOME || homedir() } as Record<string, string>;
     const whoami = Bun.spawn([wranglerPath, "whoami"], { stdout: "pipe", stderr: "pipe", env });
     const out = await new Response(whoami.stdout).text();
     const exit = await whoami.exited;
@@ -103,7 +103,7 @@ async function deployViaCli(req: CfDeployRequest): Promise<CfDeployResult> {
     }
 
     const name = req.projectName ?? "pneuma-deploy";
-    const env = { ...process.env, PATH: getEnrichedPath() } as Record<string, string>;
+    const env = { ...process.env, PATH: getEnrichedPath(), HOME: process.env.HOME || homedir() } as Record<string, string>;
 
     // Resolve binary path for Electron/desktop compatibility
     const wranglerBin = resolveBinary("wrangler") ?? "wrangler";
