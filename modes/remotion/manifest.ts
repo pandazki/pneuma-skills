@@ -78,15 +78,7 @@ The live preview compiles your code in-browser with core Remotion APIs. For feat
       "*/src/**/*.css",
       "*/public/**",
     ],
-    ignorePatterns: [
-      "node_modules/**",
-      ".git/**",
-      ".claude/**",
-      ".pneuma/**",
-      "dist/**",
-      "build/**",
-      "out/**",
-    ],
+    ignorePatterns: [],
     serveDir: ".",
   },
 

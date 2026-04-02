@@ -56,12 +56,7 @@ For design workflow, height calculation rules, layout patterns, and quality chec
       "**/theme.css",
       "**/assets/**/*",
     ],
-    ignorePatterns: [
-      "node_modules/**",
-      ".git/**",
-      ".claude/**",
-      ".pneuma/**",
-    ],
+    ignorePatterns: [],
     serveDir: ".",
   },
 

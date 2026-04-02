@@ -606,12 +606,9 @@ describe("watch patterns", () => {
     expect(patterns).toContain("**/*.woff2");
   });
 
-  it("ignores node_modules, .git, .claude, .pneuma", () => {
+  it("has empty ignorePatterns (defaults handled by file-watcher DEFAULT_IGNORE)", () => {
     const ignores = webcraftManifest.viewer.ignorePatterns!;
-    expect(ignores).toContain("node_modules/**");
-    expect(ignores).toContain(".git/**");
-    expect(ignores).toContain(".claude/**");
-    expect(ignores).toContain(".pneuma/**");
+    expect(ignores).toEqual([]);
   });
 
   it("serves from workspace root", () => {

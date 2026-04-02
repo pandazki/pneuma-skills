@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.26.2] - 2026-04-02
+
+### Improved
+- **File watcher ignore list consolidation** — expanded `DEFAULT_IGNORE` in `file-watcher.ts` to cover agent config files (`CLAUDE.md`, `AGENTS.md`), environment/secrets (`.env*`), log files, framework build directories (`.next`, `.nuxt`, `.svelte-kit`, `.output`, `.parcel-cache`, `.turbo`), test coverage output, and TypeScript build info. Removed redundant per-mode `ignorePatterns` that duplicated defaults — modes now only declare mode-specific exclusions
+- **File watcher error handling** — added `watcher.on("error")` handler to gracefully log permission errors (`EACCES`/`EPERM`) during directory traversal instead of emitting unhandled warnings
+
 ## [2.26.1] - 2026-04-01
 
 ### Fixed

@@ -12,10 +12,13 @@ import type { ViewerConfig } from "../core/types/mode-manifest.js";
 
 const DEBOUNCE_MS = 300;
 
-/** OS junk, editor swap/backup, and VCS files that should never trigger updates. */
+/** OS junk, editor swap/backup, VCS, build artifacts, and other files that should never trigger updates. */
 const DEFAULT_IGNORE = [
+  // OS junk
   "**/.DS_Store",
   "**/Thumbs.db",
+  "**/desktop.ini",
+  // VCS
   "**/.git/**",
   "**/.svn/**",
   "**/.hg/**",
@@ -30,15 +33,38 @@ const DEFAULT_IGNORE = [
   // IDE metadata
   "**/.idea/**",
   "**/.vscode/**",
-  // Pneuma internal
+  // Pneuma / agent internal
   "**/.pneuma/**",
   "**/.claude/**",
   "**/.agents/**",
-  // Build artifacts & dependencies
+  "**/CLAUDE.md",
+  "**/AGENTS.md",
+  // Environment & secrets
+  "**/.env",
+  "**/.env.*",
+  // Log files
+  "**/*.log",
+  // Dependencies
   "**/node_modules/**",
+  "**/bower_components/**",
+  // Build artifacts & caches
   "**/dist/**",
-  "**/.vite/**",
   "**/build/**",
+  "**/out/**",
+  "**/.vite/**",
+  "**/.turbo/**",
+  "**/.cache/**",
+  "**/.parcel-cache/**",
+  // Framework-specific build output
+  "**/.next/**",
+  "**/.nuxt/**",
+  "**/.svelte-kit/**",
+  "**/.output/**",
+  // Test / coverage output
+  "**/coverage/**",
+  // TypeScript build info
+  "**/.tsbuildinfo",
+  "**/*.tsbuildinfo",
 ];
 
 export interface FileUpdate {
@@ -156,6 +182,10 @@ export function startFileWatcher(
 
   watcher.on("change", scheduleFlush);
   watcher.on("add", scheduleFlush);
+  watcher.on("error", (err) => {
+    // Permission errors (EACCES/EPERM) during directory traversal — log and continue
+    console.warn(`[file-watcher] ${err}`);
+  });
 
   const patternDesc = viewerConfig.watchPatterns.join(", ");
   console.log(`[file-watcher] Watching ${workspace} for ${patternDesc} changes`);

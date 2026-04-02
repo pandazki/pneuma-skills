@@ -55,13 +55,7 @@ For prompt crafting, style management, generation & editing workflows, consult t
       "**/manifest.json",
       "**/images/**/*",
     ],
-    ignorePatterns: [
-      "node_modules/**",
-      ".git/**",
-      ".claude/**",
-      ".pneuma/**",
-      "CLAUDE.md",
-    ],
+    ignorePatterns: [],
     serveDir: ".",
   },
 

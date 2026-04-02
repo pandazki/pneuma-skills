@@ -50,12 +50,7 @@ For tile component patterns, layout rules, and theming conventions, consult the 
       "tiles/**/*.ts",
       "tiles/**/*.css",
     ],
-    ignorePatterns: [
-      "node_modules/**",
-      ".git/**",
-      ".claude/**",
-      ".pneuma/**",
-    ],
+    ignorePatterns: [],
     serveDir: ".",
   },
 

@@ -33,13 +33,7 @@ For editing conventions, context format, and workspace constraints, consult the 
 
   viewer: {
     watchPatterns: ["**/*.md"],
-    ignorePatterns: [
-      "node_modules/**",
-      ".git/**",
-      ".claude/**",
-      ".pneuma/**",
-      "CLAUDE.md",
-    ],
+    ignorePatterns: [],
     serveDir: ".",
   },
 

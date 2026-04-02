@@ -50,11 +50,7 @@ For ModeManifest reference, ViewerContract patterns, publishing workflow, and mo
       "seed/**/*",
     ],
     ignorePatterns: [
-      "node_modules/**",
       ".build/**",
-      ".git/**",
-      ".claude/**",
-      ".pneuma/**",
     ],
   },
 

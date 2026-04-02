@@ -34,12 +34,7 @@ For Excalidraw JSON format, element types, color palette, and diagram recipes, c
 
   viewer: {
     watchPatterns: ["**/*.excalidraw"],
-    ignorePatterns: [
-      "node_modules/**",
-      ".git/**",
-      ".claude/**",
-      ".pneuma/**",
-    ],
+    ignorePatterns: [],
     serveDir: ".",
   },
 
