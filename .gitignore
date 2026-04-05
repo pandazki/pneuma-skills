@@ -9,3 +9,6 @@ dist/
 
 # Landing page deploy config
 web/.deploy.env
+
+# Superpowers
+.superpowers/
