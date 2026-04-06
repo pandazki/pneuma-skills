@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.27.1] - 2026-04-07
+
+### Fixed
+- **Vercel deploy in Electron** — add missing HOME environment variable to Vercel CLI deploy spawn, fixing auth/config lookup failures in packaged Electron app (checkVercelCli was fixed in 2.26.1 but deployViaCli was missed)
+
 ## [2.27.0] - 2026-04-06
 
 ### Added
