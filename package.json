@@ -1,6 +1,6 @@
 {
   "name": "pneuma-skills",
-  "version": "2.26.2",
+  "version": "2.27.0",
   "type": "module",
   "description": "Co-creation infrastructure for humans and code agents — visual environment, skills, continuous learning, and distribution.",
   "license": "MIT",

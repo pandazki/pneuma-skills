@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.27.0] - 2026-04-06
+
+### Added
+- **Diagram mode** — new builtin mode for creating draw.io diagrams via natural language. Powered by draw.io's `viewer-static.min.js` (Apache 2.0) with rough.js for sketch/hand-drawn style support
+- **Diagram viewer** — offscreen mxGraph renderer with tight SVG extraction, center-based CSS transform pan/zoom, multi-page tab switching, hover highlights, and element selection for contextual editing
+- **Diagram streaming** — real-time incremental XML merge renders shapes and connections as the agent generates them, with edge resolution for out-of-order cell creation
+- **Diagram skill** — agent skill with draw.io XML/style references, color palette, shape library guide, and layout best practices
+
 ## [2.26.2] - 2026-04-02
 
 ### Improved
