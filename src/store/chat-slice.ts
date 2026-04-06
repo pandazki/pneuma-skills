@@ -8,9 +8,16 @@ export type PendingMessage =
   | { id: string; kind: "user"; text: string }
   | { id: string; kind: "notification"; notification: { type: string; message: string; severity: "info" | "warning"; summary?: string }; images?: { media_type: string; data: string }[] };
 
+/** Tracks a file being written by the agent in real-time (from input_json_delta streaming) */
+export interface StreamingFileWrite {
+  path: string;
+  content: string;
+}
+
 export interface ChatSlice {
   messages: ChatMessage[];
   streaming: string | null;
+  streamingFileWrite: StreamingFileWrite | null;
   activity: Activity | null;
   pendingMessages: PendingMessage[];
   pendingPermissions: Map<string, PermissionRequest>;
@@ -22,6 +29,7 @@ export interface ChatSlice {
   appendMessage: (msg: ChatMessage) => void;
   setMessages: (msgs: ChatMessage[]) => void;
   setStreaming: (text: string | null) => void;
+  setStreamingFileWrite: (fw: StreamingFileWrite | null) => void;
   setActivity: (activity: Activity | null) => void;
   addPendingMessage: (text: string) => void;
   addPendingNotification: (notification: { type: string; message: string; severity: "info" | "warning"; summary?: string }, images?: { media_type: string; data: string }[]) => string;
@@ -35,6 +43,7 @@ export interface ChatSlice {
 export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, get) => ({
   messages: [],
   streaming: null,
+  streamingFileWrite: null,
   activity: null,
   pendingMessages: [],
   pendingPermissions: new Map(),
@@ -58,6 +67,7 @@ export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, 
 
   setMessages: (msgs) => set({ messages: msgs }),
   setStreaming: (text) => set({ streaming: text }),
+  setStreamingFileWrite: (fw) => set({ streamingFileWrite: fw }),
   setActivity: (activity) => set({ activity }),
 
   addPendingMessage: (text) =>

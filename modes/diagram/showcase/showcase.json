@@ -1,0 +1,24 @@
+{
+  "tagline": "Describe it, watch it build, refine it live",
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": "Describe to Diagram",
+      "description": "Type what you need in natural language — flowcharts, architecture, ER diagrams, network topology — and watch professional diagrams appear.",
+      "media": "describe-to-diagram.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Live Streaming",
+      "description": "Diagrams build in real-time as AI generates them. Shapes and connections appear one by one with smooth fade-in.",
+      "media": "live-streaming.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Select & Refine",
+      "description": "Click any element to select it, hover to preview. AI knows which component you picked — refine through conversation.",
+      "media": "select-refine.png",
+      "mediaType": "image"
+    }
+  ]
+}

@@ -8,7 +8,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 
 **Version:** 2.26.2
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
-**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `remotion`, `gridboard`, `mode-maker`, `evolve`
+**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `clipcraft`, `mode-maker`, `evolve`
 
 ## Tech Stack
 
@@ -20,6 +20,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. It provi
 | Terminal | xterm.js 6 + Bun native PTY |
 | File Watching | chokidar 5 |
 | Drawing | @excalidraw/excalidraw 0.18 |
+| Diagramming | draw.io viewer-static.min.js (CDN) + rough.js 4.6 |
 | Video | remotion 4.0 + @remotion/player + @remotion/web-renderer + @babel/standalone |
 | Desktop | Electron 41 + electron-builder + electron-updater |
 | Agent | Claude Code CLI via `--sdk-url`; Codex CLI via `app-server` stdio JSON-RPC (`node:child_process`) |
@@ -88,7 +89,7 @@ pneuma-skills/
 │   ├── mode-loader.ts         # Mode discovery & loading (builtin + external)
 │   ├── mode-resolver.ts       # Source resolution (builtin/local/github/url → disk path)
 │   └── utils/manifest-parser.ts  # Regex-based manifest.ts metadata extraction
-├── modes/{webcraft,doc,slide,draw,illustrate,remotion,gridboard,mode-maker,evolve}/
+├── modes/{webcraft,doc,slide,draw,diagram,illustrate,remotion,gridboard,clipcraft,mode-maker,evolve}/
 ├── modes/_shared/skills/      # Global skills installed for all modes (e.g. pneuma-preferences)
 ├── backends/
 │   ├── index.ts               # Backend registry + descriptors + capabilities + availability
@@ -163,7 +164,7 @@ Modes can come from four sources, resolved by `core/mode-resolver.ts`:
 
 | Type | Specifier | Resolved Path |
 |------|-----------|---------------|
-| **builtin** | `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `remotion`, `mode-maker`, `evolve` | `modes/<name>/` |
+| **builtin** | `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `clipcraft`, `mode-maker`, `evolve` | `modes/<name>/` |
 | **local** | `/abs/path`, `./rel` | As-is |
 | **github** | `github:user/repo` | `~/.pneuma/modes/<user>-<repo>/` |
 | **url** | `https://...tar.gz` | `~/.pneuma/modes/<name>/` |
@@ -297,3 +298,4 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **Editing/readonly distinction**: `editing` is a session boolean (`true` = creating, `false` = consuming). Modes opt in via `editing: { supported: true }` in manifest. When `editing: false`, no agent runs; switching to `true` triggers skill install + agent spawn; switching back kills the agent. `readonly` (replay) disables ALL interactions, while `editing: false` only hides Pneuma editing UI — content-internal interactions (clicks, links) remain functional.
 - **Windows compatibility**: Cross-platform support in `path-resolver.ts` (`where` vs `which`, PATH from `LOCALAPPDATA`/`APPDATA`), `terminal-manager.ts` (`COMSPEC`/`cmd.exe`), `system-bridge.ts` (`cmd /c start`), `server/index.ts` (`NUL`, `taskkill`). Path comparison is case-insensitive on win32.
 - **Native bridge timeout**: Routes through browser WS — if no browser tab is connected, native calls timeout after 10s.
+- **Diagram viewer**: See `modes/diagram/viewer/DiagramPreview.tsx` header comments for architecture and gotchas (native events, SVG pointer-events, sketch injection, rough.js load order).

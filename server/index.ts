@@ -82,7 +82,7 @@ export function startServer(options: ServerOptions) {
       const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
 
       // Parse builtin mode manifests for metadata (icon, description, etc.)
-      const builtinNames = ["webcraft", "slide", "doc", "draw", "illustrate", "remotion", "gridboard"];
+      const builtinNames = ["webcraft", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard"];
       const builtins = builtinNames.map((name) => {
         const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
         let parsed: ReturnType<typeof parseManifestTs> = {};
