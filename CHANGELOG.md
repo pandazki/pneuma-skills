@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.27.2] - 2026-04-07
+
+### Fixed
+- **Slide first-page black screen** — force a visibility transition on the first slide's iframe to trigger Chromium paint inside the transform:scale() container
+- **Webcraft iframe scrollbar** — inject thin semi-transparent scrollbar styles into iframe srcdoc to match the app's dark theme
+
 ## [2.27.1] - 2026-04-07
 
 ### Fixed
