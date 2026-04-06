@@ -197,13 +197,16 @@ The preference files are living documents — full rewrites, not append-only log
 | Layer | Technology |
 |-------|-----------|
 | Runtime | [Bun](https://bun.sh) >= 1.3.5 |
-| Server | [Hono](https://hono.dev) |
-| Frontend | React 19 + [Vite](https://vite.dev) 7 + [Tailwind CSS](https://tailwindcss.com) 4 |
+| Server | [Hono](https://hono.dev) 4.7 |
+| Frontend | React 19 + [Vite](https://vite.dev) 7 + [Tailwind CSS](https://tailwindcss.com) 4 + [Zustand](https://zustand.docs.pmnd.rs) 5 |
 | Desktop | [Electron](https://www.electronjs.org) 41 + electron-builder + electron-updater |
-| Terminal | [xterm.js](https://xtermjs.org) + Bun native PTY |
-| Drawing | [Excalidraw](https://excalidraw.com) |
-| Canvas | [React Flow](https://reactflow.dev) (Illustrate mode) |
-| Agent | Claude Code via `--sdk-url`; Codex CLI via app-server |
+| Terminal | [xterm.js](https://xtermjs.org) 6 + Bun native PTY |
+| Drawing | [Excalidraw](https://excalidraw.com) 0.18 |
+| Diagramming | [draw.io](https://www.drawio.com) viewer-static (CDN) + [rough.js](https://roughjs.com) 4.6 |
+| Video | [Remotion](https://www.remotion.dev) 4.0 + @remotion/player + @babel/standalone |
+| Canvas | [@xyflow/react](https://reactflow.dev) 12 (Illustrate mode) |
+| File Watching | [chokidar](https://github.com/paulmillr/chokidar) 5 |
+| Agent | Claude Code CLI via `--sdk-url`; Codex CLI via app-server stdio JSON-RPC |
 
 ## Backend Model
 
