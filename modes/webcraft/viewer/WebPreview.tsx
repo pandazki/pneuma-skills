@@ -369,13 +369,21 @@ document.addEventListener('click',function(e){
 });
 </script>`;
 
+const SCROLLBAR_STYLE = `<style data-pneuma-scrollbar>
+*{scrollbar-width:thin;scrollbar-color:rgba(128,128,128,0.3) transparent}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(128,128,128,0.3);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:rgba(128,128,128,0.5)}
+</style>`;
+
 function buildSrcdoc(html: string, baseHref: string): string {
   const isFullDoc = /<!DOCTYPE|<html/i.test(html);
   const injectedScripts = HASH_NAV_FIX + SELECTION_SCRIPT;
 
   if (isFullDoc) {
     let result = html;
-    const baseTag = `<base href="${baseHref}">`;
+    const baseTag = `<base href="${baseHref}">${SCROLLBAR_STYLE}`;
     // Inject <base> into <head>
     if (/<head[^>]*>/i.test(result)) {
       result = result.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`);
@@ -398,6 +406,7 @@ function buildSrcdoc(html: string, baseHref: string): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <base href="${baseHref}">
+  ${SCROLLBAR_STYLE}
 </head>
 <body>
 ${html}
