@@ -16,6 +16,19 @@ let streamingPhase: "thinking" | "text" | null = null;
 /** Tracks whether the current turn was initiated by a user message (false = cron-triggered) */
 let currentTurnUserInitiated = true;
 
+/** Tracks streaming tool_use input for file write detection */
+let streamingToolName: string | null = null;
+let streamingToolInputJson = "";
+
+/** Find the index of the first unescaped double-quote in a string */
+function findUnescapedQuote(s: string): number {
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "\\" ) { i++; continue; }
+    if (s[i] === '"') return i;
+  }
+  return -1;
+}
+
 const WS_RECONNECT_DELAY_MS = 2000;
 
 function getWsUrl(sessionId: string): string {
@@ -359,6 +372,15 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
           store.setActivity({ phase: "thinking", startedAt: Date.now() });
         }
 
+        // Track tool_use input streaming for file write detection
+        if (evt.type === "content_block_start") {
+          const cb = evt.content_block as Record<string, unknown> | undefined;
+          if (cb?.type === "tool_use" && typeof cb.name === "string") {
+            streamingToolName = cb.name;
+            streamingToolInputJson = "";
+          }
+        }
+
         if (evt.type === "content_block_delta") {
           const delta = evt.delta as Record<string, unknown> | undefined;
           if (delta?.type === "text_delta" && typeof delta.text === "string") {
@@ -379,6 +401,53 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
               store.setActivity({ phase: "thinking", startedAt: store.activity?.startedAt || Date.now() });
             }
           }
+          // Accumulate tool input JSON for Write/Edit file streaming
+          if (delta?.type === "input_json_delta" && typeof delta.partial_json === "string") {
+            if (streamingToolName === "Write" || streamingToolName === "Edit") {
+              streamingToolInputJson += delta.partial_json;
+              // Try to extract path and content from the accumulating JSON
+              const pathMatch = streamingToolInputJson.match(/"(?:file_path|path)"\s*:\s*"([^"]*?)"/);
+              if (pathMatch) {
+                const filePath = pathMatch[1];
+                // Extract content field (may be incomplete — grab everything after "content":" )
+                const contentKeyIdx = streamingToolInputJson.indexOf('"content"');
+                if (contentKeyIdx !== -1) {
+                  // Find the opening quote of the content value
+                  const afterKey = streamingToolInputJson.substring(contentKeyIdx + 9);
+                  const colonIdx = afterKey.indexOf(":");
+                  if (colonIdx !== -1) {
+                    const afterColon = afterKey.substring(colonIdx + 1).trimStart();
+                    if (afterColon.startsWith('"')) {
+                      // Extract string content, handling JSON escapes
+                      let raw = afterColon.substring(1); // skip opening quote
+                      // The string may not have a closing quote yet (still streaming)
+                      const closingIdx = findUnescapedQuote(raw);
+                      if (closingIdx !== -1) raw = raw.substring(0, closingIdx);
+                      // Unescape JSON string escapes
+                      try {
+                        const content = JSON.parse('"' + raw + '"');
+                        store.setStreamingFileWrite({ path: filePath, content });
+                      } catch {
+                        // Partial escape sequence — unescape what we can
+                        const content = raw.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+                        store.setStreamingFileWrite({ path: filePath, content });
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        if (evt.type === "content_block_stop") {
+          if (streamingToolName === "Write" || streamingToolName === "Edit") {
+            // Tool input complete — clear streaming file write
+            // (the file will arrive via chokidar momentarily)
+            store.setStreamingFileWrite(null);
+          }
+          streamingToolName = null;
+          streamingToolInputJson = "";
         }
       }
       break;
