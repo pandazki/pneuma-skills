@@ -35,15 +35,16 @@ When humans and code agents co-create content, they need more than a chat window
 
 ## Built-in Modes
 
-| Mode | What it does |
-|------|-------------|
-| **webcraft** | Live web development with [Impeccable](https://impeccable.style) AI design intelligence — 20 design commands, responsive preview, export |
-| **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export. Skill design guidelines informed by [frontend-slides](https://github.com/zarazhangrui/frontend-slides) |
-| **doc** | Markdown documents with live preview — the simplest mode, a minimal example of the mode system |
-| **draw** | Diagrams and visual thinking on an [Excalidraw](https://excalidraw.com) canvas |
-| **illustrate** | AI illustration studio — generate and curate visual assets on a row-based canvas with content sets |
-| **mode-maker** | Create custom modes with AI — fork, play-test, publish |
-| **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback |
+| Mode | What it does | Version |
+|------|-------------|---------|
+| **webcraft** | Live web development with [Impeccable](https://impeccable.style) AI design intelligence — 20 design commands, responsive preview, export | 2.18.0 |
+| **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export. Skill design guidelines informed by [frontend-slides](https://github.com/zarazhangrui/frontend-slides) | 2.18.0 |
+| **doc** | Markdown documents with live preview — the simplest mode, a minimal example of the mode system | 2.18.0 |
+| **draw** | Diagrams and visual thinking on an [Excalidraw](https://excalidraw.com) canvas | 2.18.0 |
+| **diagram** | Professional [draw.io](https://www.drawio.com) diagrams — flowcharts, architecture, UML, ER, with streaming render and sketch style | **2.27.0** |
+| **illustrate** | AI illustration studio — generate and curate visual assets on a row-based canvas with content sets | 2.18.0 |
+| **mode-maker** | Create custom modes with AI — fork, play-test, publish | 2.18.0 |
+| **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback | 2.25.0 |
 
 ## Getting Started
 
@@ -101,6 +102,7 @@ Modes:
   slide                        HTML presentations
   doc                          Markdown with live preview
   draw                         Excalidraw canvas
+  diagram                      draw.io diagrams
   illustrate                   AI illustration studio
   mode-maker                   Create custom modes with AI
   evolve                       Launch the Evolution Agent
