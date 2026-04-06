@@ -82,6 +82,12 @@ export default function SlideIframePool({
     return s;
   });
 
+  // Delay initial visibility to force a hidden→visible transition on the first
+  // slide.  Without this, the active iframe starts visible from the first render
+  // inside a transform:scale() container, and Chromium may skip the initial paint.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   // Refs: one per slide.file for postMessage and reload
   const iframeRefs = useRef<Map<string, HTMLIFrameElement>>(new Map());
   // Track which iframes have finished loading
@@ -332,7 +338,7 @@ export default function SlideIframePool({
             srcDoc={srcdoc}
             title={slide.title || `Slide ${i + 1}`}
             style={{
-              visibility: i === activeIndex ? "visible" : "hidden",
+              visibility: mounted && i === activeIndex ? "visible" : "hidden",
             }}
             className="absolute inset-0 w-full h-full border-0"
             sandbox="allow-scripts"
