@@ -277,7 +277,8 @@ async function deployViaCli(req: DeployRequest): Promise<DeployResult> {
     }
 
     const isFirstDeploy = !req.projectId;
-    const env: Record<string, string> = { ...process.env as Record<string, string>, PATH: getEnrichedPath() };
+    const home = process.env.HOME || homedir();
+    const env: Record<string, string> = { ...process.env as Record<string, string>, PATH: getEnrichedPath(), HOME: home };
     if (req.teamId) env.VERCEL_ORG_ID = req.teamId;
 
     // Helper to run vercel CLI and get output
