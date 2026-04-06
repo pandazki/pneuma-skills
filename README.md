@@ -190,6 +190,8 @@ Pneuma agents remember who you are. Every mode ships with a built-in preference 
 
 The preference files are living documents — full rewrites, not append-only logs. Contradictions are preserved, not resolved. Everything is deletable. The agent builds understanding over time, not a label database.
 
+**Quick start tip:** If you already have a history of working with Claude Code, try asking the agent in any mode: *"Do a full preference refresh from my session history."* The agent will scan your past Pneuma sessions, extract your patterns and preferences, and build your profile in one pass — you might be surprised by what it picks up. This works with both Claude Code and Codex backends.
+
 ## Tech Stack
 
 | Layer | Technology |
