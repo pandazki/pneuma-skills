@@ -1388,7 +1388,7 @@ Options:
   const existingSession = loadSession(workspace);
   const initialEditing: boolean = viewing ? false : (existingSession?.editing ?? true);
 
-  const { server, wsBridge, port: actualPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup: serverCleanup, sessionInfo } = await startServer({
+  const { server, wsBridge, port: actualPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup: serverCleanup, sessionInfo, hookBus } = await startServer({
     port: serverPort,
     workspace,
     watchPatterns: manifest.viewer.watchPatterns,
@@ -1799,6 +1799,7 @@ Options:
   // and plugin route closures see the real sessionId created above
   if (sessionInfo) {
     sessionInfo.sessionId = sessionId;
+    if (hookBus) hookBus.emit("session:start", { sessionId: sessionInfo.sessionId, mode: sessionInfo.mode, workspace }, sessionInfo).catch(() => {});
   }
 
   // 6. Frontend serving

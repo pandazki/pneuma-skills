@@ -691,11 +691,10 @@ export async function startServer(options: ServerOptions) {
     });
 
     // ── Plugin System Routes ────────────────────────────────────────────────
-    // Discover plugins for the launcher UI
-    const launcherPlugins = await pluginRegistry.discover();
 
-    app.get("/api/plugins", (c) => {
-      const plugins = launcherPlugins.map((p) => ({
+    app.get("/api/plugins", async (c) => {
+      const freshPlugins = await pluginRegistry.discover();
+      const plugins = freshPlugins.map((p) => ({
         name: p.name,
         displayName: p.displayName,
         description: p.description,
@@ -708,13 +707,14 @@ export async function startServer(options: ServerOptions) {
       return c.json({ plugins });
     });
 
-    app.get("/api/plugin-settings/:name", (c) => {
+    app.get("/api/plugin-settings/:name", async (c) => {
       const name = c.req.param("name");
+      const freshPlugins = await pluginRegistry.discover();
       return c.json({
         enabled: (() => {
           const entry = settingsManager.getAll().plugins[name];
           if (entry !== undefined) return entry.enabled !== false;
-          const manifest = launcherPlugins.find(p => p.name === name);
+          const manifest = freshPlugins.find(p => p.name === name);
           if (manifest?.builtin) return manifest.defaultEnabled !== false;
           return settingsManager.isEnabled(name);
         })(),
@@ -1071,9 +1071,6 @@ export async function startServer(options: ServerOptions) {
     const installName = `pneuma-${options.modeName ?? ""}`;
     await buildAndInjectPreferences(workspace, installName, options.backendType ?? "claude-code", hookBus, sessionInfo);
   }
-
-  // Emit session:start hook
-  hookBus.emit("session:start", { sessionId: sessionInfo.sessionId, mode: sessionInfo.mode, workspace }, sessionInfo).catch(() => {});
 
   // Mount plugin routes
   pluginRegistry.mountRoutes(app, (pluginName) => ({
@@ -2252,5 +2249,5 @@ export const { createPortal, flushSync, createRoot, hydrateRoot } = RD;`;
     await hookBus.emit("session:end", { sessionId: sessionInfo.sessionId, mode: sessionInfo.mode, workspace }, sessionInfo).catch(() => {});
   };
 
-  return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup, sessionInfo };
+  return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup, sessionInfo, hookBus };
 }
