@@ -32,8 +32,12 @@ export default function (ctx: PluginRouteContext) {
   app.get("/read/*", async (c) => {
     const source = getSource();
     if (!source) return c.json({ entry: null });
-    const path = c.req.path.replace(/^\/read\//, "");
-    const entry = await source.read(decodeURIComponent(path));
+    // Use URL pathname to extract path after /read/ — works regardless of Hono mount prefix
+    const url = new URL(c.req.url);
+    const readIdx = url.pathname.indexOf("/read/");
+    const path = readIdx !== -1 ? decodeURIComponent(url.pathname.slice(readIdx + 6)) : "";
+    if (!path) return c.json({ entry: null });
+    const entry = await source.read(path);
     return c.json({ entry });
   });
 
