@@ -580,6 +580,7 @@ function openDeploy(provider){
       if(entry.declaration.type !== "form") return;
 
       var section = document.createElement("div");
+      section.setAttribute("data-slot-provider", entry.pluginName);
       entry.declaration.fields.forEach(function(field){
         var wrapper = document.createElement("div");
         wrapper.className = "slot-field";
@@ -649,6 +650,12 @@ function openDeploy(provider){
         section.appendChild(wrapper);
       });
       slotContainer.appendChild(section);
+    });
+    // Show only slot forms relevant to the current provider
+    var slotSections = slotContainer.querySelectorAll("[data-slot-provider]");
+    slotSections.forEach(function(s) {
+      var pluginProvider = s.getAttribute("data-slot-provider");
+      s.style.display = (pluginProvider === provider || !_providerConfig[pluginProvider]) ? "" : "none";
     });
   }).catch(function(){});
 
