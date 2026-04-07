@@ -60,7 +60,7 @@ function renderField(
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
-            checked={!!value ?? !!field.defaultValue}
+            checked={!!(value ?? field.defaultValue)}
             onChange={(e) => onFieldChange(field.name, e.target.checked)}
             className="w-3.5 h-3.5 rounded border-cc-border bg-cc-input-bg accent-cc-primary"
           />

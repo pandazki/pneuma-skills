@@ -812,12 +812,20 @@ Options:
           process.exit(1);
         }
 
-        // Auto-enable in settings
+        // Read actual plugin name from manifest
+        let actualName = pluginName;
+        try {
+          const mod = await import(join(targetDir, "manifest.ts"));
+          const manifest = mod.default ?? mod;
+          if (manifest.name) actualName = manifest.name;
+        } catch { /* use folder name as fallback */ }
+
+        // Auto-enable in settings using manifest name
         const { SettingsManager } = await import("../core/settings-manager.js");
         const settings = new SettingsManager(join(homedir(), ".pneuma"));
-        settings.setEnabled(pluginName, true);
+        settings.setEnabled(actualName, true);
 
-        p.log.success(`Plugin "${pluginName}" installed to ${targetDir}`);
+        p.log.success(`Plugin "${actualName}" installed to ${targetDir}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         p.cancel(`Failed to add plugin: ${msg}`);
