@@ -2534,16 +2534,7 @@ function ExportApp() {
                 h('path', { d: 'M12 13v6' }),
                 h('path', { d: 'm9 17 3-3 3 3' }))),
             h('div', { className: 'deploy-dropdown', id: 'deploy-dropdown', style: { display: 'none' } },
-              h('button', { className: 'deploy-dropdown-item', onClick: () => { window.closeDeployMenu && window.closeDeployMenu(); window.openDeploy && window.openDeploy("vercel-deploy"); } },
-                h('svg', { width: 14, height: 14, viewBox: '0 0 76 65', fill: 'currentColor' },
-                  h('path', { d: 'M37.5274 0L75.0548 65H0L37.5274 0Z' })),
-                h('span', { id: 'vercel-deploy-label' }, 'Vercel')),
-              h('button', { className: 'deploy-dropdown-item', onClick: () => { window.closeDeployMenu && window.closeDeployMenu(); window.openDeploy && window.openDeploy("cf-pages-deploy"); } },
-                h('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
-                  h('circle', { cx: 12, cy: 12, r: 10 }),
-                  h('path', { d: 'M2 12h20' }),
-                  h('path', { d: 'M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z' })),
-                h('span', { id: 'cf-pages-deploy-label' }, 'Cloudflare Pages')))),
+              h('div', { id: 'deploy-providers-list' }))),
         )
       )
     ),

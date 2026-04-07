@@ -1388,7 +1388,7 @@ Options:
   const existingSession = loadSession(workspace);
   const initialEditing: boolean = viewing ? false : (existingSession?.editing ?? true);
 
-  const { server, wsBridge, port: actualPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup: serverCleanup } = await startServer({
+  const { server, wsBridge, port: actualPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup: serverCleanup, sessionInfo } = await startServer({
     port: serverPort,
     workspace,
     watchPatterns: manifest.viewer.watchPatterns,
@@ -1793,6 +1793,12 @@ Options:
         files,
       });
     });
+  }
+
+  // Update sessionInfo so that server-side hooks (e.g. session:end, deploy:*)
+  // and plugin route closures see the real sessionId created above
+  if (sessionInfo) {
+    sessionInfo.sessionId = sessionId;
   }
 
   // 6. Frontend serving

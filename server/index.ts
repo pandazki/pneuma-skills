@@ -1003,7 +1003,7 @@ export async function startServer(options: ServerOptions) {
     }
 
     console.log(`[server] Launcher server running on http://localhost:${serverPort}`);
-    return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup: undefined, childProcesses, onReplayContinue: undefined };
+    return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup: undefined, childProcesses, onReplayContinue: undefined, sessionInfo: undefined };
   }
 
   // ── Proxy config (hot-reloadable) ────────────────────────────────────
@@ -2252,5 +2252,5 @@ export const { createPortal, flushSync, createRoot, hydrateRoot } = RD;`;
     await hookBus.emit("session:end", { sessionId: sessionInfo.sessionId, mode: sessionInfo.mode, workspace }, sessionInfo).catch(() => {});
   };
 
-  return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup };
+  return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup, sessionInfo };
 }
