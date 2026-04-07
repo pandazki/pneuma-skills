@@ -9,8 +9,8 @@
  */
 
 import { resolve, dirname, join, basename } from "node:path";
-import { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync, statSync, realpathSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync, statSync, realpathSync, readdirSync, rmSync, unlinkSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import * as p from "@clack/prompts";
 import { startServer } from "../server/index.js";
 import { createBackend, getDefaultBackendType } from "../backends/index.js";
@@ -484,7 +484,7 @@ async function handleEvolveCommand(args: string[]) {
   const effectivePort = port || (isDev ? 17007 : 17996);
 
   // 5. Start server with evolution routes
-  const { server, wsBridge, port: actualPort } = startServer({
+  const { server, wsBridge, port: actualPort } = await startServer({
     port: effectivePort,
     workspace,
     watchPatterns: [],
@@ -732,6 +732,183 @@ Options:
     // Unknown mode subcommand — fall through to normal mode resolution
   }
 
+  // Plugin subcommand — add, list, remove
+  if (rawArgs[0] === "plugin") {
+    const pluginsDir = join(homedir(), ".pneuma", "plugins");
+
+    if (rawArgs[1] === "add") {
+      const source = rawArgs[2];
+      if (!source) {
+        p.cancel("Usage: pneuma plugin add <path|github:user/repo|url>");
+        process.exit(1);
+      }
+
+      try {
+        mkdirSync(pluginsDir, { recursive: true });
+
+        let targetDir: string;
+        let pluginName: string;
+
+        if (source.startsWith("github:")) {
+          // GitHub: clone repo
+          const rest = source.slice("github:".length);
+          const [repoPath, ref] = rest.split("#");
+          const [user, repo] = repoPath.split("/");
+          if (!user || !repo) {
+            p.cancel('Invalid GitHub specifier. Expected: github:user/repo or github:user/repo#branch');
+            process.exit(1);
+          }
+          pluginName = `${user}-${repo}`;
+          targetDir = join(pluginsDir, pluginName);
+          const repoUrl = `https://github.com/${user}/${repo}.git`;
+          const branch = ref || "main";
+
+          if (existsSync(targetDir)) {
+            p.log.info(`Updating existing plugin "${pluginName}"...`);
+            const proc = Bun.spawnSync(["git", "-C", targetDir, "pull", "origin", branch]);
+            if (proc.exitCode !== 0) throw new Error(`git pull failed: ${new TextDecoder().decode(proc.stderr)}`);
+          } else {
+            p.log.info(`Cloning ${repoUrl}...`);
+            const proc = Bun.spawnSync(["git", "clone", "--depth", "1", "--branch", branch, repoUrl, targetDir]);
+            if (proc.exitCode !== 0) throw new Error(`git clone failed: ${new TextDecoder().decode(proc.stderr)}`);
+          }
+        } else if (source.startsWith("https://") && source.endsWith(".tar.gz")) {
+          // URL: download and extract
+          const urlPath = new URL(source).pathname;
+          pluginName = urlPath.split("/").pop()!.replace(/\.tar\.gz$/, "").replace(/[-.][\d]+/g, "") || "url-plugin";
+          targetDir = join(pluginsDir, pluginName);
+          mkdirSync(targetDir, { recursive: true });
+
+          p.log.info(`Downloading ${source}...`);
+          const resp = await fetch(source);
+          if (!resp.ok) throw new Error(`Download failed: ${resp.status}`);
+          const tarPath = join(tmpdir(), `pneuma-plugin-${Date.now()}.tar.gz`);
+          writeFileSync(tarPath, Buffer.from(await resp.arrayBuffer()));
+          const tarProc = Bun.spawnSync(["tar", "-xzf", tarPath, "-C", targetDir, "--strip-components=1"]);
+          unlinkSync(tarPath);
+          if (tarProc.exitCode !== 0) throw new Error(`tar extraction failed: ${new TextDecoder().decode(tarProc.stderr)}`);
+        } else {
+          // Local path: copy or symlink
+          const srcPath = source.startsWith("~") ? join(homedir(), source.slice(1)) : resolve(source);
+          if (!existsSync(srcPath)) {
+            p.cancel(`Path not found: ${srcPath}`);
+            process.exit(1);
+          }
+          pluginName = basename(srcPath);
+          targetDir = join(pluginsDir, pluginName);
+
+          if (existsSync(targetDir)) {
+            // Remove existing and re-copy
+            rmSync(targetDir, { recursive: true, force: true });
+          }
+          // Copy directory
+          cpSync(srcPath, targetDir, { recursive: true });
+        }
+
+        // Validate: check for manifest.ts
+        if (!existsSync(join(targetDir, "manifest.ts"))) {
+          p.cancel(`Invalid plugin: no manifest.ts found in ${targetDir}`);
+          rmSync(targetDir, { recursive: true, force: true });
+          process.exit(1);
+        }
+
+        // Auto-enable in settings
+        const { SettingsManager } = await import("../core/settings-manager.js");
+        const settings = new SettingsManager(join(homedir(), ".pneuma"));
+        settings.setEnabled(pluginName, true);
+
+        p.log.success(`Plugin "${pluginName}" installed to ${targetDir}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        p.cancel(`Failed to add plugin: ${msg}`);
+        process.exit(1);
+      }
+      return;
+    }
+
+    if (rawArgs[1] === "list") {
+      const { SettingsManager } = await import("../core/settings-manager.js");
+      const settings = new SettingsManager(join(homedir(), ".pneuma"));
+      const allSettings = settings.getAll();
+
+      // Scan builtin plugins
+      const builtinDir = join(import.meta.dir, "..", "plugins");
+      const builtinPlugins: string[] = [];
+      if (existsSync(builtinDir)) {
+        for (const entry of readdirSync(builtinDir, { withFileTypes: true })) {
+          if (entry.isDirectory() && existsSync(join(builtinDir, entry.name, "manifest.ts"))) {
+            builtinPlugins.push(entry.name);
+          }
+        }
+      }
+
+      // Scan external plugins
+      const externalPlugins: string[] = [];
+      if (existsSync(pluginsDir)) {
+        for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
+          if (entry.isDirectory() && existsSync(join(pluginsDir, entry.name, "manifest.ts"))) {
+            externalPlugins.push(entry.name);
+          }
+        }
+      }
+
+      if (builtinPlugins.length === 0 && externalPlugins.length === 0) {
+        console.log("[plugin] No plugins found.");
+      } else {
+        if (builtinPlugins.length > 0) {
+          console.log(`\n  Built-in plugins:\n`);
+          for (const name of builtinPlugins) {
+            const enabled = allSettings.plugins[name]?.enabled !== false;
+            console.log(`    ${name} ${enabled ? "(enabled)" : "(disabled)"} [builtin]`);
+          }
+        }
+        if (externalPlugins.length > 0) {
+          console.log(`\n  External plugins:\n`);
+          for (const name of externalPlugins) {
+            const enabled = allSettings.plugins[name]?.enabled ?? false;
+            console.log(`    ${name} ${enabled ? "(enabled)" : "(disabled)"} ${join(pluginsDir, name)}`);
+          }
+        }
+        console.log();
+      }
+      return;
+    }
+
+    if (rawArgs[1] === "remove") {
+      const name = rawArgs[2];
+      if (!name) {
+        p.cancel("Usage: pneuma plugin remove <name>");
+        process.exit(1);
+      }
+
+      const targetDir = join(pluginsDir, name);
+      if (!existsSync(targetDir)) {
+        p.cancel(`Plugin "${name}" not found in ${pluginsDir}`);
+        process.exit(1);
+      }
+
+      // Check it's not builtin
+      const builtinDir = join(import.meta.dir, "..", "plugins");
+      if (existsSync(join(builtinDir, name))) {
+        p.cancel(`"${name}" is a built-in plugin and cannot be removed. You can disable it in Settings.`);
+        process.exit(1);
+      }
+
+      rmSync(targetDir, { recursive: true, force: true });
+
+      // Disable in settings
+      const { SettingsManager } = await import("../core/settings-manager.js");
+      const settings = new SettingsManager(join(homedir(), ".pneuma"));
+      settings.setEnabled(name, false);
+
+      p.log.success(`Plugin "${name}" removed.`);
+      return;
+    }
+
+    p.cancel("Usage: pneuma plugin <add|list|remove>");
+    process.exit(1);
+  }
+
   // Evolve subcommand — AI-native skill evolution
   // Find "evolve" in rawArgs (may be preceded by flags like --dev)
   const evolveIdx = rawArgs.findIndex(a => a === "evolve");
@@ -751,7 +928,7 @@ Options:
     const launcherPort = port || 17996;
     const distDir = resolve(PROJECT_ROOT, "dist");
     const isDev = forceDev || !existsSync(join(distDir, "index.html"));
-    const { server, port: actualPort, childProcesses } = startServer({
+    const { server, port: actualPort, childProcesses } = await startServer({
       port: isDev ? 17007 : launcherPort,
       workspace: homedir(),
       watchPatterns: [],
@@ -1177,7 +1354,7 @@ Options:
   const existingSession = loadSession(workspace);
   const initialEditing: boolean = viewing ? false : (existingSession?.editing ?? true);
 
-  const { server, wsBridge, port: actualPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill } = startServer({
+  const { server, wsBridge, port: actualPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup: serverCleanup } = await startServer({
     port: serverPort,
     workspace,
     watchPatterns: manifest.viewer.watchPatterns,
@@ -1196,6 +1373,7 @@ Options:
     window: manifest.window,
     editing: initialEditing,
     editingSupported: !!manifest.editing?.supported,
+    backendType,
   });
 
   // 4. Launch Agent backend or set up replay mode
@@ -1650,6 +1828,7 @@ Options:
       }
     }
     modeMakerCleanup?.();
+    if (serverCleanup) await serverCleanup();
     viteProc?.kill();
     if (backend) await backend.killAll();
     server.stop(true);

@@ -44,6 +44,11 @@ pneuma mode add <url>    # Install remote mode to ~/.pneuma/modes/
 pneuma mode list         # List published modes on R2
 pneuma mode publish      # Publish current workspace as mode
 
+# Plugin management
+pneuma plugin add <source>   # Install plugin from path/github/URL to ~/.pneuma/plugins/
+pneuma plugin list           # List builtin + external plugins with enabled status
+pneuma plugin remove <name>  # Remove an external plugin
+
 # Snapshot
 pneuma snapshot push     # Upload workspace to R2
 pneuma snapshot pull     # Download workspace from R2
@@ -85,10 +90,16 @@ pneuma history open <path-or-url>      # Download/prepare replay package
 pneuma-skills/
 ├── bin/                       # CLI entry — mode resolution, agent launch, session registry
 ├── core/
-│   ├── types/                 # Contract types (ModeManifest, ViewerContract, AgentBackend, SharedHistory)
+│   ├── types/                 # Contract types (ModeManifest, ViewerContract, AgentBackend, SharedHistory, PluginManifest)
 │   ├── mode-loader.ts         # Mode discovery & loading (builtin + external)
 │   ├── mode-resolver.ts       # Source resolution (builtin/local/github/url → disk path)
+│   ├── plugin-registry.ts     # Plugin discovery, filtering, loading, activation, route mounting
+│   ├── hook-bus.ts            # Waterfall event bus for plugin hooks (soft error)
+│   ├── settings-manager.ts    # Plugin settings persistence (~/.pneuma/settings.json)
 │   └── utils/manifest-parser.ts  # Regex-based manifest.ts metadata extraction
+├── plugins/                   # Builtin plugins (same lifecycle as third-party)
+│   ├── vercel/                # Vercel deploy plugin (routes + hooks + manifest)
+│   └── cf-pages/              # Cloudflare Pages deploy plugin
 ├── modes/{webcraft,doc,slide,draw,diagram,illustrate,remotion,gridboard,clipcraft,mode-maker,evolve}/
 ├── modes/_shared/skills/      # Global skills installed for all modes (e.g. pneuma-preferences)
 ├── backends/
@@ -103,7 +114,7 @@ pneuma-skills/
 │   └── shadow-git.ts          # Shadow git init, checkpoint capture, bundle export
 ├── src/                       # React frontend (Vite)
 │   ├── App.tsx                # Root layout, dynamic viewer loading
-│   ├── store/                 # Zustand store (8 protocol-aligned slices)
+│   ├── store/                 # Zustand store (9 protocol-aligned slices, including plugin-slice)
 │   ├── ws.ts                  # WebSocket client
 │   └── components/            # Chat, permissions, launcher, replay, context panels
 ├── desktop/                   # Electron desktop client (main process, preload, build scripts)
@@ -133,6 +144,27 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 | **AgentBackend** | `core/types/agent-backend.ts` | Launch, resume, kill, capabilities |
 | **EvolutionConfig** | `core/types/mode-manifest.ts` | Evolution directive, tools (part of ModeManifest) |
 | **SharedHistoryPackage** | `core/types/shared-history.ts` | Exported session bundle: messages, checkpoints, metadata, summary |
+| **PluginManifest** | `core/types/plugin.ts` | Plugin capabilities: hooks, slots, routes, settings |
+
+### Plugin System
+
+Extensible plugin architecture for deploy workflows, metadata injection, and future domains.
+
+**Core components:** `PluginRegistry` (discovery + lifecycle), `HookBus` (waterfall events), `SettingsManager` (config persistence)
+
+**Plugin sources:** builtin (`plugins/`), external (`~/.pneuma/plugins/`), installed via `pneuma plugin add`
+
+**Four layers (all opt-in):**
+- **Hooks** — `deploy:before/after`, `session:start/end`, `export:before/after` — modify payloads in waterfall
+- **Slots** — `deploy:pre-publish`, `deploy:provider` — UI injection (declarative form or custom component)
+- **Routes** — Hono sub-apps mounted at `/api/plugins/{name}/*`
+- **Settings** — Schema-driven config, auto-rendered in Launcher, persisted to `~/.pneuma/settings.json`
+
+**Lifecycle:** discover → filter (enabled/disabled) → resolve (mode/scope) → load → activate → mount routes
+
+**Soft error:** Plugin failures (load, hook, render, route) are caught and logged — never break the main flow.
+
+**Deploy flow:** Frontend → `POST /api/deploy` → `deploy:before` hooks → provider plugin route → `deploy:after` hooks → result
 
 ### Communication
 

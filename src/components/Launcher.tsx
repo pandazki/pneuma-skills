@@ -2562,238 +2562,201 @@ function CloudStorageSection() {
   );
 }
 
-function VercelSection() {
-  const [status, setStatus] = useState<"loading" | "configured" | "unconfigured" | "editing">("loading");
-  const [vercelStatus, setVercelStatus] = useState<{ available: boolean; method: "cli" | "token" | null; user?: string } | null>(null);
-  const [config, setConfig] = useState<any>(null);
-  const [form, setForm] = useState({ token: "", teamId: "" });
+function PluginSettingsCard({ plugin }: { plugin: any }) {
+  const [enabled, setEnabled] = useState(false);
+  const [config, setConfig] = useState<Record<string, any>>({});
+  const [form, setForm] = useState<Record<string, any>>({});
+  const [expanded, setExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const hasSettings = plugin.settingsSchema && Object.keys(plugin.settingsSchema).length > 0;
 
   useEffect(() => {
-    Promise.all([
-      fetch(`${getApiBase()}/api/vercel/status`).then((r) => r.json()),
-      fetch(`${getApiBase()}/api/vercel/config`).then((r) => r.json()),
-    ]).then(([vs, cfg]) => {
-      setVercelStatus(vs);
-      if (cfg.configured) { setConfig(cfg); setStatus("configured"); }
-      else if (vs.available && vs.method === "cli") { setStatus("configured"); }
-      else setStatus("unconfigured");
-    }).catch(() => setStatus("unconfigured"));
-  }, []);
+    fetch(`${getApiBase()}/api/plugin-settings/${plugin.name}`).then((r) => r.json()).then((data) => {
+      setEnabled(data.enabled ?? false);
+      setConfig(data.config ?? {});
+      // Merge defaultValues from schema into form for unfilled fields
+      const savedConfig = data.config ?? {};
+      const merged = { ...savedConfig };
+      if (plugin.settingsSchema) {
+        for (const [key, schema] of Object.entries(plugin.settingsSchema) as [string, any][]) {
+          if (merged[key] === undefined && schema.defaultValue !== undefined) {
+            merged[key] = schema.defaultValue;
+          }
+        }
+      }
+      setForm(merged);
+      setLoaded(true);
+    }).catch(() => setLoaded(true));
+  }, [plugin.name]);
+
+  const toggleEnabled = async (val: boolean) => {
+    setEnabled(val);
+    try {
+      await fetch(`${getApiBase()}/api/plugin-settings/${plugin.name}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: val, config }),
+      });
+    } catch { setEnabled(!val); }
+  };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await fetch(`${getApiBase()}/api/vercel/config`, {
+      await fetch(`${getApiBase()}/api/plugin-settings/${plugin.name}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: form.token, teamId: form.teamId || null }),
+        body: JSON.stringify({ enabled, config: form }),
       });
-      const [vs, cfg] = await Promise.all([
-        fetch(`${getApiBase()}/api/vercel/status`).then((r) => r.json()),
-        fetch(`${getApiBase()}/api/vercel/config`).then((r) => r.json()),
-      ]);
-      setVercelStatus(vs);
-      setConfig(cfg);
-      setStatus("configured");
+      setConfig(form);
     } catch { }
     setSaving(false);
   };
 
-  if (status === "loading") return null;
+  const maskPassword = (val: string) => {
+    if (!val) return "";
+    return val.length > 6 ? val.slice(0, 6) + "***" : "***";
+  };
+
+  if (!loaded) return null;
 
   return (
-    <div className="space-y-3">
+    <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30 space-y-1.5">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">Vercel Deploy</h3>
-        {status === "configured" && (
-          <button onClick={() => { setForm({ token: "", teamId: "" }); setStatus("editing"); }}
-            className="text-[10px] text-cc-muted/50 hover:text-cc-fg transition-colors cursor-pointer">Edit</button>
-        )}
-      </div>
-      <p className="text-[10px] text-cc-muted/60 leading-relaxed">
-        Deploy projects to Vercel. Uses Vercel CLI if installed, or configure a token below.
-      </p>
-
-      {/* CLI status indicator */}
-      {vercelStatus && vercelStatus.method === "cli" && (
-        <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30 space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-cc-success" />
-            <span className="text-xs text-cc-fg">CLI connected as {vercelStatus.user}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Token configured */}
-      {status === "configured" && vercelStatus?.method === "token" && (
-        <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30 space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-cc-success" />
-            <span className="text-xs text-cc-fg">Token connected as {vercelStatus.user}</span>
-          </div>
-          {config?.teamId && <div className="text-[10px] text-cc-muted">Team: {config.teamId}</div>}
-        </div>
-      )}
-
-      {/* Not available — show hint */}
-      {status === "configured" && !vercelStatus?.available && (
-        <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-yellow-500" />
-            <span className="text-xs text-cc-fg">Token saved but could not verify</span>
-          </div>
-        </div>
-      )}
-
-      {(status === "unconfigured" || status === "editing") && (
-        <div className="space-y-3">
-          {status === "unconfigured" && !vercelStatus?.available && (
-            <div className="text-[10px] text-cc-muted/60 leading-relaxed">
-              Install <span className="text-cc-fg">Vercel CLI</span> (<code className="text-cc-primary">npm i -g vercel</code> then <code className="text-cc-primary">vercel login</code>), or create a token at <span className="text-cc-fg">vercel.com/account/tokens</span>.
-            </div>
-          )}
-          <div className="space-y-2">
-            {[
-              { key: "token", placeholder: "Vercel Token", type: "password" },
-              { key: "teamId", placeholder: "Team ID (optional, leave blank for personal)", type: "text" },
-            ].map(({ key, placeholder, type }) => (
-              <input
-                key={key}
-                placeholder={placeholder}
-                type={type}
-                value={(form as any)[key]}
-                onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
-              />
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <button onClick={handleSave} disabled={saving || !form.token}
-              className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer">
-              {saving ? "Saving..." : "Save"}
+        <div className="flex items-center gap-2 min-w-0">
+          {hasSettings ? (
+            <button onClick={() => setExpanded(!expanded)} className="text-cc-muted hover:text-cc-fg transition-colors cursor-pointer shrink-0">
+              <svg viewBox="0 0 16 16" fill="currentColor" className={`w-3 h-3 transition-transform ${expanded ? "rotate-90" : ""}`}>
+                <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z" />
+              </svg>
             </button>
-            {status === "editing" && (
-              <button onClick={() => setStatus("configured")}
-                className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">
-                Cancel
-              </button>
-            )}
+          ) : <span className="w-3 shrink-0" />}
+          <span className={`w-2 h-2 rounded-full shrink-0 ${enabled ? "bg-cc-success" : "bg-cc-muted/30"}`} />
+          <span className="text-xs text-cc-fg font-medium truncate">{plugin.displayName}</span>
+          <span className="text-[10px] text-cc-muted/60 shrink-0">v{plugin.version}</span>
+          {plugin.builtin && <span className="text-[10px] text-cc-muted/40 shrink-0">(Built-in)</span>}
+        </div>
+        {/* Toggle */}
+        <button
+          onClick={() => toggleEnabled(!enabled)}
+          className={`relative w-8 h-[18px] rounded-full shrink-0 transition-colors cursor-pointer ${enabled ? "bg-cc-primary" : "bg-cc-border"}`}
+        >
+          <span className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-all ${enabled ? "left-[15px]" : "left-[2px]"}`} />
+        </button>
+      </div>
+      {plugin.description && (
+        <p className="text-[10px] text-cc-muted/60 leading-relaxed pl-5">{plugin.description}</p>
+      )}
+
+      {/* Expanded settings form */}
+      {expanded && hasSettings && (
+        <div className="pt-2 pl-5 space-y-3">
+          <div className="space-y-2">
+            {Object.entries(plugin.settingsSchema).map(([key, schema]: [string, any]) => {
+              if (schema.type === "boolean") {
+                return (
+                  <label key={key} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form[key] ?? false}
+                      onChange={(e) => setForm({ ...form, [key]: e.target.checked })}
+                      className="accent-cc-primary"
+                    />
+                    <span className="text-xs text-cc-fg">{schema.label || key}</span>
+                    {schema.description && <span className="text-[10px] text-cc-muted/40">{schema.description}</span>}
+                  </label>
+                );
+              }
+              if (schema.type === "select") {
+                return (
+                  <div key={key} className="space-y-1">
+                    <label className="text-[10px] text-cc-muted">{schema.label || key}</label>
+                    <select
+                      value={form[key] ?? ""}
+                      onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                      className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg outline-none focus:border-cc-primary/50 transition-colors"
+                    >
+                      <option value="">Select...</option>
+                      {(schema.options ?? []).map((opt: any) => (
+                        <option key={typeof opt === "string" ? opt : opt.value} value={typeof opt === "string" ? opt : opt.value}>
+                          {typeof opt === "string" ? opt : opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    {schema.description && <p className="text-[10px] text-cc-muted/40">{schema.description}</p>}
+                  </div>
+                );
+              }
+              if (schema.type === "textarea") {
+                return (
+                  <div key={key} className="space-y-1">
+                    <label className="text-[10px] text-cc-muted">{schema.label || key}</label>
+                    <textarea
+                      placeholder={schema.description || key}
+                      value={form[key] ?? ""}
+                      onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                      rows={3}
+                      className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors resize-y"
+                    />
+                    {schema.description && <p className="text-[10px] text-cc-muted/40">{schema.description}</p>}
+                  </div>
+                );
+              }
+              // string, password, number
+              const inputType = schema.type === "password" ? "password" : schema.type === "number" ? "number" : "text";
+              return (
+                <div key={key} className="space-y-1">
+                  <label className="text-[10px] text-cc-muted">{schema.label || key}</label>
+                  <input
+                    type={inputType}
+                    placeholder={schema.type === "password" && config[key] ? maskPassword(config[key]) : (schema.description || key)}
+                    value={form[key] ?? ""}
+                    onChange={(e) => setForm({ ...form, [key]: schema.type === "number" ? Number(e.target.value) : e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
+                  />
+                  {schema.description && <p className="text-[10px] text-cc-muted/40">{schema.description}</p>}
+                </div>
+              );
+            })}
           </div>
+          <button onClick={handleSave} disabled={saving}
+            className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer">
+            {saving ? "Saving..." : "Save"}
+          </button>
         </div>
       )}
     </div>
   );
 }
 
-function CfPagesSection() {
-  const [status, setStatus] = useState<"loading" | "configured" | "unconfigured" | "editing">("loading");
-  const [cfStatus, setCfStatus] = useState<{ available: boolean; method: "cli" | "token" | null } | null>(null);
-  const [config, setConfig] = useState<any>(null);
-  const [form, setForm] = useState({ apiToken: "", accountId: "" });
-  const [saving, setSaving] = useState(false);
+function PluginsSection() {
+  const [plugins, setPlugins] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      fetch(`${getApiBase()}/api/cf-pages/status`).then((r) => r.json()),
-      fetch(`${getApiBase()}/api/cf-pages/config`).then((r) => r.json()),
-    ]).then(([cs, cfg]) => {
-      setCfStatus(cs);
-      if (cfg.configured) { setConfig(cfg); setStatus("configured"); }
-      else if (cs.available && cs.method === "cli") { setStatus("configured"); }
-      else setStatus("unconfigured");
-    }).catch(() => setStatus("unconfigured"));
+    fetch(`${getApiBase()}/api/plugins`).then((r) => r.json()).then((data) => {
+      setPlugins(data.plugins ?? []);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, []);
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await fetch(`${getApiBase()}/api/cf-pages/config`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      const [cs, cfg] = await Promise.all([
-        fetch(`${getApiBase()}/api/cf-pages/status`).then((r) => r.json()),
-        fetch(`${getApiBase()}/api/cf-pages/config`).then((r) => r.json()),
-      ]);
-      setCfStatus(cs);
-      setConfig(cfg);
-      setStatus("configured");
-    } catch { }
-    setSaving(false);
-  };
-
-  if (status === "loading") return null;
+  if (loading) return null;
+  if (plugins.length === 0) return null;
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">Cloudflare Pages</h3>
-        {status === "configured" && (
-          <button onClick={() => { setForm({ apiToken: "", accountId: config?.accountId || "" }); setStatus("editing"); }}
-            className="text-[10px] text-cc-muted/50 hover:text-cc-fg transition-colors cursor-pointer">Edit</button>
-        )}
-      </div>
+      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">Plugins</h3>
       <p className="text-[10px] text-cc-muted/60 leading-relaxed">
-        Deploy projects to Cloudflare Pages. Uses Wrangler CLI if installed, or configure an API token below.
+        Manage installed plugins. Enable or disable plugins and configure their settings.
       </p>
-
-      {cfStatus?.method === "cli" && (
-        <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30 space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-cc-success" />
-            <span className="text-xs text-cc-fg">Wrangler CLI connected</span>
-          </div>
-        </div>
-      )}
-
-      {status === "configured" && cfStatus?.method === "token" && (
-        <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30 space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-cc-success" />
-            <span className="text-xs text-cc-fg">API token connected</span>
-          </div>
-          {config?.accountId && <div className="text-[10px] text-cc-muted">Account: {config.accountId}</div>}
-        </div>
-      )}
-
-      {(status === "unconfigured" || status === "editing") && (
-        <div className="space-y-3">
-          {status === "unconfigured" && !cfStatus?.available && (
-            <div className="text-[10px] text-cc-muted/60 leading-relaxed">
-              Install <span className="text-cc-fg">Wrangler CLI</span> (<code className="text-cc-primary">npm i -g wrangler</code> then <code className="text-cc-primary">wrangler login</code>), or create an API token at <span className="text-cc-fg">dash.cloudflare.com/profile/api-tokens</span>.
-            </div>
-          )}
-          <div className="space-y-2">
-            {[
-              { key: "apiToken", placeholder: "API Token", type: "password" },
-              { key: "accountId", placeholder: "Account ID", type: "text" },
-            ].map(({ key, placeholder, type }) => (
-              <input
-                key={key}
-                placeholder={placeholder}
-                type={type}
-                value={(form as any)[key]}
-                onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
-              />
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <button onClick={handleSave} disabled={saving || !form.apiToken || !form.accountId}
-              className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer">
-              {saving ? "Saving..." : "Save"}
-            </button>
-            {status === "editing" && (
-              <button onClick={() => setStatus("configured")}
-                className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">
-                Cancel
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      <div className="space-y-2">
+        {plugins.map((plugin) => (
+          <PluginSettingsCard key={plugin.name} plugin={plugin} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -2829,8 +2792,7 @@ function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }
           <BackendsSection />
           <ApiKeysSection />
           <CloudStorageSection />
-          <VercelSection />
-          <CfPagesSection />
+          <PluginsSection />
         </div>
       </div>
     </>

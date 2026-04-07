@@ -323,6 +323,60 @@ export function getDeployCSS(): string {
     font-size: 12px;
     color: var(--color-cc-muted);
     margin-bottom: 14px;
+  }
+  .deploy-slot-forms:not(:empty) {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .deploy-slot-forms .slot-field {
+    margin-bottom: 10px;
+  }
+  .deploy-slot-forms .slot-field label {
+    display: block;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--color-cc-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+  }
+  .deploy-slot-forms .slot-field input,
+  .deploy-slot-forms .slot-field textarea,
+  .deploy-slot-forms .slot-field select {
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 12px;
+    background: var(--color-cc-input-bg, rgba(255,255,255,0.05));
+    border: 1px solid var(--color-cc-border);
+    border-radius: 8px;
+    color: var(--color-cc-fg);
+    outline: none;
+    transition: border-color 0.2s;
+    font-family: inherit;
+    box-sizing: border-box;
+  }
+  .deploy-slot-forms .slot-field input:focus,
+  .deploy-slot-forms .slot-field textarea:focus,
+  .deploy-slot-forms .slot-field select:focus {
+    border-color: rgba(249, 115, 22, 0.5);
+  }
+  .deploy-slot-forms .slot-field textarea {
+    resize: vertical;
+    min-height: 60px;
+  }
+  .deploy-slot-forms .slot-field-desc {
+    font-size: 10px;
+    color: rgba(255,255,255,0.3);
+    margin-top: 2px;
+  }
+  .deploy-slot-forms .slot-section-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--color-cc-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
   }`;
 }
 
@@ -344,14 +398,7 @@ export function getDeployToolbarHTML(opts?: { previewUrl?: string }): string {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/><path d="M12 13v6"/><path d="m9 17 3-3 3 3"/></svg>
         </button>
         <div class="deploy-dropdown" id="deploy-dropdown" style="display:none">
-${previewItem}          <button class="deploy-dropdown-item" onclick="closeDeployMenu();openDeploy('vercel')">
-            <svg width="14" height="14" viewBox="0 0 76 65" fill="currentColor"><path d="M37.5274 0L75.0548 65H0L37.5274 0Z"/></svg>
-            <span id="vercel-label">Vercel</span>
-          </button>
-          <button class="deploy-dropdown-item" onclick="closeDeployMenu();openDeploy('cf-pages')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-            <span id="cf-pages-label">Cloudflare Pages</span>
-          </button>
+${previewItem}          <div id="deploy-providers-list"></div>
         </div>
       </div>`;
 }
@@ -380,6 +427,7 @@ export function getDeployModalHTML(): string {
           <input type="hidden" id="vercel-team" value="" />
         </div>
       </label>
+      <div id="deploy-slot-forms" class="deploy-slot-forms"></div>
       <div class="deploy-actions">
         <button class="btn-primary" onclick="executeDeploy()">Deploy</button>
         <button class="btn-secondary" onclick="closeVercelModal()">Cancel</button>
@@ -424,40 +472,67 @@ export function getDeployModalHTML(): string {
  */
 export function getDeployScript(): string {
   return `
-var _deployBindings = { vercel: null, "cf-pages": null };
-var _deployStatuses = { vercel: null, "cf-pages": null };
-var _deployProvider = "vercel";
+var _deployBindings = {};
+var _deployStatuses = {};
+var _deployProvider = "";
 var _deployContentSet = new URLSearchParams(location.search).get("contentSet") || "";
+var _slotFormValues = {};
+var _slotEntries = [];
+var _providerConfig = {};
 
-var _providerConfig = {
-  vercel: { name: "Vercel", statusApi: "/api/vercel/status", bindingApi: "/api/vercel/binding", deployApi: "/api/vercel/deploy", labelId: "vercel-label", hasTeams: true },
-  "cf-pages": { name: "Cloudflare Pages", statusApi: "/api/cf-pages/status", bindingApi: "/api/cf-pages/binding", deployApi: "/api/cf-pages/deploy", labelId: "cf-pages-label", hasTeams: false },
+var _providerIcons = {
+  "vercel-deploy": '<svg width="14" height="14" viewBox="0 0 76 65" fill="currentColor"><path d="M37.5274 0L75.0548 65H0L37.5274 0Z"/></svg>',
+  "cf-pages-deploy": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
 };
 
 (function(){
   var bindingQs = _deployContentSet ? "?contentSet=" + encodeURIComponent(_deployContentSet) : "";
   var btn = document.getElementById("deploy-trigger-btn");
-  var anyAvailable = false;
+  var listEl = document.getElementById("deploy-providers-list");
 
-  Object.keys(_providerConfig).forEach(function(key){
-    var cfg = _providerConfig[key];
-    fetch(cfg.statusApi).then(function(r){return r.json()}).then(function(s){
-      _deployStatuses[key] = s;
-      if(s.available) { anyAvailable = true; btn.disabled = false; }
-      return fetch(cfg.bindingApi + bindingQs).then(function(r){return r.json()});
-    }).then(function(b){
-      if(b && (b.projectId || b.projectName)) {
-        _deployBindings[key] = b;
-        var item = document.getElementById(cfg.labelId)?.closest(".deploy-dropdown-item");
-        if(item && !item.querySelector(".deploy-linked-name")) {
-          var nameEl = document.createElement("span");
-          nameEl.className = "deploy-linked-name";
-          nameEl.textContent = b.projectName || "";
-          item.appendChild(nameEl);
+  fetch("/api/plugins").then(function(r){return r.json()}).then(function(data){
+    var deployPlugins = (data.plugins || []).filter(function(p){ return p.hooks && p.hooks.indexOf("deploy:providers") !== -1; });
+    if(deployPlugins.length === 0) return;
+
+    deployPlugins.forEach(function(p){
+      var providerId = p.name;
+      var routePrefix = p.routePrefix || ("/api/plugins/" + providerId);
+      _providerConfig[providerId] = {
+        name: p.displayName,
+        statusApi: routePrefix + "/status",
+        bindingApi: routePrefix + "/binding",
+        deployApi: routePrefix + "/deploy",
+        labelId: providerId + "-label",
+        hasTeams: providerId === "vercel-deploy"
+      };
+
+      // Create dropdown button
+      var btnItem = document.createElement("button");
+      btnItem.className = "deploy-dropdown-item";
+      btnItem.onclick = function(){ closeDeployMenu(); openDeploy(providerId); };
+      btnItem.innerHTML = (_providerIcons[providerId] || "") + ' <span id="' + providerId + '-label">' + p.displayName + '</span>';
+      listEl.appendChild(btnItem);
+
+      // Check status and binding
+      fetch(_providerConfig[providerId].statusApi).then(function(r){return r.json()}).then(function(s){
+        _deployStatuses[providerId] = s;
+        if(s.available) { btn.disabled = false; }
+        return fetch(_providerConfig[providerId].bindingApi + bindingQs).then(function(r){return r.json()});
+      }).then(function(b){
+        if(b && (b.projectId || b.projectName)) {
+          _deployBindings[providerId] = b;
+          if(!_deployProvider) _deployProvider = providerId;
+          var item = document.getElementById(providerId + "-label")?.closest(".deploy-dropdown-item");
+          if(item && !item.querySelector(".deploy-linked-name")) {
+            var nameEl = document.createElement("span");
+            nameEl.className = "deploy-linked-name";
+            nameEl.textContent = b.projectName || "";
+            item.appendChild(nameEl);
+          }
         }
-      }
-    }).catch(function(){});
-  });
+      }).catch(function(){});
+    });
+  }).catch(function(){});
 })();
 
 function toggleDeployMenu(){
@@ -494,10 +569,93 @@ function openDeploy(provider){
 
   document.getElementById("vercel-form").style.display = "block";
 
+  // Load deploy:pre-publish slot forms
+  var slotContainer = document.getElementById("deploy-slot-forms");
+  slotContainer.innerHTML = "";
+  _slotFormValues = {};
+  fetch("/api/slots/deploy:pre-publish").then(function(r){return r.json()}).then(function(data){
+    _slotEntries = data.entries || [];
+    _slotEntries.forEach(function(entry){
+      if(typeof entry.declaration === "string") return; // custom component, skip
+      if(entry.declaration.type !== "form") return;
+
+      var section = document.createElement("div");
+      entry.declaration.fields.forEach(function(field){
+        var wrapper = document.createElement("div");
+        wrapper.className = "slot-field";
+
+        if(field.type !== "checkbox") {
+          var lbl = document.createElement("label");
+          lbl.textContent = field.label;
+          if(field.required) lbl.innerHTML += ' <span style="color:var(--color-cc-primary)">*</span>';
+          wrapper.appendChild(lbl);
+        }
+
+        var input;
+        if(field.type === "textarea") {
+          input = document.createElement("textarea");
+          input.placeholder = field.placeholder || "";
+        } else if(field.type === "select") {
+          input = document.createElement("select");
+          var emptyOpt = document.createElement("option");
+          emptyOpt.value = "";
+          emptyOpt.textContent = field.placeholder || "Select...";
+          input.appendChild(emptyOpt);
+          (field.options || []).forEach(function(opt){
+            var o = document.createElement("option");
+            o.value = opt.value;
+            o.textContent = opt.label;
+            input.appendChild(o);
+          });
+        } else if(field.type === "checkbox") {
+          var checkLabel = document.createElement("label");
+          checkLabel.style.cssText = "display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--color-cc-fg);text-transform:none;letter-spacing:normal";
+          input = document.createElement("input");
+          input.type = "checkbox";
+          input.checked = !!field.defaultValue;
+          checkLabel.appendChild(input);
+          checkLabel.appendChild(document.createTextNode(field.label));
+          wrapper.appendChild(checkLabel);
+        } else {
+          input = document.createElement("input");
+          input.type = field.type || "text";
+          input.placeholder = field.placeholder || "";
+        }
+
+        if(field.type !== "checkbox") {
+          if(field.defaultValue !== undefined) input.value = String(field.defaultValue);
+          wrapper.appendChild(input);
+        }
+
+        input.setAttribute("data-slot-plugin", entry.pluginName);
+        input.setAttribute("data-slot-field", field.name);
+        input.addEventListener("change", function(){
+          if(!_slotFormValues[entry.pluginName]) _slotFormValues[entry.pluginName] = {};
+          _slotFormValues[entry.pluginName][field.name] = field.type === "checkbox" ? input.checked : input.value;
+        });
+        input.addEventListener("input", function(){
+          if(field.type === "checkbox") return;
+          if(!_slotFormValues[entry.pluginName]) _slotFormValues[entry.pluginName] = {};
+          _slotFormValues[entry.pluginName][field.name] = input.value;
+        });
+
+        if(field.description && field.type !== "checkbox") {
+          var desc = document.createElement("div");
+          desc.className = "slot-field-desc";
+          desc.textContent = field.description;
+          wrapper.appendChild(desc);
+        }
+
+        section.appendChild(wrapper);
+      });
+      slotContainer.appendChild(section);
+    });
+  }).catch(function(){});
+
   var nameInput = document.getElementById("vercel-project-name");
   if(binding) {
     nameInput.value = binding.projectName;
-    var linkUrl = binding.dashboardUrl || (provider === "vercel" ? "https://vercel.com" : "");
+    var linkUrl = binding.dashboardUrl || (cfg.hasTeams ? "https://vercel.com" : "");
     if(linkUrl) {
       document.getElementById("vercel-status-msg").innerHTML = 'Linked to <a href="' + linkUrl + '" target="_blank" style="color:var(--color-cc-primary);text-decoration:none">' + binding.projectName + '</a>';
     } else {
@@ -510,8 +668,8 @@ function openDeploy(provider){
     }
   }
 
-  if(provider === "vercel" && _deployStatuses.vercel && _deployStatuses.vercel.method === "token") {
-    fetch("/api/vercel/teams").then(function(r){return r.json()}).then(function(data){
+  if(cfg.hasTeams && _deployStatuses[provider] && _deployStatuses[provider].method === "token") {
+    fetch("/api/plugins/vercel-deploy/teams").then(function(r){return r.json()}).then(function(data){
       var optionsEl = document.getElementById("vercel-team-options");
       if(optionsEl.children.length <= 1) {
         (data.teams||[]).forEach(function(t){
@@ -570,10 +728,13 @@ function executeDeploy(){
     deployLog(logEl, "Total: " + files.length + " files");
 
     var body = { files: files, contentSet: _deployContentSet || undefined };
+    if(Object.keys(_slotFormValues).length > 0) {
+      body.formValues = _slotFormValues;
+    }
     var pName = document.getElementById("vercel-project-name").value;
     body.projectName = pName;
 
-    if(_deployProvider === "vercel") {
+    if(cfg.hasTeams) {
       body.framework = null;
       if(binding) {
         body.projectId = binding.projectId;
@@ -587,7 +748,9 @@ function executeDeploy(){
 
     deployLog(logEl, (binding ? "Updating" : "Creating") + " on " + cfg.name + "...", "info");
 
-    return fetch(cfg.deployApi, {
+    body.provider = _deployProvider;
+
+    return fetch("/api/deploy", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

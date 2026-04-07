@@ -23,6 +23,9 @@ import { importHistory } from "./history-import.js";
 import { getR2Config, saveR2Config, isR2Configured, shareResult, shareProcess, downloadShare, getApiKeys, saveApiKeys } from "./share.js";
 import { getVercelConfig, saveVercelConfig, getVercelStatus, getVercelTeams, deployToVercel, getDeployBinding, saveDeployBinding } from "./vercel.js";
 import { getCfPagesConfig, saveCfPagesConfig, getCfPagesStatus, deployCfPages } from "./cloudflare-pages.js";
+import { PluginRegistry } from "../core/plugin-registry.js";
+import { SettingsManager } from "../core/settings-manager.js";
+import { HookBus } from "../core/hook-bus.js";
 import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./proxy-middleware.js";
 import type { ProxyRoute } from "../core/types/mode-manifest.js";
 import { startProxyWatcher } from "./file-watcher.js";
@@ -50,9 +53,10 @@ export interface ServerOptions {
   manifestProxy?: Record<string, ProxyRoute>; // Manifest-declared proxy routes
   editing?: boolean; // Initial editing state (from session.json or --viewing flag)
   editingSupported?: boolean; // Mode supports editing ↔ viewing toggle
+  backendType?: string; // Backend type for correct instructions file selection (claude-code | codex)
 }
 
-export function startServer(options: ServerOptions) {
+export async function startServer(options: ServerOptions) {
   const port = options.port ?? DEFAULT_PORT;
   const workspace = resolve(options.workspace);
   const wsBridge = new WsBridge();
@@ -66,6 +70,17 @@ export function startServer(options: ServerOptions) {
 
   // ── Launcher Mode (lightweight — no workspace, no agent, no watcher) ────
   if (options.launcherMode) {
+    const pneumaHome = join(homedir(), ".pneuma");
+    const settingsManager = new SettingsManager(pneumaHome);
+    settingsManager.migrateIfNeeded();
+    const hookBus = new HookBus();
+    const pluginRegistry = new PluginRegistry({
+      builtinDir: join(import.meta.dir, "..", "plugins"),
+      externalDir: join(pneumaHome, "plugins"),
+      settingsManager,
+      hookBus,
+    });
+
     const REGISTRY_URL = "https://pneuma-storage.vibecoding.icu";
 
     // Track child pneuma processes spawned by /api/launch
@@ -675,6 +690,59 @@ export function startServer(options: ServerOptions) {
       }
     });
 
+    // ── Plugin System Routes ────────────────────────────────────────────────
+    // Discover plugins for the launcher UI
+    const launcherPlugins = await pluginRegistry.discover();
+
+    app.get("/api/plugins", (c) => {
+      const plugins = launcherPlugins.map((p) => ({
+        name: p.name,
+        displayName: p.displayName,
+        description: p.description,
+        version: p.version,
+        builtin: p.builtin ?? false,
+        scope: p.scope,
+        settings: p.settings ? Object.keys(p.settings) : [],
+        settingsSchema: p.settings ?? {},
+      }));
+      return c.json({ plugins });
+    });
+
+    app.get("/api/plugin-settings/:name", (c) => {
+      const name = c.req.param("name");
+      return c.json({
+        enabled: (() => {
+          const entry = settingsManager.getAll().plugins[name];
+          if (entry !== undefined) return entry.enabled !== false;
+          const manifest = launcherPlugins.find(p => p.name === name);
+          if (manifest?.builtin) return manifest.defaultEnabled !== false;
+          return settingsManager.isEnabled(name);
+        })(),
+        config: settingsManager.getPluginConfig(name),
+      });
+    });
+
+    app.post("/api/plugin-settings/:name", async (c) => {
+      const name = c.req.param("name");
+      const body = await c.req.json<{ enabled?: boolean; config?: Record<string, unknown> }>();
+      if (body.enabled !== undefined) settingsManager.setEnabled(name, body.enabled);
+      if (body.config) {
+        settingsManager.updateConfig(name, body.config);
+        // Sync to legacy config files for deploy plugins (always sync, including clears)
+        if (name === "vercel-deploy") {
+          const { saveVercelConfig } = await import("./vercel.js");
+          saveVercelConfig({ token: (body.config.token as string) ?? "", teamId: (body.config.teamId as string) || null });
+        }
+        if (name === "cf-pages-deploy") {
+          const { saveCfPagesConfig } = await import("./cloudflare-pages.js");
+          saveCfPagesConfig({ apiToken: (body.config.token as string) ?? "", accountId: (body.config.accountId as string) ?? "" });
+        }
+      }
+      return c.json({ ok: true });
+    });
+
+    // Keep Vercel status/teams/config routes for backward compatibility during transition
+    // These delegate to the same underlying functions
     // Vercel Configuration
     app.get("/api/vercel/status", async (c) => {
       const status = await getVercelStatus();
@@ -965,6 +1033,230 @@ export function startServer(options: ServerOptions) {
     console.log(`[proxy] Config reloaded: ${proxyConfigRef.current.size} route(s)`);
   });
 
+  // ── Plugin System ─────────────────────────────────────────────────────────
+  const pneumaHome = join(homedir(), ".pneuma");
+  const settingsManager = new SettingsManager(pneumaHome);
+  settingsManager.migrateIfNeeded();
+  const hookBus = new HookBus();
+
+  const pluginRegistry = new PluginRegistry({
+    builtinDir: join(import.meta.dir, "..", "plugins"),
+    externalDir: join(pneumaHome, "plugins"),
+    settingsManager,
+    hookBus,
+  });
+
+  const discoveredPlugins = await pluginRegistry.discover();
+  const enabledPlugins = pluginRegistry.filterEnabled(discoveredPlugins);
+  const activePlugins = pluginRegistry.resolveForSession(enabledPlugins, options.modeName ?? "");
+
+  const sessionInfo = {
+    sessionId: (() => {
+      try {
+        const sp = join(workspace, ".pneuma", "session.json");
+        if (existsSync(sp)) return JSON.parse(readFileSync(sp, "utf-8")).sessionId ?? "";
+      } catch {}
+      return "";
+    })(),
+    mode: options.modeName ?? "",
+    workspace,
+    backendType: options.backendType ?? "",
+  };
+
+  await pluginRegistry.activateAll(activePlugins as any, sessionInfo);
+
+  // Enrich preferences with plugin data (after activation, before session:start)
+  {
+    const { buildAndInjectPreferences } = await import("./skill-installer.js");
+    const installName = `pneuma-${options.modeName ?? ""}`;
+    await buildAndInjectPreferences(workspace, installName, options.backendType ?? "claude-code", hookBus, sessionInfo);
+  }
+
+  // Emit session:start hook
+  hookBus.emit("session:start", { sessionId: sessionInfo.sessionId, mode: sessionInfo.mode, workspace }, sessionInfo).catch(() => {});
+
+  // Mount plugin routes
+  pluginRegistry.mountRoutes(app, (pluginName) => ({
+    workspace,
+    session: sessionInfo,
+    settings: settingsManager.getPluginConfig(pluginName),
+    getDeployBinding: () => getDeployBinding(workspace) as any,
+    saveDeployBinding: (b) => saveDeployBinding(workspace, b as any),
+  }));
+
+  // Install plugin skills + inject memory source info
+  {
+    const { injectMemorySourceInfo } = await import("./skill-installer.js");
+    const { cpSync, mkdirSync, existsSync: fsExists } = await import("node:fs");
+
+    const bt = options.backendType;
+    const skillsBase = join(workspace, bt === "codex" ? ".agents/skills" : ".claude/skills");
+
+    for (const plugin of pluginRegistry.getLoadedList()) {
+      // Injection point 1: install plugin skill
+      if (plugin.manifest.skill) {
+        const skillSource = join(plugin.basePath, plugin.manifest.skill);
+        if (fsExists(skillSource)) {
+          const skillTarget = join(skillsBase, plugin.manifest.name);
+          mkdirSync(skillTarget, { recursive: true });
+          cpSync(skillSource, skillTarget, { recursive: true, force: true });
+
+          // Apply user-configured template params to installed skill files
+          // Merge: user config > manifest defaultValue > empty string
+          const pluginConfig = settingsManager.getPluginConfig(plugin.manifest.name);
+          const skillMdPath = join(skillTarget, "SKILL.md");
+          if (fsExists(skillMdPath)) {
+            const { readFileSync, writeFileSync } = await import("node:fs");
+            let content = readFileSync(skillMdPath, "utf-8");
+
+            // Build merged params: defaultValues from manifest, overridden by user config
+            const merged: Record<string, string> = {};
+            if (plugin.manifest.settings) {
+              for (const [key, schema] of Object.entries(plugin.manifest.settings)) {
+                if (schema.defaultValue !== undefined) {
+                  merged[key] = String(schema.defaultValue);
+                }
+              }
+            }
+            for (const [key, value] of Object.entries(pluginConfig)) {
+              if (typeof value === "string" && value.trim()) {
+                merged[key] = value;
+              }
+            }
+
+            for (const [key, value] of Object.entries(merged)) {
+              // Detect indentation context: if placeholder is inside YAML frontmatter,
+              // indent continuation lines to preserve valid YAML
+              const placeholder = `{{${key}}}`;
+              const idx = content.indexOf(placeholder);
+              if (idx !== -1) {
+                const lineStart = content.lastIndexOf("\n", idx) + 1;
+                const indent = content.substring(lineStart, idx).match(/^(\s*)/)?.[1] ?? "";
+                const indentedValue = value.replace(/\n/g, `\n${indent}`);
+                content = content.replaceAll(placeholder, indentedValue);
+              }
+            }
+            // Clean up any remaining unfilled placeholders
+            content = content.replaceAll(/\{\{[a-zA-Z]+\}\}/g, "");
+            writeFileSync(skillMdPath, content, "utf-8");
+          }
+
+          // Mark as plugin-installed for safe cleanup
+          writeFileSync(join(skillTarget, ".plugin-installed"), plugin.manifest.name, "utf-8");
+
+          console.log(`[plugin] Installed skill: ${plugin.manifest.name}`);
+        }
+      }
+    }
+
+    // Clean up skills from disabled plugins (only plugin-installed ones)
+    if (existsSync(skillsBase)) {
+      const activePluginNames = new Set(pluginRegistry.getLoadedList().map(p => p.manifest.name));
+      for (const entry of readdirSync(skillsBase, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const markerPath = join(skillsBase, entry.name, ".plugin-installed");
+        if (existsSync(markerPath)) {
+          const installedBy = readFileSync(markerPath, "utf-8").trim();
+          if (!activePluginNames.has(installedBy)) {
+            const { rmSync } = await import("node:fs");
+            rmSync(join(skillsBase, entry.name), { recursive: true, force: true });
+            console.log(`[plugin] Removed disabled plugin skill: ${entry.name}`);
+          }
+        }
+      }
+    }
+
+    // Injection point 2: register memory sources in preference skill
+    const memorySources = pluginRegistry.getLoadedList()
+      .filter((p) => p.manifest.memorySource && p.routes)
+      .map((p) => ({
+        name: p.manifest.name,
+        displayName: p.manifest.displayName,
+        routePrefix: p.manifest.routePrefix ?? `/api/plugins/${p.manifest.name}`,
+      }));
+    injectMemorySourceInfo(workspace, memorySources, bt);
+  }
+
+  // Plugin list API
+  app.get("/api/plugins", (c) => {
+    const plugins = pluginRegistry.getLoadedList().map((p) => ({
+      name: p.manifest.name,
+      displayName: p.manifest.displayName,
+      description: p.manifest.description,
+      version: p.manifest.version,
+      builtin: p.manifest.builtin ?? false,
+      scope: p.manifest.scope,
+      hasRoutes: !!p.routes,
+      hooks: Object.keys(p.hooks),
+      slots: Object.keys(p.slots),
+      settings: p.manifest.settings ? Object.keys(p.manifest.settings) : [],
+      routePrefix: p.manifest.routePrefix ?? `/api/plugins/${p.manifest.name}`,
+    }));
+    return c.json({ plugins });
+  });
+
+  app.get("/api/slots/:slotName", (c) => {
+    const slotName = c.req.param("slotName") as any;
+    const entries = pluginRegistry.getSlotEntries(slotName);
+    // Resolve string declarations (component paths) to importable URLs
+    const resolved = entries.map((entry) => {
+      if (typeof entry.declaration === "string") {
+        // Resolve relative path against plugin's basePath
+        const plugin = pluginRegistry.getLoaded().get(entry.pluginName);
+        if (plugin) {
+          const absPath = join(plugin.basePath, entry.declaration);
+          // In dev: use /@fs/ prefix for Vite to serve
+          return { ...entry, declaration: { type: "component" as const, importUrl: `/@fs${absPath}` } };
+        }
+      }
+      return entry;
+    });
+    return c.json({ entries: resolved });
+  });
+
+  // ── Deploy orchestrator (runs hooks, forwards to provider) ────────────────
+  app.post("/api/deploy", async (c) => {
+    try {
+      const body = await c.req.json<{
+        provider: string;
+        files: Array<{ path: string; content: string }>;
+        projectName?: string;
+        formValues?: Record<string, Record<string, unknown>>;
+        contentSet?: string;
+        [key: string]: unknown;
+      }>();
+
+      // Run deploy:before hooks (waterfall — plugins can modify payload)
+      const enrichedPayload = await hookBus.emit("deploy:before", body, sessionInfo);
+
+      // Forward to the provider's deploy endpoint
+      const plugin = pluginRegistry.getLoaded().get(enrichedPayload.provider);
+      if (!plugin) {
+        return c.json({ error: `Unknown deploy provider: ${enrichedPayload.provider}` }, 400);
+      }
+
+      const prefix = plugin.manifest.routePrefix ?? `/api/plugins/${enrichedPayload.provider}`;
+
+      // Build internal request to the plugin's deploy route
+      const internalUrl = new URL(`http://localhost${prefix}/deploy`);
+      const deployResp = await app.fetch(
+        new Request(internalUrl.toString(), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(enrichedPayload),
+        }),
+      );
+      const result = await deployResp.json();
+
+      // Run deploy:after hooks
+      await hookBus.emit("deploy:after", { result, provider: enrichedPayload.provider, payload: enrichedPayload }, sessionInfo);
+
+      return c.json(result);
+    } catch (err: any) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
   let replayPackage: Awaited<ReturnType<typeof importHistory>> | null = null;
   let serverReplayMode = options.replayMode ?? !!options.replayPackagePath;
   let replayContinueCallback: (() => Promise<void>) | null = null;
@@ -1166,101 +1458,7 @@ export function startServer(options: ServerOptions) {
     }
   });
 
-  // --- Vercel Deploy ---
-  app.get("/api/vercel/status", async (c) => {
-    const status = await getVercelStatus();
-    return c.json(status);
-  });
-
-  app.get("/api/vercel/teams", async (c) => {
-    const teams = await getVercelTeams();
-    return c.json({ teams });
-  });
-
-  app.get("/api/vercel/binding", (c) => {
-    const key = (c.req.query("contentSet") || "_default");
-    const binding = getDeployBinding(workspace);
-    return c.json(binding.vercel?.[key] ?? null);
-  });
-
-  app.post("/api/vercel/deploy", async (c) => {
-    try {
-      const body = await c.req.json<{
-        files: Array<{ path: string; content: string }>;
-        projectName?: string;
-        projectId?: string;
-        orgId?: string | null;
-        teamId?: string | null;
-        framework?: string | null;
-        contentSet?: string;
-      }>();
-      const result = await deployToVercel(body);
-
-      // Save binding keyed by contentSet
-      const key = body.contentSet || "_default";
-      const binding = getDeployBinding(workspace);
-      if (!binding.vercel) binding.vercel = {};
-      binding.vercel[key] = {
-        projectId: result.projectId,
-        projectName: body.projectName ?? "pneuma-deploy",
-        orgId: result.orgId || body.orgId || null,
-        teamId: body.teamId ?? null,
-        url: result.url,
-        lastDeployedAt: new Date().toISOString(),
-      };
-      saveDeployBinding(workspace, binding);
-
-      return c.json(result);
-    } catch (err: any) {
-      return c.json({ error: err.message }, 500);
-    }
-  });
-
-  app.delete("/api/vercel/binding", (c) => {
-    const key = (c.req.query("contentSet") || "_default");
-    const binding = getDeployBinding(workspace);
-    if (binding.vercel) delete binding.vercel[key];
-    saveDeployBinding(workspace, binding);
-    return c.json({ ok: true });
-  });
-
-  // --- Cloudflare Pages Deploy ---
-  app.get("/api/cf-pages/status", async (c) => {
-    const status = await getCfPagesStatus();
-    return c.json(status);
-  });
-
-  app.get("/api/cf-pages/binding", (c) => {
-    const key = (c.req.query("contentSet") || "_default");
-    const binding = getDeployBinding(workspace);
-    return c.json(binding.cfPages?.[key] ?? null);
-  });
-
-  app.post("/api/cf-pages/deploy", async (c) => {
-    try {
-      const body = await c.req.json<{
-        files: Array<{ path: string; content: string }>;
-        projectName?: string;
-        contentSet?: string;
-      }>();
-      const result = await deployCfPages(body);
-
-      const key = body.contentSet || "_default";
-      const binding = getDeployBinding(workspace);
-      if (!binding.cfPages) binding.cfPages = {};
-      binding.cfPages[key] = {
-        projectName: result.projectName,
-        productionUrl: result.productionUrl,
-        dashboardUrl: result.dashboardUrl,
-        lastDeployedAt: new Date().toISOString(),
-      };
-      saveDeployBinding(workspace, binding);
-
-      return c.json(result);
-    } catch (err: any) {
-      return c.json({ error: err.message }, 500);
-    }
-  });
+  // Vercel/CF deploy routes removed — now served by plugin routes at /api/plugins/vercel-deploy/* and /api/plugins/cf-pages-deploy/*
 
   app.post("/api/replay/load", async (c) => {
     try {
@@ -1514,7 +1712,7 @@ export function startServer(options: ServerOptions) {
   });
 
   // ── Export routes (slide, webcraft, file listing) ─────────────────
-  registerExportRoutes(app, { workspace, initParams: options.initParams, watchPatterns: options.watchPatterns });
+  registerExportRoutes(app, { workspace, initParams: options.initParams, watchPatterns: options.watchPatterns, hookBus, sessionInfo });
 
   // ── Save file ────────────────────────────────────────────────────────
   app.post("/api/files", async (c) => {
@@ -2050,5 +2248,9 @@ export const { createPortal, flushSync, createRoot, hydrateRoot } = RD;`;
   const onEditingLaunch = (cb: () => Promise<void>) => { editingLaunchCallback = cb; };
   const onEditingKill = (cb: () => Promise<void>) => { editingKillCallback = cb; };
 
-  return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill };
+  const cleanup = async () => {
+    await hookBus.emit("session:end", { sessionId: sessionInfo.sessionId, mode: sessionInfo.mode, workspace }, sessionInfo).catch(() => {});
+  };
+
+  return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup };
 }

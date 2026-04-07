@@ -112,3 +112,11 @@ Multiple sessions may run simultaneously. Before rewriting a preference file:
 3. Read the file again immediately before writing — if the content changed since step 1, merge the new observations from the other session into your rewrite rather than overwriting them
 
 This is lightweight optimistic concurrency. No locks, no infrastructure — just a read-before-write discipline that prevents silent data loss.
+
+## External Memory Sources
+
+External knowledge sources may be connected to this session as additional data providers for preference work. When available, they can supplement local preference files with context from the user's broader knowledge stores.
+
+**Available memory sources:**
+
+{{externalMemorySources}}
