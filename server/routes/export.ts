@@ -11,15 +11,20 @@ import { join, extname } from "node:path";
 import { pathStartsWith } from "../utils.js";
 import { parseCompositions } from "../../modes/remotion/viewer/composition-parser.js";
 import { getDeployCSS, getDeployToolbarHTML, getDeployModalHTML, getDeployScript } from "./deploy-ui.js";
+import type { HookBus } from "../../core/hook-bus.js";
+import type { SessionInfo } from "../../core/types/plugin.js";
 
 export interface ExportOptions {
   workspace: string;
   initParams?: Record<string, number | string>;
   watchPatterns?: string[];
+  hookBus?: HookBus;
+  sessionInfo?: SessionInfo;
 }
 
 export function registerExportRoutes(app: Hono, options: ExportOptions) {
   const workspace = options.workspace;
+  const { hookBus, sessionInfo } = options;
 
   // ── Slide export: shared builder + routes ─────────────────────────────
 
@@ -1086,10 +1091,15 @@ ${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
     return c.html(result.html);
   });
 
-  app.get("/export/slides/download", (c) => {
+  app.get("/export/slides/download", async (c) => {
     const contentSet = c.req.query("contentSet") || undefined;
-    const result = buildExportHtml({ inline: true, contentSet });
+    const format = "slides-html";
+    const enriched = hookBus && sessionInfo
+      ? await hookBus.emit("export:before", { format, contentSet }, sessionInfo).catch(() => ({ format, contentSet }))
+      : { format, contentSet };
+    const result = buildExportHtml({ inline: true, contentSet: enriched.contentSet });
     if ("error" in result) return c.text(result.error, result.status as any);
+    if (hookBus && sessionInfo) hookBus.emit("export:after", { format: enriched.format, result: { title: result.title }, contentSet: enriched.contentSet }, sessionInfo).catch(() => {});
     const safeFilename = result.title.replace(/[^\w\s.-]/g, "_") + ".html";
     const utf8Filename = encodeURIComponent(result.title + ".html");
     return new Response(result.html, {
@@ -1826,10 +1836,10 @@ body {
     border: 1px solid var(--color-cc-border);
     border-radius: 999px;
     color: var(--color-cc-fg);
-    max-width: 1100px;
+    min-width: 720px;
+    max-width: 1200px;
     margin: 0 auto;
     box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-    flex-wrap: wrap;
   }
 
   .header-left {
@@ -1837,6 +1847,8 @@ body {
     align-items: baseline;
     gap: 10px;
     margin-right: auto;
+    min-width: 0;
+    overflow: hidden;
   }
 
   .export-toolbar h1 {
@@ -1844,6 +1856,9 @@ body {
     font-weight: 500;
     margin: 0;
     letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .export-toolbar .meta {
@@ -2042,9 +2057,13 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
     return c.html(result.html);
   });
 
-  app.get("/export/webcraft/download", (c) => {
+  app.get("/export/webcraft/download", async (c) => {
     const contentSet = c.req.query("contentSet") || undefined;
     const pageFile = c.req.query("page") || undefined;
+    const format = "webcraft-html";
+    const enriched = hookBus && sessionInfo
+      ? await hookBus.emit("export:before", { format, contentSet, page: pageFile }, sessionInfo).catch(() => ({ format, contentSet, page: pageFile }))
+      : { format, contentSet, page: pageFile };
     // Resolve base directory (same logic as buildWebcraftExportHtml)
     let baseDir = workspace;
     if (contentSet) {
@@ -2075,6 +2094,7 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
     // Return the original HTML with assets inlined
     const html = inlineAssets(readFileSync(pagePath, "utf-8"), baseDir);
     const title = targetPage.title || manifest.title || targetPage.file.replace(/\.html$/i, "");
+    if (hookBus && sessionInfo) hookBus.emit("export:after", { format: enriched.format, result: { title }, contentSet: enriched.contentSet, page: enriched.page }, sessionInfo).catch(() => {});
     const safeFilename = title.replace(/[^\w\s.-]/g, "_") + ".html";
     const utf8Filename = encodeURIComponent(title + ".html");
     return new Response(html, {
@@ -2508,22 +2528,13 @@ function ExportApp() {
             onClick: () => window.open('/export/remotion/download' + (URL_COMPOSITION ? '?composition=' + encodeURIComponent(URL_COMPOSITION) : ''), '_blank') }, 'Download HTML'),
           h('div', { className: 'print-divider' }),
           h('div', { className: 'deploy-dropdown-wrap', id: 'deploy-wrap' },
-            h('button', { className: 'btn-deploy-trigger', id: 'deploy-trigger-btn', onClick: () => window.toggleDeployMenu && window.toggleDeployMenu(), disabled: !(window._deployStatuses?.vercel?.available || window._deployStatuses?.["cf-pages"]?.available), title: 'Deploy' },
+            h('button', { className: 'btn-deploy-trigger', id: 'deploy-trigger-btn', onClick: () => window.toggleDeployMenu && window.toggleDeployMenu(), disabled: !Object.values(window._deployStatuses || {}).some(function(s) { return s && s.available; }), title: 'Deploy' },
               h('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
                 h('path', { d: 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z' }),
                 h('path', { d: 'M12 13v6' }),
                 h('path', { d: 'm9 17 3-3 3 3' }))),
             h('div', { className: 'deploy-dropdown', id: 'deploy-dropdown', style: { display: 'none' } },
-              h('button', { className: 'deploy-dropdown-item', onClick: () => { window.closeDeployMenu && window.closeDeployMenu(); window.openDeploy && window.openDeploy("vercel"); } },
-                h('svg', { width: 14, height: 14, viewBox: '0 0 76 65', fill: 'currentColor' },
-                  h('path', { d: 'M37.5274 0L75.0548 65H0L37.5274 0Z' })),
-                h('span', { id: 'vercel-label' }, 'Vercel')),
-              h('button', { className: 'deploy-dropdown-item', onClick: () => { window.closeDeployMenu && window.closeDeployMenu(); window.openDeploy && window.openDeploy("cf-pages"); } },
-                h('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
-                  h('circle', { cx: 12, cy: 12, r: 10 }),
-                  h('path', { d: 'M2 12h20' }),
-                  h('path', { d: 'M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z' })),
-                h('span', { id: 'cf-pages-label' }, 'Cloudflare Pages')))),
+              h('div', { id: 'deploy-providers-list' }))),
         )
       )
     ),
@@ -2822,10 +2833,15 @@ ${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
     return c.html(result.html);
   });
 
-  app.get("/export/remotion/download", (c) => {
+  app.get("/export/remotion/download", async (c) => {
     const composition = c.req.query("composition") || undefined;
-    const result = buildRemotionExportHtml({ inline: true, composition });
+    const format = "remotion-html";
+    const enriched = hookBus && sessionInfo
+      ? await hookBus.emit("export:before", { format, composition }, sessionInfo).catch(() => ({ format, composition }))
+      : { format, composition };
+    const result = buildRemotionExportHtml({ inline: true, composition: enriched.composition });
     if ("error" in result) return c.text(result.error, result.status as any);
+    if (hookBus && sessionInfo) hookBus.emit("export:after", { format: enriched.format, result: { title: result.title }, composition: enriched.composition }, sessionInfo).catch(() => {});
     const safeFilename = result.title.replace(/[^\w\s.-]/g, "_") + ".html";
     const utf8Filename = encodeURIComponent(result.title + ".html");
     return new Response(result.html, {

@@ -2,6 +2,7 @@ import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
+import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import { watch } from "chokidar";
 
@@ -171,6 +172,7 @@ export default defineConfig({
         ".",
         ...(externalModePath ? [externalModePath] : []),
         ...(modeMakerWorkspace ? [modeMakerWorkspace] : []),
+        path.join(homedir(), ".pneuma", "plugins"),
       ],
     },
   },

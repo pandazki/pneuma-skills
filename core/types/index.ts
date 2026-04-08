@@ -45,3 +45,24 @@ export type {
   AgentCapabilities,
   AgentProtocolAdapter,
 } from "./agent-backend.js";
+
+export type {
+  PluginManifest,
+  HookName,
+  SlotName,
+  SlotDeclaration,
+  FormSlotDeclaration,
+  FormField,
+  SettingField,
+  SessionInfo,
+  HookContext,
+  HookHandler,
+  PluginRouteContext,
+  DeployBinding,
+  LoadedPlugin,
+  PluginSettingsEntry,
+  PluginSettings,
+  MemoryEntry,
+  MemorySearchResult,
+  MemorySource,
+} from "./plugin.js";

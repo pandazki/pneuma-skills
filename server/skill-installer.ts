@@ -48,6 +48,119 @@ export function extractPreferenceCritical(filePath: string): string | null {
   }
 }
 
+export interface PreferencesBuildPayload {
+  /** Global critical preferences — plugins append to this */
+  globalCritical: string | null;
+  /** Mode-specific critical preferences — plugins append to this */
+  modeCritical: string | null;
+  /** Mode name (e.g. "slide") */
+  modeName: string;
+}
+
+/**
+ * Build the preference section content and inject it into an instructions file string.
+ * Pure string transform — reads preference files, formats the section, returns updated content.
+ *
+ * This is the single source of truth for preference section formatting.
+ */
+function injectPreferencesSection(
+  content: string,
+  installName: string,
+  globalCritical?: string | null,
+  modeCritical?: string | null,
+): string {
+  const prefModeName = installName.replace(/^pneuma-/, "");
+
+  // If not provided, extract from preference files
+  const gc = globalCritical !== undefined
+    ? globalCritical
+    : extractPreferenceCritical(join(homedir(), ".pneuma", "preferences", "profile.md"));
+  const mc = modeCritical !== undefined
+    ? modeCritical
+    : extractPreferenceCritical(join(homedir(), ".pneuma", "preferences", `mode-${prefModeName}.md`));
+
+  if (gc || mc) {
+    const prefsLines: string[] = ["### User Preferences (Critical)", ""];
+    if (gc) {
+      prefsLines.push("**Global:**", gc, "");
+    }
+    if (mc) {
+      prefsLines.push(`**${prefModeName} Mode:**`, mc);
+    }
+    const prefsSection = `${PREFS_MARKER_START}\n${prefsLines.join("\n")}\n${PREFS_MARKER_END}`;
+    const pStart = content.indexOf(PREFS_MARKER_START);
+    const pEnd = content.indexOf(PREFS_MARKER_END);
+    if (pStart !== -1 && pEnd !== -1) {
+      content = content.substring(0, pStart) + prefsSection + content.substring(pEnd + PREFS_MARKER_END.length);
+    } else {
+      if (content.length > 0 && !content.endsWith("\n")) content += "\n";
+      content += "\n" + prefsSection + "\n";
+    }
+  } else {
+    // Remove stale preferences section
+    const pStart = content.indexOf(PREFS_MARKER_START);
+    const pEnd = content.indexOf(PREFS_MARKER_END);
+    if (pStart !== -1 && pEnd !== -1) {
+      content = content.substring(0, pStart) + content.substring(pEnd + PREFS_MARKER_END.length);
+    }
+  }
+
+  return content;
+}
+
+/**
+ * Build and inject preferences into the instructions file, optionally running
+ * the preferences:build hook to let plugins enrich the data.
+ *
+ * This is the public entry point for preference enrichment. It:
+ * 1. Reads the instructions file
+ * 2. Extracts base preferences from ~/.pneuma/preferences/
+ * 3. Runs the preferences:build hook (if hookBus provided) so plugins can enrich
+ * 4. Writes back using the same marker format as installSkill
+ *
+ * Call this after plugin activation to integrate plugin data into the preference
+ * lifecycle without duplicating formatting logic.
+ */
+export async function buildAndInjectPreferences(
+  workspace: string,
+  installName: string,
+  backendType: string,
+  hookBus: import("../core/hook-bus.js").HookBus,
+  sessionInfo: import("../core/types/plugin.js").SessionInfo,
+): Promise<void> {
+  const instrFile = backendType === "codex" ? "AGENTS.md" : "CLAUDE.md";
+  const instructionsPath = join(workspace, instrFile);
+
+  let content: string;
+  try {
+    content = readFileSync(instructionsPath, "utf-8");
+  } catch {
+    return;
+  }
+
+  const prefModeName = installName.replace(/^pneuma-/, "");
+  const prefsDir = join(homedir(), ".pneuma", "preferences");
+
+  let globalCritical = extractPreferenceCritical(join(prefsDir, "profile.md"));
+  let modeCritical = extractPreferenceCritical(join(prefsDir, `mode-${prefModeName}.md`));
+
+  // Run preferences:build hook — plugins can enrich globalCritical / modeCritical
+  const enriched = await hookBus.emit("preferences:build", {
+    globalCritical,
+    modeCritical,
+    modeName: prefModeName,
+  } satisfies PreferencesBuildPayload, sessionInfo);
+
+  // Only rewrite if plugins actually changed something
+  if (enriched.globalCritical === globalCritical && enriched.modeCritical === modeCritical) {
+    return;
+  }
+
+  content = injectPreferencesSection(content, installName, enriched.globalCritical, enriched.modeCritical);
+  writeFileSync(instructionsPath, content, "utf-8");
+  console.log(`[skill-installer] Enriched preferences in ${instructionsPath}`);
+}
+
 /**
  * Create a preference file with empty scaffold markers if it doesn't exist.
  * If the file already exists, it is left untouched.
@@ -663,39 +776,7 @@ export function installSkill(
   }
 
   // 2d. Inject/update preferences critical section
-  {
-    const prefsDir = join(homedir(), ".pneuma", "preferences");
-    const globalCritical = extractPreferenceCritical(join(prefsDir, "profile.md"));
-    // Extract mode name from install name (e.g. "pneuma-slide" -> "slide")
-    const prefModeName = skillConfig.installName.replace(/^pneuma-/, "");
-    const modeCritical = extractPreferenceCritical(join(prefsDir, `mode-${prefModeName}.md`));
-
-    if (globalCritical || modeCritical) {
-      const prefsLines: string[] = ["### User Preferences (Critical)", ""];
-      if (globalCritical) {
-        prefsLines.push("**Global:**", globalCritical, "");
-      }
-      if (modeCritical) {
-        prefsLines.push(`**${prefModeName} Mode:**`, modeCritical);
-      }
-      const prefsSection = `${PREFS_MARKER_START}\n${prefsLines.join("\n")}\n${PREFS_MARKER_END}`;
-      const pStart = content.indexOf(PREFS_MARKER_START);
-      const pEnd = content.indexOf(PREFS_MARKER_END);
-      if (pStart !== -1 && pEnd !== -1) {
-        content = content.substring(0, pStart) + prefsSection + content.substring(pEnd + PREFS_MARKER_END.length);
-      } else {
-        if (content.length > 0 && !content.endsWith("\n")) content += "\n";
-        content += "\n" + prefsSection + "\n";
-      }
-    } else {
-      // Remove stale preferences section
-      const pStart = content.indexOf(PREFS_MARKER_START);
-      const pEnd = content.indexOf(PREFS_MARKER_END);
-      if (pStart !== -1 && pEnd !== -1) {
-        content = content.substring(0, pStart) + content.substring(pEnd + PREFS_MARKER_END.length);
-      }
-    }
-  }
+  content = injectPreferencesSection(content, skillConfig.installName);
 
   // Write instructions file
   mkdirSync(dirname(primaryInstructionsPath), { recursive: true });
@@ -707,6 +788,38 @@ export function installSkill(
 
   // 4. Inject resumed context if present
   injectResumedContext(workspace, backendType ?? "claude-code");
+}
+
+/**
+ * After plugin activation, inject external memory source API info
+ * into installed preference skill files.
+ */
+export function injectMemorySourceInfo(
+  workspace: string,
+  memorySources: Array<{ name: string; displayName: string; routePrefix: string }>,
+  backendType?: string,
+): void {
+  const skillDir = join(workspace, skillsDir(backendType), "pneuma-preferences");
+  const skillMdPath = join(skillDir, "SKILL.md");
+  if (!existsSync(skillMdPath)) return;
+
+  let content = readFileSync(skillMdPath, "utf-8");
+  if (!content.includes("{{externalMemorySources}}")) return;
+
+  if (memorySources.length === 0) {
+    content = content.replace("{{externalMemorySources}}", "_No external memory sources configured for this session._");
+  } else {
+    const lines = memorySources.map((s) => [
+      `### ${s.displayName}`,
+      `- **Search:** \`POST ${s.routePrefix}/search\` — body: \`{ "query": "search terms", "limit": 5 }\``,
+      `- **Read:** \`GET ${s.routePrefix}/read/{path}\` — read a specific entry`,
+      `- **Write:** \`POST ${s.routePrefix}/write\` — body: \`{ "path": "folder/file.md", "content": "...", "tags": ["..."] }\``,
+      `- **Status:** \`GET ${s.routePrefix}/status\` — check if source is available`,
+    ].join("\n"));
+    content = content.replace("{{externalMemorySources}}", lines.join("\n\n"));
+  }
+
+  writeFileSync(skillMdPath, content, "utf-8");
 }
 
 /**

@@ -17,14 +17,14 @@ const TEST_WORKSPACE = join(tmpdir(), "pneuma-security-test-" + Date.now());
 const SECRET_DIR = join(tmpdir(), "pneuma-security-secret-" + Date.now());
 const PNEUMA_HOME = join(homedir(), ".pneuma");
 
-let server: ReturnType<typeof startServer>;
+let server: Awaited<ReturnType<typeof startServer>>;
 let registryBackup: string | null = null;
 
 function api(path: string, init?: RequestInit) {
   return fetch(`http://localhost:${TEST_PORT}${path}`, init);
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   // Set up test workspace with a thumbnail
   mkdirSync(join(TEST_WORKSPACE, ".pneuma"), { recursive: true });
   writeFileSync(join(TEST_WORKSPACE, ".pneuma", "thumbnail.png"), "REAL_THUMB");
@@ -41,7 +41,7 @@ beforeAll(() => {
     { id: "test::doc", mode: "doc", workspace: TEST_WORKSPACE, lastAccessed: Date.now() },
   ]));
 
-  server = startServer({
+  server = await startServer({
     port: TEST_PORT,
     workspace: TEST_WORKSPACE,
     launcherMode: true,
@@ -120,10 +120,10 @@ describe("C2: Showcase asset path traversal", () => {
 
 describe("C3: Process kill endpoint safety", () => {
   const C3_PORT = 19877;
-  let c3Server: ReturnType<typeof startServer>;
+  let c3Server: Awaited<ReturnType<typeof startServer>>;
 
-  beforeAll(() => {
-    c3Server = startServer({
+  beforeAll(async () => {
+    c3Server = await startServer({
       port: C3_PORT,
       workspace: TEST_WORKSPACE,
     });

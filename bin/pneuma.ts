@@ -9,8 +9,8 @@
  */
 
 import { resolve, dirname, join, basename } from "node:path";
-import { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync, statSync, realpathSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync, statSync, realpathSync, readdirSync, rmSync, unlinkSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import * as p from "@clack/prompts";
 import { startServer } from "../server/index.js";
 import { createBackend, getDefaultBackendType } from "../backends/index.js";
@@ -484,7 +484,7 @@ async function handleEvolveCommand(args: string[]) {
   const effectivePort = port || (isDev ? 17007 : 17996);
 
   // 5. Start server with evolution routes
-  const { server, wsBridge, port: actualPort } = startServer({
+  const { server, wsBridge, port: actualPort } = await startServer({
     port: effectivePort,
     workspace,
     watchPatterns: [],
@@ -732,6 +732,217 @@ Options:
     // Unknown mode subcommand — fall through to normal mode resolution
   }
 
+  // Plugin subcommand — add, list, remove
+  if (rawArgs[0] === "plugin") {
+    const pluginsDir = join(homedir(), ".pneuma", "plugins");
+
+    if (rawArgs[1] === "add") {
+      const source = rawArgs[2];
+      if (!source) {
+        p.cancel("Usage: pneuma plugin add <path|github:user/repo|url>");
+        process.exit(1);
+      }
+
+      try {
+        mkdirSync(pluginsDir, { recursive: true });
+
+        let targetDir: string;
+        let pluginName: string;
+
+        if (source.startsWith("github:")) {
+          // GitHub: clone repo
+          const rest = source.slice("github:".length);
+          const [repoPath, ref] = rest.split("#");
+          const [user, repo] = repoPath.split("/");
+          if (!user || !repo) {
+            p.cancel('Invalid GitHub specifier. Expected: github:user/repo or github:user/repo#branch');
+            process.exit(1);
+          }
+          pluginName = `${user}-${repo}`;
+          targetDir = join(pluginsDir, pluginName);
+          const repoUrl = `https://github.com/${user}/${repo}.git`;
+          const branch = ref || "main";
+
+          if (existsSync(targetDir)) {
+            p.log.info(`Updating existing plugin "${pluginName}"...`);
+            const proc = Bun.spawnSync(["git", "-C", targetDir, "pull", "origin", branch]);
+            if (proc.exitCode !== 0) throw new Error(`git pull failed: ${new TextDecoder().decode(proc.stderr)}`);
+          } else {
+            p.log.info(`Cloning ${repoUrl}...`);
+            const proc = Bun.spawnSync(["git", "clone", "--depth", "1", "--branch", branch, repoUrl, targetDir]);
+            if (proc.exitCode !== 0) throw new Error(`git clone failed: ${new TextDecoder().decode(proc.stderr)}`);
+          }
+        } else if (source.startsWith("https://") && source.endsWith(".tar.gz")) {
+          // URL: download and extract
+          const urlPath = new URL(source).pathname;
+          pluginName = urlPath.split("/").pop()!.replace(/\.tar\.gz$/, "").replace(/[-.][\d]+/g, "") || "url-plugin";
+          targetDir = join(pluginsDir, pluginName);
+          mkdirSync(targetDir, { recursive: true });
+
+          p.log.info(`Downloading ${source}...`);
+          const resp = await fetch(source);
+          if (!resp.ok) throw new Error(`Download failed: ${resp.status}`);
+          const tarPath = join(tmpdir(), `pneuma-plugin-${Date.now()}.tar.gz`);
+          writeFileSync(tarPath, Buffer.from(await resp.arrayBuffer()));
+          const tarProc = Bun.spawnSync(["tar", "-xzf", tarPath, "-C", targetDir, "--strip-components=1"]);
+          unlinkSync(tarPath);
+          if (tarProc.exitCode !== 0) throw new Error(`tar extraction failed: ${new TextDecoder().decode(tarProc.stderr)}`);
+        } else {
+          // Local path: copy or symlink
+          const srcPath = source.startsWith("~") ? join(homedir(), source.slice(1)) : resolve(source);
+          if (!existsSync(srcPath)) {
+            p.cancel(`Path not found: ${srcPath}`);
+            process.exit(1);
+          }
+          pluginName = basename(srcPath);
+          targetDir = join(pluginsDir, pluginName);
+
+          if (existsSync(targetDir)) {
+            // Remove existing and re-copy
+            rmSync(targetDir, { recursive: true, force: true });
+          }
+          // Copy directory
+          cpSync(srcPath, targetDir, { recursive: true });
+        }
+
+        // Validate: check for manifest.ts
+        if (!existsSync(join(targetDir, "manifest.ts"))) {
+          p.cancel(`Invalid plugin: no manifest.ts found in ${targetDir}`);
+          rmSync(targetDir, { recursive: true, force: true });
+          process.exit(1);
+        }
+
+        // Read actual plugin name from manifest
+        let actualName = pluginName;
+        try {
+          const mod = await import(join(targetDir, "manifest.ts"));
+          const manifest = mod.default ?? mod;
+          if (manifest.name) actualName = manifest.name;
+        } catch { /* use folder name as fallback */ }
+
+        // Auto-enable in settings using manifest name
+        const { SettingsManager } = await import("../core/settings-manager.js");
+        const settings = new SettingsManager(join(homedir(), ".pneuma"));
+        settings.setEnabled(actualName, true);
+
+        p.log.success(`Plugin "${actualName}" installed to ${targetDir}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        p.cancel(`Failed to add plugin: ${msg}`);
+        process.exit(1);
+      }
+      return;
+    }
+
+    if (rawArgs[1] === "list") {
+      const { SettingsManager } = await import("../core/settings-manager.js");
+      const settings = new SettingsManager(join(homedir(), ".pneuma"));
+      const allSettings = settings.getAll();
+
+      async function scanPlugins(dir: string): Promise<Array<{ name: string; folder: string; path: string }>> {
+        const results: Array<{ name: string; folder: string; path: string }> = [];
+        if (!existsSync(dir)) return results;
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          if (!entry.isDirectory() || !existsSync(join(dir, entry.name, "manifest.ts"))) continue;
+          let name = entry.name;
+          try {
+            const mod = await import(join(dir, entry.name, "manifest.ts"));
+            const manifest = mod.default ?? mod;
+            if (manifest.name) name = manifest.name;
+          } catch { /* use folder name */ }
+          results.push({ name, folder: entry.name, path: join(dir, entry.name) });
+        }
+        return results;
+      }
+
+      const builtinDir = join(import.meta.dir, "..", "plugins");
+      const builtinPlugins = await scanPlugins(builtinDir);
+      const externalPlugins = await scanPlugins(pluginsDir);
+
+      if (builtinPlugins.length === 0 && externalPlugins.length === 0) {
+        console.log("[plugin] No plugins found.");
+      } else {
+        if (builtinPlugins.length > 0) {
+          console.log(`\n  Built-in plugins:\n`);
+          for (const p of builtinPlugins) {
+            const entry = allSettings.plugins[p.name];
+            const enabled = entry !== undefined ? entry.enabled !== false : true;
+            console.log(`    ${p.name} ${enabled ? "(enabled)" : "(disabled)"} [builtin]`);
+          }
+        }
+        if (externalPlugins.length > 0) {
+          console.log(`\n  External plugins:\n`);
+          for (const p of externalPlugins) {
+            const enabled = allSettings.plugins[p.name]?.enabled ?? false;
+            console.log(`    ${p.name} ${enabled ? "(enabled)" : "(disabled)"} ${p.path}`);
+          }
+        }
+        console.log();
+      }
+      return;
+    }
+
+    if (rawArgs[1] === "remove") {
+      const name = rawArgs[2];
+      if (!name) {
+        p.cancel("Usage: pneuma plugin remove <name>");
+        process.exit(1);
+      }
+
+      // Check it's not builtin (by manifest name or folder name)
+      const builtinDir = join(import.meta.dir, "..", "plugins");
+      if (existsSync(builtinDir)) {
+        for (const entry of readdirSync(builtinDir, { withFileTypes: true })) {
+          if (!entry.isDirectory()) continue;
+          try {
+            const mod = await import(join(builtinDir, entry.name, "manifest.ts"));
+            const manifest = mod.default ?? mod;
+            if (manifest.name === name || entry.name === name) {
+              p.cancel(`"${name}" is a built-in plugin and cannot be removed. You can disable it in Settings.`);
+              process.exit(1);
+            }
+          } catch { /* skip */ }
+        }
+      }
+
+      // Find external plugin by manifest name or folder name
+      let targetDir: string | null = null;
+      let manifestName = name;
+      if (existsSync(pluginsDir)) {
+        for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
+          if (!entry.isDirectory()) continue;
+          const dir = join(pluginsDir, entry.name);
+          // Check by folder name first
+          if (entry.name === name) { targetDir = dir; break; }
+          // Check by manifest name
+          try {
+            const mod = await import(join(dir, "manifest.ts"));
+            const manifest = mod.default ?? mod;
+            if (manifest.name === name) { targetDir = dir; manifestName = manifest.name; break; }
+          } catch { /* skip */ }
+        }
+      }
+
+      if (!targetDir) {
+        p.cancel(`Plugin "${name}" not found in ${pluginsDir}`);
+        process.exit(1);
+      }
+
+      rmSync(targetDir, { recursive: true, force: true });
+
+      // Disable in settings
+      const { SettingsManager } = await import("../core/settings-manager.js");
+      const settings = new SettingsManager(join(homedir(), ".pneuma"));
+      settings.setEnabled(manifestName, false);
+
+      p.log.success(`Plugin "${manifestName}" removed.`);
+      return;
+    }
+
+    p.cancel("Usage: pneuma plugin <add|list|remove>");
+    process.exit(1);
+  }
+
   // Evolve subcommand — AI-native skill evolution
   // Find "evolve" in rawArgs (may be preceded by flags like --dev)
   const evolveIdx = rawArgs.findIndex(a => a === "evolve");
@@ -751,7 +962,7 @@ Options:
     const launcherPort = port || 17996;
     const distDir = resolve(PROJECT_ROOT, "dist");
     const isDev = forceDev || !existsSync(join(distDir, "index.html"));
-    const { server, port: actualPort, childProcesses } = startServer({
+    const { server, port: actualPort, childProcesses } = await startServer({
       port: isDev ? 17007 : launcherPort,
       workspace: homedir(),
       watchPatterns: [],
@@ -1177,7 +1388,7 @@ Options:
   const existingSession = loadSession(workspace);
   const initialEditing: boolean = viewing ? false : (existingSession?.editing ?? true);
 
-  const { server, wsBridge, port: actualPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill } = startServer({
+  const { server, wsBridge, port: actualPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup: serverCleanup, sessionInfo, hookBus } = await startServer({
     port: serverPort,
     workspace,
     watchPatterns: manifest.viewer.watchPatterns,
@@ -1196,6 +1407,7 @@ Options:
     window: manifest.window,
     editing: initialEditing,
     editingSupported: !!manifest.editing?.supported,
+    backendType,
   });
 
   // 4. Launch Agent backend or set up replay mode
@@ -1583,6 +1795,13 @@ Options:
     });
   }
 
+  // Update sessionInfo so that server-side hooks (e.g. session:end, deploy:*)
+  // and plugin route closures see the real sessionId created above
+  if (sessionInfo) {
+    sessionInfo.sessionId = sessionId;
+    if (hookBus) hookBus.emit("session:start", { sessionId: sessionInfo.sessionId, mode: sessionInfo.mode, workspace }, sessionInfo).catch(() => {});
+  }
+
   // 6. Frontend serving
   let viteProc: ReturnType<typeof Bun.spawn> | null = null;
   let browserPort = actualPort;
@@ -1650,6 +1869,7 @@ Options:
       }
     }
     modeMakerCleanup?.();
+    if (serverCleanup) await serverCleanup();
     viteProc?.kill();
     if (backend) await backend.killAll();
     server.stop(true);

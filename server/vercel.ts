@@ -42,14 +42,14 @@ export async function checkVercelCli(): Promise<CliStatus> {
 
     const home = process.env.HOME || homedir();
     const env = { ...process.env, PATH: getEnrichedPath(), HOME: home } as Record<string, string>;
-    console.error(`[vercel] checkCli: binary=${vercelPath} HOME=${home}`);
+    console.log(`[vercel] checkCli: binary=${vercelPath}`);
     const whoami = Bun.spawn([vercelPath, "whoami"], { stdout: "pipe", stderr: "pipe", env });
     const [stdout, stderr] = await Promise.all([
       new Response(whoami.stdout).text(),
       new Response(whoami.stderr).text(),
     ]);
     const whoamiExit = await whoami.exited;
-    console.error(`[vercel] whoami exit=${whoamiExit} stdout=${stdout.trim()} stderr=${stderr.trim()}`);
+    console.log(`[vercel] whoami exit=${whoamiExit} user=${stdout.trim()}`);
     if (whoamiExit !== 0) return { installed: true, loggedIn: false };
 
     return { installed: true, loggedIn: true, user: stdout.trim() };
