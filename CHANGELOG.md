@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.28.0] - 2026-04-08
+
+### Added
+- **Plugin system** — extensible plugin architecture with hooks, slots, routes, settings, and skills. Plugins choose their injection points; soft error everywhere
+- **Builtin deploy plugins** — Vercel and Cloudflare Pages refactored as builtin plugins with dynamic provider loading, `/api/deploy` orchestrator, and `deploy:before/after` hooks
+- **Slot system** — declarative form injection into deploy modal via `deploy:pre-publish` slot, plus custom React component dynamic import via `/@fs/`
+- **Hook lifecycle** — `deploy:before/after`, `session:start/end`, `export:before/after`, `preferences:build` hooks with waterfall execution
+- **MemorySource protocol** — standard search/read/write contract for external knowledge stores
+- **Obsidian Memory plugin** — builtin plugin (disabled by default) connecting to Obsidian vaults via Local REST API. Provides independent skill for agent-driven search + preference memory source registration. User-customizable skill description and guidance
+- **Plugin CLI** — `pneuma plugin add <path|github|url>`, `pneuma plugin list`, `pneuma plugin remove <name>` with manifest-based name resolution
+- **Launcher plugin management** — Settings panel with enable/disable toggles, auto-rendered forms from plugin settings schema, CLI connection status for deploy plugins
+- **Plugin skill injection** — plugins can ship independent skills installed to `.claude/skills/` with template params from user settings
+
+### Improved
+- **Deploy dropdown** — dynamically loaded from plugin registry; disabled plugins hidden; provider-scoped pre-publish forms
+- **Vercel CLI debug logs** — demoted from stderr to stdout to avoid `[launcher:err]` noise
+
 ## [2.27.2] - 2026-04-07
 
 ### Fixed
