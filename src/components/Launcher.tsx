@@ -2562,6 +2562,12 @@ function CloudStorageSection() {
   );
 }
 
+// Map plugin names to their launcher status endpoints (legacy routes still in launcher)
+const PLUGIN_STATUS_APIS: Record<string, string> = {
+  "vercel-deploy": "/api/vercel/status",
+  "cf-pages-deploy": "/api/cf-pages/status",
+};
+
 function PluginSettingsCard({ plugin }: { plugin: any }) {
   const [enabled, setEnabled] = useState(false);
   const [config, setConfig] = useState<Record<string, any>>({});
@@ -2569,8 +2575,10 @@ function PluginSettingsCard({ plugin }: { plugin: any }) {
   const [expanded, setExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [status, setStatus] = useState<{ available?: boolean; method?: string; user?: string } | null>(null);
 
   const hasSettings = plugin.settingsSchema && Object.keys(plugin.settingsSchema).length > 0;
+  const statusApi = PLUGIN_STATUS_APIS[plugin.name];
 
   useEffect(() => {
     fetch(`${getApiBase()}/api/plugin-settings/${plugin.name}`).then((r) => r.json()).then((data) => {
@@ -2589,7 +2597,11 @@ function PluginSettingsCard({ plugin }: { plugin: any }) {
       setForm(merged);
       setLoaded(true);
     }).catch(() => setLoaded(true));
-  }, [plugin.name]);
+    // Fetch CLI/connection status for deploy plugins
+    if (statusApi) {
+      fetch(`${getApiBase()}${statusApi}`).then((r) => r.json()).then((s) => setStatus(s)).catch(() => {});
+    }
+  }, [plugin.name, statusApi]);
 
   const toggleEnabled = async (val: boolean) => {
     setEnabled(val);
@@ -2649,6 +2661,19 @@ function PluginSettingsCard({ plugin }: { plugin: any }) {
       </div>
       {plugin.description && (
         <p className="text-[10px] text-cc-muted/60 leading-relaxed pl-5">{plugin.description}</p>
+      )}
+
+      {/* Connection status for deploy plugins */}
+      {status && (
+        <div className="flex items-center gap-2 pl-5 pt-1">
+          <span className={`w-1.5 h-1.5 rounded-full ${status.available ? "bg-cc-success" : "bg-yellow-500"}`} />
+          <span className="text-[10px] text-cc-muted">
+            {status.available
+              ? `${status.method === "cli" ? "CLI" : "Token"} connected${status.user ? ` as ${status.user}` : ""}`
+              : "Not connected — install CLI or configure token below"
+            }
+          </span>
+        </div>
       )}
 
       {/* Expanded settings form */}
