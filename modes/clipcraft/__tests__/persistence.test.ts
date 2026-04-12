@@ -243,6 +243,26 @@ describe("serializeProject", () => {
     expect(file.provenance).toEqual([]);
   });
 
+  it("preserves the title argument through serialization", () => {
+    const core = createTimelineCore();
+    core.dispatch("human", {
+      type: "composition:create",
+      settings: { width: 1920, height: 1080, fps: 30, aspectRatio: "16:9" },
+    });
+    const file = serializeProject(core.getCoreState(), core.getComposition(), "Forest Opening");
+    expect(file.title).toBe("Forest Opening");
+  });
+
+  it("defaults title to Untitled when argument is omitted", () => {
+    const core = createTimelineCore();
+    core.dispatch("human", {
+      type: "composition:create",
+      settings: { width: 1920, height: 1080, fps: 30, aspectRatio: "16:9" },
+    });
+    const file = serializeProject(core.getCoreState(), core.getComposition());
+    expect(file.title).toBe("Untitled");
+  });
+
   it("preserves AIGC asset status, tags, and metadata", () => {
     const core = createTimelineCore();
     core.dispatch("human", {

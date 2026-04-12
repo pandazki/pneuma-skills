@@ -272,10 +272,15 @@ const DEFAULT_SETTINGS: ProjectComposition["settings"] = {
  * field rename + array walk. Field order matches projectFileToCommands's
  * dispatch order so a round-trip through parse → hydrate → serialize produces
  * byte-equal output given identical input.
+ *
+ * The `title` argument is a side-channel: craft's domain model has no concept
+ * of a project title, so callers must thread it through manually (see
+ * useProjectSync, which remembers the on-disk title in a ref).
  */
 export function serializeProject(
   coreState: PneumaCraftCoreState,
   composition: Composition | null,
+  title: string = "Untitled",
 ): ProjectFile {
   // 1. Settings (fall back to defaults when composition is null)
   const settings: ProjectComposition["settings"] = composition
@@ -362,7 +367,7 @@ export function serializeProject(
 
   return {
     $schema: "pneuma-craft/project/v1",
-    title: "Untitled",
+    title,
     composition: { settings, tracks, transitions },
     assets,
     provenance,

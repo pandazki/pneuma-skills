@@ -77,6 +77,10 @@ export function useProjectSync(
   // (parent-owned) is only for echo-skip on our own writes.
   const hydratedDiskRef = useRef<string | null>(null);
 
+  // Plan 3c: remember the on-disk title so serialization can round-trip it.
+  // Craft's domain model has no title concept, so we track it out-of-band.
+  const currentTitleRef = useRef<string>("Untitled");
+
   // Locate project.json
   const projectFile = files.find(
     (f) => f.path === "project.json" || f.path.endsWith("/project.json"),
@@ -107,6 +111,9 @@ export function useProjectSync(
     const parsed = parseProjectFile(diskContent);
     if (!parsed.ok) return;
 
+    // Plan 3c: remember the on-disk title so serialization can round-trip it.
+    currentTitleRef.current = parsed.value.title;
+
     for (const env of projectFileToCommands(parsed.value)) {
       try {
         dispatchEnvelope(env);
@@ -133,7 +140,7 @@ export function useProjectSync(
   // ── Persistence: memory → disk (debounced) ──────────────────────────
   useEffect(() => {
     const timer = setTimeout(async () => {
-      const file = serializeProject(coreState, composition);
+      const file = serializeProject(coreState, composition, currentTitleRef.current);
       const content = formatProjectJson(file);
       if (content === lastAppliedRef.current) return;
 

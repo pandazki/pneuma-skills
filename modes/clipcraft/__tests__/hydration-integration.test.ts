@@ -176,7 +176,11 @@ describe("full-stack hydration", () => {
     const serialized = serializeProject(
       core1.getCoreState(),
       core1.getComposition(),
+      completeFile.title,
     );
+
+    // Plan 3c: title must round-trip through serialization as a side-channel.
+    expect(serialized.title).toBe(completeFile.title);
 
     // Serialize → format → parse — simulates a full disk roundtrip
     const text = formatProjectJson(serialized);
@@ -255,7 +259,7 @@ describe("full-stack hydration", () => {
     // small differences (whitespace, field order, default values).
     const core1 = hydrate(completeFile);
     const text1 = formatProjectJson(
-      serializeProject(core1.getCoreState(), core1.getComposition()),
+      serializeProject(core1.getCoreState(), core1.getComposition(), completeFile.title),
     );
 
     const parsed = parseProjectFile(text1);
@@ -263,7 +267,7 @@ describe("full-stack hydration", () => {
     if (!parsed.ok) return;
     const core2 = hydrate(parsed.value);
     const text2 = formatProjectJson(
-      serializeProject(core2.getCoreState(), core2.getComposition()),
+      serializeProject(core2.getCoreState(), core2.getComposition(), parsed.value.title),
     );
 
     expect(text2).toBe(text1);
