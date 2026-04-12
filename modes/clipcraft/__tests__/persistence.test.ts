@@ -160,6 +160,69 @@ describe("projectFileToCommands", () => {
     expect((addClipCmd!.command as { clip: { id?: string } }).clip.id).toBe("c1");
     expect((addClipCmd!.command as { trackId: string }).trackId).toBe("v1");
   });
+
+  it("asset:register envelope timestamp equals on-disk createdAt", () => {
+    const file: ProjectFile = {
+      $schema: "pneuma-craft/project/v1",
+      title: "Test",
+      composition: {
+        settings: { width: 1920, height: 1080, fps: 30, aspectRatio: "16:9" },
+        tracks: [], transitions: [],
+      },
+      assets: [
+        {
+          id: "a1",
+          type: "image",
+          uri: "",
+          name: "test",
+          metadata: {},
+          createdAt: 1712934000000,
+        },
+      ],
+      provenance: [],
+    };
+    const cmds = projectFileToCommands(file);
+    const registerCmd = cmds.find((c) => c.command.type === "asset:register");
+    expect(registerCmd).toBeDefined();
+    expect(registerCmd!.timestamp).toBe(1712934000000);
+  });
+
+  it("provenance:set-root envelope timestamp equals on-disk operation.timestamp", () => {
+    const file: ProjectFile = {
+      $schema: "pneuma-craft/project/v1",
+      title: "Test",
+      composition: {
+        settings: { width: 1920, height: 1080, fps: 30, aspectRatio: "16:9" },
+        tracks: [], transitions: [],
+      },
+      assets: [
+        {
+          id: "a1",
+          type: "video",
+          uri: "/x.mp4",
+          name: "x",
+          metadata: {},
+          createdAt: 2000,
+        },
+      ],
+      provenance: [
+        {
+          toAssetId: "a1",
+          fromAssetId: null,
+          operation: {
+            type: "generate",
+            actor: "agent",
+            timestamp: 3000,
+            params: { model: "test" },
+          },
+        },
+      ],
+    };
+    const cmds = projectFileToCommands(file);
+    const rootCmd = cmds.find((c) => c.command.type === "provenance:set-root");
+    expect(rootCmd).toBeDefined();
+    expect(rootCmd!.timestamp).toBe(3000);
+  });
 });
 
 describe("serializeProject", () => {

@@ -65,7 +65,7 @@ export function useProjectSync(
   options: UseProjectSyncOptions,
 ): { error: string | null } {
   const { lastAppliedRef, onLocalWrite, onExternalEdit } = options;
-  const dispatch = usePneumaCraftStore((s) => s.dispatch);
+  const dispatchEnvelope = usePneumaCraftStore((s) => s.dispatchEnvelope);
   const coreState = usePneumaCraftStore((s) => s.coreState);
   const composition = usePneumaCraftStore((s) => s.composition);
   const eventCount = useEventLog().length;
@@ -109,12 +109,12 @@ export function useProjectSync(
 
     for (const env of projectFileToCommands(parsed.value)) {
       try {
-        dispatch(env.actor, env.command);
+        dispatchEnvelope(env);
       } catch (e) {
         // Expected for re-dispatch scenarios (strict-mode, debounced echo).
         // eslint-disable-next-line no-console
         console.warn(
-          "[clipcraft] hydration command rejected",
+          "[clipcraft] hydration envelope rejected",
           env.command.type,
           (e as Error).message,
         );
@@ -128,7 +128,7 @@ export function useProjectSync(
     // sees `lastAppliedRef.current === diskContent` and correctly decides
     // "not an external edit" on the initial hydration.
     lastAppliedRef.current = diskContent;
-  }, [diskContent, dispatch, lastAppliedRef]);
+  }, [diskContent, dispatchEnvelope, lastAppliedRef]);
 
   // ── Persistence: memory → disk (debounced) ──────────────────────────
   useEffect(() => {

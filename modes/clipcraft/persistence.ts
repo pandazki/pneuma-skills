@@ -157,6 +157,12 @@ function makeEnvelope(
  * passed through to craft's commands unchanged (Plan 3a). Craft rejects
  * duplicate ids at dispatch time, so the hook's try/catch will log and
  * continue if the same content is accidentally hydrated twice.
+ *
+ * Timestamps are preserved too (Plan 3c): asset envelopes use asset.createdAt
+ * and provenance envelopes use operation.timestamp, so dispatchEnvelope
+ * callers get a lossless round-trip of the on-disk file's temporal metadata.
+ * Composition-related envelopes use Date.now() since the schema has no
+ * meaningful timestamp for those commands.
  */
 export function projectFileToCommands(
   file: ProjectFile,
@@ -171,19 +177,9 @@ export function projectFileToCommands(
     settings: file.composition.settings,
   } as CompositionCommand, ts));
 
-  // 2. Register every asset. The on-disk `id` is preserved and passed through
-  //    to craft so disk↔memory references stay stable across hydration.
-  //
-  //    NOTE(plan-3c): `asset.createdAt` from disk is DROPPED here because
-  //    craft's `store.dispatch` builds its own envelope with
-  //    `timestamp: Date.now()` and then `asset:register` sets
-  //    `asset.createdAt = envelope.timestamp`. The on-disk value cannot survive
-  //    hydration without a lower-level craft entry point. This means a clean
-  //    round-trip `parse → hydrate → serialize` is NOT byte-equal on createdAt
-  //    — Plan 3b Task 6 verified this. The first autosave after startup is
-  //    therefore unavoidable (one POST /api/files per session). Plan 3c will
-  //    need to either (a) expose `dispatchEnvelope(envelope)` in craft so we
-  //    can pass our own timestamp, or (b) drop createdAt from ProjectAsset.
+  // 2. Register every asset. ID is preserved (Plan 3a). Timestamp derived
+  //    from the on-disk createdAt so round-tripping through dispatchEnvelope
+  //    preserves it (Plan 3c).
   for (const asset of file.assets) {
     cmds.push(makeEnvelope("human", {
       type: "asset:register",
@@ -196,24 +192,25 @@ export function projectFileToCommands(
         ...(asset.tags ? { tags: asset.tags } : {}),
         ...(asset.status ? { status: asset.status } : {}),
       },
-    } as CoreCommand, ts));
+    } as CoreCommand, asset.createdAt));
   }
 
-  // 3. Provenance edges. fromAssetId === null → set-root; otherwise link.
+  // 3. Provenance edges. Timestamp derived from operation.timestamp so
+  //    round-tripping through dispatchEnvelope preserves it.
   for (const edge of file.provenance) {
     if (edge.fromAssetId === null) {
       cmds.push(makeEnvelope("human", {
         type: "provenance:set-root",
         assetId: edge.toAssetId,
         operation: edge.operation,
-      } as CoreCommand, ts));
+      } as CoreCommand, edge.operation.timestamp));
     } else {
       cmds.push(makeEnvelope("human", {
         type: "provenance:link",
         fromAssetId: edge.fromAssetId,
         toAssetId: edge.toAssetId,
         operation: edge.operation,
-      } as CoreCommand, ts));
+      } as CoreCommand, edge.operation.timestamp));
     }
   }
 
