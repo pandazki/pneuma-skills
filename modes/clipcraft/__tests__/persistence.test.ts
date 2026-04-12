@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
-import { parseProjectFile, projectFileToCommands } from "../persistence.js";
+import { parseProjectFile, projectFileToCommands, serializeProject, formatProjectJson } from "../persistence.js";
 import type { ProjectFile } from "../persistence.js";
+import { createTimelineCore } from "@pneuma-craft/timeline";
 
 const minimalValid: ProjectFile = {
   $schema: "pneuma-craft/project/v1",
@@ -158,5 +159,179 @@ describe("projectFileToCommands", () => {
     expect((addTrackCmd!.command as { track: { id?: string } }).track.id).toBe("v1");
     expect((addClipCmd!.command as { clip: { id?: string } }).clip.id).toBe("c1");
     expect((addClipCmd!.command as { trackId: string }).trackId).toBe("v1");
+  });
+});
+
+describe("serializeProject", () => {
+  it("returns a minimal ProjectFile for an empty composition", () => {
+    const core = createTimelineCore();
+    core.dispatch("human", {
+      type: "composition:create",
+      settings: { width: 1920, height: 1080, fps: 30, aspectRatio: "16:9" },
+    });
+    const file = serializeProject(core.getCoreState(), core.getComposition());
+    expect(file.$schema).toBe("pneuma-craft/project/v1");
+    expect(file.composition.settings).toEqual({
+      width: 1920, height: 1080, fps: 30, aspectRatio: "16:9",
+    });
+    expect(file.composition.tracks).toEqual([]);
+    expect(file.composition.transitions).toEqual([]);
+    expect(file.assets).toEqual([]);
+    expect(file.provenance).toEqual([]);
+  });
+
+  it("preserves AIGC asset status, tags, and metadata", () => {
+    const core = createTimelineCore();
+    core.dispatch("human", {
+      type: "composition:create",
+      settings: { width: 1920, height: 1080, fps: 30, aspectRatio: "16:9" },
+    });
+    core.dispatch("human", {
+      type: "asset:register",
+      asset: {
+        id: "a1",
+        type: "image",
+        uri: "",
+        name: "pending-shot",
+        metadata: { width: 1024 },
+        tags: ["reference"],
+        status: "generating",
+      },
+    });
+    const file = serializeProject(core.getCoreState(), core.getComposition());
+    expect(file.assets).toHaveLength(1);
+    const a = file.assets[0];
+    expect(a.id).toBe("a1");
+    expect(a.type).toBe("image");
+    expect(a.name).toBe("pending-shot");
+    expect(a.status).toBe("generating");
+    expect(a.tags).toEqual(["reference"]);
+    expect(a.metadata).toEqual({ width: 1024 });
+  });
+
+  it("serializes a provenance root edge with the operation intact", () => {
+    const core = createTimelineCore();
+    core.dispatch("human", {
+      type: "composition:create",
+      settings: { width: 1920, height: 1080, fps: 30, aspectRatio: "16:9" },
+    });
+    core.dispatch("human", {
+      type: "asset:register",
+      asset: {
+        id: "a1", type: "video", uri: "a.mp4", name: "a",
+        metadata: {}, status: "ready",
+      },
+    });
+    core.dispatch("agent", {
+      type: "provenance:set-root",
+      assetId: "a1",
+      operation: {
+        type: "generate",
+        actor: "agent",
+        agentId: "clipcraft-videogen",
+        timestamp: 1000,
+        label: "runway gen3",
+        params: { model: "gen3", prompt: "a forest", seed: 42 },
+      },
+    });
+    const file = serializeProject(core.getCoreState(), core.getComposition());
+    expect(file.provenance).toHaveLength(1);
+    const edge = file.provenance[0];
+    expect(edge.toAssetId).toBe("a1");
+    expect(edge.fromAssetId).toBeNull();
+    expect(edge.operation.type).toBe("generate");
+    expect(edge.operation.agentId).toBe("clipcraft-videogen");
+    expect(edge.operation.params).toMatchObject({
+      model: "gen3", prompt: "a forest", seed: 42,
+    });
+  });
+
+  it("serializes a composition with a track and a clip, preserving ids", () => {
+    const core = createTimelineCore();
+    core.dispatch("human", {
+      type: "composition:create",
+      settings: { width: 1920, height: 1080, fps: 30, aspectRatio: "16:9" },
+    });
+    core.dispatch("human", {
+      type: "asset:register",
+      asset: { id: "a1", type: "video", uri: "a.mp4", name: "a", metadata: { duration: 5 } },
+    });
+    core.dispatch("human", {
+      type: "composition:add-track",
+      track: {
+        id: "v1",
+        type: "video",
+        name: "Video 1",
+        clips: [],
+        muted: false, volume: 1, locked: false, visible: true,
+      },
+    });
+    core.dispatch("human", {
+      type: "composition:add-clip",
+      trackId: "v1",
+      clip: {
+        id: "c1", assetId: "a1",
+        startTime: 0, duration: 5, inPoint: 0, outPoint: 5,
+      },
+    });
+
+    const file = serializeProject(core.getCoreState(), core.getComposition());
+    expect(file.composition.tracks).toHaveLength(1);
+    const track = file.composition.tracks[0];
+    expect(track.id).toBe("v1");
+    expect(track.type).toBe("video");
+    expect(track.clips).toHaveLength(1);
+    expect(track.clips[0].id).toBe("c1");
+    expect(track.clips[0].assetId).toBe("a1");
+    expect(track.clips[0].startTime).toBe(0);
+    expect(track.clips[0].duration).toBe(5);
+  });
+
+  it("returns an empty-settings ProjectFile when composition is null", () => {
+    const core = createTimelineCore();
+    // No composition:create — getComposition() returns null
+    const file = serializeProject(core.getCoreState(), core.getComposition());
+    expect(file.composition.tracks).toEqual([]);
+    expect(file.assets).toEqual([]);
+    // Settings should fall back to sensible defaults matching the seed file
+    expect(file.composition.settings.width).toBe(1920);
+    expect(file.composition.settings.height).toBe(1080);
+    expect(file.composition.settings.fps).toBe(30);
+    expect(file.composition.settings.aspectRatio).toBe("16:9");
+  });
+
+  it("is deterministic — same input produces byte-identical output", () => {
+    const core = createTimelineCore();
+    core.dispatch("human", {
+      type: "composition:create",
+      settings: { width: 1920, height: 1080, fps: 30, aspectRatio: "16:9" },
+    });
+    const file1 = serializeProject(core.getCoreState(), core.getComposition());
+    const file2 = serializeProject(core.getCoreState(), core.getComposition());
+    expect(formatProjectJson(file1)).toBe(formatProjectJson(file2));
+  });
+});
+
+describe("formatProjectJson", () => {
+  it("produces JSON with 2-space indent and a trailing newline", () => {
+    const file: ProjectFile = {
+      $schema: "pneuma-craft/project/v1",
+      title: "Test",
+      composition: {
+        settings: { width: 1920, height: 1080, fps: 30, aspectRatio: "16:9" },
+        tracks: [],
+        transitions: [],
+      },
+      assets: [],
+      provenance: [],
+    };
+    const text = formatProjectJson(file);
+    // 2-space indent
+    expect(text).toContain('  "title": "Test"');
+    // Trailing newline
+    expect(text.endsWith("\n")).toBe(true);
+    // Round-trips through JSON.parse
+    const parsed = JSON.parse(text);
+    expect(parsed.title).toBe("Test");
   });
 });

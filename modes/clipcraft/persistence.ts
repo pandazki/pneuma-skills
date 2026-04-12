@@ -13,8 +13,9 @@ import type {
   CommandEnvelope,
   CoreCommand,
   Operation,
+  PneumaCraftCoreState,
 } from "@pneuma-craft/core";
-import type { CompositionCommand } from "@pneuma-craft/timeline";
+import type { Composition, CompositionCommand } from "@pneuma-craft/timeline";
 
 // ── On-disk types ────────────────────────────────────────────────────────
 
@@ -242,4 +243,127 @@ export function projectFileToCommands(
   }
 
   return cmds;
+}
+
+// ── Serialize: TimelineCore state → ProjectFile ───────────────────────────
+
+// Default settings used when the core has no composition yet. Matches the
+// seed project.json so a fresh load produces a stable, recognizable shape.
+const DEFAULT_SETTINGS: ProjectComposition["settings"] = {
+  width: 1920,
+  height: 1080,
+  fps: 30,
+  aspectRatio: "16:9",
+};
+
+/**
+ * Serialize craft state to a ProjectFile. Inverse of projectFileToCommands.
+ *
+ * Relies on Plan 3a's id stability: every asset/track/clip in the core state
+ * carries the on-disk id that was dispatched, so serialization is a direct
+ * field rename + array walk. Field order matches projectFileToCommands's
+ * dispatch order so a round-trip through parse → hydrate → serialize produces
+ * byte-equal output given identical input.
+ */
+export function serializeProject(
+  coreState: PneumaCraftCoreState,
+  composition: Composition | null,
+): ProjectFile {
+  // 1. Settings (fall back to defaults when composition is null)
+  const settings: ProjectComposition["settings"] = composition
+    ? {
+        width: composition.settings.width,
+        height: composition.settings.height,
+        fps: composition.settings.fps,
+        aspectRatio: composition.settings.aspectRatio,
+        ...(composition.settings.sampleRate !== undefined
+          ? { sampleRate: composition.settings.sampleRate }
+          : {}),
+      }
+    : { ...DEFAULT_SETTINGS };
+
+  // 2. Assets — iterate registry in insertion order (Map preserves it)
+  const assets: ProjectAsset[] = [];
+  for (const asset of coreState.registry.values()) {
+    assets.push({
+      id: asset.id,
+      type: asset.type,
+      uri: asset.uri,
+      name: asset.name,
+      metadata: asset.metadata as Record<string, number | string | undefined>,
+      createdAt: asset.createdAt,
+      ...(asset.tags ? { tags: [...asset.tags] } : {}),
+      ...(asset.status ? { status: asset.status } : {}),
+    });
+  }
+
+  // 3. Provenance edges — iterate edges Map
+  const provenance: ProjectProvenanceEdge[] = [];
+  for (const edge of coreState.provenance.edges.values()) {
+    provenance.push({
+      toAssetId: edge.toAssetId,
+      fromAssetId: edge.fromAssetId,
+      operation: {
+        type: edge.operation.type,
+        actor: edge.operation.actor,
+        timestamp: edge.operation.timestamp,
+        ...(edge.operation.agentId !== undefined
+          ? { agentId: edge.operation.agentId }
+          : {}),
+        ...(edge.operation.label !== undefined
+          ? { label: edge.operation.label }
+          : {}),
+        ...(edge.operation.params !== undefined
+          ? { params: { ...edge.operation.params } }
+          : {}),
+      },
+    });
+  }
+
+  // 4. Tracks + clips
+  const tracks: ProjectTrack[] = composition
+    ? composition.tracks.map((track) => ({
+        id: track.id,
+        type: track.type,
+        name: track.name,
+        muted: track.muted,
+        volume: track.volume,
+        locked: track.locked,
+        visible: track.visible,
+        clips: track.clips.map((clip) => ({
+          id: clip.id,
+          assetId: clip.assetId,
+          startTime: clip.startTime,
+          duration: clip.duration,
+          inPoint: clip.inPoint,
+          outPoint: clip.outPoint,
+          ...(clip.text !== undefined ? { text: clip.text } : {}),
+          ...(clip.volume !== undefined ? { volume: clip.volume } : {}),
+          ...(clip.fadeIn !== undefined ? { fadeIn: clip.fadeIn } : {}),
+          ...(clip.fadeOut !== undefined ? { fadeOut: clip.fadeOut } : {}),
+        })),
+      }))
+    : [];
+
+  // 5. Transitions — pass through (currently unused)
+  const transitions: ProjectTransition[] = composition
+    ? [...composition.transitions]
+    : [];
+
+  return {
+    $schema: "pneuma-craft/project/v1",
+    title: "Untitled",
+    composition: { settings, tracks, transitions },
+    assets,
+    provenance,
+  };
+}
+
+/**
+ * Format a ProjectFile as JSON for disk. 2-space indent + trailing newline.
+ * Kept separate from serializeProject so tests can assert structure without
+ * being brittle about whitespace.
+ */
+export function formatProjectJson(file: ProjectFile): string {
+  return JSON.stringify(file, null, 2) + "\n";
 }
