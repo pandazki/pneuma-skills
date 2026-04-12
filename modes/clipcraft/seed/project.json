@@ -1,5 +1,44 @@
 {
+  "$schema": "pneuma-craft/project/v1",
   "title": "Untitled",
-  "fps": 30,
-  "resolution": { "width": 1920, "height": 1080 }
+  "composition": {
+    "settings": {
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "aspectRatio": "16:9"
+    },
+    "tracks": [],
+    "transitions": []
+  },
+  "assets": [
+    {
+      "id": "seed-asset-1",
+      "type": "image",
+      "uri": "",
+      "name": "opening-shot (pending generation)",
+      "metadata": {},
+      "createdAt": 1712934000000,
+      "status": "pending",
+      "tags": ["seed-example"]
+    }
+  ],
+  "provenance": [
+    {
+      "toAssetId": "seed-asset-1",
+      "fromAssetId": null,
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "agentId": "clipcraft-imagegen",
+        "timestamp": 1712934000000,
+        "label": "placeholder seed asset — replace with real prompt",
+        "params": {
+          "model": "flux-pro-1.1",
+          "prompt": "wide shot of a foggy forest at dawn",
+          "seed": 42
+        }
+      }
+    }
+  ]
 }
