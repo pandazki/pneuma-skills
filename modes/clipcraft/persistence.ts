@@ -4,13 +4,6 @@
  * Plan 2 scope: read-only. Converts a parsed ProjectFile into a sequence of
  * craft CommandEnvelopes (hydration-via-events) so the craft store rebuilds
  * itself from disk without bypassing the event log. Writes come in Plan 3.
- *
- * TODO(plan-3): id stability. Craft's `composition:add-track` and
- * `composition:add-clip` commands assign fresh ids via generateId() — the
- * on-disk `track.id` / `clip.id` are currently ignored during hydration.
- * Plan 3 must fix this when it introduces the write path, either by
- * extending craft commands to accept explicit ids or by maintaining a
- * disk↔memory id map in this module.
  */
 
 import type {
@@ -159,8 +152,10 @@ function makeEnvelope(
  * Order: composition:create → asset:register* → provenance:* → composition:add-track*
  *        → composition:add-clip* (per track).
  *
- * TODO(plan-3): track/clip ids are NOT preserved through dispatch (craft
- * assigns fresh ids). Plan 2 seed has zero tracks/clips so this doesn't bite.
+ * Ids are preserved: asset.id, track.id, clip.id from the on-disk file are
+ * passed through to craft's commands unchanged (Plan 3a). Craft rejects
+ * duplicate ids at dispatch time, so the hook's try/catch will log and
+ * continue if the same content is accidentally hydrated twice.
  */
 export function projectFileToCommands(
   file: ProjectFile,
@@ -175,12 +170,13 @@ export function projectFileToCommands(
     settings: file.composition.settings,
   } as CompositionCommand, ts));
 
-  // 2. Register every asset. The on-disk `id` is ignored — craft assigns a
-  //    fresh id. TODO(plan-3): maintain an id map for round-trip stability.
+  // 2. Register every asset. The on-disk `id` is preserved and passed through
+  //    to craft so disk↔memory references stay stable across hydration.
   for (const asset of file.assets) {
     cmds.push(makeEnvelope("human", {
       type: "asset:register",
       asset: {
+        id: asset.id,
         type: asset.type,
         uri: asset.uri,
         name: asset.name,
@@ -191,16 +187,7 @@ export function projectFileToCommands(
     } as CoreCommand, ts));
   }
 
-  // 3. Provenance edges. fromAssetId === null → provenance:set-root;
-  //    otherwise provenance:link. Both reference the on-disk asset ids, so
-  //    until plan-3 introduces id stability these will only resolve correctly
-  //    when the seed file's ids happen to match craft's generated ones —
-  //    which they won't. This means provenance edges will currently be
-  //    rejected by craft's requireAsset check at dispatch time; the
-  //    useProjectHydration hook will log and continue.
-  //
-  //    TODO(plan-3): resolve on-disk asset ids to memory ids before
-  //    emitting provenance commands.
+  // 3. Provenance edges. fromAssetId === null → set-root; otherwise link.
   for (const edge of file.provenance) {
     if (edge.fromAssetId === null) {
       cmds.push(makeEnvelope("human", {
@@ -218,11 +205,12 @@ export function projectFileToCommands(
     }
   }
 
-  // 4. Tracks and clips. TODO(plan-3): id stability.
+  // 4. Tracks and clips.
   for (const track of file.composition.tracks) {
     cmds.push(makeEnvelope("human", {
       type: "composition:add-track",
       track: {
+        id: track.id,
         type: track.type,
         name: track.name,
         clips: [],
@@ -238,6 +226,7 @@ export function projectFileToCommands(
         type: "composition:add-clip",
         trackId: track.id,
         clip: {
+          id: clip.id,
           assetId: clip.assetId,
           startTime: clip.startTime,
           duration: clip.duration,

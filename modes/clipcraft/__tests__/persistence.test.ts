@@ -103,6 +103,11 @@ describe("projectFileToCommands", () => {
       "asset:register",
       "provenance:set-root",
     ]);
+    // ID stability: the on-disk asset.id must flow through to the command payload
+    const registerCmd = cmds.find((c) => c.command.type === "asset:register");
+    expect(registerCmd).toBeDefined();
+    const assetPayload = (registerCmd!.command as { asset: { id?: string } }).asset;
+    expect(assetPayload.id).toBe("a1");
   });
 
   it("emits composition:create → asset:register → composition:add-track → composition:add-clip in order when composition has tracks", () => {
@@ -145,5 +150,13 @@ describe("projectFileToCommands", () => {
       "composition:add-track",
       "composition:add-clip",
     ]);
+    // ID stability: asset, track, and clip ids all flow through
+    const registerCmd = cmds.find((c) => c.command.type === "asset:register");
+    const addTrackCmd = cmds.find((c) => c.command.type === "composition:add-track");
+    const addClipCmd = cmds.find((c) => c.command.type === "composition:add-clip");
+    expect((registerCmd!.command as { asset: { id?: string } }).asset.id).toBe("a1");
+    expect((addTrackCmd!.command as { track: { id?: string } }).track.id).toBe("v1");
+    expect((addClipCmd!.command as { clip: { id?: string } }).clip.id).toBe("c1");
+    expect((addClipCmd!.command as { trackId: string }).trackId).toBe("v1");
   });
 });
