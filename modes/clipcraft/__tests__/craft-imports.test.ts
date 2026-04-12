@@ -53,4 +53,45 @@ describe("craft package imports", () => {
     // Cleanup lazy playback engine if it was started
     state.destroy?.();
   });
+
+  it("asset:set-status roundtrips through dispatch + event + projection", () => {
+    const core = createCore();
+    // Register an asset with an explicit generating status
+    core.dispatch("human", {
+      type: "asset:register",
+      asset: {
+        type: "image",
+        uri: "",
+        name: "pending",
+        metadata: {},
+        status: "generating",
+      },
+    });
+    const [registered] = core.getEvents();
+    const assetId = (registered.payload.asset as { id: string }).id;
+
+    // Verify the register surfaced the status field
+    expect(core.getState().registry.get(assetId)?.status).toBe("generating");
+
+    // Now flip it to ready
+    core.dispatch("human", {
+      type: "asset:set-status",
+      assetId,
+      status: "ready",
+    });
+
+    const state = core.getState();
+    const asset = state.registry.get(assetId);
+    expect(asset?.status).toBe("ready");
+
+    // Undo should put it back to generating
+    core.undo();
+    const afterUndo = core.getState().registry.get(assetId);
+    expect(afterUndo?.status).toBe("generating");
+
+    // Redo should set it back to ready
+    core.redo();
+    const afterRedo = core.getState().registry.get(assetId);
+    expect(afterRedo?.status).toBe("ready");
+  });
 });
