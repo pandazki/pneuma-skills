@@ -94,4 +94,27 @@ describe("craft package imports", () => {
     const afterRedo = core.getState().registry.get(assetId);
     expect(afterRedo?.status).toBe("ready");
   });
+
+  it("exposes dispatchEnvelope that preserves caller-supplied timestamps", () => {
+    const core = createCore();
+    const events = core.dispatchEnvelope({
+      id: "test-envelope-1",
+      actor: "human",
+      timestamp: 1712934000000,
+      command: {
+        type: "asset:register",
+        asset: {
+          id: "a1",
+          type: "image",
+          uri: "",
+          name: "x",
+          metadata: {},
+        },
+      },
+    });
+    expect(events[0].commandId).toBe("test-envelope-1");
+    expect(events[0].timestamp).toBe(1712934000000);
+    const asset = core.getState().registry.get("a1");
+    expect(asset?.createdAt).toBe(1712934000000);
+  });
 });
