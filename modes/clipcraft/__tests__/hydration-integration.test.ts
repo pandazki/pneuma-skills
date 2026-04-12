@@ -78,7 +78,7 @@ function hydrate(file: ProjectFile): ReturnType<typeof createTimelineCore> {
   const core = createTimelineCore();
   const cmds = projectFileToCommands(file);
   for (const env of cmds) {
-    core.dispatch(env.actor, env.command);
+    core.dispatchEnvelope(env);
   }
   return core;
 }
@@ -191,6 +191,10 @@ describe("full-stack hydration", () => {
     const s1 = core1.getCoreState();
     const s2 = core2.getCoreState();
 
+    // Plan 3c: first-pass hydration must preserve the on-disk createdAt
+    const fixtureAsset = completeFile.assets[0];
+    expect(s1.registry.get(fixtureAsset.id)?.createdAt).toBe(fixtureAsset.createdAt);
+
     // Assets: same size and same ids
     expect(s2.registry.size).toBe(s1.registry.size);
     for (const [id, asset] of s1.registry.entries()) {
@@ -202,6 +206,7 @@ describe("full-stack hydration", () => {
       expect(a2!.status).toBe(asset.status);
       expect(a2!.tags).toEqual(asset.tags);
       expect(a2!.metadata).toEqual(asset.metadata);
+      expect(a2!.createdAt).toBe(asset.createdAt); // Plan 3c: locked down via dispatchEnvelope
     }
 
     // Provenance: same edges
