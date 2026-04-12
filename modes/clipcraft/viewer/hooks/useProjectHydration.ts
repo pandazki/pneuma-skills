@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { ViewerFileContent } from "../../../../core/types/viewer-contract.js";
 import { usePneumaCraftStore } from "@pneuma-craft/react";
 import { parseProjectFile, projectFileToCommands } from "../../persistence.js";
@@ -27,8 +27,17 @@ export function useProjectHydration(files: ViewerFileContent[]): {
   );
   const projectContent = projectFile?.content ?? null;
 
+  // Guard against React StrictMode double-invocation in dev: refs persist
+  // across the simulated unmount/remount, so the second effect run sees the
+  // already-hydrated content and bails out. On real content changes (or a
+  // provider remount via the keyed PneumaCraftProvider) the ref resets and
+  // the new content is hydrated cleanly.
+  const hydratedContentRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (projectContent === null) return;
+    if (hydratedContentRef.current === projectContent) return;
+    hydratedContentRef.current = projectContent;
 
     const parsed = parseProjectFile(projectContent);
     if (!parsed.ok) {
