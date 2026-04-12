@@ -6,9 +6,9 @@
 import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const clipcraftManifest: ModeManifest = {
-  name: "clipcraft",
+  name: "clipcraft-legacy",
   version: "0.1.0",
-  displayName: "ClipCraft",
+  displayName: "ClipCraft (Legacy)",
   description: "AI-orchestrated video production — describe your vision, generate clips, assemble on a timeline",
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><polygon points="10 8 16 12 10 16 10 8"/><line x1="2" y1="14" x2="22" y2="14" opacity="0.3"/></svg>`,
   inspiredBy: {
@@ -20,14 +20,14 @@ const clipcraftManifest: ModeManifest = {
 
   skill: {
     sourceDir: "skill",
-    installName: "pneuma-clipcraft",
+    installName: "pneuma-clipcraft-legacy",
     claudeMdSection: `## Pneuma ClipCraft Mode
 
 You are running inside **Pneuma**, a co-creation workspace where you and the user produce videos together — you orchestrate AI generation, the user sees results in a live storyboard viewer.
 
 This is **ClipCraft Mode**: AI-orchestrated video production with storyboard-based workflow.
 
-For the full workflow, storyboard protocol, scene generation patterns, and error recovery strategies, consult the \`pneuma-clipcraft\` skill. Read it before your first generation in a new conversation.
+For the full workflow, storyboard protocol, scene generation patterns, and error recovery strategies, consult the \`pneuma-clipcraft-legacy\` skill. Read it before your first generation in a new conversation.
 
 ### Architecture
 - \`project.json\` — Project metadata (title, aspect ratio, resolution, style)
@@ -206,7 +206,7 @@ The viewer provides these agent-callable actions:
   init: {
     contentCheckPattern: "storyboard.json",
     seedFiles: {
-      "modes/clipcraft/seed/default/": "./",
+      "modes/clipcraft-legacy/seed/default/": "./",
     },
     params: [
       { name: "aspectRatio", label: "Default aspect ratio", description: "16:9, 9:16, or 1:1", type: "string", defaultValue: "16:9" },

@@ -7,7 +7,7 @@ import type {
   Scene,
   ProjectConfig,
   BGMConfig,
-} from "../modes/clipcraft/types.js";
+} from "../modes/clipcraft-legacy/types.js";
 
 export interface ExportOptions {
   workspace: string;

@@ -103,12 +103,12 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/diagram/pneuma-mode.js").then((m) => m.default),
   },
-  clipcraft: {
+  "clipcraft-legacy": {
     type: "builtin",
     manifestLoader: () =>
-      import("../modes/clipcraft/manifest.js").then((m) => m.default),
+      import("../modes/clipcraft-legacy/manifest.js").then((m) => m.default),
     definitionLoader: () =>
-      import("../modes/clipcraft/pneuma-mode.js").then((m) => m.default),
+      import("../modes/clipcraft-legacy/pneuma-mode.js").then((m) => m.default),
   },
 };
 

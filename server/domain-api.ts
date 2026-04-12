@@ -2,9 +2,9 @@
 
 import type { Hono } from "hono";
 import { join } from "node:path";
-import type { AssetGraph, StoryboardV2, ProjectConfig, Storyboard, GraphNode, SlotBinding, Clip } from "../modes/clipcraft/types.js";
-import { EMPTY_GRAPH, EMPTY_STORYBOARD_V2 } from "../modes/clipcraft/types.js";
-import { validateGraphNodes, validateFullGraph, validateStoryboard } from "../modes/clipcraft/domain-validation.js";
+import type { AssetGraph, StoryboardV2, ProjectConfig, Storyboard, GraphNode, SlotBinding, Clip } from "../modes/clipcraft-legacy/types.js";
+import { EMPTY_GRAPH, EMPTY_STORYBOARD_V2 } from "../modes/clipcraft-legacy/types.js";
+import { validateGraphNodes, validateFullGraph, validateStoryboard } from "../modes/clipcraft-legacy/domain-validation.js";
 
 interface DomainApiOptions {
   workspace: string;

@@ -100,7 +100,7 @@ export async function startServer(options: ServerOptions) {
       const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
 
       // Parse builtin mode manifests for metadata (icon, description, etc.)
-      const builtinNames = ["webcraft", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft"];
+      const builtinNames = ["webcraft", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft-legacy"];
       const builtins = builtinNames.map((name) => {
         const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
         let parsed: ReturnType<typeof parseManifestTs> = {};
@@ -1715,7 +1715,7 @@ export async function startServer(options: ServerOptions) {
   registerExportRoutes(app, { workspace, initParams: options.initParams, watchPatterns: options.watchPatterns, hookBus, sessionInfo });
 
   // ── Domain API routes (ClipCraft generation graph) ──────────────────
-  if (options.modeName === "clipcraft") {
+  if (options.modeName === "clipcraft-legacy") {
     registerDomainApiRoutes(app, {
       workspace,
       onUpdate: (files) => {

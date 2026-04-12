@@ -63,7 +63,7 @@ const clipcraftMode: ModeDefinition = {
         if (assetLines.length > 0) {
           lines.push(`\nAvailable assets:\n${assetLines.join("\n")}`);
         }
-        return `<viewer-context mode="clipcraft" file="storyboard.json">\n${lines.join("\n")}\n</viewer-context>`;
+        return `<viewer-context mode="clipcraft-legacy" file="storyboard.json">\n${lines.join("\n")}\n</viewer-context>`;
       }
 
       // Command — user clicked a viewer command button
@@ -77,7 +77,7 @@ const clipcraftMode: ModeDefinition = {
         if (assetLines.length > 0) {
           lines.push(`\nAvailable assets:\n${assetLines.join("\n")}`);
         }
-        return `<viewer-context mode="clipcraft">\n${lines.join("\n")}\n</viewer-context>`;
+        return `<viewer-context mode="clipcraft-legacy">\n${lines.join("\n")}\n</viewer-context>`;
       }
 
       // No selection — project overview with asset inventory
@@ -108,7 +108,7 @@ const clipcraftMode: ModeDefinition = {
           lines.push(`\nAvailable assets:\n${assetLines.join("\n")}`);
         }
 
-        return `<viewer-context mode="clipcraft">\n${lines.join("\n")}\n</viewer-context>`;
+        return `<viewer-context mode="clipcraft-legacy">\n${lines.join("\n")}\n</viewer-context>`;
       }
 
       return "";
