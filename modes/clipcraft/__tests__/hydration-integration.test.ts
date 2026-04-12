@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { createTimelineCore } from "@pneuma-craft/timeline";
 import { parseProjectFile, projectFileToCommands } from "../persistence.js";
+import { serializeProject, formatProjectJson } from "../persistence.js";
 import type { ProjectFile } from "../persistence.js";
 
 /**
@@ -168,5 +169,98 @@ describe("full-stack hydration", () => {
         },
       }),
     ).toThrow();
+  });
+
+  it("round-trips: hydrate → serialize → hydrate → assert same state", () => {
+    const core1 = hydrate(completeFile);
+    const serialized = serializeProject(
+      core1.getCoreState(),
+      core1.getComposition(),
+    );
+
+    // Serialize → format → parse — simulates a full disk roundtrip
+    const text = formatProjectJson(serialized);
+    const parsed = parseProjectFile(text);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+
+    // Hydrate the parsed output into a fresh TimelineCore
+    const core2 = hydrate(parsed.value);
+
+    // Assert the second core has the same observable state as the first
+    const s1 = core1.getCoreState();
+    const s2 = core2.getCoreState();
+
+    // Assets: same size and same ids
+    expect(s2.registry.size).toBe(s1.registry.size);
+    for (const [id, asset] of s1.registry.entries()) {
+      const a2 = s2.registry.get(id);
+      expect(a2).toBeDefined();
+      expect(a2!.type).toBe(asset.type);
+      expect(a2!.uri).toBe(asset.uri);
+      expect(a2!.name).toBe(asset.name);
+      expect(a2!.status).toBe(asset.status);
+      expect(a2!.tags).toEqual(asset.tags);
+      expect(a2!.metadata).toEqual(asset.metadata);
+    }
+
+    // Provenance: same edges
+    expect(s2.provenance.edges.size).toBe(s1.provenance.edges.size);
+    const edges1 = Array.from(s1.provenance.edges.values());
+    const edges2 = Array.from(s2.provenance.edges.values());
+    expect(edges2).toHaveLength(edges1.length);
+    // Order-independent compare by toAssetId
+    const byTo = (m: Map<string, typeof edges1[0]>, e: typeof edges1[0]) => {
+      m.set(e.toAssetId, e);
+      return m;
+    };
+    const map1 = edges1.reduce(byTo, new Map());
+    const map2 = edges2.reduce(byTo, new Map());
+    for (const [toAssetId, e1] of map1.entries()) {
+      const e2 = map2.get(toAssetId);
+      expect(e2).toBeDefined();
+      expect(e2!.fromAssetId).toBe(e1.fromAssetId);
+      expect(e2!.operation.type).toBe(e1.operation.type);
+      expect(e2!.operation.params).toEqual(e1.operation.params);
+    }
+
+    // Composition: same tracks with same clip ids
+    const c1 = core1.getComposition();
+    const c2 = core2.getComposition();
+    expect(c2).not.toBeNull();
+    expect(c2!.settings).toEqual(c1!.settings);
+    expect(c2!.tracks).toHaveLength(c1!.tracks.length);
+    for (let i = 0; i < c1!.tracks.length; i++) {
+      const t1 = c1!.tracks[i];
+      const t2 = c2!.tracks[i];
+      expect(t2.id).toBe(t1.id);
+      expect(t2.clips).toHaveLength(t1.clips.length);
+      for (let j = 0; j < t1.clips.length; j++) {
+        expect(t2.clips[j].id).toBe(t1.clips[j].id);
+        expect(t2.clips[j].assetId).toBe(t1.clips[j].assetId);
+        expect(t2.clips[j].startTime).toBe(t1.clips[j].startTime);
+        expect(t2.clips[j].duration).toBe(t1.clips[j].duration);
+      }
+    }
+  });
+
+  it("round-trip is stable after a second pass", () => {
+    // Invariant: serialize(hydrate(serialize(hydrate(x)))) === serialize(hydrate(x))
+    // Catches any serialization pass that's non-deterministic or accumulates
+    // small differences (whitespace, field order, default values).
+    const core1 = hydrate(completeFile);
+    const text1 = formatProjectJson(
+      serializeProject(core1.getCoreState(), core1.getComposition()),
+    );
+
+    const parsed = parseProjectFile(text1);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const core2 = hydrate(parsed.value);
+    const text2 = formatProjectJson(
+      serializeProject(core2.getCoreState(), core2.getComposition()),
+    );
+
+    expect(text2).toBe(text1);
   });
 });
