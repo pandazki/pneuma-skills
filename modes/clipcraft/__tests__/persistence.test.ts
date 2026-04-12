@@ -335,3 +335,24 @@ describe("formatProjectJson", () => {
     expect(parsed.title).toBe("Test");
   });
 });
+
+import { isExternalEdit } from "../viewer/externalEdit.js";
+
+describe("isExternalEdit", () => {
+  it("returns false when diskContent is null", () => {
+    expect(isExternalEdit(null, null)).toBe(false);
+    expect(isExternalEdit(null, "anything")).toBe(false);
+  });
+
+  it("returns true when diskContent is new and lastApplied is null", () => {
+    expect(isExternalEdit("x", null)).toBe(true);
+  });
+
+  it("returns false when diskContent matches lastApplied", () => {
+    expect(isExternalEdit("x", "x")).toBe(false);
+  });
+
+  it("returns true when diskContent differs from lastApplied", () => {
+    expect(isExternalEdit("x", "y")).toBe(true);
+  });
+});
