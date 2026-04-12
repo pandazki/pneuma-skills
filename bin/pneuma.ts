@@ -1388,7 +1388,7 @@ Options:
   const existingSession = loadSession(workspace);
   const initialEditing: boolean = viewing ? false : (existingSession?.editing ?? true);
 
-  const { server, wsBridge, port: actualPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup: serverCleanup, sessionInfo, hookBus } = await startServer({
+  const { server, wsBridge, port: actualPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup: serverCleanup, sessionInfo, hookBus, queueContentUpdate } = await startServer({
     port: serverPort,
     workspace,
     watchPatterns: manifest.viewer.watchPatterns,
@@ -1787,11 +1787,18 @@ Options:
     }
 
     // 5. Start file watcher (driven by manifest — shared for both edit and use modes)
+    const isManualRefresh = manifest.viewer.refreshStrategy === "manual";
+
     startFileWatcher(workspace, manifest.viewer, (files) => {
-      wsBridge.broadcastToSession(sessionId, {
-        type: "content_update",
-        files,
-      });
+      if (isManualRefresh) {
+        // Queue the update — viewer can flush via POST /api/refresh
+        queueContentUpdate(files);
+      } else {
+        wsBridge.broadcastToSession(sessionId, {
+          type: "content_update",
+          files,
+        });
+      }
     });
   }
 

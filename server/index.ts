@@ -17,7 +17,9 @@ import { registerEvolutionRoutes } from "./evolution-routes.js";
 import { openPath, revealPath, openUrl } from "./system-bridge.js";
 import { pathStartsWith, isWin } from "./utils.js";
 import { registerExportRoutes } from "./routes/export.js";
+import { registerDomainApiRoutes } from "./domain-api.js";
 import { listCheckpoints } from "./shadow-git.js";
+import { detectFfmpeg, exportVideo } from "./ffmpeg.js";
 import { exportHistory } from "./history-export.js";
 import { importHistory } from "./history-import.js";
 import { getR2Config, saveR2Config, isR2Configured, shareResult, shareProcess, downloadShare, getApiKeys, saveApiKeys } from "./share.js";
@@ -54,6 +56,7 @@ export interface ServerOptions {
   editing?: boolean; // Initial editing state (from session.json or --viewing flag)
   editingSupported?: boolean; // Mode supports editing ↔ viewing toggle
   backendType?: string; // Backend type for correct instructions file selection (claude-code | codex)
+  refreshStrategy?: "auto" | "manual"; // Viewer refresh strategy (default: "auto")
 }
 
 export async function startServer(options: ServerOptions) {
@@ -97,7 +100,7 @@ export async function startServer(options: ServerOptions) {
       const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
 
       // Parse builtin mode manifests for metadata (icon, description, etc.)
-      const builtinNames = ["webcraft", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard"];
+      const builtinNames = ["webcraft", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft"];
       const builtins = builtinNames.map((name) => {
         const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
         let parsed: ReturnType<typeof parseManifestTs> = {};
@@ -1711,6 +1714,23 @@ export async function startServer(options: ServerOptions) {
   // ── Export routes (slide, webcraft, file listing) ─────────────────
   registerExportRoutes(app, { workspace, initParams: options.initParams, watchPatterns: options.watchPatterns, hookBus, sessionInfo });
 
+  // ── Domain API routes (ClipCraft generation graph) ──────────────────
+  if (options.modeName === "clipcraft") {
+    registerDomainApiRoutes(app, {
+      workspace,
+      onUpdate: (files) => {
+        const sid = wsBridge.getActiveSessionId();
+        if (sid) {
+          if (options.refreshStrategy === "manual") {
+            queueContentUpdate(files);
+          } else {
+            wsBridge.broadcastToSession(sid, { type: "content_update", files });
+          }
+        }
+      },
+    });
+  }
+
   // ── Save file ────────────────────────────────────────────────────────
   app.post("/api/files", async (c) => {
     const body = await c.req.json<{ path: string; content: string }>();
@@ -1814,6 +1834,118 @@ export async function startServer(options: ServerOptions) {
     } catch {
       return c.json({ available: false });
     }
+  });
+
+  // ── Manual refresh: queue content updates, flush on demand ──────────
+  let pendingContentUpdate: { path: string; content: string }[] | null = null;
+
+  const queueContentUpdate = (files: { path: string; content: string }[]) => {
+    pendingContentUpdate = files;
+  };
+
+  app.post("/api/refresh", (c) => {
+    if (pendingContentUpdate) {
+      const sid = wsBridge.getActiveSessionId();
+      if (sid) {
+        wsBridge.broadcastToSession(sid, { type: "content_update", files: pendingContentUpdate });
+      }
+      pendingContentUpdate = null;
+      return c.json({ flushed: true });
+    }
+    return c.json({ flushed: false });
+  });
+
+  // ── Video export (ClipCraft) ──────────────────────────────────────────
+  interface ExportJob {
+    id: string;
+    status: "running" | "done" | "error";
+    progress: number;
+    output?: string;
+    error?: string;
+  }
+  let currentExport: ExportJob | null = null;
+
+  app.post("/api/export", async (c) => {
+    if (currentExport?.status === "running") {
+      return c.json({ exportId: currentExport.id });
+    }
+
+    const hasFfmpeg = await detectFfmpeg();
+    if (!hasFfmpeg) {
+      return c.json({ error: "ffmpeg not found. Install it: brew install ffmpeg" }, 400);
+    }
+
+    let storyboard, projectConfig;
+    try {
+      storyboard = JSON.parse(readFileSync(join(workspace, "storyboard.json"), "utf-8"));
+      projectConfig = JSON.parse(readFileSync(join(workspace, "project.json"), "utf-8"));
+    } catch {
+      return c.json({ error: "Failed to read storyboard.json or project.json" }, 400);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const quality = body.quality === "final" ? "final" as const : "preview" as const;
+    const subtitles = body.subtitles === true;
+
+    const exportId = `export-${Date.now()}`;
+    currentExport = { id: exportId, status: "running", progress: 0 };
+
+    exportVideo({
+      workspace,
+      storyboard,
+      project: projectConfig,
+      quality,
+      subtitles,
+      onProgress: (p) => { if (currentExport) currentExport.progress = p; },
+    })
+      .then((result) => {
+        if (currentExport?.id === exportId) {
+          currentExport.status = "done";
+          currentExport.progress = 1;
+          currentExport.output = result.outputPath.replace(workspace + "/", "");
+        }
+      })
+      .catch((err) => {
+        if (currentExport?.id === exportId) {
+          currentExport.status = "error";
+          currentExport.error = err instanceof Error ? err.message : String(err);
+        }
+      });
+
+    return c.json({ exportId });
+  });
+
+  app.get("/api/export/:id/status", (c) => {
+    const id = c.req.param("id");
+    if (!currentExport || currentExport.id !== id) {
+      return c.json({ status: "error", error: "Export not found" }, 404);
+    }
+    return c.json({
+      status: currentExport.status,
+      progress: currentExport.progress,
+      output: currentExport.output,
+      error: currentExport.error,
+    });
+  });
+
+  app.get("/api/export/:id/download", async (c) => {
+    const id = c.req.param("id");
+    if (!currentExport || currentExport.id !== id || currentExport.status !== "done" || !currentExport.output) {
+      return c.json({ error: "Export not ready" }, 404);
+    }
+    const filePath = join(workspace, currentExport.output);
+    const file = Bun.file(filePath);
+    if (!await file.exists()) {
+      return c.json({ error: "Output file not found" }, 404);
+    }
+    const fileName = currentExport.output.split("/").pop() ?? "output.mp4";
+    return new Response(file.stream(), {
+      headers: {
+        "Content-Type": "video/mp4",
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Content-Length": String(file.size),
+      },
+    });
   });
 
   // ── Git: branch info (for Context panel) ────────────────────────────
@@ -2073,8 +2205,35 @@ export async function startServer(options: ServerOptions) {
     }
     try {
       const file = Bun.file(absPath);
+      const size = file.size;
+      const contentType = file.type || "application/octet-stream";
+
+      // Support Range requests (needed for video seeking)
+      const rangeHeader = c.req.header("range");
+      if (rangeHeader) {
+        const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+        if (match) {
+          const start = parseInt(match[1], 10);
+          const end = match[2] ? parseInt(match[2], 10) : size - 1;
+          const chunkSize = end - start + 1;
+          return new Response(file.slice(start, end + 1), {
+            status: 206,
+            headers: {
+              "Content-Type": contentType,
+              "Content-Range": `bytes ${start}-${end}/${size}`,
+              "Content-Length": String(chunkSize),
+              "Accept-Ranges": "bytes",
+            },
+          });
+        }
+      }
+
       return new Response(file, {
-        headers: { "Content-Type": file.type || "application/octet-stream" },
+        headers: {
+          "Content-Type": contentType,
+          "Content-Length": String(size),
+          "Accept-Ranges": "bytes",
+        },
       });
     } catch {
       return c.text("Error reading file", 500);
@@ -2278,5 +2437,5 @@ export const { createPortal, flushSync, createRoot, hydrateRoot } = RD;`;
     await hookBus.emit("session:end", { sessionId: sessionInfo.sessionId, mode: sessionInfo.mode, workspace }, sessionInfo).catch(() => {});
   };
 
-  return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup, sessionInfo, hookBus };
+  return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup, sessionInfo, hookBus, queueContentUpdate };
 }
