@@ -1,4 +1,4 @@
-import { useEffect, type MutableRefObject } from "react";
+import { useEffect, useRef, type MutableRefObject } from "react";
 import type { ViewerFileContent } from "../../../../core/types/viewer-contract.js";
 import {
   usePneumaCraftStore,
@@ -31,6 +31,13 @@ export interface UseProjectSyncOptions {
    * Must be a stable reference (useCallback at the parent level).
    */
   onLocalWrite: (content: string) => void;
+  /**
+   * Called when an external edit arrives on a non-fresh store. The parent
+   * should bump its providerKey to remount the hook with a fresh craft store.
+   *
+   * Must be a stable reference.
+   */
+  onExternalEdit: () => void;
 }
 
 /**
@@ -57,11 +64,18 @@ export function useProjectSync(
   files: ViewerFileContent[],
   options: UseProjectSyncOptions,
 ): { error: string | null } {
-  const { lastAppliedRef, onLocalWrite } = options;
+  const { lastAppliedRef, onLocalWrite, onExternalEdit } = options;
   const dispatch = usePneumaCraftStore((s) => s.dispatch);
   const coreState = usePneumaCraftStore((s) => s.coreState);
   const composition = usePneumaCraftStore((s) => s.composition);
   const eventCount = useEventLog().length;
+
+  // Instance-local ref — tracks which diskContent the CURRENT hook instance
+  // has already hydrated. Used for strict-mode double-invoke protection.
+  // This ref is reset on every hook remount (providerKey bump), so after an
+  // external edit the fresh instance will re-hydrate cleanly. lastAppliedRef
+  // (parent-owned) is only for echo-skip on our own writes.
+  const hydratedDiskRef = useRef<string | null>(null);
 
   // Locate project.json
   const projectFile = files.find(
@@ -72,11 +86,23 @@ export function useProjectSync(
   // ── Hydration: disk → memory ─────────────────────────────────────────
   useEffect(() => {
     if (diskContent === null) return;
+    // Echo skip: ignore a disk change that matches our own last write.
     if (diskContent === lastAppliedRef.current) return;
+    // Strict-mode double-invoke guard (instance-local).
+    if (diskContent === hydratedDiskRef.current) return;
+    hydratedDiskRef.current = diskContent;
 
-    // Claim this content as "applied" BEFORE dispatching so any echo that
-    // arrives during the dispatch loop is correctly skipped.
-    lastAppliedRef.current = diskContent;
+    // If the parent already has a different content applied, this is an
+    // external edit landing on a live (stale) store. Defer to the parent
+    // to bump providerKey and remount us — the fresh instance will then
+    // hydrate cleanly on next render. We intentionally do NOT dispatch
+    // against the stale store (would produce duplicate-id errors) and do
+    // NOT update lastAppliedRef here (the parent needs to still see the
+    // old value during its external-edit decision).
+    if (lastAppliedRef.current !== null) {
+      onExternalEdit();
+      return;
+    }
 
     const parsed = parseProjectFile(diskContent);
     if (!parsed.ok) return;
@@ -94,6 +120,14 @@ export function useProjectSync(
         );
       }
     }
+
+    // Claim the now-hydrated content in the parent-owned ref AFTER dispatch.
+    // This is what the parent's isExternalEdit check reads to decide whether
+    // to remount on subsequent disk changes. Updating it AFTER dispatch (not
+    // before) means the parent's effect, which runs after this child effect,
+    // sees `lastAppliedRef.current === diskContent` and correctly decides
+    // "not an external edit" on the initial hydration.
+    lastAppliedRef.current = diskContent;
   }, [diskContent, dispatch, lastAppliedRef]);
 
   // ── Persistence: memory → disk (debounced) ──────────────────────────

@@ -20,7 +20,9 @@
       "metadata": {},
       "createdAt": 1712934000000,
       "status": "pending",
-      "tags": ["seed-example"]
+      "tags": [
+        "seed-example"
+      ]
     }
   ],
   "provenance": [

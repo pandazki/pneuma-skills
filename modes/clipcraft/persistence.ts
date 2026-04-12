@@ -173,6 +173,17 @@ export function projectFileToCommands(
 
   // 2. Register every asset. The on-disk `id` is preserved and passed through
   //    to craft so disk↔memory references stay stable across hydration.
+  //
+  //    NOTE(plan-3c): `asset.createdAt` from disk is DROPPED here because
+  //    craft's `store.dispatch` builds its own envelope with
+  //    `timestamp: Date.now()` and then `asset:register` sets
+  //    `asset.createdAt = envelope.timestamp`. The on-disk value cannot survive
+  //    hydration without a lower-level craft entry point. This means a clean
+  //    round-trip `parse → hydrate → serialize` is NOT byte-equal on createdAt
+  //    — Plan 3b Task 6 verified this. The first autosave after startup is
+  //    therefore unavoidable (one POST /api/files per session). Plan 3c will
+  //    need to either (a) expose `dispatchEnvelope(envelope)` in craft so we
+  //    can pass our own timestamp, or (b) drop createdAt from ProjectAsset.
   for (const asset of file.assets) {
     cmds.push(makeEnvelope("human", {
       type: "asset:register",
@@ -292,8 +303,8 @@ export function serializeProject(
       name: asset.name,
       metadata: asset.metadata as Record<string, number | string | undefined>,
       createdAt: asset.createdAt,
-      ...(asset.tags ? { tags: [...asset.tags] } : {}),
       ...(asset.status ? { status: asset.status } : {}),
+      ...(asset.tags ? { tags: [...asset.tags] } : {}),
     });
   }
 
@@ -303,13 +314,15 @@ export function serializeProject(
     provenance.push({
       toAssetId: edge.toAssetId,
       fromAssetId: edge.fromAssetId,
+      // Field order matches the seed project.json so a clean round-trip is
+      // byte-equal: type, actor, agentId?, timestamp, label?, params?.
       operation: {
         type: edge.operation.type,
         actor: edge.operation.actor,
-        timestamp: edge.operation.timestamp,
         ...(edge.operation.agentId !== undefined
           ? { agentId: edge.operation.agentId }
           : {}),
+        timestamp: edge.operation.timestamp,
         ...(edge.operation.label !== undefined
           ? { label: edge.operation.label }
           : {}),
