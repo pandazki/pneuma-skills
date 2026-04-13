@@ -40,4 +40,14 @@ describe("preview component module imports", () => {
     const mod = await import("../viewer/timeline/hooks/useWaveform.js");
     expect(typeof mod.useWaveform).toBe("function");
   });
+
+  test("TrackLabel exports a function", async () => {
+    const mod = await import("../viewer/timeline/TrackLabel.js");
+    expect(typeof mod.TrackLabel).toBe("function");
+  });
+
+  test("ClipStrip exports a function", async () => {
+    const mod = await import("../viewer/timeline/ClipStrip.js");
+    expect(typeof mod.ClipStrip).toBe("function");
+  });
 });
