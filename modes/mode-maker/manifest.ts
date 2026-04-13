@@ -54,6 +54,22 @@ For ModeManifest reference, ViewerContract patterns, publishing workflow, and mo
     ],
   },
 
+  sources: {
+    files: {
+      kind: "file-glob",
+      config: {
+        patterns: [
+          "manifest.ts", "manifest.js",
+          "pneuma-mode.ts", "pneuma-mode.js",
+          "viewer/**/*.tsx", "viewer/**/*.ts", "viewer/**/*.js",
+          "skill/**/*.md", "skill/**/*",
+          "seed/**/*",
+        ],
+        ignore: [".build/**"],
+      },
+    },
+  },
+
   viewerApi: {
     workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: true },
   },

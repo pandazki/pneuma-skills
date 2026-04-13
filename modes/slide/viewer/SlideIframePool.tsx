@@ -18,7 +18,7 @@ import {
   useMemo,
 } from "react";
 import type {
-  ViewerPreviewProps,
+  ViewerFileContent,
   ViewerSelectionContext,
 } from "../../../core/types/viewer-contract.js";
 
@@ -30,7 +30,7 @@ const MAX_POOL_SIZE = 20;
 
 interface SlideIframePoolProps {
   slides: { file: string; title: string }[];
-  files: ViewerPreviewProps["files"];
+  files: ViewerFileContent[];
   themeCSS: string;
   activeIndex: number;
   isSelectMode: boolean;
@@ -40,11 +40,15 @@ interface SlideIframePoolProps {
   onTextEdit?: (slideFile: string, html: string, changes?: { tag: string; before: string; after: string }[]) => void;
   /** Build the full srcdoc for a slide's HTML + theme */
   buildSrcdoc: (slideHtml: string, themeCSS: string) => string;
-  /** Find a slide's HTML content by file path */
+  /** Find a slide's HTML content by file path (content-set aware) */
   findSlideContent: (
-    files: ViewerPreviewProps["files"],
+    files: ViewerFileContent[],
     slidePath: string,
+    contentSet?: string | null,
   ) => string;
+  /** Active content set (used to disambiguate slide lookup when multiple
+   *  content sets share the same `slides/slide-01.html` relative path). */
+  activeContentSet: string | null;
   /** CSS selector to highlight in the active iframe (for navigating to historical selections) */
   highlightSelector?: string | null;
   /** CSS selectors for annotation highlights on the active slide */
@@ -69,6 +73,7 @@ export default function SlideIframePool({
   onTextEdit,
   buildSrcdoc,
   findSlideContent,
+  activeContentSet,
   highlightSelector,
   annotationSelectors,
   onEscapeKey,
@@ -249,12 +254,12 @@ export default function SlideIframePool({
     const versionTag = `<meta name="image-version" content="${imageVersion}">`;
     for (const slide of slides) {
       if (pool.has(slide.file)) {
-        const html = findSlideContent(files, slide.file);
+        const html = findSlideContent(files, slide.file, activeContentSet);
         map.set(slide.file, buildSrcdoc(html, themeCSS).replace("</head>", `${versionTag}</head>`));
       }
     }
     return map;
-  }, [slides, pool, files, themeCSS, buildSrcdoc, findSlideContent, imageVersion]);
+  }, [slides, pool, files, themeCSS, buildSrcdoc, findSlideContent, activeContentSet, imageVersion]);
 
   // Check for srcdoc changes and update iframes that need it
   useEffect(() => {

@@ -66,3 +66,13 @@ export type {
   MemorySearchResult,
   MemorySource,
 } from "./plugin.js";
+
+export type {
+  Source,
+  SourceEvent,
+  SourceProvider,
+  SourceContext,
+  FileChannel,
+  FileChangeEvent,
+  SourceDescriptor,
+} from "./source.js";

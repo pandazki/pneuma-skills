@@ -70,6 +70,93 @@ const DEFAULT_IGNORE = [
 export interface FileUpdate {
   path: string;
   content: string;
+  /**
+   * Origin tag added by the file watcher. "self" if this change matches
+   * a pending registerSelfWrite/Delete entry (i.e. it's the echo of a
+   * viewer write routed through /api/files); "external" otherwise.
+   * Always present on updates emitted after P3.
+   */
+  origin: "self" | "external";
+  /**
+   * True for unlink events (file deleted on disk). `content` is empty
+   * string in that case. Consumers that care about delete vs empty-write
+   * should check this flag.
+   */
+  deleted?: boolean;
+}
+
+/**
+ * pendingSelfWrites is the ONLY place in the system where viewer-origin
+ * writes are identified. When the /api/files POST handler receives a
+ * write, it calls `registerSelfWrite(path, content)` here. When chokidar
+ * subsequently fires for that path, we look up the entry and tag the
+ * outgoing FileUpdate with origin: "self" if the content matches. Entries
+ * auto-expire after PENDING_SELF_WRITE_TTL_MS to guarantee an unmatched
+ * registration doesn't poison a later legitimate external edit.
+ *
+ * pendingSelfDeletes works the same way for DELETE /api/files, but since
+ * a delete has no content to match on, the map stores only the expiry
+ * timestamp. The next chokidar `unlink` event for that path consumes the
+ * entry regardless of timing (within the TTL).
+ */
+const PENDING_SELF_WRITE_TTL_MS = 5000;
+
+interface PendingSelfWrite {
+  content: string;
+  expiresAt: number;
+}
+
+const pendingSelfWrites = new Map<string, PendingSelfWrite[]>();
+const pendingSelfDeletes = new Map<string, number /* expiresAt */>();
+
+export function registerSelfWrite(relPath: string, content: string): void {
+  const entry: PendingSelfWrite = {
+    content,
+    expiresAt: Date.now() + PENDING_SELF_WRITE_TTL_MS,
+  };
+  const existing = pendingSelfWrites.get(relPath) ?? [];
+  existing.push(entry);
+  pendingSelfWrites.set(relPath, existing);
+}
+
+export function registerSelfDelete(relPath: string): void {
+  pendingSelfDeletes.set(relPath, Date.now() + PENDING_SELF_WRITE_TTL_MS);
+}
+
+/**
+ * Consume a pending self-write entry matching this content.
+ * Content equality is the matching strategy. Expired entries are dropped
+ * silently without matching so a stale registration cannot mis-tag a
+ * later legitimate external edit.
+ */
+function consumeSelfWrite(relPath: string, content: string): boolean {
+  const queue = pendingSelfWrites.get(relPath);
+  if (!queue || queue.length === 0) return false;
+  const now = Date.now();
+  // Drop expired entries from the head.
+  while (queue.length > 0 && queue[0].expiresAt < now) {
+    queue.shift();
+  }
+  if (queue.length === 0) {
+    pendingSelfWrites.delete(relPath);
+    return false;
+  }
+  const idx = queue.findIndex((e) => e.content === content);
+  if (idx < 0) return false;
+  queue.splice(idx, 1);
+  if (queue.length === 0) pendingSelfWrites.delete(relPath);
+  return true;
+}
+
+function consumeSelfDelete(relPath: string): boolean {
+  const exp = pendingSelfDeletes.get(relPath);
+  if (!exp) return false;
+  if (exp < Date.now()) {
+    pendingSelfDeletes.delete(relPath);
+    return false;
+  }
+  pendingSelfDeletes.delete(relPath);
+  return true;
 }
 
 /**
@@ -144,7 +231,10 @@ export function startFileWatcher(
       if (existsSync(absPath)) {
         try {
           const content = readFileSync(absPath, "utf-8");
-          files.push({ path: relPath, content });
+          const origin: "self" | "external" = consumeSelfWrite(relPath, content)
+            ? "self"
+            : "external";
+          files.push({ path: relPath, content, origin });
         } catch {
           // skip unreadable files
         }
@@ -166,7 +256,9 @@ export function startFileWatcher(
     // Image changes: notify browser to bust cache (don't read content)
     const ext = relPath.slice(relPath.lastIndexOf(".")).toLowerCase();
     if (IMAGE_EXTS.has(ext)) {
-      onUpdate([{ path: relPath, content: "" }]);
+      // Images are never self-writes from a viewer (data URLs bypass the
+      // registerSelfWrite path per the plan), so hard-code "external".
+      onUpdate([{ path: relPath, content: "", origin: "external" }]);
       return;
     }
 
@@ -180,8 +272,27 @@ export function startFileWatcher(
     debounceTimer = setTimeout(flush, DEBOUNCE_MS);
   };
 
+  const handleUnlink = (absPath: string) => {
+    // Normalize to forward slashes for cross-platform consistency.
+    const relPath = relative(workspace, absPath).replaceAll("\\", "/");
+
+    // Apply the same watch-pattern + image filter as add/change, so deletes
+    // of ignored file types don't leak out. Images fall through the pattern
+    // filter (their extensions aren't in watchExtensions) but we still want
+    // to emit delete events for them, so check IMAGE_EXTS first.
+    const ext = relPath.slice(relPath.lastIndexOf(".")).toLowerCase();
+    const isImage = IMAGE_EXTS.has(ext);
+    if (!isImage && !matchesWatchPatterns(relPath, watchExtensions)) return;
+
+    const origin: "self" | "external" = consumeSelfDelete(relPath) ? "self" : "external";
+    // Emit immediately — the file is gone, so we can't route through the
+    // readFileSync-backed debounce flush. This mirrors the image branch.
+    onUpdate([{ path: relPath, content: "", origin, deleted: true }]);
+  };
+
   watcher.on("change", scheduleFlush);
   watcher.on("add", scheduleFlush);
+  watcher.on("unlink", handleUnlink);
   watcher.on("error", (err) => {
     // Permission errors (EACCES/EPERM) during directory traversal — log and continue
     console.warn(`[file-watcher] ${err}`);

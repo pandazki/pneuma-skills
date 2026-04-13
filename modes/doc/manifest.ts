@@ -37,6 +37,13 @@ For editing conventions, context format, and workspace constraints, consult the 
     serveDir: ".",
   },
 
+  sources: {
+    files: {
+      kind: "file-glob",
+      config: { patterns: ["**/*.md"] },
+    },
+  },
+
   viewerApi: {
     workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: false },
     locatorDescription: 'After creating or editing documents, embed locator cards so the user can jump to them. Navigate to file: `data=\'{"file":"notes.md"}\'`.',

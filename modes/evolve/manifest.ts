@@ -35,6 +35,8 @@ For the full evolution process, data access scripts, proposal format, and intera
     ignorePatterns: [],
   },
 
+  sources: {},
+
   viewerApi: {
     workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: false },
   },

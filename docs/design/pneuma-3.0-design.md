@@ -169,6 +169,8 @@ Viewer 占据整个窗口，Agent 完全隐藏。
 
 关键点：**app 布局的 viewer 不依赖 agent 写文件来驱动 UI 更新。** 它通过 `onNotifyAgent` 发送任务，通过 `actionRequest` 接收结果，直接在内存中渲染。文件系统只用于持久化交付物。
 
+> **实现基础设施（2026-04 新增）**：要让 app 布局的 viewer 真正「用 domain 语言驱动 UI」而不是「看到一堆原始文件」，viewer 需要一个 typed + origin-aware 的订阅协议。这就是 `feat/source-abstraction` 引入的 `Source<T>` 层——`T` 是 mode 的 domain 模型（`Deck` / `Board` / `TranslationJob` / ...），provider（`file-glob` / `json-file` / `aggregate-file` / 自定义）负责 domain ↔ 文件/远端介质的翻译。详见实施计划 `docs/superpowers/plans/2026-04-13-source-abstraction.md` 和协议文档 `docs/reference/viewer-agent-protocol.md` 的 "Sources — Viewer 的数据通道" 小节。3.0 的 "viewer 是整个 app 的 UI" 愿景需要这层基础设施才算真正落地——没有它，viewer 作者要么被迫手写 file echo detection（现状），要么在 `files.find(...)` 里把 storage 形状泄漏进 UI 代码。
+
 ---
 
 ## 4. Manifest 扩展

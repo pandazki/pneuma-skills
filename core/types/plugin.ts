@@ -5,6 +5,8 @@
  * Read by PluginRegistry to drive discovery, loading, and activation.
  */
 
+import type { SourceProvider } from "./source.js";
+
 // ── Hook Names ──────────────────────────────────────────────────────────────
 
 export type HookName =
@@ -102,6 +104,20 @@ export interface PluginManifest {
    */
   memorySource?: boolean;
 
+  /**
+   * Source providers contributed by this plugin. Registered on the
+   * session's SourceRegistry during plugin activation, making them
+   * available to every mode (builtin + external) that declares
+   * `sources: { ..., [id]: { kind: "<your-kind>" } }` in its manifest.
+   *
+   * Naming: use a plugin-scoped kind to avoid collisions with built-ins.
+   * For example, a Redis provider from a plugin named "@acme/pneuma-redis"
+   * should register as kind "acme-redis" rather than just "redis".
+   * Collision with an existing kind causes registration to throw
+   * (SourceRegistry.register does not silently overwrite).
+   */
+  sources?: SourceProvider[];
+
   /** Lifecycle: relative path to activate(context) function */
   activate?: string;
   /** Lifecycle: relative path to deactivate() function */
@@ -153,6 +169,8 @@ export interface LoadedPlugin {
   hooks: Partial<Record<HookName, HookHandler>>;
   slots: Partial<Record<SlotName, SlotDeclaration>>;
   routes: ((ctx: PluginRouteContext) => unknown) | null;
+  /** Source providers from this plugin. Empty if the plugin doesn't ship any. */
+  sources: SourceProvider[];
 }
 
 // ── Settings Storage ────────────────────────────────────────────────────────

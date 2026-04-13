@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.29.0] - 2026-04-13
+
+### Added
+- **`Source<T>` data-channel abstraction** — viewer-contract-layer infrastructure that realizes the "viewer is the whole app UI" vision from `docs/design/pneuma-3.0-design.md`. Every mode viewer now consumes typed, origin-aware, subscription-shaped data channels via `props.sources` instead of a raw `files: ViewerFileContent[]` prop
+- **Four built-in source providers** in `core/sources/`:
+  - `memory` — ephemeral in-process state
+  - `file-glob` — multi-file aggregate read (domain is files)
+  - `json-file` — single structured file with parse/serialize + self-echo drop
+  - `aggregate-file` — multi-file domain aggregate with user-supplied `load(files) → T` + `save(T, current) → { writes, deletes }` pure functions
+- **`BaseSource` abstract class** enforcing four invariants via TDD: single writer (Promise queue serialization), change-read-via-subscription, time-locked write Promises (await returns only after the `origin: "self"` event has been delivered to all subscribers), origin-tagged events. 46 bun:test cases pin the contract
+- **Server-side origin tagging** — `pendingSelfWrites` + `pendingSelfDeletes` TTL maps in `server/file-watcher.ts` identify self-origin chokidar echoes at the source. The only place self/external origin is determined; viewers never reverse-engineer it
+- **`DELETE /api/files?path=...`** route — symmetric with POST, wired to `pendingSelfDeletes` so unlink events are origin-tagged
+- **`BrowserFileChannel`** in `src/runtime/file-channel.ts` — bridges the Zustand store + WebSocket + `/api/files` into the `FileChannel` interface that providers consume via `SourceContext.files`
+- **`SourceRegistry`** + **`useSourceInstances`** React hook — builds `{sources, fileChannel}` per active mode with proper lifecycle cleanup on mode switch
+- **`useSource<T>`** React hook wrapping `useSyncExternalStore` — returns `{value, write, status}` with `status.lastOrigin` tracking. StrictMode-safe
+- **`PluginManifest.sources`** — extension point for third-party source providers; `PluginRegistry.collectSourceProviders()` flattens them
+- **Domain types for Pattern C modes** — `modes/slide/domain.ts` defining `Deck`, `modes/webcraft/domain.ts` defining `Site`, `modes/illustrate/domain.ts` defining `Studio`. Each ships with `load`/`save` pure functions that the aggregate-file provider calls. Viewers consume `Source<Deck>` / `Source<Site>` / `Source<Studio>` directly — zero `files.find()` or inline JSON.stringify in viewer code
+- **Migration documentation**:
+  - `docs/migration/2.29-source-abstraction.md` — decision tree + 4 patterns (A read-only, B headless opt-out, C typed aggregate, D dynamic write target) + common pitfalls + escape hatch for staying on 2.28.x
+  - `docs/superpowers/plans/2026-04-13-source-abstraction.md` — 5768-line implementation plan
+  - `docs/superpowers/plans/clipcraft-source-migration.md` — focused guide for the ClipCraft mode author
+  - `docs/reference/viewer-agent-protocol.md` gained a new "Sources — Viewer 的数据通道" section + design principle 7 "Files 归 agent, Domain 归 viewer" + new `基本立场` three-layer framing (Layer 1 = files for agents, Layer 2 = runtime transport, Layer 3 = `Source<T>` for viewers)
+- **`viewer-as-player` framing pass** across README, CLAUDE.md, viewer-agent-protocol.md, pneuma-3.0-design.md, ADR-007
+
+### Changed — ⚠️ Breaking for external mode authors
+- **`ViewerPreviewProps.files` is removed.** Every viewer now receives `props.sources: Record<string, Source<unknown>>` + `props.fileChannel: FileChannel` instead. Viewers destructure `sources` and derive their file list via `useSource(sources.files as Source<ViewerFileContent[]>)`. Local variable `files` inside the component works identically to the old prop after one line of setup.
+- **`ModeManifest.sources` is required.** Every manifest must declare a `sources` field (possibly `{}` for headless modes like evolve). The synthesis fallback that auto-generated a `sources.files` file-glob from `viewer.watchPatterns` has been removed. Any external mode without a `sources` field will throw on load with a clear error message pointing at the migration guide.
+- **Error message for pre-2.29 modes** is extensively self-documenting: it prints which mode is broken, shows the 4-line fix inline, points at `docs/migration/2.29-source-abstraction.md` for the full guide, and tells users how to pin to `pneuma-skills@2.28` as an escape hatch. No guessing required.
+- **`FileUpdate` (server-side)** gained required `origin: "self" | "external"` and optional `deleted?: boolean` fields. The WebSocket `content_update` message shape is unchanged at the protocol level but the per-file entries now carry `origin`
+- **All 10 in-repo builtin modes migrated** to the new contract. 29-file diff across `modes/doc/`, `modes/diagram/`, `modes/draw/`, `modes/evolve/`, `modes/gridboard/`, `modes/illustrate/`, `modes/mode-maker/`, `modes/remotion/`, `modes/slide/`, `modes/webcraft/`. Deleted echo-detection refs: `lastExternalRef` (doc), `lastSavedContentRef` + `isUpdatingFromFileRef` + load-bearing ref-before-fetch ordering (draw), `lastFileContentRef` + `currentFilePathRef` skip-guard (diagram). Deleted 6 inline `saveFile` helpers + ~8 inline `fetch('/api/files')` call sites.
+- **CLAUDE.md builtin modes list** no longer mentions `clipcraft` (it was stale — clipcraft lives in the `feat/clipcraft-by-pneuma-craft` branch, not as a builtin)
+
+### Migration path for external mode authors
+
+If you maintain a mode that's installed via `pneuma mode add github:...` or similar, you have three options:
+
+1. **Migrate (recommended).** Follow `docs/migration/2.29-source-abstraction.md`. 4–15 minutes for most modes. Add a `sources` field to your manifest, destructure `sources` instead of `files` in your viewer, optionally use `fileChannel.write` for dynamic-target saves.
+2. **Pin to 2.28.x.** `npm install -g pneuma-skills@2.28` or download the last 2.28.x desktop installer. Your mode keeps working unchanged. 2.28 is the last release with the pre-Source contract.
+3. **For ClipCraft-class modes** (typed single-file aggregate with echo-loop concerns): follow `docs/superpowers/plans/clipcraft-source-migration.md` — it covers the three-ref dance → single `json-file` source migration with before/after code.
+
+No intermediate compat layer ships — the new contract is the only contract going forward. The error message at `SourceRegistry.effectiveSources` walks you through the fix the first time it fires.
+
 ## [2.28.0] - 2026-04-08
 
 ### Added

@@ -26,10 +26,14 @@ import { CSS } from "@dnd-kit/utilities";
 import type {
   ViewerPreviewProps,
   ViewerSelectionContext,
+  ViewerFileContent,
 } from "../../../core/types/viewer-contract.js";
 import { useResilientParse } from "../../../core/hooks/use-resilient-parse.js";
 import { buildSelectionScript } from "../../../core/iframe-selection/index.js";
 import { useStore } from "../../../src/store.js";
+import { useSource } from "../../../src/hooks/useSource.js";
+import type { Source } from "../../../core/types/source.js";
+import type { Deck, DeckManifest } from "../domain.js";
 import { useSlideThumbnails, sanitizeHtmlQuotes } from "../hooks/useSlideThumbnails.js";
 import SlideIframePool from "./SlideIframePool.js";
 import HighlighterCanvas from "./HighlighterCanvas.js";
@@ -52,7 +56,7 @@ type NavigatorPosition = "left" | "bottom" | "hidden";
 
 /** Parse manifest.json from the files array */
 function parseManifest(
-  files: ViewerPreviewProps["files"],
+  files: ViewerFileContent[],
 ) {
   const mf = files.find(
     (f) => f.path === "manifest.json" || f.path.endsWith("/manifest.json"),
@@ -62,19 +66,53 @@ function parseManifest(
   return { data: JSON.parse(mf.content) as SlideManifest, file: mf.path };
 }
 
-/** Find theme.css content from files array */
-function findThemeCSS(files: ViewerPreviewProps["files"]): string {
+/**
+ * Find theme.css content from files array, preferring the active
+ * content set's theme. Without a content-set-aware lookup the
+ * multi-content-set case would pick the first content set's theme.css
+ * regardless of which content set the user is viewing.
+ */
+function findThemeCSS(
+  files: ViewerFileContent[],
+  contentSet?: string | null,
+): string {
+  if (contentSet) {
+    const fullPath = `${contentSet}/theme.css`;
+    const exact = files.find((f) => f.path === fullPath);
+    if (exact) return exact.content;
+  }
   const themeFile = files.find(
     (f) => f.path === "theme.css" || f.path.endsWith("/theme.css"),
   );
   return themeFile?.content || "";
 }
 
-/** Find a slide's HTML content by its file path */
+/**
+ * Find a slide's HTML content by its file path.
+ *
+ * `slidePath` is the manifest-relative path (e.g. "slides/slide-01.html"),
+ * unprefixed. When multiple content sets are present (e.g. `en-dark/` and
+ * `zh-light/`) the raw `files` array from `sources.files` contains slides
+ * from ALL content sets simultaneously. A naive `endsWith('/' + slidePath)`
+ * match would pick whichever content set happens to come first in the
+ * array, which can silently deliver the wrong language's slide content
+ * under the active content-set header.
+ *
+ * The fix: take an optional `contentSet` parameter and prefer an exact
+ * match against `${contentSet}/${slidePath}`. Fall back to the legacy
+ * `endsWith` behavior only when no content set is active (single-content
+ * workspaces).
+ */
 function findSlideContent(
-  files: ViewerPreviewProps["files"],
+  files: ViewerFileContent[],
   slidePath: string,
+  contentSet?: string | null,
 ): string {
+  if (contentSet) {
+    const fullPath = `${contentSet}/${slidePath}`;
+    const file = files.find((f) => f.path === fullPath);
+    if (file) return file.content;
+  }
   const file = files.find(
     (f) => f.path === slidePath || f.path.endsWith(`/${slidePath}`),
   );
@@ -458,7 +496,7 @@ function AnnotationPopover({
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function SlidePreview({
-  files,
+  sources,
   selection,
   onSelect: rawOnSelect,
   mode: rawPreviewMode,
@@ -530,10 +568,37 @@ export default function SlidePreview({
   const [showHighlighter, setShowHighlighter] = useState(false);
 
   const [highlightSelector, setHighlightSelector] = useState<string | null>(null);
-  const manifest = useResilientParse(files, parseManifest, onNotifyAgent);
+  // Domain source: full Deck (every content set's manifest.json), keyed by
+  // directory prefix. We pick the entry matching activeContentSet (or "" for
+  // root) and present it to the rest of the component as `manifest`.
+  const deckSource = sources.deck as Source<Deck>;
+  const { value: deck, write: writeDeck } = useSource(deckSource);
+  // Companion file-glob: raw file contents used by iframe srcdoc, theme.css
+  // lookup, and per-slide HTML rendering. The deck source covers structural
+  // metadata; this source covers the raw body that the renderer splices.
+  const filesSource = sources.files as Source<ViewerFileContent[]>;
+  const { value: filesValue } = useSource(filesSource);
+  const files: ViewerFileContent[] = filesValue ?? [];
   const activeContentSet = useStore((s) => s.activeContentSet);
   const contentBase = activeContentSet ? activeContentSet + "/" : "";
-  const themeCSS = useMemo(() => findThemeCSS(files), [files]);
+  const deckPrefix = activeContentSet ?? "";
+  const manifest = useMemo<DeckManifest | null>(() => {
+    if (!deck) return null;
+    const direct = deck.byContentSet[deckPrefix];
+    if (direct) return direct;
+    // Fallback: pick the first available content set (e.g. activeContentSet
+    // not yet hydrated, or root-only workspace).
+    const first = Object.values(deck.byContentSet)[0];
+    return first ?? null;
+  }, [deck, deckPrefix]);
+  // Silence unused-variable lint for the legacy resilient parser (kept
+  // around for other modes; no longer used here).
+  void useResilientParse;
+  void parseManifest;
+  const themeCSS = useMemo(
+    () => findThemeCSS(files, activeContentSet),
+    [files, activeContentSet],
+  );
   const boundBuildSrcdoc = useCallback(
     (html: string, css: string) => buildSrcdoc(html, css, contentBase),
     [contentBase],
@@ -633,17 +698,16 @@ export default function SlidePreview({
         setActiveSlideIndex(activeSlideIndex + 1);
       }
 
-      // Persist to file in background
-      const newManifest = { ...manifest, slides: newSlides };
-      const baseUrl = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
-      fetch(`${baseUrl}/api/files`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          path: "manifest.json",
-          content: JSON.stringify(newManifest, null, 2) + "\n",
-        }),
-      }).catch(() => {});
+      // Persist via domain source — writeDeck merges back into the full Deck.
+      if (deck) {
+        const nextDeck: Deck = {
+          byContentSet: {
+            ...deck.byContentSet,
+            [deckPrefix]: { ...manifest, slides: newSlides },
+          },
+        };
+        writeDeck(nextDeck).catch(() => {});
+      }
 
       pushUserAction({
         timestamp: Date.now(),
@@ -651,7 +715,7 @@ export default function SlidePreview({
         description: `Moved slide "${moved.title || moved.file}" from position ${fromIndex + 1} to ${toIndex + 1}`,
       });
     },
-    [manifest, slides, activeSlideIndex, pushUserAction],
+    [manifest, slides, activeSlideIndex, pushUserAction, deck, deckPrefix, writeDeck],
   );
 
   // Delete slide — remove from manifest (confirmation handled by UI component)
@@ -669,16 +733,17 @@ export default function SlidePreview({
         setActiveSlideIndex(activeSlideIndex - 1);
       }
 
-      const newManifest = { ...manifest, slides: newSlides };
-      const baseUrl = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
-      fetch(`${baseUrl}/api/files`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          path: "manifest.json",
-          content: JSON.stringify(newManifest, null, 2) + "\n",
-        }),
-      }).catch(() => {});
+      // Persist via domain source — saveDeck diffs old vs new manifest
+      // and queues the orphaned slide HTML file for delete.
+      if (deck) {
+        const nextDeck: Deck = {
+          byContentSet: {
+            ...deck.byContentSet,
+            [deckPrefix]: { ...manifest, slides: newSlides },
+          },
+        };
+        writeDeck(nextDeck).catch(() => {});
+      }
 
       pushUserAction({
         timestamp: Date.now(),
@@ -686,25 +751,38 @@ export default function SlidePreview({
         description: `Deleted slide ${index + 1}: "${slide.title || slide.file}"`,
       });
     },
-    [manifest, slides, activeSlideIndex, pushUserAction],
+    [manifest, slides, activeSlideIndex, pushUserAction, deck, deckPrefix, writeDeck],
   );
 
   // Handle text edit from iframe (edit mode)
   const editTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const pendingChangesRef = useRef<{ tag: string; before: string; after: string }[]>([]);
+  const pendingEditsRef = useRef<Record<string, string>>({});
   const handleTextEdit = useCallback(
     (slideFile: string, html: string, changes?: { tag: string; before: string; after: string }[]) => {
       if (changes?.length) {
         pendingChangesRef.current.push(...changes);
       }
+      pendingEditsRef.current[slideFile] = html;
       clearTimeout(editTimerRef.current);
       editTimerRef.current = setTimeout(() => {
-        const baseUrl = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
-        fetch(`${baseUrl}/api/files`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: slideFile, content: html + "\n" }),
-        }).catch(() => {});
+        // Flush pending per-slide HTML edits through the domain source
+        // via the __edits carrier (consumed by saveDeck).
+        const edits = pendingEditsRef.current;
+        pendingEditsRef.current = {};
+        if (deck && manifest) {
+          const nextManifest: DeckManifest & { __edits?: Record<string, string> } = {
+            ...manifest,
+            __edits: edits,
+          };
+          const nextDeck: Deck = {
+            byContentSet: {
+              ...deck.byContentSet,
+              [deckPrefix]: nextManifest,
+            },
+          };
+          writeDeck(nextDeck).catch(() => {});
+        }
 
         const slide = slides.find((s) => s.file === slideFile);
         const label = slide?.title || slideFile;
@@ -722,7 +800,7 @@ export default function SlidePreview({
         });
       }, 800);
     },
-    [slides, pushUserAction],
+    [slides, pushUserAction, deck, manifest, deckPrefix, writeDeck],
   );
 
   // Clamp active index when slides change
@@ -1247,7 +1325,7 @@ export default function SlidePreview({
       const currentSlide = slides[activeSlideIndex];
       if (!currentSlide) return;
 
-      const slideHtml = findSlideContent(files, currentSlide.file);
+      const slideHtml = findSlideContent(files, currentSlide.file, activeContentSet);
       if (!slideHtml) return;
 
       // Keep strokes visible
@@ -1432,6 +1510,7 @@ export default function SlidePreview({
             onTextEdit={handleTextEdit}
             buildSrcdoc={boundBuildSrcdoc}
             findSlideContent={findSlideContent}
+            activeContentSet={activeContentSet}
             highlightSelector={highlightSelector}
             annotationSelectors={annotationSelectors}
             onEscapeKey={() => {
@@ -1529,7 +1608,7 @@ export default function SlidePreview({
       <div ref={fullscreenRef} className="flex flex-col h-full bg-black">
         <div className="flex-1 flex items-center justify-center">
           <iframe
-            srcDoc={boundBuildSrcdoc(currentSlide ? findSlideContent(files, currentSlide.file) : "", themeCSS)}
+            srcDoc={boundBuildSrcdoc(currentSlide ? findSlideContent(files, currentSlide.file, activeContentSet) : "", themeCSS)}
             title={currentSlide?.title || "Slide"}
             className="w-full h-full border-0"
             sandbox="allow-scripts"

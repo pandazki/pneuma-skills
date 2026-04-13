@@ -13,10 +13,13 @@ import { useState, useEffect, useRef, useCallback, useMemo, type CSSProperties }
 import type {
   ViewerPreviewProps,
   ViewerSelectionContext,
+  ViewerFileContent,
 } from "../../../core/types/viewer-contract.js";
-import { useResilientParse } from "../../../core/hooks/use-resilient-parse.js";
+import type { Source } from "../../../core/types/source.js";
+import { useSource } from "../../../src/hooks/useSource.js";
 import { buildSelectionScript } from "../../../core/iframe-selection/index.js";
 import { useStore } from "../../../src/store.js";
+import type { Site } from "../domain.js";
 
 // ── Edit Mode Extension ─────────────────────────────────────────────────────
 
@@ -805,7 +808,8 @@ function AnnotationPopover({
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function WebPreview({
-  files,
+  sources,
+  fileChannel,
   selection,
   onSelect: rawOnSelect,
   mode: rawPreviewMode,
@@ -849,36 +853,26 @@ export default function WebPreview({
     rect: { left: number; top: number; right: number; bottom: number; width: number; height: number };
   } | null>(null);
 
-  // Parse manifest.json for page list with resilient fallback
-  const manifestPages = useResilientParse<PageEntry[]>(files, (files) => {
-    const mf = files.find(
-      (f) => f.path === "manifest.json" || f.path.endsWith("/manifest.json"),
-    );
-    if (!mf) return { data: null };
-    // Let JSON.parse throw — useResilientParse catches it
-    const parsed = JSON.parse(mf.content);
-    // Accept both { pages: [...] } and { files: [...] } formats
-    const entries: any[] | undefined = parsed.pages || parsed.files;
-    if (!Array.isArray(entries) || entries.length === 0) return { data: null };
-    return {
-      data: entries.map((p: { file?: string; path?: string; title?: string }) => ({
-        file: p.file || p.path || "",
-        title: p.title || (p.file || p.path || "").replace(/\.html$/i, "").replace(/^.*\//, ""),
-      })),
-      file: mf.path,
-    };
-  }, onNotifyAgent);
-
-  // Fallback to raw HTML files when no manifest exists
+  // Domain source: the full Site (every content set's page list), keyed
+  // by content-set prefix. Pick the active bucket at render time; fall
+  // back to the first one if activeContentSet hasn't been set yet.
+  const siteSource = sources.site as Source<Site>;
+  const { value: site } = useSource(siteSource);
+  // Companion file-glob: raw HTML/CSS/JS content used by iframe srcdoc
+  // construction and handleTextEdit (splicing <body> edits back into the
+  // full original document).
+  const filesSource = sources.files as Source<ViewerFileContent[]>;
+  const { value: filesValue } = useSource(filesSource);
+  const files: ViewerFileContent[] = filesValue ?? [];
   const pageEntries = useMemo<PageEntry[]>(() => {
-    if (manifestPages) return manifestPages;
-    return files
-      .filter((f) => /\.html$/i.test(f.path))
-      .map((f) => ({
-        file: f.path,
-        title: f.path.replace(/\.html$/i, "").replace(/^.*\//, ""),
-      }));
-  }, [manifestPages, files]);
+    if (!site) return [];
+    const key = activeContentSet ?? "";
+    const bucket = site.byContentSet[key];
+    if (bucket) return bucket.pages;
+    const firstKey = Object.keys(site.byContentSet)[0];
+    if (firstKey === undefined) return [];
+    return site.byContentSet[firstKey].pages;
+  }, [site, activeContentSet]);
 
   const htmlFiles = useMemo(
     () => pageEntries.map((p) => p.file),
@@ -903,13 +897,22 @@ export default function WebPreview({
     return `${apiBase}/content/`;
   }, [activeContentSet]);
 
-  // Build srcdoc for the current file
+  // Build srcdoc for the current file.
+  //
+  // Note on path resolution: `currentFile` is the manifest-relative path
+  // like "index.html" (unprefixed). After P5.11 removed the useViewerProps
+  // content-set remap, the raw files from `sources.files` carry the
+  // content-set prefix like "gazette/index.html". We reconstruct the
+  // fully-qualified path before lookup.
   const srcdoc = useMemo(() => {
     if (!currentFile) return "";
-    const fileContent = files.find((f) => f.path === currentFile);
+    const fullPath = activeContentSet
+      ? `${activeContentSet}/${currentFile}`
+      : currentFile;
+    const fileContent = files.find((f) => f.path === fullPath);
     if (!fileContent) return "";
     return buildSrcdoc(fileContent.content, baseHref);
-  }, [currentFile, files, baseHref]);
+  }, [currentFile, files, baseHref, activeContentSet]);
 
   // Stable srcdoc: only update when the actual file content changes (not on
   // every `files` array reference change).  This prevents the iframe from
@@ -981,12 +984,14 @@ export default function WebPreview({
     if (changes?.length) pendingChangesRef.current.push(...changes);
     clearTimeout(editTimerRef.current);
     editTimerRef.current = setTimeout(() => {
-      const apiBase = import.meta.env.DEV
-        ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`
-        : "";
-
-      // Reconstruct the full HTML document by replacing the body content
-      const fileContent = files.find((f) => f.path === file);
+      // Reconstruct the full HTML document by replacing the body content.
+      // `file` is the manifest-relative path (e.g. "index.html"); the raw
+      // `files` array from sources.files carries the content-set prefix
+      // (e.g. "gazette/index.html"), so we fully qualify before looking up.
+      const fullPath = activeContentSet
+        ? `${activeContentSet}/${file}`
+        : file;
+      const fileContent = files.find((f) => f.path === fullPath);
       if (!fileContent) return;
       const original = fileContent.content;
       let updated: string;
@@ -999,13 +1004,11 @@ export default function WebPreview({
         updated = html;
       }
 
-      // Persist via API
+      // Persist via the source-aware file channel (origin-tagged "self").
       const savePath = activeContentSet ? `${activeContentSet}/${file}` : file;
-      fetch(`${apiBase}/api/files`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: savePath, content: updated }),
-      }).catch(() => {});
+      fileChannel.write(savePath, updated).catch((err) => {
+        console.error("[webcraft] save failed", err);
+      });
 
       // Record user action
       const batch = pendingChangesRef.current.splice(0);
@@ -1019,7 +1022,7 @@ export default function WebPreview({
         description: desc,
       });
     }, 800);
-  }, [files, activeContentSet]);
+  }, [files, activeContentSet, fileChannel]);
 
   // Listen for selection and text edit messages from iframe
   useEffect(() => {

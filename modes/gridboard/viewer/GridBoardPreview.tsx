@@ -9,8 +9,10 @@ import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import type {
   ViewerPreviewProps,
   ViewerSelectionContext,
+  ViewerFileContent,
 } from "../../../core/types/viewer-contract.js";
-import { getApiBase } from "../../../src/utils/api.js";
+import type { Source } from "../../../core/types/source.js";
+import { useSource } from "../../../src/hooks/useSource.js";
 import { useStore } from "../../../src/store.js";
 import { snapdom } from "@zumer/snapdom";
 import { useTileCompiler, type BoardConfig } from "./use-tile-compiler.js";
@@ -162,15 +164,6 @@ function findEmptyPosition(
   return null;
 }
 
-async function saveFile(path: string, content: string): Promise<void> {
-  const base = getApiBase();
-  await fetch(`${base}/api/files`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path, content }),
-  });
-}
-
 // ── Default board fallback ──────────────────────────────────────────────────
 
 const DEFAULT_BOARD: BoardConfig = {
@@ -181,7 +174,8 @@ const DEFAULT_BOARD: BoardConfig = {
 // ── Main Component ──────────────────────────────────────────────────────────
 
 export default function GridBoardPreview({
-  files,
+  sources,
+  fileChannel,
   selection,
   onSelect: rawOnSelect,
   mode: previewMode,
@@ -197,6 +191,11 @@ export default function GridBoardPreview({
   readonly,
   editing,
 }: ViewerPreviewProps) {
+  // Derive files from sources.files
+  const filesSource = sources.files as Source<ViewerFileContent[]>;
+  const { value: filesValue } = useSource(filesSource);
+  const files: ViewerFileContent[] = filesValue ?? [];
+
   // Readonly mode: suppress interactions
   const isViewMode = !readonly && editing === false;
   const editingDisabled = readonly || isViewMode;
@@ -527,7 +526,7 @@ export default function GridBoardPreview({
           const updatedConfig = JSON.parse(JSON.stringify(boardConfig));
           updatedConfig.tiles[tileId].position = currentPos;
           setDragState(null);
-          await saveFile("board.json", JSON.stringify(updatedConfig, null, 2));
+          await fileChannel.write("board.json", JSON.stringify(updatedConfig, null, 2));
           return;
         }
       }
@@ -540,7 +539,7 @@ export default function GridBoardPreview({
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [dragState, boardConfig]);
+  }, [dragState, boardConfig, fileChannel]);
 
   // ── Drag Resize ───────────────────────────────────────────────────────
   const handleResizeStart = useCallback(
@@ -669,7 +668,7 @@ export default function GridBoardPreview({
 
           setResizeState(null);
 
-          await saveFile("board.json", JSON.stringify(updatedConfig, null, 2));
+          await fileChannel.write("board.json", JSON.stringify(updatedConfig, null, 2));
 
           // Check if the tile's render is optimized for the new pixel dimensions
           const compiled = compilation.tiles.get(tileId);
@@ -725,7 +724,7 @@ export default function GridBoardPreview({
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [resizeState, boardConfig, compilation.tiles, onNotifyAgent]);
+  }, [resizeState, boardConfig, compilation.tiles, onNotifyAgent, fileChannel]);
 
   // ── Action Handling ───────────────────────────────────────────────────
   useEffect(() => {
@@ -765,7 +764,7 @@ export default function GridBoardPreview({
           }
           const filename = `tile-${tileId}-${Date.now()}.png`;
           const path = `.pneuma/captures/${filename}`;
-          await saveFile(path, `data:${img.media_type};base64,${img.data}`);
+          await fileChannel.write(path, `data:${img.media_type};base64,${img.data}`);
           onActionResult?.(actionRequest.requestId, { success: true, message: path, data: { path } });
         });
         break;
@@ -783,7 +782,7 @@ export default function GridBoardPreview({
           }
           const filename = `board-${Date.now()}.png`;
           const path = `.pneuma/captures/${filename}`;
-          await saveFile(path, `data:${img.media_type};base64,${img.data}`);
+          await fileChannel.write(path, `data:${img.media_type};base64,${img.data}`);
           onActionResult?.(actionRequest.requestId, { success: true, message: path, data: { path } });
         });
         break;
@@ -818,7 +817,7 @@ export default function GridBoardPreview({
           message: `Unknown action: ${actionRequest.actionId}`,
         });
     }
-  }, [actionRequest]);
+  }, [actionRequest, fileChannel]);
 
   // ── Navigate Request (Locator Cards) ──────────────────────────────────
   useEffect(() => {
@@ -883,9 +882,9 @@ export default function GridBoardPreview({
       updatedConfig.tiles[tileId].status = "available";
       delete updatedConfig.tiles[tileId].position;
       delete updatedConfig.tiles[tileId].size;
-      await saveFile("board.json", JSON.stringify(updatedConfig, null, 2));
+      await fileChannel.write("board.json", JSON.stringify(updatedConfig, null, 2));
     },
-    [boardConfig, editingDisabled, selectedTileId, onSelect],
+    [boardConfig, editingDisabled, selectedTileId, onSelect, fileChannel],
   );
 
   // ── Gallery: non-active tiles ─────────────────────────────────────────
@@ -944,9 +943,9 @@ export default function GridBoardPreview({
         position: pos,
         size: { cols: minCols, rows: minRows },
       };
-      await saveFile("board.json", JSON.stringify(updatedConfig, null, 2));
+      await fileChannel.write("board.json", JSON.stringify(updatedConfig, null, 2));
     },
-    [boardConfig, compilation, editingDisabled, onNotifyAgent],
+    [boardConfig, compilation, editingDisabled, onNotifyAgent, fileChannel],
   );
 
   // ── Gallery: Create new tile via agent ────────────────────────────────

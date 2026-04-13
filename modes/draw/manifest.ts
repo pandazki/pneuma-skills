@@ -38,6 +38,13 @@ For Excalidraw JSON format, element types, color palette, and diagram recipes, c
     serveDir: ".",
   },
 
+  sources: {
+    files: {
+      kind: "file-glob",
+      config: { patterns: ["**/*.excalidraw"] },
+    },
+  },
+
   viewerApi: {
     workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: true },
     locatorDescription: 'After creating drawings, embed locator cards so the user can switch to them. Navigate to file: `data=\'{"file":"architecture.excalidraw"}\'`.',

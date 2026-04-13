@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef, lazy, Suspense } from "react";
+import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { getApiBase } from "./utils/api.js";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import TopBar from "./components/TopBar.js";
@@ -17,6 +17,10 @@ import { useSystemPreferences } from "./hooks/useSystemPreferences.js";
 import { selectBestContentSet } from "../core/utils/content-set-matcher.js";
 import { ReplayPlayer } from "./components/ReplayPlayer";
 import type { ViewerPreviewProps } from "../core/types/viewer-contract.js";
+import type { Source, FileChannel } from "../core/types/source.js";
+import { SourceRegistry } from "../core/source-registry.js";
+import { BUILT_IN_PROVIDERS } from "../core/sources/index.js";
+import { BrowserFileChannel } from "./runtime/file-channel.js";
 import { useThumbnailCapture } from "./hooks/useThumbnailCapture.js";
 import { normalizeViewerState } from "./utils/viewer-state.js";
 
@@ -66,10 +70,65 @@ function RightPanel() {
   );
 }
 
+/**
+ * Instantiate sources AND the FileChannel for the current mode. Returns
+ * both as a single object so useViewerProps can pass each through to the
+ * viewer as separate props. Rebuilds (destroying the old set) whenever
+ * the active mode changes.
+ *
+ * This is the lifecycle boundary for sources. When a user switches modes
+ * in the launcher, the old mode's sources are destroyed here and the new
+ * mode's sources are created against a fresh FileChannel + SourceRegistry.
+ * Sources and the FileChannel never outlive their mode.
+ */
+function useSourceInstances(): {
+  sources: Record<string, Source<unknown>>;
+  channel: FileChannel;
+} {
+  const manifest = useStore((s) => s.modeManifest);
+  const [state, setState] = useState<{
+    sources: Record<string, Source<unknown>>;
+    channel: FileChannel;
+  }>(() => ({ sources: {}, channel: new BrowserFileChannel() }));
+
+  useEffect(() => {
+    if (!manifest) {
+      setState({ sources: {}, channel: new BrowserFileChannel() });
+      return;
+    }
+    const channel = new BrowserFileChannel();
+    const registry = new SourceRegistry();
+    for (const provider of BUILT_IN_PROVIDERS) registry.register(provider);
+    // Plugin-contributed providers live server-side (see PluginRegistry.collectSourceProviders).
+    // They are not currently wired into the browser-side SourceRegistry because plugin
+    // providers contain .create() functions that can't be serialized over WS. When the
+    // first browser-capable plugin provider exists, it will need either (a) a bridge
+    // that proxies provider.create() calls over WS, or (b) a browser-loaded plugin
+    // runtime. Until then, only built-in providers are available in the browser.
+    const ctx = {
+      workspace: "", // workspace is known to the server; providers
+                     // that need it get it via FileChannel instead
+      log: (msg: string) => {
+        console.debug("[source]", msg);
+      },
+      signal: new AbortController().signal,
+      files: channel,
+    };
+    const effective = SourceRegistry.effectiveSources(manifest);
+    const built = registry.instantiateAll(effective, ctx);
+    setState({ sources: built, channel });
+    return () => {
+      registry.destroyAll(built);
+      (channel as BrowserFileChannel).destroy();
+    };
+  }, [manifest]);
+
+  return state;
+}
+
 /** Build the ViewerPreviewProps from store state. */
 function useViewerProps(): ViewerPreviewProps {
-  const rawFiles = useStore((s) => s.files);
-  const activeContentSet = useStore((s) => s.activeContentSet);
+  const { sources, channel: fileChannel } = useSourceInstances();
   const selection = useStore((s) => s.selection);
   const setSelection = useStore((s) => s.setSelection);
   const previewMode = useStore((s) => s.previewMode);
@@ -86,17 +145,9 @@ function useViewerProps(): ViewerPreviewProps {
   const contentSets = useStore((s) => s.contentSets);
   const replayMode = useStore((s) => s.replayMode);
 
-  // Filter and remap files based on active content set
-  const files = useMemo(() => {
-    if (!activeContentSet) return rawFiles.map((f) => ({ path: f.path, content: f.content }));
-    const pfx = activeContentSet + "/";
-    return rawFiles
-      .filter((f) => f.path.startsWith(pfx))
-      .map((f) => ({ path: f.path.slice(pfx.length), content: f.content }));
-  }, [rawFiles, activeContentSet]);
-
   return {
-    files,
+    sources,
+    fileChannel,
     activeFile,
     selection: selection
       ? {
@@ -118,8 +169,9 @@ function useViewerProps(): ViewerPreviewProps {
         setSelection(null);
         return;
       }
-      // Use file from the viewer component (e.g. current slide), fallback to first file
-      const file = sel.file || files[0]?.path || "";
+      // Use file from the viewer component (e.g. current slide).
+      // Viewers that care about file attribution always populate sel.file.
+      const file = sel.file || "";
       setSelection({
         type: sel.type as SelectionType,
         content: sel.content,
@@ -201,6 +253,7 @@ export default function App() {
 
       const def = await loadMode(modeName);
       useStore.getState().setModeViewer(def.viewer);
+      useStore.getState().setModeManifest(def.manifest);
       useStore.getState().setModeDisplayName(def.manifest.displayName);
       useStore.getState().setModeCommands(def.manifest.viewerApi?.commands ?? []);
     };

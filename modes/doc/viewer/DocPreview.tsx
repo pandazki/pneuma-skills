@@ -12,7 +12,9 @@ import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import type { ViewerPreviewProps, ViewerSelectionContext } from "../../../core/types/viewer-contract.js";
+import type { ViewerPreviewProps, ViewerSelectionContext, ViewerFileContent } from "../../../core/types/viewer-contract.js";
+import type { Source, FileChannel } from "../../../core/types/source.js";
+import { useSource } from "../../../src/hooks/useSource.js";
 
 // v1.0: DocPreview still references the store to control previewMode toggle.
 // This is a pragmatic coupling that can be decoupled via an onModeChange callback in the future.
@@ -209,23 +211,9 @@ function buildNearbyText(el: HTMLElement): string {
   return parts.join(" ");
 }
 
-/** Save file content to server */
-async function saveFile(path: string, content: string): Promise<boolean> {
-  try {
-    const baseUrl = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
-    const res = await fetch(`${baseUrl}/api/files`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path, content }),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
 export default function DocPreview({
-  files,
+  sources,
+  fileChannel,
   selection,
   onSelect: rawOnSelect,
   mode: rawPreviewMode,
@@ -240,6 +228,11 @@ export default function DocPreview({
   onNavigateComplete,
   readonly,
 }: ViewerPreviewProps) {
+  // Derive files from sources.files
+  const filesSource = sources.files as Source<ViewerFileContent[]>;
+  const { value: filesValue, status: filesStatus } = useSource(filesSource);
+  const files: ViewerFileContent[] = filesValue ?? [];
+
   // Readonly mode: force view, suppress selection
   const previewMode = readonly ? "view" : rawPreviewMode;
   const onSelect = readonly ? (() => {}) : rawOnSelect;
@@ -680,7 +673,13 @@ export default function DocPreview({
           }`}
         >
           {activeFiles.map((file) => (
-            <MarkdownEditor key={file.path} file={file} isDark={isDark} />
+            <MarkdownEditor
+              key={file.path}
+              file={file}
+              isDark={isDark}
+              fileChannel={fileChannel}
+              lastOrigin={filesStatus.lastOrigin}
+            />
           ))}
         </div>
       ) : (
@@ -737,29 +736,42 @@ export default function DocPreview({
 
 // ── Markdown Editor (Edit mode) ─────────────────────────────────────────────
 
-function MarkdownEditor({ file, isDark }: { file: { path: string; content: string }; isDark: boolean }) {
+function MarkdownEditor({
+  file,
+  isDark,
+  fileChannel,
+  lastOrigin,
+}: {
+  file: { path: string; content: string };
+  isDark: boolean;
+  fileChannel: FileChannel;
+  lastOrigin: "initial" | "self" | "external" | null;
+}) {
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastExternalRef = useRef(file.content);
   const lastSavedForActionRef = useRef(file.content);
   const pushUserAction = useStore((s) => s.pushUserAction);
 
   useEffect(() => {
     const el = textareaRef.current;
-    if (el && file.content !== lastExternalRef.current) {
+    if (!el) return;
+    if (lastOrigin === "self") return;
+    if (el.value !== file.content) {
       el.value = file.content;
-      lastExternalRef.current = file.content;
       lastSavedForActionRef.current = file.content;
     }
-  }, [file.content]);
+  }, [file.content, lastOrigin]);
 
   const scheduleSave = useCallback((content: string) => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       setSaving(true);
-      await saveFile(file.path, content);
-      lastExternalRef.current = content;
+      try {
+        await fileChannel.write(file.path, content);
+      } catch (err) {
+        console.error("[doc] save failed", err);
+      }
       setSaving(false);
 
       // Generate user action with line-level diff summary
@@ -790,16 +802,18 @@ function MarkdownEditor({ file, isDark }: { file: { path: string; content: strin
         });
       }
     }, 800);
-  }, [file.path, pushUserAction]);
+  }, [file.path, fileChannel, pushUserAction]);
 
   useEffect(() => {
     return () => {
       if (saveTimerRef.current && textareaRef.current) {
         clearTimeout(saveTimerRef.current);
-        saveFile(file.path, textareaRef.current.value);
+        fileChannel.write(file.path, textareaRef.current.value).catch((err) => {
+          console.error("[doc] save failed", err);
+        });
       }
     };
-  }, [file.path]);
+  }, [file.path, fileChannel]);
 
   const handleInput = () => {
     const el = textareaRef.current;

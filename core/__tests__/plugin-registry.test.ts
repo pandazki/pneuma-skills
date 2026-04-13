@@ -159,4 +159,79 @@ describe("PluginRegistry", () => {
       expect(entries).toEqual([]);
     });
   });
+
+  describe("collectSourceProviders", () => {
+    test("flattens providers from loaded plugins", async () => {
+      // Write a manifest.ts that exports real SourceProvider objects
+      // (JSON.stringify would strip the .create functions).
+      const pluginADir = join(PLUGINS_DIR, "plugin-a");
+      mkdirSync(pluginADir, { recursive: true });
+      writeFileSync(
+        join(pluginADir, "manifest.ts"),
+        `const make = (kind) => ({
+          kind,
+          create: () => ({
+            id: "x",
+            kind,
+            current: () => null,
+            subscribe: () => () => {},
+            write: async () => {},
+            dispose: async () => {},
+          }),
+        });
+        export default {
+          name: "plugin-a",
+          version: "1.0.0",
+          displayName: "A",
+          description: "A",
+          scope: "global",
+          sources: [make("acme-x"), make("acme-y")],
+        };`,
+      );
+
+      const pluginBDir = join(PLUGINS_DIR, "plugin-b");
+      mkdirSync(pluginBDir, { recursive: true });
+      writeFileSync(
+        join(pluginBDir, "manifest.ts"),
+        `const make = (kind) => ({
+          kind,
+          create: () => ({
+            id: "x",
+            kind,
+            current: () => null,
+            subscribe: () => () => {},
+            write: async () => {},
+            dispose: async () => {},
+          }),
+        });
+        export default {
+          name: "plugin-b",
+          version: "1.0.0",
+          displayName: "B",
+          description: "B",
+          scope: "global",
+          sources: [make("acme-z")],
+        };`,
+      );
+
+      settings.setEnabled("plugin-a", true);
+      settings.setEnabled("plugin-b", true);
+
+      const discovered = await registry.discover();
+      await registry.activateAll(discovered, {
+        sessionId: "test",
+        mode: "slide",
+        workspace: "/tmp",
+        backendType: "claude-code",
+      });
+
+      const providers = registry.collectSourceProviders();
+      const kinds = providers.map((p) => p.kind).sort();
+      expect(kinds).toEqual(["acme-x", "acme-y", "acme-z"]);
+    });
+
+    test("returns empty array when no plugins contribute sources", () => {
+      expect(registry.collectSourceProviders()).toEqual([]);
+    });
+  });
 });

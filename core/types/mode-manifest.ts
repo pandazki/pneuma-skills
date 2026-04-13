@@ -17,6 +17,8 @@
  * ```
  */
 
+import type { SourceDescriptor } from "./source.js";
+
 /** MCP server declaration — automatically registered to the workspace's .mcp.json during skill installation */
 export interface McpServerConfig {
   /** Server name (key under mcpServers in .mcp.json) */
@@ -295,4 +297,29 @@ export interface ModeManifest {
   editing?: { supported: true };
   /** Reverse proxy routes — forwards /proxy/<name>/* to external APIs, avoiding CORS */
   proxy?: Record<string, ProxyRoute>;
+
+  /**
+   * Declarative data-channel configuration. Each entry instantiates a
+   * Source<T> via the SourceRegistry at mode startup and exposes it to
+   * the viewer as props.sources[id].
+   *
+   * If omitted, the runtime synthesizes a default entry:
+   *
+   *   sources: {
+   *     files: {
+   *       kind: "file-glob",
+   *       config: {
+   *         patterns: this.viewer.watchPatterns,
+   *         ignore: this.viewer.ignorePatterns,
+   *       },
+   *     },
+   *   }
+   *
+   * so every pre-existing mode continues to receive a `files` source with
+   * zero manifest changes. New or migrated modes declare sources explicitly.
+   *
+   * See core/types/source.ts for the SourceDescriptor shape and the
+   * built-in provider kinds (file-glob, json-file, aggregate-file, memory).
+   */
+  sources?: Record<string, SourceDescriptor>;
 }

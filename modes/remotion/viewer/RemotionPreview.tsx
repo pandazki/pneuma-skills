@@ -12,7 +12,10 @@ import type {
   ViewerActionRequest,
   ViewerActionResult,
   ViewerNotification,
+  ViewerFileContent,
 } from "../../../core/types/viewer-contract.js";
+import type { Source } from "../../../core/types/source.js";
+import { useSource } from "../../../src/hooks/useSource.js";
 import { useRemotionCompiler } from "./use-remotion-compiler.js";
 import { getApiBase } from "../../../src/utils/api.js";
 import RemotionControls from "./RemotionControls.js";
@@ -138,7 +141,7 @@ function PlayerCanvas({
 // ── Main Component ──────────────────────────────────────────────────────────
 
 export default function RemotionPreview({
-  files,
+  sources,
   activeFile,
   onActiveFileChange,
   onViewportChange,
@@ -149,6 +152,10 @@ export default function RemotionPreview({
   onNavigateComplete,
   readonly,
 }: ViewerPreviewProps) {
+  const filesSource = sources.files as Source<ViewerFileContent[]>;
+  const { value: filesValue } = useSource(filesSource);
+  const files: ViewerFileContent[] = filesValue ?? [];
+
   // Readonly mode: suppress agent notifications (replay / view-only)
   const effectiveOnNotifyAgent = readonly ? undefined : onNotifyAgent;
 
