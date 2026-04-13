@@ -35,11 +35,18 @@ const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({ sources }) => {
   // survives provider remounts.
   const currentTitleRef = useRef<string>("Untitled");
 
+  // Subscribe directly to the source so every external event bumps the
+  // provider key exactly once. A useEffect keyed on status.lastOrigin
+  // would miss back-to-back externals (same string ⇒ no re-run).
   useEffect(() => {
-    if (status.lastOrigin === "external") {
-      setProviderKey((k) => k + 1);
-    }
-  }, [status.lastOrigin, project]);
+    if (!projectSource) return;
+    const off = projectSource.subscribe((ev) => {
+      if (ev.kind === "value" && ev.origin === "external") {
+        setProviderKey((k) => k + 1);
+      }
+    });
+    return off;
+  }, [projectSource]);
 
   const errorMessage = status.lastError?.message ?? null;
 
@@ -121,7 +128,7 @@ function SyncedBody({
       }
     }, AUTOSAVE_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [eventCount, coreState, composition, writeProject, currentTitleRef]);
+  }, [eventCount, writeProject]);
 
   return <StateDump hydrationError={hydrationError} />;
 }
