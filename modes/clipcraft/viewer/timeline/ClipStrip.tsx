@@ -27,12 +27,8 @@ export function ClipStrip({
   onSelect,
   children,
 }: ClipStripProps) {
-  const x = clip.startTime * pixelsPerSecond - scrollLeft;
-  const width = clip.duration * pixelsPerSecond;
-  // Off-screen culling — don't render clips that are completely outside
-  // the viewport. Matches legacy VideoTrack's x + width < -10 || x > 2000
-  // heuristic; 2000 is an over-estimate for "reasonable viewport width".
-  if (x + width < -10 || x > 4000) return null;
+  const x = Math.round(clip.startTime * pixelsPerSecond - scrollLeft);
+  const width = Math.round(clip.duration * pixelsPerSecond);
 
   return (
     <div
