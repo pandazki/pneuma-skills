@@ -71,21 +71,41 @@ export function useTimelineZoom(
     return () => obs.disconnect();
   }, [containerRef, dur]);
 
+  // Functional setter — reads latest committed state via the updater, so
+  // rapid synchronous clicks accumulate instead of all stomping on the same
+  // pre-click value. Pair of setPixelsPerSecond + nested setScrollLeft keeps
+  // the zoom centered on the viewport midpoint per legacy behavior.
+  const applyZoomFactor = useCallback(
+    (factor: number) => {
+      setPixelsPerSecond((prevPps) => {
+        if (prevPps <= 0) return prevPps; // not yet auto-fit
+        const clamped = Math.max(minPPS, Math.min(maxPPS, prevPps * factor));
+        setScrollLeft((prevSL) => {
+          const centerTime = (prevSL + viewportWidth / 2) / prevPps;
+          return centerTime * clamped - viewportWidth / 2;
+        });
+        return clamped;
+      });
+    },
+    [minPPS, maxPPS, viewportWidth],
+  );
+
   const setZoom = useCallback(
     (pps: number) => {
-      const clamped = Math.max(minPPS, Math.min(maxPPS, pps));
-      if (pixelsPerSecond <= 0) {
-        setPixelsPerSecond(clamped);
-        setScrollLeft(0);
-        return;
-      }
-      // Zoom around viewport center
-      const centerTime = (scrollLeft + viewportWidth / 2) / pixelsPerSecond;
-      const newScrollLeft = centerTime * clamped - viewportWidth / 2;
-      setPixelsPerSecond(clamped);
-      setScrollLeft(newScrollLeft);
+      setPixelsPerSecond((prevPps) => {
+        const clamped = Math.max(minPPS, Math.min(maxPPS, pps));
+        if (prevPps <= 0) {
+          setScrollLeft(0);
+          return clamped;
+        }
+        setScrollLeft((prevSL) => {
+          const centerTime = (prevSL + viewportWidth / 2) / prevPps;
+          return centerTime * clamped - viewportWidth / 2;
+        });
+        return clamped;
+      });
     },
-    [minPPS, maxPPS, scrollLeft, viewportWidth, pixelsPerSecond],
+    [minPPS, maxPPS, viewportWidth],
   );
 
   const doScrollTo = useCallback(
@@ -96,13 +116,8 @@ export function useTimelineZoom(
     [scrollMin, scrollMax],
   );
 
-  const zoomIn = useCallback(() => {
-    setZoom(pixelsPerSecond * ZOOM_STEP);
-  }, [pixelsPerSecond, setZoom]);
-
-  const zoomOut = useCallback(() => {
-    setZoom(pixelsPerSecond / ZOOM_STEP);
-  }, [pixelsPerSecond, setZoom]);
+  const zoomIn = useCallback(() => applyZoomFactor(ZOOM_STEP), [applyZoomFactor]);
+  const zoomOut = useCallback(() => applyZoomFactor(1 / ZOOM_STEP), [applyZoomFactor]);
 
   const timeToX = useCallback(
     (time: number) => time * pixelsPerSecond - scrollLeft,

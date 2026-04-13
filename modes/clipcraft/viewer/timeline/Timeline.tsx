@@ -1,41 +1,98 @@
-// modes/clipcraft/viewer/timeline/Timeline.tsx
+// Ported from modes/clipcraft-legacy/viewer/timeline/Timeline.tsx.
+//
+// Visual/layout/interaction language is verbatim: compact zoom header with
+// hint text, 0 12px padding, GAP=2 between rows, 24px ruler, one-track-per-type
+// layout, absolutely-positioned Playhead overlay, subtle selection highlight.
+//
+// Swaps (legacy → craft):
+//   useClipCraftState / useClipCraftDispatch / selectSortedScenes  →  useComposition, usePlayback, useDispatch, useSelection
+//   state.selectedSceneId                                         →  useSelection() → first clip id (selection.type === "clip")
+//   state.playback.globalTime                                     →  usePlayback().currentTime
+//   dispatch({type: "SEEK", globalTime})                          →  usePlayback().seek(t)
+//   dispatch({type: "SELECT_SCENE", sceneId})                     →  dispatch("human", { type: "selection:set", selection: { type: "clip", ids: [clipId] }})
+//   scenes[].caption / scenes[].audio / scenes[].visual           →  composition.tracks (one per type); each track component reads clip.text / useAsset(clip.assetId)
+//   selectTotalDuration                                           →  composition.duration (or usePlayback().duration fallback)
+//
+// No BGM track: legacy's BGM was a sibling of the scene array; craft represents
+// BGM as just another audio track, so the existing AudioTrack covers it.
+// Compact-mode and leadingControl props from legacy are dropped — clipcraft
+// never used them.
+
 import { useCallback, useRef } from "react";
-import { useComposition, usePlayback, useDispatch } from "@pneuma-craft/react";
+import {
+  useComposition,
+  usePlayback,
+  useDispatch,
+  useSelection,
+} from "@pneuma-craft/react";
 import type { Actor } from "@pneuma-craft/core";
+import type { Track } from "@pneuma-craft/timeline";
+import { useTimelineZoom } from "./hooks/useTimelineZoom.js";
+import { TrackLabel, LABEL_W } from "./TrackLabel.js";
 import { TimeRuler } from "./TimeRuler.js";
 import { Playhead } from "./Playhead.js";
-import { TrackRow } from "./TrackRow.js";
-import { TRACK_LABEL_WIDTH } from "./TrackLabel.js";
-import { useTimelineZoom } from "./hooks/useTimelineZoom.js";
+import { VideoTrack } from "./VideoTrack.js";
+import { AudioTrack } from "./AudioTrack.js";
+import { SubtitleTrack } from "./SubtitleTrack.js";
 
-const TRACK_HEIGHT = 48;
-const RULER_HEIGHT = 20;
-// Verified: @pneuma-craft/core Actor = 'human' | 'agent' — plan value matches.
+// Track heights — match legacy
+const RULER_H = 24;
+const VIDEO_H = 48;
+const AUDIO_H = 32;
+const SUBTITLE_H = 32;
+const GAP = 2;
+
 const USER_ACTOR: Actor = "human";
+
+function trackHeight(type: Track["type"]): number {
+  switch (type) {
+    case "video":
+      return VIDEO_H;
+    case "audio":
+      return AUDIO_H;
+    case "subtitle":
+      return SUBTITLE_H;
+  }
+}
+
+function iconFor(type: Track["type"]): string {
+  switch (type) {
+    case "video":
+      return "\uD83C\uDFAC"; // 🎬
+    case "audio":
+      return "\uD83D\uDD0A"; // 🔊
+    case "subtitle":
+      return "Tt";
+  }
+}
 
 export function Timeline() {
   const composition = useComposition();
-  // Verified: usePlayback() returns { currentTime, duration, seek, ... }.
-  const { currentTime, duration, seek } = usePlayback();
-  // Verified: useDispatch() returns (actor, command) two-arg dispatcher.
+  const playback = usePlayback();
   const dispatch = useDispatch();
+  const selection = useSelection();
 
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const effectiveDuration = duration || composition?.duration || 0;
-  const {
-    pixelsPerSecond,
-    scrollLeft,
-    totalWidth,
-    viewportWidth,
-    xToTime,
-    zoomIn,
-    zoomOut,
-  } = useTimelineZoom(effectiveDuration, containerRef);
+  const selectedClipId =
+    selection.type === "clip" && selection.ids.length > 0 ? selection.ids[0] : null;
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dur = Math.max(
+    composition?.duration ?? 0,
+    playback.duration ?? 0,
+    1,
+  );
+
+  const zoom = useTimelineZoom(dur, containerRef);
+
+  const handleSeek = useCallback(
+    (time: number) => {
+      playback.seek(Math.max(0, Math.min(time, dur)));
+    },
+    [playback, dur],
+  );
 
   const onSelectClip = useCallback(
     (clipId: string) => {
-      // Verified: SelectionCommand = { type: 'selection:set'; selection: Selection }
-      // with Selection.type including 'clip' and Selection.ids: string[].
       dispatch(USER_ACTOR, {
         type: "selection:set",
         selection: { type: "clip", ids: [clipId] },
@@ -46,24 +103,21 @@ export function Timeline() {
 
   const handleRulerClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!containerRef.current) return;
       const rect = e.currentTarget.getBoundingClientRect();
       const xInTrack = e.clientX - rect.left;
-      const t = xToTime(xInTrack);
-      seek(Math.max(0, Math.min(t, effectiveDuration)));
+      handleSeek(zoom.xToTime(xInTrack));
     },
-    [xToTime, seek, effectiveDuration],
+    [handleSeek, zoom],
   );
 
-  if (!composition) {
+  if (!composition || composition.tracks.length === 0) {
     return (
       <div
         data-testid="timeline-empty"
         style={{
-          padding: 12,
-          color: "#71717a",
-          fontSize: 12,
-          fontFamily: "system-ui, sans-serif",
+          padding: "8px 12px",
+          fontSize: 10,
+          color: "#52525b",
         }}
       >
         no composition loaded
@@ -71,106 +125,140 @@ export function Timeline() {
     );
   }
 
-  const trackCount = composition.tracks.length;
-  const trackAreaHeight = trackCount * TRACK_HEIGHT;
+  // Calculate total track area height for the playhead line
+  const trackAreaHeight = composition.tracks.reduce(
+    (h, t, i) => h + trackHeight(t.type) + (i > 0 ? GAP : 0),
+    0,
+  );
 
   return (
     <div
-      ref={containerRef}
-      className="cc-timeline"
       style={{
-        position: "relative",
-        background: "#0a0a0a",
-        color: "#e4e4e7",
-        fontFamily: "system-ui, sans-serif",
-        border: "1px solid #27272a",
-        borderRadius: 4,
+        padding: "4px 0 8px",
+        fontSize: 11,
+        color: "#a1a1aa",
+        display: "flex",
+        flexDirection: "column",
         overflow: "hidden",
       }}
     >
-      {/* zoom toolbar */}
+      {/* Zoom controls */}
       <div
         style={{
           display: "flex",
-          gap: 6,
-          padding: "6px 8px",
-          borderBottom: "1px solid #27272a",
-          fontSize: 11,
+          alignItems: "center",
+          gap: 8,
+          padding: "0 12px 4px",
+          fontSize: 10,
+          color: "#52525b",
         }}
       >
-        <button
-          type="button"
-          onClick={zoomOut}
-          aria-label="zoom out"
-          style={zoomBtnStyle}
-        >−</button>
-        <span style={{ minWidth: 80, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
-          {pixelsPerSecond.toFixed(0)} px/s
+        <button onClick={zoom.zoomOut} style={zoomBtnStyle} title="Zoom out" aria-label="zoom out">
+          −
+        </button>
+        <span style={{ minWidth: 48, textAlign: "center" }}>
+          {Math.round(zoom.pixelsPerSecond)}px/s
         </span>
-        <button
-          type="button"
-          onClick={zoomIn}
-          aria-label="zoom in"
-          style={zoomBtnStyle}
-        >+</button>
+        <button onClick={zoom.zoomIn} style={zoomBtnStyle} title="Zoom in" aria-label="zoom in">
+          +
+        </button>
+        <span style={{ marginLeft: "auto", fontSize: 9, color: "#3f3f46" }}>
+          scroll / ⌘+scroll to zoom
+        </span>
       </div>
 
-      {/* ruler row */}
+      {/* Timeline content */}
       <div
-        style={{ display: "flex", height: RULER_HEIGHT, borderBottom: "1px solid #27272a" }}
+        ref={containerRef}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          padding: "0 12px",
+          overflow: "hidden",
+          position: "relative",
+        }}
       >
-        <div style={{ width: TRACK_LABEL_WIDTH }} />
-        <div
-          onClick={handleRulerClick}
-          style={{ position: "relative", flex: 1, overflow: "hidden", cursor: "pointer" }}
-        >
-          <div style={{ position: "absolute", left: -scrollLeft, top: 0, width: totalWidth, height: "100%" }}>
+        {/* Ruler row */}
+        <div style={{ display: "flex", marginBottom: GAP }}>
+          <TrackLabel>{""}</TrackLabel>
+          <div
+            onClick={handleRulerClick}
+            style={{ flex: 1, minWidth: 0, overflow: "hidden", cursor: "pointer" }}
+          >
             <TimeRuler
-              duration={effectiveDuration}
-              pixelsPerSecond={pixelsPerSecond}
-              scrollLeft={scrollLeft}
-              viewportWidth={viewportWidth}
+              duration={dur}
+              pixelsPerSecond={zoom.pixelsPerSecond}
+              scrollLeft={zoom.scrollLeft}
+              viewportWidth={zoom.viewportWidth - LABEL_W}
             />
           </div>
         </div>
-      </div>
 
-      {/* track rows */}
-      <div style={{ position: "relative", height: trackAreaHeight }}>
-        {composition.tracks.map((track) => (
-          <TrackRow
-            key={track.id}
-            track={track}
-            pixelsPerSecond={pixelsPerSecond}
-            scrollLeft={scrollLeft}
-            trackHeight={TRACK_HEIGHT}
-            totalWidth={totalWidth}
-            onSelectClip={onSelectClip}
-          />
-        ))}
+        {/* Track rows + playhead overlay */}
+        <div style={{ position: "relative" }}>
+          {/* Track rows */}
+          <div>
+            {composition.tracks.map((track, i) => {
+              const isLast = i === composition.tracks.length - 1;
+              return (
+                <div
+                  key={track.id}
+                  style={{ display: "flex", marginBottom: isLast ? 0 : GAP }}
+                >
+                  <TrackLabel>{iconFor(track.type)}</TrackLabel>
+                  <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
+                    {track.type === "video" && (
+                      <VideoTrack
+                        track={track}
+                        selectedClipId={selectedClipId}
+                        pixelsPerSecond={zoom.pixelsPerSecond}
+                        scrollLeft={zoom.scrollLeft}
+                        onSelect={onSelectClip}
+                      />
+                    )}
+                    {track.type === "audio" && (
+                      <AudioTrack
+                        track={track}
+                        selectedClipId={selectedClipId}
+                        pixelsPerSecond={zoom.pixelsPerSecond}
+                        scrollLeft={zoom.scrollLeft}
+                        onSelect={onSelectClip}
+                      />
+                    )}
+                    {track.type === "subtitle" && (
+                      <SubtitleTrack
+                        track={track}
+                        selectedClipId={selectedClipId}
+                        pixelsPerSecond={zoom.pixelsPerSecond}
+                        scrollLeft={zoom.scrollLeft}
+                        onSelect={onSelectClip}
+                      />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
-        {/* playhead overlay spans every track row but NOT the sidebar.
-            pointerEvents:none here is intentional — Playhead opts its own
-            hit regions (line + handle) back to pointerEvents:auto, so
-            TrackRow clicks pass through to ClipStrip underneath. */}
-        <div
-          style={{
-            position: "absolute",
-            left: TRACK_LABEL_WIDTH,
-            right: 0,
-            top: 0,
-            bottom: 0,
-            pointerEvents: "none",
-          }}
-        >
-          <Playhead
-            globalTime={currentTime}
-            duration={effectiveDuration}
-            pixelsPerSecond={pixelsPerSecond}
-            scrollLeft={scrollLeft}
-            trackAreaHeight={trackAreaHeight}
-            onSeek={seek}
-          />
+          {/* Playhead overlay — covers the track area (not labels) */}
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: LABEL_W,
+              right: 0,
+              bottom: 0,
+            }}
+          >
+            <Playhead
+              globalTime={playback.currentTime}
+              duration={dur}
+              pixelsPerSecond={zoom.pixelsPerSecond}
+              scrollLeft={zoom.scrollLeft}
+              trackAreaHeight={trackAreaHeight}
+              onSeek={handleSeek}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -178,10 +266,16 @@ export function Timeline() {
 }
 
 const zoomBtnStyle: React.CSSProperties = {
-  padding: "2px 8px",
-  background: "#27272a",
-  color: "#fafafa",
+  background: "transparent",
   border: "1px solid #3f3f46",
   borderRadius: 3,
+  color: "#a1a1aa",
+  width: 22,
+  height: 22,
   cursor: "pointer",
+  fontSize: 14,
+  lineHeight: 1,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
 };

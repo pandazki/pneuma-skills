@@ -233,30 +233,33 @@ ClipCraft's playback is delegated end-to-end to `@pneuma-craft/video`'s `Playbac
 
 The mode-side surface is roughly 200 lines total (`PreviewCanvas.tsx` + `PlaybackControls.tsx` + `PreviewPanel.tsx` + `assetResolver.ts`), and none of it reaches past the upstream React bindings.
 
-### Timeline (Plan 5) — read-only
+### Timeline (Plan 5) — read-only, legacy-faithful port
 
-Plan 5 ports the visual timeline from `modes/clipcraft-legacy/viewer/timeline/` onto the craft store. Everything lives under `modes/clipcraft/viewer/timeline/`:
+Plan 5 ports the visual timeline from `modes/clipcraft-legacy/viewer/timeline/` onto the craft store. **Visual language, layout, and interaction model are verbatim from legacy** — compact 10px-font zoom header, "scroll / ⌘+scroll to zoom" hint, `GAP = 2` between track rows, 32px `LABEL_W` with per-type emoji (🎬 / 🔊 / Tt), subtle `rgba(249,115,22,0.3)` selection borders (not filled rectangles), 4px padding inside clip rectangles. Only the data source changes: legacy's reducer + `Scene[]` model is replaced with craft selectors + `Track.clips[]` + `useAsset(clip.assetId)`.
 
-- `Timeline.tsx` — root composition. Reads `useComposition()`, `usePlayback()`, `useDispatch()`, owns `useTimelineZoom` state, and renders a zoom toolbar + ruler row + one `TrackRow` per track + a `Playhead` overlay.
-- `TimeRuler.tsx` / `Playhead.tsx` — pure prop-driven, no store coupling.
-- `TrackRow.tsx` — walks `track.clips`, resolves each clip's asset via `useAsset(clip.assetId)`, and branches by `track.type` to render a filmstrip (`useFrameExtractor` → `<img>` tiles), waveform (`useWaveform` → bars), or subtitle text. Subtitles bypass the asset gate entirely.
-- `ClipStrip.tsx` / `TrackLabel.tsx` — shared primitives. `ClipStrip` is an absolute-positioned clip rectangle with click-to-select; per-type inner content is a `children` prop.
-- `hooks/useTimelineZoom.ts` — **local React state** (`useState`) for `{ pixelsPerSecond, scrollLeft }`, a `ResizeObserver` for viewport width + one-shot auto-fit (gated by `didAutoFitRef`), and a native `addEventListener("wheel", handler, { passive: false })` for ctrl/meta-wheel zoom that can `preventDefault` to block browser page zoom.
+Everything lives under `modes/clipcraft/viewer/timeline/`:
+
+- `Timeline.tsx` — root shell. Reads `useComposition()`, `usePlayback()`, `useDispatch()`, `useSelection()`. Owns `useTimelineZoom`. Renders the zoom header, one ruler row, one track row per `composition.tracks[i]` (switching by `track.type`), and the Playhead overlay. Legacy's `compact` / `leadingControl` props are dropped.
+- `VideoTrack.tsx` — ported from legacy `VideoTrack.tsx`. Walks `track.clips` directly (no cumulative offset — craft's `clip.startTime` is canonical). Per-clip `<VideoClip>` subcomponent resolves `useAsset(clip.assetId)`: `asset.type === 'video'` → `useFrameExtractor` filmstrip; `asset.type === 'image'` → `ImageFill` tiles; other statuses show legacy's badges (⏳ generating / ⚠ error / — pending).
+- `AudioTrack.tsx` — ported from legacy `AudioTrack.tsx`. Per-clip `<AudioClip>` resolves `useAsset` and feeds `useWaveform` → `<WaveformBars>` with legacy's selected/unselected colors.
+- `SubtitleTrack.tsx` — ported from legacy `CaptionTrack.tsx`. Reads `clip.text` directly; no asset gate — subtitles are text-only.
+- `WaveformBars.tsx` — verbatim port, pure presentational.
+- `TrackLabel.tsx` — verbatim port. 32px-wide, takes `children` (the emoji), shared across ruler row and all track rows.
+- `TimeRuler.tsx` / `Playhead.tsx` — pure prop-driven, no store coupling. Ruler ticks are clamped to `[0, duration]` to suppress the negative-label overflow legacy accidentally hid via `overflow: hidden`.
+- `hooks/useTimelineZoom.ts` — **local React state** for `{ pixelsPerSecond, scrollLeft }`, a `ResizeObserver` for viewport width + one-shot auto-fit, and a native `addEventListener("wheel", handler, { passive: false })` for ctrl/meta-wheel zoom. `zoomIn` / `zoomOut` / `setZoom` all use **functional state updaters** so rapid synchronous clicks accumulate correctly instead of stomping on the same pre-click value.
 - `hooks/useFrameExtractor.ts` / `hooks/useWaveform.ts` — pure data hooks, byte-identical ports from legacy with module-scope `Map` caches.
 
 **What the timeline deliberately is not:**
 
-- **Not interactive for composition shape.** Click-to-select is wired; click-drag-to-move, resize, and split are NOT. Plan 5.5 (or Plan 6 rolled together) will port the ripple+snap drag engine from `@pneuma-craft/react-ui/src/timeline/timeline-track.tsx` by **copying the algorithm** into ClipCraft — the react-ui package stays unconsumed.
+- **Not interactive for composition shape.** Click-to-select is wired; click-drag-to-move, resize, and split are NOT. Plan 5.5 will port the ripple+snap drag engine from `@pneuma-craft/react-ui/src/timeline/timeline-track.tsx` by **copying the algorithm** into ClipCraft — the react-ui package stays unconsumed.
 - **Not a craft-state citizen for zoom/scroll.** Zoom and scroll are UI-only ephemeral state. Page reload or provider remount resets them to the auto-fit value. This matches every other editor on the runtime and keeps the craft store free of presentation junk.
 - **Not the overview/dive surfaces.** `TimelineOverview3D` (Plan 6) and `DiveCanvas` (Plan 7) are future work.
 
-**Command dispatch shape** — `useDispatch()` returns a two-arg `(actor: Actor, command) => Event[]` function. `Actor` is `'human' | 'agent'`; Timeline dispatches `("human", { type: "selection:set", selection: { type: "clip", ids: [clipId] } })`. Ruler click calls `usePlayback().seek(Math.max(0, Math.min(t, effectiveDuration)))`.
-
-**Playhead overlay pointer events** — the overlay wrapper is `pointerEvents: none` so clicks pass through to the track rows beneath. `Playhead` itself sets `pointerEvents: auto` on just its line and drag handle — the tooltip stays `none`. This is load-bearing: without it, the playhead wrapper would eat every click on empty track space.
+**Command dispatch shape** — `useDispatch()` returns a two-arg `(actor: Actor, command) => Event[]` function. `Actor` is `'human' | 'agent'`; Timeline dispatches `("human", { type: "selection:set", selection: { type: "clip", ids: [clipId] } })`. Ruler click calls `usePlayback().seek(Math.max(0, Math.min(t, dur)))`.
 
 **`xToTime` contract** — `useTimelineZoom.xToTime` takes a *viewport-local* x coordinate and adds `scrollLeft` internally. Call sites pass `e.clientX - rect.left` on the scroll-viewport element.
 
-**Hook signature drift** — during Plan 5 Task 4 implementation the plan prose for `useFrameExtractor` / `useWaveform` turned out to be stale. The real signatures take an options object (`{ videoUrl, duration, frameInterval, frameHeight }` / `{ audioUrl, bars, maxDuration }`) and return `{ frames: FrameData[] }` / `{ waveform: { peaks, duration } }`. TrackRow adapts to the real shapes. If you refactor these hooks, update TrackRow too.
+**Hook signature drift vs plan prose** — the real `useFrameExtractor` / `useWaveform` signatures take an options object (`{ videoUrl, duration, frameInterval, frameHeight }` / `{ audioUrl, bars, maxDuration }`) and return `{ frames: FrameData[] }` / `{ waveform: { peaks, duration } | null }`. VideoTrack and AudioTrack use these directly (the plan's prose was stale). If you refactor these hooks, update the two track components.
 
 ### StrictMode safety
 
@@ -284,10 +287,9 @@ The craft packages all live on branch `feat/clipcraft-aigc-status`. Changes that
 ## Known limitations (forward references)
 
 - **External edits wipe in-memory state — and now playback position too.** Current strategy is "remount the provider on external edit." Plan 4 made this pain real: an agent-originated `project.json` edit drops the `PlaybackEngine` playhead back to 0s and re-loads the composition from scratch, even for a tweak that left the tracks/clips untouched. The source migration tags origin precisely (so the viewer knows *that* a change is external), but the response is still a full re-hydration. Mitigation: diff-and-dispatch, a follow-up plan that computes a minimal command sequence from the old→new project diff and dispatches it against the live store without a remount.
-- **Clip edit is not wired.** The Plan 5 timeline is read-only for composition shape — click-to-select works, but drag-to-move / resize / split do not. Plan 5.5 (or Plan 6) will port the ripple+snap drag engine from `@pneuma-craft/react-ui/src/timeline/timeline-track.tsx` by copying the algorithm into ClipCraft. react-ui stays unconsumed.
+- **Clip edit is not wired.** The Plan 5 timeline is read-only for composition shape — click-to-select works, but drag-to-move / resize / split do not. Plan 5.5 will port the ripple+snap drag engine from `@pneuma-craft/react-ui/src/timeline/timeline-track.tsx` by copying the algorithm into ClipCraft. react-ui stays unconsumed.
 - **No DOM-level tests for preview/timeline components.** The project has no happy-dom / testing-library setup, and adding it for what are still mostly presentational wrappers over craft hooks was out of scope. Verification is tsc + import-smoke tests + browser smoke tests via `chrome-devtools-mcp` captured in Plan 4 Task 5 and Plan 5 Task 6. Once clip-edit lands and the timeline grows non-trivial drag math, install happy-dom and cover the ripple/snap algorithm.
-- **TimeRuler renders pre-zero ticks at high zoom.** A legacy cosmetic bug carried over in the port: at large viewport widths the tick generator emits labels for negative timestamps (`-1:-4`, `-1:-2`). Harmless but ugly — clamp the tick range to `[0, duration]` when polishing Plan 5.5.
-- **Zoom in is rate-limited by synchronous clicks.** Three rapid `zoomIn()` calls in the same tick all read the same closed-over `pixelsPerSecond` and only the last write lands. Add a functional-updater form (`setPixelsPerSecond(prev => clamp(prev * ZOOM_STEP))`) when polishing.
+- **BGM track is not rendered as a separate lane.** Legacy had `storyboard.bgm` as a sibling of the scene array and rendered a dedicated `BgmTrack`. Craft represents BGM as just another audio track, so `AudioTrack` covers it — no mode-level split. If the product wants BGM visually distinguished (different height, different icon), add a discriminator on `track.metadata` upstream or a naming convention in the mode.
 - **Minimal `extractContext`.** Just `"ClipCraft bootstrap — N file(s) in workspace"`. Plan 10's skill rewrite will make it domain-aware (current composition summary, selected asset, provenance lineage of selection).
 - **`project.json` is the only canonical file.** Legacy clipcraft had `storyboard.json` + `graph.json` + `project.json` as separate files; the new mode consolidates. Plans don't include reintroducing splits — one file is fine until it isn't.
 

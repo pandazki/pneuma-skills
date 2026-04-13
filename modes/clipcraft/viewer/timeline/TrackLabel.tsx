@@ -1,44 +1,27 @@
-// modes/clipcraft/viewer/timeline/TrackLabel.tsx
-import type { Track } from "@pneuma-craft/timeline";
+// Ported verbatim from modes/clipcraft-legacy/viewer/timeline/TrackLabel.tsx.
+// Pure children renderer — no store coupling, no port changes needed.
+// Legacy passes an emoji/char per track type in Timeline.tsx.
 
-export const TRACK_LABEL_WIDTH = 96;
+const LABEL_W = 32;
 
-export interface TrackLabelProps {
-  track: Track;
-}
+export { LABEL_W };
 
-export function TrackLabel({ track }: TrackLabelProps) {
-  const icon = iconFor(track.type);
+export function TrackLabel({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="cc-track-label"
       style={{
-        width: TRACK_LABEL_WIDTH,
-        height: "100%",
+        width: LABEL_W,
+        flexShrink: 0,
+        fontSize: 10,
+        color: "#71717a",
+        textAlign: "center",
         display: "flex",
         alignItems: "center",
-        gap: 6,
-        padding: "0 8px",
-        fontSize: 11,
-        color: "#d4d4d8",
-        background: "#18181b",
-        borderRight: "1px solid #27272a",
-        fontFamily: "system-ui, sans-serif",
+        justifyContent: "center",
+        userSelect: "none",
       }}
     >
-      <span aria-hidden style={{ opacity: 0.6 }}>{icon}</span>
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {track.name || track.type}
-      </span>
+      {children}
     </div>
   );
-}
-
-function iconFor(type: Track["type"]): string {
-  switch (type) {
-    case "video": return "V";
-    case "audio": return "A";
-    case "subtitle": return "T";
-    default: return "?";
-  }
 }

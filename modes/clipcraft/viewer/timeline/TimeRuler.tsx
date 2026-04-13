@@ -36,7 +36,14 @@ export function TimeRuler({ duration, pixelsPerSecond, scrollLeft, viewportWidth
   const ticks = useMemo(() => {
     if (pixelsPerSecond <= 0) return [];
     const interval = tickInterval(pixelsPerSecond);
-    const startTime = Math.floor(scrollLeft / pixelsPerSecond / interval) * interval;
+    // Clamp start to 0 — negative tick labels (-1:-4, -1:-2) are ugly and
+    // legacy's reducer happened to hide them behind overflow:hidden; in the
+    // craft port the viewport can be wider than the content, so the negative
+    // ticks would otherwise leak out.
+    const startTime = Math.max(
+      0,
+      Math.floor(scrollLeft / pixelsPerSecond / interval) * interval,
+    );
     const endTime = Math.min(duration, (scrollLeft + viewportWidth) / pixelsPerSecond + interval);
     const result: { time: number; x: number }[] = [];
     for (let t = startTime; t <= endTime; t += interval) {

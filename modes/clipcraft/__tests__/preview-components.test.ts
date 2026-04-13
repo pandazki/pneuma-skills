@@ -46,14 +46,24 @@ describe("preview component module imports", () => {
     expect(typeof mod.TrackLabel).toBe("function");
   });
 
-  test("ClipStrip exports a function", async () => {
-    const mod = await import("../viewer/timeline/ClipStrip.js");
-    expect(typeof mod.ClipStrip).toBe("function");
+  test("VideoTrack exports a function", async () => {
+    const mod = await import("../viewer/timeline/VideoTrack.js");
+    expect(typeof mod.VideoTrack).toBe("function");
   });
 
-  test("TrackRow exports a function", async () => {
-    const mod = await import("../viewer/timeline/TrackRow.js");
-    expect(typeof mod.TrackRow).toBe("function");
+  test("AudioTrack exports a function", async () => {
+    const mod = await import("../viewer/timeline/AudioTrack.js");
+    expect(typeof mod.AudioTrack).toBe("function");
+  });
+
+  test("SubtitleTrack exports a function", async () => {
+    const mod = await import("../viewer/timeline/SubtitleTrack.js");
+    expect(typeof mod.SubtitleTrack).toBe("function");
+  });
+
+  test("WaveformBars exports a function", async () => {
+    const mod = await import("../viewer/timeline/WaveformBars.js");
+    expect(typeof mod.WaveformBars).toBe("function");
   });
 
   test("Timeline exports a function", async () => {
