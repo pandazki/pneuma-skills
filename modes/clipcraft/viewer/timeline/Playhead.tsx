@@ -94,8 +94,6 @@ export function Playhead({
     };
   }, [dragging, xToTime, onSeek]);
 
-  const visible = x >= -10 && x <= (containerRef.current?.offsetWidth ?? 9999) + 10;
-
   return (
     <div
       ref={containerRef}
@@ -110,66 +108,62 @@ export function Playhead({
         zIndex: 10,
       }}
     >
-      {visible && (
-        <>
-          {/* Vertical line — CSS transition for smooth playback */}
-          <div
-            style={{
-              position: "absolute",
-              left: x,
-              top: 0,
-              width: 2,
-              height: trackAreaHeight,
-              marginLeft: -1,
-              background: "#f97316",
-              borderRadius: 1,
-              boxShadow: "0 0 6px rgba(249, 115, 22, 0.5)",
-              pointerEvents: "none",
-              transition: dragging ? "none" : "left 100ms linear",
-              willChange: "left",
-            }}
-          />
-          {/* Handle (triangle + rect) */}
-          <div
-            data-playhead="true"
-            onMouseDown={handleMouseDown}
-            style={{
-              position: "absolute",
-              left: x,
-              top: -2,
-              transform: "translateX(-50%)",
-              cursor: dragging ? "grabbing" : "grab",
-              zIndex: 11,
-              transition: dragging ? "none" : "left 100ms linear",
-              willChange: "left",
-            }}
-          >
-            <svg width="12" height="16" viewBox="0 0 12 16">
-              <path d="M0 0h12v10l-6 6-6-6z" fill="#f97316" />
-            </svg>
-          </div>
-          {/* Time tooltip when dragging */}
-          {dragging && (
-            <div
-              style={{
-                position: "absolute",
-                left: x,
-                top: -24,
-                transform: "translateX(-50%)",
-                background: "#f97316",
-                color: "#fff",
-                fontSize: 10,
-                fontWeight: 600,
-                padding: "2px 6px",
-                borderRadius: 3,
-                whiteSpace: "nowrap",
-                pointerEvents: "none",
-              }}
-            >
-              {formatTimeMs(dragTime)}
-            </div>
-          )}
-        </>
+      {/* Vertical line — CSS transition for smooth playback */}
+      <div
+        style={{
+          position: "absolute",
+          left: x,
+          top: 0,
+          width: 2,
+          height: trackAreaHeight,
+          marginLeft: -1,
+          background: "#f97316",
+          borderRadius: 1,
+          boxShadow: "0 0 6px rgba(249, 115, 22, 0.5)",
+          pointerEvents: "none",
+          transition: dragging ? "none" : "left 100ms linear",
+          willChange: "left",
+        }}
+      />
+      {/* Handle (triangle + rect) */}
+      <div
+        data-playhead="true"
+        onMouseDown={handleMouseDown}
+        style={{
+          position: "absolute",
+          left: x,
+          top: -2,
+          transform: "translateX(-50%)",
+          cursor: dragging ? "grabbing" : "grab",
+          zIndex: 11,
+          transition: dragging ? "none" : "left 100ms linear",
+          willChange: "left",
+        }}
+      >
+        <svg width="12" height="16" viewBox="0 0 12 16">
+          <path d="M0 0h12v10l-6 6-6-6z" fill="#f97316" />
+        </svg>
+      </div>
+      {/* Time tooltip when dragging */}
+      {dragging && (
+        <div
+          style={{
+            position: "absolute",
+            left: x,
+            top: -24,
+            transform: "translateX(-50%)",
+            background: "#f97316",
+            color: "#fff",
+            fontSize: 10,
+            fontWeight: 600,
+            padding: "2px 6px",
+            borderRadius: 3,
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+          }}
+        >
+          {formatTimeMs(dragTime)}
+        </div>
       )}
     </div>
   );

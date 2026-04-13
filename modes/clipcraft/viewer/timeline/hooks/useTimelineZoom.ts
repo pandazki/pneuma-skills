@@ -49,7 +49,8 @@ export function useTimelineZoom(
   const scrollMin = -(viewportWidth / 4);
   const scrollMax = contentWidth - (viewportWidth * 3) / 4;
 
-  // Observe container width + auto-fit on first render
+  // Observe container width + auto-fit once per mount (re-fit when duration changes)
+  const didAutoFitRef = useRef(false);
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -57,16 +58,18 @@ export function useTimelineZoom(
     const obs = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width ?? 0;
       setViewportWidth(w);
-      // Auto-fit on first render (pps === 0)
-      if (pixelsPerSecond === 0 && dur > 0 && w > 0) {
-        const fitPPS = Math.max(minPPS, Math.min(maxPPS, w / dur));
+      // Auto-fit only once — zoom changes must not tear down the observer
+      if (!didAutoFitRef.current && dur > 0 && w > 0) {
+        const fitMinPPS = Math.max(ABSOLUTE_MIN_PPS, (w * 0.5) / dur);
+        const fitPPS = Math.max(fitMinPPS, Math.min(ABSOLUTE_MAX_PPS, w / dur));
         setPixelsPerSecond(fitPPS);
         setScrollLeft(0);
+        didAutoFitRef.current = true;
       }
     });
     obs.observe(el);
     return () => obs.disconnect();
-  }, [containerRef, dur, pixelsPerSecond, minPPS, maxPPS]);
+  }, [containerRef, dur]);
 
   const setZoom = useCallback(
     (pps: number) => {
@@ -111,26 +114,13 @@ export function useTimelineZoom(
     [pixelsPerSecond, scrollLeft],
   );
 
-  // Wheel handler — use a stable ref for latest state, re-bind when element changes
+  // Wheel handler — use a stable ref for latest state, bind once per element
   const stateRef = useRef({ pixelsPerSecond, scrollLeft, minPPS, maxPPS, scrollMin, scrollMax });
   stateRef.current = { pixelsPerSecond, scrollLeft, minPPS, maxPPS, scrollMin, scrollMax };
-  const boundElRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
-    if (el === boundElRef.current) return;
-
-    if (boundElRef.current && (boundElRef.current as any).__wheelHandler) {
-      boundElRef.current.removeEventListener(
-        "wheel",
-        (boundElRef.current as any).__wheelHandler,
-      );
-    }
-
-    if (!el) {
-      boundElRef.current = null;
-      return;
-    }
+    if (!el) return;
 
     const handler = (e: WheelEvent) => {
       e.preventDefault();
@@ -153,15 +143,11 @@ export function useTimelineZoom(
       }
     };
     el.addEventListener("wheel", handler, { passive: false });
-    (el as any).__wheelHandler = handler;
-    boundElRef.current = el;
 
     return () => {
       el.removeEventListener("wheel", handler);
-      (el as any).__wheelHandler = null;
-      boundElRef.current = null;
     };
-  });
+  }, [containerRef]);
 
   return useMemo(
     () => ({
