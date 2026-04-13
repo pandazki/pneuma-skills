@@ -2,6 +2,7 @@ import { VideoPreview } from "../preview/VideoPreview.js";
 import type { CaptionStyle } from "../../persistence.js";
 import { useTimelineMode } from "../hooks/useTimelineMode.js";
 import { TimelineShell } from "./TimelineShell.js";
+import { AssetPanel } from "../assets/AssetPanel.js";
 
 export interface ClipCraftLayoutProps {
   captionStyle?: CaptionStyle;
@@ -50,33 +51,13 @@ export function ClipCraftLayout({ captionStyle }: ClipCraftLayoutProps = {}) {
             "flex 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease",
         }}
       >
-        <AssetPanelPlaceholder />
+        <AssetPanel />
         <div style={{ flex: 1, minWidth: 0 }}>
           <VideoPreview captionStyle={captionStyle} />
         </div>
       </div>
 
       <TimelineShell />
-    </div>
-  );
-}
-
-function AssetPanelPlaceholder() {
-  return (
-    <div
-      style={{
-        width: 220,
-        minWidth: 220,
-        background: "#111113",
-        borderRight: "1px solid #27272a",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "#52525b",
-        fontSize: 11,
-      }}
-    >
-      AssetPanel (Task 4)
     </div>
   );
 }

@@ -18,6 +18,7 @@ import { PreviewPanel } from "./PreviewPanel.js";
 import { SceneProvider, useScenes } from "./scenes/SceneContext.js";
 import { TimelineModeProvider } from "./hooks/useTimelineMode.js";
 import { TimelineZoomProvider } from "./hooks/useTimelineZoomShared.js";
+import { AssetErrorsProvider } from "./assets/useAssetErrors.js";
 
 const AUTOSAVE_DELAY_MS = 500;
 
@@ -64,18 +65,20 @@ const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({ sources }) => {
 
   return (
     <PneumaCraftProvider key={providerKey} assetResolver={assetResolver}>
-      <SceneProvider initialScenes={project?.scenes ?? []}>
-        <TimelineModeProvider>
-          <TimelineZoomProvider>
-            <SyncedBody
-              project={project}
-              writeProject={writeProject}
-              currentTitleRef={currentTitleRef}
-              hydrationError={errorMessage}
-            />
-          </TimelineZoomProvider>
-        </TimelineModeProvider>
-      </SceneProvider>
+      <AssetErrorsProvider>
+        <SceneProvider initialScenes={project?.scenes ?? []}>
+          <TimelineModeProvider>
+            <TimelineZoomProvider>
+              <SyncedBody
+                project={project}
+                writeProject={writeProject}
+                currentTitleRef={currentTitleRef}
+                hydrationError={errorMessage}
+              />
+            </TimelineZoomProvider>
+          </TimelineModeProvider>
+        </SceneProvider>
+      </AssetErrorsProvider>
     </PneumaCraftProvider>
   );
 };

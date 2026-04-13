@@ -70,4 +70,24 @@ describe("preview component module imports", () => {
     const mod = await import("../viewer/timeline/Timeline.js");
     expect(typeof mod.Timeline).toBe("function");
   });
+
+  test("AssetPanel exports a function", async () => {
+    const mod = await import("../viewer/assets/AssetPanel.js");
+    expect(typeof mod.AssetPanel).toBe("function");
+  });
+
+  test("AssetThumbnail exports a function", async () => {
+    const mod = await import("../viewer/assets/AssetThumbnail.js");
+    expect(typeof mod.AssetThumbnail).toBe("function");
+  });
+
+  test("ScriptTab exports a function", async () => {
+    const mod = await import("../viewer/assets/ScriptTab.js");
+    expect(typeof mod.ScriptTab).toBe("function");
+  });
+
+  test("useAssetActions exports a function", async () => {
+    const mod = await import("../viewer/assets/useAssetActions.js");
+    expect(typeof mod.useAssetActions).toBe("function");
+  });
 });
