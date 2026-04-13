@@ -2,6 +2,7 @@
 import { PreviewCanvas } from "./PreviewCanvas.js";
 import { PlaybackControls } from "./PlaybackControls.js";
 import { StateDump } from "./StateDump.js";
+import { Timeline } from "./timeline/Timeline.js";
 
 export interface PreviewPanelProps {
   hydrationError: string | null;
@@ -12,11 +13,8 @@ export interface PreviewPanelProps {
  *
  *   [ PreviewCanvas      ]   ← drawn by upstream PlaybackEngine
  *   [ PlaybackControls   ]
- *   [ StateDump (debug)  ]
- *
- * StateDump survives Plan 4 as a debug pane until the real timeline /
- * inspector lands in Plan 5+. It's not collapsible yet — that's noise
- * not worth the code right now.
+ *   [ Timeline           ]   ← Plan 5: ruler + track rows + playhead
+ *   [ StateDump (debug)  ]   ← collapsed <details>
  */
 export function PreviewPanel({ hydrationError }: PreviewPanelProps) {
   return (
@@ -35,9 +33,20 @@ export function PreviewPanel({ hydrationError }: PreviewPanelProps) {
     >
       <PreviewCanvas />
       <PlaybackControls />
-      <div style={{ marginTop: 12, opacity: 0.85 }}>
+      <Timeline />
+      <details>
+        <summary
+          style={{
+            cursor: "pointer",
+            color: "#a1a1aa",
+            fontSize: 11,
+            padding: "6px 0",
+          }}
+        >
+          debug · StateDump
+        </summary>
         <StateDump hydrationError={hydrationError} />
-      </div>
+      </details>
     </div>
   );
 }

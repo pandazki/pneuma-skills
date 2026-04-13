@@ -53,8 +53,8 @@ The protocol defines six user/viewer/agent directions. ClipCraft implements a su
 
 | Direction | Protocol expectation | ClipCraft today | Wired via |
 |---|---|---|---|
-| **① User → Viewer: Interaction** | `onSelect`, `commands`, `onViewportChange` | **Partial: play/pause/seek.** `PlaybackControls` dispatches through `usePlayback()`. Selection / viewport / command menus are still unwired. | Plan 4 (playback) / Plan 5+ (selection) |
-| **② Viewer → User: Rendering** | `files` prop drives render | `useSource(sources.project)` → hydrate craft store → `<PreviewRoot>` draws frames onto a `<canvas>` + `StateDump` as a debug pane | `ClipCraftPreview` + `PreviewPanel` + `PreviewCanvas` + `PlaybackControls` |
+| **① User → Viewer: Interaction** | `onSelect`, `commands`, `onViewportChange` | **Partial: play/pause/seek, click-to-seek on timeline ruler, click-to-select-clip, zoom.** `PlaybackControls` and `Timeline` dispatch through `usePlayback()` + `useDispatch()`. Clip drag/resize/split, viewport, command menus still unwired. | Plan 4 (playback) / Plan 5 (timeline read-only) / Plan 5.5+ (clip edit) |
+| **② Viewer → User: Rendering** | `files` prop drives render | `useSource(sources.project)` → hydrate craft store → `<PreviewRoot>` draws frames onto a `<canvas>` + `<Timeline>` ruler/rows/playhead + `StateDump` collapsed | `ClipCraftPreview` + `PreviewPanel` + `PreviewCanvas` + `PlaybackControls` + `timeline/Timeline` |
 | **③ User → Agent: Intent** | Chat panel via WS | Standard, no mode customization | (default Pneuma chat) |
 | **④ Agent → User: Response** | WS streaming | Standard | (default Pneuma chat) |
 | **⑤ Agent → Viewer: Action** | `viewer_action` tool + `actionRequest` prop | **Not declared.** `manifest.viewerApi` is absent entirely. | Plan 5+ |
@@ -233,6 +233,31 @@ ClipCraft's playback is delegated end-to-end to `@pneuma-craft/video`'s `Playbac
 
 The mode-side surface is roughly 200 lines total (`PreviewCanvas.tsx` + `PlaybackControls.tsx` + `PreviewPanel.tsx` + `assetResolver.ts`), and none of it reaches past the upstream React bindings.
 
+### Timeline (Plan 5) — read-only
+
+Plan 5 ports the visual timeline from `modes/clipcraft-legacy/viewer/timeline/` onto the craft store. Everything lives under `modes/clipcraft/viewer/timeline/`:
+
+- `Timeline.tsx` — root composition. Reads `useComposition()`, `usePlayback()`, `useDispatch()`, owns `useTimelineZoom` state, and renders a zoom toolbar + ruler row + one `TrackRow` per track + a `Playhead` overlay.
+- `TimeRuler.tsx` / `Playhead.tsx` — pure prop-driven, no store coupling.
+- `TrackRow.tsx` — walks `track.clips`, resolves each clip's asset via `useAsset(clip.assetId)`, and branches by `track.type` to render a filmstrip (`useFrameExtractor` → `<img>` tiles), waveform (`useWaveform` → bars), or subtitle text. Subtitles bypass the asset gate entirely.
+- `ClipStrip.tsx` / `TrackLabel.tsx` — shared primitives. `ClipStrip` is an absolute-positioned clip rectangle with click-to-select; per-type inner content is a `children` prop.
+- `hooks/useTimelineZoom.ts` — **local React state** (`useState`) for `{ pixelsPerSecond, scrollLeft }`, a `ResizeObserver` for viewport width + one-shot auto-fit (gated by `didAutoFitRef`), and a native `addEventListener("wheel", handler, { passive: false })` for ctrl/meta-wheel zoom that can `preventDefault` to block browser page zoom.
+- `hooks/useFrameExtractor.ts` / `hooks/useWaveform.ts` — pure data hooks, byte-identical ports from legacy with module-scope `Map` caches.
+
+**What the timeline deliberately is not:**
+
+- **Not interactive for composition shape.** Click-to-select is wired; click-drag-to-move, resize, and split are NOT. Plan 5.5 (or Plan 6 rolled together) will port the ripple+snap drag engine from `@pneuma-craft/react-ui/src/timeline/timeline-track.tsx` by **copying the algorithm** into ClipCraft — the react-ui package stays unconsumed.
+- **Not a craft-state citizen for zoom/scroll.** Zoom and scroll are UI-only ephemeral state. Page reload or provider remount resets them to the auto-fit value. This matches every other editor on the runtime and keeps the craft store free of presentation junk.
+- **Not the overview/dive surfaces.** `TimelineOverview3D` (Plan 6) and `DiveCanvas` (Plan 7) are future work.
+
+**Command dispatch shape** — `useDispatch()` returns a two-arg `(actor: Actor, command) => Event[]` function. `Actor` is `'human' | 'agent'`; Timeline dispatches `("human", { type: "selection:set", selection: { type: "clip", ids: [clipId] } })`. Ruler click calls `usePlayback().seek(Math.max(0, Math.min(t, effectiveDuration)))`.
+
+**Playhead overlay pointer events** — the overlay wrapper is `pointerEvents: none` so clicks pass through to the track rows beneath. `Playhead` itself sets `pointerEvents: auto` on just its line and drag handle — the tooltip stays `none`. This is load-bearing: without it, the playhead wrapper would eat every click on empty track space.
+
+**`xToTime` contract** — `useTimelineZoom.xToTime` takes a *viewport-local* x coordinate and adds `scrollLeft` internally. Call sites pass `e.clientX - rect.left` on the scroll-viewport element.
+
+**Hook signature drift** — during Plan 5 Task 4 implementation the plan prose for `useFrameExtractor` / `useWaveform` turned out to be stale. The real signatures take an options object (`{ videoUrl, duration, frameInterval, frameHeight }` / `{ audioUrl, bars, maxDuration }`) and return `{ frames: FrameData[] }` / `{ waveform: { peaks, duration } }`. TrackRow adapts to the real shapes. If you refactor these hooks, update TrackRow too.
+
 ### StrictMode safety
 
 React 18+ StrictMode simulates an unmount/remount cycle for effects in dev without re-running the render body. Plan 4 discovered that `PneumaCraftProvider`'s cleanup unconditionally destroyed the store, so the remounted tree was reading from a dangling reference — the first `play()` click after page load threw `Store destroyed`. Fixed upstream by deferring the destroy through a microtask gated by a ref flag: the effect body resets the flag on any re-run (including StrictMode's simulated re-run), so a just-queued destroy is cancelled when the component stays mounted. Real unmounts have no re-run, the flag stays set, and the microtask destroys cleanly. See commit `969bdf7` on `feat/clipcraft-aigc-status` and the smoke-test report in Plan 4's Task 5.
@@ -259,9 +284,10 @@ The craft packages all live on branch `feat/clipcraft-aigc-status`. Changes that
 ## Known limitations (forward references)
 
 - **External edits wipe in-memory state — and now playback position too.** Current strategy is "remount the provider on external edit." Plan 4 made this pain real: an agent-originated `project.json` edit drops the `PlaybackEngine` playhead back to 0s and re-loads the composition from scratch, even for a tweak that left the tracks/clips untouched. The source migration tags origin precisely (so the viewer knows *that* a change is external), but the response is still a full re-hydration. Mitigation: diff-and-dispatch, a follow-up plan that computes a minimal command sequence from the old→new project diff and dispatches it against the live store without a remount.
-- **Seed image is 1×1 pixel.** The bundled `assets/sample.jpg` is a 207-byte minimal baseline JPEG. The engine decodes it, playback advances and reaches the end of the clip correctly, but the canvas draws a 1×1 image scaled to 1920×1080 — it looks black. When Plan 5 brings the timeline UI and users will actually look at the preview, swap the seed for a 640×360 gradient or small MP4.
-- **No DOM-level tests for preview components.** `PreviewCanvas` / `PlaybackControls` / `PreviewPanel` are thin wrappers around upstream hooks. The project has no happy-dom / testing-library setup, and adding it for three presentational wrappers was out of scope. Verification is tsc + import-smoke tests + the browser smoke test via `chrome-devtools-mcp` captured in Plan 4's Task 5. If Plan 5 adds enough mode-owned logic to justify DOM tests, install the infra at that point.
-- **StateDump stays as a debug pane.** It still renders under the preview. Plan 5's timeline UI will replace or demote it further.
+- **Clip edit is not wired.** The Plan 5 timeline is read-only for composition shape — click-to-select works, but drag-to-move / resize / split do not. Plan 5.5 (or Plan 6) will port the ripple+snap drag engine from `@pneuma-craft/react-ui/src/timeline/timeline-track.tsx` by copying the algorithm into ClipCraft. react-ui stays unconsumed.
+- **No DOM-level tests for preview/timeline components.** The project has no happy-dom / testing-library setup, and adding it for what are still mostly presentational wrappers over craft hooks was out of scope. Verification is tsc + import-smoke tests + browser smoke tests via `chrome-devtools-mcp` captured in Plan 4 Task 5 and Plan 5 Task 6. Once clip-edit lands and the timeline grows non-trivial drag math, install happy-dom and cover the ripple/snap algorithm.
+- **TimeRuler renders pre-zero ticks at high zoom.** A legacy cosmetic bug carried over in the port: at large viewport widths the tick generator emits labels for negative timestamps (`-1:-4`, `-1:-2`). Harmless but ugly — clamp the tick range to `[0, duration]` when polishing Plan 5.5.
+- **Zoom in is rate-limited by synchronous clicks.** Three rapid `zoomIn()` calls in the same tick all read the same closed-over `pixelsPerSecond` and only the last write lands. Add a functional-updater form (`setPixelsPerSecond(prev => clamp(prev * ZOOM_STEP))`) when polishing.
 - **Minimal `extractContext`.** Just `"ClipCraft bootstrap — N file(s) in workspace"`. Plan 10's skill rewrite will make it domain-aware (current composition summary, selected asset, provenance lineage of selection).
 - **`project.json` is the only canonical file.** Legacy clipcraft had `storyboard.json` + `graph.json` + `project.json` as separate files; the new mode consolidates. Plans don't include reintroducing splits — one file is fine until it isn't.
 
