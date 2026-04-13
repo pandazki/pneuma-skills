@@ -141,4 +141,30 @@ describe("preview component module imports", () => {
     const mod = await import("../viewer/overview/TimelineOverview3D.js");
     expect(typeof mod.TimelineOverview3D).toBe("function");
   });
+
+  test("useCurrentFrame exports a function", async () => {
+    const mod = await import("../viewer/exploded/useCurrentFrame.js");
+    expect(typeof mod.useCurrentFrame).toBe("function");
+  });
+
+  test("useActiveSceneAtTime exports a function", async () => {
+    const mod = await import("../viewer/exploded/useActiveSceneAtTime.js");
+    expect(typeof mod.useActiveSceneAtTime).toBe("function");
+  });
+
+  test("exploded WaveformBars exports a function", async () => {
+    const mod = await import("../viewer/exploded/WaveformBars.js");
+    expect(typeof mod.WaveformBars).toBe("function");
+  });
+
+  test("ExplodedLayer exports a function", async () => {
+    const mod = await import("../viewer/exploded/ExplodedLayer.js");
+    expect(typeof mod.ExplodedLayer).toBe("function");
+    expect(Array.isArray(mod.LAYER_ORDER)).toBe(true);
+  });
+
+  test("ExplodedView exports a function", async () => {
+    const mod = await import("../viewer/exploded/ExplodedView.js");
+    expect(typeof mod.ExplodedView).toBe("function");
+  });
 });

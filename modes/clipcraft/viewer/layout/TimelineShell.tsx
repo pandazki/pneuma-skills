@@ -4,6 +4,7 @@ import { useTimelineMode } from "../hooks/useTimelineMode.js";
 import { TimelineOverview3D } from "../overview/TimelineOverview3D.js";
 import { OverviewControls } from "../overview/OverviewControls.js";
 import { useOverviewCamera } from "../overview/useOverviewCamera.js";
+import { ExplodedView } from "../exploded/ExplodedView.js";
 
 /**
  * Timeline shell. Legacy reference:
@@ -116,30 +117,13 @@ function ExpandedPanel() {
           </div>
           <div style={{ flex: 1, overflow: "hidden", minHeight: 0 }}>
             {preset === "exploded" ? (
-              <ExplodedViewPlaceholder />
+              <ExplodedView />
             ) : (
               <TimelineOverview3D cameraPreset={preset} />
             )}
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function ExplodedViewPlaceholder() {
-  return (
-    <div
-      style={{
-        height: "100%",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "#52525b",
-        fontSize: 12,
-      }}
-    >
-      ExplodedView (Task 6)
     </div>
   );
 }
