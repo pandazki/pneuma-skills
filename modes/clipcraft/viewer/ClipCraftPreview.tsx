@@ -15,6 +15,9 @@ import {
 } from "../persistence.js";
 import { createWorkspaceAssetResolver } from "./assetResolver.js";
 import { PreviewPanel } from "./PreviewPanel.js";
+import { SceneProvider, useScenes } from "./scenes/SceneContext.js";
+import { TimelineModeProvider } from "./hooks/useTimelineMode.js";
+import { TimelineZoomProvider } from "./hooks/useTimelineZoomShared.js";
 
 const AUTOSAVE_DELAY_MS = 500;
 
@@ -61,12 +64,18 @@ const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({ sources }) => {
 
   return (
     <PneumaCraftProvider key={providerKey} assetResolver={assetResolver}>
-      <SyncedBody
-        project={project}
-        writeProject={writeProject}
-        currentTitleRef={currentTitleRef}
-        hydrationError={errorMessage}
-      />
+      <SceneProvider initialScenes={project?.scenes ?? []}>
+        <TimelineModeProvider>
+          <TimelineZoomProvider>
+            <SyncedBody
+              project={project}
+              writeProject={writeProject}
+              currentTitleRef={currentTitleRef}
+              hydrationError={errorMessage}
+            />
+          </TimelineZoomProvider>
+        </TimelineModeProvider>
+      </SceneProvider>
     </PneumaCraftProvider>
   );
 };
@@ -86,6 +95,8 @@ function SyncedBody({
   const coreState = usePneumaCraftStore((s) => s.coreState);
   const composition = usePneumaCraftStore((s) => s.composition);
   const eventCount = useEventLog().length;
+  const scenes = useScenes();
+  const captionStyle = project?.captionStyle;
 
   // ── Hydration: dispatch project into the (fresh) craft store ─────────
   //
@@ -129,6 +140,8 @@ function SyncedBody({
         coreState,
         composition,
         currentTitleRef.current,
+        scenes,
+        captionStyle,
       );
       try {
         await writeProject(file);
@@ -137,7 +150,7 @@ function SyncedBody({
       }
     }, AUTOSAVE_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [eventCount, writeProject]);
+  }, [eventCount, writeProject, scenes, captionStyle]);
 
   return <PreviewPanel hydrationError={hydrationError} />;
 }

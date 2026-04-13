@@ -1,20 +1,14 @@
-// modes/clipcraft/viewer/PreviewPanel.tsx
-import { PreviewCanvas } from "./PreviewCanvas.js";
-import { PlaybackControls } from "./PlaybackControls.js";
+import { ClipCraftLayout } from "./layout/ClipCraftLayout.js";
 import { StateDump } from "./StateDump.js";
-import { Timeline } from "./timeline/Timeline.js";
 
 export interface PreviewPanelProps {
   hydrationError: string | null;
 }
 
 /**
- * Layout shell for ClipCraft's editing surface.
- *
- *   [ PreviewCanvas      ]   ← drawn by upstream PlaybackEngine
- *   [ PlaybackControls   ]
- *   [ Timeline           ]   ← Plan 5: ruler + track rows + playhead
- *   [ StateDump (debug)  ]   ← collapsed <details>
+ * Plan 6 layout shell. The Plan 4 canvas + Plan 5 timeline + PlaybackControls
+ * are owned by ClipCraftLayout; PreviewPanel is a thin shim that keeps
+ * the debug StateDump accessible behind a collapsed details element.
  */
 export function PreviewPanel({ hydrationError }: PreviewPanelProps) {
   return (
@@ -23,26 +17,17 @@ export function PreviewPanel({ hydrationError }: PreviewPanelProps) {
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 8,
         height: "100%",
-        padding: 12,
         background: "#09090b",
         color: "#e4e4e7",
-        overflow: "auto",
+        overflow: "hidden",
       }}
     >
-      <PreviewCanvas />
-      <PlaybackControls />
-      <Timeline />
-      <details>
-        <summary
-          style={{
-            cursor: "pointer",
-            color: "#a1a1aa",
-            fontSize: 11,
-            padding: "6px 0",
-          }}
-        >
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <ClipCraftLayout />
+      </div>
+      <details style={{ borderTop: "1px solid #27272a", padding: "4px 12px" }}>
+        <summary style={{ cursor: "pointer", color: "#a1a1aa", fontSize: 11 }}>
           debug · StateDump
         </summary>
         <StateDump hydrationError={hydrationError} />
