@@ -16,7 +16,10 @@ import { createPortal } from "react-dom";
 import type {
   ViewerPreviewProps,
   ViewerSelectionContext,
+  ViewerFileContent,
 } from "../../../core/types/viewer-contract.js";
+import type { Source } from "../../../core/types/source.js";
+import { useSource } from "../../../src/hooks/useSource.js";
 import { useStore } from "../../../src/store.js";
 import { setDrawCaptureViewport } from "../pneuma-mode.js";
 import ScaffoldConfirm from "../../../src/components/ScaffoldConfirm.js";
@@ -44,7 +47,7 @@ function loadExcalidraw(): Promise<void> {
 
 /** Parse .excalidraw JSON from files array — prefer activeFile, fallback to first valid */
 function parseExcalidrawFile(
-  files: ViewerPreviewProps["files"],
+  files: ViewerFileContent[],
   activeFile?: string | null,
 ): { elements: any[]; appState: any; excalidrawFiles: any; filePath: string } | null {
   // If activeFile specified, try it first
@@ -91,20 +94,6 @@ function getApiBase(): string {
   return "";
 }
 
-/** Save file content to server */
-async function saveFile(path: string, content: string): Promise<boolean> {
-  try {
-    const res = await fetch(`${getApiBase()}/api/files`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path, content }),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
 /** Serialize Excalidraw data to .excalidraw JSON string */
 function serializeToFile(elements: any[], appState: any, files: any): string {
   const exportState: Record<string, any> = {};
@@ -129,7 +118,8 @@ function serializeToFile(elements: any[], appState: any, files: any): string {
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function DrawPreview({
-  files,
+  sources,
+  fileChannel,
   selection,
   onSelect: rawOnSelect,
   mode: rawPreviewMode,
@@ -142,6 +132,10 @@ export default function DrawPreview({
   onNavigateComplete,
   readonly,
 }: ViewerPreviewProps) {
+  // Derive files from sources.files
+  const filesSource = sources.files as Source<ViewerFileContent[]>;
+  const { value: filesValue, status } = useSource(filesSource);
+  const files: ViewerFileContent[] = filesValue ?? [];
   // Readonly mode: force view, suppress selection and editing
   const previewMode = readonly ? "view" : rawPreviewMode;
   const onSelect = readonly ? (() => {}) : rawOnSelect;
@@ -255,12 +249,8 @@ export default function DrawPreview({
   pushUserActionRef.current = pushUserAction;
   // Track element state for user action descriptions
   const prevElementSnapshotRef = useRef<Map<string, { type: string; text?: string }>>(new Map());
-  // Track what we last saved to avoid echo from file watcher
-  const lastSavedContentRef = useRef<string>("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentFilePathRef = useRef<string>("");
-  // Suppress onChange during Excalidraw remount initialization
-  const isUpdatingFromFileRef = useRef(false);
   // Key to force Excalidraw remount on external file changes.
   // updateScene() breaks text rendering — remount goes through proper font init.
   const [excalidrawKey, setExcalidrawKey] = useState(0);
@@ -313,15 +303,9 @@ export default function DrawPreview({
     };
   }, [excalidrawKey]);
 
-  // Record content on mount/remount so echo detection works
+  // Initialize element snapshot for user action tracking on mount/remount
   useEffect(() => {
     if (!excalidrawData) return;
-    lastSavedContentRef.current = serializeToFile(
-      excalidrawData.elements,
-      excalidrawData.appState,
-      excalidrawData.excalidrawFiles,
-    );
-    // Initialize element snapshot for user action tracking
     const snap = new Map<string, { type: string; text?: string }>();
     for (const el of excalidrawData.elements.filter((e: any) => !e.isDeleted)) {
       snap.set(el.id, { type: el.type, text: el.type === "text" ? el.text : undefined });
@@ -332,23 +316,15 @@ export default function DrawPreview({
   // Sync file changes from disk — force Excalidraw remount instead of updateScene.
   // updateScene() disrupts Excalidraw's internal font rendering, causing text to vanish.
   // Remounting goes through the proper initialData → font init pipeline.
+  // External changes rebuild the Excalidraw state from the incoming file.
+  // Self-origin echoes are our own save coming back — Excalidraw's in-memory
+  // state already reflects them, so we skip the remount and avoid the visual
+  // flash + cursor loss.
   useEffect(() => {
     if (!excalidrawData) return;
-    const newContent = serializeToFile(
-      excalidrawData.elements,
-      excalidrawData.appState,
-      excalidrawData.excalidrawFiles,
-    );
-    // Skip if content matches (our own save echoing back, or same as initial)
-    if (newContent === lastSavedContentRef.current) return;
-
-    // External file change: force Excalidraw remount with new initialData
-    isUpdatingFromFileRef.current = true;
+    if (status.lastOrigin === "self") return;
     setExcalidrawKey((k) => k + 1);
-    setTimeout(() => {
-      isUpdatingFromFileRef.current = false;
-    }, 500);
-  }, [excalidrawData]);
+  }, [excalidrawData, status.lastOrigin]);
 
   // Track current preview mode in a ref so handleChange can read it without re-creating
   const previewModeRef = useRef(previewMode);
@@ -359,16 +335,16 @@ export default function DrawPreview({
     (elements: any[], appState: any, files: any) => {
       // Skip saves in view mode
       if (previewModeRef.current === "view") return;
-      // Skip if we're updating from a file change (avoid echo)
-      if (isUpdatingFromFileRef.current) return;
-      if (!currentFilePathRef.current) return;
+      const path = currentFilePathRef.current;
+      if (!path) return;
 
       // Debounce saves
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
         const content = serializeToFile(elements, appState, files);
-        lastSavedContentRef.current = content;
-        saveFile(currentFilePathRef.current, content);
+        fileChannel.write(path, content).catch((err) => {
+          console.error("[draw] save failed", err);
+        });
 
         // Track user action for canvas changes
         const active = elements.filter((el: any) => !el.isDeleted);
@@ -414,7 +390,7 @@ export default function DrawPreview({
         }
       }, 500);
     },
-    [],
+    [fileChannel],
   );
 
   // Export selected elements as a screenshot (base64 PNG)

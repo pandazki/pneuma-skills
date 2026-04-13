@@ -82,6 +82,18 @@ The live preview compiles your code in-browser with core Remotion APIs. For feat
     serveDir: ".",
   },
 
+  sources: {
+    files: {
+      kind: "file-glob",
+      config: {
+        patterns: [
+          "src/**/*.tsx", "src/**/*.ts", "src/**/*.css", "public/**",
+          "*/src/**/*.tsx", "*/src/**/*.ts", "*/src/**/*.css", "*/public/**",
+        ],
+      },
+    },
+  },
+
   viewerApi: {
     workspace: {
       type: "all",

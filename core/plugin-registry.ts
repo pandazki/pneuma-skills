@@ -13,6 +13,7 @@ import type {
 } from "./types/plugin.js";
 import type { HookBus } from "./hook-bus.js";
 import type { SettingsManager } from "./settings-manager.js";
+import type { SourceProvider } from "./types/source.js";
 
 export interface PluginRegistryOptions {
   builtinDir: string;
@@ -132,7 +133,14 @@ export class PluginRegistry {
       }
 
       const slots = manifest.slots ?? {};
-      const plugin: LoadedPlugin = { manifest, basePath, hooks, slots, routes };
+      const plugin: LoadedPlugin = {
+        manifest,
+        basePath,
+        hooks,
+        slots,
+        routes,
+        sources: manifest.sources ?? [],
+      };
       this.loaded.set(manifest.name, plugin);
       return plugin;
     } catch (err: unknown) {
@@ -186,6 +194,21 @@ export class PluginRegistry {
 
   getLoadedList(): LoadedPlugin[] {
     return [...this.loaded.values()];
+  }
+
+  /**
+   * Collect every source provider contributed by currently-loaded plugins.
+   * The runtime calls this when building a per-mode SourceRegistry to
+   * register plugin providers alongside the built-ins. Duplicate kinds
+   * across plugins cause SourceRegistry.register to throw — plugins must
+   * namespace their kinds.
+   */
+  collectSourceProviders(): SourceProvider[] {
+    const out: SourceProvider[] = [];
+    for (const plugin of this.loaded.values()) {
+      out.push(...plugin.sources);
+    }
+    return out;
   }
 
   /** Get all slot declarations for a given slot name across all loaded plugins */

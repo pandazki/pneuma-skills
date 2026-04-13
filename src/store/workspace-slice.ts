@@ -3,6 +3,7 @@ import type { FileContent } from "../types.js";
 import type { WorkspaceItem, ContentSet } from "../../core/types/viewer-contract.js";
 import type { AppState } from "./types.js";
 import { filterAndRemapFiles } from "./helpers.js";
+import { fileEventBus } from "../runtime/file-event-bus.js";
 
 export interface WorkspaceSlice {
   files: FileContent[];
@@ -12,7 +13,7 @@ export interface WorkspaceSlice {
   workspaceItems: WorkspaceItem[];
 
   setFiles: (files: FileContent[]) => void;
-  updateFiles: (updates: FileContent[]) => void;
+  updateFiles: (updates: Array<FileContent & { origin?: "self" | "external" }>) => void;
   setActiveContentSet: (prefix: string | null) => void;
 }
 
@@ -23,7 +24,7 @@ export const createWorkspaceSlice: StateCreator<AppState, [], [], WorkspaceSlice
   contentSetUnread: new Set(),
   workspaceItems: [],
 
-  setFiles: (files) =>
+  setFiles: (files) => {
     set((s) => {
       const ws = s.modeViewer?.workspace;
       const contentSets = ws?.resolveContentSets ? ws.resolveContentSets(files) : [];
@@ -53,9 +54,22 @@ export const createWorkspaceSlice: StateCreator<AppState, [], [], WorkspaceSlice
         workspaceItems: newItems,
         activeFile,
       };
-    }),
+    });
+    // After state has been updated, notify source providers. setFiles is
+    // used both on initial mode load (fetch /api/files → setFiles) and
+    // on replay-checkpoint boundaries — both cases need the source layer
+    // to see the new file list. We tag origin: "external" because the
+    // batch is not the echo of any specific in-viewer write.
+    fileEventBus.publish(
+      files.map((f) => ({
+        path: f.path,
+        content: f.content,
+        origin: "external" as const,
+      })),
+    );
+  },
 
-  updateFiles: (updates) =>
+  updateFiles: (updates) => {
     set((s) => {
       const fileMap = new Map(s.files.map((f) => [f.path, f]));
       for (const u of updates) {
@@ -110,7 +124,16 @@ export const createWorkspaceSlice: StateCreator<AppState, [], [], WorkspaceSlice
         workspaceItems: newItems,
         activeFile,
       };
-    }),
+    });
+    // After state has been updated, notify source providers.
+    fileEventBus.publish(
+      updates.map((u) => ({
+        path: u.path,
+        content: u.content,
+        origin: u.origin ?? "external",
+      })),
+    );
+  },
 
   setActiveContentSet: (activeContentSet) =>
     set((s) => {

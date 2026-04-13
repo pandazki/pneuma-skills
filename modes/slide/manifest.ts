@@ -4,6 +4,7 @@
  */
 
 import type { ModeManifest } from "../../core/types/mode-manifest.js";
+import { loadDeck, saveDeck } from "./domain.js";
 
 const slideManifest: ModeManifest = {
   name: "slide",
@@ -58,6 +59,40 @@ For design workflow, height calculation rules, layout patterns, and quality chec
     ],
     ignorePatterns: [],
     serveDir: ".",
+  },
+
+  sources: {
+    deck: {
+      kind: "aggregate-file",
+      config: {
+        patterns: [
+          "**/slides/*.html",
+          "**/manifest.json",
+          "**/theme.css",
+        ],
+        load: loadDeck,
+        save: saveDeck,
+      },
+    },
+    assets: {
+      kind: "file-glob",
+      config: { patterns: ["**/assets/**/*"] },
+    },
+    // Companion file-glob for raw content reads. The `deck` aggregate-file
+    // source exposes structural metadata (titles, ordering); this source
+    // exposes the raw file contents used by the iframe srcdoc path,
+    // theme.css lookup, and slide HTML rendering.
+    files: {
+      kind: "file-glob",
+      config: {
+        patterns: [
+          "**/slides/*.html",
+          "**/manifest.json",
+          "**/theme.css",
+          "**/assets/**/*",
+        ],
+      },
+    },
   },
 
   agent: {

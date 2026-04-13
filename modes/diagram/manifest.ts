@@ -28,6 +28,13 @@ You are running inside **Pneuma**, a co-creation environment. The user sees a li
     serveDir: ".",
   },
 
+  sources: {
+    files: {
+      kind: "file-glob",
+      config: { patterns: ["**/*.drawio"] },
+    },
+  },
+
   viewerApi: {
     workspace: {
       type: "all",

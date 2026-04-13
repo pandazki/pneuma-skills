@@ -10,6 +10,7 @@
  */
 
 import type { ComponentType } from "react";
+import type { Source, FileChannel } from "./source.js";
 
 /** File content (kept in sync with FileContent in src/types.ts) */
 export interface ViewerFileContent {
@@ -188,8 +189,24 @@ export interface ViewerLocator {
 
 /** Props for the preview component */
 export interface ViewerPreviewProps {
-  /** Workspace file list */
-  files: ViewerFileContent[];
+  /**
+   * Source map. Keys come from `manifest.sources` (or the synthesized
+   * default `{ files: file-glob }` for unmigrated modes). Viewers
+   * consume sources via the `useSource` hook from src/hooks/useSource.ts.
+   * Each Source<T> delivers typed, origin-tagged events and, for
+   * write-capable providers, exposes a write() method.
+   */
+  sources: Record<string, Source<unknown>>;
+
+  /**
+   * Direct file I/O channel for viewers with dynamic write targets
+   * (e.g., a text editor where the active file is user-selected).
+   * Writes through this channel are origin-tagged server-side
+   * identically to Source.write() — viewers do not need to maintain
+   * echo-detection state. Viewers with a static, declared write target
+   * should use a `json-file` source in their manifest instead.
+   */
+  fileChannel: FileChannel;
   /** Currently selected element */
   selection: ViewerSelectionContext | null;
   /** Selection callback */

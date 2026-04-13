@@ -23,11 +23,11 @@
 
 > **"pneuma"** — Greek *pneuma*, meaning soul, breath, life force.
 
-When humans and code agents co-create content, they need more than a chat window — they need shared infrastructure. Pneuma provides four pillars for **isomorphic collaboration**, built atop mainstream code agents. Today the production path is [Claude Code](https://docs.anthropic.com/en/docs/claude-code); the runtime now exposes a startup-selectable backend layer so additional agents can be integrated without rewriting the UI shell.
+When humans and code agents co-create content, they need more than a chat window — they need shared infrastructure. Pneuma's bet is simple: **coding agents already do the work; what's missing is a way for people to watch them and participate at the right moments**. Agents live in files on disk — that's their native habitat and we don't try to abstract it away. Instead, we give each task a live player that renders the work in domain terms (a deck of slides, a board of tiles, a project) and let humans drop in direct edits or structured suggestions without breaking the agent's flow. Four pillars for **isomorphic collaboration**, built atop mainstream code agents. Today the production path is [Claude Code](https://docs.anthropic.com/en/docs/claude-code); the runtime now exposes a startup-selectable backend layer so additional agents can be integrated without rewriting the UI shell.
 
 | Pillar | What it does |
 |--------|-------------|
-| **Visual Environment** | Agent edits files on disk; you see, select, and guide the rendered result in a live, bidirectional workspace |
+| **Visual Environment** | Agent works directly in files on disk — its native surface. Viewers are live players for agent output rendered in domain terms, with optional human participation directly in the UI. |
 | **Skills** | Domain-specific knowledge and seed templates injected per mode. Sessions persist across runs — the agent picks up where it left off |
 | **User Preferences** | The agent builds and maintains a persistent portrait of your aesthetics, collaboration style, and per-mode habits — preferences survive across sessions, workspaces, and modes |
 | **Continuous Learning** | Evolution Agent mines conversation history to extract preferences, then augments skills with learned knowledge |

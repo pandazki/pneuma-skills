@@ -631,8 +631,11 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       // During replay mode, ignore file watcher updates — files come from checkpoints
       if (store.replayMode) break;
       const IMAGE_RE = /\.(png|jpe?g|gif|webp|svg)$/i;
-      const contentFiles = data.files.filter((f: { path: string; content: string }) => !IMAGE_RE.test(f.path));
-      const hasImageChange = data.files.some((f: { path: string; content: string }) => IMAGE_RE.test(f.path));
+      type Incoming = { path: string; content: string; origin?: "self" | "external" };
+      const contentFiles = (data.files as Incoming[])
+        .filter((f) => !IMAGE_RE.test(f.path))
+        .map((f) => ({ ...f, origin: f.origin ?? "external" }));
+      const hasImageChange = (data.files as Incoming[]).some((f) => IMAGE_RE.test(f.path));
       if (contentFiles.length > 0) store.updateFiles(contentFiles);
       if (hasImageChange) store.bumpImageTick();
       break;

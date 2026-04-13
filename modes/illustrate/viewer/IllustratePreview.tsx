@@ -34,34 +34,23 @@ import type {
   ViewerPreviewProps,
   ViewerSelectionContext,
 } from "../../../core/types/viewer-contract.js";
-import { useResilientParse } from "../../../core/hooks/use-resilient-parse.js";
+import type { Source } from "../../../core/types/source.js";
+import { useSource } from "../../../src/hooks/useSource.js";
 import { useStore } from "../../../src/store.js";
+import type {
+  ManifestItem as DomainManifestItem,
+  ManifestRow as DomainManifestRow,
+  IllustrateManifest as DomainIllustrateManifest,
+  Studio,
+} from "../domain.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-interface ManifestItem {
-  file: string;
-  title: string;
-  prompt: string;
-  aspectRatio?: string;
-  resolution?: string;
-  style?: string;
-  tags?: string[];
-  createdAt?: string;
-  status?: "generating" | "ready";
-}
-
-interface ManifestRow {
-  id: string;
-  label: string;
-  items: ManifestItem[];
-}
-
-interface IllustrateManifest {
-  title: string;
-  description?: string;
-  rows: ManifestRow[];
-}
+// Domain types live in ../domain.ts and are consumed via a Source<Studio>.
+// Local aliases keep the rest of the viewer readable.
+type ManifestItem = DomainManifestItem;
+type ManifestRow = DomainManifestRow;
+type IllustrateManifest = DomainIllustrateManifest;
 
 interface ImageNodeData {
   item: ManifestItem;
@@ -138,17 +127,6 @@ const COLORS = {
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function parseManifest(
-  files: { path: string; content: string }[],
-): { data: IllustrateManifest | null; file?: string } {
-  const mf = files.find(
-    (f) => f.path === "manifest.json" || f.path.endsWith("/manifest.json"),
-  );
-  if (!mf) return { data: null };
-  // Let JSON.parse throw — useResilientParse catches it
-  return { data: JSON.parse(mf.content) as IllustrateManifest, file: mf.path };
-}
 
 function aspectToRatio(aspect?: string): number {
   if (!aspect) return 1;
@@ -1150,7 +1128,7 @@ function EmptyCanvas() {
 
 function CanvasInner(props: ViewerPreviewProps) {
   const {
-    files, selection, onSelect: rawOnSelect, mode: rawPreviewMode, imageVersion,
+    sources, selection, onSelect: rawOnSelect, mode: rawPreviewMode, imageVersion,
     actionRequest, onActionResult, onActiveFileChange, onNotifyAgent: rawOnNotifyAgent,
     navigateRequest, onNavigateComplete, readonly,
   } = props;
@@ -1173,8 +1151,21 @@ function CanvasInner(props: ViewerPreviewProps) {
   const [cmdHeld, setCmdHeld] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
 
-  // Parse manifest with fallback — keeps last valid state if agent breaks the JSON
-  const manifest = useResilientParse(files, parseManifest, onNotifyAgent);
+  // Domain source: the full Studio (every content set's manifest.json),
+  // keyed by content-set prefix. We pick the active one at render time.
+  const studioSource = sources.studio as Source<Studio>;
+  const { value: studio } = useSource(studioSource);
+  const manifest = useMemo<IllustrateManifest | null>(() => {
+    if (!studio) return null;
+    const key = activeContentSet ?? "";
+    const byCS = studio.byContentSet;
+    if (byCS[key]) return byCS[key];
+    // Fallback: if no matching content set (e.g. activeContentSet not yet
+    // set), take the first manifest we have. Mirrors the old
+    // files.find(...) behavior that just picked the first match.
+    const firstKey = Object.keys(byCS)[0];
+    return firstKey !== undefined ? byCS[firstKey] : null;
+  }, [studio, activeContentSet]);
 
   const annotatedFiles = useMemo(() => {
     const set = new Set<string>();

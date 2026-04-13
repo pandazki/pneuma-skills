@@ -2,13 +2,13 @@
 
 ## Project Overview
 
-Pneuma Skills is co-creation infrastructure for humans and code agents. It provides four pillars for isomorphic collaboration: a **visual environment** (live bidirectional workspace), **skills** (domain knowledge + seed templates + session persistence), **continuous learning** (evolution agent for cross-session preference extraction and skill augmentation), and **distribution** (mode marketplace, publishing, sharing). The runtime supports multiple agent backends (Claude Code, Codex) selected at startup.
+Pneuma Skills is co-creation infrastructure for humans and code agents. The underlying bet: **coding agents already do the actual work against a directory of files; the system's job is to make human observation and optional participation intuitive**. Agents edit files directly through their native tools (Read/Edit/Write) — files remain the canonical collaboration surface and are not abstracted away. Viewers are live **players** for agent output, rendering the work in domain terms (a deck, a board, a project) so humans can watch what's happening, make direct decisions in the UI when needed, and reach for structured command suggestions when deeper guidance helps. Four pillars for isomorphic collaboration: a **visual environment** (live players for agent work with optional human participation), **skills** (domain knowledge + seed templates + session persistence), **continuous learning** (evolution agent for cross-session preference extraction and skill augmentation), and **distribution** (mode marketplace, publishing, sharing). The runtime supports multiple agent backends (Claude Code, Codex) selected at startup.
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.28.0
+**Version:** 2.29.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
-**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `clipcraft`, `mode-maker`, `evolve`
+**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `mode-maker`, `evolve`
 
 ## Tech Stack
 

@@ -19,9 +19,24 @@ import { json } from "@codemirror/lang-json";
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
 import { markdown as mdLang } from "@codemirror/lang-markdown";
-import type { ViewerPreviewProps } from "../../../core/types/viewer-contract.js";
+import type { ViewerPreviewProps, ViewerFileContent } from "../../../core/types/viewer-contract.js";
+import type { FileChannel, Source } from "../../../core/types/source.js";
+import { useSource } from "../../../src/hooks/useSource.js";
 import { parseManifestTs, type ParsedManifest } from "./utils/manifest-parser.js";
 import { classifyFile, detectLanguage, type FileCategory } from "./utils/file-classifier.js";
+
+/**
+ * No-op FileChannel passed to the dynamically loaded preview viewer in
+ * Mode Maker's Preview tab. The preview is read-only mock data, so
+ * writes/subscriptions are unreachable in practice. Providing a stub
+ * satisfies ViewerPreviewProps' required fileChannel prop added in P3.
+ */
+const STUB_FILE_CHANNEL: FileChannel = {
+  snapshot: () => [],
+  subscribe: () => () => { },
+  write: async () => { },
+  delete: async () => { },
+};
 
 function getApiBase(): string {
   if (import.meta.env.DEV) {
@@ -66,7 +81,7 @@ interface CheckItem {
   detail?: string;
 }
 
-function getChecklist(files: ViewerPreviewProps["files"]): CheckItem[] {
+function getChecklist(files: ViewerFileContent[]): CheckItem[] {
   const paths = files.map((f) => f.path);
   const categories = paths.map((p) => classifyFile(p));
 
@@ -114,7 +129,7 @@ function getManifestSummary(parsed: ParsedManifest): string {
   return parts.join(" — ");
 }
 
-function getModeDefSummary(files: ViewerPreviewProps["files"]): string {
+function getModeDefSummary(files: ViewerFileContent[]): string {
   const modeDef = files.find((f) => f.path === "pneuma-mode.ts" || f.path === "pneuma-mode.js");
   if (!modeDef) return "Manifest + viewer binding";
   const match = modeDef.content.match(/import\s+(\w+)\s+from\s+["']\.\/(viewer\/[^"']+)["']/);
@@ -122,7 +137,7 @@ function getModeDefSummary(files: ViewerPreviewProps["files"]): string {
   return `Binds ${match[1]} from ${match[2].replace(/\.[jt]sx?$/, "").replace(/\.js$/, "")}`;
 }
 
-function getViewerSummary(files: ViewerPreviewProps["files"]): string {
+function getViewerSummary(files: ViewerFileContent[]): string {
   const viewerFiles = files.filter((f) => classifyFile(f.path) === "viewer");
   if (viewerFiles.length === 0) return "Preview component";
   const totalLines = viewerFiles.reduce((sum, f) => sum + f.content.split("\n").length, 0);
@@ -133,7 +148,7 @@ function getViewerSummary(files: ViewerPreviewProps["files"]): string {
   return `${viewerFiles.length} files, ${totalLines} lines`;
 }
 
-function getSkillSummary(files: ViewerPreviewProps["files"]): string {
+function getSkillSummary(files: ViewerFileContent[]): string {
   const skill = files.find((f) => f.path === "skill/SKILL.md");
   if (!skill) return "Domain knowledge prompt";
   const headings = skill.content.split("\n")
@@ -148,7 +163,7 @@ function getSkillSummary(files: ViewerPreviewProps["files"]): string {
   return `${headings.length} sections: ${shown}${more}`;
 }
 
-function getSeedSummary(files: ViewerPreviewProps["files"]): string {
+function getSeedSummary(files: ViewerFileContent[]): string {
   const seedFiles = files.filter((f) => classifyFile(f.path) === "seed");
   if (seedFiles.length === 0) return "Initial workspace files";
   const names = seedFiles.map((f) => f.path.replace(/^seed\//, "").split("/").pop() || f.path);
@@ -187,7 +202,7 @@ function ManifestDetail({ parsed }: { parsed: ParsedManifest }) {
   );
 }
 
-function ModeDefDetail({ files }: { files: ViewerPreviewProps["files"] }) {
+function ModeDefDetail({ files }: { files: ViewerFileContent[] }) {
   const modeDef = files.find((f) => f.path === "pneuma-mode.ts" || f.path === "pneuma-mode.js");
   if (!modeDef) return <div className="text-xs text-cc-muted">File not found</div>;
 
@@ -219,7 +234,7 @@ function ModeDefDetail({ files }: { files: ViewerPreviewProps["files"] }) {
   );
 }
 
-function SkillOutline({ files }: { files: ViewerPreviewProps["files"] }) {
+function SkillOutline({ files }: { files: ViewerFileContent[] }) {
   const skill = files.find((f) => f.path === "skill/SKILL.md");
   if (!skill) return <div className="text-xs text-cc-muted">File not found</div>;
 
@@ -381,7 +396,7 @@ interface PublishResult {
 // ── Overview Tab ─────────────────────────────────────────────────────────────
 
 function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
-  files: ViewerPreviewProps["files"];
+  files: ViewerFileContent[];
   parsed: ParsedManifest;
   onSelectFile: (path: string) => void;
   onTabChange: (tab: TabId) => void;
@@ -994,7 +1009,7 @@ class ViewerErrorBoundary extends Component<
 // ── Preview Tab (dynamic viewer) ──────────────────────────────────────────────
 
 /** Parse pneuma-mode.ts to find the viewer component file path. */
-function findViewerEntryFile(files: ViewerPreviewProps["files"]): string | null {
+function findViewerEntryFile(files: ViewerFileContent[]): string | null {
   const modeDef = files.find((f) => f.path === "pneuma-mode.ts" || f.path === "pneuma-mode.js");
   if (!modeDef) return null;
 
@@ -1014,7 +1029,7 @@ function findViewerEntryFile(files: ViewerPreviewProps["files"]): string | null 
   return null;
 }
 
-function PreviewTab({ files }: { files: ViewerPreviewProps["files"] }) {
+function PreviewTab({ files }: { files: ViewerFileContent[] }) {
   const [dynViewer, setDynViewer] = useState<{ C: ComponentType<ViewerPreviewProps> } | null>(null);
   const [loadError, setLoadError] = useState("");
   const [importVersion, setImportVersion] = useState(0);
@@ -1092,17 +1107,6 @@ function PreviewTab({ files }: { files: ViewerPreviewProps["files"] }) {
       });
   }, [isDev, workspacePath, viewerEntry, importVersion]);
 
-  // Prepare seed files as mock workspace data (strip seed/ prefix)
-  const mockFiles = useMemo(() => {
-    const seeds = files
-      .filter((f) => classifyFile(f.path) === "seed")
-      .map((f) => ({ path: f.path.replace(/^seed\//, ""), content: f.content }));
-    // Provide a default file if no seeds exist
-    return seeds.length > 0
-      ? seeds
-      : [{ path: "example.md", content: "# Hello\n\nThis is a preview. Add files to `seed/` to customize." }];
-  }, [files]);
-
   // No viewer component in workspace
   if (!viewerEntry) {
     const hasViewerFiles = files.some((f) => classifyFile(f.path) === "viewer");
@@ -1164,7 +1168,8 @@ function PreviewTab({ files }: { files: ViewerPreviewProps["files"] }) {
   return (
     <ViewerErrorBoundary key={importVersion}>
       <DynComponent
-        files={mockFiles}
+        sources={{}}
+        fileChannel={STUB_FILE_CHANNEL}
         selection={null}
         onSelect={() => { }}
         mode="view"
@@ -1176,7 +1181,7 @@ function PreviewTab({ files }: { files: ViewerPreviewProps["files"] }) {
 
 // ── Skill Tab ────────────────────────────────────────────────────────────────
 
-function SkillTab({ files }: { files: ViewerPreviewProps["files"] }) {
+function SkillTab({ files }: { files: ViewerFileContent[] }) {
   const skillFile = files.find((f) => f.path === "skill/SKILL.md");
 
   if (!skillFile) {
@@ -1207,7 +1212,7 @@ interface FileGroup {
   files: { path: string; name: string }[];
 }
 
-function groupFiles(files: ViewerPreviewProps["files"]): FileGroup[] {
+function groupFiles(files: ViewerFileContent[]): FileGroup[] {
   const groups = new Map<string, { path: string; name: string }[]>();
 
   for (const f of files) {
@@ -1224,7 +1229,7 @@ function groupFiles(files: ViewerPreviewProps["files"]): FileGroup[] {
 }
 
 function FilesTab({ files, onSelectFile }: {
-  files: ViewerPreviewProps["files"];
+  files: ViewerFileContent[];
   onSelectFile: (path: string) => void;
 }) {
   const [selectedFile, setSelectedFile] = useState<string>("");
@@ -1298,10 +1303,14 @@ function FilesTab({ files, onSelectFile }: {
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function ModeMakerPreview({
-  files,
+  sources,
   onSelect,
   onActiveFileChange,
 }: ViewerPreviewProps) {
+  const filesSource = sources.files as Source<ViewerFileContent[]>;
+  const { value: filesValue } = useSource(filesSource);
+  const files: ViewerFileContent[] = filesValue ?? [];
+
   const [activeTab, setActiveTab] = useState<TabId>("overview");
 
   // Parse manifest for Overview tab

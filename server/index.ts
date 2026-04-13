@@ -28,7 +28,7 @@ import { SettingsManager } from "../core/settings-manager.js";
 import { HookBus } from "../core/hook-bus.js";
 import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./proxy-middleware.js";
 import type { ProxyRoute } from "../core/types/mode-manifest.js";
-import { startProxyWatcher } from "./file-watcher.js";
+import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
 import { mountNativeRoutes } from "./native-bridge.js";
 
 const DEFAULT_PORT = 17007;
@@ -1729,11 +1729,40 @@ export async function startServer(options: ServerOptions) {
       if (dataUrlMatch) {
         writeFileSync(absPath, Buffer.from(dataUrlMatch[1], "base64"));
       } else {
+        // Register this write as self-originated so the chokidar echo is
+        // tagged origin: "self" when it arrives. Registration happens BEFORE
+        // the disk write so there's no window where the echo could arrive
+        // ahead of the registration. Binary writes (data URLs) take the
+        // image-cache-bust path in the watcher and don't need origin tracking.
+        registerSelfWrite(relPath, body.content);
         writeFileSync(absPath, body.content, "utf-8");
       }
       return c.json({ ok: true });
     } catch (err) {
       return c.json({ error: "Failed to write file" }, 500);
+    }
+  });
+
+  // ── Delete file ────────────────────────────────────────────────────
+  app.delete("/api/files", async (c) => {
+    const relPath = c.req.query("path");
+    if (!relPath || typeof relPath !== "string") {
+      return c.json({ error: "Missing path query parameter" }, 400);
+    }
+    const absPath = join(workspace, relPath);
+    if (!pathStartsWith(absPath, workspace)) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+    try {
+      // Register the self-delete BEFORE unlinking so the chokidar unlink
+      // event is tagged origin: "self" when it arrives.
+      registerSelfDelete(relPath);
+      if (existsSync(absPath)) {
+        unlinkSync(absPath);
+      }
+      return c.json({ ok: true });
+    } catch (err) {
+      return c.json({ error: "Failed to delete file" }, 500);
     }
   });
 

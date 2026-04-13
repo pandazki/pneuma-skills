@@ -40,6 +40,21 @@ For tile component patterns, layout rules, and theming conventions, consult the 
 
   layout: "app",
   editing: { supported: true },
+
+  sources: {
+    files: {
+      kind: "file-glob",
+      config: {
+        patterns: [
+          "board.json",
+          "theme.css",
+          "tiles/**/*.tsx",
+          "tiles/**/*.ts",
+          "tiles/**/*.css",
+        ],
+      },
+    },
+  },
   window: { width: 1080, height: 800 },
 
   viewer: {

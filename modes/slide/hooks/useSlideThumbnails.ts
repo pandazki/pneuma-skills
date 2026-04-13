@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { snapdom } from "@zumer/snapdom";
-import type { ViewerPreviewProps } from "../../../core/types/viewer-contract.js";
+import type { ViewerFileContent } from "../../../core/types/viewer-contract.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -267,7 +267,7 @@ export async function captureSlideToSvg(
  */
 export function useSlideThumbnails(
   slides: { file: string; title: string }[],
-  files: ViewerPreviewProps["files"],
+  files: ViewerFileContent[],
   themeCSS: string,
   virtualWidth: number,
   virtualHeight: number,
@@ -286,10 +286,17 @@ export function useSlideThumbnails(
     // Determine which slides need re-capture
     const toCapture: { file: string; html: string; hash: number }[] = [];
 
+    // Prefer the content-set-scoped full path to avoid picking a slide from
+    // the wrong content set when multiple sets share the same relative
+    // `slides/slide-01.html` name. `contentBase` is `${activeContentSet}/`
+    // when a content set is active, empty string otherwise.
     for (const slide of slides) {
-      const fileEntry = files.find(
-        (f) => f.path === slide.file || f.path.endsWith(`/${slide.file}`),
-      );
+      const fullPath = contentBase + slide.file;
+      const fileEntry =
+        files.find((f) => f.path === fullPath) ??
+        files.find(
+          (f) => f.path === slide.file || f.path.endsWith(`/${slide.file}`),
+        );
       const html = fileEntry?.content || "";
       const hash = djb2(html + themeCSS);
       const prevHash = hashesRef.current.get(slide.file);

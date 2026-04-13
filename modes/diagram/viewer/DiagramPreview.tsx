@@ -16,7 +16,10 @@ import { createPortal } from "react-dom";
 import type {
   ViewerPreviewProps,
   ViewerSelectionContext,
+  ViewerFileContent,
 } from "../../../core/types/viewer-contract.js";
+import type { Source } from "../../../core/types/source.js";
+import { useSource } from "../../../src/hooks/useSource.js";
 import { useStore } from "../../../src/store.js";
 import { setDiagramCaptureViewport } from "../pneuma-mode.js";
 import ScaffoldConfirm from "../../../src/components/ScaffoldConfirm.js";
@@ -44,7 +47,7 @@ function getApiBase(): string {
 
 /** Parse active .drawio file content */
 function parseDrawioFile(
-  files: ViewerPreviewProps["files"],
+  files: ViewerFileContent[],
   activeFile?: string | null,
 ): { content: string; filePath: string } | null {
   if (activeFile) {
@@ -69,7 +72,7 @@ function stripHtml(html: string): string {
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function DiagramPreview({
-  files,
+  sources,
   selection,
   onSelect: rawOnSelect,
   mode: rawPreviewMode,
@@ -83,6 +86,10 @@ export default function DiagramPreview({
 }: ViewerPreviewProps) {
   const previewMode = readonly ? "view" : rawPreviewMode;
   const onSelect = readonly ? (() => {}) : rawOnSelect;
+
+  const filesSource = sources.files as Source<ViewerFileContent[]>;
+  const { value: filesValue } = useSource(filesSource);
+  const files: ViewerFileContent[] = filesValue ?? [];
 
   const setPreviewMode = useStore((s) => s.setPreviewMode);
   const pushUserAction = useStore((s) => s.pushUserAction);
@@ -135,8 +142,7 @@ export default function DiagramPreview({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const isDragging = useRef(false);
 
-  // Echo detection — track last rendered content
-  const lastFileContentRef = useRef<string>("");
+  // Tracks the active file path for callbacks (set when drawioData changes)
   const currentFilePathRef = useRef<string>("");
 
   // ── draw.io loading ─────────────────────────────────────────────────────
@@ -376,10 +382,7 @@ export default function DiagramPreview({
       return;
     }
 
-    const { content, filePath } = drawioData;
-
-    // Echo detection
-    if (content === lastFileContentRef.current && filePath === currentFilePathRef.current) return;
+    const { content } = drawioData;
 
     // Parse pages from the .drawio file
     const parsedPages = extractDiagramPages(content);
@@ -402,9 +405,6 @@ export default function DiagramPreview({
       const pageXml = parsedPages[0]?.xml;
       if (pageXml) mergeModelXml(pageXml);
     }
-
-    lastFileContentRef.current = content;
-    currentFilePathRef.current = filePath;
   }, [ready, drawioData, mergeModelXml, fitToCenter, resetGraph, activePageIdx]);
 
   // ── Real-time streaming from agent tool input ──────────────────────────

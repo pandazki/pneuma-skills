@@ -4,6 +4,7 @@
  */
 
 import type { ModeManifest } from "../../core/types/mode-manifest.js";
+import { loadSite, saveSite } from "./domain.js";
 
 const webcraftManifest: ModeManifest = {
   name: "webcraft",
@@ -60,6 +61,68 @@ When the user provides original content (uploaded files, pasted HTML, or a URL t
     ],
     ignorePatterns: [],
     serveDir: ".",
+  },
+
+  sources: {
+    // Structural site metadata: manifest.json files + html page list.
+    // Aggregate-file so the viewer can consume a typed `Site` via useSource.
+    site: {
+      kind: "aggregate-file",
+      config: {
+        patterns: ["**/*.html", "**/manifest.json"],
+        load: loadSite,
+        save: saveSite,
+      },
+    },
+    // Static assets + source files still flow through a file-glob; they
+    // back the high-frequency iframe srcdoc construction path that keeps
+    // reading from the legacy `files` prop through P5.11.
+    assets: {
+      kind: "file-glob",
+      config: {
+        patterns: [
+          "**/*.css",
+          "**/*.js",
+          "**/*.jsx",
+          "**/*.ts",
+          "**/*.tsx",
+          "**/*.svg",
+          "**/*.png",
+          "**/*.jpg",
+          "**/*.jpeg",
+          "**/*.gif",
+          "**/*.webp",
+          "**/*.woff",
+          "**/*.woff2",
+        ],
+      },
+    },
+    // Companion file-glob for raw HTML content reads. The iframe srcdoc
+    // path and handleTextEdit need the full original document content to
+    // splice <body> edits back in, which is beyond what the structural
+    // `site` aggregate-file exposes.
+    files: {
+      kind: "file-glob",
+      config: {
+        patterns: [
+          "**/*.html",
+          "**/*.css",
+          "**/*.js",
+          "**/*.jsx",
+          "**/*.ts",
+          "**/*.tsx",
+          "**/*.json",
+          "**/*.svg",
+          "**/*.png",
+          "**/*.jpg",
+          "**/*.jpeg",
+          "**/*.gif",
+          "**/*.webp",
+          "**/*.woff",
+          "**/*.woff2",
+        ],
+      },
+    },
   },
 
   viewerApi: {

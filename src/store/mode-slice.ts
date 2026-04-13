@@ -1,10 +1,12 @@
 import type { StateCreator } from "zustand";
 import type { ViewerContract, ViewerCommandDescriptor } from "../../core/types/viewer-contract.js";
+import type { ModeManifest } from "../../core/types/mode-manifest.js";
 import type { AppState } from "./types.js";
 import { filterAndRemapFiles } from "./helpers.js";
 
 export interface ModeSlice {
   modeViewer: ViewerContract | null;
+  modeManifest: ModeManifest | null;
   modeDisplayName: string;
   modeCommands: ViewerCommandDescriptor[];
   initParams: Record<string, number | string>;
@@ -13,6 +15,7 @@ export interface ModeSlice {
   editingSupported: boolean;
 
   setModeViewer: (viewer: ViewerContract) => void;
+  setModeManifest: (manifest: ModeManifest | null) => void;
   setModeDisplayName: (name: string) => void;
   setModeCommands: (commands: ViewerCommandDescriptor[]) => void;
   setInitParams: (params: Record<string, number | string>) => void;
@@ -23,6 +26,7 @@ export interface ModeSlice {
 
 export const createModeSlice: StateCreator<AppState, [], [], ModeSlice> = (set) => ({
   modeViewer: null,
+  modeManifest: null,
   modeDisplayName: "",
   modeCommands: [],
   initParams: {},
@@ -49,6 +53,7 @@ export const createModeSlice: StateCreator<AppState, [], [], ModeSlice> = (set) 
         workspaceItems: resolveItems ? resolveItems(filtered) : s.workspaceItems,
       };
     }),
+  setModeManifest: (modeManifest) => set({ modeManifest }),
   setModeDisplayName: (modeDisplayName) => set({ modeDisplayName }),
   setModeCommands: (modeCommands) => set({ modeCommands }),
   setInitParams: (initParams) => set({ initParams }),

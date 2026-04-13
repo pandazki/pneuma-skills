@@ -96,7 +96,13 @@ describe("ViewerContract", () => {
 describe("ViewerPreviewProps shape", () => {
   test("contains all required fields", () => {
     const props: ViewerPreviewProps = {
-      files: [],
+      sources: {},
+      fileChannel: {
+        snapshot: () => [],
+        subscribe: () => () => {},
+        write: async () => {},
+        delete: async () => {},
+      },
       selection: null,
       onSelect: () => {},
       mode: "view",
@@ -104,7 +110,7 @@ describe("ViewerPreviewProps shape", () => {
       imageVersion: 0,
     };
 
-    expect(props.files).toEqual([]);
+    expect(props.sources).toEqual({});
     expect(props.selection).toBeNull();
     expect(typeof props.onSelect).toBe("function");
     expect(["view", "edit", "select"]).toContain(props.mode);
@@ -327,7 +333,13 @@ describe("Backward compatibility", () => {
 
   test("ViewerPreviewProps with new optional fields", () => {
     const props: ViewerPreviewProps = {
-      files: [],
+      sources: {},
+      fileChannel: {
+        snapshot: () => [],
+        subscribe: () => () => {},
+        write: async () => {},
+        delete: async () => {},
+      },
       selection: null,
       onSelect: () => {},
       mode: "view",

@@ -1,9 +1,11 @@
 # ADR-007: 文件监听与实时预览
 
-> **状态**: Accepted
+> **状态**: Accepted，Viewer-facing 契约部分被 `feat/source-abstraction` superseded（2026-04-13）
 > **日期**: 2026-02-26
 > **决策者**: Pandazki
 > **关联**: ADR-002, ADR-004
+>
+> **Supersession note (2026-04-13)**：本 ADR 做出的基础设施决策**全部仍然有效**——chokidar 仍是文件监听实现，~500ms 端到端延迟目标仍然成立，HTTP `/content/*` + WebSocket `content_update` 的传输结构没有变。**变的是 viewer 一侧的契约**：viewer 不再直接消费 `files: ViewerFileContent[]` prop 或自己维护 `lastSavedContentRef` 这类 echo-skip 机制，而是通过 `Source<T>` 抽象订阅 typed、origin-aware 的事件流。服务端新增 `pendingSelfWrites` origin 标记表作为 chokidar 发射路径上的一个小扩展，让 `origin: "self" | "external"` 在源头就能确定。详见 `docs/superpowers/plans/2026-04-13-source-abstraction.md` 和 `docs/reference/viewer-agent-protocol.md` 的 "Sources" 小节。
 
 ---
 

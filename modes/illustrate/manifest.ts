@@ -4,6 +4,7 @@
  */
 
 import type { ModeManifest } from "../../core/types/mode-manifest.js";
+import { loadStudio, saveStudio } from "./domain.js";
 
 const illustrateManifest: ModeManifest = {
   name: "illustrate",
@@ -57,6 +58,17 @@ For prompt crafting, style management, generation & editing workflows, consult t
     ],
     ignorePatterns: [],
     serveDir: ".",
+  },
+
+  sources: {
+    studio: {
+      kind: "aggregate-file",
+      config: {
+        patterns: ["**/manifest.json", "**/images/**/*"],
+        load: loadStudio,
+        save: saveStudio,
+      },
+    },
   },
 
   viewerApi: {
