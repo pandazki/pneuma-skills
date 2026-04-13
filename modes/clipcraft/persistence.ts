@@ -274,8 +274,8 @@ const DEFAULT_SETTINGS: ProjectComposition["settings"] = {
  * byte-equal output given identical input.
  *
  * The `title` argument is a side-channel: craft's domain model has no concept
- * of a project title, so callers must thread it through manually (see
- * useProjectSync, which remembers the on-disk title in a ref).
+ * of a project title, so callers must thread it through manually (the viewer
+ * keeps it in `currentTitleRef` between hydrate and serialize).
  */
 export function serializeProject(
   coreState: PneumaCraftCoreState,
