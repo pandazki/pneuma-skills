@@ -50,4 +50,9 @@ describe("preview component module imports", () => {
     const mod = await import("../viewer/timeline/ClipStrip.js");
     expect(typeof mod.ClipStrip).toBe("function");
   });
+
+  test("TrackRow exports a function", async () => {
+    const mod = await import("../viewer/timeline/TrackRow.js");
+    expect(typeof mod.TrackRow).toBe("function");
+  });
 });
