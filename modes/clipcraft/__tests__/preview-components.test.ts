@@ -55,4 +55,9 @@ describe("preview component module imports", () => {
     const mod = await import("../viewer/timeline/TrackRow.js");
     expect(typeof mod.TrackRow).toBe("function");
   });
+
+  test("Timeline exports a function", async () => {
+    const mod = await import("../viewer/timeline/Timeline.js");
+    expect(typeof mod.Timeline).toBe("function");
+  });
 });
