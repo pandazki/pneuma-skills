@@ -1,68 +1,129 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import type { ComponentType, MutableRefObject } from "react";
-import { PneumaCraftProvider } from "@pneuma-craft/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ComponentType } from "react";
+import {
+  PneumaCraftProvider,
+  usePneumaCraftStore,
+  useEventLog,
+} from "@pneuma-craft/react";
+import type { Source } from "../../../core/types/source.js";
 import type { ViewerPreviewProps } from "../../../core/types/viewer-contract.js";
+import { useSource } from "../../../src/hooks/useSource.js";
+import {
+  projectFileToCommands,
+  serializeProject,
+  type ProjectFile,
+} from "../persistence.js";
 import { createWorkspaceAssetResolver } from "./assetResolver.js";
-import { useProjectSync } from "./hooks/useProjectSync.js";
 import { StateDump } from "./StateDump.js";
 
-export { isExternalEdit } from "./externalEdit.js";
+const AUTOSAVE_DELAY_MS = 500;
 
-const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({ files }) => {
+const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({ sources }) => {
   const assetResolver = useMemo(() => createWorkspaceAssetResolver(), []);
+  const projectSource = sources.project as Source<ProjectFile> | undefined;
+  const { value: project, write: writeProject, status } = useSource(projectSource);
 
-  // Parent-owned "last applied content" — the echo-skip guard. useProjectSync
-  // updates it after hydration and after its own writes. On external edits
-  // the hook calls onExternalEdit BEFORE touching the ref, so the parent
-  // can still see the pre-edit value and remount cleanly.
-  const lastAppliedRef = useRef<string | null>(null);
-
-  // providerKey is bumped ONLY when useProjectSync reports an external edit
-  // on a live store. Own-write echoes skip this path entirely because the
-  // hook short-circuits on `diskContent === lastAppliedRef.current`.
+  // Bumped when an external edit lands on a live store. Remounting the
+  // PneumaCraftProvider gives us a fresh craft store, and the inline
+  // hydration effect inside SyncedBody re-plays the new project against
+  // the fresh store via the "initial" branch (because hasEmittedInitial
+  // is reset together with the store).
   const [providerKey, setProviderKey] = useState(0);
 
-  const onLocalWrite = useCallback((_content: string) => {
-    // no-op — lastAppliedRef is updated inside useProjectSync
-  }, []);
+  // Title side-channel — craft has no project-level title concept, so the
+  // viewer carries it across hydrate/serialize. Lives at the parent so it
+  // survives provider remounts.
+  const currentTitleRef = useRef<string>("Untitled");
 
-  const onExternalEdit = useCallback(() => {
-    // Clear the applied ref before remounting so the fresh hook instance
-    // doesn't mistake the new disk content for another external edit and
-    // infinite-loop. The fresh hook will re-claim it after hydration.
-    lastAppliedRef.current = null;
-    setProviderKey((k) => k + 1);
-  }, []);
+  useEffect(() => {
+    if (status.lastOrigin === "external") {
+      setProviderKey((k) => k + 1);
+    }
+  }, [status.lastOrigin, project]);
+
+  const errorMessage = status.lastError?.message ?? null;
 
   return (
     <PneumaCraftProvider key={providerKey} assetResolver={assetResolver}>
       <SyncedBody
-        files={files}
-        lastAppliedRef={lastAppliedRef}
-        onLocalWrite={onLocalWrite}
-        onExternalEdit={onExternalEdit}
+        project={project}
+        writeProject={writeProject}
+        currentTitleRef={currentTitleRef}
+        hydrationError={errorMessage}
       />
     </PneumaCraftProvider>
   );
 };
 
 function SyncedBody({
-  files,
-  lastAppliedRef,
-  onLocalWrite,
-  onExternalEdit,
+  project,
+  writeProject,
+  currentTitleRef,
+  hydrationError,
 }: {
-  files: ViewerPreviewProps["files"];
-  lastAppliedRef: MutableRefObject<string | null>;
-  onLocalWrite: (content: string) => void;
-  onExternalEdit: () => void;
+  project: ProjectFile | null;
+  writeProject: (value: ProjectFile) => Promise<void>;
+  currentTitleRef: React.MutableRefObject<string>;
+  hydrationError: string | null;
 }) {
-  const { error } = useProjectSync(files, {
-    lastAppliedRef,
-    onLocalWrite,
-    onExternalEdit,
-  });
-  return <StateDump hydrationError={error} />;
+  const dispatchEnvelope = usePneumaCraftStore((s) => s.dispatchEnvelope);
+  const coreState = usePneumaCraftStore((s) => s.coreState);
+  const composition = usePneumaCraftStore((s) => s.composition);
+  const eventCount = useEventLog().length;
+
+  // ── Hydration: dispatch project into the (fresh) craft store ─────────
+  //
+  // Runs once per mount. Because the parent remounts via providerKey on
+  // every external edit, this effect is guaranteed to see a fresh store
+  // — there are no duplicate-id collisions to worry about.
+  //
+  // Self-origin events are our own autosave coming back through the
+  // source. The craft store already reflects them (we dispatched the
+  // envelopes BEFORE calling writeProject), so we explicitly skip
+  // re-hydrating on self.
+  const hasHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!project) return;
+    if (hasHydratedRef.current) return;
+    hasHydratedRef.current = true;
+
+    currentTitleRef.current = project.title;
+    for (const env of projectFileToCommands(project)) {
+      try {
+        dispatchEnvelope(env);
+      } catch (e) {
+        console.warn(
+          "[clipcraft] hydration envelope rejected",
+          env.command.type,
+          (e as Error).message,
+        );
+      }
+    }
+  }, [project, dispatchEnvelope, currentTitleRef]);
+
+  // ── Autosave: debounced source.write ─────────────────────────────────
+  //
+  // No echo bookkeeping. source.write() is atomic and the self event
+  // comes back through the source with origin === "self", which the
+  // parent's useEffect ignores (only "external" triggers remount).
+  useEffect(() => {
+    if (!hasHydratedRef.current) return;
+    const timer = setTimeout(async () => {
+      const file = serializeProject(
+        coreState,
+        composition,
+        currentTitleRef.current,
+      );
+      try {
+        await writeProject(file);
+      } catch (err) {
+        console.error("[clipcraft] autosave failed", err);
+      }
+    }, AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [eventCount, coreState, composition, writeProject, currentTitleRef]);
+
+  return <StateDump hydrationError={hydrationError} />;
 }
 
 export default ClipCraftPreview;
