@@ -1742,6 +1742,15 @@ export async function startServer(options: ServerOptions) {
     if (!pathStartsWith(absPath, workspace)) {
       return c.json({ error: "Forbidden" }, 403);
     }
+    // `?origin=external` tells the server "this write is a user-initiated
+    // edit, not a Source<T> autosave echo." When set, we skip the
+    // registerSelfWrite call so the resulting chokidar event is tagged
+    // origin: "external" and every Source<T> in the viewer treats it as
+    // a real external change (refreshing its value, triggering remount,
+    // etc). The built-in EditorPanel uses this; Source<T>'s own
+    // FileChannel.write() does NOT (its echo IS a true self-write).
+    const origin = c.req.query("origin");
+    const isExternalWrite = origin === "external";
     try {
       mkdirSync(dirname(absPath), { recursive: true });
       // Support data URL content — decode to binary
@@ -1754,7 +1763,9 @@ export async function startServer(options: ServerOptions) {
         // the disk write so there's no window where the echo could arrive
         // ahead of the registration. Binary writes (data URLs) take the
         // image-cache-bust path in the watcher and don't need origin tracking.
-        registerSelfWrite(relPath, body.content);
+        if (!isExternalWrite) {
+          registerSelfWrite(relPath, body.content);
+        }
         writeFileSync(absPath, body.content, "utf-8");
       }
       return c.json({ ok: true });
