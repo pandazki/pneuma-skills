@@ -89,5 +89,23 @@
         }
       }
     }
+  ],
+  "scenes": [
+    {
+      "id": "scene-1",
+      "order": 0,
+      "title": "Opening",
+      "prompt": "Establishing shot of the forest",
+      "memberClipIds": ["clip-1"],
+      "memberAssetIds": ["seed-asset-sample"]
+    },
+    {
+      "id": "scene-2",
+      "order": 1,
+      "title": "Discovery",
+      "prompt": "Reveal the hidden structure",
+      "memberClipIds": [],
+      "memberAssetIds": ["seed-asset-pending"]
+    }
   ]
 }

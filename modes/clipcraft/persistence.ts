@@ -82,12 +82,38 @@ export interface ProjectProvenanceEdge {
   operation: Operation;
 }
 
+// ── Scene (mode-local logical grouping) ──────────────────────────────────
+//
+// A Scene is a view over existing craft clips — it does not partition
+// the composition. A clip can belong to 0 or 1 scenes. Scenes survive
+// round-trip but are never dispatched as craft commands: they live only
+// in the mode's React context tree.
+export interface ProjectScene {
+  id: string;
+  order: number;
+  title: string;
+  prompt?: string;
+  memberClipIds: string[];
+  memberAssetIds: string[];
+}
+
+export interface CaptionStyle {
+  fontSize?: number;
+  color?: string;
+  background?: string;
+  bottomPercent?: number;
+}
+
 export interface ProjectFile {
   $schema: "pneuma-craft/project/v1";
   title: string;
   composition: ProjectComposition;
   assets: ProjectAsset[];
   provenance: ProjectProvenanceEdge[];
+  /** Mode-local scene grouping — optional; not part of craft state. */
+  scenes?: ProjectScene[];
+  /** Mode-local caption overlay styling — see Task 3. */
+  captionStyle?: CaptionStyle;
 }
 
 // ── Parse + validate ─────────────────────────────────────────────────────
@@ -115,6 +141,23 @@ function validateProjectFile(value: unknown): ParseResult<ProjectFile> {
   if (!isObject(value.composition)) return { ok: false, error: "composition is required" };
   if (!Array.isArray(value.assets)) return { ok: false, error: "assets must be an array" };
   if (!Array.isArray(value.provenance)) return { ok: false, error: "provenance must be an array" };
+
+  if (value.scenes !== undefined) {
+    if (!Array.isArray(value.scenes)) {
+      return { ok: false, error: "scenes must be an array" };
+    }
+    for (const s of value.scenes) {
+      if (!isObject(s)) return { ok: false, error: "scene entries must be objects" };
+      if (typeof s.id !== "string") return { ok: false, error: "scene.id must be a string" };
+      if (typeof s.order !== "number") return { ok: false, error: "scene.order must be a number" };
+      if (typeof s.title !== "string") return { ok: false, error: "scene.title must be a string" };
+      if (!Array.isArray(s.memberClipIds)) return { ok: false, error: "scene.memberClipIds must be an array" };
+      if (!Array.isArray(s.memberAssetIds)) return { ok: false, error: "scene.memberAssetIds must be an array" };
+    }
+  }
+  if (value.captionStyle !== undefined && !isObject(value.captionStyle)) {
+    return { ok: false, error: "captionStyle must be an object" };
+  }
 
   // Structural checks only — individual shape errors surface downstream via
   // craft's command validation during hydration, which gives clearer errors
@@ -163,6 +206,10 @@ function makeEnvelope(
  * callers get a lossless round-trip of the on-disk file's temporal metadata.
  * Composition-related envelopes use Date.now() since the schema has no
  * meaningful timestamp for those commands.
+ *
+ * NOTE: scenes[] and captionStyle are deliberately ignored here. They are
+ * mode-local UI state owned by the ClipCraft viewer's React tree and never
+ * round-trip through the craft store. Task 2+ reads them via useScenes().
  */
 export function projectFileToCommands(
   file: ProjectFile,
@@ -281,6 +328,8 @@ export function serializeProject(
   coreState: PneumaCraftCoreState,
   composition: Composition | null,
   title: string = "Untitled",
+  scenes: ProjectScene[] = [],
+  captionStyle: CaptionStyle | undefined = undefined,
 ): ProjectFile {
   // 1. Settings (fall back to defaults when composition is null)
   const settings: ProjectComposition["settings"] = composition
@@ -371,6 +420,8 @@ export function serializeProject(
     composition: { settings, tracks, transitions },
     assets,
     provenance,
+    ...(scenes.length > 0 ? { scenes } : {}),
+    ...(captionStyle !== undefined ? { captionStyle } : {}),
   };
 }
 
