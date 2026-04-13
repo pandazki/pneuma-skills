@@ -30,4 +30,14 @@ describe("preview component module imports", () => {
     const mod = await import("../viewer/timeline/Playhead.js");
     expect(typeof mod.Playhead).toBe("function");
   });
+
+  test("useFrameExtractor exports a function", async () => {
+    const mod = await import("../viewer/timeline/hooks/useFrameExtractor.js");
+    expect(typeof mod.useFrameExtractor).toBe("function");
+  });
+
+  test("useWaveform exports a function", async () => {
+    const mod = await import("../viewer/timeline/hooks/useWaveform.js");
+    expect(typeof mod.useWaveform).toBe("function");
+  });
 });
