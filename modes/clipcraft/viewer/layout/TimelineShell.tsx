@@ -1,6 +1,9 @@
 import { useCallback, useEffect } from "react";
 import { Timeline } from "../timeline/Timeline.js";
-import { useTimelineMode, type TimelineMode } from "../hooks/useTimelineMode.js";
+import { useTimelineMode } from "../hooks/useTimelineMode.js";
+import { TimelineOverview3D } from "../overview/TimelineOverview3D.js";
+import { OverviewControls } from "../overview/OverviewControls.js";
+import { useOverviewCamera } from "../overview/useOverviewCamera.js";
 
 /**
  * Timeline shell. Legacy reference:
@@ -10,8 +13,8 @@ import { useTimelineMode, type TimelineMode } from "../hooks/useTimelineMode.js"
  * expanded panel (overview / exploded / dive) grows above it when
  * timelineMode !== "collapsed".
  *
- * The expand/collapse button is a floating overlay on top of the Plan 5
- * Timeline. Task 5 may migrate this into a proper leadingControl prop.
+ * Task 5 wires in the real TimelineOverview3D; ExplodedView and DiveCanvas
+ * remain placeholder divs (Tasks 6 and 7).
  */
 export function TimelineShell() {
   const { timelineMode, setTimelineMode } = useTimelineMode();
@@ -72,12 +75,15 @@ export function TimelineShell() {
       </div>
 
       {/* Expanded panel */}
-      {isExpanded && <ExpandedPanel mode={timelineMode} />}
+      {isExpanded && <ExpandedPanel />}
     </div>
   );
 }
 
-function ExpandedPanel({ mode }: { mode: TimelineMode }) {
+function ExpandedPanel() {
+  const { timelineMode, setTimelineMode } = useTimelineMode();
+  const { preset, selectPreset, PRESET_ORDER } = useOverviewCamera();
+
   return (
     <div
       style={{
@@ -85,15 +91,72 @@ function ExpandedPanel({ mode }: { mode: TimelineMode }) {
         overflow: "hidden",
         minHeight: 0,
         display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {timelineMode === "dive" ? (
+        <DiveCanvasPlaceholder />
+      ) : (
+        <>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              padding: "4px 12px",
+              flexShrink: 0,
+            }}
+          >
+            <OverviewControls
+              current={preset}
+              presets={PRESET_ORDER}
+              onSelect={selectPreset}
+              onCollapse={() => setTimelineMode("collapsed")}
+            />
+          </div>
+          <div style={{ flex: 1, overflow: "hidden", minHeight: 0 }}>
+            {preset === "exploded" ? (
+              <ExplodedViewPlaceholder />
+            ) : (
+              <TimelineOverview3D cameraPreset={preset} />
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ExplodedViewPlaceholder() {
+  return (
+    <div
+      style={{
+        height: "100%",
+        display: "flex",
         alignItems: "center",
         justifyContent: "center",
         color: "#52525b",
         fontSize: 12,
       }}
     >
-      {mode === "overview" && "TimelineOverview3D (Task 5)"}
-      {mode === "exploded" && "ExplodedView (Task 6)"}
-      {mode === "dive" && "DiveCanvas (Task 7)"}
+      ExplodedView (Task 6)
+    </div>
+  );
+}
+
+function DiveCanvasPlaceholder() {
+  return (
+    <div
+      style={{
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "#52525b",
+        fontSize: 12,
+      }}
+    >
+      DiveCanvas (Task 7)
     </div>
   );
 }

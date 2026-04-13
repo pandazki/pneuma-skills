@@ -90,4 +90,55 @@ describe("preview component module imports", () => {
     const mod = await import("../viewer/assets/useAssetActions.js");
     expect(typeof mod.useAssetActions).toBe("function");
   });
+
+  test("layerTypes exports tracksForLayer", async () => {
+    const mod = await import("../viewer/overview/layerTypes.js");
+    expect(typeof mod.tracksForLayer).toBe("function");
+    expect(Array.isArray(mod.LAYER_PRIORITY)).toBe(true);
+  });
+
+  test("useOverviewCamera exports a function", async () => {
+    const mod = await import("../viewer/overview/useOverviewCamera.js");
+    expect(typeof mod.useOverviewCamera).toBe("function");
+  });
+
+  test("OverviewControls exports a function", async () => {
+    const mod = await import("../viewer/overview/OverviewControls.js");
+    expect(typeof mod.OverviewControls).toBe("function");
+  });
+
+  test("LayerToggle exports a function", async () => {
+    const mod = await import("../viewer/overview/LayerToggle.js");
+    expect(typeof mod.LayerToggle).toBe("function");
+  });
+
+  test("FakeWaveform exports a function", async () => {
+    const mod = await import("../viewer/overview/FakeWaveform.js");
+    expect(typeof mod.FakeWaveform).toBe("function");
+  });
+
+  test("VideoLayerContent exports a function", async () => {
+    const mod = await import("../viewer/overview/VideoLayerContent.js");
+    expect(typeof mod.VideoLayerContent).toBe("function");
+  });
+
+  test("CaptionLayerContent exports a function", async () => {
+    const mod = await import("../viewer/overview/CaptionLayerContent.js");
+    expect(typeof mod.CaptionLayerContent).toBe("function");
+  });
+
+  test("AudioLayerContent exports a function", async () => {
+    const mod = await import("../viewer/overview/AudioLayerContent.js");
+    expect(typeof mod.AudioLayerContent).toBe("function");
+  });
+
+  test("Layer3D exports a function", async () => {
+    const mod = await import("../viewer/overview/Layer3D.js");
+    expect(typeof mod.Layer3D).toBe("function");
+  });
+
+  test("TimelineOverview3D exports a function", async () => {
+    const mod = await import("../viewer/overview/TimelineOverview3D.js");
+    expect(typeof mod.TimelineOverview3D).toBe("function");
+  });
 });
