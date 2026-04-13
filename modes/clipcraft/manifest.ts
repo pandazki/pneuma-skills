@@ -5,6 +5,11 @@
  */
 
 import type { ModeManifest } from "../../core/types/mode-manifest.js";
+import {
+  parseProjectFile,
+  formatProjectJson,
+  type ProjectFile,
+} from "./persistence.js";
 
 const clipcraftManifest: ModeManifest = {
   name: "clipcraft",
@@ -40,6 +45,21 @@ You are running inside **Pneuma**, a co-creation workspace. This is **ClipCraft 
     contentCheckPattern: "project.json",
     seedFiles: {
       "modes/clipcraft/seed/project.json": "project.json",
+    },
+  },
+
+  sources: {
+    project: {
+      kind: "json-file",
+      config: {
+        path: "project.json",
+        parse: (raw: string): ProjectFile => {
+          const result = parseProjectFile(raw);
+          if (!result.ok) throw new Error(result.error);
+          return result.value;
+        },
+        serialize: (value: ProjectFile): string => formatProjectJson(value),
+      },
     },
   },
 };
