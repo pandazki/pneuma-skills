@@ -53,11 +53,11 @@ The protocol defines six user/viewer/agent directions. ClipCraft implements a su
 
 | Direction | Protocol expectation | ClipCraft today | Wired via |
 |---|---|---|---|
-| **① User → Viewer: Interaction** | `onSelect`, `commands`, `onViewportChange` | **Not implemented.** StateDump is read-only. | Plan 4+ |
-| **② Viewer → User: Rendering** | `files` prop drives render | `useSource(sources.project)` → hydrate craft store → render from store | `ClipCraftPreview` + `StateDump` |
+| **① User → Viewer: Interaction** | `onSelect`, `commands`, `onViewportChange` | **Partial: play/pause/seek.** `PlaybackControls` dispatches through `usePlayback()`. Selection / viewport / command menus are still unwired. | Plan 4 (playback) / Plan 5+ (selection) |
+| **② Viewer → User: Rendering** | `files` prop drives render | `useSource(sources.project)` → hydrate craft store → `<PreviewRoot>` draws frames onto a `<canvas>` + `StateDump` as a debug pane | `ClipCraftPreview` + `PreviewPanel` + `PreviewCanvas` + `PlaybackControls` |
 | **③ User → Agent: Intent** | Chat panel via WS | Standard, no mode customization | (default Pneuma chat) |
 | **④ Agent → User: Response** | WS streaming | Standard | (default Pneuma chat) |
-| **⑤ Agent → Viewer: Action** | `viewer_action` tool + `actionRequest` prop | **Not declared.** `manifest.viewerApi` is absent entirely. | Plan 4+ |
+| **⑤ Agent → Viewer: Action** | `viewer_action` tool + `actionRequest` prop | **Not declared.** `manifest.viewerApi` is absent entirely. | Plan 5+ |
 | **⑥ Viewer → Agent: Context & Notification** | `extractContext`, `onNotifyAgent` | Minimal: `<viewer-context mode="clipcraft" files="N">` | `pneuma-mode.ts:17-20`. Plan 10 will make it domain-aware. |
 
 **What's intentionally not in the table**: the Viewer ↔ Agent write loop. In classic file-centric modes, the agent edits files and the viewer passively re-renders. In ClipCraft, the viewer **also writes** — autosave serializes craft state back to `project.json`. The protocol's six directions don't enumerate this, but the runtime now has built-in infrastructure for it.
@@ -214,6 +214,31 @@ The pure-function tests carry most of the weight; the integration test is the si
 
 ---
 
+## Playback (Plan 4)
+
+ClipCraft's playback is delegated end-to-end to `@pneuma-craft/video`'s `PlaybackEngine`. The engine is headless — it does not own a canvas. The upstream Zustand store (`@pneuma-craft/react`'s `createPneumaCraftStore`) instantiates it lazily on first `play()` and auto-reloads it whenever the `composition` reference changes. The mode is responsible for three things:
+
+1. **Mounting a `<canvas>`** sized from `useComposition().settings.{width, height, aspectRatio}`. The canvas DOM and ref wiring come from `@pneuma-craft/react`'s headless `<PreviewRoot>` render-prop (`canvasRef`, `isLoading`, `isReady`). `PreviewRoot` internally subscribes via `store.subscribeToFrames` and calls `ctx.drawImage(frame.image, …)` on every rendered frame. ClipCraft's `PreviewCanvas.tsx` is a ~40-line wrapper that supplies the styled box + the `<canvas>` element and a "no composition loaded" placeholder for the pre-hydration window.
+
+2. **Dispatching play/pause/seek** through `usePlayback()`, which exposes `{ state, currentTime, duration, play, pause, seek, … }` against the store. ClipCraft's `PlaybackControls.tsx` is a ~60-line button + range + time-readout bar. The first click on Play doubles as the user gesture that unlocks the browser's `AudioContext` — no special handling needed.
+
+3. **Resolving craft asset ids to playable URLs**. The store calls `AssetResolver.resolveUrl(assetId)` and `AssetResolver.fetchBlob(assetId)` with opaque craft ids (e.g. `seed-asset-sample`) — NOT file paths. ClipCraft's `assetResolver.ts` extends the structural `AssetResolver` with a mutable id → uri map (`WorkspaceAssetResolver.setAssets(assets)`) and maps both calls to `/content/<uri>`. `ClipCraftPreview` refreshes the map in an effect keyed on `project` (the `useSource` value) so every project-level update re-populates it before the engine asks. The resolver identity stays stable, which matters because `PneumaCraftProvider` requires a stable resolver prop.
+
+### What the mode deliberately does NOT do
+
+- **Create the `PlaybackEngine`.** That's `createPneumaCraftStore` inside `@pneuma-craft/react`.
+- **Call `engine.load(composition, resolver)`.** The store auto-loads on composition reference change (`store.ts:140-160` in upstream).
+- **Subscribe to `onTimeUpdate` / `onStateChange` / `onFrameRendered` directly.** Those are wired into store state fields that `usePlayback()` and `<PreviewRoot>` read — the mode reads store state, not engine events.
+- **Own the engine lifecycle.** Creation is lazy on first play; destruction is tied to the store's `destroy()`, which runs when `PneumaCraftProvider` unmounts.
+
+The mode-side surface is roughly 200 lines total (`PreviewCanvas.tsx` + `PlaybackControls.tsx` + `PreviewPanel.tsx` + `assetResolver.ts`), and none of it reaches past the upstream React bindings.
+
+### StrictMode safety
+
+React 18+ StrictMode simulates an unmount/remount cycle for effects in dev without re-running the render body. Plan 4 discovered that `PneumaCraftProvider`'s cleanup unconditionally destroyed the store, so the remounted tree was reading from a dangling reference — the first `play()` click after page load threw `Store destroyed`. Fixed upstream by deferring the destroy through a microtask gated by a ref flag: the effect body resets the flag on any re-run (including StrictMode's simulated re-run), so a just-queued destroy is cancelled when the component stays mounted. Real unmounts have no re-run, the flag stays set, and the microtask destroys cleanly. See commit `969bdf7` on `feat/clipcraft-aigc-status` and the smoke-test report in Plan 4's Task 5.
+
+---
+
 ## Dependencies on `@pneuma-craft`
 
 ClipCraft consumes four packages as local `file:` dependencies from a sibling worktree at `/Users/pandazki/Codes/pneuma-craft-headless-stable`:
@@ -222,10 +247,10 @@ ClipCraft consumes four packages as local `file:` dependencies from a sibling wo
 |---|---|
 | `@pneuma-craft/core` | `Asset`, `AssetStatus`, `CommandEnvelope`, `createCore`, `dispatchEnvelope` (Plan 3c), `asset:set-status` + `asset:register`-with-explicit-id (Plan 3a + 2) |
 | `@pneuma-craft/timeline` | `Composition`, `Track`, `Clip`, `createTimelineCore`, `composition:create` / `add-track` / `add-clip` (with explicit-id support) |
-| `@pneuma-craft/video` | `AssetResolver` type (used by `assetResolver.ts`). No playback engine consumed yet — that's Plan 4. |
-| `@pneuma-craft/react` | `PneumaCraftProvider`, `usePneumaCraftStore`, `useEventLog`, `useAssets`, `useComposition` (Plan 2 onward) |
+| `@pneuma-craft/video` | `AssetResolver` type (structural, implemented by `assetResolver.ts`). The `PlaybackEngine` itself is created lazily by `@pneuma-craft/react`'s store on first `play()` — ClipCraft never imports it directly. |
+| `@pneuma-craft/react` | `PneumaCraftProvider`, `usePneumaCraftStore`, `useEventLog`, `useAssets`, `useComposition`, **`usePlayback`**, **`PreviewRoot`** (Plan 2 → Plan 4) |
 
-The craft packages all live on branch `feat/clipcraft-aigc-status`. Changes that ClipCraft needed during Plan 2/3a/3c were pushed upstream instead of being worked around — that's why `AssetStatus`, explicit-ids, and `dispatchEnvelope` now exist in craft.
+The craft packages all live on branch `feat/clipcraft-aigc-status`. Changes that ClipCraft needed during Plan 2/3a/3c/4 were pushed upstream instead of being worked around — that's why `AssetStatus`, explicit-ids, `dispatchEnvelope`, and a StrictMode-safe `PneumaCraftProvider` store lifecycle now exist in craft.
 
 **The `@pneuma-craft/react-ui` package is intentionally NOT consumed.** ClipCraft builds its UI directly on the headless hooks; ui-package adoption is a future decision once clipcraft has real timeline components.
 
@@ -233,8 +258,10 @@ The craft packages all live on branch `feat/clipcraft-aigc-status`. Changes that
 
 ## Known limitations (forward references)
 
-- **External edits wipe in-memory state.** Current strategy is "remount the provider on external edit." Works today because there's no valuable in-memory state. Will become painful when Plan 4 adds playback and the `PlaybackEngine` is mid-playback. The source migration did **not** address this — origin tagging tells the viewer *that* a change is external, but the response is still a full re-hydration. Mitigation: diff-and-dispatch, deferred until playback makes the cost real.
-- **StateDump is read-only text.** All user interaction directions (①) are unwired. Plan 4 starts changing this with play/pause/seek. Plan 5 adds the timeline UI.
+- **External edits wipe in-memory state — and now playback position too.** Current strategy is "remount the provider on external edit." Plan 4 made this pain real: an agent-originated `project.json` edit drops the `PlaybackEngine` playhead back to 0s and re-loads the composition from scratch, even for a tweak that left the tracks/clips untouched. The source migration tags origin precisely (so the viewer knows *that* a change is external), but the response is still a full re-hydration. Mitigation: diff-and-dispatch, a follow-up plan that computes a minimal command sequence from the old→new project diff and dispatches it against the live store without a remount.
+- **Seed image is 1×1 pixel.** The bundled `assets/sample.jpg` is a 207-byte minimal baseline JPEG. The engine decodes it, playback advances and reaches the end of the clip correctly, but the canvas draws a 1×1 image scaled to 1920×1080 — it looks black. When Plan 5 brings the timeline UI and users will actually look at the preview, swap the seed for a 640×360 gradient or small MP4.
+- **No DOM-level tests for preview components.** `PreviewCanvas` / `PlaybackControls` / `PreviewPanel` are thin wrappers around upstream hooks. The project has no happy-dom / testing-library setup, and adding it for three presentational wrappers was out of scope. Verification is tsc + import-smoke tests + the browser smoke test via `chrome-devtools-mcp` captured in Plan 4's Task 5. If Plan 5 adds enough mode-owned logic to justify DOM tests, install the infra at that point.
+- **StateDump stays as a debug pane.** It still renders under the preview. Plan 5's timeline UI will replace or demote it further.
 - **Minimal `extractContext`.** Just `"ClipCraft bootstrap — N file(s) in workspace"`. Plan 10's skill rewrite will make it domain-aware (current composition summary, selected asset, provenance lineage of selection).
 - **`project.json` is the only canonical file.** Legacy clipcraft had `storyboard.json` + `graph.json` + `project.json` as separate files; the new mode consolidates. Plans don't include reintroducing splits — one file is fine until it isn't.
 
