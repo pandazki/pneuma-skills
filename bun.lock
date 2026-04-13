@@ -1296,19 +1296,17 @@
 
     "@excalidraw/mermaid-to-excalidraw/nanoid": ["nanoid@4.0.2", "", { "bin": { "nanoid": "bin/nanoid.js" } }, "sha512-7ZtY5KTCNheRGfEFxnedV5zFiORN1+Y1N6zvPTnHQd8ENUvfaDBeuJDZb2bN/oXwXxu3qkTXDzy57W5vAmDTBw=="],
 
-    "@pneuma-craft/core/nanoid": ["nanoid@5.1.7", "", { "bin": { "nanoid": "bin/nanoid.js" } }, "sha512-ua3NDgISf6jdwezAheMOk4mbE1LXjm1DfMUDMuJf4AqxLFK3ccGpgWizwa5YV7Yz9EpXwEaWoRXSb/BnV0t5dQ=="],
+    "@pneuma-craft/react/@pneuma-craft/core": ["@pneuma-craft/core@file:../pneuma-craft-headless-stable/packages/core", { "dependencies": { "nanoid": "^5.1.7" }, "devDependencies": { "tsup": "^8.4.0", "typescript": "^5.7.0", "vitest": "^3.1.0" } }],
 
-    "@pneuma-craft/react/@pneuma-craft/core": ["@pneuma-craft/core@file:../pneuma-craft-headless-stable/packages/core", {}],
+    "@pneuma-craft/react/@pneuma-craft/timeline": ["@pneuma-craft/timeline@file:../pneuma-craft-headless-stable/packages/timeline", { "dependencies": { "@pneuma-craft/core": "workspace:*" }, "devDependencies": { "tsup": "^8.4.0", "typescript": "^5.7.0", "vitest": "^3.1.0" } }],
 
-    "@pneuma-craft/react/@pneuma-craft/timeline": ["@pneuma-craft/timeline@file:../pneuma-craft-headless-stable/packages/timeline", {}],
+    "@pneuma-craft/react/@pneuma-craft/video": ["@pneuma-craft/video@file:../pneuma-craft-headless-stable/packages/video", { "dependencies": { "@pneuma-craft/core": "workspace:*", "@pneuma-craft/timeline": "workspace:*", "mediabunny": "^1.40.0" }, "devDependencies": { "tsup": "^8.4.0", "typescript": "^5.7.0", "vitest": "^3.1.0" } }],
 
-    "@pneuma-craft/react/@pneuma-craft/video": ["@pneuma-craft/video@file:../pneuma-craft-headless-stable/packages/video", {}],
+    "@pneuma-craft/timeline/@pneuma-craft/core": ["@pneuma-craft/core@file:../pneuma-craft-headless-stable/packages/core", { "dependencies": { "nanoid": "^5.1.7" }, "devDependencies": { "tsup": "^8.4.0", "typescript": "^5.7.0", "vitest": "^3.1.0" } }],
 
-    "@pneuma-craft/timeline/@pneuma-craft/core": ["@pneuma-craft/core@file:../pneuma-craft-headless-stable/packages/core", {}],
+    "@pneuma-craft/video/@pneuma-craft/core": ["@pneuma-craft/core@file:../pneuma-craft-headless-stable/packages/core", { "dependencies": { "nanoid": "^5.1.7" }, "devDependencies": { "tsup": "^8.4.0", "typescript": "^5.7.0", "vitest": "^3.1.0" } }],
 
-    "@pneuma-craft/video/@pneuma-craft/core": ["@pneuma-craft/core@file:../pneuma-craft-headless-stable/packages/core", {}],
-
-    "@pneuma-craft/video/@pneuma-craft/timeline": ["@pneuma-craft/timeline@file:../pneuma-craft-headless-stable/packages/timeline", {}],
+    "@pneuma-craft/video/@pneuma-craft/timeline": ["@pneuma-craft/timeline@file:../pneuma-craft-headless-stable/packages/timeline", { "dependencies": { "@pneuma-craft/core": "workspace:*" }, "devDependencies": { "tsup": "^8.4.0", "typescript": "^5.7.0", "vitest": "^3.1.0" } }],
 
     "@radix-ui/react-collection/@radix-ui/react-compose-refs": ["@radix-ui/react-compose-refs@1.1.2", "", { "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-z4eqJvfiNnFMHIIvXP3CY57y2WJs5g2v3X0zm9mEJkrkNv4rDxu+sg9Jh8EkXyeqBkB7SOcboo9dMVqhyrACIg=="],
 
@@ -1394,6 +1392,14 @@
 
     "uvu/diff": ["diff@5.2.2", "", {}, "sha512-vtcDfH3TOjP8UekytvnHH1o1P4FcUdt4eQ1Y+Abap1tk/OB2MWQvcwS2ClCd1zuIhc3JKOx6p3kod8Vfys3E+A=="],
 
+    "@pneuma-craft/react/@pneuma-craft/timeline/@pneuma-craft/core": ["@pneuma-craft/core@file:../pneuma-craft-headless-stable/packages/core", { "dependencies": { "nanoid": "^5.1.7" }, "devDependencies": { "tsup": "^8.4.0", "typescript": "^5.7.0", "vitest": "^3.1.0" } }],
+
+    "@pneuma-craft/react/@pneuma-craft/video/@pneuma-craft/core": ["@pneuma-craft/core@file:../pneuma-craft-headless-stable/packages/core", { "dependencies": { "nanoid": "^5.1.7" }, "devDependencies": { "tsup": "^8.4.0", "typescript": "^5.7.0", "vitest": "^3.1.0" } }],
+
+    "@pneuma-craft/react/@pneuma-craft/video/@pneuma-craft/timeline": ["@pneuma-craft/timeline@file:../pneuma-craft-headless-stable/packages/timeline", { "dependencies": { "@pneuma-craft/core": "workspace:*" }, "devDependencies": { "tsup": "^8.4.0", "typescript": "^5.7.0", "vitest": "^3.1.0" } }],
+
+    "@pneuma-craft/video/@pneuma-craft/timeline/@pneuma-craft/core": ["@pneuma-craft/core@file:../pneuma-craft-headless-stable/packages/core", { "dependencies": { "nanoid": "^5.1.7" }, "devDependencies": { "tsup": "^8.4.0", "typescript": "^5.7.0", "vitest": "^3.1.0" } }],
+
     "@radix-ui/react-roving-focus/@radix-ui/react-id/@radix-ui/react-use-layout-effect": ["@radix-ui/react-use-layout-effect@1.1.1", "", { "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-RbJRS4UWQFkzHTTwVymMTUv8EqYhOp8dOOviLj2ugtTiXRaRQS7GLGxZTLL1jWhMeoSCf5zmcZkqTl9IiYfXcQ=="],
 
     "@radix-ui/react-roving-focus/@radix-ui/react-primitive/@radix-ui/react-slot": ["@radix-ui/react-slot@1.2.3", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-aeNmHnBxbi2St0au6VBVC7JXFlhLlOnvIIlePNniyUNAClzmtAUEY8/pBiK3iHjufOlwA+c20/8jngo7xcrg8A=="],
@@ -1435,6 +1441,8 @@
     "sass/chokidar/readdirp": ["readdirp@3.6.0", "", { "dependencies": { "picomatch": "^2.2.1" } }, "sha512-hOS089on8RduqdbhvQ5Z37A0ESjsqz6qnRcffsMU3495FuTdqSm+7bhJ29JvIOsBDEEnan5DPu9t3To9VRlMzA=="],
 
     "tsup/chokidar/readdirp": ["readdirp@4.1.2", "", {}, "sha512-GDhwkLfywWL2s6vEjyhri+eXmfH6j1L7JE27WhqLeYzoh/A3DBaYGEj2H/HFZCn/kMfim73FXxEJTw06WtxQwg=="],
+
+    "@pneuma-craft/react/@pneuma-craft/video/@pneuma-craft/timeline/@pneuma-craft/core": ["@pneuma-craft/core@file:../pneuma-craft-headless-stable/packages/core", { "dependencies": { "nanoid": "^5.1.7" }, "devDependencies": { "tsup": "^8.4.0", "typescript": "^5.7.0", "vitest": "^3.1.0" } }],
 
     "@radix-ui/react-tabs/@radix-ui/react-primitive/@radix-ui/react-slot/@radix-ui/react-compose-refs": ["@radix-ui/react-compose-refs@1.1.2", "", { "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-z4eqJvfiNnFMHIIvXP3CY57y2WJs5g2v3X0zm9mEJkrkNv4rDxu+sg9Jh8EkXyeqBkB7SOcboo9dMVqhyrACIg=="],
 

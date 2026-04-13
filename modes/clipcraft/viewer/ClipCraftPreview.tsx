@@ -23,6 +23,15 @@ const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({ sources }) => {
   const projectSource = sources.project as Source<ProjectFile> | undefined;
   const { value: project, write: writeProject, status } = useSource(projectSource);
 
+  // Keep the resolver's id → uri map in sync with the project's assets.
+  // `assetResolver` identity is stable across setAssets calls, so updating
+  // it in place does not violate PneumaCraftProvider's "stable resolver"
+  // contract.
+  useEffect(() => {
+    if (!project) return;
+    assetResolver.setAssets(project.assets);
+  }, [project, assetResolver]);
+
   // Bumped when an external edit lands on a live store. Remounting the
   // PneumaCraftProvider gives us a fresh craft store, and the inline
   // hydration effect inside SyncedBody re-plays the new project against
