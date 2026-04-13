@@ -11,6 +11,8 @@ description: AI-orchestrated video production on @pneuma-craft
 
 ClipCraft is a video-production mode where the **source of truth is a structured domain model**, not a file. The in-memory model is an event-sourced craft store from `@pneuma-craft`: an Asset registry, a Composition with Tracks and Clips, and a Provenance DAG that tracks how each asset was generated (and from what). The file `project.json` at the workspace root is a projection of that store — editing it re-hydrates the store, and store changes auto-serialize back to it.
 
+The viewer consumes `project.json` through the runtime's `Source<T>` abstraction, so any time you edit the file with Write/Edit, the viewer auto-reflects the change. You don't need to do anything special after a write — no reload, no refresh signal.
+
 This matters because ClipCraft is designed for **AIGC workflows**: assets are not uploaded, they're generated (Flux, Runway, GPT-Image, TTS, Lyria). Generations are async, expensive, and often come in variant sets that the user picks from. The Provenance DAG captures that lineage as a first-class concept, and the `Asset.status` lifecycle (`pending` → `generating` → `ready` / `failed`) represents async generations directly in the domain model.
 
 ## The `project.json` schema (`pneuma-craft/project/v1`)
@@ -83,7 +85,7 @@ Time is in **seconds**, not frames. `fps` only matters for playback/export, not 
 
 ### `title`
 
-The top-level `title` is tracked out-of-band in the viewer (craft's domain model has no `title` concept). Edit it freely — it round-trips through `useProjectSync`'s title ref.
+The top-level `title` is tracked out-of-band in the viewer (craft's domain model has no `title` concept). Edit it freely — the viewer carries it across hydrate/serialize via a parent-owned ref.
 
 ## Editing workflow (today)
 
