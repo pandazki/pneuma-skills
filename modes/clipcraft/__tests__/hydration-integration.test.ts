@@ -145,12 +145,14 @@ describe("full-stack hydration", () => {
     const coreState = core.getCoreState();
     const composition = core.getComposition();
 
-    // Plan 4: the seed now ships a real playable image asset
+    // Plan 4: the seed ships a real playable video asset
     // (seed-asset-sample) plus the original pending placeholder
-    // (seed-asset-pending) for the AIGC narrative.
+    // (seed-asset-pending) for the AIGC narrative. The sample is a
+    // ~44KB MP4 (320×180 @ 15fps, 5s) — upstream's mediabunny decoder
+    // needs a proper video container, not a plain image.
     expect(coreState.registry.has("seed-asset-sample")).toBe(true);
-    expect(coreState.registry.get("seed-asset-sample")!.type).toBe("image");
-    expect(coreState.registry.get("seed-asset-sample")!.uri).toBe("assets/sample.jpg");
+    expect(coreState.registry.get("seed-asset-sample")!.type).toBe("video");
+    expect(coreState.registry.get("seed-asset-sample")!.uri).toBe("assets/sample.mp4");
 
     expect(coreState.registry.has("seed-asset-pending")).toBe(true);
     expect(coreState.registry.get("seed-asset-pending")!.status).toBe("pending");

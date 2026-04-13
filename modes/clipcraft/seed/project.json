@@ -34,12 +34,15 @@
   "assets": [
     {
       "id": "seed-asset-sample",
-      "type": "image",
-      "uri": "assets/sample.jpg",
-      "name": "Sample Frame",
+      "type": "video",
+      "uri": "assets/sample.mp4",
+      "name": "Sample Clip",
       "metadata": {
-        "width": 640,
-        "height": 360
+        "width": 320,
+        "height": 180,
+        "duration": 5,
+        "fps": 15,
+        "codec": "h264"
       },
       "createdAt": 1712934000000,
       "tags": [
