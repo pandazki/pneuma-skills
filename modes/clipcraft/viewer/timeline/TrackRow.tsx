@@ -35,7 +35,7 @@ const WORKSPACE_CONTENT_BASE = "/content";
 
 function contentUrlFor(uri: string): string {
   if (!uri) return "";
-  return `${WORKSPACE_CONTENT_BASE}/${uri}`;
+  return `${WORKSPACE_CONTENT_BASE}/${uri.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 export function TrackRow({
@@ -81,7 +81,11 @@ export function TrackRow({
               selected={selectedClipIds.has(clip.id)}
               onSelect={onSelectClip}
             >
-              <ClipInner track={track} clip={clip} trackHeight={trackHeight} />
+              {track.type === "subtitle" ? (
+                <SubtitleInner clip={clip} />
+              ) : (
+                <ClipInner track={track} clip={clip} trackHeight={trackHeight} />
+              )}
             </ClipStrip>
           ))}
         </div>
@@ -116,9 +120,6 @@ function ClipInner({
   }
   if (track.type === "audio") {
     return <AudioInner uri={asset.uri} clip={clip} />;
-  }
-  if (track.type === "subtitle") {
-    return <SubtitleInner clip={clip} />;
   }
   return <PlaceholderInner reason={`unknown track type: ${track.type}`} />;
 }
