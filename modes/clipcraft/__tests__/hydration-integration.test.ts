@@ -143,14 +143,37 @@ describe("full-stack hydration", () => {
 
     const core = hydrate(parsed.value);
     const coreState = core.getCoreState();
+    const composition = core.getComposition();
 
-    // The seed has seed-asset-1 as a pending image
-    expect(coreState.registry.has("seed-asset-1")).toBe(true);
-    expect(coreState.registry.get("seed-asset-1")!.status).toBe("pending");
+    // Plan 4: the seed now ships a real playable image asset
+    // (seed-asset-sample) plus the original pending placeholder
+    // (seed-asset-pending) for the AIGC narrative.
+    expect(coreState.registry.has("seed-asset-sample")).toBe(true);
+    expect(coreState.registry.get("seed-asset-sample")!.type).toBe("image");
+    expect(coreState.registry.get("seed-asset-sample")!.uri).toBe("assets/sample.jpg");
 
-    // And a provenance root edge that now lands correctly (Plan 2 saw this rejected)
-    expect(coreState.provenance.nodes.has("seed-asset-1")).toBe(true);
-    expect(coreState.provenance.edges.size).toBe(1);
+    expect(coreState.registry.has("seed-asset-pending")).toBe(true);
+    expect(coreState.registry.get("seed-asset-pending")!.status).toBe("pending");
+
+    // Both assets have provenance root edges
+    expect(coreState.provenance.nodes.has("seed-asset-sample")).toBe(true);
+    expect(coreState.provenance.nodes.has("seed-asset-pending")).toBe(true);
+    expect(coreState.provenance.edges.size).toBe(2);
+
+    // The seed has a single video track with one clip referencing the
+    // playable sample asset over [0, 5)s — this is what gives the
+    // PlaybackEngine a non-zero-duration composition on first mount.
+    expect(composition).not.toBeNull();
+    expect(composition!.tracks).toHaveLength(1);
+    const track = composition!.tracks[0];
+    expect(track.id).toBe("track-video-1");
+    expect(track.type).toBe("video");
+    expect(track.clips).toHaveLength(1);
+    const clip = track.clips[0];
+    expect(clip.id).toBe("clip-1");
+    expect(clip.assetId).toBe("seed-asset-sample");
+    expect(clip.startTime).toBe(0);
+    expect(clip.duration).toBe(5);
   });
 
   it("rejects a duplicate hydration attempt by throwing in dispatch", () => {

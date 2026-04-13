@@ -1,7 +1,19 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, test } from "bun:test";
 import { parseProjectFile, projectFileToCommands, serializeProject, formatProjectJson } from "../persistence.js";
 import type { ProjectFile } from "../persistence.js";
 import { createTimelineCore } from "@pneuma-craft/timeline";
+import seedJson from "../seed/project.json" with { type: "json" };
+
+test("seed project.json round-trips through parse → serialize byte-equal", () => {
+  const raw = JSON.stringify(seedJson, null, 2) + "\n";
+  const parsed = parseProjectFile(raw);
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) return;
+  // hydrate-then-serialize would require a real craft store; here we just
+  // verify the parser accepts the seed and the JSON survives a re-format.
+  const reformatted = formatProjectJson(parsed.value);
+  expect(reformatted).toBe(raw);
+});
 
 const minimalValid: ProjectFile = {
   $schema: "pneuma-craft/project/v1",

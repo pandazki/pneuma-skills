@@ -45,6 +45,7 @@ You are running inside **Pneuma**, a co-creation workspace. This is **ClipCraft 
     contentCheckPattern: "project.json",
     seedFiles: {
       "modes/clipcraft/seed/project.json": "project.json",
+      "modes/clipcraft/seed/assets/sample.jpg": "assets/sample.jpg",
     },
   },
 
