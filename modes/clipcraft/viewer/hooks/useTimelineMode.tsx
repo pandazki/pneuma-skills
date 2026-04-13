@@ -10,6 +10,8 @@ interface TimelineModeContextValue {
   setDiveLayer: (layer: LayerType | null) => void;
   focusedLayer: LayerType | null;
   setFocusedLayer: (layer: LayerType | null) => void;
+  diveFocusedNodeId: string | null;
+  setDiveFocusedNodeId: (id: string | null) => void;
 }
 
 const TimelineModeContext = createContext<TimelineModeContextValue | null>(null);
@@ -18,6 +20,7 @@ export function TimelineModeProvider({ children }: { children: React.ReactNode }
   const [timelineMode, setTimelineMode] = useState<TimelineMode>("collapsed");
   const [diveLayer, setDiveLayer] = useState<LayerType | null>(null);
   const [focusedLayer, setFocusedLayer] = useState<LayerType | null>(null);
+  const [diveFocusedNodeId, setDiveFocusedNodeId] = useState<string | null>(null);
 
   const value = useMemo<TimelineModeContextValue>(
     () => ({
@@ -27,8 +30,10 @@ export function TimelineModeProvider({ children }: { children: React.ReactNode }
       setDiveLayer,
       focusedLayer,
       setFocusedLayer,
+      diveFocusedNodeId,
+      setDiveFocusedNodeId,
     }),
-    [timelineMode, diveLayer, focusedLayer],
+    [timelineMode, diveLayer, focusedLayer, diveFocusedNodeId],
   );
 
   return (

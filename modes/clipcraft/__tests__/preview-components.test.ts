@@ -167,4 +167,45 @@ describe("preview component module imports", () => {
     const mod = await import("../viewer/exploded/ExplodedView.js");
     expect(typeof mod.ExplodedView).toBe("function");
   });
+
+  test("useVariantPointer exports VariantPointerProvider and hook", async () => {
+    const mod = await import("../viewer/dive/useVariantPointer.js");
+    expect(typeof mod.VariantPointerProvider).toBe("function");
+    expect(typeof mod.useVariantPointer).toBe("function");
+  });
+
+  test("useTreeLayout exports a function", async () => {
+    const mod = await import("../viewer/dive/useTreeLayout.js");
+    expect(typeof mod.useTreeLayout).toBe("function");
+  });
+
+  test("NodeShell exports a function", async () => {
+    const mod = await import("../viewer/dive/nodes/NodeShell.js");
+    expect(typeof mod.NodeShell).toBe("function");
+  });
+
+  test("VisualNode exports a function", async () => {
+    const mod = await import("../viewer/dive/nodes/VisualNode.js");
+    expect(typeof mod.VisualNode).toBe("function");
+  });
+
+  test("AudioNode exports a function", async () => {
+    const mod = await import("../viewer/dive/nodes/AudioNode.js");
+    expect(typeof mod.AudioNode).toBe("function");
+  });
+
+  test("TextNode exports a function", async () => {
+    const mod = await import("../viewer/dive/nodes/TextNode.js");
+    expect(typeof mod.TextNode).toBe("function");
+  });
+
+  test("DiveHeader exports a function", async () => {
+    const mod = await import("../viewer/dive/DiveHeader.js");
+    expect(typeof mod.DiveHeader).toBe("function");
+  });
+
+  test("DiveCanvas exports a function", async () => {
+    const mod = await import("../viewer/dive/DiveCanvas.js");
+    expect(typeof mod.DiveCanvas).toBe("function");
+  });
 });

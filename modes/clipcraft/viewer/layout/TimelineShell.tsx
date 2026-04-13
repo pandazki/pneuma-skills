@@ -5,6 +5,7 @@ import { TimelineOverview3D } from "../overview/TimelineOverview3D.js";
 import { OverviewControls } from "../overview/OverviewControls.js";
 import { useOverviewCamera } from "../overview/useOverviewCamera.js";
 import { ExplodedView } from "../exploded/ExplodedView.js";
+import { DiveCanvas } from "../dive/DiveCanvas.js";
 
 /**
  * Timeline shell. Legacy reference:
@@ -96,7 +97,7 @@ function ExpandedPanel() {
       }}
     >
       {timelineMode === "dive" ? (
-        <DiveCanvasPlaceholder />
+        <DiveCanvas />
       ) : (
         <>
           <div
@@ -128,19 +129,3 @@ function ExpandedPanel() {
   );
 }
 
-function DiveCanvasPlaceholder() {
-  return (
-    <div
-      style={{
-        flex: 1,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "#52525b",
-        fontSize: 12,
-      }}
-    >
-      DiveCanvas (Task 7)
-    </div>
-  );
-}
