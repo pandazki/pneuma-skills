@@ -10,4 +10,9 @@ describe("preview component module imports", () => {
     const mod = await import("../viewer/PlaybackControls.js");
     expect(typeof mod.PlaybackControls).toBe("function");
   });
+
+  test("PreviewPanel exports a function", async () => {
+    const mod = await import("../viewer/PreviewPanel.js");
+    expect(typeof mod.PreviewPanel).toBe("function");
+  });
 });

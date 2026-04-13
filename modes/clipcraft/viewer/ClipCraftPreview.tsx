@@ -14,7 +14,7 @@ import {
   type ProjectFile,
 } from "../persistence.js";
 import { createWorkspaceAssetResolver } from "./assetResolver.js";
-import { StateDump } from "./StateDump.js";
+import { PreviewPanel } from "./PreviewPanel.js";
 
 const AUTOSAVE_DELAY_MS = 500;
 
@@ -130,7 +130,7 @@ function SyncedBody({
     return () => clearTimeout(timer);
   }, [eventCount, writeProject]);
 
-  return <StateDump hydrationError={hydrationError} />;
+  return <PreviewPanel hydrationError={hydrationError} />;
 }
 
 export default ClipCraftPreview;
