@@ -23,7 +23,15 @@
 ## Upcoming
 
 To be written one at a time. Each plan should produce working software on its own and land on top of the previous one.
-- **Plan 5.5 — Clip editing on timeline** — port the ripple+snap drag engine from `@pneuma-craft/react-ui/src/timeline/timeline-track.tsx` by copying the algorithm into ClipCraft. Adds drag-to-move, resize-edges, and split on playhead.
+- **Plan 5.5 — Clip editing on timeline** — make the Plan 5 read-only timeline interactive, leaning on craft's existing `composition:move-clip` / `trim-clip` / `split-clip` / `remove-clip` / `add-clip` commands. Scope is intentionally bigger than "port the legacy reducer actions" because the new craft store gives us transactions, undo/redo, and provenance for free, and the user explicitly asked for the full editing surface in one pass:
+  - **Drag-to-move** a clip along its track (dispatch `composition:move-clip`). Start the drag on mousedown inside a clip, show a ghost under the cursor, snap to neighbors + playhead + track start on release.
+  - **Resize edges** (left / right handles on hover) → `composition:trim-clip`.
+  - **Split on playhead** — a "split" button or keyboard shortcut that runs `composition:split-clip` against the clip under the current `playback.currentTime`.
+  - **Delete selected clip** — `composition:remove-clip`.
+  - **Collapse gaps / left-align pack** — a toolbar button next to zoom that walks each track's clips in start-time order and re-dispatches `move-clip` so adjacent clips touch (no gaps). Non-destructive, purely a layout op. This is the "往左顺序紧密排列" operation the user called out — easy to get wrong by hand after a drag, so it's a one-click fix.
+  - **Ripple/snap drag engine** — copy the algorithm from `@pneuma-craft/react-ui/src/timeline/timeline-track.tsx` verbatim. react-ui stays unconsumed as a dep; only the math + drag state machine get pulled in.
+  - **Undo/redo** bindings (Cmd/Ctrl+Z) against craft's undo manager. Surface a small toast on each edit so users know what was applied.
+  - **Multi-select** (Shift+click) is deferred — single-clip selection is still the default until we find a real workflow that needs it.
 - **Plan 6 — TimelineOverview3D on craft** — re-implement the legacy 3D overview reading from craft's composition + provenance; keep the visual design, replace the underlying data.
 - **Plan 7 — DiveCanvas on craft** — re-implement the legacy dive canvas reading from craft provenance (`useLineage` / `useVariants`).
 - **Plan 8 — Export** — replace `server/ffmpeg.ts` with `@pneuma-craft/video`'s `ExportEngine` in the browser; decide fallback strategy for long videos or large assets.
