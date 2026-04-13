@@ -97,11 +97,18 @@ export interface ProjectScene {
   memberAssetIds: string[];
 }
 
+/**
+ * Caption overlay styling — mode-local sidecar. Rendered on top of the
+ * craft preview canvas by modes/clipcraft/viewer/preview/CaptionOverlay.
+ * All fields optional so legacy project files remain valid.
+ */
 export interface CaptionStyle {
-  fontSize?: number;
-  color?: string;
-  background?: string;
-  bottomPercent?: number;
+  fontSize?: number;       // px, default 16
+  color?: string;          // default "#ffffff"
+  background?: string;     // default "rgba(0,0,0,0.65)"
+  bottomPercent?: number;  // 0..1, default 0.08
+  fontWeight?: number;     // default 400
+  maxWidthPercent?: number; // default 0.9
 }
 
 export interface ProjectFile {

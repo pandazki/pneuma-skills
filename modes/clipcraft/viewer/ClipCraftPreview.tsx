@@ -152,7 +152,7 @@ function SyncedBody({
     return () => clearTimeout(timer);
   }, [eventCount, writeProject, scenes, captionStyle]);
 
-  return <PreviewPanel hydrationError={hydrationError} />;
+  return <PreviewPanel hydrationError={hydrationError} captionStyle={captionStyle} />;
 }
 
 export default ClipCraftPreview;

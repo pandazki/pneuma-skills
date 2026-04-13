@@ -1,16 +1,18 @@
 import { ClipCraftLayout } from "./layout/ClipCraftLayout.js";
 import { StateDump } from "./StateDump.js";
+import type { CaptionStyle } from "../persistence.js";
 
 export interface PreviewPanelProps {
   hydrationError: string | null;
+  captionStyle?: CaptionStyle;
 }
 
 /**
- * Plan 6 layout shell. The Plan 4 canvas + Plan 5 timeline + PlaybackControls
- * are owned by ClipCraftLayout; PreviewPanel is a thin shim that keeps
- * the debug StateDump accessible behind a collapsed details element.
+ * Plan 6 layout shell. VideoPreview + Timeline + AssetPanel are owned by
+ * ClipCraftLayout; PreviewPanel is a thin shim that keeps the debug
+ * StateDump accessible behind a collapsed details element.
  */
-export function PreviewPanel({ hydrationError }: PreviewPanelProps) {
+export function PreviewPanel({ hydrationError, captionStyle }: PreviewPanelProps) {
   return (
     <div
       className="cc-preview-panel"
@@ -24,7 +26,7 @@ export function PreviewPanel({ hydrationError }: PreviewPanelProps) {
       }}
     >
       <div style={{ flex: 1, minHeight: 0 }}>
-        <ClipCraftLayout />
+        <ClipCraftLayout captionStyle={captionStyle} />
       </div>
       <details style={{ borderTop: "1px solid #27272a", padding: "4px 12px" }}>
         <summary style={{ cursor: "pointer", color: "#a1a1aa", fontSize: 11 }}>

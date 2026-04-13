@@ -1,14 +1,14 @@
 import { describe, test, expect } from "bun:test";
 
 describe("preview component module imports", () => {
-  test("PreviewCanvas exports a function", async () => {
-    const mod = await import("../viewer/PreviewCanvas.js");
-    expect(typeof mod.PreviewCanvas).toBe("function");
+  test("VideoPreview exports a function", async () => {
+    const mod = await import("../viewer/preview/VideoPreview.js");
+    expect(typeof mod.VideoPreview).toBe("function");
   });
 
-  test("PlaybackControls exports a function", async () => {
-    const mod = await import("../viewer/PlaybackControls.js");
-    expect(typeof mod.PlaybackControls).toBe("function");
+  test("CaptionOverlay exports a function", async () => {
+    const mod = await import("../viewer/preview/CaptionOverlay.js");
+    expect(typeof mod.CaptionOverlay).toBe("function");
   });
 
   test("PreviewPanel exports a function", async () => {
