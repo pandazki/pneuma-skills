@@ -7,6 +7,13 @@
  * documented explicitly here for the @pneuma-craft port — `globalTime` +
  * `duration` come from `usePlayback()`, `pixelsPerSecond` + `scrollLeft`
  * from `useTimelineZoom`, and `onSeek` wires to `usePlayback().seek`.
+ *
+ * Pointer-events note: the outer container is `pointerEvents: "none"` so it
+ * doesn't swallow clicks destined for TrackRow/ClipStrip underneath. The
+ * two interactive hit regions — the vertical line and the drag handle —
+ * opt back in with `pointerEvents: "auto"` on their own inline styles. The
+ * tooltip stays `"none"`. Timeline's overlay wrapper is therefore a plain
+ * pass-through.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -106,6 +113,7 @@ export function Playhead({
         bottom: 0,
         cursor: "pointer",
         zIndex: 10,
+        pointerEvents: "none",
       }}
     >
       {/* Vertical line — CSS transition for smooth playback */}
@@ -120,7 +128,7 @@ export function Playhead({
           background: "#f97316",
           borderRadius: 1,
           boxShadow: "0 0 6px rgba(249, 115, 22, 0.5)",
-          pointerEvents: "none",
+          pointerEvents: "auto",
           transition: dragging ? "none" : "left 100ms linear",
           willChange: "left",
         }}
@@ -135,6 +143,7 @@ export function Playhead({
           top: -2,
           transform: "translateX(-50%)",
           cursor: dragging ? "grabbing" : "grab",
+          pointerEvents: "auto",
           zIndex: 11,
           transition: dragging ? "none" : "left 100ms linear",
           willChange: "left",

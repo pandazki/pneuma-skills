@@ -149,7 +149,10 @@ export function Timeline() {
           />
         ))}
 
-        {/* playhead overlay spans every track row but NOT the sidebar */}
+        {/* playhead overlay spans every track row but NOT the sidebar.
+            pointerEvents:none here is intentional — Playhead opts its own
+            hit regions (line + handle) back to pointerEvents:auto, so
+            TrackRow clicks pass through to ClipStrip underneath. */}
         <div
           style={{
             position: "absolute",
@@ -160,16 +163,14 @@ export function Timeline() {
             pointerEvents: "none",
           }}
         >
-          <div style={{ position: "absolute", inset: 0, pointerEvents: "auto" }}>
-            <Playhead
-              globalTime={currentTime}
-              duration={effectiveDuration}
-              pixelsPerSecond={pixelsPerSecond}
-              scrollLeft={scrollLeft}
-              trackAreaHeight={trackAreaHeight}
-              onSeek={seek}
-            />
-          </div>
+          <Playhead
+            globalTime={currentTime}
+            duration={effectiveDuration}
+            pixelsPerSecond={pixelsPerSecond}
+            scrollLeft={scrollLeft}
+            trackAreaHeight={trackAreaHeight}
+            onSeek={seek}
+          />
         </div>
       </div>
     </div>
