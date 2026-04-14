@@ -10,12 +10,19 @@ interface Props {
 /**
  * Thin minimap + horizontal scrollbar at the bottom of the timeline.
  *
- * - Shows the visible viewport as a rounded "thumb" inside a full-width
- *   bar representing the entire composition.
- * - Drag the thumb to pan the timeline (`zoom.scrollTo`).
- * - Click anywhere on the bar (outside the thumb) to jump-scroll there.
- * - Tiny orange dot inside the bar marks the current playhead position.
- * - Auto-hides when the content already fits the viewport (no zoom).
+ * Two modes:
+ * 1. When the composition content is wider than the visible viewport
+ *    (user zoomed in), the bar shows a rounded orange thumb that maps
+ *    to the current scroll window. Thumb drag / bar click scrolls.
+ * 2. When content fits the viewport, there's nothing to scroll — the
+ *    bar becomes a minimal position indicator with just the playhead
+ *    dot. This guarantees the user can ALWAYS see where the playhead
+ *    is, even when the orange line in the main timeline gets clipped
+ *    to an edge case (e.g. playhead at duration with negative
+ *    scrollLeft padding).
+ *
+ * The thin orange line inside the bar marks the current playhead
+ * position in both modes.
  */
 export function TimelineMinimap({ zoom, duration, currentTime }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
@@ -74,18 +81,19 @@ export function TimelineMinimap({ zoom, duration, currentTime }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [dragging]);
 
-  // Hide when composition fits viewport — render a fixed-height spacer so
-  // layout doesn't shift when zoom changes the visibility.
-  if (contentWidth <= 0 || viewportWidth <= 0 || contentWidth <= viewportWidth) {
-    return <div style={{ height: 12 }} />;
-  }
-
-  // Thumb width = (viewport / content) of the bar width.
-  const scrollFraction = Math.max(0, Math.min(1, (scrollLeft - scrollMin) / scrollRange));
-  const thumbWidthPct = Math.max(8, Math.min(100, (viewportWidth / contentWidth) * 100));
+  const needsScroll = contentWidth > 0 && viewportWidth > 0 && contentWidth > viewportWidth;
+  // Thumb width = (viewport / content) of the bar width. When content
+  // fits, thumbWidthPct becomes 100 and scrollFraction stays at 0 so
+  // the thumb just sits flat under the playhead indicator.
+  const scrollFraction = needsScroll
+    ? Math.max(0, Math.min(1, (scrollLeft - scrollMin) / scrollRange))
+    : 0;
+  const thumbWidthPct = needsScroll
+    ? Math.max(8, Math.min(100, (viewportWidth / contentWidth) * 100))
+    : 100;
   const thumbLeftPct = scrollFraction * (100 - thumbWidthPct);
   const playheadPct = duration > 0 ? Math.max(0, Math.min(1, currentTime / duration)) * 100 : 0;
-  const thumbActive = hover || dragging;
+  const thumbActive = needsScroll && (hover || dragging);
 
   return (
     <div
@@ -98,13 +106,13 @@ export function TimelineMinimap({ zoom, duration, currentTime }: Props) {
     >
       <div
         ref={trackRef}
-        onClick={handleBarClick}
+        onClick={needsScroll ? handleBarClick : undefined}
         style={{
           position: "relative",
           height: 6,
           background: "rgba(255,255,255,0.04)",
           borderRadius: 3,
-          cursor: "pointer",
+          cursor: needsScroll ? "pointer" : "default",
           overflow: "hidden",
         }}
       >
@@ -132,24 +140,31 @@ export function TimelineMinimap({ zoom, duration, currentTime }: Props) {
             boxShadow: "0 0 4px rgba(249,115,22,0.6)",
           }}
         />
-        {/* Viewport thumb */}
+        {/* Viewport thumb — draggable when there's content to scroll.
+            When the composition fits the viewport we render a flat
+            full-width rectangle in place so there's still something
+            to hold the playhead against; pointer-events disabled so
+            it doesn't compete with the (empty) click fall-through. */}
         <div
-          onMouseDown={handleThumbDown}
+          onMouseDown={needsScroll ? handleThumbDown : undefined}
           style={{
             position: "absolute",
             top: 0,
             bottom: 0,
             left: `${thumbLeftPct}%`,
             width: `${thumbWidthPct}%`,
-            background: thumbActive
-              ? "rgba(249,115,22,0.55)"
-              : "rgba(249,115,22,0.32)",
+            background: needsScroll
+              ? thumbActive
+                ? "rgba(249,115,22,0.55)"
+                : "rgba(249,115,22,0.32)"
+              : "rgba(255,255,255,0.06)",
             borderRadius: 3,
-            cursor: dragging ? "grabbing" : "grab",
+            cursor: needsScroll ? (dragging ? "grabbing" : "grab") : "default",
             boxShadow: thumbActive
               ? "0 0 8px rgba(249,115,22,0.45)"
               : "0 0 0 1px rgba(255,255,255,0.04) inset",
             transition: dragging ? "none" : "background 120ms ease",
+            pointerEvents: needsScroll ? "auto" : "none",
           }}
         />
       </div>
