@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Timeline } from "../timeline/Timeline.js";
 import { useTimelineMode } from "../hooks/useTimelineMode.js";
 import { TimelineOverview3D } from "../overview/TimelineOverview3D.js";
@@ -22,6 +22,16 @@ import { ClipInspector } from "../timeline/inspector/ClipInspector.js";
 export function TimelineShell() {
   const { timelineMode, setTimelineMode } = useTimelineMode();
   const isExpanded = timelineMode !== "collapsed";
+
+  // Mount the expanded panel lazily on first expand, then keep it
+  // mounted forever so its internal state (camera preset, layer
+  // toggles, dive node selection, useCurrentFrame subscription, …)
+  // survives subsequent collapse/expand cycles. We toggle visibility
+  // via display:none rather than unmounting.
+  const [hasEverExpanded, setHasEverExpanded] = useState(false);
+  useEffect(() => {
+    if (isExpanded && !hasEverExpanded) setHasEverExpanded(true);
+  }, [isExpanded, hasEverExpanded]);
 
   useEffect(() => {
     if (!isExpanded) return;
@@ -58,8 +68,21 @@ export function TimelineShell() {
 
       <ClipInspector />
 
-      {/* Expanded panel */}
-      {isExpanded && <ExpandedPanel />}
+      {/* Expanded panel — mounted lazily on first expand, then kept
+          mounted with display:none toggling so its state survives. */}
+      {hasEverExpanded && (
+        <div
+          style={{
+            display: isExpanded ? "flex" : "none",
+            flex: "1 1 auto",
+            flexDirection: "column",
+            minHeight: 0,
+            overflow: "hidden",
+          }}
+        >
+          <ExpandedPanel />
+        </div>
+      )}
     </div>
   );
 }
