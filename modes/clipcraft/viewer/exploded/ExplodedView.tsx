@@ -233,20 +233,36 @@ export function ExplodedView() {
     layerHeights[l] = l === "video" ? videoLayerH : NON_VIDEO_H[l];
   }
 
-  // Vertical carousel: focused layer sits at the scene center. Non-
-  // focused layers arc above (if earlier in the list) or below (if
-  // later). Y_STEP is dynamic — half the video layer height plus a
-  // margin — so non-focused layers always sit fully OUTSIDE the
-  // video's bounds even when video is huge, instead of being hidden
-  // behind its opaque background.
-  const yStep = videoLayerH > 0 ? videoLayerH / 2 + 56 : 170;
+  // Vertical carousel: focused layer is centered in the scene; every
+  // other layer is stacked OUTSIDE the focused one with a fixed gap
+  // between adjacent layer edges. This way non-focused layers always
+  // show their full height above/below the focused one — they never
+  // overlap with each other OR get hidden behind the focused layer's
+  // opaque background.
+  const STACK_GAP = 48;
   const focusedIdx = Math.max(0, orderedActive.indexOf(focusedLayer));
+  const focusedH = layerHeights[focusedLayer] ?? 0;
+  const focusedTop = Math.floor((sceneH - focusedH) / 2);
+  const focusedBottom = focusedTop + focusedH;
   const layerTops: Record<string, number> = {};
-  for (let i = 0; i < orderedActive.length; i++) {
+  layerTops[focusedLayer] = focusedTop;
+
+  // Stack above the focused layer, walking upward.
+  let cursorAbove = focusedTop;
+  for (let i = focusedIdx - 1; i >= 0; i--) {
     const l = orderedActive[i];
-    const centerY = Math.floor((sceneH - (layerHeights[l] ?? 0)) / 2);
-    const delta = i - focusedIdx;
-    layerTops[l] = centerY + delta * yStep;
+    const h = layerHeights[l] ?? 0;
+    cursorAbove -= STACK_GAP + h;
+    layerTops[l] = cursorAbove;
+  }
+  // Stack below the focused layer, walking downward.
+  let cursorBelow = focusedBottom;
+  for (let i = focusedIdx + 1; i < orderedActive.length; i++) {
+    const l = orderedActive[i];
+    const h = layerHeights[l] ?? 0;
+    cursorBelow += STACK_GAP;
+    layerTops[l] = cursorBelow;
+    cursorBelow += h;
   }
 
   const zOffsets = computeZOffsets(orderedActive, focusedLayer);
