@@ -231,7 +231,9 @@ export function Timeline() {
             })}
           </div>
 
-          {/* Playhead overlay — covers the track area (not labels) */}
+          {/* Playhead overlay — covers the track area (not labels).
+              pointer-events: none so clip clicks fall through to the track
+              rows; the Playhead line/handle opt back in with auto. */}
           <div
             style={{
               position: "absolute",
@@ -239,6 +241,7 @@ export function Timeline() {
               left: LABEL_W,
               right: 0,
               bottom: 0,
+              pointerEvents: "none",
             }}
           >
             <Playhead
