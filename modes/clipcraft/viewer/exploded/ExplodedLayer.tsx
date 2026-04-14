@@ -19,7 +19,9 @@ export interface ExplodedLayerProps {
   audioUrl: string | null;
 }
 
-const SPRING = { type: "spring" as const, stiffness: 150, damping: 25 };
+// Gentle ease-out tween so layers fade/slide into place instead of
+// springing with the previous bouncy overshoot.
+const EASE = { type: "tween" as const, duration: 0.38, ease: [0.2, 0.8, 0.2, 1] as [number, number, number, number] };
 
 export function ExplodedLayer({
   layerType,
@@ -44,7 +46,7 @@ export function ExplodedLayer({
         opacity: focused ? 1 : 0.6,
         filter: focused ? "blur(0px)" : "blur(1.2px)",
       }}
-      transition={SPRING}
+      transition={EASE}
       onClick={onClick}
       whileHover={focused ? { scale: 1.01 } : { opacity: 0.85 }}
       style={{

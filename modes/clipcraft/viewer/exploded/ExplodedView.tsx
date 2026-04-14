@@ -27,7 +27,9 @@ const Z_GAP = 280;
 // and is sized to match the composition's aspect ratio exactly.
 const NON_VIDEO_H: Record<LayerType, number> = { caption: 56, audio: 64, video: 0 };
 const MIN_VIDEO_H = 160;
-const SPRING = { type: "spring" as const, stiffness: 150, damping: 25 };
+// Gentle ease-out tween instead of a spring — the spring overshoot
+// was making the 3D switch feel jittery / dizzy on entry.
+const EASE = { type: "tween" as const, duration: 0.38, ease: [0.2, 0.8, 0.2, 1] as [number, number, number, number] };
 
 // Header padding inside ExplodedLayer (label row + flex container padding).
 const LAYER_HEADER_H = 28;
@@ -291,7 +293,7 @@ export function ExplodedView() {
             perspective: CAMERA.perspective,
             perspectiveOrigin: `${CAMERA.perspectiveOriginX}% ${CAMERA.perspectiveOriginY}%`,
           }}
-          transition={SPRING}
+          transition={EASE}
           style={{
             flex: 1,
             position: "relative",
@@ -301,7 +303,7 @@ export function ExplodedView() {
         >
           <motion.div
             animate={{ rotateX: CAMERA.rotateX, rotateY: CAMERA.rotateY }}
-            transition={SPRING}
+            transition={EASE}
             style={{
               position: "absolute",
               inset: 0,

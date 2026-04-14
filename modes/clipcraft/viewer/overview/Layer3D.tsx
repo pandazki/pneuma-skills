@@ -36,7 +36,7 @@ export function Layer3D(props: Props) {
       onClick={onSelect}
       onDoubleClick={onDive}
       animate={{ z: zOffset, y: yPosition, rotateX, opacity: selected ? 1 : 0.75 }}
-      transition={{ type: "spring", stiffness: 180, damping: 24 }}
+      transition={{ type: "tween", duration: 0.38, ease: [0.2, 0.8, 0.2, 1] }}
       style={{
         position: "absolute", top: 0, left: 0, right: 0, height: heightPx,
         transformStyle: "preserve-3d", cursor: "pointer", borderRadius: 8,

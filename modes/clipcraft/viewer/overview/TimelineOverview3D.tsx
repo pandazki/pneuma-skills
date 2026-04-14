@@ -131,7 +131,7 @@ export function TimelineOverview3D({ cameraPreset }: { cameraPreset: CameraPrese
             perspective: camera.perspective,
             perspectiveOrigin: `${camera.perspectiveOriginX}% ${camera.perspectiveOriginY}%`,
           }}
-          transition={{ type: "spring", stiffness: 150, damping: 25 }}
+          transition={{ type: "tween", duration: 0.38, ease: [0.2, 0.8, 0.2, 1] }}
           style={{
             flex: 1, position: "relative",
             transformStyle: "preserve-3d", overflow: "hidden",
@@ -139,7 +139,7 @@ export function TimelineOverview3D({ cameraPreset }: { cameraPreset: CameraPrese
         >
           <motion.div
             animate={{ rotateX: camera.rotateX, rotateY: camera.rotateY, x: `${camera.translateX}%` }}
-            transition={{ type: "spring", stiffness: 150, damping: 25 }}
+            transition={{ type: "tween", duration: 0.38, ease: [0.2, 0.8, 0.2, 1] }}
             style={{
               position: "absolute", inset: "4px 12px",
               transformStyle: "preserve-3d",
