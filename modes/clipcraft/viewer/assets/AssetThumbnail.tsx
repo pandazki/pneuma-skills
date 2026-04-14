@@ -1,10 +1,11 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import type { Asset } from "@pneuma-craft/react";
 import { useWorkspaceAssetUrl } from "./useWorkspaceAssetUrl.js";
 import { useAssetError } from "./useAssetErrors.js";
 import { useAssetMetadata } from "./useAssetMetadata.js";
 import { theme } from "../theme/tokens.js";
 import { XIcon } from "../icons/index.js";
+import { startAssetDrag } from "../timeline/hooks/useTrackDropTarget.js";
 
 export interface AssetThumbnailProps {
   asset: Asset;
@@ -33,10 +34,23 @@ export function AssetThumbnail({ asset, onOpen, onDelete }: AssetThumbnailProps)
     [asset.id, onDelete],
   );
 
+  const [dragging, setDragging] = useState(false);
+  const canDrag = asset.type !== "text" && !!url;
+
   return (
     <div
       onClick={() => onOpen(asset)}
       title={tooltip}
+      draggable={canDrag}
+      onDragStart={(e) => {
+        if (!canDrag) {
+          e.preventDefault();
+          return;
+        }
+        startAssetDrag(e, asset);
+        setDragging(true);
+      }}
+      onDragEnd={() => setDragging(false)}
       style={{
         position: "relative",
         width: 56,
@@ -44,10 +58,12 @@ export function AssetThumbnail({ asset, onOpen, onDelete }: AssetThumbnailProps)
         borderRadius: theme.radius.sm,
         overflow: "hidden",
         background: theme.color.surface2,
-        cursor: "pointer",
+        cursor: canDrag ? "grab" : "pointer",
+        opacity: dragging ? 0.4 : 1,
         border: error
           ? `1px solid ${theme.color.danger}`
           : `1px solid ${theme.color.borderWeak}`,
+        transition: `opacity ${theme.duration.quick}ms ${theme.easing.out}`,
       }}
     >
       {url && asset.type === "video" ? (

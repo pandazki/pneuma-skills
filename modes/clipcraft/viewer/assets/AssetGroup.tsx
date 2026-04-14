@@ -3,6 +3,7 @@ import type { Asset, AssetType } from "@pneuma-craft/react";
 import { AssetThumbnail } from "./AssetThumbnail.js";
 import { theme } from "../theme/tokens.js";
 import { XIcon } from "../icons/index.js";
+import { startAssetDrag } from "../timeline/hooks/useTrackDropTarget.js";
 
 export interface AssetGroupProps {
   label: string;
@@ -205,10 +206,22 @@ function AssetListRow({
   onOpen: (a: Asset) => void;
   onDelete: (id: string) => void;
 }) {
+  const [dragging, setDragging] = useState(false);
+  const canDrag = asset.type !== "text";
   return (
     <div
       onClick={() => onOpen(asset)}
       title={asset.uri || asset.name}
+      draggable={canDrag}
+      onDragStart={(e) => {
+        if (!canDrag) {
+          e.preventDefault();
+          return;
+        }
+        startAssetDrag(e, asset);
+        setDragging(true);
+      }}
+      onDragEnd={() => setDragging(false)}
       style={{
         fontFamily: theme.font.ui,
         fontSize: theme.text.sm,
@@ -220,9 +233,10 @@ function AssetListRow({
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        cursor: "pointer",
+        cursor: canDrag ? "grab" : "pointer",
+        opacity: dragging ? 0.4 : 1,
         gap: theme.space.space2,
-        transition: `background ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
+        transition: `background ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}, opacity ${theme.duration.quick}ms ${theme.easing.out}`,
       }}
     >
       <span

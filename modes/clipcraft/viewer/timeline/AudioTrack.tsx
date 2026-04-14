@@ -17,6 +17,7 @@ import { useClipProvenance } from "./hooks/useClipProvenance.js";
 import { useEditorTool } from "./hooks/useEditorTool.js";
 import { useClipToolAction } from "./hooks/useClipToolAction.js";
 import { useSplitHoverSnap } from "./hooks/useSplitHoverSnap.js";
+import { useTrackDropTarget } from "./hooks/useTrackDropTarget.js";
 import { ClipToolOverlay } from "./ClipToolOverlay.js";
 import { theme } from "../theme/tokens.js";
 
@@ -252,10 +253,27 @@ export function AudioTrack({
   const dispatch = useDispatch();
   const drag = useTrackDragEngine(track, pixelsPerSecond, dispatch);
   const resize = useClipResize(track, pixelsPerSecond, dispatch);
+  const drop = useTrackDropTarget(track, pixelsPerSecond, scrollLeft);
   const registry = usePneumaCraftStore((s) => s.coreState.registry);
 
   return (
-    <div style={{ position: "relative", height: TRACK_H, overflow: "hidden" }}>
+    <div
+      style={{
+        position: "relative",
+        height: TRACK_H,
+        overflow: "hidden",
+        background: drop.state.hovering
+          ? drop.state.compatible
+            ? theme.color.layerAudioSoft
+            : theme.color.dangerSoft
+          : "transparent",
+        transition: `background ${theme.duration.quick}ms ${theme.easing.out}`,
+      }}
+      onDragEnter={drop.onDragEnter}
+      onDragOver={drop.onDragOver}
+      onDragLeave={drop.onDragLeave}
+      onDrop={drop.onDrop}
+    >
       {track.clips.map((clip) => {
         const previewStart =
           resize.displayStartFor(clip.id) ??
@@ -337,6 +355,21 @@ export function AudioTrack({
               scrollLeft,
             width: 1,
             background: theme.color.accent,
+            pointerEvents: "none",
+          }}
+        />
+      )}
+      {drop.state.hovering && drop.state.hoverX != null && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: drop.state.hoverX,
+            width: 2,
+            background: drop.state.compatible
+              ? theme.color.layerAudio
+              : theme.color.danger,
             pointerEvents: "none",
           }}
         />

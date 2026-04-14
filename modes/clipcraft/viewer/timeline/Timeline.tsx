@@ -33,6 +33,7 @@ import { TimelineMinimap } from "./TimelineMinimap.js";
 import { useTimelineZoom } from "./hooks/useTimelineZoom.js";
 import { useEditorTool } from "./hooks/useEditorTool.js";
 import { EditToolbar } from "./toolbar/EditToolbar.js";
+import { AddTrackButton } from "./toolbar/AddTrackButton.js";
 import { TrackLabel, LABEL_W } from "./TrackLabel.js";
 import { TimeRuler } from "./TimeRuler.js";
 import { Playhead } from "./Playhead.js";
@@ -195,8 +196,24 @@ export function Timeline() {
         >
           scroll / ⌘+scroll to zoom
         </span>
-        <div style={{ marginLeft: "auto" }}>
+        <div
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            alignItems: "center",
+            gap: theme.space.space2,
+          }}
+        >
           <EditToolbar />
+          <div
+            style={{
+              width: 1,
+              height: 16,
+              background: theme.color.borderWeak,
+              flexShrink: 0,
+            }}
+          />
+          <AddTrackButton />
         </div>
       </div>
 
