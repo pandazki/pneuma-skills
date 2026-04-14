@@ -8,6 +8,7 @@ import { WaveformBars } from "./WaveformBars.js";
 import { useWaveform } from "./hooks/useWaveform.js";
 import { useTrackDragEngine } from "./hooks/useTrackDragEngine.js";
 import { useClipResize } from "./hooks/useClipResize.js";
+import { useClipProvenance } from "./hooks/useClipProvenance.js";
 
 const TRACK_H = 32;
 const BAR_H = TRACK_H - 12;
@@ -39,6 +40,7 @@ function AudioClip({
   onResizeStart,
 }: AudioClipProps) {
   const asset = useAsset(clip.assetId);
+  const { summary } = useClipProvenance(clip);
   const status = asset?.status ?? "ready";
   const uri = asset?.uri ?? "";
   const hasAudio = status === "ready" && !!uri && asset?.type === "audio";
@@ -56,6 +58,7 @@ function AudioClip({
 
   return (
     <div
+      title={summary || clip.id.slice(0, 8)}
       onMouseDown={(e) => {
         if (e.button !== 0 || e.altKey) return;
         e.preventDefault();

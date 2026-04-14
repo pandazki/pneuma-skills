@@ -8,8 +8,102 @@ import type { Track, Clip } from "@pneuma-craft/timeline";
 import { useDispatch } from "@pneuma-craft/react";
 import { useTrackDragEngine } from "./hooks/useTrackDragEngine.js";
 import { useClipResize } from "./hooks/useClipResize.js";
+import { useClipProvenance } from "./hooks/useClipProvenance.js";
 
 const TRACK_H = 32;
+
+interface SubtitleClipProps {
+  clip: Clip;
+  x: number;
+  w: number;
+  sel: boolean;
+  dragging: boolean;
+  onSelect: (clipId: string) => void;
+  onDragStart: (clipId: string, mouseX: number) => void;
+  onResizeStart: (clipId: string, edge: "left" | "right", mouseX: number) => void;
+}
+
+function SubtitleClip({
+  clip,
+  x,
+  w,
+  sel,
+  dragging,
+  onSelect,
+  onDragStart,
+  onResizeStart,
+}: SubtitleClipProps) {
+  const { summary } = useClipProvenance(clip);
+
+  return (
+    <div
+      title={summary || clip.id.slice(0, 8)}
+      onMouseDown={(e) => {
+        if (e.button !== 0 || e.altKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onSelect(clip.id);
+        onDragStart(clip.id, e.clientX);
+      }}
+      style={{
+        position: "absolute",
+        left: Math.round(x),
+        width: Math.round(w - 1),
+        height: TRACK_H - 4,
+        top: 2,
+        background: sel ? "#2d2519" : "#1a1a1e",
+        borderRadius: 3,
+        border: sel ? "1px solid rgba(249,115,22,0.3)" : "1px solid #27272a",
+        overflow: "hidden",
+        padding: "2px 6px",
+        fontSize: 9,
+        lineHeight: `${TRACK_H - 8}px`,
+        whiteSpace: "nowrap",
+        textOverflow: "ellipsis",
+        color: clip.text ? (sel ? "#e4e4e7" : "#a1a1aa") : "#3f3f46",
+        boxSizing: "border-box",
+        cursor: dragging ? "grabbing" : "grab",
+        opacity: dragging ? 0.85 : 1,
+      }}
+    >
+      {clip.text ?? ""}
+      <div
+        onMouseDown={(e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onResizeStart(clip.id, "left", e.clientX);
+        }}
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 6,
+          cursor: "ew-resize",
+          background: sel ? "rgba(249,115,22,0.3)" : "transparent",
+        }}
+      />
+      <div
+        onMouseDown={(e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onResizeStart(clip.id, "right", e.clientX);
+        }}
+        style={{
+          position: "absolute",
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 6,
+          cursor: "ew-resize",
+          background: sel ? "rgba(249,115,22,0.3)" : "transparent",
+        }}
+      />
+    </div>
+  );
+}
 
 interface Props {
   track: Track;
@@ -44,72 +138,17 @@ export function SubtitleTrack({
         const dragging = drag.dragState?.clipId === clip.id;
         if (x + w < -10 || x > 4000) return null;
         return (
-          <div
+          <SubtitleClip
             key={clip.id}
-            onMouseDown={(e) => {
-              if (e.button !== 0 || e.altKey) return;
-              e.preventDefault();
-              e.stopPropagation();
-              onSelect(clip.id);
-              drag.handleDragStart(clip.id, e.clientX);
-            }}
-            style={{
-              position: "absolute",
-              left: Math.round(x),
-              width: Math.round(w - 1),
-              height: TRACK_H - 4,
-              top: 2,
-              background: sel ? "#2d2519" : "#1a1a1e",
-              borderRadius: 3,
-              border: sel ? "1px solid rgba(249,115,22,0.3)" : "1px solid #27272a",
-              overflow: "hidden",
-              padding: "2px 6px",
-              fontSize: 9,
-              lineHeight: `${TRACK_H - 8}px`,
-              whiteSpace: "nowrap",
-              textOverflow: "ellipsis",
-              color: clip.text ? (sel ? "#e4e4e7" : "#a1a1aa") : "#3f3f46",
-              boxSizing: "border-box",
-              cursor: dragging ? "grabbing" : "grab",
-              opacity: dragging ? 0.85 : 1,
-            }}
-          >
-            {clip.text ?? ""}
-            <div
-              onMouseDown={(e) => {
-                if (e.button !== 0) return;
-                e.preventDefault();
-                e.stopPropagation();
-                resize.handleResizeStart(clip.id, "left", e.clientX);
-              }}
-              style={{
-                position: "absolute",
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: 6,
-                cursor: "ew-resize",
-                background: sel ? "rgba(249,115,22,0.3)" : "transparent",
-              }}
-            />
-            <div
-              onMouseDown={(e) => {
-                if (e.button !== 0) return;
-                e.preventDefault();
-                e.stopPropagation();
-                resize.handleResizeStart(clip.id, "right", e.clientX);
-              }}
-              style={{
-                position: "absolute",
-                right: 0,
-                top: 0,
-                bottom: 0,
-                width: 6,
-                cursor: "ew-resize",
-                background: sel ? "rgba(249,115,22,0.3)" : "transparent",
-              }}
-            />
-          </div>
+            clip={clip}
+            x={x}
+            w={w}
+            sel={sel}
+            dragging={dragging}
+            onSelect={onSelect}
+            onDragStart={drag.handleDragStart}
+            onResizeStart={resize.handleResizeStart}
+          />
         );
       })}
       {drag.dragState?.snapTime != null && (
