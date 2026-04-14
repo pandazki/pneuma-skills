@@ -6,6 +6,7 @@ import { OverviewControls } from "../overview/OverviewControls.js";
 import { useOverviewCamera } from "../overview/useOverviewCamera.js";
 import { ExplodedView } from "../exploded/ExplodedView.js";
 import { DiveCanvas } from "../dive/DiveCanvas.js";
+import { ClipInspector } from "../timeline/inspector/ClipInspector.js";
 
 /**
  * Timeline shell. Legacy reference:
@@ -75,6 +76,8 @@ export function TimelineShell() {
           {isExpanded ? "↓" : "↑"}
         </button>
       </div>
+
+      <ClipInspector />
 
       {/* Expanded panel */}
       {isExpanded && <ExpandedPanel />}
