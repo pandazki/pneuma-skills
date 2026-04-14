@@ -5,6 +5,8 @@ import { AssetLightbox } from "./AssetLightbox.js";
 import { ScriptTab } from "./ScriptTab.js";
 import { useAssetActions } from "./useAssetActions.js";
 import { theme } from "../theme/tokens.js";
+import { SparkleIcon } from "../icons/index.js";
+import { useGenerationDialog } from "../generation/useGenerationDialog.js";
 
 type Tab = "assets" | "script";
 
@@ -27,6 +29,7 @@ export function AssetPanel() {
   const { upload, remove } = useAssetActions();
   const [tab, setTab] = useState<Tab>("assets");
   const [preview, setPreview] = useState<Asset | null>(null);
+  const { openForCreate } = useGenerationDialog();
 
   const grouped = useMemo(() => {
     const byType = new Map<AssetType, Asset[]>();
@@ -99,6 +102,45 @@ export function AssetPanel() {
           );
         })}
       </div>
+
+      {tab === "assets" && (
+        <div
+          style={{
+            padding: `${theme.space.space2}px ${theme.space.space3}px`,
+            borderBottom: `1px solid ${theme.color.borderWeak}`,
+            flexShrink: 0,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => openForCreate("image")}
+            title="Open the generation dialog to create a new asset"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: theme.space.space2,
+              width: "100%",
+              height: 30,
+              padding: `0 ${theme.space.space3}px`,
+              background: theme.color.accentSoft,
+              border: `1px solid ${theme.color.accentBorder}`,
+              borderRadius: theme.radius.base,
+              color: theme.color.accentBright,
+              fontFamily: theme.font.ui,
+              fontSize: theme.text.xs,
+              fontWeight: theme.text.weightSemibold,
+              letterSpacing: theme.text.trackingCaps,
+              textTransform: "uppercase",
+              cursor: "pointer",
+              transition: `background ${theme.duration.quick}ms ${theme.easing.out}`,
+            }}
+          >
+            <SparkleIcon size={13} />
+            <span>Create with AI</span>
+          </button>
+        </div>
+      )}
 
       {tab === "assets" ? (
         <div

@@ -22,6 +22,7 @@ import { PreviewPanel } from "./PreviewPanel.js";
 import { CommandBar } from "./CommandBar.js";
 import { ExportProgress } from "./export/ExportProgress.js";
 import { useExportVideo } from "./export/useExportVideo.js";
+import { GenerationDialogProvider } from "./generation/useGenerationDialog.js";
 import { SceneProvider, useScenes } from "./scenes/SceneContext.js";
 import { TimelineModeProvider } from "./hooks/useTimelineMode.js";
 import { TimelineZoomProvider } from "./hooks/useTimelineZoomShared.js";
@@ -85,15 +86,17 @@ const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({
             <TimelineModeProvider>
               <TimelineZoomProvider>
                 <EditorToolProvider>
-                  <SyncedBody
-                    project={project}
-                    writeProject={writeProject}
-                    currentTitleRef={currentTitleRef}
-                    hydrationError={errorMessage}
-                    commands={commands ?? []}
-                    onNotifyAgent={onNotifyAgent}
-                    assetResolver={assetResolver}
-                  />
+                  <GenerationDialogProvider onNotifyAgent={onNotifyAgent}>
+                    <SyncedBody
+                      project={project}
+                      writeProject={writeProject}
+                      currentTitleRef={currentTitleRef}
+                      hydrationError={errorMessage}
+                      commands={commands ?? []}
+                      onNotifyAgent={onNotifyAgent}
+                      assetResolver={assetResolver}
+                    />
+                  </GenerationDialogProvider>
                 </EditorToolProvider>
               </TimelineZoomProvider>
             </TimelineModeProvider>

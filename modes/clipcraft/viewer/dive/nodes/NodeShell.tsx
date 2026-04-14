@@ -12,6 +12,8 @@ import {
   type IconProps,
 } from "../../icons/index.js";
 import { theme } from "../../theme/tokens.js";
+import { useGenerationDialog } from "../../generation/useGenerationDialog.js";
+import type { AssetKind } from "../../generation/dispatchGeneration.js";
 
 type NodeOrigin = "upload" | "ai-gen" | "manual" | "ai-search";
 
@@ -80,6 +82,24 @@ export function NodeShell({ asset, isActive, isFocused, clipId, children }: Prop
   const handleClick = useCallback(() => {
     setDiveFocusedNodeId(asset.id);
   }, [setDiveFocusedNodeId, asset.id]);
+
+  const { openForVariant } = useGenerationDialog();
+  const variantKind: AssetKind | null =
+    asset.type === "image" || asset.type === "video" || asset.type === "audio"
+      ? asset.type
+      : null;
+  const handleVariant = useCallback(() => {
+    if (!variantKind) return;
+    openForVariant(
+      {
+        id: asset.id,
+        name: asset.name ?? asset.id,
+        sourcePrompt: (op?.params?.prompt as string | undefined) ?? null,
+        sourceModel: (op?.params?.model as string | undefined) ?? null,
+      },
+      variantKind,
+    );
+  }, [openForVariant, asset, op, variantKind]);
 
   return (
     <div
@@ -182,7 +202,13 @@ export function NodeShell({ asset, isActive, isFocused, clipId, children }: Prop
         </div>
       )}
 
-      <div style={{ marginTop: theme.space.space2 }}>
+      <div
+        style={{
+          marginTop: theme.space.space2,
+          display: "flex",
+          gap: theme.space.space1,
+        }}
+      >
         {isActive ? (
           <div
             style={{
@@ -190,7 +216,7 @@ export function NodeShell({ asset, isActive, isFocused, clipId, children }: Prop
               alignItems: "center",
               justifyContent: "center",
               gap: theme.space.space1,
-              width: "100%",
+              flex: 1,
               padding: `${theme.space.space1}px 0`,
               background: theme.color.accentSoft,
               border: `1px solid ${theme.color.accentBorder}`,
@@ -213,7 +239,7 @@ export function NodeShell({ asset, isActive, isFocused, clipId, children }: Prop
               handleUseThis();
             }}
             style={{
-              width: "100%",
+              flex: 1,
               padding: `${theme.space.space1}px 0`,
               background: theme.color.surface2,
               border: `1px solid ${theme.color.borderWeak}`,
@@ -229,6 +255,46 @@ export function NodeShell({ asset, isActive, isFocused, clipId, children }: Prop
             }}
           >
             Use This
+          </button>
+        )}
+        {variantKind && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleVariant();
+            }}
+            title="Generate a variant from this asset"
+            aria-label="generate variant"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: theme.space.space1,
+              padding: `${theme.space.space1}px ${theme.space.space2}px`,
+              background: theme.color.surface2,
+              border: `1px solid ${theme.color.borderWeak}`,
+              borderRadius: theme.radius.sm,
+              fontFamily: theme.font.ui,
+              fontSize: theme.text.xs,
+              fontWeight: theme.text.weightSemibold,
+              letterSpacing: theme.text.trackingCaps,
+              textTransform: "uppercase",
+              color: theme.color.ink2,
+              cursor: "pointer",
+              transition: `background ${theme.duration.quick}ms ${theme.easing.out}, color ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = theme.color.accentBright;
+              e.currentTarget.style.borderColor = theme.color.accentBorder;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = theme.color.ink2;
+              e.currentTarget.style.borderColor = theme.color.borderWeak;
+            }}
+          >
+            <SparkleIcon size={11} />
+            Variant
           </button>
         )}
       </div>

@@ -248,3 +248,128 @@ Notes:
 
 Repeat for every subtitle clip. The viewer shows a new waveform on
 the narration track as each asset lands.
+
+---
+
+## Workflow 4 — Structured generation notifications from the viewer
+
+The viewer can send you a **structured generation request** when the
+user fills out an in-app form in the dive panel (variant generation)
+or the asset panel (fresh creation). These arrive as system messages
+tagged with either `[clipcraft:create-asset]` or
+`[clipcraft:generate-variant]` and carry a fenced JSON block with
+exact parameters.
+
+**Why they exist:** the viewer captures user intent in a rich form
+(prompt, type, params, source asset) and hands you a single,
+unambiguous spec. Treat the JSON as the source of truth and follow
+its `script` + `script_args` + `provenance_hint` fields literally.
+
+### Shape
+
+Each notification message looks like:
+
+```
+[clipcraft:create-asset] Create a new asset — image — "a panda eating bamboo"
+
+```json
+{
+  "mode": "create",
+  "kind": "image",
+  "prompt": "a panda eating bamboo",
+  "params": { "aspect_ratio": "16:9", "width": 1920, "height": 1080, "style": null },
+  "script": "scripts/generate-image.mjs",
+  "script_args": { "--prompt": "a panda eating bamboo", "--width": 1920, "--height": 1080 },
+  "provenance_hint": {
+    "operation_type": "generate",
+    "from_asset_id": null,
+    "agent_id": "clipcraft-imagegen",
+    "label": "fal-ai/nano-banana-2",
+    "model": "fal-ai/nano-banana-2"
+  }
+}
+```
+
+Handling:
+1. Parse the JSON block above.
+2. Pick a semantic asset id...
+```
+
+Variant requests include a `source` field:
+
+```json
+{
+  "mode": "variant",
+  "kind": "video",
+  "source": { "asset_id": "asset-panda-sad-v1", "asset_name": "Panda Sad · v1", "model": "fal-ai/veo3.1" },
+  "prompt": "Same panda from behind, slower droop",
+  "params": { "duration": "4s", "aspect_ratio": "16:9" },
+  "script": "scripts/generate-video.mjs",
+  "script_args": { "--prompt": "...", "--duration": "4s", "--aspect-ratio": "16:9" },
+  "provenance_hint": {
+    "operation_type": "derive",
+    "from_asset_id": "asset-panda-sad-v1",
+    "agent_id": "clipcraft-videogen",
+    "label": "fal-ai/veo3.1",
+    "model": "fal-ai/veo3.1"
+  }
+}
+```
+
+### Handler (identical for both tags)
+
+1. **Parse** the JSON block. Don't reason about the human summary line
+   — it's for the chat log only.
+2. **Pick a semantic asset id** — look at nearby assets in `project.json`
+   and pick something like `asset-forest-sunset` or `asset-panda-tea`.
+   Never use a random UUID.
+3. **Pick an output path** under the matching `assets/{kind}/` dir
+   (`assets/image/*.jpg`, `assets/video/*.mp4`, `assets/audio/*.{wav,mp3}`).
+4. **Run the script** — prepend `node .claude/skills/pneuma-clipcraft/`
+   to the `script` field, expand `script_args` into `--flag value`
+   pairs, and append `--output <path>`. The script prints the output
+   path on stdout + exits 0 on success.
+5. **Register the asset** — add to `assets[]` with the chosen id,
+   `type: kind`, `uri: <output-path>`, `name: <asset-name-or-prompt-preview>`,
+   `metadata: { /* physical props only */ }`, `createdAt: Date.now()`,
+   `status: "ready"`.
+6. **Add the provenance edge** — use `provenance_hint` verbatim:
+   - `operation.type` = `provenance_hint.operation_type` (must not be
+     changed; "generate" for create mode, "derive" for variant mode)
+   - `fromAssetId` = `provenance_hint.from_asset_id` (null for create,
+     the source asset id for variant — never swap them)
+   - `operation.agentId` = `provenance_hint.agent_id`
+   - `operation.label` = `provenance_hint.label`
+   - `operation.params.model` = `provenance_hint.model`
+   - `operation.params.prompt` = the top-level `prompt`
+   - Copy other fields from `params` as useful (aspect_ratio, duration, etc.)
+   - `operation.timestamp` = same as the asset's `createdAt`
+7. **Do NOT add a clip to any track.** The viewer gives the user a
+   separate opportunity to place the new asset — your job ends at
+   `assets[]` + `provenance[]`.
+8. **Save the file.** The viewer auto-re-hydrates and the new asset
+   shows up in the asset panel or as a sibling in the dive panel.
+
+### Why the handler is identical
+
+The only real difference between create and variant is
+`provenance_hint.operation_type` + `from_asset_id`, and those are
+pre-filled in the payload so you don't need a branch. The viewer is
+the one that knows whether this is a fresh root or a sibling
+derivation; the agent just follows the hint.
+
+### What you should NOT do
+
+- Do not compose a clip-add operation — leave timeline placement to
+  the user.
+- Do not modify the source asset (for variants) — it stays in the
+  registry so the variant switcher can show both options.
+- Do not reinterpret the `prompt` — pass it to the script unchanged
+  (including non-ASCII, punctuation, emoji). The scripts handle
+  escaping correctly.
+- Do not ignore `script_args` — if you override one, the viewer's
+  intent might not be faithfully represented.
+- Do not print the JSON back to the user in your response. They
+  already filled the form; they know what they asked for. Give them a
+  short confirmation ("Generating the panda tea variant — 30-60s for
+  veo3.1.") and act.
