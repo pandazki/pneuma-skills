@@ -1,9 +1,11 @@
 import { useCallback } from "react";
 import { useComposition, usePlayback } from "@pneuma-craft/react";
+import { useTimelineMode } from "../../hooks/useTimelineMode.js";
 
 /**
  * Global transport: play/pause, goto start/end, time/duration,
- * playback rate. Always visible at the top of the Timeline.
+ * playback rate, and the 3D-view toggle (signature pneuma feature).
+ * Always visible at the top of the Timeline.
  *
  * All state lives in the craft store — this component is a thin
  * view + dispatcher. No local state.
@@ -11,6 +13,12 @@ import { useComposition, usePlayback } from "@pneuma-craft/react";
 export function TransportBar() {
   const composition = useComposition();
   const playback = usePlayback();
+  const { timelineMode, setTimelineMode } = useTimelineMode();
+  const isExpanded = timelineMode !== "collapsed";
+
+  const toggleExpanded = useCallback(() => {
+    setTimelineMode(isExpanded ? "collapsed" : "overview");
+  }, [isExpanded, setTimelineMode]);
 
   const isPlaying = playback.state === "playing";
 
@@ -119,7 +127,91 @@ export function TransportBar() {
           <option value="2">2×</option>
         </select>
       </label>
+      <Threed3DToggle expanded={isExpanded} disabled={disabled} onToggle={toggleExpanded} />
     </div>
+  );
+}
+
+/**
+ * "3D view" pneuma signature button. Glassmorphism + soft orange glow.
+ * The icon is three stacked perspective layers that fan apart on
+ * activation. Visible weight without going gaudy.
+ */
+function Threed3DToggle({
+  expanded,
+  disabled,
+  onToggle,
+}: {
+  expanded: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled}
+      title={expanded ? "Collapse 3D view" : "Open 3D view"}
+      aria-pressed={expanded}
+      style={{
+        position: "relative",
+        height: 24,
+        padding: "0 10px 0 8px",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        background: expanded
+          ? "linear-gradient(135deg, rgba(249,115,22,0.32), rgba(249,115,22,0.06))"
+          : "linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))",
+        backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
+        border: expanded
+          ? "1px solid rgba(249,115,22,0.55)"
+          : "1px solid rgba(255,255,255,0.1)",
+        borderRadius: 4,
+        color: expanded ? "#fed7aa" : "#a1a1aa",
+        cursor: disabled ? "not-allowed" : "pointer",
+        fontSize: 9,
+        fontWeight: 600,
+        letterSpacing: 0.7,
+        textTransform: "uppercase",
+        transition: "all 220ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+        boxShadow: expanded
+          ? "0 0 14px rgba(249,115,22,0.4), inset 0 1px 0 rgba(255,255,255,0.1)"
+          : "inset 0 1px 0 rgba(255,255,255,0.04)",
+        opacity: disabled ? 0.4 : 1,
+      }}
+    >
+      <Layers3DIcon expanded={expanded} />
+      <span>3D</span>
+    </button>
+  );
+}
+
+function Layers3DIcon({ expanded }: { expanded: boolean }) {
+  // When expanded, the top + bottom layers fan apart vertically.
+  const offset = expanded ? 1.5 : 0;
+  const t = "transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1)";
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+      <g
+        stroke="currentColor"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        fill="none"
+      >
+        <path
+          d="M 2 4 L 9 2 L 12 4 L 5 6 Z"
+          style={{ transform: `translateY(${-offset}px)`, transition: t, transformOrigin: "center" }}
+        />
+        <path d="M 2 7 L 9 5 L 12 7 L 5 9 Z" />
+        <path
+          d="M 2 10 L 9 8 L 12 10 L 5 12 Z"
+          style={{ transform: `translateY(${offset}px)`, transition: t, transformOrigin: "center" }}
+        />
+      </g>
+    </svg>
   );
 }
 

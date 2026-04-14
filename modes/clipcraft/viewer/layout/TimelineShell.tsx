@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useEffect } from "react";
 import { Timeline } from "../timeline/Timeline.js";
 import { useTimelineMode } from "../hooks/useTimelineMode.js";
 import { TimelineOverview3D } from "../overview/TimelineOverview3D.js";
@@ -23,10 +23,6 @@ export function TimelineShell() {
   const { timelineMode, setTimelineMode } = useTimelineMode();
   const isExpanded = timelineMode !== "collapsed";
 
-  const handleToggle = useCallback(() => {
-    setTimelineMode(isExpanded ? "collapsed" : "overview");
-  }, [isExpanded, setTimelineMode]);
-
   useEffect(() => {
     if (!isExpanded) return;
     const handler = (e: KeyboardEvent) => {
@@ -49,32 +45,10 @@ export function TimelineShell() {
         position: "relative",
       }}
     >
-      {/* Timeline — pinned at bottom */}
+      {/* Timeline — pinned at bottom. The 3D toggle now lives inside
+          TransportBar (right end) so it can't overlap the Speed control. */}
       <div style={{ flexShrink: 0, position: "relative" }}>
         <Timeline />
-        <button
-          onClick={handleToggle}
-          title={isExpanded ? "Collapse" : "Expand 3D view"}
-          style={{
-            position: "absolute",
-            top: 6,
-            right: 12,
-            width: 22,
-            height: 22,
-            border: "1px solid #3f3f46",
-            borderRadius: 3,
-            background: isExpanded ? "#27272a" : "transparent",
-            color: isExpanded ? "#f97316" : "#a1a1aa",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 11,
-            zIndex: 20,
-          }}
-        >
-          {isExpanded ? "↓" : "↑"}
-        </button>
       </div>
 
       <ClipInspector />

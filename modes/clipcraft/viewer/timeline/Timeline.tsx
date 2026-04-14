@@ -81,20 +81,7 @@ export function Timeline() {
 
   const handleSeek = useCallback(
     (time: number) => {
-      const target = Math.max(0, Math.min(time, dur));
-      // PlaybackEngine is lazy: stays at "idle" until first play(), and
-      // seek() before that paints nothing (canvas stays transparent).
-      // If this is the user's first interaction and the engine hasn't
-      // warmed up, pulse play+pause so subsequent seeks render frames.
-      if (playback.state === "idle") {
-        playback.play();
-        setTimeout(() => {
-          playback.pause();
-          playback.seek(target);
-        }, 350);
-      } else {
-        playback.seek(target);
-      }
+      playback.seek(Math.max(0, Math.min(time, dur)));
     },
     [playback, dur],
   );
