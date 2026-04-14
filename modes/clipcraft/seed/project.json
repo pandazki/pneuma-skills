@@ -139,7 +139,7 @@
       "uri": "assets/bgm/token-meme.mp3",
       "name": "Token Meme BGM",
       "metadata": {
-        "duration": 8,
+        "duration": 28.92,
         "sampleRate": 44100,
         "channels": 2,
         "codec": "mp3"
