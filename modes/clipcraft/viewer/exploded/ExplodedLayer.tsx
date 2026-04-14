@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { useWaveform } from "../timeline/hooks/useWaveform.js";
 import { WaveformBars } from "./WaveformBars.js";
@@ -14,7 +15,7 @@ export interface ExplodedLayerProps {
   focused: boolean;
   onClick: () => void;
   captionText: string | null;
-  frameUrl: string | null;
+  frameBitmap: ImageBitmap | null;
   audioUrl: string | null;
 }
 
@@ -29,7 +30,7 @@ export function ExplodedLayer({
   focused,
   onClick,
   captionText,
-  frameUrl,
+  frameBitmap,
   audioUrl,
 }: ExplodedLayerProps) {
   const meta = LAYER_META[layerType];
@@ -100,7 +101,7 @@ export function ExplodedLayer({
           height={height - 28}
           width={width - 20}
           captionText={captionText}
-          frameUrl={frameUrl}
+          frameBitmap={frameBitmap}
           audioUrl={audioUrl}
         />
       </div>
@@ -113,21 +114,21 @@ function LayerContent({
   height,
   width,
   captionText,
-  frameUrl,
+  frameBitmap,
   audioUrl,
 }: {
   layerType: LayerType;
   height: number;
   width: number;
   captionText: string | null;
-  frameUrl: string | null;
+  frameBitmap: ImageBitmap | null;
   audioUrl: string | null;
 }) {
   switch (layerType) {
     case "caption":
       return <CaptionContent text={captionText} height={height} />;
     case "video":
-      return <VideoContent frameUrl={frameUrl} height={height} />;
+      return <VideoContent bitmap={frameBitmap} height={height} width={width} />;
     case "audio":
       return <AudioContent audioUrl={audioUrl} height={height} width={width} />;
   }
@@ -162,8 +163,33 @@ function CaptionContent({ text, height }: { text: string | null; height: number 
   );
 }
 
-function VideoContent({ frameUrl, height }: { frameUrl: string | null; height: number }) {
-  if (!frameUrl) {
+function VideoContent({
+  bitmap,
+  height,
+  width,
+}: {
+  bitmap: ImageBitmap | null;
+  height: number;
+  width: number;
+}) {
+  // Direct-draw path. Matches what PreviewRoot does — the upstream
+  // engine's ImageBitmap goes straight into a local <canvas> via
+  // ctx.drawImage. No JPEG encode + img decode round-trip, so this
+  // stays in lockstep with the main preview instead of lagging.
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    if (!bitmap) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0);
+  }, [bitmap, height, width]);
+
+  if (!bitmap) {
     return (
       <div
         style={{
@@ -179,19 +205,13 @@ function VideoContent({ frameUrl, height }: { frameUrl: string | null; height: n
       </div>
     );
   }
-  // The video layer is pre-sized to the composition aspect ratio by
-  // ExplodedView, so the frame fills the inner box exactly without
-  // letterboxing. Use width:100% + height:100% + objectFit:cover —
-  // the parent box already matches the ratio so cover doesn't crop.
   return (
-    <img
-      src={frameUrl}
-      alt="Current frame"
+    <canvas
+      ref={canvasRef}
       style={{
         height,
         width: "auto",
         maxWidth: "100%",
-        objectFit: "contain",
         borderRadius: 4,
         display: "block",
       }}

@@ -11,14 +11,18 @@ import { useActiveSceneAtTime } from "./useActiveSceneAtTime.js";
 import { useWorkspaceAssetUrl } from "../assets/useWorkspaceAssetUrl.js";
 
 const CAMERA = {
-  rotateX: -12,
-  rotateY: 20,
-  perspective: 800,
+  rotateX: 0,
+  rotateY: 0,
+  perspective: 1400,
   perspectiveOriginX: 50,
-  perspectiveOriginY: 45,
+  perspectiveOriginY: 50,
 } as const;
 
-const Z_GAP = 80;
+// Bigger Z_GAP so scrolling visibly snaps the targeted layer to the
+// front and pushes the others far behind. Combined with the face-on
+// camera, the perspective shrink of the non-focused layers is what
+// sells the depth — a small gap would just look like a wiggle.
+const Z_GAP = 320;
 // Compact heights for non-video layers. Video grows to fill the rest
 // and is sized to match the composition's aspect ratio exactly.
 const NON_VIDEO_H: Record<LayerType, number> = { caption: 56, audio: 64, video: 0 };
@@ -137,7 +141,7 @@ export function ExplodedView() {
   }, [tracks, playback.currentTime]);
 
   const audioUrl = useWorkspaceAssetUrl(activeAudioClip?.assetId ?? null);
-  const frameUrl = useCurrentFrame();
+  const frameBitmap = useCurrentFrame();
 
   const handleWheel = useCallback(
     (e: WheelEvent) => {
@@ -318,7 +322,7 @@ export function ExplodedView() {
                   focused={layerType === focusedLayer}
                   onClick={() => handleDive(layerType)}
                   captionText={captionText}
-                  frameUrl={frameUrl}
+                  frameBitmap={frameBitmap}
                   audioUrl={audioUrl}
                 />
               ))}
