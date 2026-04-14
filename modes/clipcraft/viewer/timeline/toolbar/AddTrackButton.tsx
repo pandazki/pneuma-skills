@@ -8,6 +8,10 @@ import {
   type IconProps,
 } from "../../icons/index.js";
 import { theme } from "../../theme/tokens.js";
+import {
+  computeTrackInsertIdx,
+  generateTrackId,
+} from "./trackLayerPolicy.js";
 
 type TrackKind = Track["type"];
 
@@ -70,9 +74,15 @@ export function AddTrackButton() {
       const sameKindCount = composition.tracks.filter((t) => t.type === kind).length;
       const baseName = kind === "video" ? "Video" : kind === "audio" ? "Audio" : "Captions";
       const name = sameKindCount === 0 ? baseName : `${baseName} ${sameKindCount + 1}`;
+      // Step 1 — dispatch add-track. Craft's reducer always appends
+      // the new track at `tracks.length`, which is often NOT where
+      // the mode wants it (ClipCraft policy: new tracks of kind K
+      // become the top of K's group; see trackLayerPolicy.ts).
+      const newId = generateTrackId(kind);
       dispatch("human", {
         type: "composition:add-track",
         track: {
+          id: newId,
           type: kind,
           name,
           clips: [],
@@ -82,6 +92,25 @@ export function AddTrackButton() {
           visible: true,
         },
       });
+      // Step 2 — if the appended index differs from the policy-chosen
+      // one, dispatch a reorder to move the new track to its target
+      // slot. We compute against the PRE-addition `tracks[]` and
+      // manually place `newId` at the target index in the
+      // post-addition order.
+      const currentIds = composition.tracks.map((t) => t.id);
+      const targetIdx = computeTrackInsertIdx(composition.tracks, kind);
+      const appendedIdx = currentIds.length;
+      if (targetIdx !== appendedIdx) {
+        const desired = [
+          ...currentIds.slice(0, targetIdx),
+          newId,
+          ...currentIds.slice(targetIdx),
+        ];
+        dispatch("human", {
+          type: "composition:reorder-tracks",
+          trackIds: desired,
+        });
+      }
       setOpen(false);
     },
     [composition, dispatch],

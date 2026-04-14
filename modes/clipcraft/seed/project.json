@@ -10,6 +10,25 @@
     },
     "tracks": [
       {
+        "id": "track-audio-bgm",
+        "type": "audio",
+        "name": "BGM",
+        "muted": false,
+        "volume": 0.6,
+        "locked": false,
+        "visible": true,
+        "clips": [
+          {
+            "id": "clip-bgm",
+            "assetId": "asset-bgm-token-meme",
+            "startTime": 0,
+            "duration": 8,
+            "inPoint": 0,
+            "outPoint": 8
+          }
+        ]
+      },
+      {
         "id": "track-video-1",
         "type": "video",
         "name": "Main",
@@ -62,25 +81,6 @@
             "inPoint": 0,
             "outPoint": 3.5,
             "text": "……除非你带了竹子 🎋"
-          }
-        ]
-      },
-      {
-        "id": "track-audio-bgm",
-        "type": "audio",
-        "name": "BGM",
-        "muted": false,
-        "volume": 0.6,
-        "locked": false,
-        "visible": true,
-        "clips": [
-          {
-            "id": "clip-bgm",
-            "assetId": "asset-bgm-token-meme",
-            "startTime": 0,
-            "duration": 8,
-            "inPoint": 0,
-            "outPoint": 8
           }
         ]
       }
