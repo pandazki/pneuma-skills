@@ -179,15 +179,21 @@ function VideoContent({ frameUrl, height }: { frameUrl: string | null; height: n
       </div>
     );
   }
+  // The video layer is pre-sized to the composition aspect ratio by
+  // ExplodedView, so the frame fills the inner box exactly without
+  // letterboxing. Use width:100% + height:100% + objectFit:cover —
+  // the parent box already matches the ratio so cover doesn't crop.
   return (
     <img
       src={frameUrl}
       alt="Current frame"
       style={{
-        maxHeight: height,
+        height,
+        width: "auto",
         maxWidth: "100%",
         objectFit: "contain",
         borderRadius: 4,
+        display: "block",
       }}
     />
   );

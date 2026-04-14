@@ -19,9 +19,15 @@ const CAMERA = {
 } as const;
 
 const Z_GAP = 80;
-const MAX_H: Record<LayerType, number> = { video: 200, caption: 72, audio: 56 };
-const MIN_H: Record<LayerType, number> = { video: 80, caption: 32, audio: 32 };
+// Compact heights for non-video layers. Video grows to fill the rest
+// and is sized to match the composition's aspect ratio exactly.
+const NON_VIDEO_H: Record<LayerType, number> = { caption: 56, audio: 64, video: 0 };
+const MIN_VIDEO_H = 160;
 const SPRING = { type: "spring" as const, stiffness: 150, damping: 25 };
+
+// Header padding inside ExplodedLayer (label row + flex container padding).
+const LAYER_HEADER_H = 28;
+const LAYER_INNER_PAD_X = 20;
 
 function computeZOffsets(
   activeLayers: LayerType[],
@@ -183,23 +189,60 @@ export function ExplodedView() {
   const sceneH = containerSize.height;
   const settings = composition?.settings;
   const arRatio = settings ? settings.width / settings.height : 16 / 9;
-  const layerWidth = Math.min(sceneW * 0.7, sceneH * arRatio * 0.5);
 
+  // Layout policy: caption + audio get a compact fixed slice; video
+  // takes everything else and is sized so its inner frame fills the
+  // layer perfectly at the composition's aspect ratio (no letterbox).
+  // The shared layerWidth is dictated by the video frame so the layers
+  // visually stack at the same width.
   const gap = 8;
   const totalGap = Math.max(0, orderedActive.length - 1) * gap;
-  const availH = sceneH - totalGap;
-  const totalMaxH = orderedActive.reduce((s, l) => s + MAX_H[l], 0);
+  const SCENE_PAD = 24; // top + bottom breathing room for perspective
+  const availH = sceneH - totalGap - SCENE_PAD * 2;
+
+  const reservedH = orderedActive.reduce(
+    (sum, l) => (l === "video" ? sum : sum + NON_VIDEO_H[l]),
+    0,
+  );
+  const hasVideo = orderedActive.includes("video");
+  const videoLayerH = hasVideo
+    ? Math.max(MIN_VIDEO_H, availH - reservedH)
+    : 0;
+
+  // Compute the ideal video-layer width from its inner frame:
+  // frameH = videoLayerH - LAYER_HEADER_H; frameW = frameH * arRatio.
+  // Then layerWidth = frameW + LAYER_INNER_PAD_X.
+  // Clamp by sceneW (so we don't overflow horizontally) and recompute
+  // videoLayerH if width was the bottleneck.
+  let layerWidth: number;
+  let videoLayerHFinal: number;
+  if (hasVideo) {
+    const idealFrameH = Math.max(0, videoLayerH - LAYER_HEADER_H);
+    const idealFrameW = idealFrameH * arRatio;
+    const maxLayerW = Math.max(160, sceneW - 32);
+    if (idealFrameW + LAYER_INNER_PAD_X <= maxLayerW) {
+      layerWidth = idealFrameW + LAYER_INNER_PAD_X;
+      videoLayerHFinal = videoLayerH;
+    } else {
+      // Width is the constraint — shrink frame height to keep aspect ratio.
+      layerWidth = maxLayerW;
+      const fittedFrameW = maxLayerW - LAYER_INNER_PAD_X;
+      const fittedFrameH = fittedFrameW / arRatio;
+      videoLayerHFinal = Math.max(MIN_VIDEO_H, fittedFrameH + LAYER_HEADER_H);
+    }
+  } else {
+    layerWidth = Math.min(sceneW * 0.7, 600);
+    videoLayerHFinal = 0;
+  }
 
   const layerHeights: Record<string, number> = {};
   for (const l of orderedActive) {
-    const ratio = totalMaxH > 0 ? MAX_H[l] / totalMaxH : 0;
-    const h = Math.floor(availH * ratio);
-    layerHeights[l] = Math.max(MIN_H[l], Math.min(h, MAX_H[l]));
+    layerHeights[l] = l === "video" ? videoLayerHFinal : NON_VIDEO_H[l];
   }
 
   const totalLayersH =
     orderedActive.reduce((s, l) => s + (layerHeights[l] ?? 0), 0) + totalGap;
-  const topOffset = Math.max(0, Math.floor((sceneH - totalLayersH) / 2));
+  const topOffset = Math.max(SCENE_PAD, Math.floor((sceneH - totalLayersH) / 2));
   const zOffsets = computeZOffsets(orderedActive, focusedLayer);
 
   const layerTops: Record<string, number> = {};
@@ -270,7 +313,7 @@ export function ExplodedView() {
                   layerType={layerType}
                   zOffset={zOffsets[layerType] ?? 0}
                   width={layerWidth}
-                  height={layerHeights[layerType] ?? MIN_H[layerType]}
+                  height={layerHeights[layerType] ?? NON_VIDEO_H[layerType] ?? MIN_VIDEO_H}
                   top={layerTops[layerType] ?? 0}
                   focused={layerType === focusedLayer}
                   onClick={() => handleDive(layerType)}

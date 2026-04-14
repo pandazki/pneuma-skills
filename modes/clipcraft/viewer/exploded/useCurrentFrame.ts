@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { usePneumaCraftStore } from "@pneuma-craft/react";
+import { usePneumaCraftStore, usePlayback } from "@pneuma-craft/react";
 import type { RenderedFrame } from "@pneuma-craft/video";
 
 /**
@@ -18,9 +18,16 @@ import type { RenderedFrame } from "@pneuma-craft/video";
  */
 export function useCurrentFrame(): string | null {
   const subscribeToFrames = usePneumaCraftStore((s) => s.subscribeToFrames);
+  const playback = usePlayback();
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastEmitRef = useRef<number>(0);
+  // Live refs so the kick-seek can fire without re-running the subscribe
+  // effect on every playhead tick.
+  const seekRef = useRef(playback.seek);
+  seekRef.current = playback.seek;
+  const currentTimeRef = useRef(playback.currentTime);
+  currentTimeRef.current = playback.currentTime;
 
   useEffect(() => {
     if (!subscribeToFrames) return;
@@ -57,7 +64,17 @@ export function useCurrentFrame(): string | null {
       }
       setDataUrl(canvas.toDataURL("image/jpeg", 0.7));
     });
-    return off;
+    // Kick the engine to re-emit the current frame so consumers that
+    // mount AFTER the auto-seek-on-mount don't get stuck on
+    // 'Capturing frame...' until the user manually seeks. seek(t) when
+    // paused fires a single frame render through the same pipeline.
+    const kickTimer = setTimeout(() => {
+      seekRef.current(currentTimeRef.current);
+    }, 30);
+    return () => {
+      clearTimeout(kickTimer);
+      off();
+    };
   }, [subscribeToFrames]);
 
   return dataUrl;
