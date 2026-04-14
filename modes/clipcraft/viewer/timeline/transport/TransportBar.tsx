@@ -122,7 +122,7 @@ export function TransportBar() {
  * native <select> dropdown so the whole transport row stays
  * scanable at a glance.
  */
-const SPEED_OPTIONS = [0.25, 0.5, 1, 1.5, 2] as const;
+const SPEED_OPTIONS = [0.75, 1, 1.25, 1.5, 2] as const;
 
 function SpeedSegmentControl({
   value,
