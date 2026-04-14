@@ -101,32 +101,32 @@ function SyncedBody({
   const dispatchEnvelope = usePneumaCraftStore((s) => s.dispatchEnvelope);
   const coreState = usePneumaCraftStore((s) => s.coreState);
   const composition = usePneumaCraftStore((s) => s.composition);
+  const playback = usePlayback();
   const eventCount = useEventLog().length;
   const scenes = useScenes();
   const captionStyle = project?.captionStyle;
 
-  // Engine warm-up: PlaybackEngine is lazy — it stays at "idle" forever
-  // until the user clicks Play, at which point it goes idle → loading →
-  // ready → playing. Before that first play, seek() is a no-op for
-  // rendering, so the canvas stays black until the user clicks Play once.
-  //
-  // Workaround: as soon as the composition is hydrated into the store,
-  // bootstrap the engine ourselves by calling play() (kicks off the load
-  // sequence), wait for the first rendered frame via subscribeToFrames,
-  // then pause() and seek(0) so the user sees a still frame at t=0.
-  // Subsequent seek() calls paint correctly because the decoders are
-  // warm.
-  //
-  // Upstream PlaybackEngine bug — workaround until craft pre-decodes on
-  // seek-while-idle.
-  // Engine warm-up — see Timeline.tsx handleSeek for the actual fix.
-  // Tried multiple useEffect-based warmups; all failed because the
-  // React-captured playback.play reference goes stale across provider
-  // remounts. The reliable workaround is to do the play→pause cycle
-  // inline inside the user's first seek action (handleSeek + key
-  // shortcut handlers), where playback is freshly read from the live
-  // hook via a setTimeout chain. See Plan 5.5 known limitations + the
-  // craft engine warm-up task in NEXT.md.
+  // Initial frame paint: when the composition first hydrates, seek to
+  // the earliest time that has actual visible video content so the
+  // canvas shows a real frame instead of a black square (and so a
+  // leading gap doesn't paint nothing). Upstream `store.seek()`
+  // lazy-inits the engine (commit c18ab13 in pneuma-craft).
+  // Fires once per composition identity — re-edits keep currentTime.
+  const initialPaintRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!composition) return;
+    const compId = composition.id;
+    if (initialPaintRef.current === compId) return;
+    initialPaintRef.current = compId;
+    const videoClips = composition.tracks
+      .filter((t) => t.type === "video")
+      .flatMap((t) => t.clips);
+    const firstVisible =
+      videoClips.length > 0
+        ? Math.min(...videoClips.map((c) => c.startTime))
+        : 0;
+    playback.seek(firstVisible);
+  }, [composition, playback]);
 
   // ── Hydration: dispatch project into the (fresh) craft store ─────────
   //
