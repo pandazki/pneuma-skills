@@ -3,7 +3,12 @@
 
 import { useMemo } from "react";
 import type { Track, Clip } from "@pneuma-craft/timeline";
-import { useAsset, useDispatch, usePlayback } from "@pneuma-craft/react";
+import {
+  useAsset,
+  useDispatch,
+  usePlayback,
+  usePneumaCraftStore,
+} from "@pneuma-craft/react";
 import { WaveformBars } from "./WaveformBars.js";
 import { useWaveform } from "./hooks/useWaveform.js";
 import { useTrackDragEngine } from "./hooks/useTrackDragEngine.js";
@@ -60,8 +65,6 @@ function AudioClip({
   const status = asset?.status ?? "ready";
   const uri = asset?.uri ?? "";
   const hasAudio = status === "ready" && !!uri && asset?.type === "audio";
-  const assetDuration =
-    (asset?.metadata as { duration?: number } | undefined)?.duration ?? null;
 
   // Bars + maxDuration are derived from the COMMITTED clip.duration
   // (not the preview width). Without this, every resize mousemove
@@ -146,25 +149,6 @@ function AudioClip({
         opacity: dragging ? 0.85 : 1,
       }}
     >
-      {/* Asset-full ghost: during a resize, render a faint outline
-          of the WHOLE asset so the user can see how much total
-          content is available vs the current trim. Positioned
-          relative to clip.startTime in timeline coords. */}
-      {isResizing && assetDuration && assetDuration > 0 && (
-        <div
-          style={{
-            position: "absolute",
-            top: 2,
-            left: -clip.inPoint * pixelsPerSecond,
-            width: assetDuration * pixelsPerSecond - 2,
-            height: BAR_H,
-            border: "1px dashed rgba(56,189,248,0.35)",
-            borderRadius: 3,
-            background: "rgba(56,189,248,0.06)",
-            pointerEvents: "none",
-          }}
-        />
-      )}
       {waveform ? (
         <div
           style={{
@@ -249,6 +233,7 @@ export function AudioTrack({
   const dispatch = useDispatch();
   const drag = useTrackDragEngine(track, pixelsPerSecond, dispatch);
   const resize = useClipResize(track, pixelsPerSecond, dispatch);
+  const registry = usePneumaCraftStore((s) => s.coreState.registry);
 
   return (
     <div style={{ position: "relative", height: TRACK_H, overflow: "hidden" }}>
@@ -280,6 +265,36 @@ export function AudioTrack({
             onSelect={onSelect}
             onDragStart={drag.handleDragStart}
             onResizeStart={resize.handleResizeStart}
+          />
+        );
+      })}
+      {/* Asset-full ghost outlines — timeline-absolute positioning */}
+      {track.clips.map((clip) => {
+        const isResizing =
+          resize.displayStartFor(clip.id) !== null ||
+          resize.displayDurationFor(clip.id) !== null;
+        if (!isResizing) return null;
+        const asset = registry.get(clip.assetId);
+        const assetDuration = (asset?.metadata as { duration?: number } | undefined)
+          ?.duration;
+        if (!assetDuration || assetDuration <= 0) return null;
+        const ghostX =
+          (clip.startTime - clip.inPoint) * pixelsPerSecond - scrollLeft;
+        const ghostW = assetDuration * pixelsPerSecond;
+        return (
+          <div
+            key={`ghost-${clip.id}`}
+            style={{
+              position: "absolute",
+              left: Math.round(ghostX),
+              top: 2,
+              width: Math.round(ghostW),
+              height: TRACK_H - 4,
+              border: "1px dashed rgba(56,189,248,0.45)",
+              borderRadius: 3,
+              background: "rgba(56,189,248,0.06)",
+              pointerEvents: "none",
+            }}
           />
         );
       })}

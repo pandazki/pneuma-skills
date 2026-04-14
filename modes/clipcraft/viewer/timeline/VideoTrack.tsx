@@ -3,7 +3,12 @@
 
 import { useMemo } from "react";
 import type { Track, Clip } from "@pneuma-craft/timeline";
-import { useAsset, useDispatch, usePlayback } from "@pneuma-craft/react";
+import {
+  useAsset,
+  useDispatch,
+  usePlayback,
+  usePneumaCraftStore,
+} from "@pneuma-craft/react";
 import { useFrameExtractor } from "./hooks/useFrameExtractor.js";
 import { useTrackDragEngine } from "./hooks/useTrackDragEngine.js";
 import { useClipResize } from "./hooks/useClipResize.js";
@@ -32,9 +37,8 @@ interface VideoClipProps {
    *  shift left by the delta so it still shows the ORIGINAL content
    *  range cropped by the wrapper's overflow:hidden — no stretching. */
   filmstripOffsetPx: number;
-  /** True while the user is actively dragging a resize handle. Used
-   *  to render the asset-full-length ghost outline and to relax
-   *  overflow so the ghost can extend beyond the clip rect. */
+  /** True while the user is actively dragging a resize handle. Kept
+   *  so the clip can relax overflow for filmstrip peek-through. */
   isResizing: boolean;
   onSelect: (clipId: string) => void;
   onDragStart: (clipId: string, mouseX: number) => void;
@@ -55,8 +59,6 @@ function VideoClip({
   onResizeStart,
 }: VideoClipProps) {
   const asset = useAsset(clip.assetId);
-  const assetDuration =
-    (asset?.metadata as { duration?: number } | undefined)?.duration ?? null;
   const { summary } = useClipProvenance(clip);
   const tool = useEditorTool();
   const runToolAction = useClipToolAction();
@@ -162,25 +164,6 @@ function VideoClip({
         opacity: dragging ? 0.85 : 1,
       }}
     >
-      {/* Asset-full ghost outline during resize — shows how much
-          content is available vs the current trim. Positioned in
-          timeline coords: left=-inPoint*pps means "starts where the
-          asset's t=0 would be". */}
-      {isResizing && assetDuration && assetDuration > 0 && (
-        <div
-          style={{
-            position: "absolute",
-            left: -clip.inPoint * pixelsPerSecond,
-            top: 2,
-            width: assetDuration * pixelsPerSecond - 2,
-            height: FRAME_H,
-            border: "1px dashed rgba(249,115,22,0.45)",
-            borderRadius: 3,
-            background: "rgba(249,115,22,0.05)",
-            pointerEvents: "none",
-          }}
-        />
-      )}
       {frames.length > 0 && (
         <div
           style={{
@@ -330,6 +313,7 @@ export function VideoTrack({
   const dispatch = useDispatch();
   const drag = useTrackDragEngine(track, pixelsPerSecond, dispatch);
   const resize = useClipResize(track, pixelsPerSecond, dispatch);
+  const registry = usePneumaCraftStore((s) => s.coreState.registry);
 
   return (
     <div style={{ position: "relative", height: TRACK_H, overflow: "hidden" }}>
@@ -366,6 +350,42 @@ export function VideoTrack({
             onSelect={onSelect}
             onDragStart={drag.handleDragStart}
             onResizeStart={resize.handleResizeStart}
+          />
+        );
+      })}
+      {/* Asset-full ghost outlines during resize — rendered at the
+          track content level (not inside the clip wrapper) so they
+          stay anchored to timeline-absolute coords even as the
+          wrapper shifts during a left-edge drag. */}
+      {track.clips.map((clip) => {
+        const isResizing =
+          resize.displayStartFor(clip.id) !== null ||
+          resize.displayDurationFor(clip.id) !== null;
+        if (!isResizing) return null;
+        const asset = registry.get(clip.assetId);
+        const assetDuration = (asset?.metadata as { duration?: number } | undefined)
+          ?.duration;
+        if (!assetDuration || assetDuration <= 0) return null;
+        // Timeline-absolute: the asset's virtual t=0 lives at
+        // clip.startTime - clip.inPoint seconds. The ghost spans
+        // from there for assetDuration seconds.
+        const ghostX =
+          (clip.startTime - clip.inPoint) * pixelsPerSecond - scrollLeft;
+        const ghostW = assetDuration * pixelsPerSecond;
+        return (
+          <div
+            key={`ghost-${clip.id}`}
+            style={{
+              position: "absolute",
+              left: Math.round(ghostX),
+              top: 2,
+              width: Math.round(ghostW),
+              height: FRAME_H,
+              border: "1px dashed rgba(249,115,22,0.5)",
+              borderRadius: 3,
+              background: "rgba(249,115,22,0.04)",
+              pointerEvents: "none",
+            }}
           />
         );
       })}
