@@ -37,10 +37,9 @@ export function TransportBar() {
     playback.seek(Math.max(0, playback.duration ?? 0));
   }, [playback]);
 
-  const onSpeedChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const v = parseFloat(e.target.value);
-      if (!Number.isNaN(v)) playback.setPlaybackRate(v);
+  const setRate = useCallback(
+    (rate: number) => {
+      playback.setPlaybackRate(rate);
     },
     [playback],
   );
@@ -107,32 +106,88 @@ export function TransportBar() {
         <span style={{ color: "#a1a1aa" }}>{formatTime(totalSec)}</span>
       </span>
       <div style={{ flex: 1 }} />
-      <label
-        style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "#71717a" }}
-      >
-        Speed
-        <select
-          onChange={onSpeedChange}
-          value={String(playback.playbackRate ?? 1)}
-          disabled={disabled}
-          style={{
-            background: "#18181b",
-            color: "#e4e4e7",
-            border: "1px solid #27272a",
-            borderRadius: 3,
-            fontSize: 10,
-            padding: "1px 4px",
-            cursor: disabled ? "not-allowed" : "pointer",
-          }}
-        >
-          <option value="0.25">0.25×</option>
-          <option value="0.5">0.5×</option>
-          <option value="1">1×</option>
-          <option value="1.5">1.5×</option>
-          <option value="2">2×</option>
-        </select>
-      </label>
+      <SpeedSegmentControl
+        value={playback.playbackRate ?? 1}
+        disabled={disabled}
+        onChange={setRate}
+      />
       <Threed3DToggle expanded={isExpanded} disabled={disabled} onToggle={toggleExpanded} />
+    </div>
+  );
+}
+
+/**
+ * Compact segmented speed selector — five fixed options, active
+ * segment gets the pneuma orange fill + soft glow. Replaces a
+ * native <select> dropdown so the whole transport row stays
+ * scanable at a glance.
+ */
+const SPEED_OPTIONS = [0.25, 0.5, 1, 1.5, 2] as const;
+
+function SpeedSegmentControl({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: number;
+  disabled: boolean;
+  onChange: (rate: number) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Playback speed"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 2,
+        padding: 2,
+        borderRadius: 5,
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
+        opacity: disabled ? 0.4 : 1,
+      }}
+    >
+      {SPEED_OPTIONS.map((rate) => {
+        const active = Math.abs(value - rate) < 1e-4;
+        return (
+          <button
+            key={rate}
+            type="button"
+            onClick={() => !disabled && onChange(rate)}
+            disabled={disabled}
+            aria-pressed={active}
+            title={`${rate}×`}
+            style={{
+              background: active
+                ? "linear-gradient(135deg, rgba(249,115,22,0.45), rgba(249,115,22,0.15))"
+                : "transparent",
+              border: "none",
+              color: active ? "#fed7aa" : "#a1a1aa",
+              fontSize: 9,
+              fontWeight: active ? 700 : 500,
+              letterSpacing: 0.2,
+              padding: "3px 7px",
+              borderRadius: 3,
+              cursor: disabled ? "not-allowed" : "pointer",
+              minWidth: 28,
+              height: 16,
+              lineHeight: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "all 160ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+              boxShadow: active
+                ? "0 0 8px rgba(249,115,22,0.35), inset 0 1px 0 rgba(255,255,255,0.08)"
+                : "none",
+            }}
+          >
+            {rate}×
+          </button>
+        );
+      })}
     </div>
   );
 }
