@@ -16,16 +16,22 @@ import {
 } from "../persistence.js";
 import { createWorkspaceAssetResolver } from "./assetResolver.js";
 import { PreviewPanel } from "./PreviewPanel.js";
+import { CommandBar } from "./CommandBar.js";
 import { SceneProvider, useScenes } from "./scenes/SceneContext.js";
 import { TimelineModeProvider } from "./hooks/useTimelineMode.js";
 import { TimelineZoomProvider } from "./hooks/useTimelineZoomShared.js";
 import { AssetErrorsProvider } from "./assets/useAssetErrors.js";
 import { VariantPointerProvider } from "./dive/useVariantPointer.js";
 import { EditorToolProvider } from "./timeline/hooks/useEditorTool.js";
+import { theme } from "./theme/tokens.js";
 
 const AUTOSAVE_DELAY_MS = 500;
 
-const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({ sources }) => {
+const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({
+  sources,
+  commands,
+  onNotifyAgent,
+}) => {
   const assetResolver = useMemo(() => createWorkspaceAssetResolver(), []);
   const projectSource = sources.project as Source<ProjectFile> | undefined;
   const { value: project, write: writeProject, status } = useSource(projectSource);
@@ -67,26 +73,38 @@ const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({ sources }) => {
   const errorMessage = status.lastError?.message ?? null;
 
   return (
-    <PneumaCraftProvider key={providerKey} assetResolver={assetResolver}>
-      <AssetErrorsProvider>
-        <VariantPointerProvider>
-          <SceneProvider initialScenes={project?.scenes ?? []}>
-            <TimelineModeProvider>
-              <TimelineZoomProvider>
-                <EditorToolProvider>
-                  <SyncedBody
-                    project={project}
-                    writeProject={writeProject}
-                    currentTitleRef={currentTitleRef}
-                    hydrationError={errorMessage}
-                  />
-                </EditorToolProvider>
-              </TimelineZoomProvider>
-            </TimelineModeProvider>
-          </SceneProvider>
-        </VariantPointerProvider>
-      </AssetErrorsProvider>
-    </PneumaCraftProvider>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        background: theme.color.surface0,
+      }}
+    >
+      <CommandBar commands={commands ?? []} onNotifyAgent={onNotifyAgent} />
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <PneumaCraftProvider key={providerKey} assetResolver={assetResolver}>
+          <AssetErrorsProvider>
+            <VariantPointerProvider>
+              <SceneProvider initialScenes={project?.scenes ?? []}>
+                <TimelineModeProvider>
+                  <TimelineZoomProvider>
+                    <EditorToolProvider>
+                      <SyncedBody
+                        project={project}
+                        writeProject={writeProject}
+                        currentTitleRef={currentTitleRef}
+                        hydrationError={errorMessage}
+                      />
+                    </EditorToolProvider>
+                  </TimelineZoomProvider>
+                </TimelineModeProvider>
+              </SceneProvider>
+            </VariantPointerProvider>
+          </AssetErrorsProvider>
+        </PneumaCraftProvider>
+      </div>
+    </div>
   );
 };
 
