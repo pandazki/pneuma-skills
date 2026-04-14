@@ -208,4 +208,35 @@ describe("preview component module imports", () => {
     const mod = await import("../viewer/dive/DiveCanvas.js");
     expect(typeof mod.DiveCanvas).toBe("function");
   });
+
+  test("dragEngine exports pure helpers", async () => {
+    const mod = await import("../viewer/timeline/dragEngine.js");
+    expect(typeof mod.computeRipplePreview).toBe("function");
+    expect(typeof mod.snapDraggedStart).toBe("function");
+  });
+
+  test("useTrackDragEngine exports a function", async () => {
+    const mod = await import("../viewer/timeline/hooks/useTrackDragEngine.js");
+    expect(typeof mod.useTrackDragEngine).toBe("function");
+  });
+
+  test("useClipResize exports a function", async () => {
+    const mod = await import("../viewer/timeline/hooks/useClipResize.js");
+    expect(typeof mod.useClipResize).toBe("function");
+  });
+
+  test("useTimelineShortcuts exports a function", async () => {
+    const mod = await import("../viewer/timeline/hooks/useTimelineShortcuts.js");
+    expect(typeof mod.useTimelineShortcuts).toBe("function");
+  });
+
+  test("EditToolbar exports a function", async () => {
+    const mod = await import("../viewer/timeline/toolbar/EditToolbar.js");
+    expect(typeof mod.EditToolbar).toBe("function");
+  });
+
+  test("collapseGaps exports a function", async () => {
+    const mod = await import("../viewer/timeline/toolbar/collapseGaps.js");
+    expect(typeof mod.buildCollapseGapsCommands).toBe("function");
+  });
 });
