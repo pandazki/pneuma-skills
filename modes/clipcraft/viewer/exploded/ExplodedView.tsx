@@ -279,6 +279,7 @@ export function ExplodedView() {
           activeLayers={activeLayers}
           onToggle={toggleLayer}
           disabledLayers={disabledLayers}
+          focusedLayer={focusedLayer}
         />
       </div>
 
