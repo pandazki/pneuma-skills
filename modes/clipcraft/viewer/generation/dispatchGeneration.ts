@@ -196,6 +196,13 @@ function resolveScriptForRequest(req: GenerationRequest): ResolvedScript {
       };
     }
     case "video": {
+      // Seedance 2 is the default video model now. With no image the
+      // script routes to `bytedance/seedance-2.0/reference-to-video`
+      // called with zero refs (= pure t2v); with one image it routes
+      // to `bytedance/seedance-2.0/image-to-video`. veo3.1 is a
+      // fallback the agent can request via `--model veo3.1` but the
+      // default hint is seedance so the provenance edge reflects
+      // what actually ran.
       const scriptArgs: Record<string, string | number> = {
         "--prompt": p.prompt,
         "--duration": p.duration,
@@ -206,11 +213,14 @@ function resolveScriptForRequest(req: GenerationRequest): ResolvedScript {
       if (useFromImage) {
         scriptArgs["--image-url"] = p.imageUrl as string;
       }
+      const modelId = useFromImage
+        ? "bytedance/seedance-2.0/image-to-video"
+        : "bytedance/seedance-2.0/reference-to-video";
       return {
         params: {
           prompt: p.prompt,
           duration: p.duration,
-          aspect_ratio: p.aspectRatio ?? "16:9",
+          aspect_ratio: p.aspectRatio ?? "auto",
           resolution: p.resolution ?? "720p",
           image_url: p.imageUrl ?? null,
         },
@@ -222,8 +232,8 @@ function resolveScriptForRequest(req: GenerationRequest): ResolvedScript {
           operation_type: operationType,
           from_asset_id: fromAssetId,
           agent_id: "clipcraft-videogen",
-          label: "fal-ai/veo3.1",
-          model: useFromImage ? "fal-ai/veo3.1/image-to-video" : "fal-ai/veo3.1",
+          label: modelId,
+          model: modelId,
         },
       };
     }

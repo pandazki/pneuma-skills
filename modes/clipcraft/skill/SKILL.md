@@ -44,10 +44,10 @@ Full schema in `references/project-json.md`. Id rules in
 Four bundled CLI scripts wrap the provider APIs. Call them via the
 Bash tool; they write files and print the output path on stdout.
 
-| Script | Purpose | Provider | Env var |
+| Script | Purpose | Default model | Env var |
 |---|---|---|---|
-| `scripts/generate-image.mjs` | Text→image + image→image edit | fal.ai nano-banana-2 | `FAL_KEY` |
-| `scripts/generate-video.mjs` | Text→video + image→video | fal.ai veo3.1 (~$0.20–0.60/sec) | `FAL_KEY` |
+| `scripts/generate-image.mjs` | Text→image + image→image edit | fal.ai `nano-banana-2` | `FAL_KEY` |
+| `scripts/generate-video.mjs` | Text→video + image→video + reference-to-video | bytedance `seedance-2.0` (fallback: `veo3.1` via `--model veo3.1`) | `FAL_KEY` |
 | `scripts/generate-tts.mjs` | Text→speech | OpenRouter `openai/gpt-audio` | `OPENROUTER_API_KEY` |
 | `scripts/generate-bgm.mjs` | Text→background music | OpenRouter `google/lyria-3-pro-preview` | `OPENROUTER_API_KEY` |
 
@@ -61,8 +61,59 @@ All scripts share the same shape:
 - The script creates the parent directory of `--output` if it's
   missing, and does not produce thumbnails or side-effect files.
 
-Run `node .claude/skills/pneuma-clipcraft/scripts/<script>.mjs --help`
-(or just read the script's argv-parse block) for the full arg list.
+### Video subcommands
+
+`generate-video.mjs` has three subcommands — one per scenario:
+
+```bash
+# 1. Text-to-video — default subcommand.
+# Routes to bytedance/seedance-2.0/reference-to-video with zero refs
+# (= pure t2v). Add --model veo3.1 to fall back to Google Veo 3.1.
+node scripts/generate-video.mjs \
+  --prompt "a serene bamboo forest with gentle wind" \
+  --duration 4 --aspect-ratio 16:9 \
+  --output assets/video/forest.mp4
+
+# 2. First / last frame continuity — the `from-image` subcommand.
+# Routes to bytedance/seedance-2.0/image-to-video by default.
+# --image-url is the START frame; --end-image-url (seedance only)
+# is an optional END frame for frame-to-frame interpolation.
+node scripts/generate-video.mjs from-image \
+  --prompt "the panda slowly rolls over and looks at the camera" \
+  --image-url assets/images/panda-rolling.png \
+  --duration 4 --aspect-ratio 16:9 \
+  --output assets/video/panda-rolls.mp4
+
+# 3. Multi-reference — the `reference` subcommand, seedance only.
+# Accepts up to 9 --image-url, 3 --video-url, 3 --audio-url (total ≤12).
+# In --prompt refer to each as @Image1 / @Video2 / @Audio1 in the
+# order they were passed. Audio refs require at least one image or
+# video ref.
+node scripts/generate-video.mjs reference \
+  --prompt "A character drawn in the style of @Image1 runs across the frame" \
+  --image-url assets/images/character-ref.jpg \
+  --image-url assets/images/background-ref.jpg \
+  --duration 6 --aspect-ratio 16:9 \
+  --output assets/video/shot.mp4
+```
+
+Shared flags across subcommands: `--duration` (required; `4`–`15`
+seconds or `auto`; veo3.1 only allows `4`/`6`/`8`), `--aspect-ratio`
+(seedance: `auto | 21:9 | 16:9 | 4:3 | 1:1 | 3:4 | 9:16`; veo3.1:
+`16:9 | 9:16`), `--resolution` (seedance: `480p | 720p`; veo3.1:
+`720p | 1080p`), `--no-audio` (disables generated audio — use when
+the content policy rejects auto-audio), `--seed` (integer, seedance
+only), `--model seedance | veo3.1`.
+
+### Content-policy retry pattern
+
+ByteDance's content filter occasionally rejects a seedance
+generation with
+`{"detail":[{"type":"content_policy_violation","loc":["body","generated_video"],"msg":"Output audio has sensitive content."}]}`.
+The video frames themselves are fine — the rejection is on the
+automatically generated audio track. **Retry with `--no-audio`** as
+the reliable workaround. Don't change the prompt or the model;
+just disable audio generation.
 
 **Why this shape:** the script only does what a Bash subprocess does
 best — call a provider API and save bytes. Schema knowledge lives in

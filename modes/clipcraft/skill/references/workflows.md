@@ -24,12 +24,19 @@ id rules in `asset-ids.md`.
 ```bash
 node .claude/skills/pneuma-clipcraft/scripts/generate-video.mjs \
   --prompt "close-up of a giant panda happily eating bamboo, warm natural light" \
-  --duration 4s \
+  --duration 4 \
   --aspect-ratio 16:9 \
   --output assets/video/panda-intro.mp4
 ```
 
-The script prints the output path on stdout + exits 0 on success.
+Default model: `bytedance/seedance-2.0/reference-to-video` called
+with zero refs (= pure text-to-video). The script prints the output
+path on stdout + exits 0 on success.
+
+If the first call errors with
+`{"type":"content_policy_violation","msg":"Output audio has sensitive content."}`,
+retry the same command with `--no-audio` — see the SKILL.md
+"Content-policy retry pattern" section.
 
 ### Step 3: register the asset
 
@@ -65,9 +72,9 @@ Add to `provenance[]`:
     "timestamp": 1712934000000,
     "label": "intro shot",
     "params": {
-      "model": "fal-ai/veo3.1",
+      "model": "bytedance/seedance-2.0/reference-to-video",
       "prompt": "close-up of a giant panda happily eating bamboo",
-      "duration": "4s",
+      "duration": "4",
       "aspect_ratio": "16:9"
     }
   }
@@ -110,13 +117,23 @@ Given existing `asset-panda-sad-v1`, create `asset-panda-sad-v2`.
 
 ### Step 2: run the generator with the tweaked prompt
 
+For a variant that preserves the look of the source, use the
+`from-image` subcommand with the source asset as the start frame.
+That routes through `bytedance/seedance-2.0/image-to-video`:
+
 ```bash
-node .claude/skills/pneuma-clipcraft/scripts/generate-video.mjs \
+node .claude/skills/pneuma-clipcraft/scripts/generate-video.mjs from-image \
   --prompt "Same panda from behind, emphasize a slower exaggerated head droop; shoulders sag visibly; keep camera + lighting identical" \
-  --duration 4s \
+  --image-url assets/clips/panda-sad-v1.mp4 \
+  --duration 4 \
   --aspect-ratio 16:9 \
+  --no-audio \
   --output assets/clips/panda-sad-v2.mp4
 ```
+
+`--no-audio` is a defensive default for variant regens because
+character-focused prompts hit ByteDance's audio content policy
+more often than environment prompts.
 
 ### Step 3: register + link via provenance
 
@@ -134,7 +151,7 @@ provenance edge that **points at the source asset**:
     "timestamp": 1712930200000,
     "label": "regenerate with stronger droop",
     "params": {
-      "model": "fal-ai/veo3.1",
+      "model": "bytedance/seedance-2.0/image-to-video",
       "prompt": "Same panda from behind, emphasize head droop",
       "seed": 11
     }
