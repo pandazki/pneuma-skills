@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Track, CompositionCommand } from "@pneuma-craft/timeline";
 import type { Actor, CoreCommand } from "@pneuma-craft/core";
+import { useComposition, usePlayback } from "@pneuma-craft/react";
 import {
   computeRipplePreview,
-  snapDraggedStart,
   type DragState,
 } from "../dragEngine.js";
+import { collectSnapPoints, snapDraggedStartToPoints } from "../snapPoints.js";
 
 type Dispatch = (
   actor: Actor,
@@ -36,6 +37,8 @@ export function useTrackDragEngine(
   pixelsPerSecond: number,
   dispatch: Dispatch,
 ): UseTrackDragEngine {
+  const composition = useComposition();
+  const playback = usePlayback();
   const [dragState, setDragState] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const clipsRef = useRef(track.clips);
@@ -44,6 +47,12 @@ export function useTrackDragEngine(
   ppsRef.current = pixelsPerSecond;
   const dispatchRef = useRef(dispatch);
   dispatchRef.current = dispatch;
+  // Refs so the mousemove handler can read the latest snap sources
+  // without re-binding the document listener every tick.
+  const compositionRef = useRef(composition);
+  compositionRef.current = composition;
+  const playheadRef = useRef(playback.currentTime);
+  playheadRef.current = playback.currentTime;
 
   const handleDragStart = useCallback(
     (clipId: string, mouseX: number) => {
@@ -70,13 +79,24 @@ export function useTrackDragEngine(
       const pps = ppsRef.current;
       if (!ds || pps <= 0) return;
 
+      const clip = clipsRef.current.find((c) => c.id === ds.clipId);
+      if (!clip) return;
+
       const deltaX = ev.clientX - ds.startMouseX;
       const deltaT = deltaX / pps;
       const candidate = ds.startClipTime + deltaT;
-      const { start, snapTime } = snapDraggedStart(
-        clipsRef.current,
-        ds.clipId,
+
+      // Cross-track snap: include every clip on every track (except the
+      // dragged one) + the current playhead + t=0.
+      const points = collectSnapPoints(
+        compositionRef.current,
+        new Set([ds.clipId]),
+        playheadRef.current,
+      );
+      const { start, snapTime } = snapDraggedStartToPoints(
         candidate,
+        clip.duration,
+        points,
         SNAP_PX / pps,
       );
       const positions = computeRipplePreview(clipsRef.current, ds.clipId, start);

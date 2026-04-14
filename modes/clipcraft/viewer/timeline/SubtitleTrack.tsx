@@ -200,13 +200,16 @@ export function SubtitleTrack({
           />
         );
       })}
-      {drag.dragState?.snapTime != null && (
+      {(drag.dragState?.snapTime ?? resize.resizeSnapTime) != null && (
         <div
           style={{
             position: "absolute",
             top: 0,
             bottom: 0,
-            left: drag.dragState.snapTime * pixelsPerSecond - scrollLeft,
+            left:
+              ((drag.dragState?.snapTime ?? resize.resizeSnapTime) as number) *
+                pixelsPerSecond -
+              scrollLeft,
             width: 1,
             background: "#f97316",
             pointerEvents: "none",

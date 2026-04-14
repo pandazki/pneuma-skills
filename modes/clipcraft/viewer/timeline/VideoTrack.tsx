@@ -27,6 +27,10 @@ interface VideoClipProps {
   selected: boolean;
   dragging: boolean;
   pixelsPerSecond: number;
+  /** When the clip is being resized (left edge), the filmstrip must
+   *  shift left by the delta so it still shows the ORIGINAL content
+   *  range cropped by the wrapper's overflow:hidden — no stretching. */
+  filmstripOffsetPx: number;
   onSelect: (clipId: string) => void;
   onDragStart: (clipId: string, mouseX: number) => void;
   onResizeStart: (clipId: string, edge: "left" | "right", mouseX: number) => void;
@@ -39,6 +43,7 @@ function VideoClip({
   selected,
   dragging,
   pixelsPerSecond,
+  filmstripOffsetPx,
   onSelect,
   onDragStart,
   onResizeStart,
@@ -68,6 +73,13 @@ function VideoClip({
   }, [status, uri, isVideo, pixelsPerSecond, clip.duration]);
 
   const { frames, loading } = useFrameExtractor(frameOpts);
+
+  // Filmstrip base width = what the clip's width WOULD be at the
+  // current zoom without any live resize override. Derived from the
+  // committed clip.duration, not the preview `width` prop. This keeps
+  // the filmstrip 1:1 with content — the wrapper's overflow clips it
+  // as the user trims.
+  const filmstripBaseWidth = Math.max(0, clip.duration * pixelsPerSecond - 2);
 
   return (
     <div
@@ -127,25 +139,51 @@ function VideoClip({
         opacity: dragging ? 0.85 : 1,
       }}
     >
-      {frames.length > 0 && frames.map((f, i) => {
-        const frameW = Math.max(1, (width - 2) / frames.length);
-        return (
-          <img
-            key={i}
-            src={f.dataUrl}
-            alt=""
-            style={{
-              height: FRAME_H,
-              width: frameW,
-              objectFit: "cover",
-              flexShrink: 0,
-              pointerEvents: "none",
-            }}
-          />
-        );
-      })}
+      {frames.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            left: filmstripOffsetPx,
+            top: 2,
+            height: FRAME_H,
+            width: filmstripBaseWidth,
+            display: "flex",
+            pointerEvents: "none",
+          }}
+        >
+          {frames.map((f, i) => {
+            const frameW = Math.max(1, filmstripBaseWidth / frames.length);
+            return (
+              <img
+                key={i}
+                src={f.dataUrl}
+                alt=""
+                style={{
+                  height: FRAME_H,
+                  width: frameW,
+                  objectFit: "cover",
+                  flexShrink: 0,
+                  pointerEvents: "none",
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
       {isImage && status === "ready" && uri && frames.length === 0 && (
-        <ImageFill src={contentUrl(uri)} width={width - 2} height={FRAME_H} />
+        <div
+          style={{
+            position: "absolute",
+            left: filmstripOffsetPx,
+            top: 2,
+            height: FRAME_H,
+            width: filmstripBaseWidth,
+            display: "flex",
+            pointerEvents: "none",
+          }}
+        >
+          <ImageFill src={contentUrl(uri)} width={filmstripBaseWidth} height={FRAME_H} />
+        </div>
       )}
       {loading && frames.length === 0 && (
         <div style={{ padding: "0 4px", fontSize: 9, color: "#a1a1aa" }}>Loading...</div>
@@ -263,6 +301,14 @@ export function VideoTrack({
           resize.displayStartFor(clip.id) ?? previewStart;
         const x = previewStartWithResize * pixelsPerSecond - scrollLeft;
         const w = previewDuration * pixelsPerSecond;
+        // During a left-edge trim, the clip's display startTime moves
+        // right but the filmstrip should keep showing the ORIGINAL
+        // asset content — not stretch to fill the shrinking wrapper.
+        // Offset = (original - preview) * pps → negative when the
+        // user is trimming from the start, so the filmstrip hangs
+        // off the left edge and gets cropped by overflow: hidden.
+        const filmstripOffset =
+          (clip.startTime - previewStartWithResize) * pixelsPerSecond;
         if (x + w < -10 || x > 4000) return null;
         return (
           <VideoClip
@@ -273,20 +319,24 @@ export function VideoTrack({
             selected={clip.id === selectedClipId}
             dragging={drag.dragState?.clipId === clip.id}
             pixelsPerSecond={pixelsPerSecond}
+            filmstripOffsetPx={filmstripOffset}
             onSelect={onSelect}
             onDragStart={drag.handleDragStart}
             onResizeStart={resize.handleResizeStart}
           />
         );
       })}
-      {/* Snap guide line */}
-      {drag.dragState?.snapTime != null && (
+      {/* Snap guide — drag or resize */}
+      {(drag.dragState?.snapTime ?? resize.resizeSnapTime) != null && (
         <div
           style={{
             position: "absolute",
             top: 0,
             bottom: 0,
-            left: drag.dragState.snapTime * pixelsPerSecond - scrollLeft,
+            left:
+              ((drag.dragState?.snapTime ?? resize.resizeSnapTime) as number) *
+                pixelsPerSecond -
+              scrollLeft,
             width: 1,
             background: "#f97316",
             pointerEvents: "none",
