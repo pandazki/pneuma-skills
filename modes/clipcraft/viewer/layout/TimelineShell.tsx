@@ -43,6 +43,11 @@ export function TimelineShell() {
         overflow: "hidden",
         transition: "flex 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
         position: "relative",
+        // Drag/seek interactions in this region must never accidentally
+        // create a text selection. ClipInspector's number inputs need
+        // text selection and re-enable it locally.
+        userSelect: "none",
+        WebkitUserSelect: "none",
       }}
     >
       {/* Timeline — pinned at bottom. The 3D toggle now lives inside
