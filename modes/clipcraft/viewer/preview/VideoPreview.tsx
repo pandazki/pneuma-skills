@@ -19,10 +19,6 @@ export interface VideoPreviewProps {
 export function VideoPreview({ captionStyle }: VideoPreviewProps) {
   const composition = useComposition();
 
-  const aspect = composition?.settings
-    ? composition.settings.width / composition.settings.height
-    : 16 / 9;
-
   return (
     <div
       style={{
@@ -42,19 +38,37 @@ export function VideoPreview({ captionStyle }: VideoPreviewProps) {
           overflow: "hidden",
           position: "relative",
           padding: theme.space.space5,
+          // minHeight: 0 / minWidth: 0 are required so the inner
+          // aspect-ratio box can shrink below its content's intrinsic
+          // size — without them flex would refuse to clamp and the
+          // canvas would overflow + distort under `width: 100%`.
+          minHeight: 0,
+          minWidth: 0,
         }}
       >
+        {/*
+         * Aspect-ratio wrapper. The ONLY constraints on this div are
+         * `aspect-ratio` + `max-width: 100%` + `max-height: 100%` —
+         * no explicit `width` or `height`. Modern browsers then pick
+         * the inner box size that fits the flex parent while
+         * preserving the exact composition aspect. The canvas inside
+         * stretches 100%×100% to this box, and since the box's
+         * aspect matches the canvas backing-store aspect, the image
+         * never distorts — it letterboxes or pillarboxes naturally.
+         */}
         <div
           style={{
+            aspectRatio: `${composition?.settings?.width ?? 16} / ${composition?.settings?.height ?? 9}`,
             maxWidth: "100%",
             maxHeight: "100%",
-            aspectRatio: `${aspect}`,
-            background: "oklch(8% 0.005 55)",
+            background: "oklch(6% 0.003 55)",
             borderRadius: theme.radius.md,
             border: `1px solid ${theme.color.borderWeak}`,
             overflow: "hidden",
             position: "relative",
-            width: "100%",
+            // height: auto + width: auto are defaults — the aspect-ratio
+            // + max-* combo computes one dimension from the other
+            // inside a sized flex parent.
           }}
         >
           {composition ? (

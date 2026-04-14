@@ -7,6 +7,7 @@ import {
   useUndo,
 } from "@pneuma-craft/react";
 import { buildRippleDeleteCommands } from "../toolbar/rippleDelete.js";
+import { useEditorTool } from "./useEditorTool.js";
 
 function isEditableTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -22,6 +23,7 @@ export function useTimelineShortcuts(): void {
   const playback = usePlayback();
   const selection = useSelection();
   const undoState = useUndo();
+  const tool = useEditorTool();
 
   useEffect(() => {
     function onKey(ev: KeyboardEvent) {
@@ -55,6 +57,22 @@ export function useTimelineShortcuts(): void {
 
       const selectedClipId =
         selection.type === "clip" && selection.ids.length > 0 ? selection.ids[0] : null;
+
+      if (key === "Escape") {
+        // Priority: if an editor tool (split/delete/duplicate/ripple)
+        // is active, let useEditorTool's own Escape handler cancel
+        // the tool — it's already bound and will fire on the same
+        // event. We only clear the selection when no tool is active.
+        if (tool.activeTool !== null) return;
+        if (selectedClipId) {
+          ev.preventDefault();
+          dispatch("human", {
+            type: "selection:set",
+            selection: { type: "none", ids: [] },
+          });
+        }
+        return;
+      }
 
       if (!selectedClipId) return;
 
@@ -92,5 +110,5 @@ export function useTimelineShortcuts(): void {
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [composition, dispatch, playback, selection, undoState]);
+  }, [composition, dispatch, playback, selection, tool, undoState]);
 }
