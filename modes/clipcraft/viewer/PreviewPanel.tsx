@@ -1,6 +1,7 @@
 import { ClipCraftLayout } from "./layout/ClipCraftLayout.js";
 import { StateDump } from "./StateDump.js";
 import type { CaptionStyle } from "../persistence.js";
+import { theme } from "./theme/tokens.js";
 
 export interface PreviewPanelProps {
   hydrationError: string | null;
@@ -20,17 +21,34 @@ export function PreviewPanel({ hydrationError, captionStyle }: PreviewPanelProps
         display: "flex",
         flexDirection: "column",
         height: "100%",
-        background: "#09090b",
-        color: "#e4e4e7",
+        background: theme.color.surface0,
+        color: theme.color.ink1,
+        fontFamily: theme.font.ui,
         overflow: "hidden",
       }}
     >
       <div style={{ flex: 1, minHeight: 0 }}>
         <ClipCraftLayout captionStyle={captionStyle} />
       </div>
-      <details style={{ borderTop: "1px solid #27272a", padding: "4px 12px" }}>
-        <summary style={{ cursor: "pointer", color: "#a1a1aa", fontSize: 11 }}>
-          debug · StateDump
+      <details
+        style={{
+          borderTop: `1px solid ${theme.color.borderWeak}`,
+          padding: `${theme.space.space1}px ${theme.space.space4}px`,
+          background: theme.color.surface1,
+        }}
+      >
+        <summary
+          style={{
+            cursor: "pointer",
+            color: theme.color.ink3,
+            fontFamily: theme.font.ui,
+            fontSize: theme.text.xs,
+            letterSpacing: theme.text.trackingCaps,
+            textTransform: "uppercase",
+            fontWeight: theme.text.weightSemibold,
+          }}
+        >
+          Debug · State dump
         </summary>
         <StateDump hydrationError={hydrationError} />
       </details>

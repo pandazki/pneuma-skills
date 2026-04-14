@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TimelineZoom } from "./hooks/useTimelineZoom.js";
+import { theme } from "../theme/tokens.js";
 
 interface Props {
   zoom: TimelineZoom;
@@ -12,17 +13,11 @@ interface Props {
  *
  * Two modes:
  * 1. When the composition content is wider than the visible viewport
- *    (user zoomed in), the bar shows a rounded orange thumb that maps
- *    to the current scroll window. Thumb drag / bar click scrolls.
- * 2. When content fits the viewport, there's nothing to scroll — the
- *    bar becomes a minimal position indicator with just the playhead
- *    dot. This guarantees the user can ALWAYS see where the playhead
- *    is, even when the orange line in the main timeline gets clipped
- *    to an edge case (e.g. playhead at duration with negative
- *    scrollLeft padding).
- *
- * The thin orange line inside the bar marks the current playhead
- * position in both modes.
+ *    (user zoomed in), the bar shows a draggable accent thumb that
+ *    maps to the current scroll window.
+ * 2. When content fits the viewport, the thumb fills the bar flat —
+ *    we keep the playhead indicator visible so the user can ALWAYS
+ *    see where the playhead is.
  */
 export function TimelineMinimap({ zoom, duration, currentTime }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
@@ -81,10 +76,8 @@ export function TimelineMinimap({ zoom, duration, currentTime }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [dragging]);
 
-  const needsScroll = contentWidth > 0 && viewportWidth > 0 && contentWidth > viewportWidth;
-  // Thumb width = (viewport / content) of the bar width. When content
-  // fits, thumbWidthPct becomes 100 and scrollFraction stays at 0 so
-  // the thumb just sits flat under the playhead indicator.
+  const needsScroll =
+    contentWidth > 0 && viewportWidth > 0 && contentWidth > viewportWidth;
   const scrollFraction = needsScroll
     ? Math.max(0, Math.min(1, (scrollLeft - scrollMin) / scrollRange))
     : 0;
@@ -92,13 +85,14 @@ export function TimelineMinimap({ zoom, duration, currentTime }: Props) {
     ? Math.max(8, Math.min(100, (viewportWidth / contentWidth) * 100))
     : 100;
   const thumbLeftPct = scrollFraction * (100 - thumbWidthPct);
-  const playheadPct = duration > 0 ? Math.max(0, Math.min(1, currentTime / duration)) * 100 : 0;
+  const playheadPct =
+    duration > 0 ? Math.max(0, Math.min(1, currentTime / duration)) * 100 : 0;
   const thumbActive = needsScroll && (hover || dragging);
 
   return (
     <div
       style={{
-        padding: "2px 0 4px",
+        padding: `${theme.space.space1}px 0 ${theme.space.space1}px`,
         userSelect: "none",
       }}
       onMouseEnter={() => setHover(true)}
@@ -110,22 +104,13 @@ export function TimelineMinimap({ zoom, duration, currentTime }: Props) {
         style={{
           position: "relative",
           height: 6,
-          background: "rgba(255,255,255,0.04)",
-          borderRadius: 3,
+          background: theme.color.surface2,
+          border: `1px solid ${theme.color.borderWeak}`,
+          borderRadius: theme.radius.sm,
           cursor: needsScroll ? "pointer" : "default",
           overflow: "hidden",
         }}
       >
-        {/* Subtle inner gradient to suggest the full timeline span */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background:
-              "linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.0))",
-            pointerEvents: "none",
-          }}
-        />
         {/* Playhead indicator */}
         <div
           style={{
@@ -134,17 +119,12 @@ export function TimelineMinimap({ zoom, duration, currentTime }: Props) {
             top: 0,
             bottom: 0,
             width: 2,
-            background: "rgba(249,115,22,0.85)",
-            borderRadius: 1,
+            background: theme.color.playhead,
             pointerEvents: "none",
-            boxShadow: "0 0 4px rgba(249,115,22,0.6)",
+            zIndex: 2,
           }}
         />
-        {/* Viewport thumb — draggable when there's content to scroll.
-            When the composition fits the viewport we render a flat
-            full-width rectangle in place so there's still something
-            to hold the playhead against; pointer-events disabled so
-            it doesn't compete with the (empty) click fall-through. */}
+        {/* Viewport thumb — draggable when there's content to scroll. */}
         <div
           onMouseDown={needsScroll ? handleThumbDown : undefined}
           style={{
@@ -155,15 +135,14 @@ export function TimelineMinimap({ zoom, duration, currentTime }: Props) {
             width: `${thumbWidthPct}%`,
             background: needsScroll
               ? thumbActive
-                ? "rgba(249,115,22,0.55)"
-                : "rgba(249,115,22,0.32)"
-              : "rgba(255,255,255,0.06)",
-            borderRadius: 3,
+                ? theme.color.accentBorder
+                : theme.color.accentSoft
+              : theme.color.surface3,
+            borderRadius: theme.radius.sm,
             cursor: needsScroll ? (dragging ? "grabbing" : "grab") : "default",
-            boxShadow: thumbActive
-              ? "0 0 8px rgba(249,115,22,0.45)"
-              : "0 0 0 1px rgba(255,255,255,0.04) inset",
-            transition: dragging ? "none" : "background 120ms ease",
+            transition: dragging
+              ? "none"
+              : `background ${theme.duration.quick}ms ${theme.easing.out}`,
             pointerEvents: needsScroll ? "auto" : "none",
           }}
         />

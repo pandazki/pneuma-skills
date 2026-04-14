@@ -13,6 +13,7 @@ import { useEditorTool } from "./hooks/useEditorTool.js";
 import { useClipToolAction } from "./hooks/useClipToolAction.js";
 import { useSplitHoverSnap } from "./hooks/useSplitHoverSnap.js";
 import { ClipToolOverlay } from "./ClipToolOverlay.js";
+import { theme } from "../theme/tokens.js";
 
 const TRACK_H = 32;
 
@@ -98,16 +99,24 @@ function SubtitleClip({
         width: Math.round(w - 1),
         height: TRACK_H - 4,
         top: 2,
-        background: sel ? "#2d2519" : "#1a1a1e",
-        borderRadius: 3,
-        border: sel ? "1px solid rgba(249,115,22,0.3)" : "1px solid #27272a",
-        overflow: tool.activeTool === "duplicate" && isToolHovered ? "visible" : "hidden",
-        padding: "2px 6px",
-        fontSize: 9,
+        background: sel ? theme.color.surface4 : theme.color.surface2,
+        borderRadius: theme.radius.sm,
+        border: sel
+          ? `1px solid ${theme.color.accentBorder}`
+          : `1px solid ${theme.color.borderWeak}`,
+        overflow:
+          tool.activeTool === "duplicate" && isToolHovered ? "visible" : "hidden",
+        padding: `2px ${theme.space.space2}px`,
+        fontFamily: theme.font.ui,
+        fontSize: theme.text.sm,
         lineHeight: `${TRACK_H - 8}px`,
         whiteSpace: "nowrap",
         textOverflow: "ellipsis",
-        color: clip.text ? (sel ? "#e4e4e7" : "#a1a1aa") : "#3f3f46",
+        color: clip.text
+          ? sel
+            ? theme.color.ink0
+            : theme.color.ink2
+          : theme.color.ink5,
         boxSizing: "border-box",
         cursor: dragging ? "grabbing" : "grab",
         opacity: dragging ? 0.85 : 1,
@@ -128,7 +137,7 @@ function SubtitleClip({
           bottom: 0,
           width: 6,
           cursor: "ew-resize",
-          background: sel ? "rgba(249,115,22,0.3)" : "transparent",
+          background: sel ? theme.color.accentSoft : "transparent",
         }}
       />
       <div
@@ -145,7 +154,7 @@ function SubtitleClip({
           bottom: 0,
           width: 6,
           cursor: "ew-resize",
-          background: sel ? "rgba(249,115,22,0.3)" : "transparent",
+          background: sel ? theme.color.accentSoft : "transparent",
         }}
       />
 
@@ -219,7 +228,7 @@ export function SubtitleTrack({
                 pixelsPerSecond -
               scrollLeft,
             width: 1,
-            background: "#f97316",
+            background: theme.color.accent,
             pointerEvents: "none",
           }}
         />

@@ -39,6 +39,7 @@ import { Playhead } from "./Playhead.js";
 import { VideoTrack } from "./VideoTrack.js";
 import { AudioTrack } from "./AudioTrack.js";
 import { SubtitleTrack } from "./SubtitleTrack.js";
+import { theme } from "../theme/tokens.js";
 
 // Track heights — match legacy
 const RULER_H = 24;
@@ -112,12 +113,14 @@ export function Timeline() {
       <div
         data-testid="timeline-empty"
         style={{
-          padding: "8px 12px",
-          fontSize: 10,
-          color: "#52525b",
+          padding: `${theme.space.space2}px ${theme.space.space4}px`,
+          fontFamily: theme.font.ui,
+          fontSize: theme.text.sm,
+          color: theme.color.ink4,
+          letterSpacing: theme.text.trackingWide,
         }}
       >
-        no composition loaded
+        No composition loaded
       </div>
     );
   }
@@ -132,8 +135,9 @@ export function Timeline() {
     <div
       style={{
         padding: 0,
-        fontSize: 11,
-        color: "#a1a1aa",
+        fontFamily: theme.font.ui,
+        fontSize: theme.text.sm,
+        color: theme.color.ink2,
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -141,21 +145,56 @@ export function Timeline() {
     >
       <TransportBar />
 
-      {/* Zoom controls */}
+      {/* Zoom controls + edit toolbar */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 8,
-          padding: "4px 12px",
-          fontSize: 10,
-          color: "#52525b",
+          gap: theme.space.space2,
+          padding: `${theme.space.space1}px ${theme.space.space4}px`,
+          fontSize: theme.text.xs,
+          color: theme.color.ink4,
+          borderBottom: `1px solid ${theme.color.borderWeak}`,
         }}
       >
-        <button onClick={zoom.zoomOut} style={zoomBtnStyle} title="Zoom out" aria-label="zoom out">−</button>
-        <span style={{ minWidth: 48, textAlign: "center" }}>{Math.round(zoom.pixelsPerSecond)}px/s</span>
-        <button onClick={zoom.zoomIn} style={zoomBtnStyle} title="Zoom in" aria-label="zoom in">+</button>
-        <span style={{ fontSize: 9, color: "#3f3f46" }}>scroll / ⌘+scroll to zoom</span>
+        <button
+          type="button"
+          onClick={zoom.zoomOut}
+          style={zoomBtnStyle}
+          title="Zoom out"
+          aria-label="zoom out"
+        >
+          −
+        </button>
+        <span
+          style={{
+            minWidth: 56,
+            textAlign: "center",
+            fontFamily: theme.font.numeric,
+            fontVariantNumeric: "tabular-nums",
+            color: theme.color.ink3,
+          }}
+        >
+          {Math.round(zoom.pixelsPerSecond)} px/s
+        </span>
+        <button
+          type="button"
+          onClick={zoom.zoomIn}
+          style={zoomBtnStyle}
+          title="Zoom in"
+          aria-label="zoom in"
+        >
+          +
+        </button>
+        <span
+          style={{
+            fontSize: theme.text.xs,
+            color: theme.color.ink5,
+            letterSpacing: theme.text.trackingWide,
+          }}
+        >
+          scroll / ⌘+scroll to zoom
+        </span>
         <div style={{ marginLeft: "auto" }}>
           <EditToolbar />
         </div>
@@ -280,15 +319,19 @@ export function Timeline() {
 
 const zoomBtnStyle: React.CSSProperties = {
   background: "transparent",
-  border: "1px solid #3f3f46",
-  borderRadius: 3,
-  color: "#a1a1aa",
+  border: `1px solid ${theme.color.borderWeak}`,
+  borderRadius: theme.radius.sm,
+  color: theme.color.ink2,
   width: 22,
   height: 22,
   cursor: "pointer",
-  fontSize: 14,
+  fontFamily: theme.font.ui,
+  fontSize: theme.text.lg,
+  fontWeight: theme.text.weightMedium,
   lineHeight: 1,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
+  padding: 0,
+  transition: `color ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
 };

@@ -20,21 +20,28 @@ import { DiveHeader } from "./DiveHeader.js";
 import { VisualNode } from "./nodes/VisualNode.js";
 import { AudioNode } from "./nodes/AudioNode.js";
 import { TextNode } from "./nodes/TextNode.js";
+import { theme } from "../theme/tokens.js";
 
 const RF_DARK_STYLES = `
 .react-flow {
-  --xy-controls-button-background-color-default: #27272a;
-  --xy-controls-button-background-color-hover-default: #3f3f46;
-  --xy-controls-button-color-default: #a1a1aa;
-  --xy-controls-button-color-hover-default: #fafafa;
-  --xy-background-color-default: #09090b;
-  --xy-background-pattern-dots-color-default: rgba(255,255,255,0.05);
+  --xy-controls-button-background-color-default: ${theme.color.surface2};
+  --xy-controls-button-background-color-hover-default: ${theme.color.surface3};
+  --xy-controls-button-color-default: ${theme.color.ink2};
+  --xy-controls-button-color-hover-default: ${theme.color.ink0};
+  --xy-controls-button-border-color-default: ${theme.color.borderWeak};
+  --xy-background-color-default: ${theme.color.surface0};
+  --xy-background-pattern-dots-color-default: oklch(40% 0.01 55 / 0.18);
   --xy-node-background-color-default: transparent;
   --xy-node-border-default: none;
 }
+.react-flow__minimap {
+  background: ${theme.color.surface1};
+  border: 1px solid ${theme.color.borderWeak};
+  border-radius: ${theme.radius.md}px;
+}
 @keyframes pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+  50% { opacity: 0.65; }
 }
 `;
 
@@ -94,18 +101,20 @@ function DiveCanvasInner() {
       metadata: {},
       createdAt: Date.now(),
     };
-    return [{
-      id: syntheticAsset.id,
-      type: "text",
-      position: { x: 0, y: 0 },
-      data: {
-        asset: syntheticAsset,
-        isActive: true,
-        isFocused: false,
-        isOnActivePath: true,
-        clipId: activeClip.id,
+    return [
+      {
+        id: syntheticAsset.id,
+        type: "text",
+        position: { x: 0, y: 0 },
+        data: {
+          asset: syntheticAsset,
+          isActive: true,
+          isFocused: false,
+          isOnActivePath: true,
+          clipId: activeClip.id,
+        },
       },
-    }];
+    ];
   }, [layer, nodes, activeClip]);
 
   const effectiveEdges = layer === "caption" ? [] : edges;
@@ -132,10 +141,15 @@ function DiveCanvasInner() {
   }, [setDiveFocusedNodeId]);
 
   return (
-    <div style={{
-      height: "100%", display: "flex", flexDirection: "column",
-      background: "#09090b",
-    }}>
+    <div
+      style={{
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        background: theme.color.surface0,
+        fontFamily: theme.font.ui,
+      }}
+    >
       <style>{RF_DARK_STYLES}</style>
 
       <DiveHeader />
@@ -152,45 +166,78 @@ function DiveCanvasInner() {
             nodesDraggable={false}
             nodesConnectable={false}
             elementsSelectable={false}
-            style={{ background: "#09090b" }}
+            style={{ background: theme.color.surface0 }}
           >
             <Background
               variant={BackgroundVariant.Dots}
               gap={24}
               size={1}
-              color="rgba(255,255,255,0.04)"
+              color="oklch(40% 0.01 55 / 0.18)"
             />
             <Controls showInteractive={false} />
-            <MiniMap nodeColor={() => "#f97316"} pannable zoomable />
+            <MiniMap nodeColor={() => theme.color.accent} pannable zoomable />
           </ReactFlow>
         ) : (
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "center",
-            height: "100%", color: "#52525b", fontSize: 13, fontStyle: "italic",
-          }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              height: "100%",
+              color: theme.color.ink4,
+              fontFamily: theme.font.ui,
+              fontSize: theme.text.base,
+              fontStyle: "italic",
+              letterSpacing: theme.text.trackingBase,
+            }}
+          >
             No generation tree for this slot yet.
           </div>
         )}
       </div>
 
-      <div style={{
-        display: "flex", alignItems: "center", gap: 12,
-        padding: "6px 16px", borderTop: "1px solid #27272a",
-        fontSize: 11, flexShrink: 0,
-      }}>
-        <span style={{ color: "#71717a" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: theme.space.space3,
+          padding: `${theme.space.space2}px ${theme.space.space4}px`,
+          borderTop: `1px solid ${theme.color.borderWeak}`,
+          background: theme.color.surface1,
+          fontFamily: theme.font.ui,
+          fontSize: theme.text.xs,
+          flexShrink: 0,
+          letterSpacing: theme.text.trackingBase,
+        }}
+      >
+        <span style={{ color: theme.color.ink3 }}>
           {effectiveNodes.length} node{effectiveNodes.length !== 1 ? "s" : ""}
         </span>
         {rootAssetId && (
           <>
-            <span style={{ color: "#3f3f46" }}>|</span>
-            <span style={{ color: "#a1a1aa" }}>
-              Active: <span style={{ color: "#f97316" }}>{rootAssetId}</span>
+            <span style={{ color: theme.color.ink5 }}>·</span>
+            <span style={{ color: theme.color.ink2 }}>
+              Active{" "}
+              <span
+                style={{
+                  color: theme.color.accentBright,
+                  fontFamily: theme.font.numeric,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {rootAssetId}
+              </span>
             </span>
           </>
         )}
-        <span style={{ marginLeft: "auto", color: "#52525b" }}>
-          Click to browse {"\u00B7"} "Use This" to switch variant pointer
+        <span
+          style={{
+            marginLeft: "auto",
+            color: theme.color.ink5,
+            fontStyle: "italic",
+          }}
+        >
+          Click to browse · "Use This" to switch variant pointer
         </span>
       </div>
     </div>

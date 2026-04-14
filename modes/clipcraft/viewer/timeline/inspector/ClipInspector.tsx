@@ -7,6 +7,7 @@ import {
 import type { Clip } from "@pneuma-craft/timeline";
 import { useClipProvenance } from "../hooks/useClipProvenance.js";
 import { VariantSwitcher } from "./VariantSwitcher.js";
+import { theme } from "../../theme/tokens.js";
 
 /**
  * Bottom-anchored clip inspector. Rendered inside TimelineShell between
@@ -20,10 +21,11 @@ import { VariantSwitcher } from "./VariantSwitcher.js";
 export function ClipInspector() {
   const composition = useComposition();
   const selection = useSelection();
-  const dispatch = useDispatch();
 
   const selectedClipId =
-    selection.type === "clip" && selection.ids.length > 0 ? selection.ids[0] : null;
+    selection.type === "clip" && selection.ids.length > 0
+      ? selection.ids[0]
+      : null;
 
   const clip: Clip | null = useMemo(() => {
     if (!composition || !selectedClipId) return null;
@@ -34,10 +36,7 @@ export function ClipInspector() {
     return null;
   }, [composition, selectedClipId]);
 
-  if (!clip) {
-    // Fully hidden — no layout space consumed when nothing is selected.
-    return null;
-  }
+  if (!clip) return null;
   return <ClipInspectorActive clip={clip} />;
 }
 
@@ -62,7 +61,6 @@ function ClipInspectorActive({ clip }: { clip: Clip }) {
       const finalIn = next.inPoint ?? inPoint;
       const finalOut = next.outPoint ?? outPoint;
       const finalDur = next.duration ?? duration;
-      // Clamp
       const clampedDur = Math.max(0.1, finalDur);
       dispatch("human", {
         type: "composition:trim-clip",
@@ -86,56 +84,47 @@ function ClipInspectorActive({ clip }: { clip: Clip }) {
   return (
     <div
       style={{
-        borderTop: "1px solid #27272a",
-        borderBottom: "1px solid #18181b",
-        background: "#0f0f11",
-        padding: "8px 12px",
+        borderTop: `1px solid ${theme.color.borderWeak}`,
+        background: theme.color.surface1,
+        padding: `${theme.space.space2}px ${theme.space.space4}px`,
         display: "flex",
         alignItems: "stretch",
-        gap: 16,
-        fontSize: 10,
-        color: "#a1a1aa",
+        gap: theme.space.space5,
+        fontFamily: theme.font.ui,
+        fontSize: theme.text.sm,
+        color: theme.color.ink2,
       }}
     >
-      {/* Numeric fields */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 180 }}>
-        <span style={{ fontSize: 9, color: "#52525b", textTransform: "uppercase" }}>
-          clip · {clip.id.slice(0, 8)}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: theme.space.space1,
+          minWidth: 200,
+        }}
+      >
+        <span style={sectionLabelStyle}>
+          Clip · {clip.id.slice(0, 8)}
         </span>
-        <div style={{ display: "flex", gap: 6 }}>
-          <label style={labelStyle}>
-            In
-            <input
-              type="number"
-              step="0.01"
-              value={inPoint.toFixed(2)}
-              onChange={(e) => setInPoint(parseFloat(e.currentTarget.value) || 0)}
-              onBlur={onBlurField("inPoint")}
-              style={numInputStyle}
-            />
-          </label>
-          <label style={labelStyle}>
-            Out
-            <input
-              type="number"
-              step="0.01"
-              value={outPoint.toFixed(2)}
-              onChange={(e) => setOutPoint(parseFloat(e.currentTarget.value) || 0)}
-              onBlur={onBlurField("outPoint")}
-              style={numInputStyle}
-            />
-          </label>
-          <label style={labelStyle}>
-            Dur
-            <input
-              type="number"
-              step="0.01"
-              value={duration.toFixed(2)}
-              onChange={(e) => setDuration(parseFloat(e.currentTarget.value) || 0.1)}
-              onBlur={onBlurField("duration")}
-              style={numInputStyle}
-            />
-          </label>
+        <div style={{ display: "flex", gap: theme.space.space2 }}>
+          <NumberField
+            label="In"
+            value={inPoint.toFixed(2)}
+            onChange={(v) => setInPoint(parseFloat(v) || 0)}
+            onBlur={onBlurField("inPoint")}
+          />
+          <NumberField
+            label="Out"
+            value={outPoint.toFixed(2)}
+            onChange={(v) => setOutPoint(parseFloat(v) || 0)}
+            onBlur={onBlurField("outPoint")}
+          />
+          <NumberField
+            label="Dur"
+            value={duration.toFixed(2)}
+            onChange={(v) => setDuration(parseFloat(v) || 0.1)}
+            onBlur={onBlurField("duration")}
+          />
         </div>
       </div>
 
@@ -145,19 +134,25 @@ function ClipInspectorActive({ clip }: { clip: Clip }) {
 
       <div style={separatorStyle} />
 
-      {/* Provenance summary — the same text shown as clip tooltip */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 0 }}>
-        <span style={{ fontSize: 9, color: "#52525b", textTransform: "uppercase" }}>
-          source
-        </span>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: theme.space.space1,
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
+        <span style={sectionLabelStyle}>Source</span>
         <span
           style={{
-            fontSize: 10,
-            color: "#e4e4e7",
+            fontFamily: theme.font.numeric,
+            fontSize: theme.text.sm,
+            color: theme.color.ink1,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            fontFamily: "ui-monospace, SFMono-Regular, monospace",
+            letterSpacing: theme.text.trackingBase,
           }}
           title={summary}
         >
@@ -168,27 +163,68 @@ function ClipInspectorActive({ clip }: { clip: Clip }) {
   );
 }
 
-const labelStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 2,
-  fontSize: 9,
-  color: "#52525b",
+function NumberField({
+  label,
+  value,
+  onChange,
+  onBlur,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  onBlur: (e: React.FocusEvent<HTMLInputElement>) => void;
+}) {
+  return (
+    <label
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 3,
+      }}
+    >
+      <span style={fieldLabelStyle}>{label}</span>
+      <input
+        type="number"
+        step="0.01"
+        value={value}
+        onChange={(e) => onChange(e.currentTarget.value)}
+        onBlur={onBlur}
+        style={numInputStyle}
+      />
+    </label>
+  );
+}
+
+const sectionLabelStyle: React.CSSProperties = {
+  fontSize: theme.text.xs,
+  color: theme.color.ink4,
+  textTransform: "uppercase",
+  letterSpacing: theme.text.trackingCaps,
+  fontWeight: theme.text.weightSemibold,
+};
+
+const fieldLabelStyle: React.CSSProperties = {
+  fontSize: theme.text.xs,
+  color: theme.color.ink4,
+  letterSpacing: theme.text.trackingWide,
+  fontWeight: theme.text.weightMedium,
 };
 
 const numInputStyle: React.CSSProperties = {
-  background: "#18181b",
-  border: "1px solid #27272a",
-  borderRadius: 3,
-  color: "#e4e4e7",
-  padding: "2px 4px",
-  fontSize: 10,
-  fontFamily: "ui-monospace, SFMono-Regular, monospace",
-  width: 54,
+  background: theme.color.surface0,
+  border: `1px solid ${theme.color.borderWeak}`,
+  borderRadius: theme.radius.sm,
+  color: theme.color.ink0,
+  padding: `3px ${theme.space.space2}px`,
+  fontFamily: theme.font.numeric,
+  fontVariantNumeric: "tabular-nums",
+  fontSize: theme.text.sm,
+  width: 60,
+  outline: "none",
 };
 
 const separatorStyle: React.CSSProperties = {
   width: 1,
-  background: "#18181b",
+  background: theme.color.borderWeak,
   flexShrink: 0,
 };

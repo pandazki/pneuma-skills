@@ -5,6 +5,23 @@ import { useTimelineMode } from "../hooks/useTimelineMode.js";
 import { LAYER_META, type LayerType } from "../overview/layerTypes.js";
 import { useScenes } from "../scenes/SceneContext.js";
 import { resolveScene } from "../scenes/useSceneResolver.js";
+import { ArrowLeftIcon, ArrowRightIcon } from "../icons/index.js";
+import { theme } from "../theme/tokens.js";
+
+const ghostBtn = (disabled: boolean): React.CSSProperties => ({
+  background: "transparent",
+  border: `1px solid ${theme.color.borderWeak}`,
+  borderRadius: theme.radius.sm,
+  color: disabled ? theme.color.ink5 : theme.color.ink2,
+  cursor: disabled ? "default" : "pointer",
+  width: 26,
+  height: 24,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 0,
+  transition: `color ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
+});
 
 export function DiveHeader() {
   const { diveLayer, setTimelineMode, setDiveLayer } = useTimelineMode();
@@ -14,6 +31,7 @@ export function DiveHeader() {
 
   const layer: LayerType = (diveLayer ?? "video") as LayerType;
   const meta = LAYER_META[layer];
+  const Icon = meta.Icon;
 
   const allClips = useMemo<Clip[]>(() => {
     const out: Clip[] = [];
@@ -26,7 +44,10 @@ export function DiveHeader() {
   const sceneIndex = useMemo(() => {
     for (let i = 0; i < scenes.length; i++) {
       const env = resolveScene(scenes[i], allClips);
-      if (playback.currentTime >= env.startTime && playback.currentTime < env.startTime + env.duration) {
+      if (
+        playback.currentTime >= env.startTime &&
+        playback.currentTime < env.startTime + env.duration
+      ) {
         return i;
       }
     }
@@ -54,67 +75,90 @@ export function DiveHeader() {
   }, [sceneIndex, scenes, allClips, playback]);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") handleBack(); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleBack();
+    };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [handleBack]);
 
+  const prevDisabled = sceneIndex <= 0;
+  const nextDisabled = sceneIndex < 0 || sceneIndex >= scenes.length - 1;
+
   return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 8, height: 40,
-      padding: "0 12px", borderBottom: "1px solid #27272a", flexShrink: 0,
-    }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: theme.space.space3,
+        height: 40,
+        padding: `0 ${theme.space.space4}px`,
+        borderBottom: `1px solid ${theme.color.borderWeak}`,
+        background: theme.color.surface0,
+        flexShrink: 0,
+        fontFamily: theme.font.ui,
+      }}
+    >
       <button
+        type="button"
         onClick={handleBack}
         title="Back to overview"
-        style={{
-          background: "none", border: "1px solid #3f3f46", borderRadius: 4,
-          color: "#a1a1aa", cursor: "pointer", padding: "2px 8px",
-          fontSize: 13, display: "flex", alignItems: "center",
-        }}
+        aria-label="back to overview"
+        style={ghostBtn(false)}
       >
-        {"\u2190"}
+        <ArrowLeftIcon size={13} />
       </button>
 
-      <div style={{
-        display: "flex", alignItems: "center", gap: 6,
-        color: meta.color, fontWeight: 600, fontSize: 12,
-        fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: "0.05em",
-      }}>
-        <span>{meta.icon}</span>
-        <span>{meta.label.toUpperCase()}</span>
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: theme.space.space2,
+          color: meta.color,
+          fontSize: theme.text.xs,
+          fontWeight: theme.text.weightSemibold,
+          letterSpacing: theme.text.trackingCaps,
+          textTransform: "uppercase",
+        }}
+      >
+        <Icon size={13} />
+        <span>{meta.label}</span>
       </div>
 
-      <span style={{ color: "#71717a", fontSize: 11 }}>{"\u2014"} {sceneLabel}</span>
+      {sceneLabel && (
+        <span
+          style={{
+            color: theme.color.ink3,
+            fontSize: theme.text.sm,
+            letterSpacing: theme.text.trackingBase,
+          }}
+        >
+          {sceneLabel}
+        </span>
+      )}
 
       <div style={{ flex: 1 }} />
 
-      <div style={{ display: "flex", gap: 4 }}>
+      <div style={{ display: "flex", gap: theme.space.space1 }}>
         <button
+          type="button"
           onClick={handlePrevScene}
-          disabled={sceneIndex <= 0}
+          disabled={prevDisabled}
           title="Previous scene"
-          style={{
-            background: "none", border: "1px solid #3f3f46", borderRadius: 4,
-            color: sceneIndex <= 0 ? "#3f3f46" : "#a1a1aa",
-            cursor: sceneIndex <= 0 ? "default" : "pointer",
-            padding: "2px 6px", fontSize: 12,
-          }}
+          aria-label="previous scene"
+          style={ghostBtn(prevDisabled)}
         >
-          {"\u2190"}
+          <ArrowLeftIcon size={13} />
         </button>
         <button
+          type="button"
           onClick={handleNextScene}
-          disabled={sceneIndex < 0 || sceneIndex >= scenes.length - 1}
+          disabled={nextDisabled}
           title="Next scene"
-          style={{
-            background: "none", border: "1px solid #3f3f46", borderRadius: 4,
-            color: sceneIndex < 0 || sceneIndex >= scenes.length - 1 ? "#3f3f46" : "#a1a1aa",
-            cursor: sceneIndex < 0 || sceneIndex >= scenes.length - 1 ? "default" : "pointer",
-            padding: "2px 6px", fontSize: 12,
-          }}
+          aria-label="next scene"
+          style={ghostBtn(nextDisabled)}
         >
-          {"\u2192"}
+          <ArrowRightIcon size={13} />
         </button>
       </div>
     </div>

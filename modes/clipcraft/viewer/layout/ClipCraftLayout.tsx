@@ -3,6 +3,7 @@ import type { CaptionStyle } from "../../persistence.js";
 import { useTimelineMode } from "../hooks/useTimelineMode.js";
 import { TimelineShell } from "./TimelineShell.js";
 import { AssetPanel } from "../assets/AssetPanel.js";
+import { theme } from "../theme/tokens.js";
 
 export interface ClipCraftLayoutProps {
   captionStyle?: CaptionStyle;
@@ -33,9 +34,9 @@ export function ClipCraftLayout({ captionStyle }: ClipCraftLayoutProps = {}) {
         display: "flex",
         flexDirection: "column",
         height: "100%",
-        background: "#09090b",
-        color: "#e4e4e7",
-        fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+        background: theme.color.surface0,
+        color: theme.color.ink1,
+        fontFamily: theme.font.ui,
         overflow: "hidden",
       }}
     >
@@ -45,10 +46,9 @@ export function ClipCraftLayout({ captionStyle }: ClipCraftLayoutProps = {}) {
           opacity: isExpanded ? 0 : 1,
           display: "flex",
           minHeight: 0,
-          borderBottom: "1px solid #27272a",
+          borderBottom: `1px solid ${theme.color.borderWeak}`,
           overflow: "hidden",
-          transition:
-            "flex 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease",
+          transition: `flex ${theme.duration.slower}ms ${theme.easing.snap}, opacity ${theme.duration.slow}ms ${theme.easing.out}`,
         }}
       >
         <AssetPanel />

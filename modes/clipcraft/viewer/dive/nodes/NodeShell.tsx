@@ -1,23 +1,35 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, type ReactElement } from "react";
 import type { Asset } from "@pneuma-craft/core";
 import { usePneumaCraftStore } from "@pneuma-craft/react";
 import { useVariantPointer } from "../useVariantPointer.js";
 import { useTimelineMode } from "../../hooks/useTimelineMode.js";
+import {
+  UploadIcon,
+  SparkleIcon,
+  PencilIcon,
+  SearchIcon,
+  CheckIcon,
+  type IconProps,
+} from "../../icons/index.js";
+import { theme } from "../../theme/tokens.js";
 
 type NodeOrigin = "upload" | "ai-gen" | "manual" | "ai-search";
 
-const ORIGIN_CONFIG: Record<NodeOrigin, { icon: string; label: string }> = {
-  "upload":     { icon: "\u2191", label: "Upload" },
-  "ai-gen":     { icon: "\u2726", label: "AI Generated" },
-  "manual":     { icon: "\u270E", label: "Manual" },
-  "ai-search":  { icon: "\u2315", label: "AI Search" },
+const ORIGIN_CONFIG: Record<
+  NodeOrigin,
+  { Icon: (props: IconProps) => ReactElement; label: string }
+> = {
+  upload: { Icon: UploadIcon, label: "Upload" },
+  "ai-gen": { Icon: SparkleIcon, label: "AI Generated" },
+  manual: { Icon: PencilIcon, label: "Manual" },
+  "ai-search": { Icon: SearchIcon, label: "AI Search" },
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  ready: "#22c55e",
-  generating: "#f59e0b",
-  pending: "#71717a",
-  failed: "#ef4444",
+  ready: theme.color.success,
+  generating: theme.color.warn,
+  pending: theme.color.ink4,
+  failed: theme.color.danger,
 };
 
 interface Props {
@@ -46,12 +58,17 @@ export function NodeShell({ asset, isActive, isFocused, clipId, children }: Prop
   const op = edge?.operation;
   const originRaw = op?.params?.source as string | undefined;
   const origin: NodeOrigin =
-    originRaw === "upload" ? "upload" :
-    op?.type === "generate" ? "ai-gen" :
-    op?.type === "import" ? "upload" :
-    "manual";
+    originRaw === "upload"
+      ? "upload"
+      : op?.type === "generate"
+        ? "ai-gen"
+        : op?.type === "import"
+          ? "upload"
+          : "manual";
   const originCfg = ORIGIN_CONFIG[origin];
-  const statusColor = STATUS_COLORS[asset.status ?? "ready"] ?? STATUS_COLORS.pending;
+  const OriginIcon = originCfg.Icon;
+  const statusColor =
+    STATUS_COLORS[asset.status ?? "ready"] ?? STATUS_COLORS.pending;
 
   const prompt = op?.params?.prompt as string | undefined;
   const model = op?.params?.model as string | undefined;
@@ -64,74 +81,151 @@ export function NodeShell({ asset, isActive, isFocused, clipId, children }: Prop
     setDiveFocusedNodeId(asset.id);
   }, [setDiveFocusedNodeId, asset.id]);
 
-  const borderColor = isActive ? "#f97316" : isFocused ? "#a1a1aa" : "#3f3f46";
-  const bgColor = isActive ? "#431407" : "#1c1917";
-
   return (
     <div
       onClick={handleClick}
       style={{
-        width: 200, background: bgColor,
-        border: `${isActive ? 2 : 1}px solid ${borderColor}`,
-        borderRadius: 10, padding: 10, cursor: "pointer",
-        boxShadow: isActive ? "0 0 20px rgba(249,115,22,0.15)" : "none",
-        animation: asset.status === "generating" ? "pulse 2s ease-in-out infinite" : undefined,
+        width: 200,
+        background: isActive ? theme.color.accentSoft : theme.color.surface1,
+        border: `1px solid ${
+          isActive
+            ? theme.color.accentBorder
+            : isFocused
+              ? theme.color.borderStrong
+              : theme.color.borderWeak
+        }`,
+        borderRadius: theme.radius.md,
+        padding: theme.space.space3,
+        cursor: "pointer",
+        fontFamily: theme.font.ui,
+        transition: `background ${theme.duration.base}ms ${theme.easing.out}, border-color ${theme.duration.base}ms ${theme.easing.out}`,
+        animation:
+          asset.status === "generating" ? "pulse 2s ease-in-out infinite" : undefined,
       }}
     >
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        marginBottom: 8,
-      }}>
-        <span style={{
-          display: "inline-flex", alignItems: "center", gap: 4,
-          background: isActive ? "#7c2d12" : "#27272a",
-          padding: "2px 8px", borderRadius: 4, fontSize: 10,
-          color: isActive ? "#fdba74" : "#a1a1aa",
-        }}>
-          <span style={{ fontSize: 11 }}>{originCfg.icon}</span>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: theme.space.space2,
+        }}
+      >
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: theme.space.space1,
+            background: isActive
+              ? "oklch(74% 0.16 55 / 0.22)"
+              : theme.color.surface2,
+            padding: `2px ${theme.space.space2}px`,
+            borderRadius: theme.radius.sm,
+            fontSize: theme.text.xs,
+            fontWeight: theme.text.weightSemibold,
+            letterSpacing: theme.text.trackingWide,
+            color: isActive ? theme.color.accentBright : theme.color.ink2,
+          }}
+        >
+          <OriginIcon size={11} />
           {originCfg.label}
         </span>
-        <span style={{
-          width: 8, height: 8, borderRadius: "50%",
-          background: statusColor, flexShrink: 0,
-        }} />
+        <span
+          aria-label={`status ${asset.status ?? "ready"}`}
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: theme.radius.pill,
+            background: statusColor,
+            flexShrink: 0,
+          }}
+        />
       </div>
 
       {children}
 
       {prompt && (
-        <div style={{
-          fontSize: 10, color: isActive ? "#e5e5e5" : "#a1a1aa",
-          marginTop: 8, lineHeight: 1.4, overflow: "hidden",
-          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
-        }}>
-          "{prompt}"
+        <div
+          style={{
+            fontSize: theme.text.xs,
+            color: isActive ? theme.color.ink0 : theme.color.ink2,
+            marginTop: theme.space.space2,
+            lineHeight: theme.text.lineHeightSnug,
+            letterSpacing: theme.text.trackingBase,
+            overflow: "hidden",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            fontStyle: "italic",
+          }}
+        >
+          “{prompt}”
         </div>
       )}
 
       {model && (
-        <div style={{ fontSize: 9, color: "#71717a", marginTop: 4 }}>
+        <div
+          style={{
+            fontFamily: theme.font.numeric,
+            fontVariantNumeric: "tabular-nums",
+            fontSize: theme.text.xs,
+            color: theme.color.ink4,
+            marginTop: theme.space.space1,
+            letterSpacing: theme.text.trackingBase,
+          }}
+        >
           {model}
-          {asset.metadata.duration != null && ` \u00B7 ${asset.metadata.duration.toFixed(1)}s`}
-          {asset.metadata.width != null && ` \u00B7 ${asset.metadata.width}\u00D7${asset.metadata.height}`}
+          {asset.metadata.duration != null &&
+            ` · ${asset.metadata.duration.toFixed(1)}s`}
+          {asset.metadata.width != null &&
+            ` · ${asset.metadata.width}×${asset.metadata.height}`}
         </div>
       )}
 
-      <div style={{ marginTop: 8 }}>
+      <div style={{ marginTop: theme.space.space2 }}>
         {isActive ? (
-          <div style={{
-            padding: "4px 0", textAlign: "center", background: "#7c2d12",
-            borderRadius: 4, fontSize: 10, color: "#fdba74",
-          }}>
-            {"\u2713"} Active
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: theme.space.space1,
+              width: "100%",
+              padding: `${theme.space.space1}px 0`,
+              background: theme.color.accentSoft,
+              border: `1px solid ${theme.color.accentBorder}`,
+              borderRadius: theme.radius.sm,
+              fontSize: theme.text.xs,
+              fontWeight: theme.text.weightSemibold,
+              letterSpacing: theme.text.trackingCaps,
+              textTransform: "uppercase",
+              color: theme.color.accentBright,
+            }}
+          >
+            <CheckIcon size={11} />
+            Active
           </div>
         ) : (
           <button
-            onClick={(e) => { e.stopPropagation(); handleUseThis(); }}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleUseThis();
+            }}
             style={{
-              width: "100%", padding: "4px 0", textAlign: "center",
-              background: "#27272a", border: "1px solid #3f3f46",
-              borderRadius: 4, fontSize: 10, color: "#a1a1aa", cursor: "pointer",
+              width: "100%",
+              padding: `${theme.space.space1}px 0`,
+              background: theme.color.surface2,
+              border: `1px solid ${theme.color.borderWeak}`,
+              borderRadius: theme.radius.sm,
+              fontFamily: theme.font.ui,
+              fontSize: theme.text.xs,
+              fontWeight: theme.text.weightSemibold,
+              letterSpacing: theme.text.trackingCaps,
+              textTransform: "uppercase",
+              color: theme.color.ink2,
+              cursor: "pointer",
+              transition: `background ${theme.duration.quick}ms ${theme.easing.out}, color ${theme.duration.quick}ms ${theme.easing.out}`,
             }}
           >
             Use This

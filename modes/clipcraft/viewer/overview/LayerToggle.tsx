@@ -1,90 +1,109 @@
 import { motion } from "framer-motion";
-import type { LayerType } from "./layerTypes.js";
+import { LAYER_META, type LayerType } from "./layerTypes.js";
+import { theme } from "../theme/tokens.js";
 
-const LAYERS: { type: LayerType; icon: string; color: string; label: string }[] = [
-  { type: "video",   icon: "\uD83C\uDFAC", color: "#eab308", label: "Video" },
-  { type: "caption", icon: "Tt",            color: "#f97316", label: "Caption" },
-  { type: "audio",   icon: "\uD83D\uDD0A",  color: "#38bdf8", label: "Audio" },
-];
+const LAYER_ORDER: LayerType[] = ["video", "caption", "audio"];
 
 interface Props {
   activeLayers: Set<LayerType>;
   onToggle: (layer: LayerType) => void;
   disabledLayers?: Set<LayerType>;
-  /** When rendered by the ExplodedView, this is the layer currently
-   *  at the front of the 3D carousel. The matching pill gets an extra
-   *  halo + brighter fill to mirror the 3D focus. Overview views leave
-   *  this undefined and all pills render in their plain active/inactive
-   *  state. */
+  /**
+   * When rendered by the ExplodedView, this is the layer currently
+   * at the front of the 3D carousel. The matching pill grows + uses
+   * a brighter fill to mirror the 3D focus. Overview views leave
+   * this undefined and all pills render in their plain
+   * active/inactive state.
+   */
   focusedLayer?: LayerType | null;
 }
 
-export function LayerToggle({ activeLayers, onToggle, disabledLayers, focusedLayer }: Props) {
+export function LayerToggle({
+  activeLayers,
+  onToggle,
+  disabledLayers,
+  focusedLayer,
+}: Props) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "8px 0" }}>
-      {LAYERS.map(({ type, icon, color, label }) => {
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: theme.space.space2,
+        padding: `${theme.space.space2}px 0`,
+      }}
+    >
+      {LAYER_ORDER.map((type) => {
+        const { label, Icon, color, colorSoft, colorBorder } = LAYER_META[type];
         const active = activeLayers.has(type);
         const disabled = disabledLayers?.has(type);
         const focused = focusedLayer === type && active;
-        const height = focused ? 52 : active ? 40 : 24;
-        const width = focused ? 34 : 28;
+        const height = focused ? 56 : active ? 44 : 28;
+        const width = focused ? 36 : active ? 32 : 28;
         return (
           <motion.button
             key={type}
+            type="button"
             onClick={() => !disabled && onToggle(type)}
             title={focused ? `${label} · in front` : label}
+            aria-pressed={active}
             animate={{
               height,
               width,
               opacity: disabled ? 0.3 : 1,
-              boxShadow: focused
-                ? `0 0 14px ${color}60, 0 0 4px ${color}40, inset 0 0 8px ${color}30`
-                : "0 0 0 rgba(0,0,0,0)",
             }}
-            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            transition={{
+              type: "tween",
+              duration: 0.22,
+              ease: [0.2, 0.8, 0.2, 1],
+            }}
             style={{
-              borderRadius: focused ? 17 : 14,
-              border: "none",
-              background: focused
-                ? `linear-gradient(135deg, ${color}50, ${color}20)`
-                : active
-                ? `${color}25`
-                : "#18181b",
-              outline: focused
+              borderRadius: theme.radius.md,
+              border: focused
                 ? `1px solid ${color}`
                 : active
-                ? `1px solid ${color}50`
-                : "1px solid #27272a",
-              color: active ? color : "#52525b",
+                  ? `1px solid ${colorBorder}`
+                  : `1px solid ${theme.color.borderWeak}`,
+              background: focused
+                ? colorSoft
+                : active
+                  ? colorSoft
+                  : theme.color.surface1,
+              color: active ? color : theme.color.ink4,
               cursor: disabled ? "default" : "pointer",
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
-              justifyContent: "center",
-              fontSize: focused ? 13 : 11,
-              fontWeight: 600,
+              justifyContent: focused || active ? "space-between" : "center",
+              padding: focused || active ? `${theme.space.space1}px 0` : 0,
               flexShrink: 0,
               position: "relative",
               overflow: "hidden",
             }}
           >
-            {active && (
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: focused ? 1.3 : 1 }}
+            {(focused || active) && (
+              <motion.span
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{
+                  scale: focused ? 1.1 : 1,
+                  opacity: focused ? 1 : 0.85,
+                }}
+                transition={{
+                  type: "tween",
+                  duration: 0.22,
+                  ease: [0.2, 0.8, 0.2, 1],
+                }}
                 style={{
-                  position: "absolute",
-                  width: 6,
-                  height: 6,
-                  borderRadius: 3,
+                  width: 5,
+                  height: 5,
+                  borderRadius: theme.radius.pill,
                   background: color,
-                  boxShadow: focused ? `0 0 12px ${color}, 0 0 4px ${color}` : `0 0 8px ${color}`,
-                  top: focused ? 5 : 4,
+                  display: "block",
                 }}
               />
             )}
-            <span style={{ marginTop: active ? (focused ? 14 : 10) : 0, transition: "margin 0.2s" }}>
-              {icon}
-            </span>
+            <Icon size={focused ? 16 : 14} />
           </motion.button>
         );
       })}

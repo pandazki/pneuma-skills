@@ -9,6 +9,7 @@ import { ExplodedLayer, LAYER_ORDER } from "./ExplodedLayer.js";
 import { useCurrentFrame } from "./useCurrentFrame.js";
 import { useActiveSceneAtTime } from "./useActiveSceneAtTime.js";
 import { useWorkspaceAssetUrl } from "../assets/useWorkspaceAssetUrl.js";
+import { theme } from "../theme/tokens.js";
 
 const CAMERA = {
   rotateX: 0,
@@ -263,19 +264,19 @@ export function ExplodedView() {
       style={{
         height: "100%",
         display: "flex",
-        background: "#09090b",
+        background: theme.color.surface0,
         position: "relative",
         overflow: "hidden",
       }}
     >
       <div
         style={{
-          width: 44,
+          width: 48,
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
-          borderRight: "1px solid #1a1a1e",
+          borderRight: `1px solid ${theme.color.borderWeak}`,
           zIndex: 20,
         }}
       >

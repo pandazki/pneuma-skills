@@ -7,6 +7,7 @@
  * the @pneuma-craft port (useTimelineZoom returns `viewportWidth`).
  */
 import { useMemo } from "react";
+import { theme } from "../theme/tokens.js";
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -53,23 +54,34 @@ export function TimeRuler({ duration, pixelsPerSecond, scrollLeft, viewportWidth
   }, [duration, pixelsPerSecond, scrollLeft, viewportWidth]);
 
   return (
-    <div style={{ position: "relative", height: 24, overflow: "hidden", userSelect: "none" }}>
+    <div
+      style={{
+        position: "relative",
+        height: 24,
+        overflow: "hidden",
+        userSelect: "none",
+        fontFamily: theme.font.numeric,
+      }}
+    >
       {ticks.map(({ time, x }) => (
         <div key={time} style={{ position: "absolute", left: x, top: 0 }}>
           <div
             style={{
               width: 1,
-              height: 10,
-              background: "#3f3f46",
+              height: 8,
+              background: theme.color.borderStrong,
               transform: "translateX(-0.5px)",
             }}
           />
           <span
             style={{
-              fontSize: 9,
-              color: "#52525b",
+              fontFamily: theme.font.numeric,
+              fontSize: theme.text.xs,
+              fontVariantNumeric: "tabular-nums",
+              letterSpacing: theme.text.trackingBase,
+              color: theme.color.ink4,
               position: "absolute",
-              top: 11,
+              top: 10,
               transform: "translateX(-50%)",
               whiteSpace: "nowrap",
             }}

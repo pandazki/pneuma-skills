@@ -1,4 +1,5 @@
 import type { Track } from "@pneuma-craft/timeline";
+import { theme } from "../theme/tokens.js";
 
 interface Props {
   tracks: Track[];
@@ -10,10 +11,14 @@ interface Props {
 }
 
 export function CaptionLayerContent({
-  tracks, height, pixelsPerSecond, scrollLeft, selectedClipId,
+  tracks,
+  height,
+  pixelsPerSecond,
+  scrollLeft,
+  selectedClipId,
 }: Props) {
   return (
-    <div style={{ position: "absolute", inset: 0, padding: "4px" }}>
+    <div style={{ position: "absolute", inset: 0, padding: 4 }}>
       {tracks.flatMap((track) =>
         track.clips.map((clip) => {
           const x = clip.startTime * pixelsPerSecond - scrollLeft;
@@ -21,22 +26,43 @@ export function CaptionLayerContent({
           if (x + w < -10 || x > 3000) return null;
           const sel = clip.id === selectedClipId;
           return (
-            <div key={clip.id} style={{
-              position: "absolute", left: x, width: w - 2, top: 4, bottom: 4,
-              borderRadius: 4, overflow: "hidden",
-              background: sel ? "#2d2519" : "#1a1a1e",
-              border: sel ? "1px solid rgba(249,115,22,0.3)" : "1px solid #27272a",
-              padding: "6px 10px",
-              display: "flex", alignItems: "center",
-            }}>
-              <span style={{
-                fontSize: Math.min(13, height * 0.3),
-                color: clip.text ? (sel ? "#e4e4e7" : "#a1a1aa") : "#3f3f46",
-                lineHeight: "1.4",
+            <div
+              key={clip.id}
+              style={{
+                position: "absolute",
+                left: x,
+                width: w - 2,
+                top: 4,
+                bottom: 4,
+                borderRadius: theme.radius.sm,
                 overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}>
+                background: sel ? theme.color.surface3 : theme.color.surface1,
+                border: sel
+                  ? `1px solid ${theme.color.accentBorder}`
+                  : `1px solid ${theme.color.borderWeak}`,
+                padding: `${theme.space.space1}px ${theme.space.space3}px`,
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: theme.font.display,
+                  fontSize: Math.min(14, height * 0.32),
+                  color: clip.text
+                    ? sel
+                      ? theme.color.ink0
+                      : theme.color.ink1
+                    : theme.color.ink5,
+                  lineHeight: theme.text.lineHeightSnug,
+                  letterSpacing: theme.text.trackingTight,
+                  fontWeight: theme.text.weightMedium,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontStyle: clip.text ? "normal" : "italic",
+                }}
+              >
                 {clip.text ?? "No caption"}
               </span>
             </div>

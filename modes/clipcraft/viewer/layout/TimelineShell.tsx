@@ -7,6 +7,7 @@ import { useOverviewCamera } from "../overview/useOverviewCamera.js";
 import { ExplodedView } from "../exploded/ExplodedView.js";
 import { DiveCanvas } from "../dive/DiveCanvas.js";
 import { ClipInspector } from "../timeline/inspector/ClipInspector.js";
+import { theme } from "../theme/tokens.js";
 
 /**
  * Timeline shell. Legacy reference:
@@ -48,10 +49,10 @@ export function TimelineShell() {
         flex: isExpanded ? "1 1 100%" : "0 0 auto",
         display: "flex",
         flexDirection: "column-reverse",
-        background: "#09090b",
-        borderTop: "1px solid #27272a",
+        background: theme.color.surface0,
+        borderTop: `1px solid ${theme.color.borderWeak}`,
         overflow: "hidden",
-        transition: "flex 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+        transition: `flex ${theme.duration.slower}ms ${theme.easing.snap}`,
         position: "relative",
         // Drag/seek interactions in this region must never accidentally
         // create a text selection. ClipInspector's number inputs need

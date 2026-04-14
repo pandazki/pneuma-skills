@@ -11,6 +11,7 @@ import { useOverviewCamera, type CameraPreset } from "./useOverviewCamera.js";
 import { LAYER_PRIORITY, tracksForLayer, type LayerType } from "./layerTypes.js";
 import { Layer3D } from "./Layer3D.js";
 import { LayerToggle } from "./LayerToggle.js";
+import { theme } from "../theme/tokens.js";
 
 function computeZOffsets(activeLayers: LayerType[]): Record<string, number> {
   const count = activeLayers.length;
@@ -109,14 +110,24 @@ export function TimelineOverview3D({ cameraPreset }: { cameraPreset: CameraPrese
     <div
       ref={containerRef}
       style={{
-        height: "100%", display: "flex", background: "#09090b",
-        position: "relative", overflow: "hidden",
+        height: "100%",
+        display: "flex",
+        background: theme.color.surface0,
+        position: "relative",
+        overflow: "hidden",
       }}
     >
-      <div style={{
-        width: 44, flexShrink: 0, display: "flex", flexDirection: "column",
-        justifyContent: "center", borderRight: "1px solid #1a1a1e", zIndex: 20,
-      }}>
+      <div
+        style={{
+          width: 48,
+          flexShrink: 0,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          borderRight: `1px solid ${theme.color.borderWeak}`,
+          zIndex: 20,
+        }}
+      >
         <LayerToggle
           activeLayers={activeLayers}
           onToggle={toggleLayer}

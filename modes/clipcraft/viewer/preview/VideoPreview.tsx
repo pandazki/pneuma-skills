@@ -1,6 +1,7 @@
 import { PreviewRoot, useComposition } from "@pneuma-craft/react";
 import { CaptionOverlay } from "./CaptionOverlay.js";
 import type { CaptionStyle } from "../../persistence.js";
+import { theme } from "../theme/tokens.js";
 
 export interface VideoPreviewProps {
   captionStyle?: CaptionStyle;
@@ -8,8 +9,7 @@ export interface VideoPreviewProps {
 
 /**
  * Read-only preview surface. The craft PreviewRoot renders into a
- * <canvas> via its render-prop; we stack a caption DOM layer on top
- * and a compact control bar below.
+ * <canvas> via its render-prop; we stack a caption DOM layer on top.
  *
  * NOTE: we do NOT mount <video> elements here. Legacy did so because
  * its playback was driven from DOM video elements; craft's
@@ -29,7 +29,8 @@ export function VideoPreview({ captionStyle }: VideoPreviewProps) {
         display: "flex",
         flexDirection: "column",
         height: "100%",
-        background: "#09090b",
+        background: theme.color.surface0,
+        fontFamily: theme.font.ui,
       }}
     >
       <div
@@ -40,7 +41,7 @@ export function VideoPreview({ captionStyle }: VideoPreviewProps) {
           justifyContent: "center",
           overflow: "hidden",
           position: "relative",
-          padding: 16,
+          padding: theme.space.space5,
         }}
       >
         <div
@@ -48,8 +49,9 @@ export function VideoPreview({ captionStyle }: VideoPreviewProps) {
             maxWidth: "100%",
             maxHeight: "100%",
             aspectRatio: `${aspect}`,
-            background: "#0a0a0a",
-            borderRadius: 4,
+            background: "oklch(8% 0.005 55)",
+            borderRadius: theme.radius.md,
+            border: `1px solid ${theme.color.borderWeak}`,
             overflow: "hidden",
             position: "relative",
             width: "100%",
@@ -67,7 +69,7 @@ export function VideoPreview({ captionStyle }: VideoPreviewProps) {
                       width: "100%",
                       height: "100%",
                       display: "block",
-                      background: "#000",
+                      background: "oklch(6% 0.003 55)",
                     }}
                   />
                   {isLoading && (
@@ -78,13 +80,14 @@ export function VideoPreview({ captionStyle }: VideoPreviewProps) {
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        color: "#a1a1aa",
-                        fontFamily: "system-ui, sans-serif",
-                        fontSize: 12,
+                        color: theme.color.ink3,
+                        fontFamily: theme.font.ui,
+                        fontSize: theme.text.base,
+                        letterSpacing: theme.text.trackingWide,
                         pointerEvents: "none",
                       }}
                     >
-                      loading…
+                      Loading…
                     </div>
                   )}
                 </>
@@ -99,12 +102,14 @@ export function VideoPreview({ captionStyle }: VideoPreviewProps) {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "#71717a",
-                fontFamily: "system-ui, sans-serif",
-                fontSize: 14,
+                color: theme.color.ink4,
+                fontFamily: theme.font.ui,
+                fontSize: theme.text.base,
+                fontStyle: "italic",
+                letterSpacing: theme.text.trackingBase,
               }}
             >
-              no composition loaded
+              No composition loaded
             </div>
           )}
 

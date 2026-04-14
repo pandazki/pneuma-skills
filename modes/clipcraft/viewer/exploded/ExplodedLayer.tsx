@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { useWaveform } from "../timeline/hooks/useWaveform.js";
 import { WaveformBars } from "./WaveformBars.js";
 import { LAYER_META, type LayerType } from "../overview/layerTypes.js";
+import { theme } from "../theme/tokens.js";
 
 export const LAYER_ORDER: LayerType[] = ["caption", "video", "audio"];
 
@@ -21,7 +22,11 @@ export interface ExplodedLayerProps {
 
 // Gentle ease-out tween so layers fade/slide into place instead of
 // springing with the previous bouncy overshoot.
-const EASE = { type: "tween" as const, duration: 0.38, ease: [0.2, 0.8, 0.2, 1] as [number, number, number, number] };
+const EASE = {
+  type: "tween" as const,
+  duration: 0.38,
+  ease: [0.2, 0.8, 0.2, 1] as [number, number, number, number],
+};
 
 export function ExplodedLayer({
   layerType,
@@ -36,6 +41,7 @@ export function ExplodedLayer({
   audioUrl,
 }: ExplodedLayerProps) {
   const meta = LAYER_META[layerType];
+  const Icon = meta.Icon;
 
   return (
     <motion.div
@@ -57,12 +63,9 @@ export function ExplodedLayer({
         marginLeft: -width / 2,
         transformStyle: "flat",
         cursor: "pointer",
-        background: focused ? "rgba(9, 9, 11, 0.92)" : "rgba(9, 9, 11, 0.78)",
-        border: `1px solid ${meta.color}${focused ? "90" : "30"}`,
-        borderRadius: 8,
-        boxShadow: focused
-          ? `0 0 28px ${meta.color}30, 0 0 6px ${meta.color}20`
-          : `0 0 10px ${meta.color}08`,
+        background: theme.color.surface1,
+        border: `1px solid ${focused ? meta.color : meta.colorBorder}`,
+        borderRadius: theme.radius.md,
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
@@ -74,27 +77,22 @@ export function ExplodedLayer({
     >
       <div
         style={{
-          display: "flex",
+          display: "inline-flex",
           alignItems: "center",
-          gap: 6,
-          padding: "4px 10px",
-          fontSize: 10,
-          fontWeight: 600,
+          gap: theme.space.space2,
+          padding: `${theme.space.space1}px ${theme.space.space3}px`,
+          fontFamily: theme.font.ui,
+          fontSize: theme.text.xs,
+          fontWeight: theme.text.weightSemibold,
           color: meta.color,
-          opacity: 0.8,
+          letterSpacing: theme.text.trackingCaps,
+          textTransform: "uppercase",
+          opacity: 0.9,
           flexShrink: 0,
         }}
       >
-        <span>{meta.icon}</span>
-        <span
-          style={{
-            fontFamily: "'Inter', system-ui, sans-serif",
-            letterSpacing: "0.05em",
-            textTransform: "uppercase",
-          }}
-        >
-          {meta.label}
-        </span>
+        <Icon size={12} />
+        <span>{meta.label}</span>
       </div>
 
       <div
@@ -104,7 +102,7 @@ export function ExplodedLayer({
           alignItems: "center",
           justifyContent: "center",
           overflow: "hidden",
-          padding: "0 10px 6px",
+          padding: `0 ${theme.space.space3}px ${theme.space.space2}px`,
         }}
       >
         <LayerContent
@@ -145,24 +143,26 @@ function LayerContent({
   }
 }
 
+const placeholderStyle: React.CSSProperties = {
+  color: theme.color.ink5,
+  fontFamily: theme.font.ui,
+  fontSize: theme.text.sm,
+  fontStyle: "italic",
+};
+
 function CaptionContent({ text, height }: { text: string | null; height: number }) {
-  if (!text) {
-    return (
-      <span style={{ color: "#52525b", fontSize: 12, fontStyle: "italic" }}>
-        No caption
-      </span>
-    );
-  }
+  if (!text) return <span style={placeholderStyle}>No caption</span>;
   return (
     <div
       style={{
-        color: "#e4e4e7",
-        fontSize: Math.min(16, Math.max(11, height * 0.25)),
-        fontFamily: "'Inter', system-ui, sans-serif",
-        fontWeight: 400,
+        color: theme.color.ink0,
+        fontSize: Math.min(18, Math.max(11, height * 0.26)),
+        fontFamily: theme.font.display,
+        fontWeight: theme.text.weightMedium,
         textAlign: "center",
-        lineHeight: 1.4,
-        padding: "0 8px",
+        lineHeight: theme.text.lineHeightSnug,
+        letterSpacing: theme.text.trackingTight,
+        padding: `0 ${theme.space.space2}px`,
         overflow: "hidden",
         textOverflow: "ellipsis",
         whiteSpace: "nowrap",
@@ -201,18 +201,19 @@ function VideoContent({
   }, [bitmap, height, width]);
 
   if (!bitmap) {
+    const Icon = LAYER_META.video.Icon;
     return (
       <div
         style={{
-          color: "#52525b",
-          fontSize: 12,
+          ...placeholderStyle,
           display: "flex",
           alignItems: "center",
-          gap: 6,
+          gap: theme.space.space2,
+          color: theme.color.ink4,
         }}
       >
-        <span style={{ fontSize: 20 }}>{"\uD83C\uDFAC"}</span>
-        <span style={{ fontStyle: "italic" }}>Capturing frame...</span>
+        <Icon size={18} />
+        <span>Capturing frame…</span>
       </div>
     );
   }
@@ -223,7 +224,7 @@ function VideoContent({
         height,
         width: "auto",
         maxWidth: "100%",
-        borderRadius: 4,
+        borderRadius: theme.radius.sm,
         display: "block",
       }}
     />
@@ -242,23 +243,14 @@ function AudioContent({
   const bars = Math.max(20, Math.floor(width / 3));
   const { waveform } = useWaveform(audioUrl ? { audioUrl, bars } : null);
 
-  if (!audioUrl) {
-    return (
-      <span style={{ color: "#52525b", fontSize: 12, fontStyle: "italic" }}>
-        No audio
-      </span>
-    );
-  }
-  if (!waveform) {
-    return (
-      <span style={{ color: "#52525b", fontSize: 11 }}>Loading waveform...</span>
-    );
-  }
+  if (!audioUrl) return <span style={placeholderStyle}>No audio</span>;
+  if (!waveform)
+    return <span style={placeholderStyle}>Loading waveform…</span>;
   return (
     <WaveformBars
       peaks={waveform.peaks}
       height={Math.max(16, height - 4)}
-      color="#38bdf8"
+      color={theme.color.layerAudio}
       stretch
     />
   );

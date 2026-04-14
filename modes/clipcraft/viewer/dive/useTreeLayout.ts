@@ -3,6 +3,7 @@ import dagre from "@dagrejs/dagre";
 import type { Node, Edge } from "@xyflow/react";
 import type { Asset } from "@pneuma-craft/core";
 import { usePneumaCraftStore } from "@pneuma-craft/react";
+import { theme } from "../theme/tokens.js";
 
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 160;
@@ -114,8 +115,8 @@ export function useTreeLayout(
         source: parent,
         target: child,
         style: {
-          stroke: isActive ? "#f97316" : "#3f3f46",
-          strokeWidth: isActive ? 2 : 1,
+          stroke: isActive ? theme.color.accent : theme.color.borderStrong,
+          strokeWidth: isActive ? 1.6 : 1,
         },
         animated: childAsset?.status === "generating",
       });

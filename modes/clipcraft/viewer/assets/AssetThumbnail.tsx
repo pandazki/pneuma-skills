@@ -3,6 +3,8 @@ import type { Asset } from "@pneuma-craft/react";
 import { useWorkspaceAssetUrl } from "./useWorkspaceAssetUrl.js";
 import { useAssetError } from "./useAssetErrors.js";
 import { useAssetMetadata } from "./useAssetMetadata.js";
+import { theme } from "../theme/tokens.js";
+import { XIcon } from "../icons/index.js";
 
 export interface AssetThumbnailProps {
   asset: Asset;
@@ -37,13 +39,15 @@ export function AssetThumbnail({ asset, onOpen, onDelete }: AssetThumbnailProps)
       title={tooltip}
       style={{
         position: "relative",
-        width: 48,
-        height: 48,
-        borderRadius: 3,
+        width: 56,
+        height: 56,
+        borderRadius: theme.radius.sm,
         overflow: "hidden",
-        background: "#18181b",
+        background: theme.color.surface2,
         cursor: "pointer",
-        border: error ? "1px solid #ef4444" : "1px solid transparent",
+        border: error
+          ? `1px solid ${theme.color.danger}`
+          : `1px solid ${theme.color.borderWeak}`,
       }}
     >
       {url && asset.type === "video" ? (
@@ -70,13 +74,15 @@ export function AssetThumbnail({ asset, onOpen, onDelete }: AssetThumbnailProps)
             alignItems: "center",
             justifyContent: "center",
             height: "100%",
-            fontSize: 10,
-            color: "#71717a",
+            fontFamily: theme.font.ui,
+            fontSize: theme.text.xs,
+            color: theme.color.ink4,
             textAlign: "center",
             padding: 2,
+            letterSpacing: theme.text.trackingBase,
           }}
         >
-          {asset.status === "pending" ? "…pending" : asset.name.slice(0, 8)}
+          {asset.status === "pending" ? "Pending…" : asset.name.slice(0, 8)}
         </div>
       )}
 
@@ -86,12 +92,14 @@ export function AssetThumbnail({ asset, onOpen, onDelete }: AssetThumbnailProps)
             position: "absolute",
             left: 2,
             bottom: 2,
-            background: "rgba(239,68,68,0.9)",
-            color: "#fff",
-            fontSize: 8,
-            padding: "0 3px",
-            borderRadius: 2,
-            maxWidth: "90%",
+            background: theme.color.dangerSoft,
+            border: `1px solid ${theme.color.dangerBorder}`,
+            color: theme.color.dangerInk,
+            fontFamily: theme.font.ui,
+            fontSize: theme.text.xs,
+            padding: "0 4px",
+            borderRadius: theme.radius.sm,
+            maxWidth: "92%",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -102,27 +110,28 @@ export function AssetThumbnail({ asset, onOpen, onDelete }: AssetThumbnailProps)
       )}
 
       <button
+        type="button"
         onClick={handleDelete}
         className="asset-delete-btn"
         style={{
           position: "absolute",
-          top: 1,
-          right: 1,
-          width: 14,
-          height: 14,
-          borderRadius: 7,
-          background: "rgba(0,0,0,0.7)",
-          border: "none",
-          color: "#ef4444",
-          fontSize: 9,
+          top: 3,
+          right: 3,
+          width: 16,
+          height: 16,
+          borderRadius: theme.radius.pill,
+          background: "oklch(0% 0 0 / 0.65)",
+          border: `1px solid ${theme.color.borderWeak}`,
+          color: theme.color.ink1,
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          padding: 0,
         }}
         aria-label={`remove ${asset.name}`}
       >
-        x
+        <XIcon size={9} />
       </button>
     </div>
   );

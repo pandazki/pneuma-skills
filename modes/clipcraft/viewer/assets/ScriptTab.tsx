@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useComposition } from "@pneuma-craft/react";
 import { useScenes, useSceneSelection } from "../scenes/SceneContext.js";
+import { theme } from "../theme/tokens.js";
 
 export function ScriptTab() {
   const scenes = useScenes();
@@ -20,10 +21,31 @@ export function ScriptTab() {
   }, [composition]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-      <div style={{ overflowY: "auto", flex: 1, padding: "8px 10px" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        flex: 1,
+        minHeight: 0,
+        fontFamily: theme.font.ui,
+      }}
+    >
+      <div
+        style={{
+          overflowY: "auto",
+          flex: 1,
+          padding: `${theme.space.space2}px ${theme.space.space3}px`,
+        }}
+      >
         {scenes.length === 0 ? (
-          <div style={{ fontSize: 11, color: "#52525b", padding: "4px 0" }}>
+          <div
+            style={{
+              fontSize: theme.text.sm,
+              color: theme.color.ink5,
+              padding: `${theme.space.space1}px 0`,
+              fontStyle: "italic",
+            }}
+          >
             No scenes yet
           </div>
         ) : (
@@ -39,33 +61,37 @@ export function ScriptTab() {
                 key={scene.id}
                 onClick={() => setSelectedSceneId(scene.id)}
                 style={{
-                  padding: "8px 8px",
-                  marginBottom: 4,
-                  borderRadius: 4,
+                  padding: theme.space.space2,
+                  marginBottom: theme.space.space1,
+                  borderRadius: theme.radius.sm,
                   border: isSelected
-                    ? "1px solid #f97316"
-                    : "1px solid transparent",
+                    ? `1px solid ${theme.color.accentBorder}`
+                    : `1px solid ${theme.color.borderWeak}`,
                   background: isSelected
-                    ? "rgba(249, 115, 22, 0.08)"
-                    : "transparent",
+                    ? theme.color.accentSoft
+                    : theme.color.surface2,
                   cursor: "pointer",
+                  transition: `background ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
                 }}
               >
                 <div
                   style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: isSelected ? "#f97316" : "#a1a1aa",
+                    fontFamily: theme.font.ui,
+                    fontSize: theme.text.xs,
+                    fontWeight: theme.text.weightSemibold,
+                    color: isSelected ? theme.color.accentBright : theme.color.ink2,
                     marginBottom: 2,
+                    textTransform: "uppercase",
+                    letterSpacing: theme.text.trackingCaps,
                   }}
                 >
                   {scene.title || `Scene ${index + 1}`}
                 </div>
                 <div
                   style={{
-                    fontSize: 11,
-                    color: "#d4d4d8",
-                    lineHeight: 1.4,
+                    fontSize: theme.text.sm,
+                    color: theme.color.ink1,
+                    lineHeight: theme.text.lineHeightSnug,
                     overflow: "hidden",
                     display: "-webkit-box",
                     WebkitLineClamp: 3,
@@ -73,7 +99,12 @@ export function ScriptTab() {
                   }}
                 >
                   {captionText || (
-                    <span style={{ color: "#52525b" }}>
+                    <span
+                      style={{
+                        color: theme.color.ink4,
+                        fontStyle: "italic",
+                      }}
+                    >
                       {scene.prompt || "No caption"}
                     </span>
                   )}

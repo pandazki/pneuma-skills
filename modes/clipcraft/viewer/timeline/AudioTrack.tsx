@@ -18,6 +18,7 @@ import { useEditorTool } from "./hooks/useEditorTool.js";
 import { useClipToolAction } from "./hooks/useClipToolAction.js";
 import { useSplitHoverSnap } from "./hooks/useSplitHoverSnap.js";
 import { ClipToolOverlay } from "./ClipToolOverlay.js";
+import { theme } from "../theme/tokens.js";
 
 const TRACK_H = 32;
 const BAR_H = TRACK_H - 12;
@@ -136,9 +137,11 @@ function AudioClip({
         width: Math.round(width - 1),
         height: TRACK_H - 4,
         top: 2,
-        background: selected ? "#1a1e2a" : "#18181b",
-        borderRadius: 3,
-        border: selected ? "1px solid rgba(249,115,22,0.3)" : "1px solid #27272a",
+        background: selected ? theme.color.surface4 : theme.color.surface2,
+        borderRadius: theme.radius.sm,
+        border: selected
+          ? `1px solid ${theme.color.accentBorder}`
+          : `1px solid ${theme.color.borderWeak}`,
         overflow:
           (tool.activeTool === "duplicate" && isToolHovered) || isResizing
             ? "visible"
@@ -165,10 +168,24 @@ function AudioClip({
             pointerEvents: "none",
           }}
         >
-          <WaveformBars peaks={waveform.peaks} height={BAR_H} color={selected ? "#38bdf8" : "#1e3a5f"} />
+          <WaveformBars
+            peaks={waveform.peaks}
+            height={BAR_H}
+            color={selected ? theme.color.accentBright : theme.color.layerAudio}
+          />
         </div>
       ) : hasAudio ? (
-        <div style={{ fontSize: 9, color: "#38bdf8", opacity: 0.5 }}>loading...</div>
+        <div
+          style={{
+            fontFamily: theme.font.ui,
+            fontSize: theme.text.xs,
+            color: theme.color.layerAudio,
+            opacity: 0.6,
+            letterSpacing: theme.text.trackingWide,
+          }}
+        >
+          loading…
+        </div>
       ) : null}
       <div
         onMouseDown={(e) => {
@@ -184,7 +201,7 @@ function AudioClip({
           bottom: 0,
           width: 6,
           cursor: "ew-resize",
-          background: selected ? "rgba(249,115,22,0.3)" : "transparent",
+          background: selected ? theme.color.accentSoft : "transparent",
         }}
       />
       <div
@@ -201,7 +218,7 @@ function AudioClip({
           bottom: 0,
           width: 6,
           cursor: "ew-resize",
-          background: selected ? "rgba(249,115,22,0.3)" : "transparent",
+          background: selected ? theme.color.accentSoft : "transparent",
         }}
       />
 
@@ -300,9 +317,9 @@ export function AudioTrack({
               top: 2,
               width: Math.round(ghostW),
               height: TRACK_H - 4,
-              border: "1px dashed rgba(56,189,248,0.45)",
-              borderRadius: 3,
-              background: "rgba(56,189,248,0.06)",
+              border: `1px dashed ${theme.color.layerAudio}`,
+              borderRadius: theme.radius.sm,
+              background: theme.color.layerAudioSoft,
               pointerEvents: "none",
             }}
           />
@@ -319,7 +336,7 @@ export function AudioTrack({
                 pixelsPerSecond -
               scrollLeft,
             width: 1,
-            background: "#f97316",
+            background: theme.color.accent,
             pointerEvents: "none",
           }}
         />

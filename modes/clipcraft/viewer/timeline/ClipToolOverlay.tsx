@@ -1,17 +1,16 @@
 import type { ToolKind } from "./hooks/useEditorTool.js";
+import { XIcon, ZapIcon, CopyIcon } from "../icons/index.js";
+import { theme } from "../theme/tokens.js";
 
 /**
  * Visual preview shown ON TOP of a clip when the editor tool is active
  * and the user is hovering this clip. Each tool gets its own visual
  * language; rendered inside the absolutely-positioned clip wrapper.
  *
- * - split:    orange dashed vertical guide at hoverPx + dashed clip border
- * - delete:   red dashed border + 30% opacity overlay + ✕ glyph
- * - duplicate: orange dashed border + ghost copy translated +clipWidth
- * - ripple:   same as delete + downstream-shift hint label
- *
- * The hover/active gating is the caller's responsibility — this
- * component just renders the overlay assuming it should be visible.
+ * - split:     accent dashed border + dashed vertical guide at hoverPx
+ * - delete:    danger dashed border + tinted fill + close-icon marker
+ * - duplicate: accent dashed source + ghost copy translated +clipWidth
+ * - ripple:    same as delete + ripple hint
  */
 export function ClipToolOverlay({
   tool,
@@ -25,22 +24,20 @@ export function ClipToolOverlay({
   hoverPx: number | null;
 }) {
   if (tool === "split") {
-    const x = hoverPx == null ? clipWidth / 2 : Math.max(0, Math.min(clipWidth, hoverPx));
+    const x =
+      hoverPx == null ? clipWidth / 2 : Math.max(0, Math.min(clipWidth, hoverPx));
     return (
       <>
-        {/* Dashed clip outline */}
         <div
           style={{
             position: "absolute",
             inset: 0,
-            border: "1px dashed #f97316",
-            borderRadius: 3,
-            background: "rgba(249,115,22,0.08)",
+            border: `1px dashed ${theme.color.accent}`,
+            borderRadius: theme.radius.sm,
+            background: theme.color.accentFaint,
             pointerEvents: "none",
-            boxShadow: "0 0 0 1px rgba(249,115,22,0.15)",
           }}
         />
-        {/* Vertical split guide at cursor */}
         <div
           style={{
             position: "absolute",
@@ -49,9 +46,8 @@ export function ClipToolOverlay({
             left: x - 1,
             width: 2,
             background: "transparent",
-            borderLeft: "2px dashed #fed7aa",
+            borderLeft: `2px dashed ${theme.color.accentBright}`,
             pointerEvents: "none",
-            boxShadow: "0 0 6px rgba(249,115,22,0.5)",
           }}
         />
       </>
@@ -65,28 +61,24 @@ export function ClipToolOverlay({
         style={{
           position: "absolute",
           inset: 0,
-          border: "1px dashed #ef4444",
-          borderRadius: 3,
-          background: "rgba(239,68,68,0.18)",
+          border: `1px dashed ${theme.color.danger}`,
+          borderRadius: theme.radius.sm,
+          background: theme.color.dangerSoft,
           pointerEvents: "none",
-          boxShadow: "0 0 0 1px rgba(239,68,68,0.2)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          opacity: 0.85,
+          gap: theme.space.space1,
+          color: theme.color.dangerInk,
+          fontFamily: theme.font.ui,
+          fontSize: theme.text.xs,
+          fontWeight: theme.text.weightSemibold,
+          letterSpacing: theme.text.trackingCaps,
+          textTransform: "uppercase",
         }}
       >
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            color: "#fca5a5",
-            letterSpacing: 0.6,
-            textShadow: "0 1px 4px rgba(0,0,0,0.6)",
-          }}
-        >
-          {isRipple ? "× ripple" : "×"}
-        </span>
+        {isRipple ? <ZapIcon size={11} /> : <XIcon size={11} />}
+        {isRipple && clipWidth > 80 && <span>ripple</span>}
       </div>
     );
   }
@@ -94,18 +86,16 @@ export function ClipToolOverlay({
   if (tool === "duplicate") {
     return (
       <>
-        {/* Dashed border on the source */}
         <div
           style={{
             position: "absolute",
             inset: 0,
-            border: "1px dashed #f97316",
-            borderRadius: 3,
-            background: "rgba(249,115,22,0.06)",
+            border: `1px dashed ${theme.color.accent}`,
+            borderRadius: theme.radius.sm,
+            background: theme.color.accentFaint,
             pointerEvents: "none",
           }}
         />
-        {/* Ghost copy translated to the right */}
         <div
           style={{
             position: "absolute",
@@ -113,27 +103,24 @@ export function ClipToolOverlay({
             top: 0,
             width: clipWidth - 1,
             height: clipHeight,
-            border: "1px dashed #fed7aa",
-            borderRadius: 3,
-            background: "rgba(249,115,22,0.18)",
+            border: `1px dashed ${theme.color.accentBright}`,
+            borderRadius: theme.radius.sm,
+            background: theme.color.accentSoft,
             pointerEvents: "none",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            boxShadow: "0 0 8px rgba(249,115,22,0.3)",
+            gap: theme.space.space1,
+            color: theme.color.accentBright,
+            fontFamily: theme.font.ui,
+            fontSize: theme.text.xs,
+            fontWeight: theme.text.weightSemibold,
+            letterSpacing: theme.text.trackingCaps,
+            textTransform: "uppercase",
           }}
         >
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              color: "#fed7aa",
-              letterSpacing: 0.6,
-              textShadow: "0 1px 4px rgba(0,0,0,0.6)",
-            }}
-          >
-            +1
-          </span>
+          <CopyIcon size={11} />
+          {clipWidth > 80 && <span>copy</span>}
         </div>
       </>
     );

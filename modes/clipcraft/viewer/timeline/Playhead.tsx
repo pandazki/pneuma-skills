@@ -16,6 +16,7 @@
  * pass-through.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { theme } from "../theme/tokens.js";
 
 interface PlayheadProps {
   globalTime: number;
@@ -123,12 +124,10 @@ export function Playhead({
           position: "absolute",
           left: x,
           top: 0,
-          width: 2,
+          width: 1,
           height: trackAreaHeight,
-          marginLeft: -1,
-          background: "#f97316",
-          borderRadius: 1,
-          boxShadow: "0 0 6px rgba(249, 115, 22, 0.5)",
+          marginLeft: -0.5,
+          background: theme.color.playhead,
           pointerEvents: "none",
           transition: dragging ? "none" : "left 100ms linear",
           willChange: "left",
@@ -150,8 +149,8 @@ export function Playhead({
           willChange: "left",
         }}
       >
-        <svg width="12" height="16" viewBox="0 0 12 16">
-          <path d="M0 0h12v10l-6 6-6-6z" fill="#f97316" />
+        <svg width="12" height="16" viewBox="0 0 12 16" aria-hidden="true">
+          <path d="M0 0h12v10l-6 6-6-6z" fill={theme.color.playhead} />
         </svg>
       </div>
       {/* Time tooltip when dragging */}
@@ -160,14 +159,18 @@ export function Playhead({
           style={{
             position: "absolute",
             left: x,
-            top: -24,
+            top: -26,
             transform: "translateX(-50%)",
-            background: "#f97316",
-            color: "#fff",
-            fontSize: 10,
-            fontWeight: 600,
-            padding: "2px 6px",
-            borderRadius: 3,
+            background: theme.color.surface3,
+            border: `1px solid ${theme.color.playhead}`,
+            color: theme.color.ink0,
+            fontFamily: theme.font.numeric,
+            fontVariantNumeric: "tabular-nums",
+            fontSize: theme.text.xs,
+            fontWeight: theme.text.weightSemibold,
+            letterSpacing: theme.text.trackingBase,
+            padding: `2px ${theme.space.space2}px`,
+            borderRadius: theme.radius.sm,
             whiteSpace: "nowrap",
             pointerEvents: "none",
           }}

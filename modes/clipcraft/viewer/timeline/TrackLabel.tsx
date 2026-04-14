@@ -1,17 +1,43 @@
-import { useCallback } from "react";
+import { useCallback, type ReactElement } from "react";
 import type { Track } from "@pneuma-craft/timeline";
 import { useDispatch } from "@pneuma-craft/react";
+import {
+  VideoIcon,
+  AudioIcon,
+  SubtitleIcon,
+  SpeakerIcon,
+  MuteIcon,
+  LockIcon,
+  UnlockIcon,
+  EyeIcon,
+  EyeOffIcon,
+  type IconProps,
+} from "../icons/index.js";
+import { theme } from "../theme/tokens.js";
 
 export const LABEL_W = 140;
 
-const iconFor = (type: Track["type"]): string => {
+const iconFor = (
+  type: Track["type"],
+): ((props: IconProps) => ReactElement) => {
   switch (type) {
     case "video":
-      return "\uD83C\uDFAC"; // 🎬
+      return VideoIcon;
     case "audio":
-      return "\uD83D\uDD0A"; // 🔊
+      return AudioIcon;
     case "subtitle":
-      return "Tt";
+      return SubtitleIcon;
+  }
+};
+
+const layerColorFor = (type: Track["type"]): string => {
+  switch (type) {
+    case "video":
+      return theme.color.layerVideo;
+    case "audio":
+      return theme.color.layerAudio;
+    case "subtitle":
+      return theme.color.layerSubtitle;
   }
 };
 
@@ -19,22 +45,21 @@ const toggleBtn = (active: boolean, activeColor: string): React.CSSProperties =>
   background: "transparent",
   border: "none",
   padding: 0,
-  width: 16,
-  height: 16,
+  width: 22,
+  height: 22,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontSize: 10,
-  color: active ? activeColor : "#3f3f46",
+  color: active ? activeColor : theme.color.ink5,
   cursor: "pointer",
   lineHeight: 1,
+  borderRadius: theme.radius.sm,
+  transition: `color ${theme.duration.quick}ms ${theme.easing.out}`,
 });
 
 /**
- * Full-track label column. Renders the track icon + name on the left
- * and three toggle buttons (mute / lock / hide) on the right. Clicking
- * a button dispatches the corresponding composition:toggle-track-*
- * command.
+ * Full-track label column. Track-type icon + name on the left,
+ * three toggle buttons (mute / lock / hide) on the right.
  *
  * Also used as a "ruler spacer" — pass `track={null}` and children are
  * rendered as read-only text (used for the ruler row's leading cell).
@@ -72,19 +97,24 @@ export function TrackLabel({
         style={{
           width: LABEL_W,
           flexShrink: 0,
-          fontSize: 10,
-          color: "#52525b",
+          fontSize: theme.text.xs,
+          color: theme.color.ink4,
           textAlign: "center",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           userSelect: "none",
+          fontFamily: theme.font.ui,
+          letterSpacing: theme.text.trackingWide,
         }}
       >
         {children}
       </div>
     );
   }
+
+  const TrackTypeIcon = iconFor(track.type);
+  const layerColor = layerColorFor(track.type);
 
   return (
     <div
@@ -93,17 +123,30 @@ export function TrackLabel({
         flexShrink: 0,
         display: "flex",
         alignItems: "center",
-        gap: 6,
-        padding: "0 8px",
-        fontSize: 10,
-        color: "#a1a1aa",
+        gap: theme.space.space2,
+        padding: `0 ${theme.space.space3}px 0 ${theme.space.space2}px`,
+        fontSize: theme.text.sm,
+        color: theme.color.ink2,
         userSelect: "none",
-        borderRight: "1px solid #18181b",
+        borderRight: `1px solid ${theme.color.borderWeak}`,
         boxSizing: "border-box",
-        background: "#0f0f11",
+        background: theme.color.surface1,
+        fontFamily: theme.font.ui,
       }}
     >
-      <span style={{ fontSize: 12, flexShrink: 0 }}>{iconFor(track.type)}</span>
+      <span
+        style={{
+          width: 20,
+          height: 20,
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: layerColor,
+        }}
+      >
+        <TrackTypeIcon size={14} />
+      </span>
       <span
         style={{
           flex: 1,
@@ -111,8 +154,10 @@ export function TrackLabel({
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
-          color: "#e4e4e7",
-          fontSize: 10,
+          color: theme.color.ink1,
+          fontSize: theme.text.sm,
+          fontWeight: theme.text.weightMedium,
+          letterSpacing: theme.text.trackingBase,
         }}
         title={track.name}
       >
@@ -123,27 +168,27 @@ export function TrackLabel({
         onClick={toggleMute}
         title={track.muted ? "Unmute track" : "Mute track"}
         aria-label="toggle mute"
-        style={toggleBtn(!track.muted, "#38bdf8")}
+        style={toggleBtn(!track.muted, theme.color.ink2)}
       >
-        {track.muted ? "\uD83D\uDD07" : "\uD83D\uDD0A"}
+        {track.muted ? <MuteIcon size={13} /> : <SpeakerIcon size={13} />}
       </button>
       <button
         type="button"
         onClick={toggleLock}
         title={track.locked ? "Unlock track" : "Lock track"}
         aria-label="toggle lock"
-        style={toggleBtn(track.locked, "#f97316")}
+        style={toggleBtn(track.locked, theme.color.accent)}
       >
-        {track.locked ? "\uD83D\uDD12" : "\uD83D\uDD13"}
+        {track.locked ? <LockIcon size={13} /> : <UnlockIcon size={13} />}
       </button>
       <button
         type="button"
         onClick={toggleVisibility}
         title={track.visible === false ? "Show track" : "Hide track"}
         aria-label="toggle visibility"
-        style={toggleBtn(track.visible !== false, "#a1a1aa")}
+        style={toggleBtn(track.visible !== false, theme.color.ink2)}
       >
-        {track.visible === false ? "\uD83D\uDEAB" : "\u25CE"}
+        {track.visible === false ? <EyeOffIcon size={13} /> : <EyeIcon size={13} />}
       </button>
     </div>
   );

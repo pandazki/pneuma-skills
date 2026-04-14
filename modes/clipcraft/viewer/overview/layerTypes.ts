@@ -1,7 +1,15 @@
 // Overview layer taxonomy. Legacy had 4 types (video / caption / audio / bgm);
 // Plan 6 drops "bgm" entirely — BGM is just another audio track in craft and
 // the overview renders it inside the Audio layer.
+import type { ReactElement } from "react";
 import type { Track } from "@pneuma-craft/timeline";
+import {
+  VideoIcon,
+  AudioIcon,
+  SubtitleIcon,
+  type IconProps,
+} from "../icons/index.js";
+import { theme } from "../theme/tokens.js";
 
 export type LayerType = "video" | "caption" | "audio";
 
@@ -21,11 +29,37 @@ export function tracksForLayer(
   }
 }
 
-export const LAYER_META: Record<
-  LayerType,
-  { label: string; icon: string; color: string; bg: string }
-> = {
-  video:   { label: "Video",   icon: "\uD83C\uDFAC", color: "#eab308", bg: "rgba(234,179,8,0.04)" },
-  caption: { label: "Caption", icon: "Tt",            color: "#f97316", bg: "rgba(249,115,22,0.04)" },
-  audio:   { label: "Audio",   icon: "\uD83D\uDD0A",  color: "#38bdf8", bg: "rgba(56,189,248,0.04)" },
+export interface LayerMeta {
+  label: string;
+  Icon: (props: IconProps) => ReactElement;
+  /** Full-strength layer color — used for accents, focused borders, text. */
+  color: string;
+  /** Translucent background fill (~14% alpha). */
+  colorSoft: string;
+  /** Mid-strength border (~45% alpha). */
+  colorBorder: string;
+}
+
+export const LAYER_META: Record<LayerType, LayerMeta> = {
+  video: {
+    label: "Video",
+    Icon: VideoIcon,
+    color: theme.color.layerVideo,
+    colorSoft: theme.color.layerVideoSoft,
+    colorBorder: "oklch(78% 0.13 75 / 0.45)",
+  },
+  caption: {
+    label: "Caption",
+    Icon: SubtitleIcon,
+    color: theme.color.layerSubtitle,
+    colorSoft: theme.color.layerSubtitleSoft,
+    colorBorder: "oklch(80% 0.07 155 / 0.45)",
+  },
+  audio: {
+    label: "Audio",
+    Icon: AudioIcon,
+    color: theme.color.layerAudio,
+    colorSoft: theme.color.layerAudioSoft,
+    colorBorder: "oklch(70% 0.09 215 / 0.45)",
+  },
 };

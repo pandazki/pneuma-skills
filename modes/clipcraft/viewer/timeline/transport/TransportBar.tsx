@@ -2,6 +2,13 @@ import { useCallback } from "react";
 import { useComposition, usePlayback } from "@pneuma-craft/react";
 import { useTimelineMode } from "../../hooks/useTimelineMode.js";
 import { useEditorTool } from "../hooks/useEditorTool.js";
+import {
+  PlayIcon,
+  PauseIcon,
+  SkipBackIcon,
+  SkipForwardIcon,
+} from "../../icons/index.js";
+import { theme } from "../../theme/tokens.js";
 
 /**
  * Global transport: play/pause, goto start/end, time/duration,
@@ -46,9 +53,9 @@ export function TransportBar() {
 
   const disabled = !composition;
   const totalSec = playback.duration ?? 0;
-  // Use display time so the transport doesn't jiggle around while
-  // the user hover-scrubs in split mode — it stays anchored at the
-  // real playhead position.
+  // Use display time so the transport doesn't jiggle around while the
+  // user hover-scrubs in split mode — it stays anchored at the real
+  // playhead position.
   const curSec = editorTool.getDisplayTime(playback.currentTime ?? 0);
 
   return (
@@ -56,71 +63,92 @@ export function TransportBar() {
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        padding: "6px 12px",
-        borderBottom: "1px solid #27272a",
-        fontSize: 11,
-        color: "#a1a1aa",
-        background: "#0a0a0b",
+        gap: theme.space.space3,
+        padding: `${theme.space.space2}px ${theme.space.space4}px`,
+        borderBottom: `1px solid ${theme.color.borderWeak}`,
+        fontFamily: theme.font.ui,
+        background: theme.color.surface0,
       }}
     >
       <button
         type="button"
         onClick={gotoStart}
         disabled={disabled}
-        style={iconBtn(disabled)}
+        style={ghostBtn(disabled)}
         title="Go to start (Home)"
         aria-label="go to start"
       >
-        {"\u23EE"}
+        <SkipBackIcon size={13} />
       </button>
       <button
         type="button"
         onClick={togglePlay}
         disabled={disabled}
-        style={iconBtn(disabled)}
+        style={primaryBtn(disabled)}
         title={isPlaying ? "Pause (Space)" : "Play (Space)"}
         aria-label={isPlaying ? "pause" : "play"}
       >
-        {isPlaying ? "\u23F8" : "\u25B6"}
+        {isPlaying ? <PauseIcon size={13} /> : <PlayIcon size={13} />}
       </button>
       <button
         type="button"
         onClick={gotoEnd}
         disabled={disabled}
-        style={iconBtn(disabled)}
+        style={ghostBtn(disabled)}
         title="Go to end (End)"
         aria-label="go to end"
       >
-        {"\u23ED"}
+        <SkipForwardIcon size={13} />
       </button>
-      <span
-        style={{
-          fontFamily: "ui-monospace, SFMono-Regular, monospace",
-          fontSize: 11,
-          color: "#e4e4e7",
-          marginLeft: 4,
-        }}
-      >
-        {formatTime(curSec)} <span style={{ color: "#52525b" }}>/</span>{" "}
-        <span style={{ color: "#a1a1aa" }}>{formatTime(totalSec)}</span>
-      </span>
+      <Timecode current={curSec} total={totalSec} />
       <div style={{ flex: 1 }} />
       <SpeedSegmentControl
         value={playback.playbackRate ?? 1}
         disabled={disabled}
         onChange={setRate}
       />
-      <Threed3DToggle expanded={isExpanded} disabled={disabled} onToggle={toggleExpanded} />
+      <Threed3DToggle
+        expanded={isExpanded}
+        disabled={disabled}
+        onToggle={toggleExpanded}
+      />
     </div>
+  );
+}
+
+function Timecode({ current, total }: { current: number; total: number }) {
+  return (
+    <span
+      aria-label="playback position"
+      style={{
+        display: "inline-flex",
+        alignItems: "baseline",
+        gap: theme.space.space1,
+        fontFamily: theme.font.numeric,
+        fontSize: theme.text.base,
+        fontVariantNumeric: "tabular-nums",
+        letterSpacing: theme.text.trackingBase,
+        marginLeft: theme.space.space2,
+      }}
+    >
+      <span
+        style={{
+          color: theme.color.ink0,
+          fontWeight: theme.text.weightSemibold,
+        }}
+      >
+        {formatTime(current)}
+      </span>
+      <span style={{ color: theme.color.ink5 }}>/</span>
+      <span style={{ color: theme.color.ink3 }}>{formatTime(total)}</span>
+    </span>
   );
 }
 
 /**
  * Compact segmented speed selector — five fixed options, active
- * segment gets the pneuma orange fill + soft glow. Replaces a
- * native <select> dropdown so the whole transport row stays
- * scanable at a glance.
+ * segment gets a solid-but-gentle accent fill. No backdrop-blur, no
+ * box-shadow glow; depth comes from surface contrast.
  */
 const SPEED_OPTIONS = [0.75, 1, 1.25, 1.5, 2] as const;
 
@@ -140,13 +168,11 @@ function SpeedSegmentControl({
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 2,
+        gap: 1,
         padding: 2,
-        borderRadius: 5,
-        background: "rgba(255,255,255,0.04)",
-        border: "1px solid rgba(255,255,255,0.08)",
-        backdropFilter: "blur(8px)",
-        WebkitBackdropFilter: "blur(8px)",
+        borderRadius: theme.radius.base,
+        background: theme.color.surface2,
+        border: `1px solid ${theme.color.borderWeak}`,
         opacity: disabled ? 0.4 : 1,
       }}
     >
@@ -161,27 +187,26 @@ function SpeedSegmentControl({
             aria-pressed={active}
             title={`${rate}×`}
             style={{
-              background: active
-                ? "linear-gradient(135deg, rgba(249,115,22,0.45), rgba(249,115,22,0.15))"
-                : "transparent",
+              background: active ? theme.color.accentSoft : "transparent",
               border: "none",
-              color: active ? "#fed7aa" : "#a1a1aa",
-              fontSize: 9,
-              fontWeight: active ? 700 : 500,
-              letterSpacing: 0.2,
-              padding: "3px 7px",
-              borderRadius: 3,
+              color: active ? theme.color.accentBright : theme.color.ink3,
+              fontFamily: theme.font.numeric,
+              fontSize: theme.text.xs,
+              fontWeight: active
+                ? theme.text.weightSemibold
+                : theme.text.weightMedium,
+              fontVariantNumeric: "tabular-nums",
+              letterSpacing: theme.text.trackingBase,
+              padding: `3px ${theme.space.space2}px`,
+              borderRadius: theme.radius.sm,
               cursor: disabled ? "not-allowed" : "pointer",
-              minWidth: 28,
-              height: 16,
+              minWidth: 30,
+              height: 18,
               lineHeight: 1,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              transition: "all 160ms cubic-bezier(0.2, 0.8, 0.2, 1)",
-              boxShadow: active
-                ? "0 0 8px rgba(249,115,22,0.35), inset 0 1px 0 rgba(255,255,255,0.08)"
-                : "none",
+              transition: `background ${theme.duration.quick}ms ${theme.easing.out}, color ${theme.duration.quick}ms ${theme.easing.out}`,
             }}
           >
             {rate}×
@@ -193,9 +218,9 @@ function SpeedSegmentControl({
 }
 
 /**
- * "3D view" pneuma signature button. Glassmorphism + soft orange glow.
- * The icon is three stacked perspective layers that fan apart on
- * activation. Visible weight without going gaudy.
+ * "3D view" pneuma signature button. Solid tinted bg + accent border
+ * when active — no glassmorphism, no gradient, no glow. The icon
+ * layers fan apart subtly when expanded.
  */
 function Threed3DToggle({
   expanded,
@@ -216,80 +241,111 @@ function Threed3DToggle({
       style={{
         position: "relative",
         height: 24,
-        padding: "0 10px 0 8px",
+        padding: `0 ${theme.space.space3}px 0 ${theme.space.space2}px`,
         display: "flex",
         alignItems: "center",
-        gap: 6,
-        background: expanded
-          ? "linear-gradient(135deg, rgba(249,115,22,0.32), rgba(249,115,22,0.06))"
-          : "linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))",
-        backdropFilter: "blur(10px)",
-        WebkitBackdropFilter: "blur(10px)",
-        border: expanded
-          ? "1px solid rgba(249,115,22,0.55)"
-          : "1px solid rgba(255,255,255,0.1)",
-        borderRadius: 4,
-        color: expanded ? "#fed7aa" : "#a1a1aa",
+        gap: theme.space.space2,
+        background: expanded ? theme.color.accentSoft : theme.color.surface2,
+        border: `1px solid ${
+          expanded ? theme.color.accentBorder : theme.color.border
+        }`,
+        borderRadius: theme.radius.base,
+        color: expanded ? theme.color.accentBright : theme.color.ink2,
         cursor: disabled ? "not-allowed" : "pointer",
-        fontSize: 9,
-        fontWeight: 600,
-        letterSpacing: 0.7,
+        fontFamily: theme.font.ui,
+        fontSize: theme.text.xs,
+        fontWeight: theme.text.weightSemibold,
+        letterSpacing: theme.text.trackingCaps,
         textTransform: "uppercase",
-        transition: "all 220ms cubic-bezier(0.2, 0.8, 0.2, 1)",
-        boxShadow: expanded
-          ? "0 0 14px rgba(249,115,22,0.4), inset 0 1px 0 rgba(255,255,255,0.1)"
-          : "inset 0 1px 0 rgba(255,255,255,0.04)",
+        transition: `background ${theme.duration.base}ms ${theme.easing.out}, color ${theme.duration.base}ms ${theme.easing.out}, border-color ${theme.duration.base}ms ${theme.easing.out}`,
         opacity: disabled ? 0.4 : 1,
       }}
     >
-      <Layers3DIcon expanded={expanded} />
+      <AnimatedLayers3D expanded={expanded} />
       <span>3D</span>
     </button>
   );
 }
 
-function Layers3DIcon({ expanded }: { expanded: boolean }) {
-  // When expanded, the top + bottom layers fan apart vertically.
-  const offset = expanded ? 1.5 : 0;
-  const t = "transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1)";
+/**
+ * Transport-bar-specific variant of Layers3DIcon: the outer layers
+ * fan apart vertically when the button is in the "expanded" state.
+ * Kept inline because the per-path animation doesn't generalize to
+ * the library icon API.
+ */
+function AnimatedLayers3D({ expanded }: { expanded: boolean }) {
+  const offset = expanded ? 2 : 0;
+  const t = `transform ${theme.duration.slow}ms ${theme.easing.out}`;
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      style={{ flexShrink: 0 }}
+    >
       <g
         stroke="currentColor"
-        strokeWidth="1.1"
+        strokeWidth="1.5"
         strokeLinejoin="round"
         strokeLinecap="round"
         fill="none"
       >
         <path
-          d="M 2 4 L 9 2 L 12 4 L 5 6 Z"
-          style={{ transform: `translateY(${-offset}px)`, transition: t, transformOrigin: "center" }}
+          d="M8 2 L14 5 L8 8 L2 5 Z"
+          style={{
+            transform: `translateY(${-offset}px)`,
+            transition: t,
+            transformOrigin: "center",
+          }}
         />
-        <path d="M 2 7 L 9 5 L 12 7 L 5 9 Z" />
+        <path d="M2 8 L8 11 L14 8" opacity="0.65" />
         <path
-          d="M 2 10 L 9 8 L 12 10 L 5 12 Z"
-          style={{ transform: `translateY(${offset}px)`, transition: t, transformOrigin: "center" }}
+          d="M2 11 L8 14 L14 11"
+          opacity="0.35"
+          style={{
+            transform: `translateY(${offset}px)`,
+            transition: t,
+            transformOrigin: "center",
+          }}
         />
       </g>
     </svg>
   );
 }
 
-function iconBtn(disabled: boolean): React.CSSProperties {
+function ghostBtn(disabled: boolean): React.CSSProperties {
   return {
     background: "transparent",
-    border: "1px solid #27272a",
-    borderRadius: 3,
-    color: disabled ? "#3f3f46" : "#e4e4e7",
+    border: `1px solid ${theme.color.borderWeak}`,
+    borderRadius: theme.radius.sm,
+    color: disabled ? theme.color.ink5 : theme.color.ink2,
     width: 24,
-    height: 22,
+    height: 24,
     cursor: disabled ? "not-allowed" : "pointer",
-    fontSize: 12,
-    lineHeight: 1,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     padding: 0,
+    transition: `color ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
+  };
+}
+
+function primaryBtn(disabled: boolean): React.CSSProperties {
+  return {
+    background: disabled ? theme.color.surface2 : theme.color.surface3,
+    border: `1px solid ${theme.color.border}`,
+    borderRadius: theme.radius.sm,
+    color: disabled ? theme.color.ink5 : theme.color.ink0,
+    width: 28,
+    height: 24,
+    cursor: disabled ? "not-allowed" : "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    transition: `background ${theme.duration.quick}ms ${theme.easing.out}, color ${theme.duration.quick}ms ${theme.easing.out}`,
   };
 }
 

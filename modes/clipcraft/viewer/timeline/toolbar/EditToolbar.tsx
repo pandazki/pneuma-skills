@@ -1,42 +1,54 @@
-import { useCallback } from "react";
+import { useCallback, type ReactElement } from "react";
 import { useComposition, useDispatch, useUndo } from "@pneuma-craft/react";
 import { buildCollapseGapsCommands } from "./collapseGaps.js";
 import { useEditorTool, type ToolKind } from "../hooks/useEditorTool.js";
+import {
+  ScissorsIcon,
+  TrashIcon,
+  CopyIcon,
+  ZapIcon,
+  CollapseIcon,
+  UndoIcon,
+  RedoIcon,
+  type IconProps,
+} from "../../icons/index.js";
+import { theme } from "../../theme/tokens.js";
+
+const BTN_HEIGHT = 24;
 
 const baseBtn: React.CSSProperties = {
-  background: "rgba(255,255,255,0.03)",
-  border: "1px solid rgba(255,255,255,0.08)",
-  borderRadius: 4,
-  color: "#a1a1aa",
-  padding: "0 9px",
-  height: 22,
+  background: theme.color.surface2,
+  border: `1px solid ${theme.color.borderWeak}`,
+  borderRadius: theme.radius.sm,
+  color: theme.color.ink2,
+  padding: `0 ${theme.space.space3}px`,
+  height: BTN_HEIGHT,
   cursor: "pointer",
-  fontSize: 10,
-  fontWeight: 500,
-  letterSpacing: 0.3,
+  fontFamily: theme.font.ui,
+  fontSize: theme.text.xs,
+  fontWeight: theme.text.weightSemibold,
+  letterSpacing: theme.text.trackingCaps,
+  textTransform: "uppercase",
   lineHeight: 1,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  transition: "all 160ms cubic-bezier(0.2, 0.8, 0.2, 1)",
-  backdropFilter: "blur(8px)",
-  WebkitBackdropFilter: "blur(8px)",
+  gap: theme.space.space2,
+  transition: `background ${theme.duration.quick}ms ${theme.easing.out}, color ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
 };
 
 const activeBtn: React.CSSProperties = {
   ...baseBtn,
-  background: "linear-gradient(135deg, rgba(249,115,22,0.32), rgba(249,115,22,0.08))",
-  border: "1px solid rgba(249,115,22,0.55)",
-  color: "#fed7aa",
-  boxShadow: "0 0 12px rgba(249,115,22,0.4), inset 0 1px 0 rgba(255,255,255,0.08)",
+  background: theme.color.accentSoft,
+  border: `1px solid ${theme.color.accentBorder}`,
+  color: theme.color.accentBright,
 };
 
 const dangerActiveBtn: React.CSSProperties = {
-  ...activeBtn,
-  background: "linear-gradient(135deg, rgba(239,68,68,0.32), rgba(239,68,68,0.08))",
-  border: "1px solid rgba(239,68,68,0.55)",
-  color: "#fecaca",
-  boxShadow: "0 0 12px rgba(239,68,68,0.4), inset 0 1px 0 rgba(255,255,255,0.08)",
+  ...baseBtn,
+  background: theme.color.dangerSoft,
+  border: `1px solid ${theme.color.dangerBorder}`,
+  color: theme.color.dangerInk,
 };
 
 const disabledBtn: React.CSSProperties = {
@@ -48,10 +60,20 @@ const disabledBtn: React.CSSProperties = {
 const separatorStyle: React.CSSProperties = {
   width: 1,
   height: 16,
-  background: "rgba(255,255,255,0.08)",
-  margin: "0 6px",
+  background: theme.color.borderWeak,
+  margin: `0 ${theme.space.space2}px`,
   flexShrink: 0,
 };
+
+interface ToolButtonProps {
+  label: string;
+  title: string;
+  kind: ToolKind;
+  active: boolean;
+  Icon: (props: IconProps) => ReactElement;
+  style: React.CSSProperties;
+  onClick: () => void;
+}
 
 export function EditToolbar() {
   const composition = useComposition();
@@ -78,11 +100,19 @@ export function EditToolbar() {
   };
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: theme.space.space1,
+        fontFamily: theme.font.ui,
+      }}
+    >
       <ToolButton
         label="Split"
         title="Split at hover X — click a clip to confirm (S)"
         kind="split"
+        Icon={ScissorsIcon}
         active={tool.activeTool === "split"}
         style={buttonStyle("split", false)}
         onClick={() => toggleTool("split")}
@@ -91,6 +121,7 @@ export function EditToolbar() {
         label="Delete"
         title="Delete a clip — click any clip to confirm (Delete)"
         kind="delete"
+        Icon={TrashIcon}
         active={tool.activeTool === "delete"}
         style={buttonStyle("delete", true)}
         onClick={() => toggleTool("delete")}
@@ -99,39 +130,51 @@ export function EditToolbar() {
         label="Duplicate"
         title="Duplicate a clip — click any clip to confirm (D)"
         kind="duplicate"
+        Icon={CopyIcon}
         active={tool.activeTool === "duplicate"}
         style={buttonStyle("duplicate", false)}
         onClick={() => toggleTool("duplicate")}
       />
       <ToolButton
-        label="Ripple Del"
+        label="Ripple"
         title="Ripple delete — remove + close the gap (⌘⌫)"
         kind="ripple"
+        Icon={ZapIcon}
         active={tool.activeTool === "ripple"}
         style={buttonStyle("ripple", true)}
         onClick={() => toggleTool("ripple")}
       />
-      <button onClick={onCollapse} style={baseBtn} title="Pack all clips left, removing gaps">
-        Collapse
+      <button
+        type="button"
+        onClick={onCollapse}
+        style={baseBtn}
+        title="Pack all clips left, removing gaps"
+      >
+        <CollapseIcon size={13} />
+        <span>Collapse</span>
       </button>
 
       <div style={separatorStyle} />
 
       <button
+        type="button"
         onClick={() => undoState.undo()}
         style={undoState.canUndo ? baseBtn : disabledBtn}
         disabled={!undoState.canUndo}
         title="Undo (⌘Z)"
       >
-        Undo
+        <UndoIcon size={13} />
+        <span>Undo</span>
       </button>
       <button
+        type="button"
         onClick={() => undoState.redo()}
         style={undoState.canRedo ? baseBtn : disabledBtn}
         disabled={!undoState.canRedo}
         title="Redo (⌘⇧Z)"
       >
-        Redo
+        <RedoIcon size={13} />
+        <span>Redo</span>
       </button>
     </div>
   );
@@ -142,25 +185,21 @@ function ToolButton({
   title,
   kind,
   active,
+  Icon,
   style,
   onClick,
-}: {
-  label: string;
-  title: string;
-  kind: ToolKind;
-  active: boolean;
-  style: React.CSSProperties;
-  onClick: () => void;
-}) {
+}: ToolButtonProps) {
   return (
     <button
+      type="button"
       onClick={onClick}
       style={style}
       title={title}
       aria-pressed={active}
       data-tool={kind}
     >
-      {label}
+      <Icon size={13} />
+      <span>{label}</span>
     </button>
   );
 }

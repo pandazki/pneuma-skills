@@ -17,6 +17,8 @@ import { useEditorTool } from "./hooks/useEditorTool.js";
 import { useClipToolAction } from "./hooks/useClipToolAction.js";
 import { useSplitHoverSnap } from "./hooks/useSplitHoverSnap.js";
 import { ClipToolOverlay } from "./ClipToolOverlay.js";
+import { HourglassIcon, WarningIcon } from "../icons/index.js";
+import { theme } from "../theme/tokens.js";
 
 const TRACK_H = 48;
 const FRAME_H = TRACK_H - 8;
@@ -158,9 +160,11 @@ function VideoClip({
         width: Math.round(width - 1),
         height: TRACK_H - 4,
         top: 2,
-        background: selected ? "#1e1a14" : "#18181b",
-        borderRadius: 3,
-        border: selected ? "1px solid rgba(249,115,22,0.3)" : "1px solid #27272a",
+        background: selected ? theme.color.surface4 : theme.color.surface2,
+        borderRadius: theme.radius.sm,
+        border: selected
+          ? `1px solid ${theme.color.accentBorder}`
+          : `1px solid ${theme.color.borderWeak}`,
         // overflow:visible so the duplicate-tool ghost can extend beyond the clip
         overflow:
           (tool.activeTool === "duplicate" && isToolHovered) || isResizing
@@ -217,20 +221,64 @@ function VideoClip({
         </div>
       )}
       {loading && frames.length === 0 && (
-        <div style={{ padding: "0 4px", fontSize: 9, color: "#a1a1aa" }}>Loading...</div>
+        <div
+          style={{
+            padding: `0 ${theme.space.space1}px`,
+            fontFamily: theme.font.ui,
+            fontSize: theme.text.xs,
+            color: theme.color.ink3,
+            letterSpacing: theme.text.trackingWide,
+          }}
+        >
+          Loading…
+        </div>
       )}
       {status === "generating" && (
-        <span style={{ fontSize: 9, color: "#a16207", padding: "0 4px", whiteSpace: "nowrap" }}>
-          {"\u23F3"} generating
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: theme.space.space1,
+            fontFamily: theme.font.ui,
+            fontSize: theme.text.xs,
+            color: theme.color.warnInk,
+            padding: `0 ${theme.space.space1}px`,
+            whiteSpace: "nowrap",
+            letterSpacing: theme.text.trackingWide,
+          }}
+        >
+          <HourglassIcon size={10} />
+          generating
         </span>
       )}
       {status === "failed" && (
-        <span style={{ fontSize: 9, color: "#ef4444", padding: "0 4px", whiteSpace: "nowrap" }}>
-          {"\u26A0"} error
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: theme.space.space1,
+            fontFamily: theme.font.ui,
+            fontSize: theme.text.xs,
+            color: theme.color.dangerInk,
+            padding: `0 ${theme.space.space1}px`,
+            whiteSpace: "nowrap",
+            letterSpacing: theme.text.trackingWide,
+          }}
+        >
+          <WarningIcon size={10} />
+          error
         </span>
       )}
       {status === "pending" && (
-        <span style={{ fontSize: 9, color: "#3f3f46", padding: "0 4px" }}>&mdash;</span>
+        <span
+          style={{
+            padding: `0 ${theme.space.space1}px`,
+            fontSize: theme.text.xs,
+            color: theme.color.ink5,
+          }}
+        >
+          &mdash;
+        </span>
       )}
 
       {/* Resize handles — subtle, only grab area, no visible fill until hover */}
@@ -248,7 +296,7 @@ function VideoClip({
           bottom: 0,
           width: 6,
           cursor: "ew-resize",
-          background: selected ? "rgba(249,115,22,0.3)" : "transparent",
+          background: selected ? theme.color.accentSoft : "transparent",
         }}
       />
       <div
@@ -265,7 +313,7 @@ function VideoClip({
           bottom: 0,
           width: 6,
           cursor: "ew-resize",
-          background: selected ? "rgba(249,115,22,0.3)" : "transparent",
+          background: selected ? theme.color.accentSoft : "transparent",
         }}
       />
 
@@ -400,9 +448,9 @@ export function VideoTrack({
               top: 2,
               width: Math.round(ghostW),
               height: FRAME_H,
-              border: "1px dashed rgba(249,115,22,0.5)",
-              borderRadius: 3,
-              background: "rgba(249,115,22,0.04)",
+              border: `1px dashed ${theme.color.accentBorder}`,
+              borderRadius: theme.radius.sm,
+              background: theme.color.accentFaint,
               pointerEvents: "none",
             }}
           />
@@ -420,7 +468,7 @@ export function VideoTrack({
                 pixelsPerSecond -
               scrollLeft,
             width: 1,
-            background: "#f97316",
+            background: theme.color.accent,
             pointerEvents: "none",
           }}
         />

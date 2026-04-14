@@ -4,6 +4,7 @@ import { AssetGroup } from "./AssetGroup.js";
 import { AssetLightbox } from "./AssetLightbox.js";
 import { ScriptTab } from "./ScriptTab.js";
 import { useAssetActions } from "./useAssetActions.js";
+import { theme } from "../theme/tokens.js";
 
 type Tab = "assets" | "script";
 
@@ -49,42 +50,64 @@ export function AssetPanel() {
   return (
     <div
       style={{
-        width: 220,
-        minWidth: 220,
-        background: "#111113",
-        borderRight: "1px solid #27272a",
+        width: 232,
+        minWidth: 232,
+        background: theme.color.surface1,
+        borderRight: `1px solid ${theme.color.borderWeak}`,
         display: "flex",
         flexDirection: "column",
         height: "100%",
         overflow: "hidden",
+        fontFamily: theme.font.ui,
       }}
     >
-      <div style={{ display: "flex", borderBottom: "1px solid #27272a", flexShrink: 0 }}>
-        {(["assets", "script"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            style={{
-              flex: 1,
-              background: "none",
-              border: "none",
-              borderBottom:
-                tab === t ? "2px solid #f97316" : "2px solid transparent",
-              color: tab === t ? "#e4e4e7" : "#71717a",
-              fontSize: 12,
-              fontWeight: 500,
-              padding: "8px 0",
-              cursor: "pointer",
-              textTransform: "capitalize",
-            }}
-          >
-            {t === "assets" ? "Assets" : "Script"}
-          </button>
-        ))}
+      <div
+        style={{
+          display: "flex",
+          borderBottom: `1px solid ${theme.color.borderWeak}`,
+          flexShrink: 0,
+        }}
+      >
+        {(["assets", "script"] as const).map((t) => {
+          const active = tab === t;
+          return (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              aria-pressed={active}
+              style={{
+                flex: 1,
+                background: "transparent",
+                border: "none",
+                borderBottom: active
+                  ? `2px solid ${theme.color.accent}`
+                  : "2px solid transparent",
+                color: active ? theme.color.ink0 : theme.color.ink3,
+                fontFamily: theme.font.ui,
+                fontSize: theme.text.xs,
+                fontWeight: theme.text.weightSemibold,
+                letterSpacing: theme.text.trackingCaps,
+                textTransform: "uppercase",
+                padding: `${theme.space.space2}px 0`,
+                cursor: "pointer",
+                transition: `color ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
+              }}
+            >
+              {t === "assets" ? "Assets" : "Script"}
+            </button>
+          );
+        })}
       </div>
 
       {tab === "assets" ? (
-        <div style={{ padding: "8px 10px", overflowY: "auto", flex: 1 }}>
+        <div
+          style={{
+            padding: `${theme.space.space3}px ${theme.space.space3}px`,
+            overflowY: "auto",
+            flex: 1,
+          }}
+        >
           {GROUPS.map((g) => (
             <AssetGroup
               key={g.type}

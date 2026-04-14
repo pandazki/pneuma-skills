@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { Clip, Track } from "@pneuma-craft/timeline";
 import { useFrameExtractor } from "../timeline/hooks/useFrameExtractor.js";
 import { useWorkspaceAssetUrl } from "../assets/useWorkspaceAssetUrl.js";
+import { theme } from "../theme/tokens.js";
 
 interface Props {
   tracks: Track[];
@@ -13,12 +14,24 @@ interface Props {
 }
 
 export function VideoLayerContent({
-  tracks, height, pixelsPerSecond, scrollLeft, selectedClipId,
+  tracks,
+  height,
+  pixelsPerSecond,
+  scrollLeft,
+  selectedClipId,
 }: Props) {
   const frameH = height - 8;
 
   return (
-    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", padding: "0 4px" }}>
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        padding: `0 ${theme.space.space1}px`,
+      }}
+    >
       {tracks.flatMap((track) =>
         track.clips.map((clip) => {
           const x = clip.startTime * pixelsPerSecond - scrollLeft;
@@ -42,16 +55,29 @@ export function VideoLayerContent({
 }
 
 function VideoClip3D({
-  clip, x, w, frameH, pixelsPerSecond, selected,
+  clip,
+  x,
+  w,
+  frameH,
+  pixelsPerSecond,
+  selected,
 }: {
-  clip: Clip; x: number; w: number; frameH: number;
-  pixelsPerSecond: number; selected: boolean;
+  clip: Clip;
+  x: number;
+  w: number;
+  frameH: number;
+  pixelsPerSecond: number;
+  selected: boolean;
 }) {
   const videoUrl = useWorkspaceAssetUrl(clip.assetId);
   const frameInterval =
-    pixelsPerSecond >= 150 ? 0.25 :
-    pixelsPerSecond >= 60 ? 0.5 :
-    pixelsPerSecond >= 30 ? 1 : 2;
+    pixelsPerSecond >= 150
+      ? 0.25
+      : pixelsPerSecond >= 60
+        ? 0.5
+        : pixelsPerSecond >= 30
+          ? 1
+          : 2;
 
   const frameOpts = useMemo(() => {
     if (!videoUrl) return null;
@@ -66,14 +92,29 @@ function VideoClip3D({
   const { frames } = useFrameExtractor(frameOpts);
 
   return (
-    <div style={{
-      position: "absolute", left: x, width: w - 2, height: frameH,
-      borderRadius: 4, overflow: "hidden",
-      border: selected ? "1px solid rgba(249,115,22,0.4)" : "1px solid rgba(255,255,255,0.06)",
-      background: "#0a0a0a",
-    }}>
+    <div
+      style={{
+        position: "absolute",
+        left: x,
+        width: w - 2,
+        height: frameH,
+        borderRadius: theme.radius.sm,
+        overflow: "hidden",
+        border: selected
+          ? `1px solid ${theme.color.accentBorder}`
+          : `1px solid ${theme.color.borderWeak}`,
+        background: "oklch(8% 0.005 55)",
+      }}
+    >
       {frames.length > 0 ? (
-        <div style={{ display: "flex", height: "100%", alignItems: "center", overflow: "hidden" }}>
+        <div
+          style={{
+            display: "flex",
+            height: "100%",
+            alignItems: "center",
+            overflow: "hidden",
+          }}
+        >
           {(() => {
             const aspect = frames[0].width / frames[0].height;
             const naturalW = frameH * aspect;
@@ -86,17 +127,34 @@ function VideoClip3D({
             }
             const tileW = clipW / picked.length;
             return picked.map((f, i) => (
-              <img key={i} src={f.dataUrl} alt="" style={{
-                height: frameH, width: tileW, objectFit: "cover", flexShrink: 0,
-              }} />
+              <img
+                key={i}
+                src={f.dataUrl}
+                alt=""
+                style={{
+                  height: frameH,
+                  width: tileW,
+                  objectFit: "cover",
+                  flexShrink: 0,
+                }}
+              />
             ));
           })()}
         </div>
       ) : (
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          height: "100%", color: "#27272a", fontSize: 12,
-        }}>—</div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "100%",
+            color: theme.color.ink5,
+            fontFamily: theme.font.ui,
+            fontSize: theme.text.sm,
+          }}
+        >
+          —
+        </div>
       )}
     </div>
   );
