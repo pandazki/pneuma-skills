@@ -1,10 +1,12 @@
 import { useEffect } from "react";
 import {
+  useComposition,
   useDispatch,
   usePlayback,
   useSelection,
   useUndo,
 } from "@pneuma-craft/react";
+import { buildRippleDeleteCommands } from "../toolbar/rippleDelete.js";
 
 function isEditableTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -15,6 +17,7 @@ function isEditableTarget(el: EventTarget | null): boolean {
 }
 
 export function useTimelineShortcuts(): void {
+  const composition = useComposition();
   const dispatch = useDispatch();
   const playback = usePlayback();
   const selection = useSelection();
@@ -57,7 +60,22 @@ export function useTimelineShortcuts(): void {
 
       if (key === "Delete" || key === "Backspace") {
         ev.preventDefault();
-        dispatch("human", { type: "composition:remove-clip", clipId: selectedClipId });
+        if (mod && composition) {
+          const cmds = buildRippleDeleteCommands(composition, selectedClipId);
+          for (const cmd of cmds) dispatch("human", cmd);
+        } else {
+          dispatch("human", { type: "composition:remove-clip", clipId: selectedClipId });
+        }
+        return;
+      }
+
+      if (key === "d" || key === "D") {
+        if (mod) return; // Don't interfere with ⌘D bookmark
+        ev.preventDefault();
+        dispatch("human", {
+          type: "composition:duplicate-clip",
+          clipId: selectedClipId,
+        });
         return;
       }
 
@@ -74,5 +92,5 @@ export function useTimelineShortcuts(): void {
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [dispatch, playback, selection, undoState]);
+  }, [composition, dispatch, playback, selection, undoState]);
 }

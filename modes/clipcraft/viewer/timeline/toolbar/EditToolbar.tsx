@@ -7,6 +7,7 @@ import {
   useUndo,
 } from "@pneuma-craft/react";
 import { buildCollapseGapsCommands } from "./collapseGaps.js";
+import { buildRippleDeleteCommands } from "./rippleDelete.js";
 
 const btnStyle: React.CSSProperties = {
   background: "transparent",
@@ -29,6 +30,14 @@ const btnDisabled: React.CSSProperties = {
   cursor: "not-allowed",
 };
 
+const separatorStyle: React.CSSProperties = {
+  width: 1,
+  height: 16,
+  background: "#27272a",
+  margin: "0 4px",
+  flexShrink: 0,
+};
+
 export function EditToolbar() {
   const composition = useComposition();
   const playback = usePlayback();
@@ -39,8 +48,7 @@ export function EditToolbar() {
   const selectedClipId =
     selection.type === "clip" && selection.ids.length > 0 ? selection.ids[0] : null;
 
-  const canSplit = selectedClipId !== null && composition !== null;
-  const canDelete = selectedClipId !== null;
+  const canActOnClip = selectedClipId !== null;
 
   const onSplit = useCallback(() => {
     if (!selectedClipId) return;
@@ -59,45 +67,73 @@ export function EditToolbar() {
     });
   }, [dispatch, selectedClipId]);
 
+  const onDuplicate = useCallback(() => {
+    if (!selectedClipId) return;
+    dispatch("human", {
+      type: "composition:duplicate-clip",
+      clipId: selectedClipId,
+    });
+  }, [dispatch, selectedClipId]);
+
+  const onRippleDelete = useCallback(() => {
+    if (!selectedClipId || !composition) return;
+    const cmds = buildRippleDeleteCommands(composition, selectedClipId);
+    for (const cmd of cmds) dispatch("human", cmd);
+  }, [dispatch, selectedClipId, composition]);
+
   const onCollapse = useCallback(() => {
     if (!composition) return;
     const cmds = buildCollapseGapsCommands(composition);
-    for (const cmd of cmds) {
-      dispatch("human", cmd);
-    }
+    for (const cmd of cmds) dispatch("human", cmd);
   }, [dispatch, composition]);
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      {/* Edit group */}
       <button
         onClick={onSplit}
-        style={canSplit ? btnStyle : btnDisabled}
-        disabled={!canSplit}
-        title="Split selected clip at playhead (S)"
+        style={canActOnClip ? btnStyle : btnDisabled}
+        disabled={!canActOnClip}
+        title="Split at playhead (S)"
       >
         Split
       </button>
       <button
         onClick={onDelete}
-        style={canDelete ? btnStyle : btnDisabled}
-        disabled={!canDelete}
-        title="Delete selected clip (Delete)"
+        style={canActOnClip ? btnStyle : btnDisabled}
+        disabled={!canActOnClip}
+        title="Delete (Delete)"
       >
         Delete
       </button>
       <button
-        onClick={onCollapse}
-        style={btnStyle}
-        title="Pack all clips left, removing gaps"
+        onClick={onDuplicate}
+        style={canActOnClip ? btnStyle : btnDisabled}
+        disabled={!canActOnClip}
+        title="Duplicate (D)"
       >
-        Collapse Gaps
+        Duplicate
       </button>
-      <div style={{ width: 1, height: 16, background: "#27272a", margin: "0 2px" }} />
+      <button
+        onClick={onRippleDelete}
+        style={canActOnClip ? btnStyle : btnDisabled}
+        disabled={!canActOnClip}
+        title="Ripple delete — remove + close the gap (⌘⌫)"
+      >
+        Ripple Del
+      </button>
+      <button onClick={onCollapse} style={btnStyle} title="Pack all clips left, removing gaps">
+        Collapse
+      </button>
+
+      <div style={separatorStyle} />
+
+      {/* History group */}
       <button
         onClick={() => undoState.undo()}
         style={undoState.canUndo ? btnStyle : btnDisabled}
         disabled={!undoState.canUndo}
-        title="Undo (⌘/Ctrl+Z)"
+        title="Undo (⌘Z)"
       >
         Undo
       </button>
@@ -105,7 +141,7 @@ export function EditToolbar() {
         onClick={() => undoState.redo()}
         style={undoState.canRedo ? btnStyle : btnDisabled}
         disabled={!undoState.canRedo}
-        title="Redo (⌘/Ctrl+Shift+Z)"
+        title="Redo (⌘⇧Z)"
       >
         Redo
       </button>
