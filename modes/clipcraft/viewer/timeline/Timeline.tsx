@@ -28,6 +28,7 @@ import {
 import type { Actor } from "@pneuma-craft/core";
 import type { Track } from "@pneuma-craft/timeline";
 import { useTimelineShortcuts } from "./hooks/useTimelineShortcuts.js";
+import { TransportBar } from "./transport/TransportBar.js";
 import { useTimelineZoom } from "./hooks/useTimelineZoom.js";
 import { EditToolbar } from "./toolbar/EditToolbar.js";
 import { TrackLabel, LABEL_W } from "./TrackLabel.js";
@@ -137,7 +138,7 @@ export function Timeline() {
   return (
     <div
       style={{
-        padding: "4px 0 8px",
+        padding: 0,
         fontSize: 11,
         color: "#a1a1aa",
         display: "flex",
@@ -145,13 +146,15 @@ export function Timeline() {
         overflow: "hidden",
       }}
     >
+      <TransportBar />
+
       {/* Zoom controls */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           gap: 8,
-          padding: "0 12px 4px",
+          padding: "4px 12px",
           fontSize: 10,
           color: "#52525b",
         }}
@@ -171,7 +174,7 @@ export function Timeline() {
         style={{
           display: "flex",
           flexDirection: "column",
-          padding: "0 12px",
+          padding: "4px 12px 8px",
           overflow: "hidden",
           position: "relative",
         }}

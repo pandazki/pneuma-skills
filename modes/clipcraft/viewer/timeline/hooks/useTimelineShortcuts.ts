@@ -33,6 +33,23 @@ export function useTimelineShortcuts(): void {
         return;
       }
 
+      if (key === " " || key === "Spacebar") {
+        ev.preventDefault();
+        if (playback.state === "playing") playback.pause();
+        else playback.play();
+        return;
+      }
+      if (key === "Home") {
+        ev.preventDefault();
+        playback.seek(0);
+        return;
+      }
+      if (key === "End") {
+        ev.preventDefault();
+        playback.seek(Math.max(0, playback.duration ?? 0));
+        return;
+      }
+
       const selectedClipId =
         selection.type === "clip" && selection.ids.length > 0 ? selection.ids[0] : null;
 
@@ -57,5 +74,5 @@ export function useTimelineShortcuts(): void {
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [dispatch, playback.currentTime, selection, undoState]);
+  }, [dispatch, playback, selection, undoState]);
 }

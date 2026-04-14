@@ -1,5 +1,4 @@
-import { useCallback } from "react";
-import { PreviewRoot, useComposition, usePlayback } from "@pneuma-craft/react";
+import { PreviewRoot, useComposition } from "@pneuma-craft/react";
 import { CaptionOverlay } from "./CaptionOverlay.js";
 import type { CaptionStyle } from "../../persistence.js";
 
@@ -19,19 +18,10 @@ export interface VideoPreviewProps {
  */
 export function VideoPreview({ captionStyle }: VideoPreviewProps) {
   const composition = useComposition();
-  const playback = usePlayback();
 
   const aspect = composition?.settings
     ? composition.settings.width / composition.settings.height
     : 16 / 9;
-  const aspectLabel = composition?.settings?.aspectRatio ?? "16:9";
-
-  const isPlaying = playback.state === "playing";
-
-  const togglePlay = useCallback(() => {
-    if (isPlaying) playback.pause();
-    else playback.play();
-  }, [isPlaying, playback]);
 
   return (
     <div
@@ -120,40 +110,6 @@ export function VideoPreview({ captionStyle }: VideoPreviewProps) {
 
           <CaptionOverlay style={captionStyle} />
         </div>
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          padding: "8px 16px",
-          borderTop: "1px solid #27272a",
-          fontSize: 12,
-          color: "#a1a1aa",
-        }}
-      >
-        <button
-          type="button"
-          onClick={togglePlay}
-          disabled={!composition}
-          style={{
-            background: "none",
-            border: "none",
-            color: "#e4e4e7",
-            cursor: composition ? "pointer" : "not-allowed",
-            fontSize: 18,
-            padding: 0,
-            lineHeight: 1,
-          }}
-          aria-label={isPlaying ? "Pause" : "Play"}
-        >
-          {isPlaying ? "\u23F8" : "\u25B6"}
-        </button>
-        <span style={{ fontFamily: "monospace" }}>
-          {(playback.currentTime ?? 0).toFixed(1)}s / {(playback.duration ?? 0).toFixed(1)}s
-        </span>
-        <span style={{ fontSize: 11, color: "#52525b" }}>{aspectLabel}</span>
       </div>
     </div>
   );
