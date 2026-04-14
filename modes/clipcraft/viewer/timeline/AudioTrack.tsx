@@ -65,21 +65,23 @@ function AudioClip({
   const status = asset?.status ?? "ready";
   const uri = asset?.uri ?? "";
   const hasAudio = status === "ready" && !!uri && asset?.type === "audio";
+  const assetDuration =
+    (asset?.metadata as { duration?: number } | undefined)?.duration ?? null;
 
-  // Bars + maxDuration are derived from the COMMITTED clip.duration
-  // (not the preview width). Without this, every resize mousemove
-  // recomputes the waveform at a different bar count and the whole
-  // thing visibly reflows + stretches. Stable committed width = stable
-  // waveform.
-  const baseWidth = Math.max(0, clip.duration * pixelsPerSecond - 2);
+  // Waveform covers the FULL asset duration so left-edge trims
+  // reveal the correct peaks for the new inPoint. bars + maxDuration
+  // come from the asset, not the clip, to keep the rendered peaks
+  // stable across any trim.
+  const waveDuration = assetDuration ?? clip.outPoint;
+  const baseWidth = Math.max(0, waveDuration * pixelsPerSecond - 2);
   const waveOpts = useMemo(() => {
-    if (!hasAudio) return null;
+    if (!hasAudio || waveDuration <= 0) return null;
     return {
       audioUrl: contentUrl(uri),
       bars: Math.max(8, Math.round(baseWidth / 4)),
-      maxDuration: clip.duration,
+      maxDuration: waveDuration,
     };
-  }, [hasAudio, uri, baseWidth, clip.duration]);
+  }, [hasAudio, uri, baseWidth, waveDuration]);
 
   const { waveform } = useWaveform(waveOpts);
 
@@ -245,11 +247,16 @@ export function AudioTrack({
         const previewDuration = resize.displayDurationFor(clip.id) ?? clip.duration;
         const x = previewStart * pixelsPerSecond - scrollLeft;
         const w = previewDuration * pixelsPerSecond;
+        // Waveform spans the full asset. Base shift aligns asset t=0
+        // with the clip's current inPoint; resize delta (if active)
+        // keeps the waveform anchored to its absolute timeline position
+        // during a left-edge drag.
         const resizeStart = resize.displayStartFor(clip.id);
-        const waveformOffset =
+        const resizeDelta =
           resizeStart !== null
             ? (clip.startTime - resizeStart) * pixelsPerSecond
             : 0;
+        const waveformOffset = -clip.inPoint * pixelsPerSecond + resizeDelta;
         const isResizing =
           resizeStart !== null ||
           resize.displayDurationFor(clip.id) !== null;

@@ -59,6 +59,8 @@ function VideoClip({
   onResizeStart,
 }: VideoClipProps) {
   const asset = useAsset(clip.assetId);
+  const assetDuration =
+    (asset?.metadata as { duration?: number } | undefined)?.duration ?? null;
   const { summary } = useClipProvenance(clip);
   const tool = useEditorTool();
   const runToolAction = useClipToolAction();
@@ -74,15 +76,22 @@ function VideoClip({
 
   const frameInterval =
     pixelsPerSecond >= 60 ? 0.5 : pixelsPerSecond >= 30 ? 1 : 2;
+  // Extract frames across the FULL asset duration, not just clip.duration.
+  // The cache in useFrameExtractor is keyed by videoUrl so we only pay
+  // the extraction cost once per asset; trimming doesn't re-extract. The
+  // filmstrip is then positioned with a negative inPoint offset so the
+  // visible slice of the wrapper shows the actual clip range.
+  const extractDuration = assetDuration ?? clip.outPoint;
   const frameOpts = useMemo(() => {
     if (status !== "ready" || !uri || !isVideo) return null;
+    if (extractDuration <= 0) return null;
     return {
       videoUrl: contentUrl(uri),
-      duration: clip.duration,
+      duration: extractDuration,
       frameInterval,
       frameHeight: FRAME_H,
     };
-  }, [status, uri, isVideo, frameInterval, clip.duration]);
+  }, [status, uri, isVideo, frameInterval, extractDuration]);
 
   const { frames, loading } = useFrameExtractor(frameOpts);
 
@@ -324,17 +333,24 @@ export function VideoTrack({
           resize.displayStartFor(clip.id) ?? previewStart;
         const x = previewStartWithResize * pixelsPerSecond - scrollLeft;
         const w = previewDuration * pixelsPerSecond;
-        // Filmstrip offset is a RESIZE-only concern. During a drag
-        // the whole clip (wrapper + filmstrip inside) should appear
-        // to move together, so offset = 0. During a LEFT-edge
-        // resize only, the wrapper's startTime moves right and we
-        // anchor the filmstrip to the original asset position by
-        // offsetting left by the delta.
+        // Filmstrip is rendered over the FULL asset duration (extracted
+        // from 0..assetDuration via useFrameExtractor), and the wrapper's
+        // overflow:hidden crops it down to the visible [inPoint, outPoint]
+        // slice. Base offset is -clip.inPoint * pps to align the asset's
+        // t=0 with the clip's first content pixel.
+        //
+        // During a LEFT-edge resize, the wrapper moves right while the
+        // committed inPoint stays the same. We add the resize delta
+        // (negative) so the filmstrip stays visually anchored at the
+        // asset's timeline-absolute position instead of sliding with
+        // the wrapper.
         const resizeStart = resize.displayStartFor(clip.id);
-        const filmstripOffset =
+        const resizeDelta =
           resizeStart !== null
             ? (clip.startTime - resizeStart) * pixelsPerSecond
             : 0;
+        const filmstripOffset =
+          -clip.inPoint * pixelsPerSecond + resizeDelta;
         const isResizing =
           resize.displayStartFor(clip.id) !== null ||
           resize.displayDurationFor(clip.id) !== null;
