@@ -5,7 +5,7 @@
 // Plan 5.5: drag + resize interactivity.
 
 import type { Track, Clip } from "@pneuma-craft/timeline";
-import { useDispatch } from "@pneuma-craft/react";
+import { useDispatch, usePlayback } from "@pneuma-craft/react";
 import { useTrackDragEngine } from "./hooks/useTrackDragEngine.js";
 import { useClipResize } from "./hooks/useClipResize.js";
 import { useClipProvenance } from "./hooks/useClipProvenance.js";
@@ -41,6 +41,7 @@ function SubtitleClip({
   const { summary } = useClipProvenance(clip);
   const tool = useEditorTool();
   const runToolAction = useClipToolAction();
+  const playback = usePlayback();
   const inToolMode = tool.activeTool !== null;
   const isToolHovered = inToolMode && tool.hoveredClipId === clip.id;
 
@@ -62,12 +63,22 @@ function SubtitleClip({
       onMouseEnter={(e) => {
         if (!inToolMode) return;
         const rect = e.currentTarget.getBoundingClientRect();
-        tool.setHover(clip.id, e.clientX - rect.left);
+        const localX = e.clientX - rect.left;
+        tool.setHover(clip.id, localX);
+        if (tool.activeTool === "split" && pixelsPerSecond > 0) {
+          tool.beginScrubIfNeeded(playback.currentTime);
+          playback.seek(clip.startTime + localX / pixelsPerSecond);
+        }
       }}
       onMouseMove={(e) => {
         if (!inToolMode || tool.activeTool !== "split") return;
         const rect = e.currentTarget.getBoundingClientRect();
-        tool.setHover(clip.id, e.clientX - rect.left);
+        const localX = e.clientX - rect.left;
+        tool.setHover(clip.id, localX);
+        if (pixelsPerSecond > 0) {
+          tool.beginScrubIfNeeded(playback.currentTime);
+          playback.seek(clip.startTime + localX / pixelsPerSecond);
+        }
       }}
       onMouseLeave={() => {
         if (!inToolMode) return;

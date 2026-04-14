@@ -3,7 +3,7 @@
 
 import { useMemo } from "react";
 import type { Track, Clip } from "@pneuma-craft/timeline";
-import { useAsset, useDispatch } from "@pneuma-craft/react";
+import { useAsset, useDispatch, usePlayback } from "@pneuma-craft/react";
 import { useFrameExtractor } from "./hooks/useFrameExtractor.js";
 import { useTrackDragEngine } from "./hooks/useTrackDragEngine.js";
 import { useClipResize } from "./hooks/useClipResize.js";
@@ -47,6 +47,7 @@ function VideoClip({
   const { summary } = useClipProvenance(clip);
   const tool = useEditorTool();
   const runToolAction = useClipToolAction();
+  const playback = usePlayback();
   const status = asset?.status ?? "ready";
   const uri = asset?.uri ?? "";
   const isVideo = asset?.type === "video";
@@ -86,13 +87,23 @@ function VideoClip({
       onMouseEnter={(e) => {
         if (!inToolMode) return;
         const rect = e.currentTarget.getBoundingClientRect();
-        tool.setHover(clip.id, e.clientX - rect.left);
+        const localX = e.clientX - rect.left;
+        tool.setHover(clip.id, localX);
+        if (tool.activeTool === "split" && pixelsPerSecond > 0) {
+          tool.beginScrubIfNeeded(playback.currentTime);
+          playback.seek(clip.startTime + localX / pixelsPerSecond);
+        }
       }}
       onMouseMove={(e) => {
         if (!inToolMode) return;
         if (tool.activeTool !== "split") return;
         const rect = e.currentTarget.getBoundingClientRect();
-        tool.setHover(clip.id, e.clientX - rect.left);
+        const localX = e.clientX - rect.left;
+        tool.setHover(clip.id, localX);
+        if (pixelsPerSecond > 0) {
+          tool.beginScrubIfNeeded(playback.currentTime);
+          playback.seek(clip.startTime + localX / pixelsPerSecond);
+        }
       }}
       onMouseLeave={() => {
         if (!inToolMode) return;

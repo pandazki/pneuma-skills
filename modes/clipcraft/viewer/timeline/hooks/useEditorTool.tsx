@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -26,6 +27,15 @@ export interface EditorToolApi {
   setTool: (tool: ToolKind | null) => void;
   setHover: (clipId: string | null, pxFromClipStart: number | null) => void;
   cancel: () => void;
+  /**
+   * Hover-scrub baseline: the "real" playhead position before the user
+   * started moving the cursor across clips in split-tool mode. The
+   * first scrub seek captures this; restoreScrubBaseline() returns it
+   * (and clears the ref) so the timeline container's mouseleave can
+   * seek the playback engine back to where it was.
+   */
+  beginScrubIfNeeded: (currentTime: number) => void;
+  restoreScrubBaseline: () => number | null;
 }
 
 const EditorToolContext = createContext<EditorToolApi | null>(null);
@@ -41,12 +51,14 @@ export function EditorToolProvider({ children }: { children: React.ReactNode }) 
   const [activeTool, setActiveTool] = useState<ToolKind | null>(null);
   const [hoveredClipId, setHoveredClipId] = useState<string | null>(null);
   const [hoverPx, setHoverPx] = useState<number | null>(null);
+  const scrubBaselineRef = useRef<number | null>(null);
 
   const setTool = useCallback((tool: ToolKind | null) => {
     setActiveTool(tool);
     if (tool === null) {
       setHoveredClipId(null);
       setHoverPx(null);
+      scrubBaselineRef.current = null;
     }
   }, []);
 
@@ -62,6 +74,19 @@ export function EditorToolProvider({ children }: { children: React.ReactNode }) 
     setActiveTool(null);
     setHoveredClipId(null);
     setHoverPx(null);
+    scrubBaselineRef.current = null;
+  }, []);
+
+  const beginScrubIfNeeded = useCallback((currentTime: number) => {
+    if (scrubBaselineRef.current === null) {
+      scrubBaselineRef.current = currentTime;
+    }
+  }, []);
+
+  const restoreScrubBaseline = useCallback((): number | null => {
+    const t = scrubBaselineRef.current;
+    scrubBaselineRef.current = null;
+    return t;
   }, []);
 
   // Global cursor + escape handling. Body cursor avoids React reconciliation
@@ -95,8 +120,19 @@ export function EditorToolProvider({ children }: { children: React.ReactNode }) 
       setTool,
       setHover,
       cancel,
+      beginScrubIfNeeded,
+      restoreScrubBaseline,
     }),
-    [activeTool, hoveredClipId, hoverPx, setTool, setHover, cancel],
+    [
+      activeTool,
+      hoveredClipId,
+      hoverPx,
+      setTool,
+      setHover,
+      cancel,
+      beginScrubIfNeeded,
+      restoreScrubBaseline,
+    ],
   );
 
   return (

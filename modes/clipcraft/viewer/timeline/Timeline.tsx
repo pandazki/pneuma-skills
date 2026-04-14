@@ -31,6 +31,7 @@ import { useTimelineShortcuts } from "./hooks/useTimelineShortcuts.js";
 import { TransportBar } from "./transport/TransportBar.js";
 import { TimelineMinimap } from "./TimelineMinimap.js";
 import { useTimelineZoom } from "./hooks/useTimelineZoom.js";
+import { useEditorTool } from "./hooks/useEditorTool.js";
 import { EditToolbar } from "./toolbar/EditToolbar.js";
 import { TrackLabel, LABEL_W } from "./TrackLabel.js";
 import { TimeRuler } from "./TimeRuler.js";
@@ -66,6 +67,7 @@ export function Timeline() {
   const playback = usePlayback();
   const dispatch = useDispatch();
   const selection = useSelection();
+  const tool = useEditorTool();
 
   const selectedClipId =
     selection.type === "clip" && selection.ids.length > 0 ? selection.ids[0] : null;
@@ -162,6 +164,14 @@ export function Timeline() {
       {/* Timeline content */}
       <div
         ref={containerRef}
+        onMouseLeave={() => {
+          // Hover-scrub restore: when the cursor leaves the timeline area
+          // entirely (not just one clip), seek back to the playhead position
+          // we captured before the user started scrubbing in split mode.
+          if (tool.activeTool !== "split") return;
+          const baseline = tool.restoreScrubBaseline();
+          if (baseline !== null) playback.seek(baseline);
+        }}
         style={{
           display: "flex",
           flexDirection: "column",
