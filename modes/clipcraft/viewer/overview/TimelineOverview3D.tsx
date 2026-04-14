@@ -27,7 +27,12 @@ export function TimelineOverview3D({ cameraPreset }: { cameraPreset: CameraPrese
   const composition = useComposition();
   const playback = usePlayback();
   const selection = useSelection();
-  const { setTimelineMode, setDiveLayer } = useTimelineMode();
+  const {
+    setTimelineMode,
+    setDiveLayer,
+    activeLayers,
+    toggleLayer,
+  } = useTimelineMode();
 
   const selectedClipId =
     selection.type === "clip" && selection.ids.length > 0 ? selection.ids[0] : null;
@@ -41,8 +46,6 @@ export function TimelineOverview3D({ cameraPreset }: { cameraPreset: CameraPrese
   const zoom = useTimelineZoom(totalDuration, sceneRef);
   const { camera } = useOverviewCamera(cameraPreset);
 
-  const [activeLayers, setActiveLayers] = useState<Set<LayerType>>(new Set(["video"]));
-
   const disabledLayers = useMemo(() => {
     const d = new Set<LayerType>();
     for (const l of ["video", "caption", "audio"] as LayerType[]) {
@@ -50,18 +53,6 @@ export function TimelineOverview3D({ cameraPreset }: { cameraPreset: CameraPrese
     }
     return d;
   }, [tracks]);
-
-  const toggleLayer = useCallback((layer: LayerType) => {
-    setActiveLayers((prev) => {
-      const next = new Set(prev);
-      if (next.has(layer)) {
-        if (next.size > 1) next.delete(layer);
-      } else {
-        next.add(layer);
-      }
-      return next;
-    });
-  }, []);
 
   useEffect(() => {
     const el = containerRef.current;

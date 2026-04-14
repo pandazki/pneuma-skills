@@ -56,16 +56,14 @@ export function ExplodedView() {
     setDiveLayer,
     focusedLayer: storedFocus,
     setFocusedLayer,
+    activeLayers,
+    toggleLayer,
   } = useTimelineMode();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 600, height: 400 });
 
   const tracks = composition?.tracks ?? [];
-
-  const [activeLayers, setActiveLayers] = useState<Set<LayerType>>(
-    () => new Set<LayerType>(["caption", "video", "audio"]),
-  );
 
   const disabledLayers = useMemo(() => {
     const d = new Set<LayerType>();
@@ -74,18 +72,6 @@ export function ExplodedView() {
     if (tracksForLayer(tracks, "audio").length === 0) d.add("audio");
     return d;
   }, [tracks]);
-
-  const toggleLayer = useCallback((layer: LayerType) => {
-    setActiveLayers((prev) => {
-      const next = new Set(prev);
-      if (next.has(layer)) {
-        if (next.size > 1) next.delete(layer);
-      } else {
-        next.add(layer);
-      }
-      return next;
-    });
-  }, []);
 
   const orderedActive = useMemo(
     () => LAYER_ORDER.filter((l) => activeLayers.has(l)),
@@ -239,7 +225,7 @@ export function ExplodedView() {
   // show their full height above/below the focused one — they never
   // overlap with each other OR get hidden behind the focused layer's
   // opaque background.
-  const STACK_GAP = 48;
+  const STACK_GAP = 96;
   const focusedIdx = Math.max(0, orderedActive.indexOf(focusedLayer));
   const focusedH = layerHeights[focusedLayer] ?? 0;
   const focusedTop = Math.floor((sceneH - focusedH) / 2);

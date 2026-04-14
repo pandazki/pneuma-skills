@@ -41,12 +41,12 @@ export function ExplodedLayer({
       animate={{
         z: zOffset,
         y: top,
-        opacity: focused ? 1 : 0.35,
-        filter: focused ? "blur(0px)" : "blur(2.5px)",
+        opacity: focused ? 1 : 0.6,
+        filter: focused ? "blur(0px)" : "blur(1.2px)",
       }}
       transition={SPRING}
       onClick={onClick}
-      whileHover={focused ? { scale: 1.01 } : { opacity: 0.55 }}
+      whileHover={focused ? { scale: 1.01 } : { opacity: 0.85 }}
       style={{
         position: "absolute",
         left: "50%",
