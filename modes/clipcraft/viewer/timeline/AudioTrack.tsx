@@ -245,10 +245,13 @@ export function AudioTrack({
         const previewDuration = resize.displayDurationFor(clip.id) ?? clip.duration;
         const x = previewStart * pixelsPerSecond - scrollLeft;
         const w = previewDuration * pixelsPerSecond;
+        const resizeStart = resize.displayStartFor(clip.id);
         const waveformOffset =
-          (clip.startTime - previewStart) * pixelsPerSecond;
+          resizeStart !== null
+            ? (clip.startTime - resizeStart) * pixelsPerSecond
+            : 0;
         const isResizing =
-          resize.displayStartFor(clip.id) !== null ||
+          resizeStart !== null ||
           resize.displayDurationFor(clip.id) !== null;
         if (x + w < -10 || x > 4000) return null;
         return (

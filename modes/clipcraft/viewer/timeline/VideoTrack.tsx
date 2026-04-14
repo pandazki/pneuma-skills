@@ -324,14 +324,17 @@ export function VideoTrack({
           resize.displayStartFor(clip.id) ?? previewStart;
         const x = previewStartWithResize * pixelsPerSecond - scrollLeft;
         const w = previewDuration * pixelsPerSecond;
-        // During a left-edge trim, the clip's display startTime moves
-        // right but the filmstrip should keep showing the ORIGINAL
-        // asset content — not stretch to fill the shrinking wrapper.
-        // Offset = (original - preview) * pps → negative when the
-        // user is trimming from the start, so the filmstrip hangs
-        // off the left edge and gets cropped by overflow: hidden.
+        // Filmstrip offset is a RESIZE-only concern. During a drag
+        // the whole clip (wrapper + filmstrip inside) should appear
+        // to move together, so offset = 0. During a LEFT-edge
+        // resize only, the wrapper's startTime moves right and we
+        // anchor the filmstrip to the original asset position by
+        // offsetting left by the delta.
+        const resizeStart = resize.displayStartFor(clip.id);
         const filmstripOffset =
-          (clip.startTime - previewStartWithResize) * pixelsPerSecond;
+          resizeStart !== null
+            ? (clip.startTime - resizeStart) * pixelsPerSecond
+            : 0;
         const isResizing =
           resize.displayStartFor(clip.id) !== null ||
           resize.displayDurationFor(clip.id) !== null;
