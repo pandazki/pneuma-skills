@@ -32,6 +32,10 @@ interface VideoClipProps {
    *  shift left by the delta so it still shows the ORIGINAL content
    *  range cropped by the wrapper's overflow:hidden — no stretching. */
   filmstripOffsetPx: number;
+  /** True while the user is actively dragging a resize handle. Used
+   *  to render the asset-full-length ghost outline and to relax
+   *  overflow so the ghost can extend beyond the clip rect. */
+  isResizing: boolean;
   onSelect: (clipId: string) => void;
   onDragStart: (clipId: string, mouseX: number) => void;
   onResizeStart: (clipId: string, edge: "left" | "right", mouseX: number) => void;
@@ -45,11 +49,14 @@ function VideoClip({
   dragging,
   pixelsPerSecond,
   filmstripOffsetPx,
+  isResizing,
   onSelect,
   onDragStart,
   onResizeStart,
 }: VideoClipProps) {
   const asset = useAsset(clip.assetId);
+  const assetDuration =
+    (asset?.metadata as { duration?: number } | undefined)?.duration ?? null;
   const { summary } = useClipProvenance(clip);
   const tool = useEditorTool();
   const runToolAction = useClipToolAction();
@@ -144,7 +151,10 @@ function VideoClip({
         borderRadius: 3,
         border: selected ? "1px solid rgba(249,115,22,0.3)" : "1px solid #27272a",
         // overflow:visible so the duplicate-tool ghost can extend beyond the clip
-        overflow: tool.activeTool === "duplicate" && isToolHovered ? "visible" : "hidden",
+        overflow:
+          (tool.activeTool === "duplicate" && isToolHovered) || isResizing
+            ? "visible"
+            : "hidden",
         display: "flex",
         alignItems: "center",
         boxSizing: "border-box",
@@ -152,6 +162,25 @@ function VideoClip({
         opacity: dragging ? 0.85 : 1,
       }}
     >
+      {/* Asset-full ghost outline during resize — shows how much
+          content is available vs the current trim. Positioned in
+          timeline coords: left=-inPoint*pps means "starts where the
+          asset's t=0 would be". */}
+      {isResizing && assetDuration && assetDuration > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            left: -clip.inPoint * pixelsPerSecond,
+            top: 2,
+            width: assetDuration * pixelsPerSecond - 2,
+            height: FRAME_H,
+            border: "1px dashed rgba(249,115,22,0.45)",
+            borderRadius: 3,
+            background: "rgba(249,115,22,0.05)",
+            pointerEvents: "none",
+          }}
+        />
+      )}
       {frames.length > 0 && (
         <div
           style={{
@@ -319,6 +348,9 @@ export function VideoTrack({
         // off the left edge and gets cropped by overflow: hidden.
         const filmstripOffset =
           (clip.startTime - previewStartWithResize) * pixelsPerSecond;
+        const isResizing =
+          resize.displayStartFor(clip.id) !== null ||
+          resize.displayDurationFor(clip.id) !== null;
         if (x + w < -10 || x > 4000) return null;
         return (
           <VideoClip
@@ -330,6 +362,7 @@ export function VideoTrack({
             dragging={drag.dragState?.clipId === clip.id}
             pixelsPerSecond={pixelsPerSecond}
             filmstripOffsetPx={filmstripOffset}
+            isResizing={isResizing}
             onSelect={onSelect}
             onDragStart={drag.handleDragStart}
             onResizeStart={resize.handleResizeStart}

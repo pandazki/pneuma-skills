@@ -29,6 +29,8 @@ interface AudioClipProps {
   selected: boolean;
   dragging: boolean;
   pixelsPerSecond: number;
+  waveformOffsetPx: number;
+  isResizing: boolean;
   onSelect: (clipId: string) => void;
   onDragStart: (clipId: string, mouseX: number) => void;
   onResizeStart: (clipId: string, edge: "left" | "right", mouseX: number) => void;
@@ -41,6 +43,8 @@ function AudioClip({
   selected,
   dragging,
   pixelsPerSecond,
+  waveformOffsetPx,
+  isResizing,
   onSelect,
   onDragStart,
   onResizeStart,
@@ -56,15 +60,23 @@ function AudioClip({
   const status = asset?.status ?? "ready";
   const uri = asset?.uri ?? "";
   const hasAudio = status === "ready" && !!uri && asset?.type === "audio";
+  const assetDuration =
+    (asset?.metadata as { duration?: number } | undefined)?.duration ?? null;
 
+  // Bars + maxDuration are derived from the COMMITTED clip.duration
+  // (not the preview width). Without this, every resize mousemove
+  // recomputes the waveform at a different bar count and the whole
+  // thing visibly reflows + stretches. Stable committed width = stable
+  // waveform.
+  const baseWidth = Math.max(0, clip.duration * pixelsPerSecond - 2);
   const waveOpts = useMemo(() => {
     if (!hasAudio) return null;
     return {
       audioUrl: contentUrl(uri),
-      bars: Math.max(8, Math.round(width / 4)),
+      bars: Math.max(8, Math.round(baseWidth / 4)),
       maxDuration: clip.duration,
     };
-  }, [hasAudio, uri, width, clip.duration]);
+  }, [hasAudio, uri, baseWidth, clip.duration]);
 
   const { waveform } = useWaveform(waveOpts);
 
@@ -122,7 +134,10 @@ function AudioClip({
         background: selected ? "#1a1e2a" : "#18181b",
         borderRadius: 3,
         border: selected ? "1px solid rgba(249,115,22,0.3)" : "1px solid #27272a",
-        overflow: tool.activeTool === "duplicate" && isToolHovered ? "visible" : "hidden",
+        overflow:
+          (tool.activeTool === "duplicate" && isToolHovered) || isResizing
+            ? "visible"
+            : "hidden",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -131,8 +146,41 @@ function AudioClip({
         opacity: dragging ? 0.85 : 1,
       }}
     >
+      {/* Asset-full ghost: during a resize, render a faint outline
+          of the WHOLE asset so the user can see how much total
+          content is available vs the current trim. Positioned
+          relative to clip.startTime in timeline coords. */}
+      {isResizing && assetDuration && assetDuration > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            top: 2,
+            left: -clip.inPoint * pixelsPerSecond,
+            width: assetDuration * pixelsPerSecond - 2,
+            height: BAR_H,
+            border: "1px dashed rgba(56,189,248,0.35)",
+            borderRadius: 3,
+            background: "rgba(56,189,248,0.06)",
+            pointerEvents: "none",
+          }}
+        />
+      )}
       {waveform ? (
-        <WaveformBars peaks={waveform.peaks} height={BAR_H} color={selected ? "#38bdf8" : "#1e3a5f"} />
+        <div
+          style={{
+            position: "absolute",
+            top: (TRACK_H - BAR_H) / 2 - 2,
+            left: waveformOffsetPx,
+            width: baseWidth,
+            height: BAR_H,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+          }}
+        >
+          <WaveformBars peaks={waveform.peaks} height={BAR_H} color={selected ? "#38bdf8" : "#1e3a5f"} />
+        </div>
       ) : hasAudio ? (
         <div style={{ fontSize: 9, color: "#38bdf8", opacity: 0.5 }}>loading...</div>
       ) : null}
@@ -212,6 +260,11 @@ export function AudioTrack({
         const previewDuration = resize.displayDurationFor(clip.id) ?? clip.duration;
         const x = previewStart * pixelsPerSecond - scrollLeft;
         const w = previewDuration * pixelsPerSecond;
+        const waveformOffset =
+          (clip.startTime - previewStart) * pixelsPerSecond;
+        const isResizing =
+          resize.displayStartFor(clip.id) !== null ||
+          resize.displayDurationFor(clip.id) !== null;
         if (x + w < -10 || x > 4000) return null;
         return (
           <AudioClip
@@ -222,6 +275,8 @@ export function AudioTrack({
             selected={clip.id === selectedClipId}
             dragging={drag.dragState?.clipId === clip.id}
             pixelsPerSecond={pixelsPerSecond}
+            waveformOffsetPx={waveformOffset}
+            isResizing={isResizing}
             onSelect={onSelect}
             onDragStart={drag.handleDragStart}
             onResizeStart={resize.handleResizeStart}
