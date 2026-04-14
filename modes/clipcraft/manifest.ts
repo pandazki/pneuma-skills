@@ -45,7 +45,10 @@ You are running inside **Pneuma**, a co-creation workspace. This is **ClipCraft 
     contentCheckPattern: "project.json",
     seedFiles: {
       "modes/clipcraft/seed/project.json": "project.json",
-      "modes/clipcraft/seed/assets/sample.mp4": "assets/sample.mp4",
+      "modes/clipcraft/seed/assets/clips/panda-sad-v1.mp4": "assets/clips/panda-sad-v1.mp4",
+      "modes/clipcraft/seed/assets/clips/panda-sad-v2.mp4": "assets/clips/panda-sad-v2.mp4",
+      "modes/clipcraft/seed/assets/clips/panda-bamboo.mp4": "assets/clips/panda-bamboo.mp4",
+      "modes/clipcraft/seed/assets/bgm/token-meme.mp3": "assets/bgm/token-meme.mp3",
     },
   },
 

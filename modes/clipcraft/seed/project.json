@@ -1,6 +1,6 @@
 {
   "$schema": "pneuma-craft/project/v1",
-  "title": "Untitled",
+  "title": "Panda · 别跟我说话",
   "composition": {
     "settings": {
       "width": 1920,
@@ -19,12 +19,68 @@
         "visible": true,
         "clips": [
           {
-            "id": "clip-1",
-            "assetId": "seed-asset-sample",
+            "id": "clip-panda-sad",
+            "assetId": "asset-panda-sad-v2",
             "startTime": 0,
-            "duration": 5,
+            "duration": 4,
             "inPoint": 0,
-            "outPoint": 5
+            "outPoint": 4
+          },
+          {
+            "id": "clip-panda-bamboo",
+            "assetId": "asset-panda-bamboo",
+            "startTime": 4,
+            "duration": 4,
+            "inPoint": 0,
+            "outPoint": 4
+          }
+        ]
+      },
+      {
+        "id": "track-subtitle-1",
+        "type": "subtitle",
+        "name": "Captions",
+        "muted": false,
+        "volume": 1,
+        "locked": false,
+        "visible": true,
+        "clips": [
+          {
+            "id": "clip-caption-1",
+            "assetId": "asset-caption-stub",
+            "startTime": 0.5,
+            "duration": 3.5,
+            "inPoint": 0,
+            "outPoint": 3.5,
+            "text": "别跟我说话！"
+          },
+          {
+            "id": "clip-caption-2",
+            "assetId": "asset-caption-stub",
+            "startTime": 4.5,
+            "duration": 3.5,
+            "inPoint": 0,
+            "outPoint": 3.5,
+            "text": "……除非你带了竹子 🎋"
+          }
+        ]
+      },
+      {
+        "id": "track-audio-bgm",
+        "type": "audio",
+        "name": "BGM",
+        "muted": false,
+        "volume": 0.6,
+        "locked": false,
+        "visible": true,
+        "clips": [
+          {
+            "id": "clip-bgm",
+            "assetId": "asset-bgm-token-meme",
+            "startTime": 0,
+            "duration": 8,
+            "inPoint": 0,
+            "outPoint": 8
           }
         ]
       }
@@ -33,60 +89,144 @@
   },
   "assets": [
     {
-      "id": "seed-asset-sample",
+      "id": "asset-panda-sad-v1",
       "type": "video",
-      "uri": "assets/sample.mp4",
-      "name": "Sample Clip",
+      "uri": "assets/clips/panda-sad-v1.mp4",
+      "name": "Panda Sad · v1",
       "metadata": {
-        "width": 320,
-        "height": 180,
-        "duration": 5,
-        "fps": 15,
+        "width": 640,
+        "height": 360,
+        "duration": 4,
+        "fps": 24,
         "codec": "h264"
       },
-      "createdAt": 1712934000000,
-      "tags": [
-        "seed-example"
-      ]
+      "createdAt": 1712930000000,
+      "tags": ["panda", "sad", "variant-source"]
     },
     {
-      "id": "seed-asset-pending",
-      "type": "image",
+      "id": "asset-panda-sad-v2",
+      "type": "video",
+      "uri": "assets/clips/panda-sad-v2.mp4",
+      "name": "Panda Sad · v2 (refined)",
+      "metadata": {
+        "width": 640,
+        "height": 360,
+        "duration": 4,
+        "fps": 24,
+        "codec": "h264"
+      },
+      "createdAt": 1712930200000,
+      "tags": ["panda", "sad", "selected"]
+    },
+    {
+      "id": "asset-panda-bamboo",
+      "type": "video",
+      "uri": "assets/clips/panda-bamboo.mp4",
+      "name": "Panda Bamboo Reveal",
+      "metadata": {
+        "width": 640,
+        "height": 360,
+        "duration": 4,
+        "fps": 24,
+        "codec": "h264"
+      },
+      "createdAt": 1712930400000,
+      "tags": ["panda", "bamboo"]
+    },
+    {
+      "id": "asset-bgm-token-meme",
+      "type": "audio",
+      "uri": "assets/bgm/token-meme.mp3",
+      "name": "Token Meme BGM",
+      "metadata": {
+        "duration": 8,
+        "sampleRate": 44100,
+        "channels": 2,
+        "codec": "mp3"
+      },
+      "createdAt": 1712930600000,
+      "tags": ["bgm", "comedic"]
+    },
+    {
+      "id": "asset-caption-stub",
+      "type": "text",
       "uri": "",
-      "name": "opening-shot (pending generation)",
+      "name": "Caption text holder",
       "metadata": {},
-      "createdAt": 1712934000000,
-      "status": "pending",
-      "tags": [
-        "seed-example"
-      ]
+      "createdAt": 1712930000000,
+      "tags": ["caption-stub"]
     }
   ],
   "provenance": [
     {
-      "toAssetId": "seed-asset-sample",
-      "fromAssetId": null,
-      "operation": {
-        "type": "import",
-        "actor": "human",
-        "timestamp": 1712934000000,
-        "label": "bundled seed image"
-      }
-    },
-    {
-      "toAssetId": "seed-asset-pending",
+      "toAssetId": "asset-panda-sad-v1",
       "fromAssetId": null,
       "operation": {
         "type": "generate",
         "actor": "agent",
-        "agentId": "clipcraft-imagegen",
-        "timestamp": 1712934000000,
-        "label": "placeholder seed asset — replace with real prompt",
+        "agentId": "clipcraft-videogen",
+        "timestamp": 1712930000000,
+        "label": "first take",
         "params": {
-          "model": "flux-pro-1.1",
-          "prompt": "wide shot of a foggy forest at dawn",
-          "seed": 42
+          "model": "veo3.1",
+          "prompt": "A cute giant panda sitting with its back to the camera, leaning sadly against a tree trunk in a zoo enclosure. The panda slowly droops its head down dramatically, shoulders slumping in an exaggerated sad pose. Cute and funny, warm natural lighting, medium shot, slow cinematic camera push-in.",
+          "seed": 7
         }
+      }
+    },
+    {
+      "toAssetId": "asset-panda-sad-v2",
+      "fromAssetId": "asset-panda-sad-v1",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "agentId": "clipcraft-videogen",
+        "timestamp": 1712930200000,
+        "label": "regenerate with stronger droop",
+        "params": {
+          "model": "veo3.1",
+          "prompt": "Same panda from behind, but emphasize a slower, more exaggerated head droop. Make the shoulders sag visibly. Keep camera + lighting identical.",
+          "seed": 11
+        }
+      }
+    },
+    {
+      "toAssetId": "asset-panda-bamboo",
+      "fromAssetId": null,
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "agentId": "clipcraft-videogen",
+        "timestamp": 1712930400000,
+        "label": "punchline reveal",
+        "params": {
+          "model": "veo3.1",
+          "prompt": "A cute giant panda suddenly turns around towards the camera with its mouth completely stuffed full of bamboo leaves, cheeks puffed out like a hamster, looking hilariously innocent and guilty. Zoo enclosure with tree trunk and stone ground. Warm natural lighting, medium close-up shot, comedic and adorable moment.",
+          "seed": 19
+        }
+      }
+    },
+    {
+      "toAssetId": "asset-bgm-token-meme",
+      "fromAssetId": null,
+      "operation": {
+        "type": "import",
+        "actor": "human",
+        "timestamp": 1712930600000,
+        "label": "bundled bgm — token-meme.mp3",
+        "params": {
+          "filename": "token-meme.mp3"
+        }
+      }
+    },
+    {
+      "toAssetId": "asset-caption-stub",
+      "fromAssetId": null,
+      "operation": {
+        "type": "import",
+        "actor": "human",
+        "timestamp": 1712930000000,
+        "label": "caption text holder"
       }
     }
   ],
@@ -94,18 +234,26 @@
     {
       "id": "scene-1",
       "order": 0,
-      "title": "Opening",
-      "prompt": "Establishing shot of the forest",
-      "memberClipIds": ["clip-1"],
-      "memberAssetIds": ["seed-asset-sample"]
+      "title": "Sad Panda",
+      "prompt": "Establishing shot — panda being dramatically sad",
+      "memberClipIds": ["clip-panda-sad", "clip-caption-1"],
+      "memberAssetIds": ["asset-panda-sad-v2"]
     },
     {
       "id": "scene-2",
       "order": 1,
-      "title": "Discovery",
-      "prompt": "Reveal the hidden structure",
-      "memberClipIds": [],
-      "memberAssetIds": ["seed-asset-pending"]
+      "title": "Bamboo Punchline",
+      "prompt": "Reveal — panda turns around with bamboo in mouth",
+      "memberClipIds": ["clip-panda-bamboo", "clip-caption-2"],
+      "memberAssetIds": ["asset-panda-bamboo"]
     }
-  ]
+  ],
+  "captionStyle": {
+    "fontSize": 28,
+    "color": "#ffffff",
+    "background": "rgba(0,0,0,0.7)",
+    "bottomPercent": 0.1,
+    "fontWeight": 600,
+    "maxWidthPercent": 0.85
+  }
 }

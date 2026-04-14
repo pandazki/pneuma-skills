@@ -145,37 +145,44 @@ describe("full-stack hydration", () => {
     const coreState = core.getCoreState();
     const composition = core.getComposition();
 
-    // Plan 4: the seed ships a real playable video asset
-    // (seed-asset-sample) plus the original pending placeholder
-    // (seed-asset-pending) for the AIGC narrative. The sample is a
-    // ~44KB MP4 (320×180 @ 15fps, 5s) — upstream's mediabunny decoder
-    // needs a proper video container, not a plain image.
-    expect(coreState.registry.has("seed-asset-sample")).toBe(true);
-    expect(coreState.registry.get("seed-asset-sample")!.type).toBe("video");
-    expect(coreState.registry.get("seed-asset-sample")!.uri).toBe("assets/sample.mp4");
+    // The Panda demo seed ships three real veo3.1-generated videos, a BGM
+    // track, and a text-asset stub for captions. Two panda variants
+    // (v1 / v2) demonstrate the variant switcher; v2 is the active take.
+    expect(coreState.registry.has("asset-panda-sad-v1")).toBe(true);
+    expect(coreState.registry.has("asset-panda-sad-v2")).toBe(true);
+    expect(coreState.registry.has("asset-panda-bamboo")).toBe(true);
+    expect(coreState.registry.has("asset-bgm-token-meme")).toBe(true);
+    expect(coreState.registry.has("asset-caption-stub")).toBe(true);
 
-    expect(coreState.registry.has("seed-asset-pending")).toBe(true);
-    expect(coreState.registry.get("seed-asset-pending")!.status).toBe("pending");
+    expect(coreState.registry.get("asset-panda-sad-v2")!.type).toBe("video");
+    expect(coreState.registry.get("asset-panda-sad-v2")!.uri).toBe(
+      "assets/clips/panda-sad-v2.mp4",
+    );
+    expect(coreState.registry.get("asset-bgm-token-meme")!.type).toBe("audio");
 
-    // Both assets have provenance root edges
-    expect(coreState.provenance.nodes.has("seed-asset-sample")).toBe(true);
-    expect(coreState.provenance.nodes.has("seed-asset-pending")).toBe(true);
-    expect(coreState.provenance.edges.size).toBe(2);
+    // Provenance: 5 edges (3 panda + bgm + caption stub). The v2 panda
+    // is derived from v1 — a real AIGC variant relationship.
+    expect(coreState.provenance.edges.size).toBe(5);
+    const v2Node = coreState.provenance.nodes.get("asset-panda-sad-v2");
+    expect(v2Node!.parentIds).toEqual(["asset-panda-sad-v1"]);
+    expect(v2Node!.rootOperation.type).toBe("derive");
 
-    // The seed has a single video track with one clip referencing the
-    // playable sample asset over [0, 5)s — this is what gives the
-    // PlaybackEngine a non-zero-duration composition on first mount.
+    // Composition has three tracks: video, subtitle, audio.
     expect(composition).not.toBeNull();
-    expect(composition!.tracks).toHaveLength(1);
-    const track = composition!.tracks[0];
-    expect(track.id).toBe("track-video-1");
-    expect(track.type).toBe("video");
-    expect(track.clips).toHaveLength(1);
-    const clip = track.clips[0];
-    expect(clip.id).toBe("clip-1");
-    expect(clip.assetId).toBe("seed-asset-sample");
-    expect(clip.startTime).toBe(0);
-    expect(clip.duration).toBe(5);
+    expect(composition!.tracks).toHaveLength(3);
+    const videoTrack = composition!.tracks.find((t) => t.type === "video")!;
+    const subtitleTrack = composition!.tracks.find((t) => t.type === "subtitle")!;
+    const audioTrack = composition!.tracks.find((t) => t.type === "audio")!;
+    expect(videoTrack.clips).toHaveLength(2);
+    expect(subtitleTrack.clips).toHaveLength(2);
+    expect(audioTrack.clips).toHaveLength(1);
+    // Video clip 1 references the v2 variant (the selected take).
+    expect(videoTrack.clips[0].assetId).toBe("asset-panda-sad-v2");
+    expect(videoTrack.clips[0].startTime).toBe(0);
+    expect(videoTrack.clips[0].duration).toBe(4);
+    // Subtitle clips carry the Chinese caption text inline.
+    expect(subtitleTrack.clips[0].text).toBe("别跟我说话！");
+    expect(subtitleTrack.clips[1].text).toBe("……除非你带了竹子 🎋");
   });
 
   it("rejects a duplicate hydration attempt by throwing in dispatch", () => {
