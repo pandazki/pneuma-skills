@@ -3,14 +3,15 @@
  *
  * Ported from `modes/clipcraft-legacy/viewer/timeline/hooks/useTimelineZoom.ts`.
  *
- * Port rationale: the legacy hook read/wrote `timelineZoom` through the
- * ClipCraft reducer so the collapsed timeline and 3D overview could share
- * state. In the @pneuma-craft port we don't have that reducer — zoom and
- * scroll are UI-only, don't need to survive reload, and match every other
- * editor in the runtime. So we replace the reducer with plain `useState`.
- * Math, clamps, wheel + ResizeObserver behavior are otherwise identical.
+ * pixelsPerSecond + scrollLeft are kept in a mode-local React context
+ * (`TimelineZoomProvider` in `viewer/hooks/useTimelineZoomShared.tsx`)
+ * so the collapsed `Timeline` and the expanded `TimelineOverview3D`
+ * share zoom state — zoom in once, the 3D overview reflects it on
+ * expand. viewportWidth stays local because each container has its
+ * own rendered width and ResizeObserver.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSharedZoom } from "../../hooks/useTimelineZoomShared.js";
 
 export interface TimelineZoom {
   pixelsPerSecond: number;
@@ -38,8 +39,29 @@ export function useTimelineZoom(
   duration: number,
   containerRef: React.RefObject<HTMLElement | null>,
 ): TimelineZoom {
-  const [pixelsPerSecond, setPixelsPerSecond] = useState(0);
-  const [scrollLeft, setScrollLeft] = useState(0);
+  const { zoom: shared, setZoom: setShared } = useSharedZoom();
+  const pixelsPerSecond = shared.pixelsPerSecond;
+  const scrollLeft = shared.scrollLeft;
+  const setPixelsPerSecond = useCallback(
+    (next: number | ((prev: number) => number)) => {
+      setShared((prev) => ({
+        ...prev,
+        pixelsPerSecond:
+          typeof next === "function" ? (next as (p: number) => number)(prev.pixelsPerSecond) : next,
+      }));
+    },
+    [setShared],
+  );
+  const setScrollLeft = useCallback(
+    (next: number | ((prev: number) => number)) => {
+      setShared((prev) => ({
+        ...prev,
+        scrollLeft:
+          typeof next === "function" ? (next as (p: number) => number)(prev.scrollLeft) : next,
+      }));
+    },
+    [setShared],
+  );
   const [viewportWidth, setViewportWidth] = useState(0);
 
   const dur = Math.max(duration, 0.1);
@@ -54,8 +76,16 @@ export function useTimelineZoom(
   const scrollMin = -(viewportWidth / 4);
   const scrollMax = contentWidth - (viewportWidth * 3) / 4;
 
-  // Observe container width + auto-fit once per mount (re-fit when duration changes)
+  // Observe container width. Auto-fit only fires for the FIRST consumer
+  // to attach (shared pps still 0). Subsequent consumers (e.g. the 3D
+  // overview opening on top of the already-fit collapsed Timeline)
+  // must NOT auto-fit, otherwise they'd stomp the shared zoom that
+  // the user already adjusted on the timeline.
   const didAutoFitRef = useRef(false);
+  // Read latest pps via ref so the observer callback doesn't re-bind
+  // every time the user zooms.
+  const ppsRef = useRef(pixelsPerSecond);
+  ppsRef.current = pixelsPerSecond;
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -63,8 +93,16 @@ export function useTimelineZoom(
     const obs = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width ?? 0;
       setViewportWidth(w);
-      // Auto-fit only once — zoom changes must not tear down the observer
-      if (!didAutoFitRef.current && dur > 0 && w > 0) {
+      // Skip auto-fit if shared pps is already set OR if we already auto-fit on this consumer
+      if (didAutoFitRef.current) return;
+      if (ppsRef.current > 0) {
+        // Some other consumer (or a manual zoom) already established the
+        // shared pps. Mark this consumer as "already fit" so we never try
+        // again, but inherit the existing value.
+        didAutoFitRef.current = true;
+        return;
+      }
+      if (dur > 0 && w > 0) {
         const fitMinPPS = Math.max(ABSOLUTE_MIN_PPS, (w * 0.5) / dur);
         const fitPPS = Math.max(fitMinPPS, Math.min(ABSOLUTE_MAX_PPS, w / dur));
         setPixelsPerSecond(fitPPS);

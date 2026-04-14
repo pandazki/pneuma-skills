@@ -12,7 +12,11 @@ interface ZoomContextValue {
 
 const ZoomContext = createContext<ZoomContextValue | null>(null);
 
-const INITIAL: SharedZoomState = { pixelsPerSecond: 60, scrollLeft: 0 };
+// Initial pixelsPerSecond=0 is the "uninitialized" sentinel — the first
+// useTimelineZoom call to attach to a real container will auto-fit to
+// its viewport width and write the result back into shared state.
+// Subsequent consumers (Timeline → TimelineOverview3D, etc.) inherit it.
+const INITIAL: SharedZoomState = { pixelsPerSecond: 0, scrollLeft: 0 };
 
 export function TimelineZoomProvider({ children }: { children: React.ReactNode }) {
   const [zoom, setZoomState] = useState<SharedZoomState>(INITIAL);
