@@ -1,12 +1,13 @@
 // Ported from modes/clipcraft-legacy/viewer/timeline/AudioTrack.tsx.
-// Visual language verbatim; data source swapped from `scenes` + reducer to
-// craft `Track.clips` + `useAsset(clip.assetId)`.
+// Plan 5.5: drag + resize interactivity.
 
 import { useMemo } from "react";
 import type { Track, Clip } from "@pneuma-craft/timeline";
-import { useAsset } from "@pneuma-craft/react";
+import { useAsset, useDispatch } from "@pneuma-craft/react";
 import { WaveformBars } from "./WaveformBars.js";
 import { useWaveform } from "./hooks/useWaveform.js";
+import { useTrackDragEngine } from "./hooks/useTrackDragEngine.js";
+import { useClipResize } from "./hooks/useClipResize.js";
 
 const TRACK_H = 32;
 const BAR_H = TRACK_H - 12;
@@ -21,10 +22,22 @@ interface AudioClipProps {
   x: number;
   width: number;
   selected: boolean;
+  dragging: boolean;
   onSelect: (clipId: string) => void;
+  onDragStart: (clipId: string, mouseX: number) => void;
+  onResizeStart: (clipId: string, edge: "left" | "right", mouseX: number) => void;
 }
 
-function AudioClip({ clip, x, width, selected, onSelect }: AudioClipProps) {
+function AudioClip({
+  clip,
+  x,
+  width,
+  selected,
+  dragging,
+  onSelect,
+  onDragStart,
+  onResizeStart,
+}: AudioClipProps) {
   const asset = useAsset(clip.assetId);
   const status = asset?.status ?? "ready";
   const uri = asset?.uri ?? "";
@@ -43,9 +56,12 @@ function AudioClip({ clip, x, width, selected, onSelect }: AudioClipProps) {
 
   return (
     <div
-      onClick={(e) => {
+      onMouseDown={(e) => {
+        if (e.button !== 0 || e.altKey) return;
+        e.preventDefault();
         e.stopPropagation();
         onSelect(clip.id);
+        onDragStart(clip.id, e.clientX);
       }}
       style={{
         position: "absolute",
@@ -61,7 +77,8 @@ function AudioClip({ clip, x, width, selected, onSelect }: AudioClipProps) {
         alignItems: "center",
         justifyContent: "center",
         boxSizing: "border-box",
-        cursor: "pointer",
+        cursor: dragging ? "grabbing" : "grab",
+        opacity: dragging ? 0.85 : 1,
       }}
     >
       {waveform ? (
@@ -69,6 +86,40 @@ function AudioClip({ clip, x, width, selected, onSelect }: AudioClipProps) {
       ) : hasAudio ? (
         <div style={{ fontSize: 9, color: "#38bdf8", opacity: 0.5 }}>loading...</div>
       ) : null}
+      <div
+        onMouseDown={(e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onResizeStart(clip.id, "left", e.clientX);
+        }}
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 6,
+          cursor: "ew-resize",
+          background: selected ? "rgba(249,115,22,0.3)" : "transparent",
+        }}
+      />
+      <div
+        onMouseDown={(e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onResizeStart(clip.id, "right", e.clientX);
+        }}
+        style={{
+          position: "absolute",
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 6,
+          cursor: "ew-resize",
+          background: selected ? "rgba(249,115,22,0.3)" : "transparent",
+        }}
+      />
     </div>
   );
 }
@@ -81,12 +132,27 @@ interface Props {
   onSelect: (clipId: string) => void;
 }
 
-export function AudioTrack({ track, selectedClipId, pixelsPerSecond, scrollLeft, onSelect }: Props) {
+export function AudioTrack({
+  track,
+  selectedClipId,
+  pixelsPerSecond,
+  scrollLeft,
+  onSelect,
+}: Props) {
+  const dispatch = useDispatch();
+  const drag = useTrackDragEngine(track, pixelsPerSecond, dispatch);
+  const resize = useClipResize(track, pixelsPerSecond, dispatch);
+
   return (
     <div style={{ position: "relative", height: TRACK_H, overflow: "hidden" }}>
       {track.clips.map((clip) => {
-        const x = clip.startTime * pixelsPerSecond - scrollLeft;
-        const w = clip.duration * pixelsPerSecond;
+        const previewStart =
+          resize.displayStartFor(clip.id) ??
+          drag.displayStartFor(clip.id) ??
+          clip.startTime;
+        const previewDuration = resize.displayDurationFor(clip.id) ?? clip.duration;
+        const x = previewStart * pixelsPerSecond - scrollLeft;
+        const w = previewDuration * pixelsPerSecond;
         if (x + w < -10 || x > 4000) return null;
         return (
           <AudioClip
@@ -95,10 +161,26 @@ export function AudioTrack({ track, selectedClipId, pixelsPerSecond, scrollLeft,
             x={x}
             width={w}
             selected={clip.id === selectedClipId}
+            dragging={drag.dragState?.clipId === clip.id}
             onSelect={onSelect}
+            onDragStart={drag.handleDragStart}
+            onResizeStart={resize.handleResizeStart}
           />
         );
       })}
+      {drag.dragState?.snapTime != null && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: drag.dragState.snapTime * pixelsPerSecond - scrollLeft,
+            width: 1,
+            background: "#f97316",
+            pointerEvents: "none",
+          }}
+        />
+      )}
     </div>
   );
 }
