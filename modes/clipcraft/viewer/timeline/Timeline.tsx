@@ -32,6 +32,7 @@ import { TransportBar } from "./transport/TransportBar.js";
 import { TimelineMinimap } from "./TimelineMinimap.js";
 import { useTimelineZoom } from "./hooks/useTimelineZoom.js";
 import { useEditorTool } from "./hooks/useEditorTool.js";
+import { useTrackReorder } from "./hooks/useTrackReorder.js";
 import { EditToolbar } from "./toolbar/EditToolbar.js";
 import { AddTrackButton } from "./toolbar/AddTrackButton.js";
 import { TrackLabel, LABEL_W } from "./TrackLabel.js";
@@ -82,6 +83,7 @@ export function Timeline() {
   );
 
   const zoom = useTimelineZoom(dur, containerRef);
+  const reorder = useTrackReorder(composition);
 
   const handleSeek = useCallback(
     (time: number) => {
@@ -258,12 +260,36 @@ export function Timeline() {
           <div>
             {composition.tracks.map((track, i) => {
               const isLast = i === composition.tracks.length - 1;
+              const rowHandlers = reorder.rowHandlers(track);
+              const isDragSource = reorder.state.draggedRowId === track.id;
+              const showInsertAbove =
+                reorder.state.hovering &&
+                reorder.state.targetRowId === track.id &&
+                reorder.state.position === "above" &&
+                !isDragSource;
+              const showInsertBelow =
+                reorder.state.hovering &&
+                reorder.state.targetRowId === track.id &&
+                reorder.state.position === "below" &&
+                !isDragSource;
               return (
                 <div
                   key={track.id}
-                  style={{ display: "flex", marginBottom: isLast ? 0 : GAP }}
+                  onDragEnter={rowHandlers.onDragEnter}
+                  onDragOver={rowHandlers.onDragOver}
+                  onDragLeave={rowHandlers.onDragLeave}
+                  onDrop={rowHandlers.onDrop}
+                  style={{
+                    display: "flex",
+                    marginBottom: isLast ? 0 : GAP,
+                    position: "relative",
+                    opacity: isDragSource ? 0.4 : 1,
+                    transition: `opacity ${theme.duration.quick}ms ${theme.easing.out}`,
+                  }}
                 >
-                  <TrackLabel track={track} />
+                  {showInsertAbove && <InsertionLine position="top" />}
+                  {showInsertBelow && <InsertionLine position="bottom" />}
+                  <TrackLabel track={track} onReorderDragStart={reorder.onDragStart} />
                   <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
                     {track.type === "video" && (
                       <VideoTrack
@@ -331,6 +357,25 @@ export function Timeline() {
         </div>
       </div>
     </div>
+  );
+}
+
+function InsertionLine({ position }: { position: "top" | "bottom" }) {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        height: 2,
+        background: theme.color.accentBright,
+        top: position === "top" ? -1 : undefined,
+        bottom: position === "bottom" ? -1 : undefined,
+        zIndex: 20,
+        pointerEvents: "none",
+      }}
+    />
   );
 }
 

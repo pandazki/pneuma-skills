@@ -1,4 +1,4 @@
-import { useCallback, type ReactElement } from "react";
+import { useCallback, useState, type ReactElement } from "react";
 import type { Track } from "@pneuma-craft/timeline";
 import { useDispatch } from "@pneuma-craft/react";
 import {
@@ -61,17 +61,25 @@ const toggleBtn = (active: boolean, activeColor: string): React.CSSProperties =>
  * Full-track label column. Track-type icon + name on the left,
  * three toggle buttons (mute / lock / hide) on the right.
  *
+ * Draggable when `onReorderDragStart` is provided — the root div
+ * registers as a drag source for `application/x-clipcraft-track-reorder`
+ * and the toggle buttons `preventDefault` their own dragstart so the
+ * user can click them without starting a drag.
+ *
  * Also used as a "ruler spacer" — pass `track={null}` and children are
  * rendered as read-only text (used for the ruler row's leading cell).
  */
 export function TrackLabel({
   track,
   children,
+  onReorderDragStart,
 }: {
   track: Track | null;
   children?: React.ReactNode;
+  onReorderDragStart?: (e: React.DragEvent, track: Track) => void;
 }) {
   const dispatch = useDispatch();
+  const [dragging, setDragging] = useState(false);
 
   const toggleMute = useCallback(() => {
     if (!track) return;
@@ -116,8 +124,17 @@ export function TrackLabel({
   const TrackTypeIcon = iconFor(track.type);
   const layerColor = layerColorFor(track.type);
 
+  const reorderable = !!onReorderDragStart;
   return (
     <div
+      draggable={reorderable}
+      onDragStart={(e) => {
+        if (!reorderable) return;
+        onReorderDragStart?.(e, track);
+        setDragging(true);
+      }}
+      onDragEnd={() => setDragging(false)}
+      title={reorderable ? "Drag to reorder" : undefined}
       style={{
         width: LABEL_W,
         flexShrink: 0,
@@ -132,6 +149,9 @@ export function TrackLabel({
         boxSizing: "border-box",
         background: theme.color.surface1,
         fontFamily: theme.font.ui,
+        cursor: reorderable ? (dragging ? "grabbing" : "grab") : "default",
+        opacity: dragging ? 0.4 : 1,
+        transition: `opacity ${theme.duration.quick}ms ${theme.easing.out}`,
       }}
     >
       <span
