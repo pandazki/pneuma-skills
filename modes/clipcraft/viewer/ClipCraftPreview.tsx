@@ -21,6 +21,7 @@ import { TimelineModeProvider } from "./hooks/useTimelineMode.js";
 import { TimelineZoomProvider } from "./hooks/useTimelineZoomShared.js";
 import { AssetErrorsProvider } from "./assets/useAssetErrors.js";
 import { VariantPointerProvider } from "./dive/useVariantPointer.js";
+import { EditorToolProvider } from "./timeline/hooks/useEditorTool.js";
 
 const AUTOSAVE_DELAY_MS = 500;
 
@@ -72,12 +73,14 @@ const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({ sources }) => {
           <SceneProvider initialScenes={project?.scenes ?? []}>
             <TimelineModeProvider>
               <TimelineZoomProvider>
-                <SyncedBody
-                  project={project}
-                  writeProject={writeProject}
-                  currentTitleRef={currentTitleRef}
-                  hydrationError={errorMessage}
-                />
+                <EditorToolProvider>
+                  <SyncedBody
+                    project={project}
+                    writeProject={writeProject}
+                    currentTitleRef={currentTitleRef}
+                    hydrationError={errorMessage}
+                  />
+                </EditorToolProvider>
               </TimelineZoomProvider>
             </TimelineModeProvider>
           </SceneProvider>

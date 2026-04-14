@@ -9,6 +9,9 @@ import { useDispatch } from "@pneuma-craft/react";
 import { useTrackDragEngine } from "./hooks/useTrackDragEngine.js";
 import { useClipResize } from "./hooks/useClipResize.js";
 import { useClipProvenance } from "./hooks/useClipProvenance.js";
+import { useEditorTool } from "./hooks/useEditorTool.js";
+import { useClipToolAction } from "./hooks/useClipToolAction.js";
+import { ClipToolOverlay } from "./ClipToolOverlay.js";
 
 const TRACK_H = 32;
 
@@ -18,6 +21,7 @@ interface SubtitleClipProps {
   w: number;
   sel: boolean;
   dragging: boolean;
+  pixelsPerSecond: number;
   onSelect: (clipId: string) => void;
   onDragStart: (clipId: string, mouseX: number) => void;
   onResizeStart: (clipId: string, edge: "left" | "right", mouseX: number) => void;
@@ -29,11 +33,16 @@ function SubtitleClip({
   w,
   sel,
   dragging,
+  pixelsPerSecond,
   onSelect,
   onDragStart,
   onResizeStart,
 }: SubtitleClipProps) {
   const { summary } = useClipProvenance(clip);
+  const tool = useEditorTool();
+  const runToolAction = useClipToolAction();
+  const inToolMode = tool.activeTool !== null;
+  const isToolHovered = inToolMode && tool.hoveredClipId === clip.id;
 
   return (
     <div
@@ -42,8 +51,27 @@ function SubtitleClip({
         if (e.button !== 0 || e.altKey) return;
         e.preventDefault();
         e.stopPropagation();
+        if (inToolMode) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          runToolAction(clip, e.clientX - rect.left, pixelsPerSecond);
+          return;
+        }
         onSelect(clip.id);
         onDragStart(clip.id, e.clientX);
+      }}
+      onMouseEnter={(e) => {
+        if (!inToolMode) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        tool.setHover(clip.id, e.clientX - rect.left);
+      }}
+      onMouseMove={(e) => {
+        if (!inToolMode || tool.activeTool !== "split") return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        tool.setHover(clip.id, e.clientX - rect.left);
+      }}
+      onMouseLeave={() => {
+        if (!inToolMode) return;
+        tool.setHover(null, null);
       }}
       style={{
         position: "absolute",
@@ -54,7 +82,7 @@ function SubtitleClip({
         background: sel ? "#2d2519" : "#1a1a1e",
         borderRadius: 3,
         border: sel ? "1px solid rgba(249,115,22,0.3)" : "1px solid #27272a",
-        overflow: "hidden",
+        overflow: tool.activeTool === "duplicate" && isToolHovered ? "visible" : "hidden",
         padding: "2px 6px",
         fontSize: 9,
         lineHeight: `${TRACK_H - 8}px`,
@@ -101,6 +129,15 @@ function SubtitleClip({
           background: sel ? "rgba(249,115,22,0.3)" : "transparent",
         }}
       />
+
+      {isToolHovered && tool.activeTool && (
+        <ClipToolOverlay
+          tool={tool.activeTool}
+          clipWidth={Math.round(w - 1)}
+          clipHeight={TRACK_H - 4}
+          hoverPx={tool.hoverPxFromClipStart}
+        />
+      )}
     </div>
   );
 }
@@ -145,6 +182,7 @@ export function SubtitleTrack({
             w={w}
             sel={sel}
             dragging={dragging}
+            pixelsPerSecond={pixelsPerSecond}
             onSelect={onSelect}
             onDragStart={drag.handleDragStart}
             onResizeStart={resize.handleResizeStart}

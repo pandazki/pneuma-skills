@@ -8,6 +8,9 @@ import { useFrameExtractor } from "./hooks/useFrameExtractor.js";
 import { useTrackDragEngine } from "./hooks/useTrackDragEngine.js";
 import { useClipResize } from "./hooks/useClipResize.js";
 import { useClipProvenance } from "./hooks/useClipProvenance.js";
+import { useEditorTool } from "./hooks/useEditorTool.js";
+import { useClipToolAction } from "./hooks/useClipToolAction.js";
+import { ClipToolOverlay } from "./ClipToolOverlay.js";
 
 const TRACK_H = 48;
 const FRAME_H = TRACK_H - 8;
@@ -42,10 +45,15 @@ function VideoClip({
 }: VideoClipProps) {
   const asset = useAsset(clip.assetId);
   const { summary } = useClipProvenance(clip);
+  const tool = useEditorTool();
+  const runToolAction = useClipToolAction();
   const status = asset?.status ?? "ready";
   const uri = asset?.uri ?? "";
   const isVideo = asset?.type === "video";
   const isImage = asset?.type === "image";
+
+  const inToolMode = tool.activeTool !== null;
+  const isToolHovered = inToolMode && tool.hoveredClipId === clip.id;
 
   const frameOpts = useMemo(() => {
     if (status !== "ready" || !uri || !isVideo) return null;
@@ -67,8 +75,28 @@ function VideoClip({
         if (e.button !== 0 || e.altKey) return;
         e.preventDefault();
         e.stopPropagation();
+        if (inToolMode) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          runToolAction(clip, e.clientX - rect.left, pixelsPerSecond);
+          return;
+        }
         onSelect(clip.id);
         onDragStart(clip.id, e.clientX);
+      }}
+      onMouseEnter={(e) => {
+        if (!inToolMode) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        tool.setHover(clip.id, e.clientX - rect.left);
+      }}
+      onMouseMove={(e) => {
+        if (!inToolMode) return;
+        if (tool.activeTool !== "split") return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        tool.setHover(clip.id, e.clientX - rect.left);
+      }}
+      onMouseLeave={() => {
+        if (!inToolMode) return;
+        tool.setHover(null, null);
       }}
       style={{
         position: "absolute",
@@ -79,7 +107,8 @@ function VideoClip({
         background: selected ? "#1e1a14" : "#18181b",
         borderRadius: 3,
         border: selected ? "1px solid rgba(249,115,22,0.3)" : "1px solid #27272a",
-        overflow: "hidden",
+        // overflow:visible so the duplicate-tool ghost can extend beyond the clip
+        overflow: tool.activeTool === "duplicate" && isToolHovered ? "visible" : "hidden",
         display: "flex",
         alignItems: "center",
         boxSizing: "border-box",
@@ -159,6 +188,15 @@ function VideoClip({
           background: selected ? "rgba(249,115,22,0.3)" : "transparent",
         }}
       />
+
+      {isToolHovered && tool.activeTool && (
+        <ClipToolOverlay
+          tool={tool.activeTool}
+          clipWidth={Math.round(width - 1)}
+          clipHeight={TRACK_H - 4}
+          hoverPx={tool.hoverPxFromClipStart}
+        />
+      )}
     </div>
   );
 }

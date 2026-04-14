@@ -9,6 +9,9 @@ import { useWaveform } from "./hooks/useWaveform.js";
 import { useTrackDragEngine } from "./hooks/useTrackDragEngine.js";
 import { useClipResize } from "./hooks/useClipResize.js";
 import { useClipProvenance } from "./hooks/useClipProvenance.js";
+import { useEditorTool } from "./hooks/useEditorTool.js";
+import { useClipToolAction } from "./hooks/useClipToolAction.js";
+import { ClipToolOverlay } from "./ClipToolOverlay.js";
 
 const TRACK_H = 32;
 const BAR_H = TRACK_H - 12;
@@ -24,6 +27,7 @@ interface AudioClipProps {
   width: number;
   selected: boolean;
   dragging: boolean;
+  pixelsPerSecond: number;
   onSelect: (clipId: string) => void;
   onDragStart: (clipId: string, mouseX: number) => void;
   onResizeStart: (clipId: string, edge: "left" | "right", mouseX: number) => void;
@@ -35,12 +39,17 @@ function AudioClip({
   width,
   selected,
   dragging,
+  pixelsPerSecond,
   onSelect,
   onDragStart,
   onResizeStart,
 }: AudioClipProps) {
   const asset = useAsset(clip.assetId);
   const { summary } = useClipProvenance(clip);
+  const tool = useEditorTool();
+  const runToolAction = useClipToolAction();
+  const inToolMode = tool.activeTool !== null;
+  const isToolHovered = inToolMode && tool.hoveredClipId === clip.id;
   const status = asset?.status ?? "ready";
   const uri = asset?.uri ?? "";
   const hasAudio = status === "ready" && !!uri && asset?.type === "audio";
@@ -63,8 +72,27 @@ function AudioClip({
         if (e.button !== 0 || e.altKey) return;
         e.preventDefault();
         e.stopPropagation();
+        if (inToolMode) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          runToolAction(clip, e.clientX - rect.left, pixelsPerSecond);
+          return;
+        }
         onSelect(clip.id);
         onDragStart(clip.id, e.clientX);
+      }}
+      onMouseEnter={(e) => {
+        if (!inToolMode) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        tool.setHover(clip.id, e.clientX - rect.left);
+      }}
+      onMouseMove={(e) => {
+        if (!inToolMode || tool.activeTool !== "split") return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        tool.setHover(clip.id, e.clientX - rect.left);
+      }}
+      onMouseLeave={() => {
+        if (!inToolMode) return;
+        tool.setHover(null, null);
       }}
       style={{
         position: "absolute",
@@ -75,7 +103,7 @@ function AudioClip({
         background: selected ? "#1a1e2a" : "#18181b",
         borderRadius: 3,
         border: selected ? "1px solid rgba(249,115,22,0.3)" : "1px solid #27272a",
-        overflow: "hidden",
+        overflow: tool.activeTool === "duplicate" && isToolHovered ? "visible" : "hidden",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -123,6 +151,15 @@ function AudioClip({
           background: selected ? "rgba(249,115,22,0.3)" : "transparent",
         }}
       />
+
+      {isToolHovered && tool.activeTool && (
+        <ClipToolOverlay
+          tool={tool.activeTool}
+          clipWidth={Math.round(width - 1)}
+          clipHeight={TRACK_H - 4}
+          hoverPx={tool.hoverPxFromClipStart}
+        />
+      )}
     </div>
   );
 }
@@ -165,6 +202,7 @@ export function AudioTrack({
             width={w}
             selected={clip.id === selectedClipId}
             dragging={drag.dragState?.clipId === clip.id}
+            pixelsPerSecond={pixelsPerSecond}
             onSelect={onSelect}
             onDragStart={drag.handleDragStart}
             onResizeStart={resize.handleResizeStart}

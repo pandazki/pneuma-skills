@@ -1,85 +1,63 @@
 import { useCallback } from "react";
-import {
-  useComposition,
-  usePlayback,
-  useSelection,
-  useDispatch,
-  useUndo,
-} from "@pneuma-craft/react";
+import { useComposition, useDispatch, useUndo } from "@pneuma-craft/react";
 import { buildCollapseGapsCommands } from "./collapseGaps.js";
-import { buildRippleDeleteCommands } from "./rippleDelete.js";
+import { useEditorTool, type ToolKind } from "../hooks/useEditorTool.js";
 
-const btnStyle: React.CSSProperties = {
-  background: "transparent",
-  border: "1px solid #3f3f46",
-  borderRadius: 3,
+const baseBtn: React.CSSProperties = {
+  background: "rgba(255,255,255,0.03)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 4,
   color: "#a1a1aa",
-  padding: "0 8px",
+  padding: "0 9px",
   height: 22,
   cursor: "pointer",
   fontSize: 10,
+  fontWeight: 500,
+  letterSpacing: 0.3,
   lineHeight: 1,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
+  transition: "all 160ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+  backdropFilter: "blur(8px)",
+  WebkitBackdropFilter: "blur(8px)",
 };
 
-const btnDisabled: React.CSSProperties = {
-  ...btnStyle,
-  opacity: 0.4,
+const activeBtn: React.CSSProperties = {
+  ...baseBtn,
+  background: "linear-gradient(135deg, rgba(249,115,22,0.32), rgba(249,115,22,0.08))",
+  border: "1px solid rgba(249,115,22,0.55)",
+  color: "#fed7aa",
+  boxShadow: "0 0 12px rgba(249,115,22,0.4), inset 0 1px 0 rgba(255,255,255,0.08)",
+};
+
+const dangerActiveBtn: React.CSSProperties = {
+  ...activeBtn,
+  background: "linear-gradient(135deg, rgba(239,68,68,0.32), rgba(239,68,68,0.08))",
+  border: "1px solid rgba(239,68,68,0.55)",
+  color: "#fecaca",
+  boxShadow: "0 0 12px rgba(239,68,68,0.4), inset 0 1px 0 rgba(255,255,255,0.08)",
+};
+
+const disabledBtn: React.CSSProperties = {
+  ...baseBtn,
+  opacity: 0.35,
   cursor: "not-allowed",
 };
 
 const separatorStyle: React.CSSProperties = {
   width: 1,
   height: 16,
-  background: "#27272a",
-  margin: "0 4px",
+  background: "rgba(255,255,255,0.08)",
+  margin: "0 6px",
   flexShrink: 0,
 };
 
 export function EditToolbar() {
   const composition = useComposition();
-  const playback = usePlayback();
-  const selection = useSelection();
   const dispatch = useDispatch();
   const undoState = useUndo();
-
-  const selectedClipId =
-    selection.type === "clip" && selection.ids.length > 0 ? selection.ids[0] : null;
-
-  const canActOnClip = selectedClipId !== null;
-
-  const onSplit = useCallback(() => {
-    if (!selectedClipId) return;
-    dispatch("human", {
-      type: "composition:split-clip",
-      clipId: selectedClipId,
-      time: playback.currentTime,
-    });
-  }, [dispatch, selectedClipId, playback.currentTime]);
-
-  const onDelete = useCallback(() => {
-    if (!selectedClipId) return;
-    dispatch("human", {
-      type: "composition:remove-clip",
-      clipId: selectedClipId,
-    });
-  }, [dispatch, selectedClipId]);
-
-  const onDuplicate = useCallback(() => {
-    if (!selectedClipId) return;
-    dispatch("human", {
-      type: "composition:duplicate-clip",
-      clipId: selectedClipId,
-    });
-  }, [dispatch, selectedClipId]);
-
-  const onRippleDelete = useCallback(() => {
-    if (!selectedClipId || !composition) return;
-    const cmds = buildRippleDeleteCommands(composition, selectedClipId);
-    for (const cmd of cmds) dispatch("human", cmd);
-  }, [dispatch, selectedClipId, composition]);
+  const tool = useEditorTool();
 
   const onCollapse = useCallback(() => {
     if (!composition) return;
@@ -87,51 +65,61 @@ export function EditToolbar() {
     for (const cmd of cmds) dispatch("human", cmd);
   }, [dispatch, composition]);
 
+  const toggleTool = useCallback(
+    (kind: ToolKind) => {
+      tool.setTool(tool.activeTool === kind ? null : kind);
+    },
+    [tool],
+  );
+
+  const buttonStyle = (kind: ToolKind, danger: boolean): React.CSSProperties => {
+    if (tool.activeTool === kind) return danger ? dangerActiveBtn : activeBtn;
+    return baseBtn;
+  };
+
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-      {/* Edit group */}
-      <button
-        onClick={onSplit}
-        style={canActOnClip ? btnStyle : btnDisabled}
-        disabled={!canActOnClip}
-        title="Split at playhead (S)"
-      >
-        Split
-      </button>
-      <button
-        onClick={onDelete}
-        style={canActOnClip ? btnStyle : btnDisabled}
-        disabled={!canActOnClip}
-        title="Delete (Delete)"
-      >
-        Delete
-      </button>
-      <button
-        onClick={onDuplicate}
-        style={canActOnClip ? btnStyle : btnDisabled}
-        disabled={!canActOnClip}
-        title="Duplicate (D)"
-      >
-        Duplicate
-      </button>
-      <button
-        onClick={onRippleDelete}
-        style={canActOnClip ? btnStyle : btnDisabled}
-        disabled={!canActOnClip}
+      <ToolButton
+        label="Split"
+        title="Split at hover X — click a clip to confirm (S)"
+        kind="split"
+        active={tool.activeTool === "split"}
+        style={buttonStyle("split", false)}
+        onClick={() => toggleTool("split")}
+      />
+      <ToolButton
+        label="Delete"
+        title="Delete a clip — click any clip to confirm (Delete)"
+        kind="delete"
+        active={tool.activeTool === "delete"}
+        style={buttonStyle("delete", true)}
+        onClick={() => toggleTool("delete")}
+      />
+      <ToolButton
+        label="Duplicate"
+        title="Duplicate a clip — click any clip to confirm (D)"
+        kind="duplicate"
+        active={tool.activeTool === "duplicate"}
+        style={buttonStyle("duplicate", false)}
+        onClick={() => toggleTool("duplicate")}
+      />
+      <ToolButton
+        label="Ripple Del"
         title="Ripple delete — remove + close the gap (⌘⌫)"
-      >
-        Ripple Del
-      </button>
-      <button onClick={onCollapse} style={btnStyle} title="Pack all clips left, removing gaps">
+        kind="ripple"
+        active={tool.activeTool === "ripple"}
+        style={buttonStyle("ripple", true)}
+        onClick={() => toggleTool("ripple")}
+      />
+      <button onClick={onCollapse} style={baseBtn} title="Pack all clips left, removing gaps">
         Collapse
       </button>
 
       <div style={separatorStyle} />
 
-      {/* History group */}
       <button
         onClick={() => undoState.undo()}
-        style={undoState.canUndo ? btnStyle : btnDisabled}
+        style={undoState.canUndo ? baseBtn : disabledBtn}
         disabled={!undoState.canUndo}
         title="Undo (⌘Z)"
       >
@@ -139,12 +127,40 @@ export function EditToolbar() {
       </button>
       <button
         onClick={() => undoState.redo()}
-        style={undoState.canRedo ? btnStyle : btnDisabled}
+        style={undoState.canRedo ? baseBtn : disabledBtn}
         disabled={!undoState.canRedo}
         title="Redo (⌘⇧Z)"
       >
         Redo
       </button>
     </div>
+  );
+}
+
+function ToolButton({
+  label,
+  title,
+  kind,
+  active,
+  style,
+  onClick,
+}: {
+  label: string;
+  title: string;
+  kind: ToolKind;
+  active: boolean;
+  style: React.CSSProperties;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={style}
+      title={title}
+      aria-pressed={active}
+      data-tool={kind}
+    >
+      {label}
+    </button>
   );
 }
