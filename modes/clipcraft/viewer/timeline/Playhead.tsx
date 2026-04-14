@@ -116,7 +116,8 @@ export function Playhead({
         pointerEvents: "none",
       }}
     >
-      {/* Vertical line — CSS transition for smooth playback */}
+      {/* Vertical line — purely visual; clicks must fall through to the
+          clip underneath. Only the handle (below) is interactive. */}
       <div
         style={{
           position: "absolute",
@@ -128,7 +129,7 @@ export function Playhead({
           background: "#f97316",
           borderRadius: 1,
           boxShadow: "0 0 6px rgba(249, 115, 22, 0.5)",
-          pointerEvents: "auto",
+          pointerEvents: "none",
           transition: dragging ? "none" : "left 100ms linear",
           willChange: "left",
         }}
