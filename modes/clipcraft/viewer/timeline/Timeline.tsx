@@ -58,16 +58,6 @@ function trackHeight(type: Track["type"]): number {
   }
 }
 
-function iconFor(type: Track["type"]): string {
-  switch (type) {
-    case "video":
-      return "\uD83C\uDFAC"; // 🎬
-    case "audio":
-      return "\uD83D\uDD0A"; // 🔊
-    case "subtitle":
-      return "Tt";
-  }
-}
 
 export function Timeline() {
   useTimelineShortcuts();
@@ -181,7 +171,7 @@ export function Timeline() {
       >
         {/* Ruler row */}
         <div style={{ display: "flex", marginBottom: GAP }}>
-          <TrackLabel>{""}</TrackLabel>
+          <TrackLabel track={null} />
           <div
             onClick={handleRulerClick}
             style={{ flex: 1, minWidth: 0, overflow: "hidden", cursor: "pointer" }}
@@ -206,7 +196,7 @@ export function Timeline() {
                   key={track.id}
                   style={{ display: "flex", marginBottom: isLast ? 0 : GAP }}
                 >
-                  <TrackLabel>{iconFor(track.type)}</TrackLabel>
+                  <TrackLabel track={track} />
                   <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
                     {track.type === "video" && (
                       <VideoTrack
