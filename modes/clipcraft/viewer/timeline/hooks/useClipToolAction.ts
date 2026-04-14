@@ -2,7 +2,10 @@ import { useCallback } from "react";
 import { useComposition, useDispatch, usePlayback } from "@pneuma-craft/react";
 import type { Clip } from "@pneuma-craft/timeline";
 import { buildRippleDeleteCommands } from "../toolbar/rippleDelete.js";
+import { collectSnapPoints, snapToNearest } from "../snapPoints.js";
 import { useEditorTool } from "./useEditorTool.js";
+
+const SPLIT_SNAP_PX = 5;
 
 /**
  * Tool-mode click handler shared by all three track components.
@@ -43,15 +46,30 @@ export function useClipToolAction() {
             return true;
           }
           const offsetSec = localPx / pixelsPerSecond;
-          // Clamp to (0, duration) — splitting at the boundary is a no-op
-          // and craft will reject it. Leave a tiny epsilon margin.
-          const minOffset = 0.05;
-          const maxOffset = Math.max(minOffset, clip.duration - minOffset);
-          const clamped = Math.max(minOffset, Math.min(maxOffset, offsetSec));
+          let absoluteTime = clip.startTime + offsetSec;
+          // Magnetic snap against every other clip edge (any track),
+          // playhead, and t=0. Exclude the clip we're splitting so we
+          // don't snap back onto its own edges.
+          const snapPoints = collectSnapPoints(
+            composition,
+            new Set([clip.id]),
+            playback.currentTime,
+          );
+          const snap = snapToNearest(
+            absoluteTime,
+            snapPoints,
+            SPLIT_SNAP_PX / pixelsPerSecond,
+          );
+          if (snap.snappedTo !== null) absoluteTime = snap.time;
+          // Clamp inside (clip.startTime, clip.startTime + duration)
+          // with a tiny epsilon margin — craft rejects boundary splits.
+          const minTime = clip.startTime + 0.05;
+          const maxTime = clip.startTime + Math.max(0.05, clip.duration - 0.05);
+          const clampedTime = Math.max(minTime, Math.min(maxTime, absoluteTime));
           dispatch("human", {
             type: "composition:split-clip",
             clipId: clip.id,
-            time: clip.startTime + clamped,
+            time: clampedTime,
           });
           break;
         }

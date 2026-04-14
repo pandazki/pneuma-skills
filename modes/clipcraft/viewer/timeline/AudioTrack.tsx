@@ -11,6 +11,7 @@ import { useClipResize } from "./hooks/useClipResize.js";
 import { useClipProvenance } from "./hooks/useClipProvenance.js";
 import { useEditorTool } from "./hooks/useEditorTool.js";
 import { useClipToolAction } from "./hooks/useClipToolAction.js";
+import { useSplitHoverSnap } from "./hooks/useSplitHoverSnap.js";
 import { ClipToolOverlay } from "./ClipToolOverlay.js";
 
 const TRACK_H = 32;
@@ -48,6 +49,7 @@ function AudioClip({
   const { summary } = useClipProvenance(clip);
   const tool = useEditorTool();
   const runToolAction = useClipToolAction();
+  const snapSplitHover = useSplitHoverSnap();
   const playback = usePlayback();
   const inToolMode = tool.activeTool !== null;
   const isToolHovered = inToolMode && tool.hoveredClipId === clip.id;
@@ -84,21 +86,27 @@ function AudioClip({
       onMouseEnter={(e) => {
         if (!inToolMode) return;
         const rect = e.currentTarget.getBoundingClientRect();
-        const localX = e.clientX - rect.left;
-        tool.setHover(clip.id, localX);
+        const rawX = e.clientX - rect.left;
         if (tool.activeTool === "split" && pixelsPerSecond > 0) {
+          const snappedX = snapSplitHover(clip, rawX, pixelsPerSecond);
+          tool.setHover(clip.id, snappedX);
           tool.beginScrubIfNeeded(playback.currentTime);
-          playback.seek(clip.startTime + localX / pixelsPerSecond);
+          playback.seek(clip.startTime + snappedX / pixelsPerSecond);
+        } else {
+          tool.setHover(clip.id, rawX);
         }
       }}
       onMouseMove={(e) => {
         if (!inToolMode || tool.activeTool !== "split") return;
         const rect = e.currentTarget.getBoundingClientRect();
-        const localX = e.clientX - rect.left;
-        tool.setHover(clip.id, localX);
+        const rawX = e.clientX - rect.left;
         if (pixelsPerSecond > 0) {
+          const snappedX = snapSplitHover(clip, rawX, pixelsPerSecond);
+          tool.setHover(clip.id, snappedX);
           tool.beginScrubIfNeeded(playback.currentTime);
-          playback.seek(clip.startTime + localX / pixelsPerSecond);
+          playback.seek(clip.startTime + snappedX / pixelsPerSecond);
+        } else {
+          tool.setHover(clip.id, rawX);
         }
       }}
       onMouseLeave={() => {

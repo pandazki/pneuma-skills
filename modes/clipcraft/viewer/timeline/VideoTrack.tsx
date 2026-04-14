@@ -10,6 +10,7 @@ import { useClipResize } from "./hooks/useClipResize.js";
 import { useClipProvenance } from "./hooks/useClipProvenance.js";
 import { useEditorTool } from "./hooks/useEditorTool.js";
 import { useClipToolAction } from "./hooks/useClipToolAction.js";
+import { useSplitHoverSnap } from "./hooks/useSplitHoverSnap.js";
 import { ClipToolOverlay } from "./ClipToolOverlay.js";
 
 const TRACK_H = 48;
@@ -52,6 +53,7 @@ function VideoClip({
   const { summary } = useClipProvenance(clip);
   const tool = useEditorTool();
   const runToolAction = useClipToolAction();
+  const snapSplitHover = useSplitHoverSnap();
   const playback = usePlayback();
   const status = asset?.status ?? "ready";
   const uri = asset?.uri ?? "";
@@ -61,25 +63,30 @@ function VideoClip({
   const inToolMode = tool.activeTool !== null;
   const isToolHovered = inToolMode && tool.hoveredClipId === clip.id;
 
+  const frameInterval =
+    pixelsPerSecond >= 60 ? 0.5 : pixelsPerSecond >= 30 ? 1 : 2;
   const frameOpts = useMemo(() => {
     if (status !== "ready" || !uri || !isVideo) return null;
-    const interval = pixelsPerSecond >= 60 ? 0.5 : pixelsPerSecond >= 30 ? 1 : 2;
     return {
       videoUrl: contentUrl(uri),
       duration: clip.duration,
-      frameInterval: interval,
+      frameInterval,
       frameHeight: FRAME_H,
     };
-  }, [status, uri, isVideo, pixelsPerSecond, clip.duration]);
+  }, [status, uri, isVideo, frameInterval, clip.duration]);
 
   const { frames, loading } = useFrameExtractor(frameOpts);
 
-  // Filmstrip base width = what the clip's width WOULD be at the
-  // current zoom without any live resize override. Derived from the
-  // committed clip.duration, not the preview `width` prop. This keeps
-  // the filmstrip 1:1 with content — the wrapper's overflow clips it
-  // as the user trims.
-  const filmstripBaseWidth = Math.max(0, clip.duration * pixelsPerSecond - 2);
+  // Each frame represents `frameInterval` seconds of video at the
+  // current zoom. Width per frame is CONSTANT regardless of clip
+  // duration — the filmstrip's total width is `frames.length * frameW`,
+  // so trims that don't re-extract (and cache hits with older frame
+  // counts) never squish individual frames. The wrapper's overflow
+  // clips anything that exceeds the preview width.
+  const frameW = frameInterval * pixelsPerSecond;
+  const filmstripBaseWidth = frames.length > 0
+    ? frames.length * frameW
+    : Math.max(0, clip.duration * pixelsPerSecond - 2);
 
   return (
     <div
@@ -99,22 +106,28 @@ function VideoClip({
       onMouseEnter={(e) => {
         if (!inToolMode) return;
         const rect = e.currentTarget.getBoundingClientRect();
-        const localX = e.clientX - rect.left;
-        tool.setHover(clip.id, localX);
+        const rawX = e.clientX - rect.left;
         if (tool.activeTool === "split" && pixelsPerSecond > 0) {
+          const snappedX = snapSplitHover(clip, rawX, pixelsPerSecond);
+          tool.setHover(clip.id, snappedX);
           tool.beginScrubIfNeeded(playback.currentTime);
-          playback.seek(clip.startTime + localX / pixelsPerSecond);
+          playback.seek(clip.startTime + snappedX / pixelsPerSecond);
+        } else {
+          tool.setHover(clip.id, rawX);
         }
       }}
       onMouseMove={(e) => {
         if (!inToolMode) return;
         if (tool.activeTool !== "split") return;
         const rect = e.currentTarget.getBoundingClientRect();
-        const localX = e.clientX - rect.left;
-        tool.setHover(clip.id, localX);
+        const rawX = e.clientX - rect.left;
         if (pixelsPerSecond > 0) {
+          const snappedX = snapSplitHover(clip, rawX, pixelsPerSecond);
+          tool.setHover(clip.id, snappedX);
           tool.beginScrubIfNeeded(playback.currentTime);
-          playback.seek(clip.startTime + localX / pixelsPerSecond);
+          playback.seek(clip.startTime + snappedX / pixelsPerSecond);
+        } else {
+          tool.setHover(clip.id, rawX);
         }
       }}
       onMouseLeave={() => {
@@ -151,23 +164,20 @@ function VideoClip({
             pointerEvents: "none",
           }}
         >
-          {frames.map((f, i) => {
-            const frameW = Math.max(1, filmstripBaseWidth / frames.length);
-            return (
-              <img
-                key={i}
-                src={f.dataUrl}
-                alt=""
-                style={{
-                  height: FRAME_H,
-                  width: frameW,
-                  objectFit: "cover",
-                  flexShrink: 0,
-                  pointerEvents: "none",
-                }}
-              />
-            );
-          })}
+          {frames.map((f, i) => (
+            <img
+              key={i}
+              src={f.dataUrl}
+              alt=""
+              style={{
+                height: FRAME_H,
+                width: frameW,
+                objectFit: "cover",
+                flexShrink: 0,
+                pointerEvents: "none",
+              }}
+            />
+          ))}
         </div>
       )}
       {isImage && status === "ready" && uri && frames.length === 0 && (

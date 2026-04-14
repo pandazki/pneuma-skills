@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Track, CompositionCommand } from "@pneuma-craft/timeline";
 import type { Actor, CoreCommand } from "@pneuma-craft/core";
-import { useComposition, usePlayback } from "@pneuma-craft/react";
+import {
+  useComposition,
+  usePlayback,
+  usePneumaCraftStore,
+} from "@pneuma-craft/react";
 import { collectSnapPoints, snapToNearest } from "../snapPoints.js";
 
 type Dispatch = (
@@ -20,6 +24,9 @@ interface ResizeState {
   originalDuration: number;
   originalInPoint: number;
   originalOutPoint: number;
+  /** Full asset duration in seconds. Infinity if unknown. Used as
+   *  the upper bound for right-edge trim and for left-edge inPoint. */
+  assetDuration: number;
   displayStartTime: number;
   displayDuration: number;
   displayInPoint: number;
@@ -53,6 +60,7 @@ export function useClipResize(
 ): UseClipResize {
   const composition = useComposition();
   const playback = usePlayback();
+  const coreState = usePneumaCraftStore((s) => s.coreState);
   const [state, setState] = useState<ResizeState | null>(null);
   const stateRef = useRef<ResizeState | null>(null);
   const clipsRef = useRef(track.clips);
@@ -65,11 +73,23 @@ export function useClipResize(
   compositionRef.current = composition;
   const playheadRef = useRef(playback.currentTime);
   playheadRef.current = playback.currentTime;
+  const registryRef = useRef(coreState.registry);
+  registryRef.current = coreState.registry;
 
   const handleResizeStart = useCallback(
     (clipId: string, edge: "left" | "right", mouseX: number) => {
       const clip = clipsRef.current.find((c) => c.id === clipId);
       if (!clip) return;
+      // Look up the clip's asset metadata for the full duration.
+      // Infinity means "unknown" → resize won't clamp by asset, only
+      // by the current committed outPoint.
+      const asset = registryRef.current.get(clip.assetId);
+      const metaDuration =
+        (asset?.metadata as { duration?: number } | undefined)?.duration;
+      const assetDuration =
+        typeof metaDuration === "number" && metaDuration > 0
+          ? metaDuration
+          : Infinity;
       const initial: ResizeState = {
         clipId,
         edge,
@@ -78,6 +98,7 @@ export function useClipResize(
         originalDuration: clip.duration,
         originalInPoint: clip.inPoint,
         originalOutPoint: clip.outPoint,
+        assetDuration,
         displayStartTime: clip.startTime,
         displayDuration: clip.duration,
         displayInPoint: clip.inPoint,
@@ -99,43 +120,39 @@ export function useClipResize(
       if (!s || pps <= 0) return;
       const deltaT = (ev.clientX - s.startMouseX) / pps;
 
-      // Policy: resize is an INWARD-ONLY trim. A clip can never grow
-      // past the bounds it had when the drag started (the asset
-      // duration headroom isn't cheaply available from the clip+track
-      // alone, and exposing more content would require re-stretching
-      // the filmstrip which is visually misleading). To re-expand a
-      // trim, undo and re-do.
+      // Policy: trim bounds are [0, asset duration]. Both edges can
+      // pull back OUT to the full asset length if the clip was
+      // previously trimmed — this matches Premiere/CapCut behaviour.
+      // A fresh clip at 1:1 with its asset can't extend further.
       let displayStartTime = s.originalStartTime;
       let displayDuration = s.originalDuration;
       let displayInPoint = s.originalInPoint;
       let displayOutPoint = s.originalOutPoint;
 
       if (s.edge === "left") {
-        // Anchor right edge: startTime + duration == originalStartTime + originalDuration.
-        // Only allow inward drag: newStart must be >= originalStartTime
-        // (can't extend leftward past where the edge was when drag started).
-        let newStart = Math.max(s.originalStartTime, s.originalStartTime + deltaT);
-        // Clamp so duration stays >= MIN_DURATION
-        const rightEdge = s.originalStartTime + s.originalDuration;
-        if (rightEdge - newStart < MIN_DURATION) {
-          newStart = rightEdge - MIN_DURATION;
-        }
-        const inShift = newStart - s.originalStartTime;
-        // Clamp inPoint >= 0 (also redundant with inward-only rule above).
-        const newInPoint = Math.max(0, s.originalInPoint + inShift);
-        const effectiveInShift = newInPoint - s.originalInPoint;
-        displayInPoint = newInPoint;
-        displayStartTime = s.originalStartTime + effectiveInShift;
-        displayDuration = rightEdge - displayStartTime;
+        // Anchor right edge: `rightEdge` stays fixed.
+        // newInPoint ∈ [0, rightEdgeInAsset - MIN_DURATION]
+        // where rightEdgeInAsset = originalInPoint + originalDuration
+        //                        = originalOutPoint.
+        const rightEdgeTimeline = s.originalStartTime + s.originalDuration;
+        const newInPointCandidate = s.originalInPoint + deltaT;
+        const maxInPoint = Math.max(0, s.originalOutPoint - MIN_DURATION);
+        const clampedInPoint = Math.max(0, Math.min(maxInPoint, newInPointCandidate));
+        const inShift = clampedInPoint - s.originalInPoint;
+        displayInPoint = clampedInPoint;
+        displayStartTime = s.originalStartTime + inShift;
+        displayDuration = rightEdgeTimeline - displayStartTime;
       } else {
-        // Right edge: only allow inward drag (shrink).
-        // newDuration must be <= originalDuration (can't extend rightward).
-        let newDuration = Math.min(
-          s.originalDuration,
-          Math.max(MIN_DURATION, s.originalDuration + deltaT),
+        // Right edge: anchor inPoint. newOutPoint ∈ [inPoint + MIN, assetDuration].
+        const newOutPointCandidate = s.originalOutPoint + deltaT;
+        const maxOutPoint = s.assetDuration;
+        const minOutPoint = s.originalInPoint + MIN_DURATION;
+        const clampedOutPoint = Math.max(
+          minOutPoint,
+          Math.min(maxOutPoint, newOutPointCandidate),
         );
-        displayDuration = newDuration;
-        displayOutPoint = s.originalInPoint + newDuration;
+        displayOutPoint = clampedOutPoint;
+        displayDuration = clampedOutPoint - s.originalInPoint;
       }
 
       // Cross-track snap. Snap whichever edge is being dragged to a
@@ -150,31 +167,32 @@ export function useClipResize(
       if (s.edge === "left") {
         const snap = snapToNearest(displayStartTime, points, threshold);
         if (snap.snappedTo !== null) {
-          const rightEdge = s.originalStartTime + s.originalDuration;
-          // Apply snap — but still respect the inward-only + min-duration rules.
-          let snappedStart = Math.max(s.originalStartTime, snap.time);
-          if (rightEdge - snappedStart < MIN_DURATION) {
-            snappedStart = rightEdge - MIN_DURATION;
-          }
-          const shift = snappedStart - s.originalStartTime;
-          const snappedInPoint = Math.max(0, s.originalInPoint + shift);
-          const effectiveShift = snappedInPoint - s.originalInPoint;
-          displayInPoint = snappedInPoint;
+          const rightEdgeTimeline = s.originalStartTime + s.originalDuration;
+          // Convert snap target back into an inPoint candidate then clamp.
+          const shift = snap.time - s.originalStartTime;
+          const inPointCandidate = s.originalInPoint + shift;
+          const maxInPoint = Math.max(0, s.originalOutPoint - MIN_DURATION);
+          const clampedInPoint = Math.max(0, Math.min(maxInPoint, inPointCandidate));
+          const effectiveShift = clampedInPoint - s.originalInPoint;
+          displayInPoint = clampedInPoint;
           displayStartTime = s.originalStartTime + effectiveShift;
-          displayDuration = rightEdge - displayStartTime;
+          displayDuration = rightEdgeTimeline - displayStartTime;
           snapTime = snap.snappedTo;
         }
       } else {
         const endCandidate = displayStartTime + displayDuration;
         const snap = snapToNearest(endCandidate, points, threshold);
         if (snap.snappedTo !== null) {
-          let snappedEnd = snap.time;
-          // Clamp by the max (originalStartTime + originalDuration) — can't extend.
-          const maxEnd = s.originalStartTime + s.originalDuration;
-          if (snappedEnd > maxEnd) snappedEnd = maxEnd;
-          const snappedDur = Math.max(MIN_DURATION, snappedEnd - displayStartTime);
-          displayDuration = snappedDur;
-          displayOutPoint = s.originalInPoint + snappedDur;
+          const outPointCandidate =
+            s.originalInPoint + (snap.time - s.originalStartTime);
+          const maxOutPoint = s.assetDuration;
+          const minOutPoint = s.originalInPoint + MIN_DURATION;
+          const clampedOutPoint = Math.max(
+            minOutPoint,
+            Math.min(maxOutPoint, outPointCandidate),
+          );
+          displayOutPoint = clampedOutPoint;
+          displayDuration = clampedOutPoint - s.originalInPoint;
           snapTime = snap.snappedTo;
         }
       }
