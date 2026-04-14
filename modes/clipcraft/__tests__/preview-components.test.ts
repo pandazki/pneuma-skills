@@ -239,4 +239,30 @@ describe("preview component module imports", () => {
     const mod = await import("../viewer/timeline/toolbar/collapseGaps.js");
     expect(typeof mod.buildCollapseGapsCommands).toBe("function");
   });
+
+  test("TransportBar exports a function", async () => {
+    const mod = await import("../viewer/timeline/transport/TransportBar.js");
+    expect(typeof mod.TransportBar).toBe("function");
+  });
+
+  test("rippleDelete exports a function", async () => {
+    const mod = await import("../viewer/timeline/toolbar/rippleDelete.js");
+    expect(typeof mod.buildRippleDeleteCommands).toBe("function");
+  });
+
+  test("useClipProvenance exports a function + formatter", async () => {
+    const mod = await import("../viewer/timeline/hooks/useClipProvenance.js");
+    expect(typeof mod.useClipProvenance).toBe("function");
+    expect(typeof mod.formatOperation).toBe("function");
+  });
+
+  test("ClipInspector exports a function", async () => {
+    const mod = await import("../viewer/timeline/inspector/ClipInspector.js");
+    expect(typeof mod.ClipInspector).toBe("function");
+  });
+
+  test("VariantSwitcher exports a function", async () => {
+    const mod = await import("../viewer/timeline/inspector/VariantSwitcher.js");
+    expect(typeof mod.VariantSwitcher).toBe("function");
+  });
 });
