@@ -22,7 +22,7 @@ const CAMERA = {
 // front and pushes the others far behind. Combined with the face-on
 // camera, the perspective shrink of the non-focused layers is what
 // sells the depth — a small gap would just look like a wiggle.
-const Z_GAP = 320;
+const Z_GAP = 280;
 // Compact heights for non-video layers. Video grows to fill the rest
 // and is sized to match the composition's aspect ratio exactly.
 const NON_VIDEO_H: Record<LayerType, number> = { caption: 56, audio: 64, video: 0 };
@@ -40,7 +40,10 @@ function computeZOffsets(
   const focusIdx = activeLayers.indexOf(focusedLayer);
   const offsets: Record<string, number> = {};
   for (let i = 0; i < activeLayers.length; i++) {
-    offsets[activeLayers[i]] = (focusIdx - i) * Z_GAP;
+    const distance = Math.abs(i - focusIdx);
+    // Focused layer is at Z=0 (closest to camera). Every other layer
+    // recedes into the background at negative Z.
+    offsets[activeLayers[i]] = -distance * Z_GAP;
   }
   return offsets;
 }
@@ -194,67 +197,59 @@ export function ExplodedView() {
   const settings = composition?.settings;
   const arRatio = settings ? settings.width / settings.height : 16 / 9;
 
-  // Layout policy: caption + audio get a compact fixed slice; video
-  // takes everything else and is sized so its inner frame fills the
-  // layer perfectly at the composition's aspect ratio (no letterbox).
-  // The shared layerWidth is dictated by the video frame so the layers
-  // visually stack at the same width.
-  const gap = 8;
-  const totalGap = Math.max(0, orderedActive.length - 1) * gap;
-  const SCENE_PAD = 24; // top + bottom breathing room for perspective
-  const availH = sceneH - totalGap - SCENE_PAD * 2;
+  // Carousel layout: the focused layer is at the scene center, Z=0,
+  // fully opaque. Every other layer is shifted vertically (above or
+  // below) AND recedes in Z, with blur + dim so they read as a
+  // background. The video layer is capped at 60% of the scene height
+  // so there's room above/below for the non-focused layers to poke
+  // out during the vertical-carousel animation.
+  const SCENE_PAD = 32;
+  const videoMaxH = Math.max(MIN_VIDEO_H, sceneH * 0.6);
 
-  const reservedH = orderedActive.reduce(
-    (sum, l) => (l === "video" ? sum : sum + NON_VIDEO_H[l]),
-    0,
-  );
+  // Video layer sized to the composition aspect ratio. Prefer full
+  // videoMaxH; clamp by sceneW - SCENE_PAD*2 if width is the bottleneck.
+  const maxLayerW = Math.max(200, sceneW - SCENE_PAD * 2);
   const hasVideo = orderedActive.includes("video");
-  const videoLayerH = hasVideo
-    ? Math.max(MIN_VIDEO_H, availH - reservedH)
-    : 0;
-
-  // Compute the ideal video-layer width from its inner frame:
-  // frameH = videoLayerH - LAYER_HEADER_H; frameW = frameH * arRatio.
-  // Then layerWidth = frameW + LAYER_INNER_PAD_X.
-  // Clamp by sceneW (so we don't overflow horizontally) and recompute
-  // videoLayerH if width was the bottleneck.
+  let videoLayerH: number;
   let layerWidth: number;
-  let videoLayerHFinal: number;
   if (hasVideo) {
-    const idealFrameH = Math.max(0, videoLayerH - LAYER_HEADER_H);
+    const idealFrameH = videoMaxH - LAYER_HEADER_H;
     const idealFrameW = idealFrameH * arRatio;
-    const maxLayerW = Math.max(160, sceneW - 32);
     if (idealFrameW + LAYER_INNER_PAD_X <= maxLayerW) {
+      videoLayerH = videoMaxH;
       layerWidth = idealFrameW + LAYER_INNER_PAD_X;
-      videoLayerHFinal = videoLayerH;
     } else {
-      // Width is the constraint — shrink frame height to keep aspect ratio.
       layerWidth = maxLayerW;
       const fittedFrameW = maxLayerW - LAYER_INNER_PAD_X;
-      const fittedFrameH = fittedFrameW / arRatio;
-      videoLayerHFinal = Math.max(MIN_VIDEO_H, fittedFrameH + LAYER_HEADER_H);
+      videoLayerH = fittedFrameW / arRatio + LAYER_HEADER_H;
     }
   } else {
-    layerWidth = Math.min(sceneW * 0.7, 600);
-    videoLayerHFinal = 0;
+    layerWidth = Math.min(maxLayerW, 640);
+    videoLayerH = 0;
   }
 
   const layerHeights: Record<string, number> = {};
   for (const l of orderedActive) {
-    layerHeights[l] = l === "video" ? videoLayerHFinal : NON_VIDEO_H[l];
+    layerHeights[l] = l === "video" ? videoLayerH : NON_VIDEO_H[l];
   }
 
-  const totalLayersH =
-    orderedActive.reduce((s, l) => s + (layerHeights[l] ?? 0), 0) + totalGap;
-  const topOffset = Math.max(SCENE_PAD, Math.floor((sceneH - totalLayersH) / 2));
-  const zOffsets = computeZOffsets(orderedActive, focusedLayer);
-
+  // Vertical carousel: focused layer sits at the scene center. Non-
+  // focused layers arc above (if earlier in the list) or below (if
+  // later). Y_STEP is dynamic — half the video layer height plus a
+  // margin — so non-focused layers always sit fully OUTSIDE the
+  // video's bounds even when video is huge, instead of being hidden
+  // behind its opaque background.
+  const yStep = videoLayerH > 0 ? videoLayerH / 2 + 56 : 170;
+  const focusedIdx = Math.max(0, orderedActive.indexOf(focusedLayer));
   const layerTops: Record<string, number> = {};
-  let yAccum = topOffset;
-  for (const l of orderedActive) {
-    layerTops[l] = yAccum;
-    yAccum += (layerHeights[l] ?? 0) + gap;
+  for (let i = 0; i < orderedActive.length; i++) {
+    const l = orderedActive[i];
+    const centerY = Math.floor((sceneH - (layerHeights[l] ?? 0)) / 2);
+    const delta = i - focusedIdx;
+    layerTops[l] = centerY + delta * yStep;
   }
+
+  const zOffsets = computeZOffsets(orderedActive, focusedLayer);
 
   const renderOrder = [...orderedActive].reverse();
 

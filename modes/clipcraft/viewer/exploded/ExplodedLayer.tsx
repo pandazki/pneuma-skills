@@ -38,10 +38,15 @@ export function ExplodedLayer({
   return (
     <motion.div
       layout
-      animate={{ z: zOffset, y: top, scale: focused ? 1.0 : 0.95 }}
+      animate={{
+        z: zOffset,
+        y: top,
+        opacity: focused ? 1 : 0.35,
+        filter: focused ? "blur(0px)" : "blur(2.5px)",
+      }}
       transition={SPRING}
       onClick={onClick}
-      whileHover={{ scale: focused ? 1.02 : 0.97 }}
+      whileHover={focused ? { scale: 1.01 } : { opacity: 0.55 }}
       style={{
         position: "absolute",
         left: "50%",
@@ -50,15 +55,19 @@ export function ExplodedLayer({
         marginLeft: -width / 2,
         transformStyle: "flat",
         cursor: "pointer",
-        background: "rgba(9, 9, 11, 0.85)",
-        border: `1px solid ${meta.color}${focused ? "80" : "40"}`,
+        background: focused ? "rgba(9, 9, 11, 0.92)" : "rgba(9, 9, 11, 0.78)",
+        border: `1px solid ${meta.color}${focused ? "90" : "30"}`,
         borderRadius: 8,
         boxShadow: focused
-          ? `0 0 20px ${meta.color}25, 0 0 4px ${meta.color}15`
-          : `0 0 12px ${meta.color}10`,
+          ? `0 0 28px ${meta.color}30, 0 0 6px ${meta.color}20`
+          : `0 0 10px ${meta.color}08`,
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
+        // Focused layer gets a higher stacking context so it never
+        // gets painted underneath a non-focused sibling even if the
+        // browser's z-sort gets confused by perspective math.
+        zIndex: focused ? 10 : 1,
       }}
     >
       <div
