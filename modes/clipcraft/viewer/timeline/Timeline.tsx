@@ -256,7 +256,7 @@ export function Timeline() {
             }}
           >
             <Playhead
-              globalTime={playback.currentTime}
+              globalTime={tool.getDisplayTime(playback.currentTime)}
               duration={dur}
               pixelsPerSecond={zoom.pixelsPerSecond}
               scrollLeft={zoom.scrollLeft}
@@ -270,7 +270,7 @@ export function Timeline() {
         <div style={{ display: "flex", marginTop: 4 }}>
           <div style={{ width: LABEL_W, flexShrink: 0 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <TimelineMinimap zoom={zoom} duration={dur} currentTime={playback.currentTime} />
+            <TimelineMinimap zoom={zoom} duration={dur} currentTime={tool.getDisplayTime(playback.currentTime)} />
           </div>
         </div>
       </div>

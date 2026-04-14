@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useComposition, usePlayback } from "@pneuma-craft/react";
 import { useTimelineMode } from "../../hooks/useTimelineMode.js";
+import { useEditorTool } from "../hooks/useEditorTool.js";
 
 /**
  * Global transport: play/pause, goto start/end, time/duration,
@@ -13,6 +14,7 @@ import { useTimelineMode } from "../../hooks/useTimelineMode.js";
 export function TransportBar() {
   const composition = useComposition();
   const playback = usePlayback();
+  const editorTool = useEditorTool();
   const { timelineMode, setTimelineMode } = useTimelineMode();
   const isExpanded = timelineMode !== "collapsed";
 
@@ -45,7 +47,10 @@ export function TransportBar() {
 
   const disabled = !composition;
   const totalSec = playback.duration ?? 0;
-  const curSec = playback.currentTime ?? 0;
+  // Use display time so the transport doesn't jiggle around while
+  // the user hover-scrubs in split mode — it stays anchored at the
+  // real playhead position.
+  const curSec = editorTool.getDisplayTime(playback.currentTime ?? 0);
 
   return (
     <div

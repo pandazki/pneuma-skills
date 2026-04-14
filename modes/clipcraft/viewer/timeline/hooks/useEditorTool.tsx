@@ -33,9 +33,21 @@ export interface EditorToolApi {
    * first scrub seek captures this; restoreScrubBaseline() returns it
    * (and clears the ref) so the timeline container's mouseleave can
    * seek the playback engine back to where it was.
+   *
+   * scrubVersion is bumped each time a scrub starts/ends so consumers
+   * that read baseline via getDisplayTime can re-render. Without it,
+   * the ref change is invisible to React.
    */
   beginScrubIfNeeded: (currentTime: number) => void;
   restoreScrubBaseline: () => number | null;
+  /**
+   * Returns the baseline time if a hover-scrub is in progress, else
+   * the real value passed in. Use for "where am I" UI elements
+   * (playhead bar, time display, minimap dot) so they don't bounce
+   * around with the cursor while the canvas previews hover frames.
+   */
+  getDisplayTime: (realTime: number) => number;
+  scrubVersion: number;
 }
 
 const EditorToolContext = createContext<EditorToolApi | null>(null);
@@ -52,13 +64,17 @@ export function EditorToolProvider({ children }: { children: React.ReactNode }) 
   const [hoveredClipId, setHoveredClipId] = useState<string | null>(null);
   const [hoverPx, setHoverPx] = useState<number | null>(null);
   const scrubBaselineRef = useRef<number | null>(null);
+  const [scrubVersion, setScrubVersion] = useState(0);
 
   const setTool = useCallback((tool: ToolKind | null) => {
     setActiveTool(tool);
     if (tool === null) {
       setHoveredClipId(null);
       setHoverPx(null);
-      scrubBaselineRef.current = null;
+      if (scrubBaselineRef.current !== null) {
+        scrubBaselineRef.current = null;
+        setScrubVersion((v) => v + 1);
+      }
     }
   }, []);
 
@@ -74,20 +90,41 @@ export function EditorToolProvider({ children }: { children: React.ReactNode }) 
     setActiveTool(null);
     setHoveredClipId(null);
     setHoverPx(null);
-    scrubBaselineRef.current = null;
+    if (scrubBaselineRef.current !== null) {
+      scrubBaselineRef.current = null;
+      setScrubVersion((v) => v + 1);
+    }
   }, []);
 
   const beginScrubIfNeeded = useCallback((currentTime: number) => {
     if (scrubBaselineRef.current === null) {
       scrubBaselineRef.current = currentTime;
+      setScrubVersion((v) => v + 1);
     }
   }, []);
 
   const restoreScrubBaseline = useCallback((): number | null => {
     const t = scrubBaselineRef.current;
-    scrubBaselineRef.current = null;
+    if (t !== null) {
+      scrubBaselineRef.current = null;
+      setScrubVersion((v) => v + 1);
+    }
     return t;
   }, []);
+
+  const getDisplayTime = useCallback(
+    (realTime: number): number => {
+      const baseline = scrubBaselineRef.current;
+      return baseline !== null ? baseline : realTime;
+    },
+    // scrubVersion is in deps so consumers re-render when baseline
+    // changes (set/clear). React only re-renders when this useCallback
+    // identity changes, so memoized children that read getDisplayTime
+    // must also depend on tool.scrubVersion or call it inside their
+    // own re-render flow.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scrubVersion],
+  );
 
   // Global cursor + escape handling. Body cursor avoids React reconciliation
   // races when the user moves fast across tracks.
@@ -122,6 +159,8 @@ export function EditorToolProvider({ children }: { children: React.ReactNode }) 
       cancel,
       beginScrubIfNeeded,
       restoreScrubBaseline,
+      getDisplayTime,
+      scrubVersion,
     }),
     [
       activeTool,
@@ -132,6 +171,8 @@ export function EditorToolProvider({ children }: { children: React.ReactNode }) 
       cancel,
       beginScrubIfNeeded,
       restoreScrubBaseline,
+      getDisplayTime,
+      scrubVersion,
     ],
   );
 
