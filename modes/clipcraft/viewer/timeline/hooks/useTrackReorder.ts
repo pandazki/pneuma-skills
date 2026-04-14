@@ -50,11 +50,23 @@ export interface TrackReorderApi {
  * the dragged track moved to the computed position and dispatch
  * `composition:reorder-tracks`.
  *
- * Why a single shared hook rather than per-row `useTrackDropTarget`
- * style: track reorder is a composition-wide operation — we need
- * the final `trackIds[]` list all at once, not per-row. Sharing a
- * hover state also makes the "only one indicator at a time" rule
- * natural.
+ * ## Visual ↔ data direction
+ *
+ * Craft documents `composition.tracks[]` as "later index = rendered
+ * on top" (see the upstream recipe). The Timeline renders tracks in
+ * REVERSE data order so that the visual top-of-timeline is the top
+ * of the compositing stack — matching Premiere / FCP / DaVinci. This
+ * hook is aware of that flip: visual "above target" means "cover
+ * target" means "insert AFTER target in data order", and visual
+ * "below target" means "be covered by target" means "insert BEFORE
+ * target in data order". The insertion math in `onDrop` swaps the
+ * branches accordingly.
+ *
+ * ## Why a single shared hook rather than per-row useTrackDropTarget
+ *
+ * Track reorder is a composition-wide operation — we need the final
+ * `trackIds[]` list all at once, not per-row. Sharing a hover state
+ * also makes the "only one indicator at a time" rule natural.
  */
 export function useTrackReorder(composition: Composition | null): TrackReorderApi {
   const dispatch = useDispatch();
@@ -178,11 +190,19 @@ export function useTrackReorder(composition: Composition | null): TrackReorderAp
           // Compute insertion index as if the dragged track were
           // already removed from the list — that's how reorder works
           // semantically.
+          //
+          // NOTE the visual ↔ data flip: the Timeline renders tracks
+          // in reverse data order, so visual "above target" means
+          // "cover target" means "insert AFTER target in data order",
+          // and visual "below target" means "be covered by target"
+          // means "insert BEFORE target in data order". Swap the
+          // branches relative to naive expectations.
           const without = currentIds.filter((id) => id !== draggedId);
+          const targetDataIdx = without.indexOf(track.id);
           let insertIdx =
             position === "above"
-              ? without.indexOf(track.id)
-              : without.indexOf(track.id) + 1;
+              ? targetDataIdx + 1 // visual above = higher index in data
+              : targetDataIdx; // visual below = lower index in data
           if (insertIdx < 0) insertIdx = without.length;
           const next = [
             ...without.slice(0, insertIdx),

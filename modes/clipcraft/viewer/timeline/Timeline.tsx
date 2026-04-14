@@ -256,9 +256,23 @@ export function Timeline() {
 
         {/* Track rows + playhead overlay */}
         <div style={{ position: "relative" }}>
-          {/* Track rows */}
+          {/* Track rows — rendered in REVERSE data order so the visual
+              top-of-timeline corresponds to the TOP of the compositing
+              stack. Craft's `composition.tracks[]` is documented as
+              "later index = rendered on top" (see
+              @pneuma-craft/video/docs/recipes/image-clips-and-overlays.md),
+              which is the data convention; industry-standard editors
+              (Premiere / FCP / DaVinci) put the top-of-stack track at
+              the TOP of the timeline visually. We reconcile by keeping
+              the data order intact and flipping ONLY the render.
+              `useTrackReorder` is aware of this reversal — its drop
+              semantics convert visual "above target" into
+              "higher-index insert in data". */}
           <div>
-            {composition.tracks.map((track, i) => {
+            {composition.tracks
+              .slice()
+              .reverse()
+              .map((track, i) => {
               const isLast = i === composition.tracks.length - 1;
               const rowHandlers = reorder.rowHandlers(track);
               const isDragSource = reorder.state.draggedRowId === track.id;
