@@ -28,6 +28,7 @@ import {
 import type { Actor } from "@pneuma-craft/core";
 import type { Track } from "@pneuma-craft/timeline";
 import { useTimelineZoom } from "./hooks/useTimelineZoom.js";
+import { EditToolbar } from "./toolbar/EditToolbar.js";
 import { TrackLabel, LABEL_W } from "./TrackLabel.js";
 import { TimeRuler } from "./TimeRuler.js";
 import { Playhead } from "./Playhead.js";
@@ -153,18 +154,13 @@ export function Timeline() {
           color: "#52525b",
         }}
       >
-        <button onClick={zoom.zoomOut} style={zoomBtnStyle} title="Zoom out" aria-label="zoom out">
-          −
-        </button>
-        <span style={{ minWidth: 48, textAlign: "center" }}>
-          {Math.round(zoom.pixelsPerSecond)}px/s
-        </span>
-        <button onClick={zoom.zoomIn} style={zoomBtnStyle} title="Zoom in" aria-label="zoom in">
-          +
-        </button>
-        <span style={{ marginLeft: "auto", fontSize: 9, color: "#3f3f46" }}>
-          scroll / ⌘+scroll to zoom
-        </span>
+        <button onClick={zoom.zoomOut} style={zoomBtnStyle} title="Zoom out" aria-label="zoom out">−</button>
+        <span style={{ minWidth: 48, textAlign: "center" }}>{Math.round(zoom.pixelsPerSecond)}px/s</span>
+        <button onClick={zoom.zoomIn} style={zoomBtnStyle} title="Zoom in" aria-label="zoom in">+</button>
+        <span style={{ fontSize: 9, color: "#3f3f46" }}>scroll / ⌘+scroll to zoom</span>
+        <div style={{ marginLeft: "auto" }}>
+          <EditToolbar />
+        </div>
       </div>
 
       {/* Timeline content */}
