@@ -1,20 +1,12 @@
 // Ported from modes/clipcraft-legacy/viewer/timeline/VideoTrack.tsx.
-//
-// Visual language (layout, colors, selection treatment, filmstrip rendering,
-// status badges) is verbatim. The only swap is the data source: legacy
-// iterated `scenes` (with `scene.visual?.source` + cumulative offset) against
-// a reducer selector; this version walks a craft `Track.clips` array and
-// resolves each clip's asset via `useAsset(clip.assetId)`.
-//
-// The legacy "SceneClip" subcomponent is now "VideoClip" — one component per
-// craft clip, with its own useFrameExtractor hook so the rules-of-hooks are
-// preserved when clips come and go. Image assets fall back to tiled ImageFill;
-// video assets render the decoded filmstrip.
+// Plan 5.5: drag + resize interactivity via useTrackDragEngine + useClipResize.
 
 import { useMemo } from "react";
 import type { Track, Clip } from "@pneuma-craft/timeline";
-import { useAsset } from "@pneuma-craft/react";
+import { useAsset, useDispatch } from "@pneuma-craft/react";
 import { useFrameExtractor } from "./hooks/useFrameExtractor.js";
+import { useTrackDragEngine } from "./hooks/useTrackDragEngine.js";
+import { useClipResize } from "./hooks/useClipResize.js";
 
 const TRACK_H = 48;
 const FRAME_H = TRACK_H - 8;
@@ -29,19 +21,30 @@ interface VideoClipProps {
   x: number;
   width: number;
   selected: boolean;
+  dragging: boolean;
   pixelsPerSecond: number;
   onSelect: (clipId: string) => void;
+  onDragStart: (clipId: string, mouseX: number) => void;
+  onResizeStart: (clipId: string, edge: "left" | "right", mouseX: number) => void;
 }
 
-function VideoClip({ clip, x, width, selected, pixelsPerSecond, onSelect }: VideoClipProps) {
+function VideoClip({
+  clip,
+  x,
+  width,
+  selected,
+  dragging,
+  pixelsPerSecond,
+  onSelect,
+  onDragStart,
+  onResizeStart,
+}: VideoClipProps) {
   const asset = useAsset(clip.assetId);
   const status = asset?.status ?? "ready";
   const uri = asset?.uri ?? "";
   const isVideo = asset?.type === "video";
   const isImage = asset?.type === "image";
 
-  // Only extract frames from video assets. Raw /content/ path (no cache-busting)
-  // so the extractor cache isn't invalidated on file-watcher echoes.
   const frameOpts = useMemo(() => {
     if (status !== "ready" || !uri || !isVideo) return null;
     const interval = pixelsPerSecond >= 60 ? 0.5 : pixelsPerSecond >= 30 ? 1 : 2;
@@ -57,9 +60,12 @@ function VideoClip({ clip, x, width, selected, pixelsPerSecond, onSelect }: Vide
 
   return (
     <div
-      onClick={(e) => {
+      onMouseDown={(e) => {
+        if (e.button !== 0 || e.altKey) return;
+        e.preventDefault();
         e.stopPropagation();
         onSelect(clip.id);
+        onDragStart(clip.id, e.clientX);
       }}
       style={{
         position: "absolute",
@@ -74,10 +80,10 @@ function VideoClip({ clip, x, width, selected, pixelsPerSecond, onSelect }: Vide
         display: "flex",
         alignItems: "center",
         boxSizing: "border-box",
-        cursor: "pointer",
+        cursor: dragging ? "grabbing" : "grab",
+        opacity: dragging ? 0.85 : 1,
       }}
     >
-      {/* Video frames filmstrip — each frame fills equal portion of clip width */}
       {frames.length > 0 && frames.map((f, i) => {
         const frameW = Math.max(1, (width - 2) / frames.length);
         return (
@@ -95,40 +101,65 @@ function VideoClip({ clip, x, width, selected, pixelsPerSecond, onSelect }: Vide
           />
         );
       })}
-
-      {/* Image thumbnail fill */}
       {isImage && status === "ready" && uri && frames.length === 0 && (
         <ImageFill src={contentUrl(uri)} width={width - 2} height={FRAME_H} />
       )}
-
-      {/* Loading */}
       {loading && frames.length === 0 && (
         <div style={{ padding: "0 4px", fontSize: 9, color: "#a1a1aa" }}>Loading...</div>
       )}
-
-      {/* Generating */}
       {status === "generating" && (
         <span style={{ fontSize: 9, color: "#a16207", padding: "0 4px", whiteSpace: "nowrap" }}>
           {"\u23F3"} generating
         </span>
       )}
-
-      {/* Failed */}
       {status === "failed" && (
         <span style={{ fontSize: 9, color: "#ef4444", padding: "0 4px", whiteSpace: "nowrap" }}>
           {"\u26A0"} error
         </span>
       )}
-
-      {/* Pending (craft default for unresolved assets) */}
       {status === "pending" && (
         <span style={{ fontSize: 9, color: "#3f3f46", padding: "0 4px" }}>&mdash;</span>
       )}
+
+      {/* Resize handles — subtle, only grab area, no visible fill until hover */}
+      <div
+        onMouseDown={(e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onResizeStart(clip.id, "left", e.clientX);
+        }}
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 6,
+          cursor: "ew-resize",
+          background: selected ? "rgba(249,115,22,0.3)" : "transparent",
+        }}
+      />
+      <div
+        onMouseDown={(e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onResizeStart(clip.id, "right", e.clientX);
+        }}
+        style={{
+          position: "absolute",
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 6,
+          cursor: "ew-resize",
+          background: selected ? "rgba(249,115,22,0.3)" : "transparent",
+        }}
+      />
     </div>
   );
 }
 
-/** Fill a region with repeated copies of an image thumbnail. */
 function ImageFill({ src, width, height }: { src: string; width: number; height: number }) {
   const count = Math.max(1, Math.ceil(width / (height * 1.5)));
   return (
@@ -160,13 +191,26 @@ interface Props {
   onSelect: (clipId: string) => void;
 }
 
-export function VideoTrack({ track, selectedClipId, pixelsPerSecond, scrollLeft, onSelect }: Props) {
+export function VideoTrack({
+  track,
+  selectedClipId,
+  pixelsPerSecond,
+  scrollLeft,
+  onSelect,
+}: Props) {
+  const dispatch = useDispatch();
+  const drag = useTrackDragEngine(track, pixelsPerSecond, dispatch);
+  const resize = useClipResize(track, pixelsPerSecond, dispatch);
+
   return (
     <div style={{ position: "relative", height: TRACK_H, overflow: "hidden" }}>
       {track.clips.map((clip) => {
-        const x = clip.startTime * pixelsPerSecond - scrollLeft;
-        const w = clip.duration * pixelsPerSecond;
-        // off-screen cull matches legacy's heuristic
+        const previewStart = drag.displayStartFor(clip.id) ?? clip.startTime;
+        const previewDuration = resize.displayDurationFor(clip.id) ?? clip.duration;
+        const previewStartWithResize =
+          resize.displayStartFor(clip.id) ?? previewStart;
+        const x = previewStartWithResize * pixelsPerSecond - scrollLeft;
+        const w = previewDuration * pixelsPerSecond;
         if (x + w < -10 || x > 4000) return null;
         return (
           <VideoClip
@@ -175,11 +219,28 @@ export function VideoTrack({ track, selectedClipId, pixelsPerSecond, scrollLeft,
             x={x}
             width={w}
             selected={clip.id === selectedClipId}
+            dragging={drag.dragState?.clipId === clip.id}
             pixelsPerSecond={pixelsPerSecond}
             onSelect={onSelect}
+            onDragStart={drag.handleDragStart}
+            onResizeStart={resize.handleResizeStart}
           />
         );
       })}
+      {/* Snap guide line */}
+      {drag.dragState?.snapTime != null && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: drag.dragState.snapTime * pixelsPerSecond - scrollLeft,
+            width: 1,
+            background: "#f97316",
+            pointerEvents: "none",
+          }}
+        />
+      )}
     </div>
   );
 }
