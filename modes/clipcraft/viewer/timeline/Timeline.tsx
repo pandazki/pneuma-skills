@@ -29,6 +29,7 @@ import type { Actor } from "@pneuma-craft/core";
 import type { Track } from "@pneuma-craft/timeline";
 import { useTimelineShortcuts } from "./hooks/useTimelineShortcuts.js";
 import { TransportBar } from "./transport/TransportBar.js";
+import { TimelineMinimap } from "./TimelineMinimap.js";
 import { useTimelineZoom } from "./hooks/useTimelineZoom.js";
 import { EditToolbar } from "./toolbar/EditToolbar.js";
 import { TrackLabel, LABEL_W } from "./TrackLabel.js";
@@ -80,7 +81,20 @@ export function Timeline() {
 
   const handleSeek = useCallback(
     (time: number) => {
-      playback.seek(Math.max(0, Math.min(time, dur)));
+      const target = Math.max(0, Math.min(time, dur));
+      // PlaybackEngine is lazy: stays at "idle" until first play(), and
+      // seek() before that paints nothing (canvas stays transparent).
+      // If this is the user's first interaction and the engine hasn't
+      // warmed up, pulse play+pause so subsequent seeks render frames.
+      if (playback.state === "idle") {
+        playback.play();
+        setTimeout(() => {
+          playback.pause();
+          playback.seek(target);
+        }, 350);
+      } else {
+        playback.seek(target);
+      }
     },
     [playback, dur],
   );
@@ -252,6 +266,14 @@ export function Timeline() {
               trackAreaHeight={trackAreaHeight}
               onSeek={handleSeek}
             />
+          </div>
+        </div>
+
+        {/* Minimap / scrollbar — aligned with the content area (after LABEL_W) */}
+        <div style={{ display: "flex", marginTop: 4 }}>
+          <div style={{ width: LABEL_W, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <TimelineMinimap zoom={zoom} duration={dur} currentTime={playback.currentTime} />
           </div>
         </div>
       </div>

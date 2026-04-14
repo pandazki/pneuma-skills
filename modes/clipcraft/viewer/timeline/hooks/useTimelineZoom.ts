@@ -17,6 +17,11 @@ export interface TimelineZoom {
   scrollLeft: number;
   totalWidth: number;
   viewportWidth: number;
+  /** Pixel width of the actual content (composition.duration * pps). */
+  contentWidth: number;
+  /** Min/max for scrollLeft — used by the minimap to compute drag bounds. */
+  scrollMin: number;
+  scrollMax: number;
   timeToX: (time: number) => number;
   xToTime: (x: number) => number;
   zoomIn: () => void;
@@ -162,7 +167,11 @@ export function useTimelineZoom(
     return () => {
       el.removeEventListener("wheel", handler);
     };
-  }, [containerRef]);
+    // dur is in the deps so this effect re-runs once Timeline's early-return
+    // ("no composition loaded") releases and the JSX with ref={containerRef}
+    // is mounted for real. Without it, the listener would attach against a
+    // null ref and never re-bind once the composition arrives.
+  }, [containerRef, dur]);
 
   return useMemo(
     () => ({
@@ -170,6 +179,9 @@ export function useTimelineZoom(
       scrollLeft,
       totalWidth,
       viewportWidth,
+      contentWidth,
+      scrollMin,
+      scrollMax,
       timeToX,
       xToTime,
       zoomIn,
@@ -182,6 +194,9 @@ export function useTimelineZoom(
       scrollLeft,
       totalWidth,
       viewportWidth,
+      contentWidth,
+      scrollMin,
+      scrollMax,
       timeToX,
       xToTime,
       zoomIn,

@@ -4,6 +4,7 @@ import {
   PneumaCraftProvider,
   usePneumaCraftStore,
   useEventLog,
+  usePlayback,
 } from "@pneuma-craft/react";
 import type { Source } from "../../../core/types/source.js";
 import type { ViewerPreviewProps } from "../../../core/types/viewer-contract.js";
@@ -103,6 +104,29 @@ function SyncedBody({
   const eventCount = useEventLog().length;
   const scenes = useScenes();
   const captionStyle = project?.captionStyle;
+
+  // Engine warm-up: PlaybackEngine is lazy — it stays at "idle" forever
+  // until the user clicks Play, at which point it goes idle → loading →
+  // ready → playing. Before that first play, seek() is a no-op for
+  // rendering, so the canvas stays black until the user clicks Play once.
+  //
+  // Workaround: as soon as the composition is hydrated into the store,
+  // bootstrap the engine ourselves by calling play() (kicks off the load
+  // sequence), wait for the first rendered frame via subscribeToFrames,
+  // then pause() and seek(0) so the user sees a still frame at t=0.
+  // Subsequent seek() calls paint correctly because the decoders are
+  // warm.
+  //
+  // Upstream PlaybackEngine bug — workaround until craft pre-decodes on
+  // seek-while-idle.
+  // Engine warm-up — see Timeline.tsx handleSeek for the actual fix.
+  // Tried multiple useEffect-based warmups; all failed because the
+  // React-captured playback.play reference goes stale across provider
+  // remounts. The reliable workaround is to do the play→pause cycle
+  // inline inside the user's first seek action (handleSeek + key
+  // shortcut handlers), where playback is freshly read from the live
+  // hook via a setTimeout chain. See Plan 5.5 known limitations + the
+  // craft engine warm-up task in NEXT.md.
 
   // ── Hydration: dispatch project into the (fresh) craft store ─────────
   //
