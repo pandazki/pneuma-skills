@@ -27,6 +27,7 @@ import {
 } from "@pneuma-craft/react";
 import type { Actor } from "@pneuma-craft/core";
 import type { Track } from "@pneuma-craft/timeline";
+import { useTimelineShortcuts } from "./hooks/useTimelineShortcuts.js";
 import { useTimelineZoom } from "./hooks/useTimelineZoom.js";
 import { EditToolbar } from "./toolbar/EditToolbar.js";
 import { TrackLabel, LABEL_W } from "./TrackLabel.js";
@@ -68,6 +69,7 @@ function iconFor(type: Track["type"]): string {
 }
 
 export function Timeline() {
+  useTimelineShortcuts();
   const composition = useComposition();
   const playback = usePlayback();
   const dispatch = useDispatch();
