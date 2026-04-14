@@ -14,9 +14,14 @@ import {
   serializeProject,
   type ProjectFile,
 } from "../persistence.js";
-import { createWorkspaceAssetResolver } from "./assetResolver.js";
+import {
+  createWorkspaceAssetResolver,
+  type WorkspaceAssetResolver,
+} from "./assetResolver.js";
 import { PreviewPanel } from "./PreviewPanel.js";
 import { CommandBar } from "./CommandBar.js";
+import { ExportProgress } from "./export/ExportProgress.js";
+import { useExportVideo } from "./export/useExportVideo.js";
 import { SceneProvider, useScenes } from "./scenes/SceneContext.js";
 import { TimelineModeProvider } from "./hooks/useTimelineMode.js";
 import { TimelineZoomProvider } from "./hooks/useTimelineZoomShared.js";
@@ -73,38 +78,29 @@ const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({
   const errorMessage = status.lastError?.message ?? null;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        background: theme.color.surface0,
-      }}
-    >
-      <CommandBar commands={commands ?? []} onNotifyAgent={onNotifyAgent} />
-      <div style={{ flex: 1, minHeight: 0 }}>
-        <PneumaCraftProvider key={providerKey} assetResolver={assetResolver}>
-          <AssetErrorsProvider>
-            <VariantPointerProvider>
-              <SceneProvider initialScenes={project?.scenes ?? []}>
-                <TimelineModeProvider>
-                  <TimelineZoomProvider>
-                    <EditorToolProvider>
-                      <SyncedBody
-                        project={project}
-                        writeProject={writeProject}
-                        currentTitleRef={currentTitleRef}
-                        hydrationError={errorMessage}
-                      />
-                    </EditorToolProvider>
-                  </TimelineZoomProvider>
-                </TimelineModeProvider>
-              </SceneProvider>
-            </VariantPointerProvider>
-          </AssetErrorsProvider>
-        </PneumaCraftProvider>
-      </div>
-    </div>
+    <PneumaCraftProvider key={providerKey} assetResolver={assetResolver}>
+      <AssetErrorsProvider>
+        <VariantPointerProvider>
+          <SceneProvider initialScenes={project?.scenes ?? []}>
+            <TimelineModeProvider>
+              <TimelineZoomProvider>
+                <EditorToolProvider>
+                  <SyncedBody
+                    project={project}
+                    writeProject={writeProject}
+                    currentTitleRef={currentTitleRef}
+                    hydrationError={errorMessage}
+                    commands={commands ?? []}
+                    onNotifyAgent={onNotifyAgent}
+                    assetResolver={assetResolver}
+                  />
+                </EditorToolProvider>
+              </TimelineZoomProvider>
+            </TimelineModeProvider>
+          </SceneProvider>
+        </VariantPointerProvider>
+      </AssetErrorsProvider>
+    </PneumaCraftProvider>
   );
 };
 
@@ -113,11 +109,19 @@ function SyncedBody({
   writeProject,
   currentTitleRef,
   hydrationError,
+  commands,
+  onNotifyAgent,
+  assetResolver,
 }: {
   project: ProjectFile | null;
   writeProject: (value: ProjectFile) => Promise<void>;
   currentTitleRef: React.MutableRefObject<string>;
   hydrationError: string | null;
+  commands: import("../../../core/types/viewer-contract.js").ViewerCommandDescriptor[];
+  onNotifyAgent?: (
+    n: import("../../../core/types/viewer-contract.js").ViewerNotification,
+  ) => void;
+  assetResolver: WorkspaceAssetResolver;
 }) {
   const dispatchEnvelope = usePneumaCraftStore((s) => s.dispatchEnvelope);
   const coreState = usePneumaCraftStore((s) => s.coreState);
@@ -126,6 +130,21 @@ function SyncedBody({
   const eventCount = useEventLog().length;
   const scenes = useScenes();
   const captionStyle = project?.captionStyle;
+
+  // Browser-side export — runs the craft ExportEngine directly against
+  // the live composition and the already-mounted AssetResolver. No agent
+  // round-trip, no backend invocation. The hook manages its own state
+  // (progress, download url, error) so the CommandBar button can remain
+  // a thin dispatcher.
+  const exportVideo = useExportVideo(composition, assetResolver);
+  const commandHandlers = useMemo(
+    () => ({
+      "export-video": () => {
+        void exportVideo.start(currentTitleRef.current);
+      },
+    }),
+    [exportVideo, currentTitleRef],
+  );
 
   // Initial frame paint: when the composition first hydrates, seek to
   // the earliest time that has actual visible video content so the
@@ -203,7 +222,33 @@ function SyncedBody({
     return () => clearTimeout(timer);
   }, [eventCount, writeProject, scenes, captionStyle]);
 
-  return <PreviewPanel hydrationError={hydrationError} captionStyle={captionStyle} />;
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        background: theme.color.surface0,
+      }}
+    >
+      <CommandBar
+        commands={commands}
+        onNotifyAgent={onNotifyAgent}
+        handlers={commandHandlers}
+      />
+      <ExportProgress
+        state={exportVideo.state}
+        onAbort={exportVideo.abort}
+        onDismiss={exportVideo.dismiss}
+      />
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <PreviewPanel
+          hydrationError={hydrationError}
+          captionStyle={captionStyle}
+        />
+      </div>
+    </div>
+  );
 }
 
 export default ClipCraftPreview;

@@ -31,6 +31,13 @@ function iconFor(id: string): IconComponent {
 interface CommandBarProps {
   commands: ViewerCommandDescriptor[];
   onNotifyAgent?: (notification: ViewerNotification) => void;
+  /**
+   * Map of command id → direct handler. When a command id is in this
+   * map, clicking the button fires the handler locally instead of
+   * sending a chat notification. Used for viewer-side operations like
+   * export that don't need to round-trip through the agent.
+   */
+  handlers?: Record<string, () => void>;
 }
 
 /**
@@ -44,9 +51,18 @@ interface CommandBarProps {
  * Severity `"warning"` is the protocol's "actually send to agent"
  * level; `"info"` is log-only.
  */
-export function CommandBar({ commands, onNotifyAgent }: CommandBarProps) {
+export function CommandBar({
+  commands,
+  onNotifyAgent,
+  handlers,
+}: CommandBarProps) {
   const handleClick = useCallback(
     (cmd: ViewerCommandDescriptor) => {
+      const direct = handlers?.[cmd.id];
+      if (direct) {
+        direct();
+        return;
+      }
       if (!onNotifyAgent) return;
       onNotifyAgent({
         type: "clipcraft-command",
@@ -57,7 +73,7 @@ export function CommandBar({ commands, onNotifyAgent }: CommandBarProps) {
         summary: `/${cmd.id}`,
       });
     },
-    [onNotifyAgent],
+    [onNotifyAgent, handlers],
   );
 
   if (commands.length === 0) return null;

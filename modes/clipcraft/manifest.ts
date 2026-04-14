@@ -73,7 +73,7 @@ Your domain knowledge lives in the \`pneuma-clipcraft\` skill. Read \`.claude/sk
         id: "export-video",
         label: "Export video",
         description:
-          "Export the project as an MP4. Plan 8 will bundle an export script; until then, explain to the user that export isn't wired up yet.",
+          "Export the project as an MP4. Handled directly in the viewer — clicking this button runs @pneuma-craft/video's ExportEngine against the live composition and downloads the finished file. No agent involvement.",
       },
     ],
   },
