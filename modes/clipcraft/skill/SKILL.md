@@ -1,115 +1,125 @@
 ---
-name: clipcraft
-description: AI-orchestrated video production on @pneuma-craft
+name: pneuma-clipcraft
+description: AI-orchestrated video production on @pneuma-craft. Use whenever the user wants to generate, edit, or compose video clips, audio tracks, captions, or background music — including text-to-video / image-to-video generation, TTS narration, music generation, provenance tracking, and timeline composition. Trigger on phrases like "generate video", "make a clip", "add narration", "try another take", "add BGM", "edit project.json", "place on the timeline", "AIGC assets", "regenerate this shot", or any request that touches the exploded timeline or the dive-in panels. Also use when editing `project.json` by hand, registering assets, or wiring provenance edges. Do not assume the user knows the schema — they usually don't; read `references/project-json.md` before committing to an edit.
 ---
 
 # ClipCraft
 
-> **Skill status:** persistence-only (read/write `project.json` round-trips cleanly). Playback, interactive timeline UI, and MCP generation tools are **not yet implemented** — Plan 4+. Until then your interaction with ClipCraft is primarily: (a) read the current state in the viewer's StateDump, (b) edit `project.json` directly to adjust composition / assets / provenance.
+ClipCraft is a video-production mode where the **source of truth is a
+structured domain model**, not a file. The in-memory model is an
+event-sourced craft store from `@pneuma-craft`: an Asset registry, a
+Composition with Tracks and Clips, and a Provenance DAG that tracks
+how each asset was generated (and from what). The file `project.json`
+at the workspace root is a projection of that store — when you edit
+it with Write/Edit, the viewer auto-re-hydrates. No reload, no
+refresh signal.
 
-## What ClipCraft is
+ClipCraft is built for **AIGC workflows**: assets are generated, not
+uploaded. You orchestrate image / video / TTS / BGM generation by
+running bundled scripts, then record the lineage in `project.json`.
 
-ClipCraft is a video-production mode where the **source of truth is a structured domain model**, not a file. The in-memory model is an event-sourced craft store from `@pneuma-craft`: an Asset registry, a Composition with Tracks and Clips, and a Provenance DAG that tracks how each asset was generated (and from what). The file `project.json` at the workspace root is a projection of that store — editing it re-hydrates the store, and store changes auto-serialize back to it.
+## Domain vocabulary (2-minute version)
 
-The viewer consumes `project.json` through the runtime's `Source<T>` abstraction, so any time you edit the file with Write/Edit, the viewer auto-reflects the change. You don't need to do anything special after a write — no reload, no refresh signal.
+- **Asset** — an addressable piece of media. Has `id`, `type`, `uri`,
+  `name`, `metadata`, `status`, `createdAt`.
+- **Track** — a horizontal lane in the timeline.
+  `type` is `video` / `audio` / `subtitle`.
+- **Clip** — a span on a track that references an asset via
+  `assetId`. Has `startTime`, `duration`, `inPoint`, `outPoint` (all
+  in seconds). Subtitle clips also carry `text` directly.
+- **Scene** — a logical chunk of the composition that groups clips
+  across tracks. Purely a human organization aid.
+- **Provenance edge** — `{ toAssetId, fromAssetId, operation }`.
+  Captures "how was this asset created".
+  `fromAssetId: null` means generated from nothing; a real id means
+  derived from another asset.
+- **Composition** — the top-level container: settings
+  (`width`/`height`/`fps`), tracks, transitions, duration.
 
-This matters because ClipCraft is designed for **AIGC workflows**: assets are not uploaded, they're generated (Flux, Runway, GPT-Image, TTS, Lyria). Generations are async, expensive, and often come in variant sets that the user picks from. The Provenance DAG captures that lineage as a first-class concept, and the `Asset.status` lifecycle (`pending` → `generating` → `ready` / `failed`) represents async generations directly in the domain model.
+Full schema in `references/project-json.md`. Id rules in
+`references/asset-ids.md`.
 
-## The `project.json` schema (`pneuma-craft/project/v1`)
+## Generation scripts
 
-Full type definitions live in [`modes/clipcraft/persistence.ts`](../persistence.ts). Minimum shape:
+Four bundled CLI scripts wrap the provider APIs. Call them via the
+Bash tool; they write files and print the output path on stdout.
 
-```json
-{
-  "$schema": "pneuma-craft/project/v1",
-  "title": "Untitled",
-  "composition": {
-    "settings": { "width": 1920, "height": 1080, "fps": 30, "aspectRatio": "16:9" },
-    "tracks": [],
-    "transitions": []
-  },
-  "assets": [],
-  "provenance": []
-}
-```
+| Script | Purpose | Provider | Env var |
+|---|---|---|---|
+| `scripts/generate-image.mjs` | Text→image + image→image edit | fal.ai nano-banana-2 | `FAL_KEY` |
+| `scripts/generate-video.mjs` | Text→video + image→video | fal.ai veo3.1 (~$0.20–0.60/sec) | `FAL_KEY` |
+| `scripts/generate-tts.mjs` | Text→speech | OpenRouter `openai/gpt-audio` | `OPENROUTER_API_KEY` |
+| `scripts/generate-bgm.mjs` | Text→background music | OpenRouter `google/lyria-3-pro-preview` | `OPENROUTER_API_KEY` |
 
-### `assets[]`
+All scripts share the same shape:
 
-Each asset has:
+- `--output <path>` is always required and is workspace-relative.
+- API keys come from `process.env`. If a key is missing, the script
+  exits 1 with a clear error.
+- On success: prints the output path on stdout, exits 0.
+- On failure: prints an error on stderr, exits non-zero.
+- The script creates the parent directory of `--output` if it's
+  missing, and does not produce thumbnails or side-effect files.
 
-- `id` (string) — stable id that survives round-trips; ids you write to disk are honored by the store
-- `type` — `"video"` / `"image"` / `"audio"` / `"text"`
-- `uri` — workspace-relative path (may be empty for `pending`/`generating` assets)
-- `name` — human-readable label
-- `metadata` — physical media properties only (`width`, `height`, `duration`, `fps`, `codec`, `sampleRate`, `channels`). **Do not put prompts or generation params here** — those belong on the provenance edge's `operation.params`.
-- `createdAt` — Unix ms timestamp; survives hydration (Plan 3c)
-- `tags?` — string array
-- `status?` — `"pending"` / `"generating"` / `"ready"` / `"failed"`; absent means `"ready"`
+Run `node .claude/skills/pneuma-clipcraft/scripts/<script>.mjs --help`
+(or just read the script's argv-parse block) for the full arg list.
 
-### `provenance[]`
+**Why this shape:** the script only does what a Bash subprocess does
+best — call a provider API and save bytes. Schema knowledge lives in
+this file + `references/project-json.md`, not in the scripts. You
+compose provenance yourself via Edit on `project.json`.
 
-Each edge describes **how an asset was created**. For AIGC this is the most semantically important part of the file:
+## Typical workflow
 
-```json
-{
-  "toAssetId": "asset-forest-shot",
-  "fromAssetId": null,
-  "operation": {
-    "type": "generate",
-    "actor": "agent",
-    "agentId": "clipcraft-videogen",
-    "timestamp": 1712934000000,
-    "label": "runway gen3-alpha-turbo",
-    "params": {
-      "model": "gen3-alpha-turbo",
-      "prompt": "wide shot of a foggy forest at dawn",
-      "seed": 42,
-      "durationMs": 47000,
-      "costUsd": 0.25,
-      "providerJobId": "run_abc123"
-    }
-  }
-}
-```
+1. **Read** the current `project.json` to understand the composition.
+2. **Generate** assets by running one of the scripts with Bash.
+3. **Register** each new asset in `project.json`:
+   - Add an entry to `assets[]` with a stable semantic id.
+   - Add a matching edge to `provenance[]` with
+     `operation.type: "generate"` and `operation.params` filled out.
+4. **Place** assets on the timeline by adding clips to the relevant
+   track.
+5. The viewer auto-reflects every edit — no reload needed.
 
-- `fromAssetId` is `null` when the asset is generated from nothing (text prompt → image). Use a real asset id when deriving one asset from another (e.g. upscaling an image, extracting audio from a video). Both cases are first-class; don't force one into the other.
-- `operation.type` is `"upload" | "import" | "generate" | "derive" | "select" | "composite"`. For AIGC work, almost everything is `"generate"` or `"derive"`.
-- `operation.params` is a free-form object. The keys above (`model`, `prompt`, `seed`, `durationMs`, `costUsd`, `providerJobId`) are the **shared ClipCraft convention** — use them when they apply. You can add more keys as needed.
-- `operation.actor` should be `"agent"` for agent-driven generations and `"human"` for direct user actions.
+Full worked examples for the three most common flows are in
+`references/workflows.md`. When the user asks for a generation task,
+pattern-match the closest example there first, then adapt.
 
-### `composition.tracks[]` and `tracks[].clips[]`
+## Viewer commands
 
-Plan 3a+ lets you specify explicit `id` fields for both tracks and clips; they round-trip through the store unchanged. All id fields are globally unique within their scope (clip ids are unique across all tracks in the composition, per craft-timeline's validation).
+The viewer exposes a row of command buttons (Generate image,
+Generate video, Try another take, Add narration, Add BGM, Export
+video). Clicks arrive as short natural-language messages in the
+chat — they're hints about what the user wants next, usually with a
+clip or scene pre-selected, not rigid tool calls.
 
-Time is in **seconds**, not frames. `fps` only matters for playback/export, not for data.
+Interpret them conversationally: read the viewer context to see
+what's currently selected, then execute the matching workflow. If
+the intent is ambiguous (for example a vague "generate video"),
+confirm with the user before spending money on veo3.1.
 
-### `title`
+## Gotchas
 
-The top-level `title` is tracked out-of-band in the viewer (craft's domain model has no `title` concept). Edit it freely — the viewer carries it across hydrate/serialize via a parent-owned ref.
-
-## Editing workflow (today)
-
-1. **Read** the viewer's StateDump to see the current composition/assets/event log.
-2. **Edit** `project.json` with the Write / Edit tools. The file watcher picks the change up and re-hydrates the store automatically.
-3. Status transitions (pending → generating → ready / failed) are expressed by editing the `status` field on the asset.
-4. After a successful generation, set the asset's `uri` to the generated file path (relative to the workspace).
-
-**What NOT to edit:**
-
-- The `$schema` field — always `"pneuma-craft/project/v1"`.
-- Raw craft event log files (there aren't any; craft's event log is in-memory only).
-- Anything outside `project.json` unless instructed — the mode only watches that one file today.
-
-## Known limitations you should be aware of
-
-- **No playback.** You cannot preview the composition yet. Plan 4.
-- **No MCP generation tools.** You cannot trigger image / video / TTS / BGM generation via tool calls yet; you have to edit `project.json` directly or shell out to provider APIs yourself. Plan 9.
-- **No interactive viewer UI.** Clicking things in StateDump does nothing. Plan 5.
-- **External file edits interrupt in-memory state.** Because there's no useful in-memory state yet, this is invisible. Once Plan 4 adds playback, agent-edited files will drop the PlaybackEngine position.
-- **The skill vocabulary will change** when Plan 10 lands. For now, you're editing the on-disk schema directly; future plans will add higher-level MCP tools and a richer `<viewer-context>` payload.
+- **Metadata is for physical properties only.** Put `width`,
+  `height`, `duration`, `fps`, `codec`, `sampleRate`, `channels` in
+  `asset.metadata`. Put `prompt`, `model`, `seed`, `cost` etc. in
+  `provenance.operation.params`.
+- **`createdAt` must be stable.** When editing an existing asset,
+  keep its `createdAt` unchanged — hydration relies on it.
+- **Empty uri is legal** for `pending` or `generating` assets. Set
+  the uri when the script finishes and the file exists.
+- **Never edit `$schema`.** It's always `"pneuma-craft/project/v1"`.
+- **Time is in seconds.** Not frames. `fps` only matters for
+  playback/export.
+- **`fromAssetId: null` means "from nothing"**, not "no lineage
+  known". If the asset was generated from a text prompt alone, null
+  is the correct value.
+- **Clip ids are unique across all tracks**, not per-track. Use
+  semantic names so collisions are easy to avoid.
 
 ## See also
 
-- [`modes/clipcraft/ARCHITECTURE.md`](../ARCHITECTURE.md) — architecture narrative, data-flow diagrams, reading order for contributors
-- [`docs/reference/viewer-agent-protocol.md`](../../../docs/reference/viewer-agent-protocol.md) — the protocol ClipCraft implements
-- [`docs/superpowers/plans/NEXT.md`](../../../docs/superpowers/plans/NEXT.md) — completed and upcoming plans
+- `references/project-json.md` — full `project.json` schema
+- `references/workflows.md` — three end-to-end worked examples
+- `references/asset-ids.md` — id naming and stability rules
+- `scripts/` — the four bundled generator CLIs
