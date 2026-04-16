@@ -73,6 +73,7 @@ export default function ChatInput() {
   const [slashIndex, setSlashIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const cliConnected = useStore((s) => s.cliConnected);
   const turnInProgress = useStore((s) => s.turnInProgress);
@@ -178,7 +179,7 @@ export default function ChatInput() {
         setSlashIndex((i) => (i - 1 + filteredSlashItems.length) % filteredSlashItems.length);
         return;
       }
-      if ((e.key === "Enter" && !e.nativeEvent.isComposing) || e.key === "Tab") {
+      if ((e.key === "Enter" && e.keyCode !== 229) || e.key === "Tab") {
         e.preventDefault();
         selectSlashItem(filteredSlashItems[slashIndex]);
         return;
@@ -190,9 +191,9 @@ export default function ChatInput() {
       }
     }
 
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (e.key === "Enter" && !e.shiftKey && e.keyCode !== 229) {
       e.preventDefault();
-      handleSubmit();
+      formRef.current?.requestSubmit();
     }
   };
 
@@ -228,8 +229,12 @@ export default function ChatInput() {
   const handleInput = () => {
     const el = textareaRef.current;
     if (el) {
+      el.style.overflowY = "hidden";
       el.style.height = "auto";
-      el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+      const maxH = 200;
+      const sh = el.scrollHeight;
+      el.style.height = `${Math.min(sh, maxH)}px`;
+      el.style.overflowY = sh > maxH ? "auto" : "hidden";
     }
   };
 
@@ -436,86 +441,91 @@ export default function ChatInput() {
         </div>
       )}
 
-      {/* Textarea with slash menu */}
-      <div
-        className="relative"
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-      >
-        {slashOpen && filteredSlashItems.length > 0 && (
-          <SlashMenu
-            items={filteredSlashItems}
-            selectedIndex={slashIndex}
-            onSelect={selectSlashItem}
-          />
-        )}
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => handleTextChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onInput={handleInput}
-          onPaste={handlePaste}
-          placeholder={
-            !cliConnected
-              ? "Waiting for CLI connection..."
-              : isBusy
-                ? "Type to queue next message..."
-                : hasAnnotations
-                  ? "Add notes (optional)..."
-                  : selection
-                    ? "Tell Claude what to change..."
-                    : previewMode === "annotate"
-                      ? "Click elements to annotate, then send..."
-                      : "Send a message... (drop files, paste images, type / for commands)"
-          }
-          disabled={!cliConnected}
-          rows={1}
-          className="w-full bg-cc-surface/80 backdrop-blur-xl text-cc-fg rounded-2xl px-4 py-3 text-sm resize-none placeholder-cc-muted/50 border border-cc-border/50 shadow-inner focus:outline-none focus:border-cc-primary/60 focus:ring-1 focus:ring-cc-primary/30 disabled:opacity-50 transition-all"
-        />
-      </div>
-
-      {/* Action bar: model switcher + file picker | send/stop */}
-      <div className="flex items-center justify-between mt-2">
-        <div className="flex items-center gap-2">
-          <ModelSwitcher />
-          <button
-            onClick={handleFilePickerClick}
-            className="flex items-center gap-1 px-2 py-1 text-xs text-cc-muted hover:text-cc-fg bg-cc-card hover:bg-cc-hover rounded transition-colors"
-            title="Attach file"
-          >
-            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-              <path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z" />
-            </svg>
-            <span>File</span>
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={handleFileInput}
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          {isBusy && (
-            <button
-              onClick={sendInterrupt}
-              className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-medium text-xs rounded-full transition-all shadow-[0_0_12px_rgba(220,38,38,0.4)]"
-            >
-              Stop
-            </button>
+      {/* Form wraps textarea + action bar — form submit is IME-safe */}
+      <form ref={formRef} onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+        {/* Textarea with slash menu */}
+        <div
+          className="relative"
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          {slashOpen && filteredSlashItems.length > 0 && (
+            <SlashMenu
+              items={filteredSlashItems}
+              selectedIndex={slashIndex}
+              onSelect={selectSlashItem}
+            />
           )}
-          <button
-            onClick={handleSubmit}
-            disabled={(!text.trim() && attachments.length === 0 && !hasAnnotations) || !cliConnected}
-            className="px-5 py-2 bg-cc-primary hover:bg-cc-primary-hover text-cc-bg font-medium text-xs rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(249,115,22,0.4)] disabled:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isBusy ? "Queue" : "Send"}
-          </button>
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => handleTextChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onInput={handleInput}
+            onPaste={handlePaste}
+            placeholder={
+              !cliConnected
+                ? "Waiting for CLI connection..."
+                : isBusy
+                  ? "Type to queue next message..."
+                  : hasAnnotations
+                    ? "Add notes (optional)..."
+                    : selection
+                      ? "Tell Claude what to change..."
+                      : previewMode === "annotate"
+                        ? "Click elements to annotate, then send..."
+                        : "Send a message... (drop files, paste images, type / for commands)"
+            }
+            disabled={!cliConnected}
+            rows={1}
+            className="w-full bg-cc-surface/80 backdrop-blur-xl text-cc-fg rounded-2xl px-4 py-3 text-sm resize-none placeholder-cc-muted/50 border border-cc-border/50 shadow-inner focus:outline-none focus:border-cc-primary/60 focus:ring-1 focus:ring-cc-primary/30 disabled:opacity-50 transition-all"
+          />
         </div>
-      </div>
+
+        {/* Action bar: model switcher + file picker | send/stop */}
+        <div className="flex items-center justify-between mt-2">
+          <div className="flex items-center gap-2">
+            <ModelSwitcher />
+            <button
+              type="button"
+              onClick={handleFilePickerClick}
+              className="flex items-center gap-1 px-2 py-1 text-xs text-cc-muted hover:text-cc-fg bg-cc-card hover:bg-cc-hover rounded transition-colors"
+              title="Attach file"
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                <path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z" />
+              </svg>
+              <span>File</span>
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={handleFileInput}
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isBusy && (
+              <button
+                type="button"
+                onClick={sendInterrupt}
+                className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-medium text-xs rounded-full transition-all shadow-[0_0_12px_rgba(220,38,38,0.4)]"
+              >
+                Stop
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={(!text.trim() && attachments.length === 0 && !hasAnnotations) || !cliConnected}
+              className="px-5 py-2 bg-cc-primary hover:bg-cc-primary-hover text-cc-bg font-medium text-xs rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(249,115,22,0.4)] disabled:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isBusy ? "Queue" : "Send"}
+            </button>
+          </div>
+        </div>
+      </form>
     </div>
   );
 }
