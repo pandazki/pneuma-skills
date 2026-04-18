@@ -37,7 +37,7 @@ When humans and code agents co-create content, they need more than a chat window
 
 | Mode | What it does | Version |
 |------|-------------|---------|
-| **webcraft** | Live web development with [Impeccable](https://impeccable.style) AI design intelligence — 20 design commands, responsive preview, export | 2.18.0 |
+| **webcraft** | Live web development with [Impeccable](https://impeccable.style) AI design intelligence — 20 design commands, responsive preview, export | **2.30.0** |
 | **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export. Skill design guidelines informed by [frontend-slides](https://github.com/zarazhangrui/frontend-slides) | 2.18.0 |
 | **doc** | Markdown documents with live preview — the simplest mode, a minimal example of the mode system | 2.18.0 |
 | **draw** | Diagrams and visual thinking on an [Excalidraw](https://excalidraw.com) canvas | 2.18.0 |

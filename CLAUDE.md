@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.29.0
+**Version:** 2.30.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `mode-maker`, `evolve`
 
@@ -100,7 +100,7 @@ pneuma-skills/
 ├── plugins/                   # Builtin plugins (same lifecycle as third-party)
 │   ├── vercel/                # Vercel deploy plugin (routes + hooks + manifest)
 │   └── cf-pages/              # Cloudflare Pages deploy plugin
-├── modes/{webcraft,doc,slide,draw,diagram,illustrate,remotion,gridboard,clipcraft,mode-maker,evolve}/
+├── modes/{webcraft,doc,slide,draw,diagram,illustrate,remotion,gridboard,mode-maker,evolve}/
 ├── modes/_shared/skills/      # Global skills installed for all modes (e.g. pneuma-preferences)
 ├── backends/
 │   ├── index.ts               # Backend registry + descriptors + capabilities + availability
@@ -196,7 +196,7 @@ Modes can come from four sources, resolved by `core/mode-resolver.ts`:
 
 | Type | Specifier | Resolved Path |
 |------|-----------|---------------|
-| **builtin** | `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `clipcraft`, `mode-maker`, `evolve` | `modes/<name>/` |
+| **builtin** | `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `mode-maker`, `evolve` | `modes/<name>/` |
 | **local** | `/abs/path`, `./rel` | As-is |
 | **github** | `github:user/repo` | `~/.pneuma/modes/<user>-<repo>/` |
 | **url** | `https://...tar.gz` | `~/.pneuma/modes/<name>/` |

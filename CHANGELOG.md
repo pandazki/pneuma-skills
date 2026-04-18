@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.30.0] - 2026-04-18
+
+### Added
+- **webcraft mode bumped to 1.2.0** — synced with Impeccable.style 2.1.7
+- **Two new commands**: `shape` (discovery interview that produces a design brief before any code) and `craft` (shape-then-build flow in one pass). New "Plan" category added to the command toolbar
+- **New principles in the pneuma-webcraft skill**:
+  - `<absolute_bans>` — strict CSS pattern bans for side-stripe borders and gradient text (the two most recognizable AI design tells)
+  - `<font_selection_procedure>` — forces a 4-step procedure before naming any font, with an explicit `<reflex_fonts_to_reject>` list (Inter, Fraunces, DM Sans, Plus Jakarta Sans, etc.) that breaks training-data monoculture
+  - `<theme_selection>` — derives light vs dark from audience/context instead of defaulting
+  - OKLCH-first color guidance (replacing HSL), 4pt spacing scale, formalized 60-30-10 rule
+- **Critique sub-references**: `cognitive-load.md`, `heuristics-scoring.md`, `personas.md` — ported from impeccable 2.1.7 as companion refs to `cmd-critique.md`
+- **`cmd-layout.md`** — the `layout` command (renames `arrange`, content refreshed to 2.1.7)
+- **`cmd-teach.md`** — the `teach` command (renames `teach-impeccable`, aligned with impeccable's new teach flow)
+
+### Changed
+- **webcraft command set** went from 20 (with `teach-impeccable`, `normalize`, `arrange`, `onboard`) to 20 (with `teach`, `shape`, `craft`, `layout`). `normalize` folded into `polish` (Design System Discovery); `onboard` folded into `harden` (empty states, onboarding flows). Command IDs changed — see upgrade path below
+- **`server/skill-installer.ts`** — installer now purges the target skill directory before copying, preventing stale files from prior skill versions (e.g. `cmd-arrange.md`) from lingering after an upgrade. Applies to both mode skills and skill dependencies
+
+### Upgrade path for existing webcraft workspaces
+
+When a workspace resumes, the launcher detects the webcraft version change (1.1.0 → 1.2.0) and shows an inline "Skill update" prompt.
+
+- **Accept the update**: the installer purges the old `.claude/skills/pneuma-webcraft/` directory and reinstalls fresh — old `cmd-teach-impeccable.md` / `cmd-arrange.md` / `cmd-normalize.md` / `cmd-onboard.md` are removed, new `cmd-shape.md` / `cmd-craft.md` / `cmd-layout.md` / `cmd-teach.md` are added. CLAUDE.md is re-injected with the new Impeccable section
+- **Skip**: your workspace keeps the 1.1.0 skill indefinitely; the prompt won't reappear for this version. Toolbar will still show the new 20-command set from the runtime manifest, but clicking `shape` / `craft` / `layout` / `teach` won't find a matching reference file until you update
+- **`.impeccable.md` files** from prior `teach-impeccable` runs remain valid — the design-context structure is unchanged
+
 ## [2.29.0] - 2026-04-13
 
 ### Added
