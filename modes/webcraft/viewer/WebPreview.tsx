@@ -148,6 +148,9 @@ const Icons = {
   type:       <svg {...svgProps}><polyline points="4,7 4,4 20,4 20,7"/><line x1="9.5" y1="20" x2="14.5" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>,
   columns:    <svg {...svgProps}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg>,
   bolt:       <svg {...svgProps}><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/><circle cx="12" cy="12" r="10" fill="none"/></svg>,
+  compass:    <svg {...svgProps}><circle cx="12" cy="12" r="10"/><polygon points="16.24,7.76 14.12,14.12 7.76,16.24 9.88,9.88"/></svg>,
+  wand:       <svg {...svgProps}><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M17.8 6.2L19 5M3 21l9-9M12.2 6.2L11 5"/></svg>,
+  penRuler:   <svg {...svgProps}><path d="M14 4l6 6-9 9H5v-6z"/><path d="M9 9l5 5M4 14l-2 2 2 2 2-2"/></svg>,
 };
 
 interface ViewportPreset {
@@ -169,15 +172,16 @@ const VIEWPORT_PRESETS: ViewportPreset[] = [
 
 /** Icon lookup by action id — UI concern, lives in viewer */
 const ACTION_ICONS: Record<string, React.ReactNode> = {
-  "teach-impeccable": Icons.graduationCap,
+  "teach":       Icons.graduationCap,
+  "shape":       Icons.compass,
+  "craft":       Icons.wand,
   "audit":       Icons.clipboardCheck,
   "critique":    Icons.messageCircle,
-  "normalize":   Icons.ruler,
   "polish":      Icons.gem,
   "distill":     Icons.flask,
   "clarify":     Icons.lightbulb,
   "typeset":     Icons.type,
-  "arrange":     Icons.columns,
+  "layout":      Icons.columns,
   "optimize":    Icons.gauge,
   "harden":      Icons.shield,
   "animate":     Icons.play,
@@ -188,17 +192,17 @@ const ACTION_ICONS: Record<string, React.ReactNode> = {
   "overdrive":   Icons.bolt,
   "extract":     Icons.package,
   "adapt":       Icons.layoutGrid,
-  "onboard":     Icons.userPlus,
 };
 
 /** Group definitions — order and categorization for sidebar UI */
 const COMMAND_GROUPS: { name: string; icon: React.ReactNode; actionIds: string[] }[] = [
-  { name: "Setup",        icon: Icons.settings, actionIds: ["teach-impeccable"] },
-  { name: "Review",       icon: Icons.search,   actionIds: ["audit", "critique"] },
-  { name: "Refine",       icon: Icons.sparkles,  actionIds: ["normalize", "polish", "distill", "clarify", "typeset", "arrange"] },
+  { name: "Setup",        icon: Icons.settings,  actionIds: ["teach"] },
+  { name: "Plan",         icon: Icons.penRuler,  actionIds: ["shape", "craft"] },
+  { name: "Review",       icon: Icons.search,    actionIds: ["audit", "critique"] },
+  { name: "Refine",       icon: Icons.sparkles,  actionIds: ["polish", "distill", "clarify", "typeset", "layout"] },
   { name: "Performance",  icon: Icons.zap,       actionIds: ["optimize", "harden"] },
   { name: "Style",        icon: Icons.palette,   actionIds: ["animate", "colorize", "bolder", "quieter", "delight", "overdrive"] },
-  { name: "Architecture", icon: Icons.building,  actionIds: ["extract", "adapt", "onboard"] },
+  { name: "Architecture", icon: Icons.building,  actionIds: ["extract", "adapt"] },
 ];
 
 interface CommandCategory {

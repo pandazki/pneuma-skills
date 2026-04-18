@@ -6,7 +6,7 @@
  * Parameterized by SkillConfig from ModeManifest — no hardcoded mode knowledge.
  */
 
-import { mkdirSync, existsSync, readFileSync, writeFileSync, cpSync, readdirSync, statSync } from "node:fs";
+import { mkdirSync, existsSync, readFileSync, writeFileSync, cpSync, readdirSync, statSync, rmSync } from "node:fs";
 import { join, dirname, extname } from "node:path";
 import { homedir } from "node:os";
 import type { SkillConfig, ViewerApiConfig, McpServerConfig, SkillDependency } from "../core/types/mode-manifest.js";
@@ -553,8 +553,12 @@ export function installSkillDependencies(
     const depSource = join(modeSourceDir, dep.sourceDir);
     const depTarget = join(workspace, skillsDir(backendType), dep.name);
 
-    mkdirSync(depTarget, { recursive: true });
     if (existsSync(depSource)) {
+      // Purge prior install to drop stale files from older dependency versions.
+      if (existsSync(depTarget)) {
+        rmSync(depTarget, { recursive: true, force: true });
+      }
+      mkdirSync(depTarget, { recursive: true });
       cpSync(depSource, depTarget, { recursive: true, force: true });
       if (params && Object.keys(params).length > 0) {
         applyTemplateToDir(depTarget, params);
@@ -621,9 +625,15 @@ export function installSkill(
   // 1. Copy skill to the backend-appropriate skills directory
   const skillSource = join(modeSourceDir, skillConfig.sourceDir);
   const skillTarget = join(workspace, skillsDir(backendType), skillConfig.installName);
-  mkdirSync(skillTarget, { recursive: true });
 
   if (existsSync(skillSource)) {
+    // Purge prior install to prevent stale files from older skill versions.
+    // Skill content is fully regenerated from source on every install; any .env
+    // files from envMapping are rewritten below, so a clean sweep is safe.
+    if (existsSync(skillTarget)) {
+      rmSync(skillTarget, { recursive: true, force: true });
+    }
+    mkdirSync(skillTarget, { recursive: true });
     cpSync(skillSource, skillTarget, { recursive: true, force: true });
     // Apply template params to installed skill files
     if (params && Object.keys(params).length > 0) {

@@ -4,9 +4,9 @@
  * Verifies the full flow:
  * 1. Mode loading via manifest import
  * 2. Manifest validation (required fields, viewer actions, watch patterns)
- * 3. Skill installation (SKILL.md + 27 reference files)
+ * 3. Skill installation (SKILL.md + 30 reference files)
  * 4. SKILL.md content (Impeccable principles, 20 commands, AI slop test)
- * 5. Reference file completeness (7 design + 20 command references)
+ * 5. Reference file completeness (7 design + 20 command + 3 companion references)
  * 6. CLAUDE.md injection with pneuma markers
  * 7. Seed file (index.html) for empty workspaces
  * 8. Seed quality (OKLCH, fluid typography, semantic HTML, responsive, reduced motion)
@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, readFileSync, existsSync, rmSync, readdirSync, statSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { installSkill } from "../skill-installer.js";
 
@@ -72,7 +72,7 @@ describe("mode loading", () => {
 describe("manifest validation", () => {
   it("has all required top-level fields", () => {
     expect(webcraftManifest.name).toBe("webcraft");
-    expect(webcraftManifest.version).toBe("1.1.0");
+    expect(webcraftManifest.version).toBe("1.2.0");
     expect(webcraftManifest.displayName).toBe("WebCraft");
     expect(webcraftManifest.description).toContain("Impeccable");
     expect(webcraftManifest.icon).toContain("<svg");
@@ -115,7 +115,7 @@ describe("skill installation", () => {
     expect(content.length).toBeGreaterThan(100);
   });
 
-  it("installs all 27 reference files", () => {
+  it("installs all 30 reference files", () => {
     const ws = makeWorkspace("install-refs");
     installWebcraftSkill(ws);
 
@@ -123,7 +123,7 @@ describe("skill installation", () => {
     expect(existsSync(refsDir)).toBe(true);
 
     const files = readdirSync(refsDir).filter((f) => f.endsWith(".md"));
-    expect(files.length).toBe(27);
+    expect(files.length).toBe(30);
   });
 
   it("creates CLAUDE.md in workspace root", () => {
@@ -142,6 +142,24 @@ describe("skill installation", () => {
     expect(existsSync(gitignorePath)).toBe(true);
     const content = readFileSync(gitignorePath, "utf-8");
     expect(content).toContain(".pneuma/");
+  });
+
+  it("purges stale files from a prior install (upgrade path)", () => {
+    const ws = makeWorkspace("install-purge-stale");
+    installWebcraftSkill(ws);
+
+    // Inject a stale file as if it lingered from an earlier skill version
+    const refsDir = join(ws, ".claude", "skills", "pneuma-webcraft", "references");
+    const stalePath = join(refsDir, "cmd-obsolete.md");
+    writeFileSync(stalePath, "stale content from old version", "utf-8");
+    expect(existsSync(stalePath)).toBe(true);
+
+    // Reinstall — the purge step should drop the stale file
+    installWebcraftSkill(ws);
+    expect(existsSync(stalePath)).toBe(false);
+
+    // Sanity: current-version files still present
+    expect(existsSync(join(refsDir, "cmd-shape.md"))).toBe(true);
   });
 });
 
@@ -185,20 +203,23 @@ describe("SKILL.md content", () => {
     expect(skillMd).toContain("which AI made this");
   });
 
-  it("lists all 17 Impeccable commands", () => {
+  it("lists all 20 Impeccable commands", () => {
     const ws = makeWorkspace("skill-content-cmds");
     installWebcraftSkill(ws);
 
     const skillMd = readFileSync(join(ws, ".claude", "skills", "pneuma-webcraft", "SKILL.md"), "utf-8");
 
     const expectedCommands = [
-      "teach-impeccable",
+      "teach",
+      "shape",
+      "craft",
       "audit",
       "critique",
-      "normalize",
       "polish",
       "distill",
       "clarify",
+      "typeset",
+      "layout",
       "optimize",
       "harden",
       "animate",
@@ -206,15 +227,15 @@ describe("SKILL.md content", () => {
       "bolder",
       "quieter",
       "delight",
+      "overdrive",
       "extract",
       "adapt",
-      "onboard",
     ];
 
     for (const cmd of expectedCommands) {
       expect(skillMd).toContain(`**${cmd}**`);
     }
-    expect(expectedCommands.length).toBe(17);
+    expect(expectedCommands.length).toBe(20);
   });
 
   it("contains command category sections", () => {
@@ -223,6 +244,7 @@ describe("SKILL.md content", () => {
 
     const skillMd = readFileSync(join(ws, ".claude", "skills", "pneuma-webcraft", "SKILL.md"), "utf-8");
     expect(skillMd).toContain("### Setup");
+    expect(skillMd).toContain("### Plan");
     expect(skillMd).toContain("### Review");
     expect(skillMd).toContain("### Refine");
     expect(skillMd).toContain("### Performance");
@@ -257,15 +279,16 @@ describe("reference file completeness", () => {
   ];
 
   const commandReferences = [
-    "cmd-teach-impeccable.md",
+    "cmd-teach.md",
+    "cmd-shape.md",
+    "cmd-craft.md",
     "cmd-audit.md",
     "cmd-critique.md",
-    "cmd-normalize.md",
     "cmd-polish.md",
     "cmd-distill.md",
     "cmd-clarify.md",
     "cmd-typeset.md",
-    "cmd-arrange.md",
+    "cmd-layout.md",
     "cmd-optimize.md",
     "cmd-harden.md",
     "cmd-animate.md",
@@ -276,7 +299,12 @@ describe("reference file completeness", () => {
     "cmd-overdrive.md",
     "cmd-extract.md",
     "cmd-adapt.md",
-    "cmd-onboard.md",
+  ];
+
+  const companionReferences = [
+    "cognitive-load.md",
+    "heuristics-scoring.md",
+    "personas.md",
   ];
 
   it("has exactly 7 design reference files", () => {
@@ -300,12 +328,25 @@ describe("reference file completeness", () => {
     }
   });
 
-  it("all 17 command references exist and have content", () => {
+  it("all 20 command references exist and have content", () => {
     const ws = makeWorkspace("refs-commands");
     installWebcraftSkill(ws);
 
     const refsDir = join(ws, ".claude", "skills", "pneuma-webcraft", "references");
     for (const ref of commandReferences) {
+      const refPath = join(refsDir, ref);
+      expect(existsSync(refPath)).toBe(true);
+      const content = readFileSync(refPath, "utf-8");
+      expect(content.length).toBeGreaterThan(50);
+    }
+  });
+
+  it("all companion references (critique sub-refs) exist and have content", () => {
+    const ws = makeWorkspace("refs-companion");
+    installWebcraftSkill(ws);
+
+    const refsDir = join(ws, ".claude", "skills", "pneuma-webcraft", "references");
+    for (const ref of companionReferences) {
       const refPath = join(refsDir, ref);
       expect(existsSync(refPath)).toBe(true);
       const content = readFileSync(refPath, "utf-8");
@@ -319,7 +360,7 @@ describe("reference file completeness", () => {
 
     const refsDir = join(ws, ".claude", "skills", "pneuma-webcraft", "references");
     const allFiles = readdirSync(refsDir).filter((f) => f.endsWith(".md")).sort();
-    const expectedFiles = [...designReferences, ...commandReferences].sort();
+    const expectedFiles = [...designReferences, ...commandReferences, ...companionReferences].sort();
     expect(allFiles).toEqual(expectedFiles);
   });
 
@@ -523,15 +564,16 @@ describe("seed quality — Impeccable principles", () => {
 
 describe("viewer commands", () => {
   const expectedCommandIds = [
-    "teach-impeccable",
+    "teach",
+    "shape",
+    "craft",
     "audit",
     "critique",
-    "normalize",
     "polish",
     "distill",
     "clarify",
     "typeset",
-    "arrange",
+    "layout",
     "optimize",
     "harden",
     "animate",
@@ -542,7 +584,6 @@ describe("viewer commands", () => {
     "overdrive",
     "extract",
     "adapt",
-    "onboard",
   ];
 
   it("defines exactly 20 viewer commands", () => {

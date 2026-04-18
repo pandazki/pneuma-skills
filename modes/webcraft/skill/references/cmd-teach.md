@@ -1,10 +1,24 @@
 ---
-name: teach-impeccable
-description: One-time setup that gathers design context for your project and saves it to your AI config file. Run once to establish persistent design guidelines.
-user-invokable: true
+name: teach
+description: "Gather design context for this project and save persistent guidelines to .impeccable.md. Run this once per project to establish design direction."
+argument-hint: "[target]"
+user-invocable: true
 ---
 
-Gather design context for this project, then persist it for all future sessions.
+# Teach Mode
+
+This is a one-time setup that gathers design context for the project. Skip all other design work and instead run the teach flow below.
+
+Design skills produce generic output without project context. You MUST have confirmed design context before doing any design work.
+
+**Required context** (every design skill needs at minimum):
+- **Target audience**: Who uses this product and in what context?
+- **Use cases**: What jobs are they trying to get done?
+- **Brand personality/tone**: How should the interface feel?
+
+**CRITICAL**: You cannot infer this context by reading the codebase. Code tells you what was built, not who it's for or what it should feel like. Only the creator can provide this context.
+
+---
 
 ## Step 1: Explore the Codebase
 

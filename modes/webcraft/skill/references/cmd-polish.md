@@ -1,20 +1,27 @@
 ---
 name: polish
-description: Final quality pass before shipping. Fixes alignment, spacing, consistency, and detail issues that separate good from great.
-args:
-  - name: target
-    description: The feature or area to polish (optional)
-    required: false
-user-invokable: true
+description: "Performs a final quality pass fixing alignment, spacing, consistency, and micro-detail issues before shipping. Use when the user mentions polish, finishing touches, pre-launch review, something looks off, or wants to go from good to great."
+argument-hint: "[target]"
+user-invocable: true
 ---
 
 ## MANDATORY PREPARATION
 
-Use the frontend-design skill — it contains design principles, anti-patterns, and the **Context Gathering Protocol**. Follow the protocol before proceeding — if no design context exists yet, you MUST run teach-impeccable first. Additionally gather: quality bar (MVP vs flagship).
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `teach` command first (see [cmd-teach](cmd-teach.md)). Additionally gather: quality bar (MVP vs flagship).
 
 ---
 
 Perform a meticulous final pass to catch all the small details that separate good work from great work. The difference between shipped and polished.
+
+## Design System Discovery
+
+Before polishing, understand the system you are polishing toward:
+
+1. **Find the design system**: Search for design system documentation, component libraries, style guides, or token definitions. Study the core patterns: color tokens, spacing scale, typography styles, component API.
+2. **Note the conventions**: How are shared components imported? What spacing scale is used? Which colors come from tokens vs hard-coded values? What motion and interaction patterns are established?
+3. **Identify drift**: Where does the target feature deviate from the system? Hard-coded values that should be tokens, custom components that duplicate shared ones, spacing that doesn't match the scale.
+
+If a design system exists, polish should align the feature with it. If none exists, polish against the conventions visible in the codebase.
 
 ## Pre-Polish Assessment
 
@@ -191,6 +198,8 @@ Go through systematically:
 - Introduce bugs while polishing (test thoroughly)
 - Ignore systematic issues (if spacing is off everywhere, fix the system)
 - Perfect one thing while leaving others rough (consistent quality level)
+- Create new one-off components when design system equivalents exist
+- Hard-code values that should use design tokens
 
 ## Final Verification
 
@@ -202,5 +211,13 @@ Before marking as done:
 - **Compare to design**: Match intended design
 - **Check all states**: Don't just test happy path
 
-Remember: You have impeccable attention to detail and exquisite taste. Polish until it feels effortless, looks intentional, and works flawlessly. Sweat the details - they matter.
+## Clean Up
 
+After polishing, ensure code quality:
+
+- **Replace custom implementations**: If the design system provides a component you reimplemented, switch to the shared version.
+- **Remove orphaned code**: Delete unused styles, components, or files made obsolete by polish.
+- **Consolidate tokens**: If you introduced new values, check whether they should be tokens.
+- **Verify DRYness**: Look for duplication introduced during polishing and consolidate.
+
+Remember: You have impeccable attention to detail and exquisite taste. Polish until it feels effortless, looks intentional, and works flawlessly. Sweat the details - they matter.

@@ -87,14 +87,14 @@ Design skills produce generic output without project context. You MUST have conf
 - **Use cases**: What jobs are they trying to get done?
 - **Brand personality/tone**: How should the interface feel?
 
-Individual skills may require additional context — check the skill's preparation section for specifics.
+Individual commands may require additional context — check the command's preparation section for specifics.
 
 **CRITICAL**: You cannot infer this context by reading the codebase. Code tells you what was built, not who it's for or what it should feel like. Only the creator can provide this context.
 
 **Gathering order:**
-1. **Check current instructions (instant)**: If your loaded instructions already contain a **Design Context** section, proceed immediately.
+1. **Check current instructions (instant)**: If `CLAUDE.md` already contains a **Design Context** section, proceed immediately.
 2. **Check .impeccable.md (fast)**: If not in instructions, read `.impeccable.md` from the project root. If it exists and contains the required context, proceed.
-3. **Run teach-impeccable (REQUIRED)**: If neither source has context, you MUST run the teach-impeccable skill NOW before doing anything else. Do NOT skip this step. Do NOT attempt to infer context from the codebase instead.
+3. **Run the `teach` command (REQUIRED)**: If neither source has context, you MUST run the `teach` command NOW before doing anything else. Do NOT skip this step. Do NOT attempt to infer context from the codebase instead.
 
 ### Design Direction
 
@@ -104,7 +104,7 @@ Commit to a BOLD aesthetic direction:
 - **Constraints**: Technical requirements (framework, performance, accessibility).
 - **Differentiation**: What makes this UNFORGETTABLE? What's the one thing someone will remember?
 
-**CRITICAL**: Choose a clear conceptual direction and execute it with precision. Bold maximalism and refined minimalism both work—the key is intentionality, not intensity.
+**CRITICAL**: Choose a clear conceptual direction and execute it with precision. Bold maximalism and refined minimalism both work — the key is intentionality, not intensity.
 
 Then implement working code that is:
 - Production-grade and functional
@@ -115,80 +115,197 @@ Then implement working code that is:
 ### Frontend Aesthetics Guidelines
 
 #### Typography
-> *Consult [typography reference](references/typography.md) for scales, pairing, and loading strategies.*
+> *Consult [typography reference](references/typography.md) for OpenType features, web font loading, and the deeper material on scales.*
 
 Choose fonts that are beautiful, unique, and interesting. Pair a distinctive display font with a refined body font.
 
-**DO**: Use a modular type scale with fluid sizing (clamp)
-**DO**: Vary font weights and sizes to create clear visual hierarchy
-**DON'T**: Use overused fonts—Inter, Roboto, Arial, Open Sans, system defaults
-**DON'T**: Use monospace typography as lazy shorthand for "technical/developer" vibes
-**DON'T**: Put large icons with rounded corners above every heading—they rarely add value and make sites look templated
+<typography_principles>
+Always apply these — do not consult a reference, just do them:
+
+- Use a modular type scale with fluid sizing (clamp) for headings on marketing/content pages. Use fixed `rem` scales for app UIs and dashboards (no major design system uses fluid type in product UI).
+- Use fewer sizes with more contrast. A 5-step scale with at least a 1.25 ratio between steps creates clearer hierarchy than 8 sizes that are 1.1× apart.
+- Line-height scales inversely with line length. Narrow columns want tighter leading, wide columns want more. For light text on dark backgrounds, ADD 0.05-0.1 to your normal line-height — light type reads as lighter weight and needs more breathing room.
+- Cap line length at ~65-75ch. Body text wider than that is fatiguing.
+</typography_principles>
+
+<font_selection_procedure>
+DO THIS BEFORE TYPING ANY FONT NAME.
+
+The model's natural failure mode is "I was told not to use Inter, so I will pick my next favorite font, which becomes the new monoculture." Avoid this by performing the following procedure on every project, in order:
+
+Step 1. Read the brief once. Write down 3 concrete words for the brand voice (e.g., "warm and mechanical and opinionated", "calm and clinical and careful", "fast and dense and unimpressed", "handmade and a little weird"). NOT "modern" or "elegant" — those are dead categories.
+
+Step 2. List the 3 fonts you would normally reach for given those words. Write them down. They are most likely from this list:
+
+<reflex_fonts_to_reject>
+Fraunces
+Newsreader
+Lora
+Crimson
+Crimson Pro
+Crimson Text
+Playfair Display
+Cormorant
+Cormorant Garamond
+Syne
+IBM Plex Mono
+IBM Plex Sans
+IBM Plex Serif
+Space Mono
+Space Grotesk
+Inter
+DM Sans
+DM Serif Display
+DM Serif Text
+Outfit
+Plus Jakarta Sans
+Instrument Sans
+Instrument Serif
+</reflex_fonts_to_reject>
+
+Reject every font that appears in the reflex_fonts_to_reject list. They are your training-data defaults and they create monoculture across projects.
+
+Step 3. Browse a font catalog with the 3 brand words in mind. Sources: Google Fonts, Pangram Pangram, Future Fonts, Adobe Fonts, ABC Dinamo, Klim Type Foundry, Velvetyne. Look for something that fits the brand as a *physical object* — a museum exhibit caption, a hand-painted shop sign, a 1970s mainframe terminal manual, a fabric label on the inside of a coat, a children's book printed on cheap newsprint. Reject the first thing that "looks designy" — that's the trained reflex too. Keep looking.
+
+Step 4. Cross-check the result. The right font for an "elegant" brief is NOT necessarily a serif. The right font for a "technical" brief is NOT necessarily a sans-serif. The right font for a "warm" brief is NOT Fraunces. If your final pick lines up with your reflex pattern, go back to Step 3.
+</font_selection_procedure>
+
+<typography_rules>
+DO use a modular type scale with fluid sizing (clamp) on headings.
+DO vary font weights and sizes to create clear visual hierarchy.
+DO vary your font choices across projects. If you used a serif display font on the last project, look for a sans, monospace, or display face on this one.
+
+DO NOT use overused fonts like Inter, Roboto, Arial, Open Sans, or system defaults — but also do not simply switch to your second-favorite. Every font in the reflex_fonts_to_reject list above is banned. Look further.
+DO NOT use monospace typography as lazy shorthand for "technical/developer" vibes.
+DO NOT put large icons with rounded corners above every heading. They rarely add value and make sites look templated.
+DO NOT use only one font family for the entire page. Pair a distinctive display font with a refined body font.
+DO NOT use a flat type hierarchy where sizes are too close together. Aim for at least a 1.25 ratio between steps.
+DO NOT set long body passages in uppercase. Reserve all-caps for short labels and headings.
+</typography_rules>
 
 #### Color & Theme
-> *Consult [color reference](references/color-and-contrast.md) for OKLCH, palettes, and dark mode.*
+> *Consult [color reference](references/color-and-contrast.md) for the deeper material on contrast, accessibility, and palette construction.*
 
 Commit to a cohesive palette. Dominant colors with sharp accents outperform timid, evenly-distributed palettes.
 
-**DO**: Use modern CSS color functions (oklch, color-mix, light-dark) for perceptually uniform, maintainable palettes
-**DO**: Tint your neutrals toward your brand hue—even a subtle hint creates subconscious cohesion
-**DON'T**: Use gray text on colored backgrounds—it looks washed out; use a shade of the background color instead
-**DON'T**: Use pure black (#000) or pure white (#fff)—always tint; pure black/white never appears in nature
-**DON'T**: Use the AI color palette: cyan-on-dark, purple-to-blue gradients, neon accents on dark backgrounds
-**DON'T**: Use gradient text for "impact"—especially on metrics or headings; it's decorative rather than meaningful
-**DON'T**: Default to dark mode with glowing accents—it looks "cool" without requiring actual design decisions
+<color_principles>
+Always apply these — do not consult a reference, just do them:
+
+- Use OKLCH, not HSL. OKLCH is perceptually uniform: equal steps in lightness *look* equal, which HSL does not deliver. As you move toward white or black, REDUCE chroma — high chroma at extreme lightness looks garish. A light blue at 85% lightness wants ~0.08 chroma, not the 0.15 of your base color.
+- Tint your neutrals toward your brand hue. Even a chroma of 0.005-0.01 is perceptible and creates subconscious cohesion between brand color and UI surfaces. The hue you tint toward should come from THIS brand, not from a "warm = friendly" or "cool = tech" formula. Pick the brand's actual hue first, then tint everything toward it.
+- The 60-30-10 rule is about visual *weight*, not pixel count. 60% neutral / surface, 30% secondary text and borders, 10% accent. Accents work BECAUSE they're rare. Overuse kills their power.
+</color_principles>
+
+<theme_selection>
+Theme (light vs dark) should be DERIVED from audience and viewing context, not picked from a default. Read the brief and ask: when is this product used, by whom, in what physical setting?
+
+- A perp DEX consumed during fast trading sessions → dark
+- A hospital portal consumed by anxious patients on phones late at night → light
+- A children's reading app → light
+- A vintage motorcycle forum where users sit in their garage at 9pm → dark
+- An observability dashboard for SREs in a dark office → dark
+- A wedding planning checklist for couples on a Sunday morning → light
+- A music player app for headphone listening at night → dark
+- A food magazine homepage browsed during a coffee break → light
+
+Do not default everything to light "to play it safe." Do not default everything to dark "to look cool." Both defaults are the lazy reflex. The correct theme is the one the actual user wants in their actual context.
+</theme_selection>
+
+<color_rules>
+DO use modern CSS color functions (oklch, color-mix, light-dark) for perceptually uniform, maintainable palettes.
+DO tint your neutrals toward your brand hue. Even a subtle hint creates subconscious cohesion.
+
+DO NOT use gray text on colored backgrounds; it looks washed out. Use a shade of the background color instead.
+DO NOT use pure black (#000) or pure white (#fff). Always tint; pure black/white never appears in nature.
+DO NOT use the AI color palette: cyan-on-dark, purple-to-blue gradients, neon accents on dark backgrounds.
+DO NOT use gradient text for impact — see <absolute_bans> below for the strict definition. Solid colors only for text.
+DO NOT default to dark mode with glowing accents. It looks "cool" without requiring actual design decisions.
+DO NOT default to light mode "to be safe" either. The point is to choose, not to retreat to a safe option.
+</color_rules>
 
 #### Layout & Space
-> *Consult [spatial reference](references/spatial-design.md) for grids, rhythm, and container queries.*
+> *Consult [spatial reference](references/spatial-design.md) for the deeper material on grids, container queries, and optical adjustments.*
 
-Create visual rhythm through varied spacing—not the same padding everywhere. Embrace asymmetry and unexpected compositions. Break the grid intentionally for emphasis.
+Create visual rhythm through varied spacing, not the same padding everywhere. Embrace asymmetry and unexpected compositions. Break the grid intentionally for emphasis.
 
-**DO**: Create visual rhythm through varied spacing—tight groupings, generous separations
-**DO**: Use fluid spacing with clamp() that breathes on larger screens
-**DO**: Use asymmetry and unexpected compositions; break the grid intentionally for emphasis
-**DON'T**: Wrap everything in cards—not everything needs a container
-**DON'T**: Nest cards inside cards—visual noise, flatten the hierarchy
-**DON'T**: Use identical card grids—same-sized cards with icon + heading + text, repeated endlessly
-**DON'T**: Use the hero metric layout template—big number, small label, supporting stats, gradient accent
-**DON'T**: Center everything—left-aligned text with asymmetric layouts feels more designed
-**DON'T**: Use the same spacing everywhere—without rhythm, layouts feel monotonous
+<spatial_principles>
+Always apply these — do not consult a reference, just do them:
+
+- Use a 4pt spacing scale with semantic token names (`--space-sm`, `--space-md`), not pixel-named (`--spacing-8`). Scale: 4, 8, 12, 16, 24, 32, 48, 64, 96. 8pt is too coarse — you'll often want 12px between two values.
+- Use `gap` instead of margins for sibling spacing. It eliminates margin collapse and the cleanup hacks that come with it.
+- Vary spacing for hierarchy. A heading with extra space above it reads as more important — make use of that. Don't apply the same padding everywhere.
+- Self-adjusting grid pattern: `grid-template-columns: repeat(auto-fit, minmax(280px, 1fr))` is the breakpoint-free responsive grid for card-style content.
+- Container queries are for components, viewport queries are for page layout. A card in a sidebar should adapt to the sidebar's width, not the viewport's.
+</spatial_principles>
+
+<spatial_rules>
+DO create visual rhythm through varied spacing: tight groupings, generous separations.
+DO use fluid spacing with clamp() that breathes on larger screens.
+DO use asymmetry and unexpected compositions; break the grid intentionally for emphasis.
+
+DO NOT wrap everything in cards. Not everything needs a container.
+DO NOT nest cards inside cards. Visual noise; flatten the hierarchy.
+DO NOT use identical card grids (same-sized cards with icon + heading + text, repeated endlessly).
+DO NOT use the hero metric layout template (big number, small label, supporting stats, gradient accent).
+DO NOT center everything. Left-aligned text with asymmetric layouts feels more designed.
+DO NOT use the same spacing everywhere. Without rhythm, layouts feel monotonous.
+DO NOT let body text wrap beyond ~80 characters per line. Add a max-width like 65–75ch so the eye can track easily.
+</spatial_rules>
 
 #### Visual Details
-**DO**: Use intentional, purposeful decorative elements that reinforce brand
-**DON'T**: Use glassmorphism everywhere—blur effects, glass cards, glow borders used decoratively rather than purposefully
-**DON'T**: Use rounded elements with thick colored border on one side—a lazy accent that almost never looks intentional
-**DON'T**: Use sparklines as decoration—tiny charts that look sophisticated but convey nothing meaningful
-**DON'T**: Use rounded rectangles with generic drop shadows—safe, forgettable, could be any AI output
-**DON'T**: Use modals unless there's truly no better alternative—modals are lazy
+
+<absolute_bans>
+These CSS patterns are NEVER acceptable. They are the most recognizable AI design tells. Match-and-refuse: if you find yourself about to write any of these, stop and rewrite the element with a different structure entirely.
+
+BAN 1: Side-stripe borders on cards/list items/callouts/alerts
+  - PATTERN: `border-left:` or `border-right:` with width greater than 1px
+  - INCLUDES: hard-coded colors AND CSS variables
+  - FORBIDDEN: `border-left: 3px solid red`, `border-left: 4px solid #ff0000`, `border-left: 4px solid var(--color-warning)`, `border-left: 5px solid oklch(...)`, etc.
+  - WHY: this is the single most overused "design touch" in admin, dashboard, and medical UIs. It never looks intentional regardless of color, radius, opacity, or whether the variable name is "primary" or "warning" or "accent."
+  - REWRITE: use a different element structure entirely. Do not just swap to box-shadow inset. Reach for full borders, background tints, leading numbers/icons, or no visual indicator at all.
+
+BAN 2: Gradient text
+  - PATTERN: `background-clip: text` (or `-webkit-background-clip: text`) combined with a gradient background
+  - FORBIDDEN: any combination that makes text fill come from a `linear-gradient`, `radial-gradient`, or `conic-gradient`
+  - WHY: gradient text is decorative rather than meaningful and is one of the top three AI design tells
+  - REWRITE: use a single solid color for text. If you want emphasis, use weight or size, not gradient fill.
+</absolute_bans>
+
+DO: Use intentional, purposeful decorative elements that reinforce brand.
+DO NOT: Use border-left or border-right greater than 1px as a colored accent stripe on cards, list items, callouts, or alerts. See <absolute_bans> above for the strict CSS pattern.
+DO NOT: Use glassmorphism everywhere (blur effects, glass cards, glow borders used decoratively rather than purposefully).
+DO NOT: Use sparklines as decoration. Tiny charts that look sophisticated but convey nothing meaningful.
+DO NOT: Use rounded rectangles with generic drop shadows. Safe, forgettable, could be any AI output.
+DO NOT: Use modals unless there's truly no better alternative. Modals are lazy.
 
 #### Motion
 > *Consult [motion reference](references/motion-design.md) for timing, easing, and reduced motion.*
 
 Focus on high-impact moments: one well-orchestrated page load with staggered reveals creates more delight than scattered micro-interactions.
 
-**DO**: Use motion to convey state changes—entrances, exits, feedback
+**DO**: Use motion to convey state changes — entrances, exits, feedback
 **DO**: Use exponential easing (ease-out-quart/quint/expo) for natural deceleration
 **DO**: For height animations, use grid-template-rows transitions instead of animating height directly
-**DON'T**: Animate layout properties (width, height, padding, margin)—use transform and opacity only
-**DON'T**: Use bounce or elastic easing—they feel dated and tacky; real objects decelerate smoothly
+**DON'T**: Animate layout properties (width, height, padding, margin). Use transform and opacity only
+**DON'T**: Use bounce or elastic easing. They feel dated and tacky; real objects decelerate smoothly
 
 #### Interaction
 > *Consult [interaction reference](references/interaction-design.md) for forms, focus, and loading patterns.*
 
-Make interactions feel fast. Use optimistic UI—update immediately, sync later.
+Make interactions feel fast. Use optimistic UI — update immediately, sync later.
 
-**DO**: Use progressive disclosure—start simple, reveal sophistication through interaction (basic options first, advanced behind expandable sections; hover states that reveal secondary actions)
+**DO**: Use progressive disclosure. Start simple, reveal sophistication through interaction (basic options first, advanced behind expandable sections; hover states that reveal secondary actions)
 **DO**: Design empty states that teach the interface, not just say "nothing here"
 **DO**: Make every interactive surface feel intentional and responsive
-**DON'T**: Repeat the same information—redundant headers, intros that restate the heading
-**DON'T**: Make every button primary—use ghost buttons, text links, secondary styles; hierarchy matters
+**DON'T**: Repeat the same information (redundant headers, intros that restate the heading)
+**DON'T**: Make every button primary. Use ghost buttons, text links, secondary styles; hierarchy matters
 
 #### Responsive
 > *Consult [responsive reference](references/responsive-design.md) for mobile-first, fluid design, and container queries.*
 
 **DO**: Use container queries (@container) for component-level responsiveness
-**DO**: Adapt the interface for different contexts—don't just shrink it
-**DON'T**: Hide critical functionality on mobile—adapt the interface, don't amputate it
+**DO**: Adapt the interface for different contexts, not just shrink it
+**DON'T**: Hide critical functionality on mobile. Adapt the interface, don't amputate it
 
 #### UX Writing
 > *Consult [ux-writing reference](references/ux-writing.md) for labels, errors, and empty states.*
@@ -202,7 +319,7 @@ Make interactions feel fast. Use optimistic UI—update immediately, sync later.
 
 A distinctive interface should make someone ask "how was this made?" not "which AI made this?"
 
-Review the DON'T guidelines above—they are the fingerprints of AI-generated work from 2024-2025.
+Review the DON'T guidelines above — they are the fingerprints of AI-generated work from 2024-2025.
 
 ### Implementation Principles
 
@@ -210,32 +327,35 @@ Match implementation complexity to the aesthetic vision. Maximalist designs need
 
 Interpret creatively and make unexpected choices that feel genuinely designed for the context. No design should be the same. Vary between light and dark themes, different fonts, different aesthetics. NEVER converge on common choices across generations.
 
-Remember: Claude is capable of extraordinary creative work. Don't hold back—show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
+Remember: Claude is capable of extraordinary creative work. Don't hold back — show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
 
 ---
 
 ## Impeccable Commands
 
-The user can invoke these commands from the toolbar. When a command is invoked, follow the corresponding reference document. The available commands are:
+The user invokes these commands from the toolbar. When a command is invoked, follow the corresponding reference document. The available commands are:
 
 ### Setup
-- **teach-impeccable** — Gather design context for the project and save persistent guidelines. Reference: [cmd-teach-impeccable](references/cmd-teach-impeccable.md)
+- **teach** — Gather design context for the project and save persistent guidelines to `.impeccable.md`. Reference: [cmd-teach](references/cmd-teach.md)
+
+### Plan
+- **shape** — Run a discovery interview and produce a design brief before any code is written. Reference: [cmd-shape](references/cmd-shape.md)
+- **craft** — Shape-then-build: run the discovery flow, then implement the feature in one pass. Reference: [cmd-craft](references/cmd-craft.md)
 
 ### Review
-- **audit** — Comprehensive quality audit across accessibility, performance, theming, and responsive design. Generates a detailed report. Reference: [cmd-audit](references/cmd-audit.md)
+- **audit** — Comprehensive quality audit across accessibility, performance, theming, and responsive design. Reference: [cmd-audit](references/cmd-audit.md)
 - **critique** — Holistic UX design critique evaluating hierarchy, architecture, and emotional resonance. Reference: [cmd-critique](references/cmd-critique.md)
 
 ### Refine
-- **normalize** — Align design to match design system standards and ensure consistency. Reference: [cmd-normalize](references/cmd-normalize.md)
-- **polish** — Final quality pass fixing alignment, spacing, consistency, and details. Reference: [cmd-polish](references/cmd-polish.md)
+- **polish** — Final quality pass aligning the feature to the design system — fixes spacing, consistency, and drift before shipping. Reference: [cmd-polish](references/cmd-polish.md)
 - **distill** — Strip design to its essence by removing unnecessary complexity. Reference: [cmd-distill](references/cmd-distill.md)
 - **clarify** — Improve unclear UX copy, error messages, labels, and instructions. Reference: [cmd-clarify](references/cmd-clarify.md)
-- **typeset** — Improve typography by fixing font choices, hierarchy, sizing, weight consistency, and readability. Reference: [cmd-typeset](references/cmd-typeset.md)
-- **arrange** — Improve layout, spacing, and visual rhythm. Fixes monotonous grids, inconsistent spacing, and weak visual hierarchy. Reference: [cmd-arrange](references/cmd-arrange.md)
+- **typeset** — Improve typography: font selection, modular scale, weight, rhythm, and readability. Reference: [cmd-typeset](references/cmd-typeset.md)
+- **layout** — Improve layout, spacing, and visual rhythm — fix monotonous grids and weak hierarchy. Reference: [cmd-layout](references/cmd-layout.md)
 
 ### Performance
 - **optimize** — Improve performance across loading, rendering, animations, and bundle size. Reference: [cmd-optimize](references/cmd-optimize.md)
-- **harden** — Improve resilience through error handling, i18n, text overflow, and edge cases. Reference: [cmd-harden](references/cmd-harden.md)
+- **harden** — Make interfaces production-ready: error handling, empty states, onboarding flows, i18n, text overflow, and edge cases. Reference: [cmd-harden](references/cmd-harden.md)
 
 ### Style
 - **animate** — Add purposeful animations, micro-interactions, and motion effects. Reference: [cmd-animate](references/cmd-animate.md)
@@ -248,7 +368,6 @@ The user can invoke these commands from the toolbar. When a command is invoked, 
 ### Architecture
 - **extract** — Extract reusable components, design tokens, and patterns into a design system. Reference: [cmd-extract](references/cmd-extract.md)
 - **adapt** — Adapt designs for different screen sizes, devices, contexts, or platforms. Reference: [cmd-adapt](references/cmd-adapt.md)
-- **onboard** — Design or improve onboarding flows, empty states, and first-time user experiences. Reference: [cmd-onboard](references/cmd-onboard.md)
 
 ### Command Execution Notes
 
@@ -258,5 +377,6 @@ When the user invokes a command:
 3. In the reference, replace `{{config_file}}` with: CLAUDE.md
 4. In the reference, replace `{{model}}` with: Claude
 5. In the reference, replace `{{available_commands}}` with the list of 20 commands above
-6. Follow the reference instructions step by step
-7. Apply changes directly to the workspace files — the user sees results in real-time
+6. References may point to "this skill" or to `references/*.md` files. Both live in the pneuma-webcraft skill — consult them directly, no separate `impeccable` skill needs to be invoked.
+7. Follow the reference instructions step by step
+8. Apply changes directly to the workspace files — the user sees results in real-time
