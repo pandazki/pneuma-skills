@@ -52,7 +52,7 @@ function tryFlushPendingQueue() {
     // Lazy import to avoid circular dependency (store ↔ ws)
     import("../ws.js").then(({ sendUserMessage, sendViewerNotification }) => {
       if (next.kind === "user") {
-        sendUserMessage(next.text);
+        sendUserMessage(next.text, next.selection, next.images, next.annotations, next.files);
       } else {
         sendViewerNotification(next.notification, next.images);
         const fileMatches = [...next.notification.message.matchAll(/\(([^)]+\.\w+)\)/g)];

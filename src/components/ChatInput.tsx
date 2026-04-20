@@ -132,19 +132,6 @@ export default function ChatInput() {
     const hasAnnotations = annotations.length > 0;
     if (!trimmed && attachments.length === 0 && !hasAnnotations) return;
 
-    if (isBusy) {
-      // Agent is working — queue the message (text only)
-      if (trimmed) {
-        addPendingMessage(trimmed);
-        setText("");
-        setSlashOpen(false);
-        if (textareaRef.current) {
-          textareaRef.current.style.height = "auto";
-        }
-      }
-      return;
-    }
-
     const imageAtts = attachments.filter((a) => a.kind === "image");
     const fileAtts = attachments.filter((a) => a.kind === "file");
     const imgPayload = imageAtts.length > 0
@@ -153,7 +140,22 @@ export default function ChatInput() {
     const filePayload = fileAtts.length > 0
       ? fileAtts.map((f) => ({ name: f.name, media_type: f.media_type, data: f.data, size: f.size }))
       : undefined;
-    sendUserMessage(trimmed, selection, imgPayload, hasAnnotations ? annotations : undefined, filePayload);
+    const annPayload = hasAnnotations ? annotations : undefined;
+
+    if (isBusy) {
+      addPendingMessage({
+        text: trimmed,
+        selection,
+        images: imgPayload,
+        files: filePayload,
+        annotations: annPayload,
+      });
+    } else {
+      sendUserMessage(trimmed, selection, imgPayload, annPayload, filePayload);
+      // Immediately show busy state — disable input + show Stop button
+      useStore.getState().setTurnInProgress(true);
+    }
+
     setText("");
     setAttachments([]);
     setSelection(null);
@@ -162,8 +164,6 @@ export default function ChatInput() {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-    // Immediately show busy state — disable input + show Stop button
-    useStore.getState().setTurnInProgress(true);
   }, [text, attachments, selection, setSelection, annotations, clearAnnotations, isBusy, addPendingMessage]);
 
   const handleKeyDown = (e: KeyboardEvent) => {

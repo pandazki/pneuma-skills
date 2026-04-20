@@ -1,11 +1,19 @@
 import type { StateCreator } from "zustand";
-import type { ChatMessage, PermissionRequest } from "../types.js";
-import type { AppState, Activity, AnsweredQuestion } from "./types.js";
+import type { ChatMessage, PermissionRequest, Annotation } from "../types.js";
+import type { AppState, Activity, AnsweredQuestion, ElementSelection } from "./types.js";
 import { mergeAssistantMessage } from "./helpers.js";
+
+export interface PendingUserPayload {
+  text: string;
+  selection?: ElementSelection | null;
+  images?: { media_type: string; data: string }[];
+  files?: { name: string; media_type: string; data: string; size: number }[];
+  annotations?: Annotation[];
+}
 
 /** Unified pending message — user text, viewer notification, or notification with image */
 export type PendingMessage =
-  | { id: string; kind: "user"; text: string }
+  | ({ id: string; kind: "user" } & PendingUserPayload)
   | { id: string; kind: "notification"; notification: { type: string; message: string; severity: "info" | "warning"; summary?: string }; images?: { media_type: string; data: string }[] };
 
 /** Tracks a file being written by the agent in real-time (from input_json_delta streaming) */
@@ -31,7 +39,7 @@ export interface ChatSlice {
   setStreaming: (text: string | null) => void;
   setStreamingFileWrite: (fw: StreamingFileWrite | null) => void;
   setActivity: (activity: Activity | null) => void;
-  addPendingMessage: (text: string) => void;
+  addPendingMessage: (payload: PendingUserPayload) => void;
   addPendingNotification: (notification: { type: string; message: string; severity: "info" | "warning"; summary?: string }, images?: { media_type: string; data: string }[]) => string;
   removePendingMessage: (id: string) => void;
   shiftPendingMessage: () => PendingMessage | undefined;
@@ -70,9 +78,9 @@ export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, 
   setStreamingFileWrite: (fw) => set({ streamingFileWrite: fw }),
   setActivity: (activity) => set({ activity }),
 
-  addPendingMessage: (text) =>
+  addPendingMessage: (payload) =>
     set((s) => ({
-      pendingMessages: [...s.pendingMessages, { id: crypto.randomUUID(), kind: "user", text }],
+      pendingMessages: [...s.pendingMessages, { id: crypto.randomUUID(), kind: "user", ...payload }],
     })),
   addPendingNotification: (notification, images) => {
     const id = crypto.randomUUID();
