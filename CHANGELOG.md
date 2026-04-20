@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.30.1] - 2026-04-20
+
+### Fixed
+- **Queued chat messages now keep their attachments** — submitting a message while the agent was busy silently dropped images, files, element selection, and annotations; the auto-dequeue also only forwarded text to the backend. The pending queue now carries the full payload and round-trips every field when the turn flushes. Attachment-only messages (previously blocked from queuing) also go through. (#76)
+- **IME-safe chat submit + textarea scrollbar** — moved `ChatInput` submission onto native form submit so CJK composition no longer sends mid-IME, and tuned the textarea to hide the scrollbar unless the content exceeds the max height. (#77)
+
 ## [2.30.0] - 2026-04-18
 
 ### Added
