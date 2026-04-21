@@ -1,50 +1,28 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import type { Asset, AssetType } from "@pneuma-craft/react";
 import { AssetThumbnail } from "./AssetThumbnail.js";
 import { theme } from "../theme/tokens.js";
-import { XIcon } from "../icons/index.js";
 import { startAssetDrag } from "../timeline/hooks/useTrackDropTarget.js";
 
 export interface AssetGroupProps {
   label: string;
   type: AssetType;
   display: "thumbnail" | "list";
-  accept: string;
   assets: Asset[];
   missingUris: Set<string>;
   onOpen: (asset: Asset) => void;
-  onDelete: (assetId: string) => void;
   onUpload: (files: FileList) => void;
 }
 
 export function AssetGroup({
   label,
   display,
-  accept,
   assets,
   missingUris,
   onOpen,
-  onDelete,
   onUpload,
 }: AssetGroupProps) {
   const [dragOver, setDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const triggerPicker = useCallback(() => {
-    if (fileInputRef.current) {
-      fileInputRef.current.accept = accept;
-      fileInputRef.current.click();
-    }
-  }, [accept]);
-
-  const handleInput = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (!e.target.files) return;
-      onUpload(e.target.files);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    },
-    [onUpload],
-  );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -84,18 +62,10 @@ export function AssetGroup({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        style={{ display: "none" }}
-        onChange={handleInput}
-      />
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
           marginBottom: theme.space.space2,
         }}
       >
@@ -125,31 +95,6 @@ export function AssetGroup({
             {assets.length}
           </span>
         </span>
-        <button
-          type="button"
-          onClick={triggerPicker}
-          title={`Upload to ${label}`}
-          aria-label={`upload to ${label}`}
-          style={{
-            background: "transparent",
-            border: `1px solid ${theme.color.borderWeak}`,
-            borderRadius: theme.radius.sm,
-            color: theme.color.ink3,
-            fontFamily: theme.font.ui,
-            fontSize: theme.text.base,
-            padding: 0,
-            width: 22,
-            height: 18,
-            cursor: "pointer",
-            lineHeight: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            transition: `color ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
-          }}
-        >
-          +
-        </button>
       </div>
 
       {assets.length === 0 ? (
@@ -163,7 +108,7 @@ export function AssetGroup({
             letterSpacing: theme.text.trackingBase,
           }}
         >
-          Drop files here
+          No {label.toLowerCase()} yet
         </div>
       ) : display === "thumbnail" ? (
         <div
@@ -178,7 +123,6 @@ export function AssetGroup({
               key={a.id}
               asset={a}
               onOpen={onOpen}
-              onDelete={onDelete}
               isMissing={missingUris.has(a.uri)}
             />
           ))}
@@ -192,12 +136,7 @@ export function AssetGroup({
           }}
         >
           {assets.map((a) => (
-            <AssetListRow
-              key={a.id}
-              asset={a}
-              onOpen={onOpen}
-              onDelete={onDelete}
-            />
+            <AssetListRow key={a.id} asset={a} onOpen={onOpen} />
           ))}
         </div>
       )}
@@ -208,11 +147,9 @@ export function AssetGroup({
 function AssetListRow({
   asset,
   onOpen,
-  onDelete,
 }: {
   asset: Asset;
   onOpen: (a: Asset) => void;
-  onDelete: (id: string) => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const canDrag = asset.type !== "text";
@@ -240,10 +177,8 @@ function AssetListRow({
         border: `1px solid ${theme.color.borderWeak}`,
         display: "flex",
         alignItems: "center",
-        justifyContent: "space-between",
         cursor: canDrag ? "grab" : "pointer",
         opacity: dragging ? 0.4 : 1,
-        gap: theme.space.space2,
         transition: `background ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}, opacity ${theme.duration.quick}ms ${theme.easing.out}`,
       }}
     >
@@ -252,29 +187,6 @@ function AssetListRow({
       >
         {asset.name}
       </span>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete(asset.id);
-        }}
-        style={{
-          background: "transparent",
-          border: "none",
-          color: theme.color.ink4,
-          cursor: "pointer",
-          padding: 0,
-          width: 18,
-          height: 18,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
-        aria-label={`remove ${asset.name}`}
-      >
-        <XIcon size={11} />
-      </button>
     </div>
   );
 }

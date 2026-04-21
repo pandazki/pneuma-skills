@@ -1,20 +1,19 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import type { Asset } from "@pneuma-craft/react";
 import { useWorkspaceAssetUrl } from "./useWorkspaceAssetUrl.js";
 import { useAssetError } from "./useAssetErrors.js";
 import { useAssetMetadata } from "./useAssetMetadata.js";
 import { theme } from "../theme/tokens.js";
-import { XIcon, WarningIcon } from "../icons/index.js";
+import { WarningIcon } from "../icons/index.js";
 import { startAssetDrag } from "../timeline/hooks/useTrackDropTarget.js";
 
 export interface AssetThumbnailProps {
   asset: Asset;
   onOpen: (asset: Asset) => void;
-  onDelete: (assetId: string) => void;
   isMissing?: boolean;
 }
 
-export function AssetThumbnail({ asset, onOpen, onDelete, isMissing = false }: AssetThumbnailProps) {
+export function AssetThumbnail({ asset, onOpen, isMissing = false }: AssetThumbnailProps) {
   const url = useWorkspaceAssetUrl(asset.id);
   const error = useAssetError(asset.id);
   const meta = useAssetMetadata(asset.id);
@@ -26,14 +25,6 @@ export function AssetThumbnail({ asset, onOpen, onDelete, isMissing = false }: A
   ]
     .filter(Boolean)
     .join("\n");
-
-  const handleDelete = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      onDelete(asset.id);
-    },
-    [asset.id, onDelete],
-  );
 
   const [dragging, setDragging] = useState(false);
   const canDrag = asset.type !== "text" && !!url;
@@ -149,31 +140,6 @@ export function AssetThumbnail({ asset, onOpen, onDelete, isMissing = false }: A
           missing
         </div>
       )}
-
-      <button
-        type="button"
-        onClick={handleDelete}
-        className="asset-delete-btn"
-        style={{
-          position: "absolute",
-          top: 3,
-          right: 3,
-          width: 16,
-          height: 16,
-          borderRadius: theme.radius.pill,
-          background: "oklch(0% 0 0 / 0.65)",
-          border: `1px solid ${theme.color.borderWeak}`,
-          color: theme.color.ink1,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 0,
-        }}
-        aria-label={`remove ${asset.name}`}
-      >
-        <XIcon size={9} />
-      </button>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useAssets, type Asset, type AssetType } from "@pneuma-craft/react";
 import { AssetGroup } from "./AssetGroup.js";
 import { AssetLightbox } from "./AssetLightbox.js";
@@ -8,7 +8,7 @@ import { useAssetActions } from "./useAssetActions.js";
 import { useAssetFsListing } from "./useAssetFsListing.js";
 import { reconcileAssets } from "./reconcile.js";
 import { theme } from "../theme/tokens.js";
-import { SparkleIcon } from "../icons/index.js";
+import { SparkleIcon, UploadIcon } from "../icons/index.js";
 import { useGenerationDialog } from "../generation/useGenerationDialog.js";
 
 type Tab = "assets" | "script";
@@ -17,18 +17,17 @@ interface GroupSpec {
   label: string;
   type: AssetType;
   display: "thumbnail" | "list";
-  accept: string;
 }
 
 const GROUPS: GroupSpec[] = [
-  { label: "Images", type: "image", display: "thumbnail", accept: "image/*" },
-  { label: "Clips", type: "video", display: "thumbnail", accept: "video/*" },
-  { label: "Audio", type: "audio", display: "list", accept: "audio/*" },
+  { label: "Images", type: "image", display: "thumbnail" },
+  { label: "Clips", type: "video", display: "thumbnail" },
+  { label: "Audio", type: "audio", display: "list" },
 ];
 
 export function AssetPanel() {
   const assets = useAssets();
-  const { upload, remove } = useAssetActions();
+  const { upload } = useAssetActions();
   const [tab, setTab] = useState<Tab>("assets");
   const [preview, setPreview] = useState<Asset | null>(null);
   const [managerOpen, setManagerOpen] = useState(false);
@@ -65,10 +64,9 @@ export function AssetPanel() {
 
   const handleUpload = useCallback(
     async (files: FileList) => {
-      for (const file of Array.from(files)) {
-        const id = await upload(file);
-        if (id) refetchFs();
-      }
+      const list = Array.from(files);
+      const results = await Promise.all(list.map((file) => upload(file)));
+      if (results.some((id) => id)) refetchFs();
     },
     [upload, refetchFs],
   );
@@ -213,14 +211,13 @@ export function AssetPanel() {
               label={g.label}
               type={g.type}
               display={g.display}
-              accept={g.accept}
               assets={grouped.get(g.type) ?? []}
               missingUris={missingUris}
               onOpen={setPreview}
-              onDelete={remove}
               onUpload={handleUpload}
             />
           ))}
+          <DropZone onUpload={handleUpload} />
         </div>
       ) : (
         <ScriptTab />
@@ -236,6 +233,103 @@ export function AssetPanel() {
         report={report}
         refetchFs={refetchFs}
       />
+    </div>
+  );
+}
+
+interface DropZoneProps {
+  onUpload: (files: FileList) => void;
+}
+
+function DropZone({ onUpload }: DropZoneProps) {
+  const [dragOver, setDragOver] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const triggerPicker = useCallback(() => {
+    inputRef.current?.click();
+  }, []);
+
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files?.length) onUpload(e.target.files);
+      if (inputRef.current) inputRef.current.value = "";
+    },
+    [onUpload],
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      if (e.dataTransfer.files?.length) onUpload(e.dataTransfer.files);
+    },
+    [onUpload],
+  );
+
+  return (
+    <div
+      onClick={triggerPicker}
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          triggerPicker();
+        }
+      }}
+      aria-label="Drop files to upload"
+      style={{
+        marginTop: theme.space.space4,
+        padding: `${theme.space.space3}px`,
+        minHeight: 80,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: theme.space.space1,
+        border: dragOver
+          ? `1px dashed ${theme.color.accentBorder}`
+          : `1px dashed ${theme.color.borderWeak}`,
+        borderRadius: theme.radius.base,
+        background: dragOver ? theme.color.accentFaint : "transparent",
+        color: dragOver ? theme.color.accentBright : theme.color.ink3,
+        cursor: "pointer",
+        textAlign: "center",
+        transition: `border-color ${theme.duration.quick}ms ${theme.easing.out}, background ${theme.duration.quick}ms ${theme.easing.out}, color ${theme.duration.quick}ms ${theme.easing.out}`,
+      }}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        accept="image/*,video/*,audio/*"
+        style={{ display: "none" }}
+        onChange={handleInputChange}
+      />
+      <UploadIcon size={16} />
+      <span
+        style={{
+          fontFamily: theme.font.ui,
+          fontSize: theme.text.xs,
+          letterSpacing: theme.text.trackingBase,
+        }}
+      >
+        Drop files to upload
+      </span>
     </div>
   );
 }
