@@ -6,24 +6,38 @@ import { useAssetErrors } from "./useAssetErrors.js";
 
 const ACTOR: Actor = "human";
 
+// Extension → asset-type map. Must stay aligned with the server's
+// MEDIA_EXTS in `server/routes/asset-fs.ts` — a divergence means the
+// server reports a file the client's classifier rejects, so the user
+// sees an orphan that Import silently fails on.
+const EXT_TO_TYPE: Record<string, AssetType> = {
+  // image
+  png: "image", jpg: "image", jpeg: "image", gif: "image", webp: "image",
+  svg: "image", bmp: "image", avif: "image", heic: "image", heif: "image",
+  tif: "image", tiff: "image",
+  // video
+  mp4: "video", mov: "video", webm: "video", mkv: "video", m4v: "video",
+  avi: "video", mpeg: "video", mpg: "video",
+  // audio
+  mp3: "audio", wav: "audio", ogg: "audio", flac: "audio", aac: "audio",
+  m4a: "audio", opus: "audio", aif: "audio", aiff: "audio",
+};
+
+function classifyByExt(filename: string): AssetType | null {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  return EXT_TO_TYPE[ext] ?? null;
+}
+
 function classifyAssetType(file: File): AssetType | null {
   const mime = file.type;
   if (mime.startsWith("image/")) return "image";
   if (mime.startsWith("video/")) return "video";
   if (mime.startsWith("audio/")) return "audio";
-  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].includes(ext)) return "image";
-  if (["mp4", "mov", "webm", "mkv"].includes(ext)) return "video";
-  if (["mp3", "wav", "ogg", "flac", "aac", "m4a"].includes(ext)) return "audio";
-  return null;
+  return classifyByExt(file.name);
 }
 
 function classifyAssetTypeByUri(uri: string): AssetType | null {
-  const ext = uri.split(".").pop()?.toLowerCase() ?? "";
-  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].includes(ext)) return "image";
-  if (["mp4", "mov", "webm", "mkv"].includes(ext)) return "video";
-  if (["mp3", "wav", "ogg", "flac", "aac", "m4a"].includes(ext)) return "audio";
-  return null;
+  return classifyByExt(uri);
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -142,7 +156,7 @@ export function useAssetActions() {
             type,
             uri: entry.uri,
             name: entry.uri.split("/").pop() ?? entry.uri,
-            metadata: {},
+            metadata: { size: entry.size },
           },
         });
         dispatch(ACTOR, {
