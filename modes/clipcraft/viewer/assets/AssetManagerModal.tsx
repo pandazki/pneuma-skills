@@ -5,6 +5,7 @@ import {
   ArrowRightIcon,
   AudioIcon,
   CameraFrontIcon,
+  TrashIcon,
   VideoIcon,
   WarningIcon,
   XIcon,
@@ -88,10 +89,14 @@ export function AssetManagerModal({
   report,
   refetchFs,
 }: AssetManagerModalProps) {
-  const { importOrphan, remove } = useAssetActions();
+  const { importOrphan, remove, trashFiles } = useAssetActions();
   const [filter, setFilter] = useState<Filter>("all");
   const [leftSelected, setLeftSelected] = useState<Set<string>>(new Set());
   const [rightSelected, setRightSelected] = useState<Set<string>>(new Set());
+  // Inline "Confirm Delete N?" arm state. Auto-cancels whenever the
+  // user changes context (selection, filter, modal close) without an
+  // explicit confirm click.
+  const [deleteConfirming, setDeleteConfirming] = useState(false);
 
   // Escape-to-close.
   useEffect(() => {
@@ -110,8 +115,16 @@ export function AssetManagerModal({
     if (!open) {
       setLeftSelected(new Set());
       setRightSelected(new Set());
+      setDeleteConfirming(false);
     }
   }, [open]);
+
+  // Cancel the delete-confirm arm on any context change: selection
+  // toggle, filter switch, or report update. This matches the spec —
+  // the user has to click Delete again to re-arm after anything else.
+  useEffect(() => {
+    setDeleteConfirming(false);
+  }, [leftSelected, rightSelected, filter]);
 
   // Imported pane = registered (on-disk) ∪ missing (registry-only), flagged.
   const allRegistered: Row[] = useMemo(() => {
@@ -214,6 +227,51 @@ export function AssetManagerModal({
     setRightSelected(new Set());
     refetchFs();
   }, [rightSelected, remove, refetchFs]);
+
+  // Aggregate URIs from both panes. Right-pane entries map assetId →
+  // { uri, assetId } via `allRegistered`, so we can unregister after
+  // successful trash. Missing (dangling) registrations are included
+  // — their underlying file is gone so the trash call will surface
+  // "not found", but the unregister still fires for the ones that
+  // don't throw. Duplicate URIs (same file registered + selected on
+  // both sides) collapse into a single trash target but keep both
+  // registrations for cleanup.
+  const deleteTargets = useMemo(() => {
+    const uriSet = new Set<string>();
+    const registeredIds: string[] = [];
+    for (const uri of leftSelected) uriSet.add(uri);
+    for (const assetId of rightSelected) {
+      const row = allRegistered.find((r) => r.key === assetId);
+      if (!row) continue;
+      uriSet.add(row.uri);
+      registeredIds.push(assetId);
+    }
+    return { uris: Array.from(uriSet), registeredIds };
+  }, [leftSelected, rightSelected, allRegistered]);
+
+  const deleteCount = deleteTargets.uris.length;
+
+  const handleDeleteClick = useCallback(() => {
+    if (deleteCount === 0) return;
+    setDeleteConfirming(true);
+  }, [deleteCount]);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (deleteCount === 0) {
+      setDeleteConfirming(false);
+      return;
+    }
+    const { uris, registeredIds } = deleteTargets;
+    await trashFiles(uris, registeredIds);
+    setLeftSelected(new Set());
+    setRightSelected(new Set());
+    setDeleteConfirming(false);
+    refetchFs();
+  }, [deleteCount, deleteTargets, trashFiles, refetchFs]);
+
+  const handleDeleteCancel = useCallback(() => {
+    setDeleteConfirming(false);
+  }, []);
 
   if (!open) return null;
 
@@ -354,6 +412,13 @@ export function AssetManagerModal({
               onClick={handleUnregister}
               label={`Unregister ${rightSelected.size || ""}`.trim()}
               title="Unregister selected assets (file stays on disk)"
+            />
+            <DeleteControl
+              count={deleteCount}
+              confirming={deleteConfirming}
+              onArm={handleDeleteClick}
+              onConfirm={handleDeleteConfirm}
+              onCancel={handleDeleteCancel}
             />
           </div>
 
@@ -735,5 +800,120 @@ function ArrowButton({
         <ArrowLeftIcon size={14} />
       )}
     </button>
+  );
+}
+
+/* ─── Delete control (inline confirm) ─────────────────────────────── */
+
+/**
+ * Two-stage delete button. First click arms; second click fires
+ * `onConfirm`. While armed, a small Cancel pill appears below so the
+ * user can back out without committing. Disabled state (count === 0)
+ * uses muted ink + transparent bg to stay visually subordinate to
+ * the Import / Unregister arrows above it. Armed state flips to
+ * full-danger fill so the commit action reads as destructive and
+ * distinct from a routine transfer.
+ */
+function DeleteControl({
+  count,
+  confirming,
+  onArm,
+  onConfirm,
+  onCancel,
+}: {
+  count: number;
+  confirming: boolean;
+  onArm: () => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const disabled = count === 0;
+
+  // Armed: solid danger fill, white ink, strong border. Idle-enabled:
+  // soft danger bg + danger ink. Disabled: transparent + muted ink.
+  const mainStyle: React.CSSProperties = confirming
+    ? {
+        width: 40,
+        height: 32,
+        borderRadius: theme.radius.base,
+        background: theme.color.danger,
+        border: `1px solid ${theme.color.dangerBright}`,
+        color: theme.color.ink0,
+        cursor: "pointer",
+      }
+    : disabled
+    ? {
+        width: 40,
+        height: 32,
+        borderRadius: theme.radius.base,
+        background: "transparent",
+        border: `1px solid ${theme.color.borderWeak}`,
+        color: theme.color.ink5,
+        cursor: "not-allowed",
+      }
+    : {
+        width: 40,
+        height: 32,
+        borderRadius: theme.radius.base,
+        background: theme.color.dangerSoft,
+        border: `1px solid ${theme.color.dangerBorder}`,
+        color: theme.color.dangerInk,
+        cursor: "pointer",
+      };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={confirming ? onConfirm : onArm}
+        disabled={disabled}
+        aria-label={
+          confirming
+            ? `Confirm delete ${count}`
+            : `Delete ${count || ""}`.trim()
+        }
+        title={
+          confirming
+            ? `Confirm delete ${count} — moves to OS trash`
+            : "Move selected files to OS trash"
+        }
+        style={{
+          ...mainStyle,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 0,
+          transition: `background ${theme.duration.quick}ms ${theme.easing.out}, color ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
+        }}
+      >
+        <TrashIcon size={14} />
+      </button>
+      {confirming && (
+        <button
+          type="button"
+          onClick={onCancel}
+          aria-label="Cancel delete"
+          title="Cancel"
+          style={{
+            width: 40,
+            height: 22,
+            borderRadius: theme.radius.base,
+            background: "transparent",
+            border: `1px solid ${theme.color.borderWeak}`,
+            color: theme.color.ink3,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 0,
+            fontFamily: theme.font.ui,
+            fontSize: theme.text.xs,
+            fontWeight: theme.text.weightRegular,
+          }}
+        >
+          Cancel
+        </button>
+      )}
+    </>
   );
 }

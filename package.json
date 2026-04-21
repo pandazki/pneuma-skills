@@ -81,6 +81,7 @@
     "remark-gfm": "^4.0.1",
     "remotion": "4.0.438",
     "tailwindcss": "^4.0.0",
+    "trash": "^10.1.1",
     "vite": "^7.3.1",
     "zustand": "^5.0.0"
   },

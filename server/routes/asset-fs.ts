@@ -1,17 +1,23 @@
 /**
- * Asset filesystem listing route.
+ * Asset filesystem routes.
  *
- * Registered for clipcraft-style modes. Returns a flat listing of
- * media files under `<workspace>/assets/**` with size + mtime. Pure
- * filesystem scan — no project.json parsing, no reconciliation. The
- * client does the diff against its in-memory asset registry.
+ * Registered for clipcraft-style modes.
  *
- * Includes: GET /api/assets/fs-listing.
+ * - GET  /api/assets/fs-listing: flat listing of media files under
+ *   `<workspace>/assets/**` with size + mtime. Pure filesystem scan —
+ *   no project.json parsing, no reconciliation. The client does the
+ *   diff against its in-memory asset registry.
+ *
+ * - POST /api/assets/trash: moves one or more workspace-relative files
+ *   to the OS trash via the `trash` npm package. Path-scoped to the
+ *   workspace's `assets/` tree — absolute paths and `..` escapes are
+ *   rejected before touching disk. Returns `{ trashed, failed }`.
  */
 
 import type { Hono } from "hono";
 import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { join, relative, sep, extname } from "node:path";
+import trash from "trash";
 
 export interface AssetFsOptions {
   workspace: string;
@@ -89,5 +95,63 @@ export function registerAssetFsRoutes(app: Hono, options: AssetFsOptions) {
     }));
     entries.sort((a, b) => a.uri.localeCompare(b.uri));
     return c.json({ entries });
+  });
+
+  app.post("/api/assets/trash", async (c) => {
+    let body: { uris?: string[] };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid JSON body" }, 400);
+    }
+    const uris = Array.isArray(body.uris) ? body.uris : [];
+    if (uris.length === 0) {
+      return c.json({ trashed: [], failed: [] });
+    }
+
+    const trashed: string[] = [];
+    const failed: Array<{ uri: string; error: string }> = [];
+    const absPaths: string[] = [];
+
+    for (const uri of uris) {
+      if (typeof uri !== "string" || uri.length === 0) {
+        failed.push({ uri: String(uri), error: "invalid uri" });
+        continue;
+      }
+      // Security: reject absolute paths and `..` escapes. Require the
+      // URI to start with "assets/" so we never touch anything outside
+      // the workspace's asset tree.
+      if (uri.startsWith("/") || uri.includes("..") || !uri.startsWith("assets/")) {
+        failed.push({ uri, error: "path out of scope" });
+        continue;
+      }
+      const abs = join(workspace, uri);
+      if (!existsSync(abs)) {
+        failed.push({ uri, error: "not found" });
+        continue;
+      }
+      absPaths.push(abs);
+    }
+
+    try {
+      if (absPaths.length > 0) {
+        await trash(absPaths); // one call, batched
+      }
+      for (const uri of uris) {
+        if (!failed.find((f) => f.uri === uri)) trashed.push(uri);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // On batch failure, mark every uri that was attempted as failed
+      // with the same message (trash package throws on first failure).
+      for (const uri of uris) {
+        if (!failed.find((f) => f.uri === uri)) {
+          failed.push({ uri, error: message });
+        }
+      }
+      return c.json({ trashed, failed }, 500);
+    }
+
+    return c.json({ trashed, failed });
   });
 }

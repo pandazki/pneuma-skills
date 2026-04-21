@@ -105,6 +105,66 @@ export function useAssetActions() {
     [dispatch, setError, clearError],
   );
 
+  const trashFiles = useCallback(
+    async (
+      uris: string[],
+      registeredAssetIds: string[] = [],
+    ): Promise<{
+      trashed: string[];
+      failed: Array<{ uri: string; error: string }>;
+    }> => {
+      if (uris.length === 0) return { trashed: [], failed: [] };
+
+      let body: {
+        trashed: string[];
+        failed: Array<{ uri: string; error: string }>;
+      };
+      try {
+        const res = await fetch("/api/assets/trash", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uris }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          return {
+            trashed: data?.trashed ?? [],
+            failed:
+              data?.failed ??
+              uris.map((uri) => ({ uri, error: `HTTP ${res.status}` })),
+          };
+        }
+        body = {
+          trashed: data.trashed ?? [],
+          failed: data.failed ?? [],
+        };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        return {
+          trashed: [],
+          failed: uris.map((uri) => ({ uri, error: message })),
+        };
+      }
+
+      // After the server moves files to trash, unregister any
+      // registered assets for the ones that were successfully
+      // trashed. Best-effort — if unregister fails here, the file is
+      // already in the trash; the dangling registry entry will show
+      // as "missing" and the user can clean it up via Unregister.
+      for (const assetId of registeredAssetIds) {
+        try {
+          dispatch(ACTOR, { type: "asset:remove", assetId });
+        } catch {
+          // Swallow; see comment above.
+        }
+      }
+      // Note: caller is responsible for calling refetchFs() after this
+      // resolves so the fs listing reflects the change.
+      return body;
+    },
+    [dispatch],
+  );
+
   const importOrphan = useCallback(
     (entry: FsEntry): string | null => {
       const type = classifyAssetTypeByUri(entry.uri);
@@ -149,5 +209,5 @@ export function useAssetActions() {
     [dispatch, setError, clearError],
   );
 
-  return { upload, remove, importOrphan };
+  return { upload, remove, importOrphan, trashFiles };
 }
