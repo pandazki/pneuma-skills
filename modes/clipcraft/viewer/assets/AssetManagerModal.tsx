@@ -120,11 +120,20 @@ export function AssetManagerModal({
   }, [open]);
 
   // Cancel the delete-confirm arm on any context change: selection
-  // toggle, filter switch, or report update. This matches the spec —
-  // the user has to click Delete again to re-arm after anything else.
+  // toggle, filter switch, or report update. The user has to click
+  // Delete again to re-arm after anything else.
   useEffect(() => {
     setDeleteConfirming(false);
   }, [leftSelected, rightSelected, filter]);
+
+  // Safety timeout — if the user arms Delete and walks away without
+  // touching anything that would auto-cancel, reset after 4s so they
+  // can't accidentally commit later by hovering back.
+  useEffect(() => {
+    if (!deleteConfirming) return;
+    const t = setTimeout(() => setDeleteConfirming(false), 4000);
+    return () => clearTimeout(t);
+  }, [deleteConfirming]);
 
   // Imported pane = registered (on-disk) ∪ missing (registry-only), flagged.
   const allRegistered: Row[] = useMemo(() => {
@@ -268,10 +277,6 @@ export function AssetManagerModal({
     setDeleteConfirming(false);
     refetchFs();
   }, [deleteCount, deleteTargets, trashFiles, refetchFs]);
-
-  const handleDeleteCancel = useCallback(() => {
-    setDeleteConfirming(false);
-  }, []);
 
   if (!open) return null;
 
@@ -418,7 +423,6 @@ export function AssetManagerModal({
               confirming={deleteConfirming}
               onArm={handleDeleteClick}
               onConfirm={handleDeleteConfirm}
-              onCancel={handleDeleteCancel}
             />
           </div>
 
@@ -807,25 +811,24 @@ function ArrowButton({
 
 /**
  * Two-stage delete button. First click arms; second click fires
- * `onConfirm`. While armed, a small Cancel pill appears below so the
- * user can back out without committing. Disabled state (count === 0)
- * uses muted ink + transparent bg to stay visually subordinate to
- * the Import / Unregister arrows above it. Armed state flips to
- * full-danger fill so the commit action reads as destructive and
- * distinct from a routine transfer.
+ * `onConfirm`. The armed state is distinct by color alone (solid danger
+ * fill) so no extra Cancel button is needed — cancel happens
+ * automatically on selection change, filter change, modal close, or
+ * a 4-second idle timeout. Keeping the control to a single button
+ * preserves the center column's fixed height across state changes.
+ * Disabled state (count === 0) uses muted ink + transparent bg to
+ * stay visually subordinate to the Import / Unregister arrows above.
  */
 function DeleteControl({
   count,
   confirming,
   onArm,
   onConfirm,
-  onCancel,
 }: {
   count: number;
   confirming: boolean;
   onArm: () => void;
   onConfirm: () => void;
-  onCancel: () => void;
 }) {
   const disabled = count === 0;
 
@@ -888,32 +891,6 @@ function DeleteControl({
       >
         <TrashIcon size={14} />
       </button>
-      {confirming && (
-        <button
-          type="button"
-          onClick={onCancel}
-          aria-label="Cancel delete"
-          title="Cancel"
-          style={{
-            width: 40,
-            height: 22,
-            borderRadius: theme.radius.base,
-            background: "transparent",
-            border: `1px solid ${theme.color.borderWeak}`,
-            color: theme.color.ink3,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 0,
-            fontFamily: theme.font.ui,
-            fontSize: theme.text.xs,
-            fontWeight: theme.text.weightRegular,
-          }}
-        >
-          Cancel
-        </button>
-      )}
     </>
   );
 }
