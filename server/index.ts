@@ -17,6 +17,7 @@ import { registerEvolutionRoutes } from "./evolution-routes.js";
 import { openPath, revealPath, openUrl } from "./system-bridge.js";
 import { pathStartsWith, isWin } from "./utils.js";
 import { registerExportRoutes } from "./routes/export.js";
+import { registerAssetFsRoutes } from "./routes/asset-fs.js";
 import { registerDomainApiRoutes } from "./domain-api.js";
 import { listCheckpoints } from "./shadow-git.js";
 import { detectFfmpeg, exportVideo } from "./ffmpeg.js";
@@ -1713,6 +1714,9 @@ export async function startServer(options: ServerOptions) {
 
   // ── Export routes (slide, webcraft, file listing) ─────────────────
   registerExportRoutes(app, { workspace, initParams: options.initParams, watchPatterns: options.watchPatterns, hookBus, sessionInfo });
+
+  // ── Asset filesystem listing (clipcraft-style modes) ───────────────
+  registerAssetFsRoutes(app, { workspace });
 
   // ── Domain API routes (ClipCraft generation graph) ──────────────────
   if (options.modeName === "clipcraft-legacy") {
