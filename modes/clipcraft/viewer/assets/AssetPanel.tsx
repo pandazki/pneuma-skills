@@ -2,11 +2,11 @@ import { useCallback, useMemo, useState } from "react";
 import { useAssets, type Asset, type AssetType } from "@pneuma-craft/react";
 import { AssetGroup } from "./AssetGroup.js";
 import { AssetLightbox } from "./AssetLightbox.js";
+import { AssetManagerModal } from "./AssetManagerModal.js";
 import { ScriptTab } from "./ScriptTab.js";
 import { useAssetActions } from "./useAssetActions.js";
 import { useAssetFsListing } from "./useAssetFsListing.js";
-import { reconcileAssets, type FsEntry } from "./reconcile.js";
-import { classifyByUri } from "./classify.js";
+import { reconcileAssets } from "./reconcile.js";
 import { theme } from "../theme/tokens.js";
 import { SparkleIcon } from "../icons/index.js";
 import { useGenerationDialog } from "../generation/useGenerationDialog.js";
@@ -28,9 +28,10 @@ const GROUPS: GroupSpec[] = [
 
 export function AssetPanel() {
   const assets = useAssets();
-  const { upload, remove, importOrphan } = useAssetActions();
+  const { upload, remove } = useAssetActions();
   const [tab, setTab] = useState<Tab>("assets");
   const [preview, setPreview] = useState<Asset | null>(null);
+  const [managerOpen, setManagerOpen] = useState(false);
   const { openForCreate } = useGenerationDialog();
 
   const { entries: fsEntries, refetch: refetchFs } = useAssetFsListing();
@@ -55,14 +56,7 @@ export function AssetPanel() {
     [fsEntries, registeredForReconcile],
   );
 
-  const orphansByType = useMemo(() => {
-    const bucket: Record<string, FsEntry[]> = { image: [], video: [], audio: [] };
-    for (const o of report.orphaned) {
-      const t = classifyByUri(o.uri);
-      if (t && bucket[t]) bucket[t].push(o);
-    }
-    return bucket;
-  }, [report.orphaned]);
+  const orphanCount = report.orphaned.length;
 
   const missingUris = useMemo(
     () => new Set(report.missing.map((m) => m.uri)),
@@ -78,6 +72,9 @@ export function AssetPanel() {
     },
     [upload, refetchFs],
   );
+
+  const openManager = useCallback(() => setManagerOpen(true), []);
+  const closeManager = useCallback(() => setManagerOpen(false), []);
 
   return (
     <div
@@ -179,6 +176,37 @@ export function AssetPanel() {
             flex: 1,
           }}
         >
+          {orphanCount > 0 && (
+            <div
+              style={{
+                marginBottom: theme.space.space3,
+                display: "flex",
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                type="button"
+                onClick={openManager}
+                title="Open Asset Manager to import or unregister assets"
+                className="asset-orphan-badge"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  padding: `2px ${theme.space.space1}px`,
+                  fontFamily: theme.font.ui,
+                  fontSize: theme.text.xs,
+                  color: theme.color.ink4,
+                  letterSpacing: theme.text.trackingBase,
+                  cursor: "pointer",
+                  textDecoration: "underline dotted",
+                  textUnderlineOffset: 3,
+                  transition: `color ${theme.duration.quick}ms ${theme.easing.out}`,
+                }}
+              >
+                {orphanCount} not imported
+              </button>
+            </div>
+          )}
           {GROUPS.map((g) => (
             <AssetGroup
               key={g.type}
@@ -187,13 +215,10 @@ export function AssetPanel() {
               display={g.display}
               accept={g.accept}
               assets={grouped.get(g.type) ?? []}
-              orphans={orphansByType[g.type] ?? []}
               missingUris={missingUris}
               onOpen={setPreview}
               onDelete={remove}
               onUpload={handleUpload}
-              importOrphan={importOrphan}
-              onAfterChange={refetchFs}
             />
           ))}
         </div>
@@ -204,6 +229,13 @@ export function AssetPanel() {
       {preview && (
         <AssetLightbox asset={preview} onClose={() => setPreview(null)} />
       )}
+
+      <AssetManagerModal
+        open={managerOpen}
+        onClose={closeManager}
+        report={report}
+        refetchFs={refetchFs}
+      />
     </div>
   );
 }
