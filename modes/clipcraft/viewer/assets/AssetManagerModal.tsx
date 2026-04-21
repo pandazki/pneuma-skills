@@ -3,6 +3,9 @@ import type { AssetType } from "@pneuma-craft/react";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
+  AudioIcon,
+  CameraFrontIcon,
+  VideoIcon,
   WarningIcon,
   XIcon,
 } from "../icons/index.js";
@@ -18,9 +21,24 @@ import { useAssetActions } from "./useAssetActions.js";
 
 type Filter = "all" | AssetType;
 
-interface RegisteredRow {
-  assetId: string;
+/**
+ * Unified row shape used by both panes so a row's layout stays
+ * identical when items transfer across.
+ *
+ *   key       — React key / selection token (uri on the left,
+ *               assetId on the right — they live in separate
+ *               selection sets).
+ *   selectKey — alias exposed to the caller; kept in sync with `key`.
+ *   missing   — right-pane only: registered URI with no matching
+ *               file on disk. Size / mtime are unknown in that case.
+ */
+interface Row {
+  key: string;
   uri: string;
+  filename: string;
+  type: AssetType | null;
+  size?: number;
+  mtime?: number;
   missing: boolean;
 }
 
@@ -45,6 +63,27 @@ function filenameOf(uri: string): string {
 function matchesFilter(uri: string, filter: Filter): boolean {
   if (filter === "all") return true;
   return classifyByUri(uri) === filter;
+}
+
+function contentUrl(uri: string): string {
+  if (!uri) return "";
+  return `/content/${uri.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+/** Compact human-readable byte formatter — deliberately inline to
+ *  avoid pulling in a dep for three lines of math. */
+function formatSize(bytes: number | undefined): string {
+  if (bytes == null || !Number.isFinite(bytes)) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let n = bytes / 1024;
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i++;
+  }
+  const precision = n >= 10 ? 0 : 1;
+  return `${n.toFixed(precision)} ${units[i]}`;
 }
 
 export function AssetManagerModal({
@@ -79,28 +118,49 @@ export function AssetManagerModal({
   }, [open]);
 
   // Imported pane = registered (on-disk) ∪ missing (registry-only), flagged.
-  const allRegistered: RegisteredRow[] = useMemo(() => {
-    const rows: RegisteredRow[] = [];
+  const allRegistered: Row[] = useMemo(() => {
+    const rows: Row[] = [];
     for (const r of report.registered as RegisteredReconciled[]) {
-      rows.push({ assetId: r.assetId, uri: r.uri, missing: false });
+      rows.push({
+        key: r.assetId,
+        uri: r.uri,
+        filename: filenameOf(r.uri),
+        type: classifyByUri(r.uri),
+        size: r.size,
+        mtime: r.mtime,
+        missing: false,
+      });
     }
     for (const m of report.missing as RegisteredEntry[]) {
-      rows.push({ assetId: m.assetId, uri: m.uri, missing: true });
+      rows.push({
+        key: m.assetId,
+        uri: m.uri,
+        filename: filenameOf(m.uri),
+        type: classifyByUri(m.uri),
+        missing: true,
+      });
     }
-    rows.sort((a, b) => filenameOf(a.uri).localeCompare(filenameOf(b.uri)));
+    rows.sort((a, b) => a.filename.localeCompare(b.filename));
     return rows;
   }, [report.registered, report.missing]);
 
-  const orphansFiltered: FsEntry[] = useMemo(
-    () =>
-      report.orphaned
-        .filter((o) => matchesFilter(o.uri, filter))
-        .slice()
-        .sort((a, b) => filenameOf(a.uri).localeCompare(filenameOf(b.uri))),
-    [report.orphaned, filter],
-  );
+  const orphansFiltered: Row[] = useMemo(() => {
+    const rows: Row[] = report.orphaned
+      .filter((o) => matchesFilter(o.uri, filter))
+      .map((o: FsEntry) => ({
+        key: o.uri,
+        uri: o.uri,
+        filename: filenameOf(o.uri),
+        type: classifyByUri(o.uri),
+        size: o.size,
+        mtime: o.mtime,
+        missing: false,
+      }));
+    rows.sort((a, b) => a.filename.localeCompare(b.filename));
+    return rows;
+  }, [report.orphaned, filter]);
 
-  const registeredFiltered: RegisteredRow[] = useMemo(
+  const registeredFiltered: Row[] = useMemo(
     () => allRegistered.filter((r) => matchesFilter(r.uri, filter)),
     [allRegistered, filter],
   );
@@ -113,7 +173,7 @@ export function AssetManagerModal({
       for (const k of prev) if (leftKeys.has(k)) next.add(k);
       return next.size === prev.size ? prev : next;
     });
-    const rightKeys = new Set(allRegistered.map((r) => r.assetId));
+    const rightKeys = new Set(allRegistered.map((r) => r.key));
     setRightSelected((prev) => {
       const next = new Set<string>();
       for (const k of prev) if (rightKeys.has(k)) next.add(k);
@@ -161,6 +221,8 @@ export function AssetManagerModal({
 
   if (!open) return null;
 
+  const isPreviewFilter = filter === "image" || filter === "video";
+
   return (
     <div
       onClick={onClose}
@@ -183,8 +245,9 @@ export function AssetManagerModal({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "min(720px, 92vw)",
-          maxHeight: "80vh",
+          width: "min(1080px, 94vw)",
+          height: "85vh",
+          maxHeight: "85vh",
           display: "flex",
           flexDirection: "column",
           background: theme.color.surface1,
@@ -244,11 +307,11 @@ export function AssetManagerModal({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 52px 1fr",
+            gridTemplateColumns: "1fr 60px 1fr",
             gap: theme.space.space2,
             padding: theme.space.space3,
             flex: 1,
-            minHeight: 320,
+            minHeight: 0,
             overflow: "hidden",
           }}
         >
@@ -261,12 +324,13 @@ export function AssetManagerModal({
                 : "No files match this filter."
             }
           >
-            {orphansFiltered.map((o) => (
+            {orphansFiltered.map((row) => (
               <TransferRow
-                key={o.uri}
-                filename={filenameOf(o.uri)}
-                selected={leftSelected.has(o.uri)}
-                onToggle={() => toggleLeft(o.uri)}
+                key={row.key}
+                row={row}
+                isPreview={isPreviewFilter}
+                selected={leftSelected.has(row.key)}
+                onToggle={() => toggleLeft(row.key)}
               />
             ))}
           </TransferPane>
@@ -306,13 +370,13 @@ export function AssetManagerModal({
                 : "No assets match this filter."
             }
           >
-            {registeredFiltered.map((r) => (
+            {registeredFiltered.map((row) => (
               <TransferRow
-                key={r.assetId}
-                filename={filenameOf(r.uri)}
-                selected={rightSelected.has(r.assetId)}
-                onToggle={() => toggleRight(r.assetId)}
-                missing={r.missing}
+                key={row.key}
+                row={row}
+                isPreview={isPreviewFilter}
+                selected={rightSelected.has(row.key)}
+                onToggle={() => toggleRight(row.key)}
               />
             ))}
           </TransferPane>
@@ -414,6 +478,7 @@ function TransferPane({
           justifyContent: "space-between",
           alignItems: "baseline",
           gap: theme.space.space2,
+          flexShrink: 0,
         }}
       >
         <span>{title}</span>
@@ -431,6 +496,7 @@ function TransferPane({
       <div
         style={{
           flex: 1,
+          minHeight: 0,
           overflowY: "auto",
           padding: theme.space.space1,
           display: "flex",
@@ -461,42 +527,50 @@ function TransferPane({
 /* ─── Single row ──────────────────────────────────────────────────── */
 
 function TransferRow({
-  filename,
+  row,
+  isPreview,
   selected,
   onToggle,
-  missing = false,
 }: {
-  filename: string;
+  row: Row;
+  isPreview: boolean;
   selected: boolean;
   onToggle: () => void;
-  missing?: boolean;
 }) {
+  const { filename, type, size, missing, uri } = row;
+
+  // Compact rows stay ~36px; preview rows are ~92px with a real
+  // thumbnail. Both share the same props shape so a row's identity
+  // survives a transfer across panes.
+  const rowStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.space.space2,
+    padding: isPreview
+      ? theme.space.space2
+      : `${theme.space.space1}px ${theme.space.space2}px`,
+    borderRadius: theme.radius.sm,
+    background: selected ? theme.color.accentSoft : "transparent",
+    border: `1px solid ${
+      selected ? theme.color.accentBorder : "transparent"
+    }`,
+    cursor: "pointer",
+    transition: `background ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
+    minHeight: isPreview ? 92 : 32,
+  };
+
+  const handleHover = (bg: string | "transparent") =>
+    (e: React.MouseEvent<HTMLLabelElement>) => {
+      if (!selected) {
+        (e.currentTarget as HTMLElement).style.background = bg;
+      }
+    };
+
   return (
     <label
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: theme.space.space2,
-        padding: `${theme.space.space1}px ${theme.space.space2}px`,
-        borderRadius: theme.radius.sm,
-        background: selected ? theme.color.accentSoft : "transparent",
-        border: `1px solid ${
-          selected ? theme.color.accentBorder : "transparent"
-        }`,
-        cursor: "pointer",
-        transition: `background ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
-      }}
-      onMouseEnter={(e) => {
-        if (!selected) {
-          (e.currentTarget as HTMLElement).style.background =
-            theme.color.surface3;
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!selected) {
-          (e.currentTarget as HTMLElement).style.background = "transparent";
-        }
-      }}
+      style={rowStyle}
+      onMouseEnter={handleHover(theme.color.surface3)}
+      onMouseLeave={handleHover("transparent")}
     >
       <input
         type="checkbox"
@@ -506,42 +580,53 @@ function TransferRow({
           margin: 0,
           accentColor: theme.color.accent,
           cursor: "pointer",
-        }}
-      />
-      <span
-        aria-hidden
-        style={{
-          width: 18,
-          height: 18,
-          borderRadius: theme.radius.sm,
-          background: missing ? theme.color.dangerSoft : theme.color.surface4,
-          border: `1px solid ${
-            missing ? theme.color.dangerBorder : theme.color.borderWeak
-          }`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: missing ? theme.color.dangerInk : theme.color.ink4,
           flexShrink: 0,
         }}
-      >
-        {missing ? <WarningIcon size={10} /> : null}
-      </span>
-      <span
+      />
+
+      {isPreview ? (
+        <MediaPreview uri={uri} type={type} missing={missing} size={72} />
+      ) : (
+        <TypeBadge type={type} missing={missing} />
+      )}
+
+      <div
         style={{
           flex: 1,
           minWidth: 0,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          fontFamily: theme.font.ui,
-          fontSize: theme.text.sm,
-          color: missing ? theme.color.dangerInk : theme.color.ink1,
-          textDecoration: missing ? "line-through" : "none",
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
         }}
       >
-        {filename}
-      </span>
+        <span
+          title={filename}
+          style={{
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            fontFamily: theme.font.ui,
+            fontSize: theme.text.sm,
+            color: missing ? theme.color.dangerInk : theme.color.ink1,
+            textDecoration: missing ? "line-through" : "none",
+          }}
+        >
+          {filename}
+        </span>
+        {isPreview && !missing && size != null && (
+          <span
+            style={{
+              fontFamily: theme.font.numeric,
+              fontSize: theme.text.xs,
+              color: theme.color.ink4,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {formatSize(size)}
+          </span>
+        )}
+      </div>
+
       {missing && (
         <span
           style={{
@@ -561,6 +646,146 @@ function TransferRow({
         </span>
       )}
     </label>
+  );
+}
+
+/* ─── Compact type badge (All / Audio filters) ────────────────────── */
+
+function TypeBadge({
+  type,
+  missing,
+}: {
+  type: AssetType | null;
+  missing: boolean;
+}) {
+  const Icon =
+    type === "video"
+      ? VideoIcon
+      : type === "audio"
+      ? AudioIcon
+      : type === "image"
+      ? CameraFrontIcon
+      : null;
+
+  return (
+    <span
+      aria-hidden
+      style={{
+        width: 24,
+        height: 24,
+        borderRadius: theme.radius.sm,
+        background: missing ? theme.color.dangerSoft : theme.color.surface4,
+        border: `1px solid ${
+          missing ? theme.color.dangerBorder : theme.color.borderWeak
+        }`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: missing ? theme.color.dangerInk : theme.color.ink3,
+        flexShrink: 0,
+      }}
+    >
+      {missing ? (
+        <WarningIcon size={12} />
+      ) : Icon ? (
+        <Icon size={12} />
+      ) : null}
+    </span>
+  );
+}
+
+/* ─── Media preview (image / video first-frame) ───────────────────── */
+
+/**
+ * Fixed-size preview tile. Renders:
+ *   - missing  → dimmed danger-tinted frame with a warning glyph,
+ *                never touches the network.
+ *   - image    → <img loading=lazy>
+ *   - video    → <video preload=metadata> seeked to 0.1s on load,
+ *                muted / playsInline so it can render without user
+ *                interaction.
+ *   - audio/other → same neutral frame as the compact badge, just
+ *                bigger (we don't attempt waveforms here — that's
+ *                a later task).
+ */
+function MediaPreview({
+  uri,
+  type,
+  missing,
+  size,
+}: {
+  uri: string;
+  type: AssetType | null;
+  missing: boolean;
+  size: number;
+}) {
+  const frameStyle: React.CSSProperties = {
+    width: size,
+    height: size,
+    borderRadius: theme.radius.sm,
+    overflow: "hidden",
+    background: missing ? theme.color.dangerSoft : theme.color.surface3,
+    border: `1px solid ${
+      missing ? theme.color.dangerBorder : theme.color.borderWeak
+    }`,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: missing ? theme.color.dangerInk : theme.color.ink4,
+    flexShrink: 0,
+  };
+
+  if (missing) {
+    return (
+      <div style={frameStyle} aria-hidden>
+        <WarningIcon size={20} />
+      </div>
+    );
+  }
+
+  const url = contentUrl(uri);
+
+  if (type === "image") {
+    return (
+      <div style={frameStyle} aria-hidden>
+        <img
+          src={url}
+          alt=""
+          loading="lazy"
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      </div>
+    );
+  }
+
+  if (type === "video") {
+    return (
+      <div style={frameStyle} aria-hidden>
+        <video
+          src={url}
+          muted
+          playsInline
+          preload="metadata"
+          onLoadedData={(e) => {
+            // Nudge past 0 so browsers that hold a blank poster at
+            // currentTime=0 reveal the first real frame instead.
+            (e.target as HTMLVideoElement).currentTime = 0.1;
+          }}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      </div>
+    );
+  }
+
+  // Audio / unknown — show the type icon in the frame. Image and
+  // video are handled above, so this branch only ever sees "audio",
+  // "text" (rare in this modal), or null.
+  const Icon = type === "audio" ? AudioIcon : null;
+
+  return (
+    <div style={frameStyle} aria-hidden>
+      {Icon ? <Icon size={20} /> : null}
+    </div>
   );
 }
 
