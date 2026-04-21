@@ -61,6 +61,12 @@ export function peakCount(): number {
   return PEAK_COUNT;
 }
 
+/** Synchronous cache peek — returns cached peaks if present, null otherwise.
+ *  No side effects. Callers that want to trigger a decode use getOrLoadPeaks. */
+export function peekPeaks(url: string): number[] | null {
+  return cache.get(url) ?? null;
+}
+
 /** Returns cached peaks if present, otherwise kicks off decoding and returns null. */
 export function getOrLoadPeaks(url: string, onReady: (peaks: number[]) => void): number[] | null {
   const existing = cache.get(url);

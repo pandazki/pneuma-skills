@@ -8,9 +8,9 @@
 // setter re-renders with bars. After that the module-level cache
 // means subsequent mounts paint instantly.
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { theme } from "../theme/tokens.js";
-import { getOrLoadPeaks, peakCount } from "./waveform.js";
+import { getOrLoadPeaks, peakCount, peekPeaks } from "./waveform.js";
 
 export interface AudioWaveformProps {
   /** Fully-resolved content URL (e.g. `/content/<encoded-uri>`). */
@@ -21,16 +21,25 @@ export interface AudioWaveformProps {
   color?: string;
 }
 
-export function AudioWaveform({ url, width, height, color }: AudioWaveformProps) {
-  // Initial state: peek the cache synchronously. The decode (if any)
-  // is kicked off from the effect below so we can pass the real
-  // setter in — useState initializers can't reference their own
-  // setter in TS strict mode.
-  const [peaks, setPeaks] = useState<number[] | null>(null);
+export const AudioWaveform = memo(function AudioWaveform({
+  url,
+  width,
+  height,
+  color,
+}: AudioWaveformProps) {
+  // Initial state: peek the cache synchronously so a warm URL paints
+  // bars on the first frame (no "…" flash on modal reopen). The
+  // decode (if the cache is cold) kicks off from the effect — setter
+  // can't reference itself in useState's initializer under TS strict.
+  const [peaks, setPeaks] = useState<number[] | null>(() => peekPeaks(url));
 
   useEffect(() => {
+    if (peaks !== null) return;
     const cached = getOrLoadPeaks(url, setPeaks);
-    setPeaks(cached);
+    if (cached) setPeaks(cached);
+    // peaks intentionally omitted from deps — we only kick off decode
+    // on url change; the setter updates state directly otherwise.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
   if (peaks === null) {
@@ -81,4 +90,4 @@ export function AudioWaveform({ url, width, height, color }: AudioWaveformProps)
       })}
     </svg>
   );
-}
+});
