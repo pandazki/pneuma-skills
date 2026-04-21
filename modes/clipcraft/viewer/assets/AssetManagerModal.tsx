@@ -900,9 +900,11 @@ function DeleteControl({
       >
         <TrashIcon size={14} />
       </button>
-      {/* Cancel pill slides down from behind the Delete button into
-          the empty space below when armed. Always rendered so the exit
-          animation works; top + opacity + pointer-events gate it. */}
+      {/* Cancel button slides down from behind Delete into the empty
+          space below when armed. Matches the icon-button column's
+          visual language: 40x32, X icon only, subtle muted fill.
+          Always rendered so the exit animation works; top + opacity
+          + pointer-events gate it. */}
       <button
         type="button"
         onClick={onCancel}
@@ -914,29 +916,23 @@ function DeleteControl({
           left: 0,
           top: confirming ? "calc(100% + 4px)" : 0,
           width: 40,
-          height: 22,
+          height: 32,
           padding: 0,
           borderRadius: theme.radius.base,
-          background: theme.color.surface3,
+          background: theme.color.surface2,
           border: `1px solid ${theme.color.borderWeak}`,
-          color: theme.color.ink2,
+          color: theme.color.ink3,
           cursor: "pointer",
-          fontFamily: theme.font.ui,
-          fontSize: 10,
-          fontWeight: theme.text.weightRegular,
-          letterSpacing: theme.text.trackingWide,
-          textTransform: "uppercase",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          whiteSpace: "nowrap",
           opacity: confirming ? 1 : 0,
           pointerEvents: confirming ? "auto" : "none",
           zIndex: 1,
-          transition: `top ${theme.duration.quick}ms ${theme.easing.out}, opacity ${theme.duration.quick}ms ${theme.easing.out}`,
+          transition: `top ${theme.duration.quick}ms ${theme.easing.out}, opacity ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
         }}
       >
-        Cancel
+        <XIcon size={12} />
       </button>
     </div>
   );
