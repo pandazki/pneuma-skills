@@ -278,6 +278,10 @@ export function AssetManagerModal({
     refetchFs();
   }, [deleteCount, deleteTargets, trashFiles, refetchFs]);
 
+  const handleDeleteCancel = useCallback(() => {
+    setDeleteConfirming(false);
+  }, []);
+
   if (!open) return null;
 
   const isPreviewFilter = filter === "image" || filter === "video";
@@ -423,6 +427,7 @@ export function AssetManagerModal({
               confirming={deleteConfirming}
               onArm={handleDeleteClick}
               onConfirm={handleDeleteConfirm}
+              onCancel={handleDeleteCancel}
             />
           </div>
 
@@ -811,11 +816,11 @@ function ArrowButton({
 
 /**
  * Two-stage delete button. First click arms; second click fires
- * `onConfirm`. The armed state is distinct by color alone (solid danger
- * fill) so no extra Cancel button is needed — cancel happens
- * automatically on selection change, filter change, modal close, or
- * a 4-second idle timeout. Keeping the control to a single button
- * preserves the center column's fixed height across state changes.
+ * `onConfirm`. The armed state is distinct by color (solid danger fill);
+ * a Cancel pill slides out horizontally to the left when armed, using
+ * absolute positioning so the center column's height stays fixed across
+ * state changes. Cancel also happens automatically on selection change,
+ * filter change, modal close, or a 4-second idle timeout.
  * Disabled state (count === 0) uses muted ink + transparent bg to
  * stay visually subordinate to the Import / Unregister arrows above.
  */
@@ -824,11 +829,13 @@ function DeleteControl({
   confirming,
   onArm,
   onConfirm,
+  onCancel,
 }: {
   count: number;
   confirming: boolean;
   onArm: () => void;
   onConfirm: () => void;
+  onCancel: () => void;
 }) {
   const disabled = count === 0;
 
@@ -865,7 +872,7 @@ function DeleteControl({
       };
 
   return (
-    <>
+    <div style={{ position: "relative", width: 40, height: 32 }}>
       <button
         type="button"
         onClick={confirming ? onConfirm : onArm}
@@ -886,11 +893,49 @@ function DeleteControl({
           alignItems: "center",
           justifyContent: "center",
           padding: 0,
+          position: "relative",
+          zIndex: 2,
           transition: `background ${theme.duration.quick}ms ${theme.easing.out}, color ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
         }}
       >
         <TrashIcon size={14} />
       </button>
-    </>
+      {/* Cancel pill slides out from behind the Delete button to the
+          left when armed. Always rendered (so the exit animation works);
+          opacity + translateX + pointer-events gate visibility. */}
+      <button
+        type="button"
+        onClick={onCancel}
+        aria-label="Cancel delete"
+        title="Cancel"
+        tabIndex={confirming ? 0 : -1}
+        style={{
+          position: "absolute",
+          top: 0,
+          right: confirming ? "calc(100% + 6px)" : 0,
+          height: 32,
+          padding: "0 10px",
+          borderRadius: theme.radius.base,
+          background: theme.color.surface3,
+          border: `1px solid ${theme.color.borderWeak}`,
+          color: theme.color.ink2,
+          cursor: "pointer",
+          fontFamily: theme.font.ui,
+          fontSize: theme.text.xs,
+          fontWeight: theme.text.weightRegular,
+          letterSpacing: theme.text.trackingWide,
+          textTransform: "uppercase",
+          display: "flex",
+          alignItems: "center",
+          whiteSpace: "nowrap",
+          opacity: confirming ? 1 : 0,
+          pointerEvents: confirming ? "auto" : "none",
+          zIndex: 1,
+          transition: `right ${theme.duration.quick}ms ${theme.easing.out}, opacity ${theme.duration.quick}ms ${theme.easing.out}`,
+        }}
+      >
+        Cancel
+      </button>
+    </div>
   );
 }
