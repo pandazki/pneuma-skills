@@ -1,8 +1,15 @@
 import { useCallback, useState } from "react";
 import type { Asset, AssetType } from "@pneuma-craft/react";
 import { AssetThumbnail } from "./AssetThumbnail.js";
+import { AudioWaveform } from "./AudioWaveform.js";
 import { theme } from "../theme/tokens.js";
 import { startAssetDrag } from "../timeline/hooks/useTrackDropTarget.js";
+
+/** Workspace-relative uri → URL served by the dev/content server. */
+function contentUrl(uri: string): string {
+  if (!uri) return "";
+  return `/content/${uri.split("/").map(encodeURIComponent).join("/")}`;
+}
 
 export interface AssetGroupProps {
   label: string;
@@ -177,13 +184,23 @@ function AssetListRow({
         border: `1px solid ${theme.color.borderWeak}`,
         display: "flex",
         alignItems: "center",
+        gap: theme.space.space2,
         cursor: canDrag ? "grab" : "pointer",
         opacity: dragging ? 0.4 : 1,
         transition: `background ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}, opacity ${theme.duration.quick}ms ${theme.easing.out}`,
       }}
     >
+      {asset.type === "audio" && asset.uri ? (
+        <AudioWaveform url={contentUrl(asset.uri)} width={60} height={20} />
+      ) : null}
       <span
-        style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        style={{
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          flex: 1,
+          minWidth: 0,
+        }}
       >
         {asset.name}
       </span>

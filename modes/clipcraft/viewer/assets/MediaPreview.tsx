@@ -1,7 +1,8 @@
-// Fixed-size preview tile used by AssetManagerModal's Image/Video
-// filter rows. Extracted to its own module once the modal file grew
-// past the co-location threshold (~600 lines); still only consumed
-// by the modal so the exports stay internal to the assets/ folder.
+// Fixed-size preview tile used by AssetManagerModal's Image/Video/
+// Audio filter rows. Extracted to its own module once the modal
+// file grew past the co-location threshold (~600 lines); still only
+// consumed by the modal so the exports stay internal to the assets/
+// folder.
 //
 // Design:
 //   - missing  → dimmed danger-tinted frame with a warning glyph,
@@ -13,12 +14,17 @@
 //                muted / playsInline so it renders the first real
 //                frame without user interaction. 0 frequently shows
 //                the poster (or a black frame) on Chromium.
-//   - audio/other → same neutral frame as the compact row badge,
-//                just larger. Waveforms are a later task.
+//   - audio    → SVG waveform peaked-downsampled via AudioWaveform.
+//                First mount triggers a fetch + decode; the result
+//                is cached per-URL so switching filters / reopening
+//                the modal repaints instantly.
+//   - other    → same neutral frame as the compact row badge, just
+//                larger (only hit by "text" or unknown types).
 
 import type { AssetType } from "@pneuma-craft/react";
-import { AudioIcon, WarningIcon } from "../icons/index.js";
+import { WarningIcon } from "../icons/index.js";
 import { theme } from "../theme/tokens.js";
+import { AudioWaveform } from "./AudioWaveform.js";
 
 /** Workspace-relative uri → URL served by the dev/content server. */
 function contentUrl(uri: string): string {
@@ -95,14 +101,27 @@ export function MediaPreview({ uri, type, missing, size }: MediaPreviewProps) {
     );
   }
 
-  // Audio / unknown — show the type icon in the frame. Image and
-  // video are handled above, so this branch only ever sees "audio",
-  // "text" (rare in this modal), or null.
-  const Icon = type === "audio" ? AudioIcon : null;
+  if (type === "audio") {
+    // The waveform owns its own sizing; wrap it in the shared frame
+    // so the border / background treatment matches image and video.
+    return (
+      <div
+        style={{
+          ...frameStyle,
+          padding: theme.space.space1,
+        }}
+        aria-hidden
+      >
+        <AudioWaveform
+          url={url}
+          width={size - theme.space.space1 * 2}
+          height={size - theme.space.space1 * 2}
+        />
+      </div>
+    );
+  }
 
-  return (
-    <div style={frameStyle} aria-hidden>
-      {Icon ? <Icon size={20} /> : null}
-    </div>
-  );
+  // Unknown type — show a neutral frame (only "text" or null lands
+  // here; those rarely appear in the modal).
+  return <div style={frameStyle} aria-hidden />;
 }

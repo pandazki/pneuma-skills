@@ -284,7 +284,8 @@ export function AssetManagerModal({
 
   if (!open) return null;
 
-  const isPreviewFilter = filter === "image" || filter === "video";
+  const isPreviewFilter =
+    filter === "image" || filter === "video" || filter === "audio";
 
   return (
     <div
