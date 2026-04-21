@@ -11,6 +11,7 @@ import {
 } from "../icons/index.js";
 import { theme } from "../theme/tokens.js";
 import { classifyByUri } from "./classify.js";
+import { MediaPreview } from "./MediaPreview.js";
 import type {
   FsEntry,
   ReconcileReport,
@@ -63,11 +64,6 @@ function filenameOf(uri: string): string {
 function matchesFilter(uri: string, filter: Filter): boolean {
   if (filter === "all") return true;
   return classifyByUri(uri) === filter;
-}
-
-function contentUrl(uri: string): string {
-  if (!uri) return "";
-  return `/content/${uri.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 /** Compact human-readable byte formatter — deliberately inline to
@@ -691,101 +687,6 @@ function TypeBadge({
         <Icon size={12} />
       ) : null}
     </span>
-  );
-}
-
-/* ─── Media preview (image / video first-frame) ───────────────────── */
-
-/**
- * Fixed-size preview tile. Renders:
- *   - missing  → dimmed danger-tinted frame with a warning glyph,
- *                never touches the network.
- *   - image    → <img loading=lazy>
- *   - video    → <video preload=metadata> seeked to 0.1s on load,
- *                muted / playsInline so it can render without user
- *                interaction.
- *   - audio/other → same neutral frame as the compact badge, just
- *                bigger (we don't attempt waveforms here — that's
- *                a later task).
- */
-function MediaPreview({
-  uri,
-  type,
-  missing,
-  size,
-}: {
-  uri: string;
-  type: AssetType | null;
-  missing: boolean;
-  size: number;
-}) {
-  const frameStyle: React.CSSProperties = {
-    width: size,
-    height: size,
-    borderRadius: theme.radius.sm,
-    overflow: "hidden",
-    background: missing ? theme.color.dangerSoft : theme.color.surface3,
-    border: `1px solid ${
-      missing ? theme.color.dangerBorder : theme.color.borderWeak
-    }`,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: missing ? theme.color.dangerInk : theme.color.ink4,
-    flexShrink: 0,
-  };
-
-  if (missing) {
-    return (
-      <div style={frameStyle} aria-hidden>
-        <WarningIcon size={20} />
-      </div>
-    );
-  }
-
-  const url = contentUrl(uri);
-
-  if (type === "image") {
-    return (
-      <div style={frameStyle} aria-hidden>
-        <img
-          src={url}
-          alt=""
-          loading="lazy"
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-        />
-      </div>
-    );
-  }
-
-  if (type === "video") {
-    return (
-      <div style={frameStyle} aria-hidden>
-        <video
-          src={url}
-          muted
-          playsInline
-          preload="metadata"
-          onLoadedData={(e) => {
-            // Nudge past 0 so browsers that hold a blank poster at
-            // currentTime=0 reveal the first real frame instead.
-            (e.target as HTMLVideoElement).currentTime = 0.1;
-          }}
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-        />
-      </div>
-    );
-  }
-
-  // Audio / unknown — show the type icon in the frame. Image and
-  // video are handled above, so this branch only ever sees "audio",
-  // "text" (rare in this modal), or null.
-  const Icon = type === "audio" ? AudioIcon : null;
-
-  return (
-    <div style={frameStyle} aria-hidden>
-      {Icon ? <Icon size={20} /> : null}
-    </div>
   );
 }
 
