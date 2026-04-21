@@ -3,122 +3,79 @@
 /**
  * ClipCraft TTS Generator CLI
  *
- * Plain argv CLI wrapping OpenRouter's openai/gpt-audio model via SSE
- * streaming. Collects `delta.audio.data` base64 chunks, decodes them,
- * and writes a PCM16 WAV file. Prints the output path on success
- * (exit 0); prints errors to stderr on failure (exit 1).
+ * Plain argv CLI wrapping fal.ai's gemini-3.1-flash-tts. Supports
+ * expressive audio tags directly inline in the text — [laughing],
+ * [sigh], [whispering], [short pause], etc. — plus natural-language
+ * style instructions via --style for consistent tone across the whole
+ * utterance. 30 named voices; defaults to "Kore".
  *
  * Usage:
- *   node generate-tts.mjs --text "..." --output assets/audio/out.wav [--voice alloy]
+ *   node generate-tts.mjs --text "..." --output assets/audio/out.mp3 \
+ *     [--voice Kore] [--style "warm conversational"] \
+ *     [--language "English (US)"] [--temperature 1]
  *
- * Voices: alloy (default), echo, fable, onyx, nova, shimmer.
+ * Voice picks (30 total; popular ones):
+ *   Kore     — strong, firm female (default)
+ *   Puck     — upbeat, lively male
+ *   Charon   — calm, professional male
+ *   Zephyr   — bright, clear female
+ *   Aoede    — warm, melodic female
+ *   Full list: https://fal.ai/models/fal-ai/gemini-3.1-flash-tts/api
+ *
+ * Output format is inferred from the --output extension:
+ *   .mp3 → mp3 (recommended), .wav → 24kHz 16-bit mono PCM,
+ *   .ogg / .opus → ogg_opus. Unknown extensions default to mp3.
+ *
+ * Text features:
+ *   - Inline audio tags: "[laughing] Oh wow!", "... [sigh] ...".
+ *   - Inline pacing: "Say it cheerfully: have a nice day!".
+ *   - --style is prepended as style_instructions for whole-utterance
+ *     direction ("Read as a dramatic newscast", "Whisper mysteriously").
  *
  * Environment:
- *   OPENROUTER_API_KEY  — required
+ *   FAL_KEY — required; fal.ai API key
  */
 
 import { writeFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, extname } from "node:path";
 import { parseArgs } from "node:util";
 
-// ---------------------------------------------------------------------------
-// Streaming helper — verbatim from legacy clipcraft-tts.mjs
-// Collects SSE chunks, concatenates delta.audio.data base64.
-// ---------------------------------------------------------------------------
+const FAL_URL = "https://fal.run/fal-ai/gemini-3.1-flash-tts";
 
-async function streamAudioRequest(body, apiKey, timeoutMs = 60000) {
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ ...body, stream: true }),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`OpenRouter API failed (${res.status}): ${text}`);
-  }
-
-  let audioBase64 = "";
-  let textContent = "";
-  let transcript = "";
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith(": ")) continue;
-      if (trimmed === "data: [DONE]") continue;
-      if (!trimmed.startsWith("data: ")) continue;
-
-      try {
-        const chunk = JSON.parse(trimmed.slice(6));
-        const delta = chunk.choices?.[0]?.delta;
-        if (!delta) continue;
-
-        if (delta.content) textContent += delta.content;
-        if (delta.audio?.data) audioBase64 += delta.audio.data;
-        if (delta.audio?.transcript) transcript += delta.audio.transcript;
-      } catch {
-        // Skip unparseable lines
-      }
-    }
-  }
-
-  return { audioBase64, textContent, transcript };
+function formatFromPath(p) {
+  const ext = extname(p).toLowerCase();
+  if (ext === ".wav") return "wav";
+  if (ext === ".ogg" || ext === ".opus") return "ogg_opus";
+  return "mp3";
 }
 
-// ---------------------------------------------------------------------------
-// CLI entry
-// ---------------------------------------------------------------------------
+async function falTts(body, apiKey) {
+  const res = await fetch(FAL_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Key ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`fal-ai/gemini-3.1-flash-tts failed (${res.status}): ${text}`);
+  }
+  return res.json();
+}
+
+async function downloadAudio(url, outputPath) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to download audio (${res.status})`);
+  const buffer = Buffer.from(await res.arrayBuffer());
+  mkdirSync(dirname(outputPath), { recursive: true });
+  writeFileSync(outputPath, buffer);
+}
 
 function die(msg) {
   console.error(msg);
   process.exit(1);
-}
-
-async function runTts(args) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) die("OPENROUTER_API_KEY is not set");
-
-  const { text, output, voice = "alloy" } = args;
-  if (!text) die("--text is required");
-  if (!output) die("--output is required");
-
-  const { audioBase64 } = await streamAudioRequest(
-    {
-      model: "openai/gpt-audio",
-      modalities: ["text", "audio"],
-      audio: { voice, format: "wav" },
-      messages: [
-        {
-          role: "user",
-          content: `Please read the following text aloud naturally:\n\n${text}`,
-        },
-      ],
-    },
-    apiKey
-  );
-
-  if (!audioBase64) die("No audio data received");
-
-  const buffer = Buffer.from(audioBase64, "base64");
-  mkdirSync(dirname(output), { recursive: true });
-  writeFileSync(output, buffer);
-  console.log(output);
 }
 
 const { values } = parseArgs({
@@ -127,12 +84,43 @@ const { values } = parseArgs({
     text: { type: "string" },
     output: { type: "string" },
     voice: { type: "string" },
+    style: { type: "string" },
+    language: { type: "string" },
+    temperature: { type: "string" },
   },
   allowPositionals: false,
 });
 
 try {
-  await runTts(values);
+  const apiKey = process.env.FAL_KEY;
+  if (!apiKey) die("FAL_KEY is not set");
+
+  const text = values.text;
+  const output = values.output;
+  if (!text) die("--text is required");
+  if (!output) die("--output is required");
+
+  const body = {
+    prompt: text,
+    voice: values.voice || "Kore",
+    output_format: formatFromPath(output),
+  };
+  if (values.style) body.style_instructions = values.style;
+  if (values.language) body.language_code = values.language;
+  if (values.temperature != null) {
+    const n = Number(values.temperature);
+    if (isNaN(n) || n < 0 || n > 2) {
+      die(`invalid --temperature "${values.temperature}" (must be 0-2)`);
+    }
+    body.temperature = n;
+  }
+
+  const result = await falTts(body, apiKey);
+  const audioUrl = result.audio?.url;
+  if (!audioUrl) die("fal.ai returned no audio URL");
+
+  await downloadAudio(audioUrl, output);
+  console.log(output);
 } catch (err) {
   die(err instanceof Error ? err.message : String(err));
 }

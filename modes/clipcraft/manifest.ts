@@ -13,7 +13,7 @@ import {
 
 const clipcraftManifest: ModeManifest = {
   name: "clipcraft",
-  version: "0.1.0-bootstrap",
+  version: "0.2.0",
   displayName: "ClipCraft",
   description: "AI-orchestrated video production, rebuilt on @pneuma-craft",
 
@@ -27,7 +27,7 @@ const clipcraftManifest: ModeManifest = {
 
 You are running inside **Pneuma**, a co-creation workspace. This is **ClipCraft Mode** — AI-orchestrated video production on \`@pneuma-craft\`.
 
-Your domain knowledge lives in the \`pneuma-clipcraft\` skill. Read \`.claude/skills/pneuma-clipcraft/SKILL.md\` at session start; reference \`references/project-json.md\` when editing \`project.json\`, \`references/workflows.md\` when the user asks for a generation task, and the \`scripts/\` directory for the four bundled generator CLIs (image / video / TTS / BGM).`,
+Your domain knowledge lives in the \`pneuma-clipcraft\` skill. Read \`.claude/skills/pneuma-clipcraft/SKILL.md\` at session start; reference \`references/project-json.md\` when editing \`project.json\`, \`references/workflows.md\` when the user asks for a generation task, \`references/reference-directives.md\` for the seedance multi-reference directive language, \`references/character-consistency.md\` when a specific human character appears, and \`references/filter-retries.md\` when seedance rejects with a 422. The \`scripts/\` directory holds five bundled generator CLIs — image / video / TTS / BGM plus \`make-character-sheet.mjs\` (a recovery tool for the image-side content filter).`,
   },
 
   viewer: {

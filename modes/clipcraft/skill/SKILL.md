@@ -41,15 +41,16 @@ Full schema in `references/project-json.md`. Id rules in
 
 ## Generation scripts
 
-Four bundled CLI scripts wrap the provider APIs. Call them via the
+Five bundled CLI scripts wrap the provider APIs. Call them via the
 Bash tool; they write files and print the output path on stdout.
 
 | Script | Purpose | Default model | Env var |
 |---|---|---|---|
 | `scripts/generate-image.mjs` | Text→image + image→image edit | fal.ai `nano-banana-2` | `FAL_KEY` |
 | `scripts/generate-video.mjs` | Text→video + image→video + reference-to-video | bytedance `seedance-2.0` (fallback: `veo3.1` via `--model veo3.1`) | `FAL_KEY` |
-| `scripts/generate-tts.mjs` | Text→speech | OpenRouter `openai/gpt-audio` | `OPENROUTER_API_KEY` |
+| `scripts/generate-tts.mjs` | Text→speech (expressive: inline `[laughing]` / `[sigh]` tags, 30 voices) | fal.ai `gemini-3.1-flash-tts` | `FAL_KEY` |
 | `scripts/generate-bgm.mjs` | Text→background music | OpenRouter `google/lyria-3-pro-preview` | `OPENROUTER_API_KEY` |
+| `scripts/make-character-sheet.mjs` | Photo → photo-body / sketch-head 16:9 character reference sheet (recovery tool — call after seedance rejects a photorealistic human ref; see `references/filter-retries.md`) | fal.ai `nano-banana-2/edit` | `FAL_KEY` |
 
 All scripts share the same shape:
 
@@ -85,17 +86,28 @@ node scripts/generate-video.mjs from-image \
   --output assets/video/panda-rolls.mp4
 
 # 3. Multi-reference — the `reference` subcommand, seedance only.
-# Accepts up to 9 --image-url, 3 --video-url, 3 --audio-url (total ≤12).
-# In --prompt refer to each as @Image1 / @Video2 / @Audio1 in the
-# order they were passed. Audio refs require at least one image or
-# video ref.
+# A compositional directing system: each ref is an addressable asset
+# you assign a specific role in the prompt — character, first frame,
+# destination environment, camera motion, style, audio bed.
+# Addressing: 1-indexed by the order of the flag. First --image-url
+# is @image1, second --image-url is @image2; videos and audios are
+# numbered separately (@video1, @audio1, ...).
+# Slots: up to 9 --image-url, 3 --video-url, 3 --audio-url (total ≤12).
+# Audio refs require at least one image or video ref.
 node scripts/generate-video.mjs reference \
-  --prompt "A character drawn in the style of @Image1 runs across the frame" \
-  --image-url assets/images/character-ref.jpg \
-  --image-url assets/images/background-ref.jpg \
-  --duration 6 --aspect-ratio 16:9 \
+  --prompt "Replace the character in @video1 with @image1, with @image1 as the first frame. Match the camera movement of @video1. Travel into the environment of @image2." \
+  --image-url assets/image/hero.jpg         `# @image1: character` \
+  --image-url assets/image/destination.jpg  `# @image2: destination` \
+  --video-url assets/video/dolly-shot.mp4   `# @video1: camera grammar` \
+  --duration 8 --aspect-ratio 16:9 \
   --output assets/video/shot.mp4
 ```
+
+Full directive vocabulary (character / first frame / destination /
+camera transfer / style / prop / POV / audio) lives in
+`references/reference-directives.md`. Use it whenever more than one
+visual intent needs to be pinned down — a single image plus long
+prose prompt does not constrain seedance enough.
 
 Shared flags across subcommands: `--duration` (required; `4`–`15`
 seconds or `auto`; veo3.1 only allows `4`/`6`/`8`), `--aspect-ratio`
@@ -105,15 +117,27 @@ seconds or `auto`; veo3.1 only allows `4`/`6`/`8`), `--aspect-ratio`
 the content policy rejects auto-audio), `--seed` (integer, seedance
 only), `--model seedance | veo3.1`.
 
-### Content-policy retry pattern
+### Content-policy retries
 
-ByteDance's content filter occasionally rejects a seedance
-generation with
-`{"detail":[{"type":"content_policy_violation","loc":["body","generated_video"],"msg":"Output audio has sensitive content."}]}`.
-The video frames themselves are fine — the rejection is on the
-automatically generated audio track. **Retry with `--no-audio`** as
-the reliable workaround. Don't change the prompt or the model;
-just disable audio generation.
+Seedance has two distinct content-filter failure modes. The script
+surfaces the full API response to stderr; match the error signature
+and apply the matching recovery:
+
+- `loc:["body","image_urls"]` + `partner_validation_failed` —
+  image-side rejection. A photorealistic human face was detected in
+  a reference. Run `scripts/make-character-sheet.mjs` on the photo
+  to produce a photo-body / sketch-head 16:9 sheet, replace the
+  `--image-url` with the sheet, and retry (add `--no-audio` on the
+  retry too).
+- `loc:["body","generated_video"]` + `"Output audio has sensitive
+  content"` — audio-side rejection. Video frames are fine; just
+  retry the exact same command with `--no-audio` appended.
+
+Full decision tree, fallback to `--model veo3.1`, and hard-limit
+notes (when to stop retrying and surface to the user) are in
+`references/filter-retries.md`. The `character-consistency.md` doc
+covers the sheet anatomy, honest limits, and prompt rules for the
+image-side case.
 
 **Why this shape:** the script only does what a Bash subprocess does
 best — call a provider API and save bytes. Schema knowledge lives in
@@ -135,6 +159,28 @@ compose provenance yourself via Edit on `project.json`.
 Full worked examples for the three most common flows are in
 `references/workflows.md`. When the user asks for a generation task,
 pattern-match the closest example there first, then adapt.
+
+## Character consistency (photorealistic humans)
+
+When a specific human character appears — especially photorealistic,
+and especially across multiple shots — follow the protocol in
+`references/character-consistency.md`. Do **not** pass a photorealistic
+headshot or all-photo character sheet directly to
+`generate-video.mjs reference`: seedance 2.0's image-side filter
+rejects photorealistic human faces at input with
+`partner_validation_failed`, and prompt-side "virtual character" / "not
+a real person" phrasing does not defeat it (the filter does not read
+the prompt).
+
+The verified-passing shape: a 16:9 sheet of 4 vertical panels, three
+of them photographic full-body views with the **heads replaced by
+white-line pencil sketches**, and a fourth panel holding a detailed
+pencil portrait plus typewriter-style `OUTFIT` / `CHARACTER` notes.
+Pass that sheet as the sole `--image-url`, use plain photorealistic
+prompt words (no "CG render" / "virtual character" — they degrade
+output quality), and always include `--no-audio` (seedance's
+output-audio filter rejects these generations at the second gate).
+Full recipe and honest-limits disclosures in the reference doc.
 
 ## Viewer commands
 
@@ -173,4 +219,7 @@ confirm with the user before spending money on veo3.1.
 - `references/project-json.md` — full `project.json` schema
 - `references/workflows.md` — three end-to-end worked examples
 - `references/asset-ids.md` — id naming and stability rules
-- `scripts/` — the four bundled generator CLIs
+- `references/reference-directives.md` — @-addressing, role vocabulary, worked multi-ref example
+- `references/character-consistency.md` — photo-body + sketch-head sheet workflow for realistic human characters
+- `references/filter-retries.md` — decision tree for the two seedance 422 signatures
+- `scripts/` — the five bundled generator CLIs (including `make-character-sheet.mjs` recovery tool)

@@ -204,11 +204,16 @@ For `clip-caption-1` with text `"别跟我说话！"`:
 ```bash
 node .claude/skills/pneuma-clipcraft/scripts/generate-tts.mjs \
   --text "别跟我说话！" \
-  --output assets/audio/narration-caption-1.wav
+  --voice Kore \
+  --output assets/audio/narration-caption-1.mp3
 ```
 
 Repeat per caption. Keep the output filename tied to the caption
-clip's id so the provenance is easy to trace.
+clip's id so the provenance is easy to trace. Output format is
+inferred from the extension — `.mp3` (recommended), `.wav`, or
+`.ogg`/`.opus`. Use inline `[sigh]` / `[laughing]` / `[whispering]`
+tags directly in `--text` for expression, and `--style "..."` for
+whole-utterance direction ("warm conversational", "dramatic newscast").
 
 ### Step 3: register each audio asset + edge
 
@@ -218,9 +223,9 @@ For the first caption, add to `assets[]`:
 {
   "id": "asset-narration-caption-1",
   "type": "audio",
-  "uri": "assets/audio/narration-caption-1.wav",
+  "uri": "assets/audio/narration-caption-1.mp3",
   "name": "Narration · caption 1",
-  "metadata": { "duration": 1.8, "sampleRate": 24000, "channels": 1, "codec": "pcm16" },
+  "metadata": { "duration": 1.8, "sampleRate": 24000, "channels": 1, "codec": "mp3" },
   "createdAt": 1712934500000,
   "status": "ready"
 }
@@ -237,7 +242,7 @@ And to `provenance[]`:
     "actor": "agent",
     "agentId": "clipcraft-tts",
     "timestamp": 1712934500000,
-    "params": { "model": "openai/gpt-audio", "prompt": "别跟我说话！", "voice": "alloy" }
+    "params": { "model": "fal-ai/gemini-3.1-flash-tts", "prompt": "别跟我说话！", "voice": "Kore" }
   }
 }
 ```

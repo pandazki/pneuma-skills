@@ -210,15 +210,21 @@ function VideoClip({
         <div
           style={{
             position: "absolute",
-            left: filmstripOffsetPx,
+            // Images are uniform across "asset time" — no peek-through needed.
+            // Just fill the wrapper's current displayed width (which already
+            // reflects the resize preview). Using the committed clip.duration
+            // (via filmstripBaseWidth) would leave blank strips during edge
+            // drags because the wrapper width updates live while clip.duration
+            // doesn't.
+            left: 0,
             top: 2,
             height: FRAME_H,
-            width: filmstripBaseWidth,
+            width: Math.max(0, width - 2),
             display: "flex",
             pointerEvents: "none",
           }}
         >
-          <ImageFill src={contentUrl(uri)} width={filmstripBaseWidth} height={FRAME_H} />
+          <ImageFill src={contentUrl(uri)} width={Math.max(0, width - 2)} height={FRAME_H} />
         </div>
       )}
       {loading && frames.length === 0 && (
