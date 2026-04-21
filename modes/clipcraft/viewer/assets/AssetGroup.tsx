@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { Asset, AssetType } from "@pneuma-craft/react";
 import { AssetThumbnail } from "./AssetThumbnail.js";
+import type { FsEntry } from "./reconcile.js";
 import { theme } from "../theme/tokens.js";
 import { XIcon } from "../icons/index.js";
 import { startAssetDrag } from "../timeline/hooks/useTrackDropTarget.js";
@@ -11,9 +12,13 @@ export interface AssetGroupProps {
   display: "thumbnail" | "list";
   accept: string;
   assets: Asset[];
+  orphans: FsEntry[];
+  missingUris: Set<string>;
   onOpen: (asset: Asset) => void;
   onDelete: (assetId: string) => void;
   onUpload: (files: FileList) => void;
+  importOrphan: (entry: FsEntry) => string | null;
+  onAfterChange?: () => void;
 }
 
 export function AssetGroup({
@@ -21,9 +26,13 @@ export function AssetGroup({
   display,
   accept,
   assets,
+  orphans,
+  missingUris,
   onOpen,
   onDelete,
   onUpload,
+  importOrphan,
+  onAfterChange,
 }: AssetGroupProps) {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -172,7 +181,13 @@ export function AssetGroup({
           }}
         >
           {assets.map((a) => (
-            <AssetThumbnail key={a.id} asset={a} onOpen={onOpen} onDelete={onDelete} />
+            <AssetThumbnail
+              key={a.id}
+              asset={a}
+              onOpen={onOpen}
+              onDelete={onDelete}
+              isMissing={missingUris.has(a.uri)}
+            />
           ))}
         </div>
       ) : (
@@ -190,6 +205,71 @@ export function AssetGroup({
               onOpen={onOpen}
               onDelete={onDelete}
             />
+          ))}
+        </div>
+      )}
+
+      {orphans.length > 0 && (
+        <div style={{ marginTop: 4 }}>
+          <div
+            style={{
+              fontSize: 10,
+              color: theme.color.ink4,
+              padding: "0 6px",
+              fontFamily: theme.font.ui,
+              letterSpacing: theme.text.trackingCaps,
+              textTransform: "uppercase",
+            }}
+          >
+            Not Imported
+          </div>
+          {orphans.map((o) => (
+            <div
+              key={o.uri}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "4px 6px",
+                opacity: 0.7,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 12,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontFamily: theme.font.ui,
+                  color: theme.color.ink1,
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                {o.uri.split("/").pop()}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const result = importOrphan(o);
+                  if (result) onAfterChange?.();
+                }}
+                style={{
+                  fontSize: 11,
+                  padding: "2px 6px",
+                  background: theme.color.accentSoft,
+                  border: "none",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  fontFamily: theme.font.ui,
+                  color: theme.color.accentBright,
+                  flexShrink: 0,
+                  marginLeft: 4,
+                }}
+              >
+                Import
+              </button>
+            </div>
           ))}
         </div>
       )}

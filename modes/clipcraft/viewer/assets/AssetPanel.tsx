@@ -4,6 +4,9 @@ import { AssetGroup } from "./AssetGroup.js";
 import { AssetLightbox } from "./AssetLightbox.js";
 import { ScriptTab } from "./ScriptTab.js";
 import { useAssetActions } from "./useAssetActions.js";
+import { useAssetFsListing } from "./useAssetFsListing.js";
+import { reconcileAssets, type FsEntry } from "./reconcile.js";
+import { classifyByUri } from "./classify.js";
 import { theme } from "../theme/tokens.js";
 import { SparkleIcon } from "../icons/index.js";
 import { useGenerationDialog } from "../generation/useGenerationDialog.js";
@@ -21,15 +24,16 @@ const GROUPS: GroupSpec[] = [
   { label: "Images", type: "image", display: "thumbnail", accept: "image/*" },
   { label: "Clips", type: "video", display: "thumbnail", accept: "video/*" },
   { label: "Audio", type: "audio", display: "list", accept: "audio/*" },
-  { label: "Text", type: "text", display: "list", accept: "text/*" },
 ];
 
 export function AssetPanel() {
   const assets = useAssets();
-  const { upload, remove } = useAssetActions();
+  const { upload, remove, importOrphan } = useAssetActions();
   const [tab, setTab] = useState<Tab>("assets");
   const [preview, setPreview] = useState<Asset | null>(null);
   const { openForCreate } = useGenerationDialog();
+
+  const { entries: fsEntries, refetch: refetchFs } = useAssetFsListing();
 
   const grouped = useMemo(() => {
     const byType = new Map<AssetType, Asset[]>();
@@ -41,13 +45,38 @@ export function AssetPanel() {
     return byType;
   }, [assets]);
 
+  const registeredForReconcile = useMemo(
+    () => assets.map((a) => ({ assetId: a.id, uri: a.uri })),
+    [assets],
+  );
+
+  const report = useMemo(
+    () => reconcileAssets(fsEntries, registeredForReconcile),
+    [fsEntries, registeredForReconcile],
+  );
+
+  const orphansByType = useMemo(() => {
+    const bucket: Record<string, FsEntry[]> = { image: [], video: [], audio: [] };
+    for (const o of report.orphaned) {
+      const t = classifyByUri(o.uri);
+      if (t && bucket[t]) bucket[t].push(o);
+    }
+    return bucket;
+  }, [report.orphaned]);
+
+  const missingUris = useMemo(
+    () => new Set(report.missing.map((m) => m.uri)),
+    [report.missing],
+  );
+
   const handleUpload = useCallback(
     async (files: FileList) => {
       for (const file of Array.from(files)) {
-        await upload(file);
+        const id = await upload(file);
+        if (id) refetchFs();
       }
     },
-    [upload],
+    [upload, refetchFs],
   );
 
   return (
@@ -158,9 +187,13 @@ export function AssetPanel() {
               display={g.display}
               accept={g.accept}
               assets={grouped.get(g.type) ?? []}
+              orphans={orphansByType[g.type] ?? []}
+              missingUris={missingUris}
               onOpen={setPreview}
               onDelete={remove}
               onUpload={handleUpload}
+              importOrphan={importOrphan}
+              onAfterChange={refetchFs}
             />
           ))}
         </div>

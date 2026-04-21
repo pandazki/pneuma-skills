@@ -4,16 +4,17 @@ import { useWorkspaceAssetUrl } from "./useWorkspaceAssetUrl.js";
 import { useAssetError } from "./useAssetErrors.js";
 import { useAssetMetadata } from "./useAssetMetadata.js";
 import { theme } from "../theme/tokens.js";
-import { XIcon } from "../icons/index.js";
+import { XIcon, WarningIcon } from "../icons/index.js";
 import { startAssetDrag } from "../timeline/hooks/useTrackDropTarget.js";
 
 export interface AssetThumbnailProps {
   asset: Asset;
   onOpen: (asset: Asset) => void;
   onDelete: (assetId: string) => void;
+  isMissing?: boolean;
 }
 
-export function AssetThumbnail({ asset, onOpen, onDelete }: AssetThumbnailProps) {
+export function AssetThumbnail({ asset, onOpen, onDelete, isMissing = false }: AssetThumbnailProps) {
   const url = useWorkspaceAssetUrl(asset.id);
   const error = useAssetError(asset.id);
   const meta = useAssetMetadata(asset.id);
@@ -59,9 +60,11 @@ export function AssetThumbnail({ asset, onOpen, onDelete }: AssetThumbnailProps)
         overflow: "hidden",
         background: theme.color.surface2,
         cursor: canDrag ? "grab" : "pointer",
-        opacity: dragging ? 0.4 : 1,
+        opacity: dragging ? 0.4 : isMissing ? 0.4 : 1,
         border: error
           ? `1px solid ${theme.color.danger}`
+          : isMissing
+          ? `1px solid ${theme.color.dangerBorder}`
           : `1px solid ${theme.color.borderWeak}`,
         transition: `opacity ${theme.duration.quick}ms ${theme.easing.out}`,
       }}
@@ -122,6 +125,28 @@ export function AssetThumbnail({ asset, onOpen, onDelete }: AssetThumbnailProps)
           }}
         >
           {error}
+        </div>
+      )}
+
+      {isMissing && (
+        <div
+          style={{
+            position: "absolute",
+            top: 2,
+            right: 2,
+            background: theme.color.dangerSoft,
+            borderRadius: 3,
+            padding: "1px 4px",
+            fontSize: 10,
+            color: theme.color.dangerInk,
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+          }}
+          title={`File not found on disk: ${asset.uri}`}
+        >
+          <WarningIcon size={10} />
+          missing
         </div>
       )}
 

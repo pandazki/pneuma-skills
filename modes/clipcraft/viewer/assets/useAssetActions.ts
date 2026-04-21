@@ -1,44 +1,11 @@
 import { useCallback } from "react";
 import { useDispatch } from "@pneuma-craft/react";
-import type { Actor, AssetType } from "@pneuma-craft/core";
+import type { Actor } from "@pneuma-craft/core";
 import type { FsEntry } from "./reconcile.js";
 import { useAssetErrors } from "./useAssetErrors.js";
+import { classifyAssetType, classifyByUri as classifyAssetTypeByUri } from "./classify.js";
 
 const ACTOR: Actor = "human";
-
-// Extension → asset-type map. Must stay aligned with the server's
-// MEDIA_EXTS in `server/routes/asset-fs.ts` — a divergence means the
-// server reports a file the client's classifier rejects, so the user
-// sees an orphan that Import silently fails on.
-const EXT_TO_TYPE: Record<string, AssetType> = {
-  // image
-  png: "image", jpg: "image", jpeg: "image", gif: "image", webp: "image",
-  svg: "image", bmp: "image", avif: "image", heic: "image", heif: "image",
-  tif: "image", tiff: "image",
-  // video
-  mp4: "video", mov: "video", webm: "video", mkv: "video", m4v: "video",
-  avi: "video", mpeg: "video", mpg: "video",
-  // audio
-  mp3: "audio", wav: "audio", ogg: "audio", flac: "audio", aac: "audio",
-  m4a: "audio", opus: "audio", aif: "audio", aiff: "audio",
-};
-
-function classifyByExt(filename: string): AssetType | null {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-  return EXT_TO_TYPE[ext] ?? null;
-}
-
-function classifyAssetType(file: File): AssetType | null {
-  const mime = file.type;
-  if (mime.startsWith("image/")) return "image";
-  if (mime.startsWith("video/")) return "video";
-  if (mime.startsWith("audio/")) return "audio";
-  return classifyByExt(file.name);
-}
-
-function classifyAssetTypeByUri(uri: string): AssetType | null {
-  return classifyByExt(uri);
-}
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
