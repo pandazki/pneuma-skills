@@ -13,7 +13,7 @@ import {
 
 const clipcraftManifest: ModeManifest = {
   name: "clipcraft",
-  version: "0.2.0",
+  version: "0.3.0",
   displayName: "ClipCraft",
   description: "AI-orchestrated video production, rebuilt on @pneuma-craft",
 

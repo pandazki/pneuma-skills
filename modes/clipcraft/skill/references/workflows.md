@@ -273,7 +273,91 @@ the narration track as each asset lands.
 
 ---
 
-## Workflow 4 — Structured generation notifications from the viewer
+## Workflow 4 — Filesystem discovery
+
+An asset lives on two axes: the file on disk under `assets/`, and the
+`project.json` registry entry (`assets[]` + provenance). The asset
+panel scans both and shows three combinations, so the user can
+reconcile drift in either direction:
+
+- **Registered** — present in `project.json.assets[]` AND on disk.
+  The normal state; nothing special to do.
+- **Orphan** — a file exists under `assets/` but no `assets[]` entry
+  references it. Shows with a subtle "N not imported" hint. These are
+  usually files you generated but didn't register yet, or leftovers
+  from prior experiments.
+- **Missing** — an `assets[]` entry points at a `uri` that no longer
+  resolves on disk. Shows with a warning badge. The file was moved,
+  deleted, or never finished generating.
+
+Users can bulk-import orphans or bulk-trash unwanted files from an
+in-app asset manager; trashed files disappear from both the fs
+listing and (if they had been registered) from `project.json`. You
+don't need to call a delete tool — that path is user-driven.
+
+### Two paths for generated files
+
+When a generator script finishes, you have two options for how to
+land the output in the project:
+
+**Full registration (preferred).** Run the generator, then edit
+`project.json` in the same turn to add the `assets[]` entry and
+matching `provenance[]` edge. The asset shows up as a normal
+registered entry immediately, timeline-ready, and the user doesn't
+need to take a separate action. Follow the exact shape from
+Workflow 1 (`assets[]` fields + `provenance[]` with
+`operation.type: "generate"` or `"derive"`). This is the right
+default for anything the user asked for as a deliverable.
+
+```bash
+# 1. Run the generator.
+node .claude/skills/pneuma-clipcraft/scripts/generate-image.mjs \
+  --prompt "a sleepy panda on a moss log" \
+  --output assets/image/panda-sleepy.jpg
+
+# 2. In the same turn, Edit project.json:
+#    - Append { id: "asset-panda-sleepy", type: "image", uri: "...",
+#      metadata: {...}, createdAt, status: "ready" } to assets[].
+#    - Append the matching { toAssetId, fromAssetId: null,
+#      operation: { type: "generate", ... } } to provenance[].
+```
+
+**File-only.** Run the generator and stop — don't touch
+`project.json`. The file surfaces as an orphan under the "N not
+imported" hint, and the user decides later whether to import it via
+the asset manager or trash it. Reach for this path only when the
+user explicitly framed the request as a throwaway experiment
+("just try something", "quick sanity check"). It exists so you don't
+churn `project.json` with variants the user may discard; don't use
+it as a shortcut to avoid writing provenance.
+
+When in doubt, prefer full registration — an extra registered asset
+is cheap to trash, but a generated file the user forgot about is
+easy to miss.
+
+### Reacting to a "missing" asset in context
+
+When a generation request's viewer context flags an existing asset
+as missing (file absent, registry entry still present), don't
+silently regenerate over the gap. Ask the user whether to
+regenerate (re-fill the same id), unregister (drop the `assets[]`
+entry and any dangling `provenance[]` edges), or locate the
+original file (they may have moved it). The missing state often
+means the user deliberately deleted bytes they didn't like — a
+silent regen would undo that decision and burn provider credits.
+
+If the missing asset was the source of a variant chain, losing it
+cascades: variants derived from it still reference
+`fromAssetId: asset-...` in provenance. Unregistering the root is
+fine as long as you also clean up orphaned edges. See
+`filter-retries.md` for the related case where seedance rejects a
+regen; the recovery path for a missing character reference is the
+same character-sheet flow described there and in
+`character-consistency.md`.
+
+---
+
+## Workflow 5 — Structured generation notifications from the viewer
 
 The viewer can send you a **structured generation request** when the
 user fills out an in-app form in the dive panel (variant generation)
