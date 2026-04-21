@@ -900,9 +900,9 @@ function DeleteControl({
       >
         <TrashIcon size={14} />
       </button>
-      {/* Cancel pill slides out from behind the Delete button to the
-          left when armed. Always rendered (so the exit animation works);
-          opacity + translateX + pointer-events gate visibility. */}
+      {/* Cancel pill slides down from behind the Delete button into
+          the empty space below when armed. Always rendered so the exit
+          animation works; top + opacity + pointer-events gate it. */}
       <button
         type="button"
         onClick={onCancel}
@@ -911,27 +911,29 @@ function DeleteControl({
         tabIndex={confirming ? 0 : -1}
         style={{
           position: "absolute",
-          top: 0,
-          right: confirming ? "calc(100% + 6px)" : 0,
-          height: 32,
-          padding: "0 10px",
+          left: 0,
+          top: confirming ? "calc(100% + 4px)" : 0,
+          width: 40,
+          height: 22,
+          padding: 0,
           borderRadius: theme.radius.base,
           background: theme.color.surface3,
           border: `1px solid ${theme.color.borderWeak}`,
           color: theme.color.ink2,
           cursor: "pointer",
           fontFamily: theme.font.ui,
-          fontSize: theme.text.xs,
+          fontSize: 10,
           fontWeight: theme.text.weightRegular,
           letterSpacing: theme.text.trackingWide,
           textTransform: "uppercase",
           display: "flex",
           alignItems: "center",
+          justifyContent: "center",
           whiteSpace: "nowrap",
           opacity: confirming ? 1 : 0,
           pointerEvents: confirming ? "auto" : "none",
           zIndex: 1,
-          transition: `right ${theme.duration.quick}ms ${theme.easing.out}, opacity ${theme.duration.quick}ms ${theme.easing.out}`,
+          transition: `top ${theme.duration.quick}ms ${theme.easing.out}, opacity ${theme.duration.quick}ms ${theme.easing.out}`,
         }}
       >
         Cancel
