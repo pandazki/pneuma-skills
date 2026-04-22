@@ -7,7 +7,7 @@
 
 import type { Hono } from "hono";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join, extname } from "node:path";
+import { join, extname, dirname } from "node:path";
 import { pathStartsWith } from "../utils.js";
 import { parseCompositions } from "../../modes/remotion/viewer/composition-parser.js";
 import { getDeployCSS, getDeployToolbarHTML, getDeployModalHTML, getDeployScript } from "./deploy-ui.js";
@@ -60,7 +60,12 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
 
   /** Replace local asset references with inline data: URIs. */
   function inlineAssets(html: string, resolveBase = workspace): string {
-    // Inline <link rel="stylesheet" href="..."> as <style> blocks
+    // Inline <link rel="stylesheet" href="..."> as <style> blocks.
+    // url(...) references inside the stylesheet are resolved relative to the
+    // STYLESHEET's own directory, not the HTML's baseDir — otherwise a
+    // stylesheet shared across sibling directories (kami's _shared/styles.css
+    // referenced via ../_shared/ from each content set) would resolve its
+    // @font-face urls against the wrong directory and the fonts fall back.
     html = html.replace(/<link\b[^>]*rel\s*=\s*["']stylesheet["'][^>]*>/gi, (match) => {
       const hrefMatch = match.match(/href\s*=\s*["']([^"']+)["']/i);
       if (!hrefMatch) return match;
@@ -72,7 +77,13 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
       const absPath = join(resolveBase, cleaned);
       if (!pathStartsWith(absPath, workspace) || !existsSync(absPath)) return match;
       try {
-        const css = readFileSync(absPath, "utf-8");
+        let css = readFileSync(absPath, "utf-8");
+        const cssDir = dirname(absPath);
+        css = css.replace(/url\(\s*["']?([^"')]+?)["']?\s*\)/gi, (m, r) => {
+          if (/^(https?:|data:|\/\/|#)/i.test(r)) return m;
+          const dataUri = readAsDataUri(r, cssDir);
+          return dataUri ? `url("${dataUri}")` : m;
+        });
         return `<style>/* inlined: ${cleaned} */\n${css}\n</style>`;
       } catch {
         return match;
@@ -2103,6 +2114,524 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
         "Content-Disposition": `attachment; filename="${safeFilename}"; filename*=UTF-8''${utf8Filename}`,
       },
     });
+  });
+
+  // ── Kami Mode Export ──────────────────────────────────────────────────────
+  //
+  // Kami's export flow is deliberately simpler than webcraft's. Paper size is
+  // locked at workspace creation, so there's no "responsive viewport" preview;
+  // the single preset IS the preview. Two actions: download a self-contained
+  // HTML (warm parchment letterbox, centered) or capture the paper pages as
+  // PNG (single paper → 1 PNG download; multi-page → ZIP of PNGs).
+  //
+  // Structure:
+  //   /export/kami              — preview page (this function)
+  //   /export/kami/download     — self-contained letterbox HTML
+  //
+  // Screenshot is handled entirely client-side via snapdom + fflate (loaded
+  // from the page itself); no server support needed.
+  function buildKamiExportHtml(opts: { contentSet?: string }): { html: string; title: string } | { error: string; status: number } {
+    let baseDir = workspace;
+    if (opts.contentSet) {
+      baseDir = join(workspace, opts.contentSet);
+    } else if (!existsSync(join(workspace, "manifest.json"))) {
+      try {
+        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
+          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
+            baseDir = join(workspace, entry.name);
+            break;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    const manifestPath = join(baseDir, "manifest.json");
+    if (!existsSync(manifestPath)) return { error: "No manifest.json found in workspace", status: 404 };
+
+    let manifest: { title?: string; pages?: { file: string; title?: string }[] };
+    try { manifest = JSON.parse(readFileSync(manifestPath, "utf-8")); }
+    catch { return { error: "Failed to parse manifest.json", status: 500 }; }
+    if (!manifest.pages?.length) return { error: "No pages in manifest.json", status: 404 };
+
+    // Paper dimensions come from .pneuma/config.json, written by manifest.init.deriveParams.
+    // Defaults to A4 portrait if missing (shouldn't happen in practice).
+    let pageWidthMm = 210, pageHeightMm = 297;
+    let paperLabel = "A4 Portrait";
+    try {
+      const cfg = JSON.parse(readFileSync(join(workspace, ".pneuma", "config.json"), "utf-8"));
+      if (typeof cfg.pageWidthMm === "number") pageWidthMm = cfg.pageWidthMm;
+      if (typeof cfg.pageHeightMm === "number") pageHeightMm = cfg.pageHeightMm;
+      if (cfg.paperSize && cfg.orientation) paperLabel = `${cfg.paperSize} ${cfg.orientation}`;
+    } catch { /* use defaults */ }
+
+    const MM_TO_PX = 96 / 25.4;
+    const paperWPx = Math.round(pageWidthMm * MM_TO_PX);
+    const paperHPx = Math.round(pageHeightMm * MM_TO_PX);
+
+    const pageContents = manifest.pages.map((page) => {
+      const pagePath = join(baseDir, page.file);
+      const html = existsSync(pagePath) ? readFileSync(pagePath, "utf-8") : `<p>Missing: ${page.file}</p>`;
+      return { file: page.file, title: page.title || page.file.replace(/\.html$/i, ""), html };
+    });
+
+    const title = manifest.title || "Kami Document";
+    const pagesJson = JSON.stringify(pageContents).replace(/<\/script/g, "<\\/script");
+
+    // Kami seeds a fixed set of fonts under _shared/assets/fonts/. Enumerate
+    // them so the export page can fetch each as a data-URI and inject
+    // @font-face rules directly into the preview iframe's <head> before
+    // capture. snapdom's auto-discovery keeps missing @font-face rules
+    // that live in the iframe's linked stylesheet (cross-document CSSOM
+    // boundary + relative-URL resolution quirks); data-URI rules that
+    // WE inject bypass every discovery path snapdom has.
+    const KAMI_FONT_META: Array<{ file: string; family: string; weight?: number }> = [
+      { file: "Newsreader.woff2",        family: "Newsreader",     weight: 500 },
+      { file: "Inter.woff2",             family: "Inter",          weight: 400 },
+      { file: "Inter-500.woff2",         family: "Inter",          weight: 500 },
+      { file: "Inter-600.woff2",         family: "Inter",          weight: 600 },
+      { file: "JetBrainsMono.woff2",     family: "JetBrains Mono", weight: 500 },
+      { file: "TsangerJinKai02-W04.ttf", family: "TsangerJinKai02", weight: 500 },
+    ];
+    const fontsDir = join(workspace, "_shared", "assets", "fonts");
+    const localFonts = KAMI_FONT_META
+      .filter((f) => existsSync(join(fontsDir, f.file)))
+      .map((f) => ({
+        family: f.family,
+        src:    `/content/_shared/assets/fonts/${f.file}`,
+        weight: f.weight,
+      }));
+    const localFontsJson = JSON.stringify(localFonts);
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<base href="/content/${opts.contentSet ? encodeURIComponent(opts.contentSet) + "/" : ""}">
+<title>${title} — Export</title>
+<style>
+  :root {
+    --parchment:  #f5f4ed;
+    --letterbox:  #d9d6ca;
+    --ring-warm:  #d1cfc5;
+    --ink:        #1B365D;
+    --near-black: #141413;
+    --olive:      #5e5d59;
+    --stone:      #87867f;
+    --border:     #e8e5da;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--letterbox); font-family: "Newsreader", Georgia, serif; color: var(--near-black); }
+  .export-toolbar {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(245,244,237,0.92); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex; align-items: center; gap: 18px;
+    font-size: 13px;
+  }
+  .export-title { font-weight: 500; font-size: 15px; color: var(--near-black); }
+  .export-meta { color: var(--olive); font-family: "Inter", sans-serif; font-size: 11px; letter-spacing: 0.3px; }
+  .export-spacer { flex: 1; }
+  .btn {
+    font-family: "Inter", system-ui, sans-serif; font-size: 12px; font-weight: 500;
+    padding: 6px 14px; border-radius: 6px; cursor: pointer;
+    background: var(--parchment); color: var(--near-black);
+    border: 1px solid var(--border); transition: background 0.15s, border-color 0.15s;
+  }
+  .btn:hover { border-color: var(--ring-warm); }
+  .btn-primary { background: var(--ink); color: var(--parchment); border-color: var(--ink); }
+  .btn-primary:hover { background: #234374; border-color: #234374; }
+  .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
+
+  .pages {
+    padding: 32px;
+    display: flex; flex-direction: column; gap: 24px;
+    align-items: center;
+  }
+  .page-section {
+    max-width: 100%;
+  }
+  .page-header {
+    display: flex; gap: 10px; align-items: baseline;
+    margin-bottom: 10px; padding-left: 4px;
+    font-family: "Inter", sans-serif; font-size: 11px;
+    color: var(--stone); letter-spacing: 0.3px;
+  }
+  .page-number {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 4px;
+    background: var(--ink); color: var(--parchment);
+    font-size: 10px; font-weight: 600;
+  }
+  .page-title { color: var(--near-black); font-family: "Newsreader", serif; font-size: 13px; font-weight: 500; }
+  .page-file { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10px; color: var(--stone); }
+
+  .paper-frame {
+    width: ${paperWPx}px; height: ${paperHPx}px;
+    background: var(--parchment);
+    box-shadow: 0 0 0 1px var(--ring-warm), 0 8px 24px rgba(20,20,19,0.10);
+    border-radius: 2px;
+    overflow: hidden;
+    transform-origin: top center;
+    /* On narrow screens the paper scales down proportionally; set via JS. */
+  }
+  .paper-frame iframe {
+    width: 100%; height: 100%;
+    border: none; display: block;
+    background: var(--parchment);
+  }
+</style>
+</head>
+<body>
+
+<div class="export-toolbar">
+  <span class="export-title">${title}</span>
+  <span class="export-meta">${pageContents.length} file${pageContents.length > 1 ? "s" : ""} · ${paperLabel} · ${pageWidthMm} × ${pageHeightMm} mm</span>
+  <div class="export-spacer"></div>
+  <button class="btn btn-primary" id="btn-download-pdf" onclick="downloadPdf()">Download PDF</button>
+  <button class="btn" id="btn-download-html" onclick="downloadHtml()">Download HTML</button>
+  <button class="btn" id="btn-screenshot" onclick="captureScreenshot()">Screenshot PNG</button>
+</div>
+
+<div class="pages" id="pages-root"></div>
+
+<script src="/vendor/snapdom.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"><\/script>
+<script>
+var PAPER_W = ${paperWPx};
+var PAPER_H = ${paperHPx};
+var PAPER_W_MM = ${pageWidthMm};
+var PAPER_H_MM = ${pageHeightMm};
+var CONTENT_SET = ${JSON.stringify(opts.contentSet || "")};
+var TITLE = ${JSON.stringify(title)};
+var pages = ${pagesJson};
+// Explicit font list — snapdom uses this to embed kami's web fonts into
+// the captured SVG/PNG. Supplied by the server (see KAMI_FONT_META) so
+// we don't depend on snapdom discovering @font-face rules across the
+// iframe boundary.
+var LOCAL_FONTS = ${localFontsJson};
+
+var root = document.getElementById("pages-root");
+
+pages.forEach(function(page, i) {
+  var section = document.createElement("div");
+  section.className = "page-section";
+  section.innerHTML =
+    '<div class="page-header">' +
+      '<span class="page-number">' + (i+1) + '</span>' +
+      '<span class="page-title">' + page.title + '</span>' +
+      '<span class="page-file">' + page.file + '</span>' +
+    '</div>' +
+    '<div class="paper-frame" id="paper-' + i + '"><iframe id="frame-' + i + '" sandbox="allow-same-origin allow-scripts"></iframe></div>';
+  root.appendChild(section);
+
+  var frame = document.getElementById("frame-" + i);
+  frame.srcdoc = page.html;
+});
+
+// Scale papers down if viewport is narrower than the paper. Keep above-paper
+// gutter readable.
+function fitPapers() {
+  var available = window.innerWidth - 80;
+  var scale = Math.min(1, available / PAPER_W);
+  document.querySelectorAll(".paper-frame").forEach(function(el) {
+    el.style.transform = scale < 1 ? ("scale(" + scale + ")") : "";
+    // Collapse the space that scale() would leave below the element
+    el.style.marginBottom = scale < 1 ? (-(PAPER_H * (1 - scale)) + "px") : "";
+  });
+}
+window.addEventListener("resize", fitPapers);
+fitPapers();
+
+function downloadHtml() {
+  var btn = document.getElementById("btn-download-html");
+  btn.disabled = true;
+  btn.textContent = "Preparing...";
+  var url = "/export/kami/download" + (CONTENT_SET ? ("?contentSet=" + encodeURIComponent(CONTENT_SET)) : "");
+  fetch(url).then(function(r) {
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.blob();
+  }).then(function(blob) {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = TITLE + ".html";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  }).catch(function(err) {
+    alert("Download failed: " + err.message);
+  }).finally(function() {
+    btn.disabled = false; btn.textContent = "Download HTML";
+  });
+}
+
+// Count the number of <div class="page"> elements inside an iframe. Each
+// counts as one paper page for screenshot purposes. Fall back to 1 if the
+// iframe has no explicit .page markers (single-sheet layouts).
+function paperPagesIn(iframe) {
+  try {
+    var doc = iframe.contentDocument;
+    var pages = doc.querySelectorAll(".page");
+    return pages.length > 0 ? Array.from(pages) : [doc.body];
+  } catch (e) { return []; }
+}
+
+// Capture every .page across every iframe at the locked paper dimensions.
+// Shared pipeline for Screenshot PNG (emits PNG or ZIP-of-PNGs) and
+// Download PDF (stitches PNGs into a vector-sized PDF).
+async function capturePages() {
+  var frames = document.querySelectorAll("iframe[id^='frame-']");
+  // Temporarily reset fit-to-viewport scaling so snapdom captures at native
+  // paper dimensions, regardless of what the window width forced earlier.
+  document.querySelectorAll(".paper-frame").forEach(function(el) {
+    el.dataset.t = el.style.transform; el.dataset.m = el.style.marginBottom;
+    el.style.transform = ""; el.style.marginBottom = "";
+  });
+  try {
+    var shots = [];
+    for (var i = 0; i < frames.length; i++) {
+      var iframe = frames[i];
+      var doc, tries = 0;
+      while (tries < 30) {
+        try { doc = iframe.contentDocument; if (doc && doc.readyState === "complete" && doc.body && doc.body.childElementCount > 0) break; } catch (e) {}
+        await new Promise(function(r) { setTimeout(r, 100); });
+        tries++;
+      }
+      // Step 1: fetch each kami font as a data URI and inject an
+      // @font-face rule into the iframe's <head> before capture. The
+      // font bytes end up inline in the iframe's own stylesheet, which
+      // snapdom can always find and serialize into the captured SVG.
+      if (!doc.querySelector("style[data-kami-export-fonts]")) {
+        var parts = [];
+        for (var fi = 0; fi < LOCAL_FONTS.length; fi++) {
+          var f = LOCAL_FONTS[fi];
+          try {
+            var r = await fetch(f.src);
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            var fontBlob = await r.blob();
+            var dataUri = await new Promise(function(res, rej){
+              var fr = new FileReader();
+              fr.onload = function(){ res(fr.result); };
+              fr.onerror = rej;
+              fr.readAsDataURL(fontBlob);
+            });
+            var fmt = /\\.ttf$/i.test(f.src) ? 'truetype' : 'woff2';
+            parts.push('@font-face{font-family:"' + f.family + '";font-weight:' + f.weight + ';font-display:swap;src:url("' + dataUri + '") format("' + fmt + '")}');
+          } catch (e) { console.warn("[kami-export] font fetch failed:", f.src, e); }
+        }
+        var styleEl = doc.createElement("style");
+        styleEl.setAttribute("data-kami-export-fonts", "");
+        styleEl.textContent = parts.join("");
+        doc.head.appendChild(styleEl);
+      }
+
+      // Step 2: force-load every face. Font Loading API marks a face as
+      // "unloaded" until it is actually used; on a Chinese document the
+      // Latin faces never kick in otherwise, and snapdom skips them.
+      try {
+        if (doc && doc.fonts) {
+          var faces = Array.from(doc.fonts);
+          await Promise.all(faces.map(function(face){ return face.load().catch(function(){}); }));
+          if (doc.fonts.ready) await doc.fonts.ready;
+        }
+      } catch (e) { /* non-fatal */ }
+
+      // Step 3: inject snapdom into the iframe itself so it runs in the
+      // iframe's own context (its document.styleSheets, computed styles,
+      // and Font Loading API are natively accessible without any
+      // cross-document CSSOM workaround).
+      if (!iframe.contentWindow.snapdom) {
+        var s = doc.createElement("script");
+        s.src = "/vendor/snapdom.js";
+        doc.head.appendChild(s);
+        await new Promise(function(res) {
+          var tries = 0;
+          var timer = setInterval(function() {
+            tries++;
+            if (iframe.contentWindow.snapdom) { clearInterval(timer); res(); }
+            else if (tries > 50) { clearInterval(timer); res(); }
+          }, 100);
+        });
+      }
+      var pagesInFrame = paperPagesIn(iframe);
+      for (var p = 0; p < pagesInFrame.length; p++) {
+        var target = pagesInFrame[p];
+        // snapdom returns SVG by default; type: "png" rasterizes it.
+        // width/height rasterize at exactly the locked paper dimensions so
+        // every captured sheet is uniform regardless of devicePixelRatio.
+        // Call snapdom INSIDE the iframe so it picks up the iframe's
+        // stylesheets and computed styles natively. Fall back to the
+        // outer snapdom only if iframe injection failed.
+        var localSnapdom = iframe.contentWindow.snapdom || window.snapdom;
+        var result = await localSnapdom(target, {
+          embedFonts: true,
+          width: PAPER_W,
+          height: PAPER_H,
+        });
+        var blob = await result.toBlob({ type: "png", width: PAPER_W, height: PAPER_H });
+        shots.push({ name: "page-" + String(shots.length + 1).padStart(2, "0") + ".png", blob: blob });
+      }
+    }
+    return shots;
+  } finally {
+    document.querySelectorAll(".paper-frame").forEach(function(el) {
+      if (el.dataset.t !== undefined) el.style.transform = el.dataset.t;
+      if (el.dataset.m !== undefined) el.style.marginBottom = el.dataset.m;
+      delete el.dataset.t; delete el.dataset.m;
+    });
+  }
+}
+
+function downloadBlob(blob, filename) {
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+
+async function captureScreenshot() {
+  var btn = document.getElementById("btn-screenshot");
+  var orig = btn.textContent;
+  btn.disabled = true; btn.textContent = "Capturing...";
+  try {
+    var shots = await capturePages();
+    if (shots.length === 0) { alert("Nothing to capture"); return; }
+    if (shots.length === 1) {
+      downloadBlob(shots[0].blob, TITLE + ".png");
+    } else {
+      var entries = {};
+      for (var s = 0; s < shots.length; s++) {
+        entries[shots[s].name] = new Uint8Array(await shots[s].blob.arrayBuffer());
+      }
+      var zipBytes = fflate.zipSync(entries, { level: 6 });
+      downloadBlob(new Blob([zipBytes], { type: "application/zip" }), TITLE + " (" + shots.length + " pages).zip");
+    }
+  } catch (err) {
+    console.error(err);
+    alert("Screenshot failed: " + (err.message || err));
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+async function downloadPdf() {
+  var btn = document.getElementById("btn-download-pdf");
+  var orig = btn.textContent;
+  btn.disabled = true; btn.textContent = "Building PDF...";
+  try {
+    var shots = await capturePages();
+    if (shots.length === 0) { alert("Nothing to capture"); return; }
+
+    // jspdf ships as a UMD bundle exposing window.jspdf.{ jsPDF }.
+    var jsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+    if (!jsPDF) throw new Error("jsPDF not loaded");
+
+    var orientation = PAPER_W_MM > PAPER_H_MM ? "landscape" : "portrait";
+    var pdf = new jsPDF({
+      unit: "mm",
+      // jsPDF's [w, h] format dims are read in PORTRAIT orientation
+      // (w = short side). Pass the actual portrait dims and let the
+      // orientation flag handle landscape pages.
+      format: orientation === "landscape" ? [PAPER_H_MM, PAPER_W_MM] : [PAPER_W_MM, PAPER_H_MM],
+      orientation: orientation,
+      compress: true,
+    });
+
+    for (var i = 0; i < shots.length; i++) {
+      if (i > 0) pdf.addPage();
+      var dataUrl = await new Promise(function(res, rej) {
+        var r = new FileReader();
+        r.onload = function() { res(r.result); };
+        r.onerror = rej;
+        r.readAsDataURL(shots[i].blob);
+      });
+      pdf.addImage(dataUrl, "PNG", 0, 0, PAPER_W_MM, PAPER_H_MM);
+    }
+
+    var pdfBlob = pdf.output("blob");
+    downloadBlob(pdfBlob, TITLE + ".pdf");
+  } catch (err) {
+    console.error(err);
+    alert("PDF export failed: " + (err.message || err));
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+</script>
+</body>
+</html>`;
+
+    return { html, title };
+  }
+
+  app.get("/export/kami", (c) => {
+    const contentSet = c.req.query("contentSet") || undefined;
+    const result = buildKamiExportHtml({ contentSet });
+    if ("error" in result) return c.text(result.error, result.status as any);
+    return c.html(result.html);
+  });
+
+  // Self-contained HTML with warm letterbox + centered paper. Suitable for
+  // hosting or saving as a standalone file. On wide screens the paper
+  // floats centered over the letterbox; on narrow screens it collapses to
+  // full width. Fonts + stylesheets + images inlined.
+  app.get("/export/kami/download", (c) => {
+    let contentSet = c.req.query("contentSet") || undefined;
+    const pageFile = c.req.query("page") || undefined;
+
+    let baseDir = workspace;
+    if (contentSet) {
+      baseDir = join(workspace, contentSet);
+    } else if (!existsSync(join(workspace, "manifest.json"))) {
+      try {
+        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
+          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
+            contentSet = entry.name;
+            baseDir = join(workspace, entry.name);
+            break;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    const manifestPath = join(baseDir, "manifest.json");
+    if (!existsSync(manifestPath)) return c.text("No manifest.json found", 404);
+    let manifest: { title?: string; pages?: { file: string; title?: string }[] };
+    try { manifest = JSON.parse(readFileSync(manifestPath, "utf-8")); }
+    catch { return c.text("Bad manifest", 500); }
+    if (!manifest.pages?.length) return c.text("No pages", 404);
+
+    const targetPage = pageFile
+      ? manifest.pages.find((p) => p.file === pageFile) || manifest.pages[0]
+      : manifest.pages[0];
+    const pagePath = join(baseDir, targetPage.file);
+    if (!existsSync(pagePath)) return c.text(`Missing: ${targetPage.file}`, 404);
+
+    // Inline fonts / stylesheets / images so the file is self-contained.
+    let inlined = inlineAssets(readFileSync(pagePath, "utf-8"), baseDir);
+
+    // Wrap body content with a letterbox + centered paper frame. On screen
+    // the .page sheet floats over #d9d6ca; on print the @page rule already
+    // in the inlined stylesheet takes over and the letterbox has no effect.
+    const wrapStyle = `<style>
+@media screen {
+  body { background: #d9d6ca !important; padding: 40px 20px; }
+  body > .page, body .page { margin: 0 auto 24px !important; max-width: 100%; }
+}
+@media print {
+  body { background: #f5f4ed !important; padding: 0 !important; }
+  body > .page, body .page { margin: 0 auto !important; }
+}
+</style>`;
+    if (inlined.includes("</head>")) {
+      inlined = inlined.replace("</head>", `${wrapStyle}</head>`);
+    } else {
+      inlined = wrapStyle + inlined;
+    }
+
+    return c.html(inlined);
   });
 
   app.get("/export/webcraft/zip", async (c) => {

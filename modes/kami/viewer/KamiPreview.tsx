@@ -41,7 +41,21 @@ const EDIT_MODE_EXTENSION = `
 
   function toggleEditable(enable) {
     var tags = 'h1,h2,h3,h4,h5,h6,p,li,td,th,span,a,blockquote,figcaption,label,dt,dd';
-    var els = document.querySelectorAll(tags);
+    var INLINE = { SPAN:1, A:1, EM:1, STRONG:1, B:1, I:1, SMALL:1, CODE:1, BR:1, SUB:1, SUP:1, MARK:1, TIME:1, U:1, S:1, Q:1, CITE:1, ABBR:1 };
+    var els = Array.prototype.slice.call(document.querySelectorAll(tags));
+    // kami demos use <div class="…"> as text containers (e.g. .name, .tl-body,
+    // .proj-text). Include any <div> whose direct children are only inline
+    // elements — those are leaf text containers. Skip structural divs with
+    // block-level children (cards, grids, etc.).
+    var divs = document.querySelectorAll('div');
+    for (var d = 0; d < divs.length; d++) {
+      var dv = divs[d];
+      var leaf = true;
+      for (var c = 0; c < dv.children.length; c++) {
+        if (!INLINE[dv.children[c].tagName]) { leaf = false; break; }
+      }
+      if (leaf && (dv.textContent || '').trim()) els.push(dv);
+    }
     for (var i = 0; i < els.length; i++) {
       els[i].contentEditable = enable ? 'true' : 'false';
       els[i].style.cursor = enable ? 'text' : '';
@@ -790,9 +804,15 @@ export default function KamiPreview({
       const original = fileContent.content;
       let updated: string;
       if (/<body[^>]*>/i.test(original)) {
+        // Function replacement, NOT `$1\n${html}\n$3` — a string replacement
+        // would interpret $1/$2/$3 inside `html` as capture-group references,
+        // turning e.g. "$350B" into "</body>50B" and "$1T" into "<body>T"
+        // (the regex's capture groups 1 and 3 are the body-open/close tags).
+        // Kami's resume/portfolio demos carry plenty of currency figures;
+        // function replacement sidesteps the dollar-sign substitution rules.
         updated = original.replace(
           /(<body[^>]*>)([\s\S]*?)(<\/body>)/i,
-          `$1\n${html}\n$3`,
+          (_m, open, _body, close) => `${open}\n${html}\n${close}`,
         );
       } else {
         updated = html;
@@ -988,11 +1008,22 @@ export default function KamiPreview({
 
   // ── Export handlers ─────────────────────────────────────────────────────────
 
-  // Export = Print to PDF. The iframe already carries kami's @page CSS, so
-  // the browser print dialog produces a correctly-sized paper PDF by default.
-  // No separate HTML bundle export for kami — the canonical artifact is the PDF.
+  // Export = pop a new tab with kami's dedicated export page. The page is
+  // a fork of the webcraft export chrome, simplified for paper-canvas mode:
+  // no viewport presets (paper size is locked), a "Download HTML" button
+  // that produces a self-contained letterbox-wrapped document, and a
+  // "Screenshot PNG" button that captures each .page at the locked paper
+  // dimensions (single paper → 1 PNG; multi-page → ZIP of PNGs). Printing
+  // is deliberately not surfaced — users who want a PDF print the
+  // downloaded HTML or the screenshot bundle externally.
+  //
+  // Relative URL so Vite's /export proxy picks it up regardless of which
+  // backend port the server ended up on.
   const handleExport = useCallback(() => {
-    iframeRef.current?.contentWindow?.print();
+    const cs = useStore.getState().activeContentSet;
+    const qs = new URLSearchParams();
+    if (cs) qs.set("contentSet", cs);
+    window.open(`/export/kami${qs.toString() ? "?" + qs.toString() : ""}`, "_blank");
   }, []);
 
   return (
