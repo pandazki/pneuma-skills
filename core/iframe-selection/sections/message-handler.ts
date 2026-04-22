@@ -6,12 +6,37 @@
  * Depends on all other sections being loaded first (uses their functions).
  */
 export const SECTION_MESSAGE_HANDLER = `
+  var selectModeStyle = null;
+
   window.addEventListener('message', function(e) {
     if (!e.data) return;
     if (e.data.type === 'pneuma:selectMode') {
       active = !!e.data.enabled;
       document.body.style.cursor = active ? 'crosshair' : '';
-      if (!active) {
+      // Disable native text selection and caret-drag behaviours while
+      // the user is in select/annotate mode. Otherwise a press-and-drag
+      // triggers browser text selection: the hover overlay stops
+      // tracking the cursor (mouseover is suppressed during drag), the
+      // highlighted text range fights the overlay visually, and the
+      // click that finally settles the selection fires only on mouseup
+      // — giving the user the \"box doesn\'t move during drag, jumps at
+      // release\" feel. With user-select: none the selection is a
+      // hover-driven pick, not a text range.
+      if (active) {
+        if (!selectModeStyle) {
+          selectModeStyle = document.createElement('style');
+          selectModeStyle.setAttribute('data-pneuma-select-mode', '');
+          selectModeStyle.textContent =
+            '*, *::before, *::after {' +
+            '  user-select: none !important;' +
+            '  -webkit-user-select: none !important;' +
+            '  -moz-user-select: none !important;' +
+            '  -ms-user-select: none !important;' +
+            '}';
+          document.head.appendChild(selectModeStyle);
+        }
+      } else {
+        if (selectModeStyle) { selectModeStyle.remove(); selectModeStyle = null; }
         clearHover();
         clearSelected();
       }
@@ -79,20 +104,46 @@ export const SECTION_MESSAGE_HANDLER = `
     }
   });
 
-  document.addEventListener('mouseover', function(e) {
+  function updateHoverAt(target) {
     if (!active) return;
-    var el = findMeaningfulElement(e.target);
-    if (!el) return;
+    var el = findMeaningfulElement(target);
+    if (!el) { clearHover(); return; }
+    if (el === hovered) return;          // no change
     if (hovered && hovered !== el) clearHover();
-    if (el === selectedEl) return;
+    if (el === selectedEl) return;       // selected element doesn't also get a hover ring
     hovered = el;
     var rect = el.getBoundingClientRect();
     hoverOverlay = createOverlayDiv(rect, false);
+  }
+
+  document.addEventListener('mouseover', function(e) {
+    updateHoverAt(e.target);
   });
 
   document.addEventListener('mouseout', function(e) {
     if (!active) return;
-    clearHover();
+    // Only clear when the cursor actually leaves every hoverable element
+    // (relatedTarget is null). mouseout also fires when entering a child,
+    // which we don't want to treat as "hover lost".
+    if (!e.relatedTarget) clearHover();
+  });
+
+  // While the mouse button is held down the browser emits mousemove but
+  // suppresses mouseover on some platforms (the drag is treated as a
+  // capture). Sample the element under the cursor on every mousemove to
+  // keep the hover overlay tracking the drag live.
+  document.addEventListener('mousemove', function(e) {
+    if (!active) return;
+    var target = document.elementFromPoint(e.clientX, e.clientY);
+    if (target) updateHoverAt(target);
+  });
+
+  // Stop the browser from kicking off any drag / caret-move gesture on
+  // mousedown; without this Chrome still initiates a text-range drag on
+  // some elements even with user-select: none on the body.
+  document.addEventListener('mousedown', function(e) {
+    if (!active) return;
+    e.preventDefault();
   });
 
   document.addEventListener('click', function(e) {
