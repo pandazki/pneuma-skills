@@ -48,6 +48,96 @@ For sites with multiple pages, create a `manifest.json` so the viewer shows page
 - The first page is shown by default
 - Update the manifest whenever you add or remove pages
 
+## Image Generation
+
+Two scripts live under `{SKILL_PATH}/scripts/`:
+- `generate_image.mjs` — text-to-image (and precise URL+mask edits via GPT-Image-2)
+- `edit_image.mjs` — modify an existing local image with an optional highlighter annotation (Gemini vision via OpenRouter)
+
+Default model is `gpt-image-2`. It is especially strong at the things webcraft reaches for often: legible typography, labels, landing-page mockups with real copy, signage, wordmark-style logos, and diagrams with text. Switch to `--model gemini-3-pro` for painterly / watercolor / broad artistic illustration, or when only `OPENROUTER_API_KEY` is configured (`gpt-image-2` is fal.ai-only and will error out otherwise).
+
+### When to Generate vs. Code Visuals
+
+Webcraft can render many things with HTML/CSS/SVG. Generate an image **only when the asset can't plausibly be composed from code**:
+
+| Want | Use |
+|---|---|
+| Geometric shapes, icons, gradients, patterns, decorative lines | CSS / SVG / `<canvas>` — faster, responsive, theme-aware |
+| A photograph, a painterly illustration, a mood image, a hand-made texture | Generate |
+| A product-shot mockup (phone, laptop, poster) with real copy on screen | Generate (`gpt-image-2` — it renders legible text) |
+| A logo or wordmark concept to iterate on | Generate with clear typography + mark direction |
+| "Hero abstract 3D gradient swoosh thing" | **Stop.** See the Image Slop Test below. |
+
+### The Image Slop Test
+
+You already know the AI Slop Test for design — the same reflex applies to imagery. Before you call the generator, predict how the image will read. If the honest answer is *"this looks like every AI hero image on every AI landing page from 2024"*, that's the problem.
+
+Reflex images to reject — your training-data defaults:
+- Glowing translucent orbs, neon-halo spheres, "data crystal" shapes floating on dark space
+- Purple-to-blue / cyan-on-dark gradient backgrounds
+- Abstract flowing 3D ribbons, iridescent swooshes, soap-bubble metaballs
+- Isometric flat-vector "dashboard with colorful chart widgets" hero illustrations
+- Generic "person at laptop with floating UI elements" stock images
+- AI-rendered people with that waxy plastic skin + perfect symmetrical eyes look
+
+These are the visual equivalent of the `reflex_fonts_to_reject` list. Reject them every time. Look further.
+
+### Prompt Discipline: Reinforce, Don't Contradict, the Design Direction
+
+An image in a webcraft project has to live next to the site's typography, color system, and voice. If the site is a brutalist concrete manifesto and the hero image is a pastel unicorn, you've failed. Before typing the prompt:
+
+1. **Read `.impeccable.md` / CLAUDE.md Design Context** (tone, audience, brand personality). If none exists, run `teach` first — same rule as any other design work.
+2. **Name the project's 3 brand words** (same words you used for font selection) — e.g. "warm and mechanical and opinionated".
+3. **Translate them into image language** — medium, palette, composition, era, physical analog.
+4. **Write the prompt** with those translations baked in. Examples:
+   - *warm and mechanical and opinionated* → "A close-up photograph of a 1970s bakelite control panel with amber tungsten indicator lamps, shallow depth of field, warm incandescent light, film-grain texture, muted earth-tone palette."
+   - *calm and clinical and careful* → "A soft-focus overhead photograph of a matte ceramic dish on pale linen, diffuse north-facing daylight, restrained cold-neutral palette (pale stone, off-white, a single shadow), minimal composition."
+   - *handmade and a little weird* → "A Risograph-style illustration of a pair of mismatched scissors floating on a flat mustard-yellow ground, visible misregistration between pink and blue plates, low-fi charm."
+
+### Palette Matching
+
+Match the image's palette to the site's theme. Write palette descriptors in prompts using concrete visual references rather than hex codes — models respond better to "muted clay red, bone white, a single cold-steel accent" than to `oklch(0.55 0.15 30)`. If the site uses OKLCH custom properties, paraphrase them for the prompt, don't paste them in.
+
+### How to Call It
+
+Most text-to-image calls look like this. Run from the skill's directory so `.env` is picked up:
+
+```bash
+cd {SKILL_PATH} && node scripts/generate_image.mjs \
+  "Your context-matched prompt here" \
+  --aspect-ratio 16:9 \
+  --quality high \
+  --output-format png \
+  --output-dir <workspace-relative>/<content-set>/assets \
+  --filename-prefix hero-context
+```
+
+Webcraft-specific flag guidance:
+
+| Flag | Guidance |
+|---|---|
+| `--model` | Default `gpt-image-2`. Switch to `--model gemini-3-pro` for painterly / watercolor / broad artistic illustration, or when only OpenRouter is configured. |
+| `--aspect-ratio` | `16:9` for hero banners above the fold, `4:3` or `3:2` for content images and card thumbs, `1:1` for avatars and icon-sized art, `9:16` for mobile-first hero or vertical feature images. |
+| `--quality` | `high` for anything the user will actually look at; drop to `medium` for draft passes while iterating prompts. GPT-Image-2 only. |
+| `--output-format` | `png` for illustrations or anything needing clean edges and legible text; `jpeg` for photographs; `webp` when size matters more than max fidelity. |
+| `--output-dir` | Always the active content set's `assets/` directory. |
+| `--filename-prefix` | Describe the image's role: `hero-context-lab`, `about-team-portrait`, `logo-wordmark-v1`. |
+
+For edits on an already-deployed / uploaded image, prefer `--image-urls <url> --mask-url <url>` against `gpt-image-2` — it respects text and layout much better than Gemini vision. The annotation-driven `edit_image.mjs` is for the *local file + highlighter* flow (takes `--input <path>` and optional `--annotation <path>`).
+
+### After Generating
+
+- Reference the image with a semantic element (`<img>` with meaningful `alt`, or `<picture>` when you need art direction across breakpoints).
+- Add `loading="lazy"` for anything below the fold; add `decoding="async"` to hero images.
+- Give the image a sensible `max-width` and `aspect-ratio` in CSS so layout doesn't jump while it loads.
+- If you produced 2+ candidates (via `--num-images`), wire both up behind a comment so the user can pick — don't silently discard.
+
+### Consistency Across a Series
+
+When generating multiple images for one site (hero + about + feature cards), record your style descriptors on the first call and reuse them verbatim on subsequent calls. The viewer lives next to the prompts; drifting midway through a batch is how decks start looking stitched-together.
+
+---
+
 ## Editing Guidelines
 
 - Use the `Edit` tool (preferred) for surgical changes to existing content

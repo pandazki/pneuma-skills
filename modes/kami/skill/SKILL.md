@@ -109,6 +109,134 @@ the user the document is ready. Silence on your part implies the fit is
 passing. See `references/cmd-fit.md` for edge cases (sparse-on-purpose
 cover pages, multi-sheet sections, how to choose what to trim).
 
+## Image generation (only when the user has configured a key)
+
+A script lives at `{SKILL_PATH}/scripts/generate_image.mjs`. Default model
+is `gpt-image-2` (fal.ai) — the right choice for kami because it renders
+**legible typography inside images**: figure captions, diagram labels,
+mock book spines, imagined postage stamps, rendered monograms. Opt in to
+`--model gemini-3-pro` only for painterly / watercolor / woodcut-style
+decorative artwork.
+
+Images here live on a **printed paper page**. That constraint is absolute
+and distinguishes kami from every other Pneuma mode. The images can't
+look like they escaped from a SaaS landing page.
+
+### The kami image slop test
+
+Before you call the generator, picture where the image will sit — next to
+warm parchment, serif body at weight 500, ink-blue accents, generous
+margins. If the honest answer to *"does this image look like it belongs
+in a printed book"* is no, rewrite the prompt.
+
+Reject on sight:
+
+- Saturated HDR colors, glossy 3D renders, neon / cyan highlights, space
+  backgrounds, data-orb / "AI hero" aesthetics
+- Purple-to-blue or cyan-on-dark gradients (kami has exactly one accent —
+  ink blue — and *no* gradients, period)
+- Drop shadows *inside* the image. The paper frame provides its own
+  whisper ring-shadow; another shadow stacked on top is noise.
+- AI-rendered people with waxy symmetrical faces
+- Generic stock photography: boardroom handshakes, laptop-on-desk flat
+  lays, "team standing in a circle"
+- Tech-sticker aesthetics: chunky rounded rectangles with tiny icons,
+  gradient backgrounds, retro-wave grids
+
+Lean toward:
+
+- **Documentary / editorial photography** — muted warm neutrals, diffuse
+  natural light, analog film grain, print magazine composition
+- **Risograph / woodcut / letterpress illustration** — limited palette,
+  visible mark-making, handmade quality
+- **Duotone / warm monochrome portraits** — ink blue + bone, or sepia +
+  parchment; never full-color high-saturation headshots
+- **Technical drawings & schematics** — thin ink lines on parchment,
+  annotated with serif labels, in the spirit of 19th-century engineering
+  manuals
+- **Mock objects on paper ground** — a rendered museum label, a ticket
+  stub, a book spine — imagined as if sitting on the page itself
+
+### Prompt discipline
+
+Bake these ingredients into every prompt so the result harmonizes with
+the page it will land on:
+
+1. **Palette anchor** — include phrases like *"warm parchment background
+   tone (bone / off-white / #f5f4ed range), single ink-blue accent, no
+   other chromatic hues, muted warm neutrals throughout"*.
+2. **Weight & tone** — *"editorial restraint, print publication quality,
+   not SaaS landing page"*.
+3. **Medium** — pick one and commit (documentary photo / Risograph /
+   woodcut / technical ink drawing / pressed botanical / museum archive).
+4. **Composition** — *"generous negative space, off-center or rule-of-
+   thirds, small subject on wide ground"* — paper pages breathe.
+5. **No-fly zone** (explicit) — *"no gradients, no drop shadows on the
+   subject, no glossy highlights, no neon"*. Models are suggestible; say
+   it out loud.
+
+Two worked examples:
+
+> *Portrait for a resume page, A4 Portrait layout:*
+> "A head-and-shoulders duotone portrait of a woman in her thirties,
+> three-quarter profile, natural diffuse window light, printed as ink
+> blue (#1B365D) duotone against a warm bone #f5f4ed ground, slight
+> analog film grain, editorial restraint, generous negative space around
+> the subject, no full-color, no drop shadow, no gradient — a magazine
+> page portrait, not a LinkedIn avatar."
+
+> *Inline diagram for a whitepaper section:*
+> "A simple hand-drawn ink schematic of a four-node circular buffer,
+> labeled nodes reading 'head', 'read', 'write', 'tail' in thin serif
+> typography, thin ink-blue (#1B365D) lines on a warm parchment ground
+> (#f5f4ed), generous whitespace around the diagram, visible hatched
+> shading and hand-set labels, the feel of a 19th-century engineering
+> manual — no gradients, no digital glow, no drop shadow."
+
+### How to call it
+
+```bash
+cd {SKILL_PATH} && node scripts/generate_image.mjs \
+  "Your kami-aligned prompt here" \
+  --aspect-ratio 4:3 \
+  --quality high \
+  --output-format png \
+  --output-dir <workspace>/<content-set>/assets \
+  --filename-prefix figure-01
+```
+
+Flag guidance in paper terms:
+
+| Flag | Kami guidance |
+|---|---|
+| `--aspect-ratio` | `4:3` or `3:2` for figures inline with body text; `1:1` for portraits and spot illustrations; `3:4` for vertical portraits set beside body text; `16:9` only for landscape-paper covers. Avoid `21:9` — it rarely sits well on a page. |
+| `--quality` | `high`. Kami is a printed-page medium; no reason to ship draft-quality to final. |
+| `--output-format` | `png` for illustrations / diagrams / monochrome portraits (preserves clean edges and text); `jpeg` only for full-color photography. |
+| `--output-dir` | Always the active content set's `assets/` directory. Don't dump into `_shared/assets/` — that's the upstream-sourced font & diagram folder. |
+| `--filename-prefix` | Role + index: `portrait-founder`, `figure-02-buffer`, `stamp-motif`. |
+| `--model gemini-3-pro` | Reach for this when the style is explicitly painterly / watercolor / woodcut — Gemini's aesthetic range is broader at that end. Everything else stays on `gpt-image-2`. |
+
+### After generating
+
+1. Embed inside a `<div class="page">` with appropriate framing. Keep
+   captions in small serif below the image if it's a figure.
+2. Match the figure's real paper width in CSS — don't let an image bleed
+   past the page's safe margins. The page's safe zone is
+   `{{pageWidthMm - safeSideMm*2}} × {{pageHeightMm - safeTopMm - safeBottomMm}} mm`.
+3. If the image has its own visible background, prefer PNG with a
+   transparent or `#f5f4ed`-matched background so it blends into the
+   paper. No extra box around it — the page *is* the frame.
+4. **Re-read `.pneuma/kami-fit.json`.** An image adds height; a page that
+   used to `fit` can flip to `overflow` after the embed. Loop the fit
+   discipline until every page reads `fits` again.
+
+### Consistency across figures
+
+When a document needs multiple images (a multi-page portfolio, a
+whitepaper with several diagrams), record the first prompt's style
+descriptors and reuse them verbatim on every subsequent prompt. Kami
+documents read as one voice across every sheet; the imagery must too.
+
 ## Don'ts
 
 - Don't add a second accent color, gradients, or hard drop shadows.

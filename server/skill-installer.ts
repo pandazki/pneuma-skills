@@ -588,6 +588,39 @@ export function installSkillDependencies(
 }
 
 /**
+ * Copy shared script sources from `modes/_shared/scripts/` into the installed
+ * mode skill's `scripts/` directory. Used when multiple modes reach for the
+ * same underlying tool (image generation, etc.) but each mode owns its own
+ * SKILL.md guidance about when to use it.
+ *
+ * The script is materialized under `{SKILL_PATH}/scripts/<file>` so the mode's
+ * own SKILL.md can reference it with a single relative path. The mode's own
+ * `.env` (from `envMapping`) sits next to it, which the shared script's
+ * `findEnvFile()` discovers by walking up from cwd.
+ */
+function installSharedScripts(
+  skillTarget: string,
+  scriptNames: string[],
+): void {
+  if (scriptNames.length === 0) return;
+
+  const sharedScriptsDir = join(import.meta.dirname, "..", "modes", "_shared", "scripts");
+  const targetScriptsDir = join(skillTarget, "scripts");
+  mkdirSync(targetScriptsDir, { recursive: true });
+
+  for (const name of scriptNames) {
+    const source = join(sharedScriptsDir, name);
+    if (!existsSync(source)) {
+      console.error(`[skill-installer] Shared script "${name}" not found at ${source} — skipping.`);
+      continue;
+    }
+    const target = join(targetScriptsDir, name);
+    cpSync(source, target, { force: true });
+    console.log(`[skill-installer] Installed shared script: ${name} → ${target}`);
+  }
+}
+
+/**
  * Returns framework-level skill dependencies installed for ALL modes.
  * These provide universal agent capabilities (e.g., user preference analysis).
  */
@@ -667,6 +700,12 @@ export function installSkill(
   let skillSnippets: string[] = [];
   if (skillConfig.skillDependencies && skillConfig.skillDependencies.length > 0) {
     skillSnippets = installSkillDependencies(workspace, skillConfig.skillDependencies, modeSourceDir, params, backendType);
+  }
+
+  // 1c-bis. Materialize shared scripts into the mode's own skill dir
+  //         (single source at modes/_shared/scripts/, per-mode copy at install time).
+  if (skillConfig.sharedScripts && skillConfig.sharedScripts.length > 0) {
+    installSharedScripts(skillTarget, skillConfig.sharedScripts);
   }
 
   // 1d. Install global skill dependencies (framework-level, all modes)

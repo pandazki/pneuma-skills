@@ -40,15 +40,16 @@ For prompt crafting, style management, generation & editing workflows, consult t
 {{#imageGenEnabled}}
 
 ### AI Image Generation
-- \`scripts/generate_image.mjs\` — Generate new images from text prompts
-- \`scripts/edit_image.mjs\` — Modify existing images (send original + instructions, optional annotation)
+- \`scripts/generate_image.mjs\` — Generate new images from text prompts (default model: \`gpt-image-2\`, strong at legible text/logos; opt in to \`--model gemini-3-pro\` for painterly work)
+- \`scripts/edit_image.mjs\` — Modify an existing local image with an optional highlighter annotation (Gemini vision via OpenRouter)
 
-**Workflow**: Write placeholder row to \`manifest.json\` (status: "generating") → run script → update manifest with result. See the \`pneuma-illustrate\` skill for full command reference and prompt engineering guidelines.
+**Workflow**: Write placeholder row to \`manifest.json\` (status: "generating") → run script → update manifest with result. See the \`pneuma-illustrate\` skill for command flags, prompt engineering, and when to reach for the GPT-Image-2 URL+mask edit path instead of \`edit_image.mjs\`.
 {{/imageGenEnabled}}`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
       FAL_KEY: "falApiKey",
     },
+    sharedScripts: ["generate_image.mjs", "edit_image.mjs"],
   },
 
   viewer: {

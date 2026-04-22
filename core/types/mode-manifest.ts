@@ -72,6 +72,18 @@ export interface SkillConfig {
   mcpServers?: McpServerConfig[];
   /** External skill dependencies — automatically copied to .claude/skills/ during installation */
   skillDependencies?: SkillDependency[];
+  /**
+   * Shared script filenames from `modes/_shared/scripts/` to copy into this
+   * mode's installed skill `scripts/` directory at install time.
+   *
+   * Use this when multiple modes reach for the same underlying tool (image
+   * generation, etc.) but each mode owns its own SKILL.md guidance about
+   * when and how to use it. The script source lives in exactly one place;
+   * each mode sees it as a local script at `{SKILL_PATH}/scripts/<file>`.
+   *
+   * Example: ["generate_image.mjs", "edit_image.mjs"].
+   */
+  sharedScripts?: string[];
 }
 
 /** Content viewer config — describes the Mode's file watching and serving rules */
