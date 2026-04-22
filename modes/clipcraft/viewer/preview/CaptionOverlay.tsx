@@ -12,7 +12,7 @@ export interface CaptionOverlayProps {
 // alongside fontSize — they get scaled together so the caption chip
 // preserves its proportions when the preview is shrunk.
 const COMP_PADDING_Y = 14;
-const COMP_PADDING_X = 32;
+const COMP_PADDING_X = 20;
 const COMP_BORDER_RADIUS = 10;
 
 /**

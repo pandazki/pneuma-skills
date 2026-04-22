@@ -12,7 +12,7 @@ export const DEFAULT_CAPTION_STYLE: Required<CaptionStyle> = {
   background: "rgba(0, 0, 0, 0.65)",
   bottomPercent: 0.08,
   fontWeight: 600,
-  maxWidthPercent: 0.9,
+  maxWidthPercent: 0.95,
 };
 
 export function resolveCaptionStyle(
