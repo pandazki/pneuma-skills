@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.31.0] - 2026-04-22
+
+### Added
+- **`kami` mode** — new builtin for paper-canvas web design. Fixed paper surface (viewport-centered, non-scrolling) replaces the infinite-scroll webcraft assumption — the session picks a paper size at creation and locks it for the entire workspace, mirroring how you'd choose A4 portrait before starting a print layout. Ships with **3 demo content sets** ported from [tw93/kami](https://github.com/tw93/kami) (MIT) — Tesla, Musk profile, Kaku — showcasing three distinct paper-layout idioms (timeline, bento grid, mixed editorial), plus **1 blank starter** for fresh work. **5 paper sizes (A3/A4/A5/Letter/Legal) × 2 orientations (portrait/landscape)** selectable at session creation; the choice is persisted in `.pneuma/config.json` and surfaced to the viewer as CSS custom properties. Includes a condensed `pneuma-kami` skill with paper-canvas design principles, allowed CSS patterns, and layout playbooks.
+- **`InitParam.type = "select"`** — core-level addition to the init param contract. Previous types were `"number" | "string"`; now `"select"` joins them with an `options: string[]` field. Launcher renders it as a native `<select>` populated from the options array; the interactive CLI resolver uses `@clack/prompts` `p.select` against the same list; `defaultValue` must be one of the options. Additive change — existing `"number"` / `"string"` param declarations are untouched.
+- **Bundled typefaces in `modes/kami/`** — Newsreader, Inter, and JetBrains Mono (all OFL 1.1) ship as self-hosted WOFF2 assets so paper layouts don't depend on Google Fonts CDN. TsangerJinKai02 (仓耳今楷02) is bundled under personal-use license — commercial use requires a license from the foundry. Full attribution in `modes/kami/NOTICE.md`.
+
+### Fixed
+- **`bin/pneuma.ts` saveConfig ordering** — init params resolved after session init (paper size, orientation, etc.) weren't making it into `.pneuma/config.json` because the save was happening before derived params were merged. Reordered so every derived param lands in the on-disk config; viewers that read from the config source (including kami's paper-size CSS vars) now see the fully-resolved values on first load.
+
 ## [2.30.1] - 2026-04-20
 
 ### Fixed

@@ -1174,9 +1174,12 @@ Options:
       saveConfig(workspace, resolvedParams);
       p.log.step("Saved init params to .pneuma/config.json");
     }
-    // Compute derived params (e.g. imageGenEnabled from API keys)
+    // Compute derived params (e.g. imageGenEnabled from API keys,
+    // pageWidthMm/pageHeightMm from paper size). Persist the enriched
+    // set so viewers reading config.json see the derived fields too.
     if (manifest.init.deriveParams) {
       resolvedParams = manifest.init.deriveParams(resolvedParams);
+      saveConfig(workspace, resolvedParams);
     }
   }
 
