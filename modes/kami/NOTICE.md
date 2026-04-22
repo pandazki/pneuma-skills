@@ -40,8 +40,10 @@ and `JetBrainsMono.woff2` are distributed under the [SIL Open Font License
 
 ## Seed demos
 
-The three demo content sets (`tesla-one-pager/`, `musk-resume/`,
-`kaku-portfolio/`) are adapted from kami's README showcase demos. The
-content is illustrative — names and claims are from kami's original
-public-figure / fictional examples and are not endorsed by, sponsored by,
-or affiliated with the named entities.
+The two demo content sets (`pneuma-one-pager/`, `kaku-portfolio/`) ship as
+seed templates for the mode. `kaku-portfolio/` is adapted from kami's
+README showcase; `pneuma-one-pager/` is a Pneuma-authored executive-brief
+template. The content in either is illustrative — names and claims in the
+showcase demo are from kami's original public-figure / fictional examples
+and are not endorsed by, sponsored by, or affiliated with the named
+entities.

@@ -35,18 +35,21 @@ You'll need `FAL_KEY` or `OPENROUTER_API_KEY` in env (or the script's
 > warm-parchment sheet in colour `#f5f4ed` — A4 proportions, soft
 > ring-shadow (`0 0 0 1px #d1cfc5, 0 8px 40px rgba(0,0,0,0.5)`),
 > rendered as if lit by a warm overhead light. On the sheet: typeset
-> content in the kami style — large serif heading **"Elon Musk"** in
-> near-black, small ink-blue sans-serif line **"Founder · Chief
-> Engineer · CEO"** right-aligned, a row of four metric cards below
-> (`30 yrs · building hard tech`, `6 cos · founded`, `400+ · Falcon
-> launches`, `7M+ · Tesla vehicles`) with ink-blue `#1B365D` numerals
-> and olive captions, and the beginning of a "Summary" section set in
-> warm editorial serif at ~9.5pt. The paper is the hero — everything
-> else in the composition supports it. A small italic caption at the
-> bottom of the canvas in muted warm-white: *"Good content deserves
-> good paper."* No real cursor arrows, no gradient text in headings, no
-> glassmorphism on the paper itself. Style reference: editorial print
-> design, not SaaS landing page.
+> content in the kami style — an ink-blue `#1B365D` eyebrow **"PRODUCT
+> BRIEF · PNEUMA SKILLS"**, a large serif heading **"Co-creation
+> infrastructure for humans and code agents."** in near-black, a short
+> olive subtitle line below, and a top-right editorial meta stack
+> reading **"v2.31.0 / MIT · open source / 2026.04"**. Under the header,
+> a row of four metric cards (`11 · built-in modes`, `4 · design
+> pillars`, `2 · agent backends`, `MIT · self-host or desktop`) with
+> ink-blue `#1B365D` numerals and olive captions, and the beginning of
+> a "Four pillars" section set in warm editorial serif at ~10pt with a
+> left ink-blue bar. The paper is the hero — everything else in the
+> composition supports it. A small italic caption at the bottom of the
+> canvas in muted warm-white: *"Good content deserves good paper."* No
+> real cursor arrows, no gradient text in headings, no glassmorphism on
+> the paper itself. Style reference: editorial print design, not SaaS
+> landing page.
 
 **Generate:**
 
@@ -71,9 +74,10 @@ bun modes/slide/skill/scripts/generate_image.mjs \
 > with dimension labels in small sans-serif: **"210 mm"** along the
 > bottom edge, **"297 mm"** along the right edge, and corner tick
 > marks. The paper has a faint ring-shadow. On its surface: a
-> minimalist mockup of a kami page — an "Elon Musk" serif heading in
-> ink-blue `#1B365D`, a single line of body text, a metric row below;
-> just enough detail to signal "this is a kami document". In the
+> minimalist mockup of a kami page — a short serif heading reading
+> **"Co-creation infrastructure"** in ink-blue `#1B365D`, a single line
+> of olive body text, a metric row (`11`, `4`, `2`, `MIT`) below; just
+> enough detail to signal "this is a kami document". In the
 > top-right corner of the canvas, a small dark glassmorphic panel
 > stylized as a paper-size picker dropdown, containing five options —
 > **A3, A4, A5, Letter, Legal** — with **A4** shown as the selected
@@ -103,20 +107,20 @@ bun modes/slide/skill/scripts/generate_image.mjs "<paste prompt>" \
 > warm glow. Left two thirds of the canvas: a large zoomed-in slice of
 > a kami document on warm parchment `#f5f4ed`, rendered as if we're
 > peering through a magnifier at one section — a big serif headline
-> **"Elon Musk"** in near-black (ink weight 500, serif like
-> Newsreader), an inline ink-blue `#1B365D` small-caps label
-> **"FOUNDER · CHIEF ENGINEER · CEO"**, two lines of editorial body
-> text set in serif at ~10pt with tight 1.45 line-height, and one
-> highlighted span reading **"$350B"** in brand ink blue. The paper
-> has a soft ring-shadow. Right third: a dark glassmorphic "design
-> tokens" panel overlaying the canvas, listing five editorial rules
-> stacked like a spec: **"--parchment: #f5f4ed"** (with a small warm
-> swatch), **"--brand: #1B365D"** (ink-blue swatch), **"--serif:
-> TsangerJinKai02 · Newsreader"**, **"font-weight: 500 (never bold)"**,
-> **"line-height: 1.1–1.55"**. Each swatch is a tiny rounded square.
-> No flamboyant colour blocks, no emoji. One line of italic warm-white
-> caption centered at the bottom: *"One accent. One serif. Editorial
-> weight throughout."*
+> **"Four pillars"** in near-black (ink weight 500, serif like
+> Newsreader) with a left ink-blue `#1B365D` rule, a short olive
+> subtitle line, and a dash-bullet list where the leading terms
+> **"Visual environment"**, **"Skills"**, **"Continuous learning"** are
+> highlighted in ink blue. Body text set in serif at ~10pt with tight
+> 1.45 line-height. The paper has a soft ring-shadow. Right third: a
+> dark glassmorphic "design tokens" panel overlaying the canvas,
+> listing five editorial rules stacked like a spec: **"--parchment:
+> #f5f4ed"** (with a small warm swatch), **"--brand: #1B365D"**
+> (ink-blue swatch), **"--serif: TsangerJinKai02 · Newsreader"**,
+> **"font-weight: 500 (never bold)"**, **"line-height: 1.1–1.55"**.
+> Each swatch is a tiny rounded square. No flamboyant colour blocks,
+> no emoji. One line of italic warm-white caption centered at the
+> bottom: *"One accent. One serif. Editorial weight throughout."*
 
 **Generate:**
 
@@ -134,7 +138,7 @@ bun modes/slide/skill/scripts/generate_image.mjs "<paste prompt>" \
 
 > 16:9 composition, deep zinc `#09090b` to `#18181b` radial background.
 > Top-left: a stylized Pneuma export toolbar in warm parchment
-> `#f5f4ed` — title "Musk Resume (EN) · 2 pages" in small editorial
+> `#f5f4ed` — title "Kaku Portfolio · 7 pages" in small editorial
 > serif, and three rounded buttons in a row: a prominent ink-blue
 > `#1B365D` primary button labelled **"Download PDF"**, a lighter
 > secondary **"Download HTML"**, a third ghost **"Screenshot PNG"**.
@@ -142,11 +146,11 @@ bun modes/slide/skill/scripts/generate_image.mjs "<paste prompt>" \
 > down and fans out to three floating document artifacts in the
 > bottom two-thirds of the canvas, each on their own tilt:
 >
-> 1. a stack of two warm-parchment A4 PDF pages with a tiny PDF icon
+> 1. a stack of seven warm-parchment A4 PDF pages with a tiny PDF icon
 >    badge in the corner, showing the faint outline of kami typeset
->    content on each page;
-> 2. a dark ZIP archive icon labelled **".zip · 2 PNGs"** with two
->    paper-shaped thumbnails peeking out;
+>    content on each page (cover, about, and project sheets);
+> 2. a dark ZIP archive icon labelled **".zip · 7 PNGs"** with two or
+>    three paper-shaped thumbnails peeking out;
 > 3. a single HTML file preview — a browser window frame, inside it
 >    the warm parchment sheet floating with letterbox gutter, centred.
 >

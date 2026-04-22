@@ -26,10 +26,8 @@ modes/kami/
 │   │   └── assets/
 │   │       ├── fonts/*.woff2|.ttf        # 6 bundled fonts
 │   │       └── diagrams/*.html           # 3 inline-SVG diagram templates
-│   ├── tesla-one-pager/                  # CN one-pager demo
-│   ├── musk-resume/                      # EN 2-page resume demo
-│   ├── kaku-portfolio/                   # CN 6-page portfolio demo
-│   └── blank/                            # Empty .page starter
+│   ├── pneuma-one-pager/                 # EN single-sheet product-brief demo
+│   └── kaku-portfolio/                   # CN 7-sheet portfolio demo
 ├── skill/
 │   ├── SKILL.md                          # pneuma-kami skill (condensed)
 │   └── references/                       # 6 kami reference docs, attribution-headed
@@ -81,5 +79,4 @@ Six places credit tw93/kami (MIT):
 ## Known follow-ups
 
 - **Upstream webcraft fix:** `handleTextEdit`'s body replacement uses a string replacement that interprets `$1` / `$3` as capture-group back-references. I fixed this in the kami fork but the webcraft preview has the same bug — worth porting back when someone's in that area.
-- **PDF font embedding:** snapdom's `embedFonts: true` does not always surface `@font-face` rules in the captured SVG when called cross-iframe. Workaround in-flight: inject data-URI font faces into the iframe's head before capture (see `server/routes/export.ts`, `capturePages()`).
 - **Template library port:** only the three README demos are seeded. Could also port kami's `assets/templates/*.html` (letter, long-doc templates) if users want more starting points.

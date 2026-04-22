@@ -125,11 +125,14 @@ This is **Kami Mode**: paper-canvas web design. The viewer renders your content 
   init: {
     contentCheckPattern: "**/manifest.json",
     seedFiles: {
-      "modes/kami/seed/_shared/":         "_shared/",
+      "modes/kami/seed/_shared/":          "_shared/",
+      // Two demos: one-pager as the primary (single-sheet fit to safe
+      // area) and portfolio as a multi-sheet reference. Dropped the
+      // blank starter and musk-resume — the two remaining demos cover
+      // the single- vs multi-sheet spectrum cleanly enough and the
+      // fewer files a user sees on first run, the faster they decide.
       "modes/kami/seed/pneuma-one-pager/": "pneuma-one-pager/",
-      "modes/kami/seed/musk-resume/":     "musk-resume/",
-      "modes/kami/seed/kaku-portfolio/":  "kaku-portfolio/",
-      "modes/kami/seed/blank/":           "blank/",
+      "modes/kami/seed/kaku-portfolio/":   "kaku-portfolio/",
     },
     params: [
       { name: "paperSize",   label: "Paper size",  type: "select", options: ["A4", "A5", "A3", "Letter", "Legal"], defaultValue: "A4" },
