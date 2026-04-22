@@ -3,6 +3,7 @@ import { getApiBase } from "../utils/api.js";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import SpotlightCard from "./reactbits/SpotlightCard";
 import Galaxy from "./reactbits/Galaxy";
+import type { InitParam } from "../../core/types/mode-manifest.js";
 
 type BackendType = "claude-code" | "codex";
 
@@ -85,14 +86,6 @@ interface ChildProcess {
   workspace: string;
   url: string;
   startedAt: number;
-}
-
-interface InitParam {
-  name: string;
-  label: string;
-  type: "string" | "number";
-  defaultValue: string | number;
-  description?: string;
 }
 
 // Any mode type for the gallery
@@ -2167,6 +2160,21 @@ function LaunchDialog({
                     Clear
                   </button>
                 </div>
+              ) : param.type === "select" && Array.isArray(param.options) ? (
+              <select
+                value={String(paramValues[param.name] ?? param.defaultValue)}
+                disabled={!!existingSession}
+                onChange={(e) => {
+                  setParamValues({ ...paramValues, [param.name]: e.target.value });
+                }}
+                className={`w-full px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50 ${
+                  existingSession ? "opacity-60 cursor-not-allowed" : ""
+                }`}
+              >
+                {param.options.map((opt: string) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
               ) : (
               <input
                 type={param.type === "number" ? "number" : param.sensitive ? "password" : "text"}

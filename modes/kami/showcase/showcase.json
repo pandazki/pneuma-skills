@@ -1,0 +1,24 @@
+{
+  "tagline": "Typeset documents on warm parchment — paper size locked at creation",
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": "Paper Size Is Sacred",
+      "description": "Pick A4, A5, A3, Letter, or Legal (portrait or landscape) when you create the workspace — the size is locked for the life of the document. Every edit respects the sheet, and print lands on the same paper you chose.",
+      "media": "paper-locked.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Editorial Typography",
+      "description": "Ink-blue accent, warm neutrals, serif-first hierarchy. TsangerJinKai02 for Chinese, Newsreader for English — weight locked at 500, never bold. No gradients, no hard shadows. Design adapted from tw93/kami so it reads like literature, not a dashboard.",
+      "media": "typography.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Paper-First Export",
+      "description": "One export page, three artifacts: PDF (pages match your paper size), ZIP of per-page PNGs, or a self-contained HTML with warm letterbox that centers gracefully on any screen. No print-dialog gymnastics required.",
+      "media": "export.png",
+      "mediaType": "image"
+    }
+  ]
+}

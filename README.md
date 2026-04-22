@@ -38,6 +38,7 @@ When humans and code agents co-create content, they need more than a chat window
 | Mode | What it does | Version |
 |------|-------------|---------|
 | **webcraft** | Live web development with [Impeccable](https://impeccable.style) AI design intelligence — 20 design commands, responsive preview, export | **2.30.0** |
+| **kami** | Paper-canvas web design — warm parchment aesthetic, locked paper size (A4/A5/A3/Letter/Legal × portrait/landscape), three worked demo layouts, Print-to-PDF. Design language adapted from [tw93/kami](https://github.com/tw93/kami) | **1.0.0** |
 | **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export. Skill design guidelines informed by [frontend-slides](https://github.com/zarazhangrui/frontend-slides) | 2.18.0 |
 | **doc** | Markdown documents with live preview — the simplest mode, a minimal example of the mode system | 2.18.0 |
 | **draw** | Diagrams and visual thinking on an [Excalidraw](https://excalidraw.com) canvas | 2.18.0 |
@@ -220,6 +221,8 @@ The preference files are living documents — full rewrites, not append-only log
 This project's Claude transport layer, NDJSON handling, and much of the initial chat bridge were heavily informed by [Companion](https://github.com/The-Vibe-Company/companion) by The Vibe Company.
 
 Companion remains the reference for Claude Code's undocumented `--sdk-url` transport. Pneuma's newer backend layer keeps that Claude-specific protocol inside `backends/claude-code/` so future backends can plug in through their own adapters instead of inheriting Claude wire assumptions everywhere.
+
+The **kami mode**'s entire visual language — warm parchment canvas, ink-blue accent, serif-led hierarchy, font selection, and the three worked demo templates seeded into new kami workspaces — is adapted from [tw93/kami](https://github.com/tw93/kami) (MIT), an open-source typesetting design system. Our layer adds the locked-paper-size viewer and Pneuma runtime wiring; the craft belongs to Tw93. Full attribution, font licenses (OFL 1.1 + TsangerJinKai02 personal-use), and per-demo provenance live in `modes/kami/NOTICE.md`.
 
 ## License
 

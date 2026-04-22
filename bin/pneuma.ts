@@ -149,6 +149,24 @@ async function promptInitParams(
   for (const param of initParams) {
     const effectiveDefault = defaultOverrides?.[param.name] ?? String(param.defaultValue);
     const suffix = param.description ? ` (${param.description})` : "";
+
+    if (param.type === "select") {
+      if (!param.options || param.options.length === 0) {
+        throw new Error(`InitParam "${param.name}" has type "select" but no options`);
+      }
+      const answer = await p.select({
+        message: `${param.label}${suffix}`,
+        options: param.options.map((o) => ({ value: o, label: o })),
+        initialValue: effectiveDefault,
+      });
+      if (p.isCancel(answer)) {
+        p.cancel("Cancelled.");
+        process.exit(0);
+      }
+      params[param.name] = String(answer);
+      continue;
+    }
+
     const answer = await p.text({
       message: `${param.label}${suffix}`,
       placeholder: effectiveDefault,
@@ -1156,9 +1174,12 @@ Options:
       saveConfig(workspace, resolvedParams);
       p.log.step("Saved init params to .pneuma/config.json");
     }
-    // Compute derived params (e.g. imageGenEnabled from API keys)
+    // Compute derived params (e.g. imageGenEnabled from API keys,
+    // pageWidthMm/pageHeightMm from paper size). Persist the enriched
+    // set so viewers reading config.json see the derived fields too.
     if (manifest.init.deriveParams) {
       resolvedParams = manifest.init.deriveParams(resolvedParams);
+      saveConfig(workspace, resolvedParams);
     }
   }
 
@@ -1284,6 +1305,42 @@ Options:
           stderr: "pipe",
         });
         await proc.exited;
+      }
+    }
+  }
+
+  // Resync mode-managed seed directories on every boot.
+  //
+  // Seed entries whose destination starts with "_" are mode-managed
+  // shared assets (e.g. kami's `_shared/styles.css` with font bundles
+  // and paper-mechanics tokens). They are NOT user content — users
+  // are expected to edit their own content files, and the mode owns
+  // the `_` directories. Unlike the one-shot seed loop above (which
+  // only runs on empty workspaces), this overwrites every time so a
+  // mode upgrade propagates design-system changes to existing
+  // workspaces without manual intervention.
+  if (!replayPackage && manifest.init && manifest.init.seedFiles) {
+    const seedBase = resolved.type === "builtin" ? PROJECT_ROOT : resolved.path;
+    const hasParams = Object.keys(resolvedParams).length > 0;
+    for (const [src, dst] of Object.entries(manifest.init.seedFiles)) {
+      if (!dst.startsWith("_")) continue;
+      const resolvedSrc = hasParams ? applyTemplateParams(src, resolvedParams) : src;
+      const srcPath = join(seedBase, resolvedSrc);
+      if (!existsSync(srcPath) || !statSync(srcPath).isDirectory()) continue;
+      const glob = new Bun.Glob("**/*");
+      for (const relFile of glob.scanSync({ cwd: srcPath, absolute: false })) {
+        const fileSrc = join(srcPath, relFile);
+        if (statSync(fileSrc).isDirectory()) continue;
+        const fileDst = join(workspace, dst, relFile);
+        mkdirSync(dirname(fileDst), { recursive: true });
+        const isBinary = /\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|mp[34]|wav|ogg|zip|gz|tar|pdf)$/i.test(relFile);
+        if (hasParams && !isBinary) {
+          let content = readFileSync(fileSrc, "utf-8");
+          content = applyTemplateParams(content, resolvedParams);
+          writeFileSync(fileDst, content, "utf-8");
+        } else {
+          copyFileSync(fileSrc, fileDst);
+        }
       }
     }
   }

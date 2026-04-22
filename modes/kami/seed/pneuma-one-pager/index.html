@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<!-- ==================================================================
+     ONE-PAGER TEMPLATE · parchment design system
+     Single-page A4 executive summary / product brief / proposal.
+     Target: fits exactly 1 page (strict).
+     ================================================================== -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pneuma · Product Brief</title>
+<link rel="stylesheet" href="../_shared/styles.css">
+<style>
+  /* Demo-local tokens (not in shared stylesheet) */
+  :root {
+    --tag-bg: #E4ECF5;
+    --border: var(--border-cream);
+  }
+
+  /* Demo body tuning — shared stylesheet defaults to sans;
+     this one-pager wants serif body at print-scale size. */
+  body {
+    font-family: var(--serif);
+    font-size: 10pt;
+    line-height: 1.45;
+    letter-spacing: 0;
+  }
+  * { margin: 0; padding: 0; }
+
+  .serif { font-family: var(--serif); }
+
+  /* ========== HEADER ========== */
+  .header {
+    border-left: 2.5pt solid var(--brand);
+    border-radius: 1.5pt;
+    padding-left: 8pt;
+    margin-bottom: 14pt;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20pt;
+  }
+  .title-block {
+    flex: 1;
+  }
+  .eyebrow {
+    font-size: 8.5pt;
+    color: var(--brand);
+    letter-spacing: 0.5pt;
+    text-transform: uppercase;
+    margin-bottom: 4pt;
+  }
+  h1 {
+    font-family: "TsangerJinKai02", "Source Han Serif SC",
+                 "Noto Serif CJK SC", Georgia, serif;
+    font-size: 28pt;
+    font-weight: 500;
+    color: var(--near-black);
+    line-height: 1.12;
+    margin-bottom: 6pt;
+  }
+  .subtitle {
+    font-size: 12pt;
+    color: var(--olive);
+    line-height: 1.45;
+  }
+  .meta {
+    font-size: 8.5pt;
+    color: var(--stone);
+    text-align: right;
+    line-height: 1.45;
+    white-space: nowrap;
+  }
+
+  /* ========== METRICS ========== */
+  /* 横向 baseline 布局 —— 和 resume.html 一致的 kami native 姿态。
+     背景透明、无边框，用 typography 本身承担层次，不加容器。 */
+  .metrics {
+    display: flex;
+    gap: 14pt;
+    margin-bottom: 22pt;
+    padding: 6pt 0 8pt 0;
+    border-bottom: 0.3pt dotted var(--border);
+  }
+  .metric {
+    flex: 1;
+    background: transparent;
+    padding: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 5pt;
+    break-inside: avoid;
+  }
+  .metric-value {
+    font-family: "TsangerJinKai02", "Source Han Serif SC", Georgia, serif;
+    font-size: 24pt;
+    font-weight: 500;
+    color: var(--brand);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.3pt;
+  }
+  .metric-label {
+    font-size: 9pt;
+    color: var(--olive);
+    line-height: 1.3;
+  }
+
+  /* ========== SECTIONS ========== */
+  section { margin-bottom: 18pt; break-inside: avoid; }
+  section:last-of-type { margin-bottom: 0; }
+
+  h2 {
+    font-family: "TsangerJinKai02", "Source Han Serif SC", Georgia, serif;
+    font-size: 13pt;
+    font-weight: 500;
+    color: var(--near-black);
+    margin-bottom: 6pt;
+    border-left: 2.5pt solid var(--brand);
+    border-radius: 1.5pt;
+    padding-left: 8pt;
+  }
+  h2 .sub {
+    font-size: 8.5pt;
+    color: var(--stone);
+    font-weight: 400;
+    margin-left: 6pt;
+  }
+
+  p { margin-bottom: 6pt; line-height: 1.45; }
+  p:last-child { margin-bottom: 0; }
+
+  .lead {
+    font-size: 13pt;
+    line-height: 1.55;
+    color: var(--dark-warm);
+    margin-bottom: 18pt;
+  }
+
+  .hl { color: var(--brand); font-weight: 500; }
+
+  /* ========== 2-column grid ========== */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18pt;
+  }
+
+  /* ========== 短横线 list（代替默认 bullet） ========== */
+  ul.dash {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  ul.dash li {
+    margin-bottom: 4pt;
+    line-height: 1.45;
+  }
+
+  /* ========== Timeline (横向进度点) ========== */
+  .timeline {
+    display: flex;
+    gap: 12pt;
+    margin-top: 6pt;
+  }
+  .tl-step {
+    flex: 1;
+    break-inside: avoid;
+  }
+  .tl-year {
+    font-family: "TsangerJinKai02", "Source Han Serif SC", Georgia, serif;
+    font-size: 11pt;
+    font-weight: 500;
+    color: var(--brand);
+    margin-bottom: 2pt;
+  }
+  .tl-head {
+    font-size: 10pt;
+    font-weight: 500;
+    color: var(--near-black);
+    margin-bottom: 2pt;
+  }
+  .tl-body {
+    font-size: 8.5pt;
+    color: var(--olive);
+    line-height: 1.4;
+  }
+
+  /* ========== Tag ========== */
+  .tag {
+    display: inline-block;
+    background: var(--tag-bg);    /* 实色！不要 rgba */
+    color: var(--brand);
+    font-size: 7.5pt;
+    font-weight: 500;
+    padding: 1pt 5pt;
+    border-radius: 3pt;
+    letter-spacing: 0.1pt;
+    margin-right: 3pt;
+  }
+
+  /* ========== Callout / 高亮块 ========== */
+  /* 参考 resume.html .team-culture：透明底 + 单左侧 brand 竖条。
+     不做容器也不做圆角，气质是"一条旁注"而不是"一个卡片"。 */
+  .callout {
+    background: transparent;
+    border-left: 1.8pt solid var(--brand);
+    padding: 4pt 0 4pt 14pt;
+    margin: 10pt 0;
+    font-size: 10pt;
+    line-height: 1.5;
+    color: var(--olive);
+    break-inside: avoid;
+  }
+  .callout .hl, .callout .em-brand { color: var(--brand); }
+
+  /* ========== FOOTER ========== */
+  .footer {
+    margin-top: 18pt;
+    padding-top: 6pt;
+    border-top: 0.3pt dotted var(--border);
+    font-size: 8pt;
+    color: var(--stone);
+    display: flex;
+    justify-content: space-between;
+    letter-spacing: 0.3pt;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ========== HEADER ========== -->
+<div class="header">
+  <div class="title-block">
+    <div class="eyebrow">Product Brief · Pneuma Skills</div>
+    <h1>Co-creation infrastructure for humans and code agents.</h1>
+    <div class="subtitle">Agents do the work against a directory of files. The system's job is to make human observation and optional participation intuitive.</div>
+  </div>
+  <div class="meta">
+    v2.31.0<br>
+    MIT · open source<br>
+    2026.04.22
+  </div>
+</div>
+
+<!-- ========== METRICS ========== -->
+<div class="metrics">
+  <div class="metric">
+    <div class="metric-value">11</div>
+    <div class="metric-label">built-in modes</div>
+  </div>
+  <div class="metric">
+    <div class="metric-value">4</div>
+    <div class="metric-label">design pillars</div>
+  </div>
+  <div class="metric">
+    <div class="metric-value">2</div>
+    <div class="metric-label">agent backends</div>
+  </div>
+  <div class="metric">
+    <div class="metric-value">MIT</div>
+    <div class="metric-label">self-host or desktop</div>
+  </div>
+</div>
+
+<!-- ========== LEAD ========== -->
+<p class="lead">
+  Pneuma is a workspace where <span class="hl">coding agents edit files directly and humans watch the work happen</span>. Files stay the canonical collaboration surface — not abstracted away. Viewers are live <em>players</em> for agent output (a deck, a board, a paper), so humans can intervene in the UI when it matters and stay out of the way the rest of the time.
+</p>
+
+<!-- ========== CORE CONTENT (two-column) ========== -->
+<div class="two-col">
+  <section>
+    <h2>Four pillars</h2>
+    <p>The whole product surface composes from four orthogonal ideas.</p>
+    <ul class="dash">
+      <li><span class="hl">Visual environment</span> — live players for agent output with optional human participation</li>
+      <li><span class="hl">Skills</span> — domain knowledge + seed templates + session persistence per mode</li>
+      <li><span class="hl">Continuous learning</span> — an evolution agent extracts preferences across sessions</li>
+      <li><span class="hl">Distribution</span> — marketplace, publishing, forking a mode like a fork of a repo</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Product principles</h2>
+    <p>Three non-obvious calls that shape every choice in the codebase.</p>
+    <ul class="dash">
+      <li>The agent edits files; the viewer renders them. <span class="hl">No state hidden from the filesystem.</span></li>
+      <li>Each mode declares its own viewer + skill. The runtime is a shell, not a monolith.</li>
+      <li>Backends (Claude Code, Codex) plug in through a normalized protocol. Swap at startup, not mid-session.</li>
+    </ul>
+  </section>
+</div>
+
+<!-- ========== Milestones ========== -->
+<section>
+  <h2>What ships today<span class="sub">11 built-in modes across three axes</span></h2>
+  <ul class="dash" style="display: grid; grid-template-columns: 1fr 1fr; column-gap: 18pt; row-gap: 2pt;">
+    <li><span class="hl">webcraft</span> — web design with Impeccable.style intelligence</li>
+    <li><span class="hl">kami</span> — paper-canvas typesetting on locked A4/A5/Letter</li>
+    <li><span class="hl">slide</span> — HTML presentations on a 1280×720 canvas</li>
+    <li><span class="hl">doc</span> — live-preview markdown documents</li>
+    <li><span class="hl">draw · diagram</span> — Excalidraw + draw.io inside the viewer</li>
+    <li><span class="hl">mode-maker · evolve</span> — create new modes; learn from past sessions</li>
+  </ul>
+</section>
+
+<!-- ========== CALLOUT ========== -->
+<div class="callout">
+  "<span class="hl">Files remain the canonical collaboration surface and are not abstracted away.</span>" — the line we keep coming back to when designing anything new. A mode earns its viewer by rendering what's on disk, not by adding a database.
+</div>
+
+<!-- ========== FOOTER ========== -->
+<div class="footer">
+  <span>github.com/pandazki/pneuma-skills · MIT</span>
+  <span>kami demo · 1 / 1</span>
+</div>
+
+</div><!-- /.page -->
+</body>
+</html>

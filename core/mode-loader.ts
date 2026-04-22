@@ -82,6 +82,13 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/illustrate/pneuma-mode.js").then((m) => m.default),
   },
+  kami: {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/kami/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/kami/pneuma-mode.js").then((m) => m.default),
+  },
   remotion: {
     type: "builtin",
     manifestLoader: () =>

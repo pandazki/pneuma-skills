@@ -1,0 +1,154 @@
+/*
+ * Kami Mode — Shared Stylesheet
+ * Design tokens and paper mechanics adapted from tw93/kami (MIT).
+ * See NOTICE.md for attribution.
+ *
+ * Paper size is locked at workspace creation; {{pageWidthMm}} and
+ * {{pageHeightMm}} below are substituted by the skill installer.
+ */
+
+@font-face {
+  font-family: "Newsreader";
+  src: url("./assets/fonts/Newsreader.woff2") format("woff2");
+  font-weight: 400 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("./assets/fonts/Inter.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("./assets/fonts/Inter-500.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("./assets/fonts/Inter-600.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/JetBrainsMono.woff2") format("woff2");
+  font-weight: 400 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "TsangerJinKai02";
+  src: url("./assets/fonts/TsangerJinKai02-W04.ttf") format("truetype");
+  font-weight: 500;
+  font-display: swap;
+}
+
+:root {
+  /* Paper dimensions — locked at workspace creation */
+  --page-width:  {{pageWidthMm}}mm;
+  --page-height: {{pageHeightMm}}mm;
+
+  /* Safe-area insets (printable content zone, per paper size preset) */
+  --safe-top:    {{safeTopMm}}mm;
+  --safe-side:   {{safeSideMm}}mm;
+  --safe-bottom: {{safeBottomMm}}mm;
+
+  /* Canvas */
+  --parchment:    #f5f4ed;
+  --ivory:        #faf9f5;
+  --warm-sand:    #e8e6dc;
+  --dark-surface: #30302e;
+  --deep-dark:    #141413;
+
+  /* Accent (single, locked) */
+  --brand:        #1B365D;
+  --brand-light:  #2D5A8A;
+
+  /* Warm neutrals */
+  --near-black:   #141413;
+  --dark-warm:    #3d3d3a;
+  --charcoal:     #4d4c48;
+  --olive:        #5e5d59;
+  --stone:        #87867f;
+  --warm-silver:  #b0aea5;
+
+  /* Borders */
+  --border-cream: #e8e5da;
+  --border-warm:  #e0ddd2;
+  --border-soft:  #e5e3d8;
+  --border-dark:  #30302e;
+
+  /* Rings (whisper shadows) */
+  --ring-warm:    #d1cfc5;
+  --ring-deep:    #c2c0b6;
+
+  /* Typography stacks */
+  --serif: "TsangerJinKai02", "Newsreader", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", Georgia, serif;
+  --sans:  "Inter", "TsangerJinKai02", -apple-system, BlinkMacSystemFont, "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+  --mono:  "JetBrains Mono", "Fira Code", "SF Mono", Consolas, Monaco, monospace;
+}
+
+@page {
+  size: {{pageWidthMm}}mm {{pageHeightMm}}mm;
+  margin: var(--safe-top) var(--safe-side) var(--safe-bottom);
+  background: #f5f4ed;
+}
+
+@media print {
+  body { background: #f5f4ed; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { padding: 0 !important; max-width: 100% !important; box-shadow: none !important; overflow: visible !important; }
+  section { page-break-inside: auto; }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: #d9d6ca;                      /* letterbox outside the sheet */
+  color: var(--near-black);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.55;
+  letter-spacing: 0.3px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * .page — a physical sheet of paper.
+ *
+ * Model:
+ *   • width × height is the trim size (paper edge). Fixed — never min-height.
+ *   • padding is the safe area inset. Content sits inside padding.
+ *   • overflow: hidden because paper has a physical edge; anything past it
+ *     simply doesn't exist on print. Visible clipping is the honest signal
+ *     that content has overrun the sheet.
+ *   • The .show-guides variant paints a dashed outline at the safe-area edge
+ *     so authors can see when content starts creeping into the bleed zone.
+ */
+.page {
+  position: relative;
+  width:  var(--page-width);
+  height: var(--page-height);
+  margin: 0 auto;
+  background: var(--parchment);
+  padding: var(--safe-top) var(--safe-side) var(--safe-bottom);
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--ring-warm), 0 8px 24px rgba(20, 20, 19, 0.08);
+  animation: fadeIn 0.4s ease-out;
+}
+
+.page.show-guides::after {
+  content: '';
+  position: absolute;
+  inset: var(--safe-top) var(--safe-side) var(--safe-bottom);
+  border: 1px dashed rgba(94, 93, 89, 0.45);
+  pointer-events: none;
+  z-index: 999;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

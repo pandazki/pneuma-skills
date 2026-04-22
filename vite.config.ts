@@ -165,6 +165,12 @@ export default defineConfig({
       "/content": `http://localhost:${process.env.VITE_API_PORT || "17007"}`,
       "/export": `http://localhost:${process.env.VITE_API_PORT || "17007"}`,
       "/proxy": `http://localhost:${process.env.VITE_API_PORT || "17007"}`,
+      // /vendor hosts snapdom.js, dom-to-pptx.bundle.js etc. served by the
+      // backend. Export pages (webcraft, kami, slide) load these directly
+      // via <script src="/vendor/...">, so the path needs to be proxied in
+      // dev mode — otherwise Vite's SPA fallback returns index.html and the
+      // page throws "snapdom is not defined" on screenshot.
+      "/vendor": `http://localhost:${process.env.VITE_API_PORT || "17007"}`,
     },
     fs: {
       // Allow serving files from external mode and workspace directories (for /@fs/ imports)
