@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.31.1
+**Version:** 2.32.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `mode-maker`, `evolve`
 
@@ -102,6 +102,7 @@ pneuma-skills/
 │   └── cf-pages/              # Cloudflare Pages deploy plugin
 ├── modes/{webcraft,doc,slide,draw,diagram,illustrate,remotion,gridboard,kami,mode-maker,evolve}/
 ├── modes/_shared/skills/      # Global skills installed for all modes (e.g. pneuma-preferences)
+├── modes/_shared/scripts/     # Shared script sources (generate_image.mjs, edit_image.mjs) — opted into per-mode via SkillConfig.sharedScripts, copied into each mode's installed skill dir at install time
 ├── backends/
 │   ├── index.ts               # Backend registry + descriptors + capabilities + availability
 │   ├── claude-code/           # Claude backend — Bun.spawn with --sdk-url

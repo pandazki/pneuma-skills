@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.32.0] - 2026-04-23
+
+### Added
+- **Shared image-generation scripts across modes** — `generate_image.mjs` and `edit_image.mjs` now live once at `modes/_shared/scripts/`. Modes opt in via a new `SkillConfig.sharedScripts: string[]` field; at install time the installer copies the listed scripts into each mode's own `.claude/skills/<mode>/scripts/` alongside the mode's `.env`. Each mode keeps its own SKILL.md guidance inline (model picking, aesthetic rules, workflow) — no cross-skill references for the agent to chase, single source of truth for the script itself. (#79)
+- **GPT-Image-2 (OpenAI) via fal.ai as the default model** — ported the full contextual-illustrator capability into the zero-dep `.mjs` stack. New flags: `--model gpt-image-2|gemini-3-pro`, `--quality low|medium|high`, `--image-size` (fal.ai preset name or `WxH`), `--image-urls` + `--mask-url` to switch `generate_image.mjs` into the `openai/gpt-image-2/edit` endpoint for precise URL+mask edits. GPT-Image-2 is especially strong at **legible typography, labels, signage, UI mockups with real copy, wordmark logos, and diagrams with text** — the things mode authors reach for constantly. The existing Gemini 3 Pro flags (`--resolution`, `--safety-tolerance`, `--seed`) still apply when opting back in with `--model gemini-3-pro`; Gemini runs on fal.ai or OpenRouter, GPT-Image-2 is fal.ai only.
+- **webcraft image-gen** — new init params for `FAL_KEY` / `OPENROUTER_API_KEY`, sharedScripts opt-in, and a dedicated **Image Generation** section in the webcraft skill. The guidance centers on a webcraft-specific "Image Slop Test" that rejects the generic AI-hero aesthetic (glowing orbs, purple/cyan gradients, flat-vector dashboard heroes, waxy AI people) and a brand-word-anchored prompt discipline that extends webcraft's existing `<font_selection_procedure>` pattern into imagery: name the project's 3 brand words first, translate them into medium/palette/composition, reject the training-data reflex, then write the prompt.
+- **kami image-gen** — new init params, sharedScripts opt-in (generate only — kami has no highlighter flow), and a paper-first image section in the kami skill. Includes a kami-flavored slop test (reject saturated HDR, neon, drop-shadow-inside-image, stock handshakes), palette-anchored prompt patterns (parchment ground + single ink-blue accent + editorial composition, with explicit no-fly clauses baked into each prompt), two worked examples (duotone portrait + 19th-century ink schematic), flag guidance in paper terms, and a reminder to re-read `.pneuma/kami-fit.json` after embedding because images change page height and can tip a previously-fitting page into overflow.
+
+### Changed
+- **illustrate + slide** now declare `sharedScripts` instead of carrying their own script copies. Their local `skill/scripts/` directories were removed; `SKILL.md` files kept full per-mode aesthetic/workflow guidance and were updated to document `gpt-image-2` as the new default model with the full flag surface. Kami's showcase `generate.sh` and `prompts.md` were repointed at the new shared script path.
+
 ## [2.31.1] - 2026-04-23
 
 ### Fixed
