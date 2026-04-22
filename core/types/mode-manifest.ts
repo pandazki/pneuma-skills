@@ -100,9 +100,11 @@ export interface InitParam {
   label: string;
   /** Additional description (e.g. "pixels") */
   description?: string;
-  /** Parameter type */
-  type: "number" | "string";
-  /** Default value */
+  /** Parameter type. "select" requires `options` to be set. */
+  type: "number" | "string" | "select";
+  /** Required when type === "select". List of string choices shown to the user. */
+  options?: string[];
+  /** Default value. For "select", must be one of `options`. */
   defaultValue: number | string;
   /** Mark as sensitive value (API keys, etc.), cleared during snapshot packaging */
   sensitive?: boolean;

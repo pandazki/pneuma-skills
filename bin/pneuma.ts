@@ -149,6 +149,24 @@ async function promptInitParams(
   for (const param of initParams) {
     const effectiveDefault = defaultOverrides?.[param.name] ?? String(param.defaultValue);
     const suffix = param.description ? ` (${param.description})` : "";
+
+    if (param.type === "select") {
+      if (!param.options || param.options.length === 0) {
+        throw new Error(`InitParam "${param.name}" has type "select" but no options`);
+      }
+      const answer = await p.select({
+        message: `${param.label}${suffix}`,
+        options: param.options.map((o) => ({ value: o, label: o })),
+        initialValue: effectiveDefault,
+      });
+      if (p.isCancel(answer)) {
+        p.cancel("Cancelled.");
+        process.exit(0);
+      }
+      params[param.name] = String(answer);
+      continue;
+    }
+
     const answer = await p.text({
       message: `${param.label}${suffix}`,
       placeholder: effectiveDefault,
