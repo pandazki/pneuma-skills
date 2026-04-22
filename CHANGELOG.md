@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.31.1] - 2026-04-23
+
+### Fixed
+- **README kami row** — reflected kami's actual feature set after the 2.31.0 polish pass: two demo layouts (pneuma-one-pager + kaku-portfolio), Scroll / Focus / Book views, fit-discipline feedback loop, and the three-artifact export pipeline (PDF / PNG-ZIP / self-contained HTML). The 2.31.0 row had described the initial cut ("three demo layouts, Print-to-PDF") which no longer matched what shipped.
+
 ## [2.31.0] - 2026-04-22
 
 ### Added
