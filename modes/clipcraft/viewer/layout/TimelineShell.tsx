@@ -26,7 +26,7 @@ export function TimelineShell() {
 
   // Mount the expanded panel lazily on first expand, then keep it
   // mounted forever so its internal state (camera preset, layer
-  // toggles, dive node selection, useCurrentFrame subscription, …)
+  // toggles, dive node selection, frame extractor caches, …)
   // survives subsequent collapse/expand cycles. We toggle visibility
   // via display:none rather than unmounting.
   const [hasEverExpanded, setHasEverExpanded] = useState(false);

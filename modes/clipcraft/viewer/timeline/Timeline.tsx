@@ -27,6 +27,7 @@ import {
 } from "@pneuma-craft/react";
 import type { Actor } from "@pneuma-craft/core";
 import type { Track } from "@pneuma-craft/timeline";
+import { useTimelineMode } from "../hooks/useTimelineMode.js";
 import { useTimelineShortcuts } from "./hooks/useTimelineShortcuts.js";
 import { TransportBar } from "./transport/TransportBar.js";
 import { TimelineMinimap } from "./TimelineMinimap.js";
@@ -71,6 +72,13 @@ export function Timeline() {
   const dispatch = useDispatch();
   const selection = useSelection();
   const tool = useEditorTool();
+  const { timelineMode } = useTimelineMode();
+  // When the 3D view is expanded, collapse the flat timeline to a
+  // ruler-only strip (time axis + playhead + scrub). The toolbar row
+  // (Split/Delete/zoom/track add) stays so clip editing still works
+  // from 3D selections. Hiding the track rows via display:none so the
+  // frame extractor / waveform caches inside survive remount-free.
+  const showTracks = timelineMode === "collapsed";
 
   const selectedClipId =
     selection.type === "clip" && selection.ids.length > 0 ? selection.ids[0] : null;
@@ -268,7 +276,7 @@ export function Timeline() {
               `useTrackReorder` is aware of this reversal — its drop
               semantics convert visual "above target" into
               "higher-index insert in data". */}
-          <div>
+          <div style={{ display: showTracks ? "block" : "none" }}>
             {composition.tracks
               .slice()
               .reverse()
@@ -356,7 +364,7 @@ export function Timeline() {
               duration={dur}
               pixelsPerSecond={zoom.pixelsPerSecond}
               scrollLeft={zoom.scrollLeft}
-              trackAreaHeight={trackAreaHeight}
+              trackAreaHeight={showTracks ? trackAreaHeight : 0}
               onSeek={handleSeek}
             />
           </div>

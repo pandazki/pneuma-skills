@@ -1,15 +1,19 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import type { Track } from "@pneuma-craft/timeline";
 import { useComposition, usePlayback } from "@pneuma-craft/react";
-import type { Clip } from "@pneuma-craft/timeline";
+import { useTimelineZoom } from "../timeline/hooks/useTimelineZoom.js";
 import { useTimelineMode } from "../hooks/useTimelineMode.js";
-import { tracksForLayer, type LayerType } from "../overview/layerTypes.js";
-import { LayerToggle } from "../overview/LayerToggle.js";
-import { ExplodedLayer, LAYER_ORDER } from "./ExplodedLayer.js";
-import { useCurrentFrame } from "./useCurrentFrame.js";
-import { useActiveSceneAtTime } from "./useActiveSceneAtTime.js";
-import { useWorkspaceAssetUrl } from "../assets/useWorkspaceAssetUrl.js";
+import {
+  groupTracksForViews,
+  layerOfTrack,
+  type LayerType,
+} from "../overview/layerTypes.js";
+import { TrackToggle } from "../overview/TrackToggle.js";
+import { ExplodedTrack, LAYER_ORDER } from "./ExplodedTrack.js";
 import { theme } from "../theme/tokens.js";
+
+export { LAYER_ORDER };
 
 const CAMERA = {
   rotateX: 0,
@@ -19,36 +23,27 @@ const CAMERA = {
   perspectiveOriginY: 50,
 } as const;
 
-// Bigger Z_GAP so scrolling visibly snaps the targeted layer to the
-// front and pushes the others far behind. Combined with the face-on
-// camera, the perspective shrink of the non-focused layers is what
-// sells the depth — a small gap would just look like a wiggle.
-const Z_GAP = 280;
-// Compact heights for non-video layers. Video grows to fill the rest
-// and is sized to match the composition's aspect ratio exactly.
-const NON_VIDEO_H: Record<LayerType, number> = { caption: 56, audio: 64, video: 0 };
+// Per-track Z gap. The focused track sits at Z=0; each remaining track
+// recedes by |trackDistance| * Z_GAP.
+const Z_GAP = 220;
+
+const NON_VIDEO_H = 64;
+const CAPTION_H = 56;
 const MIN_VIDEO_H = 160;
-// Gentle ease-out tween instead of a spring — the spring overshoot
-// was making the 3D switch feel jittery / dizzy on entry.
-const EASE = { type: "tween" as const, duration: 0.38, ease: [0.2, 0.8, 0.2, 1] as [number, number, number, number] };
 
-// Header padding inside ExplodedLayer (label row + flex container padding).
+const EASE = {
+  type: "tween" as const,
+  duration: 0.38,
+  ease: [0.2, 0.8, 0.2, 1] as [number, number, number, number],
+};
+
 const LAYER_HEADER_H = 28;
-const LAYER_INNER_PAD_X = 20;
+const LAYER_INNER_PAD_X = 0;
 
-function computeZOffsets(
-  activeLayers: LayerType[],
-  focusedLayer: LayerType,
-): Record<string, number> {
-  const focusIdx = activeLayers.indexOf(focusedLayer);
-  const offsets: Record<string, number> = {};
-  for (let i = 0; i < activeLayers.length; i++) {
-    const distance = Math.abs(i - focusIdx);
-    // Focused layer is at Z=0 (closest to camera). Every other layer
-    // recedes into the background at negative Z.
-    offsets[activeLayers[i]] = -distance * Z_GAP;
-  }
-  return offsets;
+function trackHeightFor(layer: LayerType, videoLayerH: number): number {
+  if (layer === "video") return videoLayerH;
+  if (layer === "caption") return CAPTION_H;
+  return NON_VIDEO_H;
 }
 
 export function ExplodedView() {
@@ -57,35 +52,39 @@ export function ExplodedView() {
   const {
     setTimelineMode,
     setDiveLayer,
-    focusedLayer: storedFocus,
-    setFocusedLayer,
-    activeLayers,
-    toggleLayer,
+    focusedTrackId: storedFocusId,
+    setFocusedTrackId,
   } = useTimelineMode();
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 600, height: 400 });
 
   const tracks = composition?.tracks ?? [];
+  const totalDuration = Math.max(composition?.duration ?? 0, 1);
+  // wheelEnabled:false — the scene-level wheel listener would write to the
+  // shared scrollLeft and visibly pan the ruler, defeating the carousel
+  // handler on the outer containerRef. We only need `zoom` here to read
+  // shared pps/scrollLeft for positioning (playhead, caption strip).
+  const zoom = useTimelineZoom(totalDuration, sceneRef, { wheelEnabled: false });
 
-  const disabledLayers = useMemo(() => {
-    const d = new Set<LayerType>();
-    if (tracksForLayer(tracks, "video").length === 0) d.add("video");
-    if (tracksForLayer(tracks, "caption").length === 0) d.add("caption");
-    if (tracksForLayer(tracks, "audio").length === 0) d.add("audio");
-    return d;
-  }, [tracks]);
-
-  const orderedActive = useMemo(
-    () => LAYER_ORDER.filter((l) => activeLayers.has(l)),
-    [activeLayers],
+  const groups = useMemo(() => groupTracksForViews(tracks), [tracks]);
+  const renderableGroups = useMemo(
+    () => groups.filter((g) => g.tracks.length > 0),
+    [groups],
+  );
+  const orderedTracks = useMemo<Track[]>(
+    () => renderableGroups.flatMap((g) => g.tracks),
+    [renderableGroups],
   );
 
-  const focusedLayer = useMemo((): LayerType => {
-    if (storedFocus && activeLayers.has(storedFocus)) return storedFocus;
-    if (activeLayers.has("video")) return "video";
-    return orderedActive[0] ?? "video";
-  }, [storedFocus, activeLayers, orderedActive]);
+  const focusedTrackId = useMemo<string | null>(() => {
+    if (storedFocusId && orderedTracks.some((t) => t.id === storedFocusId)) {
+      return storedFocusId;
+    }
+    const firstVideo = orderedTracks.find((t) => t.type === "video");
+    return firstVideo?.id ?? orderedTracks[0]?.id ?? null;
+  }, [storedFocusId, orderedTracks]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -98,60 +97,29 @@ export function ExplodedView() {
     return () => obs.disconnect();
   }, []);
 
-  // Active scene at playhead (via Task 1 scene resolver). Not yet rendered
-  // but reserved for scene-scoped overlays (Task 7 hooks in here).
-  useActiveSceneAtTime(playback.currentTime);
-
-  // Caption text: first subtitle clip whose envelope covers currentTime.
-  const captionText = useMemo(() => {
-    for (const track of tracksForLayer(tracks, "caption")) {
-      for (const clip of track.clips) {
-        if (
-          playback.currentTime >= clip.startTime &&
-          playback.currentTime < clip.startTime + clip.duration
-        ) {
-          return (clip as Clip & { text?: string }).text ?? null;
-        }
-      }
-    }
-    return null;
-  }, [tracks, playback.currentTime]);
-
-  // Audio clip at playhead (first audio track's clip envelope straddling currentTime).
-  const activeAudioClip = useMemo(() => {
-    for (const track of tracksForLayer(tracks, "audio")) {
-      for (const clip of track.clips) {
-        if (
-          playback.currentTime >= clip.startTime &&
-          playback.currentTime < clip.startTime + clip.duration
-        ) {
-          return clip as Clip & { assetId?: string };
-        }
-      }
-    }
-    return null;
-  }, [tracks, playback.currentTime]);
-
-  const audioUrl = useWorkspaceAssetUrl(activeAudioClip?.assetId ?? null);
-  const frameBitmap = useCurrentFrame();
-
   const handleWheel = useCallback(
     (e: WheelEvent) => {
+      // Swallow the wheel event unconditionally so it can't bubble up
+      // into the flat timeline's ruler (which lives below the 3D view
+      // in the same flex container and has its own wheel listener that
+      // pans `zoom.scrollLeft`). stopPropagation must happen BEFORE the
+      // small-delta early return — tiny trackpad nudges were leaking
+      // through and scrolling the ruler.
       e.preventDefault();
+      e.stopPropagation();
       const delta = e.deltaY;
       if (Math.abs(delta) < 5) return;
-      const currentIdx = orderedActive.indexOf(focusedLayer);
-      let nextIdx: number;
-      if (delta > 0) {
-        nextIdx = Math.min(orderedActive.length - 1, currentIdx + 1);
-      } else {
-        nextIdx = Math.max(0, currentIdx - 1);
-      }
+      const currentIdx = orderedTracks.findIndex((t) => t.id === focusedTrackId);
+      if (currentIdx < 0) return;
+      const nextIdx =
+        delta > 0
+          ? Math.min(orderedTracks.length - 1, currentIdx + 1)
+          : Math.max(0, currentIdx - 1);
       if (nextIdx !== currentIdx) {
-        setFocusedLayer(orderedActive[nextIdx]);
+        setFocusedTrackId(orderedTracks[nextIdx].id);
       }
     },
-    [orderedActive, focusedLayer, setFocusedLayer],
+    [orderedTracks, focusedTrackId, setFocusedTrackId],
   );
 
   useEffect(() => {
@@ -186,19 +154,11 @@ export function ExplodedView() {
   const settings = composition?.settings;
   const arRatio = settings ? settings.width / settings.height : 16 / 9;
 
-  // Carousel layout: the focused layer is at the scene center, Z=0,
-  // fully opaque. Every other layer is shifted vertically (above or
-  // below) AND recedes in Z, with blur + dim so they read as a
-  // background. The video layer is capped at 60% of the scene height
-  // so there's room above/below for the non-focused layers to poke
-  // out during the vertical-carousel animation.
   const SCENE_PAD = 32;
   const videoMaxH = Math.max(MIN_VIDEO_H, sceneH * 0.6);
-
-  // Video layer sized to the composition aspect ratio. Prefer full
-  // videoMaxH; clamp by sceneW - SCENE_PAD*2 if width is the bottleneck.
   const maxLayerW = Math.max(200, sceneW - SCENE_PAD * 2);
-  const hasVideo = orderedActive.includes("video");
+  const hasVideo = orderedTracks.some((t) => t.type === "video");
+
   let videoLayerH: number;
   let layerWidth: number;
   if (hasVideo) {
@@ -217,46 +177,113 @@ export function ExplodedView() {
     videoLayerH = 0;
   }
 
-  const layerHeights: Record<string, number> = {};
-  for (const l of orderedActive) {
-    layerHeights[l] = l === "video" ? videoLayerH : NON_VIDEO_H[l];
+  // Vertical carousel: the focused track is centered in the scene; other
+  // tracks stack above / below it in flat order with STACK_GAP between
+  // adjacent card edges.
+  const STACK_GAP = 32;
+
+  const focusedIdx = Math.max(
+    0,
+    orderedTracks.findIndex((t) => t.id === focusedTrackId),
+  );
+
+  interface PositionedTrack {
+    key: string;
+    track: Track;
+    layer: LayerType;
+    top: number;
+    z: number;
+    width: number;
+    height: number;
+    focused: boolean;
+    indexInGroup: number;
+    groupSize: number;
   }
 
-  // Vertical carousel: focused layer is centered in the scene; every
-  // other layer is stacked OUTSIDE the focused one with a fixed gap
-  // between adjacent layer edges. This way non-focused layers always
-  // show their full height above/below the focused one — they never
-  // overlap with each other OR get hidden behind the focused layer's
-  // opaque background.
-  const STACK_GAP = 96;
-  const focusedIdx = Math.max(0, orderedActive.indexOf(focusedLayer));
-  const focusedH = layerHeights[focusedLayer] ?? 0;
-  const focusedTop = Math.floor((sceneH - focusedH) / 2);
-  const focusedBottom = focusedTop + focusedH;
-  const layerTops: Record<string, number> = {};
-  layerTops[focusedLayer] = focusedTop;
-
-  // Stack above the focused layer, walking upward.
-  let cursorAbove = focusedTop;
-  for (let i = focusedIdx - 1; i >= 0; i--) {
-    const l = orderedActive[i];
-    const h = layerHeights[l] ?? 0;
-    cursorAbove -= STACK_GAP + h;
-    layerTops[l] = cursorAbove;
-  }
-  // Stack below the focused layer, walking downward.
-  let cursorBelow = focusedBottom;
-  for (let i = focusedIdx + 1; i < orderedActive.length; i++) {
-    const l = orderedActive[i];
-    const h = layerHeights[l] ?? 0;
-    cursorBelow += STACK_GAP;
-    layerTops[l] = cursorBelow;
-    cursorBelow += h;
+  // Per-track group metadata: "VIDEO 2" labels still come from the
+  // layer grouping, so precompute (indexInGroup, groupSize) per track.
+  const groupMeta = new Map<string, { indexInGroup: number; groupSize: number }>();
+  for (const g of renderableGroups) {
+    g.tracks.forEach((t, idx) => {
+      groupMeta.set(t.id, { indexInGroup: idx + 1, groupSize: g.tracks.length });
+    });
   }
 
-  const zOffsets = computeZOffsets(orderedActive, focusedLayer);
+  const heights = orderedTracks.map((t) => trackHeightFor(layerOfTrack(t), videoLayerH));
+  const positioned: PositionedTrack[] = [];
 
-  const renderOrder = [...orderedActive].reverse();
+  if (orderedTracks.length > 0) {
+    const focusedH = heights[focusedIdx] ?? 0;
+    const focusedTop = Math.floor((sceneH - focusedH) / 2);
+
+    const meta = (track: Track) =>
+      groupMeta.get(track.id) ?? { indexInGroup: 1, groupSize: 1 };
+
+    const focusedTrack = orderedTracks[focusedIdx];
+    const focusedGroupMeta = meta(focusedTrack);
+    positioned.push({
+      key: focusedTrack.id,
+      track: focusedTrack,
+      layer: layerOfTrack(focusedTrack),
+      top: focusedTop,
+      z: 0,
+      width: layerWidth,
+      height: focusedH,
+      focused: true,
+      indexInGroup: focusedGroupMeta.indexInGroup,
+      groupSize: focusedGroupMeta.groupSize,
+    });
+
+    let cursorAboveBottom = focusedTop;
+    for (let i = focusedIdx - 1; i >= 0; i--) {
+      const t = orderedTracks[i];
+      const h = heights[i];
+      const top = cursorAboveBottom - STACK_GAP - h;
+      const m = meta(t);
+      positioned.push({
+        key: t.id,
+        track: t,
+        layer: layerOfTrack(t),
+        top,
+        z: -(focusedIdx - i) * Z_GAP,
+        width: layerWidth,
+        height: h,
+        focused: false,
+        indexInGroup: m.indexInGroup,
+        groupSize: m.groupSize,
+      });
+      cursorAboveBottom = top;
+    }
+
+    let cursorBelowTop = focusedTop + focusedH;
+    for (let i = focusedIdx + 1; i < orderedTracks.length; i++) {
+      const t = orderedTracks[i];
+      const h = heights[i];
+      const top = cursorBelowTop + STACK_GAP;
+      const m = meta(t);
+      positioned.push({
+        key: t.id,
+        track: t,
+        layer: layerOfTrack(t),
+        top,
+        z: -(i - focusedIdx) * Z_GAP,
+        width: layerWidth,
+        height: h,
+        focused: false,
+        indexInGroup: m.indexInGroup,
+        groupSize: m.groupSize,
+      });
+      cursorBelowTop = top + h;
+    }
+  }
+
+  // Render the focused card last so it sits on top; siblings render
+  // in reverse-distance order (farthest first) so perspective stacking
+  // reads cleanly.
+  const renderOrder = [...positioned].sort((a, b) => a.z - b.z);
+
+  const playheadX = playback.currentTime * zoom.pixelsPerSecond - zoom.scrollLeft;
+  const trackContentW = Math.max(1, layerWidth);
 
   return (
     <div
@@ -280,16 +307,12 @@ export function ExplodedView() {
           zIndex: 20,
         }}
       >
-        <LayerToggle
-          activeLayers={activeLayers}
-          onToggle={toggleLayer}
-          disabledLayers={disabledLayers}
-          focusedLayer={focusedLayer}
-        />
+        <TrackToggle tracks={tracks} focusedTrackId={focusedTrackId} />
       </div>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <motion.div
+          ref={sceneRef}
           animate={{
             perspective: CAMERA.perspective,
             perspectiveOrigin: `${CAMERA.perspectiveOriginX}% ${CAMERA.perspectiveOriginY}%`,
@@ -312,19 +335,23 @@ export function ExplodedView() {
             }}
           >
             <AnimatePresence>
-              {renderOrder.map((layerType) => (
-                <ExplodedLayer
-                  key={layerType}
-                  layerType={layerType}
-                  zOffset={zOffsets[layerType] ?? 0}
-                  width={layerWidth}
-                  height={layerHeights[layerType] ?? NON_VIDEO_H[layerType] ?? MIN_VIDEO_H}
-                  top={layerTops[layerType] ?? 0}
-                  focused={layerType === focusedLayer}
-                  onClick={() => handleDive(layerType)}
-                  captionText={captionText}
-                  frameBitmap={frameBitmap}
-                  audioUrl={audioUrl}
+              {renderOrder.map((p) => (
+                <ExplodedTrack
+                  key={p.key}
+                  track={p.track}
+                  indexInGroup={p.indexInGroup}
+                  groupSize={p.groupSize}
+                  zOffset={p.z}
+                  width={p.width}
+                  height={p.height}
+                  top={p.top}
+                  focused={p.focused}
+                  pixelsPerSecond={zoom.pixelsPerSecond}
+                  scrollLeft={zoom.scrollLeft}
+                  selectedClipId={null}
+                  playheadX={playheadX}
+                  viewportWidth={trackContentW}
+                  onClick={() => handleDive(p.layer)}
                 />
               ))}
             </AnimatePresence>

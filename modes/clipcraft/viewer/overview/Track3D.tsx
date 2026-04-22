@@ -1,14 +1,16 @@
 import { motion } from "framer-motion";
 import type { Track } from "@pneuma-craft/timeline";
-import { LAYER_META, type LayerType } from "./layerTypes.js";
+import { LAYER_META, layerOfTrack, type LayerType } from "./layerTypes.js";
 import { VideoLayerContent } from "./VideoLayerContent.js";
 import { CaptionLayerContent } from "./CaptionLayerContent.js";
 import { AudioLayerContent } from "./AudioLayerContent.js";
 import { theme } from "../theme/tokens.js";
 
 interface Props {
-  layerType: LayerType;
-  tracks: Track[];
+  track: Track;
+  /** 1-based index of this track within its layer group (for label "VIDEO 2"). */
+  indexInGroup: number;
+  groupSize: number;
   zOffset: number;
   yPosition: number;
   heightPx: number;
@@ -20,19 +22,19 @@ interface Props {
   selectedClipId: string | null;
   selected: boolean;
   onSelect: () => void;
-  onDive: () => void;
+  onDive: (layer: LayerType) => void;
   playheadX: number;
 }
 
-export function Layer3D(props: Props) {
+export function Track3D(props: Props) {
   const {
-    layerType,
-    tracks,
+    track,
+    indexInGroup,
+    groupSize,
     zOffset,
     yPosition,
     heightPx,
     rotateX,
-    totalDuration,
     pixelsPerSecond,
     scrollLeft,
     viewportWidth,
@@ -42,13 +44,18 @@ export function Layer3D(props: Props) {
     onDive,
     playheadX,
   } = props;
+  const layerType = layerOfTrack(track);
   const meta = LAYER_META[layerType];
   const Icon = meta.Icon;
+
+  // Show per-track suffix only when there's more than one track of this
+  // layer type. Single-track groups read cleaner without the "1" label.
+  const labelSuffix = groupSize > 1 ? ` ${indexInGroup}` : "";
 
   return (
     <motion.div
       onClick={onSelect}
-      onDoubleClick={onDive}
+      onDoubleClick={() => onDive(layerType)}
       animate={{ z: zOffset, y: yPosition, rotateX, opacity: selected ? 1 : 0.78 }}
       transition={{ type: "tween", duration: 0.38, ease: [0.2, 0.8, 0.2, 1] }}
       style={{
@@ -84,7 +91,23 @@ export function Layer3D(props: Props) {
         }}
       >
         <Icon size={12} />
-        <span>{meta.label}</span>
+        <span>
+          {meta.label}
+          {labelSuffix}
+        </span>
+        {track.name ? (
+          <span
+            style={{
+              color: theme.color.ink4,
+              fontWeight: theme.text.weightMedium,
+              letterSpacing: theme.text.trackingWide,
+              textTransform: "none",
+              opacity: 0.75,
+            }}
+          >
+            · {track.name}
+          </span>
+        ) : null}
       </div>
 
       <div
@@ -98,8 +121,7 @@ export function Layer3D(props: Props) {
       >
         {layerType === "video" && (
           <VideoLayerContent
-            tracks={tracks}
-            totalDuration={totalDuration}
+            track={track}
             height={heightPx}
             pixelsPerSecond={pixelsPerSecond}
             scrollLeft={scrollLeft}
@@ -108,8 +130,7 @@ export function Layer3D(props: Props) {
         )}
         {layerType === "caption" && (
           <CaptionLayerContent
-            tracks={tracks}
-            totalDuration={totalDuration}
+            track={track}
             height={heightPx}
             pixelsPerSecond={pixelsPerSecond}
             scrollLeft={scrollLeft}
@@ -118,8 +139,7 @@ export function Layer3D(props: Props) {
         )}
         {layerType === "audio" && (
           <AudioLayerContent
-            tracks={tracks}
-            totalDuration={totalDuration}
+            track={track}
             height={heightPx}
             pixelsPerSecond={pixelsPerSecond}
             scrollLeft={scrollLeft}

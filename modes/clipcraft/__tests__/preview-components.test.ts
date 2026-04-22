@@ -6,9 +6,9 @@ describe("preview component module imports", () => {
     expect(typeof mod.VideoPreview).toBe("function");
   });
 
-  test("CaptionOverlay exports a function", async () => {
-    const mod = await import("../viewer/preview/CaptionOverlay.js");
-    expect(typeof mod.CaptionOverlay).toBe("function");
+  test("createSubtitleRenderer exports a function", async () => {
+    const mod = await import("../viewer/preview/subtitleRenderer.js");
+    expect(typeof mod.createSubtitleRenderer).toBe("function");
   });
 
   test("PreviewPanel exports a function", async () => {
@@ -107,9 +107,9 @@ describe("preview component module imports", () => {
     expect(typeof mod.OverviewControls).toBe("function");
   });
 
-  test("LayerToggle exports a function", async () => {
-    const mod = await import("../viewer/overview/LayerToggle.js");
-    expect(typeof mod.LayerToggle).toBe("function");
+  test("TrackToggle exports a function", async () => {
+    const mod = await import("../viewer/overview/TrackToggle.js");
+    expect(typeof mod.TrackToggle).toBe("function");
   });
 
   test("FakeWaveform exports a function", async () => {
@@ -132,9 +132,9 @@ describe("preview component module imports", () => {
     expect(typeof mod.AudioLayerContent).toBe("function");
   });
 
-  test("Layer3D exports a function", async () => {
-    const mod = await import("../viewer/overview/Layer3D.js");
-    expect(typeof mod.Layer3D).toBe("function");
+  test("Track3D exports a function", async () => {
+    const mod = await import("../viewer/overview/Track3D.js");
+    expect(typeof mod.Track3D).toBe("function");
   });
 
   test("TimelineOverview3D exports a function", async () => {
@@ -142,30 +142,25 @@ describe("preview component module imports", () => {
     expect(typeof mod.TimelineOverview3D).toBe("function");
   });
 
-  test("useCurrentFrame exports a function", async () => {
-    const mod = await import("../viewer/exploded/useCurrentFrame.js");
-    expect(typeof mod.useCurrentFrame).toBe("function");
-  });
-
-  test("useActiveSceneAtTime exports a function", async () => {
-    const mod = await import("../viewer/exploded/useActiveSceneAtTime.js");
-    expect(typeof mod.useActiveSceneAtTime).toBe("function");
-  });
-
   test("exploded WaveformBars exports a function", async () => {
     const mod = await import("../viewer/exploded/WaveformBars.js");
     expect(typeof mod.WaveformBars).toBe("function");
   });
 
-  test("ExplodedLayer exports a function", async () => {
-    const mod = await import("../viewer/exploded/ExplodedLayer.js");
-    expect(typeof mod.ExplodedLayer).toBe("function");
+  test("ExplodedTrack exports a function", async () => {
+    const mod = await import("../viewer/exploded/ExplodedTrack.js");
+    expect(typeof mod.ExplodedTrack).toBe("function");
     expect(Array.isArray(mod.LAYER_ORDER)).toBe(true);
   });
 
   test("ExplodedView exports a function", async () => {
     const mod = await import("../viewer/exploded/ExplodedView.js");
     expect(typeof mod.ExplodedView).toBe("function");
+  });
+
+  test("ExplodedVideoFrame exports a function", async () => {
+    const mod = await import("../viewer/exploded/ExplodedVideoFrame.js");
+    expect(typeof mod.ExplodedVideoFrame).toBe("function");
   });
 
   test("useVariantPointer exports VariantPointerProvider and hook", async () => {

@@ -15,18 +15,48 @@ export type LayerType = "video" | "caption" | "audio";
 
 export const LAYER_PRIORITY: LayerType[] = ["caption", "video", "audio"];
 
+export function layerOfTrack(track: Track): LayerType {
+  switch (track.type) {
+    case "video":
+      return "video";
+    case "subtitle":
+      return "caption";
+    case "audio":
+      return "audio";
+  }
+}
+
 export function tracksForLayer(
   tracks: readonly Track[],
   layer: LayerType,
 ): Track[] {
-  switch (layer) {
-    case "video":
-      return tracks.filter((t) => t.type === "video");
-    case "caption":
-      return tracks.filter((t) => t.type === "subtitle");
-    case "audio":
-      return tracks.filter((t) => t.type === "audio");
-  }
+  return tracks.filter((t) => layerOfTrack(t) === layer);
+}
+
+/**
+ * Filter + group tracks for the 3D views:
+ *   - Drops empty tracks (`clips.length === 0`)
+ *   - Respects `track.visible !== false`
+ *   - Preserves original order inside `composition.tracks` within each group
+ *
+ * Returns the groups in `LAYER_PRIORITY` order. Callers rely on the group
+ * ordering for vertical stacking (caption → video → audio).
+ */
+export interface TrackGroup {
+  layer: LayerType;
+  tracks: Track[];
+}
+
+export function groupTracksForViews(tracks: readonly Track[]): TrackGroup[] {
+  return LAYER_PRIORITY.map((layer) => ({
+    layer,
+    tracks: tracks.filter(
+      (t) =>
+        layerOfTrack(t) === layer &&
+        t.clips.length > 0 &&
+        t.visible !== false,
+    ),
+  }));
 }
 
 export interface LayerMeta {

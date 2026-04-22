@@ -5,8 +5,7 @@ import { useWorkspaceAssetUrl } from "../assets/useWorkspaceAssetUrl.js";
 import { theme } from "../theme/tokens.js";
 
 interface Props {
-  tracks: Track[];
-  totalDuration: number;
+  track: Track;
   height: number;
   pixelsPerSecond: number;
   scrollLeft: number;
@@ -14,7 +13,7 @@ interface Props {
 }
 
 export function VideoLayerContent({
-  tracks,
+  track,
   height,
   pixelsPerSecond,
   scrollLeft,
@@ -32,24 +31,22 @@ export function VideoLayerContent({
         padding: `0 ${theme.space.space1}px`,
       }}
     >
-      {tracks.flatMap((track) =>
-        track.clips.map((clip) => {
-          const x = clip.startTime * pixelsPerSecond - scrollLeft;
-          const w = clip.duration * pixelsPerSecond;
-          if (x + w < -10 || x > 3000) return null;
-          return (
-            <VideoClip3D
-              key={clip.id}
-              clip={clip}
-              x={x}
-              w={w}
-              frameH={frameH}
-              pixelsPerSecond={pixelsPerSecond}
-              selected={clip.id === selectedClipId}
-            />
-          );
-        }),
-      )}
+      {track.clips.map((clip) => {
+        const x = clip.startTime * pixelsPerSecond - scrollLeft;
+        const w = clip.duration * pixelsPerSecond;
+        if (x + w < -10 || x > 3000) return null;
+        return (
+          <VideoClip3D
+            key={clip.id}
+            clip={clip}
+            x={x}
+            w={w}
+            frameH={frameH}
+            pixelsPerSecond={pixelsPerSecond}
+            selected={clip.id === selectedClipId}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -119,7 +116,10 @@ function VideoClip3D({
             const aspect = frames[0].width / frames[0].height;
             const naturalW = frameH * aspect;
             const clipW = w - 2;
-            const visibleCount = Math.max(1, Math.ceil(clipW / naturalW));
+            // Enforce a minimum tile count so low zoom can't collapse
+            // the strip into a single big tile — users would read that
+            // as "preview", not "filmstrip of clips on a track".
+            const visibleCount = Math.max(3, Math.ceil(clipW / naturalW));
             const step = Math.max(1, frames.length / visibleCount);
             const picked: typeof frames = [];
             for (let i = 0; i < visibleCount && i * step < frames.length; i++) {

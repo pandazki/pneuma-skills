@@ -38,7 +38,9 @@ const ABSOLUTE_MIN_PPS = 5;
 export function useTimelineZoom(
   duration: number,
   containerRef: React.RefObject<HTMLElement | null>,
+  options?: { wheelEnabled?: boolean },
 ): TimelineZoom {
+  const wheelEnabled = options?.wheelEnabled ?? true;
   const { zoom: shared, setZoom: setShared } = useSharedZoom();
   const pixelsPerSecond = shared.pixelsPerSecond;
   const scrollLeft = shared.scrollLeft;
@@ -177,6 +179,7 @@ export function useTimelineZoom(
   stateRef.current = { pixelsPerSecond, scrollLeft, minPPS, maxPPS, scrollMin, scrollMax };
 
   useEffect(() => {
+    if (!wheelEnabled) return;
     const el = containerRef.current;
     if (!el) return;
 
@@ -209,7 +212,7 @@ export function useTimelineZoom(
     // ("no composition loaded") releases and the JSX with ref={containerRef}
     // is mounted for real. Without it, the listener would attach against a
     // null ref and never re-bind once the composition arrives.
-  }, [containerRef, dur]);
+  }, [containerRef, dur, wheelEnabled]);
 
   return useMemo(
     () => ({

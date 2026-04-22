@@ -8,19 +8,26 @@ import {
 import { useTimelineZoom } from "../timeline/hooks/useTimelineZoom.js";
 import { useTimelineMode } from "../hooks/useTimelineMode.js";
 import { useOverviewCamera, type CameraPreset } from "./useOverviewCamera.js";
-import { LAYER_PRIORITY, tracksForLayer, type LayerType } from "./layerTypes.js";
-import { Layer3D } from "./Layer3D.js";
-import { LayerToggle } from "./LayerToggle.js";
+import {
+  groupTracksForViews,
+  type LayerType,
+} from "./layerTypes.js";
+import { Track3D } from "./Track3D.js";
+import { TrackToggle } from "./TrackToggle.js";
 import { theme } from "../theme/tokens.js";
 
-function computeZOffsets(activeLayers: LayerType[]): Record<string, number> {
-  const count = activeLayers.length;
-  if (count <= 1) return Object.fromEntries(activeLayers.map((l) => [l, 0]));
-  const spread = count === 2 ? 120 : count === 3 ? 80 : 60;
-  const offsets: Record<string, number> = {};
-  activeLayers.forEach((l, i) => {
-    offsets[l] = ((count - 1) / 2 - i) * spread;
-  });
+// Spread the *groups* along Z so caption / video / audio visibly sit at
+// different depths. Within a group we apply a small per-track Z step so
+// stacked tracks of the same type still separate under perspective.
+const INNER_Z_STEP = 28;
+
+function computeGroupZOffsets(groupCount: number): number[] {
+  if (groupCount <= 1) return new Array(groupCount).fill(0);
+  const spread = groupCount === 2 ? 120 : groupCount === 3 ? 80 : 60;
+  const offsets: number[] = [];
+  for (let i = 0; i < groupCount; i++) {
+    offsets.push(((groupCount - 1) / 2 - i) * spread);
+  }
   return offsets;
 }
 
@@ -28,12 +35,7 @@ export function TimelineOverview3D({ cameraPreset }: { cameraPreset: CameraPrese
   const composition = useComposition();
   const playback = usePlayback();
   const selection = useSelection();
-  const {
-    setTimelineMode,
-    setDiveLayer,
-    activeLayers,
-    toggleLayer,
-  } = useTimelineMode();
+  const { setTimelineMode, setDiveLayer } = useTimelineMode();
 
   const selectedClipId =
     selection.type === "clip" && selection.ids.length > 0 ? selection.ids[0] : null;
@@ -47,13 +49,11 @@ export function TimelineOverview3D({ cameraPreset }: { cameraPreset: CameraPrese
   const zoom = useTimelineZoom(totalDuration, sceneRef);
   const { camera } = useOverviewCamera(cameraPreset);
 
-  const disabledLayers = useMemo(() => {
-    const d = new Set<LayerType>();
-    for (const l of ["video", "caption", "audio"] as LayerType[]) {
-      if (tracksForLayer(tracks, l).length === 0) d.add(l);
-    }
-    return d;
-  }, [tracks]);
+  const groups = useMemo(() => groupTracksForViews(tracks), [tracks]);
+  const renderableGroups = useMemo(
+    () => groups.filter((g) => g.tracks.length > 0),
+    [groups],
+  );
 
   useEffect(() => {
     const el = containerRef.current;
@@ -84,27 +84,81 @@ export function TimelineOverview3D({ cameraPreset }: { cameraPreset: CameraPrese
 
   const playheadX = playback.currentTime * zoom.pixelsPerSecond - zoom.scrollLeft;
 
-  const MAX_H: Record<LayerType, number> = { video: 240, caption: 80, audio: 60 };
-  const MIN_H: Record<LayerType, number> = { video: 80, caption: 32, audio: 32 };
+  // Per-track budgets. Video tracks are given more height than caption /
+  // audio — filmstrips need room for legible frames, the other two are
+  // strip-style and stay compact.
+  const MAX_PER_TRACK: Record<LayerType, number> = { video: 240, caption: 80, audio: 80 };
+  const MIN_PER_TRACK: Record<LayerType, number> = { video: 80, caption: 32, audio: 32 };
 
-  const orderedActive = LAYER_PRIORITY.filter((l) => activeLayers.has(l));
-  const zOffsets = computeZOffsets(orderedActive);
   const availH = Math.max(containerH - 80, 200);
-  const gap = 10;
-  const totalGap = Math.max(0, orderedActive.length - 1) * gap;
-  const totalMaxH = orderedActive.reduce((s, l) => s + MAX_H[l], 0);
-  const spaceForLayers = availH - totalGap;
+  const interGroupGap = 16;
+  const intraGroupGap = 4;
 
-  const layerHeights: Record<string, number> = {};
-  for (const l of orderedActive) {
-    const ratio = MAX_H[l] / totalMaxH;
-    const h = Math.floor(spaceForLayers * ratio);
-    layerHeights[l] = Math.max(MIN_H[l], Math.min(h, MAX_H[l]));
+  const totalTrackCount = renderableGroups.reduce((s, g) => s + g.tracks.length, 0);
+  const totalGaps =
+    Math.max(0, renderableGroups.length - 1) * interGroupGap +
+    renderableGroups.reduce((s, g) => s + Math.max(0, g.tracks.length - 1) * intraGroupGap, 0);
+  const spaceForTracks = Math.max(1, availH - totalGaps);
+
+  // Each track claims a share proportional to its layer's MAX budget.
+  const sumMax = renderableGroups.reduce(
+    (s, g) => s + g.tracks.length * MAX_PER_TRACK[g.layer],
+    0,
+  );
+  const trackHeightFor = (layer: LayerType): number => {
+    if (sumMax === 0) return MIN_PER_TRACK[layer];
+    const ratio = MAX_PER_TRACK[layer] / sumMax;
+    const h = Math.floor(spaceForTracks * ratio);
+    return Math.max(MIN_PER_TRACK[layer], Math.min(h, MAX_PER_TRACK[layer]));
+  };
+
+  const groupZ = computeGroupZOffsets(renderableGroups.length);
+
+  // Compute top offset so the whole stack is vertically centered.
+  const usedH =
+    totalTrackCount === 0
+      ? 0
+      : renderableGroups.reduce(
+          (s, g) => s + g.tracks.length * trackHeightFor(g.layer),
+          0,
+        ) + totalGaps;
+  const topOffset = Math.max(0, Math.floor((availH - usedH) / 2));
+
+  interface PositionedTrack {
+    key: string;
+    track: (typeof renderableGroups)[number]["tracks"][number];
+    y: number;
+    z: number;
+    h: number;
+    layer: LayerType;
+    indexInGroup: number;
+    groupSize: number;
   }
+  const positioned: PositionedTrack[] = [];
+  let cursorY = topOffset;
+  renderableGroups.forEach((group, gIdx) => {
+    const h = trackHeightFor(group.layer);
+    const baseZ = groupZ[gIdx] ?? 0;
+    group.tracks.forEach((track, tIdx) => {
+      positioned.push({
+        key: track.id,
+        track,
+        y: cursorY,
+        z: baseZ + (tIdx - (group.tracks.length - 1) / 2) * INNER_Z_STEP,
+        h,
+        layer: group.layer,
+        indexInGroup: tIdx + 1,
+        groupSize: group.tracks.length,
+      });
+      cursorY += h;
+      if (tIdx < group.tracks.length - 1) cursorY += intraGroupGap;
+    });
+    if (gIdx < renderableGroups.length - 1) cursorY += interGroupGap;
+  });
 
-  const totalLayersH = orderedActive.reduce((s, l) => s + layerHeights[l], 0) + totalGap;
-  const topOffset = Math.max(0, Math.floor((availH - totalLayersH) / 2));
-  const renderOrder = [...orderedActive].reverse();
+  // Reverse so deeper (behind) cards mount first; the browser's painting
+  // order and perspective math then layer them correctly.
+  const renderOrder = [...positioned].reverse();
 
   return (
     <div
@@ -128,11 +182,7 @@ export function TimelineOverview3D({ cameraPreset }: { cameraPreset: CameraPrese
           zIndex: 20,
         }}
       >
-        <LayerToggle
-          activeLayers={activeLayers}
-          onToggle={toggleLayer}
-          disabledLayers={disabledLayers}
-        />
+        <TrackToggle tracks={tracks} />
       </div>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -157,33 +207,27 @@ export function TimelineOverview3D({ cameraPreset }: { cameraPreset: CameraPrese
             }}
           >
             <AnimatePresence>
-              {renderOrder.map((layerType) => {
-                const activeIdx = orderedActive.indexOf(layerType);
-                let yPos = topOffset;
-                for (let i = 0; i < activeIdx; i++) {
-                  yPos += layerHeights[orderedActive[i]] + gap;
-                }
-                return (
-                  <Layer3D
-                    key={layerType}
-                    layerType={layerType}
-                    tracks={tracksForLayer(tracks, layerType)}
-                    zOffset={zOffsets[layerType] ?? 0}
-                    yPosition={yPos}
-                    heightPx={layerHeights[layerType]}
-                    rotateX={0}
-                    totalDuration={totalDuration}
-                    pixelsPerSecond={zoom.pixelsPerSecond}
-                    scrollLeft={zoom.scrollLeft}
-                    viewportWidth={zoom.viewportWidth - 80}
-                    selectedClipId={selectedClipId}
-                    selected={false}
-                    onSelect={() => {}}
-                    onDive={() => handleDive(layerType)}
-                    playheadX={playheadX}
-                  />
-                );
-              })}
+              {renderOrder.map((p) => (
+                <Track3D
+                  key={p.key}
+                  track={p.track}
+                  indexInGroup={p.indexInGroup}
+                  groupSize={p.groupSize}
+                  zOffset={p.z}
+                  yPosition={p.y}
+                  heightPx={p.h}
+                  rotateX={0}
+                  totalDuration={totalDuration}
+                  pixelsPerSecond={zoom.pixelsPerSecond}
+                  scrollLeft={zoom.scrollLeft}
+                  viewportWidth={zoom.viewportWidth - 80}
+                  selectedClipId={selectedClipId}
+                  selected={false}
+                  onSelect={() => {}}
+                  onDive={handleDive}
+                  playheadX={playheadX}
+                />
+              ))}
             </AnimatePresence>
           </motion.div>
         </motion.div>

@@ -2,7 +2,7 @@
  * Thin wrapper around the peaks-renderer shape used in the exploded stack.
  * A sibling `WaveformBars` exists under `../timeline/` but is bound to the
  * timeline clip layout; this version is a simple flex row that stretches to
- * fill its container, used inside ExplodedLayer's audio content slot.
+ * fill its container.
  */
 export function WaveformBars({
   peaks,
