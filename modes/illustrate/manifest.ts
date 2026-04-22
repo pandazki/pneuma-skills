@@ -40,15 +40,15 @@ For prompt crafting, style management, generation & editing workflows, consult t
 {{#imageGenEnabled}}
 
 ### AI Image Generation
-- \`scripts/generate_image.mjs\` — Generate new images from text prompts
-- \`scripts/edit_image.mjs\` — Modify existing images (send original + instructions, optional annotation)
+Image generation and editing are provided by the shared \`contextual-illustrator\` skill — it has both \`scripts/generate_image.mjs\` (text-to-image + GPT-Image-2 URL+mask edit) and \`scripts/edit_image.mjs\` (annotation-driven local-file edit). Read that skill's SKILL.md for the command surface and model-picking rules (default is \`gpt-image-2\`).
 
-**Workflow**: Write placeholder row to \`manifest.json\` (status: "generating") → run script → update manifest with result. See the \`pneuma-illustrate\` skill for full command reference and prompt engineering guidelines.
+**Workflow**: Write placeholder row to \`manifest.json\` (status: "generating") → invoke the shared script → update manifest with result. The \`pneuma-illustrate\` skill owns the aesthetic, prompt engineering, and manifest shape; \`contextual-illustrator\` owns the model/API details.
 {{/imageGenEnabled}}`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
       FAL_KEY: "falApiKey",
     },
+    sharedSkillDependencies: ["contextual-illustrator"],
   },
 
   viewer: {

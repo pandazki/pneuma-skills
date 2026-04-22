@@ -2,14 +2,12 @@
 /**
  * Edit/modify an existing image using Gemini vision + image generation via OpenRouter.
  * Sends the original image (+ optional highlighter annotation) with modification instructions.
- * Zero external dependencies — uses only Node.js / Bun built-in APIs.
  *
- * Usage:
- *   node edit_image.mjs "Make the background darker" \
- *     --input image.png \
- *     --annotation annotation-crop.png \   # optional: highlighter region
- *     --output-dir ./images \
- *     --filename-prefix edited-v1
+ * Preferred when the edit needs multimodal reasoning — e.g. the user circled a region
+ * with a highlighter and wants *that specific area* changed. For URL + mask-driven edits,
+ * use generate_image.mjs --model gpt-image-2 --image-urls ... --mask-url ... instead.
+ *
+ * Zero external dependencies — uses only Node.js / Bun built-in APIs.
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
@@ -21,7 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // ---------------------------------------------------------------------------
-// .env loading (shared logic with generate_image.mjs)
+// .env loading (mirrors generate_image.mjs)
 // ---------------------------------------------------------------------------
 
 function findEnvFile() {
@@ -62,7 +60,7 @@ function loadEnvKeys() {
     ) {
       value = value.slice(1, -1);
     }
-    if (key === "OPENROUTER_API_KEY" && value) {
+    if (key === "OPENROUTER_API_KEY" && value && !keys[key]) {
       keys[key] = value;
     }
   }
@@ -97,26 +95,15 @@ async function editViaOpenrouter({
   outputDir,
   filenamePrefix,
 }) {
-  // Build message content parts
   const contentParts = [];
-
-  // Text prompt first (as recommended by OpenRouter docs)
   contentParts.push({ type: "text", text: prompt });
 
-  // Original image
   const inputDataUrl = imageToBase64DataUrl(inputPath);
-  contentParts.push({
-    type: "image_url",
-    image_url: { url: inputDataUrl },
-  });
+  contentParts.push({ type: "image_url", image_url: { url: inputDataUrl } });
 
-  // Annotation/highlighter region (if provided)
   if (annotationPath) {
     const annotationDataUrl = imageToBase64DataUrl(annotationPath);
-    contentParts.push({
-      type: "image_url",
-      image_url: { url: annotationDataUrl },
-    });
+    contentParts.push({ type: "image_url", image_url: { url: annotationDataUrl } });
   }
 
   const body = {
@@ -158,9 +145,7 @@ async function editViaOpenrouter({
   const urls = [];
   const message = result.choices?.[0]?.message ?? {};
 
-  // Extract image data (same as generate_image.mjs)
   let imagesData = [];
-
   if (message.images) {
     for (const img of message.images) {
       const url = img.image_url?.url ?? "";
@@ -200,7 +185,6 @@ async function editViaOpenrouter({
     console.error(`[edit] Saved: ${filepath}`);
   }
 
-  // Extract text description
   let description = "";
   if (typeof message.content === "string") {
     description = message.content;
@@ -211,7 +195,7 @@ async function editViaOpenrouter({
       .join("\n");
   }
 
-  return { backend: "openrouter", files: savedFiles, urls, description };
+  return { backend: "openrouter", model: "gemini-3.1-flash-image", files: savedFiles, urls, description };
 }
 
 // ---------------------------------------------------------------------------
@@ -245,30 +229,22 @@ if (values.help || positionals.length === 0 || !values.input) {
     `Usage: edit_image.mjs <modification prompt> --input <image> [options]
 
 Arguments:
-  <prompt>                            Modification instructions
+  <prompt>                      Modification instructions
 
 Required:
-  --input, -i <path>                  Original image to modify
+  --input, -i <path>            Original image to modify
 
 Options:
-  --annotation, -a <path>             Highlighter region crop (sent as 2nd image)
-  --aspect-ratio <ratio>              ${ASPECT_RATIOS.join(", ")} (default: auto)
-  --output-format <fmt>               ${OUTPUT_FORMATS.join(", ")} (default: png)
-  --resolution <res>                  ${RESOLUTIONS.join(", ")} (default: 1K)
-  --output-dir <path>                 Output directory (default: .)
-  --filename-prefix <prefix>          Filename prefix (default: edited)
+  --annotation, -a <path>       Highlighter region crop (sent as 2nd image)
+  --aspect-ratio <ratio>        ${ASPECT_RATIOS.join(", ")} (default: auto)
+  --output-format <fmt>         ${OUTPUT_FORMATS.join(", ")} (default: png)
+  --resolution <res>            ${RESOLUTIONS.join(", ")} (default: 1K)
+  --output-dir <path>           Output directory (default: .)
+  --filename-prefix <prefix>    Filename prefix (default: edited)
 
-Examples:
-  # Simple edit
-  edit_image.mjs "Make the background darker" -i logo.png
-
-  # Edit with highlighter annotation (region circled by user)
-  edit_image.mjs "Fix the highlighted area — make it sharper" \\
-    -i logo.png -a region-crop.png
-
-  # With format options
-  edit_image.mjs "Change colors to blue palette" \\
-    -i logo.png --aspect-ratio 1:1 --resolution 2K`
+When to pick this vs generate_image.mjs --model gpt-image-2 --image-urls:
+  - This script: local file + highlighter annotation, multimodal reasoning.
+  - GPT-Image-2 edit: remote URL + optional mask, precise mask-based edits.`,
   );
   process.exit(positionals.length === 0 ? 1 : 0);
 }
@@ -282,7 +258,6 @@ const resolution = values.resolution;
 const outputDir = values["output-dir"];
 const filenamePrefix = values["filename-prefix"];
 
-// Validate
 if (!existsSync(inputPath)) {
   console.error(`ERROR: Input image not found: ${inputPath}`);
   process.exit(1);
@@ -307,7 +282,8 @@ if (!RESOLUTIONS.includes(resolution)) {
 const keys = loadEnvKeys();
 if (!keys.OPENROUTER_API_KEY) {
   console.error("ERROR: OPENROUTER_API_KEY not found.");
-  console.error("Image editing requires OpenRouter. Add OPENROUTER_API_KEY to .env.");
+  console.error("Annotation-based image editing uses OpenRouter. Add OPENROUTER_API_KEY to .env");
+  console.error("or use generate_image.mjs --model gpt-image-2 --image-urls ... instead (fal.ai).");
   process.exit(1);
 }
 

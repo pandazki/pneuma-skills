@@ -588,6 +588,74 @@ export function installSkillDependencies(
 }
 
 /**
+ * Install shared skill dependencies — skills that live under `modes/_shared/skills/`
+ * and are opted into by a mode via `SkillConfig.sharedSkillDependencies`.
+ *
+ * Copies each shared skill to the backend-appropriate skills dir, applies the
+ * host mode's template params, and (if the host mode declared `envMapping`)
+ * writes the same `.env` into the shared skill dir so bundled scripts can
+ * resolve API keys through their own `findEnvFile()` lookup.
+ */
+export function installSharedSkillDependencies(
+  workspace: string,
+  names: string[],
+  envMapping: Record<string, string> | undefined,
+  params?: Record<string, number | string>,
+  backendType?: string,
+): string[] {
+  const snippets: string[] = [];
+  const sharedRoot = join(import.meta.dirname, "..", "modes", "_shared", "skills");
+
+  for (const name of names) {
+    const depSource = join(sharedRoot, name);
+    const depTarget = join(workspace, skillsDir(backendType), name);
+
+    if (!existsSync(depSource)) {
+      console.error(`[skill-installer] Shared skill "${name}" not found at ${depSource} — skipping.`);
+      continue;
+    }
+
+    if (existsSync(depTarget)) {
+      rmSync(depTarget, { recursive: true, force: true });
+    }
+    mkdirSync(depTarget, { recursive: true });
+    cpSync(depSource, depTarget, { recursive: true, force: true });
+
+    if (params && Object.keys(params).length > 0) {
+      applyTemplateToDir(depTarget, params);
+    }
+
+    // Propagate the host mode's env into the shared skill dir so scripts
+    // bundled with the shared skill can resolve keys via findEnvFile().
+    if (envMapping && params) {
+      const envLines: string[] = [];
+      for (const [envVar, paramName] of Object.entries(envMapping)) {
+        const value = params[paramName];
+        if (value !== undefined && String(value).trim() !== "") {
+          envLines.push(`${envVar}=${value}`);
+        }
+      }
+      if (envLines.length > 0) {
+        writeFileSync(join(depTarget, ".env"), envLines.join("\n") + "\n", "utf-8");
+      }
+    }
+
+    console.log(`[skill-installer] Installed shared skill: ${name}`);
+
+    const skillMdPath = join(depTarget, "SKILL.md");
+    if (existsSync(skillMdPath)) {
+      const content = readFileSync(skillMdPath, "utf-8");
+      const headingMatch = content.match(/^#\s+(.+)/m);
+      snippets.push(`- **${name}** — ${headingMatch ? headingMatch[1] : "Installed shared skill"}`);
+    } else {
+      snippets.push(`- **${name}**`);
+    }
+  }
+
+  return snippets;
+}
+
+/**
  * Returns framework-level skill dependencies installed for ALL modes.
  * These provide universal agent capabilities (e.g., user preference analysis).
  */
@@ -667,6 +735,18 @@ export function installSkill(
   let skillSnippets: string[] = [];
   if (skillConfig.skillDependencies && skillConfig.skillDependencies.length > 0) {
     skillSnippets = installSkillDependencies(workspace, skillConfig.skillDependencies, modeSourceDir, params, backendType);
+  }
+
+  // 1c-bis. Install shared skill dependencies (opt-in from modes/_shared/skills/)
+  if (skillConfig.sharedSkillDependencies && skillConfig.sharedSkillDependencies.length > 0) {
+    const sharedSnippets = installSharedSkillDependencies(
+      workspace,
+      skillConfig.sharedSkillDependencies,
+      skillConfig.envMapping,
+      params,
+      backendType,
+    );
+    skillSnippets.push(...sharedSnippets);
   }
 
   // 1d. Install global skill dependencies (framework-level, all modes)

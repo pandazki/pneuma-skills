@@ -11,7 +11,7 @@ other Pneuma mode in the gallery.
 Run with:
 
 ```bash
-bun modes/slide/skill/scripts/generate_image.mjs "<PROMPT>" \
+bun modes/_shared/skills/contextual-illustrator/scripts/generate_image.mjs "<PROMPT>" \
   --aspect-ratio 16:9 --resolution 2K --output-format png \
   --output-dir modes/kami/showcase --filename-prefix <PREFIX>
 ```
@@ -54,7 +54,7 @@ You'll need `FAL_KEY` or `OPENROUTER_API_KEY` in env (or the script's
 **Generate:**
 
 ```bash
-bun modes/slide/skill/scripts/generate_image.mjs \
+bun modes/_shared/skills/contextual-illustrator/scripts/generate_image.mjs \
   "$(cat modes/kami/showcase/prompts.md | sed -n '/## 1/,/^## 2/p' | grep -A 9999 'Prompt:' | head -n -2 | tail -n +2)" \
   --aspect-ratio 16:9 --resolution 2K --output-format png \
   --output-dir modes/kami/showcase --filename-prefix hero
@@ -92,7 +92,7 @@ bun modes/slide/skill/scripts/generate_image.mjs \
 
 ```bash
 # Prompt text: see Section 2 above. Save as:
-bun modes/slide/skill/scripts/generate_image.mjs "<paste prompt>" \
+bun modes/_shared/skills/contextual-illustrator/scripts/generate_image.mjs "<paste prompt>" \
   --aspect-ratio 16:9 --resolution 2K --output-format png \
   --output-dir modes/kami/showcase --filename-prefix paper-locked
 ```
@@ -125,7 +125,7 @@ bun modes/slide/skill/scripts/generate_image.mjs "<paste prompt>" \
 **Generate:**
 
 ```bash
-bun modes/slide/skill/scripts/generate_image.mjs "<paste prompt>" \
+bun modes/_shared/skills/contextual-illustrator/scripts/generate_image.mjs "<paste prompt>" \
   --aspect-ratio 16:9 --resolution 2K --output-format png \
   --output-dir modes/kami/showcase --filename-prefix typography
 ```

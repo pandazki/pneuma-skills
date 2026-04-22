@@ -309,12 +309,17 @@ The viewer resolves `assets/` paths relative to the workspace. The export endpoi
 {{#imageGenEnabled}}
 ### AI Image Generation
 
-You have access to an AI image generation script. **Use it proactively** — don't wait for the user to ask. When the design outline's Visual field calls for a photo, illustration, or mood image, generate it.
+Image generation lives in the shared **`contextual-illustrator`** skill at `.claude/skills/contextual-illustrator/`. Read `{CONTEXTUAL_ILLUSTRATOR}/SKILL.md` for the full command surface, flags, and model-picking rules.
+
+Throughout this skill, `{CONTEXTUAL_ILLUSTRATOR}` refers to `.claude/skills/contextual-illustrator/` (or `.agents/skills/contextual-illustrator/` under Codex).
+
+**Use it proactively** — don't wait for the user to ask. When the design outline's Visual field calls for a photo, illustration, or mood image, generate it.
 
 **When to generate**:
 - The design outline specifies a visual that CSS/SVG can't achieve (photos, illustrations, mood imagery)
 - A slide would benefit from a hero image or background visual
 - The content calls for real-world imagery (people, places, products, scenes)
+- The slide needs a mockup with **legible typography, labels, or signage** — this is the strength of the default `gpt-image-2` model
 
 **When NOT to generate**:
 - The slide is diagram/chart/data-focused — use CSS/SVG instead
@@ -324,32 +329,30 @@ You have access to an AI image generation script. **Use it proactively** — don
 
 1. **Plan in outline**: The design outline's Visual field should already specify which slides need generated images and what kind
 2. **Craft a detailed prompt**: Include subject, style, composition, mood, and technical details
-3. **Generate**:
+3. **Generate** (defaults to `gpt-image-2`):
 
 ```bash
-cd {SKILL_PATH} && node scripts/generate_image.mjs \
+cd {CONTEXTUAL_ILLUSTRATOR} && node scripts/generate_image.mjs \
   "Your detailed prompt here" \
   --aspect-ratio 16:9 \
-  --resolution 1K \
   --output-format png \
   --output-dir <workspace>/assets \
   --filename-prefix slide-03-hero
 ```
 
-4. **Integrate**: Reference the generated image in the slide HTML
+4. **Integrate**: Reference the generated image in the slide HTML with a sensible alt text
 
-**Parameters**:
-| Parameter | Slide usage |
+**Slide-specific flag usage**:
+
+| Flag | Slide guidance |
 |---|---|
-| `--aspect-ratio` | `16:9` for full-width, `1:1` for thumbnails, `4:3` for content images |
-| `--resolution` | `1K` for most slides, `2K` for full-bleed backgrounds |
-| `--output-format` | `png` for illustrations, `jpeg` for photos |
-| `--filename-prefix` | Use slide number + purpose, e.g. `slide-05-hero` |
-| `--output-dir` | Always use the workspace's `assets/` directory |
+| `--aspect-ratio` | `16:9` for full-width heroes, `1:1` for thumbnails, `4:3` for content images |
+| `--output-format` | `png` for illustrations (crisp text / transparent edges); `jpeg` for photos |
+| `--filename-prefix` | Slide number + purpose, e.g. `slide-05-hero` |
+| `--output-dir` | Always the workspace's `assets/` directory |
+| `--model gemini-3-pro` + `--resolution 2K` | Reach for these only on painterly/artistic backgrounds or full-bleed hero frames |
 
-**Style consistency**: When generating multiple images for a deck, maintain consistent style descriptors across all prompts (color palette, rendering style, mood).
-
-**API reference**: The script auto-routes between OpenRouter and fal.ai based on configured API keys. Outputs JSON to stdout with `files` (local paths) and `description`.
+**Style consistency**: When generating multiple images for a deck, maintain consistent style descriptors across all prompts (color palette, rendering style, mood). Reuse the same descriptor sentences verbatim.
 {{/imageGenEnabled}}
 
 ---

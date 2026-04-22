@@ -72,6 +72,16 @@ export interface SkillConfig {
   mcpServers?: McpServerConfig[];
   /** External skill dependencies — automatically copied to .claude/skills/ during installation */
   skillDependencies?: SkillDependency[];
+  /**
+   * Shared skill dependencies — names of skills under `modes/_shared/skills/` that
+   * the mode opts into. Each listed skill is copied to `.claude/skills/<name>/`,
+   * template-substituted with the mode's init params, and its directory also
+   * receives a `.env` generated from the mode's `envMapping` (so shared scripts
+   * can locate keys regardless of which mode invoked them).
+   *
+   * Example: ["contextual-illustrator"] enables image generation for a mode.
+   */
+  sharedSkillDependencies?: string[];
 }
 
 /** Content viewer config — describes the Mode's file watching and serving rules */

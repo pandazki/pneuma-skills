@@ -140,63 +140,36 @@ Write descriptive labels that capture what was generated:
 - "Variations of Minimal Logo v1 — warm palette" (variations)
 - "Color alternatives — blue and purple series" (style exploration)
 
-## Image Generation Script
+## Image Generation & Editing
+
+Image generation and editing live in the **shared `contextual-illustrator` skill** at `.claude/skills/contextual-illustrator/`. Read `{CONTEXTUAL_ILLUSTRATOR}/SKILL.md` for the full command reference, model picking rules (default is `gpt-image-2`), and per-flag documentation.
+
+Throughout this skill, `{CONTEXTUAL_ILLUSTRATOR}` refers to `.claude/skills/contextual-illustrator/` (or `.agents/skills/contextual-illustrator/` under Codex).
+
+### Canonical Generate Command
 
 ```bash
-cd {SKILL_PATH} && node scripts/generate_image.mjs \
+cd {CONTEXTUAL_ILLUSTRATOR} && node scripts/generate_image.mjs \
   "Your detailed prompt here" \
   --aspect-ratio 1:1 \
-  --resolution 1K \
   --output-format png \
   --output-dir <workspace>/<content-set>/images \
   --filename-prefix descriptive-name
 ```
 
-### Parameters
+- Default model is `gpt-image-2` — prefer it, especially for logos, typography, UI mockups with real text, and diagrams with labels.
+- Add `--model gemini-3-pro` only when the aesthetic specifically calls for Gemini or only OpenRouter is configured.
+- `--output-dir` must point to the content set's `images/` subdirectory, e.g. `<workspace>/my-project/images`.
 
-| Parameter | Values | Default | Notes |
-|-----------|--------|---------|-------|
-| `--aspect-ratio` | auto, 21:9, 16:9, 3:2, 4:3, 5:4, 1:1, 4:5, 3:4, 2:3, 9:16 | 1:1 | Match the intended use |
-| `--resolution` | 1K, 2K, 4K | 1K | Higher = more detail, slower |
-| `--output-format` | png, jpeg, webp | png | png for quality, webp for size |
-| `--num-images` | 1-4 | 1 | Multiple for variations |
-| `--filename-prefix` | any string | illustration | Use descriptive names |
+### When to Edit vs Generate
 
-**Important:** The `--output-dir` must point to the content set's `images/` subdirectory, e.g. `<workspace>/my-project/images`.
-
-## Image Editing Script
-
-Use `edit_image.mjs` to modify an existing image. This sends the original image (and optional highlighter annotation) to Gemini's vision + image generation model, which understands and modifies the image based on your instructions.
-
-```bash
-cd {SKILL_PATH} && node scripts/edit_image.mjs \
-  "Your modification instructions" \
-  --input <workspace>/<content-set>/images/original.png \
-  --output-dir <workspace>/<content-set>/images \
-  --filename-prefix edited-name
-```
-
-### Edit Parameters
-
-| Parameter | Values | Default | Notes |
-|-----------|--------|---------|-------|
-| `--input, -i` | file path | **required** | Original image to modify |
-| `--annotation, -a` | file path | none | Highlighter region crop (sent as 2nd image) |
-| `--aspect-ratio` | auto, 21:9, 16:9, 3:2, 4:3, 5:4, 1:1, 4:5, 3:4, 2:3, 9:16 | auto | Keeps original ratio by default |
-| `--resolution` | 0.5K, 1K, 2K, 4K | 1K | Output resolution |
-| `--output-format` | png, jpeg, webp | png | Output file format |
-| `--filename-prefix` | any string | edited | Output filename prefix |
-
-**Requires:** `OPENROUTER_API_KEY` (image editing uses OpenRouter exclusively).
-
-### When to Use Edit vs Generate
-
-| Scenario | Use |
-|----------|-----|
-| User says "make this darker" / "change the color" on a selected image | `edit_image.mjs` |
-| User highlights a region and says "fix this part" | `edit_image.mjs` with `--annotation` |
-| User wants completely new images from a text description | `generate_image.mjs` |
-| User wants variations of a concept (not tied to a specific image file) | `generate_image.mjs` with modified prompt |
+| Scenario | Command |
+|---|---|
+| User says "make this darker" / "change the color" on a selected local image | `scripts/edit_image.mjs` (annotation-driven) |
+| User highlights a region with the highlighter tool and says "fix this part" | `scripts/edit_image.mjs --annotation` |
+| User wants completely new images from a text description | `scripts/generate_image.mjs` |
+| User wants variations of a concept (not tied to a specific image file) | `scripts/generate_image.mjs` with modified prompt |
+| Precise mask-based edit of an image that has a URL (uploaded / remote) | `scripts/generate_image.mjs --image-urls <url> --mask-url <url>` (GPT-Image-2 edit) |
 
 ### Edit with Highlighter Annotation
 
@@ -207,7 +180,7 @@ When the user uses the highlighter (Cmd+draw in select mode) to circle a region 
 3. **Explain in the prompt** what the highlighted region means and what change to make
 
 ```bash
-cd {SKILL_PATH} && node scripts/edit_image.mjs \
+cd {CONTEXTUAL_ILLUSTRATOR} && node scripts/edit_image.mjs \
   "The user has circled a region in the second image. Fix this area: make the edges sharper and the colors more saturated." \
   --input <workspace>/<content-set>/images/original.png \
   --annotation /tmp/highlight-region.png \
@@ -231,7 +204,7 @@ When the user selects an image and asks for modifications:
 3. **If highlighter annotation exists** — save the region data URL to a temp file, pass as `--annotation`
 4. **Add placeholder row** — create a new row in manifest with `"status": "generating"` on the item, labeled "Edit of [original title] — [change description]". The user sees a generating placeholder immediately.
 5. **Craft the edit prompt** — describe the change clearly, referencing the annotation if present
-6. **Run edit_image.mjs** — pass original image + prompt + annotation
+6. **Run the edit** — `cd {CONTEXTUAL_ILLUSTRATOR} && node scripts/edit_image.mjs ...` (annotation-driven) OR `node scripts/generate_image.mjs --image-urls ... --mask-url ...` (GPT-Image-2 mask edit)
 7. **Update manifest** — remove `"status"` from the item and add metadata
 8. **Keep the original** — don't modify or delete the original image/row
 
@@ -373,9 +346,9 @@ Use this to understand what the user is referring to when they say "this image",
 
 ## Constraints
 
-- Never modify files in `.claude/` or `.pneuma/` directories
+- Never modify files in `.claude/` or `.pneuma/` directories **except** when invoking scripts inside `.claude/skills/contextual-illustrator/` (read-only use of the shared skill is expected)
 - Always save images to `<content-set>/images/` directory
 - Always update `manifest.json` after generating images — add new rows, don't modify existing ones
-- Use the `generate_image.mjs` script for all image generation — do not attempt other methods
+- Use the shared `contextual-illustrator` scripts for all image generation and editing — do not attempt other methods
 - The canvas viewer reads `manifest.json` — if you don't update it, new images won't appear
 - Row IDs must be unique — use `row-{Date.now()}` format
