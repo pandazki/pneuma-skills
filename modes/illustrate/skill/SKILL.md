@@ -140,36 +140,109 @@ Write descriptive labels that capture what was generated:
 - "Variations of Minimal Logo v1 — warm palette" (variations)
 - "Color alternatives — blue and purple series" (style exploration)
 
-## Image Generation & Editing
-
-Image generation and editing live in the **shared `contextual-illustrator` skill** at `.claude/skills/contextual-illustrator/`. Read `{CONTEXTUAL_ILLUSTRATOR}/SKILL.md` for the full command reference, model picking rules (default is `gpt-image-2`), and per-flag documentation.
-
-Throughout this skill, `{CONTEXTUAL_ILLUSTRATOR}` refers to `.claude/skills/contextual-illustrator/` (or `.agents/skills/contextual-illustrator/` under Codex).
-
-### Canonical Generate Command
+## Image Generation Script
 
 ```bash
-cd {CONTEXTUAL_ILLUSTRATOR} && node scripts/generate_image.mjs \
+cd {SKILL_PATH} && node scripts/generate_image.mjs \
   "Your detailed prompt here" \
   --aspect-ratio 1:1 \
+  --quality high \
   --output-format png \
   --output-dir <workspace>/<content-set>/images \
   --filename-prefix descriptive-name
 ```
 
-- Default model is `gpt-image-2` — prefer it, especially for logos, typography, UI mockups with real text, and diagrams with labels.
-- Add `--model gemini-3-pro` only when the aesthetic specifically calls for Gemini or only OpenRouter is configured.
-- `--output-dir` must point to the content set's `images/` subdirectory, e.g. `<workspace>/my-project/images`.
+### Model Picking
 
-### When to Edit vs Generate
+| Model | Pick when | Backends |
+|---|---|---|
+| `gpt-image-2` (default) | General use. Especially strong at **legible typography, labels, wordmark logos, UI mockups with real copy, signage, diagrams with text**, and precise mask-based edits. | fal.ai only |
+| `gemini-3-pro` | Painterly / watercolor / broad artistic illustration, Gemini-specific aesthetic, or when only OpenRouter is configured. | fal.ai or OpenRouter |
+
+Default to `gpt-image-2` unless the user asks for Gemini or the style specifically calls for it. If the user only configured `OPENROUTER_API_KEY`, pass `--model gemini-3-pro` — `gpt-image-2` is fal.ai-only and will error out otherwise.
+
+### Parameters
+
+Common:
+
+| Parameter | Values | Default | Notes |
+|-----------|--------|---------|-------|
+| `--model` | `gpt-image-2`, `gemini-3-pro` | `gpt-image-2` | See model picking above |
+| `--aspect-ratio` | `auto`, `21:9`, `16:9`, `3:2`, `4:3`, `5:4`, `1:1`, `4:5`, `3:4`, `2:3`, `9:16` | `1:1` | Match the intended use. For `gpt-image-2` this maps to a fal.ai preset. |
+| `--output-format` | `png`, `jpeg`, `webp` | `png` | `png` for quality, `webp` for size |
+| `--num-images` | 1–4 | 1 | Multiple for variations |
+| `--filename-prefix` | any string | `illustration` | Use descriptive names |
+
+GPT-Image-2 only:
+
+| Parameter | Values | Default | Notes |
+|-----------|--------|---------|-------|
+| `--quality` | `low`, `medium`, `high` | `high` | Affects cost — drop to `medium` for drafts |
+| `--image-size` | preset (`landscape_4_3`, `square_hd`, …) or `WxH` | — | Overrides `--aspect-ratio` mapping |
+| `--image-urls` | one or more URLs | — | Switches to the edit endpoint |
+| `--mask-url` | URL | — | Optional mask for edit endpoint |
+
+Gemini 3 Pro only:
+
+| Parameter | Values | Default | Notes |
+|-----------|--------|---------|-------|
+| `--resolution` | `1K`, `2K`, `4K` | `1K` | Higher = more detail |
+| `--safety-tolerance` | `1`–`6` | `4` | fal.ai only. 1 = strictest, 6 = loosest |
+| `--seed` | integer | — | fal.ai only |
+
+**Important:** `--output-dir` must point to the content set's `images/` subdirectory, e.g. `<workspace>/my-project/images`.
+
+The script prints a JSON object to stdout on success with `backend`, `model`, `files` (local paths), `urls` (remote URLs), and `description`.
+
+## Image Editing Scripts
+
+Two edit paths are available — pick based on how the user pointed at the change:
+
+### Path A: Annotation-Driven (`edit_image.mjs`)
+
+Use when the source is a **local file** and the user's intent is best expressed by pointing at a region (e.g. they circled it with the highlighter tool). This sends the original image and an optional annotation crop to Gemini's vision + image model, which reasons about both in one pass.
+
+```bash
+cd {SKILL_PATH} && node scripts/edit_image.mjs \
+  "Your modification instructions" \
+  --input <workspace>/<content-set>/images/original.png \
+  --output-dir <workspace>/<content-set>/images \
+  --filename-prefix edited-name
+```
+
+| Parameter | Values | Default | Notes |
+|-----------|--------|---------|-------|
+| `--input, -i` | file path | **required** | Original image to modify |
+| `--annotation, -a` | file path | none | Highlighter region crop (sent as 2nd image) |
+| `--aspect-ratio` | same as generate, plus `1:4`, `4:1`, `1:8`, `8:1` | `auto` | Keeps original ratio by default |
+| `--resolution` | `0.5K`, `1K`, `2K`, `4K` | `1K` | Output resolution |
+| `--output-format` | `png`, `jpeg`, `webp` | `png` | Output file format |
+| `--filename-prefix` | any string | `edited` | Output filename prefix |
+
+Requires `OPENROUTER_API_KEY`.
+
+### Path B: URL + Mask (GPT-Image-2 edit endpoint via `generate_image.mjs`)
+
+Use when the source image is already a **URL** (uploaded, remote, or from a prior generation) and you want precise mask-driven edits — GPT-Image-2 preserves text and layout much better than Gemini vision in this case. Add `--image-urls` (and optionally `--mask-url`) to the generate script; it automatically routes to `openai/gpt-image-2/edit`:
+
+```bash
+cd {SKILL_PATH} && node scripts/generate_image.mjs \
+  "Same composition, replace the tagline with 'Hello World'" \
+  --image-urls https://example.com/source.png \
+  --mask-url https://example.com/mask.png \
+  --output-dir <workspace>/<content-set>/images \
+  --filename-prefix edited-hero
+```
+
+### When to Use Edit vs Generate
 
 | Scenario | Command |
-|---|---|
-| User says "make this darker" / "change the color" on a selected local image | `scripts/edit_image.mjs` (annotation-driven) |
-| User highlights a region with the highlighter tool and says "fix this part" | `scripts/edit_image.mjs --annotation` |
-| User wants completely new images from a text description | `scripts/generate_image.mjs` |
-| User wants variations of a concept (not tied to a specific image file) | `scripts/generate_image.mjs` with modified prompt |
-| Precise mask-based edit of an image that has a URL (uploaded / remote) | `scripts/generate_image.mjs --image-urls <url> --mask-url <url>` (GPT-Image-2 edit) |
+|----------|---------|
+| User says "make this darker" / "change the color" on a selected local image | `edit_image.mjs` |
+| User highlights a region and says "fix this part" | `edit_image.mjs --annotation` |
+| Source image is a URL and the change needs precise text/layout preservation | `generate_image.mjs --image-urls` (GPT-Image-2 edit) |
+| User wants completely new images from a text description | `generate_image.mjs` |
+| User wants variations of a concept (not tied to a specific image file) | `generate_image.mjs` with modified prompt |
 
 ### Edit with Highlighter Annotation
 
@@ -180,7 +253,7 @@ When the user uses the highlighter (Cmd+draw in select mode) to circle a region 
 3. **Explain in the prompt** what the highlighted region means and what change to make
 
 ```bash
-cd {CONTEXTUAL_ILLUSTRATOR} && node scripts/edit_image.mjs \
+cd {SKILL_PATH} && node scripts/edit_image.mjs \
   "The user has circled a region in the second image. Fix this area: make the edges sharper and the colors more saturated." \
   --input <workspace>/<content-set>/images/original.png \
   --annotation /tmp/highlight-region.png \
@@ -204,7 +277,7 @@ When the user selects an image and asks for modifications:
 3. **If highlighter annotation exists** — save the region data URL to a temp file, pass as `--annotation`
 4. **Add placeholder row** — create a new row in manifest with `"status": "generating"` on the item, labeled "Edit of [original title] — [change description]". The user sees a generating placeholder immediately.
 5. **Craft the edit prompt** — describe the change clearly, referencing the annotation if present
-6. **Run the edit** — `cd {CONTEXTUAL_ILLUSTRATOR} && node scripts/edit_image.mjs ...` (annotation-driven) OR `node scripts/generate_image.mjs --image-urls ... --mask-url ...` (GPT-Image-2 mask edit)
+6. **Run the edit** — `edit_image.mjs` for annotation-driven, or `generate_image.mjs --image-urls ... --mask-url ...` for URL+mask
 7. **Update manifest** — remove `"status"` from the item and add metadata
 8. **Keep the original** — don't modify or delete the original image/row
 
@@ -346,9 +419,9 @@ Use this to understand what the user is referring to when they say "this image",
 
 ## Constraints
 
-- Never modify files in `.claude/` or `.pneuma/` directories **except** when invoking scripts inside `.claude/skills/contextual-illustrator/` (read-only use of the shared skill is expected)
+- Never modify files in `.claude/` or `.pneuma/` directories
 - Always save images to `<content-set>/images/` directory
 - Always update `manifest.json` after generating images — add new rows, don't modify existing ones
-- Use the shared `contextual-illustrator` scripts for all image generation and editing — do not attempt other methods
+- Use `generate_image.mjs` / `edit_image.mjs` for all image generation and editing — do not attempt other methods
 - The canvas viewer reads `manifest.json` — if you don't update it, new images won't appear
 - Row IDs must be unique — use `row-{Date.now()}` format

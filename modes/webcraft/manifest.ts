@@ -38,7 +38,19 @@ When the user provides original content (uploaded files, pasted HTML, or a URL t
 2. Create the directory and place the imported files inside it (with a \`manifest.json\`)
 3. Then begin editing within that content set
 
-**Why**: Pneuma's workspace is organized around content sets — each is a self-contained, switchable project. Importing into a content set (rather than dumping files at the root) preserves the seed templates, enables side-by-side comparison between sets, and ensures all built-in features (set switching, per-set theming, export) work correctly.`,
+**Why**: Pneuma's workspace is organized around content sets — each is a self-contained, switchable project. Importing into a content set (rather than dumping files at the root) preserves the seed templates, enables side-by-side comparison between sets, and ensures all built-in features (set switching, per-set theming, export) work correctly.
+{{#imageGenEnabled}}
+
+### AI Image Generation
+- \`scripts/generate_image.mjs\` — Generate images from text prompts (default model: \`gpt-image-2\`, strong at legible typography, UI mockups, signage, logos)
+- \`scripts/edit_image.mjs\` — Modify an existing local image with an optional highlighter annotation (Gemini vision via OpenRouter)
+- Save generated assets to the active content set's \`assets/\` directory. See the \`pneuma-webcraft\` skill's "Image Generation" section for the aesthetic rules — images in webcraft must reinforce the chosen design direction, not default to generic AI-hero clichés.
+{{/imageGenEnabled}}`,
+    envMapping: {
+      OPENROUTER_API_KEY: "openrouterApiKey",
+      FAL_KEY: "falApiKey",
+    },
+    sharedScripts: ["generate_image.mjs", "edit_image.mjs"],
   },
 
   viewer: {
@@ -178,6 +190,14 @@ The user just opened the workspace. You are ready to assist with web design and 
       "modes/webcraft/seed/pneuma/": "pneuma/",
       "modes/webcraft/seed/gazette/": "gazette/",
     },
+    params: [
+      { name: "falApiKey", label: "fal.ai API Key", description: "for AI image generation (default model: gpt-image-2)", type: "string", defaultValue: "", sensitive: true },
+      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "optional fallback for Gemini 3 Pro; leave blank to skip", type: "string", defaultValue: "", sensitive: true },
+    ],
+    deriveParams: (params) => ({
+      ...params,
+      imageGenEnabled: (params.falApiKey || params.openrouterApiKey) ? "true" : "",
+    }),
   },
 
   evolution: {

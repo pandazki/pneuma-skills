@@ -309,11 +309,7 @@ The viewer resolves `assets/` paths relative to the workspace. The export endpoi
 {{#imageGenEnabled}}
 ### AI Image Generation
 
-Image generation lives in the shared **`contextual-illustrator`** skill at `.claude/skills/contextual-illustrator/`. Read `{CONTEXTUAL_ILLUSTRATOR}/SKILL.md` for the full command surface, flags, and model-picking rules.
-
-Throughout this skill, `{CONTEXTUAL_ILLUSTRATOR}` refers to `.claude/skills/contextual-illustrator/` (or `.agents/skills/contextual-illustrator/` under Codex).
-
-**Use it proactively** — don't wait for the user to ask. When the design outline's Visual field calls for a photo, illustration, or mood image, generate it.
+You have access to an AI image generation script at `{SKILL_PATH}/scripts/generate_image.mjs`. **Use it proactively** — don't wait for the user to ask. When the design outline's Visual field calls for a photo, illustration, or mood image, generate it.
 
 **When to generate**:
 - The design outline specifies a visual that CSS/SVG can't achieve (photos, illustrations, mood imagery)
@@ -325,6 +321,15 @@ Throughout this skill, `{CONTEXTUAL_ILLUSTRATOR}` refers to `.claude/skills/cont
 - The slide is diagram/chart/data-focused — use CSS/SVG instead
 - The slide is typography-only by design intent
 
+**Model picking** (default is `gpt-image-2`):
+
+| Model | Pick when | Backends |
+|---|---|---|
+| `gpt-image-2` (default) | Most slides. Especially strong at **legible text, labels, logos, UI mockups, signage, diagrams with text**, and precise mask-based edits. | fal.ai only |
+| `gemini-3-pro` | Painterly backgrounds, watercolor illustrations, broad artistic reach, or when only OpenRouter is configured. | fal.ai or OpenRouter |
+
+If the user only configured `OPENROUTER_API_KEY`, pass `--model gemini-3-pro` — `gpt-image-2` is fal.ai-only and will error out otherwise.
+
 **Workflow**:
 
 1. **Plan in outline**: The design outline's Visual field should already specify which slides need generated images and what kind
@@ -332,9 +337,10 @@ Throughout this skill, `{CONTEXTUAL_ILLUSTRATOR}` refers to `.claude/skills/cont
 3. **Generate** (defaults to `gpt-image-2`):
 
 ```bash
-cd {CONTEXTUAL_ILLUSTRATOR} && node scripts/generate_image.mjs \
+cd {SKILL_PATH} && node scripts/generate_image.mjs \
   "Your detailed prompt here" \
   --aspect-ratio 16:9 \
+  --quality high \
   --output-format png \
   --output-dir <workspace>/assets \
   --filename-prefix slide-03-hero
@@ -347,10 +353,13 @@ cd {CONTEXTUAL_ILLUSTRATOR} && node scripts/generate_image.mjs \
 | Flag | Slide guidance |
 |---|---|
 | `--aspect-ratio` | `16:9` for full-width heroes, `1:1` for thumbnails, `4:3` for content images |
+| `--quality` | `high` for anything the user will look at; drop to `medium` for draft passes. GPT-Image-2 only. |
 | `--output-format` | `png` for illustrations (crisp text / transparent edges); `jpeg` for photos |
 | `--filename-prefix` | Slide number + purpose, e.g. `slide-05-hero` |
 | `--output-dir` | Always the workspace's `assets/` directory |
 | `--model gemini-3-pro` + `--resolution 2K` | Reach for these only on painterly/artistic backgrounds or full-bleed hero frames |
+
+**API reference**: The script auto-routes between OpenRouter and fal.ai based on configured API keys. Outputs JSON to stdout with `backend`, `model`, `files` (local paths), and `description`.
 
 **Style consistency**: When generating multiple images for a deck, maintain consistent style descriptors across all prompts (color palette, rendering style, mood). Reuse the same descriptor sentences verbatim.
 {{/imageGenEnabled}}

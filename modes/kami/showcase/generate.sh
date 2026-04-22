@@ -16,7 +16,7 @@ if [[ -z "${FAL_KEY:-}" && -z "${OPENROUTER_API_KEY:-}" ]]; then
   exit 1
 fi
 
-SCRIPT="modes/_shared/skills/contextual-illustrator/scripts/generate_image.mjs"
+SCRIPT="modes/_shared/scripts/generate_image.mjs"
 OUT="modes/kami/showcase"
 
 HERO_PROMPT='A cinematic 16:9 product-marketing mockup of the Pneuma Kami mode on a deep zinc canvas (radial gradient from #09090b at the corners to #18181b at center, faint orange glow bleeding in from the right edge). Pneuma dark chrome frames the scene: a glassmorphic toolbar along the top with a small pill reading "Viewport: A4 Portrait · 210 × 297 mm", a subtle left-edge chat panel silhouette with two or three faint message bubbles. Floating at the visual center, a single warm-parchment sheet in colour #f5f4ed — A4 proportions, soft ring-shadow, rendered as if lit by a warm overhead light. On the sheet: typeset content in kami style — large serif heading "Elon Musk" in near-black, small ink-blue sans-serif line "Founder · Chief Engineer · CEO" right-aligned, a row of four metric cards below (30 yrs · building hard tech, 6 cos · founded, 400+ · Falcon launches, 7M+ · Tesla vehicles) with ink-blue #1B365D numerals and olive captions, and the beginning of a "Summary" section set in warm editorial serif at ~9.5pt. The paper is the hero — everything else supports it. A small italic caption at the bottom of the canvas in muted warm-white: "Good content deserves good paper." No real cursor arrows, no gradient text, no glassmorphism on the paper itself. Editorial print design, not SaaS landing page.'

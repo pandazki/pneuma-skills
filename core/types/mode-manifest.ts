@@ -73,15 +73,17 @@ export interface SkillConfig {
   /** External skill dependencies — automatically copied to .claude/skills/ during installation */
   skillDependencies?: SkillDependency[];
   /**
-   * Shared skill dependencies — names of skills under `modes/_shared/skills/` that
-   * the mode opts into. Each listed skill is copied to `.claude/skills/<name>/`,
-   * template-substituted with the mode's init params, and its directory also
-   * receives a `.env` generated from the mode's `envMapping` (so shared scripts
-   * can locate keys regardless of which mode invoked them).
+   * Shared script filenames from `modes/_shared/scripts/` to copy into this
+   * mode's installed skill `scripts/` directory at install time.
    *
-   * Example: ["contextual-illustrator"] enables image generation for a mode.
+   * Use this when multiple modes reach for the same underlying tool (image
+   * generation, etc.) but each mode owns its own SKILL.md guidance about
+   * when and how to use it. The script source lives in exactly one place;
+   * each mode sees it as a local script at `{SKILL_PATH}/scripts/<file>`.
+   *
+   * Example: ["generate_image.mjs", "edit_image.mjs"].
    */
-  sharedSkillDependencies?: string[];
+  sharedScripts?: string[];
 }
 
 /** Content viewer config — describes the Mode's file watching and serving rules */

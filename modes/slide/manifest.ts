@@ -40,7 +40,7 @@ For design workflow, height calculation rules, layout patterns, and quality chec
 - Do not ask for confirmation on simple edits — just do them
 {{#imageGenEnabled}}
 ### AI Image Generation
-- Available via the shared \`contextual-illustrator\` skill — see its SKILL.md for the command surface (default model: \`gpt-image-2\`)
+- Available via the skill's \`scripts/generate_image.mjs\` (default model: \`gpt-image-2\`, strong at legible typography and UI mockups; opt in to \`--model gemini-3-pro\` for painterly work)
 - Prefer CSS/SVG for shapes and icons — use AI images for photos, complex illustrations, and legible-text mockups
 - Place generated images in \`assets/\`
 {{/imageGenEnabled}}`,
@@ -48,7 +48,7 @@ For design workflow, height calculation rules, layout patterns, and quality chec
       OPENROUTER_API_KEY: "openrouterApiKey",
       FAL_KEY: "falApiKey",
     },
-    sharedSkillDependencies: ["contextual-illustrator"],
+    sharedScripts: ["generate_image.mjs"],
   },
 
   viewer: {

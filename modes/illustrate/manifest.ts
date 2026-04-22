@@ -40,15 +40,16 @@ For prompt crafting, style management, generation & editing workflows, consult t
 {{#imageGenEnabled}}
 
 ### AI Image Generation
-Image generation and editing are provided by the shared \`contextual-illustrator\` skill — it has both \`scripts/generate_image.mjs\` (text-to-image + GPT-Image-2 URL+mask edit) and \`scripts/edit_image.mjs\` (annotation-driven local-file edit). Read that skill's SKILL.md for the command surface and model-picking rules (default is \`gpt-image-2\`).
+- \`scripts/generate_image.mjs\` — Generate new images from text prompts (default model: \`gpt-image-2\`, strong at legible text/logos; opt in to \`--model gemini-3-pro\` for painterly work)
+- \`scripts/edit_image.mjs\` — Modify an existing local image with an optional highlighter annotation (Gemini vision via OpenRouter)
 
-**Workflow**: Write placeholder row to \`manifest.json\` (status: "generating") → invoke the shared script → update manifest with result. The \`pneuma-illustrate\` skill owns the aesthetic, prompt engineering, and manifest shape; \`contextual-illustrator\` owns the model/API details.
+**Workflow**: Write placeholder row to \`manifest.json\` (status: "generating") → run script → update manifest with result. See the \`pneuma-illustrate\` skill for command flags, prompt engineering, and when to reach for the GPT-Image-2 URL+mask edit path instead of \`edit_image.mjs\`.
 {{/imageGenEnabled}}`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
       FAL_KEY: "falApiKey",
     },
-    sharedSkillDependencies: ["contextual-illustrator"],
+    sharedScripts: ["generate_image.mjs", "edit_image.mjs"],
   },
 
   viewer: {
