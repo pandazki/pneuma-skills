@@ -54,7 +54,20 @@ This is **Kami Mode**: paper-canvas web design. The viewer renders your content 
 - **Do not change paper size** — it is locked in \`.pneuma/config.json\`. If the user wants a different size, they must create a new workspace.
 - Do not edit \`_shared/styles.css\` tokens casually. Aesthetic drift compounds fast.
 - When importing raw content, create a new content set (see \`skill/references/writing.md\`).
-- Do not modify \`.claude/\` directory — it's runtime-managed.`,
+- Do not modify \`.claude/\` directory — it's runtime-managed.
+{{#imageGenEnabled}}
+
+### AI Image Generation
+- \`scripts/generate_image.mjs\` — Generate images from text prompts (default model: \`gpt-image-2\`, strong at legible labels for diagrams and mockups)
+- Save generated images to the active content set's \`assets/\` directory (alongside the existing \`_shared/assets/\`)
+- Every image must respect kami's aesthetic — warm palette, no second chromatic hue, no drop shadows/gradients/glow. See the "Image Generation" section of the \`pneuma-kami\` skill for the slop-test and prompt patterns.
+- After embedding an image, re-read \`.pneuma/kami-fit.json\` — images change page height and can tip a previously-fitting page into overflow.
+{{/imageGenEnabled}}`,
+    envMapping: {
+      OPENROUTER_API_KEY: "openrouterApiKey",
+      FAL_KEY: "falApiKey",
+    },
+    sharedScripts: ["generate_image.mjs"],
   },
 
   viewer: {
@@ -137,6 +150,8 @@ This is **Kami Mode**: paper-canvas web design. The viewer renders your content 
     params: [
       { name: "paperSize",   label: "Paper size",  type: "select", options: ["A4", "A5", "A3", "Letter", "Legal"], defaultValue: "A4" },
       { name: "orientation", label: "Orientation", type: "select", options: ["Portrait", "Landscape"],             defaultValue: "Portrait" },
+      { name: "falApiKey",        label: "fal.ai API Key",     description: "for AI image generation (default model: gpt-image-2)", type: "string", defaultValue: "", sensitive: true },
+      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "optional fallback for Gemini 3 Pro; leave blank to skip", type: "string", defaultValue: "", sensitive: true },
     ],
     deriveParams: (p) => {
       const size = String(p.paperSize);
@@ -152,6 +167,7 @@ This is **Kami Mode**: paper-canvas web design. The viewer renders your content 
         safeTopMm:    margins.top,
         safeSideMm:   margins.side,
         safeBottomMm: margins.bottom,
+        imageGenEnabled: (p.falApiKey || p.openrouterApiKey) ? "true" : "",
       };
     },
   },
