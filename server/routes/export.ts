@@ -2168,10 +2168,43 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
     const paperWPx = Math.round(pageWidthMm * MM_TO_PX);
     const paperHPx = Math.round(pageHeightMm * MM_TO_PX);
 
-    const pageContents = manifest.pages.map((page) => {
+    // Kami HTML files can contain multiple <div class="page"> sheets; each
+    // is one physical paper page. Expand the manifest's file list into a
+    // flat list of (file, pageIndex-within-file) entries so the export
+    // page renders one paper-frame per sheet instead of stuffing N sheets
+    // into one iframe (where only the first 297 mm is visible).
+    //
+    // Page count per file: capture each <div>'s class attribute, then
+    // tokenise by whitespace and check whether "page" is a whole token.
+    // A bare `\bpage\b` also matches "page-header" / "page-title" /
+    // "page-section" etc. because `-` is a word boundary — those
+    // divs are NOT paper sheets and a naive count would over-report.
+    // Regex is cheap and robust for kami's HTML (hand-authored, not
+    // minified); falls back to 1 when no .page token is found so
+    // legacy single-sheet layouts still render.
+    const divClassRe = /<div\b[^>]*\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+    function countPageSheets(html: string): number {
+      let count = 0;
+      let m: RegExpExecArray | null;
+      divClassRe.lastIndex = 0;
+      while ((m = divClassRe.exec(html)) !== null) {
+        const classStr = m[1] ?? m[2] ?? "";
+        if (classStr.split(/\s+/).includes("page")) count++;
+      }
+      return count;
+    }
+    const pageContents = manifest.pages.flatMap((page) => {
       const pagePath = join(baseDir, page.file);
       const html = existsSync(pagePath) ? readFileSync(pagePath, "utf-8") : `<p>Missing: ${page.file}</p>`;
-      return { file: page.file, title: page.title || page.file.replace(/\.html$/i, ""), html };
+      const sheetCount = Math.max(countPageSheets(html), 1);
+      const baseTitle = page.title || page.file.replace(/\.html$/i, "");
+      return Array.from({ length: sheetCount }, (_, sheetIndex) => ({
+        file: page.file,
+        sheetIndex,                          // 0-based index into .page within the file
+        sheetTotal: sheetCount,
+        title: sheetCount > 1 ? `${baseTitle} · ${sheetIndex + 1}/${sheetCount}` : baseTitle,
+        html,
+      }));
     });
 
     const title = manifest.title || "Kami Document";
@@ -2287,7 +2320,7 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
 
 <div class="export-toolbar">
   <span class="export-title">${title}</span>
-  <span class="export-meta">${pageContents.length} file${pageContents.length > 1 ? "s" : ""} · ${paperLabel} · ${pageWidthMm} × ${pageHeightMm} mm</span>
+  <span class="export-meta">${pageContents.length} page${pageContents.length > 1 ? "s" : ""} · ${paperLabel} · ${pageWidthMm} × ${pageHeightMm} mm</span>
   <div class="export-spacer"></div>
   <button class="btn btn-primary" id="btn-download-pdf" onclick="downloadPdf()">Download PDF</button>
   <button class="btn" id="btn-download-html" onclick="downloadHtml()">Download HTML</button>
@@ -2328,6 +2361,27 @@ pages.forEach(function(page, i) {
   root.appendChild(section);
 
   var frame = document.getElementById("frame-" + i);
+  // A kami HTML file can contain several <div class="page"> sheets. Each
+  // paper-frame here represents one sheet, so once the iframe loads we
+  // hide all sheets except the one at page.sheetIndex. Use a data-attr
+  // rather than :nth-of-type so the rule is robust against hand-authored
+  // sibling noise (comments, whitespace text nodes, etc.).
+  frame.addEventListener("load", function() {
+    try {
+      var doc = frame.contentDocument;
+      if (!doc || !doc.body) return;
+      var sheets = doc.querySelectorAll(".page");
+      // Legacy single-sheet file: nothing to hide.
+      if (sheets.length <= 1) return;
+      for (var si = 0; si < sheets.length; si++) {
+        sheets[si].setAttribute("data-kami-export-sheet", String(si));
+      }
+      var style = doc.createElement("style");
+      style.textContent =
+        '.page[data-kami-export-sheet]:not([data-kami-export-sheet="' + page.sheetIndex + '"]) { display: none !important; }';
+      doc.head.appendChild(style);
+    } catch (e) { /* ignore cross-origin if any */ }
+  });
   frame.srcdoc = page.html;
 });
 
@@ -2366,14 +2420,23 @@ function downloadHtml() {
   });
 }
 
-// Count the number of <div class="page"> elements inside an iframe. Each
-// counts as one paper page for screenshot purposes. Fall back to 1 if the
-// iframe has no explicit .page markers (single-sheet layouts).
+// Return the visible <div class="page"> elements inside an iframe.
+// Kami's per-sheet export splitter hides non-target sheets with
+// display:none; we skip those so the same sheet isn't captured once per
+// sibling paper-frame. Fall back to doc.body for single-sheet layouts
+// that have no explicit .page markers.
 function paperPagesIn(iframe) {
   try {
     var doc = iframe.contentDocument;
-    var pages = doc.querySelectorAll(".page");
-    return pages.length > 0 ? Array.from(pages) : [doc.body];
+    var win = iframe.contentWindow;
+    var all = Array.from(doc.querySelectorAll(".page"));
+    var visible = all.filter(function(p) {
+      try { return win.getComputedStyle(p).display !== "none"; }
+      catch (e) { return true; }
+    });
+    if (visible.length > 0) return visible;
+    if (all.length > 0) return all;
+    return [doc.body];
   } catch (e) { return []; }
 }
 

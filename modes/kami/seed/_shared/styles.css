@@ -103,12 +103,7 @@
 }
 
 * { box-sizing: border-box; }
-/* The iframe is sized to fit all pages at once (height = paper × pageCount
-   in scroll mode, or exactly one paper in focus/book). All scrolling is
-   owned by the outer viewer container, so kill any scrollbar the iframe's
-   own document might try to grow. The fadeIn animation's transient
-   translateY used to make a scrollbar flicker into and out of existence. */
-html, body { margin: 0; padding: 0; overflow: hidden; }
+html, body { margin: 0; padding: 0; }
 body {
   background: #d9d6ca;                      /* letterbox outside the sheet */
   color: var(--near-black);
