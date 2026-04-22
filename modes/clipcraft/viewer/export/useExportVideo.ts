@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Composition } from "@pneuma-craft/timeline";
 import { createExportEngine } from "@pneuma-craft/video";
+import type { SubtitleRenderer } from "@pneuma-craft/video";
 import type { WorkspaceAssetResolver } from "../assetResolver.js";
 
 export type ExportStatus =
@@ -57,6 +58,7 @@ export interface UseExportVideoResult {
 export function useExportVideo(
   composition: Composition | null,
   resolver: WorkspaceAssetResolver,
+  subtitleRenderer?: SubtitleRenderer,
 ): UseExportVideoResult {
   const [state, setState] = useState<ExportState>(INITIAL);
   const engineRef = useRef<ReturnType<typeof createExportEngine> | null>(null);
@@ -101,7 +103,7 @@ export function useExportVideo(
         byteSize: null,
       });
 
-      const engine = createExportEngine();
+      const engine = createExportEngine({ subtitleRenderer });
       engineRef.current = engine;
       const offProgress = engine.onProgress((p) => {
         setState((s) => ({
@@ -150,7 +152,7 @@ export function useExportVideo(
         engineRef.current = null;
       }
     },
-    [composition, resolver, revokeUrl],
+    [composition, resolver, revokeUrl, subtitleRenderer],
   );
 
   const abort = useCallback(() => {

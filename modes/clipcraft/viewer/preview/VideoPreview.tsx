@@ -1,22 +1,18 @@
 import { PreviewRoot, useComposition } from "@pneuma-craft/react";
-import { CaptionOverlay } from "./CaptionOverlay.js";
-import type { CaptionStyle } from "../../persistence.js";
 import { theme } from "../theme/tokens.js";
-
-export interface VideoPreviewProps {
-  captionStyle?: CaptionStyle;
-}
 
 /**
  * Read-only preview surface. The craft PreviewRoot renders into a
- * <canvas> via its render-prop; we stack a caption DOM layer on top.
+ * <canvas> via its render-prop; subtitles are rasterized by the
+ * subtitleRenderer passed to PneumaCraftProvider, so preview and export
+ * share the same pixel output.
  *
  * NOTE: we do NOT mount <video> elements here. Legacy did so because
  * its playback was driven from DOM video elements; craft's
  * PlaybackEngine renders frames into the canvas directly, so all
  * video decoding is inside the engine.
  */
-export function VideoPreview({ captionStyle }: VideoPreviewProps) {
+export function VideoPreview() {
   const composition = useComposition();
 
   return (
@@ -126,8 +122,6 @@ export function VideoPreview({ captionStyle }: VideoPreviewProps) {
               No composition loaded
             </div>
           )}
-
-          <CaptionOverlay style={captionStyle} />
         </div>
       </div>
     </div>

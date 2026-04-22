@@ -12,6 +12,7 @@ import { useSource } from "../../../src/hooks/useSource.js";
 import {
   projectFileToCommands,
   serializeProject,
+  type CaptionStyle,
   type ProjectFile,
 } from "../persistence.js";
 import {
@@ -19,6 +20,8 @@ import {
   type WorkspaceAssetResolver,
 } from "./assetResolver.js";
 import { PreviewPanel } from "./PreviewPanel.js";
+import { resolveCaptionStyle } from "./preview/captionStyle.js";
+import { createSubtitleRenderer } from "./preview/subtitleRenderer.js";
 import { CommandBar } from "./CommandBar.js";
 import { ExportProgress } from "./export/ExportProgress.js";
 import { useExportVideo } from "./export/useExportVideo.js";
@@ -41,6 +44,16 @@ const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({
   const assetResolver = useMemo(() => createWorkspaceAssetResolver(), []);
   const projectSource = sources.project as Source<ProjectFile> | undefined;
   const { value: project, write: writeProject, status } = useSource(projectSource);
+
+  // Stable-identity subtitle renderer: the PneumaCraftProvider captures it
+  // once at mount (store-level), so live edits to captionStyle must flow
+  // through a ref the renderer reads on every frame.
+  const captionStyleRef = useRef<Required<CaptionStyle>>(resolveCaptionStyle(undefined));
+  captionStyleRef.current = resolveCaptionStyle(project?.captionStyle);
+  const subtitleRenderer = useMemo(
+    () => createSubtitleRenderer(() => captionStyleRef.current),
+    [],
+  );
 
   // Keep the resolver's id → uri map in sync with the project's assets.
   // `assetResolver` identity is stable across setAssets calls, so updating
@@ -79,7 +92,11 @@ const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({
   const errorMessage = status.lastError?.message ?? null;
 
   return (
-    <PneumaCraftProvider key={providerKey} assetResolver={assetResolver}>
+    <PneumaCraftProvider
+      key={providerKey}
+      assetResolver={assetResolver}
+      subtitleRenderer={subtitleRenderer}
+    >
       <AssetErrorsProvider>
         <VariantPointerProvider>
           <SceneProvider initialScenes={project?.scenes ?? []}>
@@ -95,6 +112,7 @@ const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({
                       commands={commands ?? []}
                       onNotifyAgent={onNotifyAgent}
                       assetResolver={assetResolver}
+                      subtitleRenderer={subtitleRenderer}
                     />
                   </GenerationDialogProvider>
                 </EditorToolProvider>
@@ -115,6 +133,7 @@ function SyncedBody({
   commands,
   onNotifyAgent,
   assetResolver,
+  subtitleRenderer,
 }: {
   project: ProjectFile | null;
   writeProject: (value: ProjectFile) => Promise<void>;
@@ -125,6 +144,7 @@ function SyncedBody({
     n: import("../../../core/types/viewer-contract.js").ViewerNotification,
   ) => void;
   assetResolver: WorkspaceAssetResolver;
+  subtitleRenderer: import("@pneuma-craft/video").SubtitleRenderer;
 }) {
   const dispatchEnvelope = usePneumaCraftStore((s) => s.dispatchEnvelope);
   const coreState = usePneumaCraftStore((s) => s.coreState);
@@ -139,7 +159,7 @@ function SyncedBody({
   // round-trip, no backend invocation. The hook manages its own state
   // (progress, download url, error) so the CommandBar button can remain
   // a thin dispatcher.
-  const exportVideo = useExportVideo(composition, assetResolver);
+  const exportVideo = useExportVideo(composition, assetResolver, subtitleRenderer);
   const commandHandlers = useMemo(
     () => ({
       "export-video": () => {
@@ -245,10 +265,7 @@ function SyncedBody({
         onDismiss={exportVideo.dismiss}
       />
       <div style={{ flex: 1, minHeight: 0 }}>
-        <PreviewPanel
-          hydrationError={hydrationError}
-          captionStyle={captionStyle}
-        />
+        <PreviewPanel hydrationError={hydrationError} />
       </div>
     </div>
   );

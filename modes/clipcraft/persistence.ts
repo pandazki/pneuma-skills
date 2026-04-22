@@ -98,9 +98,11 @@ export interface ProjectScene {
 }
 
 /**
- * Caption overlay styling — mode-local sidecar. Rendered on top of the
- * craft preview canvas by modes/clipcraft/viewer/preview/CaptionOverlay.
- * All fields optional so legacy project files remain valid.
+ * Caption overlay styling — mode-local sidecar. Rasterized onto the craft
+ * preview and export canvases by
+ * modes/clipcraft/viewer/preview/subtitleRenderer.ts, which is wired into
+ * PneumaCraftProvider so preview and export stay pixel-identical. All
+ * fields optional so legacy project files remain valid.
  */
 export interface CaptionStyle {
   fontSize?: number;       // px, default 16

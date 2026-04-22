@@ -1,13 +1,8 @@
 import { VideoPreview } from "../preview/VideoPreview.js";
-import type { CaptionStyle } from "../../persistence.js";
 import { useTimelineMode } from "../hooks/useTimelineMode.js";
 import { TimelineShell } from "./TimelineShell.js";
 import { AssetPanel } from "../assets/AssetPanel.js";
 import { theme } from "../theme/tokens.js";
-
-export interface ClipCraftLayoutProps {
-  captionStyle?: CaptionStyle;
-}
 
 /**
  * ClipCraft's outer layout:
@@ -24,7 +19,7 @@ export interface ClipCraftLayoutProps {
  * to 0 and the shell takes the full height. Legacy reference:
  * modes/clipcraft-legacy/viewer/layout/ClipCraftLayout.tsx.
  */
-export function ClipCraftLayout({ captionStyle }: ClipCraftLayoutProps = {}) {
+export function ClipCraftLayout() {
   const { timelineMode } = useTimelineMode();
   const isExpanded = timelineMode !== "collapsed";
 
@@ -53,7 +48,7 @@ export function ClipCraftLayout({ captionStyle }: ClipCraftLayoutProps = {}) {
       >
         <AssetPanel />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <VideoPreview captionStyle={captionStyle} />
+          <VideoPreview />
         </div>
       </div>
 
@@ -61,4 +56,3 @@ export function ClipCraftLayout({ captionStyle }: ClipCraftLayoutProps = {}) {
     </div>
   );
 }
-

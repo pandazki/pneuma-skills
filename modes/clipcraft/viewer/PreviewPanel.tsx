@@ -1,11 +1,9 @@
 import { ClipCraftLayout } from "./layout/ClipCraftLayout.js";
 import { StateDump } from "./StateDump.js";
-import type { CaptionStyle } from "../persistence.js";
 import { theme } from "./theme/tokens.js";
 
 export interface PreviewPanelProps {
   hydrationError: string | null;
-  captionStyle?: CaptionStyle;
 }
 
 /**
@@ -13,7 +11,7 @@ export interface PreviewPanelProps {
  * ClipCraftLayout; PreviewPanel is a thin shim that keeps the debug
  * StateDump accessible behind a collapsed details element.
  */
-export function PreviewPanel({ hydrationError, captionStyle }: PreviewPanelProps) {
+export function PreviewPanel({ hydrationError }: PreviewPanelProps) {
   return (
     <div
       className="cc-preview-panel"
@@ -28,7 +26,7 @@ export function PreviewPanel({ hydrationError, captionStyle }: PreviewPanelProps
       }}
     >
       <div style={{ flex: 1, minHeight: 0 }}>
-        <ClipCraftLayout captionStyle={captionStyle} />
+        <ClipCraftLayout />
       </div>
       <details
         style={{
