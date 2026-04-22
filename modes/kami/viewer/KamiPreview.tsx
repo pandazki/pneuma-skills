@@ -402,14 +402,130 @@ function KamiThumbStrip({
 // Pairing convention: [null, 0] (cover), [1, 2], [3, 4], …
 // Prev from spread [1,2] goes to cover [null, 0]; from [3,4] goes to [1,2].
 
+// ── Book-mode spread crossfade ────────────────────────────────────────────
+//
+// When the active spread changes we:
+//   1. Let applyViewModeStyles swap the underlying .page visibility to
+//      the destination spread. New pages fade in via the mode's
+//      kami-book-fade-in keyframe (pure opacity, no translateY).
+//   2. Clone the OLD spread's visible pages and pin them as overlays at
+//      the same positions. Animate their opacity 1 → 0 over the same
+//      duration. Together the two sides produce a crossfade.
+//
+// All .page elements always remain in the DOM (the view-mode CSS just
+// hides the non-active ones), so cloning the previous spread by index
+// works regardless of visibility state.
+
+type SpreadPair = { left: number | null; right: number | null };
+
+// A physical book is made of folded leaves; each leaf has a recto
+// (right-facing, odd-numbered) and a verso (left-facing, even-numbered).
+// Open spreads are [verso, recto] pairs like [2, 3]. The first and last
+// pages of an odd/short book are "half spreads":
+//   • Cover (before the first flip): only the first recto is visible on
+//     the right; the left half is blank (no leaf under it yet).
+//   • Back (after the last flip on a book with an odd trailing page):
+//     only the trailing verso is visible on the left; the right half is
+//     blank.
+// This function mirrors that structure. activePageIndex = 0 is cover.
+// Odd indices are left-of-spread positions; even indices > 0 are
+// right-of-spread. When a pair slot falls off the end of the page list
+// we return null for that side so the viewer renders a half spread.
+
+function spreadPair(i: number, count: number): SpreadPair {
+  if (count <= 0) return { left: null, right: null };
+  if (i === 0) return { left: null, right: 0 };
+  if (i % 2 === 1) {
+    // Odd i is the left-of-spread. Pair with i+1 on the right; if i is
+    // the final page (e.g. 2-page book at i=1) the right slot is empty.
+    if (i + 1 < count) return { left: i, right: i + 1 };
+    return { left: i, right: null };
+  }
+  return { left: i - 1, right: i };
+}
+
+function runBookCrossfade(
+  doc: Document,
+  fromIdx: number,
+  toIdx: number,
+  pageCount: number,
+): () => void {
+  const noop = () => {};
+  if (fromIdx === toIdx || pageCount < 1) return noop;
+  const pages = Array.from(doc.querySelectorAll<HTMLElement>(".page"));
+  if (!pages.length) return noop;
+
+  const fromP = spreadPair(fromIdx, pages.length);
+  // For a cover-involving transition there's only one page visible; for a
+  // spread there are two. Position the clones with left: 50% at the spine
+  // — flex centering puts the real pages at the same coordinates.
+  const slots: Array<{ idx: number; align: "left" | "right" | "center" }> = [];
+  if (fromP.left !== null)                slots.push({ idx: fromP.left,  align: "left"   });
+  if (fromP.right !== null)               slots.push({ idx: fromP.right, align: "right"  });
+  if (fromP.left === null && fromP.right !== null) {
+    // Cover: only right page exists, positioned right-of-spine.
+    slots[slots.length - 1].align = "right";
+  }
+
+  const DURATION = 260;
+  const clones: Array<{ el: HTMLElement; anim: Animation }> = [];
+  for (const slot of slots) {
+    const src = pages[slot.idx];
+    if (!src) continue;
+    const clone = src.cloneNode(true) as HTMLElement;
+    clone.removeAttribute("data-kami-index");
+    clone.style.setProperty("display", "block", "important");
+    clone.style.position = "absolute";
+    clone.style.top = "0";
+    clone.style.margin = "0";
+    clone.style.width = "var(--page-width)";
+    clone.style.height = "var(--page-height)";
+    clone.style.zIndex = "50";
+    clone.style.pointerEvents = "none";
+    // kill the shared fadeIn on the clone — it would re-play the 6px
+    // slide on insert, mixing with our opacity fade-out.
+    clone.style.animation = "none";
+    if (slot.align === "left") {
+      clone.style.left = "50%";
+      clone.style.transform = "translateX(-100%)";
+    } else {
+      // right-of-spine (either right page of a spread, or cover page)
+      clone.style.left = "50%";
+    }
+    doc.body.appendChild(clone);
+    const anim = clone.animate(
+      [{ opacity: 1 }, { opacity: 0 }] as Keyframe[],
+      { duration: DURATION, fill: "forwards", easing: "ease-out" },
+    );
+    anim.onfinish = () => clone.remove();
+    clones.push({ el: clone, anim });
+  }
+
+  return () => {
+    for (const c of clones) {
+      c.anim.cancel();
+      c.el.remove();
+    }
+  };
+}
+
+// Visibility: hide by default so arrows don't compete with the book
+// content. Show when the cursor moves into the left/right edge zone (the
+// region where the arrows actually live) OR on a hover-near — reveal
+// widens as the mouse approaches from outside the zone. Hide again after
+// 2s of cursor stillness. visible is driven externally so the auto-hide
+// timer lives with the container's pointer listener.
+
 function BookNav({
   activeIndex,
   pageCount,
   onPick,
+  visible,
 }: {
   activeIndex: number;
   pageCount: number;
   onPick: (i: number) => void;
+  visible: boolean;
 }) {
   const goPrev = () => {
     if (activeIndex === 0) return;
@@ -451,7 +567,10 @@ function BookNav({
     justifyContent: "center",
     boxShadow: "0 4px 12px rgba(20,20,19,0.15)",
     zIndex: 4,
-    pointerEvents: "auto",
+    opacity: visible ? 1 : 0,
+    pointerEvents: visible ? "auto" : "none",
+    transition: "opacity 180ms ease-out",
+    willChange: "opacity",
   });
 
   return (
@@ -459,7 +578,7 @@ function BookNav({
       <button
         onClick={goPrev}
         disabled={atStart}
-        style={{ ...btnStyle(atStart), left: 16 }}
+        style={{ ...btnStyle(atStart), left: 12 }}
         title="Previous spread"
       >
         <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -469,7 +588,7 @@ function BookNav({
       <button
         onClick={goNext}
         disabled={atEnd}
-        style={{ ...btnStyle(atEnd), right: 16 }}
+        style={{ ...btnStyle(atEnd), right: 12 }}
         title="Next spread"
       >
         <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -783,34 +902,59 @@ function ViewportToolbar({
         ))}
       </div>}
 
-      {/* Right: Export */}
-      <button
-        onClick={onExport}
-        title="Export &amp; Download"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "4px",
-          padding: "3px 8px",
-          borderRadius: "4px",
-          border: "none",
-          cursor: "pointer",
-          fontSize: "11px",
-          transition: "all 0.15s",
-          background: "transparent",
-          color: "rgba(255,255,255,0.5)",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.color = "rgba(255,255,255,0.8)";
-          e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.color = "rgba(255,255,255,0.5)";
-          e.currentTarget.style.background = "transparent";
-        }}
-      >
-        <DownloadIcon />
-      </button>
+      {/* Right cluster: design-language attribution + export button.
+          The attribution used to float inside the iframe container where
+          it scrolled with the content in scroll mode. Parking it in the
+          static toolbar keeps it visible without fighting the reader. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <a
+          href="https://github.com/tw93/kami"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontFamily: "Newsreader, Georgia, serif",
+            fontSize: 11,
+            letterSpacing: 0.2,
+            color: "rgba(255,255,255,0.40)",
+            textDecoration: "none",
+            padding: "3px 6px",
+            borderRadius: 4,
+            transition: "color 0.15s",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.75)")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.40)")}
+          title="Design language adapted from tw93/kami (MIT). Click to open the source repository."
+        >
+          Design adapted from tw93/kami <span aria-hidden="true">↗</span>
+        </a>
+        <button
+          onClick={onExport}
+          title="Export &amp; Download"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            padding: "3px 8px",
+            borderRadius: "4px",
+            border: "none",
+            cursor: "pointer",
+            fontSize: "11px",
+            transition: "all 0.15s",
+            background: "transparent",
+            color: "rgba(255,255,255,0.5)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "rgba(255,255,255,0.8)";
+            e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = "rgba(255,255,255,0.5)";
+            e.currentTarget.style.background = "transparent";
+          }}
+        >
+          <DownloadIcon />
+        </button>
+      </div>
     </div>
   );
 }
@@ -972,6 +1116,19 @@ export default function KamiPreview({
   const [pageCount, setPageCount] = useState(1);
   // Bump when the iframe reloads so thumbnails refresh their scaled render.
   const [iframeRenderTick, setIframeRenderTick] = useState(0);
+
+  // Previous activePageIndex, used by the book-mode page-turn effect to
+  // decide direction and to skip non-navigation updates (contentSet / file
+  // changes reset activePageIndex to 0 — we don't want a bogus flip then).
+  const prevBookIndexRef = useRef(activePageIndex);
+
+  // Book-mode navigation arrows: hidden by default so they don't compete
+  // with the book content (they otherwise pin right against the page
+  // edge when the spread fills the container). Shown when the cursor
+  // enters either edge zone, hidden again 2s after the cursor stops
+  // moving or leaves the viewer.
+  const [navVisible, setNavVisible] = useState(false);
+  const navIdleTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const VIEWPORT_PRESETS = useMemo(
     () => buildKamiPreset(config ?? undefined),
@@ -1241,23 +1398,48 @@ body { margin: 0 !important; padding: 0 !important; }
 body { margin: 0 !important; padding: 0 !important; background: #d9d6ca !important; }
 .page { margin: 0 auto !important; }`;
       } else if (opts.mode === "book") {
-        // Book: first page is a right-side cover (pair = [null, 0]).
-        // Subsequent pairs: [1,2], [3,4], ... so activeIdx pairs with
-        // activeIdx-1 when activeIdx is even (>=2), or activeIdx+1 when odd.
-        const i = opts.activeIdx;
-        let left: number | null;
-        let right: number;
-        if (i === 0) { left = null; right = 0; }
-        else if (i % 2 === 1) { left = i; right = i + 1; }
-        else { left = i - 1; right = i; }
+        // Use the shared spreadPair to avoid duplicate logic. 2-page
+        // content hits the i=1 + right-out-of-range fallback and gets
+        // rendered as a real two-page spread instead of one page
+        // awkwardly centred across the spine.
+        const { left, right } = spreadPair(opts.activeIdx, pageEls.length);
         const visible = [left, right].filter((x): x is number => x !== null);
         const keep = visible.map((v) => `[data-kami-index="${v}"]`).join(",");
+        // animation: none disables the shared stylesheet's fadeIn so the
+        // arriving spread appears at full opacity immediately; the
+        // outgoing spread's cloned overlay is what fades out (see
+        // runBookCrossfade). Running the keyframe on .page at the same
+        // time as the clone-fade creates a dim midpoint where both
+        // layers are partially transparent and the iframe background
+        // bleeds through — that's the "flash / jump" the user saw.
         css = `.page[data-kami-index]:not(${keep}) { display: none !important; }
 html, body { margin: 0 !important; padding: 0 !important; background: #d9d6ca !important; }
-body { display: flex !important; justify-content: center !important; align-items: flex-start !important; gap: 0 !important; }
-.page { margin: 0 !important; }
-/* Page 0 alone acts as a right-facing cover — leave the left sheet blank */
-${left === null ? '.page[data-kami-index="0"] { margin-left: var(--page-width) !important; }' : ''}`;
+body { display: flex !important; justify-content: center !important; align-items: flex-start !important; gap: 0 !important; position: relative !important; }
+.page { margin: 0 !important; animation: none !important; }
+/* Cover (only right page visible) — push the single sheet into the right
+   half so the left half stays blank. Back-cover-style (only left visible)
+   mirrors it. */
+${left === null && right !== null ? `.page[data-kami-index="${right}"] { margin-left: var(--page-width) !important; }` : ''}
+${right === null && left !== null ? `.page[data-kami-index="${left}"] { margin-right: var(--page-width) !important; }` : ''}
+/* Spine gutter: darker seam + page curl on the inner edges. */
+body::after {
+  content: '';
+  position: fixed;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 40px;
+  transform: translateX(-50%);
+  background:
+    linear-gradient(to right,
+      rgba(20, 20, 19, 0) 0%,
+      rgba(20, 20, 19, 0.05) 35%,
+      rgba(20, 20, 19, 0.16) 50%,
+      rgba(20, 20, 19, 0.05) 65%,
+      rgba(20, 20, 19, 0) 100%);
+  pointer-events: none;
+  z-index: 10;
+}`;
       } else {
         // Scroll: no layout change beyond guides.
         css = "";
@@ -1327,7 +1509,126 @@ ${left === null ? '.page[data-kami-index="0"] { margin-left: var(--page-width) !
         scope: "main",
       });
     } catch {}
+    // Reset the outer scroll container when leaving scroll mode so a
+    // residual scrollTop from scroll mode doesn't offset the centered
+    // single/spread layout of focus / book.
+    if (kamiViewMode !== "scroll") {
+      const container = containerRef.current;
+      if (container) container.scrollTop = 0;
+    }
   }, [kamiViewMode, activePageIndex, showGuides, applyViewModeStyles]);
+
+  // Book-mode spread crossfade: clone the outgoing spread and fade it
+  // out; the incoming spread sits underneath already at opacity 1, so
+  // the user sees it smoothly revealed as the clone dissolves. No
+  // keyframe on the new pages — two-sided opacity interpolation dims
+  // through the midpoint and looks like a blink.
+  useEffect(() => {
+    const prev = prevBookIndexRef.current;
+    prevBookIndexRef.current = activePageIndex;
+    if (kamiViewMode !== "book") return;
+    if (prev === activePageIndex) return;
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    if (!doc) return;
+    return runBookCrossfade(doc, prev, activePageIndex, pageCount);
+  }, [activePageIndex, kamiViewMode, pageCount]);
+
+  // Book-mode nav-arrow auto-hide. Arrows appear when the cursor moves
+  // inside the viewer container, stay for 2s after the last movement,
+  // then fade out. They also hide immediately on mouseleave.
+  useEffect(() => {
+    if (kamiViewMode !== "book" || pageCount <= 1) {
+      setNavVisible(false);
+      return;
+    }
+    const container = containerRef.current;
+    if (!container) return;
+    const show = () => {
+      setNavVisible(true);
+      clearTimeout(navIdleTimerRef.current);
+      navIdleTimerRef.current = setTimeout(() => setNavVisible(false), 2000);
+    };
+    const hide = () => {
+      clearTimeout(navIdleTimerRef.current);
+      setNavVisible(false);
+    };
+    container.addEventListener("mousemove", show);
+    container.addEventListener("mouseenter", show);
+    container.addEventListener("mouseleave", hide);
+    return () => {
+      container.removeEventListener("mousemove", show);
+      container.removeEventListener("mouseenter", show);
+      container.removeEventListener("mouseleave", hide);
+      clearTimeout(navIdleTimerRef.current);
+    };
+  }, [kamiViewMode, pageCount]);
+
+  // ── Keyboard page navigation ───────────────────────────────────────────────
+  //
+  // Each view mode owns its own interpretation of "next / previous":
+  //   scroll : snap the outer container one paper-height at a time
+  //   focus  : step activePageIndex by one page
+  //   book   : step activePageIndex by one spread (same math as BookNav)
+  //
+  // Keys are attached to document, but suppressed whenever focus is in a
+  // text input / textarea / contenteditable (the chat composer), so the
+  // user can still type arrows inside prompts without flipping pages.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('input, textarea, [contenteditable="true"], [contenteditable=""]')) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      const k = e.key;
+      const isNext = k === "ArrowRight" || k === "ArrowDown" || k === "PageDown" || k === " " || k === "Spacebar";
+      const isPrev = k === "ArrowLeft"  || k === "ArrowUp"   || k === "PageUp"   || (k === " " && e.shiftKey);
+      const isHome = k === "Home";
+      const isEnd  = k === "End";
+      if (!isNext && !isPrev && !isHome && !isEnd) return;
+
+      if (kamiViewMode === "focus") {
+        e.preventDefault();
+        if (isHome)      setActivePageIndex(0);
+        else if (isEnd)  setActivePageIndex(Math.max(pageCount - 1, 0));
+        else if (isNext) setActivePageIndex((i) => Math.min(i + 1, pageCount - 1));
+        else             setActivePageIndex((i) => Math.max(i - 1, 0));
+      } else if (kamiViewMode === "book") {
+        e.preventDefault();
+        const lastSpread = pageCount <= 1 ? 0
+          : (pageCount - 1) % 2 === 1 ? pageCount - 1 : pageCount - 2;
+        if (isHome)      setActivePageIndex(0);
+        else if (isEnd)  setActivePageIndex(Math.max(lastSpread, 0));
+        else if (isNext) setActivePageIndex((i) => {
+          if (i === 0) return Math.min(1, pageCount - 1);
+          const normalized = i % 2 === 1 ? i : i - 1;
+          const next = normalized + 2;
+          return next < pageCount ? next : i;
+        });
+        else             setActivePageIndex((i) => {
+          if (i === 0) return 0;
+          const normalized = i % 2 === 1 ? i : i - 1;
+          const prev = normalized - 2;
+          return prev < 1 ? 0 : prev;
+        });
+      } else {
+        // scroll mode: jump one paper-height per press; let raw arrows
+        // through so native fine-grained scroll still works, but hijack
+        // PgUp/PgDn/Home/End/Space to step by whole pages.
+        if (k === "ArrowUp" || k === "ArrowDown" || k === "ArrowLeft" || k === "ArrowRight") return;
+        const container = containerRef.current;
+        if (!container) return;
+        e.preventDefault();
+        const stepPx = pageCount > 0 ? container.scrollHeight / pageCount : container.clientHeight;
+        if (isHome)      container.scrollTo({ top: 0,                         behavior: "smooth" });
+        else if (isEnd)  container.scrollTo({ top: container.scrollHeight,    behavior: "smooth" });
+        else if (isNext) container.scrollBy({ top: stepPx,                    behavior: "smooth" });
+        else             container.scrollBy({ top: -stepPx,                   behavior: "smooth" });
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [kamiViewMode, pageCount]);
 
   // ── Text edit handling ────────────────────────────────────────────────────
 
@@ -1660,6 +1961,7 @@ ${left === null ? '.page[data-kami-index="0"] { margin-left: var(--page-width) !
                 style={{
                   width: iframeLayout.width,
                   height: iframeLayout.height,
+                  position: "relative",
                   transform: `scale(${iframeLayout.scale})`,
                   transformOrigin: kamiViewMode === "scroll" ? "top center" : "center center",
                   borderRadius: "2px",
@@ -1760,36 +2062,13 @@ ${left === null ? '.page[data-kami-index="0"] { margin-left: var(--page-width) !
               onCancel={() => setPendingAnnotation(null)}
             />
           )}
-          {/* Design attribution — kami's visual language is adapted from
-              tw93/kami (MIT); surfaced here so users can find the source. */}
-          <a
-            href="https://github.com/tw93/kami"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              position: "absolute",
-              bottom: 10,
-              right: 14,
-              fontFamily: "Newsreader, Georgia, serif",
-              fontSize: 11,
-              letterSpacing: 0.2,
-              color: "rgba(20,20,19,0.45)",
-              textDecoration: "none",
-              pointerEvents: "auto",
-              zIndex: 5,
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "#1B365D")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(20,20,19,0.45)")}
-            title="Design language adapted from tw93/kami (MIT). Click to open the source repository."
-          >
-            Design adapted from tw93/kami <span aria-hidden="true">↗</span>
-          </a>
           {/* Book-mode navigation arrows + pair counter */}
           {kamiViewMode === "book" && pageCount > 1 && (
             <BookNav
               activeIndex={activePageIndex}
               pageCount={pageCount}
               onPick={setActivePageIndex}
+              visible={navVisible}
             />
           )}
           {/* Focus/Book mode: page position indicator */}
@@ -1809,14 +2088,14 @@ ${left === null ? '.page[data-kami-index="0"] { margin-left: var(--page-width) !
                 if (kamiViewMode !== "book" || activePageIndex === 0) {
                   return `${activePageIndex + 1} / ${pageCount}`;
                 }
-                // Book mode spread: same pair math as applyViewModeStyles, then
-                // render as 1-based page numbers so the counter matches what's
-                // visually on screen.
-                const i = activePageIndex;
-                const left  = i % 2 === 1 ? i : i - 1;
-                const right = i % 2 === 1 ? i + 1 : i;
-                const rightShown = Math.min(right, pageCount - 1);
-                return `${left + 1}–${rightShown + 1} / ${pageCount}`;
+                // Use the same spreadPair the viewer CSS uses so the
+                // counter always matches what's on screen — including
+                // the 2-page edge case where i=1 shows [0, 1].
+                const { left, right } = spreadPair(activePageIndex, pageCount);
+                const l = left  !== null ? left  + 1 : null;
+                const r = right !== null ? right + 1 : null;
+                if (l !== null && r !== null && l !== r) return `${l}–${r} / ${pageCount}`;
+                return `${(l ?? r)!} / ${pageCount}`;
               })()}
             </div>
           )}
