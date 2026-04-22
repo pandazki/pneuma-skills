@@ -32,9 +32,11 @@
 
   /* ════════════ COVER ════════════ */
   .cover {
+    /* Fills the parent .page's safe-area content box. Height is 100% of
+       page's content height (page-height minus safe-top/bottom insets),
+       so the flex space-between balances the full printable zone. */
     width: 100%;
-    min-height: calc(var(--page-height) - 24mm);
-    padding: 25mm 20mm;
+    height: 100%;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -326,9 +328,10 @@
 
   /* ════════════ CONTACT ════════════ */
   section.contact {
+    /* Fills the parent .page's safe-area content box and centers the
+       contact block vertically within it. */
     break-before: page;
-    padding: 20mm 0;
-    min-height: calc(var(--page-height) - 80mm);
+    height: 100%;
     display: flex;
     flex-direction: column;
     justify-content: center;

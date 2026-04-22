@@ -40,10 +40,11 @@ _shared/
   styles.css          # Tokens + paper dimensions. Don't edit casually.
   assets/fonts/       # Bundled fonts (6 files).
   assets/diagrams/    # architecture.html, flowchart.html, quadrant.html
-tesla-one-pager/       # CN one-pager demo (from kami)
+pneuma-one-pager/      # EN one-pager demo (Pneuma product brief)
 musk-resume/           # EN resume demo (from kami)
 kaku-portfolio/        # CN 6-page portfolio demo (from kami)
 blank/                 # Empty .page starter
+.pneuma/kami-fit.json  # Auto-written fit report — READ after every edit
 ```
 
 Each content set has an `index.html` + `manifest.json` (+ a `README.md`
@@ -60,6 +61,53 @@ ones when they hand over raw content.
    sections that match the target doc type's structure.
 4. Gap-check: list what the layout needs but the content doesn't have.
    Share the gap table with the user before guessing.
+
+## Fit discipline — the kami authoring loop
+
+Kami is a **strict-page** medium. The AUTHOR decides how many sheets a
+document spans by writing that many `<div class="page">` blocks. Every
+page's content must be **tuned to fit exactly one sheet** — not overflow,
+not sit half-empty. This is kami's core discipline, adapted from the
+WeasyPrint-verified workflow in the upstream project.
+
+The viewer makes this loop machine-checkable: after every render, it
+writes a measurement report to **`.pneuma/kami-fit.json`**. **You MUST
+read this file after every meaningful edit** and iterate until every
+page reports `status: "fits"`.
+
+Report shape:
+
+```json
+{
+  "content_set": "musk-resume",
+  "file": "index.html",
+  "paper": { "size": "A4", "orientation": "Portrait", "height_mm": 297 },
+  "pages": [
+    { "index": 1, "content_height_mm": 289.2, "overflow_mm": -7.8, "status": "fits" },
+    { "index": 2, "content_height_mm": 314.5, "overflow_mm":  17.5, "status": "overflow" }
+  ],
+  "summary": { "overflow_count": 1, "sparse_count": 0, "fits_count": 1 }
+}
+```
+
+| Status     | Meaning                           | What to do |
+|------------|-----------------------------------|------------|
+| `fits`     | Content is within ±50mm of paper height | Stop. Move on. |
+| `overflow` | `overflow_mm > 2` — will not print on one sheet | **Must trim.** Drop a bullet, tighten phrasing, remove a section, or merge duplicated concepts. Do NOT just shrink font-size or line-height — those are locked by the design system. |
+| `sparse`   | `overflow_mm < -50` — paper is ~20%+ blank | Consider filling: expand a weak section with concrete specifics, add a pull-quote, include a metric, OR merge adjacent pages if the content genuinely fits tighter. |
+
+**The loop** (run it automatically after every edit; don't wait for the user to point out overflow):
+
+1. Make a content edit.
+2. Read `.pneuma/kami-fit.json`.
+3. If `overflow_count > 0` → trim the overflowing pages → loop to step 2.
+4. If `sparse_count > 0` and content intent allows → enrich → loop to step 2.
+5. When every page is `fits` → stop.
+
+Reaching `fits` across every page is the quality bar before you tell
+the user the document is ready. Silence on your part implies the fit is
+passing. See `references/cmd-fit.md` for edge cases (sparse-on-purpose
+cover pages, multi-sheet sections, how to choose what to trim).
 
 ## Don'ts
 
@@ -78,7 +126,8 @@ Load only what the task needs. Default to the lowest tier.
 
 | When | Read |
 |---|---|
-| Updating text / translating / swapping bullets | Nothing — just edit |
+| Updating text / translating / swapping bullets | Nothing — just edit, then check `kami-fit.json` |
+| A page shows `overflow` or `sparse` | `references/cmd-fit.md` — trimming + filling tactics |
 | Adjusting layout or tweaking spacing | Look at the closest existing demo |
 | Building a new doc type from scratch | `references/design.md` (CN) / `design.en.md` (EN) |
 | Writing tone / structure guidance | `references/writing.md` / `writing.en.md` |

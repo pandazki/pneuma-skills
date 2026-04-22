@@ -321,6 +321,165 @@ function PageNavigator({
   );
 }
 
+// ── Kami Focus-mode Thumbnail Strip ────────────────────────────────────────
+//
+// Vertical numbered list of pages on the left edge of the focus view.
+// Uses plain labeled buttons rather than full iframe thumbnails for V1 —
+// performant and lets the author jump between pages by number. Real
+// iframe-scaled thumbs are a visual polish we can layer on later.
+
+function KamiThumbStrip({
+  pageCount,
+  activeIndex,
+  onPick,
+}: {
+  pageCount: number;
+  activeIndex: number;
+  onPick: (i: number) => void;
+}) {
+  return (
+    <div
+      style={{
+        width: 64,
+        borderRight: "1px solid rgba(255,255,255,0.08)",
+        background: "rgba(0,0,0,0.2)",
+        padding: "12px 0",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 6,
+        overflowY: "auto",
+        flexShrink: 0,
+      }}
+    >
+      {Array.from({ length: pageCount }).map((_, i) => {
+        const active = i === activeIndex;
+        return (
+          <button
+            key={i}
+            onClick={() => onPick(i)}
+            title={`Page ${i + 1}`}
+            style={{
+              width: 40,
+              height: 56,
+              border: active ? "1.5px solid #1B365D" : "1px solid rgba(245,244,237,0.20)",
+              borderRadius: 4,
+              background: active ? "rgba(27,54,93,0.22)" : "rgba(245,244,237,0.05)",
+              color: active ? "#f5f4ed" : "rgba(245,244,237,0.55)",
+              cursor: "pointer",
+              fontSize: 13,
+              fontFamily: "Newsreader, Georgia, serif",
+              transition: "all 0.15s",
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            onMouseEnter={(e) => {
+              if (!active) {
+                e.currentTarget.style.color = "rgba(245,244,237,0.9)";
+                e.currentTarget.style.background = "rgba(245,244,237,0.12)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!active) {
+                e.currentTarget.style.color = "rgba(245,244,237,0.55)";
+                e.currentTarget.style.background = "rgba(245,244,237,0.05)";
+              }
+            }}
+          >
+            {i + 1}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Book-mode navigation ────────────────────────────────────────────────────
+//
+// Prev / next arrows that advance the book by a full spread.
+// Pairing convention: [null, 0] (cover), [1, 2], [3, 4], …
+// Prev from spread [1,2] goes to cover [null, 0]; from [3,4] goes to [1,2].
+
+function BookNav({
+  activeIndex,
+  pageCount,
+  onPick,
+}: {
+  activeIndex: number;
+  pageCount: number;
+  onPick: (i: number) => void;
+}) {
+  const goPrev = () => {
+    if (activeIndex === 0) return;
+    // Collapse odd index to the same spread, then step back a spread.
+    const normalized = activeIndex % 2 === 1 ? activeIndex : activeIndex - 1;
+    const prev = normalized - 2;
+    onPick(prev < 1 ? 0 : prev);
+  };
+  const goNext = () => {
+    if (activeIndex === 0) {
+      onPick(1);
+      return;
+    }
+    const normalized = activeIndex % 2 === 1 ? activeIndex : activeIndex - 1;
+    const next = normalized + 2;
+    if (next < pageCount) onPick(next);
+    else if (normalized + 1 < pageCount - 1) onPick(normalized + 2); // try last
+  };
+  const atStart = activeIndex === 0;
+  const atEnd = (() => {
+    if (activeIndex === 0) return pageCount <= 1;
+    const normalized = activeIndex % 2 === 1 ? activeIndex : activeIndex - 1;
+    return normalized + 2 >= pageCount;
+  })();
+
+  const btnStyle = (disabled: boolean): React.CSSProperties => ({
+    position: "absolute",
+    top: "50%",
+    transform: "translateY(-50%)",
+    width: 44,
+    height: 44,
+    borderRadius: "50%",
+    border: "1px solid rgba(20,20,19,0.15)",
+    background: "rgba(245,244,237,0.92)",
+    color: disabled ? "rgba(20,20,19,0.25)" : "#1B365D",
+    cursor: disabled ? "default" : "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 4px 12px rgba(20,20,19,0.15)",
+    zIndex: 4,
+    pointerEvents: "auto",
+  });
+
+  return (
+    <>
+      <button
+        onClick={goPrev}
+        disabled={atStart}
+        style={{ ...btnStyle(atStart), left: 16 }}
+        title="Previous spread"
+      >
+        <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </button>
+      <button
+        onClick={goNext}
+        disabled={atEnd}
+        style={{ ...btnStyle(atEnd), right: 16 }}
+        title="Next spread"
+      >
+        <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </button>
+    </>
+  );
+}
+
 // ── Preview Mode Icons ───────────────────────────────────────────────────────
 
 type PreviewMode = "view" | "edit" | "select" | "annotate";
@@ -379,6 +538,54 @@ const MODE_BUTTONS: { value: PreviewMode; label: string; icon: React.ReactNode; 
   { value: "annotate", label: "Annotate", icon: <AnnotateIcon />, title: "Annotate multiple elements (Esc to exit)" },
 ];
 
+type KamiViewModeValue = "scroll" | "focus" | "book";
+
+const KAMI_VIEW_BUTTONS: { value: KamiViewModeValue; label: string; title: string; icon: React.ReactNode }[] = [
+  {
+    value: "scroll",
+    label: "Scroll",
+    title: "Scroll: all pages stacked vertically",
+    icon: (
+      <svg {...svgProps}>
+        <rect x="8" y="3"  width="8" height="4" rx="1"/>
+        <rect x="8" y="10" width="8" height="4" rx="1"/>
+        <rect x="8" y="17" width="8" height="4" rx="1"/>
+      </svg>
+    ),
+  },
+  {
+    value: "focus",
+    label: "Focus",
+    title: "Focus: thumbnail strip + single-page main frame",
+    icon: (
+      <svg {...svgProps}>
+        <rect x="3"  y="5" width="4" height="14" rx="1"/>
+        <rect x="10" y="3" width="11" height="18" rx="1"/>
+      </svg>
+    ),
+  },
+  {
+    value: "book",
+    label: "Book",
+    title: "Book: two-page spread",
+    icon: (
+      <svg {...svgProps}>
+        <path d="M3 5h8v14H3z"/>
+        <path d="M13 5h8v14h-8z"/>
+      </svg>
+    ),
+  },
+];
+
+function GuidesIcon({ active }: { active: boolean }) {
+  return (
+    <svg {...svgProps}>
+      <rect x="3" y="3" width="18" height="18" rx="1" strokeDasharray={active ? undefined : "2 2"}/>
+      <rect x="6" y="6" width="12" height="12" rx="0.5" strokeDasharray="2 2"/>
+    </svg>
+  );
+}
+
 function ViewportToolbar({
   presets,
   activePreset,
@@ -387,6 +594,10 @@ function ViewportToolbar({
   onSetPreviewMode,
   onExport,
   readonly,
+  kamiViewMode,
+  onKamiViewModeChange,
+  showGuides,
+  onToggleGuides,
 }: {
   presets: ViewportPreset[];
   activePreset: string;
@@ -395,6 +606,10 @@ function ViewportToolbar({
   onSetPreviewMode: (mode: PreviewMode) => void;
   onExport: () => void;
   readonly?: boolean;
+  kamiViewMode: KamiViewModeValue;
+  onKamiViewModeChange: (mode: KamiViewModeValue) => void;
+  showGuides: boolean;
+  onToggleGuides: () => void;
 }) {
   const currentPreset = presets.find((p) => p.id === activePreset);
   const showDimensions = currentPreset && currentPreset.width > 0;
@@ -412,8 +627,71 @@ function ViewportToolbar({
         flexShrink: 0,
       }}
     >
-      {/* Left: Viewport presets */}
-      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+      {/* Left: view mode segmented + guides toggle + viewport preset label */}
+      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "1px",
+            background: "rgba(0,0,0,0.3)",
+            borderRadius: "6px",
+            padding: "2px",
+          }}
+          title="Kami view mode"
+        >
+          {KAMI_VIEW_BUTTONS.map((m) => (
+            <button
+              key={m.value}
+              onClick={() => onKamiViewModeChange(m.value)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "3px 8px",
+                borderRadius: "4px",
+                border: "none",
+                cursor: "pointer",
+                fontSize: "11px",
+                transition: "all 0.15s",
+                background: kamiViewMode === m.value ? "rgba(27,54,93,0.30)" : "transparent",
+                color: kamiViewMode === m.value ? "#f5f4ed" : "rgba(245,244,237,0.65)",
+              }}
+              title={m.title}
+            >
+              {m.icon}
+              <span>{m.label}</span>
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={onToggleGuides}
+          title={showGuides ? "Hide safe-area guides" : "Show safe-area guides"}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            padding: "3px 8px",
+            borderRadius: "4px",
+            border: "1px solid " + (showGuides ? "rgba(27,54,93,0.55)" : "transparent"),
+            cursor: "pointer",
+            fontSize: "11px",
+            background: showGuides ? "rgba(27,54,93,0.22)" : "transparent",
+            color: showGuides ? "#f5f4ed" : "rgba(245,244,237,0.65)",
+          }}
+        >
+          <GuidesIcon active={showGuides} />
+          <span>Guides</span>
+        </button>
+        {showDimensions && (
+          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", marginLeft: "4px" }}>
+            {currentPreset.label}
+          </span>
+        )}
+      </div>
+      {/* Legacy viewport preset row — hidden in kami since there's only one preset,
+          but retained for future multi-preset use. */}
+      <div style={{ display: "none", alignItems: "center", gap: "4px" }}>
         <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", marginRight: "4px" }}>
           Viewport:
         </span>
@@ -652,9 +930,48 @@ export default function KamiPreview({
 
   // Kami paper config — read from .pneuma/config.json via the "config" source.
   // Drives the single locked paper preset (page width/height + label).
-  type KamiConfig = { paperSize?: string; orientation?: string; pageWidthMm?: number; pageHeightMm?: number };
+  type KamiConfig = {
+    paperSize?: string;
+    orientation?: string;
+    pageWidthMm?: number;
+    pageHeightMm?: number;
+    safeTopMm?: number;
+    safeSideMm?: number;
+    safeBottomMm?: number;
+  };
   const configSource = sources.config as Source<KamiConfig> | undefined;
   const { value: config } = useSource<KamiConfig>(configSource);
+
+  // ── Kami view modes ────────────────────────────────────────────────────────
+  // Scroll:  all pages stacked vertically (current behaviour)
+  // Focus:   thumbnail strip + single-page main frame
+  // Book:    two-page spread with first-page-on-right cover
+  type KamiViewMode = "scroll" | "focus" | "book";
+  const [kamiViewMode, setKamiViewMode] = useState<KamiViewMode>(() => {
+    try {
+      const saved = localStorage.getItem("kami:viewMode");
+      if (saved === "scroll" || saved === "focus" || saved === "book") return saved;
+    } catch {}
+    return "scroll";
+  });
+  useEffect(() => {
+    try { localStorage.setItem("kami:viewMode", kamiViewMode); } catch {}
+  }, [kamiViewMode]);
+
+  const [showGuides, setShowGuides] = useState<boolean>(() => {
+    try { return localStorage.getItem("kami:showGuides") === "true"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("kami:showGuides", String(showGuides)); } catch {}
+  }, [showGuides]);
+
+  // Which .page index within the current HTML is active (0-indexed).
+  // Focus shows one page; Book shows this page + next page (or cover-on-right
+  // when index is 0).
+  const [activePageIndex, setActivePageIndex] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
+  // Bump when the iframe reloads so thumbnails refresh their scaled render.
+  const [iframeRenderTick, setIframeRenderTick] = useState(0);
 
   const VIEWPORT_PRESETS = useMemo(
     () => buildKamiPreset(config ?? undefined),
@@ -693,6 +1010,12 @@ export default function KamiPreview({
     if (selectedFile && htmlFiles.includes(selectedFile)) return selectedFile;
     return htmlFiles.find((f) => /^index\.html$/i.test(f)) || htmlFiles[0] || "";
   }, [activeFile, selectedFile, htmlFiles]);
+
+  // Reset active page index when content set or file switches, so a
+  // freshly-opened doc starts from its first .page.
+  useEffect(() => {
+    setActivePageIndex(0);
+  }, [activeContentSet, currentFile]);
 
   // Compute base href for correct relative asset resolution
   const baseHref = useMemo(() => {
@@ -767,6 +1090,194 @@ export default function KamiPreview({
     } catch {}
   }, [isEditMode]);
 
+  // Measure each <div class="page">'s real content height against the
+  // paper's safe area (printable zone inside safe margins) and publish
+  // the result to .pneuma/kami-fit.json. The agent reads that report
+  // after each edit to tune content toward a perfect fill — the classic
+  // kami authoring loop, now with print-typography semantics.
+  //
+  // Five statuses, measured as (content_height - safe_height):
+  //   delta < -30mm       → "sparse"   (tail leaves too much blank)
+  //   delta in [-30, -3)  → "loose"    (slight blank at bottom)
+  //   delta in [-3,  +3]  → "fits"     (content lands on the safe edge — ideal)
+  //   delta in (+3, +safe_bottom]  → "bleed"  (content crept into margin zone
+  //                                            but still within paper — acceptable)
+  //   delta > safe_bottom → "overflow" (content pushed past paper edge; clipped)
+  //
+  // Content height is summed from the .page's direct children's bounding
+  // rects (top of first → bottom of last). Using scrollHeight would be
+  // incorrect because the new .page model uses overflow: hidden + fixed
+  // height, so scrollHeight can cap or lie about true overflow.
+  const measureFit = useCallback((iframe: HTMLIFrameElement) => {
+    try {
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+      const pageHeightMm = config?.pageHeightMm ?? 297;
+      const pageWidthMm  = config?.pageWidthMm  ?? 210;
+      const paperSize    = config?.paperSize    ?? "A4";
+      const orientation  = config?.orientation  ?? "Portrait";
+      const safeTopMm    = Number(config?.safeTopMm)    || 18;
+      const safeSideMm   = Number(config?.safeSideMm)   || 16;
+      const safeBottomMm = Number(config?.safeBottomMm) || 18;
+      const MM_PER_PX = 25.4 / 96;
+
+      const safeHeightMm = pageHeightMm - safeTopMm - safeBottomMm;
+      const round = (n: number) => Math.round(n * 10) / 10;
+
+      const pageEls = Array.from(doc.querySelectorAll<HTMLElement>(".page"));
+
+      // Measure in an isolated "scroll-like" layout regardless of the
+      // current view mode. Focus / Book modes reshape the document (hide
+      // non-active pages, switch body to flex, etc.) — measuring in those
+      // layouts would yield misleading content heights. Disable the
+      // injected view-mode stylesheet for the duration of the measurement
+      // so every .page sits in its natural block-flow context.
+      const viewStyle = doc.getElementById("kami-view-style") as HTMLStyleElement | null;
+      const savedMedia = viewStyle?.media ?? "";
+      if (viewStyle) viewStyle.media = "not all"; // disables the rules
+      // Force a synchronous layout so the bounding rects reflect the
+      // disabled stylesheet.
+      void pageEls[0]?.offsetHeight;
+
+      const pages = pageEls.map((el, i) => {
+        // Sum direct-children content height. Skip absolutely-positioned
+        // children (guides, decorations) and zero-height children.
+        const children = Array.from(el.children) as HTMLElement[];
+        let contentPx = 0;
+        let firstTop: number | null = null;
+        let lastBottom: number | null = null;
+        for (const child of children) {
+          const cs = iframe.contentWindow?.getComputedStyle(child);
+          if (cs && (cs.position === "absolute" || cs.position === "fixed")) continue;
+          const rect = child.getBoundingClientRect();
+          if (rect.height <= 0) continue;
+          if (firstTop === null) firstTop = rect.top;
+          lastBottom = rect.bottom;
+        }
+        if (firstTop !== null && lastBottom !== null) {
+          contentPx = lastBottom - firstTop;
+        }
+        const contentMm = round(contentPx * MM_PER_PX);
+        const deltaMm = round(contentMm - safeHeightMm);
+
+        let status: "sparse" | "loose" | "fits" | "bleed" | "overflow";
+        if (deltaMm < -30)              status = "sparse";
+        else if (deltaMm < -3)          status = "loose";
+        else if (deltaMm <= 3)          status = "fits";
+        else if (deltaMm <= safeBottomMm) status = "bleed";
+        else                            status = "overflow";
+
+        return {
+          index: i + 1,
+          paper_height_mm: pageHeightMm,
+          safe_height_mm:  round(safeHeightMm),
+          content_height_mm: contentMm,
+          delta_safe_mm:     deltaMm,
+          status,
+        };
+      });
+
+      // Re-enable the injected view-mode stylesheet.
+      if (viewStyle) viewStyle.media = savedMedia;
+
+      const count = (s: string) => pages.filter((p) => p.status === s).length;
+      const report = {
+        updated_at: new Date().toISOString(),
+        content_set: activeContentSet || null,
+        file: currentFile || null,
+        paper: {
+          size: paperSize,
+          orientation,
+          width_mm: pageWidthMm,
+          height_mm: pageHeightMm,
+          safe: { top_mm: safeTopMm, side_mm: safeSideMm, bottom_mm: safeBottomMm },
+        },
+        pages,
+        summary: {
+          total_pages:    pages.length,
+          sparse_count:   count("sparse"),
+          loose_count:    count("loose"),
+          fits_count:     count("fits"),
+          bleed_count:    count("bleed"),
+          overflow_count: count("overflow"),
+        },
+      };
+
+      fileChannel.write(
+        ".pneuma/kami-fit.json",
+        JSON.stringify(report, null, 2) + "\n",
+      ).catch(() => { /* ignore — fit is an advisory channel */ });
+    } catch {
+      /* ignore — measurement must never break the viewer */
+    }
+  }, [config, activeContentSet, currentFile, fileChannel]);
+
+  // Inject view-mode + guide styles into an iframe's document.
+  // Idempotent — replaces any previously-injected <style data-kami-view>.
+  const applyViewModeStyles = useCallback(
+    (doc: Document, opts: {
+      mode: KamiViewMode;
+      activeIdx: number;
+      showGuides: boolean;
+      scope?: "main" | "thumb";
+      thumbPageIndex?: number;   // thumb-only: which single page to show
+    }) => {
+      const pageEls = Array.from(doc.querySelectorAll<HTMLElement>(".page"));
+      pageEls.forEach((el, i) => {
+        el.dataset.kamiIndex = String(i);
+        el.classList.toggle("show-guides", !!opts.showGuides);
+      });
+
+      let css = "";
+      if (opts.scope === "thumb") {
+        // Thumbnail: show only the requested page, no body-level layout change.
+        const i = opts.thumbPageIndex ?? 0;
+        css = `.page[data-kami-index]:not([data-kami-index="${i}"]) { display: none !important; }
+html, body { background: transparent !important; }
+body { margin: 0 !important; padding: 0 !important; }
+.page { margin: 0 !important; box-shadow: none !important; animation: none !important; }`;
+      } else if (opts.mode === "focus") {
+        css = `.page[data-kami-index]:not([data-kami-index="${opts.activeIdx}"]) { display: none !important; }
+body { margin: 0 !important; padding: 0 !important; background: #d9d6ca !important; }
+.page { margin: 0 auto !important; }`;
+      } else if (opts.mode === "book") {
+        // Book: first page is a right-side cover (pair = [null, 0]).
+        // Subsequent pairs: [1,2], [3,4], ... so activeIdx pairs with
+        // activeIdx-1 when activeIdx is even (>=2), or activeIdx+1 when odd.
+        const i = opts.activeIdx;
+        let left: number | null;
+        let right: number;
+        if (i === 0) { left = null; right = 0; }
+        else if (i % 2 === 1) { left = i; right = i + 1; }
+        else { left = i - 1; right = i; }
+        const visible = [left, right].filter((x): x is number => x !== null);
+        const keep = visible.map((v) => `[data-kami-index="${v}"]`).join(",");
+        css = `.page[data-kami-index]:not(${keep}) { display: none !important; }
+html, body { margin: 0 !important; padding: 0 !important; background: #d9d6ca !important; }
+body { display: flex !important; justify-content: center !important; align-items: flex-start !important; gap: 0 !important; }
+.page { margin: 0 !important; }
+/* Page 0 alone acts as a right-facing cover — leave the left sheet blank */
+${left === null ? '.page[data-kami-index="0"] { margin-left: var(--page-width) !important; }' : ''}`;
+      } else {
+        // Scroll: no layout change beyond guides.
+        css = "";
+      }
+
+      const styleId = "kami-view-style";
+      let style = doc.getElementById(styleId) as HTMLStyleElement | null;
+      if (!style) {
+        style = doc.createElement("style");
+        style.id = styleId;
+        style.setAttribute("data-kami-view", "");
+        doc.head.appendChild(style);
+      }
+      style.textContent = css;
+
+      return pageEls.length;
+    },
+    [],
+  );
+
   // Also send selectMode and editMode after iframe loads
   const handleIframeLoad = useCallback(() => {
     const iframe = iframeRef.current;
@@ -781,7 +1292,42 @@ export default function KamiPreview({
         "*",
       );
     } catch {}
-  }, [isSelectMode, isEditMode]);
+    // Count pages + apply view-mode CSS immediately so the first paint is
+    // already in the selected layout.
+    try {
+      const doc = iframe.contentDocument;
+      if (doc) {
+        const n = applyViewModeStyles(doc, {
+          mode: kamiViewMode,
+          activeIdx: activePageIndex,
+          showGuides,
+          scope: "main",
+        });
+        setPageCount(Math.max(1, n));
+        setIframeRenderTick((t) => t + 1);
+      }
+    } catch {}
+    // Give fonts + layout a frame to settle, then publish the fit report.
+    // 500ms covers TsangerJinKai02's first swap without feeling sluggish
+    // to the agent's next edit.
+    setTimeout(() => measureFit(iframe), 500);
+  }, [isSelectMode, isEditMode, measureFit, applyViewModeStyles, kamiViewMode, activePageIndex, showGuides]);
+
+  // Re-apply view-mode styles whenever mode, guides, or active page change
+  // without a full iframe reload.
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    if (!doc) return;
+    try {
+      applyViewModeStyles(doc, {
+        mode: kamiViewMode,
+        activeIdx: activePageIndex,
+        showGuides,
+        scope: "main",
+      });
+    } catch {}
+  }, [kamiViewMode, activePageIndex, showGuides, applyViewModeStyles]);
 
   // ── Text edit handling ────────────────────────────────────────────────────
 
@@ -978,12 +1524,18 @@ export default function KamiPreview({
     return () => observer.disconnect();
   }, []);
 
-  // Compute iframe dimensions and scale based on viewport preset
+  // Compute iframe dimensions and scale based on viewport preset + view mode.
+  //
+  // • scroll : single paper column, iframe tall enough for all pages
+  //            (height = paper × pageCount), outer scroll provided by
+  //            container (scale-to-fit-width).
+  // • focus  : single paper sheet sized to the preset, scale to fit.
+  // • book   : two paper sheets side by side — iframe width = 2 × paper
+  //            width — scale to fit.
   const iframeLayout = useMemo(() => {
     const preset = VIEWPORT_PRESETS.find((p) => p.id === viewport);
     if (!preset || preset.width === 0) {
-      // Full mode: fill container
-      return { width: "100%", height: "100%", scale: 1, useTransform: false };
+      return { width: "100%", height: "100%", scale: 1, useTransform: false, fitMode: "none" as const };
     }
 
     const pw = preset.width;
@@ -991,20 +1543,53 @@ export default function KamiPreview({
     const cw = containerSize.width;
     const ch = containerSize.height;
 
-    if (cw === 0 || ch === 0) {
-      return { width: `${pw}px`, height: `${ph}px`, scale: 1, useTransform: false };
+    // Iframe's "natural" (pre-scale) dimensions depend on view mode.
+    let naturalW = pw;
+    let naturalH = ph;
+    let fitMode: "width" | "both" = "both";
+    if (kamiViewMode === "scroll") {
+      naturalW = pw;
+      naturalH = Math.max(ph * pageCount, ph);
+      fitMode = "width";
+    } else if (kamiViewMode === "book") {
+      naturalW = pw * 2;
+      naturalH = ph;
+      fitMode = "both";
+    } else {
+      naturalW = pw;
+      naturalH = ph;
+      fitMode = "both";
     }
 
-    // Calculate scale to fit the preset within the container with padding
+    if (cw === 0 || ch === 0) {
+      return {
+        width: `${naturalW}px`,
+        height: `${naturalH}px`,
+        scale: 1,
+        useTransform: false,
+        fitMode,
+      };
+    }
+
     const padding = 32;
     const availW = cw - padding * 2;
     const availH = ch - padding * 2;
-    const scaleX = availW / pw;
-    const scaleY = availH / ph;
-    const scale = Math.min(scaleX, scaleY, 1); // Never scale up beyond 1:1
+    const scaleX = availW / naturalW;
+    const scaleY = availH / naturalH;
+    // Scroll mode fits to width only (vertical overflow scrolls), focus/book
+    // fit to both axes.
+    const scale = fitMode === "width"
+      ? Math.min(scaleX, 1)
+      : Math.min(scaleX, scaleY, 1);
 
-    return { width: `${pw}px`, height: `${ph}px`, scale, useTransform: true };
-  }, [viewport, containerSize]);
+    return {
+      width: `${naturalW}px`,
+      height: `${naturalH}px`,
+      scale,
+      useTransform: true,
+      fitMode,
+    };
+  }, [viewport, containerSize, kamiViewMode, pageCount, VIEWPORT_PRESETS]);
 
   // ── Export handlers ─────────────────────────────────────────────────────────
 
@@ -1039,19 +1624,33 @@ export default function KamiPreview({
           onSetPreviewMode={setPreviewMode}
           onExport={handleExport}
           readonly={readonly}
+          kamiViewMode={kamiViewMode}
+          onKamiViewModeChange={setKamiViewMode}
+          showGuides={showGuides}
+          onToggleGuides={() => setShowGuides((g) => !g)}
         />
 
-        {/* Iframe Preview Container */}
+        {/* View-mode container: optional focus sidebar + main iframe area */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", minHeight: 0 }}>
+          {/* Focus mode: left thumbnail strip */}
+          {kamiViewMode === "focus" && pageCount > 0 && (
+            <KamiThumbStrip
+              pageCount={pageCount}
+              activeIndex={activePageIndex}
+              onPick={setActivePageIndex}
+            />
+          )}
         <div
           ref={containerRef}
           style={{
             flex: 1,
             position: "relative",
             background: "#d9d6ca",
-            overflow: "hidden",
+            overflow: kamiViewMode === "scroll" ? "auto" : "hidden",
             display: "flex",
-            alignItems: "center",
+            alignItems: kamiViewMode === "scroll" ? "flex-start" : "center",
             justifyContent: "center",
+            padding: kamiViewMode === "scroll" ? "24px 0" : 0,
           }}
         >
           {currentFile && srcdoc ? (
@@ -1062,11 +1661,14 @@ export default function KamiPreview({
                   width: iframeLayout.width,
                   height: iframeLayout.height,
                   transform: `scale(${iframeLayout.scale})`,
-                  transformOrigin: "center center",
+                  transformOrigin: kamiViewMode === "scroll" ? "top center" : "center center",
                   borderRadius: "2px",
                   overflow: "hidden",
-                  boxShadow: "0 0 0 1px #d1cfc5, 0 8px 24px rgba(20,20,19,0.10)",
+                  boxShadow: kamiViewMode === "scroll"
+                    ? "none"
+                    : "0 0 0 1px #d1cfc5, 0 8px 24px rgba(20,20,19,0.10)",
                   flexShrink: 0,
+                  background: "#d9d6ca",
                 }}
               >
                 <iframe
@@ -1182,6 +1784,43 @@ export default function KamiPreview({
           >
             Design adapted from tw93/kami <span aria-hidden="true">↗</span>
           </a>
+          {/* Book-mode navigation arrows + pair counter */}
+          {kamiViewMode === "book" && pageCount > 1 && (
+            <BookNav
+              activeIndex={activePageIndex}
+              pageCount={pageCount}
+              onPick={setActivePageIndex}
+            />
+          )}
+          {/* Focus/Book mode: page position indicator */}
+          {(kamiViewMode === "focus" || kamiViewMode === "book") && pageCount > 1 && (
+            <div style={{
+              position: "absolute",
+              bottom: 10,
+              left: 14,
+              fontSize: 11,
+              color: "rgba(20,20,19,0.55)",
+              fontFamily: "Newsreader, Georgia, serif",
+              letterSpacing: 0.2,
+              pointerEvents: "none",
+              zIndex: 4,
+            }}>
+              {(() => {
+                if (kamiViewMode !== "book" || activePageIndex === 0) {
+                  return `${activePageIndex + 1} / ${pageCount}`;
+                }
+                // Book mode spread: same pair math as applyViewModeStyles, then
+                // render as 1-based page numbers so the counter matches what's
+                // visually on screen.
+                const i = activePageIndex;
+                const left  = i % 2 === 1 ? i : i - 1;
+                const right = i % 2 === 1 ? i + 1 : i;
+                const rightShown = Math.min(right, pageCount - 1);
+                return `${left + 1}–${rightShown + 1} / ${pageCount}`;
+              })()}
+            </div>
+          )}
+        </div>
         </div>
 
         {/* Bottom Page Navigator — only shown when 2+ pages exist */}

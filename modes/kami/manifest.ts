@@ -17,6 +17,17 @@ const PAPER_SIZES_MM: Record<string, [number, number]> = {
   Legal:  [216, 356],
 };
 
+// Safe-area margin presets per paper size (printable content zone).
+// Top/bottom/side in mm. Landscape reuses the same values — margins
+// live in the same axes regardless of orientation.
+const SAFE_MARGINS_MM: Record<string, { top: number; side: number; bottom: number }> = {
+  A4:     { top: 18, side: 16, bottom: 18 },
+  A5:     { top: 14, side: 12, bottom: 14 },
+  A3:     { top: 22, side: 20, bottom: 22 },
+  Letter: { top: 18, side: 18, bottom: 18 },
+  Legal:  { top: 18, side: 18, bottom: 18 },
+};
+
 const kamiManifest: ModeManifest = {
   name: "kami",
   version: "1.0.0",
@@ -115,7 +126,7 @@ This is **Kami Mode**: paper-canvas web design. The viewer renders your content 
     contentCheckPattern: "**/manifest.json",
     seedFiles: {
       "modes/kami/seed/_shared/":         "_shared/",
-      "modes/kami/seed/tesla-one-pager/": "tesla-one-pager/",
+      "modes/kami/seed/pneuma-one-pager/": "pneuma-one-pager/",
       "modes/kami/seed/musk-resume/":     "musk-resume/",
       "modes/kami/seed/kaku-portfolio/":  "kaku-portfolio/",
       "modes/kami/seed/blank/":           "blank/",
@@ -130,10 +141,14 @@ This is **Kami Mode**: paper-canvas web design. The viewer renders your content 
       if (!dims) throw new Error(`Unknown paperSize: ${size}`);
       const [w, h] = dims;
       const landscape = p.orientation === "Landscape";
+      const margins = SAFE_MARGINS_MM[size] ?? SAFE_MARGINS_MM.A4;
       return {
         ...p,
         pageWidthMm:  landscape ? h : w,
         pageHeightMm: landscape ? w : h,
+        safeTopMm:    margins.top,
+        safeSideMm:   margins.side,
+        safeBottomMm: margins.bottom,
       };
     },
   },

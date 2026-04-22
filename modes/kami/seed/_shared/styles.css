@@ -50,6 +50,11 @@
   --page-width:  {{pageWidthMm}}mm;
   --page-height: {{pageHeightMm}}mm;
 
+  /* Safe-area insets (printable content zone, per paper size preset) */
+  --safe-top:    {{safeTopMm}}mm;
+  --safe-side:   {{safeSideMm}}mm;
+  --safe-bottom: {{safeBottomMm}}mm;
+
   /* Canvas */
   --parchment:    #f5f4ed;
   --ivory:        #faf9f5;
@@ -87,13 +92,13 @@
 
 @page {
   size: {{pageWidthMm}}mm {{pageHeightMm}}mm;
-  margin: 14mm 16mm;
+  margin: var(--safe-top) var(--safe-side) var(--safe-bottom);
   background: #f5f4ed;
 }
 
 @media print {
   body { background: #f5f4ed; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .page { padding: 0 !important; max-width: 100% !important; box-shadow: none !important; }
+  .page { padding: 0 !important; max-width: 100% !important; box-shadow: none !important; overflow: visible !important; }
   section { page-break-inside: auto; }
 }
 
@@ -110,14 +115,37 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/*
+ * .page — a physical sheet of paper.
+ *
+ * Model:
+ *   • width × height is the trim size (paper edge). Fixed — never min-height.
+ *   • padding is the safe area inset. Content sits inside padding.
+ *   • overflow: hidden because paper has a physical edge; anything past it
+ *     simply doesn't exist on print. Visible clipping is the honest signal
+ *     that content has overrun the sheet.
+ *   • The .show-guides variant paints a dashed outline at the safe-area edge
+ *     so authors can see when content starts creeping into the bleed zone.
+ */
 .page {
-  width: var(--page-width);
-  min-height: var(--page-height);
+  position: relative;
+  width:  var(--page-width);
+  height: var(--page-height);
   margin: 0 auto;
   background: var(--parchment);
-  padding: 88px 64px 120px;
+  padding: var(--safe-top) var(--safe-side) var(--safe-bottom);
+  overflow: hidden;
   box-shadow: 0 0 0 1px var(--ring-warm), 0 8px 24px rgba(20, 20, 19, 0.08);
   animation: fadeIn 0.4s ease-out;
+}
+
+.page.show-guides::after {
+  content: '';
+  position: absolute;
+  inset: var(--safe-top) var(--safe-side) var(--safe-bottom);
+  border: 1px dashed rgba(94, 93, 89, 0.45);
+  pointer-events: none;
+  z-index: 999;
 }
 
 @keyframes fadeIn {

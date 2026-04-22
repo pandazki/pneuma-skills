@@ -1,14 +1,13 @@
 <!DOCTYPE html>
 <!-- ==================================================================
      ONE-PAGER TEMPLATE · parchment design system
-     单页 A4 方案/报告/执行摘要
-     改完跑：python3 -c "from weasyprint import HTML; HTML('one-pager.html').write_pdf('out.pdf')"
-     目标：页数必须 == 1
+     Single-page A4 executive summary / product brief / proposal.
+     Target: fits exactly 1 page (strict).
      ================================================================== -->
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Tesla, Inc. · 公司介绍</title>
+<title>Pneuma · Product Brief</title>
 <link rel="stylesheet" href="../_shared/styles.css">
 <style>
   /* Demo-local tokens (not in shared stylesheet) */
@@ -233,109 +232,110 @@
 <!-- ========== HEADER ========== -->
 <div class="header">
   <div class="title-block">
-    <div class="eyebrow">公司介绍 · Company Brief</div>
-    <h1>把汽车产业从内燃机拖进电气化</h1>
-    <div class="subtitle">电动车、能源、AI 三条主线，共用一套制造哲学。</div>
+    <div class="eyebrow">Product Brief · Pneuma Skills</div>
+    <h1>Co-creation infrastructure for humans and code agents.</h1>
+    <div class="subtitle">Agents do the work against a directory of files. The system's job is to make human observation and optional participation intuitive.</div>
   </div>
   <div class="meta">
-    公开资料整理<br>
-    2026.04.18<br>
-    公开版
+    v2.31.0<br>
+    MIT · open source<br>
+    2026.04.22
   </div>
 </div>
 
-<!-- ========== METRICS（可选，3-4 卡最佳） ========== -->
+<!-- ========== METRICS ========== -->
 <div class="metrics">
   <div class="metric">
-    <div class="metric-value">1.8M</div>
-    <div class="metric-label">全球交付量</div>
-  </div>
-  <div class="metric">
-    <div class="metric-value">$96B</div>
-    <div class="metric-label">全年营收</div>
+    <div class="metric-value">11</div>
+    <div class="metric-label">built-in modes</div>
   </div>
   <div class="metric">
     <div class="metric-value">4</div>
-    <div class="metric-label">超级工厂数</div>
+    <div class="metric-label">design pillars</div>
   </div>
   <div class="metric">
-    <div class="metric-value">2003</div>
-    <div class="metric-label">加州成立</div>
+    <div class="metric-value">2</div>
+    <div class="metric-label">agent backends</div>
+  </div>
+  <div class="metric">
+    <div class="metric-value">MIT</div>
+    <div class="metric-label">self-host or desktop</div>
   </div>
 </div>
 
-<!-- ========== LEAD（导语，一段） ========== -->
+<!-- ========== LEAD ========== -->
 <p class="lead">
-  Tesla 不是一家「做电动车的」公司。它是一家<span class="hl">用第一性原理重造制造业</span>的公司，电动车只是最先被重造的那条产业链。能源、储能、Robotaxi、人形机器人 Optimus，都是同一套哲学在不同产业的延伸。
+  Pneuma is a workspace where <span class="hl">coding agents edit files directly and humans watch the work happen</span>. Files stay the canonical collaboration surface — not abstracted away. Viewers are live <em>players</em> for agent output (a deck, a board, a paper), so humans can intervene in the UI when it matters and stay out of the way the rest of the time.
 </p>
 
-<!-- ========== 核心内容（两栏） ========== -->
+<!-- ========== CORE CONTENT (two-column) ========== -->
 <div class="two-col">
   <section>
-    <h2>业务主线</h2>
-    <p>营收结构高度集中在汽车，但长期叙事在能源与 AI。</p>
+    <h2>Four pillars</h2>
+    <p>The whole product surface composes from four orthogonal ideas.</p>
     <ul class="dash">
-      <li><span class="hl">汽车</span>：Model 3/Y/S/X + Cybertruck，$25k-$100k 价格带</li>
-      <li><span class="hl">能源</span>：Powerwall 家储、Megapack 电网储能，增速超汽车</li>
-      <li><span class="hl">AI</span>：FSD 自动驾驶 + Optimus 人形机器人，共用感知栈</li>
+      <li><span class="hl">Visual environment</span> — live players for agent output with optional human participation</li>
+      <li><span class="hl">Skills</span> — domain knowledge + seed templates + session persistence per mode</li>
+      <li><span class="hl">Continuous learning</span> — an evolution agent extracts preferences across sessions</li>
+      <li><span class="hl">Distribution</span> — marketplace, publishing, forking a mode like a fork of a repo</li>
     </ul>
   </section>
 
   <section>
-    <h2>信念与方法</h2>
-    <p>三条反行业共识的判断，定义了这家公司的长期战略。</p>
+    <h2>Product principles</h2>
+    <p>Three non-obvious calls that shape every choice in the codebase.</p>
     <ul class="dash">
-      <li>垂直整合到极致：电池、电机、逆变器、软件、充电网络全部自建</li>
-      <li>产品迭代像软件：OTA 每几周发版，8 年前的 Model S 还在收新功能</li>
-      <li>中国是制造锚点：上海工厂本地化率 95%+，2023 年产出占全球 50%+</li>
+      <li>The agent edits files; the viewer renders them. <span class="hl">No state hidden from the filesystem.</span></li>
+      <li>Each mode declares its own viewer + skill. The runtime is a shell, not a monolith.</li>
+      <li>Backends (Claude Code, Codex) plug in through a normalized protocol. Swap at startup, not mid-session.</li>
     </ul>
   </section>
 </div>
 
-<!-- ========== Timeline / Roadmap（可选） ========== -->
+<!-- ========== Timeline ========== -->
 <section>
-  <h2>时间线 / 路线图<span class="sub">（适用于方案类文档）</span></h2>
+  <h2>Arc<span class="sub">from one mode to a mode marketplace</span></h2>
   <div class="timeline">
     <div class="tl-step">
-      <div class="tl-year">Master Plan 1</div>
-      <div class="tl-head">高端立足</div>
-      <div class="tl-body">2006：先做豪华跑车 Roadster 证明电动车可行，再用利润下沉到 Model S -> 3。</div>
+      <div class="tl-year">v1</div>
+      <div class="tl-head">The bet</div>
+      <div class="tl-body">Live iframe preview + Claude Code chat on one directory. First modes: webcraft, slide, doc.</div>
     </div>
     <div class="tl-step">
-      <div class="tl-year">Master Plan 2</div>
-      <div class="tl-head">规模化普及</div>
-      <div class="tl-body">2016：Model 3 大规模量产、储能产品化、光伏屋顶。从小众酷拉到主流选择。</div>
+      <div class="tl-year">v2</div>
+      <div class="tl-head">Skills &amp; sources</div>
+      <div class="tl-body">Typed <code>Source&lt;T&gt;</code> data channels. Per-mode skill bundles. Codex backend joins.</div>
     </div>
     <div class="tl-step">
-      <div class="tl-year">Master Plan 3</div>
-      <div class="tl-head">能源 × 自动驾驶</div>
-      <div class="tl-body">2023 之后：自动驾驶网络 + Robotaxi + Optimus。车、屋、工厂三个入口都是 AI 终端。</div>
+      <div class="tl-year">v2.31</div>
+      <div class="tl-head">Paper canvas</div>
+      <div class="tl-body">Kami ships: locked paper size, editorial typography, PDF / PNG / HTML export. Every mode is one file away from publishing.</div>
     </div>
   </div>
 </section>
 
 
-<!-- ========== 关键里程碑（横向时间点） ========== -->
+<!-- ========== Milestones ========== -->
 <section>
-  <h2>关键里程碑<span class="sub">从跑车到万亿市值</span></h2>
+  <h2>What ships today<span class="sub">11 built-in modes across three axes</span></h2>
   <ul class="dash" style="display: grid; grid-template-columns: 1fr 1fr; column-gap: 18pt; row-gap: 2pt;">
-    <li><span class="hl">2008</span>：Roadster 交付，第一款量产电动跑车</li>
-    <li><span class="hl">2012</span>：Model S 发布，重新定义豪华 EV</li>
-    <li><span class="hl">2017</span>：Model 3 量产，EV 进入主流价位</li>
-    <li><span class="hl">2020</span>：市值超过丰田，成为全球最贵车企</li>
-    <li><span class="hl">2021</span>：首家市值破万亿美元的汽车公司</li>
-    <li><span class="hl">2023</span>：上海工厂年产 95 万辆，全球领先</li>
+    <li><span class="hl">webcraft</span> — web design with Impeccable.style intelligence</li>
+    <li><span class="hl">kami</span> — paper-canvas typesetting on locked A4/A5/Letter</li>
+    <li><span class="hl">slide</span> — HTML presentations on a 1280×720 canvas</li>
+    <li><span class="hl">doc</span> — live-preview markdown documents</li>
+    <li><span class="hl">draw · diagram</span> — Excalidraw + draw.io inside the viewer</li>
+    <li><span class="hl">mode-maker · evolve</span> — create new modes; learn from past sessions</li>
   </ul>
 </section>
 
-<!-- ========== CALLOUT（可选）========== -->
+<!-- ========== CALLOUT ========== -->
 <div class="callout">
-  「我们不是在做一辆车，我们是在做制造这辆车的机器。」Tesla 团队多次提到的内部共识。理解这句话，就理解为什么它的估值长期按科技公司、而非车企给。
+  "<span class="hl">Files remain the canonical collaboration surface and are not abstracted away.</span>" — the line we keep coming back to when designing anything new. A mode earns its viewer by rendering what's on disk, not by adding a database.
 </div>
 
 <!-- ========== FOOTER ========== -->
 <div class="footer">
-  <span>公开 · 公司介绍</span>
+  <span>github.com/pandazki/pneuma-skills · MIT</span>
   <span>kami demo · 1 / 1</span>
 </div>
 

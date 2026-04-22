@@ -1309,6 +1309,42 @@ Options:
     }
   }
 
+  // Resync mode-managed seed directories on every boot.
+  //
+  // Seed entries whose destination starts with "_" are mode-managed
+  // shared assets (e.g. kami's `_shared/styles.css` with font bundles
+  // and paper-mechanics tokens). They are NOT user content — users
+  // are expected to edit their own content files, and the mode owns
+  // the `_` directories. Unlike the one-shot seed loop above (which
+  // only runs on empty workspaces), this overwrites every time so a
+  // mode upgrade propagates design-system changes to existing
+  // workspaces without manual intervention.
+  if (!replayPackage && manifest.init && manifest.init.seedFiles) {
+    const seedBase = resolved.type === "builtin" ? PROJECT_ROOT : resolved.path;
+    const hasParams = Object.keys(resolvedParams).length > 0;
+    for (const [src, dst] of Object.entries(manifest.init.seedFiles)) {
+      if (!dst.startsWith("_")) continue;
+      const resolvedSrc = hasParams ? applyTemplateParams(src, resolvedParams) : src;
+      const srcPath = join(seedBase, resolvedSrc);
+      if (!existsSync(srcPath) || !statSync(srcPath).isDirectory()) continue;
+      const glob = new Bun.Glob("**/*");
+      for (const relFile of glob.scanSync({ cwd: srcPath, absolute: false })) {
+        const fileSrc = join(srcPath, relFile);
+        if (statSync(fileSrc).isDirectory()) continue;
+        const fileDst = join(workspace, dst, relFile);
+        mkdirSync(dirname(fileDst), { recursive: true });
+        const isBinary = /\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|mp[34]|wav|ogg|zip|gz|tar|pdf)$/i.test(relFile);
+        if (hasParams && !isBinary) {
+          let content = readFileSync(fileSrc, "utf-8");
+          content = applyTemplateParams(content, resolvedParams);
+          writeFileSync(fileDst, content, "utf-8");
+        } else {
+          copyFileSync(fileSrc, fileDst);
+        }
+      }
+    }
+  }
+
   // Initialize shadow git for checkpoint tracking AFTER seed (so initial commit includes seed files)
   // Skip for replay — done on Continue Work
   if (!replayPackage) {
