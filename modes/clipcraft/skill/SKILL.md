@@ -234,6 +234,15 @@ seconds or `auto`; veo3.1 only allows `4`/`6`/`8`), `--aspect-ratio`
 the content policy rejects auto-audio), `--seed` (integer, seedance
 only), `--model seedance | veo3.1`.
 
+**Seedance minimum duration is 4 seconds.** Any beat shorter than
+that — a two-second reaction, a three-second punchline, a half-second
+sting — must still be generated at `--duration 4` and then *trimmed
+on the timeline* by setting `clip.outPoint` lower than the source
+asset's full length. Plan beats in multiples of 4s when possible, and
+treat "I need 2 seconds here" as "I need 4 seconds of which I'll use
+the first 2". Never try to request `--duration 2`; the API will
+reject it, not silently clamp.
+
 ### Content-policy retries
 
 Seedance has two distinct content-filter failure modes. The script

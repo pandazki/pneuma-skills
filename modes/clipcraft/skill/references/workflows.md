@@ -9,6 +9,127 @@ id rules in `asset-ids.md`.
 
 ---
 
+## Workflow 0 — First clip on an empty composition
+
+The fumbliest moment is the very first clip in a fresh project. If
+the user just cleared the seed ("帮我清空", "start from scratch") or
+`composition.tracks` is `[]`, the asset + provenance + clip path
+from Workflow 1 is not enough: there is no track to append to yet,
+and if the project was written from scratch, `composition.settings`
+may also be blank or wrong for the format the user wants.
+
+### Symptoms that you're in Workflow 0
+
+- `composition.tracks` is `[]` or only contains tracks of the wrong
+  `type` for what you're about to add (you're placing a video but
+  only an `audio` track exists).
+- `composition.settings` is missing, or width/height don't match the
+  aspect ratio the user asked for (1080×1080 when they said 9:16).
+- `assets` is empty — there's no prior lineage to hang provenance on.
+
+### The safer move: one `Write` instead of many `Edit`s
+
+For the *first* assembly — from empty / near-empty up to one clip on
+a timeline — write the **entire target `project.json`** in a single
+`Write` call rather than a chain of `Edit`s. Piecewise editing is
+how nested JSON edits go wrong: tracks forget `muted`/`volume`/
+`locked`/`visible` (all required), clips forget `inPoint`/
+`outPoint`, `$schema` accidentally drops. When you can build the
+whole target in your head, write the whole thing at once.
+
+Minimum shape for "one 4-second 9:16 video clip on a Main track, no
+audio, no captions":
+
+```json
+{
+  "$schema": "pneuma-craft/project/v1",
+  "title": "Working title",
+  "composition": {
+    "settings": { "width": 1080, "height": 1920, "fps": 30, "aspectRatio": "9:16" },
+    "tracks": [
+      {
+        "id": "track-video-main",
+        "type": "video",
+        "name": "Main",
+        "muted": false,
+        "volume": 1,
+        "locked": false,
+        "visible": true,
+        "clips": [
+          {
+            "id": "clip-shot1",
+            "assetId": "asset-shot1",
+            "startTime": 0,
+            "duration": 4,
+            "inPoint": 0,
+            "outPoint": 4
+          }
+        ]
+      }
+    ],
+    "transitions": []
+  },
+  "assets": [
+    {
+      "id": "asset-shot1",
+      "type": "video",
+      "uri": "assets/video/shot1.mp4",
+      "name": "Shot 1",
+      "metadata": { "duration": 4, "width": 1080, "height": 1920, "fps": 30, "codec": "h264" },
+      "createdAt": 1712934000000,
+      "status": "ready"
+    }
+  ],
+  "provenance": [
+    {
+      "toAssetId": "asset-shot1",
+      "fromAssetId": null,
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "agentId": "clipcraft-videogen",
+        "timestamp": 1712934000000,
+        "params": {
+          "model": "bytedance/seedance-2.0",
+          "prompt": "…the prompt you ran…",
+          "duration": "4",
+          "aspect_ratio": "9:16"
+        }
+      }
+    }
+  ]
+}
+```
+
+Every field above except `tags` / `fadeIn` / `fadeOut` / optional
+clip flags is **required**. Short rules for the parts the agent most
+often drops:
+
+- `composition.settings` — always four fields (`width`, `height`,
+  `fps`, `aspectRatio`), and they should match the aspect ratio the
+  user asked for.
+- Each track — **always** `muted`, `volume`, `locked`, `visible`.
+  Missing any of these fails hydration silently.
+- Each clip — **always** `inPoint` + `outPoint`. For a clip that
+  plays the asset's full length, both `inPoint: 0` and
+  `outPoint: <asset duration>`. If the asset is longer than the beat
+  you want (e.g. a 4s seedance clip where you only want the first
+  2s), `inPoint: 0, outPoint: 2, duration: 2`.
+- Provenance — one edge per asset. `fromAssetId: null` when
+  generated from a text prompt alone; an existing asset id when
+  derived. Match `timestamp` to the asset's `createdAt`.
+
+### Transition: once Workflow 0 lands, use Workflow 1 for more clips
+
+After the first clip renders cleanly, subsequent clips on the *same*
+track are purely append operations — edit the existing `clips[]`
+array and add a new asset + provenance pair, as in Workflow 1. New
+tracks still need the full track shape, so prefer `Write` over `Edit`
+whenever you're adding a track for the first time in a given
+session.
+
+---
+
 ## Workflow 1 — Generate a new video clip
 
 **User:** "Make a 4-second shot of a panda eating bamboo for the intro."

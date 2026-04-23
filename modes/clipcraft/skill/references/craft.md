@@ -89,6 +89,17 @@ physics breakdowns — the model is being asked to animate too many
 narrative changes per unit of render time. Single-beat-per-segment
 isn't a rule of prompting; it's a rule of attention.
 
+There's a trap specific to AI video worth naming: when a beat is
+short (two or three seconds) the temptation is to fake it — a still
+image with a caption sitting over it, music covering the silence.
+This reads as gap, not beat. Whatever rhythm the surrounding motion
+earned dies on the stitched-in frame, and the audience feels the
+join even if they can't name it. If the beat is worth having,
+generate it as motion with its own sound; integration is how it
+*belongs* to the same piece. Stillness is a legitimate choice only
+when stillness itself is the intent — a breath mid-sequence, a hold
+on a punchline — not a shortcut around a short beat.
+
 ## Sound is structural, not accompaniment
 
 Rough picture with good sound is watchable. Beautiful picture with bad
@@ -147,6 +158,14 @@ woman walking" is a thousand generic women. "A tired woman in a damp
 wool coat stepping over a puddle without looking down" is one specific
 woman. The first gives you average; the second gives you cinema.
 
+References obey this rule too. When invoking a period or a culture,
+name an artifact, not a category. "Something outdated" gives you the
+average of outdated — probably a 90s laptop. "A copy of *Visual Basic
+6.0 程序设计* (1998 edition) face-down on the desk" gives you a
+specific, period-correct object the audience can read. The precision
+of the reference is what makes the scene sit in a real moment
+instead of in "old tech" in general.
+
 Reference images and videos are tools of specificity. They are not
 decoration or inspiration boards — they are the fastest way to say
 "this one, not the average." When you anchor a generation on a
@@ -192,6 +211,16 @@ something that screams *I am fresh* and will look dated in six
 months. Freshness is not a style; it's alignment between what you're
 making and the moment you're making it in. The test isn't "does this
 look fresh now" but "will it feel honest later."
+
+If an idea is topical — tied to a trend, a meme, a cultural moment,
+a reference to anything labeled "current" — *search before you
+commit*. The tools reach the web; use them. The model's internal
+sense of what's trending is months to a year behind whatever was
+alive when its training was frozen, and a direction built on its
+idea of "right now" tends to feel slightly off-season in a way the
+model itself cannot detect. Five minutes of search before picking a
+direction is cheaper than discovering two expensive generations in
+that the reference you were leaning on is last season's.
 
 In the room between model and piece, the only source of currency is
 you. The model can recombine; only you can notice.
