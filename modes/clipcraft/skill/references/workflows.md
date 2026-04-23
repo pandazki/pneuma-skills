@@ -226,6 +226,59 @@ re-hydrates and renders the clip immediately.
 
 **User:** "Try another take of the sad panda, make it droop harder."
 
+A variant can arrive two ways:
+1. **Freeform chat** ("try another take of the panda, droop harder") — you
+   read the user's intent against the current project state.
+2. **Structured notification** from the Variant dialog — tagged
+   `clipcraft:generate-variant`, with the source's frozen identity on
+   `source` and the user's delta on `change_direction`. This is the
+   common path and the shape you must handle carefully.
+
+### Dialog-dispatched variants (structured)
+
+The JSON payload has a different shape from create:
+
+```json
+{
+  "mode": "variant",
+  "kind": "image",
+  "source": {
+    "asset_id": "asset-panda-sad-v1",
+    "uri": "assets/clips/panda-sad-v1.mp4",
+    "prompt": "<source's original prompt — frozen>",
+    "model": "bytedance/seedance-2.0/image-to-video",
+    "width": 1920, "height": 1080, "aspect_ratio": "16:9",
+    "duration": 4.0
+  },
+  "change_direction": "emphasize head droop, slower beat",
+  "script": "scripts/generate-video.mjs from-image",
+  "provenance_hint": { "operation_type": "derive", "from_asset_id": "asset-panda-sad-v1", ... }
+}
+```
+
+Key rules — getting this wrong turns "a variant" into "a new creation that
+happens to share a provenance edge", which is not what the user asked for:
+
+- **Fuse, don't rewrite.** The final prompt is `source.prompt` with
+  `change_direction` applied as a *delta*. Keep the subject, setting,
+  lighting language, typography rules — everything that makes this a
+  variant *of* that asset. Only modify what the change direction calls
+  out. If change direction says "add film grain", the prompt is nearly
+  identical plus a grain instruction; don't invent new subject matter.
+- **Preserve format.** Use the source's `width`/`height` (`--image-size WxH`),
+  `aspect_ratio`, `duration` unless the change direction explicitly asks
+  for a different size or length.
+- **Prefer edit mode for small deltas (images).** For "change the red
+  card to green", "swap copy to 额度见底", "add grain" — pass
+  `--image-urls <source.uri>` so GPT-Image-2 routes through edit mode
+  and the variant inherits composition, palette, and identity. For
+  structural changes ("different character entirely", "new camera
+  angle"), a pure text-to-image with the fused prompt is fine.
+- **Semantic variant ids.** `asset-panda-sad-v2`, `-v3`, or a
+  semantic suffix like `-close`, `-nighttime`. Never a random UUID.
+
+### The seed's classic pair
+
 The seed project has this exact pair: `asset-panda-sad-v1` →
 `asset-panda-sad-v2`, linked via a `derive` provenance edge.
 Re-creating that pattern:

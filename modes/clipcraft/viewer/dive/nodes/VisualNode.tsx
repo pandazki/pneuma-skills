@@ -40,14 +40,14 @@ const placeholderRow = (
 );
 
 export function VisualNode({ data }: NodeProps) {
-  const { asset, isActive, isFocused, clipId } = data as unknown as TreeNodeData;
+  const { asset, isActive, isFocused, clipId, role } = data as unknown as TreeNodeData;
   const src = useWorkspaceAssetUrl(asset.id);
   const hasThumb = !!src && asset.status !== "failed" && asset.status !== "pending";
 
   return (
     <>
       <Handle type="target" position={Position.Left} style={handleStyle} />
-      <NodeShell asset={asset} isActive={isActive} isFocused={isFocused} clipId={clipId}>
+      <NodeShell asset={asset} isActive={isActive} isFocused={isFocused} clipId={clipId} role={role}>
         <div
           style={{
             width: "100%",
@@ -62,12 +62,28 @@ export function VisualNode({ data }: NodeProps) {
           }}
         >
           {hasThumb ? (
-            <img
-              src={src}
-              alt=""
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              draggable={false}
-            />
+            asset.type === "video" ? (
+              <video
+                src={src}
+                muted
+                playsInline
+                preload="metadata"
+                onLoadedData={(e) => {
+                  // Browsers often hold a blank poster at currentTime=0;
+                  // nudge past 0 so the first real frame shows as the
+                  // thumbnail.
+                  (e.target as HTMLVideoElement).currentTime = 0.1;
+                }}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            ) : (
+              <img
+                src={src}
+                alt=""
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                draggable={false}
+              />
+            )
           ) : asset.status === "generating" ? (
             placeholderRow(HourglassIcon, "Generating…", theme.color.warnInk)
           ) : asset.status === "failed" ? (

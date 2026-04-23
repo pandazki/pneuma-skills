@@ -1,7 +1,6 @@
 import { useCallback, useMemo, type ReactElement } from "react";
 import type { Asset } from "@pneuma-craft/core";
-import { usePneumaCraftStore } from "@pneuma-craft/react";
-import { useVariantPointer } from "../useVariantPointer.js";
+import { useDispatch, usePneumaCraftStore } from "@pneuma-craft/react";
 import { useTimelineMode } from "../../hooks/useTimelineMode.js";
 import {
   UploadIcon,
@@ -12,8 +11,12 @@ import {
   type IconProps,
 } from "../../icons/index.js";
 import { theme } from "../../theme/tokens.js";
+import { typeAccent } from "../../assetInfo/typeAccent.js";
 import { useGenerationDialog } from "../../generation/useGenerationDialog.js";
-import type { AssetKind } from "../../generation/dispatchGeneration.js";
+import {
+  sourceFromAsset,
+  type AssetKind,
+} from "../../generation/dispatchGeneration.js";
 
 type NodeOrigin = "upload" | "ai-gen" | "manual" | "ai-search";
 
@@ -27,6 +30,24 @@ const ORIGIN_CONFIG: Record<
   "ai-search": { Icon: SearchIcon, label: "AI Search" },
 };
 
+/** Classify an asset's origin from the provenance operation that
+ *  produced it. Returns null when we can't make a confident call —
+ *  callers then just omit the origin chip so the card stays clean
+ *  rather than parading an incorrect label. */
+function classifyOriginOrNull(
+  op:
+    | { type?: string; params?: Record<string, unknown> | undefined }
+    | undefined,
+): NodeOrigin | null {
+  const source = op?.params?.source as string | undefined;
+  if (source === "upload") return "upload";
+  if (source === "manual") return "manual";
+  if (source === "ai-search") return "ai-search";
+  if (op?.type === "generate" || op?.type === "derive") return "ai-gen";
+  if (op?.type === "import") return "upload";
+  return null;
+}
+
 const STATUS_COLORS: Record<string, string> = {
   ready: theme.color.success,
   generating: theme.color.warn,
@@ -39,11 +60,14 @@ interface Props {
   isActive: boolean;
   isFocused: boolean;
   clipId: string;
+  /** "variant" = same type as the clip's bound asset (swap candidate).
+   *  "reference" = cross-type lineage entry — not bindable to the clip. */
+  role: "variant" | "reference";
   children: React.ReactNode;
 }
 
-export function NodeShell({ asset, isActive, isFocused, clipId, children }: Props) {
-  const { set } = useVariantPointer();
+export function NodeShell({ asset, isActive, isFocused, clipId, role, children }: Props) {
+  const dispatch = useDispatch();
   const { setDiveFocusedNodeId } = useTimelineMode();
   const coreState = usePneumaCraftStore((s) => s.coreState);
 
@@ -58,26 +82,24 @@ export function NodeShell({ asset, isActive, isFocused, clipId, children }: Prop
   }, [coreState.provenance.edges, asset.id]);
 
   const op = edge?.operation;
-  const originRaw = op?.params?.source as string | undefined;
-  const origin: NodeOrigin =
-    originRaw === "upload"
-      ? "upload"
-      : op?.type === "generate"
-        ? "ai-gen"
-        : op?.type === "import"
-          ? "upload"
-          : "manual";
-  const originCfg = ORIGIN_CONFIG[origin];
-  const OriginIcon = originCfg.Icon;
+  const origin = classifyOriginOrNull(op);
+  const originCfg = origin ? ORIGIN_CONFIG[origin] : null;
+  const OriginIcon = originCfg?.Icon ?? null;
   const statusColor =
     STATUS_COLORS[asset.status ?? "ready"] ?? STATUS_COLORS.pending;
 
   const prompt = op?.params?.prompt as string | undefined;
   const model = op?.params?.model as string | undefined;
+  const accent = typeAccent(asset.type);
+  const TypeIcon = accent.Icon;
 
   const handleUseThis = useCallback(() => {
-    set(clipId, asset.id);
-  }, [set, clipId, asset.id]);
+    dispatch("human", {
+      type: "composition:rebind-clip",
+      clipId,
+      assetId: asset.id,
+    });
+  }, [dispatch, clipId, asset.id]);
 
   const handleClick = useCallback(() => {
     setDiveFocusedNodeId(asset.id);
@@ -90,15 +112,14 @@ export function NodeShell({ asset, isActive, isFocused, clipId, children }: Prop
       : null;
   const handleVariant = useCallback(() => {
     if (!variantKind) return;
-    openForVariant(
-      {
-        id: asset.id,
-        name: asset.name ?? asset.id,
-        sourcePrompt: (op?.params?.prompt as string | undefined) ?? null,
-        sourceModel: (op?.params?.model as string | undefined) ?? null,
-      },
-      variantKind,
+    const source = sourceFromAsset(
+      asset,
+      (op?.params?.prompt as string | undefined) ?? null,
+      (op?.params?.model as string | undefined) ?? null,
+      (op?.params?.aspect_ratio as string | undefined) ?? null,
     );
+    if (!source) return;
+    openForVariant(source, variantKind);
   }, [openForVariant, asset, op, variantKind]);
 
   return (
@@ -106,6 +127,7 @@ export function NodeShell({ asset, isActive, isFocused, clipId, children }: Prop
       onClick={handleClick}
       style={{
         width: 200,
+        position: "relative",
         background: isActive ? theme.color.accentSoft : theme.color.surface1,
         border: `1px solid ${
           isActive
@@ -116,6 +138,7 @@ export function NodeShell({ asset, isActive, isFocused, clipId, children }: Prop
         }`,
         borderRadius: theme.radius.md,
         padding: theme.space.space3,
+        paddingLeft: theme.space.space3 + 4,
         cursor: "pointer",
         fontFamily: theme.font.ui,
         transition: `background ${theme.duration.base}ms ${theme.easing.out}, border-color ${theme.duration.base}ms ${theme.easing.out}`,
@@ -123,11 +146,25 @@ export function NodeShell({ asset, isActive, isFocused, clipId, children }: Prop
           asset.status === "generating" ? "pulse 2s ease-in-out infinite" : undefined,
       }}
     >
+      {/* Type accent stripe down the left edge — ambient kind indicator */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 4,
+          background: accent.color,
+          borderTopLeftRadius: theme.radius.md,
+          borderBottomLeftRadius: theme.radius.md,
+        }}
+      />
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          gap: theme.space.space1,
           marginBottom: theme.space.space2,
         }}
       >
@@ -136,20 +173,36 @@ export function NodeShell({ asset, isActive, isFocused, clipId, children }: Prop
             display: "inline-flex",
             alignItems: "center",
             gap: theme.space.space1,
-            background: isActive
-              ? "oklch(74% 0.16 55 / 0.22)"
-              : theme.color.surface2,
+            background: accent.soft,
             padding: `2px ${theme.space.space2}px`,
             borderRadius: theme.radius.sm,
             fontSize: theme.text.xs,
             fontWeight: theme.text.weightSemibold,
             letterSpacing: theme.text.trackingWide,
-            color: isActive ? theme.color.accentBright : theme.color.ink2,
+            color: accent.color,
           }}
         >
-          <OriginIcon size={11} />
-          {originCfg.label}
+          <TypeIcon size={11} />
+          {accent.label}
         </span>
+        {originCfg && OriginIcon && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: theme.space.space1,
+              padding: `2px ${theme.space.space2}px`,
+              borderRadius: theme.radius.sm,
+              fontSize: theme.text.xs,
+              fontWeight: theme.text.weightMedium,
+              letterSpacing: theme.text.trackingWide,
+              color: theme.color.ink3,
+            }}
+          >
+            <OriginIcon size={11} />
+            {originCfg.label}
+          </span>
+        )}
         <span
           aria-label={`status ${asset.status ?? "ready"}`}
           style={{
@@ -158,6 +211,7 @@ export function NodeShell({ asset, isActive, isFocused, clipId, children }: Prop
             borderRadius: theme.radius.pill,
             background: statusColor,
             flexShrink: 0,
+            marginLeft: "auto",
           }}
         />
       </div>
@@ -209,7 +263,32 @@ export function NodeShell({ asset, isActive, isFocused, clipId, children }: Prop
           gap: theme.space.space1,
         }}
       >
-        {isActive ? (
+        {role === "reference" ? (
+          // Reference nodes live in the DAG for lineage only — they
+          // can't be bound to the clip (type mismatch would break
+          // playback). A small chip makes the read-only role obvious.
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: theme.space.space1,
+              flex: 1,
+              padding: `${theme.space.space1}px 0`,
+              background: "transparent",
+              border: `1px dashed ${theme.color.borderWeak}`,
+              borderRadius: theme.radius.sm,
+              fontSize: theme.text.xs,
+              fontWeight: theme.text.weightMedium,
+              letterSpacing: theme.text.trackingCaps,
+              textTransform: "uppercase",
+              color: theme.color.ink4,
+            }}
+            title="Cross-type reference — can't be bound to the current clip"
+          >
+            Reference
+          </div>
+        ) : isActive ? (
           <div
             style={{
               display: "inline-flex",

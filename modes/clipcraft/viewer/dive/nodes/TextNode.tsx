@@ -11,7 +11,7 @@ const handleStyle = {
 };
 
 export function TextNode({ data }: NodeProps) {
-  const { asset, isActive, isFocused, clipId } = data as unknown as TreeNodeData;
+  const { asset, isActive, isFocused, clipId, role } = data as unknown as TreeNodeData;
   // For caption-layer synthetic nodes we stuff the clip text into
   // asset.name via the DiveCanvas adapter.
   const body = asset.name || "";
@@ -19,7 +19,7 @@ export function TextNode({ data }: NodeProps) {
   return (
     <>
       <Handle type="target" position={Position.Left} style={handleStyle} />
-      <NodeShell asset={asset} isActive={isActive} isFocused={isFocused} clipId={clipId}>
+      <NodeShell asset={asset} isActive={isActive} isFocused={isFocused} clipId={clipId} role={role}>
         <div
           style={{
             background: theme.color.surface2,

@@ -1,9 +1,9 @@
 /**
- * ClipCraft on-disk project schema + hydration command builder.
- *
- * Plan 2 scope: read-only. Converts a parsed ProjectFile into a sequence of
- * craft CommandEnvelopes (hydration-via-events) so the craft store rebuilds
- * itself from disk without bypassing the event log. Writes come in Plan 3.
+ * ClipCraft on-disk project schema, hydration command builder, and inverse
+ * serializer. Parsing turns project.json into a sequence of craft
+ * CommandEnvelopes (hydration-via-events) so the store rebuilds itself from
+ * disk without bypassing the event log; serializeProject walks the live
+ * store back to a ProjectFile byte-for-byte equivalent to the on-disk input.
  */
 
 import type {

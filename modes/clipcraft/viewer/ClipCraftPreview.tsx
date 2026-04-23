@@ -27,6 +27,7 @@ import { CommandBar } from "./CommandBar.js";
 import { ExportProgress } from "./export/ExportProgress.js";
 import { useExportVideo } from "./export/useExportVideo.js";
 import { GenerationDialogProvider } from "./generation/useGenerationDialog.js";
+import { PendingGenerationsProvider } from "./generation/PendingGenerations.js";
 import { SceneProvider, useScenes } from "./scenes/SceneContext.js";
 import { TimelineModeProvider } from "./hooks/useTimelineMode.js";
 import { TimelineZoomProvider } from "./hooks/useTimelineZoomShared.js";
@@ -106,8 +107,9 @@ const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({
             <TimelineModeProvider>
               <TimelineZoomProvider>
                 <EditorToolProvider>
-                  <GenerationDialogProvider onNotifyAgent={onNotifyAgent}>
-                    <SyncedBody
+                  <PendingGenerationsProvider>
+                    <GenerationDialogProvider onNotifyAgent={onNotifyAgent}>
+                      <SyncedBody
                       project={project}
                       writeProject={writeProject}
                       currentTitleRef={currentTitleRef}
@@ -119,7 +121,8 @@ const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({
                       navigateRequest={navigateRequest ?? null}
                       onNavigateComplete={onNavigateComplete}
                     />
-                  </GenerationDialogProvider>
+                    </GenerationDialogProvider>
+                  </PendingGenerationsProvider>
                 </EditorToolProvider>
               </TimelineZoomProvider>
             </TimelineModeProvider>
@@ -255,6 +258,11 @@ function SyncedBody({
   // leading gap doesn't paint nothing). Upstream `store.seek()`
   // lazy-inits the engine (commit c18ab13 in pneuma-craft).
   // Fires once per composition identity — re-edits keep currentTime.
+  //
+  // Defer the seek to the next microtask and bail if the component
+  // unmounted meanwhile. Otherwise the async engine init can race with
+  // a provider remount (external edit triggers providerKey change) and
+  // store.ts logs "Store destroyed".
   const initialPaintRef = useRef<string | null>(null);
   useEffect(() => {
     if (!composition) return;
@@ -268,7 +276,12 @@ function SyncedBody({
       videoClips.length > 0
         ? Math.min(...videoClips.map((c) => c.startTime))
         : 0;
-    playback.seek(firstVisible);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      playback.seek(firstVisible);
+    });
+    return () => { cancelled = true; };
   }, [composition, playback]);
 
   // ── Hydration: dispatch project into the (fresh) craft store ─────────

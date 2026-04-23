@@ -10,16 +10,20 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useComposition, usePlayback } from "@pneuma-craft/react";
+import { useComposition, usePlayback, usePneumaCraftStore } from "@pneuma-craft/react";
 import type { Asset } from "@pneuma-craft/core";
 import { useTimelineMode } from "../hooks/useTimelineMode.js";
 import { useVariantPointer } from "./useVariantPointer.js";
 import { tracksForLayer, type LayerType } from "../overview/layerTypes.js";
 import { useTreeLayout } from "./useTreeLayout.js";
 import { DiveHeader } from "./DiveHeader.js";
+import { DiveTrackRibbon } from "./DiveTrackRibbon.js";
+import { usePendingGenerations } from "../generation/PendingGenerations.js";
 import { VisualNode } from "./nodes/VisualNode.js";
 import { AudioNode } from "./nodes/AudioNode.js";
 import { TextNode } from "./nodes/TextNode.js";
+import { AssetInfoView } from "../assetInfo/AssetInfoView.js";
+import { XIcon } from "../icons/index.js";
 import { theme } from "../theme/tokens.js";
 
 const RF_DARK_STYLES = `
@@ -34,6 +38,9 @@ const RF_DARK_STYLES = `
   --xy-node-background-color-default: transparent;
   --xy-node-border-default: none;
 }
+/* Suppress the default selection ring — our NodeShell draws its own
+   active/focus states and the extra outline just adds noise. */
+.react-flow__node.selected { outline: none; box-shadow: none; }
 .react-flow__minimap {
   background: ${theme.color.surface1};
   border: 1px solid ${theme.color.borderWeak};
@@ -61,19 +68,21 @@ function DiveCanvasInner() {
   const layer: LayerType = (diveLayer ?? "video") as LayerType;
   const tracks = composition?.tracks ?? [];
 
-  // Find the clip at the current time for the active dive layer.
-  const activeClip = useMemo(() => {
+  // Find the clip at the current time for the active dive layer —
+  // plus the track it sits on, so the ribbon above the canvas can
+  // show the user their spatial position in the timeline.
+  const { clip: activeClip, track: activeTrack } = useMemo(() => {
     for (const track of tracksForLayer(tracks, layer)) {
       for (const clip of track.clips) {
         if (
           playback.currentTime >= clip.startTime &&
           playback.currentTime < clip.startTime + clip.duration
         ) {
-          return clip;
+          return { clip, track };
         }
       }
     }
-    return null;
+    return { clip: null, track: null };
   }, [tracks, layer, playback.currentTime]);
 
   const clipId = activeClip?.id ?? "";
@@ -86,8 +95,24 @@ function DiveCanvasInner() {
   }, [activeClip, getVariant]);
 
   const activeAssetId = rootAssetId;
+  // The clip's bound asset type decides which nodes in the DAG are
+  // swap-candidates (same type → variant) vs read-only references.
+  const coreStateForType = usePneumaCraftStore((s) => s.coreState);
+  const activeAssetType = useMemo(() => {
+    if (!activeAssetId) return null;
+    const asset = coreStateForType.registry.get(activeAssetId);
+    return asset?.type ?? null;
+  }, [activeAssetId, coreStateForType.registry]);
 
-  const { nodes, edges } = useTreeLayout(rootAssetId, activeAssetId, diveFocusedNodeId, clipId);
+  const { pending } = usePendingGenerations();
+  const { nodes, edges } = useTreeLayout(
+    rootAssetId,
+    activeAssetId,
+    diveFocusedNodeId,
+    clipId,
+    activeAssetType,
+    pending,
+  );
 
   // Caption layer: synthesize a single TextNode from clip.text.
   const effectiveNodes = useMemo(() => {
@@ -111,6 +136,7 @@ function DiveCanvasInner() {
           isActive: true,
           isFocused: false,
           isOnActivePath: true,
+          role: "variant" as const,
           clipId: activeClip.id,
         },
       },
@@ -153,6 +179,10 @@ function DiveCanvasInner() {
       <style>{RF_DARK_STYLES}</style>
 
       <DiveHeader />
+      <DiveTrackRibbon
+        activeTrack={activeTrack}
+        activeClipId={activeClip?.id ?? null}
+      />
 
       <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
         {effectiveNodes.length > 0 ? (
@@ -165,7 +195,6 @@ function DiveCanvasInner() {
             fitViewOptions={{ padding: 0.2 }}
             nodesDraggable={false}
             nodesConnectable={false}
-            elementsSelectable={false}
             style={{ background: theme.color.surface0 }}
           >
             <Background
@@ -194,6 +223,11 @@ function DiveCanvasInner() {
             No generation tree for this slot yet.
           </div>
         )}
+        <DiveDetailPanel
+          focusedAssetId={diveFocusedNodeId}
+          onClose={() => setDiveFocusedNodeId(null)}
+          onNavigateToParent={(id) => setDiveFocusedNodeId(id)}
+        />
       </div>
 
       <div
@@ -237,7 +271,7 @@ function DiveCanvasInner() {
             fontStyle: "italic",
           }}
         >
-          Click to browse · "Use This" to switch variant pointer
+          Click to browse · "Use This" binds this variant to the clip
         </span>
       </div>
     </div>
@@ -249,5 +283,112 @@ export function DiveCanvas() {
     <ReactFlowProvider>
       <DiveCanvasInner />
     </ReactFlowProvider>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Detail panel — slides in on the right when a node is focused
+// ─────────────────────────────────────────────────────────────────────────────
+
+function DiveDetailPanel({
+  focusedAssetId,
+  onClose,
+  onNavigateToParent,
+}: {
+  focusedAssetId: string | null;
+  onClose: () => void;
+  onNavigateToParent: (assetId: string) => void;
+}) {
+  const coreState = usePneumaCraftStore((s) => s.coreState);
+  const asset = focusedAssetId
+    ? (coreState.registry.get(focusedAssetId) ?? null)
+    : null;
+  const edge = useMemo(() => {
+    if (!focusedAssetId) return null;
+    for (const e of coreState.provenance.edges.values()) {
+      if (e.toAssetId === focusedAssetId) return e;
+    }
+    return null;
+  }, [coreState.provenance.edges, focusedAssetId]);
+  const parentAsset = edge?.fromAssetId
+    ? (coreState.registry.get(edge.fromAssetId) ?? null)
+    : null;
+
+  if (!asset) return null;
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: theme.space.space3,
+        right: theme.space.space3,
+        bottom: theme.space.space3,
+        width: 340,
+        maxWidth: "40%",
+        background: theme.color.surface1,
+        border: `1px solid ${theme.color.borderStrong}`,
+        borderRadius: theme.radius.lg,
+        boxShadow: theme.elevation.s3,
+        display: "flex",
+        flexDirection: "column",
+        padding: theme.space.space4,
+        gap: theme.space.space3,
+        overflow: "auto",
+        zIndex: 5,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: theme.space.space2,
+        }}
+      >
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            fontSize: theme.text.base,
+            fontWeight: theme.text.weightSemibold,
+            color: theme.color.ink0,
+            letterSpacing: theme.text.trackingTight,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {asset.name}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="close detail panel"
+          title="Close (click node again)"
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: theme.radius.sm,
+            background: "transparent",
+            border: `1px solid ${theme.color.borderWeak}`,
+            color: theme.color.ink2,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 0,
+            flexShrink: 0,
+          }}
+        >
+          <XIcon size={11} />
+        </button>
+      </div>
+
+      <AssetInfoView
+        asset={asset}
+        edge={edge}
+        parentAsset={parentAsset}
+        onNavigateToParent={onNavigateToParent}
+      />
+    </div>
   );
 }

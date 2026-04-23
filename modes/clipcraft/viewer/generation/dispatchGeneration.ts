@@ -26,7 +26,13 @@ export type RequestMode = "create" | "variant";
 
 export interface ImageParams {
   kind: "image";
+  /** For create: the full prompt. For variant: the source's ORIGINAL
+   *  prompt — read-only, kept as lineage identity. The user-facing
+   *  instruction for the variant lives on `changeDirection`. */
   prompt: string;
+  /** Variant-mode only: user's modification direction, e.g.
+   *  "make the character older". Agent fuses this with `prompt`. */
+  changeDirection?: string;
   aspectRatio?: string;
   width?: number;
   height?: number;
@@ -36,6 +42,7 @@ export interface ImageParams {
 export interface VideoParams {
   kind: "video";
   prompt: string;
+  changeDirection?: string;
   /** veo3.1 requires explicit duration — no default. Units: "4s" / "6s" / "8s". */
   duration: string;
   aspectRatio?: "16:9" | "9:16";
@@ -47,8 +54,10 @@ export interface AudioParams {
   kind: "audio";
   /** Audio has two sub-modes discriminated by which field is set. */
   subKind: "tts" | "bgm";
-  /** For tts: narration text. For bgm: music prompt. */
+  /** For tts: narration text (create) / original text (variant).
+   *  For bgm: music prompt (create) / original prompt (variant). */
   prompt: string;
+  changeDirection?: string;
   voice?: string;
   durationSeconds?: number;
 }
@@ -59,17 +68,44 @@ export interface GenerationRequest {
   mode: RequestMode;
   params: GenerationParams;
   /** Populated when mode === "variant". The new asset's provenance
-   *  edge will carry fromAssetId = source.id and operation.type = "derive". */
+   *  edge will carry fromAssetId = source.id and operation.type = "derive".
+   *
+   *  The source envelope is the *read-only identity* of the variant
+   *  lineage: original prompt, model, and format knobs. User feedback
+   *  from the Variant dialog flows in as `params.changeDirection`
+   *  (kept separate from the frozen source fields) — the agent is
+   *  responsible for fusing the two per skill guidance. */
   source?: {
     id: string;
+    /** Human label / semantic id, e.g. "asset-panda-sad-v2". */
     name: string;
-    /** Current prompt on the source's provenance edge, if any. Used to
-     *  seed the form, NOT to constrain the new variant. */
+    /** URI of the source asset, so the agent can feed it as a reference
+     *  to GPT-Image-2's edit mode when appropriate. */
+    uri?: string | null;
+    /** Prompt recorded on the source's provenance edge. */
     sourcePrompt?: string | null;
-    /** Source operation model name for continuity, e.g. "fal-ai/veo3.1". */
+    /** Model id recorded on the source's provenance edge, e.g.
+     *  "openai/gpt-image-2" or "bytedance/seedance-2.0/image-to-video". */
     sourceModel?: string | null;
+    /** Image/video pixel dimensions from asset.metadata. Carried so the
+     *  variant inherits exact size unless the change direction asks
+     *  otherwise (critical for first/last-frame continuity). */
+    sourceWidth?: number | null;
+    sourceHeight?: number | null;
+    /** Aspect ratio label recorded on the source's provenance edge
+     *  params, if any — e.g. "16:9". */
+    sourceAspectRatio?: string | null;
+    /** Duration for video/audio variants. Seconds. */
+    sourceDuration?: number | null;
+    /** TTS voice on the source (if audio/tts). */
+    sourceVoice?: string | null;
   };
 }
+
+/** Narrative field tucked onto params when mode === "variant". Only the
+ *  user-facing intent ("make it grainier", "swap the red card for green")
+ *  — not the original prompt, which stays on `source.sourcePrompt`. */
+export type VariantChangeDirection = string;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Notification builder
@@ -101,25 +137,39 @@ ${instructions}`,
 }
 
 function buildSummary(req: GenerationRequest): string {
-  const verb = req.mode === "variant" ? "Generate a variant" : "Create a new asset";
   const kind = req.params.kind;
-  const promptPreview = truncate(req.params.prompt, 80);
   if (req.mode === "variant" && req.source) {
-    return `${verb} of ${req.source.name} (${req.source.id}) — ${kind} — "${promptPreview}"`;
+    const change = truncate(req.params.changeDirection ?? "", 80);
+    return `Generate a variant of ${req.source.name} (${req.source.id}) — ${kind} — change: "${change}"`;
   }
-  return `${verb} — ${kind} — "${promptPreview}"`;
+  const promptPreview = truncate(req.params.prompt, 80);
+  return `Create a new asset — ${kind} — "${promptPreview}"`;
 }
 
 interface JsonPayload {
   mode: RequestMode;
   kind: AssetKind;
   sub_kind?: "tts" | "bgm";
-  prompt: string;
+  /** Present in create mode. In variant mode the original prompt lives
+   *  on source.prompt and the user's intent on change_direction, so
+   *  this field is omitted. */
+  prompt?: string;
+  /** Variant-mode only: user's modification direction. */
+  change_direction?: string;
   params: Record<string, unknown>;
   source?: {
     asset_id: string;
     asset_name: string;
+    /** Variant mode: the source's frozen identity the agent must honour
+     *  unless `change_direction` explicitly overrides. */
+    uri?: string | null;
+    prompt?: string | null;
     model?: string | null;
+    width?: number | null;
+    height?: number | null;
+    aspect_ratio?: string | null;
+    duration?: number | null;
+    voice?: string | null;
   };
   script: string;
   script_args: Record<string, string | number>;
@@ -133,11 +183,16 @@ interface JsonPayload {
 }
 
 function buildPayload(req: GenerationRequest): JsonPayload {
+  const isVariant = req.mode === "variant";
   const base: Omit<JsonPayload, "params" | "script" | "script_args" | "provenance_hint"> = {
     mode: req.mode,
     kind: req.params.kind,
-    prompt: req.params.prompt,
   };
+  if (isVariant) {
+    base.change_direction = req.params.changeDirection ?? "";
+  } else {
+    base.prompt = req.params.prompt;
+  }
   if (req.params.kind === "audio") {
     (base as JsonPayload).sub_kind = req.params.subKind;
   }
@@ -145,7 +200,14 @@ function buildPayload(req: GenerationRequest): JsonPayload {
     base.source = {
       asset_id: req.source.id,
       asset_name: req.source.name,
+      uri: req.source.uri ?? null,
+      prompt: req.source.sourcePrompt ?? null,
       model: req.source.sourceModel ?? null,
+      width: req.source.sourceWidth ?? null,
+      height: req.source.sourceHeight ?? null,
+      aspect_ratio: req.source.sourceAspectRatio ?? null,
+      duration: req.source.sourceDuration ?? null,
+      voice: req.source.sourceVoice ?? null,
     };
   }
   const { params, script, scriptArgs, provenance } = resolveScriptForRequest(req);
@@ -291,24 +353,47 @@ function buildInstructions(req: GenerationRequest): string {
   const runStep = isImage
     ? "4. Run the script in `script` — prompt is POSITIONAL, not a flag. Example: `node <script> \"<prompt>\" --aspect-ratio ... --quality ... --output-dir assets/image --filename-prefix <semantic-id>`. Fold `params.style` (if set) into the prompt text rather than a flag. Use `--image-urls <url>` to switch GPT-Image-2 to edit mode (reference-driven continuation, first/last-frame pairs, character-on-background swaps, etc.)."
     : "4. Run the script referenced in `script` with the flags in `script_args`. Append `--output <path>`.";
+  if (req.mode === "variant") {
+    // Variant is a fundamentally different shape: the user did NOT write a
+    // prompt. They wrote a *change direction* ("make the card red", "add
+    // grain"). The agent must synthesize the new prompt by fusing the
+    // frozen source prompt with the user's change direction, and must
+    // preserve source dimensions/model unless the change direction
+    // explicitly asks for a different shape or format.
+    const lines = [
+      "Handling (variant):",
+      "1. Parse the JSON block above. Note the shape is *different* from create:",
+      "   - `source` holds the lineage identity: original prompt, model, exact pixel dimensions, aspect ratio.",
+      "   - `change_direction` is the user's modification intent. It is NOT a prompt — it is a delta.",
+      "2. Synthesize the final prompt by fusing `source.prompt` with `change_direction`:",
+      "   - Keep the source's subject, setting, lighting, typography language, and overall composition — those are what make this a variant *of* that asset.",
+      "   - Apply only what `change_direction` calls for. If it says \"add grain\", the prompt stays identical plus a grain instruction; if it says \"swap card copy to 额度见底\", only the copy changes.",
+      "   - Prefer additive edits. Do not rewrite the whole prompt unless the change direction explicitly asks for a wholesale redo.",
+      "3. Honor source format:",
+      "   - Run the script with the exact same `--image-size` / `--duration` / `--aspect-ratio` as the source unless the change direction explicitly asks for a different size / duration.",
+      "   - For images, consider `--image-urls <source.uri>` to route through GPT-Image-2's edit mode — that produces the tightest family resemblance for small-delta variants (add grain, text swap, minor swap-outs). Pure t2v without the reference is fine when the change direction is more structural (different composition, different character).",
+      "4. Pick a semantic asset id — never a UUID. Variants of `asset-panda-sad-v1` might be `asset-panda-sad-v2`, `asset-panda-sad-v3`, etc.",
+      "5. Pick a relative output path under the matching `assets/{kind}/` directory.",
+      runStep,
+      "6. Edit `project.json`: add the new asset to `assets[]` and a new `derive` edge to `provenance[]` using the `provenance_hint` fields (keep `operation.type` exactly as given, `fromAssetId` = source asset id).",
+      "7. Both source and the new variant stay in the registry so the variant switcher can show them side by side.",
+      "8. Do NOT add a clip to any track — the user clicks USE THIS in the dive canvas to bind the new asset to the originating clip.",
+      "",
+      "The viewer auto-hydrates once `project.json` is saved.",
+    ];
+    return lines.join("\n");
+  }
   const base = [
     "Handling:",
     "1. Parse the JSON block above.",
     "2. Pick a semantic asset id (e.g. `asset-forest-sunset`) — never a random UUID.",
     "3. Pick a relative output path under the matching `assets/{kind}/` directory.",
     runStep,
-    "5. Edit `project.json`: add the new asset to `assets[]` and a new edge to `provenance[]` using the `provenance_hint` fields (keep `operation.type` exactly as given, set `fromAssetId` from the hint — null for create, source asset id for variant).",
+    "5. Edit `project.json`: add the new asset to `assets[]` and a new edge to `provenance[]` using the `provenance_hint` fields (keep `operation.type` exactly as given, `fromAssetId` null for create).",
     "6. Do NOT add a clip to any track — the viewer gives the user a chance to pick where to place it separately.",
-  ];
-  if (req.mode === "variant") {
-    base.push(
-      "7. This is a DERIVE operation — the new asset is a sibling of the source. Both should remain in the registry so the variant switcher can show them.",
-    );
-  }
-  base.push(
     "",
     "The viewer will auto-hydrate once `project.json` is saved. No reload needed.",
-  );
+  ];
   return base.join("\n");
 }
 
@@ -348,19 +433,34 @@ function deriveAspectRatio(
   return best.label;
 }
 
-// Tiny adapter used by callers that have a craft `Asset` and want to
-// convert its declared provenance (if any) into the `source` envelope
-// expected by `GenerationRequest`. Keeps the bridge call site tight.
+// Tiny adapter used by callers that have a craft `Asset` plus the
+// provenance edge that produced it. Extracts the frozen-identity
+// fields we want to carry into the variant dialog so the source is
+// fully self-describing (prompt, model, dimensions, aspect) — the
+// variant UI displays these read-only and the agent relies on them
+// when synthesizing the new prompt/script args.
 export function sourceFromAsset(
   asset: Asset | null | undefined,
   sourcePrompt: string | null,
   sourceModel: string | null,
+  sourceAspectRatio: string | null = null,
 ): GenerationRequest["source"] | undefined {
   if (!asset) return undefined;
+  const md = (asset.metadata ?? {}) as Record<string, unknown>;
+  const width = typeof md.width === "number" ? md.width : null;
+  const height = typeof md.height === "number" ? md.height : null;
+  const duration = typeof md.duration === "number" ? md.duration : null;
+  const voice = typeof md.voice === "string" ? md.voice : null;
   return {
     id: asset.id,
     name: asset.name ?? asset.id,
+    uri: asset.uri ?? null,
     sourcePrompt,
     sourceModel,
+    sourceWidth: width,
+    sourceHeight: height,
+    sourceAspectRatio: sourceAspectRatio ?? deriveAspectRatio(width ?? undefined, height ?? undefined),
+    sourceDuration: duration,
+    sourceVoice: voice,
   };
 }

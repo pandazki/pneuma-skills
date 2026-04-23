@@ -37,7 +37,9 @@ export const color = {
   accentBorder: "oklch(74% 0.16 55 / 0.55)",
   accentFaint: "oklch(74% 0.16 55 / 0.08)",
 
-  // Layer palette — desaturated, one hue per track type.
+  // Layer palette — desaturated, one hue per track/asset type.
+  layerImage: "oklch(75% 0.11 295)", // cool indigo
+  layerImageSoft: "oklch(75% 0.11 295 / 0.14)",
   layerVideo: "oklch(78% 0.13 75)", // warm amber
   layerVideoSoft: "oklch(78% 0.13 75 / 0.14)",
   layerAudio: "oklch(70% 0.09 215)", // muted cyan

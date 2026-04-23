@@ -163,6 +163,17 @@ export function RedoIcon(props: IconProps) {
 
 /* ────────────────────────── tracks ────────────────────────────── */
 
+export function ImageIcon(props: IconProps) {
+  // Framed picture: rectangle + a mountain peak + a sun.
+  return (
+    <Svg {...props}>
+      <rect x="1.5" y="3" width="13" height="10" rx="1.25" />
+      <circle cx="5" cy="6.5" r="1.1" fill="currentColor" stroke="none" />
+      <path d="M1.75 11.5 L6 7.5 L9 10 L11.5 7.75 L14.25 11" />
+    </Svg>
+  );
+}
+
 export function VideoIcon(props: IconProps) {
   // Camcorder: body + lens bump on the right.
   return (

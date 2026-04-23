@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { usePneumaCraftStore } from "@pneuma-craft/react";
 import type { ViewerNotification } from "../../../../core/types/viewer-contract.js";
 import { XIcon, SparkleIcon } from "../icons/index.js";
 import { theme } from "../theme/tokens.js";
+import { AssetInfoView } from "../assetInfo/AssetInfoView.js";
+import { usePendingGenerations } from "./PendingGenerations.js";
 import {
   buildGenerationNotification,
   type AssetKind,
@@ -69,7 +72,7 @@ export function GenerationDialog({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "min(560px, 90vw)",
+          width: mode === "variant" ? "min(720px, 92vw)" : "min(560px, 90vw)",
           maxHeight: "88vh",
           overflow: "auto",
           background: theme.color.surface1,
@@ -81,18 +84,28 @@ export function GenerationDialog({
         }}
       >
         <DialogHeader mode={mode} source={source} onClose={onClose} />
-        <GenerationForm
-          mode={mode}
-          initialKind={initialKind}
-          source={source}
-          onCancel={onClose}
-          onSubmit={(req) => {
-            if (onNotifyAgent) {
-              onNotifyAgent(buildGenerationNotification(req));
-            }
-            onClose();
-          }}
-        />
+        {mode === "variant" && source ? (
+          <VariantForm
+            kind={initialKind}
+            source={source}
+            onCancel={onClose}
+            onSubmit={(req) => {
+              if (onNotifyAgent) onNotifyAgent(buildGenerationNotification(req));
+              onClose();
+            }}
+          />
+        ) : (
+          <GenerationForm
+            mode={mode}
+            initialKind={initialKind}
+            source={source}
+            onCancel={onClose}
+            onSubmit={(req) => {
+              if (onNotifyAgent) onNotifyAgent(buildGenerationNotification(req));
+              onClose();
+            }}
+          />
+        )}
       </div>
     </div>
   );
@@ -473,6 +486,176 @@ function GenerationForm({
         >
           <SparkleIcon size={13} />
           <span>{mode === "variant" ? "Generate variant" : "Generate"}</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Variant form — source is the frozen identity, user only types "what to change"
+// ─────────────────────────────────────────────────────────────────────────────
+
+function VariantForm({
+  kind,
+  source,
+  onSubmit,
+  onCancel,
+}: {
+  kind: AssetKind;
+  source: NonNullable<GenerationRequest["source"]>;
+  onSubmit: (req: GenerationRequest) => void;
+  onCancel: () => void;
+}) {
+  const [changeDirection, setChangeDirection] = useState("");
+  const canSubmit = changeDirection.trim().length > 0;
+
+  const inheritedPrompt = source.sourcePrompt ?? "";
+  const w = source.sourceWidth ?? null;
+  const h = source.sourceHeight ?? null;
+  const aspect = source.sourceAspectRatio ?? null;
+  const duration = source.sourceDuration ?? null;
+  const voice = source.sourceVoice ?? null;
+
+  // Look up the live Asset + producing provenance edge from craft state so
+  // the AssetInfoView can render the hero media, full metadata, and lineage.
+  const coreState = usePneumaCraftStore((s) => s.coreState);
+  const sourceAsset = coreState.registry.get(source.id) ?? null;
+  const sourceEdge = useMemo(() => {
+    for (const e of coreState.provenance.edges.values()) {
+      if (e.toAssetId === source.id) return e;
+    }
+    return null;
+  }, [coreState.provenance.edges, source.id]);
+  const parentAsset = sourceEdge?.fromAssetId
+    ? (coreState.registry.get(sourceEdge.fromAssetId) ?? null)
+    : null;
+
+  const { add: addPending } = usePendingGenerations();
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    const change = changeDirection.trim();
+    const params: GenerationParams =
+      kind === "image"
+        ? {
+            kind: "image",
+            prompt: inheritedPrompt,
+            changeDirection: change,
+            aspectRatio: aspect ?? undefined,
+            width: w ?? undefined,
+            height: h ?? undefined,
+          }
+        : kind === "video"
+          ? {
+              kind: "video",
+              prompt: inheritedPrompt,
+              changeDirection: change,
+              duration: duration ? `${Math.max(4, Math.round(duration))}s` : "4s",
+              aspectRatio: (aspect === "16:9" || aspect === "9:16") ? aspect : "16:9",
+            }
+          : {
+              kind: "audio",
+              // Video tracks don't carry discriminator on asset; we infer
+              // tts from the presence of a voice in metadata — same rule
+              // sourceFromAsset used when it filled voice.
+              subKind: voice ? "tts" : "bgm",
+              prompt: inheritedPrompt,
+              changeDirection: change,
+              voice: voice ?? undefined,
+              durationSeconds: duration ?? undefined,
+            };
+    addPending({
+      kind,
+      sourceAssetId: source.id,
+      changeDirection: change,
+    });
+    onSubmit({ mode: "variant", params, source });
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: theme.space.space4,
+        padding: theme.space.space5,
+      }}
+    >
+      {sourceAsset ? (
+        <div
+          style={{
+            padding: theme.space.space4,
+            background: theme.color.surface0,
+            border: `1px solid ${theme.color.borderWeak}`,
+            borderRadius: theme.radius.base,
+          }}
+        >
+          <AssetInfoView
+            asset={sourceAsset}
+            edge={sourceEdge}
+            parentAsset={parentAsset}
+          />
+        </div>
+      ) : (
+        // Source asset missing from registry — fall back to the envelope
+        // fields alone so the dialog still works.
+        <div
+          style={{
+            padding: theme.space.space3,
+            background: theme.color.surface0,
+            border: `1px solid ${theme.color.borderWeak}`,
+            borderRadius: theme.radius.base,
+            fontSize: theme.text.sm,
+            color: theme.color.ink2,
+            fontStyle: "italic",
+          }}
+        >
+          Source {source.name} — {inheritedPrompt || "(no recorded prompt)"}
+        </div>
+      )}
+
+      <FieldRow
+        label="Change direction"
+        hint="What should be different from the source? The agent fuses this with the original prompt and reuses the source's dimensions / model."
+      >
+        <textarea
+          autoFocus
+          value={changeDirection}
+          onChange={(e) => setChangeDirection(e.currentTarget.value)}
+          placeholder={
+            kind === "image"
+              ? "e.g. 'make the background red', 'swap card copy to 额度见底', 'add film grain'"
+              : kind === "video"
+                ? "e.g. 'slower camera move', 'add a subtle push-in'"
+                : "e.g. 'brighter mood', 'slower tempo', or for TTS: 'change phrasing to …'"
+          }
+          rows={4}
+          style={textareaStyle}
+        />
+      </FieldRow>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          gap: theme.space.space2,
+          paddingTop: theme.space.space3,
+          borderTop: `1px solid ${theme.color.borderWeak}`,
+        }}
+      >
+        <button type="button" onClick={onCancel} style={secondaryBtnStyle}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!canSubmit}
+          style={canSubmit ? primaryBtnStyle : primaryBtnDisabledStyle}
+        >
+          <SparkleIcon size={13} />
+          <span>Generate variant</span>
         </button>
       </div>
     </div>

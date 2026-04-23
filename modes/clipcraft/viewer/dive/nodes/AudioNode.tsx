@@ -13,7 +13,7 @@ const handleStyle = {
 };
 
 export function AudioNode({ data }: NodeProps) {
-  const { asset, isActive, isFocused, clipId } = data as unknown as TreeNodeData;
+  const { asset, isActive, isFocused, clipId, role } = data as unknown as TreeNodeData;
   const coreState = usePneumaCraftStore((s) => s.coreState);
 
   let voice: string | undefined;
@@ -30,7 +30,7 @@ export function AudioNode({ data }: NodeProps) {
   return (
     <>
       <Handle type="target" position={Position.Left} style={handleStyle} />
-      <NodeShell asset={asset} isActive={isActive} isFocused={isFocused} clipId={clipId}>
+      <NodeShell asset={asset} isActive={isActive} isFocused={isFocused} clipId={clipId} role={role}>
         {content && (
           <div
             style={{
