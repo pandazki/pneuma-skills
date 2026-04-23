@@ -233,21 +233,21 @@ ClipCraft's playback is delegated end-to-end to `@pneuma-craft/video`'s `Playbac
 
 The mode-side surface is roughly 200 lines total (`PreviewCanvas.tsx` + `PlaybackControls.tsx` + `PreviewPanel.tsx` + `assetResolver.ts`), and none of it reaches past the upstream React bindings.
 
-### Timeline (Plan 5) — read-only, legacy-faithful port
+### Timeline (flat, read-only chrome)
 
-Plan 5 ports the visual timeline from `modes/clipcraft-legacy/viewer/timeline/` onto the craft store. **Visual language, layout, and interaction model are verbatim from legacy** — compact 10px-font zoom header, "scroll / ⌘+scroll to zoom" hint, `GAP = 2` between track rows, 32px `LABEL_W` with per-type emoji (🎬 / 🔊 / Tt), subtle `rgba(249,115,22,0.3)` selection borders (not filled rectangles), 4px padding inside clip rectangles. Only the data source changes: legacy's reducer + `Scene[]` model is replaced with craft selectors + `Track.clips[]` + `useAsset(clip.assetId)`.
+The flat timeline renders the composition as a stack of track rows driven off the craft store (`useComposition()` / `useAsset(clip.assetId)`). Its visual language is tight: 10px-font zoom header, "scroll / ⌘+scroll to zoom" hint, `GAP = 2` between track rows, 32px `LABEL_W` with per-type emoji (🎬 / 🔊 / Tt), subtle `rgba(249,115,22,0.3)` selection borders (not filled rectangles), 4px padding inside clip rectangles. There is no local reducer — every selector reads craft state directly.
 
 Everything lives under `modes/clipcraft/viewer/timeline/`:
 
-- `Timeline.tsx` — root shell. Reads `useComposition()`, `usePlayback()`, `useDispatch()`, `useSelection()`. Owns `useTimelineZoom`. Renders the zoom header, one ruler row, one track row per `composition.tracks[i]` (switching by `track.type`), and the Playhead overlay. Legacy's `compact` / `leadingControl` props are dropped.
-- `VideoTrack.tsx` — ported from legacy `VideoTrack.tsx`. Walks `track.clips` directly (no cumulative offset — craft's `clip.startTime` is canonical). Per-clip `<VideoClip>` subcomponent resolves `useAsset(clip.assetId)`: `asset.type === 'video'` → `useFrameExtractor` filmstrip; `asset.type === 'image'` → `ImageFill` tiles; other statuses show legacy's badges (⏳ generating / ⚠ error / — pending).
-- `AudioTrack.tsx` — ported from legacy `AudioTrack.tsx`. Per-clip `<AudioClip>` resolves `useAsset` and feeds `useWaveform` → `<WaveformBars>` with legacy's selected/unselected colors.
-- `SubtitleTrack.tsx` — ported from legacy `CaptionTrack.tsx`. Reads `clip.text` directly; no asset gate — subtitles are text-only.
-- `WaveformBars.tsx` — verbatim port, pure presentational.
-- `TrackLabel.tsx` — verbatim port. 32px-wide, takes `children` (the emoji), shared across ruler row and all track rows.
-- `TimeRuler.tsx` / `Playhead.tsx` — pure prop-driven, no store coupling. Ruler ticks are clamped to `[0, duration]` to suppress the negative-label overflow legacy accidentally hid via `overflow: hidden`.
+- `Timeline.tsx` — root shell. Reads `useComposition()`, `usePlayback()`, `useDispatch()`, `useSelection()`. Owns `useTimelineZoom`. Renders the zoom header, one ruler row, one track row per `composition.tracks[i]` (switching by `track.type`), and the Playhead overlay.
+- `VideoTrack.tsx` — walks `track.clips` directly (craft's `clip.startTime` is canonical, no cumulative offset). Per-clip `<VideoClip>` subcomponent resolves `useAsset(clip.assetId)`: `asset.type === 'video'` → `useFrameExtractor` filmstrip; `asset.type === 'image'` → `ImageFill` tiles; other statuses show badges (⏳ generating / ⚠ error / — pending).
+- `AudioTrack.tsx` — per-clip `<AudioClip>` resolves `useAsset` and feeds `useWaveform` → `<WaveformBars>`.
+- `SubtitleTrack.tsx` — reads `clip.text` directly; no asset gate — subtitles are text-only.
+- `WaveformBars.tsx` — pure presentational.
+- `TrackLabel.tsx` — 32px-wide, takes `children` (the emoji), shared across ruler row and all track rows.
+- `TimeRuler.tsx` / `Playhead.tsx` — pure prop-driven, no store coupling. Ruler ticks are clamped to `[0, duration]` to suppress negative-label overflow.
 - `hooks/useTimelineZoom.ts` — **local React state** for `{ pixelsPerSecond, scrollLeft }`, a `ResizeObserver` for viewport width + one-shot auto-fit, and a native `addEventListener("wheel", handler, { passive: false })` for ctrl/meta-wheel zoom. `zoomIn` / `zoomOut` / `setZoom` all use **functional state updaters** so rapid synchronous clicks accumulate correctly instead of stomping on the same pre-click value.
-- `hooks/useFrameExtractor.ts` / `hooks/useWaveform.ts` — pure data hooks, byte-identical ports from legacy with module-scope `Map` caches.
+- `hooks/useFrameExtractor.ts` / `hooks/useWaveform.ts` — pure data hooks with module-scope `Map` caches.
 
 **What the timeline deliberately is not:**
 

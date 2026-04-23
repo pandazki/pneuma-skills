@@ -10,15 +10,9 @@ import { ClipInspector } from "../timeline/inspector/ClipInspector.js";
 import { theme } from "../theme/tokens.js";
 
 /**
- * Timeline shell. Legacy reference:
- * modes/clipcraft-legacy/viewer/timeline/TimelineShell.tsx.
- *
- * Column-reverse pins the always-visible Timeline at the bottom. The
- * expanded panel (overview / exploded / dive) grows above it when
- * timelineMode !== "collapsed".
- *
- * Task 5 wires in the real TimelineOverview3D; ExplodedView and DiveCanvas
- * remain placeholder divs (Tasks 6 and 7).
+ * Timeline shell. Column-reverse pins the always-visible Timeline at the
+ * bottom. The expanded panel (overview / exploded / dive) grows above it
+ * when timelineMode !== "collapsed".
  */
 export function TimelineShell() {
   const { timelineMode, setTimelineMode } = useTimelineMode();

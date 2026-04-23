@@ -1,4 +1,3 @@
-// Ported verbatim from modes/clipcraft-legacy/viewer/timeline/WaveformBars.tsx.
 // Pure presentational; no store coupling.
 
 /** Render waveform peaks as vertical bars. Shared by AudioTrack (and a future BGM track). */

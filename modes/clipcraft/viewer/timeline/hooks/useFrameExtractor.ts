@@ -1,4 +1,3 @@
-// Ported verbatim from modes/clipcraft-legacy/viewer/timeline/hooks/useFrameExtractor.ts (Plan 5 Task 2).
 import { useState, useEffect, useRef } from "react";
 
 export interface FrameData {

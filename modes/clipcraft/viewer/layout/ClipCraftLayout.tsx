@@ -16,8 +16,7 @@ import { theme } from "../theme/tokens.js";
  *   └───────────────────────────────────────────┘
  *
  * When `timelineMode !== "collapsed"`, the top half animates its flex-basis
- * to 0 and the shell takes the full height. Legacy reference:
- * modes/clipcraft-legacy/viewer/layout/ClipCraftLayout.tsx.
+ * to 0 and the shell takes the full height.
  */
 export function ClipCraftLayout() {
   const { timelineMode } = useTimelineMode();

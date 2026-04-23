@@ -1,4 +1,3 @@
-// Ported from modes/clipcraft-legacy/viewer/timeline/CaptionTrack.tsx.
 // Visual language verbatim; data source swapped from `scenes[].caption` to
 // craft `Track.clips[].text`. No asset gate — subtitles are text-only and
 // don't require an Asset.

@@ -1,12 +1,9 @@
 /**
  * Playhead — draggable orange playhead line + handle over the track area.
  *
- * Ported from `modes/clipcraft-legacy/viewer/timeline/Playhead.tsx`. The
- * legacy file was already purely prop-driven (`onSeek` callback, no reducer
- * dispatch), so this is a near-verbatim copy. The prop contract is
- * documented explicitly here for the @pneuma-craft port — `globalTime` +
- * `duration` come from `usePlayback()`, `pixelsPerSecond` + `scrollLeft`
- * from `useTimelineZoom`, and `onSeek` wires to `usePlayback().seek`.
+ * Props: `globalTime` + `duration` come from `usePlayback()`,
+ * `pixelsPerSecond` + `scrollLeft` from `useTimelineZoom`, and `onSeek`
+ * wires to `usePlayback().seek`.
  *
  * Pointer-events note: the outer container is `pointerEvents: "none"` so it
  * doesn't swallow clicks destined for TrackRow/ClipStrip underneath. The

@@ -1,10 +1,5 @@
 /**
  * TimeRuler — ticks + mm:ss labels along the timeline.
- *
- * Ported verbatim from `modes/clipcraft-legacy/viewer/timeline/TimeRuler.tsx`.
- * The legacy version had no reducer coupling, so the only port change is
- * renaming the `width` prop to `viewportWidth` to match the naming used by
- * the @pneuma-craft port (useTimelineZoom returns `viewportWidth`).
  */
 import { useMemo } from "react";
 import { theme } from "../theme/tokens.js";

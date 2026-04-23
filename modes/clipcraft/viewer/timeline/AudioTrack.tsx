@@ -1,4 +1,3 @@
-// Ported from modes/clipcraft-legacy/viewer/timeline/AudioTrack.tsx.
 // Plan 5.5: drag + resize interactivity.
 
 import { useMemo } from "react";

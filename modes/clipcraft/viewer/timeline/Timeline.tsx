@@ -1,4 +1,3 @@
-// Ported from modes/clipcraft-legacy/viewer/timeline/Timeline.tsx.
 //
 // Visual/layout/interaction language is verbatim: compact zoom header with
 // hint text, 0 12px padding, GAP=2 between rows, 24px ruler, one-track-per-type

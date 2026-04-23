@@ -1,4 +1,3 @@
-// Ported from modes/clipcraft-legacy/viewer/timeline/VideoTrack.tsx.
 // Plan 5.5: drag + resize interactivity via useTrackDragEngine + useClipResize.
 
 import { useMemo } from "react";

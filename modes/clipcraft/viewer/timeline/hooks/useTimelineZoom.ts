@@ -1,8 +1,6 @@
 /**
  * Timeline zoom + scroll state hook.
  *
- * Ported from `modes/clipcraft-legacy/viewer/timeline/hooks/useTimelineZoom.ts`.
- *
  * pixelsPerSecond + scrollLeft are kept in a mode-local React context
  * (`TimelineZoomProvider` in `viewer/hooks/useTimelineZoomShared.tsx`)
  * so the collapsed `Timeline` and the expanded `TimelineOverview3D`

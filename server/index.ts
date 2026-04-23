@@ -18,9 +18,7 @@ import { openPath, revealPath, openUrl } from "./system-bridge.js";
 import { pathStartsWith, isWin } from "./utils.js";
 import { registerExportRoutes } from "./routes/export.js";
 import { registerAssetFsRoutes } from "./routes/asset-fs.js";
-import { registerDomainApiRoutes } from "./domain-api.js";
 import { listCheckpoints } from "./shadow-git.js";
-import { detectFfmpeg, exportVideo } from "./ffmpeg.js";
 import { exportHistory } from "./history-export.js";
 import { importHistory } from "./history-import.js";
 import { getR2Config, saveR2Config, isR2Configured, shareResult, shareProcess, downloadShare, getApiKeys, saveApiKeys } from "./share.js";
@@ -101,7 +99,7 @@ export async function startServer(options: ServerOptions) {
       const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
 
       // Parse builtin mode manifests for metadata (icon, description, etc.)
-      const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft-legacy", "clipcraft"];
+      const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft"];
       const builtins = builtinNames.map((name) => {
         const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
         let parsed: ReturnType<typeof parseManifestTs> = {};
@@ -1806,23 +1804,6 @@ export async function startServer(options: ServerOptions) {
   // ── Asset filesystem listing (clipcraft-style modes) ───────────────
   registerAssetFsRoutes(app, { workspace });
 
-  // ── Domain API routes (ClipCraft generation graph) ──────────────────
-  if (options.modeName === "clipcraft-legacy") {
-    registerDomainApiRoutes(app, {
-      workspace,
-      onUpdate: (files) => {
-        const sid = wsBridge.getActiveSessionId();
-        if (sid) {
-          if (options.refreshStrategy === "manual") {
-            queueContentUpdate(files);
-          } else {
-            wsBridge.broadcastToSession(sid, { type: "content_update", files });
-          }
-        }
-      },
-    });
-  }
-
   // ── Save file ────────────────────────────────────────────────────────
   app.post("/api/files", async (c) => {
     const body = await c.req.json<{ path: string; content: string }>();
@@ -1956,99 +1937,6 @@ export async function startServer(options: ServerOptions) {
       return c.json({ flushed: true });
     }
     return c.json({ flushed: false });
-  });
-
-  // ── Video export (ClipCraft) ──────────────────────────────────────────
-  interface ExportJob {
-    id: string;
-    status: "running" | "done" | "error";
-    progress: number;
-    output?: string;
-    error?: string;
-  }
-  let currentExport: ExportJob | null = null;
-
-  app.post("/api/export", async (c) => {
-    if (currentExport?.status === "running") {
-      return c.json({ exportId: currentExport.id });
-    }
-
-    const hasFfmpeg = await detectFfmpeg();
-    if (!hasFfmpeg) {
-      return c.json({ error: "ffmpeg not found. Install it: brew install ffmpeg" }, 400);
-    }
-
-    let storyboard, projectConfig;
-    try {
-      storyboard = JSON.parse(readFileSync(join(workspace, "storyboard.json"), "utf-8"));
-      projectConfig = JSON.parse(readFileSync(join(workspace, "project.json"), "utf-8"));
-    } catch {
-      return c.json({ error: "Failed to read storyboard.json or project.json" }, 400);
-    }
-
-    const body = await c.req.json().catch(() => ({}));
-    const quality = body.quality === "final" ? "final" as const : "preview" as const;
-    const subtitles = body.subtitles === true;
-
-    const exportId = `export-${Date.now()}`;
-    currentExport = { id: exportId, status: "running", progress: 0 };
-
-    exportVideo({
-      workspace,
-      storyboard,
-      project: projectConfig,
-      quality,
-      subtitles,
-      onProgress: (p) => { if (currentExport) currentExport.progress = p; },
-    })
-      .then((result) => {
-        if (currentExport?.id === exportId) {
-          currentExport.status = "done";
-          currentExport.progress = 1;
-          currentExport.output = result.outputPath.replace(workspace + "/", "");
-        }
-      })
-      .catch((err) => {
-        if (currentExport?.id === exportId) {
-          currentExport.status = "error";
-          currentExport.error = err instanceof Error ? err.message : String(err);
-        }
-      });
-
-    return c.json({ exportId });
-  });
-
-  app.get("/api/export/:id/status", (c) => {
-    const id = c.req.param("id");
-    if (!currentExport || currentExport.id !== id) {
-      return c.json({ status: "error", error: "Export not found" }, 404);
-    }
-    return c.json({
-      status: currentExport.status,
-      progress: currentExport.progress,
-      output: currentExport.output,
-      error: currentExport.error,
-    });
-  });
-
-  app.get("/api/export/:id/download", async (c) => {
-    const id = c.req.param("id");
-    if (!currentExport || currentExport.id !== id || currentExport.status !== "done" || !currentExport.output) {
-      return c.json({ error: "Export not ready" }, 404);
-    }
-    const filePath = join(workspace, currentExport.output);
-    const file = Bun.file(filePath);
-    if (!await file.exists()) {
-      return c.json({ error: "Output file not found" }, 404);
-    }
-    const fileName = currentExport.output.split("/").pop() ?? "output.mp4";
-    return new Response(file.stream(), {
-      headers: {
-        "Content-Type": "video/mp4",
-        "Content-Disposition": `attachment; filename="${fileName}"`,
-        "Content-Length": String(file.size),
-      },
-    });
   });
 
   // ── Git: branch info (for Context panel) ────────────────────────────
