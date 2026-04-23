@@ -39,6 +39,17 @@ running bundled scripts, then record the lineage in `project.json`.
 Full schema in `references/project-json.md`. Id rules in
 `references/asset-ids.md`.
 
+## Making creative decisions
+
+Most of the work in ClipCraft is judgment, not mechanics. Before
+writing a generation prompt, choosing shots, picking music, or
+deciding what to cut, read `references/craft.md` — a field guide to
+short-video craft. It's principles, not procedures. Reach for it when
+the brief is open ("make something about X"), when a generated clip
+feels close but wrong, or any time you're about to settle for a
+generic answer. The rest of this document tells you *how* to produce;
+`craft.md` tells you *what* is worth producing.
+
 ## Generation scripts
 
 Five bundled CLI scripts wrap the provider APIs. Call them via the
@@ -216,6 +227,7 @@ confirm with the user before spending money on veo3.1.
 
 ## See also
 
+- `references/craft.md` — the craft of short video: principles over procedures
 - `references/project-json.md` — full `project.json` schema
 - `references/workflows.md` — three end-to-end worked examples
 - `references/asset-ids.md` — id naming and stability rules
