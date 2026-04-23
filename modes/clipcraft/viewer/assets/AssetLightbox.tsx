@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo } from "react";
-import { usePneumaCraftStore } from "@pneuma-craft/react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useComposition, useDispatch, usePneumaCraftStore } from "@pneuma-craft/react";
 import type { Asset } from "@pneuma-craft/react";
 import { useWorkspaceAssetUrl } from "./useWorkspaceAssetUrl.js";
-import { XIcon, AudioIcon, VideoIcon, SparkleIcon } from "../icons/index.js";
+import { XIcon, AudioIcon, VideoIcon, SparkleIcon, TrashIcon } from "../icons/index.js";
 import { theme } from "../theme/tokens.js";
 import { AssetInfoView } from "../assetInfo/AssetInfoView.js";
 import { useGenerationDialog } from "../generation/useGenerationDialog.js";
@@ -80,6 +80,42 @@ export function AssetLightbox({
     asset.type === "image" || asset.type === "video" || asset.type === "audio"
       ? asset.type
       : null;
+
+  // ── Delete flow ────────────────────────────────────────────────────────
+  // Any clip on the timeline still bound to this asset blocks the delete:
+  // removing the asset would leave the clip pointing at a ghost id and
+  // playback would crash. The user has to swap the clip off (via USE
+  // THIS on a sibling, or rebinding manually) before delete is allowed.
+  const composition = useComposition();
+  const boundClips = useMemo(() => {
+    const out: { trackName: string; clipId: string; startTime: number }[] = [];
+    for (const track of composition?.tracks ?? []) {
+      for (const clip of track.clips) {
+        if (clip.assetId === asset.id) {
+          out.push({ trackName: track.name, clipId: clip.id, startTime: clip.startTime });
+        }
+      }
+    }
+    return out;
+  }, [composition, asset.id]);
+  const dispatch = useDispatch();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  useEffect(() => {
+    setConfirmingDelete(false);
+  }, [asset.id]);
+  const handleDelete = useCallback(() => {
+    if (boundClips.length > 0) return; // button is disabled in this state
+    // Unlink every edge touching the asset, then remove the asset.
+    // Craft doesn't auto-clean provenance on asset:remove, so without
+    // this, the DAG would hold dangling edges pointing at a ghost id.
+    for (const e of coreState.provenance.edges.values()) {
+      if (e.toAssetId === asset.id || e.fromAssetId === asset.id) {
+        dispatch("human", { type: "provenance:unlink", edgeId: e.id });
+      }
+    }
+    dispatch("human", { type: "asset:remove", assetId: asset.id });
+    onClose();
+  }, [boundClips.length, coreState.provenance.edges, asset.id, dispatch, onClose]);
 
   return (
     <div
@@ -223,6 +259,78 @@ export function AssetLightbox({
               >
                 <SparkleIcon size={13} />
                 <span>Generate variant</span>
+              </button>
+            )}
+            {boundClips.length > 0 ? (
+              <div
+                style={{
+                  marginTop: theme.space.space2,
+                  padding: theme.space.space2,
+                  background: theme.color.surface0,
+                  border: `1px dashed ${theme.color.borderWeak}`,
+                  borderRadius: theme.radius.sm,
+                  fontSize: theme.text.xs,
+                  color: theme.color.ink4,
+                  lineHeight: theme.text.lineHeightSnug,
+                  fontStyle: "italic",
+                }}
+              >
+                Bound to {boundClips.length} clip
+                {boundClips.length > 1 ? "s" : ""} on the timeline — swap
+                those off this asset (via Use This on a sibling) before
+                deleting.
+              </div>
+            ) : confirmingDelete ? (
+              <div
+                style={{
+                  marginTop: theme.space.space2,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: theme.space.space2,
+                  padding: theme.space.space2,
+                  background: theme.color.dangerSoft,
+                  border: `1px solid ${theme.color.dangerBorder}`,
+                  borderRadius: theme.radius.sm,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: theme.text.xs,
+                    color: theme.color.dangerInk,
+                    letterSpacing: theme.text.trackingBase,
+                  }}
+                >
+                  Delete this asset? Its provenance edges will also be
+                  removed. The file on disk stays — clean it up via the
+                  Asset Manager if you want.
+                </span>
+                <div style={{ display: "flex", gap: theme.space.space2 }}>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDelete(false)}
+                    style={{ ...secondaryActionBtnStyle, flex: 1 }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    style={{ ...dangerActionBtnStyle, flex: 1 }}
+                  >
+                    <TrashIcon size={13} />
+                    <span>Delete</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                style={ghostDangerBtnStyle}
+                title="Delete this asset from the project"
+              >
+                <TrashIcon size={13} />
+                <span>Delete asset</span>
               </button>
             )}
           </div>
@@ -375,4 +483,41 @@ const secondaryActionBtnStyle: React.CSSProperties = {
   letterSpacing: theme.text.trackingBase,
   cursor: "pointer",
   transition: `background ${theme.duration.quick}ms ${theme.easing.out}, color ${theme.duration.quick}ms ${theme.easing.out}`,
+};
+
+const ghostDangerBtnStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: theme.space.space2,
+  height: 30,
+  padding: `0 ${theme.space.space3}px`,
+  background: "transparent",
+  border: `1px solid ${theme.color.borderWeak}`,
+  borderRadius: theme.radius.base,
+  color: theme.color.ink4,
+  fontFamily: theme.font.ui,
+  fontSize: theme.text.xs,
+  fontWeight: theme.text.weightMedium,
+  letterSpacing: theme.text.trackingBase,
+  cursor: "pointer",
+  transition: `color ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
+};
+
+const dangerActionBtnStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: theme.space.space2,
+  height: 30,
+  padding: `0 ${theme.space.space3}px`,
+  background: theme.color.danger,
+  border: `1px solid ${theme.color.danger}`,
+  borderRadius: theme.radius.base,
+  color: "oklch(98% 0 0)",
+  fontFamily: theme.font.ui,
+  fontSize: theme.text.sm,
+  fontWeight: theme.text.weightSemibold,
+  letterSpacing: theme.text.trackingBase,
+  cursor: "pointer",
 };

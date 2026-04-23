@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Asset } from "@pneuma-craft/react";
 import { useWorkspaceAssetUrl } from "./useWorkspaceAssetUrl.js";
 import { useAssetError } from "./useAssetErrors.js";
 import { useAssetMetadata } from "./useAssetMetadata.js";
+import { useAssetHover } from "./AssetHoverCard.js";
 import { theme } from "../theme/tokens.js";
 import { typeAccent } from "../assetInfo/typeAccent.js";
 import { WarningIcon } from "../icons/index.js";
@@ -31,9 +32,12 @@ export function AssetThumbnail({ asset, onOpen, isMissing = false }: AssetThumbn
 
   const [dragging, setDragging] = useState(false);
   const canDrag = asset.type !== "text" && !!url;
+  const hover = useAssetHover();
+  const ref = useRef<HTMLDivElement>(null);
 
   return (
     <div
+      ref={ref}
       data-asset-id={asset.id}
       onClick={() => onOpen(asset)}
       title={tooltip}
@@ -47,6 +51,11 @@ export function AssetThumbnail({ asset, onOpen, isMissing = false }: AssetThumbn
         setDragging(true);
       }}
       onDragEnd={() => setDragging(false)}
+      onMouseEnter={() => {
+        const rect = ref.current?.getBoundingClientRect();
+        if (rect) hover.onHoverStart(asset, rect);
+      }}
+      onMouseLeave={hover.onHoverEnd}
       style={{
         position: "relative",
         width: 56,

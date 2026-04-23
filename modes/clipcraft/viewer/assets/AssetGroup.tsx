@@ -1,7 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { Asset, AssetType } from "@pneuma-craft/react";
 import { AssetThumbnail } from "./AssetThumbnail.js";
 import { AudioWaveform } from "./AudioWaveform.js";
+import { useAssetHover } from "./AssetHoverCard.js";
 import { theme } from "../theme/tokens.js";
 import { typeAccent } from "../assetInfo/typeAccent.js";
 import { startAssetDrag } from "../timeline/hooks/useTrackDropTarget.js";
@@ -166,8 +167,11 @@ function AssetListRow({
   const [dragging, setDragging] = useState(false);
   const canDrag = asset.type !== "text";
   const accent = typeAccent(asset.type);
+  const hover = useAssetHover();
+  const ref = useRef<HTMLDivElement>(null);
   return (
     <div
+      ref={ref}
       data-asset-id={asset.id}
       onClick={() => onOpen(asset)}
       title={asset.uri || asset.name}
@@ -181,6 +185,11 @@ function AssetListRow({
         setDragging(true);
       }}
       onDragEnd={() => setDragging(false)}
+      onMouseEnter={() => {
+        const rect = ref.current?.getBoundingClientRect();
+        if (rect) hover.onHoverStart(asset, rect);
+      }}
+      onMouseLeave={hover.onHoverEnd}
       style={{
         position: "relative",
         fontFamily: theme.font.ui,

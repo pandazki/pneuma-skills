@@ -4,6 +4,7 @@ import { AssetGroup } from "./AssetGroup.js";
 import { AssetLightbox } from "./AssetLightbox.js";
 import { AssetManagerModal } from "./AssetManagerModal.js";
 import { ScriptTab } from "./ScriptTab.js";
+import { AssetHoverProvider } from "./AssetHoverCard.js";
 import { useAssetActions } from "./useAssetActions.js";
 import { useAssetFsListing } from "./useAssetFsListing.js";
 import { reconcileAssets } from "./reconcile.js";
@@ -75,19 +76,20 @@ export function AssetPanel() {
   const closeManager = useCallback(() => setManagerOpen(false), []);
 
   return (
-    <div
-      style={{
-        width: 232,
-        minWidth: 232,
-        background: theme.color.surface1,
-        borderRight: `1px solid ${theme.color.borderWeak}`,
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        overflow: "hidden",
-        fontFamily: theme.font.ui,
-      }}
-    >
+    <AssetHoverProvider>
+      <div
+        style={{
+          width: 232,
+          minWidth: 232,
+          background: theme.color.surface1,
+          borderRight: `1px solid ${theme.color.borderWeak}`,
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          overflow: "hidden",
+          fontFamily: theme.font.ui,
+        }}
+      >
       <div
         style={{
           display: "flex",
@@ -233,7 +235,8 @@ export function AssetPanel() {
         report={report}
         refetchFs={refetchFs}
       />
-    </div>
+      </div>
+    </AssetHoverProvider>
   );
 }
 
