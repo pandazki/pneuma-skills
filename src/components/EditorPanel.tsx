@@ -229,7 +229,12 @@ export default function EditorPanel() {
     if (!selectedPath || !dirty) return;
     setSaving(true);
     try {
-      await fetch(`${base}/api/files`, {
+      // `?origin=external` — the EditorPanel is a separate editing surface
+      // from any Source<T> autosave. Marking the write as external ensures
+      // the chokidar echo reaches mode viewers (e.g. ClipCraft's json-file
+      // source) so they refresh instead of silently dropping the change as
+      // a self-echo.
+      await fetch(`${base}/api/files?origin=external`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: selectedPath, content }),

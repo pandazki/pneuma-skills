@@ -94,6 +94,13 @@ export interface ViewerConfig {
   ignorePatterns: string[];
   /** Subdirectory to serve via HTTP (relative to workspace, defaults to ".") */
   serveDir?: string;
+  /**
+   * Refresh strategy for the viewer:
+   * - "auto" (default): file changes trigger immediate browser re-render
+   * - "manual": file changes are queued; viewer re-renders only on explicit refresh
+   *   (useful for video/media editing where auto-refresh causes flicker)
+   */
+  refreshStrategy?: "auto" | "manual";
 }
 
 /** Agent preferences — describes the Mode's expectations for Agent behavior */

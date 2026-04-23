@@ -8,7 +8,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 
 **Version:** 2.37.1
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
-**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `mode-maker`, `evolve`
+**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft-legacy`, `clipcraft`, `mode-maker`, `evolve`
 
 ## Tech Stack
 
@@ -103,7 +103,7 @@ pneuma-skills/
 ├── plugins/                   # Builtin plugins (same lifecycle as third-party)
 │   ├── vercel/                # Vercel deploy plugin (routes + hooks + manifest)
 │   └── cf-pages/              # Cloudflare Pages deploy plugin
-├── modes/{webcraft,doc,slide,draw,diagram,illustrate,remotion,gridboard,kami,mode-maker,evolve}/
+├── modes/{webcraft,doc,slide,draw,diagram,illustrate,remotion,gridboard,kami,clipcraft-legacy,clipcraft,mode-maker,evolve}/
 ├── modes/_shared/skills/      # Global skills installed for all modes (e.g. pneuma-preferences)
 ├── modes/_shared/scripts/     # Shared script sources (generate_image.mjs, edit_image.mjs) — opted into per-mode via SkillConfig.sharedScripts, copied into each mode's installed skill dir at install time
 ├── backends/
@@ -200,7 +200,7 @@ Modes can come from four sources, resolved by `core/mode-resolver.ts`:
 
 | Type | Specifier | Resolved Path |
 |------|-----------|---------------|
-| **builtin** | `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `mode-maker`, `evolve` | `modes/<name>/` |
+| **builtin** | `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft-legacy`, `clipcraft`, `mode-maker`, `evolve` | `modes/<name>/` |
 | **local** | `/abs/path`, `./rel` | As-is |
 | **github** | `github:user/repo` | `~/.pneuma/modes/<user>-<repo>/` |
 | **url** | `https://...tar.gz` | `~/.pneuma/modes/<name>/` |
