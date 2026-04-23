@@ -153,6 +153,49 @@ decoration or inspiration boards — they are the fastest way to say
 reference, you're not copying it; you're triangulating a point in
 possibility-space that the model would never land on from prose alone.
 
+## Freshness is something you bring in
+
+The model doesn't only average across styles; it averages across
+time. Everything it produces tilts toward the aesthetics and formats
+that were ambient when its training data was gathered — which is
+never now, always at least a few months behind, often a year or
+more. This is why AI-generated video can feel subtly stale even when
+it's technically clean. The narrative beats, the music cues, the
+editing rhythms, the hook structures it reaches for by default are
+*last season's*. Not wrong, not bad, just not *now*. Short video is
+a form that lives on being *now* — the frame that feels like
+something you haven't quite seen before, even if it's built from
+familiar parts.
+
+The model cannot reach for what's currently emerging. It can only
+recombine what it already knows. So freshness has to come from
+outside: from something you've seen that it hasn't.
+
+This does not mean copying. The point of feeding the model something
+recent is not to reproduce it — that just makes you someone who
+imitates well. It's to absorb the *texture* of now: what rhythms
+feel current, what kind of honesty in delivery, what aesthetic
+imperfections are in fashion. Take the texture, not the artifact.
+The piece should feel like it belongs to the same moment as the
+things that inspired it, not like a remix of them.
+
+Cultivate the opposite skill too: notice what's tired. The model has
+defaults it reaches for in the absence of direction — the slow
+push-in hook, the sunset drone shot, the lo-fi piano, the ironic
+voiceover. These were fresh once. When the model is pulling toward
+them, steer away explicitly. A line like "not a drone shot, not a
+lo-fi piano, not an ironic voiceover" is sometimes the most useful
+thing you can add to a prompt.
+
+The opposite failure of generic-AI is over-chasing trends — making
+something that screams *I am fresh* and will look dated in six
+months. Freshness is not a style; it's alignment between what you're
+making and the moment you're making it in. The test isn't "does this
+look fresh now" but "will it feel honest later."
+
+In the room between model and piece, the only source of currency is
+you. The model can recombine; only you can notice.
+
 ## Taste is yours. Only execution is the model's.
 
 The model does not have taste. It cannot tell you whether your choices
