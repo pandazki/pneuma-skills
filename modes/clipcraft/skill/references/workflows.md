@@ -274,6 +274,20 @@ happens to share a provenance edge", which is not what the user asked for:
   and the variant inherits composition, palette, and identity. For
   structural changes ("different character entirely", "new camera
   angle"), a pure text-to-image with the fused prompt is fine.
+- **Video variants default to from-image.** The dispatch payload
+  already wires `script: "scripts/generate-video.mjs from-image"` and
+  `--image-url <source.uri>` for any video variant — keep that. The
+  source video's first frame becomes the anchor of the new clip, so
+  framing / character / palette carry over and only the motion or
+  pacing changes. Exception: if the change_direction is structural
+  ("reshoot from the opposite angle", "different character entirely")
+  where first-frame continuity would *fight* the intent, drop
+  `--image-url` and fall back to pure t2v with the fused prompt; the
+  reason belongs in `operation.label` so the variant switcher makes
+  sense ("reshoot opposite angle — no anchor"). Also **always pass
+  `--no-audio` on video variants unless the change direction is
+  explicitly about audio**, so seedance's auto-audio doesn't layer on
+  top of any narration/BGM already on the timeline.
 - **Semantic variant ids.** `asset-panda-sad-v2`, `-v3`, or a
   semantic suffix like `-close`, `-nighttime`. Never a random UUID.
 

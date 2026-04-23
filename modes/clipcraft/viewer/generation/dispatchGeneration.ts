@@ -279,22 +279,34 @@ function resolveScriptForRequest(req: GenerationRequest): ResolvedScript {
       };
     }
     case "video": {
-      // Seedance 2 is the default video model now. With no image the
+      // Seedance 2 is the default video model. With no image the
       // script routes to `bytedance/seedance-2.0/reference-to-video`
       // called with zero refs (= pure t2v); with one image it routes
       // to `bytedance/seedance-2.0/image-to-video`. veo3.1 is a
-      // fallback the agent can request via `--model veo3.1` but the
-      // default hint is seedance so the provenance edge reflects
-      // what actually ran.
+      // fallback the agent can request via `--model veo3.1`.
+      //
+      // Variant-mode auto-wires source.uri as the first-frame anchor:
+      // a variant *of a video* should maintain framing continuity by
+      // default, so we route it through from-image with the source
+      // video as --image-url. The script already accepts .mp4 paths
+      // (first frame extracted server-side by fal.ai's backend). The
+      // agent can override if the change_direction demands structural
+      // change that first-frame continuity would fight (e.g. "reshoot
+      // from the opposite angle") — in that case it drops --image-url
+      // and falls back to t2v with the fused prompt.
+      const isVariant = req.mode === "variant";
+      const autoImageUrl =
+        isVariant && req.source?.uri ? req.source.uri : null;
+      const resolvedImageUrl = p.imageUrl ?? autoImageUrl;
+      const useFromImage = !!resolvedImageUrl;
       const scriptArgs: Record<string, string | number> = {
         "--prompt": p.prompt,
         "--duration": p.duration,
       };
       if (p.aspectRatio) scriptArgs["--aspect-ratio"] = p.aspectRatio;
       if (p.resolution) scriptArgs["--resolution"] = p.resolution;
-      const useFromImage = !!p.imageUrl;
       if (useFromImage) {
-        scriptArgs["--image-url"] = p.imageUrl as string;
+        scriptArgs["--image-url"] = resolvedImageUrl as string;
       }
       const modelId = useFromImage
         ? "bytedance/seedance-2.0/image-to-video"
@@ -305,7 +317,7 @@ function resolveScriptForRequest(req: GenerationRequest): ResolvedScript {
           duration: p.duration,
           aspect_ratio: p.aspectRatio ?? "auto",
           resolution: p.resolution ?? "720p",
-          image_url: p.imageUrl ?? null,
+          image_url: resolvedImageUrl ?? null,
         },
         script: useFromImage
           ? "scripts/generate-video.mjs from-image"
