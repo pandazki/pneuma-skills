@@ -1,10 +1,12 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { usePneumaCraftStore } from "@pneuma-craft/react";
 import type { Asset } from "@pneuma-craft/react";
 import { useWorkspaceAssetUrl } from "./useWorkspaceAssetUrl.js";
-import { XIcon, AudioIcon } from "../icons/index.js";
+import { XIcon, AudioIcon, VideoIcon, SparkleIcon } from "../icons/index.js";
 import { theme } from "../theme/tokens.js";
 import { AssetInfoView } from "../assetInfo/AssetInfoView.js";
+import { useGenerationDialog } from "../generation/useGenerationDialog.js";
+import { sourceFromAsset } from "../generation/dispatchGeneration.js";
 
 /**
  * Full-screen preview of a single asset. Two-column layout: the media
@@ -47,6 +49,37 @@ export function AssetLightbox({
   const parentAsset = edge?.fromAssetId
     ? (coreState.registry.get(edge.fromAssetId) ?? null)
     : null;
+
+  const { openForVariant, openForCreateVideoFromImage } = useGenerationDialog();
+
+  const handleGenerateVariant = useCallback(() => {
+    if (asset.type !== "image" && asset.type !== "video" && asset.type !== "audio") return;
+    const src = sourceFromAsset(
+      asset,
+      (edge?.operation?.params?.prompt as string | undefined) ?? null,
+      (edge?.operation?.params?.model as string | undefined) ?? null,
+      (edge?.operation?.params?.aspect_ratio as string | undefined) ?? null,
+    );
+    if (!src) return;
+    onClose(); // close lightbox so dialog isn't layered on backdrop
+    openForVariant(src, asset.type);
+  }, [asset, edge, openForVariant, onClose]);
+
+  const handleGenerateVideoFromThis = useCallback(() => {
+    if (asset.type !== "image") return;
+    if (!asset.uri) return;
+    onClose();
+    openForCreateVideoFromImage({
+      assetId: asset.id,
+      uri: asset.uri,
+      name: asset.name ?? asset.id,
+    });
+  }, [asset, openForCreateVideoFromImage, onClose]);
+
+  const variantKind =
+    asset.type === "image" || asset.type === "video" || asset.type === "audio"
+      ? asset.type
+      : null;
 
   return (
     <div
@@ -160,6 +193,39 @@ export function AssetLightbox({
             showHero={false}
             onNavigateToParent={onNavigateToAsset}
           />
+          <div
+            style={{
+              marginTop: theme.space.space4,
+              paddingTop: theme.space.space3,
+              borderTop: `1px solid ${theme.color.borderWeak}`,
+              display: "flex",
+              flexDirection: "column",
+              gap: theme.space.space2,
+            }}
+          >
+            {asset.type === "image" && asset.uri && (
+              <button
+                type="button"
+                onClick={handleGenerateVideoFromThis}
+                style={primaryActionBtnStyle}
+                title="Generate a new video clip with this image as the first frame"
+              >
+                <VideoIcon size={13} />
+                <span>Generate video from this image</span>
+              </button>
+            )}
+            {variantKind && (
+              <button
+                type="button"
+                onClick={handleGenerateVariant}
+                style={secondaryActionBtnStyle}
+                title="Generate a variant of this asset"
+              >
+                <SparkleIcon size={13} />
+                <span>Generate variant</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -272,3 +338,41 @@ function HeroMediaLarge({ asset, url }: { asset: Asset; url: string | null }) {
     </div>
   );
 }
+
+const primaryActionBtnStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: theme.space.space2,
+  height: 32,
+  padding: `0 ${theme.space.space3}px`,
+  background: theme.color.accentSoft,
+  border: `1px solid ${theme.color.accentBorder}`,
+  borderRadius: theme.radius.base,
+  color: theme.color.accentBright,
+  fontFamily: theme.font.ui,
+  fontSize: theme.text.sm,
+  fontWeight: theme.text.weightSemibold,
+  letterSpacing: theme.text.trackingBase,
+  cursor: "pointer",
+  transition: `background ${theme.duration.quick}ms ${theme.easing.out}`,
+};
+
+const secondaryActionBtnStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: theme.space.space2,
+  height: 32,
+  padding: `0 ${theme.space.space3}px`,
+  background: theme.color.surface2,
+  border: `1px solid ${theme.color.borderWeak}`,
+  borderRadius: theme.radius.base,
+  color: theme.color.ink2,
+  fontFamily: theme.font.ui,
+  fontSize: theme.text.sm,
+  fontWeight: theme.text.weightMedium,
+  letterSpacing: theme.text.trackingBase,
+  cursor: "pointer",
+  transition: `background ${theme.duration.quick}ms ${theme.easing.out}, color ${theme.duration.quick}ms ${theme.easing.out}`,
+};

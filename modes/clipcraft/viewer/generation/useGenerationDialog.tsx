@@ -19,6 +19,10 @@ interface DialogState {
   mode: RequestMode;
   initialKind: AssetKind;
   source?: GenerationRequest["source"];
+  /** When set, create-mode video form pre-fills this as the
+   *  first-frame anchor (--image-url on seedance from-image). Used by
+   *  the "Generate video from this image" flow off a library image. */
+  anchor?: { assetId: string; uri: string; name: string };
 }
 
 const CLOSED: DialogState = {
@@ -33,6 +37,13 @@ interface GenerationDialogApi {
     source: NonNullable<GenerationRequest["source"]>,
     initialKind: AssetKind,
   ) => void;
+  /** Open the create-video dialog with an existing image bound as
+   *  the first-frame anchor. */
+  openForCreateVideoFromImage: (anchor: {
+    assetId: string;
+    uri: string;
+    name: string;
+  }) => void;
   close: () => void;
 }
 
@@ -69,13 +80,25 @@ export function GenerationDialogProvider({
     [],
   );
 
+  const openForCreateVideoFromImage = useCallback(
+    (anchor: { assetId: string; uri: string; name: string }) => {
+      setState({ open: true, mode: "create", initialKind: "video", anchor });
+    },
+    [],
+  );
+
   const close = useCallback(() => {
     setState(CLOSED);
   }, []);
 
   const api = useMemo(
-    () => ({ openForCreate, openForVariant, close }),
-    [openForCreate, openForVariant, close],
+    () => ({
+      openForCreate,
+      openForVariant,
+      openForCreateVideoFromImage,
+      close,
+    }),
+    [openForCreate, openForVariant, openForCreateVideoFromImage, close],
   );
 
   return (
@@ -86,6 +109,7 @@ export function GenerationDialogProvider({
         mode={state.mode}
         initialKind={state.initialKind}
         source={state.source}
+        anchor={state.anchor}
         onClose={close}
         onNotifyAgent={onNotifyAgent}
       />

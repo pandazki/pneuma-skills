@@ -20,6 +20,9 @@ export interface GenerationDialogProps {
   /** Present when mode === "variant". Locks the type picker and
    *  seeds the prompt with the source's existing prompt. */
   source?: GenerationRequest["source"];
+  /** Present for the "generate video from this image" flow. Create
+   *  mode + video kind + pre-filled first-frame anchor. */
+  anchor?: { assetId: string; uri: string; name: string };
   onClose: () => void;
   onNotifyAgent?: (n: ViewerNotification) => void;
 }
@@ -38,6 +41,7 @@ export function GenerationDialog({
   mode,
   initialKind = "image",
   source,
+  anchor,
   onClose,
   onNotifyAgent,
 }: GenerationDialogProps) {
@@ -99,6 +103,7 @@ export function GenerationDialog({
             mode={mode}
             initialKind={initialKind}
             source={source}
+            anchor={anchor}
             onCancel={onClose}
             onSubmit={(req) => {
               if (onNotifyAgent) onNotifyAgent(buildGenerationNotification(req));
@@ -220,17 +225,24 @@ function GenerationForm({
   mode,
   initialKind,
   source,
+  anchor,
   onSubmit,
   onCancel,
 }: {
   mode: RequestMode;
   initialKind: AssetKind;
   source?: GenerationRequest["source"];
+  anchor?: { assetId: string; uri: string; name: string };
   onSubmit: (req: GenerationRequest) => void;
   onCancel: () => void;
 }) {
   const [kind, setKind] = useState<AssetKind>(initialKind);
   const [audioSubKind, setAudioSubKind] = useState<"tts" | "bgm">("bgm");
+  // When the dialog is opened with an anchor (via
+  // openForCreateVideoFromImage), the video form pre-fills imageUrl
+  // from it. User can clear to fall back to pure t2v.
+  const [anchorCleared, setAnchorCleared] = useState(false);
+  const effectiveAnchor = anchor && !anchorCleared ? anchor : null;
 
   // Prompt — seeded with the source's prompt on variant mode so the
   // user can tweak rather than start from scratch.
@@ -285,6 +297,7 @@ function GenerationForm({
               duration: videoDuration,
               aspectRatio: videoAspect,
               resolution: videoResolution,
+              imageUrl: effectiveAnchor?.uri,
             }
           : {
               kind: "audio",
@@ -406,6 +419,18 @@ function GenerationForm({
             />
           </FieldRow>
         </>
+      )}
+
+      {kind === "video" && effectiveAnchor && (
+        <FieldRow
+          label="First-frame anchor"
+          hint="Seedance routes through image-to-video so your new clip opens on this exact frame. Clear to fall back to pure text-to-video."
+        >
+          <AnchorRow
+            anchor={effectiveAnchor}
+            onClear={() => setAnchorCleared(true)}
+          />
+        </FieldRow>
       )}
 
       {kind === "video" && (
@@ -665,6 +690,102 @@ function VariantForm({
 // ─────────────────────────────────────────────────────────────────────────────
 // Field primitives
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Pre-filled anchor image in the create-video form — thumbnail +
+ *  path + a clear button that reverts the form to plain t2v. */
+function AnchorRow({
+  anchor,
+  onClear,
+}: {
+  anchor: { assetId: string; uri: string; name: string };
+  onClear: () => void;
+}) {
+  // Workspace-relative path → content-server URL, same pattern as
+  // the asset thumbnails elsewhere.
+  const src = `/content/${anchor.uri
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/")}`;
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: theme.space.space3,
+        padding: theme.space.space2,
+        background: theme.color.surface0,
+        border: `1px solid ${theme.color.borderWeak}`,
+        borderRadius: theme.radius.base,
+      }}
+    >
+      <div
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: theme.radius.sm,
+          overflow: "hidden",
+          background: theme.color.surface2,
+          flexShrink: 0,
+        }}
+      >
+        <img
+          src={src}
+          alt={anchor.name}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: theme.text.sm,
+            color: theme.color.ink0,
+            fontWeight: theme.text.weightSemibold,
+            letterSpacing: theme.text.trackingTight,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {anchor.name}
+        </div>
+        <div
+          style={{
+            fontFamily: theme.font.numeric,
+            fontSize: theme.text.xs,
+            color: theme.color.ink4,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {anchor.uri}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label="Clear anchor"
+        title="Generate without anchor (pure text-to-video)"
+        style={{
+          width: 24,
+          height: 24,
+          background: "transparent",
+          border: `1px solid ${theme.color.borderWeak}`,
+          borderRadius: theme.radius.sm,
+          color: theme.color.ink3,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          padding: 0,
+        }}
+      >
+        <XIcon size={11} />
+      </button>
+    </div>
+  );
+}
 
 function FieldRow({
   label,
