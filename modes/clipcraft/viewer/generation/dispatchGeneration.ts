@@ -176,11 +176,23 @@ function resolveScriptForRequest(req: GenerationRequest): ResolvedScript {
       // (not a flag). script_args therefore carries only the flags; the
       // agent reads `prompt` from the top-level payload and passes it
       // positionally when invoking the script.
+      //
+      // --image-size vs --aspect-ratio: when exact dimensions are known
+      // (e.g. the image is destined for a video first/last frame and
+      // MUST match the composition's pixel size), we pass
+      // `--image-size WxH` to pin fal.ai's output to those exact pixels.
+      // Without width/height we fall back to `--aspect-ratio`, which
+      // routes to a fal preset (landscape_16_9, portrait_4_3, etc.) —
+      // good enough for standalone illustrations, wrong for video anchors.
       const aspectRatio = p.aspectRatio ?? deriveAspectRatio(p.width, p.height) ?? "1:1";
       const scriptArgs: Record<string, string | number> = {
-        "--aspect-ratio": aspectRatio,
         "--quality": "high",
       };
+      if (p.width && p.height) {
+        scriptArgs["--image-size"] = `${p.width}x${p.height}`;
+      } else {
+        scriptArgs["--aspect-ratio"] = aspectRatio;
+      }
       // `params.style` is a free-form direction note (e.g. "warm 1970s
       // 35mm"). The agent folds it into the prompt rather than passing
       // a flag — the shared script has no style flag, and a freeform

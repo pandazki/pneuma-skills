@@ -108,6 +108,32 @@ explicit character continuity are now viable in a single generation
 rather than a multi-step workaround. See `references/craft.md` for
 the principles that should drive those choices.
 
+### Sizing images for video (critical)
+
+When an image is destined to be a video **first or last frame** (for
+`generate-video.mjs from-image` or the seedance first-last-frame
+mode), its pixel dimensions must match the video output exactly. An
+off-size anchor image gets letterboxed, cropped, or distorted by the
+video model at the seams.
+
+Pass `--image-size WxH` with the exact composition dimensions —
+**do not** rely on `--aspect-ratio`, which routes to a fal.ai preset
+(e.g. `landscape_16_9` lands on whatever size fal picks that day).
+
+Composition-to-image-size cheat sheet for the common cases:
+
+| Composition | Seedance output | Use `--image-size` |
+|---|---|---|
+| 9:16 portrait @ 720p | 720×1280 | `720x1280` |
+| 9:16 portrait @ 1080p (veo3.1) | 1080×1920 | `1080x1920` |
+| 16:9 landscape @ 720p | 1280×720 | `1280x720` |
+| 16:9 landscape @ 1080p (veo3.1) | 1920×1080 | `1920x1080` |
+| 1:1 square | depends on resolution | match composition.settings |
+
+For standalone assets that never enter the video pipeline (wallpapers,
+moodboards, illustrations the user just wants to look at),
+`--aspect-ratio` is fine.
+
 ### Calling `generate_image.mjs`
 
 ```bash
@@ -124,6 +150,14 @@ node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
   --image-urls https://example.com/character-ref.png \
   --aspect-ratio 9:16 --quality high \
   --output-dir assets/image --filename-prefix kitchen-to-ramen
+
+# Video first-frame — exact pixel dimensions to match the composition.
+# Use --image-size WxH (not --aspect-ratio) so the anchor lands at the
+# seedance output size with no letterbox/crop.
+node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+  "Overhead shot of a desk at 3am: laptop closed, spiral notebook, cold coffee ring, warm tungsten lamp in upper right" \
+  --image-size 720x1280 --quality high \
+  --output-dir assets/image --filename-prefix opening-desk
 
 # Multiple takes in one call — 1–4 per request.
 node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
