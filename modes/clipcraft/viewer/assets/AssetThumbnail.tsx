@@ -31,6 +31,7 @@ export function AssetThumbnail({ asset, onOpen, isMissing = false }: AssetThumbn
 
   return (
     <div
+      data-asset-id={asset.id}
       onClick={() => onOpen(asset)}
       title={tooltip}
       draggable={canDrag}

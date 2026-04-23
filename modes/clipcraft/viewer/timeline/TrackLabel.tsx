@@ -127,6 +127,7 @@ export function TrackLabel({
   const reorderable = !!onReorderDragStart;
   return (
     <div
+      data-track-id={track.id}
       draggable={reorderable}
       onDragStart={(e) => {
         if (!reorderable) return;

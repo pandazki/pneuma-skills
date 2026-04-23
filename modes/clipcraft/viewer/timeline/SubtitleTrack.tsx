@@ -49,6 +49,7 @@ function SubtitleClip({
 
   return (
     <div
+      data-clip-id={clip.id}
       title={summary || clip.id.slice(0, 8)}
       onMouseDown={(e) => {
         if (e.button !== 0 || e.altKey) return;

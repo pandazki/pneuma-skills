@@ -336,6 +336,20 @@ When in doubt, prefer full registration — an extra registered asset
 is cheap to trash, but a generated file the user forgot about is
 easy to miss.
 
+### After you land a change, emit a locator
+
+Every newly created asset, every clip you just placed on the
+timeline, and every time point you built around is worth a
+`<viewer-locator>` card in your response. The card is the user's
+one-click handle into the specific thing you did — without it they
+have to scan the asset panel or scrub the timeline to find your
+work. Data shapes and examples live in the CLAUDE.md Viewer API
+section (injected at session start from the mode's
+`locatorDescription`). Rule of thumb: one card per distinct change,
+short label, concrete data shape. Don't emit a locator for the
+entire project — emit one for the clip that now sits at 06:00, or
+for the new hero image you just generated.
+
 ### Reacting to a "missing" asset in context
 
 When a generation request's viewer context flags an existing asset

@@ -162,6 +162,7 @@ function AssetListRow({
   const canDrag = asset.type !== "text";
   return (
     <div
+      data-asset-id={asset.id}
       onClick={() => onOpen(asset)}
       title={asset.uri || asset.name}
       draggable={canDrag}

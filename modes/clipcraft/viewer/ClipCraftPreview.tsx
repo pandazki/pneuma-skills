@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType } from "react";
 import {
   PneumaCraftProvider,
   usePneumaCraftStore,
   useEventLog,
+  useDispatch,
   usePlayback,
 } from "@pneuma-craft/react";
 import type { Source } from "../../../core/types/source.js";
@@ -40,6 +41,8 @@ const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({
   sources,
   commands,
   onNotifyAgent,
+  navigateRequest,
+  onNavigateComplete,
 }) => {
   const assetResolver = useMemo(() => createWorkspaceAssetResolver(), []);
   const projectSource = sources.project as Source<ProjectFile> | undefined;
@@ -113,6 +116,8 @@ const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({
                       onNotifyAgent={onNotifyAgent}
                       assetResolver={assetResolver}
                       subtitleRenderer={subtitleRenderer}
+                      navigateRequest={navigateRequest ?? null}
+                      onNavigateComplete={onNavigateComplete}
                     />
                   </GenerationDialogProvider>
                 </EditorToolProvider>
@@ -134,6 +139,8 @@ function SyncedBody({
   onNotifyAgent,
   assetResolver,
   subtitleRenderer,
+  navigateRequest,
+  onNavigateComplete,
 }: {
   project: ProjectFile | null;
   writeProject: (value: ProjectFile) => Promise<void>;
@@ -145,11 +152,14 @@ function SyncedBody({
   ) => void;
   assetResolver: WorkspaceAssetResolver;
   subtitleRenderer: import("@pneuma-craft/video").SubtitleRenderer;
+  navigateRequest: import("../../../core/types/viewer-contract.js").ViewerLocator | null;
+  onNavigateComplete?: () => void;
 }) {
   const dispatchEnvelope = usePneumaCraftStore((s) => s.dispatchEnvelope);
   const coreState = usePneumaCraftStore((s) => s.coreState);
   const composition = usePneumaCraftStore((s) => s.composition);
   const playback = usePlayback();
+  const dispatch = useDispatch();
   const eventCount = useEventLog().length;
   const scenes = useScenes();
   const captionStyle = project?.captionStyle;
@@ -168,6 +178,76 @@ function SyncedBody({
     }),
     [exportVideo, currentTitleRef],
   );
+
+  // ── Locator navigation ──────────────────────────────────────────────
+  //
+  // Agent-emitted <viewer-locator> cards arrive as `navigateRequest`.
+  // Data shapes (documented in pneuma-mode.ts as locatorDescription):
+  //   { clipId }   — select the clip + seek playhead to clip.startTime,
+  //                  then scroll/flash the DOM element.
+  //   { assetId }  — scroll/flash the asset tile or row.
+  //   { time }     — seek only (no selection, no scroll).
+  //   { trackId }  — scroll/flash the track label.
+  //
+  // DOM highlight uses the Web Animations API so no global CSS is needed;
+  // the scroll happens via scrollIntoView on the element matching the
+  // data attribute wired into AssetThumbnail / AssetListRow / VideoClip /
+  // AudioClip / SubtitleClip / TrackLabel.
+  const flashElement = useCallback((selector: string) => {
+    const el = document.querySelector(selector) as HTMLElement | null;
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    el.animate(
+      [
+        { outline: "2px solid rgba(249, 115, 22, 0)", outlineOffset: "2px" },
+        { outline: "2px solid rgba(249, 115, 22, 0.95)", outlineOffset: "2px" },
+        { outline: "2px solid rgba(249, 115, 22, 0)", outlineOffset: "2px" },
+      ],
+      { duration: 1400, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!navigateRequest) return;
+    const { data } = navigateRequest;
+
+    if (typeof data.clipId === "string") {
+      const clipId = data.clipId;
+      let clipStart: number | null = null;
+      if (composition) {
+        for (const track of composition.tracks) {
+          const c = track.clips.find((c) => c.id === clipId);
+          if (c) {
+            clipStart = c.startTime;
+            break;
+          }
+        }
+      }
+      dispatch("human", {
+        type: "selection:set",
+        selection: { type: "clip", ids: [clipId] },
+      });
+      if (clipStart !== null) playback.seek(clipStart);
+      // Next frame so the selection has landed before we flash.
+      requestAnimationFrame(() =>
+        flashElement(`[data-clip-id="${CSS.escape(clipId)}"]`),
+      );
+    } else if (typeof data.assetId === "string") {
+      const assetId = data.assetId;
+      requestAnimationFrame(() =>
+        flashElement(`[data-asset-id="${CSS.escape(assetId)}"]`),
+      );
+    } else if (typeof data.time === "number") {
+      playback.seek(Math.max(0, data.time));
+    } else if (typeof data.trackId === "string") {
+      const trackId = data.trackId;
+      requestAnimationFrame(() =>
+        flashElement(`[data-track-id="${CSS.escape(trackId)}"]`),
+      );
+    }
+
+    onNavigateComplete?.();
+  }, [navigateRequest, composition, dispatch, playback, flashElement, onNavigateComplete]);
 
   // Initial frame paint: when the composition first hydrates, seek to
   // the earliest time that has actual visible video content so the
