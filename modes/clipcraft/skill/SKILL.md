@@ -261,6 +261,30 @@ best — call a provider API and save bytes. Schema knowledge lives in
 this file + `references/project-json.md`, not in the scripts. You
 compose provenance yourself via Edit on `project.json`.
 
+### Audio layering — video tracks carry their own audio
+
+Since @pneuma-craft/video 0.4.0, video tracks play their clips'
+embedded audio alongside audio-track clips. A seedance clip on a
+video track and a TTS clip on an audio track will both be audible
+at once. This unlocks one-shot videos (generate once, get both
+picture and sound), but it means you have to *plan* whether a
+video's auto-audio should survive into the mix:
+
+- **Picture only** (common for b-roll where you'll add narration
+  or BGM separately): pass `--no-audio` when generating with
+  `generate-video.mjs`, OR mute the video track after the fact
+  via the eye-beside-speaker icon on the track label (dispatches
+  `composition:toggle-track-mute`, writes `muted: true`).
+- **Picture + ambient** (standalone clip, no competing audio):
+  keep seedance's auto-audio.
+- **Picture + dialogue from seedance**: don't mute, but skip a
+  separate narration track for that segment.
+
+`muted` and `visible` on a track are now **orthogonal** — `muted`
+governs audio only, `visible` governs picture only. Hiding a video
+track's picture means `visible: false`; silencing its audio means
+`muted: true`.
+
 ## Typical workflow
 
 1. **Read** the current `project.json` to understand the composition.

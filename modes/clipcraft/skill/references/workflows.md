@@ -131,9 +131,19 @@ node .claude/skills/pneuma-clipcraft/scripts/generate-video.mjs from-image \
   --output assets/clips/panda-sad-v2.mp4
 ```
 
-`--no-audio` is a defensive default for variant regens because
-character-focused prompts hit ByteDance's audio content policy
-more often than environment prompts.
+`--no-audio` has two reasons to reach for it, often at the same
+time: (1) character-focused prompts hit ByteDance's audio content
+policy more often than environment prompts, so disabling audio
+avoids that 422 up-front; (2) since @pneuma-craft/video 0.4.0,
+video tracks play their clips' embedded audio alongside audio-track
+clips — seedance's auto-generated audio would layer on top of any
+narration/BGM you add separately. If the plan is "I'll do sound
+design in a separate audio track", generate the video with
+`--no-audio` so it comes down as silent picture. If the plan is
+"this clip is standalone; seedance's native audio is the sound",
+omit `--no-audio` and let it ride. Muting the track after the fact
+via the speaker icon works too, but it's cheaper not to generate
+audio in the first place when you know you won't want it.
 
 ### Step 3: register + link via provenance
 
