@@ -79,6 +79,8 @@ The \`scripts/\` directory holds six generator CLIs: \`generate_image.mjs\` (sha
           "Export the project as an MP4. Handled directly in the viewer — clicking this button runs @pneuma-craft/video's ExportEngine against the live composition and downloads the finished file. No agent involvement.",
       },
     ],
+    locatorDescription:
+      'After creating or editing assets, clips, or moving the playhead, embed <viewer-locator> cards so the user can jump straight to the change. Emit one card per distinct thing you changed (a newly generated asset, a clip you just placed, a time beat you built around) — not one per response. Data shapes: navigate to an asset in the library via `data=\'{"assetId":"asset-<semantic-id>"}\'`; navigate to a clip on the timeline (auto-selects the clip and seeks the playhead to its start) via `data=\'{"clipId":"clip-<semantic-id>"}\'`; seek the playhead to a time in seconds via `data=\'{"time":3.5}\'`; focus a track via `data=\'{"trackId":"track-<semantic-id>"}\'`. Use short concrete labels like "新的 VO 开场" or "panda clip on Main" — the user will see these cards in chat and click to navigate.',
   },
 
   agent: {
