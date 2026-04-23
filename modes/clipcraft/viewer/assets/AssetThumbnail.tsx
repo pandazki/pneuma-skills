@@ -4,6 +4,7 @@ import { useWorkspaceAssetUrl } from "./useWorkspaceAssetUrl.js";
 import { useAssetError } from "./useAssetErrors.js";
 import { useAssetMetadata } from "./useAssetMetadata.js";
 import { theme } from "../theme/tokens.js";
+import { typeAccent } from "../assetInfo/typeAccent.js";
 import { WarningIcon } from "../icons/index.js";
 import { startAssetDrag } from "../timeline/hooks/useTrackDropTarget.js";
 
@@ -17,6 +18,8 @@ export function AssetThumbnail({ asset, onOpen, isMissing = false }: AssetThumbn
   const url = useWorkspaceAssetUrl(asset.id);
   const error = useAssetError(asset.id);
   const meta = useAssetMetadata(asset.id);
+  const accent = typeAccent(asset.type);
+  const TypeIcon = accent.Icon;
 
   const tooltip = [
     asset.name,
@@ -96,6 +99,31 @@ export function AssetThumbnail({ asset, onOpen, isMissing = false }: AssetThumbn
           {asset.status === "pending" ? "Pending…" : asset.name.slice(0, 8)}
         </div>
       )}
+
+      {/* Type corner — small colored chip so image / video / audio /
+          text cards stay distinguishable at 56×56, where frame
+          content alone (especially for title-card-style stills vs
+          short video clips) can blur. */}
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          top: 2,
+          left: 2,
+          width: 14,
+          height: 14,
+          borderRadius: theme.radius.sm,
+          background: accent.soft,
+          color: accent.color,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backdropFilter: "blur(1px)",
+          WebkitBackdropFilter: "blur(1px)",
+        }}
+      >
+        <TypeIcon size={9} />
+      </span>
 
       {error && (
         <div

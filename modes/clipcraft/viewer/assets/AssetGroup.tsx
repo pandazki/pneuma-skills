@@ -3,6 +3,7 @@ import type { Asset, AssetType } from "@pneuma-craft/react";
 import { AssetThumbnail } from "./AssetThumbnail.js";
 import { AudioWaveform } from "./AudioWaveform.js";
 import { theme } from "../theme/tokens.js";
+import { typeAccent } from "../assetInfo/typeAccent.js";
 import { startAssetDrag } from "../timeline/hooks/useTrackDropTarget.js";
 
 /** Workspace-relative uri → URL served by the dev/content server. */
@@ -23,12 +24,15 @@ export interface AssetGroupProps {
 
 export function AssetGroup({
   label,
+  type,
   display,
   assets,
   missingUris,
   onOpen,
   onUpload,
 }: AssetGroupProps) {
+  const accent = typeAccent(type);
+  const GroupIcon = accent.Icon;
   const [dragOver, setDragOver] = useState(false);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -79,16 +83,17 @@ export function AssetGroup({
         <span
           style={{
             display: "inline-flex",
-            alignItems: "baseline",
+            alignItems: "center",
             gap: theme.space.space2,
             fontFamily: theme.font.ui,
             fontSize: theme.text.xs,
             fontWeight: theme.text.weightSemibold,
-            color: theme.color.ink2,
+            color: accent.color,
             textTransform: "uppercase",
             letterSpacing: theme.text.trackingCaps,
           }}
         >
+          <GroupIcon size={11} />
           {label}
           <span
             style={{
@@ -160,6 +165,7 @@ function AssetListRow({
 }) {
   const [dragging, setDragging] = useState(false);
   const canDrag = asset.type !== "text";
+  const accent = typeAccent(asset.type);
   return (
     <div
       data-asset-id={asset.id}
@@ -176,10 +182,12 @@ function AssetListRow({
       }}
       onDragEnd={() => setDragging(false)}
       style={{
+        position: "relative",
         fontFamily: theme.font.ui,
         fontSize: theme.text.sm,
         color: theme.color.ink1,
         padding: `${theme.space.space1}px ${theme.space.space2}px`,
+        paddingLeft: theme.space.space2 + 3,
         borderRadius: theme.radius.sm,
         background: theme.color.surface2,
         border: `1px solid ${theme.color.borderWeak}`,
@@ -191,6 +199,22 @@ function AssetListRow({
         transition: `background ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}, opacity ${theme.duration.quick}ms ${theme.easing.out}`,
       }}
     >
+      {/* Type accent stripe — same pattern as dive nodes so audio rows
+          read as "audio-ish" at a glance and stay visually connected
+          to the dive / lightbox palette. */}
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 3,
+          background: accent.color,
+          borderTopLeftRadius: theme.radius.sm,
+          borderBottomLeftRadius: theme.radius.sm,
+        }}
+      />
       {asset.type === "audio" && asset.uri ? (
         <AudioWaveform url={contentUrl(asset.uri)} width={60} height={20} />
       ) : null}
