@@ -13,7 +13,7 @@ import {
 
 const clipcraftManifest: ModeManifest = {
   name: "clipcraft",
-  version: "0.3.0",
+  version: "0.4.0",
   displayName: "ClipCraft",
   description: "AI-orchestrated video production, rebuilt on @pneuma-craft",
 
@@ -23,11 +23,14 @@ const clipcraftManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-clipcraft",
+    sharedScripts: ["generate_image.mjs", "edit_image.mjs"],
     claudeMdSection: `## Pneuma ClipCraft Mode
 
 You are running inside **Pneuma**, a co-creation workspace. This is **ClipCraft Mode** — AI-orchestrated video production on \`@pneuma-craft\`.
 
-Your domain knowledge lives in the \`pneuma-clipcraft\` skill. Read \`.claude/skills/pneuma-clipcraft/SKILL.md\` at session start; reference \`references/project-json.md\` when editing \`project.json\`, \`references/workflows.md\` when the user asks for a generation task, \`references/reference-directives.md\` for the seedance multi-reference directive language, \`references/character-consistency.md\` when a specific human character appears, and \`references/filter-retries.md\` when seedance rejects with a 422. The \`scripts/\` directory holds five bundled generator CLIs — image / video / TTS / BGM plus \`make-character-sheet.mjs\` (a recovery tool for the image-side content filter).`,
+Your domain knowledge lives in the \`pneuma-clipcraft\` skill. Read \`.claude/skills/pneuma-clipcraft/SKILL.md\` at session start; reference \`references/craft.md\` before creative decisions, \`references/project-json.md\` when editing \`project.json\`, \`references/workflows.md\` when the user asks for a generation task, \`references/reference-directives.md\` for the seedance multi-reference directive language, \`references/character-consistency.md\` when a specific human character appears, and \`references/filter-retries.md\` when seedance rejects with a 422.
+
+The \`scripts/\` directory holds six generator CLIs: \`generate_image.mjs\` (shared, GPT-Image-2 default — legible text, multi-layer composition, complex UI mockups, precise mask edits); \`edit_image.mjs\` (shared, Gemini vision for annotation-driven edits); \`generate-video.mjs\` (seedance 2.0 with veo3.1 fallback); \`generate-tts.mjs\`; \`generate-bgm.mjs\`; \`make-character-sheet.mjs\` (recovery tool for the image-side content filter). GPT-Image-2's strength at rendering text, preserving layout across multiple references, and holding an aesthetic direction makes the video-side pipeline much more controlled — first/last frames, title cards, text overlays, character sheets, and complex single-frame compositions all hold up now in ways that used to require heavy post-processing.`,
   },
 
   viewer: {

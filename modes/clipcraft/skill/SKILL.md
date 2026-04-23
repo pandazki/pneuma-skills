@@ -52,26 +52,98 @@ generic answer. The rest of this document tells you *how* to produce;
 
 ## Generation scripts
 
-Five bundled CLI scripts wrap the provider APIs. Call them via the
-Bash tool; they write files and print the output path on stdout.
+Six CLI scripts wrap the provider APIs. Call them via the Bash tool.
 
 | Script | Purpose | Default model | Env var |
 |---|---|---|---|
-| `scripts/generate-image.mjs` | Text→image + image→image edit | fal.ai `nano-banana-2` | `FAL_KEY` |
+| `scripts/generate_image.mjs` | Text→image; edits via `--image-urls`/`--mask-url`; 1–4 images per call | OpenAI `gpt-image-2` (fal.ai); `--model gemini-3-pro` alternative | `FAL_KEY` (or `OPENROUTER_API_KEY` for gemini-3-pro) |
+| `scripts/edit_image.mjs` | Modify a local image with optional highlighter annotation (multimodal reasoning) | Gemini 3.1 flash image via OpenRouter | `OPENROUTER_API_KEY` |
 | `scripts/generate-video.mjs` | Text→video + image→video + reference-to-video | bytedance `seedance-2.0` (fallback: `veo3.1` via `--model veo3.1`) | `FAL_KEY` |
 | `scripts/generate-tts.mjs` | Text→speech (expressive: inline `[laughing]` / `[sigh]` tags, 30 voices) | fal.ai `gemini-3.1-flash-tts` | `FAL_KEY` |
 | `scripts/generate-bgm.mjs` | Text→background music | OpenRouter `google/lyria-3-pro-preview` | `OPENROUTER_API_KEY` |
-| `scripts/make-character-sheet.mjs` | Photo → photo-body / sketch-head 16:9 character reference sheet (recovery tool — call after seedance rejects a photorealistic human ref; see `references/filter-retries.md`) | fal.ai `nano-banana-2/edit` | `FAL_KEY` |
+| `scripts/make-character-sheet.mjs` | Photo → photo-body / sketch-head 16:9 character reference sheet (deterministic recovery shortcut for seedance's image-side filter; see `references/filter-retries.md`) | fal.ai `nano-banana-2/edit` | `FAL_KEY` |
 
-All scripts share the same shape:
+`generate_image.mjs` and `edit_image.mjs` share their output shape —
+a JSON object on stdout with `files`, `urls`, and `description`. They
+take `--output-dir` + `--filename-prefix` (NOT `--output`). The prompt
+is a **positional** argument, not a flag. The other four follow the
+older flag-based convention where `--output <path>` is required and
+stdout is just the output path.
 
-- `--output <path>` is always required and is workspace-relative.
-- API keys come from `process.env`. If a key is missing, the script
-  exits 1 with a clear error.
-- On success: prints the output path on stdout, exits 0.
-- On failure: prints an error on stderr, exits non-zero.
-- The script creates the parent directory of `--output` if it's
-  missing, and does not produce thumbnails or side-effect files.
+All scripts read their API keys from `process.env` or from a `.env`
+file in the skill directory.
+
+### Why GPT-Image-2 matters for video work
+
+The default image model was swapped from `nano-banana-2` to
+`gpt-image-2` because the video-side pipeline gets dramatically more
+controllable when the image step holds up:
+
+- **First / last frames**. Seedance's `from-image` and first-last-frame
+  video modes inherit the quality of their anchor images. GPT-Image-2
+  holds a specific aesthetic, character, and composition across paired
+  calls — so the two frames actually look like they belong to the same
+  shot, and the interpolated video doesn't need to fight a stylistic
+  mismatch at the seams.
+- **Complex single-frame compositions** — foreground subject +
+  environment + overlay text all in one image, rendered legibly. Title
+  cards, end cards, lower thirds, memes with baked-in captions, data
+  callouts over b-roll, diagrammed explainers — all possible as
+  standalone assets now, rather than needing ffmpeg/post overlays.
+- **Text rendering that actually reads**. "A sign that says X" or "a
+  poster with the headline Y" comes back legible, not glyph soup. Use
+  it for signage, lower-third strap text, brand marks, chyron-style
+  overlays.
+- **Multi-reference stitching via `--image-urls`**. Pass a character
+  portrait plus an environment plate plus a style plate and
+  GPT-Image-2 composes them coherently — a stronger control surface
+  for prompting first frames and character sheets than free-text alone.
+- **`--mask-url` for precise edits**. Paint a mask, change only that
+  region. Useful for patching one shot's framing without redoing the
+  whole pipeline.
+
+Because the image step is this much stronger, be more ambitious with
+the creative brief: text-heavy frames, multi-layer compositions, and
+explicit character continuity are now viable in a single generation
+rather than a multi-step workaround. See `references/craft.md` for
+the principles that should drive those choices.
+
+### Calling `generate_image.mjs`
+
+```bash
+# Text-to-image (positional prompt)
+node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+  "A dimly lit kitchen at 3am, kettle steam catching the overhead bulb, shot on 35mm" \
+  --aspect-ratio 9:16 --quality high \
+  --output-dir assets/image --filename-prefix kitchen-3am
+
+# Edit / reference — pass one or more image URLs. Switches the script
+# to the GPT-Image-2 edit endpoint. Mask optional.
+node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+  "Same character, now at a neon-lit ramen counter, back to camera" \
+  --image-urls https://example.com/character-ref.png \
+  --aspect-ratio 9:16 --quality high \
+  --output-dir assets/image --filename-prefix kitchen-to-ramen
+
+# Multiple takes in one call — 1–4 per request.
+node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+  "Four phone mockups of the app home screen, each with a different colorway" \
+  --num-images 4 --aspect-ratio 9:16 \
+  --output-dir assets/image --filename-prefix colorway-grid
+
+# Gemini 3 Pro alternative — painterly / watercolor / less literal.
+# Works with FAL_KEY or OPENROUTER_API_KEY.
+node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+  "Watercolor of a city at dusk, soft bleeds, visible cold-press texture" \
+  --model gemini-3-pro --aspect-ratio 16:9 \
+  --output-dir assets/image --filename-prefix dusk-watercolor
+```
+
+`edit_image.mjs` is the sibling for *local file + highlighter-
+annotation* edits. Use it when the source is a file on disk (not a
+URL) and the user has circled a region they want changed — the
+highlighter annotation is sent as a second image so the model knows
+*which* part to modify.
 
 ### Video subcommands
 

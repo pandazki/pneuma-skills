@@ -51,8 +51,11 @@ was never evaluated. Prompt rewording does NOT defeat this filter.
    ```
 
    `--outfit` and `--traits` are both optional — omit them and
-   nano-banana reads them from the source image, at the cost of
-   less-controlled annotations.
+   the model reads them from the source image, at the cost of
+   less-controlled annotations. For richer annotations or a more
+   custom sheet layout, prefer `generate_image.mjs --image-urls` with
+   a hand-written prompt (GPT-Image-2 composes the 4-panel layout +
+   typewriter text reliably).
 
 3. Replace the original `--image-url` with the generated sheet.
 4. Remove any `virtual character` / `not a real person` / `CG render`

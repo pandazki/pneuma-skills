@@ -310,10 +310,11 @@ Workflow 1 (`assets[]` fields + `provenance[]` with
 default for anything the user asked for as a deliverable.
 
 ```bash
-# 1. Run the generator.
-node .claude/skills/pneuma-clipcraft/scripts/generate-image.mjs \
-  --prompt "a sleepy panda on a moss log" \
-  --output assets/image/panda-sleepy.jpg
+# 1. Run the generator. Prompt is POSITIONAL, not a flag.
+node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+  "A sleepy panda on a moss log, soft overcast light, 35mm, shallow DOF" \
+  --aspect-ratio 4:3 --quality high \
+  --output-dir assets/image --filename-prefix panda-sleepy
 
 # 2. In the same turn, Edit project.json:
 #    - Append { id: "asset-panda-sleepy", type: "image", uri: "...",
@@ -384,17 +385,22 @@ Each notification message looks like:
   "kind": "image",
   "prompt": "a panda eating bamboo",
   "params": { "aspect_ratio": "16:9", "width": 1920, "height": 1080, "style": null },
-  "script": "scripts/generate-image.mjs",
-  "script_args": { "--prompt": "a panda eating bamboo", "--width": 1920, "--height": 1080 },
+  "script": "scripts/generate_image.mjs",
+  "script_args": { "--aspect-ratio": "16:9", "--quality": "high" },
   "provenance_hint": {
     "operation_type": "generate",
     "from_asset_id": null,
     "agent_id": "clipcraft-imagegen",
-    "label": "fal-ai/nano-banana-2",
-    "model": "fal-ai/nano-banana-2"
+    "label": "openai/gpt-image-2",
+    "model": "openai/gpt-image-2"
   }
 }
 ```
+
+For image requests the `prompt` is **positional** — read it from the
+top-level `prompt` field and pass it before the flags when invoking
+the script. `params.style` (if set) is a direction note the user wants
+folded into the prompt text, not a CLI flag.
 
 Handling:
 1. Parse the JSON block above.

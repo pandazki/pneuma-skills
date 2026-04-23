@@ -172,26 +172,35 @@ function resolveScriptForRequest(req: GenerationRequest): ResolvedScript {
 
   switch (p.kind) {
     case "image": {
-      const scriptArgs: Record<string, string | number> = { "--prompt": p.prompt };
-      if (p.width) scriptArgs["--width"] = p.width;
-      if (p.height) scriptArgs["--height"] = p.height;
-      if (p.style) scriptArgs["--style"] = p.style;
+      // The shared generate_image.mjs takes the prompt as a POSITIONAL arg
+      // (not a flag). script_args therefore carries only the flags; the
+      // agent reads `prompt` from the top-level payload and passes it
+      // positionally when invoking the script.
+      const aspectRatio = p.aspectRatio ?? deriveAspectRatio(p.width, p.height) ?? "1:1";
+      const scriptArgs: Record<string, string | number> = {
+        "--aspect-ratio": aspectRatio,
+        "--quality": "high",
+      };
+      // `params.style` is a free-form direction note (e.g. "warm 1970s
+      // 35mm"). The agent folds it into the prompt rather than passing
+      // a flag — the shared script has no style flag, and a freeform
+      // hint embedded in the prompt is what actually steers GPT-Image-2.
       return {
         params: {
           prompt: p.prompt,
-          aspect_ratio: p.aspectRatio ?? "auto",
+          aspect_ratio: aspectRatio,
           width: p.width ?? null,
           height: p.height ?? null,
           style: p.style ?? null,
         },
-        script: "scripts/generate-image.mjs",
+        script: "scripts/generate_image.mjs",
         scriptArgs,
         provenance: {
           operation_type: operationType,
           from_asset_id: fromAssetId,
           agent_id: "clipcraft-imagegen",
-          label: "fal-ai/nano-banana-2",
-          model: "fal-ai/nano-banana-2",
+          label: "openai/gpt-image-2",
+          model: "openai/gpt-image-2",
         },
       };
     }
@@ -266,12 +275,16 @@ function resolveScriptForRequest(req: GenerationRequest): ResolvedScript {
 }
 
 function buildInstructions(req: GenerationRequest): string {
+  const isImage = req.params.kind === "image";
+  const runStep = isImage
+    ? "4. Run the script in `script` — prompt is POSITIONAL, not a flag. Example: `node <script> \"<prompt>\" --aspect-ratio ... --quality ... --output-dir assets/image --filename-prefix <semantic-id>`. Fold `params.style` (if set) into the prompt text rather than a flag. Use `--image-urls <url>` to switch GPT-Image-2 to edit mode (reference-driven continuation, first/last-frame pairs, character-on-background swaps, etc.)."
+    : "4. Run the script referenced in `script` with the flags in `script_args`. Append `--output <path>`.";
   const base = [
     "Handling:",
     "1. Parse the JSON block above.",
     "2. Pick a semantic asset id (e.g. `asset-forest-sunset`) — never a random UUID.",
     "3. Pick a relative output path under the matching `assets/{kind}/` directory.",
-    "4. Run the script referenced in `script` with the flags in `script_args`. Append `--output <path>`.",
+    runStep,
     "5. Edit `project.json`: add the new asset to `assets[]` and a new edge to `provenance[]` using the `provenance_hint` fields (keep `operation.type` exactly as given, set `fromAssetId` from the hint — null for create, source asset id for variant).",
     "6. Do NOT add a clip to any track — the viewer gives the user a chance to pick where to place it separately.",
   ];
@@ -290,6 +303,37 @@ function buildInstructions(req: GenerationRequest): string {
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "…";
+}
+
+const SUPPORTED_ASPECT_RATIOS: Array<{ ratio: number; label: string }> = [
+  { ratio: 21 / 9, label: "21:9" },
+  { ratio: 16 / 9, label: "16:9" },
+  { ratio: 3 / 2, label: "3:2" },
+  { ratio: 4 / 3, label: "4:3" },
+  { ratio: 5 / 4, label: "5:4" },
+  { ratio: 1, label: "1:1" },
+  { ratio: 4 / 5, label: "4:5" },
+  { ratio: 3 / 4, label: "3:4" },
+  { ratio: 2 / 3, label: "2:3" },
+  { ratio: 9 / 16, label: "9:16" },
+];
+
+function deriveAspectRatio(
+  width: number | undefined,
+  height: number | undefined,
+): string | null {
+  if (!width || !height) return null;
+  const target = width / height;
+  let best = SUPPORTED_ASPECT_RATIOS[0];
+  let bestDist = Math.abs(Math.log(target / best.ratio));
+  for (const option of SUPPORTED_ASPECT_RATIOS) {
+    const dist = Math.abs(Math.log(target / option.ratio));
+    if (dist < bestDist) {
+      best = option;
+      bestDist = dist;
+    }
+  }
+  return best.label;
 }
 
 // Tiny adapter used by callers that have a craft `Asset` and want to

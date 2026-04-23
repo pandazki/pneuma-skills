@@ -114,7 +114,7 @@ Convention keys — use when they apply:
 
 | Key | Meaning |
 |---|---|
-| `model` | Provider model id (`"fal-ai/veo3.1"`, `"nano-banana-2"`, `"fal-ai/gemini-3.1-flash-tts"`) |
+| `model` | Provider model id (`"openai/gpt-image-2"`, `"bytedance/seedance-2.0"`, `"fal-ai/veo3.1"`, `"fal-ai/gemini-3.1-flash-tts"`, `"google/lyria-3-pro-preview"`) |
 | `prompt` | Text prompt |
 | `seed` | Integer seed |
 | `durationMs` | Wall-clock generator time (ms) |

@@ -43,12 +43,21 @@ non-photographically**. That is the workflow below.
 
 ## Step 1 — build a "photo-body, sketch-head" reference sheet
 
-**One-call shortcut:** `scripts/make-character-sheet.mjs` takes a
-source photo and optional outfit / trait descriptions and produces
-the sheet in one nano-banana edit. Use this whenever you have a
-character photo to start from.
+**Two paths**, both valid:
+
+1. **`generate_image.mjs --image-urls <photo>`** (preferred when you
+   want creative control). Write the prompt yourself, pass the source
+   photo as a reference, and let GPT-Image-2 compose the 4-panel
+   layout including the typewriter `OUTFIT` / `CHARACTER` text block.
+   GPT-Image-2's text rendering and multi-panel composition make this
+   a single-call job now.
+2. **`scripts/make-character-sheet.mjs`** (deterministic shortcut). A
+   purpose-built wrapper around fal.ai `nano-banana-2/edit` that
+   bakes the prompt and layout. Use when you want a one-liner and
+   don't need per-character prompt tuning.
 
 ```bash
+# Deterministic shortcut:
 node .claude/skills/pneuma-clipcraft/scripts/make-character-sheet.mjs \
   --source-url assets/image/hero-photo.jpg \
   --outfit "Dark gray wool blazer, black crewneck, charcoal trousers, black leather loafers" \
@@ -56,10 +65,10 @@ node .claude/skills/pneuma-clipcraft/scripts/make-character-sheet.mjs \
   --output assets/image/character-sheet-hero.jpg
 ```
 
-The rest of this section documents **what the script actually builds**
-and why, so you can inspect the result, regenerate manually with
-`generate-image.mjs edit` if the script's output needs adjustment, or
-build a sheet from scratch when you don't have a source photo.
+The rest of this section documents **what a good sheet looks like**
+and why, so you can write your own prompt (path 1), inspect the
+script's output, or build a sheet from scratch when you don't have a
+source photo.
 
 ### Sheet anatomy
 
@@ -109,13 +118,13 @@ Professional game / animation character design reference document
 aesthetic.
 ```
 
-Call:
+Call (from-scratch sheet, no source photo — gpt-image-2 t2i):
 
 ```bash
-node .claude/skills/pneuma-clipcraft/scripts/generate-image.mjs \
-  --prompt "<prompt above>" \
-  --width 1920 --height 1080 \
-  --output assets/image/character-sheet-<name>.jpg
+node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+  "<prompt above>" \
+  --aspect-ratio 16:9 --quality high \
+  --output-dir assets/image --filename-prefix character-sheet-<name>
 ```
 
 Register it in `project.json` as a generated asset with
@@ -125,8 +134,9 @@ it.
 ### Converting an existing photo reference
 
 If the user already has a photo of the character, produce the sheet
-by feeding the photo into `generate-image.mjs edit` with the same
-layout instruction, adding: `"Replace the head (shoulders up) in each
+by passing the photo to `generate_image.mjs --image-urls <photo-url>`
+with the same layout instruction, adding: `"Replace the head
+(shoulders up) in each
 photographic panel with a clean white-line pencil sketch on the black
 background. Use the face from the source photo as the identity anchor
 for the pencil portrait in panel 4."`
