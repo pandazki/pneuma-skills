@@ -72,14 +72,18 @@ function AudioClip({
   // Waveform covers the FULL asset duration so left-edge trims
   // reveal the correct peaks for the new inPoint. bars + maxDuration
   // come from the asset, not the clip, to keep the rendered peaks
-  // stable across any trim.
+  // stable across any trim. `bars` targets one bar per ~3px so the
+  // stretch layout below fills baseWidth with no dead space — a
+  // fixed-2px layout would leave ~25% blank at the right edge, which
+  // is most visible when asset duration >> clip duration (e.g. a 178s
+  // BGM bed carrying an 8s clip).
   const waveDuration = assetDuration ?? clip.outPoint;
   const baseWidth = Math.max(0, waveDuration * pixelsPerSecond - 2);
   const waveOpts = useMemo(() => {
     if (!hasAudio || waveDuration <= 0) return null;
     return {
       audioUrl: contentUrl(uri),
-      bars: Math.max(8, Math.round(baseWidth / 4)),
+      bars: Math.max(8, Math.round(baseWidth / 3)),
       maxDuration: waveDuration,
     };
   }, [hasAudio, uri, baseWidth, waveDuration]);
@@ -173,6 +177,7 @@ function AudioClip({
             peaks={waveform.peaks}
             height={BAR_H}
             color={selected ? theme.color.accentBright : theme.color.layerAudio}
+            stretch
           />
         </div>
       ) : hasAudio ? (
