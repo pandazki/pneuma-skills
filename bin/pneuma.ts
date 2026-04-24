@@ -8,7 +8,7 @@
  * Driven by ModeManifest + AgentBackend — no hardcoded mode knowledge.
  */
 
-import { resolve, dirname, join, basename } from "node:path";
+import { resolve, dirname, join, basename, sep } from "node:path";
 import { existsSync, copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync, statSync, realpathSync, readdirSync, rmSync, unlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import * as p from "@clack/prompts";
@@ -91,6 +91,21 @@ function saveSessionsRegistry(records: SessionRecord[]): void {
   writeFileSync(SESSIONS_REGISTRY, JSON.stringify(records, null, 2));
 }
 
+/**
+ * A workspace that lives inside the OS temp directory (e.g. mode-maker's
+ * Play sandbox under `/var/folders/.../T/pneuma-play-<uuid>`) isn't
+ * resumable — the OS will garbage-collect the directory at some point and
+ * every click creates a fresh UUID, so these entries pollute the registry
+ * and push real workspaces out of the cap. Skip them at write time.
+ */
+function isTemporaryWorkspace(workspace: string): boolean {
+  const abs = resolve(workspace);
+  const tmp = resolve(tmpdir());
+  return abs === tmp || abs.startsWith(tmp + sep);
+}
+
+const MAX_SESSION_RECORDS = 200;
+
 function recordSession(
   mode: string,
   displayName: string,
@@ -99,6 +114,7 @@ function recordSession(
   sessionName?: string,
   editing?: boolean,
 ): void {
+  if (isTemporaryWorkspace(workspace)) return;
   const id = `${workspace}::${mode}`;
   const records = loadSessionsRegistry();
   const existing = records.findIndex((r) => r.id === id);
@@ -115,8 +131,7 @@ function recordSession(
   } else {
     records.unshift(entry);
   }
-  // Cap at 50 entries
-  saveSessionsRegistry(records.slice(0, 50));
+  saveSessionsRegistry(records.slice(0, MAX_SESSION_RECORDS));
 }
 
 // ── Init params persistence ──────────────────────────────────────────────────
