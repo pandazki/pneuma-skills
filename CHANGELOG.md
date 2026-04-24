@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.35.4] - 2026-04-25
+
+### Fixed
+- **Long mode descriptions clipped the LaunchDialog title** — 2.35.3 capped the dialog height and scrolled the form area, but description still lived inside the pinned header. A description of 5+ lines (guizang-ppt) made the header taller than the available viewport; since the header has `shrink-0` and the outer card `overflow-hidden`, the TOP of the header — mode icon + title — got cropped. Description now lives at the top of the scrollable body; pinned header is icon + title only.
+
 ## [2.35.3] - 2026-04-25
 
 ### Fixed
