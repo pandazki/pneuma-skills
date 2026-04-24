@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.35.1] - 2026-04-25
+
+### Fixed
+- **Published viewers crashed with `Cannot read properties of undefined (reading 'DEV')`** — many mode viewers branch on `import.meta.env.DEV` to pick between a dev-time API origin and a prod same-origin path. Vite substitutes `import.meta.env.*` in dev, but `Bun.build` at publish time wasn't substituting them, so the bundle shipped with literal `import.meta.env` accesses. At load time `import.meta.env` is `undefined` in the host's runtime and the first `.DEV` access threw before the viewer mounted. `snapshot/mode-build.ts` now passes a `define` map that replaces `import.meta.env.DEV` / `.PROD` / `.MODE` with static values (DEV=false, PROD=true), making the "production" branch (same-origin relative fetches) the one that survives — which is correct for bundles served from the host's `/mode-assets/` route.
+
 ## [2.35.0] - 2026-04-24
 
 ### Added
