@@ -87,6 +87,23 @@
       <a href="${schemeUrl}" class="open-app-btn">${label}</a>
       <p class="open-app-hint">${hint}</p>
     `;
+
+    // Auto-trigger the custom-protocol navigation. Browsers won't let JS
+    // navigate the top frame to `pneuma://...` without user interaction,
+    // but they DO allow a hidden iframe to load that URL — which the OS
+    // routes to the registered handler (the desktop app) without touching
+    // the current page. This is the same pattern Slack / Zoom use on
+    // their "open in app" landing pages. If the app isn't installed the
+    // iframe load fails silently and the visible button remains the
+    // fallback.
+    try {
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = schemeUrl;
+      document.body.appendChild(iframe);
+      // Clean up after the OS handoff completes.
+      setTimeout(() => { try { iframe.remove(); } catch {} }, 2000);
+    } catch { /* fall back to the manual button */ }
   }
 
   document.addEventListener('DOMContentLoaded', function () {
