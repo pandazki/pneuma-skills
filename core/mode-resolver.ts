@@ -10,7 +10,7 @@
  */
 
 import { resolve, join, basename } from "node:path";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 
 export type ModeSourceType = "builtin" | "local" | "github" | "url";
@@ -272,9 +272,60 @@ async function ensureUrlMode(url: string, cacheDir: string): Promise<void> {
     }
 
     console.log(`[mode-resolver] Extracted to ${cacheDir}`);
+    patchViteEnvTokens(cacheDir);
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/**
+ * Post-extract rewrite for published-mode bundles built before 2.35.1:
+ * those Bun.build outputs contain literal `import.meta.env.DEV` reads
+ * because the build step didn't substitute them, and the host runtime
+ * can't polyfill `import.meta` after the fact. Walk the extracted
+ * `.build/` directory (where published bundles live) and substitute
+ * the Vite env tokens with the same static values the new Bun.build
+ * `define` would have produced. This is a one-time cost at install
+ * and gets old modes working without forcing every publisher to
+ * re-bundle.
+ */
+function patchViteEnvTokens(cacheDir: string): void {
+  const buildDir = join(cacheDir, ".build");
+  if (!existsSync(buildDir)) return;
+
+  const substitutions: Array<[RegExp, string]> = [
+    [/import\.meta\.env\.DEV/g, "false"],
+    [/import\.meta\.env\.PROD/g, "true"],
+    [/import\.meta\.env\.MODE/g, '"production"'],
+    [/import\.meta\.env\.VITE_API_PORT/g, "undefined"],
+    [/import\.meta\.env\.VITE_MODE_MAKER_WORKSPACE/g, "undefined"],
+  ];
+
+  let patched = 0;
+  function walk(dir: string): void {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!/\.(m?js|cjs)$/.test(entry.name)) continue;
+      try {
+        const src = readFileSync(full, "utf-8");
+        if (!src.includes("import.meta.env")) continue;
+        let out = src;
+        for (const [pat, val] of substitutions) out = out.replace(pat, val);
+        if (out !== src) {
+          writeFileSync(full, out, "utf-8");
+          patched++;
+        }
+      } catch { /* best-effort */ }
+    }
+  }
+
+  try {
+    if (statSync(buildDir).isDirectory()) walk(buildDir);
+    if (patched > 0) {
+      console.log(`[mode-resolver] Patched import.meta.env tokens in ${patched} bundle file(s) under .build/`);
+    }
+  } catch { /* .build/ access failed, skip */ }
 }
 
 /**
