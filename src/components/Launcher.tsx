@@ -2272,7 +2272,7 @@ function LaunchDialog({
       style={{ animation: `${closing ? "overlayFadeOut" : "overlayFadeIn"} 0.2s ease-out${closing ? " forwards" : ""}` }}
     >
       <div
-        className={`launcher-card-elevated bg-cc-surface border border-cc-border/50 rounded-2xl overflow-hidden w-full mx-4 ${
+        className={`launcher-card-elevated bg-cc-surface border border-cc-border/50 rounded-2xl overflow-hidden w-full mx-4 flex flex-col max-h-[calc(100vh-4rem)] ${
           hasShowcase ? "max-w-5xl" : "max-w-lg"
         }`}
         style={{ animation: "launcherFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}
@@ -2350,9 +2350,9 @@ function LaunchDialog({
             </div>
           </div>
         ) : (
-          /* ── Compact layout: mode header + form ── */
-          <div className="flex flex-col">
-            <div className="flex items-center justify-between px-8 pt-8">
+          /* ── Compact layout: mode header + scrollable form + pinned actions ── */
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className="flex items-center justify-between px-8 pt-8 shrink-0">
               <div className="flex items-center gap-3">
                 <ModeIcon svg={icon} className="w-8 h-8 text-cc-primary" />
                 <div>
@@ -2366,10 +2366,13 @@ function LaunchDialog({
                 </div>
               </div>
             </div>
-            <div className="px-8 pt-5">
+            {/* Scroll here, not the whole dialog — keeps the action bar
+                visible when a mode declares many init params or has a long
+                description that together overflow the viewport. */}
+            <div className="flex-1 overflow-y-auto px-8 pt-5 min-h-0">
               {formContent}
             </div>
-            <div className="px-8 py-6 border-t border-cc-border/20 mt-4">
+            <div className="shrink-0 px-8 py-6 border-t border-cc-border/20 mt-4">
               {actionButtons}
             </div>
           </div>
