@@ -2160,9 +2160,17 @@ export const jsxDEV = J.jsx;
 export const Fragment = J.Fragment;`;
 
     app.get("/vendor/react.js", (c) => new Response(REACT_SHIM, { headers: { "Content-Type": "application/javascript" } }));
+    // react-dom exports forwarded to published mode bundles. Keep in sync
+    // with what react-dom actually exports — missing an export here causes
+    // a runtime SyntaxError when a bundle imports it (since this shim is
+    // an ES module, any named import that isn't re-exported fails hard).
+    // unstable_batchedUpdates in particular is still pulled in by @dnd-kit
+    // and a few other deps; React 18+ auto-batches so a fallback identity
+    // shim is safe if the runtime ever stops providing it.
     const REACT_DOM_SHIM = `const RD = window.__PNEUMA_REACT_DOM__;
 export default RD;
-export const { createPortal, flushSync, createRoot, hydrateRoot } = RD;`;
+export const { createPortal, flushSync, createRoot, hydrateRoot, version } = RD;
+export const unstable_batchedUpdates = RD.unstable_batchedUpdates || ((fn, ...args) => fn(...args));`;
     app.get("/vendor/react-dom.js", (c) => new Response(REACT_DOM_SHIM, { headers: { "Content-Type": "application/javascript" } }));
     app.get("/vendor/react-jsx-runtime.js", (c) => new Response(JSX_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));
     app.get("/vendor/react-jsx-dev-runtime.js", (c) => new Response(JSX_DEV_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));

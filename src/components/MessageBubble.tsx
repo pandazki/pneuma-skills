@@ -780,7 +780,12 @@ function ContentBlockRenderer({
   }
 
   if (block.type === "thinking") {
-    return <ThinkingBlock text={block.thinking} />;
+    // Adaptive thinking (Claude Code 2.1.119+) sends `thinking: ""` with a
+    // populated `signature` field — the model reasoned but Anthropic only
+    // returns an encrypted signature, not plaintext. Surface that state
+    // explicitly instead of showing "0 chars / No thinking text captured".
+    const hasSignature = !!(block as { signature?: string }).signature;
+    return <ThinkingBlock text={block.thinking} hasSignature={hasSignature} />;
   }
 
   if (block.type === "tool_use") {
@@ -844,24 +849,32 @@ function BashResultBlock({ text, isError }: { text: string; isError: boolean }) 
 
 // ─── ThinkingBlock ─────────────────────────────────────────────────────────
 
-function ThinkingBlock({ text }: { text: string }) {
+function ThinkingBlock({ text, hasSignature = false }: { text: string; hasSignature?: boolean }) {
   const normalized = text.trim();
   const preview = normalized.replace(/\s+/g, " ").slice(0, 90);
+  // Adaptive thinking (Claude Code 2.1.119+) emits `thinking: ""` with a
+  // populated `signature` — the model reasoned but Anthropic only returned
+  // the encrypted signature, not plaintext. Surface that state explicitly
+  // instead of the misleading "0 chars / No thinking text captured".
+  const isEncryptedOnly = !normalized && hasSignature;
   const [open, setOpen] = useState(false);
 
   return (
     <div className="border border-cc-primary/20 rounded-[16px] bg-cc-primary/[0.03] shadow-[0_0_15px_rgba(249,115,22,0.05)] relative before:absolute before:inset-0 before:rounded-[16px] before:bg-gradient-to-b before:from-cc-primary/10 before:to-transparent before:opacity-0 hover:before:opacity-100 before:transition-opacity before:pointer-events-none">
       <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-cc-muted hover:bg-cc-primary/10 transition-colors cursor-pointer relative z-10"
+        onClick={() => !isEncryptedOnly && setOpen(!open)}
+        disabled={isEncryptedOnly}
+        className={`w-full flex items-center gap-2 px-3 py-2.5 text-xs text-cc-muted transition-colors relative z-10 ${isEncryptedOnly ? "cursor-default" : "hover:bg-cc-primary/10 cursor-pointer"}`}
       >
-        <svg
-          viewBox="0 0 16 16"
-          fill="currentColor"
-          className={`w-3 h-3 transition-transform ${open ? "rotate-90" : ""}`}
-        >
-          <path d="M6 4l4 4-4 4" />
-        </svg>
+        {!isEncryptedOnly && (
+          <svg
+            viewBox="0 0 16 16"
+            fill="currentColor"
+            className={`w-3 h-3 transition-transform ${open ? "rotate-90" : ""}`}
+          >
+            <path d="M6 4l4 4-4 4" />
+          </svg>
+        )}
         <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-cc-primary/10 text-cc-primary shrink-0">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
             <path d="M8 2.5a3.5 3.5 0 013.5 3.5c0 1.3-.7 2.1-1.4 2.8-.6.6-1.1 1.1-1.1 1.7V11" strokeLinecap="round" />
@@ -870,12 +883,18 @@ function ThinkingBlock({ text }: { text: string }) {
           </svg>
         </span>
         <span className="font-medium text-cc-fg">Reasoning</span>
-        <span className="text-cc-muted/60">{text.length} chars</span>
-        {!open && preview && (
-          <span className="text-cc-muted truncate max-w-[55%]">{preview}</span>
+        {isEncryptedOnly ? (
+          <span className="text-cc-muted/60 italic">hidden by Anthropic (adaptive thinking)</span>
+        ) : (
+          <>
+            <span className="text-cc-muted/60">{text.length} chars</span>
+            {!open && preview && (
+              <span className="text-cc-muted truncate max-w-[55%]">{preview}</span>
+            )}
+          </>
         )}
       </button>
-      {open && (
+      {open && !isEncryptedOnly && (
         <div className="px-3 pb-3 pt-0">
           <div className="border border-cc-border/70 rounded-lg px-3 py-2 bg-cc-bg/60 max-h-60 overflow-y-auto">
             <div className="markdown-body text-[13px] text-cc-muted leading-relaxed">
