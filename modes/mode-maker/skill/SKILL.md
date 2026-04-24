@@ -34,13 +34,17 @@ For the ViewerContract implementation guide (ViewerPreviewProps, viewer patterns
 
 ## Development Workflow
 
-1. **Start with manifest.ts** — define mode identity and configuration
-2. **Create viewer/Preview.tsx** — implement the preview component
-3. **Write pneuma-mode.ts** — bind manifest + viewer, implement extractContext
+1. **Start with manifest.ts** — define mode identity, `viewer.watchPatterns`, and (if the mode has structured state beyond a flat file list) declare `sources`
+2. **Create viewer/Preview.tsx** — implement the preview component. Files arrive via `sources`, not as a `files` prop — subscribe with `useSource(sources.files)`. See `viewer-guide.md` for examples
+3. **Write pneuma-mode.ts** — bind manifest + viewer, implement `extractContext`, and provide a runtime workspace model (TopBar tabs, `createEmpty`, etc.)
 4. **Write skill/SKILL.md** — guide the Agent on how to work in this mode
 5. **Add seed/ files** — template files for new workspaces
 
 Keep `manifest.ts` as pure data — it's imported by both backend and frontend, so side effects or React imports would crash the server.
+
+### The Source abstraction
+
+Pneuma's viewer runtime does not hand your component a `files` array directly. Instead, every data channel declared in `manifest.sources` becomes a `Source<T>` under `props.sources`, which the viewer subscribes to via the `useSource` hook. The runtime synthesizes a default `files` source from `viewer.watchPatterns` so legacy modes keep working, but new modes should declare their sources explicitly — `file-glob` for a flat file list, `json-file` for typed settings, `aggregate-file` for a derived domain object, `memory` for ephemeral state. This makes writes type-safe and origin-tagged (no manual echo suppression) and keeps viewer code decoupled from storage layout. Full details in `viewer-guide.md`.
 
 ## MCP Servers and Skill Dependencies
 
@@ -99,11 +103,15 @@ Seed files and skill files support `{{key}}` template variables from init params
 
 ## Testing
 
+The fastest feedback loop is the **Play** button in the mode-maker viewer — it spawns a child pneuma process against the current workspace as a local mode source, in a fresh temp workspace, so you can click through a real viewer without leaving the mode-maker window. Each click runs against the latest files on disk.
+
+For direct CLI testing:
+
 ```bash
-# From pneuma-skills project root:
+# From pneuma-skills project root — any local mode directory works as the first arg
 bun run dev /path/to/your-mode --workspace /tmp/test-workspace
 
-# Or if registered as builtin:
+# Or if your mode is registered as a builtin under modes/:
 bun run dev your-mode --workspace /tmp/test-workspace
 ```
 
@@ -141,11 +149,16 @@ Modes can use any npm package in their viewer. Install with `bun add <package>`,
 
 ## Existing Mode Examples
 
-| Mode | watchPatterns | Viewer Pattern | Workspace Type |
-|------|--------------|----------------|----------------|
-| **Doc** | `**/*.md` | react-markdown | `all`, multi-file, topBarNavigation |
-| **Slide** | `slides/*.html`, `manifest.json`, `theme.css` | iframe + srcdoc | `manifest`, ordered |
-| **Draw** | `**/*.excalidraw` | Excalidraw React component | `all`, multi-file, topBarNavigation |
+Read the ones closest to what you're building — they're the best reference for the current contracts:
+
+| Mode | `sources` | Viewer Pattern | Workspace Type | Good reference for |
+|------|-----------|----------------|----------------|--------------------|
+| **Doc** | default `files` | react-markdown | `all`, multi-file, topBarNavigation | Simple text-first modes |
+| **Kami** | default `files` + paper size via init params | srcdoc iframe + paper canvas | `manifest`, multi-file | Fixed-size canvas layouts, editorial typography |
+| **Slide** | custom `deck` aggregate-file | srcdoc iframe + slide navigator | `manifest`, ordered | Structured multi-file domain objects |
+| **WebCraft** | `site` aggregate-file + `assets` file-glob + `files` file-glob | srcdoc iframe + responsive preview | `manifest`, multi-file, content sets | Web design with multiple switchable content sets |
+| **Draw** | default `files` | Excalidraw React component | `single` | Canvas-driven single-file modes |
+| **GridBoard** | default `files` | dnd-kit tile grid | `all`, multi-file | Compile-at-runtime tile systems |
 
 ## Theme CSS Hygiene
 

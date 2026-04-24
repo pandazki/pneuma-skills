@@ -7,9 +7,16 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ViewerPreviewProps } from "../../../core/types/viewer-contract.js";
+import type { ViewerPreviewProps, ViewerFileContent } from "../../../core/types/viewer-contract.js";
+import type { Source } from "../../../core/types/source.js";
+import { useSource } from "../../../src/hooks/useSource.js";
 
-export default function Preview({ files }: ViewerPreviewProps) {
+export default function Preview({ sources }: ViewerPreviewProps) {
+  // Files arrive via the default `files` source. Subscribe through the
+  // runtime's `useSource` hook so the view re-renders on workspace changes.
+  const filesSource = sources.files as Source<ViewerFileContent[]>;
+  const { value } = useSource(filesSource);
+  const files = value ?? [];
   const file = files[0];
 
   if (!file) {
