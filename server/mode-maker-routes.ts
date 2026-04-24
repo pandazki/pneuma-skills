@@ -387,6 +387,7 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
   app.post("/api/mode-maker/play", async (c) => {
     try {
       if (activePlay) {
+        console.warn("[mode-maker/play] rejected — another play instance is already running");
         return c.json({ success: false, message: "A play instance is already running" }, 409);
       }
 
@@ -394,6 +395,7 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
       const uuid8 = randomUUID().slice(0, 8);
       const tmpDir = join(tmpdir(), `pneuma-play-${uuid8}`);
       mkdirSync(tmpDir, { recursive: true });
+      console.log(`[mode-maker/play] tmpDir=${tmpDir} source=${workspace}`);
 
       // Launch subprocess: workspace path acts as local mode source.
       // Always use --dev (Vite) for play — Bun.build would duplicate src/store.ts
@@ -408,6 +410,7 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
         PNEUMA_VITE_PORT: String(PLAY_VITE_PORT),
       };
 
+      console.log(`[mode-maker/play] spawn: ${args.join(" ")} (PNEUMA_VITE_PORT=${PLAY_VITE_PORT})`);
       const proc = Bun.spawn(args, {
           cwd: projectRoot,
           stdout: "pipe",
@@ -415,31 +418,62 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
           env: childEnv,
         },
       );
+      console.log(`[mode-maker/play] child pid=${proc.pid}`);
 
-      // Wait for the subprocess to print its ready URL (up to 30s — Vite startup can be slow)
+      // Wait for the subprocess to print its ready URL (up to 30s — Vite startup can be slow).
+      // We now also (a) read stderr so we see crashes, (b) echo every line from
+      // both streams so a hang has visible breadcrumbs in the log viewer, and
+      // (c) log the timeout fallback explicitly instead of silently using a
+      // fabricated URL.
       const readyPromise = new Promise<string>((resolve) => {
         const fallbackUrl = `http://localhost:${PLAY_VITE_PORT}?mode=${encodeURIComponent(basename(workspace))}`;
-        const timeout = setTimeout(() => resolve(fallbackUrl), 30_000);
-        const readStream = async (stream: ReadableStream<Uint8Array>) => {
+        let settled = false;
+        const settle = (u: string, reason: string) => {
+          if (settled) return;
+          settled = true;
+          console.log(`[mode-maker/play] ready resolved (${reason}): ${u}`);
+          clearTimeout(timeout);
+          resolve(u);
+        };
+        const timeout = setTimeout(() => {
+          console.error(`[mode-maker/play] TIMEOUT after 30s — no "[pneuma] ready" signal. Falling back to ${fallbackUrl}. Child may still be starting or hung.`);
+          settle(fallbackUrl, "timeout");
+        }, 30_000);
+
+        const pipeStream = async (stream: ReadableStream<Uint8Array>, tag: "stdout" | "stderr") => {
           const reader = stream.getReader();
           const decoder = new TextDecoder();
           let buffer = "";
           try {
             while (true) {
               const { done, value } = await reader.read();
-              if (done) break;
-              buffer += decoder.decode(value, { stream: true });
-              // bin/pneuma.ts prints: [pneuma] ready http://localhost:<port>?session=...&mode=...
-              const match = buffer.match(/\[pneuma\] ready (http:\/\/\S+)/);
-              if (match) {
-                clearTimeout(timeout);
-                resolve(match[1]);
+              if (done) {
+                console.log(`[mode-maker/play:${tag}] <EOF>`);
                 break;
               }
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop() || "";
+              for (const line of lines) {
+                if (line.length === 0) continue;
+                console.log(`[mode-maker/play:${tag}] ${line}`);
+                const match = line.match(/\[pneuma\] ready (http:\/\/\S+)/);
+                if (match) settle(match[1], `${tag} match`);
+              }
             }
-          } catch { /* stream ended */ }
+          } catch (err) {
+            console.error(`[mode-maker/play:${tag}] reader error:`, err instanceof Error ? err.message : String(err));
+          }
         };
-        if (proc.stdout && typeof proc.stdout !== "number") readStream(proc.stdout);
+
+        if (proc.stdout && typeof proc.stdout !== "number") pipeStream(proc.stdout, "stdout");
+        else console.warn("[mode-maker/play] proc.stdout not readable — ready signal will never fire");
+        if (proc.stderr && typeof proc.stderr !== "number") pipeStream(proc.stderr, "stderr");
+
+        proc.exited.then((code) => {
+          console.log(`[mode-maker/play] child exited with code=${code}`);
+          if (!settled) settle(fallbackUrl, `exit code=${code}`);
+        });
       });
 
       const url = await readyPromise;

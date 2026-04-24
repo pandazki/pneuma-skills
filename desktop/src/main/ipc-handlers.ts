@@ -1,6 +1,8 @@
 import { ipcMain, app, shell, dialog, BrowserWindow } from "electron";
 import { closeModeWindowByUrl } from "./window-manager.js";
 import { handleNativeInvoke, listCapabilities } from "./native-bridge.js";
+import { logEntry, tail, getCurrentLogFile, type LogLevel } from "./logger.js";
+import { showLogWindow, revealLogFile } from "./log-window.js";
 
 export function registerIpcHandlers() {
   ipcMain.handle("pneuma:get-app-version", () => {
@@ -65,4 +67,19 @@ export function registerIpcHandlers() {
   ipcMain.handle("pneuma:native:capabilities", () => {
     return listCapabilities();
   });
+
+  // ── Log bridge ─────────────────────────────────────────────────────────────
+  const ALLOWED_LEVELS: ReadonlySet<LogLevel> = new Set(["debug", "info", "warn", "error"]);
+
+  ipcMain.on("pneuma:log:write", (_event, level: string, source: string, msg: string) => {
+    const normalized = ALLOWED_LEVELS.has(level as LogLevel) ? (level as LogLevel) : "info";
+    const safeSource = typeof source === "string" && source ? source.slice(0, 120) : "renderer";
+    const safeMsg = typeof msg === "string" ? msg.slice(0, 8000) : String(msg);
+    logEntry(normalized, safeSource, safeMsg);
+  });
+
+  ipcMain.handle("pneuma:log:tail", (_event, n?: number) => tail(typeof n === "number" ? n : 2000));
+  ipcMain.handle("pneuma:log:current-file", () => getCurrentLogFile());
+  ipcMain.handle("pneuma:log:reveal", () => revealLogFile());
+  ipcMain.handle("pneuma:log:open", () => { showLogWindow(); });
 }

@@ -1,6 +1,7 @@
 import { Tray, Menu, nativeImage, app } from "electron";
 import path from "node:path";
 import { getLauncherUrl } from "./bun-process.js";
+import { showLogWindow } from "./log-window.js";
 
 let tray: Tray | null = null;
 
@@ -97,6 +98,10 @@ async function buildTrayMenu(): Promise<Electron.Menu> {
     },
     ...sessionItems,
     { type: "separator" },
+    {
+      label: "Show Logs…",
+      click: () => showLogWindow(),
+    },
     {
       label: "Check for Updates…",
       click: () => callbacks.onCheckUpdates(),

@@ -16,9 +16,17 @@ import {
 } from "./bun-process.js";
 import { detectClaude, getClaudeInstallInstructions } from "./claude-detector.js";
 import { registerIpcHandlers } from "./ipc-handlers.js";
+import { initLogger } from "./logger.js";
+import { showLogWindow, revealLogFile } from "./log-window.js";
 
 // ── App name (fixes "Electron" in macOS menu bar) ────────────────────────────
 app.setName("Pneuma Skills");
+
+// Initialize the logger before anything else writes to console — this patches
+// console.{log,warn,error,info} so every subsequent log also lands in
+// `<userData>/logs/pneuma-<date>.log` and in the in-memory ring for the
+// Show Logs window. The original console output is preserved.
+initLogger();
 
 // Single instance lock
 const gotLock = app.requestSingleInstanceLock();
@@ -242,6 +250,16 @@ app.whenReady().then(async () => {
             { role: "reload" },
             { role: "forceReload" },
             { role: "toggleDevTools" },
+            { type: "separator" },
+            {
+              label: "Show Logs",
+              accelerator: "CmdOrCtrl+Alt+L",
+              click: () => showLogWindow(),
+            },
+            {
+              label: "Reveal Log File",
+              click: () => revealLogFile(),
+            },
             { type: "separator" },
             { role: "resetZoom" },
             { role: "zoomIn" },

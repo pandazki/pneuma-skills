@@ -3,6 +3,7 @@ import net from "node:net";
 import path from "node:path";
 import { app } from "electron";
 import { existsSync } from "node:fs";
+import { logEntry, writeToTerminal } from "./logger.js";
 
 /** Dev desktop stays on the memorable 17996 so devtools/logs are predictable.
  *  Packaged builds ask the OS for a free ephemeral port instead — avoids
@@ -140,7 +141,14 @@ export async function spawnLauncherProcess(): Promise<void> {
 
     launcherProcess!.stdout?.on("data", (data: Buffer) => {
       const text = data.toString();
-      console.log(`[launcher:stdout] ${text.trim()}`);
+      // Each chunk can span multiple lines — split so the viewer can filter
+      // and so individual session-child lines (already prefixed by the
+      // launcher as `[launcher] ...`) land as separate rows.
+      for (const line of text.split(/\r?\n/)) {
+        if (line.length === 0) continue;
+        writeToTerminal("info", `[launcher:stdout] ${line}`);
+        logEntry("info", "launcher:stdout", line);
+      }
 
       if (resolved) return;
 
@@ -171,7 +179,11 @@ export async function spawnLauncherProcess(): Promise<void> {
     launcherProcess!.stderr?.on("data", (data: Buffer) => {
       const text = data.toString();
       stderr += text;
-      console.error(`[launcher:stderr] ${text.trim()}`);
+      for (const line of text.split(/\r?\n/)) {
+        if (line.length === 0) continue;
+        writeToTerminal("error", `[launcher:stderr] ${line}`);
+        logEntry("warn", "launcher:stderr", line);
+      }
     });
 
     launcherProcess!.on("error", (err) => {
