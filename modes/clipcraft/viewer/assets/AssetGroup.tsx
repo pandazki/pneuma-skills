@@ -174,7 +174,6 @@ function AssetListRow({
       ref={ref}
       data-asset-id={asset.id}
       onClick={() => onOpen(asset)}
-      title={asset.uri || asset.name}
       draggable={canDrag}
       onDragStart={(e) => {
         if (!canDrag) {

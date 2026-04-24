@@ -2,7 +2,6 @@ import { useRef, useState } from "react";
 import type { Asset } from "@pneuma-craft/react";
 import { useWorkspaceAssetUrl } from "./useWorkspaceAssetUrl.js";
 import { useAssetError } from "./useAssetErrors.js";
-import { useAssetMetadata } from "./useAssetMetadata.js";
 import { useAssetHover } from "./AssetHoverCard.js";
 import { theme } from "../theme/tokens.js";
 import { typeAccent } from "../assetInfo/typeAccent.js";
@@ -18,17 +17,8 @@ export interface AssetThumbnailProps {
 export function AssetThumbnail({ asset, onOpen, isMissing = false }: AssetThumbnailProps) {
   const url = useWorkspaceAssetUrl(asset.id);
   const error = useAssetError(asset.id);
-  const meta = useAssetMetadata(asset.id);
   const accent = typeAccent(asset.type);
   const TypeIcon = accent.Icon;
-
-  const tooltip = [
-    asset.name,
-    meta?.model ? `model: ${meta.model}` : null,
-    meta?.prompt ? `prompt: ${meta.prompt}` : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
 
   const [dragging, setDragging] = useState(false);
   const canDrag = asset.type !== "text" && !!url;
@@ -40,7 +30,6 @@ export function AssetThumbnail({ asset, onOpen, isMissing = false }: AssetThumbn
       ref={ref}
       data-asset-id={asset.id}
       onClick={() => onOpen(asset)}
-      title={tooltip}
       draggable={canDrag}
       onDragStart={(e) => {
         if (!canDrag) {
