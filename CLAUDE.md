@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.33.1
+**Version:** 2.33.2
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `mode-maker`, `evolve`
 
@@ -43,6 +43,9 @@ pneuma evolve <mode>     # Launch evolution agent for a mode's skill
 pneuma mode add <url>    # Install remote mode to ~/.pneuma/modes/
 pneuma mode list         # List published modes on R2
 pneuma mode publish      # Publish current workspace as mode
+
+# Session registry
+pneuma sessions rebuild  # Scan ~/pneuma-projects/ and restore missing Continue entries
 
 # Plugin management
 pneuma plugin add <source>   # Install plugin from path/github/URL to ~/.pneuma/plugins/

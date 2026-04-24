@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.33.2] - 2026-04-24
+
+### Fixed
+- **Auto-restore the Continue list for users hit by the pre-2.33.1 Play pollution bug** — users who updated from a version where mode-maker Play was silently pushing real workspaces out of the 50-entry registry cap would open the new launcher to an empty Continue list, with no obvious sign that their project files were still safe under `~/pneuma-projects/`. The launcher now scans that directory on boot and re-registers any `.pneuma/session.json` it finds but that the registry has lost — purely additive, dedupes by the same `${workspace}::${mode}` key `recordSession` uses, preserves existing entries' `sessionName`, and derives `lastAccessed` from the latest mtime across `session.json`/`history.json`/`thumbnail.png` so the list sorts by last-worked-on. Also exposed as `pneuma sessions rebuild` for users who want to trigger it manually.
+
 ## [2.33.1] - 2026-04-24
 
 ### Fixed
