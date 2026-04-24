@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.33.0] - 2026-04-24
+
+### Added
+- **Install remote modes from the launcher UI** — previously the only way to install a mode from a URL or github repo was the CLI (`pneuma mode add <url>`). The launcher Import modal now has a **Session / Mode** tab toggle, and the Mode Gallery's Local section renders a **"+ Add from URL"** button next to its heading (visible even when empty so first-time users have an obvious entry point). Both feed a new `POST /api/modes/install` endpoint that reuses the CLI's `resolveMode()` code path, so the CLI, modal tab, and gallery button all drop bits in `~/.pneuma/modes/<name>/` identically. On success the modal shows the installed display name + description with a one-click Launch.
+- **`pneuma://mode/{encodedUrl}` URL schema** — the desktop app now handles mode-install deeplinks alongside the existing `pneuma://open` and `pneuma://import` schemes. The landing page gains a matching `?action=mode&url=<tarball>` branch, so `https://pneuma.deepaste.ai/?action=mode&url=<tarball>` yields a one-click install button for anyone with the desktop app installed. The launcher reads a new `?installModeUrl=...` query parameter and auto-opens the Import modal on the Mode tab with the URL pre-filled.
+
 ## [2.32.2] - 2026-04-24
 
 ### Added
