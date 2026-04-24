@@ -2175,6 +2175,19 @@ export const unstable_batchedUpdates = RD.unstable_batchedUpdates || ((fn, ...ar
     app.get("/vendor/react-jsx-runtime.js", (c) => new Response(JSX_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));
     app.get("/vendor/react-jsx-dev-runtime.js", (c) => new Response(JSX_DEV_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));
 
+    // Host store shim — re-exports `useStore` from the HOST's single Zustand
+    // instance. Without this, Bun.build inlines the entire src/store.ts
+    // tree into every published mode bundle, and the mode ends up with its
+    // own parallel store that never talks to the host. The visible symptom
+    // is anything that crosses the mode/host boundary (activeContentSet,
+    // activeFile, selection) silently failing because writes go to the
+    // mode's bundled copy while the host reads from its own.
+    const PNEUMA_STORE_SHIM = `const S = window.__PNEUMA_STORE__;
+if (!S) throw new Error("__PNEUMA_STORE__ not set — pneuma-skills host didn't expose useStore before loading the mode bundle");
+export const useStore = S;
+export default S;`;
+    app.get("/vendor/pneuma-store.js", (c) => new Response(PNEUMA_STORE_SHIM, { headers: { "Content-Type": "application/javascript" } }));
+
     // Serve compiled mode bundle (JS + CSS)
     app.get("/mode-assets/*", async (c) => {
       const relPath = c.req.path.replace("/mode-assets/", "");
@@ -2219,7 +2232,7 @@ export const unstable_batchedUpdates = RD.unstable_batchedUpdates || ((fn, ...ar
 
       if (hasModeBundleDir) {
         const importMap = `<script type="importmap">
-{"imports":{"react":"/vendor/react.js","react-dom":"/vendor/react-dom.js","react/jsx-runtime":"/vendor/react-jsx-runtime.js","react/jsx-dev-runtime":"/vendor/react-jsx-dev-runtime.js"}}
+{"imports":{"react":"/vendor/react.js","react-dom":"/vendor/react-dom.js","react/jsx-runtime":"/vendor/react-jsx-runtime.js","react/jsx-dev-runtime":"/vendor/react-jsx-dev-runtime.js","pneuma-skills/src/store.js":"/vendor/pneuma-store.js","pneuma-skills/src/store.ts":"/vendor/pneuma-store.js"}}
 </script>`;
         // Inject <link> tags for any CSS files produced by Bun.build()
         let cssLinks = "";

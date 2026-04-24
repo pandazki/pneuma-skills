@@ -14,6 +14,11 @@ const EXTERNAL_MODULES = [
   "react-dom",
   "react/jsx-runtime",
   "react/jsx-dev-runtime",
+  // Zustand store stays with the host — inlining it would give every
+  // published mode its own parallel instance, breaking any state that
+  // crosses the boundary (activeContentSet, activeFile, selection, etc.).
+  "pneuma-skills/src/store.js",
+  "pneuma-skills/src/store.ts",
 ];
 
 // `pneuma-skills/core/...` + `pneuma-skills/src/...` imports emitted by
@@ -132,6 +137,13 @@ export async function buildModeForPublish(
         name: "pneuma-skills-resolver",
         setup(builder) {
           builder.onResolve({ filter: /^pneuma-skills\// }, (args) => {
+            // Host-owned singletons stay external — the runtime shim
+            // re-exports from window.__PNEUMA_*. Matches the list on
+            // EXTERNAL_MODULES above; kept in-plugin because the plugin
+            // filter fires before `external:` is consulted.
+            if (EXTERNAL_MODULES.includes(args.path)) {
+              return { path: args.path, external: true };
+            }
             const resolved = resolvePneumaSkillsImport(args.path);
             if (resolved) return { path: resolved };
             return null;
