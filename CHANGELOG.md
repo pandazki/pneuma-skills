@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.33.1] - 2026-04-24
+
+### Fixed
+- **Mode-maker Play no longer pollutes the session registry** — every click of Play created a fresh UUID temp workspace under `os.tmpdir()` (e.g. `/var/folders/.../T/pneuma-play-<uuid>`) and wrote a new session record for it. Power users who iterated quickly on a mode could push 50+ legit workspace records out of the 50-entry cap in a single session, making their real sessions vanish from the launcher's Continue list. `recordSession()` now skips workspaces inside `os.tmpdir()` — the Play sandbox was never resumable (it's deleted when the play child exits), so it never belonged in the registry. The cap was also raised from 50 to 200 so users with many projects don't silently lose history.
+
 ## [2.33.0] - 2026-04-24
 
 ### Added
