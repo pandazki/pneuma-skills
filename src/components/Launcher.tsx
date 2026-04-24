@@ -1887,6 +1887,7 @@ function LaunchDialog({
   inspiredBy,
   defaultWorkspace,
   defaultInitParams,
+  forkSource,
   backendOptions,
   defaultBackendType,
   homeDir,
@@ -1901,6 +1902,11 @@ function LaunchDialog({
   inspiredBy?: BuiltinMode["inspiredBy"];
   defaultWorkspace?: string;
   defaultInitParams?: Record<string, string>;
+  /** When set, append a `forkSource=` param to the launched URL so the
+   *  landed mode-maker viewer auto-forks the named mode into the new
+   *  empty workspace. Used by gallery "Edit" which means "start a mode
+   *  package seeded from an existing mode". */
+  forkSource?: { sourceMode?: string; sourcePath?: string };
   backendOptions: BackendOption[];
   defaultBackendType: BackendType;
   homeDir: string;
@@ -2010,7 +2016,18 @@ function LaunchDialog({
         setError(data.error);
         setLoading(false);
       } else if (data.url) {
-        window.open(data.url, "_blank");
+        // Append forkSource query param so the mode-maker viewer auto-forks
+        // the named mode into this (otherwise empty) workspace on first load.
+        let urlToOpen = data.url;
+        if (forkSource && (forkSource.sourceMode || forkSource.sourcePath)) {
+          try {
+            const u = new URL(urlToOpen);
+            if (forkSource.sourceMode) u.searchParams.set("forkSource", forkSource.sourceMode);
+            if (forkSource.sourcePath) u.searchParams.set("forkSourcePath", forkSource.sourcePath);
+            urlToOpen = u.toString();
+          } catch { /* fallback to original url on URL parse failure */ }
+        }
+        window.open(urlToOpen, "_blank");
         setLoading(false);
         onClose();
       }
@@ -2018,7 +2035,7 @@ function LaunchDialog({
       setError(err instanceof Error ? err.message : "Launch failed");
       setLoading(false);
     }
-  }, [specifier, workspace, selectedBackendType, existingSession, paramValues, onClose]);
+  }, [specifier, workspace, selectedBackendType, existingSession, paramValues, onClose, forkSource]);
 
   const [activeHighlight, setActiveHighlight] = useState(0);
   const highlights = showcase?.highlights;
@@ -3187,6 +3204,9 @@ export default function Launcher() {
     showcase?: BuiltinMode["showcase"];
     defaultWorkspace?: string;
     defaultInitParams?: Record<string, string>;
+    /** When launching mode-maker to seed a new mode package from an existing
+     *  one, carries the source — the viewer auto-forks on first load. */
+    forkSource?: { sourceMode?: string; sourcePath?: string };
   } | null>(null);
 
   const headerRef = useRef<HTMLDivElement>(null);
@@ -3778,11 +3798,18 @@ export default function Launcher() {
           onLaunch={handleGalleryLaunch}
           onEdit={(mode) => {
             setShowGallery(false);
-            const workspace = mode.path || undefined;
+            // "Edit" on a mode = start a mode-maker session seeded from that
+            // mode. Never point mode-maker at the source mode's own install
+            // directory (would edit the builtin in place, or overwrite the
+            // local cache). Instead always ask the user for a fresh workspace
+            // path and auto-fork the source mode into it on first load.
             setLaunchTarget({
               specifier: "mode-maker",
               displayName: `Edit: ${mode.displayName}`,
-              defaultWorkspace: workspace,
+              forkSource: {
+                sourceMode: mode.name,
+                sourcePath: mode.source === "local" ? mode.path : undefined,
+              },
             });
           }}
           onEvolve={(mode) => {
@@ -3839,6 +3866,7 @@ export default function Launcher() {
           inspiredBy={lastLaunchTarget.current.inspiredBy}
           defaultWorkspace={lastLaunchTarget.current.defaultWorkspace}
           defaultInitParams={lastLaunchTarget.current.defaultInitParams}
+          forkSource={lastLaunchTarget.current.forkSource}
           backendOptions={backendOptions}
           defaultBackendType={defaultBackendType}
           homeDir={homeDir}

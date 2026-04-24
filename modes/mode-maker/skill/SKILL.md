@@ -42,6 +42,14 @@ For the ViewerContract implementation guide (ViewerPreviewProps, viewer patterns
 
 Keep `manifest.ts` as pure data — it's imported by both backend and frontend, so side effects or React imports would crash the server.
 
+### Read the mode's own skill first
+
+**Before your first edit in any new conversation**, read the workspace's `skill/SKILL.md` (and anything under `skill/references/`). That file is the skill that will be installed when someone runs *this* mode — it's the authoritative description of the mode's domain (slide design principles, kami paper discipline, webcraft Impeccable.style rules, etc.). Mode-maker's own skill teaches you how to *build* modes; the target mode's skill teaches you what the mode is *for*.
+
+This matters especially for forks. A workspace forked from slide still has slide's `skill/SKILL.md` and references — read them to learn slide's design vocabulary before editing. Otherwise you'll rebuild domain knowledge from scratch (fetching external docs, reading builtin sources) when the answer was sitting in `skill/` the whole time.
+
+Rule of thumb: if the user asks you to change the *design aesthetic, content conventions, or domain workflow* of the mode, `skill/SKILL.md` is where that vocabulary lives. If they ask you to change *manifest config, viewer plumbing, or publish flow*, consult `{SKILL_PATH}/references/` in the mode-maker skill.
+
 ### The Source abstraction
 
 Pneuma's viewer runtime does not hand your component a `files` array directly. Instead, every data channel declared in `manifest.sources` becomes a `Source<T>` under `props.sources`, which the viewer subscribes to via the `useSource` hook. The runtime synthesizes a default `files` source from `viewer.watchPatterns` so legacy modes keep working, but new modes should declare their sources explicitly — `file-glob` for a flat file list, `json-file` for typed settings, `aggregate-file` for a derived domain object, `memory` for ephemeral state. This makes writes type-safe and origin-tagged (no manual echo suppression) and keeps viewer code decoupled from storage layout. Full details in `viewer-guide.md`.

@@ -7,7 +7,7 @@
 
 import type { Hono } from "hono";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync, statSync, unlinkSync, rmdirSync } from "node:fs";
-import { join, relative, dirname, basename, resolve } from "node:path";
+import { join, dirname, basename, resolve } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { parseManifestTs } from "../core/utils/manifest-parser.js";
@@ -84,31 +84,46 @@ const TEMPLATE_EXTENSIONS = new Set([".md", ".txt", ".html", ".css", ".json", ".
 const CODE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx"]);
 
 /**
- * Rewrite imports that escape the source directory to use correct relative paths
- * from the destination. This handles forking builtin modes whose viewer files
- * import shared code via relative paths like `../../../src/store.js`.
+ * Rewrite imports that escape the source mode directory into portable
+ * `pneuma-skills/...` bare-specifier form. Previously this computed a
+ * machine-specific relative path (`../../Codes/pneuma-skills/core/...`)
+ * that only worked on the author's exact disk layout — useless once the
+ * workspace was moved or the mode was published.
+ *
+ * The bare-specifier form is resolved by:
+ *   - Vite dev: `pneumaWorkspaceResolve` plugin rewrites to project root
+ *   - Bun.build (publish): resolver plugin in snapshot/mode-build.ts
+ *
+ * Imports that stay inside the mode's own directory pass through unchanged.
+ * Imports that escape but don't land in `/core/` or `/src/` (rare; we don't
+ * expect any) also pass through — we'd rather have a clear build error
+ * than silently rewrite something unintended.
  */
 function rewriteEscapingImports(
   text: string,
   srcFilePath: string,
   srcRoot: string,
-  dstFilePath: string,
+  _dstFilePath: string,
 ): string {
-  // Match: import/export ... from "relative-path"
-  // Also match: dynamic import("relative-path")
   return text.replace(
     /((?:from|import\()\s*["'])(\.\.\/[^"']+)(["'])/g,
     (match, prefix, importPath, suffix) => {
-      // Resolve the import path against the source file's directory
       const resolved = resolve(dirname(srcFilePath), importPath);
-      // Check if it escapes the source mode directory
+      // Stays inside the mode — keep original.
       if (resolved.startsWith(srcRoot + "/") || resolved === srcRoot) {
-        return match; // stays within mode dir, no rewrite needed
+        return match;
       }
-      // Compute new relative path from the destination file
-      const newRel = relative(dirname(dstFilePath), resolved);
-      const newImport = newRel.startsWith(".") ? newRel : `./${newRel}`;
-      return `${prefix}${newImport}${suffix}`;
+      // Escapes the mode. Find the first /core/ or /src/ segment and
+      // rebuild as a pneuma-skills/<rest> bare specifier. This preserves
+      // the file extension the author wrote (.js convention over .ts
+      // source, typical for bundler moduleResolution).
+      for (const prefix2 of ["/core/", "/src/"]) {
+        const idx = resolved.indexOf(prefix2);
+        if (idx !== -1) {
+          return `${prefix}pneuma-skills${resolved.slice(idx)}${suffix}`;
+        }
+      }
+      return match;
     },
   );
 }
@@ -117,6 +132,14 @@ interface CopyOptions {
   params?: Record<string, number | string>;
   /** When set, rewrite imports that escape srcRoot to correct relative paths from dst */
   rewriteImports?: boolean;
+  /**
+   * Source mode name (e.g. "slide"). When set, `init.seedFiles` keys
+   * referencing the source mode's own seed directory ("modes/slide/seed/...")
+   * get rewritten to the workspace-relative form ("seed/...") so the forked
+   * manifest's seedFiles resolve against the workspace root instead of
+   * against the unrelated `modes/slide/` path inside pneuma-skills itself.
+   */
+  sourceModeName?: string;
 }
 
 function copyDirRecursive(
@@ -124,7 +147,7 @@ function copyDirRecursive(
   dst: string,
   options?: CopyOptions,
 ): { files: string[]; count: number } {
-  const { params, rewriteImports } = options || {};
+  const { params, rewriteImports, sourceModeName } = options || {};
   const files: string[] = [];
   const resolvedSrc = resolve(src);
 
@@ -158,6 +181,10 @@ function copyDirRecursive(
           if (rewriteImports && CODE_EXTENSIONS.has(ext)) {
             text = rewriteEscapingImports(text, srcPath, resolvedSrc, dstPath);
           }
+          // Rewrite seedFiles paths in manifest.ts to workspace-relative form
+          if (sourceModeName && (entry.name === "manifest.ts" || entry.name === "manifest.js")) {
+            text = rewriteSeedFilePaths(text, sourceModeName);
+          }
           writeFileSync(dstPath, text, "utf-8");
         } else {
           writeFileSync(dstPath, readFileSync(srcPath));
@@ -169,6 +196,81 @@ function copyDirRecursive(
 
   walk(src, dst, "");
   return { files, count: files.length };
+}
+
+/**
+ * Rewrite `init.seedFiles` keys that reference the source mode's own seed
+ * directory to be relative to the forked workspace root. After fork, the
+ * source mode's `seed/` contents live at `<workspace>/seed/...` — not at
+ * `<workspace>/modes/<sourceModeName>/seed/...` where the original key
+ * pointed. Bin/pneuma.ts's init loop resolves seedFiles against the mode's
+ * package directory for local modes, so the shorter form actually finds
+ * the copied seeds.
+ */
+function rewriteSeedFilePaths(text: string, sourceModeName: string): string {
+  const prefix = `modes/${sourceModeName}/`;
+  // Match quoted keys that start with the prefix. Preserve the quote style.
+  return text.replace(
+    new RegExp(`(["'])${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^"']*)\\1`, "g"),
+    (_, q, rest) => `${q}${rest}${q}`,
+  );
+}
+
+/**
+ * Ensure a forked workspace has a package.json that lists every runtime
+ * dependency the builtin modes might import. Without this, `Bun.build`
+ * at publish time fails to resolve things like `@dnd-kit/core` or
+ * `@zumer/snapdom` because builtin modes under `modes/slide/`,
+ * `modes/draw/`, etc. don't ship their own package.json — they rely on
+ * pneuma-skills' root `node_modules`.
+ *
+ * After this runs, the workspace is a standalone package that `bun
+ * install` can complete from and that publish can bundle.
+ */
+async function ensureForkedPackageJson(
+  workspace: string,
+  projectRoot: string,
+  modeName: string,
+): Promise<void> {
+  const pkgPath = join(workspace, "package.json");
+  if (existsSync(pkgPath)) return; // author already supplied one — leave it
+
+  try {
+    const rootPkgRaw = readFileSync(join(projectRoot, "package.json"), "utf-8");
+    const rootPkg = JSON.parse(rootPkgRaw) as { dependencies?: Record<string, string> };
+    const pkg = {
+      name: modeName,
+      private: true,
+      dependencies: rootPkg.dependencies ?? {},
+    };
+    writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
+    console.log(`[mode-maker/fork] Wrote package.json (${Object.keys(pkg.dependencies).length} deps) for forked mode "${modeName}"`);
+  } catch (err) {
+    console.warn(`[mode-maker/fork] Could not generate package.json:`, err instanceof Error ? err.message : String(err));
+    return;
+  }
+
+  // Install deps so Bun.build has everything it needs at publish time.
+  // Fire-and-forget — we log success/failure but don't block the fork
+  // response on it, since many fork use cases don't need node_modules
+  // immediately (only publish does). bun.lock ensures subsequent installs
+  // are deterministic.
+  try {
+    const proc = Bun.spawn(["bun", "install"], {
+      cwd: workspace,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) {
+      const stderr = await new Response(proc.stderr).text();
+      console.warn(`[mode-maker/fork] bun install exit=${exitCode}: ${stderr.slice(0, 500)}`);
+    } else {
+      console.log(`[mode-maker/fork] bun install completed for "${modeName}"`);
+    }
+  } catch (err) {
+    console.warn(`[mode-maker/fork] bun install failed to spawn:`, err instanceof Error ? err.message : String(err));
+  }
 }
 
 // ── Play state ─────────────────────────────────────────────────────────────
@@ -295,8 +397,24 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
         });
       }
 
+      // Clear existing workspace contents before copy — otherwise files
+      // unique to the previous mode (e.g. a blank seed's viewer/Preview.tsx
+      // sitting next to slide's viewer/SlidePreview.tsx) would linger as
+      // unreferenced clutter. copyDirRecursive would merge rather than
+      // replace, leaving those stale files in place.
+      if (existingFiles.length > 0) clearWorkspace(workspace);
+
       // Copy all files from source mode to workspace, rewriting escaping imports
-      const { files, count } = copyDirRecursive(sourceDir, workspace, { rewriteImports: true });
+      const { files, count } = copyDirRecursive(sourceDir, workspace, {
+        rewriteImports: true,
+        sourceModeName: body.sourceMode,
+      });
+
+      // Builtin modes don't ship package.json — synthesize one so the
+      // forked workspace is a standalone package that Bun.build can
+      // bundle at publish time.
+      await ensureForkedPackageJson(workspace, projectRoot, body.sourceMode);
+
       return c.json({ success: true, filesWritten: count, files });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -374,8 +492,17 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
         });
       }
 
+      // Clear existing workspace contents (see fork route for rationale)
+      if (existingFiles.length > 0) clearWorkspace(workspace);
+
       // Fork into workspace
-      const { files, count } = copyDirRecursive(targetDir, workspace);
+      const { files, count } = copyDirRecursive(targetDir, workspace, {
+        rewriteImports: true,
+        sourceModeName: modeName,
+      });
+
+      await ensureForkedPackageJson(workspace, projectRoot, modeName);
+
       return c.json({ success: true, filesWritten: count, files, modeName });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -420,24 +547,27 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
       );
       console.log(`[mode-maker/play] child pid=${proc.pid}`);
 
-      // Wait for the subprocess to print its ready URL (up to 30s — Vite startup can be slow).
-      // We now also (a) read stderr so we see crashes, (b) echo every line from
-      // both streams so a hang has visible breadcrumbs in the log viewer, and
-      // (c) log the timeout fallback explicitly instead of silently using a
-      // fabricated URL.
-      const readyPromise = new Promise<string>((resolve) => {
-        const fallbackUrl = `http://localhost:${PLAY_VITE_PORT}?mode=${encodeURIComponent(basename(workspace))}`;
+      // Wait for the subprocess to print its ready URL (up to 30s — Vite
+      // startup can be slow). Capture stderr too; the earlier code ignored
+      // it entirely, which made crashes invisible. On timeout or early
+      // exit the promise resolves to an `error` result — NOT a fabricated
+      // URL — so the UI can surface the failure instead of opening a dead
+      // window.
+      type ReadyResult = { ok: true; url: string } | { ok: false; error: string };
+      const readyPromise = new Promise<ReadyResult>((resolve) => {
+        const recentStderr: string[] = [];
         let settled = false;
-        const settle = (u: string, reason: string) => {
+        const settle = (result: ReadyResult, reason: string) => {
           if (settled) return;
           settled = true;
-          console.log(`[mode-maker/play] ready resolved (${reason}): ${u}`);
+          console.log(`[mode-maker/play] ready resolved (${reason}): ${result.ok ? result.url : "ERROR: " + result.error}`);
           clearTimeout(timeout);
-          resolve(u);
+          resolve(result);
         };
         const timeout = setTimeout(() => {
-          console.error(`[mode-maker/play] TIMEOUT after 30s — no "[pneuma] ready" signal. Falling back to ${fallbackUrl}. Child may still be starting or hung.`);
-          settle(fallbackUrl, "timeout");
+          const tail = recentStderr.slice(-5).join("\n") || "(no stderr output)";
+          console.error(`[mode-maker/play] TIMEOUT after 30s — no "[pneuma] ready" signal. Recent stderr:\n${tail}`);
+          settle({ ok: false, error: `Play child did not become ready within 30s. Recent stderr:\n${tail}` }, "timeout");
         }, 30_000);
 
         const pipeStream = async (stream: ReadableStream<Uint8Array>, tag: "stdout" | "stderr") => {
@@ -457,8 +587,12 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
               for (const line of lines) {
                 if (line.length === 0) continue;
                 console.log(`[mode-maker/play:${tag}] ${line}`);
+                if (tag === "stderr") {
+                  recentStderr.push(line);
+                  if (recentStderr.length > 30) recentStderr.shift();
+                }
                 const match = line.match(/\[pneuma\] ready (http:\/\/\S+)/);
-                if (match) settle(match[1], `${tag} match`);
+                if (match) settle({ ok: true, url: match[1] }, `${tag} match`);
               }
             }
           } catch (err) {
@@ -472,18 +606,36 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
 
         proc.exited.then((code) => {
           console.log(`[mode-maker/play] child exited with code=${code}`);
-          if (!settled) settle(fallbackUrl, `exit code=${code}`);
+          if (!settled) {
+            const tail = recentStderr.slice(-5).join("\n") || "(no stderr output)";
+            settle(
+              { ok: false, error: `Play child exited (code=${code}) before printing ready signal. Recent stderr:\n${tail}` },
+              `exit code=${code}`,
+            );
+          }
         });
       });
 
-      const url = await readyPromise;
-      const port = parseInt(new URL(url).port, 10) || PLAY_PORT;
+      const ready = await readyPromise;
+      if (!ready.ok) {
+        try { proc.kill(); } catch { /* already dead */ }
+        try {
+          // Best-effort tmpDir cleanup since we never registered activePlay
+          const files2 = listFilesRecursive(tmpDir);
+          for (const f of files2) {
+            try { unlinkSync(join(tmpDir, f)); } catch {}
+          }
+          try { rmdirSync(tmpDir); } catch {}
+        } catch { /* not critical */ }
+        return c.json({ success: false, message: ready.error }, 500);
+      }
+      const port = parseInt(new URL(ready.url).port, 10) || PLAY_PORT;
 
       activePlay = {
         proc,
         pid: proc.pid,
         port,
-        url,
+        url: ready.url,
         tmpDir,
       };
 
@@ -508,7 +660,7 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
         }
       });
 
-      return c.json({ success: true, pid: proc.pid, port, url, tmpDir });
+      return c.json({ success: true, pid: proc.pid, port, url: ready.url, tmpDir });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       return c.json({ success: false, message }, 500);

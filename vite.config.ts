@@ -2,6 +2,7 @@ import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import { watch } from "chokidar";
@@ -61,9 +62,52 @@ function pneumaWorkspaceResolve(): Plugin {
           const idx = resolved.indexOf(prefix);
           if (idx !== -1 && !resolved.startsWith(projectRoot)) {
             // Redirect: /some/random/path/core/types/... → <projectRoot>/core/types/...
-            return projectRoot + resolved.slice(idx);
+            const rewritten = projectRoot + resolved.slice(idx);
+
+            // Resolve extension against the real filesystem before returning.
+            // The seed template (and other viewer code) imports with a `.js`
+            // extension for `.ts` source files — a TypeScript+bundler
+            // moduleResolution convention. Vite's URL-to-file extension
+            // fallback only works reliably for modules already in its graph;
+            // a first-time request for `/src/hooks/useSource.js` from a
+            // workspace file drops through to Vite's SPA fallback (served as
+            // text/html) and the browser rejects it as a module. Returning
+            // the actual on-disk path here skips that trap entirely.
+            if (existsSync(rewritten)) return rewritten;
+            const dotIdx = rewritten.lastIndexOf(".");
+            if (dotIdx > rewritten.lastIndexOf("/")) {
+              const base = rewritten.slice(0, dotIdx);
+              for (const ext of [".ts", ".tsx", ".js", ".jsx", ".mjs"]) {
+                const candidate = base + ext;
+                if (existsSync(candidate)) return candidate;
+              }
+            }
+            for (const ext of [".ts", ".tsx", ".js", ".jsx", "/index.ts", "/index.tsx", "/index.js"]) {
+              const candidate = rewritten + ext;
+              if (existsSync(candidate)) return candidate;
+            }
+            // Fall back to the original rewrite if none of the candidates
+            // exist — Vite will then surface a clear "file not found" error.
+            return rewritten;
           }
         }
+      } else if (cleanSource.startsWith("pneuma-skills/")) {
+        // Portable bare-specifier form emitted by mode-maker's fork
+        // route — `pneuma-skills/core/...` or `pneuma-skills/src/...`.
+        // Resolves to the actual project root so the same source works
+        // on any machine, regardless of how the user laid out their
+        // workspace relative to the pneuma-skills install.
+        const rel = cleanSource.slice("pneuma-skills/".length);
+        const candidate = path.join(projectRoot, rel);
+        if (existsSync(candidate)) return candidate;
+        const dotIdx = candidate.lastIndexOf(".");
+        if (dotIdx > candidate.lastIndexOf("/")) {
+          const base = candidate.slice(0, dotIdx);
+          for (const ext of [".ts", ".tsx", ".js", ".jsx", ".mjs"]) {
+            if (existsSync(base + ext)) return base + ext;
+          }
+        }
+        return candidate;
       } else if (!cleanSource.startsWith("/") && !cleanSource.startsWith("\0")) {
         // Bare specifier (npm package) — resolve from project's node_modules
         return this.resolve(source, path.join(projectRoot, "src", "_virtual_.ts"), {

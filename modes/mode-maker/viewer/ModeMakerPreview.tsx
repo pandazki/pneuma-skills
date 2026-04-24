@@ -426,7 +426,6 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
   const [selectedMode, setSelectedMode] = useState<string>("");
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState<string>("");
-  const [importNeedsConfirm, setImportNeedsConfirm] = useState(false);
   const [importUrl, setImportUrl] = useState("");
 
   // ── Play state ──
@@ -463,10 +462,15 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
     };
   }, [api]);
 
+  // Whether the workspace already has files the fork will overwrite. Shown
+  // up front so the confirm warning appears BEFORE the first click — the
+  // earlier two-step dance (click, read warning, click again) was easy to
+  // abandon halfway and made fork look broken.
+  const workspaceHasFiles = files.length > 0;
+
   // ── Import handlers ──
   const openImportDialog = useCallback(() => {
     setImportError("");
-    setImportNeedsConfirm(false);
     setSelectedMode("");
     setImportTab("modes");
     setImportUrl("");
@@ -480,7 +484,7 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
       .catch((err) => setImportError(err.message));
   }, [api]);
 
-  const doImport = useCallback((overwrite = false) => {
+  const doImport = useCallback(() => {
     if (!selectedMode) return;
     const selected = availableModes.find((m) => m.name === selectedMode);
     setImportLoading(true);
@@ -491,47 +495,70 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
       body: JSON.stringify({
         sourceMode: selectedMode,
         sourcePath: selected?.source === "local" ? selected.path : undefined,
-        overwrite,
+        overwrite: workspaceHasFiles,
       }),
     })
       .then((r) => r.json())
       .then((data: any) => {
-        if (data.requireConfirmation) {
-          setImportNeedsConfirm(true);
-        } else if (data.success) {
+        if (data.success) {
           setShowImportDialog(false);
-          setImportNeedsConfirm(false);
         } else {
           setImportError(data.message || "Import failed");
         }
       })
       .catch((err) => setImportError(err.message))
       .finally(() => setImportLoading(false));
-  }, [api, selectedMode, availableModes]);
+  }, [api, selectedMode, availableModes, workspaceHasFiles]);
 
-  const doImportUrl = useCallback((overwrite = false) => {
+  // Auto-fork on first mount when the launcher passed forkSource in the URL.
+  // Triggered by "Edit" in the Mode Gallery: launcher navigates the user here
+  // with `?forkSource=slide` (builtin) or `?forkSourcePath=/abs/path` (local)
+  // so this freshly-seeded workspace gets the selected mode's code without
+  // a second manual step. The query params are stripped after firing so a
+  // reload doesn't re-trigger.
+  const autoForkTriggered = useRef(false);
+  useEffect(() => {
+    if (autoForkTriggered.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const sourceMode = params.get("forkSource");
+    const sourcePath = params.get("forkSourcePath");
+    if (!sourceMode && !sourcePath) return;
+    autoForkTriggered.current = true;
+    const clean = new URL(window.location.href);
+    clean.searchParams.delete("forkSource");
+    clean.searchParams.delete("forkSourcePath");
+    window.history.replaceState({}, "", clean.pathname + clean.search);
+    fetch(`${api}/api/mode-maker/fork`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sourceMode: sourceMode || sourcePath || "",
+        sourcePath: sourcePath || undefined,
+        overwrite: true,
+      }),
+    }).catch(() => { /* best-effort; user can still fork via Import... */ });
+  }, [api]);
+
+  const doImportUrl = useCallback(() => {
     if (!importUrl.trim()) return;
     setImportLoading(true);
     setImportError("");
     fetch(`${api}/api/mode-maker/fork-url`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: importUrl.trim(), overwrite }),
+      body: JSON.stringify({ url: importUrl.trim(), overwrite: workspaceHasFiles }),
     })
       .then((r) => r.json())
       .then((data: any) => {
-        if (data.requireConfirmation) {
-          setImportNeedsConfirm(true);
-        } else if (data.success) {
+        if (data.success) {
           setShowImportDialog(false);
-          setImportNeedsConfirm(false);
         } else {
           setImportError(data.message || "Import failed");
         }
       })
       .catch((err) => setImportError(err.message))
       .finally(() => setImportLoading(false));
-  }, [api, importUrl]);
+  }, [api, importUrl, workspaceHasFiles]);
 
   // ── Play handlers ──
   const startPlay = useCallback(() => {
@@ -823,7 +850,7 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
           {(["modes", "url"] as const).map((tab) => (
             <button
               key={tab}
-              onClick={() => { setImportTab(tab); setImportError(""); setImportNeedsConfirm(false); }}
+              onClick={() => { setImportTab(tab); setImportError(""); }}
               className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all cursor-pointer ${importTab === tab ? "bg-cc-surface text-cc-fg shadow-sm" : "text-cc-muted hover:text-cc-fg"}`}
             >
               {tab === "modes" ? "Modes" : "From URL"}
@@ -884,9 +911,9 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
                 );
               })}
             </div>
-            {importNeedsConfirm && (
+            {workspaceHasFiles && (
               <div className="text-xs text-amber-400 mb-3 bg-amber-900/20 border border-amber-800/30 rounded-lg p-2.5">
-                Workspace has existing files. Importing will add/overwrite files from the selected mode.
+                Workspace has {files.length} existing file{files.length === 1 ? "" : "s"}. Importing will replace them with the selected mode's contents.
               </div>
             )}
             <div className="flex justify-end gap-2">
@@ -898,10 +925,10 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
               </button>
               <button
                 className="px-3 py-1.5 text-xs bg-cc-primary hover:bg-cc-primary-hover text-cc-bg font-medium rounded-md transition-colors disabled:opacity-50 cursor-pointer"
-                onClick={() => doImport(importNeedsConfirm)}
+                onClick={() => doImport()}
                 disabled={importLoading || !selectedMode}
               >
-                {importLoading ? "Importing..." : importNeedsConfirm ? "Overwrite & Import" : "Import"}
+                {importLoading ? "Importing..." : workspaceHasFiles ? "Overwrite & Import" : "Import"}
               </button>
             </div>
           </>
@@ -919,9 +946,9 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
               placeholder="https://example.com/modes/my-mode/1.0.0.tar.gz"
               className="w-full px-3 py-2 bg-cc-bg/50 border border-cc-border/50 rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50 placeholder:text-cc-muted/40 mb-4"
             />
-            {importNeedsConfirm && (
+            {workspaceHasFiles && (
               <div className="text-xs text-amber-400 mb-3 bg-amber-900/20 border border-amber-800/30 rounded-lg p-2.5">
-                Workspace has existing files. Importing will add/overwrite files from the downloaded mode.
+                Workspace has {files.length} existing file{files.length === 1 ? "" : "s"}. Importing will replace them with the downloaded mode's contents.
               </div>
             )}
             <div className="flex justify-end gap-2">
@@ -933,10 +960,10 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
               </button>
               <button
                 className="px-3 py-1.5 text-xs bg-cc-primary hover:bg-cc-primary-hover text-cc-bg font-medium rounded-md transition-colors disabled:opacity-50 cursor-pointer"
-                onClick={() => doImportUrl(importNeedsConfirm)}
+                onClick={() => doImportUrl()}
                 disabled={importLoading || !importUrl.trim()}
               >
-                {importLoading ? "Downloading..." : importNeedsConfirm ? "Overwrite & Import" : "Download & Import"}
+                {importLoading ? "Downloading..." : workspaceHasFiles ? "Overwrite & Import" : "Download & Import"}
               </button>
             </div>
           </>

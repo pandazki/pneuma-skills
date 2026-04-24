@@ -46,6 +46,21 @@ It contains file conventions, editing workflow, and domain-specific guidance for
     serveDir: ".",
   },
 
+  // Data channels the viewer subscribes to via `useSource(sources.<key>)`.
+  // This is REQUIRED — pneuma-skills 2.29+ rejects manifests without a
+  // `sources` field. The default `files` channel reflects the workspace
+  // file list; see references/manifest-reference.md for json-file,
+  // aggregate-file, and memory variants.
+  sources: {
+    files: {
+      kind: "file-glob",
+      config: {
+        patterns: ["**/*.md"],
+        ignore: ["node_modules/**", ".git/**", ".claude/**", ".pneuma/**"],
+      },
+    },
+  },
+
   viewerApi: {
     workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: true },
   },

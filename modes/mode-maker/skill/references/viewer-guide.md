@@ -146,36 +146,41 @@ Pick the pattern closest to the content shape you're serving:
 viewer component, provides `extractContext`, and optionally extends the
 workspace model with frontend behavior (TopBar tabs, createEmpty, etc.).
 
+The shape is `{ manifest, viewer: ViewerContract }` — `manifest` at the
+top level, everything viewer-side nested under a `viewer` key:
+
 ```typescript
-import type { ModeDefinition } from "../../core/types/viewer-contract.js";
+import type { ModeDefinition } from "../../core/types/mode-definition.js";
 import manifest from "./manifest.js";
 import Preview from "./viewer/Preview.js";
 
-const pneumaMode: ModeDefinition = {
+const mode: ModeDefinition = {
   manifest,
-  PreviewComponent: Preview,
 
-  // Runtime-facing workspace model (extends manifest.viewerApi.workspace).
-  workspace: {
-    type: "all",
-    multiFile: true,
-    ordered: false,
-    hasActiveFile: false,
+  viewer: {
+    PreviewComponent: Preview,
+
+    // Runtime-facing workspace model (extends manifest.viewerApi.workspace).
+    workspace: {
+      type: "all",
+      multiFile: true,
+      ordered: false,
+      hasActiveFile: false,
+    },
+
+    extractContext(selection, _files) {
+      if (!selection) return "";
+      const file = selection.file ?? "?";
+      return `<viewer-context file="${file}">\n${selection.content}\n</viewer-context>`;
+    },
+
+    // "full-reload" remounts the viewer on every file change (simple but
+    // heavy); "incremental" trusts the viewer to re-render from sources.
+    updateStrategy: "incremental",
   },
-
-  extractContext(selection, files) {
-    if (!selection) return "";
-    const file = selection.file ?? "?";
-    return `<viewer-context file="${file}">\n${selection.content}\n</viewer-context>`;
-  },
-
-  updateStrategy: "incremental", // or "full-reload" — full-reload remounts
-                                  // the viewer on every file change (simple
-                                  // but heavy); incremental trusts the viewer
-                                  // to re-render from sources.
 };
 
-export default pneumaMode;
+export default mode;
 ```
 
 ### extractContext
@@ -189,31 +194,37 @@ workspace file list, injected by the runtime for your convenience.
 ### Workspace model — TopBar navigation
 
 If your mode has multiple files the user can switch between, set
-`topBarNavigation: true` and provide `resolveItems` + `createEmpty` so
-the framework's top bar renders file tabs and a "+" button:
+`topBarNavigation: true` on `viewer.workspace` and provide `resolveItems`
++ `createEmpty` so the framework's top bar renders file tabs and a "+"
+button:
 
 ```typescript
-workspace: {
-  type: "all",
-  multiFile: true,
-  ordered: false,
-  hasActiveFile: true,
-  topBarNavigation: true,
-  resolveItems(files) {
-    return files
-      .filter((f) => /\.(md|markdown)$/i.test(f.path))
-      .map((f, i) => ({
-        path: f.path,
-        label: f.path.split("/").pop()!.replace(/\.(md|markdown)$/i, ""),
-        index: i,
-      }));
+viewer: {
+  PreviewComponent: Preview,
+  workspace: {
+    type: "all",
+    multiFile: true,
+    ordered: false,
+    hasActiveFile: true,
+    topBarNavigation: true,
+    resolveItems(files) {
+      return files
+        .filter((f) => /\.(md|markdown)$/i.test(f.path))
+        .map((f, i) => ({
+          path: f.path,
+          label: f.path.split("/").pop()!.replace(/\.(md|markdown)$/i, ""),
+          index: i,
+        }));
+    },
+    createEmpty(files) {
+      const taken = new Set(files.map((f) => f.path));
+      let name = "untitled.md";
+      for (let n = 1; taken.has(name); n++) name = `untitled-${n}.md`;
+      return [{ path: name, content: `# ${name.replace(/\.md$/, "")}\n` }];
+    },
   },
-  createEmpty(files) {
-    const taken = new Set(files.map((f) => f.path));
-    let name = "untitled.md";
-    for (let n = 1; taken.has(name); n++) name = `untitled-${n}.md`;
-    return [{ path: name, content: `# ${name.replace(/\.md$/, "")}\n` }];
-  },
+  extractContext(/* ... */) { /* ... */ },
+  updateStrategy: "incremental",
 },
 ```
 

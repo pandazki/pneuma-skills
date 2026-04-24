@@ -57,11 +57,10 @@ const manifest: ModeManifest = {
     serveDir: ".",                           // subdir served by the built-in file server (optional)
   },
 
-  // ── Data channels (optional — defaulted if omitted) ────────────────
-  // If omitted, the runtime synthesizes `{ files: file-glob }` from
-  // viewer.watchPatterns + viewer.ignorePatterns, so any legacy mode
-  // keeps working. Modern modes declare sources explicitly so each
-  // data channel is typed end-to-end.
+  // ── Data channels (REQUIRED since 2.29) ────────────────────────────
+  // Every mode must declare a `sources` field — the runtime throws a
+  // migration error at startup when it's missing. Headless agent-only
+  // modes (evolve etc.) opt out explicitly with `sources: {}`.
   sources: {
     files: {
       kind: "file-glob",

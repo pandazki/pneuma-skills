@@ -317,23 +317,26 @@ export interface ModeManifest {
    * Source<T> via the SourceRegistry at mode startup and exposes it to
    * the viewer as props.sources[id].
    *
-   * If omitted, the runtime synthesizes a default entry:
+   * REQUIRED since pneuma-skills 2.29.0 — `SourceRegistry.effectiveSources`
+   * throws a migration error when this field is absent. Modes with no
+   * viewer (headless agent-only, like evolve) should declare `sources: {}`
+   * to opt out explicitly.
+   *
+   * Typical minimal declaration for a file-list viewer:
    *
    *   sources: {
    *     files: {
    *       kind: "file-glob",
-   *       config: {
-   *         patterns: this.viewer.watchPatterns,
-   *         ignore: this.viewer.ignorePatterns,
-   *       },
+   *       config: { patterns: ["**\/*.md"] },
    *     },
    *   }
    *
-   * so every pre-existing mode continues to receive a `files` source with
-   * zero manifest changes. New or migrated modes declare sources explicitly.
-   *
    * See core/types/source.ts for the SourceDescriptor shape and the
    * built-in provider kinds (file-glob, json-file, aggregate-file, memory).
+   *
+   * The field is typed as optional at the type level for pre-2.29
+   * compatibility at the TypeScript boundary, but the runtime rejects
+   * omissions — treat it as required when authoring a new manifest.
    */
   sources?: Record<string, SourceDescriptor>;
 }
