@@ -1,11 +1,33 @@
 import { spawn, execSync, type ChildProcess } from "node:child_process";
+import net from "node:net";
 import path from "node:path";
 import { app } from "electron";
 import { existsSync } from "node:fs";
 
-/** Port range for pneuma server processes */
-const BASE_PORT = 17996;
+/** Dev desktop stays on the memorable 17996 so devtools/logs are predictable.
+ *  Packaged builds ask the OS for a free ephemeral port instead — avoids
+ *  collisions with a terminal `bun run dev` (17996 Vite + 17007 backend)
+ *  and with any prior packaged instance that's still shutting down. */
+const DEV_BASE_PORT = 17996;
 const MAX_PORT_ATTEMPTS = 10;
+
+async function pickFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address();
+      if (addr && typeof addr === "object") {
+        const port = addr.port;
+        server.close(() => resolve(port));
+      } else {
+        server.close();
+        reject(new Error("Failed to allocate ephemeral port"));
+      }
+    });
+  });
+}
 
 /** Launcher Bun process */
 let launcherProcess: ChildProcess | null = null;
@@ -88,7 +110,7 @@ function buildEnv(): NodeJS.ProcessEnv {
 export async function spawnLauncherProcess(): Promise<void> {
   const bunPath = getBunBinaryPath();
   const entryPoint = getPneumaEntryPoint();
-  const port = BASE_PORT;
+  const port = app.isPackaged ? await pickFreePort() : DEV_BASE_PORT;
 
   console.log(`[bun-process] Starting launcher: ${bunPath} ${entryPoint}`);
   console.log(`[bun-process] Project root: ${getPneumaProjectRoot()}`);
