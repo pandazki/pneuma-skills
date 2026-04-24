@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.32.2] - 2026-04-24
+
+### Added
+- **Centralized desktop log collection + in-app viewer** — one sink captures main-process `console.*`, bun launcher stdout/stderr (including every session-child line the launcher forwards), and every renderer's console + error events. Writes JSONL to `<userData>/logs/pneuma-<YYYY-MM-DD>.log` with 7-day retention, keeps a 5000-entry in-memory ring, and exposes it via **View → Show Logs** (`Cmd+Opt+L`), **View → Reveal Log File**, and the tray. The viewer is a plain BrowserWindow with live tail, level filter, substring search, and pause — no extra React bundle.
+- **Mode-maker Play debug logging** — `POST /api/mode-maker/play` now logs spawn args, every stdout/stderr line from the play child (stderr was previously discarded entirely), the ready-signal match or timeout fallback, and the child's exit code. Makes the "Play hangs with no UI feedback" failure mode visible for the first time.
+
+### Fixed
+- **Mode-maker Play could hang past the 30s timeout** — the play route set `stderr: "pipe"` but never read it, so a child that produced enough stderr to fill the OS pipe buffer would block indefinitely. The route now drains both streams and settles the ready promise on early child exit too, so a crashing child no longer costs a full 30s wait.
+
 ## [2.32.1] - 2026-04-24
 
 ### Fixed
