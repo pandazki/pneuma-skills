@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.35.5] - 2026-04-25
+
+### Fixed
+- **Published modes had a parallel Zustand store, breaking cross-boundary state** — the mode-maker Play route's `// Bun.build would duplicate src/store.ts` comment warned about this but the publish path never got the same fix. Every published mode that imported `useStore` (all of them, transitively through the viewer's slice subscriptions) had its own parallel store instance; writes from the mode (content set switching, active file, selection) went to that parallel copy and the host never saw them. Fixed by keeping `pneuma-skills/src/store.(ts|js)` external from the publish bundle, adding a `/vendor/pneuma-store.js` shim that re-exports `window.__PNEUMA_STORE__`, and wiring the host to expose its single `useStore` reference on that global. Modes published before 2.35.5 still have the inlined store — they need a republish to pick up the fix. Bundle size drops ~12% as a side effect of the de-duplication.
+
 ## [2.35.4] - 2026-04-25
 
 ### Fixed
