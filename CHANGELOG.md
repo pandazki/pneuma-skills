@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.33.3] - 2026-04-24
+
+### Fixed
+- **Mode-maker "Play" opened a black window in packaged desktop builds** — Play spawns a child pneuma process with `--dev` (Vite dedup is required because `Bun.build` would duplicate the Zustand store), but the packaged app's `extraResources` shipped only the built `dist/`, not the sources Vite needs to serve in dev mode (`src/`, `vite.config.ts`, `public/`, `tsconfig.json`). Vite booted with nothing to serve, never printed its ready signal, the 30s timeout fired, the launcher fell back to a hardcoded URL, and the user saw `ERR_CONNECTION_REFUSED` in the new log viewer. Packaging now ships the missing sources.
+
 ## [2.33.2] - 2026-04-24
 
 ### Fixed
