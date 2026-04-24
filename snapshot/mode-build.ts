@@ -108,6 +108,25 @@ export async function buildModeForPublish(
     format: "esm",
     external: EXTERNAL_MODULES,
     throw: false,
+    // Substitute Vite-specific `import.meta.env.*` accesses with static
+    // values at build time. Viewer code branches on these to pick between
+    // a dev-time API origin (`http://host:<vite-api-port>`) and a prod
+    // same-origin relative path. In a published bundle served from the
+    // host's /mode-assets/ route, same-origin is correct — so DEV=false
+    // and we force the "production" branches. Without this substitution,
+    // `import.meta.env` is undefined at runtime and `.DEV` throws
+    // TypeError before the viewer even mounts.
+    define: {
+      "import.meta.env.DEV": "false",
+      "import.meta.env.PROD": "true",
+      "import.meta.env.MODE": '"production"',
+      // VITE_API_PORT and VITE_MODE_MAKER_WORKSPACE are only read inside
+      // the DEV branch (which is now dead-code-eliminated), but tree-
+      // shakers that look at statically-known properties may still want
+      // them defined. undefined is fine — the || fallback handles it.
+      "import.meta.env.VITE_API_PORT": "undefined",
+      "import.meta.env.VITE_MODE_MAKER_WORKSPACE": "undefined",
+    },
     plugins: [
       {
         name: "pneuma-skills-resolver",
