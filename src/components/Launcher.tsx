@@ -1418,6 +1418,7 @@ function ModeGallery({
   onEdit,
   onEvolve,
   onDeleteLocal,
+  onAddFromUrl,
   className,
   closing,
   headerHeight = 0,
@@ -1428,6 +1429,7 @@ function ModeGallery({
   onEdit?: (mode: AnyMode) => void;
   onEvolve?: (mode: AnyMode) => void;
   onDeleteLocal?: (name: string) => void;
+  onAddFromUrl?: () => void;
   className?: string;
   closing?: boolean;
   headerHeight?: number;
@@ -1478,14 +1480,31 @@ function ModeGallery({
       {/* Gallery content */}
       <div className="max-w-6xl mx-auto px-6 py-8" ref={ref}>
         {[
-          { label: "Built-in", items: builtin },
-          { label: "Local", items: local },
-          { label: "Published", items: published },
+          { label: "Built-in", items: builtin, alwaysShow: false },
+          // Local always renders its header when an install action exists, so users can
+          // still reach "Add from URL" before they've installed anything.
+          { label: "Local", items: local, alwaysShow: !!onAddFromUrl },
+          { label: "Published", items: published, alwaysShow: false },
         ]
-          .filter((g) => g.items.length > 0)
+          .filter((g) => g.items.length > 0 || g.alwaysShow)
           .map((group) => (
             <div key={group.label} className="mb-12">
-              <h2 className="text-xs font-medium text-cc-muted/60 uppercase tracking-widest mb-6">{group.label}</h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xs font-medium text-cc-muted/60 uppercase tracking-widest">{group.label}</h2>
+                {group.label === "Local" && onAddFromUrl && (
+                  <button
+                    onClick={onAddFromUrl}
+                    className="text-[10px] text-cc-muted hover:text-cc-primary transition-colors cursor-pointer flex items-center gap-1"
+                    title="Install a mode from a URL or github:user/repo"
+                  >
+                    <span className="text-sm leading-none">+</span>
+                    <span>Add from URL</span>
+                  </button>
+                )}
+              </div>
+              {group.items.length === 0 && group.label === "Local" ? (
+                <p className="text-[11px] text-cc-muted/50 italic">No local modes yet — paste a .tar.gz URL or <code className="text-cc-muted/70">github:user/repo</code> above.</p>
+              ) : null}
               <div className="space-y-6">
                 {group.items.map((mode) => {
                   // mode-maker and evolve themselves don't get edit/evolve buttons
@@ -2834,35 +2853,59 @@ function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }
 
 // ── Import Dialog ─────────────────────────────────────────────────────────
 
-function ImportDialog({ open, onClose, onImported, initialUrl }: { open: boolean; onClose: () => void; onImported?: () => void; initialUrl?: string }) {
+type ImportKind = "session" | "mode";
+type InstalledMode = { name: string; displayName: string; description?: string; version: string; icon?: string; path: string };
+
+function ImportDialog({
+  open,
+  onClose,
+  onImported,
+  initialUrl,
+  initialKind = "session",
+  onInstalledMode,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onImported?: () => void;
+  initialUrl?: string;
+  initialKind?: ImportKind;
+  onInstalledMode?: (mode: InstalledMode) => void;
+}) {
+  const [kind, setKind] = useState<ImportKind>(initialKind);
   const [url, setUrl] = useState("");
   const [workspace, setWorkspace] = useState("");
   const [status, setStatus] = useState<"idle" | "importing" | "done" | "error">("idle");
   const [result, setResult] = useState<any>(null);
+  const [installed, setInstalled] = useState<InstalledMode | null>(null);
   const [error, setError] = useState("");
   const autoImportTriggered = useRef(false);
 
   // Reset state when dialog opens
   useEffect(() => {
     if (open) {
+      setKind(initialKind);
       setUrl(initialUrl || "");
       const tag = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 13);
       setWorkspace(`~/pneuma-projects/import-${tag}`);
       setStatus("idle");
       setResult(null);
+      setInstalled(null);
       setError("");
       autoImportTriggered.current = false;
     }
-  }, [open, initialUrl]);
+  }, [open, initialUrl, initialKind]);
 
-  // Auto-import when opened with initialUrl
+  // Auto-import / auto-install when opened with initialUrl
   useEffect(() => {
     if (open && initialUrl && url && !autoImportTriggered.current && status === "idle") {
       autoImportTriggered.current = true;
-      // Trigger import on next tick so state is settled
-      setTimeout(() => handleImportFn(url, workspace), 0);
+      // Trigger on next tick so state is settled
+      setTimeout(() => {
+        if (kind === "mode") handleInstallFn(url);
+        else handleImportFn(url, workspace);
+      }, 0);
     }
-  }, [open, initialUrl, url, status]);
+  }, [open, initialUrl, url, status, kind]);
 
   if (!open) return null;
 
@@ -2908,6 +2951,33 @@ function ImportDialog({ open, onClose, onImported, initialUrl }: { open: boolean
 
   const handleImport = () => handleImportFn(url, workspace);
 
+  const handleInstallFn = async (source: string) => {
+    if (!source.trim()) return;
+    setStatus("importing");
+    try {
+      const resp = await fetch(`${getApiBase()}/api/modes/install`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: source.trim() }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
+      setInstalled(data as InstalledMode);
+      setStatus("done");
+      onImported?.();
+    } catch (err: any) {
+      setError(err.message || "Install failed");
+      setStatus("error");
+    }
+  };
+  const handleInstall = () => handleInstallFn(url);
+
+  const handleLaunchInstalled = () => {
+    if (!installed) return;
+    onInstalledMode?.(installed);
+    onClose();
+  };
+
   const handleLaunchImported = async (withReplay: boolean) => {
     if (!result) return;
     const targetWorkspace = workspace.trim() || result.path;
@@ -2936,11 +3006,26 @@ function ImportDialog({ open, onClose, onImported, initialUrl }: { open: boolean
         <div className="bg-cc-bg border border-cc-border rounded-xl shadow-2xl w-[440px] max-w-[90vw] pointer-events-auto"
           style={{ animation: "warmFadeIn 200ms ease" }}>
           <div className="px-5 py-4 border-b border-cc-border">
-            <h3 className="text-sm font-semibold text-cc-fg">Import</h3>
-            <p className="text-[10px] text-cc-muted mt-1">Paste a share URL or select a local archive (.tar.gz).</p>
+            <h3 className="text-sm font-semibold text-cc-fg">{kind === "mode" ? "Add Mode" : "Import Session"}</h3>
+            <p className="text-[10px] text-cc-muted mt-1">
+              {kind === "mode"
+                ? "Install a mode from a URL (.tar.gz) or github:user/repo. Installed modes appear in Local."
+                : "Paste a share URL or select a local archive (.tar.gz)."}
+            </p>
+            <div className="mt-3 inline-flex rounded-lg border border-cc-border overflow-hidden text-[10px]">
+              {(["session", "mode"] as const).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => { setKind(k); setStatus("idle"); setError(""); setResult(null); setInstalled(null); }}
+                  className={`px-3 py-1 transition-colors cursor-pointer ${kind === k ? "bg-cc-primary/15 text-cc-primary" : "text-cc-muted hover:text-cc-fg"}`}
+                >
+                  {k === "session" ? "Session" : "Mode"}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="px-5 py-4 space-y-3">
-            {status === "idle" && (
+            {status === "idle" && kind === "session" && (
               <>
                 <div className="flex gap-2 items-center">
                   <input
@@ -2976,8 +3061,32 @@ function ImportDialog({ open, onClose, onImported, initialUrl }: { open: boolean
                 </div>
               </>
             )}
-            {status === "importing" && <div className="text-xs text-cc-muted animate-pulse py-2">Importing...</div>}
-            {status === "done" && result && (
+            {status === "idle" && kind === "mode" && (
+              <>
+                <div>
+                  <input
+                    autoFocus
+                    placeholder="https://.../mode.tar.gz  or  github:user/repo"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleInstall()}
+                    className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
+                  />
+                  <p className="text-[10px] text-cc-muted/60 mt-1.5">Downloads + extracts to <code className="text-cc-muted">~/.pneuma/modes/</code>.</p>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button onClick={onClose} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">Cancel</button>
+                  <button onClick={handleInstall} disabled={!url.trim()}
+                    className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 transition-all cursor-pointer">Install</button>
+                </div>
+              </>
+            )}
+            {status === "importing" && (
+              <div className="text-xs text-cc-muted animate-pulse py-2">
+                {kind === "mode" ? "Installing..." : "Importing..."}
+              </div>
+            )}
+            {status === "done" && kind === "session" && result && (
               <div className="space-y-3">
                 <div className="text-xs text-cc-success">Imported successfully!</div>
                 <div className="text-[10px] text-cc-muted">
@@ -3001,6 +3110,19 @@ function ImportDialog({ open, onClose, onImported, initialUrl }: { open: boolean
                       className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 transition-all cursor-pointer">Open</button>
                   </div>
                 )}
+              </div>
+            )}
+            {status === "done" && kind === "mode" && installed && (
+              <div className="space-y-3">
+                <div className="text-xs text-cc-success">Installed "{installed.displayName}" ({installed.version}).</div>
+                {installed.description && (
+                  <p className="text-[10px] text-cc-muted/70">{installed.description}</p>
+                )}
+                <div className="flex justify-end gap-2">
+                  <button onClick={onClose} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">Close</button>
+                  <button onClick={handleLaunchInstalled}
+                    className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 transition-all cursor-pointer">Launch</button>
+                </div>
               </div>
             )}
             {status === "error" && (
@@ -3037,15 +3159,22 @@ export default function Launcher() {
   const [showSettings, setShowSettings] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.has("importUrl");
+    return params.has("importUrl") || params.has("installModeUrl");
+  });
+  const [importInitialKind, setImportInitialKind] = useState<ImportKind>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.has("installModeUrl") ? "mode" : "session";
   });
   const [importInitialUrl, setImportInitialUrl] = useState<string | undefined>(() => {
     const params = new URLSearchParams(window.location.search);
-    const url = params.get("importUrl");
+    const importUrl = params.get("importUrl");
+    const modeUrl = params.get("installModeUrl");
+    const url = modeUrl || importUrl;
     if (url) {
       // Clean up the URL so it doesn't re-trigger on refresh
       const clean = new URL(window.location.href);
       clean.searchParams.delete("importUrl");
+      clean.searchParams.delete("installModeUrl");
       window.history.replaceState({}, "", clean.pathname + clean.search);
     }
     return url || undefined;
@@ -3667,6 +3796,11 @@ export default function Launcher() {
             });
           }}
           onDeleteLocal={deleteLocalMode}
+          onAddFromUrl={() => {
+            setImportInitialKind("mode");
+            setImportInitialUrl("");
+            setShowImportDialog(true);
+          }}
           className={isLight ? "launcher-light" : ""}
           closing={galleryAnim.closing}
           headerHeight={headerH}
@@ -3717,7 +3851,22 @@ export default function Launcher() {
       <SettingsPanel open={showSettings} onClose={() => setShowSettings(false)} />
 
       {/* Import dialog */}
-      <ImportDialog open={showImportDialog} onClose={() => { setShowImportDialog(false); setImportInitialUrl(undefined); }} onImported={refreshSessions} initialUrl={importInitialUrl} />
+      <ImportDialog
+        open={showImportDialog}
+        onClose={() => { setShowImportDialog(false); setImportInitialUrl(undefined); setImportInitialKind("session"); }}
+        onImported={() => { refreshSessions(); refreshModes(); }}
+        initialUrl={importInitialUrl}
+        initialKind={importInitialKind}
+        onInstalledMode={(mode) => {
+          refreshModes();
+          setLaunchTarget({
+            specifier: mode.path,
+            displayName: mode.displayName,
+            description: mode.description,
+            icon: mode.icon,
+          });
+        }}
+      />
     </div>
   );
 }

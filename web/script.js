@@ -70,6 +70,14 @@
         hint = 'Opens Pneuma and imports this shared workspace.';
         break;
       }
+      case 'mode': {
+        const url = params.get('url') || '';
+        if (!url) return;
+        schemeUrl = `pneuma://mode/${encodeURIComponent(url)}`;
+        label = 'Install mode in Pneuma';
+        hint = 'Opens Pneuma and installs this mode from the URL.';
+        break;
+      }
       default:
         return;
     }

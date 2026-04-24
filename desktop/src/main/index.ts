@@ -87,6 +87,16 @@ function handlePneumaUrl(url: string) {
         }
         break;
       }
+      case 'mode': {
+        // pneuma://mode/{encodedUrl} — mode tar.gz URL or github:user/repo
+        const modeUrl = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+        if (modeUrl) {
+          showLauncherWithInstallMode(modeUrl);
+        } else {
+          showLauncher();
+        }
+        break;
+      }
       default:
         showLauncher();
     }
@@ -96,6 +106,14 @@ function handlePneumaUrl(url: string) {
 }
 
 async function showLauncherWithImport(shareUrl: string) {
+  return showLauncherWithQuery("importUrl", shareUrl);
+}
+
+async function showLauncherWithInstallMode(modeUrl: string) {
+  return showLauncherWithQuery("installModeUrl", modeUrl);
+}
+
+async function showLauncherWithQuery(paramName: string, value: string) {
   const launcherUrl = getLauncherUrl();
   if (!launcherUrl) {
     console.error("Launcher process not ready");
@@ -106,16 +124,16 @@ async function showLauncherWithImport(shareUrl: string) {
     await app.dock?.show();
   }
 
-  const urlWithImport = `${launcherUrl}?importUrl=${encodeURIComponent(shareUrl)}`;
+  const urlWithQuery = `${launcherUrl}?${paramName}=${encodeURIComponent(value)}`;
   const existing = getLauncherWindow();
 
   if (existing) {
-    // Launcher already open — navigate to the import URL instead of just focusing
-    existing.loadURL(urlWithImport);
+    // Launcher already open — navigate to the target URL instead of just focusing
+    existing.loadURL(urlWithQuery);
     if (existing.isMinimized()) existing.restore();
     existing.focus();
   } else {
-    const win = createLauncherWindow(urlWithImport);
+    const win = createLauncherWindow(urlWithQuery);
     win.webContents.setWindowOpenHandler(({ url }) => {
       if (url.startsWith("http://localhost:") || url.startsWith("http://127.0.0.1:")) {
         createModeWindow(url);

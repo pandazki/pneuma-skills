@@ -47,8 +47,10 @@ The landing page supports the following URL parameters to control initial behavi
 
 - `?action=open` — Automatically trigger the "Open" action on page load
 - `?action=open&mode=webcraft` — Open with a specific mode (e.g., `webcraft`, `doc`, `slide`, `draw`, `illustrate`, `remotion`, `mode-maker`, `evolve`)
+- `?action=import&url=<shareUrl>` — Open Pneuma and import a session share package
+- `?action=mode&url=<tarballUrl>` — Open Pneuma and install a mode from a `.tar.gz` URL or `github:user/repo`
 
 Examples:
 - `http://localhost:8080?action=open`
 - `https://pneuma.example.com?action=open&mode=webcraft`
-- `https://pneuma.example.com?action=open&mode=doc`
+- `https://pneuma.example.com?action=mode&url=https%3A%2F%2Fpneuma-storage.vibecoding.icu%2Fmodes%2Fguicang-ppt%2F1.0.0.tar.gz`

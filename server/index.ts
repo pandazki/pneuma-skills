@@ -172,6 +172,65 @@ export async function startServer(options: ServerOptions) {
       return c.json({ backends, defaultBackendType: getDefaultBackendType() });
     });
 
+    // Install a mode from a remote source (url tar.gz or github:user/repo).
+    // Reuses the CLI `pneuma mode add` plumbing so the UI install button, the
+    // pneuma://mode URL schema handler, and the CLI all land bits in exactly
+    // the same cache location under ~/.pneuma/modes/<name>/.
+    app.post("/api/modes/install", async (c) => {
+      try {
+        const body = await c.req.json<{ source?: string; url?: string }>().catch(() => ({} as { source?: string; url?: string }));
+        const source = (body.source ?? body.url ?? "").trim();
+        if (!source) {
+          return c.json({ error: "source is required (URL to a .tar.gz or github:user/repo)" }, 400);
+        }
+        const isHttpsTarball = source.startsWith("https://") && source.endsWith(".tar.gz");
+        const isGithub = source.startsWith("github:");
+        if (!isHttpsTarball && !isGithub) {
+          return c.json({ error: "Only https://...tar.gz and github:user/repo sources are supported" }, 400);
+        }
+
+        const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
+        const { resolveMode } = await import("../core/mode-resolver.js");
+        const resolved = await resolveMode(source, projectRoot);
+        if (resolved.type === "builtin") {
+          return c.json({ error: `"${resolved.name}" is a built-in mode — already available.` }, 400);
+        }
+
+        // Read back the installed manifest so the UI can show display name + description
+        // without needing a second roundtrip to the directory listing.
+        let displayName = resolved.name;
+        let description: string | undefined;
+        let version = "local";
+        let icon: string | undefined;
+        try {
+          const manifestFile = ["manifest.ts", "manifest.js"].find((f) => existsSync(join(resolved.path, f)));
+          if (manifestFile) {
+            const { parseManifestTs } = await import("../core/utils/manifest-parser.js");
+            const content = readFileSync(join(resolved.path, manifestFile), "utf-8");
+            const parsed = parseManifestTs(content);
+            displayName = parsed.displayName || resolved.name;
+            description = parsed.description;
+            version = parsed.version || "local";
+            icon = parsed.icon;
+          }
+        } catch { /* manifest parse optional */ }
+
+        return c.json({
+          ok: true,
+          name: resolved.name,
+          displayName,
+          description,
+          version,
+          icon,
+          path: resolved.path,
+          source,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 500);
+      }
+    });
+
     // Delete a local mode
     app.delete("/api/modes/:name", async (c) => {
       const name = c.req.param("name");
