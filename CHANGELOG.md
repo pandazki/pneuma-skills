@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.35.6] - 2026-04-25
+
+### Fixed
+- **LaunchDialog header could slide under the Electron title-bar buttons** — desktop uses `titleBarStyle: "hiddenInset"`, so the macOS traffic-light buttons draw over the top ~38px of the content area. When LaunchDialog content hit its max-height, the centered card's top (mode icon + title) could fall into that zone and look visually clipped. The overlay now has `py-12` (48px top/bottom safe zone) and the card caps at `max-h-full`, so it can only fill the padded region — the top is guaranteed to be clear of the traffic-light area. Plain-browser users get the extra breathing room harmlessly.
+
 ## [2.35.5] - 2026-04-25
 
 ### Fixed
