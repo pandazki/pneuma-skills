@@ -48,6 +48,21 @@ extraResources:
     to: "pneuma/index.html"
   - from: "../package.json"
     to: "pneuma/package.json"
+  # Frontend source + Vite config — required for mode-maker's "Play" feature,
+  # which spawns a child pneuma process with `--dev` so Vite can dedupe
+  # src/store/* by file path (Bun.build would produce a duplicate store
+  # instance, breaking cross-module state sharing in the mode viewer).
+  # Without these, the play child's Vite boots with no index.html entry to
+  # serve, never prints its ready signal, and the launcher falls back to a
+  # URL pointing at a port nothing is listening on.
+  - from: "../src"
+    to: "pneuma/src"
+  - from: "../vite.config.ts"
+    to: "pneuma/vite.config.ts"
+  - from: "../public"
+    to: "pneuma/public"
+  - from: "../tsconfig.json"
+    to: "pneuma/tsconfig.json"
   # Runtime node_modules for the Bun server (production deps only)
   # Built by: node scripts/prepare-deps.mjs
   - from: "pneuma-node-modules"
