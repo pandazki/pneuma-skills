@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.34.0] - 2026-04-24
+
+### Fixed
+- **Fresh mode-maker forks crashed on mount** — the seed template's `viewer/Preview.tsx` destructured a `files` prop that had been removed when the Source abstraction landed, so every mode forked from the seed threw `Cannot read properties of undefined (reading '0')` inside its viewer before rendering anything. The seed now subscribes to `sources.files` via the `useSource` hook, matching how the builtin modes read files today.
+
+### Changed
+- **Upgraded mode-maker's agent reference docs to the current contracts** — `skill/references/viewer-guide.md` and `skill/references/manifest-reference.md` had drifted several refactors behind and were actively misleading the agent. The viewer guide now covers the full `ViewerPreviewProps` shape (sources, fileChannel, readonly, all the action/navigation props), with worked examples for reading via `useSource`, writing via a `json-file` source, and writing via `fileChannel`. The manifest reference now documents the `sources` field with examples for each built-in provider kind (file-glob, json-file, aggregate-file, memory), the `"select"` init-param type, `deriveParams`, evolution config, and `sharedScripts`. SKILL.md's mode-examples table was refreshed against the current lineup (doc/kami/slide/webcraft/draw/gridboard) and gained a short Source-abstraction primer in the development workflow section. The Play button is surfaced in Testing as the fastest feedback loop.
+
 ## [2.33.3] - 2026-04-24
 
 ### Fixed
