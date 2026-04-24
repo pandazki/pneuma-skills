@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.35.2] - 2026-04-25
+
+### Fixed
+- **Pre-2.35.1 published modes still crashed with the `import.meta.env.DEV` error** — 2.35.1's `Bun.build` `define` fix only helps bundles produced going forward; already-published tarballs contain literal `import.meta.env.*` tokens in `.build/*.js` and the host runtime can't polyfill them (import.meta isn't a writable object per-module). `ensureUrlMode` in `core/mode-resolver.ts` now does a one-time regex sweep of the extracted `.build/` tree right after tar extraction, substituting the Vite env tokens with the same static values the new `Bun.build` `define` produces. Pre-existing published modes start working again on next install without the author having to re-bundle.
+
 ## [2.35.1] - 2026-04-25
 
 ### Fixed
