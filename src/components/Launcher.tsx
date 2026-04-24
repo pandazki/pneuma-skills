@@ -2268,11 +2268,15 @@ function LaunchDialog({
 
   return (
     <div
-      className="fixed inset-0 bg-black/30 backdrop-blur-[2px] flex items-center justify-center z-50 font-body"
+      // `py-12` reserves 48px at top + bottom so the centered dialog never
+      // slides under the Electron traffic-light buttons (drawn over the
+      // content area by `titleBarStyle: "hiddenInset"`). Harmless extra
+      // breathing room in plain browser.
+      className="fixed inset-0 bg-black/30 backdrop-blur-[2px] flex items-center justify-center z-50 font-body py-12"
       style={{ animation: `${closing ? "overlayFadeOut" : "overlayFadeIn"} 0.2s ease-out${closing ? " forwards" : ""}` }}
     >
       <div
-        className={`launcher-card-elevated bg-cc-surface border border-cc-border/50 rounded-2xl overflow-hidden w-full mx-4 flex flex-col max-h-[calc(100vh-4rem)] ${
+        className={`launcher-card-elevated bg-cc-surface border border-cc-border/50 rounded-2xl overflow-hidden w-full mx-4 flex flex-col max-h-full ${
           hasShowcase ? "max-w-5xl" : "max-w-lg"
         }`}
         style={{ animation: "launcherFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}
