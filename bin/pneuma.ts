@@ -134,6 +134,104 @@ function recordSession(
   saveSessionsRegistry(records.slice(0, MAX_SESSION_RECORDS));
 }
 
+/**
+ * Scan `~/pneuma-projects/` for workspaces whose `.pneuma/session.json`
+ * exists but which are missing from the registry, and add them back.
+ *
+ * Runs once per launcher boot. Exists because prior versions of the launcher
+ * over-wrote the registry with mode-maker Play sandbox entries (every click
+ * created a new `/var/folders/.../T/pneuma-play-<uuid>` entry), quickly
+ * pushing legitimate workspace records out of the 50-entry cap. The root
+ * cause is now fixed in `recordSession`; this reconciliation heals machines
+ * that were already affected so users updating to 2.33.1+ don't open the
+ * launcher to an empty Continue list and assume their work is gone.
+ *
+ * Safe properties: purely additive (never removes), merges by the same
+ * `${workspace}::${mode}` id `recordSession` uses, preserves any entries
+ * the registry already has (including custom `sessionName`).
+ */
+function reconcileSessionsRegistry(): void {
+  const projectsDir = join(homedir(), "pneuma-projects");
+  if (!existsSync(projectsDir)) return;
+
+  // Collect built-in + local mode display names once so the recovered
+  // entries show the same label the user saw originally.
+  const modeNames = new Map<string, string>();
+  let parseManifestTs: ((text: string) => { name?: string; displayName?: string }) | null = null;
+  try {
+    // Dynamic import to avoid a hard dep in startup paths that don't need it.
+    ({ parseManifestTs } = require("../core/utils/manifest-parser.ts"));
+  } catch {
+    try { ({ parseManifestTs } = require("../core/utils/manifest-parser.js")); } catch { /* skip display-name enrichment */ }
+  }
+  if (parseManifestTs) {
+    for (const dir of [join(PROJECT_ROOT, "modes"), join(homedir(), ".pneuma", "modes")]) {
+      if (!existsSync(dir)) continue;
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const manifestPath = ["manifest.ts", "manifest.js"]
+          .map((f) => join(dir, entry.name, f))
+          .find((p) => existsSync(p));
+        if (!manifestPath) continue;
+        try {
+          const parsed = parseManifestTs(readFileSync(manifestPath, "utf-8"));
+          if (parsed.name && parsed.displayName) modeNames.set(parsed.name, parsed.displayName);
+          if (parsed.displayName) modeNames.set(entry.name, parsed.displayName);
+        } catch { /* skip */ }
+      }
+    }
+  }
+
+  const current = loadSessionsRegistry();
+  const byId = new Map(current.map((r) => [r.id, r]));
+  let added = 0;
+
+  for (const entry of readdirSync(projectsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const workspace = join(projectsDir, entry.name);
+    const sessionJsonPath = join(workspace, ".pneuma", "session.json");
+    if (!existsSync(sessionJsonPath)) continue;
+    try {
+      const sess = JSON.parse(readFileSync(sessionJsonPath, "utf-8")) as {
+        mode?: string;
+        backendType?: AgentBackendType;
+        createdAt?: number;
+        editing?: boolean;
+      };
+      if (!sess.mode) continue;
+      const id = `${workspace}::${sess.mode}`;
+      if (byId.has(id)) continue;
+
+      // Use the latest mtime across key session files as lastAccessed —
+      // reflects "when this workspace was last worked on" more accurately
+      // than createdAt alone.
+      const candidates = ["session.json", "history.json", "thumbnail.png"]
+        .map((f) => join(workspace, ".pneuma", f))
+        .filter((p) => existsSync(p))
+        .map((p) => statSync(p).mtimeMs);
+      const lastAccessed = candidates.length ? Math.max(...candidates) : (sess.createdAt || Date.now());
+
+      byId.set(id, {
+        id,
+        mode: sess.mode,
+        displayName: modeNames.get(sess.mode) || sess.mode,
+        workspace,
+        backendType: sess.backendType || getDefaultBackendType(),
+        lastAccessed,
+        editing: sess.editing ?? true,
+      });
+      added++;
+    } catch { /* skip malformed session.json */ }
+  }
+
+  if (added === 0) return;
+  const rebuilt = [...byId.values()].sort((a, b) => b.lastAccessed - a.lastAccessed);
+  const saved = rebuilt.slice(0, MAX_SESSION_RECORDS);
+  saveSessionsRegistry(saved);
+  const truncatedNote = rebuilt.length > saved.length ? ` (cap ${MAX_SESSION_RECORDS}; ${rebuilt.length - saved.length} oldest dropped)` : "";
+  console.log(`[sessions] Reconciled registry: ${added} workspace(s) recovered, ${saved.length} active${truncatedNote}.`);
+}
+
 // ── Init params persistence ──────────────────────────────────────────────────
 
 function loadConfig(workspace: string): Record<string, number | string> | null {
@@ -707,6 +805,15 @@ Options:
     return;
   }
 
+  // Sessions subcommand — rebuild the launcher registry from on-disk workspaces
+  if (rawArgs[0] === "sessions" && rawArgs[1] === "rebuild") {
+    const before = loadSessionsRegistry().length;
+    reconcileSessionsRegistry();
+    const after = loadSessionsRegistry().length;
+    console.log(`[sessions] rebuild: ${before} → ${after} entries`);
+    return;
+  }
+
   // Mode subcommand — publish, list
   if (rawArgs[0] === "mode") {
     if (rawArgs[1] === "publish") {
@@ -991,6 +1098,11 @@ Options:
 
   // Launcher mode — no mode arg → start marketplace UI
   if (!mode) {
+    // Heal any user whose session registry was pruned by the prior Play
+    // pollution bug (fixed in 2.33.1). Additive and idempotent — safe to
+    // run on every launcher boot; a no-op once everything's already there.
+    try { reconcileSessionsRegistry(); } catch { /* never block startup on this */ }
+
     const { homedir } = await import("node:os");
     const launcherPort = port || 17996;
     const distDir = resolve(PROJECT_ROOT, "dist");
