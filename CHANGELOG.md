@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.35.3] - 2026-04-25
+
+### Fixed
+- **LaunchDialog overflowed the viewport on tall mode init panes** — modes with a long description plus multiple init params (guizang-ppt has 4 params + 2 API-key fields) in the compact dialog layout stretched the whole dialog past the window, putting Cancel / Launch offscreen. The outer card now caps at `calc(100vh - 4rem)` and the compact body became a flex column with a scrollable middle region, matching how the wide (showcase) layout already worked. No change for modes that do have showcase content.
+
 ## [2.35.2] - 2026-04-25
 
 ### Fixed
