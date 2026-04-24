@@ -2352,17 +2352,17 @@ function LaunchDialog({
         ) : (
           /* ── Compact layout: mode header + scrollable form + pinned actions ── */
           <div className="flex flex-col flex-1 min-h-0">
+            {/* Pinned header — only icon + title, kept compact so it never
+                grows past one line. Description used to live here but if
+                it was long (5+ lines on e.g. guizang-ppt) the `shrink-0`
+                header exceeded the viewport height and the outer card's
+                `overflow-hidden` clipped the title from the top. */}
             <div className="flex items-center justify-between px-8 pt-8 shrink-0">
-              <div className="flex items-center gap-3">
-                <ModeIcon svg={icon} className="w-8 h-8 text-cc-primary" />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="font-display text-xl text-cc-fg">{displayName}</h2>
-                    {inspiredBy && <InspiredByTag name={inspiredBy.name} url={inspiredBy.url} />}
-                  </div>
-                  {description && (
-                    <p className="text-sm text-cc-muted/70 mt-0.5">{description}</p>
-                  )}
+              <div className="flex items-center gap-3 min-w-0">
+                <ModeIcon svg={icon} className="w-8 h-8 text-cc-primary shrink-0" />
+                <div className="flex items-center gap-2 min-w-0">
+                  <h2 className="font-display text-xl text-cc-fg truncate">{displayName}</h2>
+                  {inspiredBy && <InspiredByTag name={inspiredBy.name} url={inspiredBy.url} />}
                 </div>
               </div>
             </div>
@@ -2370,6 +2370,9 @@ function LaunchDialog({
                 visible when a mode declares many init params or has a long
                 description that together overflow the viewport. */}
             <div className="flex-1 overflow-y-auto px-8 pt-5 min-h-0">
+              {description && (
+                <p className="text-sm text-cc-muted/70 mb-5">{description}</p>
+              )}
               {formContent}
             </div>
             <div className="shrink-0 px-8 py-6 border-t border-cc-border/20 mt-4">
