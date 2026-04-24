@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.32.1] - 2026-04-24
+
+### Fixed
+- **Desktop port collision with terminal `bun run dev`** — the packaged desktop app hardcoded `17996` for its launcher, which fought with a parallel dev Vite server (also 17996) and with any prior packaged instance still shutting down. Packaged builds now ask the OS for a free ephemeral port at launch; the dev desktop keeps `17996` for predictable logs. Downstream callers already read the launcher URL from stdout, so no call sites change.
+
 ## [2.32.0] - 2026-04-23
 
 ### Added
