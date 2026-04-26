@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.36.1] - 2026-04-27
+
+### Fixed
+- **Slide PPTX export failed with "Failed to load PPTX library" on every published install** — the `dom-to-pptx.bundle.js` was added under `vendor/` in v2.17.0 but the `package.json` `files` array was never updated to include it. Every npm-published version since then has shipped without the bundle, so the `/vendor/dom-to-pptx.bundle.js` route 404s and the script-tag `onerror` triggers the alert. Verified by inspecting `~/.bun/install/cache/pneuma-skills/2.34.0@@@1/` — no `vendor/` directory. Local dev was unaffected because the file lives in the repo. Fix: add `"vendor/"` to the `files` array.
+
 ## [2.36.0] - 2026-04-27
 
 ### Added
