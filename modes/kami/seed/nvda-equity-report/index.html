@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>NVIDIA · 个股研报</title>
+<meta name="author" content="Pneuma Demo">
+<meta name="description" content="NVIDIA 个股研报 — Blackwell 周期下的 AI 基础设施估值评估">
+<meta name="generator" content="Kami">
+<link rel="stylesheet" href="../_shared/styles.css">
+<style>
+  /* Demo-local tokens */
+  :root {
+    --tag-bg: #E4ECF5;
+    --positive: var(--brand);
+    --negative: var(--stone);
+  }
+
+  /* Print-scale body. Equity reports are dense; tighten line-height. */
+  body {
+    font-family: var(--serif);
+    font-size: 9.5pt;
+    line-height: 1.5;
+    letter-spacing: 0.1pt;
+  }
+
+  /* Page-level rhythm. Each .page is one A4 sheet. */
+  .page {
+    padding: 16mm 18mm 18mm;
+  }
+  .page + .page {
+    margin-top: 24px;
+  }
+
+  /* HEADER */
+  .report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 14pt;
+    border-left: 2.5pt solid var(--brand);
+    border-radius: 1.5pt;
+    padding-left: 8pt;
+  }
+  .ticker-block { flex: 1; }
+  .ticker-eyebrow {
+    font-size: 8.5pt;
+    color: var(--brand);
+    letter-spacing: 1.5pt;
+    text-transform: uppercase;
+    font-weight: 500;
+    margin-bottom: 4pt;
+  }
+  .ticker-name {
+    font-size: 26pt;
+    font-weight: 500;
+    color: var(--near-black);
+    line-height: 1.12;
+    letter-spacing: -0.3pt;
+    margin-bottom: 4pt;
+  }
+  .ticker-name .ticker-code {
+    font-size: 14pt;
+    color: var(--stone);
+    margin-left: 6pt;
+  }
+  .ticker-sub {
+    font-size: 10pt;
+    color: var(--olive);
+    line-height: 1.4;
+  }
+  .price-block {
+    text-align: right;
+    padding-top: 4pt;
+  }
+  .price-current {
+    font-size: 30pt;
+    font-weight: 500;
+    color: var(--near-black);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.5pt;
+  }
+  .price-change {
+    font-size: 10pt;
+    font-weight: 500;
+    margin-top: 2pt;
+    font-variant-numeric: tabular-nums;
+  }
+  .price-change.up { color: var(--positive); }
+  .price-change.down { color: var(--negative); }
+  .price-date {
+    font-size: 9pt;
+    color: var(--stone);
+    margin-top: 2pt;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* METRICS */
+  .metrics {
+    display: flex;
+    gap: 16pt;
+    margin-bottom: 14pt;
+    padding: 6pt 0;
+    border-top: 0.3pt dotted var(--border);
+    border-bottom: 0.3pt dotted var(--border);
+  }
+  .metric { flex: 1; display: flex; align-items: baseline; gap: 5pt; }
+  .metric-value {
+    font-size: 18pt;
+    font-weight: 500;
+    color: var(--brand);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    letter-spacing: -0.3pt;
+  }
+  .metric-label {
+    font-size: 9pt;
+    color: var(--olive);
+    line-height: 1.3;
+  }
+
+  /* SECTIONS */
+  h2 {
+    font-size: 14pt;
+    font-weight: 500;
+    color: var(--near-black);
+    margin: 14pt 0 6pt;
+    break-after: avoid;
+  }
+  h3 {
+    font-size: 11pt;
+    font-weight: 500;
+    color: var(--dark-warm);
+    margin: 10pt 0 4pt;
+    break-after: avoid;
+  }
+  p { margin: 0 0 7pt; }
+  .hl { color: var(--brand); font-weight: 500; }
+
+  /* TAG */
+  .tag {
+    display: inline-block;
+    background: var(--tag-bg);
+    color: var(--brand);
+    font-size: 8.5pt;
+    font-weight: 500;
+    padding: 1pt 6pt;
+    border-radius: 3pt;
+    letter-spacing: 0.4pt;
+    text-transform: uppercase;
+    margin-right: 3pt;
+  }
+
+  /* TABLE */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+    margin: 6pt 0 10pt;
+    break-inside: avoid;
+  }
+  th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--dark-warm);
+    padding: 5pt 8pt;
+    border-bottom: 1pt solid var(--border);
+    background: transparent;
+  }
+  td {
+    padding: 4pt 8pt;
+    border-bottom: 0.3pt solid var(--border-soft);
+    vertical-align: top;
+  }
+  table.financial td:not(:first-child),
+  table.financial th:not(:first-child) {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  table.striped tbody tr:nth-child(even) td {
+    background: var(--ivory);
+  }
+  table.compact th { padding: 3pt 6pt; font-size: 8.5pt; }
+  table.compact td { padding: 2.5pt 6pt; font-size: 8.5pt; line-height: 1.4; }
+
+  /* CALLOUT */
+  .callout {
+    background: var(--ivory);
+    border-left: 2pt solid var(--brand);
+    padding: 7pt 12pt;
+    border-radius: 3pt;
+    margin: 8pt 0 12pt;
+    line-height: 1.5;
+    break-inside: avoid;
+  }
+
+  /* FIGURE */
+  figure { margin: 8pt 0 10pt; break-inside: avoid; }
+  figcaption {
+    font-size: 9pt;
+    color: var(--stone);
+    margin-top: 4pt;
+    text-align: center;
+  }
+
+  /* RISK GRID */
+  .risk-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8pt;
+    margin: 6pt 0 8pt;
+  }
+  .risk-item {
+    padding: 6pt 10pt;
+    background: var(--ivory);
+    border-radius: 3pt;
+    break-inside: avoid;
+  }
+  .risk-label {
+    font-size: 8.5pt;
+    font-weight: 500;
+    color: var(--brand);
+    letter-spacing: 0.3pt;
+    text-transform: uppercase;
+    margin-bottom: 2pt;
+  }
+  .risk-desc {
+    font-size: 9pt;
+    color: var(--olive);
+    line-height: 1.45;
+  }
+
+  /* ANALYST SUMMARY */
+  .analyst-box {
+    background: var(--ivory);
+    border: 0.5pt solid var(--border);
+    border-radius: 4pt;
+    padding: 10pt 14pt;
+    margin: 10pt 0 12pt;
+    break-inside: avoid;
+  }
+  .analyst-label {
+    font-size: 8.5pt;
+    color: var(--brand);
+    letter-spacing: 1pt;
+    text-transform: uppercase;
+    font-weight: 500;
+    margin-bottom: 5pt;
+  }
+
+  /* FOOTER */
+  .report-footer {
+    margin-top: 14pt;
+    padding-top: 6pt;
+    border-top: 0.3pt dotted var(--border);
+    font-size: 8.5pt;
+    color: var(--stone);
+    display: flex;
+    justify-content: space-between;
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════ PAGE 1 ════════════════ -->
+<div class="page">
+
+<div class="report-header">
+  <div class="ticker-block">
+    <div class="ticker-eyebrow">个股研报 · Blackwell 周期估值</div>
+    <div class="ticker-name">英伟达<span class="ticker-code">NVDA · NASDAQ</span></div>
+    <div class="ticker-sub">半导体 · AI 加速计算 · 算力供给仍是 AI 需求曲线的瓶颈，订单簿能见度延伸至 2027</div>
+  </div>
+  <div class="price-block">
+    <div class="price-current">$148.20</div>
+    <div class="price-change up">+34.6% YTD</div>
+    <div class="price-date">2026-04-26</div>
+  </div>
+</div>
+
+<div class="metrics">
+  <div class="metric">
+    <div class="metric-value">$3.6T</div>
+    <div class="metric-label">市值</div>
+  </div>
+  <div class="metric">
+    <div class="metric-value">68×</div>
+    <div class="metric-label">P/E (TTM)</div>
+  </div>
+  <div class="metric">
+    <div class="metric-value">$143B</div>
+    <div class="metric-label">FY26 营收</div>
+  </div>
+  <div class="metric">
+    <div class="metric-value">75.4%</div>
+    <div class="metric-label">毛利率</div>
+  </div>
+</div>
+
+<h2>投资逻辑</h2>
+<p>Blackwell B200/GB200 的产能爬坡比预期更顺，TSMC CoWoS-L 月产能从 FY25 末的 <span class="hl">35K wafer</span> 升至 FY26Q4 的 <span class="hl">75K wafer</span>，订单覆盖率延伸至 2027 年中期。超大规模云厂商资本开支同比 +43%，三家 hyperscaler 合计 capex 已超 <span class="hl">$430B</span>，其中 GPU 占比从 30% 升至 48%。Networking（InfiniBand + Spectrum-X）成为第二增长极，FY26 营收占比从 12% 升至 <span class="hl">19%</span>，正在补全 AI 工厂的 Rack-scale 软硬一体方案。</p>
+
+<div class="callout">
+买入。Blackwell 周期预计延续至 FY28，FY27 EPS 共识 $5.10 仍偏保守；目标价 $185（FY27E 36×），保持 18-24 个月持有。
+</div>
+
+<h2>价格走势</h2>
+<figure>
+<svg viewBox="0 0 600 160" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Charter, Georgia, serif">
+  <!-- Grid -->
+  <g stroke="#e5e3d8" stroke-width="0.5">
+    <line x1="40" y1="20"  x2="580" y2="20"/>
+    <line x1="40" y1="60"  x2="580" y2="60"/>
+    <line x1="40" y1="100" x2="580" y2="100"/>
+    <line x1="40" y1="140" x2="580" y2="140"/>
+  </g>
+  <!-- Y axis labels -->
+  <g fill="#6b6a64" font-size="8" text-anchor="end" font-variant-numeric="tabular-nums">
+    <text x="36" y="23">160</text>
+    <text x="36" y="63">140</text>
+    <text x="36" y="103">120</text>
+    <text x="36" y="143">100</text>
+  </g>
+  <!-- Candles: x-pos, open, close, high, low -->
+  <!-- helper: each candle 18px wide, 26px stride -->
+  <g font-variant-numeric="tabular-nums">
+    <!-- Series tilted slightly upward with a mid-cycle dip -->
+    <!-- up = brand fill, down = stone fill -->
+    <!-- 1 -->
+    <line x1="55"  y1="92"  x2="55"  y2="118" stroke="#6b6a64" stroke-width="1"/>
+    <rect x="48"  y="100" width="14" height="14" fill="#6b6a64"/>
+    <!-- 2 -->
+    <line x1="80"  y1="86"  x2="80"  y2="108" stroke="#1B365D" stroke-width="1"/>
+    <rect x="73"  y="92"  width="14" height="14" fill="#1B365D"/>
+    <!-- 3 -->
+    <line x1="105" y1="78"  x2="105" y2="100" stroke="#1B365D" stroke-width="1"/>
+    <rect x="98"  y="84"  width="14" height="14" fill="#1B365D"/>
+    <!-- 4 -->
+    <line x1="130" y1="84"  x2="130" y2="104" stroke="#6b6a64" stroke-width="1"/>
+    <rect x="123" y="92"  width="14" height="14" fill="#6b6a64"/>
+    <!-- 5 -->
+    <line x1="155" y1="74"  x2="155" y2="98"  stroke="#1B365D" stroke-width="1"/>
+    <rect x="148" y="80"  width="14" height="14" fill="#1B365D"/>
+    <!-- 6 -->
+    <line x1="180" y1="68"  x2="180" y2="92"  stroke="#1B365D" stroke-width="1"/>
+    <rect x="173" y="74"  width="14" height="14" fill="#1B365D"/>
+    <!-- 7 -->
+    <line x1="205" y1="74"  x2="205" y2="98"  stroke="#6b6a64" stroke-width="1"/>
+    <rect x="198" y="82"  width="14" height="14" fill="#6b6a64"/>
+    <!-- 8 -->
+    <line x1="230" y1="80"  x2="230" y2="104" stroke="#6b6a64" stroke-width="1"/>
+    <rect x="223" y="88"  width="14" height="14" fill="#6b6a64"/>
+    <!-- 9 -->
+    <line x1="255" y1="74"  x2="255" y2="98"  stroke="#1B365D" stroke-width="1"/>
+    <rect x="248" y="80"  width="14" height="14" fill="#1B365D"/>
+    <!-- 10 -->
+    <line x1="280" y1="60"  x2="280" y2="86"  stroke="#1B365D" stroke-width="1"/>
+    <rect x="273" y="68"  width="14" height="14" fill="#1B365D"/>
+    <!-- 11 -->
+    <line x1="305" y1="56"  x2="305" y2="78"  stroke="#1B365D" stroke-width="1"/>
+    <rect x="298" y="62"  width="14" height="14" fill="#1B365D"/>
+    <!-- 12 -->
+    <line x1="330" y1="62"  x2="330" y2="86"  stroke="#6b6a64" stroke-width="1"/>
+    <rect x="323" y="70"  width="14" height="14" fill="#6b6a64"/>
+    <!-- 13 -->
+    <line x1="355" y1="56"  x2="355" y2="78"  stroke="#1B365D" stroke-width="1"/>
+    <rect x="348" y="62"  width="14" height="14" fill="#1B365D"/>
+    <!-- 14 -->
+    <line x1="380" y1="46"  x2="380" y2="68"  stroke="#1B365D" stroke-width="1"/>
+    <rect x="373" y="52"  width="14" height="14" fill="#1B365D"/>
+    <!-- 15 -->
+    <line x1="405" y1="42"  x2="405" y2="64"  stroke="#1B365D" stroke-width="1"/>
+    <rect x="398" y="48"  width="14" height="14" fill="#1B365D"/>
+    <!-- 16 -->
+    <line x1="430" y1="48"  x2="430" y2="68"  stroke="#6b6a64" stroke-width="1"/>
+    <rect x="423" y="54"  width="14" height="14" fill="#6b6a64"/>
+    <!-- 17 -->
+    <line x1="455" y1="42"  x2="455" y2="64"  stroke="#1B365D" stroke-width="1"/>
+    <rect x="448" y="48"  width="14" height="14" fill="#1B365D"/>
+    <!-- 18 -->
+    <line x1="480" y1="36"  x2="480" y2="58"  stroke="#1B365D" stroke-width="1"/>
+    <rect x="473" y="42"  width="14" height="14" fill="#1B365D"/>
+    <!-- 19 -->
+    <line x1="505" y1="32"  x2="505" y2="52"  stroke="#1B365D" stroke-width="1"/>
+    <rect x="498" y="38"  width="14" height="14" fill="#1B365D"/>
+    <!-- 20 -->
+    <line x1="530" y1="38"  x2="530" y2="60"  stroke="#6b6a64" stroke-width="1"/>
+    <rect x="523" y="44"  width="14" height="14" fill="#6b6a64"/>
+    <!-- 21 -->
+    <line x1="555" y1="32"  x2="555" y2="54"  stroke="#1B365D" stroke-width="1"/>
+    <rect x="548" y="38"  width="14" height="14" fill="#1B365D"/>
+  </g>
+  <!-- X axis -->
+  <line x1="40" y1="148" x2="580" y2="148" stroke="#6b6a64" stroke-width="0.5"/>
+  <g fill="#6b6a64" font-size="8" text-anchor="middle">
+    <text x="55"  y="158">3/27</text>
+    <text x="180" y="158">4/06</text>
+    <text x="305" y="158">4/14</text>
+    <text x="430" y="158">4/20</text>
+    <text x="555" y="158">4/26</text>
+  </g>
+</svg>
+<figcaption>近 21 个交易日 NVDA 日 K 线 · 4 月初平台整理后随 Blackwell 出货数据加速突破</figcaption>
+</figure>
+
+<h2>财务概览</h2>
+<table class="financial striped">
+  <thead>
+    <tr>
+      <th>指标</th>
+      <th>FY24</th>
+      <th>FY25</th>
+      <th>FY26</th>
+      <th>FY27E</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>营收（$B）</td><td>60.9</td><td>97.2</td><td>143.0</td><td>178.4</td></tr>
+    <tr><td>同比增速</td><td>+126%</td><td>+60%</td><td>+47%</td><td>+25%</td></tr>
+    <tr><td>毛利率</td><td>72.7%</td><td>74.6%</td><td>75.4%</td><td>74.8%</td></tr>
+    <tr><td>净利润（$B）</td><td>29.8</td><td>49.1</td><td>72.5</td><td>89.6</td></tr>
+    <tr><td>EPS（稀释）</td><td>1.19</td><td>2.01</td><td>2.96</td><td>3.66</td></tr>
+    <tr><td>ROE</td><td>91.5%</td><td>114.2%</td><td>112.7%</td><td>97.4%</td></tr>
+  </tbody>
+</table>
+
+</div>
+<!-- ════════════════ PAGE 2 ════════════════ -->
+<div class="page">
+
+<h2>收入结构</h2>
+<figure>
+<svg viewBox="0 0 600 150" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Charter, Georgia, serif">
+  <g font-size="9" fill="#3d3d3a" font-variant-numeric="tabular-nums">
+    <!-- Stacked bar: Compute / Networking / Gaming / ProViz / Auto -->
+    <!-- FY24 -->
+    <text x="32" y="34">FY24</text>
+    <rect x="70"  y="22" width="320" height="14" fill="#1B365D"/>
+    <rect x="390" y="22" width="48"  height="14" fill="#3d3d3a"/>
+    <rect x="438" y="22" width="60"  height="14" fill="#6b6a64"/>
+    <rect x="498" y="22" width="22"  height="14" fill="#87867f"/>
+    <rect x="520" y="22" width="14"  height="14" fill="#b0aea5"/>
+    <text x="540" y="34">$60.9B</text>
+
+    <!-- FY25 -->
+    <text x="32" y="64">FY25</text>
+    <rect x="70"  y="52" width="380" height="14" fill="#1B365D"/>
+    <rect x="450" y="52" width="50"  height="14" fill="#3d3d3a"/>
+    <rect x="500" y="52" width="36"  height="14" fill="#6b6a64"/>
+    <rect x="536" y="52" width="14"  height="14" fill="#87867f"/>
+    <rect x="550" y="52" width="10"  height="14" fill="#b0aea5"/>
+    <text x="566" y="64">$97.2B</text>
+
+    <!-- FY26 -->
+    <text x="32" y="94">FY26</text>
+    <rect x="70"  y="82" width="412" height="14" fill="#1B365D"/>
+    <rect x="482" y="82" width="76"  height="14" fill="#3d3d3a"/>
+    <rect x="558" y="82" width="22"  height="14" fill="#6b6a64"/>
+    <rect x="580" y="82" width="8"   height="14" fill="#87867f"/>
+    <rect x="588" y="82" width="6"   height="14" fill="#b0aea5"/>
+    <text x="600" y="94" text-anchor="end">$143B</text>
+
+    <!-- FY27E -->
+    <text x="32" y="124">FY27E</text>
+    <rect x="70"  y="112" width="430" height="14" fill="#1B365D"/>
+    <rect x="500" y="112" width="84"  height="14" fill="#3d3d3a"/>
+    <rect x="584" y="112" width="16"  height="14" fill="#6b6a64"/>
+    <text x="608" y="124" text-anchor="end">$178B</text>
+  </g>
+
+  <!-- Legend -->
+  <g font-size="8" fill="#504e49">
+    <rect x="70"  y="138" width="8" height="8" fill="#1B365D"/>
+    <text x="82"  y="145">Data Center 计算</text>
+    <rect x="180" y="138" width="8" height="8" fill="#3d3d3a"/>
+    <text x="192" y="145">Networking</text>
+    <rect x="280" y="138" width="8" height="8" fill="#6b6a64"/>
+    <text x="292" y="145">Gaming</text>
+    <rect x="350" y="138" width="8" height="8" fill="#87867f"/>
+    <text x="362" y="145">ProViz</text>
+    <rect x="408" y="138" width="8" height="8" fill="#b0aea5"/>
+    <text x="420" y="145">Auto</text>
+  </g>
+</svg>
+<figcaption>分业务营收堆叠 · Compute 仍是绝对主力，Networking 三年内从 4% 升至 19%</figcaption>
+</figure>
+
+<h2>竞争格局</h2>
+<p>AI 训练市场 NVIDIA 仍占有 <span class="hl">~88%</span> 的份额；推理侧 AMD MI355X、定制 ASIC（TPU v6、Trainium 3、MTIA v2）开始切入腰部需求，但 CUDA 生态在 Rack-scale 互联与软件栈成熟度上仍领先 18-24 个月。Hyperscaler 自研 ASIC 的 ROI 主要体现在内部工作负载，对 NVIDIA 商品力影响小于市场担忧。</p>
+
+<table class="financial compact striped">
+  <thead>
+    <tr>
+      <th>公司</th>
+      <th>市值</th>
+      <th>P/E (FY26)</th>
+      <th>营收增速</th>
+      <th>毛利率</th>
+      <th>AI 收入占比</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>NVIDIA</strong></td><td>$3.6T</td><td>50×</td><td>+47%</td><td>75.4%</td><td>92%</td></tr>
+    <tr><td>AMD</td><td>$248B</td><td>34×</td><td>+22%</td><td>52.8%</td><td>38%</td></tr>
+    <tr><td>Broadcom</td><td>$1.4T</td><td>38×</td><td>+19%</td><td>76.1%</td><td>54%</td></tr>
+    <tr><td>TSMC</td><td>$1.2T</td><td>26×</td><td>+28%</td><td>59.3%</td><td>—</td></tr>
+  </tbody>
+</table>
+
+<h2>风险提示</h2>
+<div class="risk-grid">
+  <div class="risk-item">
+    <div class="risk-label">需求侧 · Hyperscaler 资本开支拐点</div>
+    <div class="risk-desc">三家云厂商 capex 增速若回到 +20% 区间，将直接压缩 FY27 营收 8-12%，对应 EPS 下修 $0.40。</div>
+  </div>
+  <div class="risk-item">
+    <div class="risk-label">供给侧 · CoWoS 与 HBM3e 配套</div>
+    <div class="risk-desc">CoWoS-L 月产能受制于 ABF 载板与 HBM3e 良率；任一环节 5-10% 缺口都会推迟 Blackwell Ultra 出货节奏。</div>
+  </div>
+  <div class="risk-item">
+    <div class="risk-label">监管 · 出口管制升级</div>
+    <div class="risk-desc">中国市场目前贡献 7% 营收，新一轮 H20 / B30A 的出口许可若被取消，半年内有 $4-6B 营收短缺。</div>
+  </div>
+  <div class="risk-item">
+    <div class="risk-label">竞争 · 推理 ASIC 渗透</div>
+    <div class="risk-desc">推理负载迁移到自研 ASIC 的速度可能快于预期，2027 年起部分挤压 H100/H200 折旧周期内的存量更新需求。</div>
+  </div>
+</div>
+
+<div class="analyst-box">
+  <div class="analyst-label">分析师总结</div>
+  <p>维持「买入」评级，目标价从 $165 上调至 <span class="hl">$185</span>，对应 FY27E EPS $5.10 的 36× 估值，相对当前 +25% 空间。核心催化剂三条：(1) Q1 FY27 业绩中 Blackwell 占比首次突破 60%；(2) GB300 NVL72 在 Q2 量产；(3) Networking 营收同比 +90%，连续四个季度跑赢 Compute 增速。关键假设：CoWoS 月产能 FY27 末达到 95K wafer，hyperscaler 三家 capex 同比 +35%。</p>
+  <p style="margin-bottom:0">下修触发：CoWoS 产能爬坡晚于 FY27Q2、或单一 hyperscaler 砍单超过 $5B。</p>
+</div>
+
+<div class="report-footer">
+  <span>仅供研究演示 · 非投资建议</span>
+  <span>Pneuma Research · 2026-04-26</span>
+</div>
+
+</div>
+
+</body>
+</html>

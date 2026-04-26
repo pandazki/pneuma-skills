@@ -15,11 +15,10 @@
   :root {
     --brand-deep: #a64f33;
     --tag-bg:     #E4ECF5;
-    --border:     var(--border-cream);
   }
 
-  /* Demo body tuning — shared stylesheet defaults to sans;
-     portfolio wants serif body at print-scale size. */
+  /* Print-scale body tuning. The shared stylesheet uses 14px / 1.55 for
+     screen reading; the portfolio wants denser type at print scale. */
   body {
     font-family: var(--serif);
     font-size: 10pt;

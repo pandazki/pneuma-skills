@@ -32,11 +32,20 @@ vendor's free-for-personal-use license. **Commercial use requires a
 separate license** from [tsanger.cn](https://tsanger.cn). End-users
 producing commercial documents are responsible for securing that license.
 
-### Newsreader, Inter, JetBrains Mono (OFL)
+### JetBrains Mono (OFL)
 
-`Newsreader.woff2`, `Inter.woff2` / `Inter-500.woff2` / `Inter-600.woff2`,
-and `JetBrainsMono.woff2` are distributed under the [SIL Open Font License
-1.1](https://openfontlicense.org/). No additional fee or permission required.
+`seed/_shared/assets/fonts/JetBrainsMono.woff2` is distributed under the
+[SIL Open Font License 1.1](https://openfontlicense.org/). No additional
+fee or permission required.
+
+### English & Japanese serif (system-bundled)
+
+English templates fall through to **Charter** (macOS / iOS bundled),
+**Georgia**, and **Palatino**. Japanese templates fall through to
+**YuMincho** / **Hiragino Mincho ProN** (macOS / iOS bundled) and **Noto
+Serif CJK JP**. None are shipped with this mode; the OS provides them or
+the page falls through to a generic serif. This matches the upstream v1.2.0
+single-serif-per-page model.
 
 ## Seed demos
 

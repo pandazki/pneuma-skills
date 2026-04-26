@@ -25,25 +25,27 @@ Edit and Write tools. The iframe preview reflects changes live.
 | Canvas | `#f5f4ed` parchment. Never pure white. |
 | Accent | Ink blue `#1B365D` only. No second chromatic hue. |
 | Neutrals | Warm-toned (yellow-brown undertone). No cool blue-grays. |
-| Serif | `TsangerJinKai02` (CN) / `Newsreader` (EN). Weight locked 500. Never bold. |
-| Line-height | Titles 1.1–1.3. Body 1.5–1.55. Never 1.6+. |
+| Serif | **One serif per page.** CN: `TsangerJinKai02`. EN: `Charter` (system). JA: `YuMincho` (system). Weight 400 body / 500 headings. Never bold. |
+| Letter-spacing | CN body 0.3pt (locks in TsangerJinKai02 density). EN body 0. Tracking only on small labels and overlines. |
+| Line-height | Titles 1.1–1.3. Dense body 1.4–1.45. Reading body 1.5–1.55. Never 1.6+. |
 | Shadows | Ring or whisper only. No hard drop shadows. No gradients. |
 | Tags | Solid hex backgrounds only — rgba() can break in print. |
 
-If the user writes in Chinese, prefer the CN demos and Chinese typography
-fallbacks. If they write in English, prefer the EN demos and Newsreader.
+`--sans` aliases `--serif` in `_shared/styles.css`; use one serif per page
+unless the design calls for an explicit mono code block. Match the user's
+language: CN content stays on the TsangerJinKai02 stack, EN on Charter,
+JA on YuMincho (best-effort, visually verify before shipping).
 
 ## Workspace layout
 
 ```
 _shared/
   styles.css          # Tokens + paper dimensions. Don't edit casually.
-  assets/fonts/       # Bundled fonts (6 files).
-  assets/diagrams/    # architecture.html, flowchart.html, quadrant.html
+  assets/fonts/       # Bundled fonts: TsangerJinKai02-W04.ttf, JetBrainsMono.woff2
+  assets/diagrams/    # 14 self-contained SVG templates — copy the <svg>
+                      # block out, drop it inside a <figure> on a page.
 pneuma-one-pager/      # EN one-pager demo (Pneuma product brief)
-musk-resume/           # EN resume demo (from kami)
 kaku-portfolio/        # CN 6-page portfolio demo (from kami)
-blank/                 # Empty .page starter
 .pneuma/kami-fit.json  # Auto-written fit report — READ after every edit
 ```
 
@@ -248,6 +250,42 @@ documents read as one voice across every sheet; the imagery must too.
 - Don't try to render Python-driven slide decks in this mode; that's a
   separate (future) mode.
 
+## Diagrams (14 self-contained templates)
+
+When a page benefits from a chart, pick the closest match from
+`_shared/assets/diagrams/`, copy the `<svg>` block out, and drop it inside
+a `<figure>` on the page. Don't link the file via `<iframe>` — diagrams
+are meant to live inline so they paginate with the surrounding text.
+
+| User intent | Diagram | File |
+|---|---|---|
+| 架构 / system / components | Architecture | `architecture.html` |
+| 流程 / flowchart / branching | Flowchart | `flowchart.html` |
+| 象限 / quadrant / 2×2 matrix | Quadrant | `quadrant.html` |
+| 柱状 / bar / category compare | Bar Chart | `bar-chart.html` |
+| 折线 / line / time series | Line Chart | `line-chart.html` |
+| 环形 / donut / pie / 占比 | Donut | `donut-chart.html` |
+| 状态机 / lifecycle | State Machine | `state-machine.html` |
+| 时间线 / milestones / roadmap | Timeline | `timeline.html` |
+| 泳道 / cross-team flow | Swimlane | `swimlane.html` |
+| 树状 / hierarchy / org chart | Tree | `tree.html` |
+| 分层 / OSI / stack | Layer Stack | `layer-stack.html` |
+| 维恩 / overlap / 集合 | Venn | `venn.html` |
+| K 线 / OHLC / 股价 | Candlestick | `candlestick.html` |
+| 瀑布 / revenue bridge / decomposition | Waterfall | `waterfall.html` |
+
+Read `references/diagrams.md` once before drawing — it has the selection
+guide, kami token map, and the AI-slop anti-pattern table.
+
+**Auto-select charts from data.** When the page content includes numeric
+data (revenue splits, trends, category comparisons), pick the right chart
+type and embed it without waiting for the user to ask. Selection guide:
+proportional → donut, time series → line, category compare → bar, price
+history → candlestick, value decomposition → waterfall.
+
+Before drawing, ask: **would a well-written paragraph teach the reader
+less than this diagram?** If no, don't draw.
+
 ## References (read on demand)
 
 Load only what the task needs. Default to the lowest tier.
@@ -257,9 +295,9 @@ Load only what the task needs. Default to the lowest tier.
 | Updating text / translating / swapping bullets | Nothing — just edit, then check `kami-fit.json` |
 | A page shows `overflow` or `sparse` | `references/cmd-fit.md` — trimming + filling tactics |
 | Adjusting layout or tweaking spacing | Look at the closest existing demo |
-| Building a new doc type from scratch | `references/design.md` (CN) / `design.en.md` (EN) |
-| Writing tone / structure guidance | `references/writing.md` / `writing.en.md` |
-| Embedding a diagram | `references/diagrams.md` / `diagrams.en.md` |
+| Building a new doc type from scratch | `references/design.md` |
+| Writing tone / structure guidance | `references/writing.md` |
+| Embedding a diagram | `references/diagrams.md` |
 
 ## Viewer API
 

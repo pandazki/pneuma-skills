@@ -6,189 +6,387 @@
 
 # Content Strategy
 
-怎么写，不是怎么排。好排版配坏内容只是"精致的平庸"，这份文档讲**写作原则**。
+How to write, not how to lay out. Good typography with bad content is just "polished mediocrity". This document covers the writing principles for both Chinese and English output. Shared rules come first; language-specific details are called out where they matter.
 
 ---
 
-## 核心原则（所有文档共享）
+## Core principles (all documents)
 
-### 1. 数据优于形容词
+### 1. Data over adjectives
 
-- 避免：「带来了显著的业务增长」
-- 应写：具体数字和变化幅度
+- Avoid: "Delivered significant business growth"
+- Use: write the specific numbers and deltas
 
-每一句话都要经得住追问"具体多少"。答不上来的，删掉比留着好。
+Every sentence should survive the follow-up question "how much, specifically?". If you can't answer, don't write it.
 
-### 2. 判断优于执行
+### 2. Judgment over execution
 
-初级写"做了什么"，中级写"怎么做的"，**高级写"为什么这么做以及预判对了什么"**。
+Junior writes "what they did". Mid writes "how they did it". **Senior writes "why they made that call, and what they predicted correctly"**.
 
-- 避免：「主导了 XX 建设」
-- 应写：你做了什么判断，以及这个判断后来被证明是对的
+- Avoid: "Led the platform build-out"
+- Use: write what judgment you made and how it was proven right
 
-### 3. 独特表达优于行业黑话
+### 3. Distinctive phrasing over industry clichés
 
-- 避免：「拥抱 AI 时代、打造数字化转型新范式」
-- 应写：用自己的话说，不借行业的词
+- Avoid: "Embrace the AI era, pioneer digital transformation paradigms"
+- Use: say it in your own words, skip the industry vocabulary
 
-**独特用词是记忆点**。自己想出来的短语，比任何行业词汇都更像一个有想法的人在说话。
+**Distinctive phrasing is memorable**. A line you invented beats a line borrowed from an earnings call. It sounds like a person thinking, not a deck regurgitating.
 
-### 4. 诚实的边界
+### 4. Honest boundaries
 
-- 不是你做的别往自己身上揽
-- 数字不确定精确值就写量级，真实的模糊好过精确的捏造
-- 有协作方的地方注明
+- If you didn't do it, don't claim it
+- If you don't know the exact number, don't invent one. Write a vague but honest magnitude
+- Attribute collaborators
 
----
+### 5. Sources before phrasing
 
-## 按文档类型的策略差异
+For companies, products, people, launch dates, versions, funding, financials, market data, or technical specs, verify the source before writing. Priority: user-provided source material > official pages / docs / press releases > filings / app stores / repo releases > credible media.
 
-### One-Pager（一页纸方案/报告）
+- Do not write "latest", "new", version numbers, or market figures before checking them
+- If sources conflict, list the conflict and ask the user instead of choosing one
+- If only the magnitude is known, write the magnitude instead of false precision
 
-**唯一目的**：30 秒内让读者抓到核心。
+### 6. Materials serve recognition
 
-**结构模板**：
-1. **标题**（serif 大字）+ 一行副标题（sans 中字）
-2. **Metrics 3-4 卡**（数字优先）
-3. **核心论点**（1-2 段）
-4. **关键证据 / 路线图**（3-5 个短 bullet）
-5. **下一步行动 / 联系方式**（底部）
+Branded documents should first make the subject recognizable, then use decoration and atmosphere with restraint.
 
-**写作规则**：
-- 总字数控制在 400-600 字
-- 每个 section 的标题都要能独立成摘要，读 headline 串起来就是全文大意
-- 数据占正文的 30%+
-- 开头不要铺垫（「近年来，随着技术飞速发展...」这类废话直接删掉）
-
-### Long Document（白皮书/技术报告/年度总结）
-
-**结构模板**：
-1. **封面**：大标题 + 副标题 + 作者 + 日期
-2. **目录**（手写或自动生成的 TOC）
-3. **Executive Summary**（摘要，1 页以内，含 3-5 个 takeaway）
-4. **正文**：章节结构清晰，每章可独立成文
-5. **附录 / 参考资料**（如有）
-
-**写作规则**：
-- 每章首段是"立论段"，2-3 句话点明本章论点
-- 长段落（超 5 行）后穿插 callout / 引用 / 图表，给读者喘息的空间
-- 关键数据和结论用 `<span class="hl">` 高亮
-- 章节之间可用"分隔页"（空白 + 章节号大字）
-
-### Letter（正式信件/备忘录）
-
-**结构模板**：
-1. 信头（寄件人信息，右上或顶部居中）
-2. 日期（右对齐）
-3. 收件人称呼（左对齐）
-4. 正文（3-5 段）
-5. 敬语（左对齐，「此致 敬礼」或「Best regards」）
-6. 署名（serif 500）
-7. 附件说明（如有）
-
-**写作规则**：
-- 极简，不加任何装饰元素
-- 正文优先 serif，取其 editorial 气质
-- 字号偏大（11-12pt 正文），这类文件是要被认真读的
-- 段落之间留足间距（≥ 10pt）
-
-**常见场景**：辞职信 / 离职通知 · 推荐信 · 正式合作邀请 · 个人声明
-
-### Portfolio（作品集）
-
-**结构模板**：
-1. **封面**（姓名 + 一句定位 + 联系方式）
-2. **About**（半页个人介绍）
-3. **每个项目 1-2 页**：
-   - 项目标题 + 类型 tag + 时间
-   - 一句话说清楚"做了什么"
-   - 2-3 张大图（如适用）
-   - 角色 + 挑战 + 结果
-4. **Selected works list**（额外作品简列）
-5. **Contact**（回到联系方式）
-
-**写作规则**：
-- 视觉第一，文字辅助
-- 每个项目的结果必须可量化
-- 优先用真实照片或最终成品截图，设计稿和代码截图退而求其次
-- 技术栈不写长清单，用 mono tag 排列即可
-
-### Resume（简历）
-
-简历是本 skill 最特殊的文档类型，约束也最严格。
-
-**硬约束**：
-- 严格 2 页 A4
-- 项目必须三段式：角色 / 动作 / 结果
-- 核心能力 5 项，每项至少 1 处高亮
-- 团队规模、技术栈等叙事口径需前后一致
-
-**关键 section**：
-- Header + Metrics 4 卡
-- 个人简介（约 80 字）
-- Timeline 3 步（展示长期演进）
-- 3-5 个核心项目
-- 公开成果/影响力（如有）
-- 核心能力 5 项
-- 教育背景
-
-**Metrics 4 卡选择原则**：
-- 1 卡用**时间**（年限、持续性）
-- 1 卡用**规模**（团队、用户、项目等可量化的范围）
-- 2 卡用**成果**（可量化的外部证明）
+- Company / product / project docs should confirm logo, product image, UI screenshot, and brand color before layout
+- If a key material is missing, mark the gap or ask the user. Do not fill the page with unrelated imagery
+- Physical products prefer official product images; digital products prefer real UI screenshots
+- If brand color is unknown, keep kami ink-blue rather than inventing a new color
+- **Third-party figures**: when redrawing a paper figure, patent illustration, or official architecture diagram for visual consistency, mark the redraw as `Schematic redrawn` /「示意重绘」in the caption. Do not style a redrawn version to look like the original screenshot. If the figure carries primary evidentiary value (patent, official spec), embed the original with attribution rather than redrawing it
 
 ---
 
-## 排版与内容的耦合规则
+## Per-document strategies
 
-### 高亮节律
+### One-Pager
 
-任何文档里：
-- 每行强调 ≤ 2 处
-- 强调必须是**可量化的数字**或**独特表达**
-- 形容词不高亮
+**Single purpose**: the reader grasps the point in 30 seconds.
 
-### 数字格式
+**Structure**:
+1. **Headline** (serif display) + one-line subtitle (sans body)
+2. **Metrics** - 3-4 cards, numbers first
+3. **Core argument** (1-2 paragraphs)
+4. **Key evidence / roadmap** (3-5 short bullets)
+5. **Next step / contact** (footer)
 
-| 应该这样写 | 不要这样写 |
+**Rules**:
+- Length target: English 200-350 words; Chinese 400-600 characters
+- All section headlines should work as a standalone outline - reading just the headlines should deliver the gist
+- Data must fill 30%+ of the body
+- Company / product one-pagers must confirm logo, core screenshot or product image, and source for key metrics
+- No opening ceremony ("In recent years, as technology has rapidly evolved...")
+
+### Long Document
+
+**Structure**:
+1. **Cover** - big title + subtitle + author + date
+2. **Contents** (auto-generated or hand-written TOC)
+3. **Executive Summary** (≤ 1 page + 3-5 takeaways)
+4. **Body** - chapters that each stand alone as an essay
+5. **Appendix / references** (if applicable)
+
+**Rules**:
+- Every chapter opens with a "claim paragraph" (2-3 sentences summarizing the argument)
+- After long paragraphs (>5 lines), intersperse callouts / quotes / figures to relieve eye fatigue
+- Highlight key data / conclusions with `<span class="hl">`
+- Chapters with external facts must preserve source cues so readers can distinguish fact, judgment, and inference
+- Use "chapter breaks" (blank page + chapter number) between major sections
+
+### Letter
+
+**Structure**:
+1. Letterhead (sender info, top right or centered)
+2. Date (right-aligned)
+3. Recipient salutation (left-aligned)
+4. Body (3-5 paragraphs)
+5. Sign-off ("Sincerely," / "Best regards,")
+6. Signature (serif 500)
+7. Enclosures (if any)
+
+**Rules**:
+- Minimal - no decorative elements
+- Body prefers serif (editorial feel)
+- Slightly larger type (11-12pt body) - this will be read, not scanned
+- Paragraph spacing ≥ 10pt
+
+**Common use cases**:
+- Resignation / notice
+- Recommendation letter
+- Formal collaboration proposal
+- Personal statement
+
+**Language notes**:
+- Chinese sign-offs can use "此致 / 敬礼", "顺颂商祺", or a context-appropriate formal closing
+- English sign-offs should stay simple: "Best regards," / "Sincerely," / "Warm regards,"
+
+### Portfolio
+
+**Structure**:
+1. **Cover** (name + one-line positioning + contact)
+2. **About** (half-page introduction)
+3. **Per-project 1-2 pages**:
+ - Project title + type tag + date range
+ - One-line description
+ - 2-3 hero images (if applicable)
+ - Role + challenge + outcome
+4. **Selected works list** (additional projects as a short list)
+5. **Contact** (return to contact details)
+
+**Rules**:
+- Visuals first, text supports
+- Every project's outcome must be quantifiable
+- Final product screenshots / real photos > design mockups > code screenshots
+- If project images are missing, mark the gap. Do not fill the layout with unrelated imagery
+- Don't list every tech stack - a mono tag row is enough
+
+### Resume
+
+The most constrained document type in kami.
+
+**Hard constraints**:
+- Strictly 2 A4 pages
+- Every project follows three-part: Role / Actions / Impact
+- 5 core skills, each with at least one brand-color emphasis
+- Team size, tech stack, narrative voice must stay consistent throughout
+
+**Key sections**:
+- Header + 4 metric cards
+- Summary (~50 English words or ~80 Chinese characters)
+- Timeline (3 steps - long-range evolution signal)
+- 3-5 core projects
+- Public work / impact (optional)
+- 5 core skills
+- Education
+
+**Metric card selection rule**:
+- 1 card on **time** (years, consistency)
+- 1 card on **scale** (team, users, projects, or other quantifiable scope)
+- 2 cards on **results** (quantifiable external proof)
+
+---
+
+## Quality bars by document type
+
+Structure is necessary but not sufficient. These bars define what separates compelling content from template-filling.
+
+### Resume
+
+**Impact formula**: Action + Scope + Measurable Result + Business Outcome. Every bullet must answer "what did I do, at what scale, with what result, and why did it matter?"
+
+| Avoid | Use |
 |---|---|
-| 5,000+ | 5000+（不带千分位） |
-| 5,000+ | 5，000+（全角逗号） |
-| 90% | 90 %（中间有空格） |
-| 近千万量级 | 9,876,543（过于精确显得虚假） |
-| 2026.04 | 2026年4月（展示场合空间小时） |
+| "Worked on backend services" | "Redesigned order pipeline serving 2M daily txns, cut p99 latency from 800ms to 120ms, saved $340K/yr in infra costs" |
+| "Led a team to deliver features" | "Led 5-engineer squad that shipped real-time collaboration (3-month timeline), adopted by 40% of enterprise accounts within one quarter" |
+| "Improved performance" | "Reduced cold-start time 62% across 14 Lambda functions by replacing runtime init with pre-baked layers, cutting median API response from 1.2s to 0.45s" |
+
+**Rules**:
+1. Start every bullet with a strong past-tense verb (designed, led, reduced, migrated). Never "Responsible for" or "Helped with"
+2. Every bullet needs at least one number. If no hard metric exists, use scope (team size, user count, codebase size)
+3. Connect technical work to business outcomes: revenue, cost, reliability, user retention, time-to-market
+4. Include before/after pairs when possible: "from X to Y" is more credible than "improved by Z%"
+5. Use precise numbers over round ones: "$280K" reads as measured, "$300K" reads as estimated
+6. Distinguish ownership: "owned" vs "contributed to" vs "coordinated". Inflating scope is the fastest way to lose credibility in an interview
+
+**Senior vs junior**: junior resumes show execution ("built X"). Senior resumes show judgment ("evaluated 3 approaches, chose Y because of tradeoff Z") and multiplier effect ("mentored 4 engineers, 2 promoted within 12 months")
+
+### Portfolio
+
+**Core rule**: open every case study with the problem and its stakes, not with your role or the project name.
+
+| Avoid | Use |
+|---|---|
+| "I redesigned the dashboard" | "Enterprise users abandoned the analytics dashboard at 73% rate within the first session. I led the redesign that cut abandonment to 31%." |
+| "The client was happy" | "Task completion time dropped from 4.2 min to 1.8 min. NPS increased from 22 to 51 over 3 months." |
+
+**Rules**:
+1. Show 2-3 decision points where you chose between alternatives. Explain the tradeoff, not just the winner
+2. Three-layer outcomes: quantitative metric (conversion rate +80%) + qualitative evidence (user quote) + business context ($1.2M additional annual revenue)
+3. State your exact role and scope: "I designed" vs "I led" vs "I contributed to" are very different signals
+4. 3-5 deep case studies beats 12 shallow ones. Depth is credibility
+5. Always close the loop: every problem introduced must have a measured resolution
+6. Prefer final product screenshots over mockups. If product images are missing, mark the gap rather than filling with unrelated imagery
+
+### Slides
+
+**Core rule**: every slide title should be a full declarative sentence (an assertion), not a topic label. The body provides one piece of evidence supporting the assertion.
+
+| Avoid | Use |
+|---|---|
+| Title: "Q3 Performance" | Title: "Q3 revenue grew 23% because enterprise deals closed 2x faster" |
+| 7 bullet fragments per slide | One chart proving the assertion |
+| "Key Takeaways" slide with 8 points | One clear ask or recommendation |
+
+**Rules**:
+1. 20-40 words per slide maximum. If a slide has more than 40 words, split it or convert text to a visual
+2. 5 items per list maximum (working memory capacity)
+3. Three-act structure: Setup (slides 1-4, establish stakes) -> Evidence (slides 5-12, build the case) -> Resolution (slides 13-16, deliver the payoff)
+4. Reading just the slide titles in sequence should tell the full argument
+5. Include a "so what" moment every 3-4 slides to re-anchor the audience
+6. End with one clear ask, not a bullet list of "key points"
+
+### Equity Report
+
+**Core rule**: lead with the variant perception (what you see that the market doesn't) and tie every thesis driver to a measurable financial impact.
+
+| Avoid | Use |
+|---|---|
+| "Strong management team" | "Management delivered 23% revenue CAGR over 5 years while keeping debt-to-equity below 0.4" |
+| "Massive opportunity" | "We estimate 25% upside to $X based on DCF with 12% WACC and 3% terminal growth" |
+| Vague "risks include competition" | "BYD's 35% unit cost advantage in the $20-30K segment threatens 15% of addressable volume by 2027" |
+
+**Rules**:
+1. Investment thesis on page 1, above the fold. Rating + price target (if applicable) + 3-5 bullet thesis drivers
+2. Every claim backed by a number or a source. No unquantified superlatives
+3. At least two valuation methods with sensitivity ranges. Single-method valuation is amateur
+4. Catalysts must have dates and expected magnitude: "Robotaxi launch in Dallas, June 2025, adding estimated $X to revenue run-rate by Q4"
+5. Competitive positioning with market share numbers, not narrative: "23% share of the $45B market, up from 18% in 2022"
+6. Risk factors quantified and connected to the financial model, not generic disclaimers
+7. Professional tone: "we estimate" / "our base case" / "we see upside to". Never "this stock will moon" or "buy the dip"
+8. Acknowledge counter-arguments before dismissing them. One-sided analysis signals bias, not conviction
+9. Separate GAAP from non-GAAP clearly. Flag one-time items (warranty reserves, tax benefits, restructuring charges)
+
+### Long Document
+
+**Core rule**: each chapter's claim paragraph must survive the "so what?" test. If the reader asks "why should I care?", the first paragraph must have the answer.
+
+**Rules**:
+1. Evidence density: at least one data point per paragraph. A paragraph with zero numbers is an opinion paragraph and should be rare
+2. Callout or figure after every 3-4 paragraphs of dense text. Long unbroken prose causes eye fatigue in print
+3. Counter-arguments addressed before they become reader objections. If you can predict the pushback, address it proactively
+4. Source cues preserved inline: "(Gartner, 2025)" or "according to the company's 10-K" so readers can distinguish fact from inference
+5. Each chapter should stand alone as a mini-essay with its own arc: claim -> evidence -> conclusion
+
+### One-Pager
+
+**Core rule**: the reader grasps the point in 30 seconds. Every element that doesn't serve 30-second comprehension is bloat.
+
+**Rules**:
+1. Metrics are the headline, not supporting evidence. If your 4 metric cards don't tell the story, the metrics are wrong
+2. The lead paragraph must contain the single sharpest claim, not context-setting
+3. Bullet points should be evidence, not restated arguments. Each bullet: fact + number + "so what"
+4. Footer is for contact and classification, not for squeezing in one more argument
+
+### Letter
+
+**Core rule**: first paragraph states purpose in one sentence. Last paragraph states the specific ask or next step. Everything in between is evidence.
+
+**Rules**:
+1. One point per middle paragraph, each with its own evidence
+2. Tone calibration per use case: resignation (grateful + clear), recommendation (specific + enthusiastic), proposal (value-first + concrete), personal statement (authentic + structured)
+3. Sign-off matches formality: "Sincerely" for formal, "Best regards" for professional-warm, "Warm regards" for personal
+4. Under no circumstances exceed one page. If you need two pages, it's a memo or a proposal, not a letter
+
+### Changelog
+
+**Core rule**: one sentence per change, verb-led, user-facing language. If the user cannot understand the change from the sentence alone, rewrite it.
+
+| Avoid | Use |
+|---|---|
+| "Refactored internal state management module" | "Fix crash when switching tabs rapidly on iPad" |
+| "Updated dependencies" | "Upgrade OpenSSL to 3.2.1 (patches CVE-2026-1234)" |
+
+**Rules**:
+1. Breaking changes always first, with migration path ("Replace `config.old` with `config.new`; run `migrate.sh` to convert")
+2. 5-8 items per section. If more, this is probably 2 releases
+3. Group by user impact (Breaking / Features / Fixes), not by component or file
+4. No internal jargon. "Fix memory leak in image decoder" is clear. "Fix retain cycle in UIImageDecoderBridge" is not
+
+---
+
+## Diagrams and infographics
+
+Words inside a diagram or infographic (title, eyebrow, node label, summary line) follow tighter rules than body prose. Readers process them in seconds, so rhetorical flourish reads as noise. This applies whether the figure is a Kami SVG embedded in a long-doc or an external image rendered elsewhere.
+
+### Avoid colloquial slogan-words
+
+| Avoid | Why it fails |
+|---|---|
+| 白搭 / 立住 / 才顺 / 回炉 / 闸 | Slang verbs; rewrite as a literal claim |
+| 必看 / 一图看懂 / 彻底搞懂 | Bait phrasing; state the figure's actual content |
+| 爆款 / 神器 | Marketing tone in an engineering figure |
+| 飞轮 / 闭环 (unless audience is fluent) | Use 数据循环 / 持续改进 / 四类入口 |
+
+### Avoid product-specific judgments that date fast
+
+Pinning a category to a current product name ages the figure within a quarter, because tools evolve faster than diagrams ship. Frame the paradigm and let the reader map products themselves: prefer 「上一代工具范式 / 新一代执行范式」over 「Cursor 是副驾驶 / Claude Code 是自动驾驶」.
+
+### Slogan to neutral rewrites
+
+| Before (slogan) | After (neutral) |
+|---|---|
+| 没对完，不算完成 | 交付前，过三遍 |
+| 任一不过则回炉 | 任一步不通过，回到修改 |
+| 交付前最后一道闸 | 交付前最后检查 |
+| 订阅前先把这些习惯立住 | 订阅前的基础检查 |
+
+The principle: a diagram caption is engineering documentation, not marketing copy. Restraint reads as competence; bravado reads as filler.
+
+---
+
+## Coupling rules (layout × content)
+
+### Emphasis rhythm
+
+Across any document:
+- ≤ 2 emphasized items per line
+- Emphasis must be a **quantifiable number** or a **distinctive phrase**
+- Do not emphasize adjectives
+
+### Number formatting
+
+| Use | Avoid |
+|---|---|
+| 5,000+ | 5000+ (missing thousands separator) |
+| 5,000+ | 5，000+ (full-width comma in a metric) |
+| 90% | 90 % (space before percent) |
+| ~$10M | $9,876,543 (false precision reads fake) |
+| 2026.04 | 2026年4月 / April 2026 (when horizontal space is tight) |
 | -> | → |
 
-### 引号
+### Language-specific punctuation
 
-中文优先 `「」` 而非 `""`，体现印刷品的气质。
+Chinese documents:
+- Prefer `「」` for quoted prose, not straight double quotes
+- Keep numbers, commas, percent signs, and dates half-width in metric-heavy areas
+- Add spaces between Chinese text and Latin product names when it improves readability
 
-### 强调不是加粗
+English documents:
+- Use straight quotes in source text unless the document already has a typographic quote convention
+- Prefer compact date forms (`2026.04`) in dense layouts and natural dates (`April 2026`) in prose
 
-用 `color: var(--brand)` 加品牌色就够了，**不要**再加 `font-weight: bold`。粗体会破坏单字重的设计语言。
+### Emphasis is not bold
 
----
-
-## 写作口径 checklist（交付前自查）
-
-复制一份，每写完一版过一遍：
-
-- [ ] 有没有「拥抱 / 打造 / 赋能 / 重构」这类词？删掉换人话
-- [ ] 每段第一句能不能单独成论点？不能的话，那段还没找到中心
-- [ ] 所有数字是否可验证？被问「具体哪里来的」，你能答吗？
-- [ ] 是否有至少 1 处独特表达（不是行业通用语）？
-- [ ] 被高亮的内容，是否都是数字或独特表达？不是的话，去掉强调
-- [ ] 段落长度是否均匀？有没有超过 5 行的长段需要拆开？
-- [ ] 数字格式是否统一（千分位、百分号、箭头）？
-- [ ] 页数是否符合约束（简历 2 页、one-pager 1 页、letter 1 页）？
+Use `color: var(--brand)` alone - don't also add `font-weight: bold`. Bold breaks the single-weight design language.
 
 ---
 
-## 几个写作资源（可选参考）
+## Pre-ship checklist
 
-- **Paul Graham 的文章**：短、直接、判断性，散文式写作的黄金标准
-- **Stripe Press 的书**：印刷品级排版配深度内容，标题句的写法可以直接借鉴
-- **麦肯锡 pyramid principle**：金字塔结构，"先结论再论据"，one-pager 和 executive summary 的骨架
-- **Ben Horowitz 的 blog**：技术和生意的判断写得人人能读，long doc 的好范例
+Run through before every draft:
 
-不是必读，但读一本会让判断力和文感都上一个层次。
+- [ ] Any jargon like "leverage / unlock / embrace / pioneer"? Cut.
+- [ ] Any Chinese filler like "拥抱 / 打造 / 赋能 / 重构"? Rewrite in plain language.
+- [ ] Does every paragraph's first sentence stand alone? If not, that paragraph has no claim.
+- [ ] Are all numbers verifiable? If asked "where did this come from", can you answer?
+- [ ] Are current facts, versions, launch dates, funding, financials, and specs backed by reliable sources?
+- [ ] Does every branded document have logo, product image, or UI screenshot coverage? Are missing materials clearly marked?
+- [ ] At least one **distinctive phrase** (not industry boilerplate)?
+- [ ] Every emphasized (brand-colored) span is either a number or a distinctive phrase? If not, remove the emphasis.
+- [ ] Paragraph lengths even? No paragraph over 5 lines?
+- [ ] Number format consistent (commas, percent signs, arrows)?
+- [ ] Chinese punctuation and Chinese / Latin spacing consistent where applicable?
+- [ ] Page count within the document's constraint (resume 2, one-pager 1, letter 1)?
+
+---
+
+## Writing references
+
+- **Paul Graham's essays** - short, direct, judgmental. The gold standard for essayistic writing.
+- **Stripe Press books** - print-grade typography paired with deep content. Where to learn the craft of the single sentence.
+- **Minto's Pyramid Principle** - conclusion first, evidence below. The shape of every one-pager and exec summary.
+- **Ben Horowitz's blog** - how to write technical and business judgment in prose ordinary people can read. The template for long-doc voice.
+
+None are required, but reading any one of them will move the dial on both your writing and your judgment.

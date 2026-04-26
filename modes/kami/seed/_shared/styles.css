@@ -5,43 +5,22 @@
  *
  * Paper size is locked at workspace creation; {{pageWidthMm}} and
  * {{pageHeightMm}} below are substituted by the skill installer.
+ *
+ * Typography model (matches upstream v1.2.0): single serif per page.
+ * --sans aliases --serif. Per-language stacks chosen by content authors.
  */
 
 @font-face {
-  font-family: "Newsreader";
-  src: url("./assets/fonts/Newsreader.woff2") format("woff2");
+  font-family: "TsangerJinKai02";
+  src: url("./assets/fonts/TsangerJinKai02-W04.ttf") format("truetype");
   font-weight: 400 500;
   font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Inter";
-  src: url("./assets/fonts/Inter.woff2") format("woff2");
-  font-weight: 400;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Inter";
-  src: url("./assets/fonts/Inter-500.woff2") format("woff2");
-  font-weight: 500;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Inter";
-  src: url("./assets/fonts/Inter-600.woff2") format("woff2");
-  font-weight: 600;
   font-display: swap;
 }
 @font-face {
   font-family: "JetBrains Mono";
   src: url("./assets/fonts/JetBrainsMono.woff2") format("woff2");
   font-weight: 400 500;
-  font-display: swap;
-}
-@font-face {
-  font-family: "TsangerJinKai02";
-  src: url("./assets/fonts/TsangerJinKai02-W04.ttf") format("truetype");
-  font-weight: 500;
   font-display: swap;
 }
 
@@ -69,14 +48,12 @@
   /* Warm neutrals */
   --near-black:   #141413;
   --dark-warm:    #3d3d3a;
-  --charcoal:     #4d4c48;
-  --olive:        #5e5d59;
-  --stone:        #87867f;
+  --olive:        #504e49;
+  --stone:        #6b6a64;
   --warm-silver:  #b0aea5;
 
   /* Borders */
-  --border-cream: #e8e5da;
-  --border-warm:  #e0ddd2;
+  --border:       #e8e6dc;
   --border-soft:  #e5e3d8;
   --border-dark:  #30302e;
 
@@ -84,10 +61,20 @@
   --ring-warm:    #d1cfc5;
   --ring-deep:    #c2c0b6;
 
-  /* Typography stacks */
-  --serif: "TsangerJinKai02", "Newsreader", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", Georgia, serif;
-  --sans:  "Inter", "TsangerJinKai02", -apple-system, BlinkMacSystemFont, "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
-  --mono:  "JetBrains Mono", "Fira Code", "SF Mono", Consolas, Monaco, monospace;
+  /*
+   * Typography stacks — single serif per page (--sans aliases --serif).
+   * Chinese content uses TsangerJinKai02 → Source Han Serif → Songti.
+   * English content falls through to Charter → Georgia.
+   * Japanese authors should override --serif inline with the YuMincho stack.
+   */
+  --serif: "TsangerJinKai02", Charter, "Source Han Serif SC",
+           "Noto Serif CJK SC", "Songti SC", "STSong",
+           Georgia, Palatino, "Times New Roman", serif;
+  --sans:  var(--serif);
+  --mono:  "JetBrains Mono", "SF Mono", "Fira Code",
+           Consolas, Monaco,
+           "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC",
+           "Songti SC", monospace;
 }
 
 @page {
@@ -107,10 +94,15 @@ html, body { margin: 0; padding: 0; }
 body {
   background: #d9d6ca;                      /* letterbox outside the sheet */
   color: var(--near-black);
-  font-family: var(--sans);
+  font-family: var(--serif);
   font-size: 14px;
   line-height: 1.55;
-  letter-spacing: 0.3px;
+  /*
+   * Chinese body letter-spacing (upstream v1.2.0 invariant 7).
+   * 0.3pt opens up TsangerJinKai02's natural density.
+   * Override per element when rendering English-only paragraphs.
+   */
+  letter-spacing: 0.3pt;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

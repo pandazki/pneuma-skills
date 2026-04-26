@@ -13,11 +13,10 @@
   /* Demo-local tokens (not in shared stylesheet) */
   :root {
     --tag-bg: #E4ECF5;
-    --border: var(--border-cream);
   }
 
-  /* Demo body tuning — shared stylesheet defaults to sans;
-     this one-pager wants serif body at print-scale size. */
+  /* Print-scale body tuning. The shared stylesheet uses 14px / 1.55 for
+     screen reading; one-pagers want denser type at print scale. */
   body {
     font-family: var(--serif);
     font-size: 10pt;
