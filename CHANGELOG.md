@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.36.2] - 2026-04-27
+
+### Fixed
+- **Desktop app still hit "Failed to load PPTX library" after 2.36.1** — fixing the `package.json` `files` array only patched the npm-published package; the Electron build has its own allowlist in `desktop/electron-builder.yml` `extraResources` that explicitly enumerates which directories get copied into the app bundle. `vendor/` was never on that list, so the desktop app at `/Applications/Pneuma Skills.app/Contents/Resources/pneuma/` shipped without `dom-to-pptx.bundle.js` even on 2.36.1. Added `vendor/` to extraResources.
+
 ## [2.36.1] - 2026-04-27
 
 ### Fixed

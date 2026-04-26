@@ -63,6 +63,11 @@ extraResources:
     to: "pneuma/public"
   - from: "../tsconfig.json"
     to: "pneuma/tsconfig.json"
+  # Vendored runtime bundles (e.g. dom-to-pptx for slide PPTX export).
+  # Server reads these via `Bun.file(join(import.meta.dir, "..", "..", "vendor", ...))`,
+  # so the directory must sit at pneuma/vendor next to bin/, server/, etc.
+  - from: "../vendor"
+    to: "pneuma/vendor"
   # Runtime node_modules for the Bun server (production deps only)
   # Built by: node scripts/prepare-deps.mjs
   - from: "pneuma-node-modules"
