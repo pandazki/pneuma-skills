@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.36.0] - 2026-04-27
+
+### Added
+- **Kami diagram catalog grows from 3 to 14** — synced with upstream tw93/kami v1.2.0. New templates in `seed/_shared/assets/diagrams/`: `bar-chart`, `candlestick`, `donut-chart`, `layer-stack`, `line-chart`, `state-machine`, `swimlane`, `timeline`, `tree`, `venn`, `waterfall`. The agent picks the right diagram from data context (proportion → donut, time series → line, decomposition → waterfall) without waiting for the user to ask.
+- **NVDA equity-report seed** — third demo content set in kami showing the new equity-research doc type. Two A4 pages with header + metric strip + thesis + inline candlestick + financial table on page 1, then revenue stacked-bar + comp table + risk grid + analyst summary on page 2. Inline SVG charts demonstrate the diagram-embed pattern.
+
+### Changed
+- **Kami typography moves to single-serif-per-page** — matches upstream v1.2.0. `--sans` aliases `--serif`, body uses `var(--serif)`, Chinese body letter-spacing 0.3pt to compensate for TsangerJinKai02's natural density. Charter (system-bundled) joins the EN fallback chain.
+- **Kami reference docs collapsed to one English source of truth** — `references/design.md`, `diagrams.md`, `writing.md` now match upstream verbatim; the `.en.md` siblings are deleted. The agent reads one authoritative spec and translates concepts in CN context as needed.
+- **Kami color tokens migrated** — `--olive: #504e49` (was `#5e5d59`), `--stone: #6b6a64` (was `#87867f`); `--border` consolidates the previous `--border-cream`/`--border-warm`. Existing 3 diagrams + both old seed templates updated.
+
+### Removed
+- **Inter and Newsreader font files dropped from the kami seed** — saves ~170KB per install. Active stack uses TsangerJinKai02 + system serifs (Charter / Songti / Source Han). Existing user workspaces keep their copy; only new workspaces are affected.
+
 ## [2.35.6] - 2026-04-25
 
 ### Fixed
