@@ -53,10 +53,10 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@excalidraw/excalidraw": "^0.18.0",
-    "@pneuma-craft/core": "file:../pneuma-craft/packages/core",
-    "@pneuma-craft/react": "file:../pneuma-craft/packages/react",
-    "@pneuma-craft/timeline": "file:../pneuma-craft/packages/timeline",
-    "@pneuma-craft/video": "file:../pneuma-craft/packages/video",
+    "@pneuma-craft/core": "^0.1.0",
+    "@pneuma-craft/react": "^0.3.0",
+    "@pneuma-craft/timeline": "^0.3.0",
+    "@pneuma-craft/video": "^0.4.0",
     "@remotion/player": "4.0.438",
     "@remotion/web-renderer": "4.0.438",
     "@tailwindcss/typography": "^0.5.19",
@@ -99,10 +99,6 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-collection": "^1.1.7",
     "@radix-ui/react-direction": "^1.1.1",
-    "@radix-ui/react-roving-focus": "^1.1.10",
-    "@pneuma-craft/core": "file:../pneuma-craft/packages/core",
-    "@pneuma-craft/timeline": "file:../pneuma-craft/packages/timeline",
-    "@pneuma-craft/video": "file:../pneuma-craft/packages/video",
-    "@pneuma-craft/react": "file:../pneuma-craft/packages/react"
+    "@radix-ui/react-roving-focus": "^1.1.10"
   }
 }
