@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.38.0] - 2026-04-27
+
+### Added
+- **`clipcraft` rebuilt as a builtin mode on the `@pneuma-craft` engine** — AIGC video production with a domain-modelled `project.json` (Assets, Composition with Tracks/Clips, Provenance DAG, Scenes) projecting an event-sourced craft store; file edits auto-rehydrate the viewer with no reload. Canvas preview + canvas-rendered subtitles (pixel-identical between preview and export). Asset Panel + Asset Manager modal showing the union of `assets/` filesystem and `project.json.assets[]` with transfer-list import / unregister, delete-to-OS-trash, per-type filters with media previews. Timeline collapses to a flat track view and expands to a 3D layered carousel with camera presets (front / side / exploded) and per-clip dive panels. Generation scripts for images (fal.ai nano-banana-2 / shared GPT-Image-2), video (seedance-2.0 with t2v / from-image / reference subcommands; veo3.1 fallback), TTS (gemini-3.1-flash-tts), and BGM (lyria-3-pro), plus a character-sheet recovery tool that defeats seedance's image-side filter. Replaces the prior `clipcraft-legacy` prototype, which is removed along with its server-side ffmpeg export route — export now runs in-browser against the live composition.
+- **Pneuma self-intro seed for ClipCraft** — first-launch workspace ships a project that introduces Pneuma itself, so new users have a working timeline to inspect instead of an empty canvas.
+- **`/api/assets/fs-listing` and `/api/assets/trash` server routes** — symlink-safe walk of `workspace/assets/**` with media-extension filter, plus OS-trash deletion via the `trash` package.
+- **`server/ffmpeg.ts` audio probe utilities** — local waveform peaks and duration extraction for the Asset Panel's audio previews.
+
+### Removed
+- **`clipcraft-legacy` prototype mode and its server surface** — 74-file mode plus `server/domain-api.ts`, the legacy `/api/export*` ffmpeg routes, and the corresponding `core/mode-loader.ts` registration. The new mode replaces it end-to-end.
+
+### Changed
+- **CLAUDE.md, README, and the launcher mode list now reflect `clipcraft` as a builtin** — the mode table gains a clipcraft row; the CLI `Modes:` section gains a clipcraft line.
+
 ## [2.37.1] - 2026-04-27
 
 ### Fixed
