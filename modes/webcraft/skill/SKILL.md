@@ -6,7 +6,7 @@ description: >
   styling, animations, responsive design, accessibility, performance optimization,
   design system extraction, UX writing, and visual refinement.
   This skill defines how the live-preview environment works, the Impeccable design
-  principles to follow, and the 20 design commands available.
+  principles to follow, and the 22 design commands available.
   Consult before your first edit in a new conversation.
 ---
 
@@ -183,8 +183,19 @@ Individual commands may require additional context — check the command's prepa
 
 **Gathering order:**
 1. **Check current instructions (instant)**: If `CLAUDE.md` already contains a **Design Context** section, proceed immediately.
-2. **Check .impeccable.md (fast)**: If not in instructions, read `.impeccable.md` from the project root. If it exists and contains the required context, proceed.
+2. **Check .impeccable.md / PRODUCT.md (fast)**: If not in instructions, read `.impeccable.md` (or `PRODUCT.md`, the upstream v3.0 successor) from the project root. If either exists and contains the required context, proceed.
 3. **Run the `teach` command (REQUIRED)**: If neither source has context, you MUST run the `teach` command NOW before doing anything else. Do NOT skip this step. Do NOT attempt to infer context from the codebase instead.
+
+### Register: brand vs product
+
+Every design task is one of two registers — identify before designing:
+
+- **Brand** — design IS the product. Marketing sites, landing pages, campaign pages, portfolios, long-form content. The visitor's impression IS the deliverable. Distinctive, opinionated, willing to risk strangeness. → consult [brand reference](references/brand.md) for typography, palette commitment, layout license.
+- **Product** — design SERVES the product. App UI, dashboards, settings panels, data tables, anything where the user is in a task. Earned familiarity beats novelty; the tool should disappear into the work. → consult [product reference](references/product.md) for system fonts, single-family typography, fixed scales, restrained palette defaults.
+
+Priority for detection: (1) cue in the task itself ("landing page" vs "dashboard"); (2) the surface in focus (the page/route/file being edited); (3) the `register` field in `.impeccable.md` / `PRODUCT.md` if present. First match wins.
+
+The shared design laws below apply to both registers; the register reference adjusts the dial.
 
 ### Design Direction
 
@@ -285,6 +296,17 @@ Always apply these — do not consult a reference, just do them:
 - Tint your neutrals toward your brand hue. Even a chroma of 0.005-0.01 is perceptible and creates subconscious cohesion between brand color and UI surfaces. The hue you tint toward should come from THIS brand, not from a "warm = friendly" or "cool = tech" formula. Pick the brand's actual hue first, then tint everything toward it.
 - The 60-30-10 rule is about visual *weight*, not pixel count. 60% neutral / surface, 30% secondary text and borders, 10% accent. Accents work BECAUSE they're rare. Overuse kills their power.
 </color_principles>
+
+<color_strategy>
+Pick a **color strategy** before picking colors. Four steps on the commitment axis — chosen by register and brief, not defaulted to:
+
+- **Restrained** — tinted neutrals + one accent ≤10% of surface area. Product default; brand minimalism.
+- **Committed** — one saturated color carries 30–60% of the surface. Brand default for identity-driven pages.
+- **Full palette** — 3–4 named roles, each used deliberately. Brand campaigns; product data viz.
+- **Drenched** — the surface IS the color. Brand heroes, campaign pages.
+
+The "one accent ≤10%" rule is Restrained only. Committed / Full palette / Drenched exceed it on purpose. Don't collapse every design to Restrained by reflex.
+</color_strategy>
 
 <theme_selection>
 Theme (light vs dark) should be DERIVED from audience and viewing context, not picked from a default. Read the brief and ask: when is this product used, by whom, in what physical setting?
@@ -403,6 +425,18 @@ Make interactions feel fast. Use optimistic UI — update immediately, sync late
 **DO**: Make every word earn its place
 **DON'T**: Repeat information users can already see
 
+### Absolute bans
+
+Match-and-refuse. If you're about to write any of these, rewrite the element with different structure:
+
+- **Side-stripe borders.** `border-left` or `border-right` greater than 1px as a colored accent on cards, list items, callouts, or alerts. Never intentional. Rewrite with full borders, background tints, leading numbers/icons, or nothing.
+- **Gradient text.** `background-clip: text` combined with a gradient background. Decorative, never meaningful. Use a single solid color. Emphasis via weight or size.
+- **Glassmorphism as default.** Blurs and glass cards used decoratively. Rare and purposeful, or nothing.
+- **The hero-metric template.** Big number, small label, supporting stats, gradient accent. SaaS cliché.
+- **Identical card grids.** Same-sized cards with icon + heading + text, repeated endlessly.
+- **Modal as first thought.** Modals are usually laziness. Exhaust inline / progressive alternatives first.
+- **Em dashes in copy.** Use commas, colons, semicolons, periods, or parentheses. Also not `--`.
+
 ### The AI Slop Test
 
 **Critical quality check**: If you showed this interface to someone and said "AI made this," would they believe you immediately? If yes, that's the problem.
@@ -410,6 +444,8 @@ Make interactions feel fast. Use optimistic UI — update immediately, sync late
 A distinctive interface should make someone ask "how was this made?" not "which AI made this?"
 
 Review the DON'T guidelines above — they are the fingerprints of AI-generated work from 2024-2025.
+
+**Category-reflex check.** If someone could guess the theme and palette from the category name alone — "observability → dark blue", "healthcare → white + teal", "finance → navy + gold", "crypto → neon on black" — it's the training-data reflex. Rework the scene sentence and color strategy until the answer is no longer obvious from the domain.
 
 ### Implementation Principles
 
@@ -427,6 +463,7 @@ The user invokes these commands from the toolbar. When a command is invoked, fol
 
 ### Setup
 - **teach** — Gather design context for the project and save persistent guidelines to `.impeccable.md`. Reference: [cmd-teach](references/cmd-teach.md)
+- **document** — Generate a `DESIGN.md` at the project root capturing the current visual design system in Google Stitch format, so future agents stay on-brand. Reference: [cmd-document](references/cmd-document.md)
 
 ### Plan
 - **shape** — Run a discovery interview and produce a design brief before any code is written. Reference: [cmd-shape](references/cmd-shape.md)
@@ -446,6 +483,7 @@ The user invokes these commands from the toolbar. When a command is invoked, fol
 ### Performance
 - **optimize** — Improve performance across loading, rendering, animations, and bundle size. Reference: [cmd-optimize](references/cmd-optimize.md)
 - **harden** — Make interfaces production-ready: error handling, empty states, onboarding flows, i18n, text overflow, and edge cases. Reference: [cmd-harden](references/cmd-harden.md)
+- **onboard** — Design first-run flows, empty states, and activation moments that get users to value quickly. Reference: [cmd-onboard](references/cmd-onboard.md)
 
 ### Style
 - **animate** — Add purposeful animations, micro-interactions, and motion effects. Reference: [cmd-animate](references/cmd-animate.md)
@@ -466,7 +504,7 @@ When the user invokes a command:
 2. In the reference, replace `{{ask_instruction}}` with: STOP and ask the user using a normal message
 3. In the reference, replace `{{config_file}}` with: CLAUDE.md
 4. In the reference, replace `{{model}}` with: Claude
-5. In the reference, replace `{{available_commands}}` with the list of 20 commands above
+5. In the reference, replace `{{available_commands}}` with the list of 22 commands above
 6. References may point to "this skill" or to `references/*.md` files. Both live in the pneuma-webcraft skill — consult them directly, no separate `impeccable` skill needs to be invoked.
 7. Follow the reference instructions step by step
 8. Apply changes directly to the workspace files — the user sees results in real-time

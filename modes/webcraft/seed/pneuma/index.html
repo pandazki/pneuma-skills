@@ -116,9 +116,7 @@
       top: 0;
       z-index: 10;
       padding-block: 1rem;
-      background: var(--nav-bg);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+      background: var(--bg);
       border-bottom: 1px solid var(--border);
     }
 
@@ -218,17 +216,6 @@
 
     .hero h1 .accent {
       color: var(--accent);
-      background: linear-gradient(90deg, var(--accent), oklch(80% 0.16 30), var(--accent));
-      background-size: 200% 100%;
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      animation: shimmer 3s ease-in-out infinite;
-    }
-
-    @keyframes shimmer {
-      0%, 100% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
     }
 
     .hero p {

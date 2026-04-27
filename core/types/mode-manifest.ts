@@ -270,6 +270,17 @@ export interface ModeManifest {
   name: string;
   /** Semantic version number */
   version: string;
+  /**
+   * Per-version highlights surfaced in the skill-update prompt. Keys are
+   * semver strings, values are short bullet points (one line each, no
+   * markdown). When a workspace's installed skill version differs from
+   * the current one, the launcher concatenates bullets for each version
+   * strictly greater than installed and ≤ current, newest first.
+   *
+   * Long history belongs in the project CHANGELOG; keep entries here to
+   * user-visible improvements since the last skill release.
+   */
+  changelog?: Record<string, string[]>;
   /** Human-readable display name (e.g. "Document") */
   displayName: string;
   /** Short description */

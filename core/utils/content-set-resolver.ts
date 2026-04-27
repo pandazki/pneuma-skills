@@ -17,6 +17,15 @@ export interface DirectoryContentSetOptions {
   minFiles?: number;
   /** Only consider directories matching this regex */
   dirPattern?: RegExp;
+  /**
+   * Explicit ordering by directory name. Listed prefixes appear first in the
+   * given order and become the default-selection candidate at index 0. Any
+   * prefix not in the list falls through to alphabetical ordering after.
+   *
+   * Useful when a mode wants its primary seed (e.g. the brand-register demo)
+   * to be the default rather than whichever name sorts alphabetically first.
+   */
+  priority?: string[];
 }
 
 /** Well-known BCP-47 language codes for auto-detection */
@@ -58,6 +67,9 @@ export function createDirectoryContentSetResolver(
   const parseName = options.parseName ?? defaultParseName;
   const minFiles = options.minFiles ?? 1;
   const dirPattern = options.dirPattern;
+  const priorityIndex = new Map<string, number>(
+    (options.priority ?? []).map((name, i) => [name, i]),
+  );
 
   return (files: ViewerFileContent[]): ContentSet[] => {
     // Collect top-level directories and their file counts
@@ -92,8 +104,14 @@ export function createDirectoryContentSetResolver(
     // Only return content sets if 2+ found — one directory isn't a switchable set
     if (sets.length < 2) return [];
 
-    // Sort by prefix for stable ordering
-    sets.sort((a, b) => a.prefix.localeCompare(b.prefix));
+    // Sort: explicit priority first (in declared order), then alphabetical
+    // for everything else. The first element becomes the default selection.
+    sets.sort((a, b) => {
+      const ai = priorityIndex.get(a.prefix) ?? Infinity;
+      const bi = priorityIndex.get(b.prefix) ?? Infinity;
+      if (ai !== bi) return ai - bi;
+      return a.prefix.localeCompare(b.prefix);
+    });
     return sets;
   };
 }

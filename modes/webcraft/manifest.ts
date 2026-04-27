@@ -8,9 +8,23 @@ import { loadSite, saveSite } from "./domain.js";
 
 const webcraftManifest: ModeManifest = {
   name: "webcraft",
-  version: "1.2.0",
+  version: "1.3.0",
   displayName: "WebCraft",
-  description: "Web design powered by Impeccable.style — 20 AI design commands, responsive preview, and export",
+  description: "Web design powered by Impeccable.style — 22 AI design commands, responsive preview, and export",
+  changelog: {
+    "1.3.0": [
+      "Synced Impeccable.style guidance to upstream v3.0.1",
+      "Added Document and Onboard commands (22 total)",
+      "New Pneuma Console seed showcases the product register vs the brand register",
+      "Pneuma stays the default seed regardless of alphabetical order",
+      "Internal page links inside seeds no longer 404 in the preview iframe",
+      "Skill update prompt now lists the highlights and links to the full changelog",
+    ],
+    "1.2.0": [
+      "Added Gazette seed (editorial long-form template)",
+      "Image generation scripts for hero illustrations and asset edits",
+    ],
+  },
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>`,
 
   skill: {
@@ -156,6 +170,7 @@ When the user provides original content (uploaded files, pasted HTML, or a URL t
     },
     commands: [
       { id: "teach", label: "Teach", description: "Gather design context for the project and save persistent guidelines to .impeccable.md" },
+      { id: "document", label: "Document", description: "Generate a DESIGN.md at the project root capturing the current visual design system in Google Stitch format" },
       { id: "shape", label: "Shape", description: "Run a discovery interview and produce a design brief before any code is written" },
       { id: "craft", label: "Craft", description: "Shape-then-build: run the discovery flow, then implement the feature in one pass" },
       { id: "audit", label: "Audit", description: "Comprehensive quality audit across accessibility, performance, theming, and responsive design" },
@@ -167,6 +182,7 @@ When the user provides original content (uploaded files, pasted HTML, or a URL t
       { id: "layout", label: "Layout", description: "Improve layout, spacing, and visual rhythm — fix monotonous grids and weak hierarchy" },
       { id: "optimize", label: "Optimize", description: "Improve performance across loading speed, rendering, animations, and bundle size" },
       { id: "harden", label: "Harden", description: "Make interfaces production-ready: error handling, empty states, onboarding flows, i18n, and edge cases" },
+      { id: "onboard", label: "Onboard", description: "Design first-run flows, empty states, and activation moments that get users to value quickly" },
       { id: "animate", label: "Animate", description: "Add purposeful animations, micro-interactions, and motion effects" },
       { id: "colorize", label: "Colorize", description: "Add strategic color to monochromatic or visually flat interfaces" },
       { id: "bolder", label: "Bolder", description: "Amplify safe or boring designs to be more visually impactful" },
@@ -187,8 +203,13 @@ The user just opened the workspace. You are ready to assist with web design and 
   init: {
     contentCheckPattern: "**/manifest.json",
     seedFiles: {
-      "modes/webcraft/seed/pneuma/": "pneuma/",
-      "modes/webcraft/seed/gazette/": "gazette/",
+      // Order matters — the resolver preserves filesystem discovery order
+      // (which mirrors install order), so the first seed becomes the
+      // default content set on first launch. pneuma is the brand-register
+      // primary; console is the product-register companion.
+      "modes/webcraft/seed/pneuma/":         "pneuma/",
+      "modes/webcraft/seed/gazette/":        "gazette/",
+      "modes/webcraft/seed/pneuma-console/": "pneuma-console/",
     },
     params: [
       { name: "falApiKey", label: "fal.ai API Key", description: "for AI image generation (default model: gpt-image-2)", type: "string", defaultValue: "", sensitive: true },

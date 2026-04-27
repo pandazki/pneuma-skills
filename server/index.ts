@@ -489,7 +489,36 @@ export async function startServer(options: ServerOptions) {
         const needsUpdate = installedVersion !== "" && installedVersion !== currentVersion;
         const dismissed = needsUpdate && dismissedVersion === currentVersion;
 
-        return c.json({ needsUpdate, currentVersion, installedVersion, dismissed });
+        // Extract changelog highlights for the version range. Newest first.
+        // Skipped silently when the manifest has no `changelog` field — the
+        // prompt simply renders without highlights and falls back to the
+        // version-only message it always showed.
+        type Highlight = { version: string; bullets: string[] };
+        let highlights: Highlight[] = [];
+        if (needsUpdate && manifest.changelog) {
+          const cmp = (a: string, b: string) => {
+            const ap = a.split(".").map((n) => parseInt(n, 10) || 0);
+            const bp = b.split(".").map((n) => parseInt(n, 10) || 0);
+            const len = Math.max(ap.length, bp.length);
+            for (let i = 0; i < len; i++) {
+              const av = ap[i] ?? 0;
+              const bv = bp[i] ?? 0;
+              if (av !== bv) return av - bv;
+            }
+            return 0;
+          };
+          highlights = Object.entries(manifest.changelog)
+            .filter(([v]) => cmp(v, installedVersion) > 0 && cmp(v, currentVersion) <= 0)
+            .sort(([a], [b]) => cmp(b, a))
+            .map(([version, bullets]) => ({ version, bullets }));
+        }
+
+        // Repo-level changelog link. Builtin modes share the project's
+        // CHANGELOG.md on GitHub; external modes may override later via a
+        // manifest field but for now the project link is the safe default.
+        const changelogUrl = "https://github.com/pandazki/pneuma-skills/blob/main/CHANGELOG.md";
+
+        return c.json({ needsUpdate, currentVersion, installedVersion, dismissed, highlights, changelogUrl });
       } catch (err) {
         // Can't check — just let them launch
         return c.json({ needsUpdate: false, currentVersion: "", installedVersion: "", dismissed: false });

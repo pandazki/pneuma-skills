@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sessions · Pneuma Console</title>
+  <style>
+    /*
+     * Pneuma Console — product register seed.
+     *
+     * Stance: tool that disappears into the task. System fonts, fixed rem
+     * scale, restrained palette (warm-tinted neutrals + one ink-blue
+     * accent ≤10%), data-dense, keyboard-first. No display fonts, no
+     * hero animations, no glass / gradient text. Light theme is the
+     * derived choice — admin consoles are consumed during focused work
+     * sessions in mixed light, and the data tables read better on light
+     * backgrounds.
+     */
+
+    :root {
+      /* Surface — warm-tinted neutrals, not cool blue-grays */
+      --bg:           oklch(98.5% 0.005 80);
+      --surface:      oklch(100% 0 0);
+      --surface-soft: oklch(96.5% 0.008 80);
+      --surface-hover:oklch(94% 0.01 80);
+
+      /* Text — four levels, all warm-tinted */
+      --text:           oklch(22% 0.012 80);
+      --text-secondary: oklch(45% 0.01 80);
+      --text-tertiary:  oklch(60% 0.008 80);
+      --text-faint:     oklch(72% 0.006 80);
+
+      /* Border */
+      --border:      oklch(90% 0.01 80);
+      --border-soft: oklch(94% 0.008 80);
+
+      /* Single accent — Pneuma warm orange, ≤10% of surface */
+      --accent:        oklch(62% 0.2 55);
+      --accent-soft:   oklch(96% 0.04 55);
+      --accent-border: oklch(82% 0.1 55);
+
+      /* Status colors — semantic only, never decorative */
+      --status-running:  oklch(58% 0.14 145);
+      --status-running-bg: oklch(96% 0.03 145);
+      --status-idle:     oklch(60% 0.005 80);
+      --status-idle-bg:  oklch(94% 0.005 80);
+      --status-error:    oklch(54% 0.16 25);
+      --status-error-bg: oklch(96% 0.025 25);
+
+      /* Type — system stack, no display font */
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+              "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+      /* Fixed rem scale — no clamp, product UI is consistent at every viewport */
+      --text-xs:  12px;
+      --text-sm:  13px;
+      --text-md:  14px;
+      --text-lg:  15px;
+      --text-xl:  18px;
+      --text-2xl: 22px;
+
+      /* 4pt spacing — semantic names, not pixel-named */
+      --space-2:  4px;
+      --space-3:  8px;
+      --space-4:  12px;
+      --space-5:  16px;
+      --space-6:  20px;
+      --space-7:  28px;
+      --space-8:  40px;
+
+      --radius-sm: 4px;
+      --radius:    6px;
+      --radius-lg: 10px;
+
+      /* Sidebar width */
+      --sidebar-w: 232px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { height: 100%; }
+
+    body {
+      font-family: var(--font);
+      font-size: var(--text-md);
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
+
+    /* ── Layout shell ───────────────────────────────────── */
+
+    .shell {
+      display: grid;
+      grid-template-columns: var(--sidebar-w) 1fr;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ────────────────────────────────────────── */
+
+    .sidebar {
+      background: var(--surface-soft);
+      border-right: 1px solid var(--border);
+      padding: var(--space-5) var(--space-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-7);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-2) var(--space-3);
+      font-weight: 600;
+      font-size: var(--text-md);
+      letter-spacing: -0.005em;
+    }
+    .brand-mark {
+      width: 22px; height: 22px;
+      border-radius: var(--radius-sm);
+      background: var(--accent);
+      color: var(--surface);
+      display: grid; place-items: center;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .brand small {
+      font-weight: 400;
+      color: var(--text-tertiary);
+      font-size: var(--text-xs);
+      margin-left: auto;
+      letter-spacing: 0.02em;
+    }
+
+    .nav-section h6 {
+      font-size: var(--text-xs);
+      font-weight: 500;
+      color: var(--text-tertiary);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 0 var(--space-3);
+      margin-bottom: var(--space-3);
+    }
+
+    .nav-list { display: flex; flex-direction: column; gap: 1px; }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: 6px var(--space-3);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: var(--text-sm);
+      transition: background 80ms ease, color 80ms ease;
+    }
+    .nav-item:hover { background: var(--surface-hover); color: var(--text); }
+    .nav-item.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 500;
+    }
+    .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.85; }
+    .nav-item kbd {
+      margin-left: auto;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-faint);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 1px 5px;
+      line-height: 1.4;
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: var(--space-3);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+      border-top: 1px solid var(--border);
+    }
+    .avatar {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: oklch(72% 0.06 80);
+      color: var(--surface);
+      display: grid; place-items: center;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    /* ── Main content ───────────────────────────────────── */
+
+    main {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-5);
+      padding: var(--space-4) var(--space-7);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .topbar h1 {
+      font-size: var(--text-xl);
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .topbar .crumbs {
+      font-size: var(--text-sm);
+      color: var(--text-tertiary);
+    }
+    .topbar .spacer { flex: 1; }
+
+    .search {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      width: 280px;
+      min-width: 0;
+      padding: 6px var(--space-4);
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: var(--text-sm);
+      color: var(--text-tertiary);
+      white-space: nowrap;
+      overflow: hidden;
+      transition: border-color 80ms ease, background 80ms ease;
+    }
+    .search:hover { border-color: var(--accent-border); background: var(--surface); }
+    .search-text {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .search kbd {
+      flex-shrink: 0;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-faint);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 1px 5px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px var(--space-4);
+      border-radius: var(--radius);
+      font-size: var(--text-sm);
+      font-weight: 500;
+      transition: background 80ms ease;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: var(--surface);
+    }
+    .btn-primary:hover { background: oklch(56% 0.21 55); }
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--surface-soft); }
+
+    /* ── Content area ───────────────────────────────────── */
+
+    .content {
+      padding: var(--space-7);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-7);
+      max-width: 1320px;
+    }
+
+    /* ── Metrics row — the v3.0 anti-hero-metric variant.
+         No big accent number, no gradient. Side-by-side rows of
+         label + value, all the same weight, accent only on
+         meaningful deltas (red for over-budget, green for healthy).
+    */
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: var(--space-4);
+      padding: var(--space-5) var(--space-6);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+    }
+    .metric-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding-right: var(--space-5);
+      border-right: 1px solid var(--border-soft);
+    }
+    .metric-cell:last-child { border-right: 0; padding-right: 0; }
+    .metric-label {
+      font-size: var(--text-xs);
+      color: var(--text-tertiary);
+      letter-spacing: 0.02em;
+    }
+    .metric-value {
+      font-size: var(--text-2xl);
+      font-weight: 500;
+      letter-spacing: -0.015em;
+      font-variant-numeric: tabular-nums;
+    }
+    .metric-delta {
+      font-size: var(--text-xs);
+      color: var(--text-tertiary);
+      font-variant-numeric: tabular-nums;
+    }
+    .metric-delta.up { color: var(--status-running); }
+    .metric-delta.down { color: var(--status-error); }
+
+    /* ── Table ──────────────────────────────────────────── */
+
+    .table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .table-head {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+      padding: var(--space-4) var(--space-6);
+      border-bottom: 1px solid var(--border);
+    }
+    .table-head h2 {
+      font-size: var(--text-md);
+      font-weight: 600;
+    }
+    .table-head .filters {
+      margin-left: auto;
+      display: flex;
+      gap: var(--space-3);
+    }
+    .filter-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+    }
+    .filter-pill.active {
+      background: var(--accent-soft);
+      border-color: var(--accent-border);
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--text-sm);
+    }
+    th, td {
+      text-align: left;
+      padding: 10px var(--space-6);
+      vertical-align: middle;
+    }
+    thead th {
+      font-weight: 500;
+      font-size: var(--text-xs);
+      color: var(--text-tertiary);
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      background: var(--surface-soft);
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr {
+      border-bottom: 1px solid var(--border-soft);
+      transition: background 60ms ease;
+    }
+    tbody tr:last-child { border-bottom: 0; }
+    tbody tr:hover { background: var(--surface-soft); }
+
+    .session-id {
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      color: var(--text);
+    }
+    .mode-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 1px 8px;
+      border-radius: 4px;
+      font-size: var(--text-xs);
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+    .agent-name {
+      color: var(--text);
+    }
+    .agent-name small {
+      color: var(--text-tertiary);
+      font-size: var(--text-xs);
+      margin-left: 5px;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: var(--text-xs);
+      font-weight: 500;
+    }
+    .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+    .status.running { color: var(--status-running); }
+    .status.running .status-dot { background: var(--status-running); box-shadow: 0 0 0 2px var(--status-running-bg); }
+    .status.idle { color: var(--text-tertiary); }
+    .status.idle .status-dot { background: var(--text-faint); }
+    .status.error { color: var(--status-error); }
+    .status.error .status-dot { background: var(--status-error); box-shadow: 0 0 0 2px var(--status-error-bg); }
+
+    .num { font-variant-numeric: tabular-nums; text-align: right; }
+    .runtime { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+    .cost {
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .row-actions {
+      display: flex;
+      gap: 2px;
+      justify-content: flex-end;
+    }
+    .icon-btn {
+      width: 26px; height: 26px;
+      border-radius: var(--radius-sm);
+      display: grid; place-items: center;
+      color: var(--text-tertiary);
+      transition: background 60ms ease, color 60ms ease;
+    }
+    .icon-btn:hover { background: var(--surface-hover); color: var(--text); }
+    .icon-btn svg { width: 14px; height: 14px; }
+
+    /* ── Footer status bar ──────────────────────────────── */
+
+    .table-foot {
+      display: flex;
+      align-items: center;
+      gap: var(--space-5);
+      padding: 10px var(--space-6);
+      border-top: 1px solid var(--border);
+      background: var(--surface-soft);
+      font-size: var(--text-xs);
+      color: var(--text-tertiary);
+    }
+    .table-foot .pager {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+    .pager .icon-btn {
+      width: 22px; height: 22px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    /*
+     * Responsive collapse — the table is the heavy element; below 960px we
+     * hide the sidebar, below 720px we drop low-signal columns (owner,
+     * runtime, tokens) so the page stops over-scrolling sideways. At
+     * phone width the metric strip stacks 2-up and the topbar tightens.
+     */
+    @media (max-width: 960px) {
+      .shell { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .content { padding: var(--space-5); }
+      .topbar { padding: var(--space-4) var(--space-5); gap: var(--space-3); }
+      .topbar .search { display: none; }
+      .metrics { grid-template-columns: repeat(2, 1fr); padding: var(--space-4) var(--space-5); }
+      .metric-cell:nth-child(2) { border-right: 0; padding-right: 0; }
+      .metric-cell { padding-bottom: var(--space-3); }
+      .metric-cell:nth-child(1), .metric-cell:nth-child(2) { border-bottom: 1px solid var(--border-soft); margin-bottom: var(--space-3); }
+    }
+    @media (max-width: 720px) {
+      .table-head { flex-wrap: wrap; gap: var(--space-3); padding: var(--space-4) var(--space-5); }
+      .table-head .filters { margin-left: 0; flex-wrap: wrap; }
+      th, td { padding: 10px var(--space-5); }
+      /* Drop owner / tokens / runtime — keep session, mode, status, cost */
+      th:nth-child(3), td:nth-child(3),
+      th:nth-child(5), td:nth-child(5),
+      th:nth-child(6), td:nth-child(6) { display: none; }
+    }
+    @media (max-width: 520px) {
+      .metrics { grid-template-columns: 1fr; }
+      .metric-cell { border-right: 0; padding-right: 0; }
+      .metric-cell:nth-child(1), .metric-cell:nth-child(2), .metric-cell:nth-child(3) {
+        border-bottom: 1px solid var(--border-soft);
+        margin-bottom: var(--space-3);
+      }
+      /* Also drop mode pill at phone size — session ID is enough */
+      th:nth-child(2), td:nth-child(2) { display: none; }
+      .topbar h1 { font-size: var(--text-lg); }
+      .crumbs { display: none; }
+      .btn-secondary { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">P</span>
+        Pneuma
+        <small>Pro</small>
+      </div>
+
+      <div class="nav-section">
+        <h6>Workspace</h6>
+        <div class="nav-list">
+          <a class="nav-item active" href="index.html">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
+            Sessions
+          </a>
+          <a class="nav-item" href="placeholder.html">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h8"/></svg>
+            Activity
+          </a>
+          <a class="nav-item" href="placeholder.html">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h10v10H3z"/><path d="M3 7h10M7 3v10"/></svg>
+            Modes
+          </a>
+          <a class="nav-item" href="placeholder.html">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1.5"/></svg>
+            Schedules
+            <kbd>S</kbd>
+          </a>
+        </div>
+      </div>
+
+      <div class="nav-section">
+        <h6>Team</h6>
+        <div class="nav-list">
+          <a class="nav-item" href="placeholder.html">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="6" r="2.5"/><path d="M2 13c0-2 2-3.5 4-3.5s4 1.5 4 3.5"/><circle cx="11" cy="5.5" r="2"/><path d="M11 9c1.5 0 3 1 3 2.5"/></svg>
+            Members
+          </a>
+          <a class="nav-item" href="placeholder.html">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4l6 4 6-4"/><rect x="2" y="3" width="12" height="10" rx="1"/></svg>
+            Invitations
+          </a>
+          <a class="nav-item" href="settings.html">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5L13 13M3 13l1.5-1.5M11.5 4.5L13 3"/></svg>
+            Settings
+            <kbd>,</kbd>
+          </a>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="avatar">EW</div>
+        <div>
+          <div style="color: var(--text); font-weight: 500;">Eli Wen</div>
+          <div style="font-size: var(--text-xs);">Carbon Park · Owner</div>
+        </div>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <div class="crumbs">Carbon Park / Workspace</div>
+          <h1>Sessions</h1>
+        </div>
+        <div class="spacer"></div>
+        <div class="search">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="m11 11 3 3"/></svg>
+          <span class="search-text">Search sessions, modes, agents…</span>
+          <kbd>⌘K</kbd>
+        </div>
+        <button class="btn btn-secondary">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 8a6 6 0 1 1-2-4.5"/><path d="M14 3v3h-3"/></svg>
+          Refresh
+        </button>
+        <button class="btn btn-primary">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v10M3 8h10"/></svg>
+          New session
+        </button>
+      </header>
+
+      <div class="content">
+
+        <section class="metrics">
+          <div class="metric-cell">
+            <span class="metric-label">Active sessions</span>
+            <span class="metric-value">12</span>
+            <span class="metric-delta up">+2 since yesterday</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-label">Tokens this week</span>
+            <span class="metric-value">4.82M</span>
+            <span class="metric-delta">68% of weekly cap</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-label">Spend MTD</span>
+            <span class="metric-value">$1,284.40</span>
+            <span class="metric-delta">$216 under budget</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-label">Avg session cost</span>
+            <span class="metric-value">$0.84</span>
+            <span class="metric-delta down">+$0.06 vs last week</span>
+          </div>
+        </section>
+
+        <section class="table-wrap">
+          <header class="table-head">
+            <h2>Recent sessions</h2>
+            <div class="filters">
+              <span class="filter-pill active">All · 248</span>
+              <span class="filter-pill">Running · 12</span>
+              <span class="filter-pill">Idle · 196</span>
+              <span class="filter-pill">Error · 4</span>
+            </div>
+          </header>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 22%;">Session</th>
+                <th>Mode</th>
+                <th>Owner</th>
+                <th>Status</th>
+                <th class="num">Runtime</th>
+                <th class="num">Tokens</th>
+                <th class="num">Cost</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="session-id">slide-20260427-1042</div>
+                  <small style="color: var(--text-tertiary); font-size: 11.5px;">Q2 board deck draft v3</small>
+                </td>
+                <td><span class="mode-pill">slide</span></td>
+                <td class="agent-name">Mira Pope <small>opus</small></td>
+                <td><span class="status running"><span class="status-dot"></span>Running</span></td>
+                <td class="runtime">42m 18s</td>
+                <td class="num">182,440</td>
+                <td class="cost">$1.46</td>
+                <td>
+                  <div class="row-actions">
+                    <button class="icon-btn" title="Open"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 3 5 5-5 5"/></svg></button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="session-id">kami-20260427-0918</div>
+                  <small style="color: var(--text-tertiary); font-size: 11.5px;">NVDA equity report — long form</small>
+                </td>
+                <td><span class="mode-pill">kami</span></td>
+                <td class="agent-name">Eli Wen <small>opus</small></td>
+                <td><span class="status running"><span class="status-dot"></span>Running</span></td>
+                <td class="runtime">1h 06m</td>
+                <td class="num">512,800</td>
+                <td class="cost">$4.12</td>
+                <td>
+                  <div class="row-actions">
+                    <button class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 3 5 5-5 5"/></svg></button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="session-id">webcraft-20260427-0832</div>
+                  <small style="color: var(--text-tertiary); font-size: 11.5px;">Acme dashboard refresh</small>
+                </td>
+                <td><span class="mode-pill">webcraft</span></td>
+                <td class="agent-name">Pi Hidayat <small>haiku</small></td>
+                <td><span class="status idle"><span class="status-dot"></span>Idle · 18m</span></td>
+                <td class="runtime">2h 12m</td>
+                <td class="num">384,260</td>
+                <td class="cost">$0.92</td>
+                <td>
+                  <div class="row-actions">
+                    <button class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 3 5 5-5 5"/></svg></button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="session-id">draw-20260427-0801</div>
+                  <small style="color: var(--text-tertiary); font-size: 11.5px;">Onboarding flow whiteboard</small>
+                </td>
+                <td><span class="mode-pill">draw</span></td>
+                <td class="agent-name">Lucas Tame <small>sonnet</small></td>
+                <td><span class="status idle"><span class="status-dot"></span>Idle · 1h</span></td>
+                <td class="runtime">38m 04s</td>
+                <td class="num">96,512</td>
+                <td class="cost">$0.18</td>
+                <td>
+                  <div class="row-actions">
+                    <button class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 3 5 5-5 5"/></svg></button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="session-id">remotion-20260427-0742</div>
+                  <small style="color: var(--text-tertiary); font-size: 11.5px;">Quarterly recap — final cut</small>
+                </td>
+                <td><span class="mode-pill">remotion</span></td>
+                <td class="agent-name">Mira Pope <small>opus</small></td>
+                <td><span class="status error"><span class="status-dot"></span>Error · render</span></td>
+                <td class="runtime">14m 22s</td>
+                <td class="num">28,144</td>
+                <td class="cost">$0.06</td>
+                <td>
+                  <div class="row-actions">
+                    <button class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 3 5 5-5 5"/></svg></button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="session-id">doc-20260426-1722</div>
+                  <small style="color: var(--text-tertiary); font-size: 11.5px;">Carbon Park PRD — agent suite</small>
+                </td>
+                <td><span class="mode-pill">doc</span></td>
+                <td class="agent-name">Eli Wen <small>sonnet</small></td>
+                <td><span class="status idle"><span class="status-dot"></span>Idle · 17h</span></td>
+                <td class="runtime">3h 48m</td>
+                <td class="num">844,100</td>
+                <td class="cost">$2.04</td>
+                <td>
+                  <div class="row-actions">
+                    <button class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 3 5 5-5 5"/></svg></button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="session-id">gridboard-20260426-1611</div>
+                  <small style="color: var(--text-tertiary); font-size: 11.5px;">Sprint 47 retro</small>
+                </td>
+                <td><span class="mode-pill">gridboard</span></td>
+                <td class="agent-name">Sasha Vu <small>haiku</small></td>
+                <td><span class="status idle"><span class="status-dot"></span>Idle · 19h</span></td>
+                <td class="runtime">52m 11s</td>
+                <td class="num">112,802</td>
+                <td class="cost">$0.21</td>
+                <td>
+                  <div class="row-actions">
+                    <button class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 3 5 5-5 5"/></svg></button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="session-id">illustrate-20260426-1402</div>
+                  <small style="color: var(--text-tertiary); font-size: 11.5px;">Brand specimen — autumn drop</small>
+                </td>
+                <td><span class="mode-pill">illustrate</span></td>
+                <td class="agent-name">Pi Hidayat <small>opus</small></td>
+                <td><span class="status idle"><span class="status-dot"></span>Idle · 21h</span></td>
+                <td class="runtime">28m 46s</td>
+                <td class="num">61,884</td>
+                <td class="cost">$0.49</td>
+                <td>
+                  <div class="row-actions">
+                    <button class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 3 5 5-5 5"/></svg></button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <footer class="table-foot">
+            <span>Showing 8 of 248 sessions</span>
+            <span style="color: var(--text-faint);">·</span>
+            <span>Updated 14s ago</span>
+            <div class="pager">
+              <button class="icon-btn" title="Previous"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m10 3-5 5 5 5"/></svg></button>
+              <span style="font-variant-numeric: tabular-nums;">1 / 31</span>
+              <button class="icon-btn" title="Next"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 3 5 5-5 5"/></svg></button>
+            </div>
+          </footer>
+        </section>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

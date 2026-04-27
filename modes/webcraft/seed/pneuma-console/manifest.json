@@ -1,0 +1,7 @@
+{
+  "title": "Pneuma Console",
+  "pages": [
+    { "file": "index.html", "title": "Sessions" },
+    { "file": "settings.html", "title": "Settings" }
+  ]
+}

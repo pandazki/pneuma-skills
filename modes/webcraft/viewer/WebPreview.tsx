@@ -364,15 +364,34 @@ function ImpeccableAttribution({ collapsed }: { collapsed: boolean }) {
  */
 // Intercept hash-only anchor clicks so they scroll in-place instead of
 // navigating away from the srcdoc (which <base href> would otherwise cause).
+//
+// Also intercept page-relative anchor clicks (e.g. <a href="settings.html">):
+// without this, the click would navigate the iframe to the absolute URL the
+// <base href> resolves to, which then causes React's srcdoc effect to fight
+// the navigation. Instead, post a message to the parent so it can update
+// activeFile and re-render this iframe with the new content — keeping the
+// page navigator in sync and preserving the about:srcdoc origin.
 const HASH_NAV_FIX = `<script>
 document.addEventListener('click',function(e){
-  var a=e.target.closest('a[href^="#"]');
+  var a=e.target.closest('a[href]');
   if(!a)return;
-  var hash=a.getAttribute('href');
-  if(!hash||hash.length<2)return;
+  if(a.target&&a.target!=='_self')return;
+  var rawHref=a.getAttribute('href');
+  if(!rawHref)return;
+  if(rawHref.charAt(0)==='#'){
+    e.preventDefault();
+    if(rawHref.length<2)return;
+    try{var target=document.querySelector(rawHref)||document.getElementById(rawHref.slice(1));if(target)target.scrollIntoView({behavior:'smooth'});}catch(_){}
+    return;
+  }
+  if(/^[a-z][a-z0-9+.-]*:/i.test(rawHref))return;
+  if(rawHref.charAt(0)==='/')return;
+  var fileMatch=rawHref.match(/^([^?#]+)/);
+  if(!fileMatch)return;
+  var file=fileMatch[1];
+  if(!/\\.html?$/i.test(file)&&!file.endsWith('/'))return;
   e.preventDefault();
-  var target=document.querySelector(hash)||document.getElementById(hash.slice(1));
-  if(target)target.scrollIntoView({behavior:'smooth'});
+  window.parent.postMessage({type:'pneuma:webcraft:navigate',href:file},'*');
 });
 </script>`;
 
@@ -883,12 +902,35 @@ export default function WebPreview({
     [pageEntries],
   );
 
+  // Reachable html targets within the active content set: declared pages
+  // plus any other .html file living directly under the same prefix. The
+  // PageNavigator only renders declared pages, but internal links inside a
+  // page can navigate to siblings (e.g. an empty-state placeholder) without
+  // the manifest having to enumerate every supporting screen.
+  const reachableHtmlFiles = useMemo(() => {
+    const prefix = activeContentSet ? `${activeContentSet}/` : "";
+    const extras: string[] = [];
+    for (const f of files) {
+      if (!/\.html?$/i.test(f.path)) continue;
+      if (prefix) {
+        if (!f.path.startsWith(prefix)) continue;
+        const rel = f.path.slice(prefix.length);
+        if (rel.includes("/")) continue;
+        extras.push(rel);
+      } else {
+        if (f.path.includes("/")) continue;
+        extras.push(f.path);
+      }
+    }
+    return Array.from(new Set([...htmlFiles, ...extras]));
+  }, [files, activeContentSet, htmlFiles]);
+
   // Determine which file to show
   const currentFile = useMemo(() => {
-    if (activeFile && htmlFiles.includes(activeFile)) return activeFile;
-    if (selectedFile && htmlFiles.includes(selectedFile)) return selectedFile;
+    if (activeFile && reachableHtmlFiles.includes(activeFile)) return activeFile;
+    if (selectedFile && reachableHtmlFiles.includes(selectedFile)) return selectedFile;
     return htmlFiles.find((f) => /^index\.html$/i.test(f)) || htmlFiles[0] || "";
-  }, [activeFile, selectedFile, htmlFiles]);
+  }, [activeFile, selectedFile, htmlFiles, reachableHtmlFiles]);
 
   // Compute base href for correct relative asset resolution
   const baseHref = useMemo(() => {
@@ -1133,6 +1175,26 @@ export default function WebPreview({
     },
     [onActiveFileChange, onSelect],
   );
+
+  // ── In-iframe link navigation ───────────────────────────────────────────────
+  // The HASH_NAV_FIX script in the iframe posts pneuma:webcraft:navigate when
+  // the user clicks a page-relative <a href="other.html">. Resolve the target
+  // against the manifest's page list and switch to it via handlePageChange.
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      if (!e.data || e.data.type !== "pneuma:webcraft:navigate") return;
+      const raw = String(e.data.href || "").trim();
+      if (!raw) return;
+      // Strip leading "./", drop trailing "/" → "index.html"
+      let target = raw.replace(/^\.\//, "");
+      if (target.endsWith("/")) target = `${target}index.html`;
+      if (reachableHtmlFiles.includes(target)) {
+        handlePageChange(target);
+      }
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [reachableHtmlFiles, handlePageChange]);
 
   // ── Locator navigation from chat cards ──────────────────────────────────────
   useEffect(() => {

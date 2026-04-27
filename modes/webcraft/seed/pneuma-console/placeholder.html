@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Section preview · Pneuma Console</title>
+  <style>
+    /*
+     * Placeholder page — shared empty state for the five sidebar entries
+     * (Activity / Modes / Schedules / Members / Invitations) that are not
+     * yet wired up. The Pneuma Console seed is a product-register design
+     * sample; only Sessions and Settings have real screens. Rather than
+     * dead `href="#"` links, every unfinished entry routes here so the
+     * navigation stays honest and visitors are guided to the two pages
+     * that are actually demonstrated.
+     */
+
+    :root {
+      --bg:           oklch(98.5% 0.005 80);
+      --surface:      oklch(100% 0 0);
+      --surface-soft: oklch(96.5% 0.008 80);
+      --surface-hover:oklch(94% 0.01 80);
+
+      --text:           oklch(22% 0.012 80);
+      --text-secondary: oklch(45% 0.01 80);
+      --text-tertiary:  oklch(60% 0.008 80);
+      --text-faint:     oklch(72% 0.006 80);
+
+      --border:      oklch(90% 0.01 80);
+      --border-soft: oklch(94% 0.008 80);
+
+      --accent:        oklch(62% 0.2 55);
+      --accent-soft:   oklch(96% 0.04 55);
+      --accent-border: oklch(82% 0.1 55);
+
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+              "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+      --text-xs:  12px;
+      --text-sm:  13px;
+      --text-md:  14px;
+      --text-lg:  15px;
+      --text-xl:  18px;
+      --text-2xl: 22px;
+      --text-3xl: 26px;
+
+      --space-2:  4px;
+      --space-3:  8px;
+      --space-4:  12px;
+      --space-5:  16px;
+      --space-6:  20px;
+      --space-7:  28px;
+      --space-8:  40px;
+      --space-9:  64px;
+
+      --radius-sm: 4px;
+      --radius:    6px;
+      --radius-lg: 10px;
+
+      --sidebar-w: 232px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+
+    body {
+      font-family: var(--font);
+      font-size: var(--text-md);
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
+
+    .shell { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+
+    /* ── Sidebar (same as Sessions / Settings) ──────────── */
+    .sidebar {
+      background: var(--surface-soft);
+      border-right: 1px solid var(--border);
+      padding: var(--space-5) var(--space-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-7);
+    }
+    .brand {
+      display: flex; align-items: center; gap: var(--space-3);
+      padding: var(--space-2) var(--space-3);
+      font-weight: 600; font-size: var(--text-md);
+      letter-spacing: -0.005em;
+    }
+    .brand-mark {
+      width: 22px; height: 22px;
+      border-radius: var(--radius-sm);
+      background: var(--accent); color: var(--surface);
+      display: grid; place-items: center;
+      font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+    }
+    .brand small {
+      font-weight: 400; color: var(--text-tertiary);
+      font-size: var(--text-xs); margin-left: auto; letter-spacing: 0.02em;
+    }
+    .nav-section h6 {
+      font-size: var(--text-xs); font-weight: 500;
+      color: var(--text-tertiary); letter-spacing: 0.04em;
+      text-transform: uppercase; padding: 0 var(--space-3);
+      margin-bottom: var(--space-3);
+    }
+    .nav-list { display: flex; flex-direction: column; gap: 1px; }
+    .nav-item {
+      display: flex; align-items: center; gap: var(--space-3);
+      padding: 6px var(--space-3); border-radius: var(--radius-sm);
+      color: var(--text-secondary); font-size: var(--text-sm);
+      transition: background 80ms ease, color 80ms ease;
+    }
+    .nav-item:hover { background: var(--surface-hover); color: var(--text); }
+    .nav-item.active {
+      background: var(--accent-soft); color: var(--accent); font-weight: 500;
+    }
+    .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.85; }
+    .nav-item kbd {
+      margin-left: auto; font-family: var(--font-mono); font-size: 11px;
+      color: var(--text-faint); background: var(--surface);
+      border: 1px solid var(--border); border-radius: 3px;
+      padding: 1px 5px; line-height: 1.4;
+    }
+    .sidebar-footer {
+      margin-top: auto; padding: var(--space-3);
+      display: flex; align-items: center; gap: var(--space-3);
+      font-size: var(--text-sm); color: var(--text-secondary);
+      border-top: 1px solid var(--border);
+    }
+    .avatar {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: oklch(72% 0.06 80); color: var(--surface);
+      display: grid; place-items: center;
+      font-size: 11px; font-weight: 600;
+    }
+
+    /* ── Main shell ─────────────────────────────────────── */
+    main { display: flex; flex-direction: column; min-width: 0; }
+
+    .topbar {
+      display: flex; align-items: center; gap: var(--space-5);
+      padding: var(--space-4) var(--space-7);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .topbar h1 {
+      font-size: var(--text-xl); font-weight: 600; letter-spacing: -0.01em;
+    }
+    .topbar .crumbs { font-size: var(--text-sm); color: var(--text-tertiary); }
+
+    /* ── Empty state ─────────────────────────────────────
+     * Centered card explaining the placeholder, with two strong CTAs back
+     * to the working pages. Kept restrained — no display fonts, no glow,
+     * no gradient text. The accent appears once, on the primary button. */
+    .empty {
+      flex: 1;
+      display: grid;
+      place-items: center;
+      padding: var(--space-8) var(--space-7);
+    }
+    .empty-card {
+      max-width: 480px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-5);
+      text-align: center;
+    }
+    .empty-icon {
+      width: 56px; height: 56px;
+      border-radius: 14px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      display: grid; place-items: center;
+    }
+    .empty-card h2 {
+      font-size: var(--text-3xl);
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      line-height: 1.25;
+    }
+    .empty-card p {
+      color: var(--text-secondary);
+      font-size: var(--text-md);
+      line-height: 1.65;
+      max-width: 42ch;
+    }
+    .empty-card p code {
+      font-family: var(--font-mono);
+      font-size: 0.92em;
+      background: var(--surface-soft);
+      border: 1px solid var(--border-soft);
+      border-radius: 3px;
+      padding: 1px 5px;
+    }
+    .empty-cta {
+      display: flex;
+      gap: var(--space-3);
+      margin-top: var(--space-3);
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px var(--space-5);
+      border-radius: var(--radius);
+      font-size: var(--text-sm);
+      font-weight: 500;
+      transition: background 80ms ease, border-color 80ms ease;
+    }
+    .btn svg { width: 14px; height: 14px; }
+    .btn-primary {
+      background: var(--accent);
+      color: var(--surface);
+    }
+    .btn-primary:hover { background: oklch(56% 0.21 55); }
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--surface-soft); border-color: var(--accent-border); }
+
+    .empty-meta {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      margin-top: var(--space-5);
+      padding-top: var(--space-5);
+      border-top: 1px solid var(--border-soft);
+      width: 100%;
+      justify-content: center;
+      font-size: var(--text-xs);
+      color: var(--text-tertiary);
+      letter-spacing: 0.02em;
+    }
+    .empty-meta-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--border); }
+
+    /* ── Responsive ─────────────────────────────────────── */
+    @media (max-width: 960px) {
+      .shell { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .topbar { padding: var(--space-4) var(--space-5); }
+      .empty { padding: var(--space-7) var(--space-5); }
+    }
+    @media (max-width: 520px) {
+      .empty-card h2 { font-size: var(--text-2xl); }
+      .empty-cta { flex-direction: column; width: 100%; }
+      .empty-cta .btn { justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">P</span>
+        Pneuma
+        <small>Pro</small>
+      </div>
+
+      <div class="nav-section">
+        <h6>Workspace</h6>
+        <div class="nav-list">
+          <a class="nav-item" href="index.html">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
+            Sessions
+          </a>
+          <a class="nav-item" href="placeholder.html">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h8"/></svg>
+            Activity
+          </a>
+          <a class="nav-item" href="placeholder.html">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h10v10H3z"/><path d="M3 7h10M7 3v10"/></svg>
+            Modes
+          </a>
+          <a class="nav-item" href="placeholder.html">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1.5"/></svg>
+            Schedules
+            <kbd>S</kbd>
+          </a>
+        </div>
+      </div>
+
+      <div class="nav-section">
+        <h6>Team</h6>
+        <div class="nav-list">
+          <a class="nav-item" href="placeholder.html">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="6" r="2.5"/><path d="M2 13c0-2 2-3.5 4-3.5s4 1.5 4 3.5"/><circle cx="11" cy="5.5" r="2"/><path d="M11 9c1.5 0 3 1 3 2.5"/></svg>
+            Members
+          </a>
+          <a class="nav-item" href="placeholder.html">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4l6 4 6-4"/><rect x="2" y="3" width="12" height="10" rx="1"/></svg>
+            Invitations
+          </a>
+          <a class="nav-item" href="settings.html">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5L13 13M3 13l1.5-1.5M11.5 4.5L13 3"/></svg>
+            Settings
+            <kbd>,</kbd>
+          </a>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="avatar">EW</div>
+        <div>
+          <div style="color: var(--text); font-weight: 500;">Eli Wen</div>
+          <div style="font-size: var(--text-xs);">Carbon Park · Owner</div>
+        </div>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <div class="crumbs">Pneuma Console / Preview</div>
+          <h1>Section preview</h1>
+        </div>
+      </header>
+
+      <section class="empty">
+        <div class="empty-card">
+          <div class="empty-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/><path d="M12 8v4l3 2"/></svg>
+          </div>
+
+          <h2>This section is a placeholder</h2>
+
+          <p>
+            Pneuma Console is a <strong>product-register</strong> design sample —
+            data-dense, system fonts, restrained palette. Only two screens are
+            wired up: the sessions dashboard and the settings form. The rest of
+            the sidebar is here to keep the navigation honest at full scale.
+          </p>
+
+          <div class="empty-cta">
+            <a class="btn btn-primary" href="index.html">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
+              Open Sessions
+            </a>
+            <a class="btn btn-secondary" href="settings.html">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5L13 13M3 13l1.5-1.5M11.5 4.5L13 3"/></svg>
+              Open Settings
+            </a>
+          </div>
+
+          <div class="empty-meta">
+            <span>Two pages live</span>
+            <span class="empty-meta-dot"></span>
+            <span>Five sections pending</span>
+            <span class="empty-meta-dot"></span>
+            <span>Product register</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+  </div>
+</body>
+</html>

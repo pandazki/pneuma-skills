@@ -796,6 +796,8 @@ function SessionCard({
   const [skillUpdate, setSkillUpdate] = useState<{
     currentVersion: string;
     installedVersion: string;
+    highlights?: { version: string; bullets: string[] }[];
+    changelogUrl?: string;
   } | null>(null);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
@@ -823,7 +825,12 @@ function SessionCard({
       });
       const data = await res.json();
       if (data.needsUpdate && !data.dismissed) {
-        setSkillUpdate({ currentVersion: data.currentVersion, installedVersion: data.installedVersion });
+        setSkillUpdate({
+          currentVersion: data.currentVersion,
+          installedVersion: data.installedVersion,
+          highlights: data.highlights,
+          changelogUrl: data.changelogUrl,
+        });
         setLaunching(false);
         return;
       }
@@ -1022,6 +1029,30 @@ function SessionCard({
               <button onClick={handleUpdate} className="px-2 py-1 text-[10px] rounded bg-cc-primary/20 text-cc-primary hover:bg-cc-primary hover:text-white font-medium cursor-pointer transition-colors">Update</button>
             </div>
           </div>
+          {skillUpdate.highlights && skillUpdate.highlights.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-cc-border/30 max-h-28 overflow-y-auto">
+              <ul className="space-y-0.5">
+                {skillUpdate.highlights.flatMap((h) =>
+                  h.bullets.map((b, i) => (
+                    <li key={`${h.version}-${i}`} className="text-[10px] text-cc-muted/80 leading-snug flex gap-1.5">
+                      <span className="text-cc-primary/70 shrink-0">·</span>
+                      <span className="truncate" title={b}>{b}</span>
+                    </li>
+                  )),
+                )}
+              </ul>
+              {skillUpdate.changelogUrl && (
+                <a
+                  href={skillUpdate.changelogUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1.5 inline-block text-[10px] text-cc-primary hover:underline"
+                >
+                  View full changelog →
+                </a>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1052,7 +1083,13 @@ function CompactSessionRow({
   const [launching, setLaunching] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
-  const [skillUpdate, setSkillUpdate] = useState<{ currentVersion: string; installedVersion: string } | null>(null);
+  const [skillUpdate, setSkillUpdate] = useState<{
+    currentVersion: string;
+    installedVersion: string;
+    highlights?: { version: string; bullets: string[] }[];
+    changelogUrl?: string;
+  } | null>(null);
+  const [highlightsOpen, setHighlightsOpen] = useState(false);
 
   const handleClick = async () => {
     if (backendUnavailableReason || launching || skillUpdate) return;
@@ -1065,7 +1102,12 @@ function CompactSessionRow({
       });
       const data = await res.json();
       if (data.needsUpdate && !data.dismissed) {
-        setSkillUpdate({ currentVersion: data.currentVersion, installedVersion: data.installedVersion });
+        setSkillUpdate({
+          currentVersion: data.currentVersion,
+          installedVersion: data.installedVersion,
+          highlights: data.highlights,
+          changelogUrl: data.changelogUrl,
+        });
         setLaunching(false);
         return;
       }
@@ -1157,8 +1199,18 @@ function CompactSessionRow({
 
       {/* Skill update inline */}
       {skillUpdate && (
-        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 relative" onClick={(e) => e.stopPropagation()}>
           <span className="text-[10px] text-cc-primary font-medium">v{skillUpdate.installedVersion} → v{skillUpdate.currentVersion}</span>
+          {skillUpdate.highlights && skillUpdate.highlights.length > 0 && (
+            <button
+              onClick={() => setHighlightsOpen((v) => !v)}
+              className="text-[10px] text-cc-muted hover:text-cc-fg cursor-pointer flex items-center gap-0.5"
+              title="What's new"
+            >
+              What's new
+              <svg viewBox="0 0 16 16" fill="currentColor" className={`w-2.5 h-2.5 transition-transform ${highlightsOpen ? "rotate-180" : ""}`}><path d="M3.22 5.97a.75.75 0 011.06 0L8 9.69l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L3.22 7.03a.75.75 0 010-1.06z" /></svg>
+            </button>
+          )}
           <button
             onClick={async () => { setSkillUpdate(null); setLaunching(true); await onResume(true); setLaunching(false); }}
             className="text-[10px] text-cc-muted hover:text-cc-fg cursor-pointer"
@@ -1171,6 +1223,33 @@ function CompactSessionRow({
           >
             Update
           </button>
+          {highlightsOpen && skillUpdate.highlights && skillUpdate.highlights.length > 0 && (
+            <div className="absolute right-0 top-full mt-1 z-20 w-72 max-h-60 overflow-y-auto rounded-lg border border-cc-border/50 bg-cc-surface/98 backdrop-blur-md shadow-lg p-2.5">
+              <div className="text-[10px] font-semibold text-cc-primary uppercase tracking-wider mb-1.5">
+                What's new in v{skillUpdate.currentVersion}
+              </div>
+              <ul className="space-y-1">
+                {skillUpdate.highlights.flatMap((h) =>
+                  h.bullets.map((b, i) => (
+                    <li key={`${h.version}-${i}`} className="text-[11px] text-cc-fg/80 leading-snug flex gap-1.5">
+                      <span className="text-cc-primary/70 shrink-0">·</span>
+                      <span>{b}</span>
+                    </li>
+                  )),
+                )}
+              </ul>
+              {skillUpdate.changelogUrl && (
+                <a
+                  href={skillUpdate.changelogUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-block text-[10px] text-cc-primary hover:underline"
+                >
+                  View full changelog →
+                </a>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
