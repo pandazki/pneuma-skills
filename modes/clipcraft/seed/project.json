@@ -1,0 +1,452 @@
+{
+  "$schema": "pneuma-craft/project/v1",
+  "title": "Pneuma · Self-Introduction",
+  "composition": {
+    "settings": {
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "aspectRatio": "16:9"
+    },
+    "tracks": [
+      {
+        "id": "track-audio-bgm",
+        "type": "audio",
+        "name": "BGM",
+        "muted": false,
+        "volume": 0.45,
+        "locked": false,
+        "visible": true,
+        "clips": [
+          {
+            "id": "clip-bgm",
+            "assetId": "asset-bgm-pneuma",
+            "startTime": 0,
+            "duration": 19,
+            "inPoint": 0,
+            "outPoint": 19,
+            "fadeIn": 0.6,
+            "fadeOut": 1.2
+          }
+        ]
+      },
+      {
+        "id": "track-audio-vo",
+        "type": "audio",
+        "name": "Narration",
+        "muted": false,
+        "volume": 1,
+        "locked": false,
+        "visible": true,
+        "clips": [
+          {
+            "id": "clip-vo-tagline",
+            "assetId": "asset-vo-tagline",
+            "startTime": 13.0,
+            "duration": 5.48,
+            "inPoint": 0,
+            "outPoint": 5.48
+          }
+        ]
+      },
+      {
+        "id": "track-video-main",
+        "type": "video",
+        "name": "Main",
+        "muted": false,
+        "volume": 1,
+        "locked": false,
+        "visible": true,
+        "clips": [
+          {
+            "id": "clip-shot1-spark",
+            "assetId": "asset-shot1-spark",
+            "startTime": 0,
+            "duration": 4,
+            "inPoint": 0,
+            "outPoint": 4
+          },
+          {
+            "id": "clip-shot2-convergence",
+            "assetId": "asset-shot2-convergence",
+            "startTime": 4,
+            "duration": 8,
+            "inPoint": 0,
+            "outPoint": 8
+          },
+          {
+            "id": "clip-shot3-resolution",
+            "assetId": "asset-shot3-resolution",
+            "startTime": 12,
+            "duration": 7,
+            "inPoint": 0,
+            "outPoint": 7
+          }
+        ]
+      },
+      {
+        "id": "track-subtitle-main",
+        "type": "subtitle",
+        "name": "Captions",
+        "muted": false,
+        "volume": 1,
+        "locked": false,
+        "visible": true,
+        "clips": [
+          {
+            "id": "clip-caption-tagline",
+            "assetId": "asset-caption-stub",
+            "startTime": 13.0,
+            "duration": 5.48,
+            "inPoint": 0,
+            "outPoint": 5.48,
+            "text": "Pneuma. Where breath becomes craft."
+          }
+        ]
+      }
+    ],
+    "transitions": []
+  },
+  "assets": [
+    {
+      "id": "asset-shot2-start",
+      "type": "image",
+      "uri": "assets/images/shot2-start.png",
+      "name": "Breath · start anchor",
+      "metadata": {
+        "width": 1920,
+        "height": 1080,
+        "codec": "png"
+      },
+      "createdAt": 1745780000000,
+      "tags": ["brand", "anchor", "first-frame"]
+    },
+    {
+      "id": "asset-shot2-end",
+      "type": "image",
+      "uri": "assets/images/shot2-end.png",
+      "name": "Architecture · end anchor",
+      "metadata": {
+        "width": 1920,
+        "height": 1080,
+        "codec": "png"
+      },
+      "createdAt": 1745780020000,
+      "tags": ["brand", "anchor", "last-frame"]
+    },
+    {
+      "id": "asset-shot3-end",
+      "type": "image",
+      "uri": "assets/images/shot3-end.png",
+      "name": "Wordmark · resolution anchor",
+      "metadata": {
+        "width": 1920,
+        "height": 1080,
+        "codec": "png"
+      },
+      "createdAt": 1745780040000,
+      "tags": ["brand", "anchor", "last-frame", "wordmark"]
+    },
+    {
+      "id": "asset-shot1-start",
+      "type": "image",
+      "uri": "assets/images/shot1-start.png",
+      "name": "Shot 1 · breath start anchor",
+      "metadata": {
+        "width": 1280,
+        "height": 720,
+        "codec": "png"
+      },
+      "createdAt": 1745780080000,
+      "tags": ["brand", "anchor", "first-frame"]
+    },
+    {
+      "id": "asset-shot1-spark",
+      "type": "video",
+      "uri": "assets/clips/shot1-spark.mp4",
+      "name": "Shot 1 · Spark (first-last)",
+      "metadata": {
+        "width": 1280,
+        "height": 720,
+        "duration": 4.04,
+        "fps": 24,
+        "codec": "h264"
+      },
+      "createdAt": 1745780100000,
+      "tags": ["shot-1", "first-last-frame", "opening"]
+    },
+    {
+      "id": "asset-shot2-convergence",
+      "type": "video",
+      "uri": "assets/clips/shot2-convergence.mp4",
+      "name": "Shot 2 · Convergence (first-last)",
+      "metadata": {
+        "width": 1280,
+        "height": 720,
+        "duration": 8.04,
+        "fps": 24,
+        "codec": "h264"
+      },
+      "createdAt": 1745780200000,
+      "tags": ["shot-2", "first-last-frame", "showcase"]
+    },
+    {
+      "id": "asset-shot3-resolution",
+      "type": "video",
+      "uri": "assets/clips/shot3-resolution.mp4",
+      "name": "Shot 3 · Resolution (first-last)",
+      "metadata": {
+        "width": 1280,
+        "height": 720,
+        "duration": 7.04,
+        "fps": 24,
+        "codec": "h264"
+      },
+      "createdAt": 1745780300000,
+      "tags": ["shot-3", "first-last-frame", "finale"]
+    },
+    {
+      "id": "asset-vo-tagline",
+      "type": "audio",
+      "uri": "assets/audio/vo-tagline.mp3",
+      "name": "Voice-over · Tagline",
+      "metadata": {
+        "duration": 5.48,
+        "sampleRate": 24000,
+        "channels": 1,
+        "codec": "mp3"
+      },
+      "createdAt": 1745780400000,
+      "tags": ["vo", "narration", "english"]
+    },
+    {
+      "id": "asset-bgm-pneuma",
+      "type": "audio",
+      "uri": "assets/bgm/pneuma-ambient.mp3",
+      "name": "BGM · Pneuma Ambient",
+      "metadata": {
+        "duration": 60.19,
+        "sampleRate": 44100,
+        "channels": 2,
+        "codec": "mp3"
+      },
+      "createdAt": 1745780500000,
+      "tags": ["bgm", "ambient", "cinematic"]
+    },
+    {
+      "id": "asset-caption-stub",
+      "type": "text",
+      "uri": "",
+      "name": "Caption text holder",
+      "metadata": {},
+      "createdAt": 1745780000000,
+      "tags": ["caption-stub"]
+    }
+  ],
+  "provenance": [
+    {
+      "toAssetId": "asset-shot2-start",
+      "fromAssetId": null,
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "agentId": "clipcraft-imagegen",
+        "timestamp": 1745780000000,
+        "label": "breath anchor — Pneuma logo, glowing in the void",
+        "params": {
+          "model": "openai/gpt-image-2/edit",
+          "prompt": "Cinematic 16:9 brand hero still. Center the EXACT logo from the reference image (horizontal wind-swoosh in neon orange + amber gold) in a pure dark zinc-black void. Around the logo: warm amber halo, sparse luminous orange particles drifting from the trailing tips, subtle volumetric haze. Photographic depth. NO text, NO decorations. Preserve the reference logo's exact shape and proportions exactly — only add atmosphere.",
+          "quality": "high",
+          "image_size": "1920x1080",
+          "aspect_ratio": "16:9",
+          "image_urls": ["assets/brand/pneuma-logo.png"]
+        }
+      }
+    },
+    {
+      "toAssetId": "asset-shot2-end",
+      "fromAssetId": null,
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "agentId": "clipcraft-imagegen",
+        "timestamp": 1745780020000,
+        "label": "architecture anchor — logo emanating four panels",
+        "params": {
+          "model": "openai/gpt-image-2/edit",
+          "prompt": "Cinematic 16:9 futuristic holographic still. The EXACT Pneuma logo from the reference (horizontal wind-swoosh, neon orange + amber-gold) centered in a pure dark zinc-black void. Four floating translucent rectangular panels arranged in a gentle 3D arc around the logo, outlined with thin glowing orange edges, each containing faint abstract glyph patterns (no readable text). Glowing orange particles flow from the logo's trailing tips toward the panels, connected by amber light streams. Subtle volumetric haze, holographic refraction. NO text or UI labels. Preserve the reference logo's exact shape and proportions at the center.",
+          "quality": "high",
+          "image_size": "1920x1080",
+          "aspect_ratio": "16:9",
+          "image_urls": ["assets/brand/pneuma-logo.png"]
+        }
+      }
+    },
+    {
+      "toAssetId": "asset-shot3-end",
+      "fromAssetId": null,
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "agentId": "clipcraft-imagegen",
+        "timestamp": 1745780040000,
+        "label": "wordmark anchor — logo + PNEUMA, brand resolution",
+        "params": {
+          "model": "openai/gpt-image-2/edit",
+          "prompt": "Cinematic 16:9 minimal brand resolution still. The EXACT Pneuma logo from the reference (horizontal wind-swoosh, neon orange + amber-gold) is centered in the upper-middle of the frame on a pure dark zinc-black void. Directly below the logo, perfectly horizontally centered, the wordmark 'PNEUMA' in clean elegant futuristic sans-serif typography, slightly luminous edges, soft warm-amber white tone, generous letter spacing. The logo itself is calm and steady, glowing softly with a warm amber halo. Sparse luminous orange particles drift around the logo's trailing tips. Subtle volumetric haze. CRITICAL: preserve the reference logo's exact shape, color split, and proportions; render the wordmark 'PNEUMA' clearly below it. NO other text or decorations.",
+          "quality": "high",
+          "image_size": "1920x1080",
+          "aspect_ratio": "16:9",
+          "image_urls": ["assets/brand/pneuma-logo.png"]
+        }
+      }
+    },
+    {
+      "toAssetId": "asset-shot1-start",
+      "fromAssetId": null,
+      "operation": {
+        "type": "import",
+        "actor": "human",
+        "timestamp": 1745780080000,
+        "label": "shot 1 start anchor — first-frame snapshot for strict first-last opening"
+      }
+    },
+    {
+      "toAssetId": "asset-shot1-spark",
+      "fromAssetId": "asset-shot1-start",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "agentId": "clipcraft-videogen",
+        "timestamp": 1745780100000,
+        "label": "shot 1 — strict first-last frame opening (lands on shot 2's start)",
+        "params": {
+          "model": "bytedance/seedance-2.0/image-to-video",
+          "prompt": "Four seconds of cinematic logo breath. The Pneuma wind-swoosh logo glows steadily in the dark void; its trailing tips emit gentle pulses of warm orange particles drifting outward, then the particles slow and the logo settles back to its starting steady state — a complete inhale-exhale cycle. The amber halo expands then gently contracts. Camera dead still. No people, no text, no UI. Pure ambient atmosphere, brand identity opening shot.",
+          "duration": "4",
+          "aspect_ratio": "16:9",
+          "image_url": "assets/images/shot1-start.png",
+          "end_image_url": "assets/images/shot2-start.png",
+          "generate_audio": false
+        }
+      }
+    },
+    {
+      "toAssetId": "asset-shot2-convergence",
+      "fromAssetId": "asset-shot2-start",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "agentId": "clipcraft-videogen",
+        "timestamp": 1745780200000,
+        "label": "shot 2 — strict first-last frame interpolation (showcase)",
+        "params": {
+          "model": "bytedance/seedance-2.0/image-to-video",
+          "prompt": "Cinematic 8-second transformation: the Pneuma wind-swoosh logo at the center exhales outward, its trailing tips releasing streams of glowing orange particles that gather and condense into four floating translucent rectangular panels arranged around the logo. The panels emerge gracefully into a 3D arc formation, connected back to the logo via amber light streams. Slow gentle camera push-in. Smooth elegant motion. No people, no text. Warm volumetric atmosphere, holographic refraction.",
+          "duration": "8",
+          "aspect_ratio": "16:9",
+          "image_url": "assets/images/shot2-start.png",
+          "end_image_url": "assets/images/shot2-end.png",
+          "generate_audio": false
+        }
+      }
+    },
+    {
+      "toAssetId": "asset-shot3-resolution",
+      "fromAssetId": "asset-shot2-end",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "agentId": "clipcraft-videogen",
+        "timestamp": 1745780300000,
+        "label": "shot 3 — first-last frame resolution to wordmark",
+        "params": {
+          "model": "bytedance/seedance-2.0/image-to-video",
+          "prompt": "Cinematic 7-second resolution: the four floating holographic panels around the Pneuma logo gracefully fold back inward, their light streams retracting into the logo's trailing tips. Particles slow and settle. The logo remains steady at center while the wordmark 'PNEUMA' appears below it in clean futuristic sans-serif type, materializing into stillness. Camera gently pulls back to reveal the final brand mark. Warm volumetric haze lingers, then quiets. No people, no UI. Soft cinematic depth.",
+          "duration": "7",
+          "aspect_ratio": "16:9",
+          "image_url": "assets/images/shot2-end.png",
+          "end_image_url": "assets/images/shot3-end.png",
+          "generate_audio": false
+        }
+      }
+    },
+    {
+      "toAssetId": "asset-vo-tagline",
+      "fromAssetId": null,
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "agentId": "clipcraft-tts",
+        "timestamp": 1745780400000,
+        "label": "tagline VO — Pneuma. Where breath becomes craft.",
+        "params": {
+          "model": "fal-ai/gemini-3.1-flash-tts",
+          "text": "Pneuma. Where breath becomes craft.",
+          "voice": "Kore",
+          "style": "calm cinematic narrator, contemplative warmth, slightly slow paced, brand identity finale"
+        }
+      }
+    },
+    {
+      "toAssetId": "asset-bgm-pneuma",
+      "fromAssetId": null,
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "agentId": "clipcraft-bgm",
+        "timestamp": 1745780500000,
+        "label": "ambient BGM — warm cinematic, 20s intent",
+        "params": {
+          "model": "google/lyria-3-pro-preview",
+          "prompt": "Warm cinematic ambient pad, ethereal synth atmosphere, very slow swell, calm contemplative breathing tempo. Subtle low pulse foundation. Hopeful tech, organic warmth meeting precision. No drums, no percussion, no vocals. Opens softly, gently builds at the midpoint, resolves quietly. Brand identity intro music for a co-creation product.",
+          "duration": "20"
+        }
+      }
+    },
+    {
+      "toAssetId": "asset-caption-stub",
+      "fromAssetId": null,
+      "operation": {
+        "type": "import",
+        "actor": "human",
+        "timestamp": 1745780000000,
+        "label": "caption text holder"
+      }
+    }
+  ],
+  "scenes": [
+    {
+      "id": "scene-1-spark",
+      "order": 0,
+      "title": "Spark",
+      "prompt": "Open with the Pneuma logo breathing in the void — strict first-last frame from shot1-start to shot2-start so the cut into Convergence is invisible.",
+      "memberClipIds": ["clip-shot1-spark"],
+      "memberAssetIds": ["asset-shot1-spark", "asset-shot1-start"]
+    },
+    {
+      "id": "scene-2-convergence",
+      "order": 1,
+      "title": "Convergence",
+      "prompt": "The breath opens into a holographic architecture — strict first-last frame from breath anchor to architecture anchor.",
+      "memberClipIds": ["clip-shot2-convergence"],
+      "memberAssetIds": ["asset-shot2-convergence", "asset-shot2-start", "asset-shot2-end"]
+    },
+    {
+      "id": "scene-3-resolution",
+      "order": 2,
+      "title": "Resolution",
+      "prompt": "The architecture resolves into the Pneuma wordmark while the narrator speaks the tagline. First-last frame from architecture anchor to wordmark anchor.",
+      "memberClipIds": ["clip-shot3-resolution", "clip-vo-tagline", "clip-caption-tagline"],
+      "memberAssetIds": ["asset-shot3-resolution", "asset-shot3-end", "asset-vo-tagline"]
+    }
+  ],
+  "captionStyle": {
+    "fontSize": 32,
+    "color": "#ffffff",
+    "background": "rgba(9,9,11,0.55)",
+    "bottomPercent": 0.12,
+    "fontWeight": 500,
+    "maxWidthPercent": 0.85
+  }
+}

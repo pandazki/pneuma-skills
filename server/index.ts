@@ -17,6 +17,7 @@ import { registerEvolutionRoutes } from "./evolution-routes.js";
 import { openPath, revealPath, openUrl } from "./system-bridge.js";
 import { pathStartsWith, isWin } from "./utils.js";
 import { registerExportRoutes } from "./routes/export.js";
+import { registerAssetFsRoutes } from "./routes/asset-fs.js";
 import { listCheckpoints } from "./shadow-git.js";
 import { exportHistory } from "./history-export.js";
 import { importHistory } from "./history-import.js";
@@ -54,6 +55,7 @@ export interface ServerOptions {
   editing?: boolean; // Initial editing state (from session.json or --viewing flag)
   editingSupported?: boolean; // Mode supports editing ↔ viewing toggle
   backendType?: string; // Backend type for correct instructions file selection (claude-code | codex)
+  refreshStrategy?: "auto" | "manual"; // Viewer refresh strategy (default: "auto")
 }
 
 export async function startServer(options: ServerOptions) {
@@ -97,7 +99,7 @@ export async function startServer(options: ServerOptions) {
       const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
 
       // Parse builtin mode manifests for metadata (icon, description, etc.)
-      const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard"];
+      const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft"];
       const builtins = builtinNames.map((name) => {
         const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
         let parsed: ReturnType<typeof parseManifestTs> = {};
@@ -1799,6 +1801,9 @@ export async function startServer(options: ServerOptions) {
   // ── Export routes (slide, webcraft, file listing) ─────────────────
   registerExportRoutes(app, { workspace, initParams: options.initParams, watchPatterns: options.watchPatterns, hookBus, sessionInfo });
 
+  // ── Asset filesystem listing (clipcraft-style modes) ───────────────
+  registerAssetFsRoutes(app, { workspace });
+
   // ── Save file ────────────────────────────────────────────────────────
   app.post("/api/files", async (c) => {
     const body = await c.req.json<{ path: string; content: string }>();
@@ -1810,6 +1815,15 @@ export async function startServer(options: ServerOptions) {
     if (!pathStartsWith(absPath, workspace)) {
       return c.json({ error: "Forbidden" }, 403);
     }
+    // `?origin=external` tells the server "this write is a user-initiated
+    // edit, not a Source<T> autosave echo." When set, we skip the
+    // registerSelfWrite call so the resulting chokidar event is tagged
+    // origin: "external" and every Source<T> in the viewer treats it as
+    // a real external change (refreshing its value, triggering remount,
+    // etc). The built-in EditorPanel uses this; Source<T>'s own
+    // FileChannel.write() does NOT (its echo IS a true self-write).
+    const origin = c.req.query("origin");
+    const isExternalWrite = origin === "external";
     try {
       mkdirSync(dirname(absPath), { recursive: true });
       // Support data URL content — decode to binary
@@ -1822,7 +1836,9 @@ export async function startServer(options: ServerOptions) {
         // the disk write so there's no window where the echo could arrive
         // ahead of the registration. Binary writes (data URLs) take the
         // image-cache-bust path in the watcher and don't need origin tracking.
-        registerSelfWrite(relPath, body.content);
+        if (!isExternalWrite) {
+          registerSelfWrite(relPath, body.content);
+        }
         writeFileSync(absPath, body.content, "utf-8");
       }
       return c.json({ ok: true });
@@ -1902,6 +1918,25 @@ export async function startServer(options: ServerOptions) {
     } catch {
       return c.json({ available: false });
     }
+  });
+
+  // ── Manual refresh: queue content updates, flush on demand ──────────
+  let pendingContentUpdate: { path: string; content: string }[] | null = null;
+
+  const queueContentUpdate = (files: { path: string; content: string }[]) => {
+    pendingContentUpdate = files;
+  };
+
+  app.post("/api/refresh", (c) => {
+    if (pendingContentUpdate) {
+      const sid = wsBridge.getActiveSessionId();
+      if (sid) {
+        wsBridge.broadcastToSession(sid, { type: "content_update", files: pendingContentUpdate });
+      }
+      pendingContentUpdate = null;
+      return c.json({ flushed: true });
+    }
+    return c.json({ flushed: false });
   });
 
   // ── Git: branch info (for Context panel) ────────────────────────────
@@ -2161,8 +2196,35 @@ export async function startServer(options: ServerOptions) {
     }
     try {
       const file = Bun.file(absPath);
+      const size = file.size;
+      const contentType = file.type || "application/octet-stream";
+
+      // Support Range requests (needed for video seeking)
+      const rangeHeader = c.req.header("range");
+      if (rangeHeader) {
+        const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+        if (match) {
+          const start = parseInt(match[1], 10);
+          const end = match[2] ? parseInt(match[2], 10) : size - 1;
+          const chunkSize = end - start + 1;
+          return new Response(file.slice(start, end + 1), {
+            status: 206,
+            headers: {
+              "Content-Type": contentType,
+              "Content-Range": `bytes ${start}-${end}/${size}`,
+              "Content-Length": String(chunkSize),
+              "Accept-Ranges": "bytes",
+            },
+          });
+        }
+      }
+
       return new Response(file, {
-        headers: { "Content-Type": file.type || "application/octet-stream" },
+        headers: {
+          "Content-Type": contentType,
+          "Content-Length": String(size),
+          "Accept-Ranges": "bytes",
+        },
       });
     } catch {
       return c.text("Error reading file", 500);
@@ -2387,5 +2449,5 @@ export default S;`;
     await hookBus.emit("session:end", { sessionId: sessionInfo.sessionId, mode: sessionInfo.mode, workspace }, sessionInfo).catch(() => {});
   };
 
-  return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup, sessionInfo, hookBus };
+  return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup, sessionInfo, hookBus, queueContentUpdate };
 }

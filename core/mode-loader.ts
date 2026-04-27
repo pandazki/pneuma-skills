@@ -110,6 +110,13 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/diagram/pneuma-mode.js").then((m) => m.default),
   },
+  clipcraft: {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/clipcraft/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/clipcraft/pneuma-mode.js").then((m) => m.default),
+  },
 };
 
 /** External mode registry — registered by the CLI at startup via registerExternalMode */

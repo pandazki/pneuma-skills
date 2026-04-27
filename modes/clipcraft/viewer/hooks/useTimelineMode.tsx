@@ -1,0 +1,50 @@
+import { createContext, useContext, useMemo, useState } from "react";
+
+export type TimelineMode = "collapsed" | "overview" | "exploded" | "dive";
+export type LayerType = "video" | "audio" | "caption";
+
+interface TimelineModeContextValue {
+  timelineMode: TimelineMode;
+  setTimelineMode: (mode: TimelineMode) => void;
+  diveLayer: LayerType | null;
+  setDiveLayer: (layer: LayerType | null) => void;
+  focusedTrackId: string | null;
+  setFocusedTrackId: (id: string | null) => void;
+  diveFocusedNodeId: string | null;
+  setDiveFocusedNodeId: (id: string | null) => void;
+}
+
+const TimelineModeContext = createContext<TimelineModeContextValue | null>(null);
+
+export function TimelineModeProvider({ children }: { children: React.ReactNode }) {
+  const [timelineMode, setTimelineMode] = useState<TimelineMode>("collapsed");
+  const [diveLayer, setDiveLayer] = useState<LayerType | null>(null);
+  const [focusedTrackId, setFocusedTrackId] = useState<string | null>(null);
+  const [diveFocusedNodeId, setDiveFocusedNodeId] = useState<string | null>(null);
+
+  const value = useMemo<TimelineModeContextValue>(
+    () => ({
+      timelineMode,
+      setTimelineMode,
+      diveLayer,
+      setDiveLayer,
+      focusedTrackId,
+      setFocusedTrackId,
+      diveFocusedNodeId,
+      setDiveFocusedNodeId,
+    }),
+    [timelineMode, diveLayer, focusedTrackId, diveFocusedNodeId],
+  );
+
+  return (
+    <TimelineModeContext.Provider value={value}>
+      {children}
+    </TimelineModeContext.Provider>
+  );
+}
+
+export function useTimelineMode() {
+  const ctx = useContext(TimelineModeContext);
+  if (!ctx) throw new Error("useTimelineMode must be used inside <TimelineModeProvider>");
+  return ctx;
+}
