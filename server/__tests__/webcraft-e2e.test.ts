@@ -4,9 +4,9 @@
  * Verifies the full flow:
  * 1. Mode loading via manifest import
  * 2. Manifest validation (required fields, viewer actions, watch patterns)
- * 3. Skill installation (SKILL.md + 30 reference files)
- * 4. SKILL.md content (Impeccable principles, 20 commands, AI slop test)
- * 5. Reference file completeness (7 design + 20 command + 3 companion references)
+ * 3. Skill installation (SKILL.md + every reference file in mode source)
+ * 4. SKILL.md content (Impeccable principles, 22 commands, AI slop test)
+ * 5. Reference file completeness (7 design + 22 command + 5 companion references)
  * 6. CLAUDE.md injection with pneuma markers
  * 7. Seed file (index.html) for empty workspaces
  * 8. Seed quality (OKLCH, fluid typography, semantic HTML, responsive, reduced motion)
@@ -72,7 +72,7 @@ describe("mode loading", () => {
 describe("manifest validation", () => {
   it("has all required top-level fields", () => {
     expect(webcraftManifest.name).toBe("webcraft");
-    expect(webcraftManifest.version).toBe("1.2.0");
+    expect(webcraftManifest.version).toBe("1.3.0");
     expect(webcraftManifest.displayName).toBe("WebCraft");
     expect(webcraftManifest.description).toContain("Impeccable");
     expect(webcraftManifest.icon).toContain("<svg");
@@ -115,15 +115,21 @@ describe("skill installation", () => {
     expect(content.length).toBeGreaterThan(100);
   });
 
-  it("installs all 30 reference files", () => {
+  it("installs every reference file from the mode source", () => {
     const ws = makeWorkspace("install-refs");
     installWebcraftSkill(ws);
 
     const refsDir = join(ws, ".claude", "skills", "pneuma-webcraft", "references");
     expect(existsSync(refsDir)).toBe(true);
 
-    const files = readdirSync(refsDir).filter((f) => f.endsWith(".md"));
-    expect(files.length).toBe(30);
+    // Compare against the source — keeps the assertion in step with whatever
+    // reference set ships today instead of drifting whenever a new doc lands.
+    const sourceRefsDir = join(MODE_SOURCE_DIR, "skill", "references");
+    const sourceFiles = readdirSync(sourceRefsDir).filter((f) => f.endsWith(".md"));
+    const installedFiles = readdirSync(refsDir).filter((f) => f.endsWith(".md"));
+
+    expect(sourceFiles.length).toBeGreaterThan(0);
+    expect(installedFiles.sort()).toEqual(sourceFiles.sort());
   });
 
   it("creates CLAUDE.md in workspace root", () => {
@@ -211,6 +217,7 @@ describe("SKILL.md content", () => {
 
     const expectedCommands = [
       "teach",
+      "document",
       "shape",
       "craft",
       "audit",
@@ -222,6 +229,7 @@ describe("SKILL.md content", () => {
       "layout",
       "optimize",
       "harden",
+      "onboard",
       "animate",
       "colorize",
       "bolder",
@@ -235,7 +243,7 @@ describe("SKILL.md content", () => {
     for (const cmd of expectedCommands) {
       expect(skillMd).toContain(`**${cmd}**`);
     }
-    expect(expectedCommands.length).toBe(20);
+    expect(expectedCommands.length).toBe(22);
   });
 
   it("contains command category sections", () => {
@@ -280,6 +288,7 @@ describe("reference file completeness", () => {
 
   const commandReferences = [
     "cmd-teach.md",
+    "cmd-document.md",
     "cmd-shape.md",
     "cmd-craft.md",
     "cmd-audit.md",
@@ -291,6 +300,7 @@ describe("reference file completeness", () => {
     "cmd-layout.md",
     "cmd-optimize.md",
     "cmd-harden.md",
+    "cmd-onboard.md",
     "cmd-animate.md",
     "cmd-colorize.md",
     "cmd-bolder.md",
@@ -305,14 +315,16 @@ describe("reference file completeness", () => {
     "cognitive-load.md",
     "heuristics-scoring.md",
     "personas.md",
+    "brand.md",
+    "product.md",
   ];
 
   it("has exactly 7 design reference files", () => {
     expect(designReferences.length).toBe(7);
   });
 
-  it("has exactly 20 command reference files", () => {
-    expect(commandReferences.length).toBe(20);
+  it("has exactly 22 command reference files", () => {
+    expect(commandReferences.length).toBe(22);
   });
 
   it("all 7 design references exist and have content", () => {
@@ -328,7 +340,7 @@ describe("reference file completeness", () => {
     }
   });
 
-  it("all 20 command references exist and have content", () => {
+  it("all 22 command references exist and have content", () => {
     const ws = makeWorkspace("refs-commands");
     installWebcraftSkill(ws);
 
@@ -476,12 +488,11 @@ describe("seed file", () => {
     expect(content).toContain("<body>");
   });
 
-  it("seed maps to pneuma/ and gazette/ directories in workspace", () => {
+  it("seed maps each register example to its workspace directory", () => {
     const seedFiles = webcraftManifest.init!.seedFiles!;
-    const entries = Object.entries(seedFiles);
-    expect(entries.length).toBe(2);
     expect(seedFiles["modes/webcraft/seed/pneuma/"]).toBe("pneuma/");
     expect(seedFiles["modes/webcraft/seed/gazette/"]).toBe("gazette/");
+    expect(seedFiles["modes/webcraft/seed/pneuma-console/"]).toBe("pneuma-console/");
   });
 });
 
@@ -586,8 +597,8 @@ describe("viewer commands", () => {
     "adapt",
   ];
 
-  it("defines exactly 20 viewer commands", () => {
-    expect(webcraftManifest.viewerApi!.commands!.length).toBe(20);
+  it("defines exactly 22 viewer commands", () => {
+    expect(webcraftManifest.viewerApi!.commands!.length).toBe(22);
   });
 
   it("all 20 Impeccable commands are declared", () => {
