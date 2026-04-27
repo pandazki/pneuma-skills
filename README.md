@@ -37,7 +37,7 @@ When humans and code agents co-create content, they need more than a chat window
 
 | Mode | What it does | Version |
 |------|-------------|---------|
-| **webcraft** | Live web development with [Impeccable](https://impeccable.style) AI design intelligence — 20 design commands, responsive preview, export | **2.30.0** |
+| **webcraft** | Live web development with [Impeccable](https://impeccable.style) AI design intelligence — 22 design commands, brand vs product register, responsive preview, export | **2.37.0** |
 | **kami** | Paper-canvas typesetting — locked paper size (A4/A5/A3/Letter/Legal × portrait/landscape), Scroll / Focus / Book views, fit-discipline feedback loop, PDF / PNG / HTML export. Design language adapted from [tw93/kami](https://github.com/tw93/kami) | 1.0.0 |
 | **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export. Skill design guidelines informed by [frontend-slides](https://github.com/zarazhangrui/frontend-slides) | 2.18.0 |
 | **doc** | Markdown documents with live preview — the simplest mode, a minimal example of the mode system | 2.18.0 |

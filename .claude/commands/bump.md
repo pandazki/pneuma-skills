@@ -63,6 +63,18 @@ Specifically check:
 
 Do NOT bloat these files — keep them concise and accurate. Remove outdated entries rather than accumulating.
 
+### 4b. Update mode `changelog` for any mode whose skill version moved
+
+If this release bumps any mode's `manifest.ts` `version` field, you MUST also update that manifest's `changelog` map with a matching entry — the launcher's skill-update prompt extracts these bullets to tell the user what changed in the skill they're about to reinstall. Skip this step when no mode skill version changed.
+
+For each touched mode:
+- Add a key under `changelog` matching the new `version` (e.g. `"1.3.0": [ ... ]`).
+- Each bullet is a one-line user-visible summary, no markdown, no trailing period — they render as `· bullet` in a small UI surface.
+- Keep at most ~6 bullets per version. The full prose lives in the project `CHANGELOG.md`.
+- Don't backfill old versions you didn't ship — only annotate the version you're releasing now (and leave any pre-existing entries untouched).
+
+The desktop auto-updater also surfaces highlights in its "Update Available" / "Update Ready" dialogs, but it parses them straight from the project `CHANGELOG.md` you wrote in step 3 — so a well-formed `- **Bold headline** — description` bullet there is enough; no extra wiring needed.
+
 ### 5. Bump version
 
 Update all three files in a single commit:

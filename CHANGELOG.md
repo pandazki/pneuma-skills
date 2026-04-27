@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.37.0] - 2026-04-27
+
+### Added
+- **WebCraft synced to Impeccable.style v3.0.1** — brand vs product register split, color-strategy ladder (restrained → committed → full palette → drenched), absolute-bans list (no side-stripe borders, gradient text, glassmorphism, em dashes), category-reflex check. Two new commands — `Document` (generate `DESIGN.md` in Stitch format) and `Onboard` (first-run flows + empty states + activation moments) — bring the total to 22.
+- **Pneuma Console seed** — product-register companion to the existing brand-register pneuma seed. Sessions dashboard + settings form + a shared placeholder page for unfinished sections, all in restrained system-font product UI. Switch content sets in the launcher to compare brand vs product register side by side.
+- **Skill update prompts now show changelog highlights** — `ModeManifest.changelog` (semver → bullet list) feeds the launcher prompt, which extracts entries for the version range between installed and current. SessionCard renders them inline; CompactSessionRow exposes a `What's new ▼` toggle. Both link out to the project CHANGELOG on GitHub.
+- **Content set resolver gained a `priority` option** — explicit ordering wins over alphabetical for the default-selection candidate, so webcraft keeps pneuma as the default seed even with the new console companion installed.
+
+### Fixed
+- **Internal page links inside webcraft seeds no longer 404 in the iframe preview** — the link interceptor now `preventDefault()`s on `href="#"` before bailing (previously the browser navigated to `<base>#` and 404'd against the dev server) and accepts navigation to any `.html` file in the active content set, not just manifest-declared pages. The PageNavigator tab strip stays clean — internal targets like the new shared placeholder reach via sidebar links without showing up as a top-level page.
+- **Pneuma seed dropped gradient text + glassmorphism nav** — aligns with v3.0.1's "absolute bans" guidance; the brand register now demonstrates restraint instead of every effect at once.
+
+### Changed
+- **WebCraft skill bumped 1.2.0 → 1.3.0** with corresponding `changelog` entries so existing workspaces see what's new in their resume prompt before applying the update.
+
 ## [2.36.2] - 2026-04-27
 
 ### Fixed

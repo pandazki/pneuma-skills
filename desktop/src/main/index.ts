@@ -511,39 +511,111 @@ function showUpdateDialog(options: Electron.MessageBoxOptions): Promise<Electron
   });
 }
 
+/**
+ * GitHub raw URL for the project CHANGELOG. Used to surface release
+ * highlights in the auto-updater dialogs so users see *what* changed
+ * before deciding to download — not just a version-number bump.
+ */
+const CHANGELOG_RAW_URL =
+  "https://raw.githubusercontent.com/pandazki/pneuma-skills/main/CHANGELOG.md";
+const CHANGELOG_WEB_URL =
+  "https://github.com/pandazki/pneuma-skills/blob/main/CHANGELOG.md";
+
+function semverCmp(a: string, b: string): number {
+  const ap = a.split(".").map((n) => parseInt(n, 10) || 0);
+  const bp = b.split(".").map((n) => parseInt(n, 10) || 0);
+  const len = Math.max(ap.length, bp.length);
+  for (let i = 0; i < len; i++) {
+    const av = ap[i] ?? 0;
+    const bv = bp[i] ?? 0;
+    if (av !== bv) return av - bv;
+  }
+  return 0;
+}
+
+/**
+ * Pull the bullet headlines (the **bolded** prefix of each `- **X** —`
+ * line) from CHANGELOG.md sections strictly greater than `fromVer` and
+ * up to and including `toVer`. Returns an empty array on any error so
+ * the dialog falls back to the version-only message.
+ */
+async function fetchChangelogHeadlines(
+  fromVer: string,
+  toVer: string,
+): Promise<string[]> {
+  try {
+    const res = await fetch(CHANGELOG_RAW_URL);
+    if (!res.ok) return [];
+    const text = await res.text();
+    const headlines: string[] = [];
+    let inRange = false;
+    for (const line of text.split("\n")) {
+      const versionMatch = line.match(/^##\s*\[(\d+\.\d+\.\d+)\]/);
+      if (versionMatch) {
+        const v = versionMatch[1];
+        inRange = semverCmp(v, fromVer) > 0 && semverCmp(v, toVer) <= 0;
+        continue;
+      }
+      if (!inRange) continue;
+      const bulletMatch = line.match(/^-\s*\*\*(.+?)\*\*/);
+      if (bulletMatch) headlines.push(bulletMatch[1].trim());
+    }
+    return headlines;
+  } catch {
+    return [];
+  }
+}
+
+function formatHighlightsBlock(headlines: string[], max = 6): string {
+  if (headlines.length === 0) return "";
+  const shown = headlines.slice(0, max);
+  const rest = headlines.length - shown.length;
+  let out = "\n\nWhat's new:\n" + shown.map((h) => `  • ${h}`).join("\n");
+  if (rest > 0) out += `\n  • …and ${rest} more`;
+  return out;
+}
+
 function setupAutoUpdater() {
   autoUpdater.logger = console;
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  autoUpdater.on("update-available", (info) => {
+  autoUpdater.on("update-available", async (info) => {
     const currentVersion = app.getVersion();
-    showUpdateDialog({
+    const headlines = await fetchChangelogHeadlines(currentVersion, info.version);
+    const highlightsBlock = formatHighlightsBlock(headlines);
+    const buttons = headlines.length
+      ? ["Download", "View Changelog", "Later"]
+      : ["Download", "Later"];
+    const cancelId = headlines.length ? 2 : 1;
+    const { response } = await showUpdateDialog({
       type: "info",
       title: "Update Available",
       message: `New version available: v${info.version}`,
-      detail: `Current version: v${currentVersion}\n\nWould you like to download the update now?`,
-      buttons: ["Download", "Later"],
+      detail: `Current version: v${currentVersion}${highlightsBlock}\n\nWould you like to download the update now?`,
+      buttons,
       defaultId: 0,
-      cancelId: 1,
-    }).then(({ response }) => {
-      if (response === 0) {
-        // Keep isCheckingForUpdates true during download so errors are shown
-        autoUpdater.downloadUpdate().catch((err) => {
-          console.error("[auto-updater] Download failed:", err.message);
-          showUpdateDialog({
-            type: "error",
-            title: "Download Failed",
-            message: "Failed to download update",
-            detail: err.message,
-            buttons: ["OK"],
-          });
-          isCheckingForUpdates = false;
-        });
-      } else {
-        isCheckingForUpdates = false;
-      }
+      cancelId,
     });
+    if (response === 0) {
+      // Keep isCheckingForUpdates true during download so errors are shown
+      autoUpdater.downloadUpdate().catch((err) => {
+        console.error("[auto-updater] Download failed:", err.message);
+        showUpdateDialog({
+          type: "error",
+          title: "Download Failed",
+          message: "Failed to download update",
+          detail: err.message,
+          buttons: ["OK"],
+        });
+        isCheckingForUpdates = false;
+      });
+    } else if (headlines.length && response === 1) {
+      shell.openExternal(CHANGELOG_WEB_URL);
+      isCheckingForUpdates = false;
+    } else {
+      isCheckingForUpdates = false;
+    }
   });
 
   autoUpdater.on("update-not-available", () => {
@@ -569,7 +641,7 @@ function setupAutoUpdater() {
     }
   });
 
-  autoUpdater.on("update-downloaded", (info) => {
+  autoUpdater.on("update-downloaded", async (info) => {
     isCheckingForUpdates = false;
     setTrayTitle("");
     setTrayTooltip(`Pneuma Skills — Update v${info.version} ready`);
@@ -578,19 +650,28 @@ function setupAutoUpdater() {
       launcher.setProgressBar(-1); // Remove progress bar
     }
 
-    showUpdateDialog({
+    const currentVersion = app.getVersion();
+    const headlines = await fetchChangelogHeadlines(currentVersion, info.version);
+    const highlightsBlock = formatHighlightsBlock(headlines);
+    const buttons = headlines.length
+      ? ["Restart Now", "View Changelog", "Later"]
+      : ["Restart Now", "Later"];
+    const cancelId = headlines.length ? 2 : 1;
+
+    const { response } = await showUpdateDialog({
       type: "info",
       title: "Update Ready",
       message: `v${info.version} has been downloaded`,
-      detail: "The update will be installed when you restart the app.",
-      buttons: ["Restart Now", "Later"],
+      detail: `The update will be installed when you restart the app.${highlightsBlock}`,
+      buttons,
       defaultId: 0,
-      cancelId: 1,
-    }).then(({ response }) => {
-      if (response === 0) {
-        autoUpdater.quitAndInstall();
-      }
+      cancelId,
     });
+    if (response === 0) {
+      autoUpdater.quitAndInstall();
+    } else if (headlines.length && response === 1) {
+      shell.openExternal(CHANGELOG_WEB_URL);
+    }
   });
 
   autoUpdater.on("error", (err) => {
