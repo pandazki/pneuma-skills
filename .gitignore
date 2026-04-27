@@ -12,3 +12,6 @@ web/.deploy.env
 
 # Superpowers
 .superpowers/
+
+# Git worktrees
+.worktrees/
