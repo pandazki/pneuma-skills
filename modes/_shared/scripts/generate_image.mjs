@@ -136,8 +136,13 @@ async function falSubscribe({ apiKey, appId, payload, tag }) {
     process.exit(1);
   }
 
-  const { request_id } = await submitResp.json();
-  const statusUrl = `${baseUrl}/requests/${request_id}/status`;
+  const submitJson = await submitResp.json();
+  const { request_id } = submitJson;
+  // Use the URLs fal returns in the submit response — for some endpoints
+  // (e.g. `openai/gpt-image-2/edit`) requests are queued under a parent
+  // path (`openai/gpt-image-2`), so building from appId 404s.
+  const statusUrl = submitJson.status_url ?? `${baseUrl}/requests/${request_id}/status`;
+  const responseUrl = submitJson.response_url ?? `${baseUrl}/requests/${request_id}`;
   const seenLogs = new Set();
 
   while (true) {
@@ -165,7 +170,7 @@ async function falSubscribe({ apiKey, appId, payload, tag }) {
     await new Promise((r) => setTimeout(r, 1000));
   }
 
-  const resultResp = await fetch(`${baseUrl}/requests/${request_id}`, { headers });
+  const resultResp = await fetch(responseUrl, { headers });
   if (!resultResp.ok) {
     const text = await resultResp.text();
     console.error(`ERROR: fal.ai result returned ${resultResp.status}: ${text}`);

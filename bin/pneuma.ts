@@ -1411,7 +1411,8 @@ Options:
         } else {
           const dstPath = join(workspace, dst);
           mkdirSync(dirname(dstPath), { recursive: true });
-          if (hasParams) {
+          const isBinary = /\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|mp[34]|wav|ogg|zip|gz|tar|pdf)$/i.test(resolvedSrc);
+          if (hasParams && !isBinary) {
             // Read, apply template params, then write
             let content = readFileSync(srcPath, "utf-8");
             content = applyTemplateParams(content, resolvedParams);
