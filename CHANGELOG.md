@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.37.1] - 2026-04-27
+
+### Fixed
+- **Codex bash output rendered as a bare tile instead of a collapsible "Output" card** — `MessageBubble`'s tool-name lookup was per-message, but the Codex backend emits `tool_use` and `tool_result` in two separate assistant messages (`msg-{id}` and `result-{id}`), so the result fell through to the generic plain-text fallback and lost the BashResultBlock styling (header + Show full / Show tail toggle). `ChatPanel` now builds a single `globalToolUseById` map across the whole conversation and passes it down, so cross-message linkage works for any backend that splits the two events.
+
 ## [2.37.0] - 2026-04-27
 
 ### Added

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { useStore } from "../store.js";
 import { forceReconnect } from "../ws.js";
 import MessageBubble from "./MessageBubble.js";
@@ -6,6 +6,33 @@ import StreamingText from "./StreamingText.js";
 import ActivityIndicator from "./ActivityIndicator.js";
 import PermissionBanner from "./PermissionBanner.js";
 import ChatInput from "./ChatInput.js";
+import type { ChatMessage } from "../types.js";
+
+interface ToolUseInfo {
+  name: string;
+  input: Record<string, unknown>;
+}
+
+/**
+ * Walk every message once and collect tool_use blocks into a single
+ * map keyed by tool_use_id. Cross-message lookup matters for backends
+ * (notably Codex) that emit `tool_use` and `tool_result` in separate
+ * assistant messages — without this, the result block falls back to
+ * the generic plain-text card and loses the BashResultBlock styling.
+ */
+function buildGlobalToolUseMap(messages: ChatMessage[]): Map<string, ToolUseInfo> {
+  const map = new Map<string, ToolUseInfo>();
+  for (const msg of messages) {
+    const blocks = msg.contentBlocks;
+    if (!blocks) continue;
+    for (const block of blocks) {
+      if (block.type === "tool_use") {
+        map.set(block.id, { name: block.name, input: block.input });
+      }
+    }
+  }
+  return map;
+}
 
 function CronTriggerBubble({ prompt }: { prompt: string }) {
   return (
@@ -103,6 +130,7 @@ export default function ChatPanel() {
   const replayMode = useStore((s) => s.replayMode);
   const permSize = useStore((s) => s.pendingPermissions.size);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const globalToolUseById = useMemo(() => buildGlobalToolUseMap(messages), [messages]);
 
   // Auto-scroll to bottom when new messages arrive or streaming/activity updates
   useEffect(() => {
@@ -129,7 +157,7 @@ export default function ChatPanel() {
             {msg.cronTriggered && (i === 0 || !messages[i - 1].cronTriggered || messages[i - 1].content?.trim()) && (
               <CronTriggerBubble prompt={msg.cronTriggered} />
             )}
-            <MessageBubble message={msg} />
+            <MessageBubble message={msg} globalToolUseById={globalToolUseById} />
           </React.Fragment>
         ))}
         {streaming ? <StreamingText /> : activity ? <ActivityIndicator /> : null}

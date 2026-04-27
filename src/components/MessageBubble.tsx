@@ -59,7 +59,22 @@ function LocatorCardGroup({ locators }: { locators: ViewerLocator[] }) {
   );
 }
 
-export default function MessageBubble({ message }: { message: ChatMessage }) {
+export default function MessageBubble({
+  message,
+  globalToolUseById,
+}: {
+  message: ChatMessage;
+  /**
+   * Tool-name lookup spanning the full conversation. Populated by the
+   * parent (ChatPanel) so a `tool_result` block can find its `tool_use`
+   * even when the two arrived in separate assistant messages — which is
+   * the default for the Codex backend (it emits `msg-{id}` for the
+   * tool_use and `result-{id}` for the result, several events apart).
+   * The Claude backend keeps them in the same turn so per-message
+   * lookup also works there; this is the more general fallback.
+   */
+  globalToolUseById?: Map<string, ToolUseInfo>;
+}) {
   if (message.role === "system") {
     if (message.isCollapsible) {
       // /context output — render as a rich visualization card (open by default)
@@ -149,7 +164,7 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
 
   return (
     <div className="animate-[fadeSlideIn_0.2s_ease-out]">
-      <AssistantMessage message={message} />
+      <AssistantMessage message={message} globalToolUseById={globalToolUseById} />
     </div>
   );
 }
@@ -370,11 +385,23 @@ function mapToolUsesById(blocks: ContentBlock[]): Map<string, ToolUseInfo> {
 
 // ─── AssistantMessage ──────────────────────────────────────────────────────
 
-function AssistantMessage({ message }: { message: ChatMessage }) {
+function AssistantMessage({
+  message,
+  globalToolUseById,
+}: {
+  message: ChatMessage;
+  globalToolUseById?: Map<string, ToolUseInfo>;
+}) {
   const blocks = message.contentBlocks || [];
 
   const grouped = useMemo(() => groupContentBlocks(blocks), [blocks]);
-  const toolUseById = useMemo(() => mapToolUsesById(blocks), [blocks]);
+  const toolUseById = useMemo(() => {
+    const local = mapToolUsesById(blocks);
+    if (!globalToolUseById || globalToolUseById.size === 0) return local;
+    const merged = new Map(globalToolUseById);
+    for (const [k, v] of local) merged.set(k, v); // local wins on collision
+    return merged;
+  }, [blocks, globalToolUseById]);
 
   // Fallback: no content blocks, just plain text
   if (blocks.length === 0 && message.content) {
