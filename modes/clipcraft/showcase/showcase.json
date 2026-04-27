@@ -1,0 +1,24 @@
+{
+  "tagline": "AI video production with anchored frames and provenance",
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": "Anchored First-Last Frames",
+      "description": "Pin the start and end of every shot to the same image its neighbors share — cuts become invisible. The seed ships a 19-second self-intro that's anchored end-to-end.",
+      "media": "first-last-frame.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "3D Timeline & Dive-In",
+      "description": "Multi-track editor with an exploded 3D overview at any playhead position. Click a layer to dive into the shot's prompt, refs, and variants in context.",
+      "media": "3d-timeline.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Variants With Lineage",
+      "description": "Every clip carries its full provenance graph — switch between takes, see what derived from what, and ask the agent for another shot off any node.",
+      "media": "variant-provenance.png",
+      "mediaType": "image"
+    }
+  ]
+}

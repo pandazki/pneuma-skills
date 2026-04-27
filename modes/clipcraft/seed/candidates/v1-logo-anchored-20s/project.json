@@ -22,11 +22,11 @@
             "id": "clip-bgm",
             "assetId": "asset-bgm-pneuma",
             "startTime": 0,
-            "duration": 19,
+            "duration": 20,
             "inPoint": 0,
-            "outPoint": 19,
-            "fadeIn": 0.6,
-            "fadeOut": 1.2
+            "outPoint": 20,
+            "fadeIn": 0.8,
+            "fadeOut": 1.5
           }
         ]
       },
@@ -42,7 +42,7 @@
           {
             "id": "clip-vo-tagline",
             "assetId": "asset-vo-tagline",
-            "startTime": 13.0,
+            "startTime": 14.0,
             "duration": 5.48,
             "inPoint": 0,
             "outPoint": 5.48
@@ -62,14 +62,14 @@
             "id": "clip-shot1-spark",
             "assetId": "asset-shot1-spark",
             "startTime": 0,
-            "duration": 4,
+            "duration": 5,
             "inPoint": 0,
-            "outPoint": 4
+            "outPoint": 5
           },
           {
             "id": "clip-shot2-convergence",
             "assetId": "asset-shot2-convergence",
-            "startTime": 4,
+            "startTime": 5,
             "duration": 8,
             "inPoint": 0,
             "outPoint": 8
@@ -77,7 +77,7 @@
           {
             "id": "clip-shot3-resolution",
             "assetId": "asset-shot3-resolution",
-            "startTime": 12,
+            "startTime": 13,
             "duration": 7,
             "inPoint": 0,
             "outPoint": 7
@@ -96,7 +96,7 @@
           {
             "id": "clip-caption-tagline",
             "assetId": "asset-caption-stub",
-            "startTime": 13.0,
+            "startTime": 14.0,
             "duration": 5.48,
             "inPoint": 0,
             "outPoint": 5.48,
@@ -148,32 +148,19 @@
       "tags": ["brand", "anchor", "last-frame", "wordmark"]
     },
     {
-      "id": "asset-shot1-start",
-      "type": "image",
-      "uri": "assets/images/shot1-start.png",
-      "name": "Shot 1 · breath start anchor",
-      "metadata": {
-        "width": 1280,
-        "height": 720,
-        "codec": "png"
-      },
-      "createdAt": 1745780080000,
-      "tags": ["brand", "anchor", "first-frame"]
-    },
-    {
       "id": "asset-shot1-spark",
       "type": "video",
       "uri": "assets/clips/shot1-spark.mp4",
-      "name": "Shot 1 · Spark (first-last)",
+      "name": "Shot 1 · Spark",
       "metadata": {
         "width": 1280,
         "height": 720,
-        "duration": 4.04,
+        "duration": 5.04,
         "fps": 24,
         "codec": "h264"
       },
       "createdAt": 1745780100000,
-      "tags": ["shot-1", "first-last-frame", "opening"]
+      "tags": ["shot-1", "ambient", "t2v"]
     },
     {
       "id": "asset-shot2-convergence",
@@ -302,31 +289,20 @@
       }
     },
     {
-      "toAssetId": "asset-shot1-start",
-      "fromAssetId": null,
-      "operation": {
-        "type": "import",
-        "actor": "human",
-        "timestamp": 1745780080000,
-        "label": "shot 1 start anchor — first-frame snapshot for strict first-last opening"
-      }
-    },
-    {
       "toAssetId": "asset-shot1-spark",
-      "fromAssetId": "asset-shot1-start",
+      "fromAssetId": "asset-shot2-start",
       "operation": {
         "type": "derive",
         "actor": "agent",
         "agentId": "clipcraft-videogen",
         "timestamp": 1745780100000,
-        "label": "shot 1 — strict first-last frame opening (lands on shot 2's start)",
+        "label": "shot 1 — logo breathes, anchored on breath frame",
         "params": {
           "model": "bytedance/seedance-2.0/image-to-video",
-          "prompt": "Four seconds of cinematic logo breath. The Pneuma wind-swoosh logo glows steadily in the dark void; its trailing tips emit gentle pulses of warm orange particles drifting outward, then the particles slow and the logo settles back to its starting steady state — a complete inhale-exhale cycle. The amber halo expands then gently contracts. Camera dead still. No people, no text, no UI. Pure ambient atmosphere, brand identity opening shot.",
-          "duration": "4",
+          "prompt": "Slow cinematic open: the Pneuma wind-swoosh logo glows softly in the dark void, breathing — its trailing tips emit gentle pulses of warm orange particles drifting outward into the black surround. The whole logo subtly inhales then exhales over five seconds, the amber halo expanding and contracting in time. Camera holds dead still. No people, no text, no UI. Pure ambient atmosphere, futuristic ethereal mood.",
+          "duration": "5",
           "aspect_ratio": "16:9",
-          "image_url": "assets/images/shot1-start.png",
-          "end_image_url": "assets/images/shot2-start.png",
+          "image_url": "assets/images/shot2-start.png",
           "generate_audio": false
         }
       }
@@ -420,9 +396,9 @@
       "id": "scene-1-spark",
       "order": 0,
       "title": "Spark",
-      "prompt": "Open with the Pneuma logo breathing in the void — strict first-last frame from shot1-start to shot2-start so the cut into Convergence is invisible.",
+      "prompt": "Open in the dark. A single warm ember breathes — pure ambient, pure t2v.",
       "memberClipIds": ["clip-shot1-spark"],
-      "memberAssetIds": ["asset-shot1-spark", "asset-shot1-start"]
+      "memberAssetIds": ["asset-shot1-spark"]
     },
     {
       "id": "scene-2-convergence",

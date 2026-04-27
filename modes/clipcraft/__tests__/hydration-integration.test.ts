@@ -145,44 +145,61 @@ describe("full-stack hydration", () => {
     const coreState = core.getCoreState();
     const composition = core.getComposition();
 
-    // The Panda demo seed ships three real veo3.1-generated videos, a BGM
-    // track, and a text-asset stub for captions. Two panda variants
-    // (v1 / v2) demonstrate the variant switcher; v2 is the active take.
-    expect(coreState.registry.has("asset-panda-sad-v1")).toBe(true);
-    expect(coreState.registry.has("asset-panda-sad-v2")).toBe(true);
-    expect(coreState.registry.has("asset-panda-bamboo")).toBe(true);
-    expect(coreState.registry.has("asset-bgm-token-meme")).toBe(true);
+    // The Pneuma self-introduction seed ships three first-/last-frame
+    // anchored shots, a wordmark-resolution image, a tagline VO, an
+    // ambient BGM, and a text-asset stub for captions. Shot 2 and 3 are
+    // anchored derivations — real "image → video" provenance edges.
+    expect(coreState.registry.has("asset-shot1-start")).toBe(true);
+    expect(coreState.registry.has("asset-shot1-spark")).toBe(true);
+    expect(coreState.registry.has("asset-shot2-convergence")).toBe(true);
+    expect(coreState.registry.has("asset-shot3-resolution")).toBe(true);
+    expect(coreState.registry.has("asset-shot2-start")).toBe(true);
+    expect(coreState.registry.has("asset-shot2-end")).toBe(true);
+    expect(coreState.registry.has("asset-shot3-end")).toBe(true);
+    expect(coreState.registry.has("asset-vo-tagline")).toBe(true);
+    expect(coreState.registry.has("asset-bgm-pneuma")).toBe(true);
     expect(coreState.registry.has("asset-caption-stub")).toBe(true);
 
-    expect(coreState.registry.get("asset-panda-sad-v2")!.type).toBe("video");
-    expect(coreState.registry.get("asset-panda-sad-v2")!.uri).toBe(
-      "assets/clips/panda-sad-v2.mp4",
+    expect(coreState.registry.get("asset-shot2-convergence")!.type).toBe("video");
+    expect(coreState.registry.get("asset-shot2-convergence")!.uri).toBe(
+      "assets/clips/shot2-convergence.mp4",
     );
-    expect(coreState.registry.get("asset-bgm-token-meme")!.type).toBe("audio");
+    expect(coreState.registry.get("asset-bgm-pneuma")!.type).toBe("audio");
+    expect(coreState.registry.get("asset-vo-tagline")!.type).toBe("audio");
 
-    // Provenance: 5 edges (3 panda + bgm + caption stub). The v2 panda
-    // is derived from v1 — a real AIGC variant relationship.
-    expect(coreState.provenance.edges.size).toBe(5);
-    const v2Node = coreState.provenance.nodes.get("asset-panda-sad-v2");
-    expect(v2Node!.parentIds).toEqual(["asset-panda-sad-v1"]);
-    expect(v2Node!.rootOperation.type).toBe("derive");
+    // Provenance: 10 edges (4 anchor images + 3 videos + VO + BGM + caption stub).
+    // All three video shots are derived strict first-/last-frame anchors —
+    // shot 1 lands on shot2-start so the cut into Convergence is seamless;
+    // shot 2 starts from shot2-start, ends at shot2-end; shot 3 starts from
+    // shot2-end, ends at shot3-end.
+    expect(coreState.provenance.edges.size).toBe(10);
+    const shot1Node = coreState.provenance.nodes.get("asset-shot1-spark");
+    expect(shot1Node!.parentIds).toEqual(["asset-shot1-start"]);
+    expect(shot1Node!.rootOperation.type).toBe("derive");
+    const shot2Node = coreState.provenance.nodes.get("asset-shot2-convergence");
+    expect(shot2Node!.parentIds).toEqual(["asset-shot2-start"]);
+    expect(shot2Node!.rootOperation.type).toBe("derive");
+    const shot3Node = coreState.provenance.nodes.get("asset-shot3-resolution");
+    expect(shot3Node!.parentIds).toEqual(["asset-shot2-end"]);
+    expect(shot3Node!.rootOperation.type).toBe("derive");
 
-    // Composition has three tracks: video, subtitle, audio.
+    // Composition has four tracks: BGM audio, VO audio, video, subtitle.
     expect(composition).not.toBeNull();
-    expect(composition!.tracks).toHaveLength(3);
+    expect(composition!.tracks).toHaveLength(4);
     const videoTrack = composition!.tracks.find((t) => t.type === "video")!;
     const subtitleTrack = composition!.tracks.find((t) => t.type === "subtitle")!;
-    const audioTrack = composition!.tracks.find((t) => t.type === "audio")!;
-    expect(videoTrack.clips).toHaveLength(2);
-    expect(subtitleTrack.clips).toHaveLength(2);
-    expect(audioTrack.clips).toHaveLength(1);
-    // Video clip 1 references the v2 variant (the selected take).
-    expect(videoTrack.clips[0].assetId).toBe("asset-panda-sad-v2");
+    const audioTracks = composition!.tracks.filter((t) => t.type === "audio");
+    expect(videoTrack.clips).toHaveLength(3);
+    expect(subtitleTrack.clips).toHaveLength(1);
+    expect(audioTracks).toHaveLength(2);
+    // Video clip 1 is the t2v opening; clip 2 is the strict first-/last-frame
+    // showcase; clip 3 is the wordmark resolution.
+    expect(videoTrack.clips[0].assetId).toBe("asset-shot1-spark");
     expect(videoTrack.clips[0].startTime).toBe(0);
-    expect(videoTrack.clips[0].duration).toBe(4);
-    // Subtitle clips carry the Chinese caption text inline.
-    expect(subtitleTrack.clips[0].text).toBe("别跟我说话！");
-    expect(subtitleTrack.clips[1].text).toBe("……除非你带了竹子 🎋");
+    expect(videoTrack.clips[1].assetId).toBe("asset-shot2-convergence");
+    expect(videoTrack.clips[2].assetId).toBe("asset-shot3-resolution");
+    // The single subtitle clip carries the English tagline VO line.
+    expect(subtitleTrack.clips[0].text).toBe("Pneuma. Where breath becomes craft.");
   });
 
   it("rejects a duplicate hydration attempt by throwing in dispatch", () => {

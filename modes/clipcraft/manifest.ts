@@ -15,15 +15,19 @@ const clipcraftManifest: ModeManifest = {
   name: "clipcraft",
   version: "0.7.2",
   displayName: "ClipCraft",
-  description: "AI-orchestrated video production, rebuilt on @pneuma-craft",
+  description: "AI video production with seedance and gpt-image-2 — first-/last-frame anchoring, 3D timeline, full provenance lineage",
 
-  supportedBackends: ["claude-code"],
+  supportedBackends: ["claude-code", "codex"],
   layout: "editor",
 
   skill: {
     sourceDir: "skill",
     installName: "pneuma-clipcraft",
     sharedScripts: ["generate_image.mjs", "edit_image.mjs"],
+    envMapping: {
+      OPENROUTER_API_KEY: "openrouterApiKey",
+      FAL_KEY: "falApiKey",
+    },
     claudeMdSection: `## Pneuma ClipCraft Mode
 
 You are running inside **Pneuma**, a co-creation workspace. This is **ClipCraft Mode** — AI-orchestrated video production on \`@pneuma-craft\`.
@@ -85,17 +89,43 @@ The \`scripts/\` directory holds six generator CLIs: \`generate_image.mjs\` (sha
 
   agent: {
     permissionMode: "bypassPermissions",
+    greeting: `<system-info pneuma-mode="Pneuma ClipCraft Mode" skill="pneuma-clipcraft" session="new"></system-info>
+The user just opened the workspace. You are ready to assist with AI-orchestrated video production — image, video, narration, BGM. Greet the user briefly (1-2 sentences) and mention they can describe a video idea, ask for another take, or use the toolbar commands to get started.`,
   },
 
   init: {
     contentCheckPattern: "project.json",
     seedFiles: {
       "modes/clipcraft/seed/project.json": "project.json",
-      "modes/clipcraft/seed/assets/clips/panda-sad-v1.mp4": "assets/clips/panda-sad-v1.mp4",
-      "modes/clipcraft/seed/assets/clips/panda-sad-v2.mp4": "assets/clips/panda-sad-v2.mp4",
-      "modes/clipcraft/seed/assets/clips/panda-bamboo.mp4": "assets/clips/panda-bamboo.mp4",
-      "modes/clipcraft/seed/assets/bgm/token-meme.mp3": "assets/bgm/token-meme.mp3",
+      "modes/clipcraft/seed/assets/images/shot1-start.png": "assets/images/shot1-start.png",
+      "modes/clipcraft/seed/assets/images/shot2-start.png": "assets/images/shot2-start.png",
+      "modes/clipcraft/seed/assets/images/shot2-end.png": "assets/images/shot2-end.png",
+      "modes/clipcraft/seed/assets/images/shot3-end.png": "assets/images/shot3-end.png",
+      "modes/clipcraft/seed/assets/clips/shot1-spark.mp4": "assets/clips/shot1-spark.mp4",
+      "modes/clipcraft/seed/assets/clips/shot2-convergence.mp4": "assets/clips/shot2-convergence.mp4",
+      "modes/clipcraft/seed/assets/clips/shot3-resolution.mp4": "assets/clips/shot3-resolution.mp4",
+      "modes/clipcraft/seed/assets/audio/vo-tagline.mp3": "assets/audio/vo-tagline.mp3",
+      "modes/clipcraft/seed/assets/bgm/pneuma-ambient.mp3": "assets/bgm/pneuma-ambient.mp3",
+      "modes/clipcraft/seed/assets/brand/pneuma-logo.png": "assets/brand/pneuma-logo.png",
     },
+    params: [
+      {
+        name: "openrouterApiKey",
+        label: "OpenRouter API Key",
+        description: "for BGM generation via google/lyria-3-pro-preview",
+        type: "string",
+        defaultValue: "",
+        sensitive: true,
+      },
+      {
+        name: "falApiKey",
+        label: "fal.ai API Key",
+        description: "for image (GPT-Image-2), video (seedance 2.0), and TTS",
+        type: "string",
+        defaultValue: "",
+        sensitive: true,
+      },
+    ],
   },
 
   sources: {
