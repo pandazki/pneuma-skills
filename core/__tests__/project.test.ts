@@ -6,6 +6,7 @@ import {
   createProject,
   createProjectSession,
   listProjectSessions,
+  loadProjectSession,
   loadProject,
   loadRecentProjects,
   projectManifestPath,
@@ -192,5 +193,36 @@ describe("project runtime", () => {
     expect(runtime.session.sessionId).toBe("web-runtime");
     expect(runtime.workspace).toBe(join(root, ".pneuma", "sessions", "web-runtime", "workspace"));
     expect(runtime.projectRoot).toBe(root);
+  });
+
+  test("resolveProjectRuntime resumes an existing project session when sessionId is provided", () => {
+    createProject(root, {
+      name: "Resume Project",
+      now: () => "2026-04-28T00:00:00.000Z",
+      idFactory: () => "project_resume",
+    });
+    createProjectSession(root, {
+      mode: "doc",
+      displayName: "Doc",
+      backendType: "codex",
+      role: "Draft copy",
+      now: () => "2026-04-28T01:00:00.000Z",
+      idFactory: () => "doc-existing",
+    });
+
+    const runtime = resolveProjectRuntime({
+      projectRoot: root,
+      mode: "doc",
+      displayName: "Doc",
+      backendType: "codex",
+      sessionId: "doc-existing",
+      now: () => "2026-04-28T06:00:00.000Z",
+    });
+
+    expect(runtime.session.sessionId).toBe("doc-existing");
+    expect(runtime.session.role).toBe("Draft copy");
+    expect(runtime.workspace).toBe(projectSessionWorkspace(root, "doc-existing"));
+    expect(listProjectSessions(root)).toHaveLength(1);
+    expect(loadProjectSession(root, "doc-existing")?.lastAccessed).toBe("2026-04-28T06:00:00.000Z");
   });
 });
