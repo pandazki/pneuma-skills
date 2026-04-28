@@ -324,79 +324,152 @@ export async function startServer(options: ServerOptions) {
 
   // ── Shared route mounters ────────────────────────────────────────────
   // `/api/registry` is needed by BOTH the launcher's marketplace UI and the
-  // per-session ModeSwitcherDropdown. Defining it as a free function keeps
-  // the two mount sites in sync.
+  // ProjectPanel's mode-tile grid (the panel calls it on every open). The
+  // route's R2 fetch dominated panel render time (~450ms cold), so the
+  // response is cached at the server module — first call primes, subsequent
+  // calls hit the cache instantly. A 1-minute TTL means a fresh `published`
+  // list is never more than a minute behind R2; builtins/local are
+  // filesystem-cheap but re-cached together for simplicity.
+  const REGISTRY_URL = "https://pneuma-storage.vibecoding.icu";
+  const REGISTRY_TTL_MS = 60_000;
+
+  interface RegistryResponse {
+    builtins: Array<{
+      name: string;
+      displayName: string;
+      description?: string;
+      icon?: string;
+      version: string;
+      type: "builtin";
+      hasInitParams?: boolean;
+      showcase?: { tagline?: string; hero?: string; highlights?: Array<{ title: string; description: string; media: string; mediaType?: string }> };
+      inspiredBy?: { name: string; url: string };
+    }>;
+    published: Array<{ name: string; displayName: string; description?: string; version: string; publishedAt: string; archiveUrl: string; icon?: string }>;
+    local: Array<{ name: string; displayName: string; description?: string; version: string; path: string; icon?: string }>;
+  }
+
+  let registryCache: { value: RegistryResponse; fetchedAt: number } | null = null;
+  let registryInflight: Promise<RegistryResponse> | null = null;
+
+  const buildRegistry = async (): Promise<RegistryResponse> => {
+    const { parseManifestTs } = await import("../core/utils/manifest-parser.js");
+    const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
+
+    const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft"];
+    const builtins = builtinNames.map((name) => {
+      const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
+      let parsed: ReturnType<typeof parseManifestTs> = {};
+      try { parsed = parseManifestTs(readFileSync(manifestPath, "utf-8")); } catch { }
+      let showcase: RegistryResponse["builtins"][number]["showcase"] | undefined;
+      try {
+        const showcasePath = join(projectRoot, "modes", name, "showcase", "showcase.json");
+        if (existsSync(showcasePath)) {
+          showcase = JSON.parse(readFileSync(showcasePath, "utf-8"));
+        }
+      } catch { }
+      return {
+        name,
+        displayName: parsed.displayName || name,
+        description: parsed.description || "",
+        icon: parsed.icon,
+        version: "builtin",
+        type: "builtin" as const,
+        ...((name === "slide" || name === "illustrate" || name === "kami") ? { hasInitParams: true } : {}),
+        ...(showcase ? { showcase } : {}),
+        ...(parsed.inspiredBy ? { inspiredBy: parsed.inspiredBy } : {}),
+      };
+    });
+
+    let published: RegistryResponse["published"] = [];
+    try {
+      const res = await fetch(`${REGISTRY_URL}/registry/index.json`, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const data = await res.json() as { modes?: typeof published };
+        published = data.modes || [];
+      }
+    } catch { }
+
+    const modesDir = join(homedir(), ".pneuma", "modes");
+    const local: RegistryResponse["local"] = [];
+    try {
+      if (existsSync(modesDir)) {
+        const entries = readdirSync(modesDir);
+        for (const entry of entries) {
+          const entryPath = join(modesDir, entry);
+          if (!statSync(entryPath).isDirectory()) continue;
+          const manifestFile = ["manifest.ts", "manifest.js"].find((f) => existsSync(join(entryPath, f)));
+          if (!manifestFile) continue;
+          try {
+            const content = readFileSync(join(entryPath, manifestFile), "utf-8");
+            const parsed = parseManifestTs(content);
+            local.push({
+              name: parsed.name || entry,
+              displayName: parsed.displayName || entry,
+              description: parsed.description,
+              icon: parsed.icon,
+              version: parsed.version || "local",
+              path: entryPath,
+            });
+          } catch { }
+        }
+      }
+    } catch { }
+
+    return { builtins, published, local };
+  };
+
+  /**
+   * SWR registry getter. If cache fresh (< TTL) → return immediately. If
+   * stale → return stale + revalidate in background. If empty → block
+   * until first fetch (one-time cost). Concurrent calls dedupe via the
+   * in-flight Promise.
+   */
+  const getRegistry = async (): Promise<RegistryResponse> => {
+    const now = Date.now();
+    if (registryCache && now - registryCache.fetchedAt < REGISTRY_TTL_MS) {
+      return registryCache.value;
+    }
+    if (registryCache) {
+      // Stale → return stale + revalidate in background
+      if (!registryInflight) {
+        registryInflight = buildRegistry()
+          .then((value) => {
+            registryCache = { value, fetchedAt: Date.now() };
+            registryInflight = null;
+            return value;
+          })
+          .catch((err) => {
+            console.warn(`[registry-cache] revalidate failed: ${err}`);
+            registryInflight = null;
+            return registryCache!.value;
+          });
+      }
+      return registryCache.value;
+    }
+    // First call — wait for build, dedupe concurrent first-callers
+    if (!registryInflight) {
+      registryInflight = buildRegistry()
+        .then((value) => {
+          registryCache = { value, fetchedAt: Date.now() };
+          registryInflight = null;
+          return value;
+        })
+        .catch((err) => {
+          registryInflight = null;
+          throw err;
+        });
+    }
+    return registryInflight;
+  };
+
+  // Prime in the background so the first /api/registry call is instant.
+  void getRegistry().catch(() => { /* already logged */ });
+
   const mountRegistryRoute = (target: Hono) => {
-    const REGISTRY_URL = "https://pneuma-storage.vibecoding.icu";
-
     target.get("/api/registry", async (c) => {
-      const { parseManifestTs } = await import("../core/utils/manifest-parser.js");
-      const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
-
-      // Parse builtin mode manifests for metadata (icon, description, etc.)
-      const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft"];
-      const builtins = builtinNames.map((name) => {
-        const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
-        let parsed: ReturnType<typeof parseManifestTs> = {};
-        try { parsed = parseManifestTs(readFileSync(manifestPath, "utf-8")); } catch { }
-        // Load showcase data from showcase/showcase.json if it exists
-        let showcase: { tagline?: string; hero?: string; highlights?: Array<{ title: string; description: string; media: string; mediaType?: string }> } | undefined;
-        try {
-          const showcasePath = join(projectRoot, "modes", name, "showcase", "showcase.json");
-          if (existsSync(showcasePath)) {
-            showcase = JSON.parse(readFileSync(showcasePath, "utf-8"));
-          }
-        } catch { }
-        return {
-          name,
-          displayName: parsed.displayName || name,
-          description: parsed.description || "",
-          icon: parsed.icon,
-          version: "builtin",
-          type: "builtin" as const,
-          ...((name === "slide" || name === "illustrate" || name === "kami") ? { hasInitParams: true } : {}),
-          ...(showcase ? { showcase } : {}),
-          ...(parsed.inspiredBy ? { inspiredBy: parsed.inspiredBy } : {}),
-        };
-      });
-
-      let published: Array<{ name: string; displayName: string; description?: string; version: string; publishedAt: string; archiveUrl: string; icon?: string }> = [];
-      try {
-        const res = await fetch(`${REGISTRY_URL}/registry/index.json`, { signal: AbortSignal.timeout(5000) });
-        if (res.ok) {
-          const data = await res.json() as { modes?: typeof published };
-          published = data.modes || [];
-        }
-      } catch { }
-
-      // Scan local modes from ~/.pneuma/modes/
-      const modesDir = join(homedir(), ".pneuma", "modes");
-      let local: Array<{ name: string; displayName: string; description?: string; version: string; path: string; icon?: string }> = [];
-      try {
-        if (existsSync(modesDir)) {
-          const entries = readdirSync(modesDir);
-          for (const entry of entries) {
-            const entryPath = join(modesDir, entry);
-            if (!statSync(entryPath).isDirectory()) continue;
-            const manifestFile = ["manifest.ts", "manifest.js"].find((f) => existsSync(join(entryPath, f)));
-            if (!manifestFile) continue;
-            try {
-              const content = readFileSync(join(entryPath, manifestFile), "utf-8");
-              const parsed = parseManifestTs(content);
-              local.push({
-                name: parsed.name || entry,
-                displayName: parsed.displayName || entry,
-                description: parsed.description,
-                icon: parsed.icon,
-                version: parsed.version || "local",
-                path: entryPath,
-              });
-            } catch { }
-          }
-        }
-      } catch { }
-
-      return c.json({ builtins, published, local });
+      const data = await getRegistry();
+      return c.json(data);
     });
   };
 
