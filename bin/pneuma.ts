@@ -2362,19 +2362,23 @@ Options:
         console.log("[pneuma] Sent auto-greeting for fresh session");
       }
 
+      // Load persisted message history FIRST. `loadMessageHistory` does a
+      // full-replace of `session.messageHistory`, so anything pushed before
+      // this gets dropped on the floor. The env-tag dispatch below has to
+      // land AFTER this for its synthetic user message to survive into the
+      // next persistence tick and into the browser replay.
+      const savedHistory = loadHistory(stateDir);
+      if (savedHistory.length > 0) {
+        wsBridge.loadMessageHistory(session.sessionId, savedHistory as any);
+        console.log(`[pneuma] Restored ${savedHistory.length} messages from history`);
+      }
+
       // `<pneuma:env>` session-start signal. Dispatched on every spawn,
       // including resumes — the user's action (clicked a session row,
       // confirmed a handoff, opened fresh) is the signal, not the agent's
       // resume state. The dispatch helper is internally idempotent so
       // re-entering this block via the edit-toggle path won't double-fire.
       dispatchEnvTag(session.sessionId);
-
-      // Load persisted message history
-      const savedHistory = loadHistory(stateDir);
-      if (savedHistory.length > 0) {
-        wsBridge.loadMessageHistory(session.sessionId, savedHistory as any);
-        console.log(`[pneuma] Restored ${savedHistory.length} messages from history`);
-      }
 
       // History persistence
       historyInterval = setInterval(() => {
