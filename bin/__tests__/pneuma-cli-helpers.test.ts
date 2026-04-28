@@ -12,6 +12,8 @@ describe("pneuma CLI helpers", () => {
 
     expect(parsed.mode).toBe("doc");
     expect(parsed.workspace).toBe("/tmp/workspace");
+    expect(parsed.projectRoot).toBe("");
+    expect(parsed.role).toBe("");
     expect(parsed.backendType).toBe("claude-code");
   });
 
@@ -45,6 +47,26 @@ describe("pneuma CLI helpers", () => {
     expect(parsed.skipSkill).toBe(true);
     expect(parsed.debug).toBe(true);
     expect(parsed.forceDev).toBe(true);
+  });
+
+  test("parseCliArgs parses project and role flags", () => {
+    const parsed = parseCliArgs(
+      [
+        "bun",
+        "bin/pneuma.ts",
+        "webcraft",
+        "--project",
+        "./site",
+        "--role",
+        "Build the home page",
+      ],
+      "/tmp/base",
+    );
+
+    expect(parsed.mode).toBe("webcraft");
+    expect(parsed.projectRoot).toBe("/tmp/base/site");
+    expect(parsed.role).toBe("Build the home page");
+    expect(parsed.workspace).toBe("/tmp/base");
   });
 
   test("parseCliArgs recognizes top-level help and version flags", () => {
