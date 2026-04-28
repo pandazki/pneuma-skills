@@ -31,7 +31,7 @@ import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./
 import type { ProxyRoute } from "../core/types/mode-manifest.js";
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
 import { mountNativeRoutes } from "./native-bridge.js";
-import { createProject, loadRecentProjects, recordRecentProject } from "../core/project.js";
+import { createProject, isProjectSessionWorkspace, listProjectSessions, loadProject, loadRecentProjects, recordRecentProject } from "../core/project.js";
 
 const DEFAULT_PORT = 17007;
 
@@ -91,6 +91,8 @@ export async function startServer(options: ServerOptions) {
       proc: ReturnType<typeof Bun.spawn>;
       specifier: string;
       workspace: string;
+      projectRoot?: string;
+      projectSessionId?: string;
       url: string;
       startedAt: number;
     }>();
@@ -178,6 +180,28 @@ export async function startServer(options: ServerOptions) {
     app.get("/api/projects", (c) => {
       const projects = loadRecentProjects();
       return c.json({ projects });
+    });
+
+    app.get("/api/projects/:projectId", (c) => {
+      const projectId = c.req.param("projectId");
+      const record = loadRecentProjects().find((project) => project.projectId === projectId);
+      if (!record) return c.json({ error: "Project not found" }, 404);
+
+      const project = loadProject(record.root);
+      if (!project) return c.json({ error: "Project metadata not found" }, 404);
+
+      const sessions = listProjectSessions(record.root).map((session) => ({
+        sessionId: session.sessionId,
+        mode: session.mode,
+        displayName: session.displayName,
+        ...(session.role ? { role: session.role } : {}),
+        backendType: session.backendType,
+        status: session.status,
+        createdAt: session.createdAt,
+        lastAccessed: session.lastAccessed,
+      }));
+
+      return c.json({ project, sessions });
     });
 
     app.post("/api/projects", async (c) => {
@@ -336,8 +360,9 @@ export async function startServer(options: ServerOptions) {
         ...session,
         backendType: session.backendType || getDefaultBackendType(),
       }));
-      // Filter out sessions whose workspace no longer exists
-      sessions = sessions.filter((s) => existsSync(s.workspace));
+      // Filter out sessions whose workspace no longer exists or belongs to a
+      // project sandbox. Project sessions are surfaced from the project view.
+      sessions = sessions.filter((s) => existsSync(s.workspace) && !isProjectSessionWorkspace(s.workspace));
       // Sort by lastAccessed descending
       sessions.sort((a, b) => b.lastAccessed - a.lastAccessed);
       // Check for thumbnails
@@ -367,7 +392,9 @@ export async function startServer(options: ServerOptions) {
       try {
         const raw = readFileSync(registryPath, "utf-8");
         const sessions = JSON.parse(raw) as Array<{ workspace: string }>;
-        knownWorkspaces = sessions.map((s) => resolve(s.workspace));
+        knownWorkspaces = sessions
+          .filter((s) => existsSync(s.workspace) && !isProjectSessionWorkspace(s.workspace))
+          .map((s) => resolve(s.workspace));
       } catch { /* no registry yet */ }
       const resolvedWorkspace = resolve(workspace);
       if (!knownWorkspaces.includes(resolvedWorkspace)) {
@@ -623,10 +650,11 @@ export async function startServer(options: ServerOptions) {
     });
 
     app.post("/api/launch", async (c) => {
-      const { specifier, workspace: targetWorkspace, projectRoot: launchProjectRoot, role, initParams, skipSkill, backendType, replayPackage: replayPkg, replaySource, sessionName, viewing } = await c.req.json<{
+      const { specifier, workspace: targetWorkspace, projectRoot: launchProjectRoot, projectSessionId, role, initParams, skipSkill, backendType, replayPackage: replayPkg, replaySource, sessionName, viewing } = await c.req.json<{
         specifier: string;
         workspace?: string;
         projectRoot?: string;
+        projectSessionId?: string;
         role?: string;
         initParams?: Record<string, string | number>;
         skipSkill?: boolean;
@@ -665,6 +693,7 @@ export async function startServer(options: ServerOptions) {
           ? ["bun", pneumaBin, specifier, "--project", resolvedProjectRoot, "--no-prompt", "--no-open"]
           : ["bun", pneumaBin, specifier, "--workspace", resolvedWorkspace, "--no-prompt", "--no-open"];
         args.push("--backend", backendType || getDefaultBackendType());
+        if (projectSessionId?.trim()) args.push("--project-session", projectSessionId.trim());
         if (role?.trim()) args.push("--role", role.trim());
         if (skipSkill) args.push("--skip-skill");
         if (viewing) args.push("--viewing");
@@ -732,6 +761,8 @@ export async function startServer(options: ServerOptions) {
           proc: child,
           specifier,
           workspace: resolvedProjectRoot || resolvedWorkspace,
+          ...(resolvedProjectRoot ? { projectRoot: resolvedProjectRoot } : {}),
+          ...(resolvedProjectRoot && projectSessionId?.trim() ? { projectSessionId: projectSessionId.trim() } : {}),
           url: readyUrl,
           startedAt: Date.now(),
         });
@@ -754,6 +785,8 @@ export async function startServer(options: ServerOptions) {
         pid,
         specifier: info.specifier,
         workspace: info.workspace,
+        ...(info.projectRoot ? { projectRoot: info.projectRoot } : {}),
+        ...(info.projectSessionId ? { projectSessionId: info.projectSessionId } : {}),
         url: info.url,
         startedAt: info.startedAt,
       }));

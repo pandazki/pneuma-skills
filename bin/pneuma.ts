@@ -733,6 +733,7 @@ Modes:
 Options:
   --workspace <path>           Target workspace directory (default: cwd)
   --project <path>             Launch inside an explicit Pneuma project root
+  --project-session <id>       Resume an existing project session inside --project
   --role <text>                Describe this session's role within the project
   --port <number>              Preferred server port
   --backend <type>             Agent backend to launch (default: claude-code)
@@ -1095,7 +1096,7 @@ Options:
     return;
   }
 
-  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource, sessionName, viewing, projectRoot, role } = parsedArgs;
+  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource, sessionName, viewing, projectRoot, projectSessionId: requestedProjectSessionId, role } = parsedArgs;
   let { workspace, replayPackage } = parsedArgs;
 
   // Launcher mode — no mode arg → start marketplace UI
@@ -1264,6 +1265,7 @@ Options:
       mode: modeName,
       displayName: manifest.displayName,
       backendType,
+      sessionId: requestedProjectSessionId || undefined,
       role,
     });
     activeProjectRoot = runtime.projectRoot;
@@ -1718,7 +1720,9 @@ Options:
         backendType,
         createdAt: Date.now(),
       });
-      recordSession(modeName, manifest.displayName, workspace, backendType, sessionName || undefined);
+      if (!activeProjectRoot) {
+        recordSession(modeName, manifest.displayName, workspace, backendType, sessionName || undefined);
+      }
 
       // Start file watcher
       startFileWatcher(workspace, manifest.viewer, (files) => {
@@ -1844,7 +1848,9 @@ Options:
         createdAt: existing?.createdAt || Date.now(),
         editing: false,
       });
-      recordSession(modeName, manifest.displayName, workspace, sessionBackendType, sessionName || undefined, false);
+      if (!activeProjectRoot) {
+        recordSession(modeName, manifest.displayName, workspace, sessionBackendType, sessionName || undefined, false);
+      }
 
       // Load persisted message history
       const savedHistory = loadHistory(workspace);
@@ -1927,7 +1933,9 @@ Options:
         createdAt: existing?.createdAt || Date.now(),
         editing: true,
       });
-      recordSession(modeName, manifest.displayName, workspace, sessionBackendType, sessionName || undefined, true);
+      if (!activeProjectRoot) {
+        recordSession(modeName, manifest.displayName, workspace, sessionBackendType, sessionName || undefined, true);
+      }
 
       p.log.info(`Agent session: ${session.sessionId}`);
       wsBridge.getOrCreateSession(session.sessionId, sessionBackendType);

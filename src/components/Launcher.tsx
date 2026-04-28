@@ -3,6 +3,7 @@ import { getApiBase } from "../utils/api.js";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import SpotlightCard from "./reactbits/SpotlightCard";
 import Galaxy from "./reactbits/Galaxy";
+import { buildContinueItems } from "./launcher-helpers";
 import type { InitParam } from "../../core/types/mode-manifest.js";
 
 type BackendType = "claude-code" | "codex";
@@ -80,10 +81,43 @@ interface RecentSession {
   layout?: "editor" | "app";
 }
 
+interface RecentProject {
+  projectId: string;
+  name: string;
+  description?: string;
+  root: string;
+  lastAccessed: string | number;
+}
+
+interface ProjectOverviewSession {
+  sessionId: string;
+  mode: string;
+  displayName: string;
+  role?: string;
+  backendType: BackendType;
+  status: "active" | "idle" | "archived";
+  createdAt: string | number;
+  lastAccessed: string | number;
+}
+
+interface ProjectOverviewData {
+  project: {
+    projectId: string;
+    name: string;
+    description?: string;
+    root: string;
+    createdAt: string | number;
+    updatedAt: string | number;
+  };
+  sessions: ProjectOverviewSession[];
+}
+
 interface ChildProcess {
   pid: number;
   specifier: string;
   workspace: string;
+  projectRoot?: string;
+  projectSessionId?: string;
   url: string;
   startedAt: number;
 }
@@ -362,6 +396,28 @@ function timeAgo(timestamp: number): string {
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
   return `${Math.floor(days / 30)}mo ago`;
+}
+
+function timestampFromDateLike(value: string | number): number {
+  if (typeof value === "number") return value;
+  return Date.parse(value);
+}
+
+function timeAgoIso(value: string | number): string {
+  const timestamp = timestampFromDateLike(value);
+  return Number.isFinite(timestamp) ? timeAgo(timestamp) : "";
+}
+
+function formatIsoDate(value: string | number): string {
+  const timestamp = timestampFromDateLike(value);
+  if (!Number.isFinite(timestamp)) return String(value);
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(timestamp);
 }
 
 function runningDuration(startedAt: number): string {
@@ -3246,6 +3302,224 @@ function ImportDialog({
   );
 }
 
+function ProjectCard({
+  project,
+  homeDir,
+  onOpen,
+}: {
+  project: RecentProject;
+  homeDir: string;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      onClick={onOpen}
+      className="group text-left rounded-lg border border-cc-border bg-cc-bg-secondary hover:border-cc-primary/40 transition-all p-4 cursor-pointer min-h-[116px] flex flex-col"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-cc-fg truncate">{project.name}</div>
+          {project.description && (
+            <div className="text-xs text-cc-muted/70 line-clamp-2 mt-1">{project.description}</div>
+          )}
+        </div>
+        <span className="text-[10px] text-cc-muted/40 shrink-0">{timeAgoIso(project.lastAccessed)}</span>
+      </div>
+      <div className="mt-auto pt-3 text-[10px] text-cc-muted/50 font-mono truncate">
+        {shortenPath(project.root, homeDir)}
+      </div>
+    </button>
+  );
+}
+
+function CreateProjectDialog({
+  homeDir,
+  onClose,
+  onCreated,
+}: {
+  homeDir: string;
+  onClose: () => void;
+  onCreated: (project: RecentProject) => void;
+}) {
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const defaultRoot = homeDir ? `${homeDir}/pneuma-projects/project-${stamp}` : `~/pneuma-projects/project-${stamp}`;
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [root, setRoot] = useState(defaultRoot);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    if (!root.trim() || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch(`${getApiBase()}/api/projects`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          root: root.trim(),
+          ...(name.trim() ? { name: name.trim() } : {}),
+          ...(description.trim() ? { description: description.trim() } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create project");
+      onCreated(data.project as RecentProject);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create project");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/30 backdrop-blur-[2px] flex items-center justify-center z-50 font-body py-12" style={{ animation: "overlayFadeIn 0.2s ease-out" }}>
+      <div className="launcher-card-elevated bg-cc-surface border border-cc-border/50 rounded-2xl overflow-hidden w-full max-w-lg mx-4">
+        <div className="p-6 border-b border-cc-border/40">
+          <h2 className="text-lg font-medium text-cc-fg">Create Project</h2>
+          <p className="text-xs text-cc-muted/60 mt-1">Choose a real folder that you can open, git init, or push later.</p>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-xs text-cc-muted/70 mb-1">Name</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Project name"
+              className="w-full px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-cc-muted/70 mb-1">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              placeholder="Optional"
+              className="w-full px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50 resize-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-cc-muted/70 mb-1">Root folder</label>
+            <input
+              value={root}
+              onChange={(e) => setRoot(e.target.value)}
+              className="w-full px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm font-mono focus:outline-none focus:border-cc-primary/50"
+            />
+          </div>
+          {error && <div className="text-xs text-cc-error">{error}</div>}
+        </div>
+        <div className="p-6 pt-0 flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-cc-border/50 text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">
+            Cancel
+          </button>
+          <PrimaryButton onClick={submit} disabled={saving || !root.trim()}>
+            {saving ? "Creating..." : "Create"}
+          </PrimaryButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProjectOverview({
+  data,
+  modes,
+  homeDir,
+  iconMap,
+  defaultBackendType,
+  onClose,
+  onResume,
+  onStartNew,
+}: {
+  data: ProjectOverviewData;
+  modes: AnyMode[];
+  homeDir: string;
+  iconMap: Record<string, string>;
+  defaultBackendType: BackendType;
+  onClose: () => void;
+  onResume: (session: ProjectOverviewSession) => void;
+  onStartNew: (mode: AnyMode) => void;
+}) {
+  const project = data.project;
+  const launchableModes = modes.filter((m) => m.name !== "evolve");
+
+  return (
+    <div className="fixed inset-0 bg-black/30 backdrop-blur-[2px] flex items-center justify-center z-50 font-body py-12" style={{ animation: "overlayFadeIn 0.2s ease-out" }}>
+      <div className="launcher-card-elevated bg-cc-surface border border-cc-border/50 rounded-2xl overflow-hidden w-full max-w-5xl mx-4 flex flex-col max-h-full">
+        <div className="p-6 border-b border-cc-border/40 flex items-start justify-between gap-6">
+          <div className="min-w-0">
+            <div className="text-lg font-medium text-cc-fg truncate">{project.name}</div>
+            {project.description && <p className="text-sm text-cc-muted/70 mt-1">{project.description}</p>}
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-cc-muted/55">
+              <span className="font-mono truncate max-w-[520px]">{shortenPath(project.root, homeDir)}</span>
+              <span>Created {formatIsoDate(project.createdAt)}</span>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 text-cc-muted/60 hover:text-cc-fg transition-colors cursor-pointer" title="Close">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
+          <section>
+            <div className="flex items-baseline justify-between mb-3">
+              <h3 className="text-sm font-medium text-cc-fg/75">Project Sessions</h3>
+              <span className="text-xs text-cc-muted/45">{data.sessions.length}</span>
+            </div>
+            {data.sessions.length === 0 ? (
+              <div className="rounded-lg border border-cc-border/50 bg-cc-bg-secondary p-5 text-sm text-cc-muted/65">
+                No sessions yet.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {data.sessions.map((session) => (
+                  <div key={session.sessionId} className="rounded-lg border border-cc-border/50 bg-cc-bg-secondary p-3 flex items-center gap-3">
+                    {iconMap[session.mode] && <img src={iconMap[session.mode]} alt="" className="w-8 h-8 rounded" />}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-sm font-medium text-cc-fg truncate">{session.displayName}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-cc-surface text-cc-muted/65">{session.status}</span>
+                      </div>
+                      <div className="text-xs text-cc-muted/60 truncate">
+                        {session.role || "No role set"} · {session.mode} · {backendLabel(session.backendType)} · {timeAgoIso(session.lastAccessed)}
+                      </div>
+                    </div>
+                    <PrimaryButton size="sm" onClick={() => onResume(session)}>
+                      Resume
+                    </PrimaryButton>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <aside>
+            <h3 className="text-sm font-medium text-cc-fg/75 mb-3">New Session</h3>
+            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+              {launchableModes.map((mode) => (
+                <button
+                  key={`${mode.source}:${mode.specifier}`}
+                  onClick={() => onStartNew(mode)}
+                  className="w-full rounded-lg border border-cc-border/50 bg-cc-bg-secondary hover:border-cc-primary/40 transition-colors p-3 flex items-center gap-3 text-left cursor-pointer"
+                >
+                  {mode.icon && <img src={mode.icon} alt="" className="w-7 h-7 rounded" />}
+                  <div className="min-w-0">
+                    <div className="text-sm text-cc-fg truncate">{mode.displayName}</div>
+                    <div className="text-[10px] text-cc-muted/50 truncate">{backendLabel(defaultBackendType)}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Launcher ────────────────────────────────────────────────────────
 
 export default function Launcher() {
@@ -3256,12 +3530,15 @@ export default function Launcher() {
   const [builtins, setBuiltins] = useState<BuiltinMode[]>([]);
   const [published, setPublished] = useState<PublishedMode[]>([]);
   const [local, setLocal] = useState<LocalMode[]>([]);
+  const [projects, setProjects] = useState<RecentProject[]>([]);
   const [sessions, setSessions] = useState<RecentSession[]>([]);
   const [running, setRunning] = useState<ChildProcess[]>([]);
   const [homeDir, setHomeDir] = useState("");
   const [loading, setLoading] = useState(true);
   const [showGallery, setShowGallery] = useState(false);
   const [showAllSessions, setShowAllSessions] = useState(false);
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  const [projectOverview, setProjectOverview] = useState<ProjectOverviewData | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -3313,7 +3590,7 @@ export default function Launcher() {
   const lastLaunchTarget = useRef(launchTarget);
   if (launchTarget) lastLaunchTarget.current = launchTarget;
 
-  const hasOverlay = showGallery || showAllSessions || launchTarget !== null;
+  const hasOverlay = showGallery || showAllSessions || launchTarget !== null || showCreateProject || projectOverview !== null;
 
   // Lock body scroll when any overlay is open
   useEffect(() => {
@@ -3328,14 +3605,16 @@ export default function Launcher() {
     if (!hasOverlay) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (launchTarget) setLaunchTarget(null);
+        if (projectOverview) setProjectOverview(null);
+        else if (showCreateProject) setShowCreateProject(false);
+        else if (launchTarget) setLaunchTarget(null);
         else if (showGallery) setShowGallery(false);
         else if (showAllSessions) setShowAllSessions(false);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [hasOverlay, launchTarget, showGallery, showAllSessions]);
+  }, [hasOverlay, launchTarget, projectOverview, showCreateProject, showGallery, showAllSessions]);
 
   const refreshModes = useCallback(() => {
     fetch(`${getApiBase()}/api/registry`)
@@ -3358,6 +3637,13 @@ export default function Launcher() {
       .catch(() => { });
   }, []);
 
+  const refreshProjects = useCallback(() => {
+    fetch(`${getApiBase()}/api/projects`)
+      .then((r) => r.json())
+      .then((data) => setProjects(data.projects || []))
+      .catch(() => { });
+  }, []);
+
   const refreshRunning = useCallback(() => {
     fetch(`${getApiBase()}/api/processes/children`)
       .then((r) => r.json())
@@ -3369,10 +3655,11 @@ export default function Launcher() {
     Promise.all([
       fetch(`${getApiBase()}/api/backends`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/registry`).then((r) => r.json()),
+      fetch(`${getApiBase()}/api/projects`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/sessions`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/processes/children`).then((r) => r.json()),
     ])
-      .then(([backendData, registryData, sessionsData, runningData]) => {
+      .then(([backendData, registryData, projectsData, sessionsData, runningData]) => {
         setBackendOptions(backendData.backends || []);
         if (backendData.defaultBackendType) {
           setDefaultBackendType(backendData.defaultBackendType);
@@ -3380,6 +3667,7 @@ export default function Launcher() {
         setBuiltins(registryData.builtins || []);
         setPublished(registryData.published || []);
         setLocal(registryData.local || []);
+        setProjects(projectsData.projects || []);
         setSessions(sessionsData.sessions || []);
         if (sessionsData.homeDir) setHomeDir(sessionsData.homeDir);
         setRunning(runningData.processes || []);
@@ -3392,9 +3680,10 @@ export default function Launcher() {
     const interval = setInterval(() => {
       refreshRunning();
       refreshSessions();
+      refreshProjects();
     }, 3000);
     return () => clearInterval(interval);
-  }, [refreshRunning, refreshSessions]);
+  }, [refreshRunning, refreshSessions, refreshProjects]);
 
   // Refresh sessions + running when tab regains focus (picks up new thumbnails)
   useEffect(() => {
@@ -3402,11 +3691,12 @@ export default function Launcher() {
       if (document.visibilityState === "visible") {
         refreshSessions();
         refreshRunning();
+        refreshProjects();
       }
     };
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [refreshSessions, refreshRunning]);
+  }, [refreshSessions, refreshRunning, refreshProjects]);
 
   const deleteLocalMode = useCallback(async (name: string) => {
     try {
@@ -3505,6 +3795,42 @@ export default function Launcher() {
     } catch { }
   }, [refreshSessions, refreshRunning]);
 
+  const openProject = useCallback(async (projectId: string) => {
+    try {
+      const res = await fetch(`${getApiBase()}/api/projects/${encodeURIComponent(projectId)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setProjectOverview(data as ProjectOverviewData);
+    } catch { }
+  }, []);
+
+  const launchProjectSession = useCallback(async (
+    projectRoot: string,
+    mode: string,
+    backendType: BackendType,
+    projectSessionId?: string,
+  ) => {
+    try {
+      const res = await fetch(`${getApiBase()}/api/launch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          specifier: mode,
+          projectRoot,
+          backendType,
+          ...(projectSessionId ? { projectSessionId } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        refreshProjects();
+        refreshSessions();
+        refreshRunning();
+        setTimeout(() => window.open(data.url, "_blank"), 400);
+      }
+    } catch { }
+  }, [refreshProjects, refreshSessions, refreshRunning]);
+
   // Build icon lookup
   const iconMap = React.useMemo(() => {
     const map: Record<string, string> = {};
@@ -3517,32 +3843,9 @@ export default function Launcher() {
 
   // Separate app sessions (layout=app, not editing) from regular sessions
   const appSessions = sessions.filter((s) => s.layout === "app" && s.editing === false);
-  const appWorkspaces = new Set(appSessions.map((s) => s.workspace));
 
   // Merge sessions + running for the "Continue" section (max 3 on homepage)
-  const runningWorkspaces = new Set(running.map((r) => r.workspace));
-  const allContinueItems = [
-    // Running processes first (exclude app sessions)
-    ...running
-      .filter((proc) => !appWorkspaces.has(proc.workspace))
-      .map((proc) => ({
-        type: "running" as const,
-        key: proc.workspace,
-        process: proc,
-        session: sessions.find((s) => s.workspace === proc.workspace),
-        modeName: proc.specifier.split("/").pop() || proc.specifier,
-      })),
-    // Then recent sessions (not currently running, not app sessions)
-    ...sessions
-      .filter((s) => !runningWorkspaces.has(s.workspace) && !appWorkspaces.has(s.workspace))
-      .map((s) => ({
-        type: "recent" as const,
-        key: s.workspace,
-        session: s,
-        process: undefined as ChildProcess | undefined,
-        modeName: s.mode,
-      })),
-  ];
+  const allContinueItems = buildContinueItems<RecentSession, ChildProcess>(sessions, running);
   const continueItems = allContinueItems.slice(0, 3);
 
   // Featured mode — random builtin with showcase, picked once on first data load
@@ -3652,7 +3955,7 @@ export default function Launcher() {
             </a>
           </div>
           <button
-            onClick={() => { setShowGallery(false); setShowAllSessions(false); setLaunchTarget(null); }}
+            onClick={() => { setShowGallery(false); setShowAllSessions(false); setLaunchTarget(null); setShowCreateProject(false); setProjectOverview(null); }}
             className={`p-2 text-cc-muted/50 hover:text-cc-fg transition-all duration-300 ease-out cursor-pointer ${
               hasOverlay ? "opacity-100 translate-x-0 scale-100" : "opacity-0 translate-x-3 scale-75 pointer-events-none"
             }`}
@@ -3687,6 +3990,42 @@ export default function Launcher() {
               onExplore={() => setShowGallery(true)}
             />
           )}
+
+          {/* Recent Projects */}
+          <section
+            className="mb-10 pt-8 border-t border-cc-border"
+            style={{ animation: "launcherFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both" }}
+          >
+            <div className="flex items-baseline justify-between mb-5">
+              <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide">Recent Projects</h2>
+              <button
+                onClick={() => setShowCreateProject(true)}
+                className="text-xs text-cc-muted/50 hover:text-cc-primary transition-colors cursor-pointer"
+              >
+                Create Project
+              </button>
+            </div>
+            {projects.length > 0 ? (
+              <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+                {projects.slice(0, 6).map((project) => (
+                  <ProjectCard
+                    key={project.projectId}
+                    project={project}
+                    homeDir={homeDir}
+                    onOpen={() => openProject(project.projectId)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-cc-border/50 bg-cc-bg-secondary p-5 flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-sm text-cc-fg/80">No projects yet</div>
+                  <div className="text-xs text-cc-muted/55 mt-1">Projects keep related sessions under one real folder.</div>
+                </div>
+                <PrimaryButton size="sm" onClick={() => setShowCreateProject(true)}>Create</PrimaryButton>
+              </div>
+            )}
+          </section>
 
           {/* My Apps — app-layout sessions in use mode */}
           {appSessions.length > 0 && (
@@ -3738,7 +4077,7 @@ export default function Launcher() {
               style={{ animation: "launcherFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both" }}
             >
               <div className="flex items-baseline justify-between mb-5">
-                <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide">Continue</h2>
+                <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide">Recent Sessions</h2>
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setShowImportDialog(true)}
@@ -3961,6 +4300,37 @@ export default function Launcher() {
           homeDir={homeDir}
           onClose={() => setLaunchTarget(null)}
           closing={launchAnim.closing}
+        />
+      )}
+
+      {showCreateProject && (
+        <CreateProjectDialog
+          homeDir={homeDir}
+          onClose={() => setShowCreateProject(false)}
+          onCreated={(project) => {
+            setShowCreateProject(false);
+            refreshProjects();
+            openProject(project.projectId);
+          }}
+        />
+      )}
+
+      {projectOverview && (
+        <ProjectOverview
+          data={projectOverview}
+          modes={allModes}
+          homeDir={homeDir}
+          iconMap={iconMap}
+          defaultBackendType={defaultBackendType}
+          onClose={() => setProjectOverview(null)}
+          onResume={(session) => {
+            setProjectOverview(null);
+            launchProjectSession(projectOverview.project.root, session.mode, session.backendType, session.sessionId);
+          }}
+          onStartNew={(mode) => {
+            setProjectOverview(null);
+            launchProjectSession(projectOverview.project.root, mode.specifier, defaultBackendType);
+          }}
         />
       )}
 

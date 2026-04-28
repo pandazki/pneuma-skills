@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 
 export type ProjectBackendType = "claude-code" | "codex";
@@ -68,6 +68,7 @@ export interface ResolveProjectRuntimeOptions {
   displayName: string;
   backendType: ProjectBackendType;
   role?: string;
+  sessionId?: string;
   now?: () => string;
   projectIdFactory?: () => string;
   sessionIdFactory?: () => string;
@@ -111,8 +112,24 @@ export function projectSessionDir(projectRoot: string, sessionId: string): strin
   return join(projectSessionsDir(projectRoot), sessionId);
 }
 
+export function projectSessionManifestPath(projectRoot: string, sessionId: string): string {
+  return join(projectSessionDir(projectRoot, sessionId), "session.json");
+}
+
 export function projectSessionWorkspace(projectRoot: string, sessionId: string): string {
   return join(projectSessionDir(projectRoot, sessionId), "workspace");
+}
+
+export function isProjectSessionWorkspace(workspace: string): boolean {
+  const resolvedWorkspace = resolve(workspace);
+  if (basename(resolvedWorkspace) !== "workspace") return false;
+
+  const sessionDir = dirname(resolvedWorkspace);
+  const sessionsDir = dirname(sessionDir);
+  const pneumaDir = dirname(sessionsDir);
+  if (basename(sessionsDir) !== "sessions" || basename(pneumaDir) !== ".pneuma") return false;
+
+  return existsSync(join(pneumaDir, "project.json")) && existsSync(join(sessionDir, "session.json"));
 }
 
 export function recentProjectsRegistryPath(homeDir = homedir()): string {
@@ -207,7 +224,7 @@ export function createProjectSession(
     sessionWorkspace: workspace,
   };
 
-  writeFileSync(join(dir, "session.json"), JSON.stringify(session, null, 2));
+  writeFileSync(projectSessionManifestPath(projectRoot, sessionId), JSON.stringify(session, null, 2));
   appendProjectTimelineEvent(projectRoot, {
     type: "session.created",
     at: now,
@@ -216,6 +233,22 @@ export function createProjectSession(
     ...(options.role?.trim() ? { role: options.role.trim() } : {}),
   });
   return session;
+}
+
+export function loadProjectSession(projectRoot: string, sessionId: string): ProjectSessionManifest | null {
+  const filePath = projectSessionManifestPath(projectRoot, sessionId);
+  if (!existsSync(filePath)) return null;
+
+  const parsed = JSON.parse(readFileSync(filePath, "utf-8")) as ProjectSessionManifest;
+  if (parsed.schemaVersion !== 1 || !parsed.sessionId || parsed.sessionId !== sessionId) {
+    throw new Error(`Invalid Pneuma project session manifest: ${filePath}`);
+  }
+  return parsed;
+}
+
+export function saveProjectSession(projectRoot: string, session: ProjectSessionManifest): void {
+  mkdirSync(projectSessionDir(projectRoot, session.sessionId), { recursive: true });
+  writeFileSync(projectSessionManifestPath(projectRoot, session.sessionId), JSON.stringify(session, null, 2));
 }
 
 export function listProjectSessions(projectRoot: string): ProjectSessionManifest[] {
@@ -275,6 +308,40 @@ export function resolveProjectRuntime(options: ResolveProjectRuntimeOptions): Pr
     now: options.now,
     idFactory: options.projectIdFactory,
   });
+
+  if (options.sessionId) {
+    const existing = loadProjectSession(options.projectRoot, options.sessionId);
+    if (!existing) {
+      throw new Error(`Project session not found: ${options.sessionId}`);
+    }
+    if (existing.mode !== options.mode) {
+      throw new Error(`Project session "${options.sessionId}" belongs to mode "${existing.mode}", not "${options.mode}".`);
+    }
+    if (existing.backendType !== options.backendType) {
+      throw new Error(`Project session "${options.sessionId}" uses backend "${existing.backendType}", not "${options.backendType}".`);
+    }
+
+    const now = options.now?.() ?? defaultNow();
+    const session: ProjectSessionManifest = {
+      ...existing,
+      status: "active",
+      lastAccessed: now,
+    };
+    saveProjectSession(options.projectRoot, session);
+    appendProjectTimelineEvent(options.projectRoot, {
+      type: "session.resumed",
+      at: now,
+      sessionId: session.sessionId,
+    });
+    recordRecentProject(options.projectRoot, { now: options.now });
+    return {
+      projectRoot: resolve(options.projectRoot),
+      workspace: session.sessionWorkspace,
+      project,
+      session,
+    };
+  }
+
   const session = createProjectSession(options.projectRoot, {
     mode: options.mode,
     displayName: options.displayName,
