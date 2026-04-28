@@ -88,6 +88,11 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   const [homeDir, setHomeDir] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [launching, setLaunching] = useState(false);
+  // Which row / mode is currently being launched, for inline "Starting…"
+  // feedback. The child pneuma boot takes 5–10s before the URL comes back;
+  // without a per-row indicator the panel just looks frozen during that
+  // window and users assume their click did nothing.
+  const [launchingId, setLaunchingId] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
   // Phase 4 — Archive flow. The actions row morphs into an inline confirm
   // (no modal, no card-in-card), and surfaces failures the same way as
@@ -222,6 +227,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   ) => {
     if (launching) return;
     setLaunching(true);
+    setLaunchingId(sessionId ?? `new:${specifier}`);
     setLaunchError(null);
     try {
       const res = await fetch(`${apiBase}/api/launch`, {
@@ -248,6 +254,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
       setLaunchError(err instanceof Error ? err.message : "Launch failed");
     } finally {
       setLaunching(false);
+      setLaunchingId(null);
     }
   };
 
@@ -528,12 +535,17 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                         >
                           {title}
                         </span>
-                        {s.preview ? (
+                        {launchingId === s.sessionId ? (
+                          <span className="text-xs text-cc-primary leading-snug inline-flex items-center gap-1.5">
+                            <span className="w-3 h-3 border-[1.5px] border-cc-primary/30 border-t-cc-primary rounded-full animate-spin shrink-0" />
+                            Starting session…
+                          </span>
+                        ) : s.preview ? (
                           <span className="text-xs text-cc-muted/60 line-clamp-1 leading-snug">
                             {s.preview}
                           </span>
                         ) : null}
-                        {s.lastAccessed ? (
+                        {s.lastAccessed && launchingId !== s.sessionId ? (
                           <span className="text-[11px] text-cc-muted/40 leading-none mt-0.5">
                             {timeAgo(s.lastAccessed)}
                           </span>

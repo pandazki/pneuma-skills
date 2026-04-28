@@ -1461,6 +1461,18 @@ Options:
     p.log.info(`Project session: ${startup.sessionId}`);
   }
 
+  // For project sessions, the *server's* working directory — what the file
+  // watcher watches, what `/api/files` reads, where seed templates land, where
+  // the agent's CWD points — is the per-session directory, NOT the project
+  // root. The project root is the user's deliverable / shared-asset area
+  // (still surfaced as `$PNEUMA_PROJECT_ROOT`); each session's draft work
+  // lives in its own sessionDir so siblings don't overwrite each other's
+  // seeds and the viewer reflects this session's content.
+  //
+  // For quick sessions, `resolveSessionPaths` sets `sessionDir == workspace`,
+  // so this assignment is a no-op and the legacy 2.x behavior is unchanged.
+  workspace = sessionDir;
+
   // Pneuma env vars surfaced to every agent launch — let in-process tools
   // (skills, scripts) reach the canonical session/project paths without
   // re-deriving them.
