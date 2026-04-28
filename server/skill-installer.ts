@@ -10,6 +10,7 @@ import { mkdirSync, existsSync, readFileSync, writeFileSync, cpSync, readdirSync
 import { join, dirname, extname } from "node:path";
 import { homedir } from "node:os";
 import type { SkillConfig, ViewerApiConfig, McpServerConfig, SkillDependency } from "../core/types/mode-manifest.js";
+import { projectPreferencesPath, type ProjectInstructionContext } from "../core/project.js";
 
 /** Return the workspace-relative skills directory for a given backend. */
 function skillsDir(backendType?: string): string {
@@ -29,6 +30,12 @@ const SKILLS_MARKER_START = "<!-- pneuma:skills:start -->";
 const SKILLS_MARKER_END = "<!-- pneuma:skills:end -->";
 const PREFS_MARKER_START = "<!-- pneuma:preferences:start -->";
 const PREFS_MARKER_END = "<!-- pneuma:preferences:end -->";
+const PROJECT_CONTEXT_MARKER_START = "<!-- pneuma:project-context:start -->";
+const PROJECT_CONTEXT_MARKER_END = "<!-- pneuma:project-context:end -->";
+
+export interface InstallSkillOptions {
+  projectContext?: ProjectInstructionContext;
+}
 
 /**
  * Extract critical preferences from a preference file.
@@ -46,6 +53,86 @@ export function extractPreferenceCritical(filePath: string): string | null {
   } catch {
     return null;
   }
+}
+
+function removeMarkedSection(content: string, markerStart: string, markerEnd: string): string {
+  const start = content.indexOf(markerStart);
+  const end = content.indexOf(markerEnd);
+  if (start === -1 || end === -1) return content;
+  return content.substring(0, start) + content.substring(end + markerEnd.length);
+}
+
+function upsertMarkedSection(
+  content: string,
+  markerStart: string,
+  markerEnd: string,
+  section: string,
+): string {
+  const start = content.indexOf(markerStart);
+  const end = content.indexOf(markerEnd);
+  if (start !== -1 && end !== -1) {
+    return content.substring(0, start) + section + content.substring(end + markerEnd.length);
+  }
+  if (content.length > 0 && !content.endsWith("\n")) content += "\n";
+  return content + "\n" + section + "\n";
+}
+
+function readProjectPreferences(projectContext?: ProjectInstructionContext): string | null {
+  if (!projectContext) return null;
+  try {
+    const raw = readFileSync(projectPreferencesPath(projectContext.projectRoot), "utf-8");
+    const withoutTitle = raw.replace(/^# Project Preferences\s*/i, "").trim();
+    return withoutTitle || null;
+  } catch {
+    return null;
+  }
+}
+
+function injectProjectContextSection(
+  content: string,
+  projectContext?: ProjectInstructionContext,
+): string {
+  if (!projectContext) {
+    return removeMarkedSection(content, PROJECT_CONTEXT_MARKER_START, PROJECT_CONTEXT_MARKER_END);
+  }
+
+  const lines = [
+    "## Project Context",
+    "",
+    "This session is running inside an explicit Pneuma project.",
+    "",
+    `- Project: ${projectContext.projectName}`,
+    `- Project root: ${projectContext.projectRoot}`,
+  ];
+  if (projectContext.description) lines.push(`- Description: ${projectContext.description}`);
+  lines.push(`- Current session: ${projectContext.currentSessionDisplayName} (\`${projectContext.currentMode}\`)`);
+  if (projectContext.currentSessionId) lines.push(`- Current session id: ${projectContext.currentSessionId}`);
+  if (projectContext.role) lines.push(`- Role: ${projectContext.role}`);
+
+  lines.push("", "### Other Project Sessions");
+  if (projectContext.peerSessions.length === 0) {
+    lines.push("", "No other project sessions recorded yet.");
+  } else {
+    lines.push("");
+    for (const session of projectContext.peerSessions) {
+      const parts = [
+        `${session.displayName} (\`${session.mode}\`)`,
+        session.role ? `role: ${session.role}` : "role: unspecified",
+        `backend: ${session.backendType}`,
+        `status: ${session.status}`,
+        `last active: ${session.lastAccessed}`,
+      ];
+      lines.push(`- ${parts.join(" — ")}`);
+    }
+  }
+
+  lines.push(
+    "",
+    "Project context is shared project metadata only. Do not inspect another session's raw history, scratch files, or workspace unless the user provides an explicit handoff.",
+  );
+
+  const section = `${PROJECT_CONTEXT_MARKER_START}\n${lines.join("\n")}\n${PROJECT_CONTEXT_MARKER_END}`;
+  return upsertMarkedSection(content, PROJECT_CONTEXT_MARKER_START, PROJECT_CONTEXT_MARKER_END, section);
 }
 
 export interface PreferencesBuildPayload {
@@ -68,6 +155,7 @@ function injectPreferencesSection(
   installName: string,
   globalCritical?: string | null,
   modeCritical?: string | null,
+  projectContext?: ProjectInstructionContext,
 ): string {
   const prefModeName = installName.replace(/^pneuma-/, "");
 
@@ -78,31 +166,29 @@ function injectPreferencesSection(
   const mc = modeCritical !== undefined
     ? modeCritical
     : extractPreferenceCritical(join(homedir(), ".pneuma", "preferences", `mode-${prefModeName}.md`));
+  const pc = readProjectPreferences(projectContext);
 
-  if (gc || mc) {
+  if (gc || pc || mc) {
     const prefsLines: string[] = ["### User Preferences (Critical)", ""];
     if (gc) {
       prefsLines.push("**Global:**", gc, "");
+    }
+    if (pc) {
+      prefsLines.push(
+        "**Project:**",
+        "Project preferences override personal preferences when they conflict.",
+        pc,
+        "",
+      );
     }
     if (mc) {
       prefsLines.push(`**${prefModeName} Mode:**`, mc);
     }
     const prefsSection = `${PREFS_MARKER_START}\n${prefsLines.join("\n")}\n${PREFS_MARKER_END}`;
-    const pStart = content.indexOf(PREFS_MARKER_START);
-    const pEnd = content.indexOf(PREFS_MARKER_END);
-    if (pStart !== -1 && pEnd !== -1) {
-      content = content.substring(0, pStart) + prefsSection + content.substring(pEnd + PREFS_MARKER_END.length);
-    } else {
-      if (content.length > 0 && !content.endsWith("\n")) content += "\n";
-      content += "\n" + prefsSection + "\n";
-    }
+    content = upsertMarkedSection(content, PREFS_MARKER_START, PREFS_MARKER_END, prefsSection);
   } else {
     // Remove stale preferences section
-    const pStart = content.indexOf(PREFS_MARKER_START);
-    const pEnd = content.indexOf(PREFS_MARKER_END);
-    if (pStart !== -1 && pEnd !== -1) {
-      content = content.substring(0, pStart) + content.substring(pEnd + PREFS_MARKER_END.length);
-    }
+    content = removeMarkedSection(content, PREFS_MARKER_START, PREFS_MARKER_END);
   }
 
   return content;
@@ -127,6 +213,7 @@ export async function buildAndInjectPreferences(
   backendType: string,
   hookBus: import("../core/hook-bus.js").HookBus,
   sessionInfo: import("../core/types/plugin.js").SessionInfo,
+  options: InstallSkillOptions = {},
 ): Promise<void> {
   const instrFile = backendType === "codex" ? "AGENTS.md" : "CLAUDE.md";
   const instructionsPath = join(workspace, instrFile);
@@ -151,13 +238,21 @@ export async function buildAndInjectPreferences(
     modeName: prefModeName,
   } satisfies PreferencesBuildPayload, sessionInfo);
 
-  // Only rewrite if plugins actually changed something
-  if (enriched.globalCritical === globalCritical && enriched.modeCritical === modeCritical) {
+  let nextContent = injectProjectContextSection(content, options.projectContext);
+  nextContent = injectPreferencesSection(
+    nextContent,
+    installName,
+    enriched.globalCritical,
+    enriched.modeCritical,
+    options.projectContext,
+  );
+
+  // Only rewrite if plugins or the project preference layer changed something
+  if (nextContent === content) {
     return;
   }
 
-  content = injectPreferencesSection(content, installName, enriched.globalCritical, enriched.modeCritical);
-  writeFileSync(instructionsPath, content, "utf-8");
+  writeFileSync(instructionsPath, nextContent, "utf-8");
   console.log(`[skill-installer] Enriched preferences in ${instructionsPath}`);
 }
 
@@ -654,6 +749,7 @@ export function installSkill(
   viewerApi?: ViewerApiConfig,
   backendType?: string,
   proxyConfig?: Record<string, import("../core/types/mode-manifest.js").ProxyRoute>,
+  options: InstallSkillOptions = {},
 ): void {
   // 1. Copy skill to the backend-appropriate skills directory
   const skillSource = join(modeSourceDir, skillConfig.sourceDir);
@@ -824,8 +920,11 @@ export function installSkill(
     }
   }
 
-  // 2d. Inject/update preferences critical section
-  content = injectPreferencesSection(content, skillConfig.installName);
+  // 2d. Inject/update explicit project context section
+  content = injectProjectContextSection(content, options.projectContext);
+
+  // 2e. Inject/update preferences critical section
+  content = injectPreferencesSection(content, skillConfig.installName, undefined, undefined, options.projectContext);
 
   // Write instructions file
   mkdirSync(dirname(primaryInstructionsPath), { recursive: true });
