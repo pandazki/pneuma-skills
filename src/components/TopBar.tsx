@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, lazy, Suspense } from "react"
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
 import ContentSetSelector from "./ContentSetSelector.js";
-import ModeSwitcherDropdown from "./ModeSwitcherDropdown.js";
+import ModeLabel from "./ModeLabel.js";
 
 const AppSettings = lazy(() => import("./AppSettings.js"));
 const ProjectChip = lazy(() => import("./ProjectChip.js"));
@@ -389,41 +389,49 @@ export default function TopBar() {
             </Suspense>
           </>
         ) : null}
-        {projectContext && hasModeViewer ? (
-          <span className="w-px h-3 bg-cc-border/40" aria-hidden />
-        ) : null}
-        <ModeSwitcherDropdown />
-        {contentSets.length > 1 && (
+        {/* Mode unit — current mode label + scope-within-mode (content set or
+            workspace item) + create-empty action. Reads as a single "you are
+            looking at <scope> inside <Mode>" identity, with no internal
+            dividers. To switch modes, the user goes through the Project chip's
+            launch sheet — there's no inline mode switcher here on purpose. */}
+        {hasModeViewer ? (
           <>
-            <span className="w-px h-3 bg-cc-border/40" aria-hidden />
-            <ContentSetSelector
-              items={contentSets.map((cs) => ({ id: cs.prefix, label: cs.label }))}
-              activeId={activeContentSet}
-              onSelect={(id) => useStore.getState().setActiveContentSet(id)}
-              unread={contentSetUnread}
-            />
+            {projectContext ? (
+              <span className="w-px h-3 bg-cc-border/40" aria-hidden />
+            ) : null}
+            <div className="flex items-center gap-2">
+              <ModeLabel />
+              {contentSets.length > 1 && (
+                <ContentSetSelector
+                  items={contentSets.map((cs) => ({ id: cs.prefix, label: cs.label }))}
+                  activeId={activeContentSet}
+                  onSelect={(id) => useStore.getState().setActiveContentSet(id)}
+                  unread={contentSetUnread}
+                />
+              )}
+              {showItemSelector && (
+                <ContentSetSelector
+                  items={workspaceItems.map((wi) => ({ id: wi.path, label: wi.label }))}
+                  activeId={activeFile}
+                  onSelect={(id) => useStore.getState().setActiveFile(id)}
+                  icon="file"
+                />
+              )}
+              {createEmpty && !replayMode && (
+                <button
+                  onClick={handleCreateEmpty}
+                  title="New empty content"
+                  className="flex items-center justify-center w-5 h-5 rounded text-cc-muted
+                    hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+                    <path d="M8 3v10M3 8h10" />
+                  </svg>
+                </button>
+              )}
+            </div>
           </>
-        )}
-        {showItemSelector && (
-          <ContentSetSelector
-            items={workspaceItems.map((wi) => ({ id: wi.path, label: wi.label }))}
-            activeId={activeFile}
-            onSelect={(id) => useStore.getState().setActiveFile(id)}
-            icon="file"
-          />
-        )}
-        {createEmpty && !replayMode && (
-          <button
-            onClick={handleCreateEmpty}
-            title="New empty content"
-            className="flex items-center justify-center w-5 h-5 rounded text-cc-muted
-              hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
-          >
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
-              <path d="M8 3v10M3 8h10" />
-            </svg>
-          </button>
-        )}
+        ) : null}
       </div>
 
       {/* Center: tabs (hidden in empty shell — no session = no panels) */}
