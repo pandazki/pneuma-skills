@@ -83,7 +83,7 @@ export default function ProjectChip({ autoOpen }: ProjectChipProps = {}) {
       </button>
       {open ? (
         <Suspense fallback={null}>
-          <ProjectPanel projectRoot={projectRoot} />
+          <ProjectPanel projectRoot={projectRoot} onClose={() => setOpen(false)} />
         </Suspense>
       ) : null}
     </div>

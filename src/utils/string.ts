@@ -38,3 +38,19 @@ export function shortenPath(path: string, homeDir: string): string {
   if (path.startsWith(homeDir)) return "~" + path.slice(homeDir.length);
   return path;
 }
+
+/**
+ * Escape a string for safe inclusion in an XML / HTML attribute or text node.
+ * Used by the request-handoff chat-tag dispatcher (Smart Handoff in
+ * ProjectPanel and the legacy ModeSwitcherDropdown) so that user-provided
+ * intent strings can never break the surrounding `<pneuma:request-handoff />`
+ * tag the source agent receives.
+ */
+export function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}

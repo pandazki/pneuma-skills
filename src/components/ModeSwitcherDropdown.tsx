@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
+import { escapeXml } from "../utils/string.js";
 import { sendUserMessage } from "../ws.js";
 
 interface ModeInfo {
@@ -24,15 +25,6 @@ interface ModeInfo {
 interface SiblingSession {
   sessionId: string;
   mode: string;
-}
-
-function escapeXml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
 }
 
 export default function ModeSwitcherDropdown() {

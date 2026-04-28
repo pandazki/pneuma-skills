@@ -25,10 +25,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
-import { basename, shortenPath } from "../utils/string.js";
+import { basename, escapeXml, shortenPath } from "../utils/string.js";
 import { timeAgo } from "../utils/timeAgo.js";
+import { sendUserMessage } from "../ws.js";
 import { CoverImage, type ProjectCoverEntry } from "./ProjectCover.js";
 import { ModeIcon } from "./ModeIcon.js";
+import { InitParamForm, type InitParamWithAutoFill } from "./InitParamForm.js";
 
 interface ProjectInfo {
   name: string;
@@ -62,12 +64,22 @@ interface ModeInfo {
 
 interface ProjectPanelProps {
   projectRoot: string;
+  /** Called when the panel should close itself (e.g. after firing a Smart
+   *  Handoff so the user immediately sees the chat + HandoffCard). Optional
+   *  — when omitted, the panel just stays open and the parent's existing
+   *  outside-click / Esc handler retains responsibility for closing. */
+  onClose?: () => void;
 }
 
-export default function ProjectPanel({ projectRoot }: ProjectPanelProps) {
+export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps) {
   const apiBase = getApiBase();
   const activeSessionId = useStore((s) => s.session?.session_id ?? null);
   const ctx = useStore((s) => s.projectContext);
+  // Smart Handoff requires (1) a project session (projectContext set),
+  // (2) a live chat session_id to dispatch the tag, and (3) a loaded mode
+  // — i.e. NOT the empty shell. We read all three so the toggle only
+  // appears when the source agent actually exists.
+  const sessionMode = useStore((s) => s.modeManifest?.name ?? null);
 
   const [project, setProject] = useState<ProjectInfo | null>(null);
   const [sessions, setSessions] = useState<SessionRef[]>([]);
@@ -158,6 +170,18 @@ export default function ProjectPanel({ projectRoot }: ProjectPanelProps) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Launch sheet — when set, the right pane swaps from the mode-tile grid
+  // to a sheet that fetches the mode's init params, optionally reveals a
+  // Smart Handoff toggle, and only fires `/api/launch` (or dispatches the
+  // request-handoff tag) on Confirm. `null` means "show the grid".
+  const [launchTarget, setLaunchTarget] = useState<ModeInfo | null>(null);
+  const [sheetParams, setSheetParams] = useState<InitParamWithAutoFill[]>([]);
+  const [sheetValues, setSheetValues] = useState<Record<string, string | number>>({});
+  const [sheetPreparing, setSheetPreparing] = useState(false);
+  const [sheetError, setSheetError] = useState<string | null>(null);
+  const [smartHandoff, setSmartHandoff] = useState(false);
+  const [handoffIntent, setHandoffIntent] = useState("");
+
   const deleteSession = async (sessionId: string) => {
     if (deleting) return;
     setDeleting(true);
@@ -186,8 +210,16 @@ export default function ProjectPanel({ projectRoot }: ProjectPanelProps) {
 
   // Single launch helper. The previous `launchSession` and `evolveProject`
   // were 95% identical (only `specifier` differed); keep one path so error
-  // surfacing and disable-while-launching gating can't drift.
-  const launch = async (specifier: string, sessionId?: string) => {
+  // surfacing and disable-while-launching gating can't drift. `initParams`
+  // is forwarded to `/api/launch` so the launch-sheet form values reach the
+  // spawned mode (used by the right-pane mode tile flow; the session-row
+  // path leaves it undefined and the server falls back to the persisted
+  // `config.json`).
+  const launch = async (
+    specifier: string,
+    sessionId?: string,
+    initParams?: Record<string, string | number>,
+  ) => {
     if (launching) return;
     setLaunching(true);
     setLaunchError(null);
@@ -200,6 +232,9 @@ export default function ProjectPanel({ projectRoot }: ProjectPanelProps) {
           workspace: projectRoot,
           project: projectRoot,
           ...(sessionId ? { sessionId } : {}),
+          ...(initParams && Object.keys(initParams).length > 0
+            ? { initParams }
+            : {}),
         }),
       });
       const data = (await res.json()) as { url?: string; error?: string };
@@ -274,6 +309,104 @@ export default function ProjectPanel({ projectRoot }: ProjectPanelProps) {
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
   }, [archiveConfirm]);
+
+  // Esc inside the launch sheet returns to the mode grid (not closing the
+  // panel). `capture: true` + stopPropagation so the chip's outer
+  // close-on-Esc never fires while the sheet is open. At grid level the
+  // outer handler still owns Esc-to-close.
+  useEffect(() => {
+    if (!launchTarget) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setLaunchTarget(null);
+        setSheetError(null);
+        setSmartHandoff(false);
+        setHandoffIntent("");
+      }
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [launchTarget]);
+
+  // Fetch init params when a target is picked. Mirrors Launcher's
+  // `/api/launch/prepare` path so the same auto-filled-from-stored-keys
+  // affordance carries over for free. Failures land in `sheetError`,
+  // which renders inline; the sheet still lets the user Confirm with
+  // an empty param set (the server will fall back to defaults / errors).
+  useEffect(() => {
+    if (!launchTarget) {
+      setSheetParams([]);
+      setSheetValues({});
+      setSheetError(null);
+      return;
+    }
+    let cancelled = false;
+    setSheetPreparing(true);
+    setSheetError(null);
+    setSheetParams([]);
+    setSheetValues({});
+    void (async () => {
+      try {
+        const res = await fetch(`${apiBase}/api/launch/prepare`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ specifier: launchTarget.name, workspace: projectRoot }),
+        });
+        const data = (await res.json()) as {
+          initParams?: InitParamWithAutoFill[];
+          error?: string;
+        };
+        if (cancelled) return;
+        if (data.error) {
+          setSheetError(data.error);
+        } else if (data.initParams?.length) {
+          setSheetParams(data.initParams);
+          const defaults: Record<string, string | number> = {};
+          for (const p of data.initParams) defaults[p.name] = p.defaultValue;
+          setSheetValues(defaults);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setSheetError(err instanceof Error ? err.message : "Failed to prepare launch");
+        }
+      } finally {
+        if (!cancelled) setSheetPreparing(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [launchTarget, projectRoot, apiBase]);
+
+  // Smart Handoff is only meaningful when there's a current agent to hand
+  // off FROM — that means a project session AND a connected backend AND a
+  // loaded mode. Empty shell (no `session_id`) suppresses the toggle.
+  const canHandoff =
+    !!ctx && !!activeSessionId && !!sessionMode && launchTarget?.name !== sessionMode;
+
+  const confirmLaunch = () => {
+    if (!launchTarget) return;
+    if (smartHandoff && canHandoff) {
+      const flat = handoffIntent.replace(/\s+/g, " ").trim();
+      if (!flat) {
+        setSheetError("Tell the new session what to do");
+        return;
+      }
+      const tag = `<pneuma:request-handoff target="${escapeXml(launchTarget.name)}" target_session="auto" intent="${escapeXml(flat)}" />`;
+      void sendUserMessage(tag);
+      // Reset sheet + close the panel so the user sees the chat where the
+      // tag now lives, plus the eventual HandoffCard once the source agent
+      // writes the handoff file.
+      setLaunchTarget(null);
+      setSheetError(null);
+      setSmartHandoff(false);
+      setHandoffIntent("");
+      onClose?.();
+      return;
+    }
+    void launch(launchTarget.name, undefined, sheetValues);
+  };
 
   const archive = async () => {
     if (archiving) return;
@@ -490,46 +623,193 @@ export default function ProjectPanel({ projectRoot }: ProjectPanelProps) {
           ) : null}
         </div>
 
-        {/* RIGHT — Mode picker */}
+        {/* RIGHT — Mode picker → swaps to launch sheet when a tile is picked. */}
         <div className="bg-cc-surface p-5">
-          <h3 className={sectionHeading}>Start in any mode</h3>
-          {modes.length === 0 ? (
-            <div className="text-cc-muted/60 text-sm">Loading modes…</div>
-          ) : (
-            <div className="grid grid-cols-2 gap-2">
-              {modes.map((m) => {
-                const count = sessionCountByMode.get(m.name) ?? 0;
-                return (
-                  <button
-                    key={m.name}
-                    type="button"
-                    disabled={launching}
-                    onClick={() => launch(m.name)}
-                    className="bg-cc-bg/40 border border-cc-border rounded-md p-3 hover:border-cc-primary/40 hover:bg-cc-primary/5 transition-colors cursor-pointer disabled:opacity-50 text-left flex flex-col gap-1.5 min-h-[88px]"
-                  >
-                    <div className="flex items-center gap-2">
-                      <ModeIcon
-                        svg={m.icon}
-                        className="w-5 h-5 text-cc-primary shrink-0"
-                      />
-                      <span className="text-sm text-cc-fg font-medium truncate">
-                        {m.displayName ?? m.name}
-                      </span>
-                      {count > 0 ? (
-                        <span className="text-[10px] text-cc-muted/40 ml-auto shrink-0">
-                          · {count}
-                        </span>
-                      ) : null}
-                    </div>
-                    {m.description ? (
-                      <p className="text-[11px] text-cc-muted/70 line-clamp-2 leading-snug">
-                        {m.description}
+          {launchTarget ? (
+            <div className="flex flex-col gap-4 [animation:launcherFadeIn_180ms_cubic-bezier(0.16,1,0.3,1)]">
+              {/* Sheet header — Back link is the only chrome; mode title +
+                  description sit below it. */}
+              <div className="flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLaunchTarget(null);
+                    setSheetError(null);
+                    setSmartHandoff(false);
+                    setHandoffIntent("");
+                  }}
+                  className="self-start text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  <span aria-hidden>←</span>
+                  <span>Back</span>
+                </button>
+                <div className="flex items-start gap-3">
+                  <ModeIcon
+                    svg={launchTarget.icon}
+                    className="w-7 h-7 text-cc-primary shrink-0 mt-0.5"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm text-cc-fg font-medium truncate">
+                      {launchTarget.displayName ?? launchTarget.name}
+                    </h3>
+                    {launchTarget.description ? (
+                      <p className="text-xs text-cc-muted/70 leading-snug mt-0.5 line-clamp-3">
+                        {launchTarget.description}
                       </p>
                     ) : null}
-                  </button>
-                );
-              })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Init params block. While the prepare fetch is in flight we
+                  show a muted placeholder; once params land they render via
+                  the shared InitParamForm so behaviour matches the launcher
+                  exactly (auto-fill, masked preview, etc.). When a mode has
+                  no params we silently skip this block. */}
+              {sheetPreparing ? (
+                <div className="text-xs text-cc-muted/70">Loading parameters…</div>
+              ) : sheetParams.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-[11px] uppercase tracking-wider text-cc-muted/60 font-medium">
+                    Parameters
+                  </p>
+                  <InitParamForm
+                    params={sheetParams}
+                    values={sheetValues}
+                    onChange={setSheetValues}
+                  />
+                </div>
+              ) : null}
+
+              {/* Smart Handoff — only available inside an active project
+                  session (project + session_id + loaded mode). Suppressed in
+                  the empty shell because there's no current agent to hand
+                  off from. */}
+              {canHandoff ? (
+                <div className="flex flex-col gap-2 pt-3 border-t border-cc-border/40">
+                  <label className="flex items-start gap-2 text-sm text-cc-fg cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={smartHandoff}
+                      onChange={(e) => {
+                        setSmartHandoff(e.target.checked);
+                        if (!e.target.checked) setHandoffIntent("");
+                        setSheetError(null);
+                      }}
+                      className="mt-0.5 accent-cc-primary cursor-pointer"
+                    />
+                    <span className="flex flex-col gap-0.5">
+                      <span>Smart handoff from current session</span>
+                      <span className="text-[11px] text-cc-muted/70 leading-snug">
+                        The current agent writes a handoff file with relevant context;
+                        you confirm the switch in chat.
+                      </span>
+                    </span>
+                  </label>
+                  {smartHandoff ? (
+                    <div className="flex flex-col gap-1.5 pl-6 [animation:overlayFadeIn_140ms_cubic-bezier(0.16,1,0.3,1)]">
+                      <label className="text-xs text-cc-muted/80">
+                        What should the new session do?
+                      </label>
+                      <textarea
+                        value={handoffIntent}
+                        onChange={(e) => {
+                          setHandoffIntent(e.target.value);
+                          if (sheetError) setSheetError(null);
+                        }}
+                        rows={2}
+                        placeholder="Take this design and turn it into a slide deck"
+                        className="bg-cc-input-bg border border-cc-border rounded-lg p-3 text-sm text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50 resize-none"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {sheetError ? (
+                <div className="text-cc-error/80 text-xs" role="alert">
+                  {sheetError}
+                </div>
+              ) : null}
+
+              {/* Action row — Cancel returns to the grid; Confirm fires
+                  either `/api/launch` or the request-handoff chat tag,
+                  depending on the toggle. Match the panel's button rhythm:
+                  text-link Cancel, primary Confirm. */}
+              <div className="flex items-center justify-end gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLaunchTarget(null);
+                    setSheetError(null);
+                    setSmartHandoff(false);
+                    setHandoffIntent("");
+                  }}
+                  className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={launching || sheetPreparing}
+                  onClick={confirmLaunch}
+                  className="bg-cc-primary text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-cc-primary/90 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {launching ? "Launching…" : "Confirm"}
+                </button>
+              </div>
             </div>
+          ) : (
+            <>
+              <h3 className={sectionHeading}>Start in any mode</h3>
+              {modes.length === 0 ? (
+                <div className="text-cc-muted/60 text-sm">Loading modes…</div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {modes.map((m) => {
+                    const count = sessionCountByMode.get(m.name) ?? 0;
+                    return (
+                      <button
+                        key={m.name}
+                        type="button"
+                        disabled={launching}
+                        onClick={() => {
+                          // Open the sheet instead of launching directly.
+                          // The user fills in init params (or just confirms
+                          // an empty form) and decides whether to use Smart
+                          // Handoff before the actual launch fires.
+                          setLaunchTarget(m);
+                          setSheetError(null);
+                          setSmartHandoff(false);
+                          setHandoffIntent("");
+                        }}
+                        className="bg-cc-bg/40 border border-cc-border rounded-md p-3 hover:border-cc-primary/40 hover:bg-cc-primary/5 transition-colors cursor-pointer disabled:opacity-50 text-left flex flex-col gap-1.5 min-h-[88px]"
+                      >
+                        <div className="flex items-center gap-2">
+                          <ModeIcon
+                            svg={m.icon}
+                            className="w-5 h-5 text-cc-primary shrink-0"
+                          />
+                          <span className="text-sm text-cc-fg font-medium truncate">
+                            {m.displayName ?? m.name}
+                          </span>
+                          {count > 0 ? (
+                            <span className="text-[10px] text-cc-muted/40 ml-auto shrink-0">
+                              · {count}
+                            </span>
+                          ) : null}
+                        </div>
+                        {m.description ? (
+                          <p className="text-[11px] text-cc-muted/70 line-clamp-2 leading-snug">
+                            {m.description}
+                          </p>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

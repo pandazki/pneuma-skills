@@ -7,6 +7,7 @@ import { CreateProjectDialog } from "./CreateProjectDialog.js";
 import { DirBrowser } from "./DirBrowser.js";
 import { ProjectCard, type ProjectCardEntry } from "./ProjectCard.js";
 import { ModeIcon } from "./ModeIcon.js";
+import { InitParamForm, type InitParamWithAutoFill } from "./InitParamForm.js";
 import { useAnimatedMount } from "../utils/useAnimatedMount.js";
 import { timeAgo, runningDuration } from "../utils/timeAgo.js";
 import { shortenPath } from "../utils/string.js";
@@ -1847,7 +1848,6 @@ function LaunchDialog({
   const [sessionNameValue, setSessionNameValue] = useState(defaultSessionName);
   const [initParams, setInitParams] = useState<InitParam[]>([]);
   const [paramValues, setParamValues] = useState<Record<string, string | number>>({});
-  const displayNameTouchedRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [preparing, setPreparing] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -2094,79 +2094,12 @@ function LaunchDialog({
             Parameters
             {existingSession && <span className="text-xs text-cc-muted font-normal ml-2">(read-only)</span>}
           </p>
-          {initParams.map((param: any) => (
-            <div key={param.name}>
-              <label className="block text-sm text-cc-muted mb-1">
-                {param.label}
-                {param.autoFilled && (
-                  <span className="text-cc-success/70 text-xs ml-2">from global keys</span>
-                )}
-                {param.description && !param.autoFilled && (
-                  <span className="text-cc-muted/60"> — {param.description}</span>
-                )}
-              </label>
-              {param.autoFilled && paramValues[param.name] === param.defaultValue ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={param.maskedPreview}
-                    disabled
-                    className="flex-1 px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-muted text-sm opacity-70 cursor-not-allowed"
-                  />
-                  <button
-                    onClick={() => setParamValues({ ...paramValues, [param.name]: "" })}
-                    className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer whitespace-nowrap"
-                  >
-                    Clear
-                  </button>
-                </div>
-              ) : param.type === "select" && Array.isArray(param.options) ? (
-              <select
-                value={String(paramValues[param.name] ?? param.defaultValue)}
-                disabled={!!existingSession}
-                onChange={(e) => {
-                  setParamValues({ ...paramValues, [param.name]: e.target.value });
-                }}
-                className={`w-full px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50 ${
-                  existingSession ? "opacity-60 cursor-not-allowed" : ""
-                }`}
-              >
-                {param.options.map((opt: string) => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </select>
-              ) : (
-              <input
-                type={param.type === "number" ? "number" : param.sensitive ? "password" : "text"}
-                value={paramValues[param.name] ?? param.defaultValue}
-                disabled={!!existingSession}
-                onChange={(e) => {
-                  let val: string | number = param.type === "number" ? Number(e.target.value) : e.target.value;
-                  if (param.name === "modeName" && typeof val === "string") {
-                    val = val.toLowerCase().replace(/[^a-z0-9-]/g, "");
-                  }
-                  const next: Record<string, string | number> = { ...paramValues, [param.name]: val };
-                  if (param.name === "modeName" && typeof val === "string" && !displayNameTouchedRef.current) {
-                    const hasDisplayName = initParams.some((p) => p.name === "displayName");
-                    if (hasDisplayName) {
-                      next.displayName = val
-                        .split(/[-_\s]+/)
-                        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-                        .join(" ");
-                    }
-                  }
-                  if (param.name === "displayName") {
-                    displayNameTouchedRef.current = true;
-                  }
-                  setParamValues(next);
-                }}
-                className={`w-full px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
-                  existingSession ? "opacity-60 cursor-not-allowed" : ""
-                }`}
-              />
-              )}
-            </div>
-          ))}
+          <InitParamForm
+            params={initParams as InitParamWithAutoFill[]}
+            values={paramValues}
+            onChange={setParamValues}
+            disabled={!!existingSession}
+          />
         </div>
       )}
 

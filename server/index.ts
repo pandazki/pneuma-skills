@@ -1775,6 +1775,63 @@ export async function startServer(options: ServerOptions) {
     },
   });
 
+  // /api/launch/prepare in the per-session server — lets ProjectPanel's
+  // launch sheet pre-fetch a mode's init params (with auto-fill from stored
+  // API keys) before the user confirms. Mirrors the launcher block above;
+  // both branches share the same resolve → loadModeManifest → autoFill path.
+  app.post("/api/launch/prepare", async (c) => {
+    const { specifier } = await c.req.json<{ specifier: string }>();
+    try {
+      const { resolveMode } = await import("../core/mode-resolver.js");
+      const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
+      const resolved = await resolveMode(specifier, projectRoot);
+
+      if (resolved.type !== "builtin") {
+        const { registerExternalMode } = await import("../core/mode-loader.js");
+        registerExternalMode(resolved.name, resolved.path);
+      }
+
+      const { loadModeManifest } = await import("../core/mode-loader.js");
+      const manifest = await loadModeManifest(resolved.name);
+
+      // Auto-fill defaults from stored API keys — same matching as the
+      // launcher route (exact name, UPPER_SNAKE ↔ camelCase).
+      const storedKeys = getApiKeys();
+      const camelFromSnake = (s: string) =>
+        s.toLowerCase().replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
+      const snakeFromCamel = (s: string) =>
+        s.replace(/[A-Z]/g, (c: string) => `_${c}`).toUpperCase();
+
+      const params = (manifest.init?.params || []).map((p: any) => {
+        let matchedValue: string | null = null;
+        if (storedKeys[p.name]) {
+          matchedValue = storedKeys[p.name];
+        } else {
+          for (const [storedName, storedValue] of Object.entries(storedKeys)) {
+            if (camelFromSnake(storedName) === p.name || snakeFromCamel(p.name) === storedName) {
+              matchedValue = storedValue;
+              break;
+            }
+          }
+        }
+        if (matchedValue) {
+          const masked = matchedValue.slice(0, 4) + "****" + matchedValue.slice(-4);
+          return { ...p, defaultValue: matchedValue, autoFilled: true, maskedPreview: masked };
+        }
+        return p;
+      });
+
+      return c.json({
+        name: resolved.name,
+        displayName: manifest.displayName,
+        initParams: params,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json({ error: message }, 400);
+    }
+  });
+
   // /api/launch in the per-session server — lets ProjectPanel spawn sibling
   // sessions in the same project (e.g. clicking a session row, "+ New mode
   // session", or starting in another mode). Mirrors the launcher's mount;
