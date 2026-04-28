@@ -4,6 +4,12 @@
 > **状态**: Draft
 > **决策者**: Pandazki
 > **前提**: 2.x 里程碑完成 — Mode 系统、Backend 抽象、Skill 演进、桌面应用、分发基础设施
+>
+> **3.0 包含两条平行的设计线**：
+> - **Layout 维度（本文）**：把 mode 升级为 AI-native 微应用 — 加 `app` 布局、Agent Bubble、固定窗口
+> - **Organization 维度**：在 session 之上加 project 层，支持跨 mode 接力、项目级偏好 — 见 [`2026-04-27-pneuma-projects-design.md`](./2026-04-27-pneuma-projects-design.md)
+>
+> 两条线互相独立，可分别推进。
 
 ---
 

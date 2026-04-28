@@ -279,3 +279,36 @@ useSource in Viewer React tree    ← Layer 3: Viewer 的 player 渲染
 ### 设计 rationale
 
 完整的设计讨论 + 为什么 `fileChannel` 作为「domain 就是文件」型 mode 的逃生口 + 三层正交的讲解，见实施计划 `docs/superpowers/plans/2026-04-13-source-abstraction.md`。原始的 ClipCraft-only transport 提案 `docs/superpowers/plans/2026-04-13-mode-sync-transport.md` 是这套设计的起点，已被上面那份 superseded。Source 抽象是 `docs/design/pneuma-3.0-design.md` 描述的「viewer 是整个 app 的 UI」这一愿景的 **viewer-contract 层基础设施**——3.0 要求 viewer 用 domain 语言驱动 UI，这正是 `Source<T>` 里那个 `T` 的含义。
+
+---
+
+## Environment variables
+
+Every Pneuma session injects:
+
+- `PNEUMA_SESSION_DIR` — the agent's CWD; where `.claude/skills/`, `CLAUDE.md`, and state files (`session.json`, `history.json`, `shadow.git/`, `checkpoints.jsonl`) live.
+- `PNEUMA_HOME_ROOT` — user-facing root: workspace for quick sessions, project root for project sessions. Deliverables (the user's content) go here.
+- `PNEUMA_SESSION_ID` — session UUID.
+- `PNEUMA_PROJECT_ROOT` — *project sessions only*; absolute path to the project root. Absent for quick sessions.
+
+For quick sessions `PNEUMA_SESSION_DIR === PNEUMA_HOME_ROOT === <workspace>` and `PNEUMA_PROJECT_ROOT` is unset. For project sessions `PNEUMA_SESSION_DIR = <project>/.pneuma/sessions/<id>` and `PNEUMA_HOME_ROOT === PNEUMA_PROJECT_ROOT === <project>`.
+
+## Handoff protocol (project sessions)
+
+Cross-mode handoff between sessions in the same project is file-based. The source session writes a markdown file with YAML frontmatter to `$PNEUMA_PROJECT_ROOT/.pneuma/handoffs/<id>.md`. The Pneuma server watches this directory (`server/handoff-watcher.ts`) and surfaces a Handoff Card UI for user confirmation. On confirm, the source backend is killed (best-effort), `switched_out` / `switched_in` events are appended to the respective `history.json` files, and the target session is launched (or resumed). The target's CLAUDE.md `pneuma:handoff` marker block points it at the file; the target consumes the file and `rm`s it.
+
+Frontmatter schema (parsed by `server/handoff-parser.ts`):
+
+| Key | Required | Notes |
+|-----|----------|-------|
+| `handoff_id` | yes | Stable id; matches the filename `<id>.md`. |
+| `target_mode` | yes | The mode the target session must run. |
+| `target_session` | no | `"auto"` to spawn a new session, or an existing session id to resume. |
+| `source_session` | no | Source session id; used to record `switched_out`. |
+| `source_mode` | no | Source mode (advisory, shown in UI). |
+| `source_display_name` | no | UI label for the source session. |
+| `intent` | no | Short user-readable intent string. |
+| `suggested_files` | no | List (`  - <path>`) of files the target should focus on. |
+| `created_at` | no | ISO timestamp. |
+
+See `docs/design/2026-04-27-pneuma-projects-design.md` for the full design and body conventions.

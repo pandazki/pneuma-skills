@@ -361,7 +361,26 @@ export type BrowserIncomingMessageBase =
   | { type: "viewer_action_request"; request_id: string; action_id: string; params?: Record<string, unknown> }
   | { type: "prompt_suggestion"; suggestions: string[] }
   | { type: "streamlined_text"; text: string; parent_tool_use_id?: string | null }
-  | { type: "streamlined_tool_use_summary"; summary: string; tool_use_ids: string[] };
+  | { type: "streamlined_tool_use_summary"; summary: string; tool_use_ids: string[] }
+  | {
+    type: "handoff_event";
+    kind: "created" | "deleted";
+    handoff: {
+      path: string;
+      frontmatter: {
+        handoff_id: string;
+        target_mode: string;
+        target_session?: string;
+        source_session?: string;
+        source_mode?: string;
+        source_display_name?: string;
+        intent?: string;
+        suggested_files?: string[];
+        created_at?: string;
+      };
+      body: string;
+    };
+  };
 
 export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };
 

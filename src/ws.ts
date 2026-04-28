@@ -763,6 +763,17 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       });
       break;
     }
+
+    case "handoff_event": {
+      // Pneuma 3.0 projects: keep handoff inbox in sync with the server's
+      // chokidar watcher (server/handoff-watcher.ts).
+      if (data.kind === "created") {
+        store.recordHandoffCreated(data.handoff);
+      } else if (data.kind === "deleted") {
+        store.recordHandoffDeleted(data.handoff.frontmatter.handoff_id);
+      }
+      break;
+    }
   }
 }
 

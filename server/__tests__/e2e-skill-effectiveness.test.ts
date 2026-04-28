@@ -46,7 +46,13 @@ describe("skill installation → CLAUDE.md skill reference", () => {
   it("doc mode: CLAUDE.md directs agent to consult skill and has core rules", () => {
     const ws = makeWorkspace("doc-e2e");
     const modeSourceDir = join(PROJECT_ROOT, "modes", "doc");
-    installSkill(ws, docManifest.skill, modeSourceDir, {}, docManifest.viewerApi);
+    installSkill({
+      workspace: ws,
+      skillConfig: docManifest.skill,
+      modeSourceDir,
+      params: {},
+      viewerApi: docManifest.viewerApi,
+    });
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
     expect(claudeMd).toContain("consult the `pneuma-doc` skill");
@@ -56,7 +62,13 @@ describe("skill installation → CLAUDE.md skill reference", () => {
   it("draw mode: CLAUDE.md directs agent to consult skill and has core rules", () => {
     const ws = makeWorkspace("draw-e2e");
     const modeSourceDir = join(PROJECT_ROOT, "modes", "draw");
-    installSkill(ws, drawManifest.skill, modeSourceDir, {}, drawManifest.viewerApi);
+    installSkill({
+      workspace: ws,
+      skillConfig: drawManifest.skill,
+      modeSourceDir,
+      params: {},
+      viewerApi: drawManifest.viewerApi,
+    });
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
     expect(claudeMd).toContain("consult the `pneuma-draw` skill");
@@ -66,7 +78,13 @@ describe("skill installation → CLAUDE.md skill reference", () => {
   it("slide mode: CLAUDE.md directs agent to consult skill and has core rules", () => {
     const ws = makeWorkspace("slide-e2e");
     const modeSourceDir = join(PROJECT_ROOT, "modes", "slide");
-    installSkill(ws, slideManifest.skill, modeSourceDir, { slideWidth: 1280, slideHeight: 720 }, slideManifest.viewerApi);
+    installSkill({
+      workspace: ws,
+      skillConfig: slideManifest.skill,
+      modeSourceDir,
+      params: { slideWidth: 1280, slideHeight: 720 },
+      viewerApi: slideManifest.viewerApi,
+    });
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
     expect(claudeMd).toContain("consult the `pneuma-slide` skill");
@@ -76,7 +94,13 @@ describe("skill installation → CLAUDE.md skill reference", () => {
   it("mode-maker: CLAUDE.md directs agent to consult skill and has core rules", () => {
     const ws = makeWorkspace("mode-maker-e2e");
     const modeSourceDir = join(PROJECT_ROOT, "modes", "mode-maker");
-    installSkill(ws, modeMakerManifest.skill, modeSourceDir, {}, modeMakerManifest.viewerApi);
+    installSkill({
+      workspace: ws,
+      skillConfig: modeMakerManifest.skill,
+      modeSourceDir,
+      params: {},
+      viewerApi: modeMakerManifest.viewerApi,
+    });
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
     expect(claudeMd).toContain("consult the `pneuma-mode-maker` skill");
@@ -90,7 +114,13 @@ describe("SKILL.md YAML frontmatter", () => {
   it("doc SKILL.md has name and description frontmatter", () => {
     const ws = makeWorkspace("doc-fm");
     const modeSourceDir = join(PROJECT_ROOT, "modes", "doc");
-    installSkill(ws, docManifest.skill, modeSourceDir, {}, docManifest.viewerApi);
+    installSkill({
+      workspace: ws,
+      skillConfig: docManifest.skill,
+      modeSourceDir,
+      params: {},
+      viewerApi: docManifest.viewerApi,
+    });
 
     const skillMd = readFileSync(join(ws, ".claude", "skills", "pneuma-doc", "SKILL.md"), "utf-8");
     expect(skillMd.startsWith("---\n")).toBe(true);
@@ -105,7 +135,13 @@ describe("SKILL.md YAML frontmatter", () => {
   it("draw SKILL.md has name and description frontmatter", () => {
     const ws = makeWorkspace("draw-fm");
     const modeSourceDir = join(PROJECT_ROOT, "modes", "draw");
-    installSkill(ws, drawManifest.skill, modeSourceDir, {}, drawManifest.viewerApi);
+    installSkill({
+      workspace: ws,
+      skillConfig: drawManifest.skill,
+      modeSourceDir,
+      params: {},
+      viewerApi: drawManifest.viewerApi,
+    });
 
     const skillMd = readFileSync(join(ws, ".claude", "skills", "pneuma-draw", "SKILL.md"), "utf-8");
     expect(skillMd.startsWith("---\n")).toBe(true);
@@ -119,7 +155,13 @@ describe("SKILL.md YAML frontmatter", () => {
   it("slide SKILL.md already has frontmatter (unchanged)", () => {
     const ws = makeWorkspace("slide-fm");
     const modeSourceDir = join(PROJECT_ROOT, "modes", "slide");
-    installSkill(ws, slideManifest.skill, modeSourceDir, { slideWidth: 1280, slideHeight: 720 }, slideManifest.viewerApi);
+    installSkill({
+      workspace: ws,
+      skillConfig: slideManifest.skill,
+      modeSourceDir,
+      params: { slideWidth: 1280, slideHeight: 720 },
+      viewerApi: slideManifest.viewerApi,
+    });
 
     const skillMd = readFileSync(join(ws, ".claude", "skills", "pneuma-slide", "SKILL.md"), "utf-8");
     expect(skillMd.startsWith("---\n")).toBe(true);
@@ -133,7 +175,13 @@ describe("evolution apply/rollback → CLAUDE.md sync (end-to-end)", () => {
   function setupEvolutionWorkspace(): string {
     const ws = makeWorkspace("evo-e2e");
     const modeSourceDir = join(PROJECT_ROOT, "modes", "slide");
-    installSkill(ws, slideManifest.skill, modeSourceDir, { slideWidth: 1280, slideHeight: 720 }, slideManifest.viewerApi);
+    installSkill({
+      workspace: ws,
+      skillConfig: slideManifest.skill,
+      modeSourceDir,
+      params: { slideWidth: 1280, slideHeight: 720 },
+      viewerApi: slideManifest.viewerApi,
+    });
     return ws;
   }
 

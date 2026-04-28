@@ -73,4 +73,35 @@ describe("exportHistory", () => {
     expect(result.checkpointCount).toBe(0);
     expect(result.messageCount).toBe(1);
   });
+
+  test("uses stateDir for session.json + history.json (project-session layout)", async () => {
+    // Project-session layout: state lives under <projectRoot>/.pneuma/sessions/<id>/
+    // and the workspace's own .pneuma is empty (or absent).
+    const stateDir = join(workspace, ".pneuma", "sessions", "abc123");
+    mkdirSync(stateDir, { recursive: true });
+
+    writeFileSync(join(stateDir, "history.json"), JSON.stringify([
+      { type: "user_message", content: "From project", timestamp: 2000, id: "u1" },
+    ]));
+    writeFileSync(join(stateDir, "session.json"), JSON.stringify({
+      sessionId: "abc123", mode: "doc", backendType: "claude-code", createdAt: 1900,
+    }));
+
+    // Sanity: ensure no fallback file exists at the legacy path
+    expect(existsSync(join(workspace, ".pneuma", "session.json"))).toBe(false);
+    expect(existsSync(join(workspace, ".pneuma", "history.json"))).toBe(false);
+
+    const outPath = join(workspace, "export-project.tar.gz");
+    const result = await exportHistory(workspace, { output: outPath, stateDir });
+
+    expect(existsSync(outPath)).toBe(true);
+    expect(result.messageCount).toBe(1);
+
+    const extractDir = mkdtempSync(join(tmpdir(), "extract-state-"));
+    await Bun.spawn(["tar", "xzf", outPath, "-C", extractDir]).exited;
+    const manifest = JSON.parse(readFileSync(join(extractDir, "manifest.json"), "utf-8"));
+    // Mode came from stateDir's session.json — proves stateDir was honored.
+    expect(manifest.metadata.mode).toBe("doc");
+    rmSync(extractDir, { recursive: true, force: true });
+  });
 });

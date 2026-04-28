@@ -30,7 +30,16 @@ import { HookBus } from "../core/hook-bus.js";
 import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./proxy-middleware.js";
 import type { ProxyRoute } from "../core/types/mode-manifest.js";
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
+import { startHandoffWatcher } from "./handoff-watcher.js";
 import { mountNativeRoutes } from "./native-bridge.js";
+import { mountProjectsRoutes } from "./projects-routes.js";
+import { loadProjectManifest } from "../core/project-loader.js";
+import {
+  readSessionsFileSync,
+  writeSessionsFileSync,
+  upsertSession,
+  type AnySessionRegistryEntry,
+} from "../bin/sessions-registry.js";
 
 const DEFAULT_PORT = 17007;
 
@@ -56,6 +65,29 @@ export interface ServerOptions {
   editingSupported?: boolean; // Mode supports editing ↔ viewing toggle
   backendType?: string; // Backend type for correct instructions file selection (claude-code | codex)
   refreshStrategy?: "auto" | "manual"; // Viewer refresh strategy (default: "auto")
+
+  // ── Pneuma 3.0 Projects: per-session paths ────────────────────────────────
+  /**
+   * Per-session state directory. For project sessions, this is
+   * `<projectRoot>/.pneuma/sessions/<sessionId>`. For quick sessions, omit
+   * (defaults to `<workspace>/.pneuma`).
+   */
+  stateDir?: string;
+  /**
+   * Per-session home directory (where the agent runs and instructions live).
+   * Equals workspace for quick sessions; equals projectRoot for project
+   * sessions. Omit for legacy quick-session behavior.
+   */
+  sessionDir?: string;
+  /** Pneuma project session id (uuid). Only set for project sessions. */
+  sessionId?: string;
+  /**
+   * User-facing Pneuma project root (the directory containing
+   * `.pneuma/project.json`). Only set for project sessions. Distinct from
+   * `projectRoot` above, which is the pneuma-skills repo root used to
+   * locate built-in mode manifests.
+   */
+  pneumaProjectRoot?: string;
 }
 
 export async function startServer(options: ServerOptions) {
@@ -70,31 +102,208 @@ export async function startServer(options: ServerOptions) {
   // Dev mode: allow cross-origin requests from Vite dev server
   app.use("/api/*", cors({ origin: "*" }));
 
-  // ── Launcher Mode (lightweight — no workspace, no agent, no watcher) ────
-  if (options.launcherMode) {
-    const pneumaHome = join(homedir(), ".pneuma");
-    const settingsManager = new SettingsManager(pneumaHome);
-    settingsManager.migrateIfNeeded();
-    const hookBus = new HookBus();
-    const pluginRegistry = new PluginRegistry({
-      builtinDir: join(import.meta.dir, "..", "plugins"),
-      externalDir: join(pneumaHome, "plugins"),
-      settingsManager,
-      hookBus,
+  // ── Shared child-process helpers ────────────────────────────────────────
+  // These live above the launcher branch so both launcher mode and per-session
+  // mode can share `launchPneumaChild` / `killActiveSession`. The launcher uses
+  // them via `/api/launch`; per-session mode uses them via the handoff confirm
+  // route mounted by `mountProjectsRoutes`.
+
+  // Track child pneuma processes spawned by /api/launch (launcher mode) or by
+  // the handoff confirm route (per-session mode).
+  const childProcesses = new Map<number, {
+    proc: ReturnType<typeof Bun.spawn>;
+    specifier: string;
+    workspace: string;
+    url: string;
+    startedAt: number;
+    sessionId?: string;
+    project?: string;
+  }>();
+
+  /**
+   * Launch a pneuma child process and resolve once it logs `[pneuma] ready`.
+   * Returns the URL the browser should navigate to, plus the parsed
+   * `sessionId` query param (when present) so callers can map sessions back
+   * to processes (e.g. for `killActiveSession`).
+   *
+   * Centralises the spawn+wait logic so `/api/launch` and the handoff
+   * confirm route share one path. New consumers should go through this
+   * helper rather than re-spawning manually.
+   */
+  async function launchPneumaChild(params: {
+    specifier: string;
+    workspace: string;
+    initParams?: Record<string, string | number>;
+    skipSkill?: boolean;
+    backendType?: AgentBackendType;
+    replayPackage?: string;
+    replaySource?: string;
+    sessionName?: string;
+    viewing?: boolean;
+    project?: string;
+    sessionId?: string;
+  }): Promise<{ url: string; workspace: string; sessionId: string | null }> {
+    const resolvedWorkspace = resolve(params.workspace.replace(/^~/, homedir()));
+    mkdirSync(resolvedWorkspace, { recursive: true });
+
+    if (params.initParams && Object.keys(params.initParams).length > 0) {
+      const pneumaDir = join(resolvedWorkspace, ".pneuma");
+      mkdirSync(pneumaDir, { recursive: true });
+      writeFileSync(join(pneumaDir, "config.json"), JSON.stringify(params.initParams, null, 2));
+    }
+
+    const projectRootResolved = options.projectRoot || resolve(dirname(import.meta.path), "..");
+    const pneumaBin = join(projectRootResolved, "bin", "pneuma.ts");
+    const args = ["bun", pneumaBin, params.specifier, "--workspace", resolvedWorkspace, "--no-prompt", "--no-open"];
+    // Resume-aware backend resolution. When the caller didn't specify a
+    // backendType but is reopening an existing project session, read it from
+    // that session's `session.json` so a Codex-backed session reopens via
+    // Codex (not the default). Mismatched backends would otherwise be caught
+    // by `resolveWorkspaceBackendType` and abort the launch.
+    let resolvedBackendType = params.backendType;
+    if (!resolvedBackendType && params.project && params.sessionId) {
+      try {
+        const sessionJsonPath = join(
+          params.project,
+          ".pneuma",
+          "sessions",
+          params.sessionId,
+          "session.json",
+        );
+        if (existsSync(sessionJsonPath)) {
+          const persisted = JSON.parse(readFileSync(sessionJsonPath, "utf-8")) as {
+            backendType?: AgentBackendType;
+          };
+          if (persisted.backendType) resolvedBackendType = persisted.backendType;
+        }
+      } catch {
+        // Best-effort; fall back to the default backend below.
+      }
+    }
+    args.push("--backend", resolvedBackendType || getDefaultBackendType());
+    if (params.skipSkill) args.push("--skip-skill");
+    if (params.viewing) args.push("--viewing");
+    if (params.replayPackage) args.push("--replay", params.replayPackage);
+    if (params.replaySource) args.push("--replay-source", params.replaySource);
+    if (params.sessionName) args.push("--session-name", params.sessionName);
+    if (params.project) args.push("--project", params.project);
+    if (params.sessionId) args.push("--session-id", params.sessionId);
+    if (options.debug) args.push("--debug");
+    if (options.forceDev) args.push("--dev");
+
+    const child = Bun.spawn(args, {
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env as Record<string, string> },
     });
 
+    const readyUrl = await new Promise<string>((resolveUrl, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Launch timeout (30s)")), 30_000);
+      const decoder = new TextDecoder();
+
+      const readStream = async (stream: ReadableStream<Uint8Array>) => {
+        const reader = stream.getReader();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            console.log(`[launcher] ${line}`);
+            const match = line.match(/\[pneuma\] ready (.+)/);
+            if (match) {
+              clearTimeout(timeout);
+              resolveUrl(match[1]);
+              return;
+            }
+          }
+        }
+      };
+
+      if (child.stdout) readStream(child.stdout);
+      if (child.stderr) {
+        const readErr = async (stream: ReadableStream<Uint8Array>) => {
+          const reader = stream.getReader();
+          const decoder = new TextDecoder();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            console.error(`[launcher:err] ${decoder.decode(value, { stream: true })}`);
+          }
+        };
+        readErr(child.stderr);
+      }
+
+      child.exited.then((code) => {
+        clearTimeout(timeout);
+        if (code !== 0) reject(new Error(`Process exited with code ${code}`));
+      });
+    });
+
+    // Best-effort sessionId extraction from URL — the child writes
+    // `[pneuma] ready http://.../?session=<id>&...`.
+    let resolvedSessionId: string | null = null;
+    try {
+      resolvedSessionId = new URL(readyUrl).searchParams.get("session");
+    } catch {
+      // URL parsing failure is non-fatal; sessionId tracking just won't
+      // be available for this child (kill-by-sessionId becomes a no-op).
+    }
+
+    const pid = child.pid;
+    childProcesses.set(pid, {
+      proc: child,
+      specifier: params.specifier,
+      workspace: resolvedWorkspace,
+      url: readyUrl,
+      startedAt: Date.now(),
+      sessionId: resolvedSessionId ?? undefined,
+      project: params.project,
+    });
+    child.exited.then(() => {
+      childProcesses.delete(pid);
+    });
+
+    return { url: readyUrl, workspace: resolvedWorkspace, sessionId: resolvedSessionId };
+  }
+
+  /**
+   * Terminate the child pneuma process that owns the given sessionId.
+   * No-op when no matching process is tracked (e.g. session is not
+   * running, or was launched outside the launcher). Errors are logged
+   * but never thrown — kill is best-effort.
+   *
+   * NOTE: this only kills processes spawned by THIS server. A per-session
+   * server cannot kill a sibling session because the sibling was spawned
+   * by the launcher, not by us. In the typical handoff confirm flow the
+   * source is the user's CURRENT session — this server itself — so the
+   * source will continue running until the user closes the tab; the
+   * `switched_out` history event still records the intent.
+   */
+  async function killActiveSession(sessionId: string): Promise<void> {
+    for (const [pid, info] of childProcesses.entries()) {
+      if (info.sessionId === sessionId) {
+        try {
+          info.proc.kill();
+          childProcesses.delete(pid);
+        } catch (err) {
+          console.warn(`[killActiveSession] ${sessionId} kill failed: ${err}`);
+        }
+        return;
+      }
+    }
+  }
+
+  // ── Shared route mounters ────────────────────────────────────────────
+  // `/api/registry` is needed by BOTH the launcher's marketplace UI and the
+  // per-session ModeSwitcherDropdown. Defining it as a free function keeps
+  // the two mount sites in sync.
+  const mountRegistryRoute = (target: Hono) => {
     const REGISTRY_URL = "https://pneuma-storage.vibecoding.icu";
 
-    // Track child pneuma processes spawned by /api/launch
-    const childProcesses = new Map<number, {
-      proc: ReturnType<typeof Bun.spawn>;
-      specifier: string;
-      workspace: string;
-      url: string;
-      startedAt: number;
-    }>();
-
-    app.get("/api/registry", async (c) => {
+    target.get("/api/registry", async (c) => {
       const { parseManifestTs } = await import("../core/utils/manifest-parser.js");
       const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
 
@@ -163,6 +372,22 @@ export async function startServer(options: ServerOptions) {
 
       return c.json({ builtins, published, local });
     });
+  };
+
+  // ── Launcher Mode (lightweight — no workspace, no agent, no watcher) ────
+  if (options.launcherMode) {
+    const pneumaHome = join(homedir(), ".pneuma");
+    const settingsManager = new SettingsManager(pneumaHome);
+    settingsManager.migrateIfNeeded();
+    const hookBus = new HookBus();
+    const pluginRegistry = new PluginRegistry({
+      builtinDir: join(import.meta.dir, "..", "plugins"),
+      externalDir: join(pneumaHome, "plugins"),
+      settingsManager,
+      hookBus,
+    });
+
+    mountRegistryRoute(app);
 
     app.get("/api/backends", (c) => {
       const descriptors = getBackendDescriptors();
@@ -293,29 +518,28 @@ export async function startServer(options: ServerOptions) {
     });
 
     // List recent sessions
+    //
+    // The launcher's "Recent Sessions" surface shows quick (workspace-rooted)
+    // sessions — project sessions live under the separate Recent Projects
+    // section. So we filter to `kind === "quick"` here. Reads the new
+    // `{projects, sessions}` schema via `readSessionsFileSync` which also
+    // auto-upgrades the legacy 2.x array format.
     app.get("/api/sessions", (c) => {
       const registryPath = join(homedir(), ".pneuma", "sessions.json");
-      let sessions: Array<{
-        id: string;
-        mode: string;
-        displayName: string;
-        workspace: string;
-        backendType?: AgentBackendType;
-        lastAccessed: number;
-      }> = [];
-      try {
-        sessions = JSON.parse(readFileSync(registryPath, "utf-8"));
-      } catch { }
-      sessions = sessions.map((session) => ({
+      const data = readSessionsFileSync(registryPath);
+      let quickSessions = data.sessions.filter(
+        (s): s is Extract<AnySessionRegistryEntry, { kind: "quick" }> => s.kind === "quick"
+      );
+      quickSessions = quickSessions.map((session) => ({
         ...session,
         backendType: session.backendType || getDefaultBackendType(),
       }));
       // Filter out sessions whose workspace no longer exists
-      sessions = sessions.filter((s) => existsSync(s.workspace));
+      quickSessions = quickSessions.filter((s) => existsSync(s.workspace));
       // Sort by lastAccessed descending
-      sessions.sort((a, b) => b.lastAccessed - a.lastAccessed);
+      quickSessions.sort((a, b) => b.lastAccessed - a.lastAccessed);
       // Check for thumbnails
-      const sessionsWithThumbs = sessions.map((s) => ({
+      const sessionsWithThumbs = quickSessions.map((s) => ({
         ...s,
         hasThumbnail: existsSync(join(s.workspace, ".pneuma", "thumbnail.png")),
         hasReplayData: existsSync(join(s.workspace, ".pneuma", "shadow.git", "HEAD"))
@@ -335,14 +559,14 @@ export async function startServer(options: ServerOptions) {
       const workspace = c.req.query("workspace");
       if (!workspace) return c.json({ error: "Missing workspace" }, 400);
 
-      // Validate: workspace must be a known registered session workspace
+      // Validate: workspace must be a known registered quick-session workspace.
+      // Project sessions don't have a `workspace` field; they're served via
+      // `/api/projects/...` instead.
       const registryPath = join(homedir(), ".pneuma", "sessions.json");
-      let knownWorkspaces: string[] = [];
-      try {
-        const raw = readFileSync(registryPath, "utf-8");
-        const sessions = JSON.parse(raw) as Array<{ workspace: string }>;
-        knownWorkspaces = sessions.map((s) => resolve(s.workspace));
-      } catch { /* no registry yet */ }
+      const data = readSessionsFileSync(registryPath);
+      const knownWorkspaces = data.sessions
+        .filter((s): s is Extract<AnySessionRegistryEntry, { kind: "quick" }> => s.kind === "quick")
+        .map((s) => resolve(s.workspace));
       const resolvedWorkspace = resolve(workspace);
       if (!knownWorkspaces.includes(resolvedWorkspace)) {
         return c.json({ error: "Unknown workspace" }, 403);
@@ -371,20 +595,13 @@ export async function startServer(options: ServerOptions) {
     app.delete("/api/sessions/:id", (c) => {
       const id = decodeURIComponent(c.req.param("id"));
       const registryPath = join(homedir(), ".pneuma", "sessions.json");
-      let sessions: Array<{
-        id: string;
-        mode: string;
-        displayName: string;
-        workspace: string;
-        backendType?: AgentBackendType;
-        lastAccessed: number;
-      }> = [];
+      const data = readSessionsFileSync(registryPath);
+      const next = {
+        projects: data.projects,
+        sessions: data.sessions.filter((s) => s.id !== id),
+      };
       try {
-        sessions = JSON.parse(readFileSync(registryPath, "utf-8"));
-      } catch { }
-      sessions = sessions.filter((s) => s.id !== id);
-      try {
-        writeFileSync(registryPath, JSON.stringify(sessions, null, 2));
+        writeSessionsFileSync(registryPath, next);
       } catch { }
       return c.json({ ok: true });
     });
@@ -397,15 +614,15 @@ export async function startServer(options: ServerOptions) {
         return c.json({ error: "sessionName is required" }, 400);
       }
       const registryPath = join(homedir(), ".pneuma", "sessions.json");
-      let sessions: Array<Record<string, unknown>> = [];
-      try {
-        sessions = JSON.parse(readFileSync(registryPath, "utf-8"));
-      } catch { }
-      const idx = sessions.findIndex((s) => s.id === id);
+      const data = readSessionsFileSync(registryPath);
+      const idx = data.sessions.findIndex((s) => s.id === id);
       if (idx < 0) return c.json({ error: "Session not found" }, 404);
-      sessions[idx].sessionName = sessionName.trim();
+      const trimmed = sessionName.trim();
+      const updatedSessions = data.sessions.map((s, i) =>
+        i === idx ? ({ ...s, sessionName: trimmed } as AnySessionRegistryEntry) : s
+      );
       try {
-        writeFileSync(registryPath, JSON.stringify(sessions, null, 2));
+        writeSessionsFileSync(registryPath, { projects: data.projects, sessions: updatedSessions });
       } catch { }
       return c.json({ ok: true });
     });
@@ -457,10 +674,23 @@ export async function startServer(options: ServerOptions) {
     });
 
     // Check if a session's skill needs updating
+    //
+    // Accepts either:
+    //   - workspace (legacy quick session): reads from `<workspace>/.pneuma/`
+    //   - sessionDir (project session): reads from the per-session state dir
+    //     (e.g. `<projectRoot>/.pneuma/sessions/<sessionId>`). When provided,
+    //     sessionDir wins over workspace as the state location.
     app.post("/api/launch/skill-check", async (c) => {
-      const { specifier, workspace: rawWorkspace } = await c.req.json<{ specifier: string; workspace: string }>();
+      const { specifier, workspace: rawWorkspace, sessionDir: rawSessionDir } = await c.req.json<{
+        specifier: string;
+        workspace: string;
+        sessionDir?: string;
+      }>();
       try {
         const resolvedWorkspace = resolve(rawWorkspace.replace(/^~/, homedir()));
+        const stateDir = rawSessionDir
+          ? resolve(rawSessionDir.replace(/^~/, homedir()))
+          : join(resolvedWorkspace, ".pneuma");
         const { resolveMode } = await import("../core/mode-resolver.js");
         const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
         const resolved = await resolveMode(specifier, projectRoot);
@@ -477,14 +707,14 @@ export async function startServer(options: ServerOptions) {
         // Read installed version
         let installedVersion = "";
         try {
-          const data = JSON.parse(readFileSync(join(resolvedWorkspace, ".pneuma", "skill-version.json"), "utf-8"));
+          const data = JSON.parse(readFileSync(join(stateDir, "skill-version.json"), "utf-8"));
           installedVersion = data.version || "";
         } catch { }
 
         // Read dismissed version
         let dismissedVersion = "";
         try {
-          const data = JSON.parse(readFileSync(join(resolvedWorkspace, ".pneuma", "skill-dismissed.json"), "utf-8"));
+          const data = JSON.parse(readFileSync(join(stateDir, "skill-dismissed.json"), "utf-8"));
           dismissedVersion = data.version || "";
         } catch { }
 
@@ -527,12 +757,20 @@ export async function startServer(options: ServerOptions) {
       }
     });
 
-    // Dismiss a skill update for a specific version
+    // Dismiss a skill update for a specific version. Accepts an optional
+    // sessionDir for project sessions; falls back to <workspace>/.pneuma when
+    // omitted (legacy quick-session behavior).
     app.post("/api/launch/skill-dismiss", async (c) => {
-      const { workspace: rawWorkspace, version } = await c.req.json<{ workspace: string; version: string }>();
+      const { workspace: rawWorkspace, sessionDir: rawSessionDir, version } = await c.req.json<{
+        workspace: string;
+        sessionDir?: string;
+        version: string;
+      }>();
       try {
         const resolvedWorkspace = resolve(rawWorkspace.replace(/^~/, homedir()));
-        const dir = join(resolvedWorkspace, ".pneuma");
+        const dir = rawSessionDir
+          ? resolve(rawSessionDir.replace(/^~/, homedir()))
+          : join(resolvedWorkspace, ".pneuma");
         mkdirSync(dir, { recursive: true });
         writeFileSync(join(dir, "skill-dismissed.json"), JSON.stringify({ version }));
       } catch { }
@@ -597,7 +835,7 @@ export async function startServer(options: ServerOptions) {
     });
 
     app.post("/api/launch", async (c) => {
-      const { specifier, workspace: targetWorkspace, initParams, skipSkill, backendType, replayPackage: replayPkg, replaySource, sessionName, viewing } = await c.req.json<{
+      const body = await c.req.json<{
         specifier: string;
         workspace: string;
         initParams?: Record<string, string | number>;
@@ -607,102 +845,25 @@ export async function startServer(options: ServerOptions) {
         replaySource?: string; // Source workspace for existing session replay
         sessionName?: string;
         viewing?: boolean;
+        project?: string;
+        sessionId?: string;
       }>();
 
       try {
-        const resolvedWorkspace = resolve(targetWorkspace.replace(/^~/, homedir()));
-
-        // 1. Create workspace dir
-        mkdirSync(resolvedWorkspace, { recursive: true });
-
-        // 2. Save initParams to .pneuma/config.json if provided
-        if (initParams && Object.keys(initParams).length > 0) {
-          const pneumaDir = join(resolvedWorkspace, ".pneuma");
-          mkdirSync(pneumaDir, { recursive: true });
-          writeFileSync(join(pneumaDir, "config.json"), JSON.stringify(initParams, null, 2));
-        }
-
-        // 3. Spawn pneuma process
-        const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
-        const pneumaBin = join(projectRoot, "bin", "pneuma.ts");
-        const args = ["bun", pneumaBin, specifier, "--workspace", resolvedWorkspace, "--no-prompt", "--no-open"];
-        args.push("--backend", backendType || getDefaultBackendType());
-        if (skipSkill) args.push("--skip-skill");
-        if (viewing) args.push("--viewing");
-        if (replayPkg) args.push("--replay", replayPkg);
-        if (replaySource) args.push("--replay-source", replaySource);
-        if (sessionName) args.push("--session-name", sessionName);
-        if (options.debug) args.push("--debug");
-        if (options.forceDev) args.push("--dev");
-
-        const child = Bun.spawn(args, {
-          stdout: "pipe",
-          stderr: "pipe",
-          env: { ...process.env as Record<string, string> },
+        const result = await launchPneumaChild({
+          specifier: body.specifier,
+          workspace: body.workspace,
+          initParams: body.initParams,
+          skipSkill: body.skipSkill,
+          backendType: body.backendType,
+          replayPackage: body.replayPackage,
+          replaySource: body.replaySource,
+          sessionName: body.sessionName,
+          viewing: body.viewing,
+          project: body.project,
+          sessionId: body.sessionId,
         });
-
-        // 4. Wait for "[pneuma] ready <url>" (30s timeout)
-        const readyUrl = await new Promise<string>((resolveUrl, reject) => {
-          const timeout = setTimeout(() => reject(new Error("Launch timeout (30s)")), 30_000);
-          const decoder = new TextDecoder();
-
-          const readStream = async (stream: ReadableStream<Uint8Array>) => {
-            const reader = stream.getReader();
-            let buffer = "";
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split("\n");
-              buffer = lines.pop() || "";
-              for (const line of lines) {
-                console.log(`[launcher] ${line}`);
-                const match = line.match(/\[pneuma\] ready (.+)/);
-                if (match) {
-                  clearTimeout(timeout);
-                  resolveUrl(match[1]);
-                  return;
-                }
-              }
-            }
-          };
-
-          if (child.stdout) readStream(child.stdout);
-          if (child.stderr) {
-            const readErr = async (stream: ReadableStream<Uint8Array>) => {
-              const reader = stream.getReader();
-              const decoder = new TextDecoder();
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                console.error(`[launcher:err] ${decoder.decode(value, { stream: true })}`);
-              }
-            };
-            readErr(child.stderr);
-          }
-
-          child.exited.then((code) => {
-            clearTimeout(timeout);
-            if (code !== 0) reject(new Error(`Process exited with code ${code}`));
-          });
-        });
-
-        // Track the child process
-        const pid = child.pid;
-        childProcesses.set(pid, {
-          proc: child,
-          specifier,
-          workspace: resolvedWorkspace,
-          url: readyUrl,
-          startedAt: Date.now(),
-        });
-
-        // Auto-remove when process exits
-        child.exited.then(() => {
-          childProcesses.delete(pid);
-        });
-
-        return c.json({ url: readyUrl, workspace: resolvedWorkspace, mode: specifier });
+        return c.json({ url: result.url, workspace: result.workspace, mode: body.specifier });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return c.json({ error: message }, 500);
@@ -1001,19 +1162,19 @@ export async function startServer(options: ServerOptions) {
       if (cleanupArchive) { try { const { unlinkSync } = await import("node:fs"); unlinkSync(archivePath); } catch {} }
 
       const registryPath = join(homedir(), ".pneuma", "sessions.json");
-      let sessions: any[] = [];
-      try { sessions = JSON.parse(readFileSync(registryPath, "utf-8")); } catch {}
+      const data = readSessionsFileSync(registryPath);
       const sessionId = `${targetDir}::${mode}`;
-      sessions = sessions.filter((s: any) => s.id !== sessionId);
-      sessions.unshift({
+      const importedEntry: AnySessionRegistryEntry = {
         id: sessionId,
+        kind: "quick",
         mode,
         displayName: `${displayName} (imported)`,
         workspace: targetDir,
+        sessionDir: targetDir,
         backendType: getDefaultBackendType(),
         lastAccessed: Date.now(),
-      });
-      writeFileSync(registryPath, JSON.stringify(sessions, null, 2));
+      };
+      writeSessionsFileSync(registryPath, upsertSession(data, importedEntry));
 
       const replayPackagePath = isProcess ? join(targetDir, ".pneuma", "replay") : undefined;
       return { ok: true, type: isProcess ? "process" : "result", path: targetDir, mode, displayName, replayPackagePath };
@@ -1047,6 +1208,24 @@ export async function startServer(options: ServerOptions) {
       } catch (err: any) {
         return c.json({ error: err.message }, 500);
       }
+    });
+
+    // ── Project routes API (also available in launcher mode) ─────────────
+    mountProjectsRoutes(app, {
+      homeDir: homedir(),
+      killSession: killActiveSession,
+      launchSession: async (params) => {
+        // Default workspace = the project root (project sessions store
+        // workspace state inside the project; the per-session subdir is
+        // created by `resolveStartupContext` in `bin/pneuma.ts`).
+        const result = await launchPneumaChild({
+          specifier: params.mode,
+          workspace: params.project,
+          project: params.project,
+          sessionId: params.sessionId,
+        });
+        return result.url;
+      },
     });
 
     // Serve frontend assets in launcher mode too
@@ -1123,6 +1302,34 @@ export async function startServer(options: ServerOptions) {
     console.log(`[proxy] Config reloaded: ${proxyConfigRef.current.size} route(s)`);
   });
 
+  // ── Handoff watcher (project sessions only) ─────────────────────────────
+  // Watch the USER project root (pneumaProjectRoot), NOT the pneuma-skills
+  // repo root (projectRoot is overloaded for mode-maker / registry helpers).
+  let stopHandoffWatcher: (() => Promise<void>) | null = null;
+  if (options.pneumaProjectRoot) {
+    stopHandoffWatcher = await startHandoffWatcher({
+      projectRoot: options.pneumaProjectRoot,
+      onEvent: (e) => {
+        // Broadcast to all browser ws connections for this session.
+        // The active session is whichever one currently has a CLI/codex
+        // attached; if none yet (watcher fires before agent connect), the
+        // broadcast is a silent no-op which is fine — the watcher emits a
+        // synthetic `add` for any pre-existing handoff files when the next
+        // browser connects via session_init replay paths.
+        const sid = wsBridge.getActiveSessionId() ?? options.sessionId ?? null;
+        if (!sid) {
+          console.log(`[handoff-watcher] ${e.type}: ${e.handoff.frontmatter.handoff_id} (no active session yet)`);
+          return;
+        }
+        wsBridge.broadcastToSession(sid, {
+          type: "handoff_event",
+          kind: e.type,
+          handoff: e.handoff,
+        });
+      },
+    });
+  }
+
   // ── Plugin System ─────────────────────────────────────────────────────────
   const pneumaHome = join(homedir(), ".pneuma");
   const settingsManager = new SettingsManager(pneumaHome);
@@ -1140,10 +1347,13 @@ export async function startServer(options: ServerOptions) {
   const enabledPlugins = pluginRegistry.filterEnabled(discoveredPlugins);
   const activePlugins = pluginRegistry.resolveForSession(enabledPlugins, options.modeName ?? "");
 
+  // Per-session state dir resolution: explicit options.stateDir wins (project
+  // sessions); falls back to <workspace>/.pneuma for legacy quick sessions.
+  const stateDirForSession = options.stateDir ?? join(workspace, ".pneuma");
   const sessionInfo = {
     sessionId: (() => {
       try {
-        const sp = join(workspace, ".pneuma", "session.json");
+        const sp = join(stateDirForSession, "session.json");
         if (existsSync(sp)) return JSON.parse(readFileSync(sp, "utf-8")).sessionId ?? "";
       } catch {}
       return "";
@@ -1159,7 +1369,11 @@ export async function startServer(options: ServerOptions) {
   {
     const { buildAndInjectPreferences } = await import("./skill-installer.js");
     const installName = `pneuma-${options.modeName ?? ""}`;
-    await buildAndInjectPreferences(workspace, installName, options.backendType ?? "claude-code", hookBus, sessionInfo);
+    // Project sessions: the CLAUDE.md lives next to the session-scoped skills,
+    // not at the workspace root. Mirror the install path resolution below
+    // so plugin enrichment lands in the file the agent actually reads.
+    const instructionsRoot = options.sessionDir ?? workspace;
+    await buildAndInjectPreferences(instructionsRoot, installName, options.backendType ?? "claude-code", hookBus, sessionInfo);
   }
 
   // Mount plugin routes
@@ -1167,17 +1381,24 @@ export async function startServer(options: ServerOptions) {
     workspace,
     session: sessionInfo,
     settings: settingsManager.getPluginConfig(pluginName),
-    getDeployBinding: () => getDeployBinding(workspace) as any,
-    saveDeployBinding: (b) => saveDeployBinding(workspace, b as any),
+    getDeployBinding: () => getDeployBinding(workspace, options.stateDir) as any,
+    saveDeployBinding: (b) => saveDeployBinding(workspace, b as any, options.stateDir),
   }));
 
   // Install plugin skills + inject memory source info
   {
-    const { injectMemorySourceInfo } = await import("./skill-installer.js");
+    const { injectMemorySourceInfo, resolvePluginSkillsBase } = await import("./skill-installer.js");
     const { cpSync, mkdirSync, existsSync: fsExists } = await import("node:fs");
 
     const bt = options.backendType;
-    const skillsBase = join(workspace, bt === "codex" ? ".agents/skills" : ".claude/skills");
+    // Project sessions: the agent's CWD is `<projectRoot>/.pneuma/sessions/<id>/`,
+    // so plugin skills must land under that session dir alongside the mode
+    // skill. Quick sessions still resolve to `<workspace>/.claude/skills/`.
+    // Falling back to the workspace root for project sessions (the previous
+    // behavior) silently parked plugin skills where the session's agent
+    // never reads them.
+    const pluginSkillsRoot = options.sessionDir ?? workspace;
+    const skillsBase = resolvePluginSkillsBase(workspace, options.sessionDir, bt);
 
     for (const plugin of pluginRegistry.getLoadedList()) {
       // Injection point 1: install plugin skill
@@ -1261,7 +1482,9 @@ export async function startServer(options: ServerOptions) {
         displayName: p.manifest.displayName,
         routePrefix: p.manifest.routePrefix ?? `/api/plugins/${p.manifest.name}`,
       }));
-    injectMemorySourceInfo(workspace, memorySources, bt);
+    // Project sessions: rewrite the per-session pneuma-preferences SKILL.md
+    // (the one the agent actually loads), not the workspace-level one.
+    injectMemorySourceInfo(pluginSkillsRoot, memorySources, bt);
   }
 
   // Plugin list API
@@ -1395,9 +1618,38 @@ export async function startServer(options: ServerOptions) {
 
   // ── API Routes ─────────────────────────────────────────────────────────
 
-  // Return the current active session ID so browsers can auto-connect
-  app.get("/api/session", (c) => {
-    return c.json({ sessionId: wsBridge.getActiveSessionId() });
+  // Return the current active session ID so browsers can auto-connect.
+  // Project sessions also include the project paths so the frontend can
+  // populate `projectContext` (used by HandoffCard, etc.).
+  app.get("/api/session", async (c) => {
+    // Project-session paths come from `pneumaProjectRoot` (the user's project
+    // root). The legacy `projectRoot` field is overloaded to mean the
+    // pneuma-skills repo root (used by mode-maker / registry routes), so it
+    // can't be used to detect a project session here.
+    let projectInfo: {
+      projectRoot: string;
+      homeRoot: string;
+      sessionDir: string;
+      projectName?: string;
+      projectDescription?: string;
+    } | null = null;
+    if (options.pneumaProjectRoot) {
+      // Enrich with manifest fields so the frontend can label the chip
+      // without an extra fetch. Manifest read is cheap (small JSON file)
+      // and tolerant of failure — fields stay undefined on error.
+      const manifest = await loadProjectManifest(options.pneumaProjectRoot).catch(() => null);
+      projectInfo = {
+        projectRoot: options.pneumaProjectRoot,
+        homeRoot: options.pneumaProjectRoot,
+        sessionDir: stateDirForSession,
+        ...(manifest?.displayName ? { projectName: manifest.displayName } : {}),
+        ...(manifest?.description ? { projectDescription: manifest.description } : {}),
+      };
+    }
+    return c.json({
+      sessionId: wsBridge.getActiveSessionId(),
+      project: projectInfo,
+    });
   });
 
   // Save session thumbnail
@@ -1406,7 +1658,7 @@ export async function startServer(options: ServerOptions) {
       const body = await c.req.json();
       const { data } = body; // base64 PNG data
       if (!data) return c.json({ error: "Missing data" }, 400);
-      const thumbDir = join(workspace, ".pneuma");
+      const thumbDir = stateDirForSession;
       if (!existsSync(thumbDir)) mkdirSync(thumbDir, { recursive: true });
       const thumbPath = join(thumbDir, "thumbnail.png");
       const buffer = Buffer.from(data, "base64");
@@ -1430,7 +1682,7 @@ export async function startServer(options: ServerOptions) {
 
     // Persist to session.json
     try {
-      const sessionPath = join(workspace, ".pneuma", "session.json");
+      const sessionPath = join(stateDirForSession, "session.json");
       if (existsSync(sessionPath)) {
         const session = JSON.parse(readFileSync(sessionPath, "utf-8"));
         session.editing = newEditing;
@@ -1471,7 +1723,7 @@ export async function startServer(options: ServerOptions) {
   });
 
   // ── App settings (window size, resizable, etc.) ────────────────────────
-  const appSettingsPath = join(workspace, ".pneuma", "app-settings.json");
+  const appSettingsPath = join(stateDirForSession, "app-settings.json");
 
   const loadAppSettings = () => {
     try {
@@ -1489,7 +1741,7 @@ export async function startServer(options: ServerOptions) {
     const body = await c.req.json().catch(() => ({}));
     const current = loadAppSettings();
     const merged = { ...current, ...body };
-    mkdirSync(join(workspace, ".pneuma"), { recursive: true });
+    mkdirSync(stateDirForSession, { recursive: true });
     writeFileSync(appSettingsPath, JSON.stringify(merged, null, 2));
     return c.json({ ok: true, settings: merged });
   });
@@ -1497,8 +1749,35 @@ export async function startServer(options: ServerOptions) {
   // ── Native bridge (Electron desktop APIs) ───────────────────────────
   mountNativeRoutes(app);
 
+  // ── Mode registry (shared with launcher) ────────────────────────────
+  // The per-session ModeSwitcherDropdown fetches `/api/registry` to populate
+  // the mode list when switching modes inside a project. Mounted here on the
+  // per-session server so the dropdown works regardless of which port it
+  // talks to.
+  mountRegistryRoute(app);
+
+  // ── Project routes API ──────────────────────────────────────────────
+  // Wires the same handoff confirm machinery the launcher uses, so the
+  // HandoffCard can fire `/api/handoffs/:id/confirm` against the active
+  // session's server. `killActiveSession` only finds matches for processes
+  // we spawned; a session asked to kill itself simply no-ops (the user's
+  // tab keeps the source running until they close it).
+  mountProjectsRoutes(app, {
+    homeDir: homedir(),
+    killSession: killActiveSession,
+    launchSession: async (params) => {
+      const result = await launchPneumaChild({
+        specifier: params.mode,
+        workspace: params.project,
+        project: params.project,
+        sessionId: params.sessionId,
+      });
+      return result.url;
+    },
+  });
+
   app.get("/api/history/checkpoints", async (c) => {
-    const checkpoints = await listCheckpoints(workspace);
+    const checkpoints = await listCheckpoints(workspace, options.stateDir);
     return c.json({ checkpoints });
   });
 
@@ -1508,6 +1787,7 @@ export async function startServer(options: ServerOptions) {
       const result = await exportHistory(workspace, {
         title: body.title,
         description: body.description,
+        stateDir: options.stateDir,
       });
       return c.json(result);
     } catch (err: any) {
@@ -1528,7 +1808,7 @@ export async function startServer(options: ServerOptions) {
   app.post("/api/share/result", async (c) => {
     try {
       const body = await c.req.json<{ title?: string }>();
-      const result = await shareResult(workspace, body.title);
+      const result = await shareResult(workspace, body.title, options.stateDir);
       return c.json(result);
     } catch (err: any) {
       return c.json({ error: err.message }, 500);
@@ -1538,7 +1818,7 @@ export async function startServer(options: ServerOptions) {
   app.post("/api/share/process", async (c) => {
     try {
       const body = await c.req.json<{ title?: string }>();
-      const result = await shareProcess(workspace, body.title);
+      const result = await shareProcess(workspace, body.title, options.stateDir);
       return c.json(result);
     } catch (err: any) {
       return c.json({ error: err.message }, 500);
@@ -1569,7 +1849,8 @@ export async function startServer(options: ServerOptions) {
     if (!replayPackage) return c.json({ error: "No replay loaded" }, 400);
     const hash = c.req.param("hash");
     // Extract to replay-checkout (clean slate each time) so /content/* serves correct per-checkpoint state
-    const outDir = join(workspace, ".pneuma", "replay-checkout");
+    const stateDirForReplay = options.stateDir ?? join(workspace, ".pneuma");
+    const outDir = join(stateDirForReplay, "replay-checkout");
     try {
       const { rmSync: rm } = await import("node:fs");
       rm(outDir, { recursive: true, force: true });
@@ -1623,7 +1904,7 @@ export async function startServer(options: ServerOptions) {
         overview: "", keyDecisions: [], workspaceFiles: [], recentConversation: "",
       };
       const originalMode = replayPackage?.manifest.metadata.mode ?? options.modeName ?? "unknown";
-      await prepareWorkspaceForContinue(workspace, { originalMode, summary });
+      await prepareWorkspaceForContinue(workspace, { originalMode, summary, stateDir: options.stateDir });
 
       // 3. Clear replay package reference
       replayPackage = null;
@@ -1654,7 +1935,7 @@ export async function startServer(options: ServerOptions) {
       replayMode: serverReplayMode,
       editing: currentEditing,
       editingSupported: options.editingSupported ?? false,
-      appSettings: (() => { try { return JSON.parse(readFileSync(join(workspace, ".pneuma", "app-settings.json"), "utf-8")); } catch { return {}; } })(),
+      appSettings: (() => { try { return JSON.parse(readFileSync(appSettingsPath, "utf-8")); } catch { return {}; } })(),
     });
   });
 
@@ -1672,7 +1953,7 @@ export async function startServer(options: ServerOptions) {
   });
 
   // ── Viewer State Persistence ─────────────────────────────────────────
-  const viewerStatePath = workspace ? join(workspace, ".pneuma", "viewer-state.json") : null;
+  const viewerStatePath = workspace ? join(stateDirForSession, "viewer-state.json") : null;
 
   app.get("/api/viewer-state", (c) => {
     if (!viewerStatePath || !existsSync(viewerStatePath)) return c.json({});
@@ -2162,7 +2443,7 @@ export async function startServer(options: ServerOptions) {
 
   // ── Evolution routes (conditional) ──────────────────────────────────
   if (options.modeName === "evolve") {
-    registerEvolutionRoutes(app, { workspace });
+    registerEvolutionRoutes(app, { workspace, stateDir: options.stateDir });
   }
 
   // ── Reverse proxy for viewer API access ────────────────────────────────
@@ -2176,8 +2457,9 @@ export async function startServer(options: ServerOptions) {
     const relPath = decodeURIComponent(c.req.path.replace(/^\/content\//, ""));
     if (!relPath) return c.text("Not found", 404);
     // In replay mode, serve from replay-checkout dir (clean per-checkpoint state)
+    const stateDirForContent = options.stateDir ?? join(workspace, ".pneuma");
     const contentRoot = serverReplayMode
-      ? join(workspace, ".pneuma", "replay-checkout")
+      ? join(stateDirForContent, "replay-checkout")
       : workspace;
     const absPath = join(contentRoot, relPath);
     // Basic path traversal protection
@@ -2446,6 +2728,7 @@ export default S;`;
   const onEditingKill = (cb: () => Promise<void>) => { editingKillCallback = cb; };
 
   const cleanup = async () => {
+    if (stopHandoffWatcher) await stopHandoffWatcher();
     await hookBus.emit("session:end", { sessionId: sessionInfo.sessionId, mode: sessionInfo.mode, workspace }, sessionInfo).catch(() => {});
   };
 

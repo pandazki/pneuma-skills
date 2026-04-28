@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState, lazy, Suspense } from "react"
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
 import ContentSetSelector from "./ContentSetSelector.js";
+import ModeSwitcherDropdown from "./ModeSwitcherDropdown.js";
 
 const AppSettings = lazy(() => import("./AppSettings.js"));
+const ProjectChip = lazy(() => import("./ProjectChip.js"));
 
 const desktop = (window as any).pneumaDesktop as {
   setEditing?: (editing: boolean, opts?: { width?: number; height?: number; resizable?: boolean }) => Promise<void>;
@@ -297,12 +299,19 @@ export default function TopBar() {
   const contentSetUnread = useStore((s) => s.contentSetUnread);
   const workspaceItems = useStore((s) => s.workspaceItems);
   const activeFile = useStore((s) => s.activeFile);
-  const topBarNav = useStore((s) => s.modeViewer?.workspace?.topBarNavigation);
-  const createEmpty = useStore((s) => s.modeViewer?.workspace?.createEmpty);
+  const modeViewer = useStore((s) => s.modeViewer);
+  const projectContext = useStore((s) => s.projectContext);
+  const topBarNav = modeViewer?.workspace?.topBarNavigation;
+  const createEmpty = modeViewer?.workspace?.createEmpty;
   const replayMode = useStore((s) => s.replayMode);
   const replayMetadata = useStore((s) => s.replayMetadata);
   const scheduleAvailable = !backendType || backendType === "claude-code";
   const visibleTabs = scheduleAvailable ? TABS : TABS.filter((tab) => tab.id !== "schedules");
+  // Empty-shell predicate. The chip strip on the left always renders; the
+  // tabs row + share dropdown + editing toggle only matter once a mode
+  // viewer has loaded. ProjectChip (Phase 2) lives in the strip and works
+  // either way.
+  const hasModeViewer = !!modeViewer;
 
   const showItemSelector = topBarNav && contentSets.length <= 1 && workspaceItems.length > 1;
 
@@ -372,13 +381,28 @@ export default function TopBar() {
           <img src="/logo.png" alt="" className="w-5 h-5 rounded" />
           <span className="font-logo text-sm text-cc-fg tracking-tight">Pneuma</span>
         </div>
+        {projectContext ? (
+          <>
+            <span className="w-px h-3 bg-cc-border/40" aria-hidden />
+            <Suspense fallback={null}>
+              <ProjectChip />
+            </Suspense>
+          </>
+        ) : null}
+        {projectContext && hasModeViewer ? (
+          <span className="w-px h-3 bg-cc-border/40" aria-hidden />
+        ) : null}
+        <ModeSwitcherDropdown />
         {contentSets.length > 1 && (
-          <ContentSetSelector
-            items={contentSets.map((cs) => ({ id: cs.prefix, label: cs.label }))}
-            activeId={activeContentSet}
-            onSelect={(id) => useStore.getState().setActiveContentSet(id)}
-            unread={contentSetUnread}
-          />
+          <>
+            <span className="w-px h-3 bg-cc-border/40" aria-hidden />
+            <ContentSetSelector
+              items={contentSets.map((cs) => ({ id: cs.prefix, label: cs.label }))}
+              activeId={activeContentSet}
+              onSelect={(id) => useStore.getState().setActiveContentSet(id)}
+              unread={contentSetUnread}
+            />
+          </>
         )}
         {showItemSelector && (
           <ContentSetSelector
@@ -402,54 +426,58 @@ export default function TopBar() {
         )}
       </div>
 
-      {/* Center: tabs */}
-      <div className="flex items-center gap-1 mx-auto bg-cc-bg/80 border border-cc-border/50 rounded-full p-1 shadow-inner">
-        {visibleTabs.map((tab) => {
-          const disabledByReplay = replayMode && tab.id !== "chat";
-          const disabledByGit = tab.id === "diff" && gitAvailable === false;
-          const disabled = disabledByReplay || disabledByGit;
-          const badge = tab.id === "schedules" && cronJobCount > 0 ? cronJobCount : 0;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => !disabled && setActiveTab(tab.id)}
-              title={disabledByReplay ? "Not available in replay mode" : disabledByGit ? "Diffs require a git repository. Run `git init` in the workspace." : undefined}
-              className={`relative px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${disabled
-                ? "text-cc-muted/30 cursor-not-allowed"
-                : activeTab === tab.id
-                  ? "bg-cc-primary text-cc-bg shadow-[0_0_12px_rgba(249,115,22,0.4)]"
-                  : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
-                }`}
-            >
-              {tab.label}
-              {badge > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-cc-primary text-cc-bg text-[10px] font-bold leading-none">
-                  {badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {/* Center: tabs (hidden in empty shell — no session = no panels) */}
+      {hasModeViewer && (
+        <div className="flex items-center gap-1 mx-auto bg-cc-bg/80 border border-cc-border/50 rounded-full p-1 shadow-inner">
+          {visibleTabs.map((tab) => {
+            const disabledByReplay = replayMode && tab.id !== "chat";
+            const disabledByGit = tab.id === "diff" && gitAvailable === false;
+            const disabled = disabledByReplay || disabledByGit;
+            const badge = tab.id === "schedules" && cronJobCount > 0 ? cronJobCount : 0;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => !disabled && setActiveTab(tab.id)}
+                title={disabledByReplay ? "Not available in replay mode" : disabledByGit ? "Diffs require a git repository. Run `git init` in the workspace." : undefined}
+                className={`relative px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${disabled
+                  ? "text-cc-muted/30 cursor-not-allowed"
+                  : activeTab === tab.id
+                    ? "bg-cc-primary text-cc-bg shadow-[0_0_12px_rgba(249,115,22,0.4)]"
+                    : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+                  }`}
+              >
+                {tab.label}
+                {badge > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-cc-primary text-cc-bg text-[10px] font-bold leading-none">
+                    {badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-      {/* Right: share dropdown or replay badge */}
-      {replayMode ? (
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cc-primary/10 border border-cc-primary/20 text-cc-primary text-xs font-medium">
-            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
-              <path d="M4 2l10 6-10 6V2z"/>
-            </svg>
-            Replay
-          </span>
-          {replayMetadata?.title && (
-            <span className="text-cc-muted/60 text-xs truncate max-w-[200px]">{replayMetadata.title}</span>
-          )}
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 shrink-0">
-          <EditingToggle />
-          <ShareDropdown />
-        </div>
+      {/* Right: share dropdown or replay badge (hidden in empty shell) */}
+      {hasModeViewer && (
+        replayMode ? (
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cc-primary/10 border border-cc-primary/20 text-cc-primary text-xs font-medium">
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+                <path d="M4 2l10 6-10 6V2z"/>
+              </svg>
+              Replay
+            </span>
+            {replayMetadata?.title && (
+              <span className="text-cc-muted/60 text-xs truncate max-w-[200px]">{replayMetadata.title}</span>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 shrink-0">
+            <EditingToggle />
+            <ShareDropdown />
+          </div>
+        )
       )}
     </div>
   );

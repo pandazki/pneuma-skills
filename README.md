@@ -195,6 +195,16 @@ The preference files are living documents — full rewrites, not append-only log
 
 **Quick start tip:** If you already have a history of working with Claude Code, try asking the agent in any mode: *"Do a full preference refresh from my session history."* The agent will scan your past Pneuma sessions, extract your patterns and preferences, and build your profile in one pass — you might be surprised by what it picks up. This works with both Claude Code and Codex backends.
 
+## Projects (3.0)
+
+Pneuma supports an optional Project layer above sessions. A project is any user directory marked by `<root>/.pneuma/project.json`. Inside a project you can:
+
+- Run multiple sessions in different modes (doc, webcraft, clipcraft, ...) all targeting the same project root
+- Switch modes mid-conversation — the source agent writes a handoff file and the target session consumes it
+- Maintain project-scoped preferences orthogonal to your global preferences
+
+Quick (project-less) sessions remain fully supported — projects are opt-in. Create one from the launcher's "Create Project" button. See `docs/design/2026-04-27-pneuma-projects-design.md` for the full design.
+
 ## Tech Stack
 
 | Layer | Technology |

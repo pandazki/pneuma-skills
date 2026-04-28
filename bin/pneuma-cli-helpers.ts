@@ -38,6 +38,10 @@ export interface ParsedCliArgs {
   replaySource: string; // Source workspace path for existing session replay
   sessionName: string;
   viewing: boolean;
+  /** Project root directory (resolved absolute) when --project is supplied; empty string otherwise. */
+  project: string;
+  /** Explicit session id override from --session-id; empty string when not provided. */
+  sessionIdOverride: string;
 }
 
 /**
@@ -86,6 +90,8 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
   let replaySource = "";
   let sessionName = "";
   let viewing = false;
+  let project = "";
+  let sessionIdOverride = "";
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -117,6 +123,10 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
       replaySource = resolve(cwd, args[++i]);
     } else if (arg === "--session-name" && i + 1 < args.length) {
       sessionName = args[++i];
+    } else if (arg === "--project" && i + 1 < args.length) {
+      project = resolve(cwd, args[++i]);
+    } else if (arg === "--session-id" && i + 1 < args.length) {
+      sessionIdOverride = args[++i] ?? "";
     } else if (!arg.startsWith("--")) {
       mode = arg;
     }
@@ -138,6 +148,8 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
     replaySource,
     sessionName,
     viewing,
+    project,
+    sessionIdOverride,
   };
 }
 

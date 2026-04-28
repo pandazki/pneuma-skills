@@ -21,20 +21,25 @@ import {
 
 interface EvolutionRouteOptions {
   workspace: string;
+  /**
+   * Per-session state directory for evolution proposals/backups. Defaults to
+   * `<workspace>/.pneuma` for legacy quick sessions.
+   */
+  stateDir?: string;
 }
 
 export function registerEvolutionRoutes(app: Hono, opts: EvolutionRouteOptions): void {
-  const { workspace } = opts;
+  const { workspace, stateDir } = opts;
 
   // GET /api/evolve/proposals — list all proposals
   app.get("/api/evolve/proposals", (c) => {
-    const proposals = listProposals(workspace);
+    const proposals = listProposals(workspace, stateDir);
     return c.json({ proposals });
   });
 
   // GET /api/evolve/proposals/latest — most recent proposal
   app.get("/api/evolve/proposals/latest", (c) => {
-    const proposal = loadLatestProposal(workspace);
+    const proposal = loadLatestProposal(workspace, stateDir);
     if (!proposal) {
       return c.json({ proposal: null, message: "No proposals found" });
     }
@@ -44,7 +49,7 @@ export function registerEvolutionRoutes(app: Hono, opts: EvolutionRouteOptions):
   // GET /api/evolve/proposals/:id — specific proposal
   app.get("/api/evolve/proposals/:id", (c) => {
     const id = c.req.param("id");
-    const proposal = loadProposal(workspace, id);
+    const proposal = loadProposal(workspace, id, stateDir);
     if (!proposal) {
       return c.json({ error: "Proposal not found" }, 404);
     }
@@ -54,7 +59,7 @@ export function registerEvolutionRoutes(app: Hono, opts: EvolutionRouteOptions):
   // POST /api/evolve/apply/:id — apply a pending proposal
   app.post("/api/evolve/apply/:id", (c) => {
     const id = c.req.param("id");
-    const result = applyProposal(workspace, id);
+    const result = applyProposal(workspace, id, stateDir);
     if (!result.success) {
       return c.json({ success: false, error: result.error }, 400);
     }
@@ -64,7 +69,7 @@ export function registerEvolutionRoutes(app: Hono, opts: EvolutionRouteOptions):
   // POST /api/evolve/rollback/:id — rollback an applied proposal
   app.post("/api/evolve/rollback/:id", (c) => {
     const id = c.req.param("id");
-    const result = rollbackProposal(workspace, id);
+    const result = rollbackProposal(workspace, id, stateDir);
     if (!result.success) {
       return c.json({ success: false, error: result.error }, 400);
     }
@@ -74,7 +79,7 @@ export function registerEvolutionRoutes(app: Hono, opts: EvolutionRouteOptions):
   // POST /api/evolve/discard/:id — discard a pending proposal
   app.post("/api/evolve/discard/:id", (c) => {
     const id = c.req.param("id");
-    const success = discardProposal(workspace, id);
+    const success = discardProposal(workspace, id, stateDir);
     if (!success) {
       return c.json({ success: false, error: "Cannot discard (not found or already applied)" }, 400);
     }
@@ -84,7 +89,7 @@ export function registerEvolutionRoutes(app: Hono, opts: EvolutionRouteOptions):
   // POST /api/evolve/fork/:id — fork proposal into a new custom mode
   app.post("/api/evolve/fork/:id", async (c) => {
     const id = c.req.param("id");
-    const proposal = loadProposal(workspace, id);
+    const proposal = loadProposal(workspace, id, stateDir);
     if (!proposal) {
       return c.json({ error: "Proposal not found" }, 404);
     }
@@ -104,7 +109,7 @@ export function registerEvolutionRoutes(app: Hono, opts: EvolutionRouteOptions):
       proposal.status = "forked";
       proposal.forkedAt = new Date().toISOString();
       proposal.forkPath = forkPath;
-      saveProposal(workspace, proposal);
+      saveProposal(workspace, proposal, stateDir);
 
       return c.json({ success: true, forkPath });
     } catch (err) {

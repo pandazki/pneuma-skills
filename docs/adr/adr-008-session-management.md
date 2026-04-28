@@ -1,9 +1,21 @@
 # ADR-008: Session 管理与持久化
 
-> **状态**: Accepted (Revised)
-> **日期**: 2026-02-26 (初版) / 2026-02-27 (修订)
+> **状态**: Accepted (Revised) — Superseded in part by [`docs/design/2026-04-27-pneuma-projects-design.md`](../design/2026-04-27-pneuma-projects-design.md) (3.0)
+> **日期**: 2026-02-26 (初版) / 2026-02-27 (修订) / 2026-04-27 (3.0 supersession note)
 > **决策者**: Pandazki
 > **关联**: ADR-002, ADR-003
+
+---
+
+## ⚠️ 3.0 Supersession Note (2026-04-27)
+
+本 ADR 第 2.1 节 "单 Session 模型" 的决策**仅适用于 2.x 快会话**。Pneuma 3.0 在 session 之上引入 **Project 层**，允许同一 project 下并发多个 session（不同 mode 或同 mode 多实例）：
+
+- **快会话**（无 project）继续遵循本 ADR 的所有决策——单 session、`<workspace>/.pneuma/` 本地存储、`--resume` 恢复
+- **项目化 session** 改为允许并发，存储路径变为 `<project>/.pneuma/sessions/{sessionId}/`（扁平，无嵌套 `.pneuma/`），共享层在 `<project>/.pneuma/{project.json, preferences/, handoffs/}`
+- Backend mismatch guard 仍然生效——但是 per-session 而非 per-workspace
+
+完整设计见关联的 design doc。本 ADR 文本不修改，保留作历史决策记录。
 
 ---
 

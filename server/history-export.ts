@@ -11,6 +11,11 @@ interface ExportOptions {
   output?: string;
   title?: string;
   description?: string;
+  /**
+   * Per-session state directory. Defaults to `<workspace>/.pneuma` (legacy 2.x);
+   * project sessions pass `<projectRoot>/.pneuma/sessions/<id>`.
+   */
+  stateDir?: string;
 }
 
 interface ExportResult {
@@ -20,18 +25,20 @@ interface ExportResult {
 }
 
 export async function exportHistory(workspace: string, options: ExportOptions = {}): Promise<ExportResult> {
+  const stateDir = options.stateDir ?? join(workspace, ".pneuma");
+
   // 1. Read session metadata
-  const sessionPath = join(workspace, ".pneuma", "session.json");
+  const sessionPath = join(stateDir, "session.json");
   const session = JSON.parse(readFileSync(sessionPath, "utf-8"));
 
   // 2. Read history
-  const historyPath = join(workspace, ".pneuma", "history.json");
+  const historyPath = join(stateDir, "history.json");
   const messages: BrowserIncomingMessage[] = existsSync(historyPath)
     ? JSON.parse(readFileSync(historyPath, "utf-8"))
     : [];
 
   // 3. Read checkpoints
-  const checkpoints = await listCheckpoints(workspace);
+  const checkpoints = await listCheckpoints(workspace, options.stateDir);
 
   // 4. Build checkpoint index with message seq ranges
   const exportedCheckpoints: ExportedCheckpoint[] = buildCheckpointIndex(messages, checkpoints);
