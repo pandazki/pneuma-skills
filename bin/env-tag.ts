@@ -36,6 +36,15 @@ export interface EnvTagInput {
   /** Inbound payload from `inbound-handoff.json`, if the session was a Smart Handoff target. */
   inbound?: InboundHandoffPayload | null;
   /**
+   * Absolute path to `<sessionDir>/.pneuma/inbound-handoff.json` when the
+   * session was a Smart Handoff target. Surfaces in the `handed-off` env tag
+   * as `inbound_path` so the agent (and a debugging human) can locate the
+   * raw JSON payload without having to derive it. The CLAUDE.md
+   * `pneuma:handoff` block already carries the parsed content; this is a
+   * pointer for callers that need the original.
+   */
+  inboundPath?: string;
+  /**
    * Source-session identity from `--from-session-*` CLI flags — populated when
    * the session was spawned by clicking a sibling row in ProjectPanel. Empty
    * strings count as "not provided".
@@ -68,6 +77,7 @@ export function buildEnvTag(input: EnvTagInput): string | null {
     push("from_session", input.inbound.source_session_id);
     push("from_mode", input.inbound.source_mode);
     push("from_display_name", input.inbound.source_display_name);
+    push("inbound_path", input.inboundPath);
   } else if (input.fromSessionId && input.fromSessionId.trim().length > 0) {
     push("reason", "switched");
     push("project", input.projectName);

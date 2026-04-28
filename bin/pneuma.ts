@@ -1641,6 +1641,11 @@ Options:
   // dispatch on the agent's first turn. Read once here so the file's existence
   // is the single source of truth for the handoff path.
   let inboundHandoff: InboundHandoffPayload | null = null;
+  // The path is computed even when no inbound exists (so the env tag
+  // builder receives a stable absolute path to surface as `inbound_path`).
+  // `readInboundHandoff` returns null when the file doesn't exist; the
+  // env-tag dispatcher only emits the attribute when an inbound is present.
+  const inboundHandoffPath = join(sessionDir, ".pneuma", "inbound-handoff.json");
   if (startup.kind === "project" && startup.paths.projectRoot) {
     inboundHandoff = readInboundHandoff(sessionDir);
   }
@@ -1953,6 +1958,7 @@ Options:
       mode: modeName,
       projectName: projectDisplayName,
       inbound: inboundHandoff,
+      inboundPath: inboundHandoffPath,
       fromSessionId,
       fromMode,
       fromDisplayName,

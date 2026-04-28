@@ -68,8 +68,11 @@ or, if you were spawned from an explicit Smart Handoff:
             project="Pneuma Demo Project"
             from_session="dd2573f5"
             from_mode="illustrate"
-            from_display_name="Brand exploration" />
+            from_display_name="Brand exploration"
+            inbound_path="/Users/.../.pneuma/sessions/<id>/.pneuma/inbound-handoff.json" />
 ```
+
+The `inbound_path` attribute on the `handed-off` form points at the raw structured payload on disk. You usually don't need to read it — the `pneuma:handoff` block in your CLAUDE.md already carries the parsed content as a system briefing. Reach for `inbound_path` only when you need the original JSON (e.g. to iterate `suggested_files` precisely, or to verify a field that the CLAUDE.md formatting elided).
 
 **`reason` semantics — adjust your behavior accordingly:**
 
