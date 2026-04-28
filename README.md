@@ -218,14 +218,6 @@ The preference files are living documents — full rewrites, not append-only log
 - Existing workspaces are backend-locked. Pneuma resumes the same backend for the lifetime of that workspace session instead of switching mid-stream.
 - Frontend features now read `agent_capabilities` from session state. Claude-only features such as Schedules and cost tracking are hidden for non-Claude backends.
 
-## Acknowledgements
-
-This project's Claude transport layer, NDJSON handling, and much of the initial chat bridge were heavily informed by [Companion](https://github.com/The-Vibe-Company/companion) by The Vibe Company.
-
-Companion was the reference for Claude Code's earlier `--sdk-url` WebSocket bridge. Anthropic later locked that flag behind a host whitelist (CC 2.1.118+), so 2.40.0 migrated Pneuma's claude-code backend to the headless stdio transport (`claude -p --input-format stream-json --output-format stream-json`) — the same shape Crystal, Conductor, and opcode use. Pneuma's backend layer keeps the Claude-specific protocol inside `backends/claude-code/` so future backends can plug in through their own adapters instead of inheriting Claude wire assumptions everywhere.
-
-The **kami mode**'s entire visual language — warm parchment canvas, ink-blue accent, serif-led hierarchy, font selection, and the three worked demo templates seeded into new kami workspaces — is adapted from [tw93/kami](https://github.com/tw93/kami) (MIT), an open-source typesetting design system. Our layer adds the locked-paper-size viewer and Pneuma runtime wiring; the craft belongs to Tw93. Full attribution, font licenses (OFL 1.1 + TsangerJinKai02 personal-use), and per-demo provenance live in `modes/kami/NOTICE.md`.
-
 ## License
 
 [MIT](LICENSE)
