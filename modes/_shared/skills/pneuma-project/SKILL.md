@@ -43,6 +43,49 @@ When updating: read first, then full-rewrite (last-writer-wins). Project prefere
 
 **Conflict policy**: when project preferences contradict personal preferences, follow the project preference and tell the user once with a brief reason ("project says X; personal says Y; going with project for this session").
 
+## How you got here — the `<pneuma:env>` start signal
+
+**Every session starts with an environment-context message** injected into your chat as the first user-side turn. It looks like:
+
+```
+<pneuma:env reason="opened" project="Pneuma Demo Project" mode="webcraft" />
+```
+
+or:
+
+```
+<pneuma:env reason="switched"
+            project="Pneuma Demo Project"
+            from_session="dd2573f5"
+            from_mode="illustrate"
+            from_display_name="Brand exploration" />
+```
+
+or, if you were spawned from an explicit Smart Handoff:
+
+```
+<pneuma:env reason="handed-off"
+            project="Pneuma Demo Project"
+            from_session="dd2573f5"
+            from_mode="illustrate"
+            from_display_name="Brand exploration" />
+```
+
+**`reason` semantics — adjust your behavior accordingly:**
+
+- **`opened`** — fresh start. The user opened a new session; there's no precursor. Greet briefly (one short line), state what this mode is about, and wait for the user's intent. Don't dump capabilities at them.
+
+- **`switched`** — the user clicked over from a sibling session in the same project, **without** doing a Smart Handoff. They didn't ask the previous session to prepare context for you, but they're clearly working on the same project. Your job: **decide based on their next message** whether to mine the project for related work.
+
+  - If their next message implies continuity (e.g. "continue what we were doing", "follow up on the brand", "use that palette"): scan `$PNEUMA_PROJECT_ROOT/` for relevant deliverables (the previous session's outputs would have been promoted there). Mention what you found.
+  - If their message is unrelated or starts something new: don't mine. Just work on what they asked.
+  - **Don't read `$PNEUMA_PROJECT_ROOT/.pneuma/sessions/<from_session>/` internals** — that's the previous session's private workspace. Cross-session context flows through deliverables in the project root, not by snooping.
+  - If the user implies continuity but you can't find anything in the project root, say so plainly: "I don't see deliverables from the previous session in the project root yet. Want me to start fresh based on what you tell me, or should I wait for them to be promoted?"
+
+- **`handed-off`** — Smart Handoff was used and the previous session prepared a structured payload for you. Your CLAUDE.md will also contain a `pneuma:handoff` block with intent / summary / suggested files / decisions / open questions. Treat that block as authoritative; see "Receiving a handoff" below.
+
+The `<pneuma:env>` tag is **informational, not directive**. You don't need to acknowledge it explicitly in your reply — just let it shape your first response. Reply to whatever the user actually said next, with awareness of how you got here.
+
 ## Handoffs — moving work between sessions
 
 Because a project is multi-session by design, the user often wants to **take what you've built here and continue in a different mode**. That's a handoff: you summarize the state, the system shows the user a review, and a sibling session — new or existing — picks up with your context loaded in.

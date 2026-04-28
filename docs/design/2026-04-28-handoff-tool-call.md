@@ -7,6 +7,28 @@
 
 ---
 
+## 0. Design principle — user behavior as agent signal
+
+This rewrite extends a paradigm that already exists in Pneuma at the **viewer layer**: the user clicks a slide, selects text on a page, hovers a region — and the viewer synthesizes a `<viewer-context>` chat tag so the agent knows what the user just looked at, without anyone typing it. The agent is told "the user pointed at this", not "do something about this"; what to do flows from the agent's reading of the user's next message.
+
+The project layer applies the same pattern at a coarser scope. Session-level user actions (opened a session, switched sibling, requested handoff, cancelled handoff) become **signals** the runtime synthesizes for the agent:
+
+| User action | Signal injected to agent |
+|---|---|
+| Opened a fresh session | `<pneuma:env reason="opened" … />` |
+| Clicked a sibling session row in panel (no Smart Handoff) | `<pneuma:env reason="switched" from_session=… … />` |
+| Confirmed Smart Handoff (UI → source agent) | `<pneuma:request-handoff target=… intent=… />` |
+| Confirmed handoff in HandoffCard (system → spawn target) | `<pneuma:env reason="handed-off" … />` + structured payload in CLAUDE.md `pneuma:handoff` block |
+| Cancelled handoff in HandoffCard | `<pneuma:handoff-cancelled reason="…" />` to source |
+
+In every case the signal is **informational, not directive**. The skill (`pneuma-project`) teaches the agent how to read each signal and decide. The agent's reply is to whatever the user actually wrote next; the signals just shape the awareness behind it.
+
+**Practical consequence**: the implementation isn't "smart handoff is a feature". It's "user behaviors at the project layer become agent-readable signals, the same way viewer interactions already do." Smart handoff is one signal; session-start env is another; handoff cancellation is a third. They live or die together, share the same dispatch mechanism (chat-tag injection via WS), and follow the same convention (XML-shaped tag with attributes the skill teaches).
+
+Implementations should preserve this symmetry. Don't add bespoke state machines per signal; add signal types to a single chat-tag injection pipeline. Don't teach the agent each signal in isolation; teach the underlying contract once in the skill (read the tag, look at attributes, decide based on user's next message).
+
+---
+
 ## 1. Why a rewrite
 
 The v1 handoff protocol had the source agent write a markdown file to `<projectRoot>/.pneuma/handoffs/<id>.md`, which a chokidar watcher detected, the UI rendered as a `HandoffCard`, and the user confirmed to trigger the actual switch. It worked, but the architecture was implicitly signal-based:
@@ -232,14 +254,61 @@ When spawning a child pneuma session via the launcher's `/api/launch`, the serve
 
 Inside a session's own server (the per-session pneuma process), the env var should also be set for the agent it spawns. Since each session runs its own server on its own port, the URL should be the session's own server URL — that way the handoff `emit` goes to the same server that's driving the source session, and the WS broadcast lands in the right browser.
 
-### 3.8 Removal: file-mediated v1 plumbing
+### 3.8 `<pneuma:env>` — session-start environment signal (Feature B)
+
+The session-start environment signal sits next to the handoff signals as an instance of the same paradigm (§0). At session start, **always** dispatch a `<pneuma:env>` tag as the first user-side chat message. The skill teaches the agent how to interpret each `reason` value.
+
+**Three reasons:**
+
+- `reason="opened"` — fresh session start (clicked launcher mode card / "+ New session in <mode>" / "+ New session of current mode" in panel). Attributes:
+  - `project="<projectName>"` (omit for quick sessions)
+  - `mode="<modeName>"`
+
+- `reason="switched"` — user clicked a sibling session row in ProjectPanel without going through Smart Handoff. Attributes:
+  - `project="<projectName>"`
+  - `from_session="<source-session-id>"`
+  - `from_mode="<source-mode-name>"`
+  - `from_display_name="<source session display name or shortened id>"`
+
+- `reason="handed-off"` — user confirmed Smart Handoff in HandoffCard. The full structured payload still goes into CLAUDE.md `pneuma:handoff` block via the inbound-handoff.json mechanism (3.6); the env tag here is the **chat-visible marker** that says "you got here via handoff" so the conversation has a clean entry point. Attributes mirror `switched` (project, from_session, from_mode, from_display_name).
+
+**Source-context propagation:**
+
+For the `switched` case, the panel's session-row click needs to pass the *current* session's identity to the `/api/launch` request:
+
+```typescript
+POST /api/launch
+{
+  specifier, workspace, project, sessionId,
+  // New optional fields, populated only when launching from inside a session:
+  from_session_id?: string,
+  from_mode?: string,
+  from_display_name?: string,
+}
+```
+
+These flow through `launchPneumaChild` as CLI flags (`--from-session-id`, `--from-mode`, `--from-display-name`) on the child's `pneuma <mode>` invocation. `bin/pneuma.ts` reads them, stores in startup context, and the server uses them to format the env tag at dispatch time.
+
+For the `handed-off` case, the `/api/handoffs/:id/confirm` endpoint already knows the source — it carries `source_session_id` from the original `/emit` payload. Pass through to spawn similarly.
+
+**Dispatch timing:**
+
+The env tag should land in the agent's chat **after** the WS connection is up and **before** any user-typed message. Implementation: at the point where the server's bridge confirms the agent is ready to receive, inject the tag as a synthetic user message via `wsBridge.sendUserMessage(tag)` (or whatever helper exists). The tag persists in `history.json` like any normal message — replay sees it, the agent sees it, the user sees it in chat (the skill warns the agent it's informational and doesn't need explicit acknowledgement).
+
+**For quick sessions (no project):**
+
+Still send `<pneuma:env reason="opened" mode="<modeName>" />` (omit `project`). Quick sessions don't get the cross-session signals, but the "fresh start" cue is still useful for the agent to know it's a clean slate vs. a resumed session.
+
+**Skill update covering all three** lives in `pneuma-project/SKILL.md` "How you got here — the `<pneuma:env>` start signal" section. The skill explicitly tells the agent: don't read sibling session internals; if continuity is implied by the user's next message, look in `$PNEUMA_PROJECT_ROOT/` for promoted deliverables.
+
+### 3.9 Removal: file-mediated v1 plumbing
 
 Delete or repurpose:
 - `server/handoff-watcher.ts` — entire file goes away (no more chokidar on handoffs dir).
 - `server/handoff-parser.ts` — kept for now as audit / migration helper, but no longer in the live request path. Can delete in a follow-up commit.
 - `<projectRoot>/.pneuma/handoffs/` directory — no longer written by any code path. Old files can stay on disk as audit residue (we don't actively clean them).
 - `recordHandoffCreated`, `recordHandoffDeleted`, `clearHandoffs` in `src/store/project-slice.ts` — replaced by a single `proposedHandoff: HandoffProposal | null` slot.
-- `<pneuma:request-handoff>` tag dispatch in `ModeSwitcherDropdown.tsx` — still valid (it's the SOURCE-side input tag the agent reads), but the dropdown's own UI flow stays as-is for now. Smart Handoff in the panel is the recommended path; the dropdown is a power-user shortcut.
+- The v1 chat-tag dispatch from `ModeSwitcherDropdown.tsx` is gone (the file was deleted in `e482368`); Smart Handoff in ProjectPanel is now the only entry point for outbound handoffs.
 
 ---
 
