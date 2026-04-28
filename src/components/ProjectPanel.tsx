@@ -1,30 +1,34 @@
 /**
- * ProjectPanel — anchored dropdown content for the Project chip.
+ * ProjectPanel — anchored "compact launcher pad" for the Project chip.
  *
- * Width ~640px, max-height 70vh, surface uses the editor's chrome rhythm
- * (rounded-2xl, glassmorphism, soft long shadow) — not a small menu shape.
+ * 960px wide, max-height 80vh. Three zones, separated only by 1px dividers
+ * (no nested cards):
  *
- * Three sections, separated by 1px dividers (no nested cards):
+ *   1. Identity bar — cover + displayName + description + path
+ *   2. Working area — split LEFT (sessions, 60%) / RIGHT (mode picker, 40%)
+ *      via a `gap-px bg-cc-border/50` rail (no border on either pane)
+ *   3. Actions bar  — Evolve Preferences · Archive (right-aligned)
  *
- *   1. Identity row  — cover + displayName + description + path
- *   2. Sessions area — one column per mode, plus "+ New {mode} session"
- *      footer per column, plus a compact "Start in another mode" trigger
- *   3. Actions       — Evolve Preferences · Archive (right-aligned)
+ * The left pane is a flat session list sorted by lastAccessed desc — no
+ * per-mode columns. Each row is `[thumbnail-or-icon] [title] [preview]
+ * [time]`. The right pane is a 2-column grid of mode tiles; clicking one
+ * launches a fresh session in that mode. Modes that already have sessions
+ * in this project show a subtle "· N sessions" suffix.
  *
- * The panel fetches `GET /api/projects/:root/sessions` + `GET /api/registry`
- * in parallel on mount. While loading, a single muted line renders. While
- * empty (zero sessions), a single muted line points at the "Start in another
- * mode" trigger.
+ * The earlier "Start in another mode →" popover is gone — its job is now
+ * done by the always-visible right pane, which removes a click and gives
+ * the eye something to scan when the project is empty.
  *
  * Currently-active session (matches `useStore(s => s.session?.session_id)`)
  * gets a subtle background tint + ring-1, never a side stripe.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
 import { basename, shortenPath } from "../utils/string.js";
 import { timeAgo } from "../utils/timeAgo.js";
 import { CoverImage, type ProjectCoverEntry } from "./ProjectCover.js";
+import { ModeIcon } from "./ModeIcon.js";
 
 interface ProjectInfo {
   name: string;
@@ -43,11 +47,17 @@ interface SessionRef {
   displayName?: string;
   /** Last-accessed mtime; populated server-side when available. */
   lastAccessed?: number;
+  /** Per-session viewer thumbnail URL (only when thumbnail.png exists on disk). */
+  thumbnailUrl?: string;
+  /** One-line preview from history.json's first user message. */
+  preview?: string;
 }
 
 interface ModeInfo {
   name: string;
   displayName?: string;
+  description?: string;
+  icon?: string;
 }
 
 interface ProjectPanelProps {
@@ -66,7 +76,6 @@ export default function ProjectPanel({ projectRoot }: ProjectPanelProps) {
   const [homeDir, setHomeDir] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [launching, setLaunching] = useState(false);
-  const [otherModeOpen, setOtherModeOpen] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   // Phase 4 — Archive flow. The actions row morphs into an inline confirm
   // (no modal, no card-in-card), and surfaces failures the same way as
@@ -113,7 +122,12 @@ export default function ProjectPanel({ projectRoot }: ProjectPanelProps) {
           for (const m of [...(reg.builtins ?? []), ...(reg.local ?? [])]) {
             if (seen.has(m.name)) continue;
             seen.add(m.name);
-            merged.push({ name: m.name, displayName: m.displayName });
+            merged.push({
+              name: m.name,
+              displayName: m.displayName,
+              description: m.description,
+              icon: m.icon,
+            });
           }
           setModes(merged);
         }
@@ -173,37 +187,34 @@ export default function ProjectPanel({ projectRoot }: ProjectPanelProps) {
     }
   };
 
-  // Group sessions by mode. Modes ordered by first-appearance in sessions
-  // for a stable, content-driven layout (vs alphabetical, which would put
-  // "diagram" before more-active modes).
-  const sessionsByMode = useMemo(() => {
-    const map = new Map<string, SessionRef[]>();
-    for (const s of sessions) {
-      const list = map.get(s.mode) ?? [];
-      list.push(s);
-      map.set(s.mode, list);
-    }
-    // Sort each mode's sessions by lastAccessed desc when available.
-    for (const [mode, list] of map) {
-      list.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0));
-      map.set(mode, list);
-    }
-    return map;
+  // Flat session list, lastAccessed desc — distinguishing three sessions of
+  // the same mode now relies on thumbnail + preview, not on column grouping.
+  const sortedSessions = useMemo(
+    () => [...sessions].sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0)),
+    [sessions],
+  );
+
+  // Per-mode session count, for the right-pane "· N sessions" suffix.
+  const sessionCountByMode = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const s of sessions) counts.set(s.mode, (counts.get(s.mode) ?? 0) + 1);
+    return counts;
   }, [sessions]);
 
-  const usedModeNames = useMemo(
-    () => Array.from(sessionsByMode.keys()),
-    [sessionsByMode],
-  );
-  const unusedModes = useMemo(
-    () => modes.filter((m) => !sessionsByMode.has(m.name)),
-    [modes, sessionsByMode],
-  );
+  // Mode lookup helpers — used everywhere, name → displayName / icon / desc.
+  const modeByName = useMemo(() => {
+    const map = new Map<string, ModeInfo>();
+    for (const m of modes) map.set(m.name, m);
+    return map;
+  }, [modes]);
 
   const modeDisplayName = (modeName: string): string => {
-    const m = modes.find((x) => x.name === modeName);
-    return m?.displayName ?? modeName;
+    return modeByName.get(modeName)?.displayName ?? modeName;
   };
+
+  // "Current mode" for the bottom new-session shortcut = mode of the most
+  // recent session, falls back to the first available mode if there are none.
+  const currentMode = sortedSessions[0]?.mode;
 
   // Project identity falls back gracefully — manifest > store context > path.
   const displayName =
@@ -215,22 +226,9 @@ export default function ProjectPanel({ projectRoot }: ProjectPanelProps) {
     id: projectRoot,
     displayName,
     sessionCount: sessions.length,
-    modeBreakdown: usedModeNames,
+    modeBreakdown: Array.from(sessionCountByMode.keys()),
     coverImageUrl,
   };
-
-  // Close popovers when clicking outside the "another mode" trigger area.
-  const otherModeRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!otherModeOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (otherModeRef.current && !otherModeRef.current.contains(e.target as Node)) {
-        setOtherModeOpen(false);
-      }
-    };
-    window.addEventListener("mousedown", handler);
-    return () => window.removeEventListener("mousedown", handler);
-  }, [otherModeOpen]);
 
   // Esc cancels the inline archive confirm. The panel itself already closes
   // on Esc via ProjectChip's outer handler, but the confirm row is a more
@@ -274,18 +272,21 @@ export default function ProjectPanel({ projectRoot }: ProjectPanelProps) {
     }
   };
 
+  const sectionHeading =
+    "text-[11px] uppercase tracking-wider text-cc-muted/60 font-medium mb-3";
+
   return (
     <div
       role="dialog"
       aria-label="Project panel"
-      className="absolute top-full left-0 mt-2 w-[640px] max-h-[70vh] overflow-auto bg-cc-surface border border-cc-border rounded-2xl shadow-[0_24px_64px_-24px_rgba(0,0,0,0.6)] backdrop-blur-xl z-[100] [animation:launcherFadeIn_180ms_cubic-bezier(0.16,1,0.3,1)]"
+      className="absolute top-full left-0 mt-2 w-[960px] max-h-[80vh] overflow-auto bg-cc-surface border border-cc-border rounded-2xl shadow-[0_24px_64px_-24px_rgba(0,0,0,0.6)] backdrop-blur-xl z-[100] [animation:launcherFadeIn_180ms_cubic-bezier(0.16,1,0.3,1)]"
     >
       {/* Section A — Identity */}
-      <div className="p-5 flex items-start gap-4">
+      <div className="p-6 flex items-start gap-5">
         <div className="w-24 h-24 rounded-xl overflow-hidden aspect-square shrink-0 bg-black/20">
           <CoverImage project={coverEntry} />
         </div>
-        <div className="flex-1 min-w-0 flex flex-col gap-1">
+        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
           <h2 className="font-display text-2xl text-cc-fg leading-tight truncate">
             {displayName}
           </h2>
@@ -293,7 +294,7 @@ export default function ProjectPanel({ projectRoot }: ProjectPanelProps) {
             <p className="text-sm text-cc-muted/80 line-clamp-2">{description}</p>
           ) : null}
           <p
-            className="text-[11px] font-mono-code text-cc-muted/50 truncate"
+            className="text-[11px] font-mono-code text-cc-muted/50 truncate mt-0.5"
             title={projectRoot}
           >
             {shortPath}
@@ -301,145 +302,162 @@ export default function ProjectPanel({ projectRoot }: ProjectPanelProps) {
         </div>
       </div>
 
-      {/* Section B — Sessions */}
-      <div className="p-5 border-t border-cc-border/50">
-        {loading ? (
-          <div className="text-cc-muted/60 text-sm">Loading sessions…</div>
-        ) : usedModeNames.length === 0 ? (
-          <div className="text-cc-muted/60 text-sm">
-            No sessions yet — start one below.
-          </div>
-        ) : (
-          <div
-            className="grid gap-4"
-            style={{
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            }}
-          >
-            {usedModeNames.map((mode) => {
-              const list = sessionsByMode.get(mode) ?? [];
-              return (
-                <div key={mode} className="flex flex-col">
-                  <h3 className="text-[11px] uppercase tracking-wider text-cc-muted/60 font-medium pb-2 border-b border-cc-border/40">
-                    {modeDisplayName(mode)}
-                  </h3>
-                  <div className="flex flex-col gap-0.5 mt-2">
-                    {list.map((s) => {
-                      const isActive = s.sessionId === activeSessionId;
-                      const idLabel = s.sessionId.slice(0, 8);
-                      const hasName =
-                        typeof s.displayName === "string" && s.displayName.length > 0;
-                      return (
-                        <button
-                          key={s.sessionId}
-                          type="button"
-                          aria-current={isActive ? "page" : undefined}
-                          disabled={launching}
-                          onClick={() => launch(mode, s.sessionId)}
-                          className={`flex items-center gap-2 w-full px-2 py-2 rounded-md text-left transition-colors disabled:opacity-50 ${
-                            isActive
-                              ? "bg-cc-primary/10 ring-1 ring-cc-primary/30"
-                              : "hover:bg-cc-hover/50"
-                          }`}
-                        >
-                          <span className="w-6 h-6 shrink-0 rounded-full bg-cc-primary/10 text-cc-primary text-[10px] font-medium flex items-center justify-center">
-                            {modeDisplayName(mode).charAt(0).toUpperCase()}
-                          </span>
-                          <span className="flex-1 min-w-0 flex flex-col">
-                            {hasName ? (
-                              <span
-                                className="text-sm text-cc-fg truncate"
-                                title={s.displayName}
-                              >
-                                {s.displayName}
-                              </span>
-                            ) : (
-                              <span
-                                className="text-sm text-cc-fg truncate font-mono-code"
-                                title={s.sessionId}
-                              >
-                                {idLabel}
-                              </span>
-                            )}
-                            {s.lastAccessed ? (
-                              <span className="text-[11px] text-cc-muted/50">
-                                {timeAgo(s.lastAccessed)}
-                              </span>
-                            ) : null}
-                          </span>
-                        </button>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      disabled={launching}
-                      onClick={() => launch(mode)}
-                      className="flex items-center gap-2 w-full px-2 py-2 rounded-md text-left border border-dashed border-cc-border/50 hover:border-cc-primary/40 text-cc-muted hover:text-cc-primary transition-colors disabled:opacity-50 mt-1"
+      {/* Section B — Working area: sessions (left) + mode picker (right) */}
+      <div className="grid grid-cols-[3fr_2fr] gap-px bg-cc-border/50 border-t border-cc-border/50">
+        {/* LEFT — Sessions */}
+        <div className="bg-cc-surface p-5 min-h-[200px]">
+          <h3 className={sectionHeading}>Recent sessions</h3>
+          {loading ? (
+            <div className="text-cc-muted/60 text-sm">Loading sessions…</div>
+          ) : sortedSessions.length === 0 ? (
+            <div className="text-cc-muted/60 text-sm">
+              No sessions yet — pick a mode on the right →
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              {sortedSessions.map((s) => {
+                const isActive = s.sessionId === activeSessionId;
+                const hasName =
+                  typeof s.displayName === "string" && s.displayName.length > 0;
+                // Title fallback — never the 8-char hex as primary text.
+                const title = hasName
+                  ? s.displayName!
+                  : `${modeDisplayName(s.mode)} session`;
+                const modeMeta = modeByName.get(s.mode);
+                const fullThumbUrl = s.thumbnailUrl ? `${apiBase}${s.thumbnailUrl}` : undefined;
+                return (
+                  <button
+                    key={s.sessionId}
+                    type="button"
+                    aria-current={isActive ? "page" : undefined}
+                    disabled={launching}
+                    onClick={() => launch(s.mode, s.sessionId)}
+                    className={`flex items-start gap-3 w-full px-2.5 py-2 rounded-md text-left transition-colors disabled:opacity-50 ${
+                      isActive
+                        ? "bg-cc-primary/10 ring-1 ring-cc-primary/30"
+                        : "hover:bg-cc-hover/50"
+                    }`}
+                  >
+                    {/* Visual: thumbnail if we have one, else mode icon
+                        framed in a subtle primary tile. Either way the rail
+                        is 40×40 so titles stay vertically aligned. */}
+                    {fullThumbUrl ? (
+                      <span className="w-10 h-10 shrink-0 rounded-md overflow-hidden bg-black/20">
+                        <img
+                          src={fullThumbUrl}
+                          alt=""
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      </span>
+                    ) : (
+                      <span className="w-10 h-10 shrink-0 rounded-md bg-cc-primary/8 text-cc-primary flex items-center justify-center">
+                        <ModeIcon
+                          svg={modeMeta?.icon}
+                          className="w-5 h-5 text-cc-primary"
+                        />
+                      </span>
+                    )}
+                    <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                      <span
+                        className="text-sm text-cc-fg truncate leading-tight"
+                        title={title}
+                      >
+                        {title}
+                      </span>
+                      {s.preview ? (
+                        <span className="text-xs text-cc-muted/60 line-clamp-1 leading-snug">
+                          {s.preview}
+                        </span>
+                      ) : null}
+                      {s.lastAccessed ? (
+                        <span className="text-[11px] text-cc-muted/40 leading-none mt-0.5">
+                          {timeAgo(s.lastAccessed)}
+                        </span>
+                      ) : null}
+                    </span>
+                  </button>
+                );
+              })}
+              {/* Single "+ new session in current mode" affordance — replaces
+                  the per-mode footer rows from the old layout. The right pane
+                  carries the long-tail "any other mode" job. */}
+              {currentMode ? (
+                <button
+                  type="button"
+                  disabled={launching}
+                  onClick={() => launch(currentMode)}
+                  className="flex items-center gap-3 w-full px-2.5 py-2 rounded-md text-left border border-dashed border-cc-border/50 hover:border-cc-primary/40 text-cc-muted hover:text-cc-primary transition-colors disabled:opacity-50 mt-2"
+                >
+                  <span className="w-10 h-10 shrink-0 flex items-center justify-center text-cc-muted/60">
+                    <svg
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      className="w-3.5 h-3.5"
                     >
-                      <span className="w-6 h-6 shrink-0 flex items-center justify-center text-cc-muted/60">
-                        <svg
-                          viewBox="0 0 16 16"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          className="w-3 h-3"
-                        >
-                          <path d="M8 3v10M3 8h10" />
-                        </svg>
-                      </span>
-                      <span className="text-xs">
-                        New {modeDisplayName(mode)} session
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                      <path d="M8 3v10M3 8h10" />
+                    </svg>
+                  </span>
+                  <span className="text-xs">
+                    New {modeDisplayName(currentMode)} session
+                  </span>
+                </button>
+              ) : null}
+            </div>
+          )}
+          {/* Transient launch error — surfaces failures from /api/launch
+              (mismatched backend, spawn timeout, etc.) inline. */}
+          {launchError ? (
+            <div className="text-cc-error/80 text-xs mt-3" role="alert">
+              {launchError}
+            </div>
+          ) : null}
+        </div>
 
-        {/* Transient launch error — surfaces failures from /api/launch
-            (mismatched backend, spawn timeout, etc.) inline rather than only
-            via console. Cleared on the next launch attempt. Mirrors the
-            shareError pattern in TopBar's ShareDropdown. */}
-        {launchError ? (
-          <div className="text-cc-error/80 text-xs mt-3" role="alert">
-            {launchError}
-          </div>
-        ) : null}
-
-        {/* Long-tail trigger — modes not yet present in the project. Render
-            even when there are no sessions, so the empty state is actionable. */}
-        {!loading && unusedModes.length > 0 ? (
-          <div className="relative mt-4" ref={otherModeRef}>
-            <button
-              type="button"
-              onClick={() => setOtherModeOpen((v) => !v)}
-              className="text-xs text-cc-muted hover:text-cc-primary transition-colors inline-flex items-center gap-1 cursor-pointer"
-            >
-              <span>Start in another mode</span>
-              <span className="text-[10px] leading-none">→</span>
-            </button>
-            {otherModeOpen ? (
-              <div className="absolute left-0 mt-2 w-56 bg-cc-bg border border-cc-border rounded-lg shadow-xl z-10 max-h-64 overflow-auto py-1">
-                {unusedModes.map((m) => (
+        {/* RIGHT — Mode picker */}
+        <div className="bg-cc-surface p-5">
+          <h3 className={sectionHeading}>Start in any mode</h3>
+          {modes.length === 0 ? (
+            <div className="text-cc-muted/60 text-sm">Loading modes…</div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              {modes.map((m) => {
+                const count = sessionCountByMode.get(m.name) ?? 0;
+                return (
                   <button
                     key={m.name}
                     type="button"
                     disabled={launching}
-                    onClick={() => {
-                      setOtherModeOpen(false);
-                      void launch(m.name);
-                    }}
-                    className="w-full text-left px-3 py-1.5 text-sm text-cc-fg hover:bg-cc-hover/50 transition-colors disabled:opacity-50"
+                    onClick={() => launch(m.name)}
+                    className="bg-cc-bg/40 border border-cc-border rounded-md p-3 hover:border-cc-primary/40 hover:bg-cc-primary/5 transition-colors cursor-pointer disabled:opacity-50 text-left flex flex-col gap-1.5 min-h-[88px]"
                   >
-                    {m.displayName ?? m.name}
+                    <div className="flex items-center gap-2">
+                      <ModeIcon
+                        svg={m.icon}
+                        className="w-5 h-5 text-cc-primary shrink-0"
+                      />
+                      <span className="text-sm text-cc-fg font-medium truncate">
+                        {m.displayName ?? m.name}
+                      </span>
+                      {count > 0 ? (
+                        <span className="text-[10px] text-cc-muted/40 ml-auto shrink-0">
+                          · {count}
+                        </span>
+                      ) : null}
+                    </div>
+                    {m.description ? (
+                      <p className="text-[11px] text-cc-muted/70 line-clamp-2 leading-snug">
+                        {m.description}
+                      </p>
+                    ) : null}
                   </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Section C — Actions (right-aligned, asymmetric vs the left-aligned
