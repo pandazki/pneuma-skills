@@ -28,6 +28,7 @@ import { getApiBase } from "../utils/api.js";
 import { basename, escapeXml, shortenPath } from "../utils/string.js";
 import { timeAgo } from "../utils/timeAgo.js";
 import { sendUserMessage } from "../ws.js";
+import { useAnimatedMount } from "../utils/useAnimatedMount.js";
 import { CoverImage, type ProjectCoverEntry } from "./ProjectCover.js";
 import { ModeIcon } from "./ModeIcon.js";
 import { InitParamForm, type InitParamWithAutoFill } from "./InitParamForm.js";
@@ -313,9 +314,50 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     return modeByName.get(modeName)?.displayName ?? modeName;
   };
 
-  // "Current mode" for the bottom new-session shortcut = mode of the most
-  // recent session, falls back to the first available mode if there are none.
-  const currentMode = sortedSessions[0]?.mode;
+  // Launch sheet drawer animation: stays mounted briefly during exit so the
+  // slide-out animation finishes before unmounting.
+  const { mounted: drawerMounted, closing: drawerClosing } = useAnimatedMount(
+    !!launchTarget,
+    180,
+  );
+
+  // Mode-picker truncation. Shows the user's most-relevant 8 modes by
+  // default — used modes in this project first (sorted by their most-recent
+  // session), then builtins in a sensible default order. "Show all" reveals
+  // the rest with internal scroll. Stops the right pane from running away
+  // as more local / published modes get installed.
+  const [showAllModes, setShowAllModes] = useState(false);
+  const DEFAULT_VISIBLE_MODE_COUNT = 8;
+  const BUILTIN_PRIORITY = useMemo(
+    () => ["webcraft", "doc", "slide", "illustrate", "draw", "kami", "diagram", "remotion"],
+    [],
+  );
+  const orderedModes = useMemo(() => {
+    if (modes.length === 0) return [] as ModeInfo[];
+    const usedModeRecency = new Map<string, number>();
+    for (const s of sessions) {
+      const prev = usedModeRecency.get(s.mode) ?? 0;
+      usedModeRecency.set(s.mode, Math.max(prev, s.lastAccessed ?? 0));
+    }
+    const used = modes
+      .filter((m) => usedModeRecency.has(m.name))
+      .sort(
+        (a, b) =>
+          (usedModeRecency.get(b.name) ?? 0) - (usedModeRecency.get(a.name) ?? 0),
+      );
+    const priority = (n: string) => {
+      const idx = BUILTIN_PRIORITY.indexOf(n);
+      return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
+    };
+    const unused = modes
+      .filter((m) => !usedModeRecency.has(m.name))
+      .sort((a, b) => priority(a.name) - priority(b.name));
+    return [...used, ...unused];
+  }, [modes, sessions, BUILTIN_PRIORITY]);
+  const visibleModes = showAllModes
+    ? orderedModes
+    : orderedModes.slice(0, DEFAULT_VISIBLE_MODE_COUNT);
+  const hiddenCount = orderedModes.length - visibleModes.length;
 
   // Project identity falls back gracefully — manifest > store context > path.
   const displayName =
@@ -478,8 +520,13 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     <div
       role="dialog"
       aria-label="Project panel"
-      className="absolute top-full left-0 mt-2 w-[960px] max-h-[80vh] overflow-auto bg-cc-surface border border-cc-border rounded-2xl shadow-[0_24px_64px_-24px_rgba(0,0,0,0.6)] backdrop-blur-xl z-[100] [animation:launcherFadeIn_180ms_cubic-bezier(0.16,1,0.3,1)]"
+      className="absolute top-full left-0 mt-2 w-[960px] max-h-[80vh] bg-cc-surface border border-cc-border rounded-2xl shadow-[0_24px_64px_-24px_rgba(0,0,0,0.6)] backdrop-blur-xl z-[100] overflow-hidden [animation:launcherFadeIn_180ms_cubic-bezier(0.16,1,0.3,1)]"
     >
+      {/* Scrollable content layer — sits below the launch-sheet drawer in the
+          stacking order. The outer panel uses overflow-hidden so the drawer
+          can slide in from offscreen right; this inner layer carries the
+          actual scroll for tall content. */}
+      <div className="relative max-h-[80vh] overflow-y-auto">
       {/* Section A — Identity */}
       <div className="p-6 flex items-start gap-5">
         <div className="w-24 h-24 rounded-xl overflow-hidden aspect-square shrink-0 bg-black/20">
@@ -509,8 +556,16 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
           {loading ? (
             <div className="text-cc-muted/60 text-sm">Loading sessions…</div>
           ) : sortedSessions.length === 0 ? (
-            <div className="text-cc-muted/60 text-sm">
-              No sessions yet — pick a mode on the right →
+            <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+              <div className="w-10 h-10 rounded-full bg-cc-primary/10 text-cc-primary/70 flex items-center justify-center mb-3">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
+              </div>
+              <p className="text-sm text-cc-fg/80 mb-1">No sessions yet</p>
+              <p className="text-xs text-cc-muted/60 max-w-[220px] leading-relaxed">
+                Pick a mode on the right to start your first session.
+              </p>
             </div>
           ) : (
             <div className="flex flex-col gap-1">
@@ -628,32 +683,11 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                   </div>
                 );
               })}
-              {/* Single "+ new session in current mode" affordance — replaces
-                  the per-mode footer rows from the old layout. The right pane
-                  carries the long-tail "any other mode" job. */}
-              {currentMode ? (
-                <button
-                  type="button"
-                  disabled={launching}
-                  onClick={() => launch(currentMode)}
-                  className="flex items-center gap-3 w-full px-2.5 py-2 rounded-md text-left border border-dashed border-cc-border/50 hover:border-cc-primary/40 text-cc-muted hover:text-cc-primary transition-colors disabled:opacity-50 mt-2"
-                >
-                  <span className="w-10 h-10 shrink-0 flex items-center justify-center text-cc-muted/60">
-                    <svg
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      className="w-3.5 h-3.5"
-                    >
-                      <path d="M8 3v10M3 8h10" />
-                    </svg>
-                  </span>
-                  <span className="text-xs">
-                    New {modeDisplayName(currentMode)} session
-                  </span>
-                </button>
-              ) : null}
+              {/* No "+ new session in current mode" footer — the right-pane
+                  mode picker already covers "start a new X session" for any
+                  mode (clicking the same mode the user is currently in is
+                  fine; the launch sheet handles same-mode siblings). The
+                  footer was redundant. */}
             </div>
           )}
           {/* Transient launch error — surfaces failures from /api/launch
@@ -667,192 +701,80 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
 
         {/* RIGHT — Mode picker → swaps to launch sheet when a tile is picked. */}
         <div className="bg-cc-surface p-5">
-          {launchTarget ? (
-            <div className="flex flex-col gap-4 [animation:launcherFadeIn_180ms_cubic-bezier(0.16,1,0.3,1)]">
-              {/* Sheet header — Back link is the only chrome; mode title +
-                  description sit below it. */}
-              <div className="flex flex-col gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLaunchTarget(null);
-                    setSheetError(null);
-                    setSmartHandoff(false);
-                    setHandoffIntent("");
-                  }}
-                  className="self-start text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer flex items-center gap-1"
-                >
-                  <span aria-hidden>←</span>
-                  <span>Back</span>
-                </button>
-                <div className="flex items-start gap-3">
-                  <ModeIcon
-                    svg={launchTarget.icon}
-                    className="w-7 h-7 text-cc-primary shrink-0 mt-0.5"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-sm text-cc-fg font-medium truncate">
-                      {launchTarget.displayName ?? launchTarget.name}
-                    </h3>
-                    {launchTarget.description ? (
-                      <p className="text-xs text-cc-muted/70 leading-snug mt-0.5 line-clamp-3">
-                        {launchTarget.description}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-
-              {/* Init params block. While the prepare fetch is in flight we
-                  show a muted placeholder; once params land they render via
-                  the shared InitParamForm so behaviour matches the launcher
-                  exactly (auto-fill, masked preview, etc.). When a mode has
-                  no params we silently skip this block. */}
-              {sheetPreparing ? (
-                <div className="text-xs text-cc-muted/70">Loading parameters…</div>
-              ) : sheetParams.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  <p className="text-[11px] uppercase tracking-wider text-cc-muted/60 font-medium">
-                    Parameters
-                  </p>
-                  <InitParamForm
-                    params={sheetParams}
-                    values={sheetValues}
-                    onChange={setSheetValues}
-                  />
-                </div>
-              ) : null}
-
-              {/* Smart Handoff — only available inside an active project
-                  session (project + session_id + loaded mode). Suppressed in
-                  the empty shell because there's no current agent to hand
-                  off from. */}
-              {canHandoff ? (
-                <div className="flex flex-col gap-2 pt-3 border-t border-cc-border/40">
-                  <label className="flex items-start gap-2 text-sm text-cc-fg cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={smartHandoff}
-                      onChange={(e) => {
-                        setSmartHandoff(e.target.checked);
-                        if (!e.target.checked) setHandoffIntent("");
-                        setSheetError(null);
-                      }}
-                      className="mt-0.5 accent-cc-primary cursor-pointer"
-                    />
-                    <span className="flex flex-col gap-0.5">
-                      <span>Smart handoff from current session</span>
-                      <span className="text-[11px] text-cc-muted/70 leading-snug">
-                        The current agent writes a handoff file with relevant context;
-                        you confirm the switch in chat.
-                      </span>
-                    </span>
-                  </label>
-                  {smartHandoff ? (
-                    <div className="flex flex-col gap-1.5 pl-6 [animation:overlayFadeIn_140ms_cubic-bezier(0.16,1,0.3,1)]">
-                      <label className="text-xs text-cc-muted/80">
-                        What should the new session do?
-                      </label>
-                      <textarea
-                        value={handoffIntent}
-                        onChange={(e) => {
-                          setHandoffIntent(e.target.value);
-                          if (sheetError) setSheetError(null);
-                        }}
-                        rows={2}
-                        placeholder="Take this design and turn it into a slide deck"
-                        className="bg-cc-input-bg border border-cc-border rounded-lg p-3 text-sm text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50 resize-none"
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {sheetError ? (
-                <div className="text-cc-error/80 text-xs" role="alert">
-                  {sheetError}
-                </div>
-              ) : null}
-
-              {/* Action row — Cancel returns to the grid; Confirm fires
-                  either `/api/launch` or the request-handoff chat tag,
-                  depending on the toggle. Match the panel's button rhythm:
-                  text-link Cancel, primary Confirm. */}
-              <div className="flex items-center justify-end gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLaunchTarget(null);
-                    setSheetError(null);
-                    setSmartHandoff(false);
-                    setHandoffIntent("");
-                  }}
-                  className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={launching || sheetPreparing}
-                  onClick={confirmLaunch}
-                  className="bg-cc-primary text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-cc-primary/90 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {launching ? "Launching…" : "Confirm"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
               <h3 className={sectionHeading}>Start in any mode</h3>
               {modes.length === 0 ? (
                 <div className="text-cc-muted/60 text-sm">Loading modes…</div>
               ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {modes.map((m) => {
-                    const count = sessionCountByMode.get(m.name) ?? 0;
-                    return (
-                      <button
-                        key={m.name}
-                        type="button"
-                        disabled={launching}
-                        onClick={() => {
-                          // Open the sheet instead of launching directly.
-                          // The user fills in init params (or just confirms
-                          // an empty form) and decides whether to use Smart
-                          // Handoff before the actual launch fires.
-                          setLaunchTarget(m);
-                          setSheetError(null);
-                          setSmartHandoff(false);
-                          setHandoffIntent("");
-                        }}
-                        className="bg-cc-bg/40 border border-cc-border rounded-md p-3 hover:border-cc-primary/40 hover:bg-cc-primary/5 transition-colors cursor-pointer disabled:opacity-50 text-left flex flex-col gap-1.5 min-h-[88px]"
-                      >
-                        <div className="flex items-center gap-2">
-                          <ModeIcon
-                            svg={m.icon}
-                            className="w-5 h-5 text-cc-primary shrink-0"
-                          />
-                          <span className="text-sm text-cc-fg font-medium truncate">
-                            {m.displayName ?? m.name}
-                          </span>
-                          {count > 0 ? (
-                            <span className="text-[10px] text-cc-muted/40 ml-auto shrink-0">
-                              · {count}
+                <div
+                  className={
+                    showAllModes
+                      ? "max-h-[55vh] overflow-y-auto pr-1 -mr-1"
+                      : ""
+                  }
+                >
+                  <div className="grid grid-cols-2 gap-2">
+                    {visibleModes.map((m) => {
+                      const count = sessionCountByMode.get(m.name) ?? 0;
+                      return (
+                        <button
+                          key={m.name}
+                          type="button"
+                          disabled={launching}
+                          onClick={() => {
+                            // Open the sheet instead of launching directly.
+                            // The user fills in init params (or just confirms
+                            // an empty form) and decides whether to use Smart
+                            // Handoff before the actual launch fires.
+                            setLaunchTarget(m);
+                            setSheetError(null);
+                            setSmartHandoff(false);
+                            setHandoffIntent("");
+                          }}
+                          className="bg-cc-bg/40 border border-cc-border rounded-md p-3 hover:border-cc-primary/40 hover:bg-cc-primary/5 transition-colors cursor-pointer disabled:opacity-50 text-left flex flex-col gap-1.5 min-h-[88px]"
+                        >
+                          <div className="flex items-center gap-2">
+                            <ModeIcon
+                              svg={m.icon}
+                              className="w-5 h-5 text-cc-primary shrink-0"
+                            />
+                            <span className="text-sm text-cc-fg font-medium truncate">
+                              {m.displayName ?? m.name}
                             </span>
+                            {count > 0 ? (
+                              <span className="text-[10px] text-cc-muted/40 ml-auto shrink-0">
+                                · {count}
+                              </span>
+                            ) : null}
+                          </div>
+                          {m.description ? (
+                            <p className="text-[11px] text-cc-muted/70 line-clamp-2 leading-snug">
+                              {m.description}
+                            </p>
                           ) : null}
-                        </div>
-                        {m.description ? (
-                          <p className="text-[11px] text-cc-muted/70 line-clamp-2 leading-snug">
-                            {m.description}
-                          </p>
-                        ) : null}
-                      </button>
-                    );
-                  })}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {hiddenCount > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllModes(true)}
+                      className="mt-3 w-full text-xs text-cc-muted hover:text-cc-primary transition-colors py-1.5 cursor-pointer"
+                    >
+                      Show all {orderedModes.length} modes →
+                    </button>
+                  ) : null}
+                  {showAllModes && hiddenCount === 0 && orderedModes.length > DEFAULT_VISIBLE_MODE_COUNT ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllModes(false)}
+                      className="mt-3 w-full text-xs text-cc-muted hover:text-cc-primary transition-colors py-1.5 cursor-pointer"
+                    >
+                      Show less ↑
+                    </button>
+                  ) : null}
                 </div>
               )}
-            </>
-          )}
         </div>
       </div>
 
@@ -919,6 +841,143 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
           </div>
         ) : null}
       </div>
+      {/* close inner scroll layer */}
+      </div>
+      {/* Launch sheet — slides in from the panel's right edge as a layered
+          drawer rather than swapping the right pane in place. The mode grid
+          underneath stays visible (peeking out the left edge) so the user
+          retains a sense of place while the sheet's params + smart-handoff
+          UI takes focus. */}
+      {drawerMounted && launchTarget ? (
+        <div
+          className={`absolute top-0 right-0 bottom-0 w-[480px] bg-cc-surface border-l border-cc-border/60 shadow-[-12px_0_36px_-12px_rgba(0,0,0,0.5)] flex flex-col z-[5] ${
+            drawerClosing
+              ? "[animation:slideOutRight_180ms_cubic-bezier(0.16,1,0.3,1)_forwards]"
+              : "[animation:slideInRight_180ms_cubic-bezier(0.16,1,0.3,1)_forwards]"
+          }`}
+        >
+          <div className="flex flex-col gap-4 p-5 overflow-y-auto">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0 flex-1">
+                <ModeIcon
+                  svg={launchTarget.icon}
+                  className="w-7 h-7 text-cc-primary shrink-0 mt-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm text-cc-fg font-medium truncate">
+                    {launchTarget.displayName ?? launchTarget.name}
+                  </h3>
+                  {launchTarget.description ? (
+                    <p className="text-xs text-cc-muted/70 leading-snug mt-0.5 line-clamp-3">
+                      {launchTarget.description}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setLaunchTarget(null);
+                  setSheetError(null);
+                  setSmartHandoff(false);
+                  setHandoffIntent("");
+                }}
+                title="Close"
+                className="shrink-0 text-cc-muted/60 hover:text-cc-fg transition-colors p-1 cursor-pointer rounded"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <path d="M3 3l10 10M13 3L3 13" />
+                </svg>
+              </button>
+            </div>
+
+            {sheetPreparing ? (
+              <div className="text-xs text-cc-muted/70">Loading parameters…</div>
+            ) : sheetParams.length > 0 ? (
+              <div className="flex flex-col gap-2 pt-1">
+                <p className="text-[11px] uppercase tracking-wider text-cc-muted/60 font-medium">
+                  Parameters
+                </p>
+                <InitParamForm
+                  params={sheetParams}
+                  values={sheetValues}
+                  onChange={setSheetValues}
+                />
+              </div>
+            ) : null}
+
+            {canHandoff ? (
+              <div className="flex flex-col gap-2 pt-3 border-t border-cc-border/40">
+                <label className="flex items-start gap-2 text-sm text-cc-fg cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={smartHandoff}
+                    onChange={(e) => {
+                      setSmartHandoff(e.target.checked);
+                      if (!e.target.checked) setHandoffIntent("");
+                      setSheetError(null);
+                    }}
+                    className="mt-0.5 accent-cc-primary cursor-pointer"
+                  />
+                  <span className="flex flex-col gap-0.5">
+                    <span>Smart handoff from current session</span>
+                    <span className="text-[11px] text-cc-muted/70 leading-snug">
+                      The current agent writes a handoff file with relevant context;
+                      you confirm the switch in chat.
+                    </span>
+                  </span>
+                </label>
+                {smartHandoff ? (
+                  <div className="flex flex-col gap-1.5 pl-6 [animation:overlayFadeIn_140ms_cubic-bezier(0.16,1,0.3,1)]">
+                    <label className="text-xs text-cc-muted/80">
+                      What should the new session do?
+                    </label>
+                    <textarea
+                      value={handoffIntent}
+                      onChange={(e) => {
+                        setHandoffIntent(e.target.value);
+                        if (sheetError) setSheetError(null);
+                      }}
+                      rows={2}
+                      placeholder="Take this design and turn it into a slide deck"
+                      className="bg-cc-input-bg border border-cc-border rounded-lg p-3 text-sm text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50 resize-none"
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {sheetError ? (
+              <div className="text-cc-error/80 text-xs" role="alert">
+                {sheetError}
+              </div>
+            ) : null}
+
+            <div className="flex items-center justify-end gap-3 pt-2 mt-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  setLaunchTarget(null);
+                  setSheetError(null);
+                  setSmartHandoff(false);
+                  setHandoffIntent("");
+                }}
+                className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={launching || sheetPreparing}
+                onClick={confirmLaunch}
+                className="bg-cc-primary text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-cc-primary/90 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {launching ? "Launching…" : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
