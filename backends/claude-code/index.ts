@@ -12,7 +12,7 @@ import type {
   AgentCapabilities,
 } from "../../core/types/agent-backend.js";
 import { CliLauncher } from "./cli-launcher.js";
-import type { SdkSessionInfo, LaunchOptions } from "./cli-launcher.js";
+import type { SdkSessionInfo, LaunchOptions, ClaudeStdioHandlers } from "./cli-launcher.js";
 
 export class ClaudeCodeBackend implements AgentBackend {
   readonly name = "claude-code" as const;
@@ -27,8 +27,18 @@ export class ClaudeCodeBackend implements AgentBackend {
 
   private launcher: CliLauncher;
 
-  constructor(port: number) {
+  constructor(port?: number) {
     this.launcher = new CliLauncher(port);
+  }
+
+  /**
+   * Wire stdio stream callbacks. Called by `bin/pneuma.ts` after the
+   * backend is constructed — it hands the launcher's stdout/stdin pipes
+   * over to the WsBridge so the existing routeCLIMessage pipeline keeps
+   * working unchanged.
+   */
+  setStreamHandlers(handlers: ClaudeStdioHandlers): void {
+    this.launcher.setHandlers(handlers);
   }
 
   launch(options: AgentLaunchOptions): AgentSessionInfo {

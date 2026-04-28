@@ -36,6 +36,31 @@ import {
 
 const PROJECT_ROOT = resolve(dirname(import.meta.path), "..");
 
+// ── Backend ↔ bridge wiring helpers ──────────────────────────────────────────
+
+/**
+ * Hand the claude-code launcher's stdio pipes over to the WsBridge so the
+ * existing `routeCLIMessage` pipeline keeps working without a WebSocket
+ * round-trip. Must run BEFORE `backend.launch()` because the launcher
+ * fires its `onConnect` callback synchronously inside spawn.
+ *
+ * No-op when the backend is anything other than claude-code.
+ */
+async function wireClaudeCodeStdio(
+  backend: ReturnType<typeof createBackend>,
+  wsBridge: import("../server/ws-bridge.js").WsBridge,
+): Promise<void> {
+  if (backend.name !== "claude-code") return;
+  const { ClaudeCodeBackend } = await import("../backends/claude-code/index.js");
+  if (!(backend instanceof ClaudeCodeBackend)) return;
+  backend.setStreamHandlers({
+    onMessage: (sid, line) => wsBridge.feedCLIMessage(sid, line),
+    onConnect: (sid, sendInput, close) =>
+      wsBridge.attachCLITransport(sid, { send: sendInput, close }),
+    onDisconnect: (sid) => wsBridge.detachCLITransport(sid),
+  });
+}
+
 // ── Session persistence ──────────────────────────────────────────────────────
 
 function loadSession(workspace: string): PersistedSession | null {
@@ -629,6 +654,7 @@ async function handleEvolveCommand(args: string[]) {
 
   // 6. Launch agent via the selected backend (fresh session, bypassPermissions)
   const backend = createBackend(backendType, actualPort);
+  await wireClaudeCodeStdio(backend, wsBridge);
   const session = backend.launch({
     cwd: workspace,
     permissionMode: "bypassPermissions",
@@ -1645,6 +1671,7 @@ Options:
       // Initialize shadow-git for new session (prepareWorkspaceForContinue already does this)
       // Launch agent backend
       backend = createBackend(backendType, actualPort);
+      await wireClaudeCodeStdio(backend, wsBridge);
       const agentEnv: Record<string, string> = {
         PNEUMA_API: `http://localhost:${actualPort}`,
       };
@@ -1847,6 +1874,7 @@ Options:
 
         backend = createBackend(sessionBackendType, actualPort);
         wireCLISessionId();
+        await wireClaudeCodeStdio(backend, wsBridge);
 
         const agentEnv = buildAgentEnv();
         const permissionMode = manifest.agent?.permissionMode;
@@ -1876,6 +1904,7 @@ Options:
       // ── Edit mode: full agent launch ──────────────────────────────────
       backend = createBackend(sessionBackendType, actualPort);
       wireCLISessionId();
+      await wireClaudeCodeStdio(backend, wsBridge);
 
       let resuming = false;
       const agentEnv = buildAgentEnv();
@@ -1946,6 +1975,7 @@ Options:
 
           backend = createBackend(sessionBackendType, actualPort);
           wireCLISessionId();
+          await wireClaudeCodeStdio(backend, wsBridge);
 
           const freshEnv = buildAgentEnv();
           const agentSession = backend.launch({

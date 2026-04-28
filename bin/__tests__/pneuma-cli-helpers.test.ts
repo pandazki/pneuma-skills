@@ -12,10 +12,7 @@ describe("pneuma CLI helpers", () => {
 
     expect(parsed.mode).toBe("doc");
     expect(parsed.workspace).toBe("/tmp/workspace");
-    // Default flipped to codex when CC removed --sdk-url. Legacy persisted
-    // records still backfill to claude-code (separate constant) — see the
-    // dedicated tests below.
-    expect(parsed.backendType).toBe("codex");
+    expect(parsed.backendType).toBe("claude-code");
   });
 
   test("parseCliArgs parses --backend and launch flags", () => {

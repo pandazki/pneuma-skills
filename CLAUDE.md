@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.39.0
+**Version:** 2.40.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve`
 
@@ -23,7 +23,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 | Diagramming | draw.io viewer-static.min.js (CDN) + rough.js 4.6 |
 | Video | remotion 4.0 + @remotion/player + @remotion/web-renderer + @babel/standalone |
 | Desktop | Electron 41 + electron-builder + electron-updater |
-| Agent | Claude Code CLI via `--sdk-url`; Codex CLI via `app-server` stdio JSON-RPC (`node:child_process`) |
+| Agent | Claude Code CLI via stdio stream-json (`-p --input-format stream-json --output-format stream-json`); Codex CLI via `app-server` stdio JSON-RPC (`node:child_process`) |
 
 ## CLI Commands
 
@@ -108,7 +108,7 @@ pneuma-skills/
 ├── modes/_shared/scripts/     # Shared script sources (generate_image.mjs, edit_image.mjs) — opted into per-mode via SkillConfig.sharedScripts, copied into each mode's installed skill dir at install time
 ├── backends/
 │   ├── index.ts               # Backend registry + descriptors + capabilities + availability
-│   ├── claude-code/           # Claude backend — Bun.spawn with --sdk-url
+│   ├── claude-code/           # Claude backend — node:child_process with -p --input-format/--output-format stream-json
 │   └── codex/                 # Codex backend — stdio JSON-RPC via node:child_process
 ├── server/                    # Hono server, WS bridges, skill installer, file watcher, etc.
 │   ├── index.ts               # Main server + launcher endpoints + WS routing
@@ -172,9 +172,9 @@ Extensible plugin architecture for deploy workflows, metadata injection, and fut
 
 ### Communication
 
-- Browser WS `/ws/browser/:sessionId` (JSON) ↔ Server ↔ backend (Claude: `/ws/cli/:sessionId` NDJSON; Codex: stdio JSON-RPC)
+- Browser WS `/ws/browser/:sessionId` (JSON) ↔ Server ↔ backend (both Claude and Codex use stdio; the `/ws/cli/:sessionId` endpoint is retained for legacy compatibility but no current backend connects to it)
 - File changes: chokidar → WS push to browser
-- Claude: `claude --sdk-url ws://... --print --output-format stream-json --input-format stream-json --verbose -p ""`
+- Claude: `claude --print --output-format stream-json --input-format stream-json --include-partial-messages --include-hook-events --verbose --permission-mode bypassPermissions [--resume <id>]` via `node:child_process`; the launcher hands its stdin/stdout pipes to `WsBridge.attachCLITransport` / `feedCLIMessage` so the existing `routeCLIMessage` pipeline keeps working unchanged
 - Codex: `codex app-server` via `node:child_process` stdio; `CodexAdapter` translates protocol via `ws-bridge-codex.ts`
 - Browser session init carries normalized `backend_type`, `agent_capabilities`, `agent_version` for UI feature gating
 
@@ -186,7 +186,7 @@ Extensible plugin architecture for deploy workflows, metadata injection, and fut
 4. **Skill install** — `skill-installer.ts` copies `modes/<mode>/skill/` to workspace (Claude: `.claude/skills/` + `CLAUDE.md`; Codex: `.agents/skills/` + `AGENTS.md`), applies `{{key}}` / `{{viewerCapabilities}}` templates
 5. **Server start** — Hono HTTP + WebSocket + backend transport bridge
 6. **Backend selection** — startup-only, workspace-locked; cannot switch mid-session
-7. **Agent launch** — Claude: `claude --sdk-url ws://...`; Codex: `codex app-server` (stdio)
+7. **Agent launch** — Claude: `claude --print --output-format stream-json --input-format stream-json …` (stdio); Codex: `codex app-server` (stdio)
 8. **Frontend** — `mode-loader.ts` dynamically imports viewer; external modes use `registerExternalMode()` → `Bun.build()` → import map
 9. **Preview loop** — Agent edits → chokidar → WS → browser → viewer render; User selects → `<viewer-context>` → agent
 

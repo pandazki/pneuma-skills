@@ -23,6 +23,7 @@ import type {
   PermissionRequest,
 } from "./session-types.js";
 import type {
+  CLITransport,
   Session,
   SocketData,
   CLISocketData,
@@ -277,15 +278,20 @@ export class WsBridge {
     this.sessions.delete(sessionId);
   }
 
-  // ── CLI WebSocket handlers ──────────────────────────────────────────────
+  // ── CLI transport handlers (legacy WS + new stdio share these) ──────────
 
-  handleCLIOpen(ws: ServerWebSocket<SocketData>, sessionId: string) {
+  /**
+   * Attach a CLI transport to a session — fires `cli_connected` to browsers
+   * and flushes any user messages that arrived before the CLI was ready.
+   * Used by both the legacy WS path (wrapping a `ServerWebSocket`) and the
+   * new stdio path (wrapping a stdin pipe).
+   */
+  attachCLITransport(sessionId: string, transport: CLITransport): void {
     const session = this.getOrCreateSession(sessionId);
-    session.cliSocket = ws;
+    session.cliSocket = transport;
     console.log(`[ws-bridge] CLI connected for session ${sessionId}`);
     this.broadcastToBrowsers(session, { type: "cli_connected" });
 
-    // Flush any messages queued while waiting for the CLI WebSocket.
     if (session.pendingMessages.length > 0) {
       console.log(`[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) on CLI connect for session ${sessionId}`);
       const queued = session.pendingMessages.splice(0);
@@ -295,13 +301,35 @@ export class WsBridge {
     }
   }
 
-  handleCLIMessage(ws: ServerWebSocket<SocketData>, raw: string | Buffer) {
-    const data = typeof raw === "string" ? raw : raw.toString("utf-8");
-    const sessionId = (ws.data as CLISocketData).sessionId;
+  /**
+   * Detach the CLI transport for a session. Cancels in-flight permission
+   * requests and tells browsers the CLI is gone.
+   */
+  detachCLITransport(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
-    // NDJSON: split on newlines, parse each line
+    session.cliSocket = null;
+    console.log(`[ws-bridge] CLI disconnected for session ${sessionId}`);
+    this.broadcastToBrowsers(session, { type: "cli_disconnected" });
+
+    for (const [reqId] of session.pendingPermissions) {
+      this.broadcastToBrowsers(session, { type: "permission_cancelled", request_id: reqId });
+    }
+    session.pendingPermissions.clear();
+  }
+
+  /**
+   * Feed an NDJSON payload from the CLI side (one or many newline-delimited
+   * JSON objects). Each line is parsed and routed through the existing
+   * `routeCLIMessage` pipeline. Used by both the WS path (raw frame) and
+   * the stdio path (one stdout chunk at a time).
+   */
+  feedCLIMessage(sessionId: string, raw: string | Buffer): void {
+    const data = typeof raw === "string" ? raw : raw.toString("utf-8");
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+
     const lines = data.split("\n").filter((l) => l.trim());
     for (const line of lines) {
       let msg: CLIMessage;
@@ -315,20 +343,23 @@ export class WsBridge {
     }
   }
 
+  // ── Legacy CLI WebSocket handlers (delegate to transport methods above) ──
+
+  handleCLIOpen(ws: ServerWebSocket<SocketData>, sessionId: string) {
+    this.attachCLITransport(sessionId, {
+      send: (line) => ws.send(line),
+      close: () => { try { ws.close(); } catch {} },
+    });
+  }
+
+  handleCLIMessage(ws: ServerWebSocket<SocketData>, raw: string | Buffer) {
+    const sessionId = (ws.data as CLISocketData).sessionId;
+    this.feedCLIMessage(sessionId, raw);
+  }
+
   handleCLIClose(ws: ServerWebSocket<SocketData>) {
     const sessionId = (ws.data as CLISocketData).sessionId;
-    const session = this.sessions.get(sessionId);
-    if (!session) return;
-
-    session.cliSocket = null;
-    console.log(`[ws-bridge] CLI disconnected for session ${sessionId}`);
-    this.broadcastToBrowsers(session, { type: "cli_disconnected" });
-
-    // Cancel any pending permission requests
-    for (const [reqId] of session.pendingPermissions) {
-      this.broadcastToBrowsers(session, { type: "permission_cancelled", request_id: reqId });
-    }
-    session.pendingPermissions.clear();
+    this.detachCLITransport(sessionId);
   }
 
   // ── Browser WebSocket handlers ──────────────────────────────────────────
