@@ -842,13 +842,12 @@ export async function startServer(options: ServerOptions) {
         skipSkill?: boolean;
         backendType?: AgentBackendType;
         replayPackage?: string;
-        replaySource?: string; // Source workspace for existing session replay
+        replaySource?: string;
         sessionName?: string;
         viewing?: boolean;
         project?: string;
         sessionId?: string;
       }>();
-
       try {
         const result = await launchPneumaChild({
           specifier: body.specifier,
@@ -1774,6 +1773,45 @@ export async function startServer(options: ServerOptions) {
       });
       return result.url;
     },
+  });
+
+  // /api/launch in the per-session server — lets ProjectPanel spawn sibling
+  // sessions in the same project (e.g. clicking a session row, "+ New mode
+  // session", or starting in another mode). Mirrors the launcher's mount;
+  // children spawned here track in this server's `childProcesses` map.
+  app.post("/api/launch", async (c) => {
+    const body = await c.req.json<{
+      specifier: string;
+      workspace: string;
+      initParams?: Record<string, string | number>;
+      skipSkill?: boolean;
+      backendType?: AgentBackendType;
+      replayPackage?: string;
+      replaySource?: string;
+      sessionName?: string;
+      viewing?: boolean;
+      project?: string;
+      sessionId?: string;
+    }>();
+    try {
+      const result = await launchPneumaChild({
+        specifier: body.specifier,
+        workspace: body.workspace,
+        initParams: body.initParams,
+        skipSkill: body.skipSkill,
+        backendType: body.backendType,
+        replayPackage: body.replayPackage,
+        replaySource: body.replaySource,
+        sessionName: body.sessionName,
+        viewing: body.viewing,
+        project: body.project,
+        sessionId: body.sessionId,
+      });
+      return c.json({ url: result.url, workspace: result.workspace, mode: body.specifier });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json({ error: message }, 500);
+    }
   });
 
   app.get("/api/history/checkpoints", async (c) => {
