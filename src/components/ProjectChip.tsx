@@ -72,7 +72,11 @@ export default function ProjectChip({ autoOpen }: ProjectChipProps = {}) {
     <div className="relative" ref={wrapperRef}>
       <button
         type="button"
-        className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-md bg-cc-bg/40 border border-cc-border/60 hover:border-cc-primary/50 text-cc-fg transition-colors cursor-pointer"
+        className={`flex items-center gap-1 px-2 py-0.5 text-xs rounded-md text-cc-fg transition-colors cursor-pointer border ${
+          open
+            ? "bg-cc-bg/60 border-cc-border"
+            : "bg-cc-bg/40 border-cc-border/60 hover:bg-cc-bg/60 hover:border-cc-border"
+        }`}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
