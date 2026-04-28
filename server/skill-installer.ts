@@ -126,6 +126,21 @@ function injectProjectContextSection(
     }
   }
 
+  if (projectContext.handoff) {
+    lines.push(
+      "",
+      "### Confirmed Handoff",
+      "",
+      `- Handoff id: ${projectContext.handoff.handoffId}`,
+      `- From: ${projectContext.handoff.fromMode} (${projectContext.handoff.fromSessionId})`,
+      `- To: ${projectContext.handoff.toMode}${projectContext.handoff.toSessionId ? ` (${projectContext.handoff.toSessionId})` : ""}`,
+      "",
+      "Use this user-reviewed handoff as the collaboration boundary. Do not inspect the source session's raw history, scratch files, or workspace unless the user explicitly provides them.",
+      "",
+      projectContext.handoff.content.trim(),
+    );
+  }
+
   lines.push(
     "",
     "Project context is shared project metadata only. Do not inspect another session's raw history, scratch files, or workspace unless the user provides an explicit handoff.",

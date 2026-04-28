@@ -420,6 +420,16 @@ describe("installSkill", () => {
         currentSessionId: "codex-1",
         currentMode: "doc",
         currentSessionDisplayName: "Doc",
+        handoff: {
+          handoffId: "handoff-1",
+          projectId: "project_codex",
+          fromSessionId: "web-1",
+          toSessionId: "codex-1",
+          fromMode: "webcraft",
+          toMode: "doc",
+          createdAt: "2026-04-28T04:00:00.000Z",
+          content: "# Handoff\n\nReviewed launch context only.\n",
+        },
         peerSessions: [],
       },
     });
@@ -428,6 +438,8 @@ describe("installSkill", () => {
     expect(content).toContain("<!-- pneuma:project-context:start -->");
     expect(content).toContain("Codex Project");
     expect(content).toContain("Review implementation");
+    expect(content).toContain("### Confirmed Handoff");
+    expect(content).toContain("Reviewed launch context only.");
     expect(existsSync(join(workspace, "CLAUDE.md"))).toBe(false);
   });
 

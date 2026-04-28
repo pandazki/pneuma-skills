@@ -3334,10 +3334,12 @@ function ProjectCard({
 
 function CreateProjectDialog({
   homeDir,
+  sessions,
   onClose,
   onCreated,
 }: {
   homeDir: string;
+  sessions: RecentSession[];
   onClose: () => void;
   onCreated: (project: RecentProject) => void;
 }) {
@@ -3346,18 +3348,30 @@ function CreateProjectDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [root, setRoot] = useState(defaultRoot);
+  const [seedSessionId, setSeedSessionId] = useState("");
+  const [copyDeliverables, setCopyDeliverables] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const seedSession = sessions.find((session) => session.id === seedSessionId);
 
   const submit = async () => {
     if (!root.trim() || saving) return;
     setSaving(true);
     setError("");
     try {
-      const res = await fetch(`${getApiBase()}/api/projects`, {
+      const res = await fetch(`${getApiBase()}${seedSession ? "/api/projects/upgrade-session" : "/api/projects"}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: JSON.stringify(seedSession ? {
+          sourceWorkspace: seedSession.workspace,
+          projectRoot: root.trim(),
+          mode: seedSession.mode,
+          displayName: seedSession.displayName,
+          backendType: seedSession.backendType,
+          copyDeliverables,
+          ...(name.trim() ? { name: name.trim() } : {}),
+          ...(description.trim() ? { description: description.trim() } : {}),
+        } : {
           root: root.trim(),
           ...(name.trim() ? { name: name.trim() } : {}),
           ...(description.trim() ? { description: description.trim() } : {}),
@@ -3408,6 +3422,34 @@ function CreateProjectDialog({
               className="w-full px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm font-mono focus:outline-none focus:border-cc-primary/50"
             />
           </div>
+          {sessions.length > 0 && (
+            <div className="space-y-2">
+              <label className="block text-xs text-cc-muted/70">Seed session</label>
+              <select
+                value={seedSessionId}
+                onChange={(e) => setSeedSessionId(e.target.value)}
+                className="w-full px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50"
+              >
+                <option value="">None</option>
+                {sessions.map((session) => (
+                  <option key={session.id} value={session.id}>
+                    {(session.sessionName || session.displayName)} - {shortenPath(session.workspace, homeDir)}
+                  </option>
+                ))}
+              </select>
+              {seedSession && (
+                <label className="flex items-center gap-2 text-xs text-cc-muted/70">
+                  <input
+                    type="checkbox"
+                    checked={copyDeliverables}
+                    onChange={(e) => setCopyDeliverables(e.target.checked)}
+                    className="accent-cc-primary"
+                  />
+                  Copy deliverables
+                </label>
+              )}
+            </div>
+          )}
           {error && <div className="text-xs text-cc-error">{error}</div>}
         </div>
         <div className="p-6 pt-0 flex justify-end gap-3">
@@ -3432,6 +3474,7 @@ function ProjectOverview({
   onClose,
   onResume,
   onStartNew,
+  onLaunchHandoff,
 }: {
   data: ProjectOverviewData;
   modes: AnyMode[];
@@ -3441,9 +3484,98 @@ function ProjectOverview({
   onClose: () => void;
   onResume: (session: ProjectOverviewSession) => void;
   onStartNew: (mode: AnyMode) => void;
+  onLaunchHandoff: (targetSpecifier: string, targetSession: ProjectOverviewSession, handoffId: string) => void;
 }) {
   const project = data.project;
   const launchableModes = modes.filter((m) => m.name !== "evolve");
+  const [handoffSource, setHandoffSource] = useState<ProjectOverviewSession | null>(null);
+  const [handoffTarget, setHandoffTarget] = useState<AnyMode | null>(null);
+  const [handoffId, setHandoffId] = useState("");
+  const [handoffContent, setHandoffContent] = useState("");
+  const [handoffLoading, setHandoffLoading] = useState(false);
+  const [handoffSaving, setHandoffSaving] = useState(false);
+  const [handoffNewSession, setHandoffNewSession] = useState(false);
+  const [handoffError, setHandoffError] = useState("");
+  const [evolving, setEvolving] = useState(false);
+  const [evolveMessage, setEvolveMessage] = useState("");
+
+  const loadHandoffDraft = useCallback(async (source: ProjectOverviewSession, target: AnyMode) => {
+    setHandoffLoading(true);
+    setHandoffError("");
+    try {
+      const res = await fetch(`${getApiBase()}/api/projects/${encodeURIComponent(project.projectId)}/handoffs/draft`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fromSessionId: source.sessionId,
+          toMode: target.name,
+          goal: source.role,
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || "Failed to create handoff draft");
+      setHandoffId(payload.handoffId);
+      setHandoffContent(payload.content);
+    } catch (err) {
+      setHandoffError(err instanceof Error ? err.message : "Failed to create handoff draft");
+    } finally {
+      setHandoffLoading(false);
+    }
+  }, [project.projectId]);
+
+  const openHandoff = useCallback((source: ProjectOverviewSession) => {
+    const target = launchableModes.find((mode) => mode.name !== source.mode) || launchableModes[0] || null;
+    setHandoffSource(source);
+    setHandoffTarget(target);
+    setHandoffId("");
+    setHandoffContent("");
+    setHandoffNewSession(false);
+    if (target) void loadHandoffDraft(source, target);
+  }, [launchableModes, loadHandoffDraft]);
+
+  const confirmHandoff = useCallback(async () => {
+    if (!handoffSource || !handoffTarget || !handoffId || handoffSaving) return;
+    setHandoffSaving(true);
+    setHandoffError("");
+    try {
+      const res = await fetch(`${getApiBase()}/api/projects/${encodeURIComponent(project.projectId)}/handoffs/${encodeURIComponent(handoffId)}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: handoffContent,
+          toMode: handoffTarget.name,
+          targetDisplayName: handoffTarget.displayName,
+          backendType: defaultBackendType,
+          newSession: handoffNewSession,
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || "Failed to confirm handoff");
+      onLaunchHandoff(handoffTarget.specifier, payload.targetSession as ProjectOverviewSession, handoffId);
+    } catch (err) {
+      setHandoffError(err instanceof Error ? err.message : "Failed to confirm handoff");
+    } finally {
+      setHandoffSaving(false);
+    }
+  }, [defaultBackendType, handoffContent, handoffId, handoffNewSession, handoffSaving, handoffSource, handoffTarget, onLaunchHandoff, project.projectId]);
+
+  const runProjectEvolve = useCallback(async () => {
+    if (evolving) return;
+    setEvolving(true);
+    setEvolveMessage("");
+    try {
+      const res = await fetch(`${getApiBase()}/api/projects/${encodeURIComponent(project.projectId)}/evolve`, {
+        method: "POST",
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || "Project evolve failed");
+      setEvolveMessage(`Updated project preferences from ${payload.sourceSessionCount} session${payload.sourceSessionCount === 1 ? "" : "s"}.`);
+    } catch (err) {
+      setEvolveMessage(err instanceof Error ? err.message : "Project evolve failed");
+    } finally {
+      setEvolving(false);
+    }
+  }, [evolving, project.projectId]);
 
   return (
     <div className="fixed inset-0 bg-black/30 backdrop-blur-[2px] flex items-center justify-center z-50 font-body py-12" style={{ animation: "overlayFadeIn 0.2s ease-out" }}>
@@ -3456,12 +3588,22 @@ function ProjectOverview({
               <span className="font-mono truncate max-w-[520px]">{shortenPath(project.root, homeDir)}</span>
               <span>Created {formatIsoDate(project.createdAt)}</span>
             </div>
+            {evolveMessage && <div className="mt-2 text-xs text-cc-muted/65">{evolveMessage}</div>}
           </div>
-          <button onClick={onClose} className="p-2 text-cc-muted/60 hover:text-cc-fg transition-colors cursor-pointer" title="Close">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={runProjectEvolve}
+              disabled={evolving}
+              className="px-3 py-1.5 text-xs rounded-lg border border-cc-border/60 text-cc-muted hover:text-cc-fg hover:border-cc-primary/40 disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              {evolving ? "Evolving..." : "Evolve"}
+            </button>
+            <button onClick={onClose} className="p-2 text-cc-muted/60 hover:text-cc-fg transition-colors cursor-pointer" title="Close">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
         <div className="p-6 overflow-y-auto grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
           <section>
@@ -3490,6 +3632,12 @@ function ProjectOverview({
                     <PrimaryButton size="sm" onClick={() => onResume(session)}>
                       Resume
                     </PrimaryButton>
+                    <button
+                      onClick={() => openHandoff(session)}
+                      className="px-3 py-1.5 text-xs rounded-lg border border-cc-border/60 text-cc-muted hover:text-cc-fg hover:border-cc-primary/40 transition-colors cursor-pointer"
+                    >
+                      Switch
+                    </button>
                   </div>
                 ))}
               </div>
@@ -3516,6 +3664,66 @@ function ProjectOverview({
           </aside>
         </div>
       </div>
+      {handoffSource && handoffTarget && (
+        <div className="fixed inset-0 bg-black/35 flex items-center justify-center z-[60] px-4">
+          <div className="launcher-card-elevated bg-cc-surface border border-cc-border/50 rounded-2xl overflow-hidden w-full max-w-3xl max-h-[86vh] flex flex-col">
+            <div className="p-5 border-b border-cc-border/40 flex items-start justify-between gap-4">
+              <div>
+                <div className="text-sm font-medium text-cc-fg">Mode Handoff</div>
+                <div className="text-xs text-cc-muted/60 mt-1">{handoffSource.displayName} to {handoffTarget.displayName}</div>
+              </div>
+              <button onClick={() => setHandoffSource(null)} className="p-2 text-cc-muted/60 hover:text-cc-fg transition-colors cursor-pointer" title="Close">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-cc-muted/70 shrink-0">Target mode</label>
+                <select
+                  value={handoffTarget.specifier}
+                  onChange={(event) => {
+                    const next = launchableModes.find((mode) => mode.specifier === event.target.value) || handoffTarget;
+                    setHandoffTarget(next);
+                    void loadHandoffDraft(handoffSource, next);
+                  }}
+                  className="px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50"
+                >
+                  {launchableModes.map((mode) => (
+                    <option key={`${mode.source}:${mode.specifier}`} value={mode.specifier}>{mode.displayName}</option>
+                  ))}
+                </select>
+                <label className="ml-auto flex items-center gap-2 text-xs text-cc-muted/70">
+                  <input
+                    type="checkbox"
+                    checked={handoffNewSession}
+                    onChange={(event) => setHandoffNewSession(event.target.checked)}
+                    className="accent-cc-primary"
+                  />
+                  New session
+                </label>
+              </div>
+              <textarea
+                value={handoffLoading ? "Loading..." : handoffContent}
+                onChange={(event) => setHandoffContent(event.target.value)}
+                disabled={handoffLoading}
+                rows={18}
+                className="w-full min-h-[360px] px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-xs font-mono focus:outline-none focus:border-cc-primary/50 resize-none"
+              />
+              {handoffError && <div className="text-xs text-cc-error">{handoffError}</div>}
+            </div>
+            <div className="p-5 pt-0 flex justify-end gap-3">
+              <button onClick={() => setHandoffSource(null)} className="px-4 py-2 text-sm rounded-lg border border-cc-border/50 text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">
+                Cancel
+              </button>
+              <PrimaryButton onClick={confirmHandoff} disabled={handoffLoading || handoffSaving || !handoffContent.trim()}>
+                {handoffSaving ? "Switching..." : "Confirm"}
+              </PrimaryButton>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3809,6 +4017,7 @@ export default function Launcher() {
     mode: string,
     backendType: BackendType,
     projectSessionId?: string,
+    handoffId?: string,
   ) => {
     try {
       const res = await fetch(`${getApiBase()}/api/launch`, {
@@ -3819,6 +4028,7 @@ export default function Launcher() {
           projectRoot,
           backendType,
           ...(projectSessionId ? { projectSessionId } : {}),
+          ...(handoffId ? { handoffId } : {}),
         }),
       });
       const data = await res.json();
@@ -4306,6 +4516,7 @@ export default function Launcher() {
       {showCreateProject && (
         <CreateProjectDialog
           homeDir={homeDir}
+          sessions={sessions}
           onClose={() => setShowCreateProject(false)}
           onCreated={(project) => {
             setShowCreateProject(false);
@@ -4330,6 +4541,10 @@ export default function Launcher() {
           onStartNew={(mode) => {
             setProjectOverview(null);
             launchProjectSession(projectOverview.project.root, mode.specifier, defaultBackendType);
+          }}
+          onLaunchHandoff={(targetSpecifier, targetSession, handoffId) => {
+            setProjectOverview(null);
+            launchProjectSession(projectOverview.project.root, targetSpecifier, targetSession.backendType, targetSession.sessionId, handoffId);
           }}
         />
       )}

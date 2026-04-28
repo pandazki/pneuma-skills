@@ -59,6 +59,8 @@ describe("pneuma CLI helpers", () => {
         "./site",
         "--project-session",
         "web-123",
+        "--handoff",
+        "handoff-123",
         "--role",
         "Build the home page",
       ],
@@ -68,6 +70,7 @@ describe("pneuma CLI helpers", () => {
     expect(parsed.mode).toBe("webcraft");
     expect(parsed.projectRoot).toBe("/tmp/base/site");
     expect(parsed.projectSessionId).toBe("web-123");
+    expect(parsed.handoffId).toBe("handoff-123");
     expect(parsed.role).toBe("Build the home page");
     expect(parsed.workspace).toBe("/tmp/base");
   });

@@ -27,6 +27,7 @@ export interface ParsedCliArgs {
   workspace: string;
   projectRoot: string;
   projectSessionId: string;
+  handoffId: string;
   role: string;
   port: number;
   backendType: AgentBackendType;
@@ -68,6 +69,7 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
   let workspace = cwd;
   let projectRoot = "";
   let projectSessionId = "";
+  let handoffId = "";
   let role = "";
   let port = 0;
   let backendType: AgentBackendType = getDefaultBackendType();
@@ -91,6 +93,8 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
       projectRoot = resolve(cwd, args[++i]);
     } else if (arg === "--project-session" && i + 1 < args.length) {
       projectSessionId = args[++i];
+    } else if (arg === "--handoff" && i + 1 < args.length) {
+      handoffId = args[++i];
     } else if (arg === "--role" && i + 1 < args.length) {
       role = args[++i];
     } else if (arg === "--port" && i + 1 < args.length) {
@@ -129,6 +133,7 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
     workspace: resolve(cwd, workspace),
     projectRoot,
     projectSessionId,
+    handoffId,
     role,
     port,
     backendType,

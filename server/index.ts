@@ -31,7 +31,7 @@ import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./
 import type { ProxyRoute } from "../core/types/mode-manifest.js";
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
 import { mountNativeRoutes } from "./native-bridge.js";
-import { createProject, isProjectSessionWorkspace, listProjectSessions, loadProject, loadRecentProjects, recordRecentProject, type ProjectInstructionContext } from "../core/project.js";
+import { confirmProjectHandoff, createProject, createProjectHandoffDraft, createProjectSession, isProjectSessionWorkspace, listProjectSessions, loadProject, loadRecentProjects, parseProjectHandoffContent, recordRecentProject, runProjectEvolution, upgradeQuickSessionToProject, type ProjectInstructionContext } from "../core/project.js";
 
 const DEFAULT_PORT = 17007;
 
@@ -219,6 +219,133 @@ export async function startServer(options: ServerOptions) {
         });
         recordRecentProject(root);
         return c.json({ project });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 500);
+      }
+    });
+
+    app.post("/api/projects/upgrade-session", async (c) => {
+      try {
+        const body = await c.req.json<{
+          sourceWorkspace?: string;
+          projectRoot?: string;
+          name?: string;
+          description?: string;
+          mode?: string;
+          displayName?: string;
+          backendType?: AgentBackendType;
+          role?: string;
+          copyDeliverables?: boolean;
+        }>();
+        const sourceWorkspace = body.sourceWorkspace?.trim();
+        const projectRoot = body.projectRoot?.trim();
+        if (!sourceWorkspace) return c.json({ error: "sourceWorkspace is required" }, 400);
+        if (!projectRoot) return c.json({ error: "projectRoot is required" }, 400);
+
+        const result = upgradeQuickSessionToProject(
+          resolve(sourceWorkspace.replace(/^~/, homedir())),
+          resolve(projectRoot.replace(/^~/, homedir())),
+          {
+            name: body.name,
+            description: body.description,
+            mode: body.mode,
+            displayName: body.displayName,
+            backendType: body.backendType === "codex" ? "codex" : body.backendType === "claude-code" ? "claude-code" : undefined,
+            role: body.role,
+            copyDeliverables: body.copyDeliverables,
+          },
+        );
+        return c.json(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 500);
+      }
+    });
+
+    app.post("/api/projects/:projectId/handoffs/draft", async (c) => {
+      try {
+        const projectId = c.req.param("projectId");
+        const record = loadRecentProjects().find((project) => project.projectId === projectId);
+        if (!record) return c.json({ error: "Project not found" }, 404);
+
+        const body = await c.req.json<{ fromSessionId?: string; toMode?: string; goal?: string }>();
+        const fromSessionId = body.fromSessionId?.trim();
+        const toMode = body.toMode?.trim();
+        if (!fromSessionId) return c.json({ error: "fromSessionId is required" }, 400);
+        if (!toMode) return c.json({ error: "toMode is required" }, 400);
+
+        const draft = createProjectHandoffDraft(record.root, {
+          fromSessionId,
+          toMode,
+          goal: body.goal,
+        });
+        return c.json(draft);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 500);
+      }
+    });
+
+    app.post("/api/projects/:projectId/handoffs/:handoffId/confirm", async (c) => {
+      try {
+        const projectId = c.req.param("projectId");
+        const handoffId = c.req.param("handoffId");
+        const record = loadRecentProjects().find((project) => project.projectId === projectId);
+        if (!record) return c.json({ error: "Project not found" }, 404);
+
+        const body = await c.req.json<{
+          content?: string;
+          toMode?: string;
+          targetDisplayName?: string;
+          backendType?: AgentBackendType;
+          role?: string;
+          newSession?: boolean;
+        }>();
+        const content = body.content?.trimEnd();
+        const toMode = body.toMode?.trim();
+        if (!content) return c.json({ error: "content is required" }, 400);
+        if (!toMode) return c.json({ error: "toMode is required" }, 400);
+
+        const editedHandoff = parseProjectHandoffContent(content);
+        if (editedHandoff.toMode && editedHandoff.toMode !== toMode) {
+          return c.json({ error: `Handoff targets mode "${editedHandoff.toMode}", not "${toMode}".` }, 400);
+        }
+
+        const backendType = body.backendType || getDefaultBackendType();
+        const existingTarget = body.newSession
+          ? undefined
+          : listProjectSessions(record.root).find((session) => (
+              session.mode === toMode && session.backendType === backendType
+            ));
+        const targetSession = existingTarget || createProjectSession(record.root, {
+          mode: toMode,
+          displayName: body.targetDisplayName?.trim() || toMode,
+          backendType,
+          role: body.role,
+        });
+        const handoff = confirmProjectHandoff(record.root, {
+          handoffId,
+          content,
+          toSessionId: targetSession.sessionId,
+          toMode,
+        });
+
+        return c.json({ handoff, targetSession });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 500);
+      }
+    });
+
+    app.post("/api/projects/:projectId/evolve", (c) => {
+      try {
+        const projectId = c.req.param("projectId");
+        const record = loadRecentProjects().find((project) => project.projectId === projectId);
+        if (!record) return c.json({ error: "Project not found" }, 404);
+
+        const result = runProjectEvolution(record.root);
+        return c.json(result);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return c.json({ error: message }, 500);
@@ -651,11 +778,12 @@ export async function startServer(options: ServerOptions) {
     });
 
     app.post("/api/launch", async (c) => {
-      const { specifier, workspace: targetWorkspace, projectRoot: launchProjectRoot, projectSessionId, role, initParams, skipSkill, backendType, replayPackage: replayPkg, replaySource, sessionName, viewing } = await c.req.json<{
+      const { specifier, workspace: targetWorkspace, projectRoot: launchProjectRoot, projectSessionId, handoffId, role, initParams, skipSkill, backendType, replayPackage: replayPkg, replaySource, sessionName, viewing } = await c.req.json<{
         specifier: string;
         workspace?: string;
         projectRoot?: string;
         projectSessionId?: string;
+        handoffId?: string;
         role?: string;
         initParams?: Record<string, string | number>;
         skipSkill?: boolean;
@@ -695,6 +823,7 @@ export async function startServer(options: ServerOptions) {
           : ["bun", pneumaBin, specifier, "--workspace", resolvedWorkspace, "--no-prompt", "--no-open"];
         args.push("--backend", backendType || getDefaultBackendType());
         if (projectSessionId?.trim()) args.push("--project-session", projectSessionId.trim());
+        if (handoffId?.trim()) args.push("--handoff", handoffId.trim());
         if (role?.trim()) args.push("--role", role.trim());
         if (skipSkill) args.push("--skip-skill");
         if (viewing) args.push("--viewing");

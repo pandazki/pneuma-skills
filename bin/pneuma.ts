@@ -1097,7 +1097,7 @@ Options:
     return;
   }
 
-  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource, sessionName, viewing, projectRoot, projectSessionId: requestedProjectSessionId, role } = parsedArgs;
+  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource, sessionName, viewing, projectRoot, projectSessionId: requestedProjectSessionId, handoffId, role } = parsedArgs;
   let { workspace, replayPackage } = parsedArgs;
 
   // Launcher mode — no mode arg → start marketplace UI
@@ -1268,6 +1268,7 @@ Options:
       displayName: manifest.displayName,
       backendType,
       sessionId: requestedProjectSessionId || undefined,
+      handoffId: handoffId || undefined,
       role,
     });
     activeProjectRoot = runtime.projectRoot;
