@@ -2362,14 +2362,12 @@ Options:
         console.log("[pneuma] Sent auto-greeting for fresh session");
       }
 
-      // `<pneuma:env>` session-start signal. Dispatched on every fresh
-      // launch (not on resume — the agent's continuing a prior chat and
-      // the marker would misrepresent its starting state). The dispatch
-      // helper is internally idempotent so re-entering this block via the
-      // edit-toggle path won't double-fire.
-      if (!resuming) {
-        dispatchEnvTag(session.sessionId);
-      }
+      // `<pneuma:env>` session-start signal. Dispatched on every spawn,
+      // including resumes — the user's action (clicked a session row,
+      // confirmed a handoff, opened fresh) is the signal, not the agent's
+      // resume state. The dispatch helper is internally idempotent so
+      // re-entering this block via the edit-toggle path won't double-fire.
+      dispatchEnvTag(session.sessionId);
 
       // Load persisted message history
       const savedHistory = loadHistory(stateDir);
