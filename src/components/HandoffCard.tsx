@@ -10,6 +10,7 @@
  * that will be implemented in Task 16.
  */
 
+import { useState } from "react";
 import { useStore } from "../store/index.js";
 import { getApiBase } from "../utils/api.js";
 
@@ -17,6 +18,11 @@ export default function HandoffCard() {
   const inbox = useStore((s) => s.handoffInbox);
   const projectContext = useStore((s) => s.projectContext);
   const sessionMode = useStore((s) => s.modeManifest?.name);
+  // Per-id in-flight set so a double-click on Confirm Switch can't fire
+  // /api/handoffs/:id/confirm twice. Combined with the server-side
+  // single-flight lock, this stops the "one handoff spawns N sessions" loop
+  // even if the user clicks fast.
+  const [pending, setPending] = useState<Set<string>>(new Set());
 
   if (!projectContext) return null;
 
@@ -29,8 +35,19 @@ export default function HandoffCard() {
 
   if (items.length === 0) return null;
 
+  const markPending = (id: string, on: boolean) => {
+    setPending((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
   const handleConfirm = async (handoffId: string) => {
     if (!projectContext.projectRoot) return;
+    if (pending.has(handoffId)) return; // already in flight
+    markPending(handoffId, true);
     try {
       const res = await fetch(
         `${getApiBase()}/api/handoffs/${encodeURIComponent(handoffId)}/confirm?project=${encodeURIComponent(projectContext.projectRoot)}`,
@@ -43,10 +60,13 @@ export default function HandoffCard() {
       if (data.launchUrl) window.location.href = data.launchUrl;
     } catch {
       /* tolerate transient errors */
+    } finally {
+      markPending(handoffId, false);
     }
   };
   const handleCancel = async (handoffId: string) => {
     if (!projectContext.projectRoot) return;
+    if (pending.has(handoffId)) return;
     await fetch(
       `${getApiBase()}/api/handoffs/${encodeURIComponent(handoffId)}/cancel?project=${encodeURIComponent(projectContext.projectRoot)}`,
       { method: "POST" },
@@ -80,17 +100,19 @@ export default function HandoffCard() {
           <div className="flex gap-2 justify-end">
             <button
               type="button"
-              className="px-3 py-1 text-sm border border-cc-border rounded hover:border-cc-muted"
+              disabled={pending.has(h.frontmatter.handoff_id)}
+              className="px-3 py-1 text-sm border border-cc-border rounded hover:border-cc-muted disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => handleCancel(h.frontmatter.handoff_id)}
             >
               Cancel
             </button>
             <button
               type="button"
-              className="px-3 py-1 text-sm bg-cc-primary text-white rounded hover:opacity-90"
+              disabled={pending.has(h.frontmatter.handoff_id)}
+              className="px-3 py-1 text-sm bg-cc-primary text-white rounded hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => handleConfirm(h.frontmatter.handoff_id)}
             >
-              Confirm Switch
+              {pending.has(h.frontmatter.handoff_id) ? "Switching…" : "Confirm Switch"}
             </button>
           </div>
         </div>

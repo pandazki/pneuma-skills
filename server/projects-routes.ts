@@ -56,6 +56,12 @@ export interface ProjectsRoutesOptions {
 
 export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): void {
   const sessionsPath = join(options.homeDir, ".pneuma", "sessions.json");
+  // Per-handoff_id single-flight lock. The handoff confirm endpoint kills
+  // the source + spawns the target — running it twice for the same id
+  // creates a duplicate target session. The HandoffCard already disables
+  // its Confirm button while in flight, but a network retry / double-tab
+  // could still race in. This Set is the server-side guard.
+  const handoffsInFlight = new Set<string>();
 
   app.get("/api/projects", async (c) => {
     const data = await readSessionsFile(sessionsPath);
@@ -266,26 +272,38 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     if (!sessionDir.startsWith(sessionsRoot + "/")) {
       return c.json({ error: "invalid session id" }, 400);
     }
-    if (!existsSync(sessionDir)) {
-      return c.json({ error: "session not found" }, 404);
-    }
-    // Drop the registry entry first, then remove the dir. If the rm fails
-    // (e.g. permissions), the registry no longer references it — better
-    // than a registry entry pointing at a partially-deleted dir.
+
+    // Idempotent: drop the registry entry whether or not the dir exists.
+    // A stale registry pointing at a vanished dir is exactly the state
+    // the user wants delete to clean up. Same applies to a dir without a
+    // matching registry row — the rm still runs.
     const data = await readSessionsFile(sessionsPath);
+    const beforeCount = data.sessions.length;
     const next = {
       ...data,
       sessions: data.sessions.filter(
         (s) => !(s.kind === "project" && s.projectRoot === id && s.sessionId === sessionId),
       ),
     };
+    const registryHadEntry = next.sessions.length < beforeCount;
     await writeSessionsFile(sessionsPath, next);
-    try {
-      await rm(sessionDir, { recursive: true, force: true });
-    } catch (err) {
-      console.warn(`[projects] rm session dir failed: ${err}`);
+
+    let dirExisted = false;
+    if (existsSync(sessionDir)) {
+      dirExisted = true;
+      try {
+        await rm(sessionDir, { recursive: true, force: true });
+      } catch (err) {
+        console.warn(`[projects] rm session dir failed: ${err}`);
+      }
     }
-    return c.json({ deleted: true });
+
+    // Only true 404 if there was nothing to clean up either way — the
+    // panel passed an id we've never heard of.
+    if (!registryHadEntry && !dirExisted) {
+      return c.json({ error: "session not found" }, 404);
+    }
+    return c.json({ deleted: true, dirExisted, registryHadEntry });
   });
 
   app.post("/api/handoffs/:id/cancel", async (c) => {
@@ -302,71 +320,87 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     const id = c.req.param("id");
     const project = c.req.query("project");
     if (!project) return c.json({ error: "project query param required" }, 400);
-    const handoffPath = join(project, ".pneuma", "handoffs", `${id}.md`);
-    if (!existsSync(handoffPath)) return c.json({ error: "handoff not found" }, 404);
 
-    const raw = await readFile(handoffPath, "utf-8");
-    const parsed = parseHandoffMarkdown(handoffPath, raw);
-    if (!parsed) return c.json({ error: "invalid handoff frontmatter" }, 400);
-    const { frontmatter: fm } = parsed;
-
-    const sourceSessionId = fm.source_session;
-    const targetMode = fm.target_mode;
-    const targetSession =
-      fm.target_session && fm.target_session !== "auto"
-        ? fm.target_session
-        : undefined;
-
-    if (!targetMode) return c.json({ error: "target_mode missing" }, 400);
-
-    // Kill source if running. Best-effort: the user intends to leave that
-    // session, so a failure here shouldn't block the launch.
-    if (sourceSessionId && options.killSession) {
-      try {
-        await options.killSession(sourceSessionId);
-      } catch (err) {
-        console.warn(`[handoff-confirm] kill source failed: ${err}`);
-      }
+    // Single-flight: if another request is already processing this handoff,
+    // return a definite "in progress" instead of racing into a second
+    // launchPneumaChild call. The lock is released in `finally` below.
+    if (handoffsInFlight.has(id)) {
+      return c.json({ error: "handoff already in progress" }, 409);
     }
+    handoffsInFlight.add(id);
+    try {
+      const handoffPath = join(project, ".pneuma", "handoffs", `${id}.md`);
+      if (!existsSync(handoffPath)) return c.json({ error: "handoff not found" }, 404);
 
-    // Append switched_out event to source history (best-effort).
-    if (sourceSessionId) {
-      const sourceHistoryPath = join(
-        project,
-        ".pneuma",
-        "sessions",
-        sourceSessionId,
-        "history.json",
-      );
-      if (existsSync(sourceHistoryPath)) {
+      const raw = await readFile(handoffPath, "utf-8");
+      const parsed = parseHandoffMarkdown(handoffPath, raw);
+      if (!parsed) return c.json({ error: "invalid handoff frontmatter" }, 400);
+      const { frontmatter: fm } = parsed;
+
+      const sourceSessionId = fm.source_session;
+      const targetMode = fm.target_mode;
+      const targetSession =
+        fm.target_session && fm.target_session !== "auto"
+          ? fm.target_session
+          : undefined;
+
+      if (!targetMode) return c.json({ error: "target_mode missing" }, 400);
+
+      // Kill source if running. Best-effort: the user intends to leave that
+      // session, so a failure here shouldn't block the launch.
+      if (sourceSessionId && options.killSession) {
         try {
-          const arr = JSON.parse(await readFile(sourceHistoryPath, "utf-8")) as unknown[];
-          if (Array.isArray(arr)) {
-            arr.push({
-              type: "session_event",
-              subtype: "switched_out",
-              handoff_id: id,
-              ts: Date.now(),
-            });
-            await writeFile(sourceHistoryPath, JSON.stringify(arr, null, 2), "utf-8");
-          }
+          await options.killSession(sourceSessionId);
         } catch (err) {
-          console.warn(`[handoff-confirm] write switched_out failed: ${err}`);
+          console.warn(`[handoff-confirm] kill source failed: ${err}`);
         }
       }
-    }
 
-    // Launch target. The handoff file itself is left in place — the target
-    // session reads + deletes it (per the pneuma-project skill spec).
-    if (!options.launchSession) {
-      return c.json({ error: "launch not configured" }, 500);
-    }
-    const launchUrl = await options.launchSession({
-      mode: targetMode,
-      project,
-      sessionId: targetSession,
-    });
+      // Append switched_out event to source history (best-effort).
+      if (sourceSessionId) {
+        const sourceHistoryPath = join(
+          project,
+          ".pneuma",
+          "sessions",
+          sourceSessionId,
+          "history.json",
+        );
+        if (existsSync(sourceHistoryPath)) {
+          try {
+            const arr = JSON.parse(await readFile(sourceHistoryPath, "utf-8")) as unknown[];
+            if (Array.isArray(arr)) {
+              arr.push({
+                type: "session_event",
+                subtype: "switched_out",
+                handoff_id: id,
+                ts: Date.now(),
+              });
+              await writeFile(sourceHistoryPath, JSON.stringify(arr, null, 2), "utf-8");
+            }
+          } catch (err) {
+            console.warn(`[handoff-confirm] write switched_out failed: ${err}`);
+          }
+        }
+      }
 
-    return c.json({ confirmed: true, launchUrl, handoffId: id });
+      if (!options.launchSession) {
+        return c.json({ error: "launch not configured" }, 500);
+      }
+      const launchUrl = await options.launchSession({
+        mode: targetMode,
+        project,
+        sessionId: targetSession,
+      });
+
+      // Leave the handoff file in place — the target session's skill
+      // installer reads it at boot to inject the `pneuma:handoff` block
+      // into CLAUDE.md, and the target agent rms it after consuming. The
+      // single-flight lock above + chokidar's add-only listening + the
+      // HandoffCard button-disable in flight together prevent the
+      // duplicate-spawn loop without server-side delete.
+      return c.json({ confirmed: true, launchUrl, handoffId: id });
+    } finally {
+      handoffsInFlight.delete(id);
+    }
   });
 }

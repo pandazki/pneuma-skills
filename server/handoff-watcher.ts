@@ -44,13 +44,16 @@ export async function startHandoffWatcher(
     options.onEvent({ type: "created", handoff: parsed });
   });
 
-  watcher.on("change", async (path) => {
-    if (!path.endsWith(".md")) return;
-    const parsed = await safeParse(path);
-    if (!parsed) return;
-    cache.set(path, parsed);
-    options.onEvent({ type: "created", handoff: parsed });
-  });
+  // Intentionally NO `change` listener.
+  //
+  // Handoffs are write-once files: the source agent emits one with the Write
+  // tool, the watcher fires `add`, the target consumes + `rm`s. Any later
+  // mutation of the same file is unexpected (agent confusion, OS metadata
+  // touch, partial-write retry, etc.). We used to re-emit `change` as `created`
+  // — that turned every metadata blip into a duplicate HandoffCard, which on
+  // re-confirm spawned another target session. The result was a loop of new
+  // sessions for what the user thought was a single handoff. `awaitWriteFinish`
+  // already buffers the initial write; the `add` event after that is enough.
 
   watcher.on("unlink", (path) => {
     if (!path.endsWith(".md")) return;
