@@ -55,12 +55,25 @@ export function handleSessionSubscribe(
     return;
   }
 
-  const missed = session.eventBuffer.filter((evt) => evt.seq > lastAckSeq);
-  if (missed.length === 0) return;
-  sendToBrowser(ws, {
-    type: "event_replay",
-    events: missed,
-  });
+  // No-gap path: browser is current on the seq counter (or never received
+  // any events yet). Fast-forward the transient ones. History-backed events
+  // (assistant / result / user_message / etc.) are excluded because the
+  // initial `session_init → message_history` already carried them; double-
+  // sending here causes the chat to render duplicate user-injected tags
+  // (e.g. two `<pneuma:env>` pills on a fresh session — once via
+  // message_history and again via this event_replay).
+  const missed = session.eventBuffer.filter(
+    (evt) => evt.seq > lastAckSeq && !isHistoryBackedEvent(evt.message),
+  );
+  if (missed.length > 0) {
+    sendToBrowser(ws, {
+      type: "event_replay",
+      events: missed,
+    });
+  }
+  // Status_change is independent of whether transient events were replayed —
+  // a fresh subscriber needs the current cli status either way (so the
+  // chat input enables/disables the Send button correctly).
   sendToBrowser(ws, { type: "status_change", status: inferCliStatus(session) });
 }
 
