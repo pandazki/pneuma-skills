@@ -764,13 +764,30 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       break;
     }
 
-    case "handoff_event": {
-      // Pneuma 3.0 projects: keep handoff inbox in sync with the server's
-      // chokidar watcher (server/handoff-watcher.ts).
-      if (data.kind === "created") {
-        store.recordHandoffCreated(data.handoff);
-      } else if (data.kind === "deleted") {
-        store.recordHandoffDeleted(data.handoff.frontmatter.handoff_id);
+    case "handoff_proposed": {
+      // v2 tool-call protocol — server emits one proposal per source after
+      // the agent calls `pneuma handoff`. Replaces any prior proposal in
+      // store state (server already supersedes on its side, but the client
+      // mirrors it so a reconnect with a stale tab doesn't keep the old card).
+      store.setProposedHandoff({
+        handoff_id: data.handoff_id,
+        payload: data.payload,
+        proposed_at: data.proposed_at,
+      });
+      // Reset any in-flight status — a fresh proposal lands the card in
+      // its idle state regardless of what was happening before.
+      store.setHandoffStatus("idle");
+      break;
+    }
+    case "handoff_cancelled": {
+      // Multi-tab sync: the server broadcasts cancel to every browser
+      // viewing the source session. The originating tab already cleared
+      // optimistically on its POST response, but a sibling tab needs to
+      // catch this event to drop its card.
+      const current = store.proposedHandoff;
+      if (current && current.handoff_id === data.handoff_id) {
+        store.setProposedHandoff(null);
+        store.setHandoffStatus("idle");
       }
       break;
     }

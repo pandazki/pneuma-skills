@@ -363,23 +363,26 @@ export type BrowserIncomingMessageBase =
   | { type: "streamlined_text"; text: string; parent_tool_use_id?: string | null }
   | { type: "streamlined_tool_use_summary"; summary: string; tool_use_ids: string[] }
   | {
-    type: "handoff_event";
-    kind: "created" | "deleted";
-    handoff: {
-      path: string;
-      frontmatter: {
-        handoff_id: string;
-        target_mode: string;
-        target_session?: string;
-        source_session?: string;
-        source_mode?: string;
-        source_display_name?: string;
-        intent?: string;
-        suggested_files?: string[];
-        created_at?: string;
-      };
-      body: string;
+    type: "handoff_proposed";
+    handoff_id: string;
+    payload: {
+      source_session_id?: string;
+      source_mode?: string;
+      source_display_name?: string;
+      target_mode: string;
+      target_session?: string;
+      intent: string;
+      summary?: string;
+      suggested_files?: string[];
+      key_decisions?: string[];
+      open_questions?: string[];
     };
+    proposed_at: number;
+  }
+  | {
+    type: "handoff_cancelled";
+    handoff_id: string;
+    reason?: string;
   };
 
 export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };

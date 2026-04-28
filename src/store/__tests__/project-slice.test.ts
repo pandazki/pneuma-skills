@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { create } from "zustand";
-import { createProjectSlice, type ProjectSlice, type HandoffData } from "../project-slice.js";
+import {
+  createProjectSlice,
+  type ProjectSlice,
+  type ProposedHandoff,
+} from "../project-slice.js";
 
 // Minimal stand-alone slice instantiation. The slice's StateCreator is typed
 // against the full AppState, but at runtime only the slice's own fields are
@@ -11,24 +15,42 @@ function makeStore() {
   }));
 }
 
-const sample: HandoffData = {
-  path: "/p/.pneuma/handoffs/h1.md",
-  frontmatter: { handoff_id: "h1", target_mode: "webcraft" },
-  body: "body",
+const sample: ProposedHandoff = {
+  handoff_id: "hf-1",
+  proposed_at: 1_000,
+  payload: {
+    target_mode: "webcraft",
+    intent: "build a site",
+  },
 };
 
 describe("project-slice", () => {
-  test("recordHandoffCreated adds to inbox keyed by handoff_id", () => {
+  test("setProposedHandoff sets the active proposal", () => {
     const useStore = makeStore();
-    useStore.getState().recordHandoffCreated(sample);
-    expect(useStore.getState().handoffInbox.has("h1")).toBe(true);
-    expect(useStore.getState().handoffInbox.get("h1")?.frontmatter.target_mode).toBe("webcraft");
+    expect(useStore.getState().proposedHandoff).toBeNull();
+    useStore.getState().setProposedHandoff(sample);
+    expect(useStore.getState().proposedHandoff?.handoff_id).toBe("hf-1");
   });
 
-  test("recordHandoffDeleted removes from inbox", () => {
+  test("setProposedHandoff(null) clears the proposal", () => {
     const useStore = makeStore();
-    useStore.getState().recordHandoffCreated(sample);
-    useStore.getState().recordHandoffDeleted("h1");
-    expect(useStore.getState().handoffInbox.has("h1")).toBe(false);
+    useStore.getState().setProposedHandoff(sample);
+    useStore.getState().setProposedHandoff(null);
+    expect(useStore.getState().proposedHandoff).toBeNull();
+  });
+
+  test("setHandoffStatus tracks in-flight network state", () => {
+    const useStore = makeStore();
+    expect(useStore.getState().handoffStatus).toBe("idle");
+    useStore.getState().setHandoffStatus("sending-confirm");
+    expect(useStore.getState().handoffStatus).toBe("sending-confirm");
+    useStore.getState().setHandoffStatus("idle");
+    expect(useStore.getState().handoffStatus).toBe("idle");
+  });
+
+  test("setProjectContext stores context", () => {
+    const useStore = makeStore();
+    useStore.getState().setProjectContext({ projectRoot: "/p", projectName: "P" });
+    expect(useStore.getState().projectContext?.projectRoot).toBe("/p");
   });
 });

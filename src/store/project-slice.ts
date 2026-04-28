@@ -2,26 +2,32 @@ import type { StateCreator } from "zustand";
 import type { AppState } from "./types.js";
 
 /**
- * Handoff frontmatter structure matches `server/handoff-watcher.ts`
- * (HandoffFrontmatter). Kept loose here because the slice only forwards
- * data — no parsing or normalization on the browser side.
+ * Structured handoff payload — mirrors what `pneuma handoff` accepted on the
+ * agent side and what `/api/handoffs/emit` broadcast to the source session's
+ * browser. Used by the HandoffCard to render the review surface.
  */
-export interface HandoffFrontmatter {
-  handoff_id: string;
-  target_mode: string;
-  target_session?: string;
-  source_session?: string;
+export interface HandoffProposalPayload {
+  source_session_id?: string;
   source_mode?: string;
   source_display_name?: string;
-  intent?: string;
+  target_mode: string;
+  target_session?: string;
+  intent: string;
+  summary?: string;
   suggested_files?: string[];
-  created_at?: string;
+  key_decisions?: string[];
+  open_questions?: string[];
 }
 
-export interface HandoffData {
-  path: string;
-  frontmatter: HandoffFrontmatter;
-  body: string;
+/**
+ * One in-flight handoff proposal — at most one is held in store state at a
+ * time per session (the v2 protocol supersedes earlier proposals from the
+ * same source).
+ */
+export interface ProposedHandoff {
+  handoff_id: string;
+  payload: HandoffProposalPayload;
+  proposed_at: number;
 }
 
 /**
@@ -42,32 +48,33 @@ export interface ProjectContext {
   projectDescription?: string;
 }
 
+/**
+ * Status flags for the HandoffCard's two action buttons. The card disables
+ * its buttons during the corresponding network request — without this gate
+ * a double-click would fire two confirms / cancels back-to-back.
+ */
+export type HandoffStatus = "idle" | "sending-confirm" | "sending-cancel";
+
 export interface ProjectSlice {
   projectContext: ProjectContext | null;
-  /** Pending handoffs keyed by `frontmatter.handoff_id`. */
-  handoffInbox: Map<string, HandoffData>;
+  /**
+   * The currently-pending handoff proposal for this session, if any. Set on
+   * `handoff_proposed` WS event, cleared on cancel / confirm / `handoff_cancelled`
+   * WS event / timeout. Only one proposal is held at a time — the server
+   * supersedes earlier proposals from the same source.
+   */
+  proposedHandoff: ProposedHandoff | null;
+  handoffStatus: HandoffStatus;
   setProjectContext: (ctx: ProjectContext | null) => void;
-  recordHandoffCreated: (h: HandoffData) => void;
-  recordHandoffDeleted: (handoffId: string) => void;
-  clearHandoffs: () => void;
+  setProposedHandoff: (handoff: ProposedHandoff | null) => void;
+  setHandoffStatus: (status: HandoffStatus) => void;
 }
 
 export const createProjectSlice: StateCreator<AppState, [], [], ProjectSlice> = (set) => ({
   projectContext: null,
-  handoffInbox: new Map(),
+  proposedHandoff: null,
+  handoffStatus: "idle",
   setProjectContext: (ctx) => set({ projectContext: ctx }),
-  recordHandoffCreated: (h) =>
-    set((s) => {
-      const next = new Map(s.handoffInbox);
-      next.set(h.frontmatter.handoff_id, h);
-      return { handoffInbox: next };
-    }),
-  recordHandoffDeleted: (id) =>
-    set((s) => {
-      if (!s.handoffInbox.has(id)) return s;
-      const next = new Map(s.handoffInbox);
-      next.delete(id);
-      return { handoffInbox: next };
-    }),
-  clearHandoffs: () => set({ handoffInbox: new Map() }),
+  setProposedHandoff: (handoff) => set({ proposedHandoff: handoff }),
+  setHandoffStatus: (status) => set({ handoffStatus: status }),
 });

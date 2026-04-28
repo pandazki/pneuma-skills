@@ -1,16 +1,16 @@
 /**
  * Shared handoff frontmatter parser.
  *
- * The 3.0 project layer authors handoff files at
- * `<projectRoot>/.pneuma/handoffs/<id>.md`. Three call sites need to read
- * them: skill-installer (sync, on session start), handoff-watcher (async,
- * via chokidar), and projects-routes (async, on confirm). Before this
- * module they each carried a near-identical hand-rolled YAML reader.
+ * Originally backed three call sites under the v1 file-mediated handoff
+ * protocol (skill-installer, handoff-watcher, projects-routes). The 2026-04-28
+ * tool-call rewrite replaced the file-write path with `pneuma handoff` →
+ * `/api/handoffs/emit` → in-memory proposal map → `inbound-handoff.json`,
+ * so this module is no longer in any live request path.
  *
- * The parser supports flat scalar keys, single-level `  - ` indented
- * lists, and matching surrounding single/double quotes. It is deliberately
- * minimal — sufficient for the well-known schema authored by the
- * `pneuma-project` skill, with no full-YAML dependency.
+ * It's kept here as an audit helper: any remaining
+ * `<projectRoot>/.pneuma/handoffs/*.md` files on disk from the v1 era can
+ * still be inspected with these helpers (e.g. via a one-shot migration
+ * script). Safe to delete once no v1 residue is observed in the wild.
  */
 
 import { existsSync, readFileSync } from "node:fs";

@@ -269,7 +269,7 @@ Session state lives in `<stateDir>/`. The location depends on whether the sessio
 |------|---------|
 | `project.json` | `ProjectManifest`: `{ version, name, displayName, description?, createdAt }` |
 | `preferences/` | Project-scoped preferences (`profile.md`, `mode-{name}.md`) |
-| `handoffs/<id>.md` | Cross-mode handoff messages (transient — target session deletes after consuming) |
+| `sessions/<id>/.pneuma/inbound-handoff.json` | Inbound handoff payload, written by `/api/handoffs/:id/confirm` before the target session spawns; target agent reads and `rm`s on first turn |
 | `sessions/<sessionId>/` | One subdir per session; contents are the per-session table above |
 
 ### Skill Installation & Update Detection
@@ -297,7 +297,7 @@ After install, the mode version is written to `skill-version.json`. On session r
 
 ## Project Lifecycle (3.0)
 
-A project is a user directory marked by `<root>/.pneuma/project.json`. Inside a project you can run multiple sessions in different modes (or the same mode multiple times). All sessions share `<root>/.pneuma/preferences/` and coordinate through `<root>/.pneuma/handoffs/`.
+A project is a user directory marked by `<root>/.pneuma/project.json`. Inside a project you can run multiple sessions in different modes (or the same mode multiple times). All sessions share `<root>/.pneuma/preferences/` and coordinate through Smart Handoff (the `pneuma handoff` CLI tool the agent invokes after a `<pneuma:request-handoff>` chat tag).
 
 ### Project Structure
 
@@ -308,8 +308,7 @@ A project is a user directory marked by `<root>/.pneuma/project.json`. Inside a 
 │   ├── preferences/                 # Project-scoped preferences (orthogonal to personal)
 │   │   ├── profile.md
 │   │   └── mode-{name}.md
-│   ├── handoffs/                    # Cross-mode handoff messages (transient)
-│   │   └── <id>.md
+│   │                                # (handoffs flow through `pneuma handoff` + an in-memory proposal map; see Cross-Mode Handoff Protocol below)
 │   └── sessions/                    # Per-session state
 │       └── <sessionId>/             # session.json, history.json, .claude/, CLAUDE.md, etc.
 └── <user content>                   # deliverables — agent writes here
@@ -333,7 +332,7 @@ Project sessions also inject:
 
 ### Cross-Mode Handoff Protocol
 
-The source agent writes a markdown file to `<projectRoot>/.pneuma/handoffs/<id>.md` with YAML frontmatter (`handoff_id`, `target_mode`, `target_session`, `source_session`, `source_mode`, `intent`, `suggested_files`, `created_at`). Pneuma watches the directory (`server/handoff-watcher.ts`) and surfaces a Handoff Card UI. On user confirm: source backend killed (best-effort), source `history.json` gets a `switched_out` event, target session launched, target `history.json` gets a `switched_in` event. The target's CLAUDE.md `pneuma:handoff` block names the file; the target reads + deletes it.
+The source agent invokes `pneuma handoff --json '{...}'` (a CLI tool wired up via the `PNEUMA_SERVER_URL` env var). The CLI POSTs the structured payload to `/api/handoffs/emit`; the server stores it in an in-memory `Map<handoff_id, HandoffProposal>` (30-min TTL) and broadcasts `handoff_proposed` over WS to the source session's browser. The HandoffCard renders the structured payload (intent, summary, files, decisions, open questions). On user confirm: server writes `<targetSessionDir>/.pneuma/inbound-handoff.json` atomically, kills source backend (best-effort), records `switched_out` / `switched_in` events, then spawns the target. The target's skill installer reads `inbound-handoff.json` into the CLAUDE.md `pneuma:handoff` block; the target agent reads + `rm`s the file on first turn. On user cancel: server dispatches `<pneuma:handoff-cancelled reason="..." />` as a synthetic user message back to the source agent so the conversation continues. See `server/handoff-routes.ts` and `docs/design/2026-04-28-handoff-tool-call.md`.
 
 See `docs/design/2026-04-27-pneuma-projects-design.md` for the full design and `docs/reference/viewer-agent-protocol.md` for the env-var + frontmatter reference tables.
 
