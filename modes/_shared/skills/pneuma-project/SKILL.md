@@ -110,10 +110,10 @@ This is your cue to **prepare a structured handoff** for the target. Think hard 
 - **What's already decided?** Aesthetic, technical, scope decisions the target shouldn't relitigate.
 - **What's still open?** Things you didn't decide; let the target judge or ask the user.
 
-Once you've organized that context, **call the `pneuma handoff` command**. This is the system function that hands the payload to Pneuma. The command reads JSON from stdin or the `--json` flag:
+Once you've organized that context, **call the handoff CLI through the `$PNEUMA_CLI` env var**. This is the system function that hands the payload to Pneuma. The env var resolves to the right invocation regardless of how Pneuma was installed (production npm-install or dev worktree); writing the literal `pneuma handoff` only works when the binary is on PATH, so always prefer `$PNEUMA_CLI`. The command reads JSON from stdin or the `--json` flag:
 
 ```bash
-pneuma handoff --json '{
+$PNEUMA_CLI handoff --json '{
   "target_mode": "webcraft",
   "target_session": "auto",
   "intent": "Build a one-page landing site from this brand identity",
@@ -147,7 +147,7 @@ Field reference:
 | `key_decisions` | optional | What's locked in — saves the target from relitigating |
 | `open_questions` | optional | What's still open — gives the target permission to decide or ask |
 
-### What happens after you call `pneuma handoff`
+### What happens after you call `$PNEUMA_CLI handoff`
 
 Pneuma takes your payload and **shows the user a review card** with your intent, summary, suggested files, decisions, and open questions. The user reads it and either:
 
@@ -158,11 +158,11 @@ Pneuma takes your payload and **shows the user a review card** with your intent,
   <pneuma:handoff-cancelled reason="<short reason if user provided one>" />
   ```
 
-When you see the cancel tag: **continue the conversation naturally**. Don't be defensive about your handoff; the user is the decider. If they have feedback ("the summary missed the typography decisions"), incorporate it. When they're ready, they'll trigger Smart Handoff again. You don't need to re-call `pneuma handoff` until then.
+When you see the cancel tag: **continue the conversation naturally**. Don't be defensive about your handoff; the user is the decider. If they have feedback ("the summary missed the typography decisions"), incorporate it. When they're ready, they'll trigger Smart Handoff again. You don't need to re-call `$PNEUMA_CLI handoff` until then.
 
 ### One handoff at a time
 
-Don't call `pneuma handoff` autonomously — wait for the `<pneuma:request-handoff>` tag. Don't call it twice for the same request. If the user wants to switch *back* to this mode later, they'll do another Smart Handoff from there.
+Don't call `$PNEUMA_CLI handoff` autonomously — wait for the `<pneuma:request-handoff>` tag. Don't call it twice for the same request. If the user wants to switch *back* to this mode later, they'll do another Smart Handoff from there.
 
 ### Receiving a handoff
 
@@ -205,5 +205,5 @@ Don't ignore an inbound handoff. The user explicitly asked for this transition; 
 - Don't write to other session dirs. Yours is `$PNEUMA_SESSION_DIR`.
 - Don't modify `project.json`. The user manages that via the launcher's edit dialog.
 - Don't auto-handoff. Wait for the user's `<pneuma:request-handoff>` tag.
-- Don't write `$PNEUMA_PROJECT_ROOT/.pneuma/handoffs/<id>.md` files manually — that was the v1 protocol. Now the handoff goes through `pneuma handoff`.
+- Don't write `$PNEUMA_PROJECT_ROOT/.pneuma/handoffs/<id>.md` files manually — that was the v1 protocol. Now the handoff goes through `$PNEUMA_CLI handoff`.
 - When uncertain about project-scoped intent (vs your local mode work), check `$PNEUMA_PROJECT_ROOT/.pneuma/preferences/profile.md` first.

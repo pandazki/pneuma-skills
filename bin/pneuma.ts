@@ -1517,6 +1517,14 @@ Options:
     PNEUMA_SESSION_DIR: startup.paths.sessionDir,
     PNEUMA_HOME_ROOT: startup.paths.homeRoot,
     PNEUMA_SESSION_ID: startup.sessionId,
+    // Canonical command for any pneuma CLI invocation the agent needs to run
+    // (Smart Handoff today; future tools later). Resolves to the bun-driven
+    // form in dev (where there's no global `pneuma` on PATH) and the same
+    // form in prod (npm-installed `pneuma` is already a thin wrapper around
+    // the same script). Works under bash word-splitting, so the skill can
+    // teach `$PNEUMA_CLI handoff --json '...'` and the agent doesn't have
+    // to discover the binary.
+    PNEUMA_CLI: `bun ${import.meta.path}`,
   };
   if (startup.paths.projectRoot) {
     pneumaEnv.PNEUMA_PROJECT_ROOT = startup.paths.projectRoot;
