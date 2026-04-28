@@ -4,7 +4,6 @@ import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
   loadProjectManifest,
-  scanProjectSessions,
   writeProjectManifest,
 } from "../core/project-loader.js";
 import {
@@ -16,6 +15,13 @@ import {
   type ProjectRegistryEntry,
 } from "../bin/sessions-registry.js";
 import { importSessionsIntoProject } from "./project-init-from-sessions.js";
+import {
+  getProjectCache,
+  getProjectCacheSWR,
+  primeProjectCache,
+  revalidateProjectCache,
+  type ProjectCacheEntry,
+} from "./projects-cache.js";
 
 /**
  * Augmented project record returned by `/api/projects`.
@@ -38,6 +44,29 @@ export interface ProjectsRoutesOptions {
 export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): void {
   const sessionsPath = join(options.homeDir, ".pneuma", "sessions.json");
 
+  /**
+   * Build the registry-row + cache-entry composite shape that the launcher
+   * UI expects. Centralised so both cache-hit and cache-miss paths in
+   * `/api/projects` produce identical responses.
+   */
+  const enrichFromCache = (
+    p: ProjectRegistryEntry,
+    entry: ProjectCacheEntry,
+  ): ProjectListResponseEntry => {
+    const modeBreakdown = Array.from(
+      new Set(entry.sessions.map((r) => r.mode)),
+    ).sort();
+    const coverImageUrl = entry.hasCover
+      ? `/api/projects/${encodeURIComponent(p.id)}/cover`
+      : undefined;
+    return {
+      ...p,
+      sessionCount: entry.sessions.length,
+      modeBreakdown,
+      ...(coverImageUrl ? { coverImageUrl } : {}),
+    };
+  };
+
   app.get("/api/projects", async (c) => {
     const data = await readSessionsFile(sessionsPath);
     // ?archived=true → only archived; ?archived=all → both; anything else
@@ -51,25 +80,18 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
         : archivedParam === "all"
           ? data.projects
           : data.projects.filter((p) => p.archived !== true);
+    // Per-project enrichment goes through the SWR cache: cache hits are
+    // synchronous Map lookups (the warm path is <1ms even for big registries),
+    // misses fall back to a one-time scan that primes the cache + starts
+    // the watcher. After the first hit, subsequent calls are instant and
+    // chokidar keeps the entries fresh in the background.
     const enriched: ProjectListResponseEntry[] = await Promise.all(
       filtered.map(async (p) => {
-        // scanProjectSessions tolerates a missing sessions directory and
-        // returns []; per-project IO is bounded by the registry cap (50).
-        const refs = await scanProjectSessions(p.root).catch(() => []);
-        const modeBreakdown = Array.from(
-          new Set(refs.map((r) => r.mode))
-        ).sort();
-        const coverPath = join(p.root, ".pneuma", "cover.png");
-        const coverImageUrl = existsSync(coverPath)
-          ? `/api/projects/${encodeURIComponent(p.id)}/cover`
-          : undefined;
-        return {
-          ...p,
-          sessionCount: refs.length,
-          modeBreakdown,
-          ...(coverImageUrl ? { coverImageUrl } : {}),
-        };
-      })
+        const cached = getProjectCache(p.root);
+        if (cached) return enrichFromCache(p, cached);
+        const fresh = await getProjectCacheSWR(p.root);
+        return enrichFromCache(p, fresh);
+      }),
     );
     // Surface `homeDir` so consumers (Project Panel, etc.) can shorten paths
     // with `~`. The launcher's `/api/sessions` already exposes this; mirroring
@@ -166,6 +188,12 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     });
     await writeSessionsFile(sessionsPath, next);
 
+    // Prime the cache (initial scan + watcher) so the next /api/projects
+    // call sees the new project without paying the cold scan cost on the
+    // critical path. Fire-and-forget — the create response doesn't need
+    // to wait on the watcher coming up.
+    primeProjectCache(body.root).catch(() => {});
+
     return c.json({
       created: true,
       root: body.root,
@@ -182,6 +210,10 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     // arrived as `root` instead.
     const next = archiveProject(data, project.id);
     await writeSessionsFile(sessionsPath, next);
+    // Archive doesn't change the on-disk session set, but other consumers
+    // expect the cache to stay coherent with the registry state. Fire-
+    // and-forget so the response stays snappy.
+    revalidateProjectCache(project.root).catch(() => {});
     return c.json({ archived: true });
   });
 
@@ -192,17 +224,21 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     if (!project) return c.json({ error: "project not found" }, 404);
     const next = restoreProject(data, project.id);
     await writeSessionsFile(sessionsPath, next);
+    revalidateProjectCache(project.root).catch(() => {});
     return c.json({ archived: false });
   });
 
   app.get("/api/projects/:id/sessions", async (c) => {
     const id = decodeURIComponent(c.req.param("id"));
-    const manifest = await loadProjectManifest(id);
-    if (!manifest) return c.json({ error: "not a project" }, 404);
-    const refs = await scanProjectSessions(id);
+    // SWR: warm cache → instant return + background revalidate.
+    // Cold cache → synchronous scan + prime; that's the same wall-clock
+    // cost as the pre-cache implementation, but only paid once per
+    // project root over the lifetime of this server process.
+    const entry = await getProjectCacheSWR(id);
+    if (!entry.manifest) return c.json({ error: "not a project" }, 404);
     return c.json({
-      project: { ...manifest, root: id },
-      sessions: refs,
+      project: { ...entry.manifest, root: id },
+      sessions: entry.sessions,
     });
   });
 
@@ -278,6 +314,11 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     if (!registryHadEntry && !dirExisted) {
       return c.json({ error: "session not found" }, 404);
     }
+    // Kick a revalidation so the panel's next refresh sees the deletion
+    // before chokidar's `unlinkDir` event has propagated. The watcher
+    // would catch it on its own, but the explicit nudge avoids a brief
+    // window where the deleted session row reappears via stale cache.
+    revalidateProjectCache(id).catch(() => {});
     return c.json({ deleted: true, dirExisted, registryHadEntry });
   });
 

@@ -33,6 +33,11 @@ import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file
 import { mountHandoffRoutes } from "./handoff-routes.js";
 import { mountNativeRoutes } from "./native-bridge.js";
 import { mountProjectsRoutes } from "./projects-routes.js";
+import {
+  primeProjectCache,
+  revalidateProjectCache,
+  shutdownProjectCache,
+} from "./projects-cache.js";
 import { loadProjectManifest } from "../core/project-loader.js";
 import {
   readSessionsFileSync,
@@ -277,6 +282,15 @@ export async function startServer(options: ServerOptions) {
     child.exited.then(() => {
       childProcesses.delete(pid);
     });
+
+    // The child just wrote a new session subdir under
+    // `<project>/.pneuma/sessions/<id>/`. Kick a cache revalidation so
+    // the next /api/projects/:id/sessions call picks up the new session
+    // immediately instead of waiting on chokidar's `addDir` event. Fire-
+    // and-forget — the launch response shouldn't block on the scan.
+    if (params.project) {
+      revalidateProjectCache(params.project).catch(() => {});
+    }
 
     return { url: readyUrl, workspace: resolvedWorkspace, sessionId: resolvedSessionId };
   }
@@ -1232,6 +1246,27 @@ export async function startServer(options: ServerOptions) {
       homeDir: homedir(),
     });
 
+    // Prime the per-project cache for every known project so the launcher's
+    // "Recent Projects" grid renders from cache on first paint. The first
+    // /api/projects call that arrives before priming finishes still works
+    // (it falls back to a synchronous SWR scan); priming just lets the
+    // common case skip that one-time cost. Wrapped so a malformed registry
+    // doesn't block server start.
+    try {
+      const registryData = readSessionsFileSync(
+        join(homedir(), ".pneuma", "sessions.json"),
+      );
+      for (const p of registryData.projects) {
+        // Don't await — the goal is to populate the cache in the background
+        // while the server keeps coming up.
+        primeProjectCache(p.root).catch((err) => {
+          console.warn(`[projects-cache] prime failed for ${p.root}: ${err}`);
+        });
+      }
+    } catch (err) {
+      console.warn(`[projects-cache] prime-on-start failed: ${err}`);
+    }
+
     // ── Handoff routes (v2 tool-call protocol) ─────────────────────────
     // The launcher mounts these so any project session whose own server
     // hands a request through `/api/handoffs/emit` (e.g. via cross-port
@@ -1780,6 +1815,30 @@ export async function startServer(options: ServerOptions) {
 
   // ── Project routes API ──────────────────────────────────────────────
   mountProjectsRoutes(app, { homeDir: homedir() });
+
+  // Prime the per-project cache. Per-session servers care most about the
+  // current project (high probability the user opens its panel first) but
+  // we prime everything for parity with the launcher — the panel can list
+  // all projects via `/api/projects`. Fire-and-forget to keep startup fast.
+  try {
+    const registryData = readSessionsFileSync(
+      join(homedir(), ".pneuma", "sessions.json"),
+    );
+    for (const p of registryData.projects) {
+      primeProjectCache(p.root).catch((err) => {
+        console.warn(`[projects-cache] prime failed for ${p.root}: ${err}`);
+      });
+    }
+  } catch (err) {
+    console.warn(`[projects-cache] prime-on-start failed: ${err}`);
+  }
+  if (options.pneumaProjectRoot) {
+    primeProjectCache(options.pneumaProjectRoot).catch((err) => {
+      console.warn(
+        `[projects-cache] prime current project failed: ${err}`,
+      );
+    });
+  }
 
   // ── Handoff routes (v2 tool-call protocol) ──────────────────────────
   // Mounted on the per-session server so the source agent's
@@ -2895,6 +2954,11 @@ export default S;`;
   const cleanup = async () => {
     if (handoffRoutesContext) handoffRoutesContext.stop();
     await hookBus.emit("session:end", { sessionId: sessionInfo.sessionId, mode: sessionInfo.mode, workspace }, sessionInfo).catch(() => {});
+    // Tear down chokidar watchers so they don't leak across `bun run dev`
+    // restarts (each restart spawns a fresh server process; without this,
+    // the process exit alone reaps them, but explicit shutdown lets
+    // tests clean up between cases).
+    await shutdownProjectCache().catch(() => {});
   };
 
   return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup, sessionInfo, hookBus, queueContentUpdate };
