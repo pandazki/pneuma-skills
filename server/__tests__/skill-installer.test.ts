@@ -8,8 +8,9 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { applyTemplateParams, installSkill, generateViewerApiSection, installMcpServers, installSkillDependencies } from "../skill-installer.js";
+import { applyTemplateParams, installSkill, generateViewerApiSection, installMcpServers, installSkillDependencies, buildAndInjectPreferences } from "../skill-installer.js";
 import type { SkillConfig, ViewerApiConfig, McpServerConfig, SkillDependency } from "../../core/types/mode-manifest.js";
+import { HookBus } from "../../core/hook-bus.js";
 
 // ── applyTemplateParams (pure) ──────────────────────────────────────────────
 
@@ -357,6 +358,152 @@ describe("installSkill", () => {
     // Also when omitted
     installSkill(workspace, defaultSkillConfig, modeSourceDir);
     expect(existsSync(join(workspace, "AGENTS.md"))).toBe(false);
+  });
+
+  test("injects project context and project preferences into CLAUDE.md", () => {
+    const projectRoot = join(tmpDir, "project-root");
+    mkdirSync(join(projectRoot, ".pneuma"), { recursive: true });
+    writeFileSync(
+      join(projectRoot, ".pneuma", "project-preferences.md"),
+      "# Project Preferences\n\n- Use a quiet editorial tone.\n",
+    );
+
+    installSkill(workspace, defaultSkillConfig, modeSourceDir, undefined, undefined, "claude-code", undefined, {
+      projectContext: {
+        projectId: "project_123",
+        projectName: "Launch Project",
+        projectRoot,
+        description: "Marketing site",
+        role: "Build the intro page",
+        currentSessionId: "web-1",
+        currentMode: "webcraft",
+        currentSessionDisplayName: "Webcraft",
+        peerSessions: [
+          {
+            sessionId: "doc-1",
+            mode: "doc",
+            displayName: "Doc",
+            role: "Draft the copy",
+            backendType: "claude-code",
+            status: "idle",
+            lastAccessed: "2026-04-28T03:00:00.000Z",
+          },
+        ],
+      },
+    });
+
+    const content = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
+    expect(content).toContain("<!-- pneuma:project-context:start -->");
+    expect(content).toContain("## Project Context");
+    expect(content).toContain("Launch Project");
+    expect(content).toContain(projectRoot);
+    expect(content).toContain("Marketing site");
+    expect(content).toContain("Build the intro page");
+    expect(content).toContain("Doc (`doc`) — role: Draft the copy");
+    expect(content).not.toContain("sessionWorkspace");
+    expect(content).toContain("<!-- pneuma:preferences:start -->");
+    expect(content).toContain("**Project:**");
+    expect(content).toContain("Project preferences override personal preferences when they conflict.");
+    expect(content).toContain("Use a quiet editorial tone.");
+  });
+
+  test("injects project context into AGENTS.md for codex sessions", () => {
+    const projectRoot = join(tmpDir, "codex-project-root");
+    mkdirSync(join(projectRoot, ".pneuma"), { recursive: true });
+
+    installSkill(workspace, defaultSkillConfig, modeSourceDir, undefined, undefined, "codex", undefined, {
+      projectContext: {
+        projectId: "project_codex",
+        projectName: "Codex Project",
+        projectRoot,
+        role: "Review implementation",
+        currentSessionId: "codex-1",
+        currentMode: "doc",
+        currentSessionDisplayName: "Doc",
+        peerSessions: [],
+      },
+    });
+
+    const content = readFileSync(join(workspace, "AGENTS.md"), "utf-8");
+    expect(content).toContain("<!-- pneuma:project-context:start -->");
+    expect(content).toContain("Codex Project");
+    expect(content).toContain("Review implementation");
+    expect(existsSync(join(workspace, "CLAUDE.md"))).toBe(false);
+  });
+
+  test("does not infer project context from workspace files for quick sessions", () => {
+    mkdirSync(join(workspace, ".pneuma"), { recursive: true });
+    writeFileSync(join(workspace, ".pneuma", "project.json"), JSON.stringify({ name: "Should Not Load" }));
+    writeFileSync(join(workspace, ".pneuma", "project-preferences.md"), "- Should not be injected\n");
+    writeFileSync(
+      join(workspace, "CLAUDE.md"),
+      "<!-- pneuma:project-context:start -->\nstale project\n<!-- pneuma:project-context:end -->\n",
+    );
+
+    installSkill(workspace, defaultSkillConfig, modeSourceDir);
+
+    const content = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
+    expect(content).not.toContain("<!-- pneuma:project-context:start -->");
+    expect(content).not.toContain("Should Not Load");
+    expect(content).not.toContain("Should not be injected");
+  });
+});
+
+describe("buildAndInjectPreferences project layer", () => {
+  let tmpDir: string;
+  let workspace: string;
+  let projectRoot: string;
+
+  beforeEach(() => {
+    tmpDir = join(import.meta.dir, `.tmp-project-prefs-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    workspace = join(tmpDir, "workspace");
+    projectRoot = join(tmpDir, "project-root");
+    mkdirSync(workspace, { recursive: true });
+    mkdirSync(join(projectRoot, ".pneuma"), { recursive: true });
+    writeFileSync(join(workspace, "CLAUDE.md"), "# Project\n");
+    writeFileSync(
+      join(projectRoot, ".pneuma", "project-preferences.md"),
+      "# Project Preferences\n\n- Prefer restrained visual density.\n",
+    );
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("preserves project preferences when plugin preference enrichment runs", async () => {
+    const hookBus = new HookBus();
+    hookBus.on("preferences:build", "test-plugin", async ({ payload }) => ({
+      ...(payload as any),
+      globalCritical: "Always cite assumptions.",
+    }));
+
+    await buildAndInjectPreferences(
+      workspace,
+      "pneuma-webcraft",
+      "claude-code",
+      hookBus,
+      { sessionId: "s1", mode: "webcraft", workspace, backendType: "claude-code" },
+      {
+        projectContext: {
+          projectId: "project_123",
+          projectName: "Launch Project",
+          projectRoot,
+          currentSessionId: "s1",
+          currentMode: "webcraft",
+          currentSessionDisplayName: "Webcraft",
+          peerSessions: [],
+        },
+      },
+    );
+
+    const content = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
+    expect(content).toContain("<!-- pneuma:project-context:start -->");
+    expect(content).toContain("Launch Project");
+    expect(content).toContain("**Global:**");
+    expect(content).toContain("Always cite assumptions.");
+    expect(content).toContain("**Project:**");
+    expect(content).toContain("Prefer restrained visual density.");
   });
 });
 

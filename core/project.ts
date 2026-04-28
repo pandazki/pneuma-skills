@@ -80,6 +80,28 @@ export interface ProjectRuntime {
   session: ProjectSessionManifest;
 }
 
+export interface ProjectInstructionSessionSummary {
+  sessionId: string;
+  mode: string;
+  displayName: string;
+  role?: string;
+  backendType: ProjectBackendType;
+  status: ProjectSessionManifest["status"];
+  lastAccessed: string;
+}
+
+export interface ProjectInstructionContext {
+  projectId: string;
+  projectName: string;
+  projectRoot: string;
+  description?: string;
+  role?: string;
+  currentSessionId: string;
+  currentMode: string;
+  currentSessionDisplayName: string;
+  peerSessions: ProjectInstructionSessionSummary[];
+}
+
 export type ProjectTimelineEvent =
   | { type: "project.created"; at: string; projectId: string; name: string }
   | { type: "project.updated"; at: string; changes: Record<string, unknown> }
@@ -289,5 +311,32 @@ export function resolveProjectRuntime(options: ResolveProjectRuntimeOptions): Pr
     workspace: session.sessionWorkspace,
     project,
     session,
+  };
+}
+
+export function buildProjectInstructionContext(
+  runtime: ProjectRuntime,
+  sessions: ProjectSessionManifest[] = listProjectSessions(runtime.projectRoot),
+): ProjectInstructionContext {
+  return {
+    projectId: runtime.project.projectId,
+    projectName: runtime.project.name,
+    projectRoot: runtime.projectRoot,
+    ...(runtime.project.description ? { description: runtime.project.description } : {}),
+    ...(runtime.session.role ? { role: runtime.session.role } : {}),
+    currentSessionId: runtime.session.sessionId,
+    currentMode: runtime.session.mode,
+    currentSessionDisplayName: runtime.session.displayName,
+    peerSessions: sessions
+      .filter((session) => session.sessionId !== runtime.session.sessionId)
+      .map((session) => ({
+        sessionId: session.sessionId,
+        mode: session.mode,
+        displayName: session.displayName,
+        ...(session.role ? { role: session.role } : {}),
+        backendType: session.backendType,
+        status: session.status,
+        lastAccessed: session.lastAccessed,
+      })),
   };
 }

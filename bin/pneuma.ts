@@ -20,6 +20,7 @@ import { initShadowGit } from "../server/shadow-git.js";
 import { loadModeManifest, listBuiltinModes, registerExternalMode } from "../core/mode-loader.js";
 import type { ModeManifest } from "../core/types/mode-manifest.js";
 import type { AgentBackendType } from "../core/types/agent-backend.js";
+import type { ProjectInstructionContext } from "../core/project.js";
 import { applyTemplateParams } from "../server/skill-installer.js";
 import { resolveMode as resolveModeSource, isExternalMode } from "../core/mode-resolver.js";
 import type { ResolvedMode } from "../core/mode-resolver.js";
@@ -1256,9 +1257,10 @@ Options:
 
   let activeProjectRoot = "";
   let projectSessionId = "";
+  let projectInstructionContext: ProjectInstructionContext | undefined;
 
   if (projectRoot) {
-    const { resolveProjectRuntime } = await import("../core/project.js");
+    const { buildProjectInstructionContext, resolveProjectRuntime } = await import("../core/project.js");
     const runtime = resolveProjectRuntime({
       projectRoot,
       mode: modeName,
@@ -1268,6 +1270,7 @@ Options:
     });
     activeProjectRoot = runtime.projectRoot;
     projectSessionId = runtime.session.sessionId;
+    projectInstructionContext = buildProjectInstructionContext(runtime);
     workspace = runtime.workspace;
     p.log.info(`Project: ${runtime.project.name} (${activeProjectRoot})`);
     p.log.info(`Project session: ${projectSessionId}`);
@@ -1381,7 +1384,9 @@ Options:
     }
 
     p.log.step("Installing skill and preparing environment...");
-    installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, backendType, manifest.proxy);
+    installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, backendType, manifest.proxy, {
+      projectContext: projectInstructionContext,
+    });
     // Record installed skill version for update detection
     const skillVersionPath = join(workspace, ".pneuma", "skill-version.json");
     mkdirSync(join(workspace, ".pneuma"), { recursive: true });
@@ -1614,6 +1619,7 @@ Options:
     editing: initialEditing,
     editingSupported: !!manifest.editing?.supported,
     backendType,
+    projectInstructionContext,
   });
 
   // 4. Launch Agent backend or set up replay mode
@@ -1657,7 +1663,9 @@ Options:
       }
 
       p.log.step("Continue Work: installing skill...");
-      installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, backendType, manifest.proxy);
+      installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, backendType, manifest.proxy, {
+        projectContext: projectInstructionContext,
+      });
 
       // Record installed skill version
       const skillVersionPath = join(workspace, ".pneuma", "skill-version.json");
@@ -1862,7 +1870,9 @@ Options:
       // Register launch callback for viewing → edit switching
       onEditingLaunch!(async () => {
         p.log.step("Switching to edit mode: installing skill and launching agent...");
-        installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, sessionBackendType, manifest.proxy);
+        installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, sessionBackendType, manifest.proxy, {
+          projectContext: projectInstructionContext,
+        });
         const skillVersionPath = join(workspace, ".pneuma", "skill-version.json");
         writeFileSync(skillVersionPath, JSON.stringify({ mode: modeName, version: manifest.version }));
 
@@ -1963,7 +1973,9 @@ Options:
         // Register launch callback for subsequent viewing → edit switch
         onEditingLaunch!(async () => {
           p.log.step("Switching to edit mode: installing skill and launching agent...");
-          installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, sessionBackendType, manifest.proxy);
+          installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, sessionBackendType, manifest.proxy, {
+            projectContext: projectInstructionContext,
+          });
 
           backend = createBackend(sessionBackendType, actualPort);
           wireCLISessionId();

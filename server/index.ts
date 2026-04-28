@@ -31,7 +31,7 @@ import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./
 import type { ProxyRoute } from "../core/types/mode-manifest.js";
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
 import { mountNativeRoutes } from "./native-bridge.js";
-import { createProject, loadRecentProjects, recordRecentProject } from "../core/project.js";
+import { createProject, loadRecentProjects, recordRecentProject, type ProjectInstructionContext } from "../core/project.js";
 
 const DEFAULT_PORT = 17007;
 
@@ -57,6 +57,7 @@ export interface ServerOptions {
   editingSupported?: boolean; // Mode supports editing ↔ viewing toggle
   backendType?: string; // Backend type for correct instructions file selection (claude-code | codex)
   refreshStrategy?: "auto" | "manual"; // Viewer refresh strategy (default: "auto")
+  projectInstructionContext?: ProjectInstructionContext; // Explicit project context for agent instructions
 }
 
 export async function startServer(options: ServerOptions) {
@@ -1198,7 +1199,9 @@ export async function startServer(options: ServerOptions) {
   {
     const { buildAndInjectPreferences } = await import("./skill-installer.js");
     const installName = `pneuma-${options.modeName ?? ""}`;
-    await buildAndInjectPreferences(workspace, installName, options.backendType ?? "claude-code", hookBus, sessionInfo);
+    await buildAndInjectPreferences(workspace, installName, options.backendType ?? "claude-code", hookBus, sessionInfo, {
+      projectContext: options.projectInstructionContext,
+    });
   }
 
   // Mount plugin routes

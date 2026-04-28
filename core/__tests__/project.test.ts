@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  buildProjectInstructionContext,
   createProject,
   createProjectSession,
   listProjectSessions,
@@ -192,5 +193,70 @@ describe("project runtime", () => {
     expect(runtime.session.sessionId).toBe("web-runtime");
     expect(runtime.workspace).toBe(join(root, ".pneuma", "sessions", "web-runtime", "workspace"));
     expect(runtime.projectRoot).toBe(root);
+  });
+});
+
+describe("project instruction context", () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = join(tmpdir(), `pneuma-project-context-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(root, { recursive: true });
+    createProject(root, {
+      name: "Context Project",
+      description: "Cross-mode project",
+      now: () => "2026-04-28T00:00:00.000Z",
+      idFactory: () => "project_context",
+    });
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("buildProjectInstructionContext summarizes project identity and peer sessions without workspace paths", () => {
+    createProjectSession(root, {
+      mode: "doc",
+      displayName: "Doc",
+      backendType: "claude-code",
+      role: "Draft the copy",
+      now: () => "2026-04-28T01:00:00.000Z",
+      idFactory: () => "doc-peer",
+    });
+    const runtime = resolveProjectRuntime({
+      projectRoot: root,
+      mode: "webcraft",
+      displayName: "Webcraft",
+      backendType: "codex",
+      role: "Build the page",
+      now: () => "2026-04-28T02:00:00.000Z",
+      sessionIdFactory: () => "web-current",
+    });
+
+    const context = buildProjectInstructionContext(runtime);
+
+    expect(context).toMatchObject({
+      projectId: "project_context",
+      projectName: "Context Project",
+      projectRoot: root,
+      description: "Cross-mode project",
+      role: "Build the page",
+      currentSessionId: "web-current",
+      currentMode: "webcraft",
+      currentSessionDisplayName: "Webcraft",
+    });
+    expect(context.peerSessions).toEqual([
+      {
+        sessionId: "doc-peer",
+        mode: "doc",
+        displayName: "Doc",
+        role: "Draft the copy",
+        backendType: "claude-code",
+        status: "active",
+        lastAccessed: "2026-04-28T01:00:00.000Z",
+      },
+    ]);
+    expect(JSON.stringify(context)).not.toContain("sessionWorkspace");
+    expect(JSON.stringify(context)).not.toContain(projectSessionWorkspace(root, "doc-peer"));
   });
 });
