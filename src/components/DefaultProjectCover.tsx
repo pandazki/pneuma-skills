@@ -4,8 +4,11 @@
  * the project's first letter as a large stylized character, plus a subtle
  * grid-of-dots texture so the card never looks empty.
  *
- * The hue rotates deterministically on `seed` (the project id) so that two
- * cards next to each other don't share the exact same gradient.
+ * Color treatment is locked to brand orange (cc-primary, hue ≈21°). The seed
+ * varies *lightness* and *saturation* — never hue — so two adjacent cards
+ * read as distinct without one drifting into yellow/red territory. Earlier
+ * versions rotated hue across 10°–60°, which produced off-brand yellow
+ * covers; that's the failure case this guards against.
  */
 
 import React from "react";
@@ -38,10 +41,17 @@ export function DefaultProjectCover({
   className,
 }: DefaultProjectCoverProps) {
   const h = hashString(seed || displayName);
-  // 0..359 hue, but biased toward warm (10°–60°) so cards stay on-theme.
-  const hue = 10 + (h % 50);
-  const accent = `hsl(${hue}deg 90% 56%)`;
-  const accentSoft = `hsl(${hue}deg 80% 32% / 0.55)`;
+  // Hue locked to Pneuma orange (cc-primary #f97316 ≈ hue 21°). The seed
+  // drives subtle lightness/saturation drift so cards stay distinguishable
+  // without straying off-brand.
+  const HUE = 21;
+  // `h` is a uint32 (the hash uses `>>> 0`). Use the unsigned right shift on
+  // the second axis as well, otherwise hashes with the high bit set would
+  // produce a negative remainder and push saturation below the floor.
+  const lightness = 50 + (h % 13); // 50–62
+  const saturation = 82 + ((h >>> 4) % 14); // 82–95
+  const accent = `hsl(${HUE}deg ${saturation}% ${lightness}%)`;
+  const accentSoft = `hsl(${HUE}deg ${Math.max(saturation - 10, 60)}% ${Math.max(lightness - 22, 28)}% / 0.55)`;
   const letter = firstGrapheme(displayName);
 
   return (
