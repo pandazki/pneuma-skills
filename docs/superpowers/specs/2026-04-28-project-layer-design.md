@@ -1,7 +1,7 @@
 # Pneuma Project Layer Design
 
-**Date:** 2026-04-28  
-**Status:** Draft, direction approved  
+**Date:** 2026-04-28
+**Status:** Draft, direction approved
 **Decision:** Project Root / Session Sandbox model
 
 ## Overview
