@@ -6,6 +6,7 @@ import Galaxy from "./reactbits/Galaxy";
 import { CreateProjectDialog } from "./CreateProjectDialog.js";
 import { DirBrowser } from "./DirBrowser.js";
 import { ProjectCard, type ProjectCardEntry } from "./ProjectCard.js";
+import { ModeIcon } from "./ModeIcon.js";
 import { useAnimatedMount } from "../utils/useAnimatedMount.js";
 import { timeAgo, runningDuration } from "../utils/timeAgo.js";
 import { shortenPath } from "../utils/string.js";
@@ -312,19 +313,12 @@ function ConfirmButton({
 
 // ── Utility functions ────────────────────────────────────────────────────
 
-const FALLBACK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"/></svg>`;
+// `ModeIcon` + `FALLBACK_SVG` live in `./ModeIcon.tsx` so panels outside
+// the launcher (e.g. ProjectPanel's mode tile grid) can render the same
+// icon-with-fallback pattern. The Mode Maker / Evolve glyphs are launcher-
+// scoped and stay here.
 const MODE_MAKER_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085"/></svg>`;
 const EVOLVE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c-1.5 0-2.5 1-3 2-.5-1-1.5-2-3-2C4 3 2 5 2 7c0 3 4 6 6 8 .5-.5 1.5-1.5 2-2"/><path d="M12 3c1.5 0 2.5 1 3 2 .5-1 1.5-2 3-2 2 0 4 2 4 4 0 3-4 6-6 8-.5-.5-1.5-1.5-2-2"/><path d="M12 21v-8"/><path d="M9 18l3-3 3 3"/></svg>`;
-
-function ModeIcon({ svg, className }: { svg?: string; className?: string }) {
-  const hasSvg = svg && svg.trim().startsWith("<svg");
-  return (
-    <div
-      className={`[&>svg]:w-full [&>svg]:h-full ${className || ""}`}
-      dangerouslySetInnerHTML={{ __html: hasSvg ? svg : FALLBACK_SVG }}
-    />
-  );
-}
 
 function PrimaryButton({
   children,
