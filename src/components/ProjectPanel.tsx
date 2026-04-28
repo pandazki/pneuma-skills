@@ -220,6 +220,13 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   // spawned mode (used by the right-pane mode tile flow; the session-row
   // path leaves it undefined and the server falls back to the persisted
   // `config.json`).
+  //
+  // When the active source has a session id (we're inside a project session,
+  // not the empty shell) AND we're switching to a different existing session
+  // OR a different mode, attach `from_session_id` / `from_mode` /
+  // `from_display_name` so the spawned child can dispatch
+  // `<pneuma:env reason="switched" from_session=… …/>`. The child then knows
+  // the user came from a sibling, not from a fresh "+ New session" tile.
   const launch = async (
     specifier: string,
     sessionId?: string,
@@ -230,6 +237,28 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     setLaunchingId(sessionId ?? `new:${specifier}`);
     setLaunchError(null);
     try {
+      // Source-context for `<pneuma:env reason="switched">` — only attached
+      // when we're spawning *from* a live session (active id present). The
+      // mode/displayName come from the store (viewer + project context); the
+      // child server just stamps them into the env tag attributes.
+      const fromContext: {
+        from_session_id?: string;
+        from_mode?: string;
+        from_display_name?: string;
+      } = {};
+      if (activeSessionId) {
+        fromContext.from_session_id = activeSessionId;
+        if (sessionMode) fromContext.from_mode = sessionMode;
+        // Display name: the active session's row in the panel — we don't
+        // expose it directly from store, so derive from the sessions list.
+        const activeSession = sessions.find((s) => s.sessionId === activeSessionId);
+        if (activeSession) {
+          fromContext.from_display_name =
+            activeSession.displayName ||
+            `${activeSession.mode} session`;
+        }
+      }
+
       const res = await fetch(`${apiBase}/api/launch`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -241,6 +270,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
           ...(initParams && Object.keys(initParams).length > 0
             ? { initParams }
             : {}),
+          ...fromContext,
         }),
       });
       const data = (await res.json()) as { url?: string; error?: string };

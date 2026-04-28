@@ -14,7 +14,8 @@ import { homedir, tmpdir } from "node:os";
 import * as p from "@clack/prompts";
 import { startServer } from "../server/index.js";
 import { createBackend, getDefaultBackendType } from "../backends/index.js";
-import { installSkill, readInboundHandoff } from "../server/skill-installer.js";
+import { installSkill, readInboundHandoff, type InboundHandoffPayload } from "../server/skill-installer.js";
+import { buildEnvTag } from "./env-tag.js";
 import { startFileWatcher } from "../server/file-watcher.js";
 import { initShadowGit } from "../server/shadow-git.js";
 import { loadModeManifest, listBuiltinModes, registerExternalMode } from "../core/mode-loader.js";
@@ -1290,7 +1291,7 @@ Options:
     return;
   }
 
-  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource, sessionName, viewing } = parsedArgs;
+  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource, sessionName, viewing, fromSessionId, fromMode, fromDisplayName } = parsedArgs;
   let { workspace, replayPackage } = parsedArgs;
 
   // Launcher mode — no mode arg → start marketplace UI
@@ -1627,38 +1628,50 @@ Options:
     writeFileSync(skillVersionPath, JSON.stringify({ mode: modeName, version: manifest.version }));
   }
 
-  // Record a `switched_in` history event when this project session boots
-  // with an inbound handoff payload. The v2 confirm endpoint dropped the
-  // payload at `<sessionDir>/.pneuma/inbound-handoff.json` before spawning
-  // us; the matching `switched_out` event was already written on the
-  // source side. This pair lets the viewer's history feed show the
-  // round-trip cleanly. Best-effort — IO failures don't block the launch.
+  // Read the v2 inbound handoff payload (if any). Used both to record the
+  // `switched_in` history event and to drive the `<pneuma:env reason="handed-off" />`
+  // dispatch on the agent's first turn. Read once here so the file's existence
+  // is the single source of truth for the handoff path.
+  let inboundHandoff: InboundHandoffPayload | null = null;
   if (startup.kind === "project" && startup.paths.projectRoot) {
+    inboundHandoff = readInboundHandoff(sessionDir);
+  }
+  if (inboundHandoff && inboundHandoff.handoff_id) {
     try {
-      const inbound = readInboundHandoff(sessionDir);
-      if (inbound && inbound.handoff_id) {
-        const historyPath = join(stateDir, "history.json");
-        let arr: unknown[] = [];
-        if (existsSync(historyPath)) {
-          try {
-            const raw = readFileSync(historyPath, "utf-8");
-            const parsedArr = JSON.parse(raw);
-            if (Array.isArray(parsedArr)) arr = parsedArr;
-          } catch {
-            // Corrupt history.json — start fresh rather than blocking launch.
-          }
+      const historyPath = join(stateDir, "history.json");
+      let arr: unknown[] = [];
+      if (existsSync(historyPath)) {
+        try {
+          const raw = readFileSync(historyPath, "utf-8");
+          const parsedArr = JSON.parse(raw);
+          if (Array.isArray(parsedArr)) arr = parsedArr;
+        } catch {
+          // Corrupt history.json — start fresh rather than blocking launch.
         }
-        arr.push({
-          type: "session_event",
-          subtype: "switched_in",
-          handoff_id: inbound.handoff_id,
-          ts: Date.now(),
-        });
-        mkdirSync(stateDir, { recursive: true });
-        writeFileSync(historyPath, JSON.stringify(arr, null, 2), "utf-8");
       }
+      arr.push({
+        type: "session_event",
+        subtype: "switched_in",
+        handoff_id: inboundHandoff.handoff_id,
+        ts: Date.now(),
+      });
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(historyPath, JSON.stringify(arr, null, 2), "utf-8");
     } catch (err) {
       console.warn(`[pneuma] failed to record switched_in event: ${err}`);
+    }
+  }
+
+  // Resolve the project's display name once for the env-tag dispatch below.
+  // Best-effort — manifest read failures fall back to `undefined`, and the
+  // env tag simply omits the `project=` attr.
+  let projectDisplayName: string | undefined;
+  if (startup.kind === "project" && startup.paths.projectRoot) {
+    try {
+      const projectManifest = await loadProjectManifest(startup.paths.projectRoot);
+      projectDisplayName = projectManifest?.displayName ?? undefined;
+    } catch {
+      // Already best-effort; nothing to do.
     }
   }
 
@@ -1913,6 +1926,35 @@ Options:
   let backend: ReturnType<typeof createBackend> | null = null;
   let historyInterval: ReturnType<typeof setInterval> | null = null;
 
+  // First-launch flag for the `<pneuma:env>` dispatch — set true once we
+  // emit the tag so the dispatcher is idempotent across the multiple paths
+  // that launch the agent (replay-continue, viewing→edit, the normal path).
+  let envTagDispatched = false;
+  /**
+   * Emit the `<pneuma:env reason="…" />` synthetic user message. Idempotent
+   * within the lifetime of this process; called by every agent-launch path
+   * but only fires the broadcast once.
+   *
+   * Skips on resume (the agent is continuing a prior conversation; the env
+   * marker would mislead it about its starting state) — callers gate via
+   * the `resuming` flag.
+   */
+  const dispatchEnvTag = (targetSessionId: string) => {
+    if (envTagDispatched) return;
+    const tag = buildEnvTag({
+      mode: modeName,
+      projectName: projectDisplayName,
+      inbound: inboundHandoff,
+      fromSessionId,
+      fromMode,
+      fromDisplayName,
+    });
+    if (!tag) return;
+    envTagDispatched = true;
+    wsBridge.sendUserMessage(targetSessionId, tag);
+    console.log(`[pneuma] Dispatched env tag: ${tag}`);
+  };
+
   if (replayPackage) {
     // Replay mode — no agent, no greeting, no file watcher
     // But real workspace + real session for Continue Work transition
@@ -2047,6 +2089,10 @@ Options:
       if (manifest.agent?.greeting) {
         wsBridge.injectGreeting(sessionId, manifest.agent.greeting);
       }
+
+      // Replay → Continue Work counts as a fresh agent start; dispatch
+      // the env tag here too so the new agent knows the session lineage.
+      dispatchEnvTag(sessionId);
 
       p.log.success("Continue Work: agent launched, session active");
     });
@@ -2221,6 +2267,12 @@ Options:
         await wireCodexAdapter(sessionId);
         wireAgentExitHandler(agentSession.sessionId, false);
 
+        // First-time switch from viewing → edit counts as the agent's
+        // session start; dispatch the env tag here too. The dispatcher is
+        // internally idempotent so toggling viewing → edit → viewing →
+        // edit only fires once.
+        dispatchEnvTag(sessionId);
+
         // Register kill callback for edit → viewing switching
         onEditingKill!(async () => {
           p.log.step("Switching to viewing mode: stopping agent...");
@@ -2308,6 +2360,15 @@ Options:
       if (!resuming && manifest.agent?.greeting) {
         wsBridge.injectGreeting(session.sessionId, manifest.agent.greeting);
         console.log("[pneuma] Sent auto-greeting for fresh session");
+      }
+
+      // `<pneuma:env>` session-start signal. Dispatched on every fresh
+      // launch (not on resume — the agent's continuing a prior chat and
+      // the marker would misrepresent its starting state). The dispatch
+      // helper is internally idempotent so re-entering this block via the
+      // edit-toggle path won't double-fire.
+      if (!resuming) {
+        dispatchEnvTag(session.sessionId);
       }
 
       // Load persisted message history

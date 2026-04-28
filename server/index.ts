@@ -142,6 +142,15 @@ export async function startServer(options: ServerOptions) {
     viewing?: boolean;
     project?: string;
     sessionId?: string;
+    /**
+     * Source-session identity for the `<pneuma:env reason="switched" />`
+     * dispatch — only populated when ProjectPanel spawns a sibling click;
+     * the launcher's mode-card path leaves them undefined and the child
+     * dispatches `reason="opened"` instead.
+     */
+    fromSessionId?: string;
+    fromMode?: string;
+    fromDisplayName?: string;
   }): Promise<{ url: string; workspace: string; sessionId: string | null }> {
     const resolvedWorkspace = resolve(params.workspace.replace(/^~/, homedir()));
     mkdirSync(resolvedWorkspace, { recursive: true });
@@ -188,6 +197,9 @@ export async function startServer(options: ServerOptions) {
     if (params.sessionName) args.push("--session-name", params.sessionName);
     if (params.project) args.push("--project", params.project);
     if (params.sessionId) args.push("--session-id", params.sessionId);
+    if (params.fromSessionId) args.push("--from-session-id", params.fromSessionId);
+    if (params.fromMode) args.push("--from-mode", params.fromMode);
+    if (params.fromDisplayName) args.push("--from-display-name", params.fromDisplayName);
     if (options.debug) args.push("--debug");
     if (options.forceDev) args.push("--dev");
 
@@ -847,6 +859,9 @@ export async function startServer(options: ServerOptions) {
         viewing?: boolean;
         project?: string;
         sessionId?: string;
+        from_session_id?: string;
+        from_mode?: string;
+        from_display_name?: string;
       }>();
       try {
         const result = await launchPneumaChild({
@@ -861,6 +876,9 @@ export async function startServer(options: ServerOptions) {
           viewing: body.viewing,
           project: body.project,
           sessionId: body.sessionId,
+          fromSessionId: body.from_session_id,
+          fromMode: body.from_mode,
+          fromDisplayName: body.from_display_name,
         });
         return c.json({ url: result.url, workspace: result.workspace, mode: body.specifier });
       } catch (err) {
@@ -1895,6 +1913,9 @@ export async function startServer(options: ServerOptions) {
       viewing?: boolean;
       project?: string;
       sessionId?: string;
+      from_session_id?: string;
+      from_mode?: string;
+      from_display_name?: string;
     }>();
     try {
       const result = await launchPneumaChild({
@@ -1909,6 +1930,9 @@ export async function startServer(options: ServerOptions) {
         viewing: body.viewing,
         project: body.project,
         sessionId: body.sessionId,
+        fromSessionId: body.from_session_id,
+        fromMode: body.from_mode,
+        fromDisplayName: body.from_display_name,
       });
       return c.json({ url: result.url, workspace: result.workspace, mode: body.specifier });
     } catch (err) {
