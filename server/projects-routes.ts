@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { existsSync } from "node:fs";
-import { unlink, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { unlink, readFile, writeFile, rm } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import {
   loadProjectManifest,
   scanProjectSessions,
@@ -250,6 +250,42 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
         "cache-control": "private, max-age=60",
       },
     });
+  });
+
+  app.delete("/api/projects/:id/sessions/:sessionId", async (c) => {
+    const id = decodeURIComponent(c.req.param("id"));
+    const sessionId = decodeURIComponent(c.req.param("sessionId"));
+    // Path containment + manifest gate: the session dir resolves cleanly
+    // under the project's `.pneuma/sessions/`, and the project itself must
+    // be a real Pneuma project (manifest present). This blocks `..` /
+    // absolute-path traversal in the sessionId param.
+    const manifest = await loadProjectManifest(id);
+    if (!manifest) return c.json({ error: "project not found" }, 404);
+    const sessionsRoot = resolve(join(id, ".pneuma", "sessions"));
+    const sessionDir = resolve(join(sessionsRoot, sessionId));
+    if (!sessionDir.startsWith(sessionsRoot + "/")) {
+      return c.json({ error: "invalid session id" }, 400);
+    }
+    if (!existsSync(sessionDir)) {
+      return c.json({ error: "session not found" }, 404);
+    }
+    // Drop the registry entry first, then remove the dir. If the rm fails
+    // (e.g. permissions), the registry no longer references it — better
+    // than a registry entry pointing at a partially-deleted dir.
+    const data = await readSessionsFile(sessionsPath);
+    const next = {
+      ...data,
+      sessions: data.sessions.filter(
+        (s) => !(s.kind === "project" && s.projectRoot === id && s.sessionId === sessionId),
+      ),
+    };
+    await writeSessionsFile(sessionsPath, next);
+    try {
+      await rm(sessionDir, { recursive: true, force: true });
+    } catch (err) {
+      console.warn(`[projects] rm session dir failed: ${err}`);
+    }
+    return c.json({ deleted: true });
   });
 
   app.post("/api/handoffs/:id/cancel", async (c) => {

@@ -155,6 +155,35 @@ export default function ProjectPanel({ projectRoot }: ProjectPanelProps) {
     };
   }, [projectRoot, apiBase]);
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const deleteSession = async (sessionId: string) => {
+    if (deleting) return;
+    setDeleting(true);
+    setLaunchError(null);
+    try {
+      const res = await fetch(
+        `${apiBase}/api/projects/${encodeURIComponent(projectRoot)}/sessions/${encodeURIComponent(sessionId)}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setLaunchError(data.error ?? `Delete failed (${res.status})`);
+        return;
+      }
+      // Drop the session locally so the row disappears immediately. The
+      // panel's effect would refetch on next mount, but inline removal
+      // avoids the spinner flash.
+      setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
+      setConfirmDeleteId(null);
+    } catch (err) {
+      setLaunchError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   // Single launch helper. The previous `launchSession` and `evolveProject`
   // were 95% identical (only `specifier` differed); keep one path so error
   // surfacing and disable-while-launching gating can't drift.
@@ -325,58 +354,103 @@ export default function ProjectPanel({ projectRoot }: ProjectPanelProps) {
                   : `${modeDisplayName(s.mode)} session`;
                 const modeMeta = modeByName.get(s.mode);
                 const fullThumbUrl = s.thumbnailUrl ? `${apiBase}${s.thumbnailUrl}` : undefined;
+                const inConfirm = confirmDeleteId === s.sessionId;
                 return (
-                  <button
+                  <div
                     key={s.sessionId}
-                    type="button"
-                    aria-current={isActive ? "page" : undefined}
-                    disabled={launching}
-                    onClick={() => launch(s.mode, s.sessionId)}
-                    className={`flex items-start gap-3 w-full px-2.5 py-2 rounded-md text-left transition-colors disabled:opacity-50 ${
+                    className={`group relative flex items-stretch rounded-md transition-colors ${
                       isActive
                         ? "bg-cc-primary/10 ring-1 ring-cc-primary/30"
                         : "hover:bg-cc-hover/50"
                     }`}
                   >
-                    {/* Visual: thumbnail if we have one, else mode icon
-                        framed in a subtle primary tile. Either way the rail
-                        is 40×40 so titles stay vertically aligned. */}
-                    {fullThumbUrl ? (
-                      <span className="w-10 h-10 shrink-0 rounded-md overflow-hidden bg-black/20">
-                        <img
-                          src={fullThumbUrl}
-                          alt=""
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                        />
+                    <button
+                      type="button"
+                      aria-current={isActive ? "page" : undefined}
+                      disabled={launching || deleting}
+                      onClick={() => launch(s.mode, s.sessionId)}
+                      className="flex items-start gap-3 flex-1 min-w-0 px-2.5 py-2 text-left disabled:opacity-50 cursor-pointer"
+                    >
+                      {fullThumbUrl ? (
+                        <span className="w-10 h-10 shrink-0 rounded-md overflow-hidden bg-black/20">
+                          <img
+                            src={fullThumbUrl}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        </span>
+                      ) : (
+                        <span className="w-10 h-10 shrink-0 rounded-md bg-cc-primary/8 text-cc-primary flex items-center justify-center">
+                          <ModeIcon
+                            svg={modeMeta?.icon}
+                            className="w-5 h-5 text-cc-primary"
+                          />
+                        </span>
+                      )}
+                      <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                        <span
+                          className="text-sm text-cc-fg truncate leading-tight"
+                          title={title}
+                        >
+                          {title}
+                        </span>
+                        {s.preview ? (
+                          <span className="text-xs text-cc-muted/60 line-clamp-1 leading-snug">
+                            {s.preview}
+                          </span>
+                        ) : null}
+                        {s.lastAccessed ? (
+                          <span className="text-[11px] text-cc-muted/40 leading-none mt-0.5">
+                            {timeAgo(s.lastAccessed)}
+                          </span>
+                        ) : null}
                       </span>
-                    ) : (
-                      <span className="w-10 h-10 shrink-0 rounded-md bg-cc-primary/8 text-cc-primary flex items-center justify-center">
-                        <ModeIcon
-                          svg={modeMeta?.icon}
-                          className="w-5 h-5 text-cc-primary"
-                        />
-                      </span>
-                    )}
-                    <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-                      <span
-                        className="text-sm text-cc-fg truncate leading-tight"
-                        title={title}
+                    </button>
+                    {/* Delete affordance — hidden by default, revealed on hover.
+                        Suppressed for the active session (you can't delete the
+                        session you're inside of) and during a confirm flow on a
+                        sibling row, so the user's eye stays on one decision. */}
+                    {!isActive ? (
+                      <div
+                        className={`flex items-center pr-2 transition-opacity ${
+                          inConfirm ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+                        }`}
                       >
-                        {title}
-                      </span>
-                      {s.preview ? (
-                        <span className="text-xs text-cc-muted/60 line-clamp-1 leading-snug">
-                          {s.preview}
-                        </span>
-                      ) : null}
-                      {s.lastAccessed ? (
-                        <span className="text-[11px] text-cc-muted/40 leading-none mt-0.5">
-                          {timeAgo(s.lastAccessed)}
-                        </span>
-                      ) : null}
-                    </span>
-                  </button>
+                        {inConfirm ? (
+                          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-cc-bg/60 border border-cc-border/40">
+                            <button
+                              type="button"
+                              disabled={deleting}
+                              onClick={() => void deleteSession(s.sessionId)}
+                              className="text-[10px] font-medium text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              Delete
+                            </button>
+                            <span className="w-px h-3 bg-cc-border/40" aria-hidden />
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="text-[10px] text-cc-muted hover:text-cc-fg px-1 py-0.5 rounded transition-colors cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(s.sessionId)}
+                            title="Delete session"
+                            className="p-1.5 rounded-md text-cc-muted/40 hover:text-red-400 hover:bg-red-400/10 transition-colors cursor-pointer"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
                 );
               })}
               {/* Single "+ new session in current mode" affordance — replaces
