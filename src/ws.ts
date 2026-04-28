@@ -627,6 +627,38 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       break;
     }
 
+    case "user_message": {
+      // Server-injected synthetic user message (e.g. `<pneuma:env>` at session
+      // start, `<pneuma:handoff-cancelled>` after the user cancels a Smart
+      // Handoff in HandoffCard). Treated identically to a real user message
+      // for chat-rendering and turn-bookkeeping purposes — the skill teaches
+      // the agent to read the tag's attributes, and the chat UI collapses
+      // pneuma:* tags into a pill marker via PneumaSignalPill.
+      //
+      // Without this case the server-broadcast was dropped on the wire and
+      // only re-appeared in the chat after a page refresh via the
+      // `message_history` replay path. The handoff-cancel signal especially
+      // needs the live path: the source agent is alive and processing.
+      const content = typeof (data as any).content === "string" ? (data as any).content : "";
+      if (content) {
+        store.appendMessage({
+          id: nextId(),
+          role: "user",
+          content,
+          timestamp: typeof (data as any).timestamp === "number" ? (data as any).timestamp : Date.now(),
+        });
+      }
+      // Synthetic message kicks off agent work the same way a typed message
+      // does — flip to running so the Stop button is available immediately
+      // (the assistant stream's actual `running` status follows shortly).
+      currentTurnUserInitiated = true;
+      store.setTurnInProgress(true);
+      if (store.sessionStatus === "idle") {
+        store.setSessionStatus("running");
+      }
+      break;
+    }
+
     case "content_update": {
       // During replay mode, ignore file watcher updates — files come from checkpoints
       if (store.replayMode) break;
@@ -1085,6 +1117,17 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
     msg.files = files;
   }
   send(msg);
+
+  // Optimistically mark the turn as in-progress so the Stop button shows
+  // immediately. Without this, there's a 1–10s gap between "user clicked
+  // Send" and "agent's first stream chunk arrives" during which the chat
+  // looks idle even though work has been kicked off. The `assistant` /
+  // `result` / `cli_disconnected` handlers all flip these back to false
+  // when the actual turn completes.
+  store.setTurnInProgress(true);
+  if (store.sessionStatus === "idle") {
+    store.setSessionStatus("running");
+  }
 }
 
 export function sendPermissionResponse(
