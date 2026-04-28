@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { createBackend, getBackendCapabilities, getBackendDescriptors, getDefaultBackendType, getImplementedBackends } from "../../backends/index.js";
 
 describe("backend registry", () => {
-  test("declares Claude Code as the default backend", () => {
-    expect(getDefaultBackendType()).toBe("claude-code");
+  test("declares Codex as the default backend", () => {
+    // Switched from claude-code to codex when Anthropic removed CC's
+    // --sdk-url transport (CC 2.1.118). See backends/index.ts comment.
+    expect(getDefaultBackendType()).toBe("codex");
   });
 
   test("lists both declared backends with implementation flags", () => {

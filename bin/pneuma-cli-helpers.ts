@@ -40,6 +40,16 @@ export interface ParsedCliArgs {
   viewing: boolean;
 }
 
+/**
+ * Backfill value for legacy session records that pre-date the
+ * `backendType` field. Those records were written when claude-code was
+ * the only backend, so they semantically belong to claude-code regardless
+ * of what new sessions default to today. Tracked separately from
+ * `getDefaultBackendType()` (which now favors codex) so a legacy resume
+ * keeps targeting the agent it was actually launched with.
+ */
+const LEGACY_BACKFILL_BACKEND: AgentBackendType = "claude-code";
+
 export function normalizePersistedSession(data: Record<string, unknown>): PersistedSession {
   const normalized = { ...data } as Record<string, unknown>;
   if (normalized.cliSessionId && !normalized.agentSessionId) {
@@ -47,7 +57,7 @@ export function normalizePersistedSession(data: Record<string, unknown>): Persis
     delete normalized.cliSessionId;
   }
   if (!normalized.backendType) {
-    normalized.backendType = getDefaultBackendType();
+    normalized.backendType = LEGACY_BACKFILL_BACKEND;
   }
   return normalized as PersistedSession;
 }
@@ -55,7 +65,7 @@ export function normalizePersistedSession(data: Record<string, unknown>): Persis
 export function normalizeSessionRecord(data: Record<string, unknown>): SessionRecord {
   return {
     ...data,
-    backendType: (data.backendType as AgentBackendType | undefined) || getDefaultBackendType(),
+    backendType: (data.backendType as AgentBackendType | undefined) || LEGACY_BACKFILL_BACKEND,
   } as SessionRecord;
 }
 

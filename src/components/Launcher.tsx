@@ -3252,7 +3252,7 @@ export default function Launcher() {
   const { preference: themePref, resolved: theme, cycle: cycleTheme } = useTheme();
   const isLight = theme === "light";
   const [backendOptions, setBackendOptions] = useState<BackendOption[]>(FALLBACK_BACKENDS);
-  const [defaultBackendType, setDefaultBackendType] = useState<BackendType>("claude-code");
+  const [defaultBackendType, setDefaultBackendType] = useState<BackendType>("codex");
   const [builtins, setBuiltins] = useState<BuiltinMode[]>([]);
   const [published, setPublished] = useState<PublishedMode[]>([]);
   const [local, setLocal] = useState<LocalMode[]>([]);

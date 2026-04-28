@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.39.0] - 2026-04-28
+
+### Added
+- **Claude Code backend now version-checks before reporting available** — Anthropic removed the hidden `--sdk-url` transport in CC 2.1.118 (PR #28334), which is the WebSocket bridge the `claude-code` backend relies on. `detectBackendAvailability()` probes `claude --version`, compares against the break point, and disables the option in the launcher with a "Claude Code vX.Y.Z removed --sdk-url" explanation when the installed CLI is too new. Probe failure (no version line, exotic install) defaults to allow rather than block.
+
+### Changed
+- **Default backend switched from `claude-code` to `codex`** — keeps the happy path working for users on current Claude Code without forcing them through the picker. New CLI launches and the launcher landing both honor the new default. Sessions persisted before the `backendType` field existed still backfill to `claude-code` via a separate constant, so legacy resumes keep targeting the agent they were originally launched with.
+
 ## [2.38.0] - 2026-04-27
 
 ### Added
