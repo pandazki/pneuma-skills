@@ -225,6 +225,33 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     });
   });
 
+  app.get("/api/projects/:id/sessions/:sessionId/thumbnail", async (c) => {
+    const id = decodeURIComponent(c.req.param("id"));
+    const sessionId = decodeURIComponent(c.req.param("sessionId"));
+    // Restrict to known projects + known sessions to prevent arbitrary
+    // file reads via path traversal in the URL params. Same guard pattern
+    // as `/cover` above.
+    const manifest = await loadProjectManifest(id);
+    if (!manifest) return c.json({ error: "project not found" }, 404);
+    const sessionDir = join(id, ".pneuma", "sessions", sessionId);
+    if (!existsSync(join(sessionDir, "session.json"))) {
+      return c.json({ error: "session not found" }, 404);
+    }
+    const thumbPath = join(sessionDir, "thumbnail.png");
+    if (!existsSync(thumbPath)) {
+      return c.json({ error: "no thumbnail" }, 404);
+    }
+    const file = Bun.file(thumbPath);
+    return new Response(file, {
+      headers: {
+        "content-type": file.type || "image/png",
+        // Mirrors `/cover`: short cache so a refreshed thumbnail.png picks
+        // up without forcing a hard reload.
+        "cache-control": "private, max-age=60",
+      },
+    });
+  });
+
   app.post("/api/handoffs/:id/cancel", async (c) => {
     const id = c.req.param("id");
     const project = c.req.query("project");

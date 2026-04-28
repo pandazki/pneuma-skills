@@ -727,6 +727,67 @@ describe("GET /api/projects/:id/sessions", () => {
   });
 });
 
+describe("GET /api/projects/:id/sessions/:sessionId/thumbnail", () => {
+  test("streams thumbnail.png when present", async () => {
+    const projRoot = join(home, "thumb-proj");
+    const sessionDir = join(projRoot, ".pneuma", "sessions", "abc");
+    await mkdir(sessionDir, { recursive: true });
+    await writeFile(
+      join(projRoot, ".pneuma", "project.json"),
+      JSON.stringify({ version: 1, name: "p", displayName: "P", createdAt: 1 })
+    );
+    await writeFile(
+      join(sessionDir, "session.json"),
+      JSON.stringify({ sessionId: "abc", mode: "illustrate", backendType: "claude-code", createdAt: 1 })
+    );
+    const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    await writeFile(join(sessionDir, "thumbnail.png"), pngBytes);
+
+    const id = encodeURIComponent(projRoot);
+    const res = await testApp.request(`/api/projects/${id}/sessions/abc/thumbnail`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("image/png");
+    const buf = new Uint8Array(await res.arrayBuffer());
+    expect(buf.length).toBe(pngBytes.length);
+  });
+
+  test("404 when project unknown", async () => {
+    const res = await testApp.request(
+      `/api/projects/${encodeURIComponent("/nonexistent")}/sessions/x/thumbnail`
+    );
+    expect(res.status).toBe(404);
+  });
+
+  test("404 when session unknown", async () => {
+    const projRoot = join(home, "thumb-no-session");
+    await mkdir(join(projRoot, ".pneuma"), { recursive: true });
+    await writeFile(
+      join(projRoot, ".pneuma", "project.json"),
+      JSON.stringify({ version: 1, name: "p", displayName: "P", createdAt: 1 })
+    );
+    const id = encodeURIComponent(projRoot);
+    const res = await testApp.request(`/api/projects/${id}/sessions/missing/thumbnail`);
+    expect(res.status).toBe(404);
+  });
+
+  test("404 when session exists but has no thumbnail.png", async () => {
+    const projRoot = join(home, "thumb-no-png");
+    const sessionDir = join(projRoot, ".pneuma", "sessions", "abc");
+    await mkdir(sessionDir, { recursive: true });
+    await writeFile(
+      join(projRoot, ".pneuma", "project.json"),
+      JSON.stringify({ version: 1, name: "p", displayName: "P", createdAt: 1 })
+    );
+    await writeFile(
+      join(sessionDir, "session.json"),
+      JSON.stringify({ sessionId: "abc", mode: "doc", backendType: "claude-code", createdAt: 1 })
+    );
+    const id = encodeURIComponent(projRoot);
+    const res = await testApp.request(`/api/projects/${id}/sessions/abc/thumbnail`);
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("POST /api/handoffs/:id/cancel", () => {
   test("removes handoff file", async () => {
     const projRoot = join(home, "cancel-proj");
