@@ -14,7 +14,8 @@ import { homedir, tmpdir } from "node:os";
 import * as p from "@clack/prompts";
 import { startServer } from "../server/index.js";
 import { createBackend, getDefaultBackendType } from "../backends/index.js";
-import { installSkill } from "../server/skill-installer.js";
+import { installSkill, readInboundHandoff, type InboundHandoffPayload } from "../server/skill-installer.js";
+import { buildEnvTag } from "./env-tag.js";
 import { startFileWatcher } from "../server/file-watcher.js";
 import { initShadowGit } from "../server/shadow-git.js";
 import { loadModeManifest, listBuiltinModes, registerExternalMode } from "../core/mode-loader.js";
@@ -33,6 +34,19 @@ import {
   type PersistedSession,
   type SessionRecord,
 } from "./pneuma-cli-helpers.js";
+import { resolveStartupContext } from "./startup-dispatch.js";
+import {
+  readSessionsFile,
+  writeSessionsFile,
+  readSessionsFileSync,
+  writeSessionsFileSync,
+  upsertSession,
+  upsertProject,
+  pickSessionName,
+  type AnySessionRegistryEntry,
+  type SessionsFile,
+} from "./sessions-registry.js";
+import { loadProjectManifest } from "../core/project-loader.js";
 
 const PROJECT_ROOT = resolve(dirname(import.meta.path), "..");
 
@@ -63,8 +77,8 @@ async function wireClaudeCodeStdio(
 
 // ── Session persistence ──────────────────────────────────────────────────────
 
-function loadSession(workspace: string): PersistedSession | null {
-  const filePath = join(workspace, ".pneuma", "session.json");
+function loadSession(stateDir: string): PersistedSession | null {
+  const filePath = join(stateDir, "session.json");
   try {
     const content = readFileSync(filePath, "utf-8");
     return normalizePersistedSession(JSON.parse(content));
@@ -73,15 +87,14 @@ function loadSession(workspace: string): PersistedSession | null {
   }
 }
 
-function saveSession(workspace: string, session: PersistedSession): void {
-  const dir = join(workspace, ".pneuma");
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "session.json"), JSON.stringify(session, null, 2));
+function saveSession(stateDir: string, session: PersistedSession): void {
+  mkdirSync(stateDir, { recursive: true });
+  writeFileSync(join(stateDir, "session.json"), JSON.stringify(session, null, 2));
 }
 
-function loadHistory(workspace: string): unknown[] {
+function loadHistory(stateDir: string): unknown[] {
   try {
-    const content = readFileSync(join(workspace, ".pneuma", "history.json"), "utf-8");
+    const content = readFileSync(join(stateDir, "history.json"), "utf-8");
     const data = JSON.parse(content);
     return Array.isArray(data) ? data : [];
   } catch {
@@ -89,32 +102,14 @@ function loadHistory(workspace: string): unknown[] {
   }
 }
 
-function saveHistory(workspace: string, history: unknown[]): void {
-  const dir = join(workspace, ".pneuma");
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "history.json"), JSON.stringify(history));
+function saveHistory(stateDir: string, history: unknown[]): void {
+  mkdirSync(stateDir, { recursive: true });
+  writeFileSync(join(stateDir, "history.json"), JSON.stringify(history));
 }
 
 // ── Session registry (global, for launcher "Recent Sessions") ───────────────
 
 const SESSIONS_REGISTRY = join(homedir(), ".pneuma", "sessions.json");
-
-function loadSessionsRegistry(): SessionRecord[] {
-  try {
-    const records = JSON.parse(readFileSync(SESSIONS_REGISTRY, "utf-8"));
-    return Array.isArray(records)
-      ? records.map((record) => normalizeSessionRecord(record))
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveSessionsRegistry(records: SessionRecord[]): void {
-  const dir = dirname(SESSIONS_REGISTRY);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(SESSIONS_REGISTRY, JSON.stringify(records, null, 2));
-}
 
 /**
  * A workspace that lives inside the OS temp directory (e.g. mode-maker's
@@ -129,34 +124,102 @@ function isTemporaryWorkspace(workspace: string): boolean {
   return abs === tmp || abs.startsWith(tmp + sep);
 }
 
-const MAX_SESSION_RECORDS = 200;
+/**
+ * Record session in the global registry (~/.pneuma/sessions.json).
+ * Handles both quick (workspace-rooted) and project (nested) sessions.
+ *
+ * For quick sessions: upserts a quick session entry with id = workspace::mode
+ * For project sessions: upserts both a project entry and a project session entry
+ */
+async function recordSession(opts: {
+  startup: Awaited<ReturnType<typeof resolveStartupContext>>;
+  mode: string;
+  displayName: string;
+  workspace: string;
+  backendType: AgentBackendType;
+  sessionName?: string;
+  editing?: boolean;
+}): Promise<void> {
+  // Skip temporary workspaces
+  if (isTemporaryWorkspace(opts.workspace)) return;
 
-function recordSession(
-  mode: string,
-  displayName: string,
-  workspace: string,
-  backendType: AgentBackendType,
-  sessionName?: string,
-  editing?: boolean,
-): void {
-  if (isTemporaryWorkspace(workspace)) return;
-  const id = `${workspace}::${mode}`;
-  const records = loadSessionsRegistry();
-  const existing = records.findIndex((r) => r.id === id);
-  const entry: SessionRecord = { id, mode, displayName, workspace, backendType, lastAccessed: Date.now() };
-  if (sessionName) {
-    entry.sessionName = sessionName;
-  } else if (existing >= 0 && records[existing].sessionName) {
-    // Preserve existing sessionName on resume
-    entry.sessionName = records[existing].sessionName;
-  }
-  if (editing !== undefined) entry.editing = editing;
-  if (existing >= 0) {
-    records[existing] = entry;
+  const data = await readSessionsFile(SESSIONS_REGISTRY);
+
+  let next: SessionsFile;
+
+  // Preserve a previously-set custom sessionName when this run didn't
+  // pass --session-name. The pre-3.0 sessionName-rename feature relied on
+  // this to survive plain `pneuma <mode>` resumes; the registry refactor
+  // dropped the preservation and now overwrites with `undefined`. The
+  // merge rule itself lives in `pickSessionName` so it's unit-testable.
+  const candidateId =
+    opts.startup.kind === "project"
+      ? `${opts.startup.paths.projectRoot}::${opts.startup.sessionId}`
+      : `${opts.workspace}::${opts.mode}`;
+  const existingEntry = data.sessions.find((s) => s.id === candidateId);
+  const effectiveSessionName = pickSessionName(
+    opts.sessionName,
+    existingEntry?.sessionName,
+  );
+
+  if (opts.startup.kind === "project") {
+    // Project session: build the session entry first, then conditionally
+    // upsert a project entry if the project.json manifest is readable.
+    // Previously the entire write was skipped when the manifest was
+    // missing, silently dropping the session from the registry.
+    const projectRoot = opts.startup.paths.projectRoot!;
+    const manifest = await loadProjectManifest(projectRoot);
+
+    const sessionEntry: AnySessionRegistryEntry = {
+      id: candidateId,
+      kind: "project",
+      sessionId: opts.startup.sessionId,
+      projectRoot,
+      mode: opts.mode,
+      displayName: opts.displayName,
+      sessionName: effectiveSessionName,
+      sessionDir: opts.startup.paths.sessionDir,
+      backendType: opts.backendType,
+      lastAccessed: Date.now(),
+      editing: opts.editing,
+    };
+
+    next = upsertSession(data, sessionEntry);
+
+    if (manifest) {
+      next = upsertProject(next, {
+        id: projectRoot,
+        name: manifest.name,
+        displayName: manifest.displayName,
+        description: manifest.description,
+        root: projectRoot,
+        createdAt: manifest.createdAt,
+        lastAccessed: Date.now(),
+      });
+    } else {
+      console.warn(
+        `[pneuma] project.json missing or invalid at ${projectRoot}; recording session without project entry.`
+      );
+    }
   } else {
-    records.unshift(entry);
+    // Quick session: upsert session entry only
+    const sessionEntry: AnySessionRegistryEntry = {
+      id: candidateId,
+      kind: "quick",
+      mode: opts.mode,
+      displayName: opts.displayName,
+      sessionName: effectiveSessionName,
+      workspace: opts.workspace,
+      sessionDir: opts.startup.paths.sessionDir,
+      backendType: opts.backendType,
+      lastAccessed: Date.now(),
+      editing: opts.editing,
+    };
+
+    next = upsertSession(data, sessionEntry);
   }
-  saveSessionsRegistry(records.slice(0, MAX_SESSION_RECORDS));
+
+  await writeSessionsFile(SESSIONS_REGISTRY, next);
 }
 
 /**
@@ -207,8 +270,12 @@ function reconcileSessionsRegistry(): void {
     }
   }
 
-  const current = loadSessionsRegistry();
-  const byId = new Map(current.map((r) => [r.id, r]));
+  // Load current sessions synchronously for reconciliation.
+  // Uses the canonical reader so legacy-array upgrade and new-shape parsing
+  // share a single code path with the rest of the registry callers.
+  const currentData: SessionsFile = readSessionsFileSync(SESSIONS_REGISTRY);
+
+  const byId = new Map(currentData.sessions.map((r) => [r.id, r]));
   let added = 0;
 
   for (const entry of readdirSync(projectsDir, { withFileTypes: true })) {
@@ -238,29 +305,38 @@ function reconcileSessionsRegistry(): void {
 
       byId.set(id, {
         id,
+        kind: "quick" as const,
         mode: sess.mode,
         displayName: modeNames.get(sess.mode) || sess.mode,
         workspace,
+        sessionDir: workspace,
         backendType: sess.backendType || getDefaultBackendType(),
         lastAccessed,
         editing: sess.editing ?? true,
-      });
+      } as AnySessionRegistryEntry);
       added++;
     } catch { /* skip malformed session.json */ }
   }
 
   if (added === 0) return;
   const rebuilt = [...byId.values()].sort((a, b) => b.lastAccessed - a.lastAccessed);
-  const saved = rebuilt.slice(0, MAX_SESSION_RECORDS);
-  saveSessionsRegistry(saved);
-  const truncatedNote = rebuilt.length > saved.length ? ` (cap ${MAX_SESSION_RECORDS}; ${rebuilt.length - saved.length} oldest dropped)` : "";
+  const cap = 200;
+  const saved = rebuilt.slice(0, cap);
+  // Preserve the existing projects array — earlier versions wrote `[]` here
+  // unconditionally, which silently wiped every Pneuma 3.0 project entry on
+  // each launcher boot.
+  writeSessionsFileSync(SESSIONS_REGISTRY, {
+    projects: currentData.projects,
+    sessions: saved,
+  });
+  const truncatedNote = rebuilt.length > saved.length ? ` (cap ${cap}; ${rebuilt.length - saved.length} oldest dropped)` : "";
   console.log(`[sessions] Reconciled registry: ${added} workspace(s) recovered, ${saved.length} active${truncatedNote}.`);
 }
 
 // ── Init params persistence ──────────────────────────────────────────────────
 
-function loadConfig(workspace: string): Record<string, number | string> | null {
-  const filePath = join(workspace, ".pneuma", "config.json");
+function loadConfig(stateDir: string): Record<string, number | string> | null {
+  const filePath = join(stateDir, "config.json");
   try {
     const content = readFileSync(filePath, "utf-8");
     return JSON.parse(content);
@@ -269,10 +345,9 @@ function loadConfig(workspace: string): Record<string, number | string> | null {
   }
 }
 
-function saveConfig(workspace: string, config: Record<string, number | string>): void {
-  const dir = join(workspace, ".pneuma");
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "config.json"), JSON.stringify(config, null, 2));
+function saveConfig(stateDir: string, config: Record<string, number | string>): void {
+  mkdirSync(stateDir, { recursive: true });
+  writeFileSync(join(stateDir, "config.json"), JSON.stringify(config, null, 2));
 }
 
 async function promptInitParams(
@@ -429,6 +504,11 @@ async function handleEvolveCommand(args: string[]) {
   let modeName = "";
   let subAction = ""; // "apply", "rollback", "show", or "" (propose)
   let backendType: AgentBackendType = getDefaultBackendType();
+  // Project-scope evolution: when launched from a project page, the launcher
+  // passes `--project <projectRoot>` so the prompt can scan all sessions in
+  // the project and write project-scoped preferences. Propagated to the agent
+  // process via the PNEUMA_PROJECT_ROOT env var.
+  let projectRoot = "";
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -438,6 +518,8 @@ async function handleEvolveCommand(args: string[]) {
       modeName = args[++i];
     } else if (arg === "--backend" && i + 1 < args.length) {
       backendType = args[++i] as AgentBackendType;
+    } else if (arg === "--project" && i + 1 < args.length) {
+      projectRoot = resolve(args[++i]);
     } else if (["apply", "rollback", "show", "list"].includes(arg)) {
       subAction = arg;
     }
@@ -556,8 +638,10 @@ async function handleEvolveCommand(args: string[]) {
   }
 
   // Resolve target mode from --mode flag or existing session
+  // Evolve subcommand is quick-mode-only — state lives at <workspace>/.pneuma/.
+  const evolveStateDir = join(workspace, ".pneuma");
   if (!modeName) {
-    const session = loadSession(workspace);
+    const session = loadSession(evolveStateDir);
     if (session?.mode) {
       modeName = session.mode;
       backendType = session.backendType;
@@ -568,6 +652,38 @@ async function handleEvolveCommand(args: string[]) {
         const config = JSON.parse(readFileSync(configPath, "utf-8"));
         if (config.targetMode) modeName = config.targetMode;
       } catch {}
+    }
+    // Project-scope fallback: when launched with --project but no mode hint,
+    // pick the most recent project session's mode so the agent has a
+    // bootstrappable manifest. The project section in the prompt steers the
+    // actual work toward cross-mode preference extraction.
+    if (!modeName && projectRoot) {
+      try {
+        const sessionsRoot = join(projectRoot, ".pneuma", "sessions");
+        if (existsSync(sessionsRoot)) {
+          const candidates: Array<{ mode: string; mtime: number }> = [];
+          for (const id of readdirSync(sessionsRoot)) {
+            const sessionPath = join(sessionsRoot, id, "session.json");
+            if (!existsSync(sessionPath)) continue;
+            try {
+              const data = JSON.parse(readFileSync(sessionPath, "utf-8"));
+              if (data?.mode) {
+                candidates.push({ mode: data.mode as string, mtime: statSync(sessionPath).mtimeMs });
+              }
+            } catch {}
+          }
+          candidates.sort((a, b) => b.mtime - a.mtime);
+          if (candidates.length > 0) {
+            modeName = candidates[0].mode;
+            p.log.info(`No --mode given; defaulting to most recent project session mode: ${modeName}`);
+          }
+        }
+      } catch {}
+      // Final fallback for project-scope: doc is a safe, lightweight builtin.
+      if (!modeName) {
+        modeName = "doc";
+        p.log.info("No --mode given and no project sessions found; defaulting to 'doc' for skill bootstrap.");
+      }
     }
     if (!modeName) {
       p.cancel("No mode specified and no .pneuma/session.json found.\nUse: pneuma evolve --mode <mode> --workspace <path>");
@@ -612,10 +728,17 @@ async function handleEvolveCommand(args: string[]) {
 
   p.log.step(`Evolving skill for ${manifest.displayName} mode...`);
   p.log.info(`Workspace: ${workspace}`);
+  if (projectRoot) {
+    // Surface project root to both the in-process prompt builder and the
+    // spawned agent so project-scope evolution knows which sessions to scan
+    // and where to write project-level preferences.
+    process.env.PNEUMA_PROJECT_ROOT = projectRoot;
+    p.log.info(`Project root: ${projectRoot}`);
+  }
 
   // 2. Build evolution prompt + metadata, save metadata as initParams
   const { buildEvolutionPrompt, buildEvolutionMetadata } = await import("../server/evolution-agent.js");
-  const evolutionPrompt = buildEvolutionPrompt({ workspace, manifest });
+  const evolutionPrompt = await buildEvolutionPrompt({ workspace, manifest });
   const metadata = buildEvolutionMetadata({ workspace, manifest });
 
   // Save metadata to .pneuma/config.json so the viewer dashboard can read it
@@ -627,12 +750,22 @@ async function handleEvolveCommand(args: string[]) {
   const targetModeSourceDir = resolved.type === "builtin"
     ? join(PROJECT_ROOT, "modes", resolved.name)
     : resolved.path;
-  installSkill(workspace, manifest.skill, targetModeSourceDir);
+  installSkill({
+    workspace,
+    skillConfig: manifest.skill,
+    modeSourceDir: targetModeSourceDir,
+  });
 
   // 3b. Install evolve skill (so agent has dashboard context in SKILL.md)
   const evolveManifest = await loadModeManifest("evolve");
   const evolveModeSourceDir = join(PROJECT_ROOT, "modes", "evolve");
-  installSkill(workspace, evolveManifest.skill, evolveModeSourceDir, {}, evolveManifest.viewerApi);
+  installSkill({
+    workspace,
+    skillConfig: evolveManifest.skill,
+    modeSourceDir: evolveModeSourceDir,
+    params: {},
+    viewerApi: evolveManifest.viewerApi,
+  });
 
   // 4. Determine dev vs production mode
   const distDir = resolve(PROJECT_ROOT, "dist");
@@ -655,9 +788,12 @@ async function handleEvolveCommand(args: string[]) {
   // 6. Launch agent via the selected backend (fresh session, bypassPermissions)
   const backend = createBackend(backendType, actualPort);
   await wireClaudeCodeStdio(backend, wsBridge);
+  const agentEnv: Record<string, string> = {};
+  if (projectRoot) agentEnv.PNEUMA_PROJECT_ROOT = projectRoot;
   const session = backend.launch({
     cwd: workspace,
     permissionMode: "bypassPermissions",
+    ...(projectRoot ? { env: agentEnv } : {}),
   });
 
   p.log.info(`Agent session: ${session.sessionId}`);
@@ -777,6 +913,42 @@ Options:
 
   // History subcommand — export / open
   const rawArgs = process.argv.slice(2);
+
+  // Handoff subcommand — single-shot, runs entirely without spinning up the
+  // local server; it just POSTs to the Pneuma server identified by
+  // PNEUMA_SERVER_URL (which the parent sets when it spawned the agent).
+  if (rawArgs[0] === "handoff") {
+    const { runHandoffCommand } = await import("./handoff-cli.js");
+    const exitCode = await runHandoffCommand(
+      rawArgs.slice(1),
+      {
+        PNEUMA_SERVER_URL: process.env.PNEUMA_SERVER_URL,
+        PNEUMA_SESSION_ID: process.env.PNEUMA_SESSION_ID,
+      },
+      {
+        stdout: (line) => console.log(line),
+        stderr: (line) => console.error(line),
+        readStdin: async () => {
+          // Bun.stdin reads to EOF; works the same on Node + Bun.
+          const chunks: string[] = [];
+          for await (const chunk of process.stdin as unknown as AsyncIterable<Buffer>) {
+            chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
+          }
+          return chunks.join("");
+        },
+        fetch: async (url, init) => {
+          const res = await fetch(url, init);
+          return {
+            status: res.status,
+            json: () => res.json(),
+            text: () => res.text(),
+          };
+        },
+      },
+    );
+    process.exit(exitCode);
+  }
+
   if (rawArgs[0] === "history") {
     if (rawArgs[1] === "export") {
       let histWorkspace = process.cwd();
@@ -833,9 +1005,9 @@ Options:
 
   // Sessions subcommand — rebuild the launcher registry from on-disk workspaces
   if (rawArgs[0] === "sessions" && rawArgs[1] === "rebuild") {
-    const before = loadSessionsRegistry().length;
+    const before = readSessionsFileSync(SESSIONS_REGISTRY).sessions.length;
     reconcileSessionsRegistry();
-    const after = loadSessionsRegistry().length;
+    const after = readSessionsFileSync(SESSIONS_REGISTRY).sessions.length;
     console.log(`[sessions] rebuild: ${before} → ${after} entries`);
     return;
   }
@@ -1119,7 +1291,7 @@ Options:
     return;
   }
 
-  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource, sessionName, viewing } = parsedArgs;
+  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource, sessionName, viewing, fromSessionId, fromMode, fromDisplayName } = parsedArgs;
   let { workspace, replayPackage } = parsedArgs;
 
   // Launcher mode — no mode arg → start marketplace UI
@@ -1184,9 +1356,21 @@ Options:
     }
     p.log.success(`Marketplace → ${url}`);
 
-    // Auto-start use-mode app sessions
-    const appRecords = loadSessionsRegistry().filter(
-      (s) => s.layout === "app" && s.editing === false && existsSync(s.workspace)
+    // Auto-start use-mode app sessions.
+    //
+    // The legacy `layout: "app"` flag was never threaded into the new
+    // sessions schema (Pneuma 3.0 dropped it during the projects/sessions
+    // split). The filter is preserved here as a no-op typed cast so the
+    // launcher boot path doesn't crash if a future entry sets `layout`,
+    // while we decide whether this auto-start mechanism is worth reviving.
+    // Quick sessions are the only kind that have a `workspace` field, so
+    // the filter is also gated on `kind === "quick"` for type safety.
+    const appRecords = readSessionsFileSync(SESSIONS_REGISTRY).sessions.filter(
+      (s): s is typeof s & { kind: "quick"; workspace: string } => {
+        if (s.kind !== "quick") return false;
+        const layout = (s as { layout?: string }).layout;
+        return layout === "app" && s.editing === false && existsSync(s.workspace);
+      }
     );
     if (appRecords.length > 0) {
       const pneumaBin = join(PROJECT_ROOT, "bin", "pneuma.ts");
@@ -1298,10 +1482,58 @@ Options:
   p.log.info(`Mode: ${manifest.displayName} (${modeName})`);
   p.log.info(`Workspace: ${workspace}`);
 
+  // Resolve startup context — decides quick (legacy 2.x, state under
+  // <workspace>/.pneuma/) vs project (new, state under
+  // <project>/.pneuma/sessions/{id}/) and returns canonical paths.
+  const startup = await resolveStartupContext({
+    mode: modeName,
+    workspace,
+    project: parsedArgs.project,
+    sessionIdOverride: parsedArgs.sessionIdOverride,
+  });
+  const stateDir = startup.paths.stateDir;
+  const sessionDir = startup.paths.sessionDir;
+  if (startup.kind === "project") {
+    mkdirSync(sessionDir, { recursive: true });
+    p.log.info(`Project session: ${startup.sessionId}`);
+  }
+
+  // For project sessions, the *server's* working directory — what the file
+  // watcher watches, what `/api/files` reads, where seed templates land, where
+  // the agent's CWD points — is the per-session directory, NOT the project
+  // root. The project root is the user's deliverable / shared-asset area
+  // (still surfaced as `$PNEUMA_PROJECT_ROOT`); each session's draft work
+  // lives in its own sessionDir so siblings don't overwrite each other's
+  // seeds and the viewer reflects this session's content.
+  //
+  // For quick sessions, `resolveSessionPaths` sets `sessionDir == workspace`,
+  // so this assignment is a no-op and the legacy 2.x behavior is unchanged.
+  workspace = sessionDir;
+
+  // Pneuma env vars surfaced to every agent launch — let in-process tools
+  // (skills, scripts) reach the canonical session/project paths without
+  // re-deriving them.
+  const pneumaEnv: Record<string, string> = {
+    PNEUMA_SESSION_DIR: startup.paths.sessionDir,
+    PNEUMA_HOME_ROOT: startup.paths.homeRoot,
+    PNEUMA_SESSION_ID: startup.sessionId,
+    // Canonical command for any pneuma CLI invocation the agent needs to run
+    // (Smart Handoff today; future tools later). Resolves to the bun-driven
+    // form in dev (where there's no global `pneuma` on PATH) and the same
+    // form in prod (npm-installed `pneuma` is already a thin wrapper around
+    // the same script). Works under bash word-splitting, so the skill can
+    // teach `$PNEUMA_CLI handoff --json '...'` and the agent doesn't have
+    // to discover the binary.
+    PNEUMA_CLI: `bun ${import.meta.path}`,
+  };
+  if (startup.paths.projectRoot) {
+    pneumaEnv.PNEUMA_PROJECT_ROOT = startup.paths.projectRoot;
+  }
+
   // 0.5 Resolve init params (interactive on first run, then cached)
   let resolvedParams: Record<string, number | string> = {};
   if (manifest.init?.params && manifest.init.params.length > 0) {
-    const cached = loadConfig(workspace);
+    const cached = loadConfig(stateDir);
     if (cached) {
       resolvedParams = cached;
       p.log.step("Loaded init params from .pneuma/config.json");
@@ -1310,7 +1542,7 @@ Options:
       for (const param of manifest.init!.params!) {
         resolvedParams[param.name] = param.defaultValue;
       }
-      saveConfig(workspace, resolvedParams);
+      saveConfig(stateDir, resolvedParams);
       p.log.step("Using default init params (no-prompt mode)");
     } else {
       // Derive smart defaults from workspace directory name
@@ -1324,7 +1556,7 @@ Options:
           .join(" ");
       }
       resolvedParams = await promptInitParams(manifest, defaultOverrides);
-      saveConfig(workspace, resolvedParams);
+      saveConfig(stateDir, resolvedParams);
       p.log.step("Saved init params to .pneuma/config.json");
     }
     // Compute derived params (e.g. imageGenEnabled from API keys,
@@ -1332,14 +1564,14 @@ Options:
     // set so viewers reading config.json see the derived fields too.
     if (manifest.init.deriveParams) {
       resolvedParams = manifest.init.deriveParams(resolvedParams);
-      saveConfig(workspace, resolvedParams);
+      saveConfig(stateDir, resolvedParams);
     }
   }
 
   // 1. Install skill + inject CLAUDE.md (driven by manifest)
   // Use resolved path for external modes, PROJECT_ROOT/modes/{name} for builtin
   const modeSourceDir = resolved.path;
-  const skillTarget = join(workspace, ".claude", "skills", manifest.skill.installName);
+  const skillTarget = join(sessionDir, ".claude", "skills", manifest.skill.installName);
   let skipSkillInstall = skipSkill || !!replayPackage || viewing; // Skip for replay/viewing — installed on Continue Work or edit switch
 
   // Compute the effective API port (same logic as server startup in step 3)
@@ -1386,11 +1618,74 @@ Options:
     }
 
     p.log.step("Installing skill and preparing environment...");
-    installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, backendType, manifest.proxy);
+    installSkill({
+      workspace,
+      sessionDir,
+      projectRoot: startup.paths.projectRoot ?? undefined,
+      sessionId: startup.sessionId,
+      skillConfig: manifest.skill,
+      modeSourceDir,
+      params: resolvedParams,
+      viewerApi: manifest.viewerApi,
+      backendType,
+      proxyConfig: manifest.proxy,
+    });
     // Record installed skill version for update detection
-    const skillVersionPath = join(workspace, ".pneuma", "skill-version.json");
-    mkdirSync(join(workspace, ".pneuma"), { recursive: true });
+    const skillVersionPath = join(stateDir, "skill-version.json");
+    mkdirSync(stateDir, { recursive: true });
     writeFileSync(skillVersionPath, JSON.stringify({ mode: modeName, version: manifest.version }));
+  }
+
+  // Read the v2 inbound handoff payload (if any). Used both to record the
+  // `switched_in` history event and to drive the `<pneuma:env reason="handed-off" />`
+  // dispatch on the agent's first turn. Read once here so the file's existence
+  // is the single source of truth for the handoff path.
+  let inboundHandoff: InboundHandoffPayload | null = null;
+  // The path is computed even when no inbound exists (so the env tag
+  // builder receives a stable absolute path to surface as `inbound_path`).
+  // `readInboundHandoff` returns null when the file doesn't exist; the
+  // env-tag dispatcher only emits the attribute when an inbound is present.
+  const inboundHandoffPath = join(sessionDir, ".pneuma", "inbound-handoff.json");
+  if (startup.kind === "project" && startup.paths.projectRoot) {
+    inboundHandoff = readInboundHandoff(sessionDir);
+  }
+  if (inboundHandoff && inboundHandoff.handoff_id) {
+    try {
+      const historyPath = join(stateDir, "history.json");
+      let arr: unknown[] = [];
+      if (existsSync(historyPath)) {
+        try {
+          const raw = readFileSync(historyPath, "utf-8");
+          const parsedArr = JSON.parse(raw);
+          if (Array.isArray(parsedArr)) arr = parsedArr;
+        } catch {
+          // Corrupt history.json — start fresh rather than blocking launch.
+        }
+      }
+      arr.push({
+        type: "session_event",
+        subtype: "switched_in",
+        handoff_id: inboundHandoff.handoff_id,
+        ts: Date.now(),
+      });
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(historyPath, JSON.stringify(arr, null, 2), "utf-8");
+    } catch (err) {
+      console.warn(`[pneuma] failed to record switched_in event: ${err}`);
+    }
+  }
+
+  // Resolve the project's display name once for the env-tag dispatch below.
+  // Best-effort — manifest read failures fall back to `undefined`, and the
+  // env tag simply omits the `project=` attr.
+  let projectDisplayName: string | undefined;
+  if (startup.kind === "project" && startup.paths.projectRoot) {
+    try {
+      const projectManifest = await loadProjectManifest(startup.paths.projectRoot);
+      projectDisplayName = projectManifest?.displayName ?? undefined;
+    } catch {
+      // Already best-effort; nothing to do.
+    }
   }
 
   // 1.5 Seed default content if workspace has no meaningful files (skip for replay)
@@ -1501,8 +1796,11 @@ Options:
 
   // Initialize shadow git for checkpoint tracking AFTER seed (so initial commit includes seed files)
   // Skip for replay — done on Continue Work
+  // For project sessions, shadow.git lives under the per-session stateDir
+  // (e.g. <projectRoot>/.pneuma/sessions/<id>/shadow.git) so concurrent sessions
+  // in the same project don't share the bare repo.
   if (!replayPackage) {
-    await initShadowGit(workspace);
+    await initShadowGit(workspace, stateDir);
   }
 
   // 2. Detect dev vs production mode (distDir, isDev computed earlier for port)
@@ -1596,7 +1894,7 @@ Options:
   //    Prod mode: backend on 17996 (serves everything)
   const serverPort = effectiveApiPort;
   // Determine initial editing: --viewing flag > existing session > default true
-  const existingSession = loadSession(workspace);
+  const existingSession = loadSession(stateDir);
   const initialEditing: boolean = viewing ? false : (existingSession?.editing ?? true);
 
   const { server, wsBridge, port: actualPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup: serverCleanup, sessionInfo, hookBus, queueContentUpdate } = await startServer({
@@ -1619,12 +1917,57 @@ Options:
     editing: initialEditing,
     editingSupported: !!manifest.editing?.supported,
     backendType,
+    // Per-session paths (project sessions) — server writes session-state under
+    // these instead of <workspace>/.pneuma/. For quick sessions, stateDir
+    // resolves to <workspace>/.pneuma which matches the legacy default.
+    stateDir,
+    sessionDir,
+    sessionId: startup.sessionId,
+    pneumaProjectRoot: startup.paths.projectRoot ?? undefined,
   });
+
+  // The HTTP origin the agent's `pneuma handoff` CLI must POST against. The
+  // CLI calls `${PNEUMA_SERVER_URL}/api/handoffs/emit`; the server identifies
+  // the source session via `PNEUMA_SESSION_ID` and broadcasts the proposal
+  // to that session's browser. Has to land in `pneumaEnv` *after* the actual
+  // port is known so launches that fall back to a different port still
+  // self-describe correctly.
+  pneumaEnv.PNEUMA_SERVER_URL = `http://localhost:${actualPort}`;
 
   // 4. Launch Agent backend or set up replay mode
   let sessionId: string;
   let backend: ReturnType<typeof createBackend> | null = null;
   let historyInterval: ReturnType<typeof setInterval> | null = null;
+
+  // First-launch flag for the `<pneuma:env>` dispatch — set true once we
+  // emit the tag so the dispatcher is idempotent across the multiple paths
+  // that launch the agent (replay-continue, viewing→edit, the normal path).
+  let envTagDispatched = false;
+  /**
+   * Emit the `<pneuma:env reason="…" />` synthetic user message. Idempotent
+   * within the lifetime of this process; called by every agent-launch path
+   * but only fires the broadcast once.
+   *
+   * Skips on resume (the agent is continuing a prior conversation; the env
+   * marker would mislead it about its starting state) — callers gate via
+   * the `resuming` flag.
+   */
+  const dispatchEnvTag = (targetSessionId: string) => {
+    if (envTagDispatched) return;
+    const tag = buildEnvTag({
+      mode: modeName,
+      projectName: projectDisplayName,
+      inbound: inboundHandoff,
+      inboundPath: inboundHandoffPath,
+      fromSessionId,
+      fromMode,
+      fromDisplayName,
+    });
+    if (!tag) return;
+    envTagDispatched = true;
+    wsBridge.sendUserMessage(targetSessionId, tag);
+    console.log(`[pneuma] Dispatched env tag: ${tag}`);
+  };
 
   if (replayPackage) {
     // Replay mode — no agent, no greeting, no file watcher
@@ -1633,7 +1976,7 @@ Options:
     wsBridge.getOrCreateSession(sessionId, backendType);
 
     // Persist session
-    saveSession(workspace, {
+    saveSession(stateDir, {
       sessionId,
       mode: modeName,
       backendType,
@@ -1658,14 +2001,25 @@ Options:
           resolvedParams = manifest.init.deriveParams(resolvedParams);
         }
         // Save config with restored keys
-        saveConfig(workspace, resolvedParams);
+        saveConfig(stateDir, resolvedParams);
       }
 
       p.log.step("Continue Work: installing skill...");
-      installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, backendType, manifest.proxy);
+      installSkill({
+        workspace,
+        sessionDir,
+        projectRoot: startup.paths.projectRoot ?? undefined,
+        sessionId: startup.sessionId,
+        skillConfig: manifest.skill,
+        modeSourceDir,
+        params: resolvedParams,
+        viewerApi: manifest.viewerApi,
+        backendType,
+        proxyConfig: manifest.proxy,
+      });
 
       // Record installed skill version
-      const skillVersionPath = join(workspace, ".pneuma", "skill-version.json");
+      const skillVersionPath = join(stateDir, "skill-version.json");
       writeFileSync(skillVersionPath, JSON.stringify({ mode: modeName, version: manifest.version }));
 
       // Initialize shadow-git for new session (prepareWorkspaceForContinue already does this)
@@ -1674,6 +2028,7 @@ Options:
       await wireClaudeCodeStdio(backend, wsBridge);
       const agentEnv: Record<string, string> = {
         PNEUMA_API: `http://localhost:${actualPort}`,
+        ...pneumaEnv,
       };
       if (manifest.skill.envMapping) {
         for (const [envVar, paramName] of Object.entries(manifest.skill.envMapping)) {
@@ -1685,7 +2040,7 @@ Options:
       }
       // Reuse the replay session ID so the browser WS stays connected
       const agentSession = backend.launch({
-        cwd: workspace,
+        cwd: sessionDir,
         sessionId: sessionId,
         permissionMode: manifest.agent?.permissionMode,
         env: agentEnv,
@@ -1698,10 +2053,10 @@ Options:
       // Wire CLI session ID persistence
       wsBridge.onCLISessionIdReceived((sid, agentSessionId) => {
         backend!.setAgentSessionId(sid, agentSessionId);
-        const persisted = loadSession(workspace);
+        const persisted = loadSession(stateDir);
         if (persisted && persisted.sessionId === sid) {
           persisted.agentSessionId = agentSessionId;
-          saveSession(workspace, persisted);
+          saveSession(stateDir, persisted);
         }
       });
 
@@ -1718,13 +2073,20 @@ Options:
       }
 
       // Persist session (keep same sessionId)
-      saveSession(workspace, {
+      saveSession(stateDir, {
         sessionId,
         mode: modeName,
         backendType,
         createdAt: Date.now(),
       });
-      recordSession(modeName, manifest.displayName, workspace, backendType, sessionName || undefined);
+      await recordSession({
+        startup,
+        mode: modeName,
+        displayName: manifest.displayName,
+        workspace,
+        backendType,
+        sessionName: sessionName || undefined,
+      });
 
       // Start file watcher
       startFileWatcher(workspace, manifest.viewer, (files) => {
@@ -1734,7 +2096,7 @@ Options:
       // Start history persistence
       historyInterval = setInterval(() => {
         const history = wsBridge.getMessageHistory(sessionId);
-        if (history.length > 0) saveHistory(workspace, history);
+        if (history.length > 0) saveHistory(stateDir, history);
       }, 5_000);
 
       // Send greeting for continued session
@@ -1742,13 +2104,17 @@ Options:
         wsBridge.injectGreeting(sessionId, manifest.agent.greeting);
       }
 
+      // Replay → Continue Work counts as a fresh agent start; dispatch
+      // the env tag here too so the new agent knows the session lineage.
+      dispatchEnvTag(sessionId);
+
       p.log.success("Continue Work: agent launched, session active");
     });
 
     p.log.info(`Replay mode: ${replayPackage}`);
   } else {
     // Normal mode — launch agent backend (selected at startup, fixed for the session lifetime)
-    const existing = loadSession(workspace);
+    const existing = loadSession(stateDir);
     const backendSelection = resolveWorkspaceBackendType(backendType, existing);
     if (backendSelection.mismatchMessage) {
       p.cancel(backendSelection.mismatchMessage);
@@ -1760,6 +2126,7 @@ Options:
     const buildAgentEnv = (): Record<string, string> => {
       const env: Record<string, string> = {
         PNEUMA_API: `http://localhost:${actualPort}`,
+        ...pneumaEnv,
       };
       if (manifest.skill.envMapping) {
         for (const [envVar, paramName] of Object.entries(manifest.skill.envMapping)) {
@@ -1776,10 +2143,10 @@ Options:
     const wireCLISessionId = () => {
       wsBridge.onCLISessionIdReceived((sid, agentSessionId) => {
         backend!.setAgentSessionId(sid, agentSessionId);
-        const persisted = loadSession(workspace);
+        const persisted = loadSession(stateDir);
         if (persisted && persisted.sessionId === sid) {
           persisted.agentSessionId = agentSessionId;
-          saveSession(workspace, persisted);
+          saveSession(stateDir, persisted);
           console.log(`[pneuma] Saved agentSessionId for resume: ${agentSessionId}`);
         }
       });
@@ -1825,10 +2192,10 @@ Options:
         if (exitedId === agentSessionId && resuming) {
           const info = backend!.getSession(exitedId);
           if (info && !info.agentSessionId) {
-            const persisted = loadSession(workspace);
+            const persisted = loadSession(stateDir);
             if (persisted) {
               persisted.agentSessionId = undefined;
-              saveSession(workspace, persisted);
+              saveSession(stateDir, persisted);
               console.log("[pneuma] Resume failed, cleared agentSessionId. Restart for fresh session.");
             }
           }
@@ -1838,11 +2205,17 @@ Options:
 
     if (!initialEditing) {
       // ── Viewing mode: no agent, dashboard only ──────────────────────────────
-      sessionId = existing?.sessionId || crypto.randomUUID();
+      // Project sessions: pin to `startup.sessionId` so the viewing-mode
+      // session id matches the directory key under `.pneuma/sessions/`.
+      // Quick sessions: prefer the persisted id, else mint one (legacy).
+      sessionId =
+        startup.kind === "project"
+          ? startup.sessionId
+          : existing?.sessionId || crypto.randomUUID();
       wsBridge.getOrCreateSession(sessionId, sessionBackendType);
 
       // Persist session
-      saveSession(workspace, {
+      saveSession(stateDir, {
         sessionId,
         agentSessionId: existing?.agentSessionId,
         mode: modeName,
@@ -1850,10 +2223,18 @@ Options:
         createdAt: existing?.createdAt || Date.now(),
         editing: false,
       });
-      recordSession(modeName, manifest.displayName, workspace, sessionBackendType, sessionName || undefined, false);
+      await recordSession({
+        startup,
+        mode: modeName,
+        displayName: manifest.displayName,
+        workspace,
+        backendType: sessionBackendType,
+        sessionName: sessionName || undefined,
+        editing: false,
+      });
 
       // Load persisted message history
-      const savedHistory = loadHistory(workspace);
+      const savedHistory = loadHistory(stateDir);
       if (savedHistory.length > 0) {
         wsBridge.loadMessageHistory(sessionId, savedHistory as any);
         console.log(`[pneuma] Restored ${savedHistory.length} messages from history`);
@@ -1862,14 +2243,25 @@ Options:
       // History persistence
       historyInterval = setInterval(() => {
         const history = wsBridge.getMessageHistory(sessionId);
-        if (history.length > 0) saveHistory(workspace, history);
+        if (history.length > 0) saveHistory(stateDir, history);
       }, 5_000);
 
       // Register launch callback for viewing → edit switching
       onEditingLaunch!(async () => {
         p.log.step("Switching to edit mode: installing skill and launching agent...");
-        installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, sessionBackendType, manifest.proxy);
-        const skillVersionPath = join(workspace, ".pneuma", "skill-version.json");
+        installSkill({
+          workspace,
+          sessionDir,
+          projectRoot: startup.paths.projectRoot ?? undefined,
+          sessionId: startup.sessionId,
+          skillConfig: manifest.skill,
+          modeSourceDir,
+          params: resolvedParams,
+          viewerApi: manifest.viewerApi,
+          backendType: sessionBackendType,
+          proxyConfig: manifest.proxy,
+        });
+        const skillVersionPath = join(stateDir, "skill-version.json");
         writeFileSync(skillVersionPath, JSON.stringify({ mode: modeName, version: manifest.version }));
 
         backend = createBackend(sessionBackendType, actualPort);
@@ -1879,7 +2271,7 @@ Options:
         const agentEnv = buildAgentEnv();
         const permissionMode = manifest.agent?.permissionMode;
         const agentSession = backend.launch({
-          cwd: workspace,
+          cwd: sessionDir,
           sessionId,
           permissionMode,
           env: agentEnv,
@@ -1888,6 +2280,12 @@ Options:
         wsBridge.getOrCreateSession(sessionId, sessionBackendType);
         await wireCodexAdapter(sessionId);
         wireAgentExitHandler(agentSession.sessionId, false);
+
+        // First-time switch from viewing → edit counts as the agent's
+        // session start; dispatch the env tag here too. The dispatcher is
+        // internally idempotent so toggling viewing → edit → viewing →
+        // edit only fires once.
+        dispatchEnvTag(sessionId);
 
         // Register kill callback for edit → viewing switching
         onEditingKill!(async () => {
@@ -1909,13 +2307,27 @@ Options:
       let resuming = false;
       const agentEnv = buildAgentEnv();
       const permissionMode = manifest.agent?.permissionMode;
+      // For project sessions, the session id IS `startup.sessionId` (= the
+      // directory name under `.pneuma/sessions/`). Pin the backend to that id
+      // up-front so the protocol-level identity matches the directory key,
+      // otherwise `<sessionDir>/session.json` ends up with a backend-generated
+      // UUID that doesn't round-trip through `/api/launch?sessionId=...`.
+      // Quick sessions keep the old "let the backend mint one or reuse the
+      // persisted id" behavior — their registry key is `workspace::mode`, not
+      // a session id.
+      const launchSessionId =
+        startup.kind === "project"
+          ? startup.sessionId
+          : existing?.agentSessionId
+            ? existing.sessionId
+            : undefined;
       const session = backend.launch({
-        cwd: workspace,
+        cwd: sessionDir,
         permissionMode,
-        ...(existing?.agentSessionId ? {
-          sessionId: existing.sessionId,
-          resumeSessionId: existing.agentSessionId,
-        } : {}),
+        ...(launchSessionId ? { sessionId: launchSessionId } : {}),
+        ...(existing?.agentSessionId
+          ? { resumeSessionId: existing.agentSessionId }
+          : {}),
         env: agentEnv,
       });
 
@@ -1926,16 +2338,33 @@ Options:
         p.log.info(`Resuming session: ${existing.agentSessionId}`);
       }
 
-      // Persist session info
-      saveSession(workspace, {
-        sessionId: session.sessionId,
-        agentSessionId: existing?.agentSessionId,
+      // Persist session info. Project sessions: `sessionId` is the canonical
+      // project-session id (directory name); the backend's protocol id rides
+      // along as `agentSessionId`. Quick sessions: `session.sessionId` is
+      // already the canonical id (no separate directory key).
+      const persistedSessionId =
+        startup.kind === "project" ? startup.sessionId : session.sessionId;
+      const persistedAgentSessionId =
+        startup.kind === "project"
+          ? existing?.agentSessionId
+          : existing?.agentSessionId;
+      saveSession(stateDir, {
+        sessionId: persistedSessionId,
+        agentSessionId: persistedAgentSessionId,
         mode: modeName,
         backendType: sessionBackendType,
         createdAt: existing?.createdAt || Date.now(),
         editing: true,
       });
-      recordSession(modeName, manifest.displayName, workspace, sessionBackendType, sessionName || undefined, true);
+      await recordSession({
+        startup,
+        mode: modeName,
+        displayName: manifest.displayName,
+        workspace,
+        backendType: sessionBackendType,
+        sessionName: sessionName || undefined,
+        editing: true,
+      });
 
       p.log.info(`Agent session: ${session.sessionId}`);
       wsBridge.getOrCreateSession(session.sessionId, sessionBackendType);
@@ -1947,17 +2376,28 @@ Options:
         console.log("[pneuma] Sent auto-greeting for fresh session");
       }
 
-      // Load persisted message history
-      const savedHistory = loadHistory(workspace);
+      // Load persisted message history FIRST. `loadMessageHistory` does a
+      // full-replace of `session.messageHistory`, so anything pushed before
+      // this gets dropped on the floor. The env-tag dispatch below has to
+      // land AFTER this for its synthetic user message to survive into the
+      // next persistence tick and into the browser replay.
+      const savedHistory = loadHistory(stateDir);
       if (savedHistory.length > 0) {
         wsBridge.loadMessageHistory(session.sessionId, savedHistory as any);
         console.log(`[pneuma] Restored ${savedHistory.length} messages from history`);
       }
 
+      // `<pneuma:env>` session-start signal. Dispatched on every spawn,
+      // including resumes — the user's action (clicked a session row,
+      // confirmed a handoff, opened fresh) is the signal, not the agent's
+      // resume state. The dispatch helper is internally idempotent so
+      // re-entering this block via the edit-toggle path won't double-fire.
+      dispatchEnvTag(session.sessionId);
+
       // History persistence
       historyInterval = setInterval(() => {
         const history = wsBridge.getMessageHistory(session.sessionId);
-        if (history.length > 0) saveHistory(workspace, history);
+        if (history.length > 0) saveHistory(stateDir, history);
       }, 5_000);
 
       wireAgentExitHandler(session.sessionId, resuming);
@@ -1971,7 +2411,18 @@ Options:
         // Register launch callback for subsequent viewing → edit switch
         onEditingLaunch!(async () => {
           p.log.step("Switching to edit mode: installing skill and launching agent...");
-          installSkill(workspace, manifest.skill, modeSourceDir, resolvedParams, manifest.viewerApi, sessionBackendType, manifest.proxy);
+          installSkill({
+            workspace,
+            sessionDir,
+            projectRoot: startup.paths.projectRoot ?? undefined,
+            sessionId: startup.sessionId,
+            skillConfig: manifest.skill,
+            modeSourceDir,
+            params: resolvedParams,
+            viewerApi: manifest.viewerApi,
+            backendType: sessionBackendType,
+            proxyConfig: manifest.proxy,
+          });
 
           backend = createBackend(sessionBackendType, actualPort);
           wireCLISessionId();
@@ -1979,7 +2430,7 @@ Options:
 
           const freshEnv = buildAgentEnv();
           const agentSession = backend.launch({
-            cwd: workspace,
+            cwd: sessionDir,
             sessionId,
             permissionMode,
             env: freshEnv,
@@ -2087,7 +2538,7 @@ Options:
     if (!replayPackage) {
       const history = wsBridge.getMessageHistory(sessionId);
       if (history.length > 0) {
-        saveHistory(workspace, history);
+        saveHistory(stateDir, history);
       }
     }
     modeMakerCleanup?.();

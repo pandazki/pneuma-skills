@@ -361,3 +361,34 @@ npm install @pneuma/skill-slide
 3. **升级会产生备份目录** — 需要定期清理（或在 UI 中提供清理选项）
 4. **CLAUDE.md 有 Pneuma 管理区段** — 用户不应手动编辑 marker 之间的内容
 5. **Skill 质量直接影响 Agent 输出** — SKILL.md + 模板 + 参考文档的质量是产品核心竞争力
+
+---
+
+## 7. Amendment 2026-04-27 (3.0 Project Layer)
+
+3.0 引入 [Project 层](../design/2026-04-27-pneuma-projects-design.md) 后，本 ADR 的 skill 安装机制扩展如下。本 ADR 的核心决策（复制而非链接、版本检测、marker 注入）均沿用，下面只列**变化**。
+
+### 7.1 安装目标路径参数化
+
+原决策：安装到 `<workspace>/.claude/skills/<installName>/`。
+
+3.0 抽象为 `<sessionDir>/.claude/skills/<installName>/`，其中：
+- 快会话：`sessionDir = <workspace>` —— 行为不变
+- 项目化：`sessionDir = <project>/.pneuma/sessions/{sessionId}` —— 安装到 session 子目录
+
+### 7.2 新增 markers（仅项目化 session 注入）
+
+| Marker | 内容 |
+|--------|------|
+| `<!-- pneuma:project:start -->` ... `<!-- pneuma:project:end -->` | 项目身份（`project.json`）+ 项目下其他 mode session 概览 + **项目偏好** critical 块（来自 `<projectRoot>/.pneuma/preferences/`） |
+| `<!-- pneuma:handoff:start -->` ... `<!-- pneuma:handoff:end -->` | 启动时如果 `<projectRoot>/.pneuma/handoffs/` 中存在 `target_mode = <自身>` 的文件，注入文件路径与 frontmatter 摘要 |
+
+`<!-- pneuma:preferences -->`（个人偏好）和 `<!-- pneuma:project -->`（项目身份 + 项目偏好）**并置**，agent 同时看到，独立进化。
+
+### 7.3 新共享 skill: `pneuma-project`
+
+类比 `pneuma-preferences`（ADR-014），位于 `modes/_shared/skills/pneuma-project/`。skill-installer 检测到项目化 session 时**自动安装**——教 agent 项目语境、跨 session 协作（handoffs/）、项目偏好读写规则。
+
+### 7.4 路径助手
+
+`server/skill-installer.ts` 内部统一改用 `sessionDir`、`stateDir`、`homeRoot`、`projectRoot` 四个抽象路径参数（见 design doc §2.3 路径别名表），不再硬编码 `workspace`。

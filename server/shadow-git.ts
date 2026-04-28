@@ -11,11 +11,27 @@ dist
 *.log
 `;
 
-// Track which workspaces have shadow git enabled
-const availableWorkspaces = new Set<string>();
+/**
+ * State directory where `shadow.git` and `checkpoints.jsonl` live.
+ *
+ * - Quick session (legacy 2.x): `<workspace>/.pneuma/`
+ * - Project session (3.0+): `<projectRoot>/.pneuma/sessions/<sessionId>/`
+ *
+ * Callers that still pass a workspace path get auto-resolved to the legacy
+ * location (`join(workspace, ".pneuma")`) for byte-identical behavior.
+ */
+function resolveStateDir(workspace: string, stateDir?: string): string {
+  return stateDir ?? join(workspace, ".pneuma");
+}
 
-function gitDir(workspace: string): string {
-  return join(workspace, ".pneuma", SHADOW_DIR_NAME);
+// Track which workspaces have shadow git enabled. Keyed by workspace because
+// runtime callers (ws-bridge*) only have workspace handy when checking
+// availability; we can recover stateDir from the same map if we ever need it.
+const stateDirByWorkspace = new Map<string, string>();
+
+function gitDir(workspace: string, stateDir?: string): string {
+  const resolvedStateDir = stateDir ?? stateDirByWorkspace.get(workspace) ?? resolveStateDir(workspace);
+  return join(resolvedStateDir, SHADOW_DIR_NAME);
 }
 
 function shadowGit(workspace: string, args: string[], options?: { stdout?: "pipe" | "ignore" }): Bun.Subprocess {
@@ -25,17 +41,25 @@ function shadowGit(workspace: string, args: string[], options?: { stdout?: "pipe
   );
 }
 
-export async function initShadowGit(workspace: string): Promise<void> {
-  const dir = gitDir(workspace);
+/**
+ * Initialize the shadow-git bare repo for a session.
+ *
+ * @param workspace - Work-tree directory whose files we track (agent CWD).
+ * @param stateDir - Optional explicit state dir. Defaults to `<workspace>/.pneuma`
+ *   for quick sessions; project sessions pass `<projectRoot>/.pneuma/sessions/<id>`.
+ */
+export async function initShadowGit(workspace: string, stateDir?: string): Promise<void> {
+  const resolvedStateDir = resolveStateDir(workspace, stateDir);
+  const dir = join(resolvedStateDir, SHADOW_DIR_NAME);
 
   // Idempotent — skip if already initialized
   if (existsSync(join(dir, "HEAD"))) {
-    availableWorkspaces.add(workspace);
+    stateDirByWorkspace.set(workspace, resolvedStateDir);
     return;
   }
 
   try {
-    mkdirSync(join(workspace, ".pneuma"), { recursive: true });
+    mkdirSync(resolvedStateDir, { recursive: true });
     await Bun.spawn(["git", "init", "--bare", dir], { stdout: "ignore", stderr: "ignore" }).exited;
 
     // Set git identity for commits (avoids failure on systems without global git config)
@@ -45,18 +69,20 @@ export async function initShadowGit(workspace: string): Promise<void> {
     // Write exclude rules
     await Bun.write(join(dir, "info", "exclude"), EXCLUDE_RULES);
 
+    // Register before we run the initial commit so shadowGit() resolves stateDir correctly.
+    stateDirByWorkspace.set(workspace, resolvedStateDir);
+
     // Initial commit capturing current workspace state
     await shadowGit(workspace, ["add", "-A"]).exited;
     await shadowGit(workspace, ["commit", "-m", "initial", "--allow-empty"]).exited;
-
-    availableWorkspaces.add(workspace);
   } catch (err) {
     console.warn("[shadow-git] init failed, checkpoints disabled:", err);
+    stateDirByWorkspace.delete(workspace);
   }
 }
 
 export function isShadowGitAvailable(workspace: string): boolean {
-  return availableWorkspaces.has(workspace);
+  return stateDirByWorkspace.has(workspace);
 }
 
 // --- Per-workspace turn counter (for backends without num_turns) ---
@@ -73,7 +99,7 @@ export function nextTurnIndex(workspace: string): number {
 const queues = new Map<string, Promise<void>>();
 
 export function enqueueCheckpoint(workspace: string, turnIndex: number): Promise<void> {
-  if (!availableWorkspaces.has(workspace)) return Promise.resolve();
+  if (!stateDirByWorkspace.has(workspace)) return Promise.resolve();
 
   const prev = queues.get(workspace) ?? Promise.resolve();
   const next = prev
@@ -117,8 +143,9 @@ async function captureCheckpointInner(workspace: string, turnIndex: number): Pro
   appendFileSync(checkpointsIndexPath(workspace), entry);
 }
 
-function checkpointsIndexPath(workspace: string): string {
-  return join(workspace, ".pneuma", "checkpoints.jsonl");
+function checkpointsIndexPath(workspace: string, stateDir?: string): string {
+  const resolvedStateDir = stateDir ?? stateDirByWorkspace.get(workspace) ?? resolveStateDir(workspace);
+  return join(resolvedStateDir, "checkpoints.jsonl");
 }
 
 // --- Checkpoint listing ---
@@ -150,8 +177,17 @@ export async function exportCheckpointFiles(workspace: string, hash: string, out
   await extract.exited;
 }
 
-export async function listCheckpoints(workspace: string): Promise<CheckpointEntry[]> {
-  const indexPath = checkpointsIndexPath(workspace);
+/**
+ * List checkpoints recorded for a workspace.
+ *
+ * @param workspace - Work-tree path (used as map key for runtime state).
+ * @param stateDir - Optional explicit state dir. When omitted, the registered
+ *   stateDir from initShadowGit is used; if shadow git was never initialized,
+ *   falls back to the legacy `<workspace>/.pneuma` location for read-only
+ *   inspection (e.g. launcher scanning a non-active workspace).
+ */
+export async function listCheckpoints(workspace: string, stateDir?: string): Promise<CheckpointEntry[]> {
+  const indexPath = checkpointsIndexPath(workspace, stateDir);
   if (!existsSync(indexPath)) return [];
 
   const content = await Bun.file(indexPath).text();
@@ -162,8 +198,8 @@ export async function listCheckpoints(workspace: string): Promise<CheckpointEntr
 }
 
 /** Get the hash of the latest checkpoint (last line of checkpoints.jsonl) */
-export async function getLatestCheckpointHash(workspace: string): Promise<string | null> {
-  const entries = await listCheckpoints(workspace);
+export async function getLatestCheckpointHash(workspace: string, stateDir?: string): Promise<string | null> {
+  const entries = await listCheckpoints(workspace, stateDir);
   if (entries.length === 0) return null;
   return entries[entries.length - 1].hash;
 }

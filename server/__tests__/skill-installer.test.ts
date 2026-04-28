@@ -145,7 +145,7 @@ describe("installSkill", () => {
   };
 
   test("copies skill files to .claude/skills/{installName}/", () => {
-    installSkill(workspace, defaultSkillConfig, modeSourceDir);
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir });
 
     const skillDir = join(workspace, ".claude", "skills", "pneuma-test");
     expect(existsSync(join(skillDir, "SKILL.md"))).toBe(true);
@@ -153,7 +153,7 @@ describe("installSkill", () => {
   });
 
   test("applies template params to copied skill files", () => {
-    installSkill(workspace, defaultSkillConfig, modeSourceDir, { width: 1920 });
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, params: { width: 1920 } });
 
     const content = readFileSync(
       join(workspace, ".claude", "skills", "pneuma-test", "SKILL.md"),
@@ -167,7 +167,7 @@ describe("installSkill", () => {
     // Add a binary-like file
     writeFileSync(join(modeSourceDir, "skill", "image.png"), "binary-data");
 
-    installSkill(workspace, defaultSkillConfig, modeSourceDir, { width: 1920 });
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, params: { width: 1920 } });
 
     const content = readFileSync(
       join(workspace, ".claude", "skills", "pneuma-test", "image.png"),
@@ -184,7 +184,7 @@ describe("installSkill", () => {
         SECRET: "secret",
       },
     };
-    installSkill(workspace, config, modeSourceDir, { apiKey: "sk-123", secret: "" });
+    installSkill({ workspace, skillConfig: config, modeSourceDir, params: { apiKey: "sk-123", secret: "" } });
 
     const envPath = join(workspace, ".claude", "skills", "pneuma-test", ".env");
     expect(existsSync(envPath)).toBe(true);
@@ -198,14 +198,14 @@ describe("installSkill", () => {
       ...defaultSkillConfig,
       envMapping: { KEY: "missing" },
     };
-    installSkill(workspace, config, modeSourceDir, {});
+    installSkill({ workspace, skillConfig: config, modeSourceDir, params: {} });
 
     const envPath = join(workspace, ".claude", "skills", "pneuma-test", ".env");
     expect(existsSync(envPath)).toBe(false);
   });
 
   test("injects pneuma section into new CLAUDE.md", () => {
-    installSkill(workspace, defaultSkillConfig, modeSourceDir);
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir });
 
     const content = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
     expect(content).toContain("<!-- pneuma:start -->");
@@ -219,7 +219,7 @@ describe("installSkill", () => {
       "# Project\n\n<!-- pneuma:start -->\nold content\n<!-- pneuma:end -->\n\n# Other\n",
     );
 
-    installSkill(workspace, defaultSkillConfig, modeSourceDir);
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir });
 
     const content = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
     expect(content).toContain("Use the test skill.");
@@ -232,7 +232,7 @@ describe("installSkill", () => {
   test("appends pneuma section to existing CLAUDE.md without markers", () => {
     writeFileSync(join(workspace, "CLAUDE.md"), "# My Project\n");
 
-    installSkill(workspace, defaultSkillConfig, modeSourceDir);
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir });
 
     const content = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
     expect(content).toStartWith("# My Project\n");
@@ -240,7 +240,7 @@ describe("installSkill", () => {
   });
 
   test("creates .gitignore with .pneuma/ entry", () => {
-    installSkill(workspace, defaultSkillConfig, modeSourceDir);
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir });
 
     const content = readFileSync(join(workspace, ".gitignore"), "utf-8");
     expect(content).toContain(".pneuma/");
@@ -249,7 +249,7 @@ describe("installSkill", () => {
   test("appends .pneuma/ to existing .gitignore without duplicating", () => {
     writeFileSync(join(workspace, ".gitignore"), "node_modules/\n");
 
-    installSkill(workspace, defaultSkillConfig, modeSourceDir);
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir });
 
     const content = readFileSync(join(workspace, ".gitignore"), "utf-8");
     expect(content).toContain("node_modules/");
@@ -262,7 +262,7 @@ describe("installSkill", () => {
   test("does not duplicate .pneuma/ in .gitignore on re-install", () => {
     writeFileSync(join(workspace, ".gitignore"), ".pneuma/\n");
 
-    installSkill(workspace, defaultSkillConfig, modeSourceDir);
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir });
 
     const content = readFileSync(join(workspace, ".gitignore"), "utf-8");
     const matches = content.match(/\.pneuma\//g);
@@ -274,7 +274,7 @@ describe("installSkill", () => {
       ...defaultSkillConfig,
       claudeMdSection: "Canvas size: {{width}}x{{height}}",
     };
-    installSkill(workspace, config, modeSourceDir, { width: 1920, height: 1080 });
+    installSkill({ workspace, skillConfig: config, modeSourceDir, params: { width: 1920, height: 1080 } });
 
     const content = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
     expect(content).toContain("Canvas size: 1920x1080");
@@ -289,7 +289,7 @@ describe("installSkill", () => {
           description: "Navigate to a specific slide" },
       ],
     };
-    installSkill(workspace, defaultSkillConfig, modeSourceDir, {}, viewerApi);
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, params: {}, viewerApi });
 
     const content = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
     // Skill section
@@ -308,7 +308,7 @@ describe("installSkill", () => {
     const viewerApi: ViewerApiConfig = {
       workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: false },
     };
-    installSkill(workspace, defaultSkillConfig, modeSourceDir, {}, viewerApi);
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, params: {}, viewerApi });
 
     const content1 = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
     expect(content1).toContain("<!-- pneuma:viewer-api:start -->");
@@ -318,7 +318,7 @@ describe("installSkill", () => {
       ...defaultSkillConfig,
       claudeMdSection: "New skill content!",
     };
-    installSkill(workspace, newSkillConfig, modeSourceDir, {}, viewerApi);
+    installSkill({ workspace, skillConfig: newSkillConfig, modeSourceDir, params: {}, viewerApi });
 
     const content2 = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
     expect(content2).toContain("New skill content!");
@@ -328,7 +328,7 @@ describe("installSkill", () => {
   });
 
   test("native bridge section always present even without viewerApi", () => {
-    installSkill(workspace, defaultSkillConfig, modeSourceDir);
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir });
 
     const content = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
     // Native bridge docs are always injected (universal capability)
@@ -340,7 +340,7 @@ describe("installSkill", () => {
   });
 
   test("writes AGENTS.md when backendType is codex", () => {
-    installSkill(workspace, defaultSkillConfig, modeSourceDir, undefined, undefined, "codex");
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, backendType: "codex" });
 
     const agentsMdPath = join(workspace, "AGENTS.md");
     expect(existsSync(agentsMdPath)).toBe(true);
@@ -351,11 +351,11 @@ describe("installSkill", () => {
   });
 
   test("does not write AGENTS.md for non-codex backends", () => {
-    installSkill(workspace, defaultSkillConfig, modeSourceDir, undefined, undefined, "claude-code");
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, backendType: "claude-code" });
     expect(existsSync(join(workspace, "AGENTS.md"))).toBe(false);
 
     // Also when omitted
-    installSkill(workspace, defaultSkillConfig, modeSourceDir);
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir });
     expect(existsSync(join(workspace, "AGENTS.md"))).toBe(false);
   });
 });
@@ -674,7 +674,7 @@ describe("installSkill with mcpServers and skillDependencies", () => {
       }],
     };
 
-    installSkill(workspace, config, modeSourceDir);
+    installSkill({ workspace, skillConfig: config, modeSourceDir });
 
     const mcpJson = JSON.parse(readFileSync(join(workspace, ".mcp.json"), "utf-8"));
     expect(mcpJson.mcpServers["test-mcp"]).toBeDefined();
@@ -693,7 +693,7 @@ describe("installSkill with mcpServers and skillDependencies", () => {
       }],
     };
 
-    installSkill(workspace, config, modeSourceDir);
+    installSkill({ workspace, skillConfig: config, modeSourceDir });
 
     // Dependency installed
     expect(existsSync(join(workspace, ".claude", "skills", "helper", "SKILL.md"))).toBe(true);
@@ -712,7 +712,7 @@ describe("installSkill with mcpServers and skillDependencies", () => {
       claudeMdSection: "No deps test.",
     };
 
-    installSkill(workspace, config, modeSourceDir);
+    installSkill({ workspace, skillConfig: config, modeSourceDir });
 
     const claudeMd = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
     // Global dependencies (pneuma-preferences) are always installed
@@ -732,7 +732,7 @@ describe("installSkill with mcpServers and skillDependencies", () => {
         claudeMdSnippet: "**helper** — A helper tool",
       }],
     };
-    installSkill(workspace, configWithDeps, modeSourceDir);
+    installSkill({ workspace, skillConfig: configWithDeps, modeSourceDir });
 
     let claudeMd = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
     expect(claudeMd).toContain("<!-- pneuma:skills:start -->");
@@ -744,7 +744,7 @@ describe("installSkill with mcpServers and skillDependencies", () => {
       installName: "pneuma-integ",
       claudeMdSection: "No deps now.",
     };
-    installSkill(workspace, configWithoutDeps, modeSourceDir);
+    installSkill({ workspace, skillConfig: configWithoutDeps, modeSourceDir });
 
     claudeMd = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
     // Mode-specific helper removed, but global deps remain

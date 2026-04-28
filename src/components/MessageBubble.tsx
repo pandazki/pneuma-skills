@@ -5,6 +5,7 @@ import type { ChatMessage, ContentBlock, SelectionContext, Annotation, Permissio
 import { useStore } from "../store.js";
 import { sendPermissionResponse } from "../ws.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
+import { parsePneumaTag, PneumaSignalPill } from "./PneumaSignalPill.js";
 import type { ViewerLocator } from "../../core/types/viewer-contract.js";
 
 // ─── Viewer Locator parsing ────────────────────────────────────────────────
@@ -121,6 +122,19 @@ export default function MessageBubble({
     const imgs = message.images;
     const files = message.files;
     const hasText = message.content.trim().length > 0;
+    // System-injected pneuma signal tags (env, request-handoff,
+    // handoff-cancelled) are routed through the "user message" path so the
+    // agent receives them in the right place, but they're not actually user
+    // input — render them as a centered horizontal-divider marker rather
+    // than a chat bubble so the conversation doesn't get drowned in raw XML.
+    // Only triggers for messages whose ENTIRE content is one self-closing
+    // pneuma tag with no attachments; mixed content keeps the bubble.
+    if (
+      hasText && !sel && !notif && !anns?.length && !imgs?.length && !files?.length
+    ) {
+      const pneumaTag = parsePneumaTag(message.content);
+      if (pneumaTag) return <PneumaSignalPill tag={pneumaTag} />;
+    }
     return (
       <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
         <div className="max-w-[85%] rounded-[20px] rounded-br-[6px] bg-cc-surface/60 backdrop-blur-md border border-cc-border/30 text-cc-fg overflow-hidden shadow-sm">

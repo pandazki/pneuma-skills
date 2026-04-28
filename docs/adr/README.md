@@ -13,7 +13,7 @@
 | [ADR-005](./adr-005-editor-shell-frontend.md) | Editor Shell 前端架构 | Accepted | 2026-02-26 |
 | [ADR-006](./adr-006-skill-installation.md) | Skill 安装机制 | Accepted | 2026-02-26 |
 | [ADR-007](./adr-007-file-watching-live-preview.md) | 文件监听与实时预览 | Accepted | 2026-02-26 |
-| [ADR-008](./adr-008-session-management.md) | Session 管理与持久化 | Accepted | 2026-02-26 |
+| [ADR-008](./adr-008-session-management.md) | Session 管理与持久化 | Accepted (Superseded in part by 3.0) | 2026-02-26 |
 | [ADR-009](./adr-009-permission-flow.md) | Permission Flow 与 Tool 审批 | Accepted | 2026-02-26 |
 | [ADR-010](./adr-010-cli-entry-startup.md) | CLI 入口与启动流程 | Accepted | 2026-02-26 |
 | [ADR-011](./adr-011-slide-mode-mvp.md) | Slide Mode MVP 详细设计 | Accepted | 2026-02-26 |

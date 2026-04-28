@@ -29,6 +29,10 @@ const TerminalPanel = lazy(() => import("./components/TerminalPanel.js"));
 const Launcher = lazy(() => import("./components/Launcher.js"));
 const AgentBubble = lazy(() => import("./components/AgentBubble.js"));
 const AppModeToggle = lazy(() => import("./components/AppModeToggle.js"));
+const HandoffCard = lazy(() => import("./components/HandoffCard.js"));
+const EmptyShell = lazy(() =>
+  import("./components/EmptyShell.js").then((m) => ({ default: m.EmptyShell })),
+);
 
 function LazyFallback() {
   return (
@@ -217,6 +221,23 @@ export default function App() {
     // Launcher if explicitly requested OR no session/mode params (bare URL)
     return params.has("launcher") || (!params.has("session") && !params.has("mode"));
   });
+  const [projectParam] = useState(() => new URLSearchParams(location.search).get("project"));
+  // Empty shell — `?project=<root>` with no session/mode. Renders the editor
+  // chrome + TopBar without spawning an agent. ProjectChip (Phase 2) will
+  // mount inside the surviving TopBar to expose the project's sessions.
+  // Tied directly to URL params (not `isLauncher`) so a manual `?launcher=1`
+  // can't drag a project session URL into empty shell.
+  const [isEmptyShell] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return params.has("project") && !params.has("session") && !params.has("mode");
+  });
+  if (isEmptyShell && projectParam) {
+    return (
+      <Suspense fallback={<LazyFallback />}>
+        <EmptyShell projectRoot={projectParam} />
+      </Suspense>
+    );
+  }
   if (isLauncher) {
     return (
       <Suspense fallback={<LazyFallback />}>
@@ -295,16 +316,30 @@ export default function App() {
         console.error(`[app] Failed to load mode "${modeName}":`, err);
       });
 
-    // Connect to session (always — even in replay mode, for Continue Work transition)
+    // Connect to session (always — even in replay mode, for Continue Work transition).
+    // Also fetch /api/session to discover project paths (Pneuma 3.0) so the
+    // store knows whether this session belongs to a project surface.
+    fetch(`${getApiBase()}/api/session`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.project?.projectRoot) {
+          useStore.getState().setProjectContext({
+            projectRoot: d.project.projectRoot,
+            homeRoot: d.project.homeRoot,
+            sessionDir: d.project.sessionDir,
+            projectName: d.project.projectName,
+            projectDescription: d.project.projectDescription,
+          });
+        }
+        if (!explicitSession) {
+          connect(d?.sessionId || "default");
+        }
+      })
+      .catch(() => {
+        if (!explicitSession) connect("default");
+      });
     if (explicitSession) {
       connect(explicitSession);
-    } else {
-      fetch(`${getApiBase()}/api/session`)
-        .then((r) => r.json())
-        .then((d) => {
-          connect(d.sessionId || "default");
-        })
-        .catch(() => connect("default"));
     }
 
     // Fetch mode init params
@@ -382,6 +417,9 @@ export default function App() {
             <AppModeToggle />
           </Suspense>
         )}
+        <Suspense fallback={null}>
+          <HandoffCard />
+        </Suspense>
       </div>
     );
   }
@@ -413,6 +451,9 @@ export default function App() {
         </Group>
         {replayMode && <ReplayPlayer />}
       </div>
+      <Suspense fallback={null}>
+        <HandoffCard />
+      </Suspense>
     </div>
   );
 }

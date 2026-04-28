@@ -43,7 +43,13 @@ function makeWorkspace(name: string): string {
 }
 
 function installWebcraftSkill(ws: string): void {
-  installSkill(ws, webcraftManifest.skill, MODE_SOURCE_DIR, {}, webcraftManifest.viewerApi);
+  installSkill({
+    workspace: ws,
+    skillConfig: webcraftManifest.skill,
+    modeSourceDir: MODE_SOURCE_DIR,
+    params: {},
+    viewerApi: webcraftManifest.viewerApi,
+  });
 }
 
 // ── 1. Mode Loading ──────────────────────────────────────────────────────────

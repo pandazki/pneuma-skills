@@ -10,6 +10,7 @@ import { createViewerSlice } from "./viewer-slice.js";
 import { createWorkspaceSlice } from "./workspace-slice.js";
 import { createReplaySlice } from "./replay-slice.js";
 import { createPluginSlice } from "./plugin-slice.js";
+import { createProjectSlice } from "./project-slice.js";
 import { normalizeViewerState } from "../utils/viewer-state.js";
 
 export const useStore = create<AppState>()((...a) => ({
@@ -22,6 +23,7 @@ export const useStore = create<AppState>()((...a) => ({
   ...createWorkspaceSlice(...a),
   ...createReplaySlice(...a),
   ...createPluginSlice(...a),
+  ...createProjectSlice(...a),
 }));
 
 // ── Pending message queue flush ─────────────────────────────────────────

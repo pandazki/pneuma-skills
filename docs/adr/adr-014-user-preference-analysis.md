@@ -273,3 +273,30 @@ Skill-installer 在 session 启动时：
 4. **CLAUDE.md 新增 marker** — `pneuma:preferences:start/end`
 5. **向前兼容** — 偏好文件不存在时完全静默，不影响现有流程
 6. **Agent 质量依赖** — 偏好分析的质量取决于 SKILL.md 策略和 agent 的理解力
+
+---
+
+## 7. Amendment 2026-04-27 (3.0 Project-Level Preferences)
+
+3.0 引入 [Project 层](../design/2026-04-27-pneuma-projects-design.md) 后，**用户偏好成为正交的两层**：
+
+| 层 | 存储位置 | 作用域 | 注入位置 |
+|----|----------|--------|----------|
+| 个人偏好 | `~/.pneuma/preferences/{profile.md, mode-{name}.md}` | 跨所有 workspace / 所有 project | CLAUDE.md `<!-- pneuma:preferences -->` 区块（本 ADR 既有） |
+| 项目偏好 | `<projectRoot>/.pneuma/preferences/{profile.md, mode-{name}.md}` | 仅当前 project | CLAUDE.md `<!-- pneuma:project -->` 区块内嵌 critical 块（仅项目化 session） |
+
+### 7.1 Schema 一致
+
+项目偏好的文件结构、`pneuma-critical:start/end` 与 `changelog:start/end` markers、agent 自治管理原则**完全沿用本 ADR**。仅作用域和注入位置不同。
+
+### 7.2 优先级与冲突
+
+`pneuma-project` 共享 skill 指引 agent：两套偏好同时呈现时，**项目偏好对当前任务更近**——若两者对同一问题给出冲突约束，按项目偏好执行并向用户解释原因。冲突频率应该极低（项目偏好通常更具体、更窄）。
+
+### 7.3 Evolution at Project Scope
+
+现有 `pneuma evolve <mode>` 不变（学个人偏好）。3.0 新增 launcher 项目页 "Evolve Project Preferences" 入口：以项目根为 workspace 启动 evolve mode，扫描该项目下所有 session 的 history（含跨 mode handoff 序列），输出写到 `<projectRoot>/.pneuma/preferences/`。
+
+### 7.4 并发写入
+
+本 ADR 4.x 关于 last-writer-wins 的语义沿用。项目偏好场景下并发写入同样低频——多窗口同 project 并发 session 各自更新偏好的概率小，且 agent 写前先读 + 全量重写规则不变。

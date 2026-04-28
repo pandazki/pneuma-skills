@@ -3,6 +3,14 @@ import { getApiBase } from "../utils/api.js";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import SpotlightCard from "./reactbits/SpotlightCard";
 import Galaxy from "./reactbits/Galaxy";
+import { CreateProjectDialog } from "./CreateProjectDialog.js";
+import { DirBrowser } from "./DirBrowser.js";
+import { ProjectCard, type ProjectCardEntry } from "./ProjectCard.js";
+import { ModeIcon } from "./ModeIcon.js";
+import { InitParamForm, type InitParamWithAutoFill } from "./InitParamForm.js";
+import { useAnimatedMount } from "../utils/useAnimatedMount.js";
+import { timeAgo, runningDuration } from "../utils/timeAgo.js";
+import { shortenPath } from "../utils/string.js";
 import type { InitParam } from "../../core/types/mode-manifest.js";
 
 type BackendType = "claude-code" | "codex";
@@ -78,6 +86,22 @@ interface RecentSession {
   hasReplayData?: boolean;
   editing?: boolean;
   layout?: "editor" | "app";
+}
+
+interface ProjectListEntry {
+  id: string;
+  root: string;
+  name: string;
+  displayName: string;
+  description?: string;
+  lastAccessed: number;
+  createdAt: number;
+  /** Number of sessions discovered under `<root>/.pneuma/sessions/`. */
+  sessionCount: number;
+  /** Sorted unique mode names across the project's sessions. */
+  modeBreakdown: string[];
+  /** URL (relative to API base) for the project cover, when one exists. */
+  coverImageUrl?: string;
 }
 
 interface ChildProcess {
@@ -207,29 +231,6 @@ function ThemeToggle({ preference, onClick }: { preference: Theme; onClick: () =
   );
 }
 
-// ── useAnimatedMount — delays unmount for exit animation ─────────────────
-
-function useAnimatedMount(visible: boolean, duration = 200) {
-  const [mounted, setMounted] = useState(visible);
-  const [closing, setClosing] = useState(false);
-
-  useEffect(() => {
-    if (visible) {
-      setMounted(true);
-      setClosing(false);
-    } else if (mounted) {
-      setClosing(true);
-      const timer = setTimeout(() => {
-        setMounted(false);
-        setClosing(false);
-      }, duration);
-      return () => clearTimeout(timer);
-    }
-  }, [visible]);
-
-  return { mounted, closing };
-}
-
 // ── ConfirmButton — unified destructive action with animated confirm ─────
 
 function ConfirmButton({
@@ -313,19 +314,12 @@ function ConfirmButton({
 
 // ── Utility functions ────────────────────────────────────────────────────
 
-const FALLBACK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"/></svg>`;
+// `ModeIcon` + `FALLBACK_SVG` live in `./ModeIcon.tsx` so panels outside
+// the launcher (e.g. ProjectPanel's mode tile grid) can render the same
+// icon-with-fallback pattern. The Mode Maker / Evolve glyphs are launcher-
+// scoped and stay here.
 const MODE_MAKER_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085"/></svg>`;
 const EVOLVE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c-1.5 0-2.5 1-3 2-.5-1-1.5-2-3-2C4 3 2 5 2 7c0 3 4 6 6 8 .5-.5 1.5-1.5 2-2"/><path d="M12 3c1.5 0 2.5 1 3 2 .5-1 1.5-2 3-2 2 0 4 2 4 4 0 3-4 6-6 8-.5-.5-1.5-1.5-2-2"/><path d="M12 21v-8"/><path d="M9 18l3-3 3 3"/></svg>`;
-
-function ModeIcon({ svg, className }: { svg?: string; className?: string }) {
-  const hasSvg = svg && svg.trim().startsWith("<svg");
-  return (
-    <div
-      className={`[&>svg]:w-full [&>svg]:h-full ${className || ""}`}
-      dangerouslySetInnerHTML={{ __html: hasSvg ? svg : FALLBACK_SVG }}
-    />
-  );
-}
 
 function PrimaryButton({
   children,
@@ -352,31 +346,6 @@ function PrimaryButton({
   );
 }
 
-function timeAgo(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return `${Math.floor(days / 30)}mo ago`;
-}
-
-function runningDuration(startedAt: number): string {
-  const seconds = Math.floor((Date.now() - startedAt) / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}m`;
-}
-
-function shortenPath(path: string, homeDir: string): string {
-  if (path.startsWith(homeDir)) return "~" + path.slice(homeDir.length);
-  return path;
-}
 
 function backendLabel(backendType: BackendType): string {
   return backendType === "claude-code" ? "Claude" : "Codex";
@@ -1832,129 +1801,6 @@ function GalleryModeCard({
   );
 }
 
-// ── DirBrowser ────────────────────────────────────────────────────────────
-
-function DirBrowser({
-  startPath,
-  apiBase,
-  onSelect,
-  onClose,
-}: {
-  startPath: string;
-  apiBase: string;
-  onSelect: (path: string) => void;
-  onClose: () => void;
-}) {
-  const [currentPath, setCurrentPath] = useState(startPath);
-  const [dirs, setDirs] = useState<Array<{ name: string; path: string }>>([]);
-  const [parentPath, setParentPath] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
-
-  const browse = useCallback(async (path: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`${apiBase}/api/browse-dirs?path=${encodeURIComponent(path)}`);
-      const data = await res.json();
-      if (data.error && data.dirs?.length === 0) {
-        setError(data.error);
-      }
-      setCurrentPath(data.current || path);
-      setDirs(data.dirs || []);
-      setParentPath(data.parent || null);
-    } catch {
-      setError("Failed to browse directory");
-    }
-    setLoading(false);
-  }, [apiBase]);
-
-  useEffect(() => { browse(startPath); }, [browse, startPath]);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [onClose]);
-
-  const segments = currentPath.split("/").filter(Boolean);
-
-  return (
-    <div
-      ref={ref}
-      className="absolute left-0 right-0 top-full mt-1 z-50 bg-cc-surface border border-cc-border/60 rounded-lg shadow-[0_8px_32px_rgba(0,0,0,0.25)] overflow-hidden"
-    >
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-0.5 px-3 py-2 border-b border-cc-border/40 overflow-x-auto text-xs">
-        <button onClick={() => browse("/")} className="text-cc-muted hover:text-cc-fg cursor-pointer shrink-0">/</button>
-        {segments.map((seg, i) => {
-          const path = "/" + segments.slice(0, i + 1).join("/");
-          return (
-            <React.Fragment key={path}>
-              <span className="text-cc-muted/30">/</span>
-              <button
-                onClick={() => browse(path)}
-                className="text-cc-muted hover:text-cc-fg cursor-pointer shrink-0 max-w-[120px] truncate"
-              >
-                {seg}
-              </button>
-            </React.Fragment>
-          );
-        })}
-      </div>
-
-      {/* Directory list */}
-      <div className="max-h-52 overflow-y-auto py-1">
-        {loading ? (
-          <div className="flex justify-center py-4">
-            <div className="w-4 h-4 rounded-full border-2 border-cc-primary border-t-transparent animate-spin" />
-          </div>
-        ) : (
-          <>
-            {error && <div className="px-3 py-2 text-xs text-cc-error">{error}</div>}
-            {parentPath && (
-              <button
-                onClick={() => browse(parentPath)}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-cc-muted hover:bg-cc-hover cursor-pointer"
-              >
-                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
-                </svg>
-                ..
-              </button>
-            )}
-            {dirs.map((dir) => (
-              <button
-                key={dir.path}
-                onClick={() => browse(dir.path)}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-cc-fg hover:bg-cc-hover cursor-pointer"
-              >
-                <svg className="w-4 h-4 shrink-0 text-cc-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
-                </svg>
-                <span className="truncate flex-1 text-left">{dir.name}</span>
-              </button>
-            ))}
-            {dirs.length === 0 && !error && (
-              <div className="py-4 text-center text-cc-muted/60 text-xs">Empty directory</div>
-            )}
-          </>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between px-3 py-2 border-t border-cc-border/40">
-        <span className="text-xs text-cc-muted truncate mr-2">{currentPath}</span>
-        <PrimaryButton size="sm" className="shrink-0 rounded-md" onClick={() => { onSelect(currentPath); onClose(); }}>
-          Select
-        </PrimaryButton>
-      </div>
-    </div>
-  );
-}
-
 // ── LaunchDialog ──────────────────────────────────────────────────────────
 
 function LaunchDialog({
@@ -2002,7 +1848,6 @@ function LaunchDialog({
   const [sessionNameValue, setSessionNameValue] = useState(defaultSessionName);
   const [initParams, setInitParams] = useState<InitParam[]>([]);
   const [paramValues, setParamValues] = useState<Record<string, string | number>>({});
-  const displayNameTouchedRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [preparing, setPreparing] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -2249,79 +2094,12 @@ function LaunchDialog({
             Parameters
             {existingSession && <span className="text-xs text-cc-muted font-normal ml-2">(read-only)</span>}
           </p>
-          {initParams.map((param: any) => (
-            <div key={param.name}>
-              <label className="block text-sm text-cc-muted mb-1">
-                {param.label}
-                {param.autoFilled && (
-                  <span className="text-cc-success/70 text-xs ml-2">from global keys</span>
-                )}
-                {param.description && !param.autoFilled && (
-                  <span className="text-cc-muted/60"> — {param.description}</span>
-                )}
-              </label>
-              {param.autoFilled && paramValues[param.name] === param.defaultValue ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={param.maskedPreview}
-                    disabled
-                    className="flex-1 px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-muted text-sm opacity-70 cursor-not-allowed"
-                  />
-                  <button
-                    onClick={() => setParamValues({ ...paramValues, [param.name]: "" })}
-                    className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer whitespace-nowrap"
-                  >
-                    Clear
-                  </button>
-                </div>
-              ) : param.type === "select" && Array.isArray(param.options) ? (
-              <select
-                value={String(paramValues[param.name] ?? param.defaultValue)}
-                disabled={!!existingSession}
-                onChange={(e) => {
-                  setParamValues({ ...paramValues, [param.name]: e.target.value });
-                }}
-                className={`w-full px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50 ${
-                  existingSession ? "opacity-60 cursor-not-allowed" : ""
-                }`}
-              >
-                {param.options.map((opt: string) => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </select>
-              ) : (
-              <input
-                type={param.type === "number" ? "number" : param.sensitive ? "password" : "text"}
-                value={paramValues[param.name] ?? param.defaultValue}
-                disabled={!!existingSession}
-                onChange={(e) => {
-                  let val: string | number = param.type === "number" ? Number(e.target.value) : e.target.value;
-                  if (param.name === "modeName" && typeof val === "string") {
-                    val = val.toLowerCase().replace(/[^a-z0-9-]/g, "");
-                  }
-                  const next: Record<string, string | number> = { ...paramValues, [param.name]: val };
-                  if (param.name === "modeName" && typeof val === "string" && !displayNameTouchedRef.current) {
-                    const hasDisplayName = initParams.some((p) => p.name === "displayName");
-                    if (hasDisplayName) {
-                      next.displayName = val
-                        .split(/[-_\s]+/)
-                        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-                        .join(" ");
-                    }
-                  }
-                  if (param.name === "displayName") {
-                    displayNameTouchedRef.current = true;
-                  }
-                  setParamValues(next);
-                }}
-                className={`w-full px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
-                  existingSession ? "opacity-60 cursor-not-allowed" : ""
-                }`}
-              />
-              )}
-            </div>
-          ))}
+          <InitParamForm
+            params={initParams as InitParamWithAutoFill[]}
+            values={paramValues}
+            onChange={setParamValues}
+            disabled={!!existingSession}
+          />
         </div>
       )}
 
@@ -3258,6 +3036,13 @@ export default function Launcher() {
   const [local, setLocal] = useState<LocalMode[]>([]);
   const [sessions, setSessions] = useState<RecentSession[]>([]);
   const [running, setRunning] = useState<ChildProcess[]>([]);
+  const [projects, setProjects] = useState<ProjectListEntry[]>([]);
+  // Phase 4 — archived bucket. Fetched once on mount and after a restore;
+  // NOT refetched on every render. Toggled open by the inline "Archived"
+  // header link, which only appears when `archivedProjects.length > 0`.
+  const [archivedProjects, setArchivedProjects] = useState<ProjectListEntry[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [homeDir, setHomeDir] = useState("");
   const [loading, setLoading] = useState(true);
   const [showGallery, setShowGallery] = useState(false);
@@ -3365,14 +3150,103 @@ export default function Launcher() {
       .catch(() => { });
   }, []);
 
+  const reloadProjects = useCallback(async () => {
+    try {
+      const res = await fetch(`${getApiBase()}/api/projects`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setProjects(data.projects ?? []);
+    } catch {
+      // tolerate offline / no-server scenarios
+    }
+  }, []);
+
+  const reloadArchivedProjects = useCallback(async () => {
+    try {
+      const res = await fetch(`${getApiBase()}/api/projects?archived=true`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setArchivedProjects(data.projects ?? []);
+    } catch {
+      // tolerate offline / no-server scenarios
+    }
+  }, []);
+
+  const quickResumeProject = useCallback(
+    async (project: ProjectCardEntry) => {
+      // Skip the empty-shell intermediate. Pull the project's sessions, take
+      // the most-recently accessed one, and POST /api/launch directly. If
+      // anything fails, fall through to the default `<a href>` behavior on
+      // next click — no aggressive error UI for a "shortcut" affordance.
+      try {
+        const res = await fetch(
+          `${getApiBase()}/api/projects/${encodeURIComponent(project.root)}/sessions`,
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const sessions = (data.sessions ?? []) as Array<{
+          sessionId: string;
+          mode: string;
+          backendType?: string;
+          lastAccessed?: number;
+        }>;
+        if (sessions.length === 0) return;
+        const latest = [...sessions].sort(
+          (a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0),
+        )[0];
+        const launchRes = await fetch(`${getApiBase()}/api/launch`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            specifier: latest.mode,
+            workspace: project.root,
+            project: project.root,
+            sessionId: latest.sessionId,
+            ...(latest.backendType ? { backendType: latest.backendType } : {}),
+          }),
+        });
+        const launchData = (await launchRes.json()) as { url?: string };
+        if (launchData.url) {
+          window.location.href = launchData.url;
+        }
+      } catch {
+        // tolerate transient failures — the card's main link still works
+      }
+    },
+    [],
+  );
+
+  const restoreProject = useCallback(
+    async (project: ProjectCardEntry) => {
+      try {
+        const res = await fetch(
+          `${getApiBase()}/api/projects/${encodeURIComponent(project.root)}/restore`,
+          { method: "POST" },
+        );
+        if (!res.ok) return;
+      } catch {
+        return;
+      }
+      // Refresh both buckets — the project just moved between them. The
+      // toggled-open archived bucket stays open intentionally; the user
+      // closes it on their own time.
+      await Promise.all([reloadProjects(), reloadArchivedProjects()]);
+    },
+    [reloadProjects, reloadArchivedProjects],
+  );
+
   useEffect(() => {
     Promise.all([
       fetch(`${getApiBase()}/api/backends`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/registry`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/sessions`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/processes/children`).then((r) => r.json()),
+      fetch(`${getApiBase()}/api/projects`).then((r) => r.json()).catch(() => ({ projects: [] })),
+      fetch(`${getApiBase()}/api/projects?archived=true`)
+        .then((r) => r.json())
+        .catch(() => ({ projects: [] })),
     ])
-      .then(([backendData, registryData, sessionsData, runningData]) => {
+      .then(([backendData, registryData, sessionsData, runningData, projectsData, archivedData]) => {
         setBackendOptions(backendData.backends || []);
         if (backendData.defaultBackendType) {
           setDefaultBackendType(backendData.defaultBackendType);
@@ -3383,6 +3257,8 @@ export default function Launcher() {
         setSessions(sessionsData.sessions || []);
         if (sessionsData.homeDir) setHomeDir(sessionsData.homeDir);
         setRunning(runningData.processes || []);
+        setProjects(projectsData.projects || []);
+        setArchivedProjects(archivedData.projects || []);
       })
       .catch(() => { })
       .finally(() => setLoading(false));
@@ -3731,6 +3607,132 @@ export default function Launcher() {
             </section>
           )}
 
+          {/* Recent Projects — two-tier: featured (≤3 recent) + compact older list */}
+          {(() => {
+            const FEATURED_DAYS = 14;
+            const FEATURED_MAX = 3;
+            const featuredCutoff = Date.now() - FEATURED_DAYS * 24 * 60 * 60 * 1000;
+            // Sort newest first, then split into featured + rest.
+            const sorted = [...projects].sort(
+              (a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0)
+            );
+            const featured = sorted
+              .filter((p) => (p.lastAccessed ?? 0) >= featuredCutoff)
+              .slice(0, FEATURED_MAX);
+            const featuredIds = new Set(featured.map((p) => p.id));
+            const rest = sorted.filter((p) => !featuredIds.has(p.id));
+            const toCardEntry = (p: ProjectListEntry): ProjectCardEntry => ({
+              id: p.id,
+              root: p.root,
+              name: p.name,
+              displayName: p.displayName,
+              description: p.description,
+              lastAccessed: p.lastAccessed,
+              createdAt: p.createdAt,
+              sessionCount: p.sessionCount ?? 0,
+              modeBreakdown: p.modeBreakdown ?? [],
+              coverImageUrl: p.coverImageUrl,
+            });
+            return (
+              <section
+                className="mb-10 pt-8 border-t border-cc-border"
+                style={{ animation: "launcherFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.12s both" }}
+              >
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide">
+                    Recent Projects
+                    {projects.length > 0 && (
+                      <span className="text-cc-muted/40 ml-2">({projects.length})</span>
+                    )}
+                  </h2>
+                  <div className="flex items-center gap-3">
+                    {/* Archived bucket toggle — only visible when at least
+                        one archived project exists. Quiet styling
+                        (text-[11px], muted/50) keeps it tertiary so it
+                        doesn't compete with "+ Create Project". */}
+                    {archivedProjects.length > 0 && (
+                      <button
+                        type="button"
+                        className="text-[11px] text-cc-muted/50 hover:text-cc-primary cursor-pointer transition-colors"
+                        onClick={() => setShowArchived((v) => !v)}
+                      >
+                        {showArchived ? "Hide archived" : `Archived (${archivedProjects.length})`}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="text-xs text-cc-primary hover:opacity-80 transition-opacity cursor-pointer"
+                      onClick={() => setCreateProjectOpen(true)}
+                    >
+                      + Create Project
+                    </button>
+                  </div>
+                </div>
+                {projects.length === 0 ? (
+                  <div className="text-cc-muted/60 text-sm">No projects yet.</div>
+                ) : (
+                  <>
+                    {featured.length > 0 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+                        {featured.map((p) => (
+                          <ProjectCard
+                            key={p.id}
+                            project={toCardEntry(p)}
+                            variant="featured"
+                            homeDir={homeDir}
+                            onQuickResume={quickResumeProject}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {rest.length > 0 && (
+                      <div>
+                        {featured.length > 0 && (
+                          <h3 className="text-xs uppercase tracking-wider text-cc-muted/50 mb-3">
+                            All Projects ({rest.length})
+                          </h3>
+                        )}
+                        <div className="grid grid-cols-1 gap-2">
+                          {rest.map((p) => (
+                            <ProjectCard
+                              key={p.id}
+                              project={toCardEntry(p)}
+                              variant="compact"
+                              homeDir={homeDir}
+                              onQuickResume={quickResumeProject}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+                {/* Archived bucket — toggled open from the section header.
+                    Rendered as a compact row list below the active list,
+                    separated by a 1-px divider with breathing room above. */}
+                {showArchived && archivedProjects.length > 0 && (
+                  <div className="border-t border-cc-border/40 pt-4 mt-6">
+                    <h3 className="text-xs uppercase tracking-wider text-cc-muted/50 mb-3">
+                      Archived ({archivedProjects.length})
+                    </h3>
+                    <div className="grid grid-cols-1 gap-2">
+                      {archivedProjects.map((p) => (
+                        <ProjectCard
+                          key={p.id}
+                          project={toCardEntry(p)}
+                          variant="compact"
+                          homeDir={homeDir}
+                          archivedProject
+                          onRestore={restoreProject}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+            );
+          })()}
+
           {/* Continue — max 3, running as cards, recent as compact rows */}
           {hasContinueItems && (
             <section
@@ -3983,6 +3985,14 @@ export default function Launcher() {
             icon: mode.icon,
           });
         }}
+      />
+
+      {/* Create Project dialog */}
+      <CreateProjectDialog
+        open={createProjectOpen}
+        onClose={() => setCreateProjectOpen(false)}
+        onCreated={() => void reloadProjects()}
+        homeDir={homeDir}
       />
     </div>
   );

@@ -77,27 +77,35 @@ export interface Evidence {
 const PROPOSALS_DIR = "proposals";
 const BACKUPS_DIR = "backups";
 
-function getEvolutionDir(workspace: string): string {
-  return join(workspace, ".pneuma", "evolution");
+/**
+ * Resolve the evolution state directory.
+ *
+ * @param workspace - Agent work-tree (used as legacy default).
+ * @param stateDir - Optional explicit state dir for project sessions
+ *   (`<projectRoot>/.pneuma/sessions/<id>`). Defaults to `<workspace>/.pneuma`.
+ */
+function getEvolutionDir(workspace: string, stateDir?: string): string {
+  const resolved = stateDir ?? join(workspace, ".pneuma");
+  return join(resolved, "evolution");
 }
 
-export function getProposalsDir(workspace: string): string {
-  return join(getEvolutionDir(workspace), PROPOSALS_DIR);
+export function getProposalsDir(workspace: string, stateDir?: string): string {
+  return join(getEvolutionDir(workspace, stateDir), PROPOSALS_DIR);
 }
 
-function getBackupsDir(workspace: string): string {
-  return join(getEvolutionDir(workspace), BACKUPS_DIR);
+function getBackupsDir(workspace: string, stateDir?: string): string {
+  return join(getEvolutionDir(workspace, stateDir), BACKUPS_DIR);
 }
 
-export function saveProposal(workspace: string, proposal: EvolutionProposal): void {
-  const dir = getProposalsDir(workspace);
+export function saveProposal(workspace: string, proposal: EvolutionProposal, stateDir?: string): void {
+  const dir = getProposalsDir(workspace, stateDir);
   mkdirSync(dir, { recursive: true });
   const filePath = join(dir, `${proposal.id}.json`);
   writeFileSync(filePath, JSON.stringify(proposal, null, 2), "utf-8");
 }
 
-export function loadProposal(workspace: string, proposalId: string): EvolutionProposal | null {
-  const filePath = join(getProposalsDir(workspace), `${proposalId}.json`);
+export function loadProposal(workspace: string, proposalId: string, stateDir?: string): EvolutionProposal | null {
+  const filePath = join(getProposalsDir(workspace, stateDir), `${proposalId}.json`);
   if (!existsSync(filePath)) return null;
   try {
     return JSON.parse(readFileSync(filePath, "utf-8"));
@@ -107,8 +115,8 @@ export function loadProposal(workspace: string, proposalId: string): EvolutionPr
   }
 }
 
-export function loadLatestProposal(workspace: string): EvolutionProposal | null {
-  const dir = getProposalsDir(workspace);
+export function loadLatestProposal(workspace: string, stateDir?: string): EvolutionProposal | null {
+  const dir = getProposalsDir(workspace, stateDir);
   if (!existsSync(dir)) return null;
 
   const files = readdirSync(dir)
@@ -126,8 +134,8 @@ export function loadLatestProposal(workspace: string): EvolutionProposal | null 
   return null;
 }
 
-export function listProposals(workspace: string): EvolutionProposal[] {
-  const dir = getProposalsDir(workspace);
+export function listProposals(workspace: string, stateDir?: string): EvolutionProposal[] {
+  const dir = getProposalsDir(workspace, stateDir);
   if (!existsSync(dir)) return [];
 
   const results: EvolutionProposal[] = [];
@@ -143,17 +151,17 @@ export function listProposals(workspace: string): EvolutionProposal[] {
 
 // ── Apply ───────────────────────────────────────────────────────────────────
 
-export function applyProposal(workspace: string, proposalId: string): {
+export function applyProposal(workspace: string, proposalId: string, stateDir?: string): {
   success: boolean;
   error?: string;
   appliedFiles: string[];
 } {
-  const proposal = loadProposal(workspace, proposalId);
+  const proposal = loadProposal(workspace, proposalId, stateDir);
   if (!proposal) return { success: false, error: "Proposal not found", appliedFiles: [] };
   if (proposal.status === "applied") return { success: false, error: "Proposal already applied", appliedFiles: [] };
 
   // Create backup of affected files before applying
-  const backupDir = join(getBackupsDir(workspace), proposalId);
+  const backupDir = join(getBackupsDir(workspace, stateDir), proposalId);
   mkdirSync(backupDir, { recursive: true });
 
   // Backup CLAUDE.md before applying (for rollback of evolved section)
@@ -211,23 +219,23 @@ export function applyProposal(workspace: string, proposalId: string): {
 
   proposal.status = "applied";
   proposal.appliedAt = new Date().toISOString();
-  saveProposal(workspace, proposal);
+  saveProposal(workspace, proposal, stateDir);
 
   return { success: true, appliedFiles };
 }
 
 // ── Rollback ────────────────────────────────────────────────────────────────
 
-export function rollbackProposal(workspace: string, proposalId: string): {
+export function rollbackProposal(workspace: string, proposalId: string, stateDir?: string): {
   success: boolean;
   error?: string;
   restoredFiles: string[];
 } {
-  const proposal = loadProposal(workspace, proposalId);
+  const proposal = loadProposal(workspace, proposalId, stateDir);
   if (!proposal) return { success: false, error: "Proposal not found", restoredFiles: [] };
   if (proposal.status !== "applied") return { success: false, error: "Proposal not applied — nothing to rollback", restoredFiles: [] };
 
-  const backupDir = join(getBackupsDir(workspace), proposalId);
+  const backupDir = join(getBackupsDir(workspace, stateDir), proposalId);
   const restoredFiles: string[] = [];
 
   // Restore CLAUDE.md from backup (removes evolved section)
@@ -258,20 +266,20 @@ export function rollbackProposal(workspace: string, proposalId: string): {
   }
 
   proposal.status = "rolled_back";
-  saveProposal(workspace, proposal);
+  saveProposal(workspace, proposal, stateDir);
 
   return { success: true, restoredFiles };
 }
 
 // ── Discard ─────────────────────────────────────────────────────────────────
 
-export function discardProposal(workspace: string, proposalId: string): boolean {
-  const proposal = loadProposal(workspace, proposalId);
+export function discardProposal(workspace: string, proposalId: string, stateDir?: string): boolean {
+  const proposal = loadProposal(workspace, proposalId, stateDir);
   if (!proposal) return false;
   if (proposal.status === "applied") return false; // Must rollback first
 
   proposal.status = "discarded";
-  saveProposal(workspace, proposal);
+  saveProposal(workspace, proposal, stateDir);
   return true;
 }
 

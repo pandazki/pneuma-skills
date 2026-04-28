@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.41.0] - 2026-04-28
+
+### Added — 3.0 Project Layer + UX pivot
+
+**Project layer** (organizational tier above sessions, opt-in):
+- A project is any user directory marked by `<root>/.pneuma/project.json`. Multiple sessions across modes share preferences and coordinate via handoff files. Quick (project-less) sessions remain fully supported.
+- Cross-mode handoff protocol: source agent writes `<projectRoot>/.pneuma/handoffs/<id>.md`; Pneuma surfaces a Handoff Card; user confirms; target session launches and consumes (deletes) the file.
+- Project-scoped preferences at `<projectRoot>/.pneuma/preferences/` — orthogonal to `~/.pneuma/preferences/`. Both inject into CLAUDE.md (`pneuma:project` and `pneuma:preferences` blocks).
+- Shared skill `pneuma-project` auto-installed in project sessions; teaches handoff write/consume protocol.
+- New CLI flags `--project <path>`, `--session-id <id>`.
+- New env vars `PNEUMA_SESSION_DIR`, `PNEUMA_HOME_ROOT`, `PNEUMA_PROJECT_ROOT`, `PNEUMA_SESSION_ID`.
+- Project-scope evolve: scans all session histories under the project, writes to `<projectRoot>/.pneuma/preferences/`.
+
+**UX pivot** (Project as in-shell component, not a separate route):
+- `EmptyShell` render path for `?project=<root>` URLs — TopBar without tabs/share/edit, panel auto-opens.
+- `ProjectChip` + `ProjectPanel` mounted in TopBar; replaces the prior `ProjectPage` detour.
+- Three-chip identity strip `[Pneuma] | [Project ▾] | [Mode ▾] | [Session ▾]` with thin vertical dividers.
+- Soft archive: registry field + `/archive` and `/restore` endpoints; panel inline confirm; launcher Archived bucket; Restore action on archived `ProjectCard`.
+- Quick-resume hot zone on launcher cards — clicking the SessionMeta line skips empty-shell and lands directly in the latest session.
+- Mode switcher dropdown in project session header emits `<pneuma:request-handoff>` chat tag.
+
+### Changed
+- `~/.pneuma/sessions.json` schema upgraded to `{ projects: [...], sessions: [...] }`. Legacy array format auto-upgraded on read.
+- `installSkill` accepts an `InstallSkillOptions` object (was 7 positional params); 43 caller sites migrated.
+- All state file paths (session.json, history.json, shadow.git, checkpoints.jsonl, evolution/, deploy.json, etc.) parameterized by `stateDir`. For project sessions: `<project>/.pneuma/sessions/{id}/`. Quick sessions unchanged.
+- `scanProjectSessions` surfaces `backendType`, `displayName`, `lastAccessed` so the panel renders real session names + relative time, and non-default-backend project sessions resume correctly.
+- Plugin skill installer threads `sessionDir` so project sessions get plugin skills under `<sessionDir>/.claude/skills/` (was wrongly landing in `<workspace>/.claude/`).
+- Project session identity: `<projectRoot>/.pneuma/sessions/<id>/session.json` stores `startup.sessionId` as the canonical id; backend's protocol id stored separately in `agentSessionId`. Reopening / handoff routing both use the project session id.
+- Quick session resume preserves the registry's existing `sessionName` when launched without `--session-name` (no-arg resume no longer drops user renames).
+- Internal: extracted `parseHandoffMarkdown` helper in `server/handoff-parser.ts`, replacing three near-identical YAML readers; extracted `ProjectCover.tsx` (cover image + session meta) for reuse between launcher card and panel.
+
+### Compatibility
+- Quick sessions (workspace without `project.json`) keep all 2.x behavior.
+- Old `sessions.json` arrays read transparently; first write upgrades the shape.
+- Old workspaces are not auto-migrated. Users opt in via launcher's "Create Project" with optional "Initialize from existing session" copy.
+
+### Known limitations
+- Handoff confirm cannot kill its own session (source survives until tab closes).
+- Session display names fall back to truncated 8-char hex when `session.json` doesn't carry a `displayName` field; the panel and route are wired, write path is incremental work.
+
 ## [2.40.0] - 2026-04-28
 
 ### Changed

@@ -10,10 +10,32 @@ import { mkdirSync, existsSync, readFileSync, writeFileSync, cpSync, readdirSync
 import { join, dirname, extname } from "node:path";
 import { homedir } from "node:os";
 import type { SkillConfig, ViewerApiConfig, McpServerConfig, SkillDependency } from "../core/types/mode-manifest.js";
+import { isProjectManifest, type ProjectManifest } from "../core/types/project-manifest.js";
 
 /** Return the workspace-relative skills directory for a given backend. */
 function skillsDir(backendType?: string): string {
   return backendType === "codex" ? join(".agents", "skills") : join(".claude", "skills");
+}
+
+/**
+ * Resolve the absolute path where plugin skills should be installed for the
+ * current session. Project sessions install under the per-session dir (which
+ * is the agent's CWD); quick sessions install under the workspace root
+ * (legacy 2.x layout). Mirrors the resolution `installSkill` uses for the
+ * mode skill so plugin skills sit alongside it under the same `.claude/`
+ * (or `.agents/`) tree.
+ *
+ * @param workspace — project root or quick-session workspace
+ * @param sessionDir — per-session state dir for project sessions; undefined for quick
+ * @param backendType — selects `.claude/skills` vs `.agents/skills`
+ */
+export function resolvePluginSkillsBase(
+  workspace: string,
+  sessionDir: string | undefined,
+  backendType?: string,
+): string {
+  const root = sessionDir ?? workspace;
+  return join(root, skillsDir(backendType));
 }
 
 /** Return the instructions filename for a given backend. */
@@ -29,6 +51,10 @@ const SKILLS_MARKER_START = "<!-- pneuma:skills:start -->";
 const SKILLS_MARKER_END = "<!-- pneuma:skills:end -->";
 const PREFS_MARKER_START = "<!-- pneuma:preferences:start -->";
 const PREFS_MARKER_END = "<!-- pneuma:preferences:end -->";
+const PROJECT_MARKER_START = "<!-- pneuma:project:start -->";
+const PROJECT_MARKER_END = "<!-- pneuma:project:end -->";
+const HANDOFF_MARKER_START = "<!-- pneuma:handoff:start -->";
+const HANDOFF_MARKER_END = "<!-- pneuma:handoff:end -->";
 
 /**
  * Extract critical preferences from a preference file.
@@ -46,6 +72,277 @@ export function extractPreferenceCritical(filePath: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** Escape a literal string for safe inclusion in a RegExp. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Synchronously load a project manifest from `<projectRoot>/.pneuma/project.json`.
+ * Returns null if the file is missing, unparseable, or fails the type guard.
+ *
+ * Sync counterpart of `loadProjectManifest` in `core/project-loader.ts` — kept
+ * local so `installSkill` can stay synchronous (the existing convention).
+ */
+function loadProjectManifestSync(projectRoot: string): ProjectManifest | null {
+  const path = join(projectRoot, ".pneuma", "project.json");
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf-8"));
+    return isProjectManifest(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+interface ProjectSessionRefSync {
+  sessionId: string;
+  mode: string;
+  sessionDir: string;
+}
+
+/**
+ * Synchronously scan `<projectRoot>/.pneuma/sessions/*` and return entries that
+ * have a valid `session.json`. Sync counterpart of `scanProjectSessions` in
+ * `core/project-loader.ts`.
+ */
+function scanProjectSessionsSync(projectRoot: string): ProjectSessionRefSync[] {
+  const sessionsDir = join(projectRoot, ".pneuma", "sessions");
+  if (!existsSync(sessionsDir)) return [];
+  let entries: string[];
+  try {
+    entries = readdirSync(sessionsDir);
+  } catch {
+    return [];
+  }
+  const out: ProjectSessionRefSync[] = [];
+  for (const id of entries) {
+    const sessionDir = join(sessionsDir, id);
+    const sessionJson = join(sessionDir, "session.json");
+    if (!existsSync(sessionJson)) continue;
+    try {
+      const s = statSync(sessionDir);
+      if (!s.isDirectory()) continue;
+      const data = JSON.parse(readFileSync(sessionJson, "utf-8")) as {
+        sessionId?: string;
+        mode?: string;
+      };
+      if (typeof data.sessionId === "string" && typeof data.mode === "string") {
+        out.push({ sessionId: data.sessionId, mode: data.mode, sessionDir });
+      }
+    } catch {
+      // skip corrupt session
+    }
+  }
+  return out;
+}
+
+export interface ProjectSectionInput {
+  /** Absolute path to the project root (the workspace that owns `.pneuma/project.json`). */
+  projectRoot: string;
+  /** Current session id — filtered out when listing sibling sessions. */
+  currentSessionId?: string;
+  /** Current mode name (e.g. "doc"), used to pick `mode-{name}.md` preferences. */
+  currentMode: string;
+}
+
+/**
+ * Build the body of the `pneuma:project` section. Returns `null` when
+ * `<projectRoot>/.pneuma/project.json` is missing or invalid — callers should
+ * skip injection in that case.
+ *
+ * The body is a Markdown fragment containing:
+ * - Heading with `displayName`
+ * - Optional `description`
+ * - Optional list of other sessions in the project (mode + sessionId)
+ * - Optional "Project Preferences (Critical)" block extracted from
+ *   `<projectRoot>/.pneuma/preferences/profile.md` and `mode-{name}.md`
+ */
+export function buildProjectSection(input: ProjectSectionInput): string | null {
+  const manifest = loadProjectManifestSync(input.projectRoot);
+  if (!manifest) return null;
+
+  const lines: string[] = [];
+  lines.push(`### Project: ${manifest.displayName}`);
+  if (manifest.description) {
+    lines.push("");
+    lines.push(`**Description**: ${manifest.description}`);
+  }
+
+  const sessions = scanProjectSessionsSync(input.projectRoot);
+  const others = sessions.filter((s) => s.sessionId !== input.currentSessionId);
+  if (others.length > 0) {
+    lines.push("");
+    lines.push("**Other sessions in this project**:");
+    for (const s of others) {
+      lines.push(`- \`${s.mode}/${s.sessionId}\``);
+    }
+  }
+
+  const profile = extractPreferenceCritical(
+    join(input.projectRoot, ".pneuma", "preferences", "profile.md")
+  );
+  const modePref = extractPreferenceCritical(
+    join(input.projectRoot, ".pneuma", "preferences", `mode-${input.currentMode}.md`)
+  );
+
+  if (profile || modePref) {
+    lines.push("");
+    lines.push("**Project Preferences (Critical)**:");
+    if (profile) {
+      lines.push("");
+      lines.push("Global:");
+      lines.push(profile);
+    }
+    if (modePref) {
+      lines.push("");
+      lines.push(`${input.currentMode} mode:`);
+      lines.push(modePref);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Inject (or strip) the `pneuma:project` block in an instructions file string.
+ *
+ * - Always strips any existing `pneuma:project` block first, so re-installs are
+ *   idempotent and stale blocks (e.g. project deletion) are removed.
+ * - When `body` is null/empty, the result has no project block (quick sessions).
+ * - When `body` is provided, the block is appended at the tail of the file
+ *   wrapped in `<!-- pneuma:project:start -->` / `<!-- pneuma:project:end -->`.
+ */
+export function injectProjectSection(
+  instructionsContent: string,
+  body: string | null,
+): string {
+  // Strip any existing block first (idempotent re-install + stale cleanup).
+  const stripped = instructionsContent.replace(
+    new RegExp(
+      `${escapeRegExp(PROJECT_MARKER_START)}[\\s\\S]*?${escapeRegExp(PROJECT_MARKER_END)}\\n?`,
+      "g",
+    ),
+    "",
+  );
+  if (!body) return stripped;
+  const block = `${PROJECT_MARKER_START}\n${body}\n${PROJECT_MARKER_END}\n`;
+  return stripped.trimEnd() + "\n\n" + block;
+}
+
+/**
+ * Inbound handoff payload as written by the v2 confirm endpoint. Mirrors the
+ * structured fields the `pneuma handoff` CLI accepts plus identity info for
+ * the source session.
+ */
+export interface InboundHandoffPayload {
+  handoff_id?: string;
+  source_session_id?: string;
+  source_mode?: string;
+  source_display_name?: string;
+  target_mode?: string;
+  target_session?: string;
+  intent?: string;
+  summary?: string;
+  suggested_files?: string[];
+  key_decisions?: string[];
+  open_questions?: string[];
+  proposed_at?: number;
+}
+
+/**
+ * Read the inbound handoff payload, if any, dropped at this session's
+ * `.pneuma/inbound-handoff.json` by `/api/handoffs/:id/confirm` *before* the
+ * target was spawned. The file's existence at session start is the agent's
+ * "you got here via Smart Handoff" signal; the target agent reads + rms the
+ * file on its first turn (per the `pneuma-project` skill).
+ *
+ * Returns null on missing / unreadable / malformed JSON — callers treat that
+ * as "no inbound handoff".
+ */
+export function readInboundHandoff(sessionDir: string): InboundHandoffPayload | null {
+  const path = join(sessionDir, ".pneuma", "inbound-handoff.json");
+  if (!existsSync(path)) return null;
+  try {
+    const raw = readFileSync(path, "utf-8");
+    const parsed = JSON.parse(raw) as InboundHandoffPayload;
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build the body of the `pneuma:handoff` section from an inbound payload.
+ * Mirrors the shape documented in `pneuma-project/SKILL.md`'s "Receiving a
+ * handoff" section — the agent's skill expects this exact layout (header,
+ * intent, summary, suggested files, decisions, open questions). Returns null
+ * when there's no payload — callers should skip injection.
+ */
+export function buildHandoffSection(payload: InboundHandoffPayload | null): string | null {
+  if (!payload) return null;
+  const lines: string[] = [];
+
+  const sourceMode = payload.source_mode ?? "unknown";
+  const sourceLabel = payload.source_display_name
+    ? `${payload.source_display_name} (${payload.source_session_id ?? "unknown"})`
+    : payload.source_session_id ?? "unknown";
+  lines.push(`**Inbound from ${sourceMode}** (session ${sourceLabel})`);
+  lines.push("");
+
+  if (payload.intent) {
+    lines.push(`**Intent**: ${payload.intent}`);
+    lines.push("");
+  }
+  if (payload.summary) {
+    lines.push(`**Summary**: ${payload.summary}`);
+    lines.push("");
+  }
+  if (payload.suggested_files?.length) {
+    lines.push("**Suggested files** (read in order):");
+    for (const f of payload.suggested_files) lines.push(`- \`${f}\``);
+    lines.push("");
+  }
+  if (payload.key_decisions?.length) {
+    lines.push("**Decisions already locked in**:");
+    for (const d of payload.key_decisions) lines.push(`- ${d}`);
+    lines.push("");
+  }
+  if (payload.open_questions?.length) {
+    lines.push("**Open questions**:");
+    for (const q of payload.open_questions) lines.push(`- ${q}`);
+    lines.push("");
+  }
+  lines.push(
+    `Read suggested files in order, acknowledge in your first reply, then \`rm .pneuma/inbound-handoff.json\` and start the work.`,
+  );
+  return lines.join("\n").trimEnd();
+}
+
+/**
+ * Inject (or strip) the `pneuma:handoff` block in an instructions file string.
+ *
+ * Mirrors {@link injectProjectSection}: always strips any existing block first
+ * for idempotency, then appends the new block when `body` is provided. Quick /
+ * non-project sessions pass `null` to ensure stale blocks are cleaned up.
+ */
+export function injectHandoffSection(
+  instructionsContent: string,
+  body: string | null,
+): string {
+  const stripped = instructionsContent.replace(
+    new RegExp(
+      `${escapeRegExp(HANDOFF_MARKER_START)}[\\s\\S]*?${escapeRegExp(HANDOFF_MARKER_END)}\\n?`,
+      "g",
+    ),
+    "",
+  );
+  if (!body) return stripped;
+  const block = `${HANDOFF_MARKER_START}\n${body}\n${HANDOFF_MARKER_END}\n`;
+  return stripped.trimEnd() + "\n\n" + block;
 }
 
 export interface PreferencesBuildPayload {
@@ -623,41 +920,112 @@ function installSharedScripts(
 /**
  * Returns framework-level skill dependencies installed for ALL modes.
  * These provide universal agent capabilities (e.g., user preference analysis).
+ *
+ * When `inProject` is true, the project-context skill (`pneuma-project`) is
+ * appended — it teaches the agent how to live inside a Pneuma project,
+ * write/consume handoff files, and follow project-scoped preferences. Quick
+ * (non-project) sessions skip it.
  */
-function getGlobalSkillDependencies(): SkillDependency[] {
+function getGlobalSkillDependencies(inProject = false): SkillDependency[] {
   const sharedDir = join(import.meta.dirname, "..", "modes", "_shared");
-  const prefsDir = join(sharedDir, "skills", "pneuma-preferences");
-  if (!existsSync(prefsDir)) return [];
+  const deps: SkillDependency[] = [];
 
-  return [{
-    name: "pneuma-preferences",
-    sourceDir: "skills/pneuma-preferences",
-    claudeMdSnippet: "**pneuma-preferences** — Persistent user preference memory. Consult BEFORE making design, style, or aesthetic decisions in any mode. Also use when starting creative work or when the user corrects your choices.",
-  }];
+  const prefsDir = join(sharedDir, "skills", "pneuma-preferences");
+  if (existsSync(prefsDir)) {
+    deps.push({
+      name: "pneuma-preferences",
+      sourceDir: "skills/pneuma-preferences",
+      claudeMdSnippet: "**pneuma-preferences** — Persistent user preference memory. Consult BEFORE making design, style, or aesthetic decisions in any mode. Also use when starting creative work or when the user corrects your choices.",
+    });
+  }
+
+  if (inProject) {
+    const projectDir = join(sharedDir, "skills", "pneuma-project");
+    if (existsSync(projectDir)) {
+      deps.push({
+        name: "pneuma-project",
+        sourceDir: "skills/pneuma-project",
+        claudeMdSnippet: "**pneuma-project** — Project-context awareness. Read for cross-mode handoff protocol, project-scoped preferences, and boundaries between session-private and project-shared files.",
+      });
+    }
+  }
+
+  return deps;
+}
+
+/**
+ * Options for {@link installSkill}.
+ *
+ * Field names mirror the legacy positional parameter names exactly so callers
+ * can convert positional → object mechanically (1:1 mapping).
+ */
+export interface InstallSkillOptions {
+  /** User's project directory (canonical user-content root). */
+  workspace: string;
+  /** Skill configuration from ModeManifest. */
+  skillConfig: SkillConfig;
+  /** Absolute path to the mode package directory (e.g. /path/to/modes/doc). */
+  modeSourceDir: string;
+  /** Optional init params for template replacement. */
+  params?: Record<string, number | string>;
+  /**
+   * Optional viewer self-describing API (auto-injected as independent
+   * instructions-file section).
+   */
+  viewerApi?: ViewerApiConfig;
+  /**
+   * Backend type ("claude-code" | "codex"). When "codex", also writes
+   * AGENTS.md alongside CLAUDE.md.
+   */
+  backendType?: string;
+  /** Optional proxy route definitions for the viewer-api section. */
+  proxyConfig?: Record<string, import("../core/types/mode-manifest.js").ProxyRoute>;
+  /**
+   * Where to write `.claude/skills/<installName>/`,
+   * `.agents/skills/<installName>/`, and the primary instructions file
+   * (`CLAUDE.md` / `AGENTS.md`). Defaults to `workspace` for quick sessions.
+   * Project sessions pass `<project>/.pneuma/sessions/{id}/`. User-content
+   * paths (.gitignore, .mcp.json, managed-mcp.json) always target `workspace`.
+   */
+  sessionDir?: string;
+  /**
+   * Project root for project-scoped sessions. When set, the installer reads
+   * `<projectRoot>/.pneuma/project.json` + `<projectRoot>/.pneuma/preferences/`
+   * and injects a `pneuma:project` marker into the instructions file.
+   * Quick sessions omit this.
+   */
+  projectRoot?: string;
+  /**
+   * Session id, used to filter "other sessions" when listing siblings in the
+   * project section. Required if `projectRoot` is set.
+   */
+  sessionId?: string;
 }
 
 /**
  * Install a mode's skill and inject CLAUDE.md configuration.
- *
- * @param workspace  — User's project directory
- * @param skillConfig — Skill configuration from ModeManifest
- * @param modeSourceDir — Absolute path to the mode package directory (e.g. /path/to/modes/doc)
- * @param params — Optional init params for template replacement
- * @param viewerApi — Optional viewer self-describing API (auto-injected as independent CLAUDE.md section)
- * @param backendType — Backend type ("claude-code" | "codex"). When "codex", also writes AGENTS.md.
  */
-export function installSkill(
-  workspace: string,
-  skillConfig: SkillConfig,
-  modeSourceDir: string,
-  params?: Record<string, number | string>,
-  viewerApi?: ViewerApiConfig,
-  backendType?: string,
-  proxyConfig?: Record<string, import("../core/types/mode-manifest.js").ProxyRoute>,
-): void {
+export function installSkill(options: InstallSkillOptions): void {
+  const {
+    workspace,
+    skillConfig,
+    modeSourceDir,
+    params,
+    viewerApi,
+    backendType,
+    proxyConfig,
+    sessionDir,
+    projectRoot,
+    sessionId,
+  } = options;
+  // Per-session install target — defaults to workspace for quick sessions.
+  // Project sessions pass `<project>/.pneuma/sessions/{id}/` so each session
+  // owns an isolated skills directory and instructions file.
+  const installTarget = sessionDir ?? workspace;
+
   // 1. Copy skill to the backend-appropriate skills directory
   const skillSource = join(modeSourceDir, skillConfig.sourceDir);
-  const skillTarget = join(workspace, skillsDir(backendType), skillConfig.installName);
+  const skillTarget = join(installTarget, skillsDir(backendType), skillConfig.installName);
 
   if (existsSync(skillSource)) {
     // Purge prior install to prevent stale files from older skill versions.
@@ -699,7 +1067,7 @@ export function installSkill(
   // 1c. Install skill dependencies
   let skillSnippets: string[] = [];
   if (skillConfig.skillDependencies && skillConfig.skillDependencies.length > 0) {
-    skillSnippets = installSkillDependencies(workspace, skillConfig.skillDependencies, modeSourceDir, params, backendType);
+    skillSnippets = installSkillDependencies(installTarget, skillConfig.skillDependencies, modeSourceDir, params, backendType);
   }
 
   // 1c-bis. Materialize shared scripts into the mode's own skill dir
@@ -708,11 +1076,14 @@ export function installSkill(
     installSharedScripts(skillTarget, skillConfig.sharedScripts);
   }
 
-  // 1d. Install global skill dependencies (framework-level, all modes)
-  const globalDeps = getGlobalSkillDependencies();
+  // 1d. Install global skill dependencies (framework-level, all modes).
+  //     When the session is project-scoped (`projectRoot` set), the
+  //     `pneuma-project` skill is appended so the agent learns the
+  //     handoff protocol and project-vs-session boundaries.
+  const globalDeps = getGlobalSkillDependencies(Boolean(projectRoot));
   if (globalDeps.length > 0) {
     const globalSnippets = installSkillDependencies(
-      workspace,
+      installTarget,
       globalDeps,
       join(import.meta.dirname, "..", "modes", "_shared"),
       params,
@@ -730,7 +1101,7 @@ export function installSkill(
 
   // 2. Inject/update instructions file with pneuma configuration
   //    Claude Code uses CLAUDE.md, Codex uses AGENTS.md
-  const primaryInstructionsPath = join(workspace, instructionsFile(backendType));
+  const primaryInstructionsPath = join(installTarget, instructionsFile(backendType));
   let content = "";
 
   if (existsSync(primaryInstructionsPath)) {
@@ -827,16 +1198,55 @@ export function installSkill(
   // 2d. Inject/update preferences critical section
   content = injectPreferencesSection(content, skillConfig.installName);
 
+  // 2e. Inject/update project section (project sessions only).
+  //     Quick sessions skip this — `projectRoot` is undefined and the helper
+  //     also strips any stale block, keeping the instructions file clean.
+  if (projectRoot) {
+    const projectBody = buildProjectSection({
+      projectRoot,
+      currentSessionId: sessionId,
+      currentMode: skillConfig.installName.replace(/^pneuma-/, ""),
+    });
+    content = injectProjectSection(content, projectBody);
+  } else {
+    // Idempotency: strip any stale block left from a previous install.
+    content = injectProjectSection(content, null);
+  }
+
+  // 2f. Inject/update handoff section (project sessions only).
+  //     The v2 tool-call protocol writes a structured payload to
+  //     `<sessionDir>/.pneuma/inbound-handoff.json` BEFORE the target spawns;
+  //     this block surfaces it to the agent on first run. The agent reads
+  //     the file (path quoted in the block) and rms it after consuming.
+  //     Quick sessions and project sessions without an inbound payload pass
+  //     null to strip any stale block.
+  if (projectRoot && sessionId) {
+    const inbound = readInboundHandoff(installTarget);
+    content = injectHandoffSection(content, buildHandoffSection(inbound));
+  } else {
+    // Idempotency: strip any stale block left from a previous install.
+    content = injectHandoffSection(content, null);
+  }
+
   // Write instructions file
   mkdirSync(dirname(primaryInstructionsPath), { recursive: true });
   writeFileSync(primaryInstructionsPath, content, "utf-8");
   console.log(`[skill-installer] Updated ${primaryInstructionsPath}`);
 
   // 3. Ensure .pneuma/ is in .gitignore
+  //    .gitignore tracks user-content state — always at workspace root regardless of session location.
   ensureGitignore(workspace);
 
   // 4. Inject resumed context if present
-  injectResumedContext(workspace, backendType ?? "claude-code");
+  //    For project sessions the state dir equals `sessionDir` (where session.json
+  //    et al. live), so the resumed-context.xml source matches the destination's
+  //    session scope. Quick sessions fall back to `<workspace>/.pneuma`.
+  injectResumedContext(
+    workspace,
+    backendType ?? "claude-code",
+    installTarget,
+    sessionDir,
+  );
 }
 
 /**
@@ -873,10 +1283,30 @@ export function injectMemorySourceInfo(
 
 /**
  * Inject resumed session context from shared history into the instructions file.
- * Reads `.pneuma/resumed-context.xml` and injects it before `<!-- pneuma:end -->`.
+ *
+ * Reads `resumed-context.xml` from the per-session state directory (or, for
+ * legacy quick sessions, `<workspace>/.pneuma/`) and injects it before
+ * `<!-- pneuma:end -->` of the instructions file.
+ *
+ * @param workspace — User's project directory (legacy default state location)
+ * @param backendType — Backend identifier ("claude-code" | "codex")
+ * @param instructionsDir — Optional override for where the instructions file lives.
+ *   Defaults to `workspace` for backward compatibility (quick sessions). Project
+ *   sessions pass the per-session directory so the resumed context lands in the
+ *   session-scoped instructions file, not the workspace-shared one.
+ * @param stateDir — Optional override for where `resumed-context.xml` lives.
+ *   Defaults to `<workspace>/.pneuma`. Project sessions pass
+ *   `<projectRoot>/.pneuma/sessions/<sessionId>` so the per-session source is
+ *   read instead of any project-root file.
  */
-export function injectResumedContext(workspace: string, backendType: string): void {
-  const contextPath = join(workspace, ".pneuma", "resumed-context.xml");
+export function injectResumedContext(
+  workspace: string,
+  backendType: string,
+  instructionsDir?: string,
+  stateDir?: string,
+): void {
+  const sourceDir = stateDir ?? join(workspace, ".pneuma");
+  const contextPath = join(sourceDir, "resumed-context.xml");
   if (!existsSync(contextPath)) return;
 
   const context = readFileSync(contextPath, "utf-8");
@@ -884,9 +1314,10 @@ export function injectResumedContext(workspace: string, backendType: string): vo
   const markerEnd = "<!-- pneuma:resumed:end -->";
   const section = `${markerStart}\n${context}\n${markerEnd}`;
 
+  const instrTarget = instructionsDir ?? workspace;
   const instructionsPath = backendType === "codex"
-    ? join(workspace, "AGENTS.md")
-    : join(workspace, "CLAUDE.md");
+    ? join(instrTarget, "AGENTS.md")
+    : join(instrTarget, "CLAUDE.md");
 
   if (!existsSync(instructionsPath)) return;
 

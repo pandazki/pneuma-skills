@@ -38,6 +38,19 @@ export interface ParsedCliArgs {
   replaySource: string; // Source workspace path for existing session replay
   sessionName: string;
   viewing: boolean;
+  /** Project root directory (resolved absolute) when --project is supplied; empty string otherwise. */
+  project: string;
+  /** Explicit session id override from --session-id; empty string when not provided. */
+  sessionIdOverride: string;
+  /**
+   * Source session info — populated only when this child was spawned from
+   * an existing session that wasn't a Smart Handoff (e.g. clicking a sibling
+   * row in ProjectPanel). Drives the `<pneuma:env reason="switched" …/>`
+   * dispatch on session start. Empty strings when not provided.
+   */
+  fromSessionId: string;
+  fromMode: string;
+  fromDisplayName: string;
 }
 
 /**
@@ -86,6 +99,11 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
   let replaySource = "";
   let sessionName = "";
   let viewing = false;
+  let project = "";
+  let sessionIdOverride = "";
+  let fromSessionId = "";
+  let fromMode = "";
+  let fromDisplayName = "";
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -117,6 +135,16 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
       replaySource = resolve(cwd, args[++i]);
     } else if (arg === "--session-name" && i + 1 < args.length) {
       sessionName = args[++i];
+    } else if (arg === "--project" && i + 1 < args.length) {
+      project = resolve(cwd, args[++i]);
+    } else if (arg === "--session-id" && i + 1 < args.length) {
+      sessionIdOverride = args[++i] ?? "";
+    } else if (arg === "--from-session-id" && i + 1 < args.length) {
+      fromSessionId = args[++i] ?? "";
+    } else if (arg === "--from-mode" && i + 1 < args.length) {
+      fromMode = args[++i] ?? "";
+    } else if (arg === "--from-display-name" && i + 1 < args.length) {
+      fromDisplayName = args[++i] ?? "";
     } else if (!arg.startsWith("--")) {
       mode = arg;
     }
@@ -138,6 +166,11 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
     replaySource,
     sessionName,
     viewing,
+    project,
+    sessionIdOverride,
+    fromSessionId,
+    fromMode,
+    fromDisplayName,
   };
 }
 
