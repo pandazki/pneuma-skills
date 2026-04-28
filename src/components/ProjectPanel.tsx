@@ -7,7 +7,7 @@
  *   1. Identity bar — cover + displayName + description + path
  *   2. Working area — split LEFT (sessions, 60%) / RIGHT (mode picker, 40%)
  *      via a `gap-px bg-cc-border/50` rail (no border on either pane)
- *   3. Actions bar  — Evolve Preferences · Archive (right-aligned)
+ *   3. Actions bar  — Evolve (icon, hover-expand) + overflow menu (right-aligned)
  *
  * The left pane is a flat session list sorted by lastAccessed desc — no
  * per-mode columns. Each row is `[thumbnail-or-icon] [title] [preview]
@@ -22,7 +22,7 @@
  * Currently-active session (matches `useStore(s => s.session?.session_id)`)
  * gets a subtle background tint + ring-1, never a side stripe.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
 import { basename, escapeXml, shortenPath } from "../utils/string.js";
@@ -95,12 +95,38 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   // window and users assume their click did nothing.
   const [launchingId, setLaunchingId] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
-  // Phase 4 — Archive flow. The actions row morphs into an inline confirm
-  // (no modal, no card-in-card), and surfaces failures the same way as
-  // launchError. `archiving` disables the Confirm button to dedupe clicks.
-  const [archiveConfirm, setArchiveConfirm] = useState(false);
-  const [archiving, setArchiving] = useState(false);
-  const [archiveError, setArchiveError] = useState<string | null>(null);
+  // Destructive actions (archive + permanent delete) share one inline
+  // confirm row morph — no modals, no card-in-card. `pendingAction`
+  // toggles which copy + handler the row shows; `actionRunning`
+  // disables the confirm button to dedupe clicks; `actionError` surfaces
+  // failures the same way as launchError.
+  type PendingAction = "archive" | "delete";
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [actionRunning, setActionRunning] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  // Overflow menu — Archive (and any future low-frequency action) hides
+  // behind a `[...]` button so the visible row stays calm. Closes on
+  // outside-click or Esc; the inline archive confirm replaces this row
+  // entirely once Archive is picked.
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  // Editor picker — list of detected IDEs (server-side scan), the user's
+  // last-chosen default (persisted in localStorage), and a popover state
+  // mirroring the overflow menu. Empty list = no IDE detected (or non-
+  // macOS); we hide the icon entirely in that case so the row doesn't
+  // show a non-functional control.
+  interface DetectedEditor {
+    id: string;
+    displayName: string;
+  }
+  const [editors, setEditors] = useState<DetectedEditor[]>([]);
+  const [defaultEditorId, setDefaultEditorId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem("pneuma:default-editor");
+  });
+  const [editorMenuOpen, setEditorMenuOpen] = useState(false);
+  const editorMenuRef = useRef<HTMLDivElement>(null);
 
   // Fetch project info + sessions + registry + project list (for cover URL
   // and homeDir) in parallel on mount.
@@ -321,6 +347,41 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     180,
   );
 
+  // Auto-shift the wrapper leftward when opening the drawer would push its
+  // right edge past the viewport. The chip itself sits at the top-left of
+  // the page (~170px from the edge in the default TopBar), so on most
+  // laptops there's plenty of room on the left to absorb the shift while
+  // keeping the panel + drawer fully visible. Re-runs on resize and on
+  // drawer mount/unmount.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [wrapperShift, setWrapperShift] = useState(0);
+  useEffect(() => {
+    if (!drawerMounted) {
+      setWrapperShift(0);
+      return;
+    }
+    const measure = () => {
+      const el = wrapperRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const margin = 16;
+      const overflow = rect.right + margin - window.innerWidth;
+      // Only shift left enough to fit, and never further than the
+      // available space on the left (don't push past 16px from the left
+      // viewport edge).
+      const maxLeftRoom = Math.max(0, rect.left - margin);
+      const shift = overflow > 0 ? Math.min(overflow, maxLeftRoom) : 0;
+      setWrapperShift(shift);
+    };
+    // rAF lets the drawer's intrinsic size resolve before measuring.
+    const raf = requestAnimationFrame(measure);
+    window.addEventListener("resize", measure);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", measure);
+    };
+  }, [drawerMounted]);
+
   // Mode-picker truncation. Shows the user's most-relevant 8 modes by
   // default — used modes in this project first (sorted by their most-recent
   // session), then builtins in a sensible default order. "Show all" reveals
@@ -377,17 +438,80 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   // on Esc via ProjectChip's outer handler, but the confirm row is a more
   // local intent — bail out of just that row first if it's open.
   useEffect(() => {
-    if (!archiveConfirm) return;
+    if (!pendingAction) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        setArchiveConfirm(false);
-        setArchiveError(null);
+        setPendingAction(null);
+        setActionError(null);
       }
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [archiveConfirm]);
+  }, [pendingAction]);
+
+  // Overflow menu — close on outside-click or Esc.
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setMoreMenuOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onMouseDown, true);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("mousedown", onMouseDown, true);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [moreMenuOpen]);
+
+  // Editor menu — same pattern as the overflow menu.
+  useEffect(() => {
+    if (!editorMenuOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (editorMenuRef.current && !editorMenuRef.current.contains(e.target as Node)) {
+        setEditorMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setEditorMenuOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onMouseDown, true);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("mousedown", onMouseDown, true);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [editorMenuOpen]);
+
+  // Detect installed editors once on mount. The list is small and stable
+  // across the panel's lifetime, so no re-scan is needed.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`${apiBase}/api/system/editors`);
+        if (!res.ok) return;
+        const data = (await res.json()) as { editors: DetectedEditor[] };
+        if (!cancelled) setEditors(data.editors ?? []);
+      } catch {
+        // Detection failure is non-fatal — the icon just stays hidden.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBase]);
 
   // Esc inside the launch sheet returns to the mode grid (not closing the
   // panel). `capture: true` + stopPropagation so the chip's outer
@@ -487,29 +611,63 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     void launch(launchTarget.name, undefined, sheetValues);
   };
 
-  const archive = async () => {
-    if (archiving) return;
-    setArchiving(true);
-    setArchiveError(null);
+  const revealInFinder = async () => {
     try {
-      const res = await fetch(
-        `${apiBase}/api/projects/${encodeURIComponent(projectRoot)}/archive`,
+      await fetch(
+        `${apiBase}/api/projects/${encodeURIComponent(projectRoot)}/reveal`,
         { method: "POST" },
       );
+    } catch {
+      // Best-effort — surface only via the system error toast if the
+      // server even responded.
+    }
+  };
+
+  const openInEditor = async (editorId: string) => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("pneuma:default-editor", editorId);
+    }
+    setDefaultEditorId(editorId);
+    setEditorMenuOpen(false);
+    try {
+      await fetch(
+        `${apiBase}/api/projects/${encodeURIComponent(projectRoot)}/open-in-editor`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ editorId }),
+        },
+      );
+    } catch {
+      // Same best-effort tone as revealInFinder.
+    }
+  };
+
+  const runPendingAction = async () => {
+    if (actionRunning || !pendingAction) return;
+    setActionRunning(true);
+    setActionError(null);
+    const verbDone = pendingAction === "archive" ? "Archive" : "Delete";
+    const url = `${apiBase}/api/projects/${encodeURIComponent(projectRoot)}${
+      pendingAction === "archive" ? "/archive" : ""
+    }`;
+    const method = pendingAction === "archive" ? "POST" : "DELETE";
+    try {
+      const res = await fetch(url, { method });
       if (res.ok) {
-        // Project is now hidden from the default launcher list. Drop the
-        // user back at the launcher; their next move is to either pick a
-        // different project or reveal the Archived bucket.
+        // Either path takes the user back to the launcher: archived
+        // projects are hidden from the default list, deleted projects
+        // are gone from the registry. Their next move is up to them.
         window.location.href = "/";
         return;
       }
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      setArchiveError(data.error ?? `Archive failed (${res.status})`);
+      setActionError(data.error ?? `${verbDone} failed (${res.status})`);
     } catch (err) {
-      console.error("[ProjectPanel] archive failed", err);
-      setArchiveError(err instanceof Error ? err.message : "Archive failed");
+      console.error(`[ProjectPanel] ${verbDone.toLowerCase()} failed`, err);
+      setActionError(err instanceof Error ? err.message : `${verbDone} failed`);
     } finally {
-      setArchiving(false);
+      setActionRunning(false);
     }
   };
 
@@ -520,12 +678,15 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     <div
       role="dialog"
       aria-label="Project panel"
-      className="absolute top-full left-0 mt-2 w-[960px] max-h-[80vh] bg-cc-surface border border-cc-border rounded-2xl shadow-[0_24px_64px_-24px_rgba(0,0,0,0.6)] backdrop-blur-xl z-[100] overflow-hidden [animation:launcherFadeIn_180ms_cubic-bezier(0.16,1,0.3,1)]"
+      ref={wrapperRef}
+      style={{ transform: wrapperShift ? `translateX(-${wrapperShift}px)` : undefined }}
+      className="absolute top-full left-0 mt-2 z-[100] flex items-start gap-3 transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]"
     >
-      {/* Scrollable content layer — sits below the launch-sheet drawer in the
-          stacking order. The outer panel uses overflow-hidden so the drawer
-          can slide in from offscreen right; this inner layer carries the
-          actual scroll for tall content. */}
+      {/* Inner panel — keeps its own border + clipping. The launch-sheet
+          drawer sits as a sibling to the right (see below), not as an
+          overlay child, so it appears as a spatial extension of the panel
+          rather than covering the mode grid. */}
+      <div className="w-[960px] max-h-[80vh] bg-cc-surface border border-cc-border rounded-2xl shadow-[0_24px_64px_-24px_rgba(0,0,0,0.6)] backdrop-blur-xl overflow-hidden [animation:launcherFadeIn_180ms_cubic-bezier(0.16,1,0.3,1)]">
       <div className="relative max-h-[80vh] overflow-y-auto">
       {/* Section A — Identity */}
       <div className="p-6 flex items-start gap-5">
@@ -593,7 +754,16 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                       type="button"
                       aria-current={isActive ? "page" : undefined}
                       disabled={launching || deleting}
-                      onClick={() => launch(s.mode, s.sessionId)}
+                      onClick={() => {
+                        // Clicking the currently-active session is a
+                        // dismiss intent, not a relaunch — just close
+                        // the panel and let the user keep working.
+                        if (isActive) {
+                          onClose?.();
+                          return;
+                        }
+                        void launch(s.mode, s.sessionId);
+                      }}
                       className="flex items-start gap-3 flex-1 min-w-0 px-2.5 py-2 text-left disabled:opacity-50 cursor-pointer"
                     >
                       {fullThumbUrl ? (
@@ -785,16 +955,18 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
           the explicit "Confirm" verb rather than by visual loudness. */}
       <div className="p-5 border-t border-cc-border/50 flex flex-col items-end gap-2">
         <div className="flex justify-end items-center gap-3 w-full">
-          {archiveConfirm ? (
+          {pendingAction ? (
             <div className="flex items-center gap-3 [animation:overlayFadeIn_140ms_cubic-bezier(0.16,1,0.3,1)]">
               <span className="text-xs text-cc-muted">
-                Archive this project?
+                {pendingAction === "archive"
+                  ? "Archive this project?"
+                  : "Permanently delete this project? Sessions and .pneuma data will be wiped — your other files stay."}
               </span>
               <button
                 type="button"
                 onClick={() => {
-                  setArchiveConfirm(false);
-                  setArchiveError(null);
+                  setPendingAction(null);
+                  setActionError(null);
                 }}
                 className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
               >
@@ -802,61 +974,300 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
               </button>
               <button
                 type="button"
-                disabled={archiving}
-                onClick={() => void archive()}
-                className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer disabled:opacity-50"
+                disabled={actionRunning}
+                onClick={() => void runPendingAction()}
+                className={`text-xs transition-colors cursor-pointer disabled:opacity-50 ${
+                  pendingAction === "delete"
+                    ? "text-cc-error/80 hover:text-cc-error"
+                    : "text-cc-muted hover:text-cc-fg"
+                }`}
               >
-                {archiving ? "Archiving…" : "Confirm"}
+                {actionRunning
+                  ? pendingAction === "archive"
+                    ? "Archiving…"
+                    : "Deleting…"
+                  : pendingAction === "archive"
+                    ? "Confirm"
+                    : "Delete permanently"}
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-3 [animation:overlayFadeIn_140ms_cubic-bezier(0.16,1,0.3,1)]">
+            <div className="flex items-center gap-1.5 [animation:overlayFadeIn_140ms_cubic-bezier(0.16,1,0.3,1)]">
+              {/* Reveal in Finder — folder icon, single click. The
+                  workspace surface ends here; the agent owns the files
+                  inside, the user owns the act of opening the directory. */}
+              <button
+                type="button"
+                onClick={() => void revealInFinder()}
+                aria-label="Open project folder in Finder"
+                title="Open project folder in Finder"
+                className="flex items-center justify-center w-8 h-8 rounded-md text-cc-muted hover:text-cc-fg hover:bg-cc-bg/40 transition-colors cursor-pointer"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="w-4 h-4"
+                  aria-hidden
+                >
+                  <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+                </svg>
+              </button>
+
+              {/* Open in editor — split-style: clicking the icon opens
+                  the project in the user's last-chosen editor (1-click
+                  for the common case); clicking the chevron drops the
+                  picker. The picker is hidden entirely when no editor
+                  is detected (non-macOS or none of the supported apps
+                  installed). */}
+              {editors.length > 0 ? (
+                <div className="relative flex items-center" ref={editorMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target =
+                        defaultEditorId &&
+                        editors.find((e) => e.id === defaultEditorId)
+                          ? defaultEditorId
+                          : null;
+                      if (target) {
+                        void openInEditor(target);
+                      } else {
+                        // No remembered default → drop straight into the
+                        // picker so the first interaction is also the
+                        // one that sets the default.
+                        setEditorMenuOpen(true);
+                      }
+                    }}
+                    aria-label={
+                      defaultEditorId
+                        ? `Open project in ${editors.find((e) => e.id === defaultEditorId)?.displayName ?? "editor"}`
+                        : "Open project in editor"
+                    }
+                    title={
+                      defaultEditorId
+                        ? `Open in ${editors.find((e) => e.id === defaultEditorId)?.displayName ?? "editor"}`
+                        : "Open in editor"
+                    }
+                    className="flex items-center justify-center w-8 h-8 rounded-l-md rounded-r-none text-cc-muted hover:text-cc-fg hover:bg-cc-bg/40 transition-colors cursor-pointer"
+                  >
+                    {defaultEditorId &&
+                    editors.find((e) => e.id === defaultEditorId) ? (
+                      <img
+                        src={`${apiBase}/api/system/editors/${encodeURIComponent(defaultEditorId)}/icon`}
+                        alt=""
+                        className="w-5 h-5 object-contain"
+                        draggable={false}
+                      />
+                    ) : (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="w-4 h-4"
+                        aria-hidden
+                      >
+                        <polyline points="16 18 22 12 16 6" />
+                        <polyline points="8 6 2 12 8 18" />
+                      </svg>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditorMenuOpen((v) => !v)}
+                    aria-haspopup="menu"
+                    aria-expanded={editorMenuOpen}
+                    aria-label="Choose editor"
+                    title="Choose editor"
+                    className={`flex items-center justify-center w-5 h-8 rounded-r-md rounded-l-none text-cc-muted hover:text-cc-fg transition-colors cursor-pointer -ml-px ${
+                      editorMenuOpen ? "bg-cc-bg/60 text-cc-fg" : "hover:bg-cc-bg/40"
+                    }`}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className="w-2.5 h-2.5"
+                      aria-hidden
+                    >
+                      <path d="M7 10l5 5 5-5z" />
+                    </svg>
+                  </button>
+                  {editorMenuOpen ? (
+                    <div
+                      role="menu"
+                      className="absolute bottom-full right-0 mb-2 min-w-[200px] rounded-lg border border-cc-border bg-cc-surface shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6)] py-1 [animation:overlayFadeIn_140ms_cubic-bezier(0.16,1,0.3,1)] z-10"
+                    >
+                      <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-cc-muted/60">
+                        Open in
+                      </div>
+                      {editors.map((e) => {
+                        const isDefault = e.id === defaultEditorId;
+                        return (
+                          <button
+                            key={e.id}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => void openInEditor(e.id)}
+                            className="w-full text-left px-3 py-1.5 text-xs text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer flex items-center gap-2"
+                          >
+                            <img
+                              src={`${apiBase}/api/system/editors/${encodeURIComponent(e.id)}/icon`}
+                              alt=""
+                              className="w-4 h-4 object-contain shrink-0"
+                              draggable={false}
+                            />
+                            <span className="flex-1 truncate">{e.displayName}</span>
+                            {isDefault ? (
+                              <span className="text-cc-primary text-[10px]" aria-label="default">
+                                ★
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {/* Evolve — promoted to a primary icon affordance with an
+                  AI-flavored sparkle. Icon-only at rest; on hover the
+                  button expands and reveals the label with a fade so
+                  first-time users learn what it does. `max-width`
+                  animation is constrained to the inner span so layout
+                  stays predictable. */}
               <button
                 type="button"
                 disabled={launching}
                 onClick={() => void launch("evolve")}
-                className="text-xs text-cc-muted hover:text-cc-fg transition-colors disabled:opacity-50 cursor-pointer"
+                aria-label="Evolve preferences"
+                title="Evolve preferences — distill cross-session learnings into your project profile"
+                className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md text-cc-muted hover:text-cc-primary hover:bg-cc-primary-muted transition-colors disabled:opacity-50 cursor-pointer"
               >
-                Evolve Preferences
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="w-4 h-4 shrink-0"
+                  aria-hidden
+                >
+                  <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+                  <path d="M20 3v4" />
+                  <path d="M22 5h-4" />
+                  <path d="M4 17v2" />
+                  <path d="M5 18H3" />
+                </svg>
+                <span className="grid grid-cols-[0fr] group-hover:grid-cols-[1fr] transition-[grid-template-columns] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+                  <span className="overflow-hidden whitespace-nowrap text-xs opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+                    Evolve preferences
+                  </span>
+                </span>
               </button>
-              <span className="text-cc-muted/30 text-xs leading-none" aria-hidden>
-                ·
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setArchiveError(null);
-                  setArchiveConfirm(true);
-                }}
-                className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
-              >
-                Archive
-              </button>
+
+              {/* Overflow menu — destructive / low-frequency actions live
+                  here so the resting state of the row stays calm. The
+                  popover anchors above the trigger because the row sits
+                  near the panel's bottom edge. */}
+              <div className="relative" ref={moreMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setMoreMenuOpen((v) => !v)}
+                  aria-haspopup="menu"
+                  aria-expanded={moreMenuOpen}
+                  aria-label="More actions"
+                  title="More actions"
+                  className={`flex items-center justify-center w-8 h-8 rounded-md text-cc-muted hover:text-cc-fg transition-colors cursor-pointer ${
+                    moreMenuOpen ? "bg-cc-bg/60 text-cc-fg" : "hover:bg-cc-bg/40"
+                  }`}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    className="w-4 h-4"
+                    aria-hidden
+                  >
+                    <circle cx="5" cy="12" r="1.5" />
+                    <circle cx="12" cy="12" r="1.5" />
+                    <circle cx="19" cy="12" r="1.5" />
+                  </svg>
+                </button>
+                {moreMenuOpen ? (
+                  <div
+                    role="menu"
+                    className="absolute bottom-full right-0 mb-2 min-w-[200px] rounded-lg border border-cc-border bg-cc-surface shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6)] py-1 [animation:overlayFadeIn_140ms_cubic-bezier(0.16,1,0.3,1)] z-10"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMoreMenuOpen(false);
+                        setActionError(null);
+                        setPendingAction("archive");
+                      }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+                    >
+                      Archive project
+                    </button>
+                    <div className="my-1 border-t border-cc-border/40" aria-hidden />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMoreMenuOpen(false);
+                        setActionError(null);
+                        setPendingAction("delete");
+                      }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-cc-error/80 hover:text-cc-error hover:bg-cc-hover transition-colors cursor-pointer"
+                    >
+                      Delete project permanently
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           )}
         </div>
-        {archiveError ? (
+        {actionError ? (
           <div className="text-cc-error/80 text-xs" role="alert">
-            {archiveError}
+            {actionError}
           </div>
         ) : null}
       </div>
       {/* close inner scroll layer */}
       </div>
-      {/* Launch sheet — slides in from the panel's right edge as a layered
-          drawer rather than swapping the right pane in place. The mode grid
-          underneath stays visible (peeking out the left edge) so the user
-          retains a sense of place while the sheet's params + smart-handoff
-          UI takes focus. */}
+      {/* close inner panel wrapper */}
+      </div>
+      {/* Launch sheet — sibling to the inner panel, anchored at its right
+          edge. The drawer auto-sizes to its content (compact for modes
+          with no params; tall for the Smart Handoff form), capped at the
+          panel's `max-h-[80vh]` so it never grows past the panel; its
+          own `overflow-y-auto` carries the scrollbar when content
+          exceeds that cap. The drawer slides outward from behind the
+          panel via `drawerEmergeRight` — gives a "spatial extension"
+          feel rather than covering the mode grid. */}
       {drawerMounted && launchTarget ? (
         <div
-          className={`absolute top-0 right-0 bottom-0 w-[480px] bg-cc-surface border-l border-cc-border/60 shadow-[-12px_0_36px_-12px_rgba(0,0,0,0.5)] flex flex-col z-[5] ${
+          className={`w-[480px] max-h-[80vh] bg-cc-surface border border-cc-border rounded-2xl shadow-[0_24px_64px_-24px_rgba(0,0,0,0.6)] backdrop-blur-xl flex flex-col overflow-y-auto ${
             drawerClosing
-              ? "[animation:slideOutRight_180ms_cubic-bezier(0.16,1,0.3,1)_forwards]"
-              : "[animation:slideInRight_180ms_cubic-bezier(0.16,1,0.3,1)_forwards]"
+              ? "[animation:drawerRetreatLeft_180ms_cubic-bezier(0.16,1,0.3,1)_forwards]"
+              : "[animation:drawerEmergeRight_180ms_cubic-bezier(0.16,1,0.3,1)_forwards]"
           }`}
         >
-          <div className="flex flex-col gap-4 p-5 overflow-y-auto">
+          <div className="flex flex-col gap-4 p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3 min-w-0 flex-1">
                 <ModeIcon

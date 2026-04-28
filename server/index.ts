@@ -160,10 +160,29 @@ export async function startServer(options: ServerOptions) {
     const resolvedWorkspace = resolve(params.workspace.replace(/^~/, homedir()));
     mkdirSync(resolvedWorkspace, { recursive: true });
 
+    // Pre-resolve the sessionId for project launches. New project sessions
+    // arrive without one (the CLI used to mint via `crypto.randomUUID()`
+    // post-spawn), but we need it BEFORE spawn so the config.json write
+    // below lands in the correct per-session stateDir. Generating here
+    // and threading via `--session-id` keeps the CLI's id resolution
+    // deterministic; for non-project (quick) launches we leave it
+    // undefined and the CLI's own id flow takes over.
+    const launchSessionId = params.sessionId
+      ?? (params.project ? crypto.randomUUID() : undefined);
+
     if (params.initParams && Object.keys(params.initParams).length > 0) {
-      const pneumaDir = join(resolvedWorkspace, ".pneuma");
-      mkdirSync(pneumaDir, { recursive: true });
-      writeFileSync(join(pneumaDir, "config.json"), JSON.stringify(params.initParams, null, 2));
+      // Project sessions read state from `<projectRoot>/.pneuma/sessions/<id>/`,
+      // not from `<workspace>/.pneuma/`. Writing to the workspace's `.pneuma/`
+      // here would land the auto-filled API keys at the project root, where
+      // the per-session agent never looks — so the launch sheet would say
+      // "from global keys" but the agent would see no keys at all. Mirror
+      // the stateDir resolution from `bin/pneuma.ts` so quick + project
+      // sessions both read what we wrote.
+      const stateDir = params.project && launchSessionId
+        ? join(resolvedWorkspace, ".pneuma", "sessions", launchSessionId)
+        : join(resolvedWorkspace, ".pneuma");
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(join(stateDir, "config.json"), JSON.stringify(params.initParams, null, 2));
     }
 
     const projectRootResolved = options.projectRoot || resolve(dirname(import.meta.path), "..");
@@ -201,7 +220,7 @@ export async function startServer(options: ServerOptions) {
     if (params.replaySource) args.push("--replay-source", params.replaySource);
     if (params.sessionName) args.push("--session-name", params.sessionName);
     if (params.project) args.push("--project", params.project);
-    if (params.sessionId) args.push("--session-id", params.sessionId);
+    if (launchSessionId) args.push("--session-id", launchSessionId);
     if (params.fromSessionId) args.push("--from-session-id", params.fromSessionId);
     if (params.fromMode) args.push("--from-mode", params.fromMode);
     if (params.fromDisplayName) args.push("--from-display-name", params.fromDisplayName);

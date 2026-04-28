@@ -18,6 +18,41 @@ Two paths matter, both injected as env vars:
 
 Project metadata lives at `$PNEUMA_PROJECT_ROOT/.pneuma/project.json`. Read it for project identity and description. Don't edit it casually — that's the project's identity, the user manages it.
 
+## Project meta — what the launcher / project chip read
+
+The project's user-visible identity (name, description, icon) lives in two recognized files under `$PNEUMA_PROJECT_ROOT/.pneuma/`. Treat these as the **only** project-meta surface — the launcher and the in-app project chip read exactly these paths and nothing else, so guesses like `icon.png`, `cover.svg`, or `meta.json` will silently do nothing.
+
+### `project.json` — manifest
+
+Schema:
+
+```json
+{
+  "version": 1,
+  "name": "pneuma-demo-project",
+  "displayName": "Pneuma Demo Project",
+  "description": "...optional, shown under the title in the project chip and launcher card...",
+  "createdAt": 1740000000000
+}
+```
+
+- `name` is the directory-derived slug. Don't change it.
+- `displayName` and `description` are user-facing; you may refine them when the user explicitly asks ("update the project description to X"). Otherwise leave them alone.
+- `version` and `createdAt` are runtime fields. Don't touch.
+- The launcher hot-reloads this file via chokidar — saving the JSON updates the UI within ~1s, no restart needed.
+
+### `cover.png` — project icon
+
+Strict rules:
+
+- **Exact path:** `$PNEUMA_PROJECT_ROOT/.pneuma/cover.png`. Anything else (`icon.png`, `cover.jpg`, `cover.svg`, `cover@2x.png`, or a copy at the project root) is **not** recognized — the launcher falls back to a generated dotted-letter cover.
+- **PNG only.** No JPEG / SVG / WebP fallback exists.
+- **Square is best.** Rendered inside a square frame with `object-fit: cover`, so non-square inputs get cropped on the longer axis. Generate at 512×512 or larger; the runtime resizes for display.
+- **Hot-reload.** The server watches `.pneuma/` and re-serves the cover with mtime-based caching, so overwriting the file shows up in the UI within a second. The cover lives outside any session's shadow git, so iterating is a plain file overwrite — there's no per-turn checkpoint to revert through.
+- Don't write to `$PNEUMA_PROJECT_ROOT/.pneuma/sessions/<your-id>/thumbnail.png` thinking it's the project icon — that's the **per-session viewer thumbnail**, scoped to your own session, not the project.
+
+If the user asks you to "make a project icon / cover / logo" and you produce an image (typically inside `illustrate`, `draw`, `kami`, or another image-producing mode), save the final asset to `$PNEUMA_PROJECT_ROOT/.pneuma/cover.png` and confirm the path back to the user. Don't drop it in your session dir — that won't be picked up.
+
 ## You have siblings
 
 The user may have other sessions in this project, running now or completed earlier. They live at `$PNEUMA_PROJECT_ROOT/.pneuma/sessions/<otherId>/`. List them with `ls $PNEUMA_PROJECT_ROOT/.pneuma/sessions/`.

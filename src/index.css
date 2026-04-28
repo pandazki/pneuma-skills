@@ -392,6 +392,34 @@ img {
   }
 }
 
+/* Drawer emerge — used by the ProjectPanel launch sheet. The drawer is
+   anchored to the panel's right edge and slides outward (rightward), so
+   the entrance starts slightly behind / shifted left and fades in as it
+   settles into place. The collapse runs the inverse. */
+@keyframes drawerEmergeRight {
+  from {
+    transform: translateX(-16px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes drawerRetreatLeft {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(-16px);
+    opacity: 0;
+  }
+}
+
 @keyframes text-gradient-flow {
   0% {
     background-position: 0% 50%;
