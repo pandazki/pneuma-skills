@@ -25,6 +25,8 @@ export interface SessionRecord {
 export interface ParsedCliArgs {
   mode: string;
   workspace: string;
+  projectRoot: string;
+  role: string;
   port: number;
   backendType: AgentBackendType;
   showHelp: boolean;
@@ -63,6 +65,8 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
   const args = argv.slice(2);
   let mode = "";
   let workspace = cwd;
+  let projectRoot = "";
+  let role = "";
   let port = 0;
   let backendType: AgentBackendType = getDefaultBackendType();
   let showHelp = false;
@@ -81,6 +85,10 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
     const arg = args[i];
     if (arg === "--workspace" && i + 1 < args.length) {
       workspace = args[++i];
+    } else if (arg === "--project" && i + 1 < args.length) {
+      projectRoot = resolve(cwd, args[++i]);
+    } else if (arg === "--role" && i + 1 < args.length) {
+      role = args[++i];
     } else if (arg === "--port" && i + 1 < args.length) {
       port = Number(args[++i]);
     } else if (arg === "--backend" && i + 1 < args.length) {
@@ -115,6 +123,8 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
   return {
     mode,
     workspace: resolve(cwd, workspace),
+    projectRoot,
+    role,
     port,
     backendType,
     showHelp,

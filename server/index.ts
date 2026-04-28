@@ -31,6 +31,7 @@ import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./
 import type { ProxyRoute } from "../core/types/mode-manifest.js";
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
 import { mountNativeRoutes } from "./native-bridge.js";
+import { createProject, loadRecentProjects, recordRecentProject } from "../core/project.js";
 
 const DEFAULT_PORT = 17007;
 
@@ -172,6 +173,31 @@ export async function startServer(options: ServerOptions) {
         return { ...desc, available: avail?.available ?? false, reason: avail?.reason };
       });
       return c.json({ backends, defaultBackendType: getDefaultBackendType() });
+    });
+
+    app.get("/api/projects", (c) => {
+      const projects = loadRecentProjects();
+      return c.json({ projects });
+    });
+
+    app.post("/api/projects", async (c) => {
+      try {
+        const body = await c.req.json<{ root?: string; name?: string; description?: string }>();
+        const rawRoot = body.root?.trim();
+        if (!rawRoot) return c.json({ error: "root is required" }, 400);
+
+        const root = resolve(rawRoot.replace(/^~/, homedir()));
+        mkdirSync(root, { recursive: true });
+        const project = createProject(root, {
+          name: body.name,
+          description: body.description,
+        });
+        recordRecentProject(root);
+        return c.json({ project });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 500);
+      }
     });
 
     // Install a mode from a remote source (url tar.gz or github:user/repo).
@@ -597,9 +623,11 @@ export async function startServer(options: ServerOptions) {
     });
 
     app.post("/api/launch", async (c) => {
-      const { specifier, workspace: targetWorkspace, initParams, skipSkill, backendType, replayPackage: replayPkg, replaySource, sessionName, viewing } = await c.req.json<{
+      const { specifier, workspace: targetWorkspace, projectRoot: launchProjectRoot, role, initParams, skipSkill, backendType, replayPackage: replayPkg, replaySource, sessionName, viewing } = await c.req.json<{
         specifier: string;
-        workspace: string;
+        workspace?: string;
+        projectRoot?: string;
+        role?: string;
         initParams?: Record<string, string | number>;
         skipSkill?: boolean;
         backendType?: AgentBackendType;
@@ -610,13 +638,21 @@ export async function startServer(options: ServerOptions) {
       }>();
 
       try {
-        const resolvedWorkspace = resolve(targetWorkspace.replace(/^~/, homedir()));
+        const resolvedProjectRoot = launchProjectRoot
+          ? resolve(launchProjectRoot.replace(/^~/, homedir()))
+          : "";
+        const resolvedWorkspace = targetWorkspace
+          ? resolve(targetWorkspace.replace(/^~/, homedir()))
+          : resolvedProjectRoot || homedir();
 
-        // 1. Create workspace dir
-        mkdirSync(resolvedWorkspace, { recursive: true });
+        // 1. Create workspace/project dir
+        mkdirSync(resolvedProjectRoot || resolvedWorkspace, { recursive: true });
 
-        // 2. Save initParams to .pneuma/config.json if provided
-        if (initParams && Object.keys(initParams).length > 0) {
+        // 2. Save initParams to .pneuma/config.json if provided.
+        // Project sessions create their sandbox in the child process, so
+        // project init-param persistence is handled after project session
+        // routing grows a stable session selector.
+        if (!resolvedProjectRoot && initParams && Object.keys(initParams).length > 0) {
           const pneumaDir = join(resolvedWorkspace, ".pneuma");
           mkdirSync(pneumaDir, { recursive: true });
           writeFileSync(join(pneumaDir, "config.json"), JSON.stringify(initParams, null, 2));
@@ -625,8 +661,11 @@ export async function startServer(options: ServerOptions) {
         // 3. Spawn pneuma process
         const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
         const pneumaBin = join(projectRoot, "bin", "pneuma.ts");
-        const args = ["bun", pneumaBin, specifier, "--workspace", resolvedWorkspace, "--no-prompt", "--no-open"];
+        const args = resolvedProjectRoot
+          ? ["bun", pneumaBin, specifier, "--project", resolvedProjectRoot, "--no-prompt", "--no-open"]
+          : ["bun", pneumaBin, specifier, "--workspace", resolvedWorkspace, "--no-prompt", "--no-open"];
         args.push("--backend", backendType || getDefaultBackendType());
+        if (role?.trim()) args.push("--role", role.trim());
         if (skipSkill) args.push("--skip-skill");
         if (viewing) args.push("--viewing");
         if (replayPkg) args.push("--replay", replayPkg);
@@ -692,7 +731,7 @@ export async function startServer(options: ServerOptions) {
         childProcesses.set(pid, {
           proc: child,
           specifier,
-          workspace: resolvedWorkspace,
+          workspace: resolvedProjectRoot || resolvedWorkspace,
           url: readyUrl,
           startedAt: Date.now(),
         });
@@ -702,7 +741,7 @@ export async function startServer(options: ServerOptions) {
           childProcesses.delete(pid);
         });
 
-        return c.json({ url: readyUrl, workspace: resolvedWorkspace, mode: specifier });
+        return c.json({ url: readyUrl, workspace: resolvedProjectRoot || resolvedWorkspace, mode: specifier });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return c.json({ error: message }, 500);

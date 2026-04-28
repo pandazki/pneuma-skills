@@ -732,6 +732,8 @@ Modes:
 
 Options:
   --workspace <path>           Target workspace directory (default: cwd)
+  --project <path>             Launch inside an explicit Pneuma project root
+  --role <text>                Describe this session's role within the project
   --port <number>              Preferred server port
   --backend <type>             Agent backend to launch (default: claude-code)
   --no-open                    Don't auto-open the browser
@@ -1093,7 +1095,7 @@ Options:
     return;
   }
 
-  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource, sessionName, viewing } = parsedArgs;
+  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource, sessionName, viewing, projectRoot, role } = parsedArgs;
   let { workspace, replayPackage } = parsedArgs;
 
   // Launcher mode — no mode arg → start marketplace UI
@@ -1250,6 +1252,25 @@ Options:
       );
       process.exit(1);
     }
+  }
+
+  let activeProjectRoot = "";
+  let projectSessionId = "";
+
+  if (projectRoot) {
+    const { resolveProjectRuntime } = await import("../core/project.js");
+    const runtime = resolveProjectRuntime({
+      projectRoot,
+      mode: modeName,
+      displayName: manifest.displayName,
+      backendType,
+      role,
+    });
+    activeProjectRoot = runtime.projectRoot;
+    projectSessionId = runtime.session.sessionId;
+    workspace = runtime.workspace;
+    p.log.info(`Project: ${runtime.project.name} (${activeProjectRoot})`);
+    p.log.info(`Project session: ${projectSessionId}`);
   }
 
   if (!existsSync(workspace)) {
