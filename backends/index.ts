@@ -5,11 +5,6 @@ import type {
   AgentBackendType,
 } from "../core/types/agent-backend.js";
 import { ClaudeCodeBackend } from "./claude-code/index.js";
-import {
-  CLAUDE_CODE_BREAK_VERSION,
-  isClaudeCodeCompatible,
-  probeClaudeCodeVersion,
-} from "./claude-code/version.js";
 import { CodexBackend } from "./codex/index.js";
 import { resolveBinary } from "../server/path-resolver.js";
 
@@ -17,7 +12,7 @@ const BACKEND_DESCRIPTORS: AgentBackendDescriptor[] = [
   {
     type: "claude-code",
     label: "Claude Code",
-    description: "Anthropic Claude Code CLI via --sdk-url WebSocket transport.",
+    description: "Anthropic Claude Code CLI via stdio stream-json transport.",
     implemented: true,
   },
   {
@@ -54,12 +49,7 @@ export function getImplementedBackends(): AgentBackendDescriptor[] {
 }
 
 export function getDefaultBackendType(): AgentBackendType {
-  // Codex is preferred today: Anthropic removed Claude Code's `--sdk-url`
-  // hidden flag in CC 2.1.118 (the transport Pneuma's claude-code backend
-  // bridges through), so any user on a current CC will see that option
-  // disabled. Defaulting to codex keeps the happy path working for new
-  // sessions without forcing the user to reach for the picker.
-  return "codex";
+  return "claude-code";
 }
 
 export function getBackendCapabilities(type: AgentBackendType): AgentCapabilities {
@@ -96,21 +86,6 @@ export function detectBackendAvailability(): BackendAvailability[] {
         available: false,
         reason: `"${binary}" CLI not found in PATH`,
       };
-    }
-    if (desc.type === "claude-code") {
-      // CC ≥ 2.1.118 dropped the `--sdk-url` hidden transport this backend
-      // bridges through, so the binary being on PATH is no longer enough.
-      // Probe the version and disable with an explanation instead of
-      // letting the user start a session that would never connect.
-      const version = probeClaudeCodeVersion(resolved);
-      if (!isClaudeCodeCompatible(version)) {
-        return {
-          type: desc.type,
-          available: false,
-          binaryPath: resolved,
-          reason: `Claude Code v${version} removed --sdk-url (Pneuma needs < ${CLAUDE_CODE_BREAK_VERSION}). Disabled until the new transport lands; pick Codex for now or downgrade.`,
-        };
-      }
     }
     return { type: desc.type, available: true, binaryPath: resolved };
   });

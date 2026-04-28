@@ -2,10 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { createBackend, getBackendCapabilities, getBackendDescriptors, getDefaultBackendType, getImplementedBackends } from "../../backends/index.js";
 
 describe("backend registry", () => {
-  test("declares Codex as the default backend", () => {
-    // Switched from claude-code to codex when Anthropic removed CC's
-    // --sdk-url transport (CC 2.1.118). See backends/index.ts comment.
-    expect(getDefaultBackendType()).toBe("codex");
+  test("declares Claude Code as the default backend", () => {
+    // Reverted back to claude-code now that the stdio stream-json transport
+    // works on every public CC version (the previous --sdk-url disable was
+    // dropped along with the host-whitelist breakage it gated).
+    expect(getDefaultBackendType()).toBe("claude-code");
   });
 
   test("lists both declared backends with implementation flags", () => {
@@ -13,7 +14,7 @@ describe("backend registry", () => {
       {
         type: "claude-code",
         label: "Claude Code",
-        description: "Anthropic Claude Code CLI via --sdk-url WebSocket transport.",
+        description: "Anthropic Claude Code CLI via stdio stream-json transport.",
         implemented: true,
       },
       {

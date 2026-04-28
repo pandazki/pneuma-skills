@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.40.0] - 2026-04-28
+
+### Changed
+- **Claude Code backend re-architected onto stdio stream-json** — replaces the `--sdk-url ws://localhost` WebSocket bridge that Anthropic locked behind a host whitelist in CC 2.1.118. The launcher now spawns `claude --print --output-format stream-json --input-format stream-json --include-partial-messages --include-hook-events --verbose --permission-mode bypassPermissions [--resume <id>]` and pipes stdin/stdout directly into the bridge. The user's `~/.claude/.credentials.json` flows through unchanged, so Pro/Max subscription auth keeps working — the headless CLI is Anthropic's officially-supported entry point for scripted automation, unaffected by the OpenClaw third-party-OAuth ban. Same shape Crystal, Conductor, and opcode all converged on.
+- **`Session.cliSocket` retyped to a duck-typed `CLITransport`** with just `send(line)` and `close()`. The legacy WebSocket path wraps a real `ServerWebSocket` in this interface; the new stdio path wraps the launcher's stdin pipe. The bridge gained `attachCLITransport`, `detachCLITransport`, and `feedCLIMessage` so both transports share the existing `routeCLIMessage` pipeline unchanged.
+- **Default backend reverts to `claude-code`** — the v2.39.0 codex-default flip was the right move while we thought `--sdk-url` was permanently broken; the stdio transport works on every public CC version, so the original happy path is restored.
+
+### Removed
+- **Claude Code version-compatibility gate** — `backends/claude-code/version.ts` and its test are deleted. The probe was correct for `--sdk-url`'s host whitelist but is moot under the stdio transport, which works on every public CC version. Backend availability is now back to a plain "binary on PATH" check.
+
+### Fixed
+- **Pneuma's claude-code backend works again on Claude Code 2.1.118 and later** — the CC versions where `--sdk-url ws://localhost` is rejected with `"host \"localhost\" is not an approved Anthropic endpoint"`. Verified end-to-end on 2.1.121 with a Pro/Max account: `apiKeySource: "none"` in the system/init confirms subscription billing flows through, streaming text deltas / tool_use / hook events / cumulative usage / `--resume` all work.
+
 ## [2.39.0] - 2026-04-28
 
 ### Added

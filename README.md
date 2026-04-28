@@ -209,7 +209,7 @@ The preference files are living documents — full rewrites, not append-only log
 | Video | [Remotion](https://www.remotion.dev) 4.0 + @remotion/player + @babel/standalone |
 | Canvas | [@xyflow/react](https://reactflow.dev) 12 (Illustrate mode) |
 | File Watching | [chokidar](https://github.com/paulmillr/chokidar) 5 |
-| Agent | Claude Code CLI via `--sdk-url`; Codex CLI via app-server stdio JSON-RPC |
+| Agent | Claude Code CLI via stdio stream-json (`-p --input-format/--output-format stream-json`); Codex CLI via app-server stdio JSON-RPC |
 
 ## Backend Model
 
@@ -222,7 +222,7 @@ The preference files are living documents — full rewrites, not append-only log
 
 This project's Claude transport layer, NDJSON handling, and much of the initial chat bridge were heavily informed by [Companion](https://github.com/The-Vibe-Company/companion) by The Vibe Company.
 
-Companion remains the reference for Claude Code's undocumented `--sdk-url` transport. Pneuma's newer backend layer keeps that Claude-specific protocol inside `backends/claude-code/` so future backends can plug in through their own adapters instead of inheriting Claude wire assumptions everywhere.
+Companion was the reference for Claude Code's earlier `--sdk-url` WebSocket bridge. Anthropic later locked that flag behind a host whitelist (CC 2.1.118+), so 2.40.0 migrated Pneuma's claude-code backend to the headless stdio transport (`claude -p --input-format stream-json --output-format stream-json`) — the same shape Crystal, Conductor, and opcode use. Pneuma's backend layer keeps the Claude-specific protocol inside `backends/claude-code/` so future backends can plug in through their own adapters instead of inheriting Claude wire assumptions everywhere.
 
 The **kami mode**'s entire visual language — warm parchment canvas, ink-blue accent, serif-led hierarchy, font selection, and the three worked demo templates seeded into new kami workspaces — is adapted from [tw93/kami](https://github.com/tw93/kami) (MIT), an open-source typesetting design system. Our layer adds the locked-paper-size viewer and Pneuma runtime wiring; the craft belongs to Tw93. Full attribution, font licenses (OFL 1.1 + TsangerJinKai02 personal-use), and per-demo provenance live in `modes/kami/NOTICE.md`.
 

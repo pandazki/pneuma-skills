@@ -28,6 +28,18 @@ export interface TerminalSocketData {
 
 export type SocketData = CLISocketData | BrowserSocketData | TerminalSocketData;
 
+/**
+ * Minimal transport surface the bridge needs from the CLI side. The legacy
+ * `--sdk-url` path satisfies this with a real WebSocket; the new stdio path
+ * (Crystal/Conductor pattern) supplies a thin wrapper around the spawned
+ * Claude Code process's stdin pipe. Only `send` and `close` are ever called
+ * — keep this surface narrow on purpose so anything that quacks fits.
+ */
+export interface CLITransport {
+  send(line: string): void;
+  close(): void;
+}
+
 /** Tracks a pending control_request sent to CLI that expects a control_response. */
 export interface PendingControlRequest {
   subtype: string;
@@ -36,7 +48,7 @@ export interface PendingControlRequest {
 
 export interface Session {
   id: string;
-  cliSocket: ServerWebSocket<SocketData> | null;
+  cliSocket: CLITransport | null;
   browserSockets: Set<ServerWebSocket<SocketData>>;
   state: SessionState;
   pendingPermissions: Map<string, PermissionRequest>;
