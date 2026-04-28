@@ -224,7 +224,7 @@ describe("project launcher routes", () => {
         projectRoot: upgradeRoot,
         name: "Route Upgrade",
         displayName: "Doc",
-        copyDeliverables: true,
+        deliverableTransfer: "copy",
       }),
     });
 

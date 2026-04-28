@@ -459,7 +459,7 @@ describe("quick session upgrade", () => {
     upgradeQuickSessionToProject(sourceWorkspace, projectRoot, {
       name: "Metadata Only Project",
       displayName: "Doc",
-      copyDeliverables: false,
+      deliverableTransfer: "none",
       now: () => "2026-04-28T07:00:00.000Z",
       projectIdFactory: () => "project_metadata_only",
       sessionIdFactory: () => "doc-metadata-only",
@@ -467,6 +467,21 @@ describe("quick session upgrade", () => {
 
     expect(existsSync(join(projectRoot, "brief.md"))).toBe(false);
     expect(existsSync(join(sourceWorkspace, "brief.md"))).toBe(true);
+  });
+
+  test("upgradeQuickSessionToProject can move deliverables into the project root", () => {
+    upgradeQuickSessionToProject(sourceWorkspace, projectRoot, {
+      name: "Moved Project",
+      displayName: "Doc",
+      deliverableTransfer: "move",
+      now: () => "2026-04-28T07:15:00.000Z",
+      projectIdFactory: () => "project_moved",
+      sessionIdFactory: () => "doc-moved",
+    });
+
+    expect(readFileSync(join(projectRoot, "brief.md"), "utf-8")).toBe("# Quick Brief\n");
+    expect(existsSync(join(sourceWorkspace, "brief.md"))).toBe(false);
+    expect(existsSync(join(sourceWorkspace, ".pneuma", "session.json"))).toBe(true);
   });
 
   test("upgradeQuickSessionToProject refuses to overwrite existing project deliverables", () => {

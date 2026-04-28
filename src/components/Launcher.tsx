@@ -3349,7 +3349,7 @@ function CreateProjectDialog({
   const [description, setDescription] = useState("");
   const [root, setRoot] = useState(defaultRoot);
   const [seedSessionId, setSeedSessionId] = useState("");
-  const [copyDeliverables, setCopyDeliverables] = useState(true);
+  const [deliverableTransfer, setDeliverableTransfer] = useState<"copy" | "move" | "none">("copy");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const seedSession = sessions.find((session) => session.id === seedSessionId);
@@ -3368,7 +3368,7 @@ function CreateProjectDialog({
           mode: seedSession.mode,
           displayName: seedSession.displayName,
           backendType: seedSession.backendType,
-          copyDeliverables,
+          deliverableTransfer,
           ...(name.trim() ? { name: name.trim() } : {}),
           ...(description.trim() ? { description: description.trim() } : {}),
         } : {
@@ -3438,15 +3438,18 @@ function CreateProjectDialog({
                 ))}
               </select>
               {seedSession && (
-                <label className="flex items-center gap-2 text-xs text-cc-muted/70">
-                  <input
-                    type="checkbox"
-                    checked={copyDeliverables}
-                    onChange={(e) => setCopyDeliverables(e.target.checked)}
-                    className="accent-cc-primary"
-                  />
-                  Copy deliverables
-                </label>
+                <div>
+                  <label className="block text-xs text-cc-muted/70 mb-1">Deliverables</label>
+                  <select
+                    value={deliverableTransfer}
+                    onChange={(e) => setDeliverableTransfer(e.target.value as "copy" | "move" | "none")}
+                    className="w-full px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50"
+                  >
+                    <option value="copy">Copy to project root</option>
+                    <option value="move">Move to project root</option>
+                    <option value="none">Leave in quick session</option>
+                  </select>
+                </div>
               )}
             </div>
           )}

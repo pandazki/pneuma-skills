@@ -236,6 +236,7 @@ export async function startServer(options: ServerOptions) {
           displayName?: string;
           backendType?: AgentBackendType;
           role?: string;
+          deliverableTransfer?: "copy" | "move" | "none";
           copyDeliverables?: boolean;
         }>();
         const sourceWorkspace = body.sourceWorkspace?.trim();
@@ -253,6 +254,9 @@ export async function startServer(options: ServerOptions) {
             displayName: body.displayName,
             backendType: body.backendType === "codex" ? "codex" : body.backendType === "claude-code" ? "claude-code" : undefined,
             role: body.role,
+            deliverableTransfer: body.deliverableTransfer === "copy" || body.deliverableTransfer === "move" || body.deliverableTransfer === "none"
+              ? body.deliverableTransfer
+              : undefined,
             copyDeliverables: body.copyDeliverables,
           },
         );

@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 
@@ -72,6 +72,8 @@ export interface ConfirmProjectHandoffOptions {
   now?: () => string;
 }
 
+export type QuickDeliverableTransfer = "copy" | "move" | "none";
+
 export interface UpgradeQuickSessionToProjectOptions {
   name?: string;
   description?: string;
@@ -79,6 +81,7 @@ export interface UpgradeQuickSessionToProjectOptions {
   displayName?: string;
   backendType?: ProjectBackendType;
   role?: string;
+  deliverableTransfer?: QuickDeliverableTransfer;
   copyDeliverables?: boolean;
   now?: () => string;
   projectIdFactory?: () => string;
@@ -581,7 +584,13 @@ function copyQuickSessionState(sourceWorkspace: string, targetWorkspace: string)
   }
 }
 
-function copyQuickDeliverables(sourceWorkspace: string, projectRoot: string): void {
+function resolveQuickDeliverableTransfer(options: UpgradeQuickSessionToProjectOptions): QuickDeliverableTransfer {
+  if (options.deliverableTransfer) return options.deliverableTransfer;
+  return options.copyDeliverables === false ? "none" : "copy";
+}
+
+function transferQuickDeliverables(sourceWorkspace: string, projectRoot: string, transfer: QuickDeliverableTransfer): void {
+  if (transfer === "none") return;
   const source = resolve(sourceWorkspace);
   const target = resolve(projectRoot);
   if (source === target) return;
@@ -592,10 +601,14 @@ function copyQuickDeliverables(sourceWorkspace: string, projectRoot: string): vo
     const src = join(source, entry.name);
     const dst = join(target, entry.name);
     cpSync(src, dst, { recursive: entry.isDirectory(), force: true });
+    if (transfer === "move") {
+      rmSync(src, { recursive: entry.isDirectory(), force: true });
+    }
   }
 }
 
-function assertQuickDeliverableCopyIsNonDestructive(sourceWorkspace: string, projectRoot: string): void {
+function assertQuickDeliverableTransferIsNonDestructive(sourceWorkspace: string, projectRoot: string, transfer: QuickDeliverableTransfer): void {
+  if (transfer === "none") return;
   const source = resolve(sourceWorkspace);
   const target = resolve(projectRoot);
   if (source === target || !existsSync(target)) return;
@@ -618,9 +631,8 @@ export function upgradeQuickSessionToProject(
   const root = resolve(projectRoot);
   const quickSession = readQuickSessionMetadata(source);
   const now = options.now?.() ?? defaultNow();
-  if (options.copyDeliverables !== false) {
-    assertQuickDeliverableCopyIsNonDestructive(source, root);
-  }
+  const deliverableTransfer = resolveQuickDeliverableTransfer(options);
+  assertQuickDeliverableTransferIsNonDestructive(source, root, deliverableTransfer);
 
   const project = createProject(root, {
     name: options.name,
@@ -628,9 +640,7 @@ export function upgradeQuickSessionToProject(
     now: options.now,
     idFactory: options.projectIdFactory,
   });
-  if (options.copyDeliverables !== false) {
-    copyQuickDeliverables(source, root);
-  }
+  transferQuickDeliverables(source, root, deliverableTransfer);
 
   const created = createProjectSession(root, {
     mode: options.mode || quickSession.mode,
