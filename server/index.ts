@@ -30,7 +30,7 @@ import { HookBus } from "../core/hook-bus.js";
 import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./proxy-middleware.js";
 import type { ProxyRoute } from "../core/types/mode-manifest.js";
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
-import { startHandoffWatcher } from "./handoff-watcher.js";
+import { mountHandoffRoutes } from "./handoff-routes.js";
 import { mountNativeRoutes } from "./native-bridge.js";
 import { mountProjectsRoutes } from "./projects-routes.js";
 import { loadProjectManifest } from "../core/project-loader.js";
@@ -1212,11 +1212,18 @@ export async function startServer(options: ServerOptions) {
     // ── Project routes API (also available in launcher mode) ─────────────
     mountProjectsRoutes(app, {
       homeDir: homedir(),
+    });
+
+    // ── Handoff routes (v2 tool-call protocol) ─────────────────────────
+    // The launcher mounts these so any project session whose own server
+    // hands a request through `/api/handoffs/emit` (e.g. via cross-port
+    // proxy) still resolves correctly. The per-session server below also
+    // mounts them; both share the same in-memory proposal map per process,
+    // so a launcher-issued emit and a per-session confirm can't race.
+    mountHandoffRoutes(app, {
+      wsBridge,
       killSession: killActiveSession,
       launchSession: async (params) => {
-        // Default workspace = the project root (project sessions store
-        // workspace state inside the project; the per-session subdir is
-        // created by `resolveStartupContext` in `bin/pneuma.ts`).
         const result = await launchPneumaChild({
           specifier: params.mode,
           workspace: params.project,
@@ -1224,6 +1231,28 @@ export async function startServer(options: ServerOptions) {
           sessionId: params.sessionId,
         });
         return result.url;
+      },
+      // Launcher: look up the source session in the global registry to
+      // recover its project root + mode + display name. Per-session servers
+      // (below) shortcut this with their own options.pneumaProjectRoot.
+      resolveSource: async (sourceSessionId) => {
+        try {
+          const { readSessionsFile } = await import("../bin/sessions-registry.js");
+          const sessionsPath = join(homedir(), ".pneuma", "sessions.json");
+          const data = await readSessionsFile(sessionsPath);
+          const entry = data.sessions.find(
+            (s) => s.kind === "project" && s.sessionId === sourceSessionId,
+          );
+          if (!entry || entry.kind !== "project") return null;
+          return {
+            projectRoot: entry.projectRoot,
+            mode: entry.mode,
+            displayName: entry.sessionName || entry.displayName,
+          };
+        } catch (err) {
+          console.warn(`[handoff-routes] resolveSource (launcher) failed: ${err}`);
+          return null;
+        }
       },
     });
 
@@ -1301,33 +1330,9 @@ export async function startServer(options: ServerOptions) {
     console.log(`[proxy] Config reloaded: ${proxyConfigRef.current.size} route(s)`);
   });
 
-  // ── Handoff watcher (project sessions only) ─────────────────────────────
-  // Watch the USER project root (pneumaProjectRoot), NOT the pneuma-skills
-  // repo root (projectRoot is overloaded for mode-maker / registry helpers).
-  let stopHandoffWatcher: (() => Promise<void>) | null = null;
-  if (options.pneumaProjectRoot) {
-    stopHandoffWatcher = await startHandoffWatcher({
-      projectRoot: options.pneumaProjectRoot,
-      onEvent: (e) => {
-        // Broadcast to all browser ws connections for this session.
-        // The active session is whichever one currently has a CLI/codex
-        // attached; if none yet (watcher fires before agent connect), the
-        // broadcast is a silent no-op which is fine — the watcher emits a
-        // synthetic `add` for any pre-existing handoff files when the next
-        // browser connects via session_init replay paths.
-        const sid = wsBridge.getActiveSessionId() ?? options.sessionId ?? null;
-        if (!sid) {
-          console.log(`[handoff-watcher] ${e.type}: ${e.handoff.frontmatter.handoff_id} (no active session yet)`);
-          return;
-        }
-        wsBridge.broadcastToSession(sid, {
-          type: "handoff_event",
-          kind: e.type,
-          handoff: e.handoff,
-        });
-      },
-    });
-  }
+  // The v1 chokidar handoff watcher was deleted in the 2026-04-28 tool-call
+  // rewrite. Handoffs now flow through `/api/handoffs/emit` and a server-side
+  // proposal map; see `server/handoff-routes.ts`.
 
   // ── Plugin System ─────────────────────────────────────────────────────────
   const pneumaHome = join(homedir(), ".pneuma");
@@ -1756,13 +1761,17 @@ export async function startServer(options: ServerOptions) {
   mountRegistryRoute(app);
 
   // ── Project routes API ──────────────────────────────────────────────
-  // Wires the same handoff confirm machinery the launcher uses, so the
-  // HandoffCard can fire `/api/handoffs/:id/confirm` against the active
-  // session's server. `killActiveSession` only finds matches for processes
-  // we spawned; a session asked to kill itself simply no-ops (the user's
-  // tab keeps the source running until they close it).
-  mountProjectsRoutes(app, {
-    homeDir: homedir(),
+  mountProjectsRoutes(app, { homeDir: homedir() });
+
+  // ── Handoff routes (v2 tool-call protocol) ──────────────────────────
+  // Mounted on the per-session server so the source agent's
+  // `pneuma handoff` invocation reaches the same server that's driving
+  // its session — the WS broadcast then lands in the source's browser.
+  // `killActiveSession` only matches processes we spawned; a session asked
+  // to kill itself simply no-ops (the user's tab keeps the source running
+  // until they close it).
+  const handoffRoutesContext = mountHandoffRoutes(app, {
+    wsBridge,
     killSession: killActiveSession,
     launchSession: async (params) => {
       const result = await launchPneumaChild({
@@ -1772,6 +1781,43 @@ export async function startServer(options: ServerOptions) {
         sessionId: params.sessionId,
       });
       return result.url;
+    },
+    // Per-session shortcut: the active session id resolved by this server
+    // *is* a project session (when pneumaProjectRoot is set); use the
+    // server's already-known project root + mode + display name. The
+    // registry is consulted as a fallback for any unknown id (e.g.
+    // siblings the source might somehow reference).
+    resolveSource: async (sourceSessionId) => {
+      const activeId = wsBridge.getActiveSessionId();
+      if (
+        sourceSessionId === activeId &&
+        options.pneumaProjectRoot &&
+        options.modeName
+      ) {
+        const manifest = await loadProjectManifest(options.pneumaProjectRoot).catch(() => null);
+        return {
+          projectRoot: options.pneumaProjectRoot,
+          mode: options.modeName,
+          displayName: manifest?.displayName ?? undefined,
+        };
+      }
+      try {
+        const { readSessionsFile } = await import("../bin/sessions-registry.js");
+        const sessionsPath = join(homedir(), ".pneuma", "sessions.json");
+        const data = await readSessionsFile(sessionsPath);
+        const entry = data.sessions.find(
+          (s) => s.kind === "project" && s.sessionId === sourceSessionId,
+        );
+        if (!entry || entry.kind !== "project") return null;
+        return {
+          projectRoot: entry.projectRoot,
+          mode: entry.mode,
+          displayName: entry.sessionName || entry.displayName,
+        };
+      } catch (err) {
+        console.warn(`[handoff-routes] resolveSource (per-session) failed: ${err}`);
+        return null;
+      }
     },
   });
 
@@ -2823,7 +2869,7 @@ export default S;`;
   const onEditingKill = (cb: () => Promise<void>) => { editingKillCallback = cb; };
 
   const cleanup = async () => {
-    if (stopHandoffWatcher) await stopHandoffWatcher();
+    if (handoffRoutesContext) handoffRoutesContext.stop();
     await hookBus.emit("session:end", { sessionId: sessionInfo.sessionId, mode: sessionInfo.mode, workspace }, sessionInfo).catch(() => {});
   };
 

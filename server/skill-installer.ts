@@ -11,7 +11,6 @@ import { join, dirname, extname } from "node:path";
 import { homedir } from "node:os";
 import type { SkillConfig, ViewerApiConfig, McpServerConfig, SkillDependency } from "../core/types/mode-manifest.js";
 import { isProjectManifest, type ProjectManifest } from "../core/types/project-manifest.js";
-import { parseHandoffMarkdown, type ParsedHandoff } from "./handoff-parser.js";
 
 /** Return the workspace-relative skills directory for a given backend. */
 function skillsDir(backendType?: string): string {
@@ -234,83 +233,93 @@ export function injectProjectSection(
 }
 
 /**
- * A handoff `.md` resolved from disk and matched against the current
- * session. Structurally `ParsedHandoff` from `handoff-parser.ts`; the body
- * is unused by the injection path so we re-expose a narrower alias.
+ * Inbound handoff payload as written by the v2 confirm endpoint. Mirrors the
+ * structured fields the `pneuma handoff` CLI accepts plus identity info for
+ * the source session.
  */
-type PendingHandoff = ParsedHandoff;
-
-/**
- * Scan `<projectRoot>/.pneuma/handoffs/` for `.md` files whose frontmatter
- * targets the current mode (and either the current session id or `auto`).
- *
- * Returns `[]` when the directory does not exist, is unreadable, or no file
- * matches — callers should treat that as "no pending handoff".
- */
-export function findPendingHandoffs(
-  projectRoot: string,
-  currentMode: string,
-  currentSessionId: string,
-): PendingHandoff[] {
-  const dir = join(projectRoot, ".pneuma", "handoffs");
-  if (!existsSync(dir)) return [];
-  let files: string[];
-  try {
-    files = readdirSync(dir);
-  } catch {
-    return [];
-  }
-  const out: PendingHandoff[] = [];
-  for (const f of files) {
-    if (!f.endsWith(".md")) continue;
-    const path = join(dir, f);
-    let raw: string;
-    try {
-      raw = readFileSync(path, "utf-8");
-    } catch {
-      continue;
-    }
-    const parsed = parseHandoffMarkdown(path, raw);
-    if (!parsed) continue;
-    const fm = parsed.frontmatter;
-    if (fm.target_mode !== currentMode) continue;
-    if (
-      fm.target_session &&
-      fm.target_session !== "auto" &&
-      fm.target_session !== currentSessionId
-    ) {
-      continue;
-    }
-    out.push(parsed);
-  }
-  return out;
+export interface InboundHandoffPayload {
+  handoff_id?: string;
+  source_session_id?: string;
+  source_mode?: string;
+  source_display_name?: string;
+  target_mode?: string;
+  target_session?: string;
+  intent?: string;
+  summary?: string;
+  suggested_files?: string[];
+  key_decisions?: string[];
+  open_questions?: string[];
+  proposed_at?: number;
 }
 
 /**
- * Build the body of the `pneuma:handoff` section. Returns null when there are
- * no pending handoffs — callers should skip injection in that case.
+ * Read the inbound handoff payload, if any, dropped at this session's
+ * `.pneuma/inbound-handoff.json` by `/api/handoffs/:id/confirm` *before* the
+ * target was spawned. The file's existence at session start is the agent's
+ * "you got here via Smart Handoff" signal; the target agent reads + rms the
+ * file on its first turn (per the `pneuma-project` skill).
  *
- * The body lists each handoff with its absolute path and a short summary so
- * the agent can read the full file, internalize the context, and remove it.
+ * Returns null on missing / unreadable / malformed JSON — callers treat that
+ * as "no inbound handoff".
  */
-export function buildHandoffSection(handoffs: PendingHandoff[]): string | null {
-  if (handoffs.length === 0) return null;
-  const lines: string[] = [];
-  lines.push("### Pending Handoff");
-  lines.push("");
-  lines.push("Read the file below, internalize the context, then `rm` it.");
-  for (const h of handoffs) {
-    lines.push("");
-    lines.push(`- File: \`${h.path}\``);
-    lines.push(
-      `  - From: ${h.frontmatter.source_mode ?? "unknown"} (${h.frontmatter.source_session ?? "unknown"})`,
-    );
-    if (h.frontmatter.intent) lines.push(`  - Intent: ${h.frontmatter.intent}`);
-    if (h.frontmatter.suggested_files?.length) {
-      lines.push(`  - Suggested files: ${h.frontmatter.suggested_files.join(", ")}`);
-    }
+export function readInboundHandoff(sessionDir: string): InboundHandoffPayload | null {
+  const path = join(sessionDir, ".pneuma", "inbound-handoff.json");
+  if (!existsSync(path)) return null;
+  try {
+    const raw = readFileSync(path, "utf-8");
+    const parsed = JSON.parse(raw) as InboundHandoffPayload;
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
   }
-  return lines.join("\n");
+}
+
+/**
+ * Build the body of the `pneuma:handoff` section from an inbound payload.
+ * Mirrors the shape documented in `pneuma-project/SKILL.md`'s "Receiving a
+ * handoff" section — the agent's skill expects this exact layout (header,
+ * intent, summary, suggested files, decisions, open questions). Returns null
+ * when there's no payload — callers should skip injection.
+ */
+export function buildHandoffSection(payload: InboundHandoffPayload | null): string | null {
+  if (!payload) return null;
+  const lines: string[] = [];
+
+  const sourceMode = payload.source_mode ?? "unknown";
+  const sourceLabel = payload.source_display_name
+    ? `${payload.source_display_name} (${payload.source_session_id ?? "unknown"})`
+    : payload.source_session_id ?? "unknown";
+  lines.push(`**Inbound from ${sourceMode}** (session ${sourceLabel})`);
+  lines.push("");
+
+  if (payload.intent) {
+    lines.push(`**Intent**: ${payload.intent}`);
+    lines.push("");
+  }
+  if (payload.summary) {
+    lines.push(`**Summary**: ${payload.summary}`);
+    lines.push("");
+  }
+  if (payload.suggested_files?.length) {
+    lines.push("**Suggested files** (read in order):");
+    for (const f of payload.suggested_files) lines.push(`- \`${f}\``);
+    lines.push("");
+  }
+  if (payload.key_decisions?.length) {
+    lines.push("**Decisions already locked in**:");
+    for (const d of payload.key_decisions) lines.push(`- ${d}`);
+    lines.push("");
+  }
+  if (payload.open_questions?.length) {
+    lines.push("**Open questions**:");
+    for (const q of payload.open_questions) lines.push(`- ${q}`);
+    lines.push("");
+  }
+  lines.push(
+    `Read suggested files in order, acknowledge in your first reply, then \`rm .pneuma/inbound-handoff.json\` and start the work.`,
+  );
+  return lines.join("\n").trimEnd();
 }
 
 /**
@@ -1204,14 +1213,16 @@ export function installSkill(options: InstallSkillOptions): void {
     content = injectProjectSection(content, null);
   }
 
-  // 2f. Inject/update handoff section (project sessions with a sessionId only).
-  //     Surfaces any pending handoff `.md` files in `<projectRoot>/.pneuma/handoffs/`
-  //     whose frontmatter targets the current mode + session. Quick sessions and
-  //     project sessions without a sessionId pass null to strip stale blocks.
+  // 2f. Inject/update handoff section (project sessions only).
+  //     The v2 tool-call protocol writes a structured payload to
+  //     `<sessionDir>/.pneuma/inbound-handoff.json` BEFORE the target spawns;
+  //     this block surfaces it to the agent on first run. The agent reads
+  //     the file (path quoted in the block) and rms it after consuming.
+  //     Quick sessions and project sessions without an inbound payload pass
+  //     null to strip any stale block.
   if (projectRoot && sessionId) {
-    const modeName = skillConfig.installName.replace(/^pneuma-/, "");
-    const handoffs = findPendingHandoffs(projectRoot, modeName, sessionId);
-    content = injectHandoffSection(content, buildHandoffSection(handoffs));
+    const inbound = readInboundHandoff(installTarget);
+    content = injectHandoffSection(content, buildHandoffSection(inbound));
   } else {
     // Idempotency: strip any stale block left from a previous install.
     content = injectHandoffSection(content, null);

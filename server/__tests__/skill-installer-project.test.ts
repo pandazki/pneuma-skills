@@ -222,30 +222,26 @@ describe("pneuma:project marker", () => {
   });
 });
 
-describe("pneuma:handoff marker", () => {
-  test("injects pending handoff for current mode", async () => {
-    const project = join(tmpDir, "proj-handoff");
+describe("pneuma:handoff marker (v2 inbound payload)", () => {
+  test("injects structured payload from inbound-handoff.json", async () => {
+    const project = join(tmpDir, "proj-handoff-v2");
     const sessionDir = join(project, ".pneuma", "sessions", "target-1");
-    mkdirSync(sessionDir, { recursive: true });
+    mkdirSync(join(sessionDir, ".pneuma"), { recursive: true });
     await writeProjectManifest(project, { version: 1, name: "p", displayName: "P", createdAt: 1 });
-    const handoffsDir = join(project, ".pneuma", "handoffs");
-    mkdirSync(handoffsDir, { recursive: true });
     writeFileSync(
-      join(handoffsDir, "hf-1.md"),
-      `---
-handoff_id: hf-1
-target_mode: test
-target_session: auto
-source_session: src-1
-source_mode: doc
-intent: Build the landing page
-created_at: 2026-04-27T00:00:00Z
----
-
-# Handoff body
-
-Important content here.
-`
+      join(sessionDir, ".pneuma", "inbound-handoff.json"),
+      JSON.stringify({
+        handoff_id: "hf-v2-1",
+        source_session_id: "src-1",
+        source_mode: "doc",
+        source_display_name: "Brand exploration",
+        target_mode: "test",
+        intent: "Build the landing page",
+        summary: "Brand identity established",
+        suggested_files: ["brand/logo.svg", "brand/palette.md"],
+        key_decisions: ["Single-page scroll", "Fraunces + DM Sans"],
+        open_questions: ["What's the primary CTA copy?"],
+      }),
     );
 
     installSkill({
@@ -260,30 +256,20 @@ Important content here.
 
     const claudeMd = await readFile(join(sessionDir, "CLAUDE.md"), "utf-8");
     expect(claudeMd).toContain("<!-- pneuma:handoff:start -->");
-    expect(claudeMd).toContain("hf-1.md");
+    expect(claudeMd).toContain("**Inbound from doc**");
+    expect(claudeMd).toContain("Brand exploration");
     expect(claudeMd).toContain("Build the landing page");
+    expect(claudeMd).toContain("Single-page scroll");
+    expect(claudeMd).toContain("brand/logo.svg");
+    expect(claudeMd).toContain("primary CTA copy");
+    expect(claudeMd).toContain(".pneuma/inbound-handoff.json");
   });
 
-  test("does NOT inject handoff for a different target_mode", async () => {
-    const project = join(tmpDir, "proj-handoff-mismatch");
+  test("strips the section when no inbound-handoff.json exists", async () => {
+    const project = join(tmpDir, "proj-handoff-v2-empty");
     const sessionDir = join(project, ".pneuma", "sessions", "t2");
     mkdirSync(sessionDir, { recursive: true });
     await writeProjectManifest(project, { version: 1, name: "p", displayName: "P", createdAt: 1 });
-    const handoffsDir = join(project, ".pneuma", "handoffs");
-    mkdirSync(handoffsDir, { recursive: true });
-    writeFileSync(
-      join(handoffsDir, "hf-2.md"),
-      `---
-handoff_id: hf-2
-target_mode: webcraft
-source_session: src
-source_mode: doc
-intent: x
-created_at: 2026-04-27T00:00:00Z
----
-body
-`
-    );
 
     installSkill({
       workspace: project,
@@ -296,79 +282,28 @@ body
     });
 
     const claudeMd = await readFile(join(sessionDir, "CLAUDE.md"), "utf-8");
-    expect(claudeMd).not.toContain("hf-2.md");
+    expect(claudeMd).not.toContain("<!-- pneuma:handoff:start -->");
   });
 
-  test("respects target_session when not 'auto'", async () => {
-    const project = join(tmpDir, "proj-handoff-targeted");
-    const sessionDir = join(project, ".pneuma", "sessions", "wrong-target");
-    mkdirSync(sessionDir, { recursive: true });
+  test("ignores malformed inbound-handoff.json", async () => {
+    const project = join(tmpDir, "proj-handoff-v2-bad");
+    const sessionDir = join(project, ".pneuma", "sessions", "t3");
+    mkdirSync(join(sessionDir, ".pneuma"), { recursive: true });
     await writeProjectManifest(project, { version: 1, name: "p", displayName: "P", createdAt: 1 });
-    const handoffsDir = join(project, ".pneuma", "handoffs");
-    mkdirSync(handoffsDir, { recursive: true });
-    writeFileSync(
-      join(handoffsDir, "hf-3.md"),
-      `---
-handoff_id: hf-3
-target_mode: test
-target_session: specific-target
-source_session: src
-source_mode: doc
-intent: x
-created_at: 2026-04-27T00:00:00Z
----
-body
-`
-    );
+    writeFileSync(join(sessionDir, ".pneuma", "inbound-handoff.json"), "{not json");
 
     installSkill({
       workspace: project,
       sessionDir,
       projectRoot: project,
-      sessionId: "wrong-target",
+      sessionId: "t3",
       skillConfig,
       modeSourceDir,
       backendType: "claude-code",
     });
 
     const claudeMd = await readFile(join(sessionDir, "CLAUDE.md"), "utf-8");
-    expect(claudeMd).not.toContain("hf-3.md");
-  });
-
-  test("matches target_mode even when written with quotes", async () => {
-    const project = join(tmpDir, "proj-handoff-quoted");
-    const sessionDir = join(project, ".pneuma", "sessions", "tq");
-    mkdirSync(sessionDir, { recursive: true });
-    await writeProjectManifest(project, { version: 1, name: "p", displayName: "P", createdAt: 1 });
-    const handoffsDir = join(project, ".pneuma", "handoffs");
-    mkdirSync(handoffsDir, { recursive: true });
-    writeFileSync(
-      join(handoffsDir, "hf-q.md"),
-      `---
-handoff_id: hf-q
-target_mode: "test"
-target_session: 'auto'
-source_session: src
-source_mode: doc
-intent: x
-created_at: 2026-04-27T00:00:00Z
----
-body
-`
-    );
-
-    installSkill({
-      workspace: project,
-      sessionDir,
-      projectRoot: project,
-      sessionId: "tq",
-      skillConfig,
-      modeSourceDir,
-      backendType: "claude-code",
-    });
-
-    const claudeMd = await readFile(join(sessionDir, "CLAUDE.md"), "utf-8");
-    expect(claudeMd).toContain("hf-q.md");
+    expect(claudeMd).not.toContain("<!-- pneuma:handoff:start -->");
   });
 });
 

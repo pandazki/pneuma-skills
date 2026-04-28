@@ -1,6 +1,6 @@
 import type { Hono } from "hono";
 import { existsSync } from "node:fs";
-import { unlink, readFile, writeFile, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
   loadProjectManifest,
@@ -15,7 +15,6 @@ import {
   restoreProject,
   type ProjectRegistryEntry,
 } from "../bin/sessions-registry.js";
-import { parseHandoffMarkdown } from "./handoff-parser.js";
 import { importSessionsIntoProject } from "./project-init-from-sessions.js";
 
 /**
@@ -34,34 +33,10 @@ export interface ProjectListResponseEntry extends ProjectRegistryEntry {
 
 export interface ProjectsRoutesOptions {
   homeDir: string; // typically homedir(); for tests, override
-  /**
-   * Optional. If provided, `/api/handoffs/:id/confirm` will use this to
-   * terminate the source session's backend before spawning the target.
-   * Failures are logged and ignored — the user clicking Confirm intends
-   * to leave that session anyway.
-   */
-  killSession?: (sessionId: string) => Promise<void>;
-  /**
-   * Optional. If provided, `/api/handoffs/:id/confirm` will use this to
-   * spawn the target session and return the URL the browser should
-   * navigate to. Production wires this to the same machinery used by
-   * `/api/launch`.
-   */
-  launchSession?: (params: {
-    mode: string;
-    project: string;
-    sessionId?: string;
-  }) => Promise<string>;
 }
 
 export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): void {
   const sessionsPath = join(options.homeDir, ".pneuma", "sessions.json");
-  // Per-handoff_id single-flight lock. The handoff confirm endpoint kills
-  // the source + spawns the target — running it twice for the same id
-  // creates a duplicate target session. The HandoffCard already disables
-  // its Confirm button while in flight, but a network retry / double-tab
-  // could still race in. This Set is the server-side guard.
-  const handoffsInFlight = new Set<string>();
 
   app.get("/api/projects", async (c) => {
     const data = await readSessionsFile(sessionsPath);
@@ -306,101 +281,9 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     return c.json({ deleted: true, dirExisted, registryHadEntry });
   });
 
-  app.post("/api/handoffs/:id/cancel", async (c) => {
-    const id = c.req.param("id");
-    const project = c.req.query("project");
-    if (!project) return c.json({ error: "project query param required" }, 400);
-    const target = join(project, ".pneuma", "handoffs", `${id}.md`);
-    if (!existsSync(target)) return c.json({ error: "handoff not found" }, 404);
-    await unlink(target);
-    return c.json({ cancelled: true });
-  });
-
-  app.post("/api/handoffs/:id/confirm", async (c) => {
-    const id = c.req.param("id");
-    const project = c.req.query("project");
-    if (!project) return c.json({ error: "project query param required" }, 400);
-
-    // Single-flight: if another request is already processing this handoff,
-    // return a definite "in progress" instead of racing into a second
-    // launchPneumaChild call. The lock is released in `finally` below.
-    if (handoffsInFlight.has(id)) {
-      return c.json({ error: "handoff already in progress" }, 409);
-    }
-    handoffsInFlight.add(id);
-    try {
-      const handoffPath = join(project, ".pneuma", "handoffs", `${id}.md`);
-      if (!existsSync(handoffPath)) return c.json({ error: "handoff not found" }, 404);
-
-      const raw = await readFile(handoffPath, "utf-8");
-      const parsed = parseHandoffMarkdown(handoffPath, raw);
-      if (!parsed) return c.json({ error: "invalid handoff frontmatter" }, 400);
-      const { frontmatter: fm } = parsed;
-
-      const sourceSessionId = fm.source_session;
-      const targetMode = fm.target_mode;
-      const targetSession =
-        fm.target_session && fm.target_session !== "auto"
-          ? fm.target_session
-          : undefined;
-
-      if (!targetMode) return c.json({ error: "target_mode missing" }, 400);
-
-      // Kill source if running. Best-effort: the user intends to leave that
-      // session, so a failure here shouldn't block the launch.
-      if (sourceSessionId && options.killSession) {
-        try {
-          await options.killSession(sourceSessionId);
-        } catch (err) {
-          console.warn(`[handoff-confirm] kill source failed: ${err}`);
-        }
-      }
-
-      // Append switched_out event to source history (best-effort).
-      if (sourceSessionId) {
-        const sourceHistoryPath = join(
-          project,
-          ".pneuma",
-          "sessions",
-          sourceSessionId,
-          "history.json",
-        );
-        if (existsSync(sourceHistoryPath)) {
-          try {
-            const arr = JSON.parse(await readFile(sourceHistoryPath, "utf-8")) as unknown[];
-            if (Array.isArray(arr)) {
-              arr.push({
-                type: "session_event",
-                subtype: "switched_out",
-                handoff_id: id,
-                ts: Date.now(),
-              });
-              await writeFile(sourceHistoryPath, JSON.stringify(arr, null, 2), "utf-8");
-            }
-          } catch (err) {
-            console.warn(`[handoff-confirm] write switched_out failed: ${err}`);
-          }
-        }
-      }
-
-      if (!options.launchSession) {
-        return c.json({ error: "launch not configured" }, 500);
-      }
-      const launchUrl = await options.launchSession({
-        mode: targetMode,
-        project,
-        sessionId: targetSession,
-      });
-
-      // Leave the handoff file in place — the target session's skill
-      // installer reads it at boot to inject the `pneuma:handoff` block
-      // into CLAUDE.md, and the target agent rms it after consuming. The
-      // single-flight lock above + chokidar's add-only listening + the
-      // HandoffCard button-disable in flight together prevent the
-      // duplicate-spawn loop without server-side delete.
-      return c.json({ confirmed: true, launchUrl, handoffId: id });
-    } finally {
-      handoffsInFlight.delete(id);
-    }
-  });
+  // Handoff endpoints (`/api/handoffs/{emit,confirm,cancel}`) live in
+  // `server/handoff-routes.ts` and are mounted separately by the server.
+  // They previously lived here under the v1 file-mediated protocol; the
+  // tool-call rewrite (2026-04-28) split them out so the project-routes
+  // file stays focused on project CRUD.
 }

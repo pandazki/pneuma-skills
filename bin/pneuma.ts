@@ -14,7 +14,7 @@ import { homedir, tmpdir } from "node:os";
 import * as p from "@clack/prompts";
 import { startServer } from "../server/index.js";
 import { createBackend, getDefaultBackendType } from "../backends/index.js";
-import { installSkill, findPendingHandoffs } from "../server/skill-installer.js";
+import { installSkill, readInboundHandoff } from "../server/skill-installer.js";
 import { startFileWatcher } from "../server/file-watcher.js";
 import { initShadowGit } from "../server/shadow-git.js";
 import { loadModeManifest, listBuiltinModes, registerExternalMode } from "../core/mode-loader.js";
@@ -912,6 +912,42 @@ Options:
 
   // History subcommand — export / open
   const rawArgs = process.argv.slice(2);
+
+  // Handoff subcommand — single-shot, runs entirely without spinning up the
+  // local server; it just POSTs to the Pneuma server identified by
+  // PNEUMA_SERVER_URL (which the parent sets when it spawned the agent).
+  if (rawArgs[0] === "handoff") {
+    const { runHandoffCommand } = await import("./handoff-cli.js");
+    const exitCode = await runHandoffCommand(
+      rawArgs.slice(1),
+      {
+        PNEUMA_SERVER_URL: process.env.PNEUMA_SERVER_URL,
+        PNEUMA_SESSION_ID: process.env.PNEUMA_SESSION_ID,
+      },
+      {
+        stdout: (line) => console.log(line),
+        stderr: (line) => console.error(line),
+        readStdin: async () => {
+          // Bun.stdin reads to EOF; works the same on Node + Bun.
+          const chunks: string[] = [];
+          for await (const chunk of process.stdin as unknown as AsyncIterable<Buffer>) {
+            chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
+          }
+          return chunks.join("");
+        },
+        fetch: async (url, init) => {
+          const res = await fetch(url, init);
+          return {
+            status: res.status,
+            json: () => res.json(),
+            text: () => res.text(),
+          };
+        },
+      },
+    );
+    process.exit(exitCode);
+  }
+
   if (rawArgs[0] === "history") {
     if (rawArgs[1] === "export") {
       let histWorkspace = process.cwd();
@@ -1591,20 +1627,16 @@ Options:
     writeFileSync(skillVersionPath, JSON.stringify({ mode: modeName, version: manifest.version }));
   }
 
-  // Record `switched_in` history events when this project session boots with
-  // pending handoffs targeting it. The pneuma:handoff CLAUDE.md block (Task 6)
-  // already steers the agent to read + delete those files; this just lets the
-  // viewer's history feed show "you arrived here from a handoff" alongside the
-  // matching `switched_out` event written on the source side by Task 16's
-  // confirm route. Best-effort — IO failures don't block the launch.
+  // Record a `switched_in` history event when this project session boots
+  // with an inbound handoff payload. The v2 confirm endpoint dropped the
+  // payload at `<sessionDir>/.pneuma/inbound-handoff.json` before spawning
+  // us; the matching `switched_out` event was already written on the
+  // source side. This pair lets the viewer's history feed show the
+  // round-trip cleanly. Best-effort — IO failures don't block the launch.
   if (startup.kind === "project" && startup.paths.projectRoot) {
     try {
-      const pending = findPendingHandoffs(
-        startup.paths.projectRoot,
-        modeName,
-        startup.sessionId,
-      );
-      if (pending.length > 0) {
+      const inbound = readInboundHandoff(sessionDir);
+      if (inbound && inbound.handoff_id) {
         const historyPath = join(stateDir, "history.json");
         let arr: unknown[] = [];
         if (existsSync(historyPath)) {
@@ -1616,14 +1648,12 @@ Options:
             // Corrupt history.json — start fresh rather than blocking launch.
           }
         }
-        for (const h of pending) {
-          arr.push({
-            type: "session_event",
-            subtype: "switched_in",
-            handoff_id: h.frontmatter.handoff_id,
-            ts: Date.now(),
-          });
-        }
+        arr.push({
+          type: "session_event",
+          subtype: "switched_in",
+          handoff_id: inbound.handoff_id,
+          ts: Date.now(),
+        });
         mkdirSync(stateDir, { recursive: true });
         writeFileSync(historyPath, JSON.stringify(arr, null, 2), "utf-8");
       }
@@ -1869,6 +1899,14 @@ Options:
     sessionId: startup.sessionId,
     pneumaProjectRoot: startup.paths.projectRoot ?? undefined,
   });
+
+  // The HTTP origin the agent's `pneuma handoff` CLI must POST against. The
+  // CLI calls `${PNEUMA_SERVER_URL}/api/handoffs/emit`; the server identifies
+  // the source session via `PNEUMA_SESSION_ID` and broadcasts the proposal
+  // to that session's browser. Has to land in `pneumaEnv` *after* the actual
+  // port is known so launches that fall back to a different port still
+  // self-describe correctly.
+  pneumaEnv.PNEUMA_SERVER_URL = `http://localhost:${actualPort}`;
 
   // 4. Launch Agent backend or set up replay mode
   let sessionId: string;
