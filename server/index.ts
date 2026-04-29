@@ -2804,10 +2804,21 @@ export async function startServer(options: ServerOptions) {
   if (options.modeName === "evolve") {
     registerEvolutionRoutes(app, { workspace, stateDir: options.stateDir });
   } else if (options.modeName === "project-evolve") {
-    const projectEvolutionDir = options.pneumaProjectRoot
+    // For project-evolve, route both the proposals list AND the apply
+    // target at the project root. The per-session `workspace` is the
+    // session dir for project sessions, so passing it through would
+    // make Apply write `change.file` paths into the session's own
+    // `.pneuma/` instead of the project's. Substitute projectRoot so
+    // `applyProposal(workspace, ...)` resolves `change.file` against
+    // the user-facing project tree.
+    const evolveWorkspace = options.pneumaProjectRoot ?? workspace;
+    const evolveStateDir = options.pneumaProjectRoot
       ? join(options.pneumaProjectRoot, ".pneuma")
       : options.stateDir;
-    registerEvolutionRoutes(app, { workspace, stateDir: projectEvolutionDir });
+    registerEvolutionRoutes(app, {
+      workspace: evolveWorkspace,
+      stateDir: evolveStateDir,
+    });
   }
 
   // ── Reverse proxy for viewer API access ────────────────────────────────
