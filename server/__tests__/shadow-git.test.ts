@@ -127,4 +127,36 @@ describe("shadow-git", () => {
       rmSync(outDir, { recursive: true, force: true });
     });
   });
+
+  describe("stateDir override (project sessions)", () => {
+    test("initShadowGit honors stateDir parameter for per-session location", async () => {
+      // Simulate a project session: workspace is the project root, stateDir is
+      // the per-session sibling under .pneuma/sessions/<id>.
+      const stateDir = join(workspace, ".pneuma", "sessions", "s1");
+      // Workspace itself is the work-tree (project root acts as homeRoot in projects).
+      await initShadowGit(workspace, stateDir);
+
+      // shadow.git lives under the explicit stateDir, NOT at workspace/.pneuma.
+      expect(existsSync(join(stateDir, "shadow.git", "HEAD"))).toBe(true);
+      expect(existsSync(join(workspace, ".pneuma", "shadow.git"))).toBe(false);
+      expect(isShadowGitAvailable(workspace)).toBe(true);
+    });
+
+    test("checkpoints.jsonl writes under stateDir, not workspace/.pneuma", async () => {
+      const stateDir = join(workspace, ".pneuma", "sessions", "s2");
+      await initShadowGit(workspace, stateDir);
+
+      await Bun.write(join(workspace, "page.html"), "<p>x</p>");
+      await enqueueCheckpoint(workspace, 1);
+
+      // Index is under stateDir
+      expect(existsSync(join(stateDir, "checkpoints.jsonl"))).toBe(true);
+      // Legacy location must remain empty
+      expect(existsSync(join(workspace, ".pneuma", "checkpoints.jsonl"))).toBe(false);
+
+      const entries = await listCheckpoints(workspace);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].turn).toBe(1);
+    });
+  });
 });

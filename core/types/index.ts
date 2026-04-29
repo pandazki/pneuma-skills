@@ -76,3 +76,6 @@ export type {
   FileChangeEvent,
   SourceDescriptor,
 } from "./source.js";
+
+export type { ProjectManifest, ProjectSummary } from "./project-manifest.js";
+export { isProjectManifest } from "./project-manifest.js";

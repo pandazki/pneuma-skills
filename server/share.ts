@@ -108,7 +108,11 @@ async function uploadToR2(filePath: string, key: string, config: R2Config): Prom
 }
 
 /** Share Result — just workspace files, no history */
-export async function shareResult(workspace: string, title?: string): Promise<{ url: string }> {
+export async function shareResult(
+  workspace: string,
+  title?: string,
+  stateDir: string = join(workspace, ".pneuma"),
+): Promise<{ url: string }> {
   const config = getR2Config();
   if (!config) throw new Error("R2 not configured. Please configure R2 credentials first.");
 
@@ -120,7 +124,7 @@ export async function shareResult(workspace: string, title?: string): Promise<{ 
   // Read session metadata for mode info
   let mode = "unknown";
   try {
-    const session = JSON.parse(readFileSync(join(workspace, ".pneuma", "session.json"), "utf-8"));
+    const session = JSON.parse(readFileSync(join(stateDir, "session.json"), "utf-8"));
     mode = session.mode;
   } catch {}
 
@@ -171,7 +175,11 @@ export async function shareResult(workspace: string, title?: string): Promise<{ 
 }
 
 /** Share Process — history + checkpoints + git bundle */
-export async function shareProcess(workspace: string, title?: string): Promise<{ url: string }> {
+export async function shareProcess(
+  workspace: string,
+  title?: string,
+  stateDir: string = join(workspace, ".pneuma"),
+): Promise<{ url: string }> {
   const config = getR2Config();
   if (!config) throw new Error("R2 not configured. Please configure R2 credentials first.");
 
@@ -183,7 +191,7 @@ export async function shareProcess(workspace: string, title?: string): Promise<{
   const archiveName = `process-${name}-${timestamp}.tar.gz`;
   const exportPath = join(tmpdir(), archiveName);
 
-  await exportHistory(workspace, { output: exportPath, title });
+  await exportHistory(workspace, { output: exportPath, title, stateDir });
 
   const key = `shares/${archiveName}`;
   const url = await uploadToR2(exportPath, key, config);
@@ -191,7 +199,7 @@ export async function shareProcess(workspace: string, title?: string): Promise<{
   // Upload metadata
   let mode = "unknown";
   try {
-    const session = JSON.parse(readFileSync(join(workspace, ".pneuma", "session.json"), "utf-8"));
+    const session = JSON.parse(readFileSync(join(stateDir, "session.json"), "utf-8"));
     mode = session.mode;
   } catch {}
 

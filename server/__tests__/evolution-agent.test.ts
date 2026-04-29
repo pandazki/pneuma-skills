@@ -44,49 +44,49 @@ afterEach(() => {
 });
 
 describe("buildEvolutionPrompt", () => {
-  it("includes system context", () => {
+  it("includes system context", async () => {
     const ws = makeWorkspace();
-    const prompt = buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
+    const prompt = await buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
     expect(prompt).toContain("Pneuma Skill Evolution Agent");
     expect(prompt).toContain("Your Mission");
   });
 
-  it("includes default directive when no evolution config", () => {
+  it("includes default directive when no evolution config", async () => {
     const ws = makeWorkspace();
-    const prompt = buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
+    const prompt = await buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
     expect(prompt).toContain("Evolution Directive");
     expect(prompt).toContain("Analyze the user's usage patterns");
   });
 
-  it("uses custom directive from manifest", () => {
+  it("uses custom directive from manifest", async () => {
     const ws = makeWorkspace();
     const manifest = makeManifest({
       evolution: { directive: "Focus on slide design preferences" },
     });
-    const prompt = buildEvolutionPrompt({ workspace: ws, manifest });
+    const prompt = await buildEvolutionPrompt({ workspace: ws, manifest });
     expect(prompt).toContain("Focus on slide design preferences");
   });
 
-  it("includes workspace info section", () => {
+  it("includes workspace info section", async () => {
     const ws = makeWorkspace();
-    const prompt = buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
+    const prompt = await buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
     expect(prompt).toContain("Workspace Info");
     expect(prompt).toContain(ws);
     expect(prompt).toContain("pneuma-slide");
     expect(prompt).toContain("Mode: slide");
   });
 
-  it("includes data source section", () => {
+  it("includes data source section", async () => {
     const ws = makeWorkspace();
-    const prompt = buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
+    const prompt = await buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
     expect(prompt).toContain("Available Data Sources");
     expect(prompt).toContain("Primary: Workspace Conversation History");
     expect(prompt).toContain("Secondary: Global CC History");
   });
 
-  it("includes target skill section with embedded content", () => {
+  it("includes target skill section with embedded content", async () => {
     const ws = makeWorkspace();
-    const prompt = buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
+    const prompt = await buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
     expect(prompt).toContain("Target Skill — What You Are Evolving");
     expect(prompt).toContain(".claude/skills/pneuma-slide");
     // Embedded SKILL.md content
@@ -94,18 +94,18 @@ describe("buildEvolutionPrompt", () => {
     expect(prompt).toContain("Current SKILL.md Content");
   });
 
-  it("includes output instructions with proposals directory", () => {
+  it("includes output instructions with proposals directory", async () => {
     const ws = makeWorkspace();
-    const prompt = buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
+    const prompt = await buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
     expect(prompt).toContain("Output Instructions");
     expect(prompt).toContain(".pneuma/evolution/proposals");
     expect(prompt).toContain("mkdir -p");
     expect(prompt).toContain("evo-<timestamp>-<random8>");
   });
 
-  it("includes proposal JSON schema", () => {
+  it("includes proposal JSON schema", async () => {
     const ws = makeWorkspace();
-    const prompt = buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
+    const prompt = await buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
     expect(prompt).toContain('"status": "pending"');
     expect(prompt).toContain('"mode": "slide"');
     expect(prompt).toContain('"workspace":');
@@ -113,22 +113,22 @@ describe("buildEvolutionPrompt", () => {
     expect(prompt).toContain('"evidence"');
   });
 
-  it("includes instructions for insufficient evidence", () => {
+  it("includes instructions for insufficient evidence", async () => {
     const ws = makeWorkspace();
-    const prompt = buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
+    const prompt = await buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
     expect(prompt).toContain("insufficient evidence");
     expect(prompt).toContain('"changes": []');
   });
 
-  it("includes post-proposal summary instructions", () => {
+  it("includes post-proposal summary instructions", async () => {
     const ws = makeWorkspace();
-    const prompt = buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
+    const prompt = await buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
     expect(prompt).toContain("Evolution Dashboard");
   });
 
-  it("tells agent to write files, not just output JSON", () => {
+  it("tells agent to write files, not just output JSON", async () => {
     const ws = makeWorkspace();
-    const prompt = buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
+    const prompt = await buildEvolutionPrompt({ workspace: ws, manifest: makeManifest() });
     expect(prompt).toContain("write a proposal JSON file to disk");
     // Should NOT contain the old "output a JSON proposal" language
     expect(prompt).not.toContain("output a JSON proposal inside a ```json code fence");

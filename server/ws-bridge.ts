@@ -146,6 +146,34 @@ export class WsBridge {
     this.onCLISessionId = cb;
   }
 
+  /**
+   * Inject a synthetic user message into a session. Used by server-side
+   * code paths (handoff cancel, session-start `<pneuma:env>` tags, etc.)
+   * to dispatch chat-tag signals to the agent the same way a real browser
+   * `user_message` would — recorded in history, broadcast to browsers,
+   * delivered to the CLI / Codex transport.
+   *
+   * Plain text only — images/files would only confuse a synthesized signal
+   * and the existing `handleUserMessage` path is the one to use for those.
+   */
+  sendUserMessage(sessionId: string, content: string): void {
+    const session = this.getOrCreateSession(sessionId);
+    const codexAdapter = this.codexAdapters.get(sessionId);
+    if (codexAdapter) {
+      this.handleCodexUserMessage(session, codexAdapter, { type: "user_message", content });
+    } else {
+      this.handleUserMessage(session, { type: "user_message", content });
+    }
+    // The browser-originated path doesn't broadcast (the originating tab
+    // already rendered the message optimistically), but a server-injected
+    // tag has no optimistic source — we have to push it explicitly.
+    this.broadcastToBrowsers(session, {
+      type: "user_message",
+      content,
+      timestamp: Date.now(),
+    });
+  }
+
   /** Push a message to all connected browsers for a session. */
   broadcastToSession(sessionId: string, msg: BrowserIncomingMessage): void {
     const session = this.sessions.get(sessionId);

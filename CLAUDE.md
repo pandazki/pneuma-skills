@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 2.40.0
+**Version:** 2.41.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve`
 
@@ -78,6 +78,8 @@ pneuma history open <path-or-url>      # Download/prepare replay package
 | `--replay-source <path>` | Source workspace for existing session replay (exports + replays) |
 | `--session-name <name>` | Custom session display name (default: `{mode}-{timeTag}`) |
 | `--viewing` | Start in viewing mode (`editing: false` — skip skill install + agent spawn) |
+| `--project <path>` | Run as a session inside the project at `<path>` (state lives under `<path>/.pneuma/sessions/{id}/`) |
+| `--session-id <id>` | Resume the project session with this id (must be combined with `--project`) |
 
 ## Ports
 
@@ -182,7 +184,7 @@ Extensible plugin architecture for deploy workflows, metadata injection, and fut
 
 1. **Resolve** — `mode-resolver.ts` maps specifier (builtin/local/github/url) to disk path with `manifest.ts`
 2. **Load manifest** — `loadModeManifest()` → ModeManifest (skill, viewer, agent config, init params)
-3. **Session** — load or create `.pneuma/session.json` (sessionId, agentSessionId, backendType)
+3. **Session** — load or create `<sessionDir>/session.json` (sessionId, agentSessionId, backendType). For quick sessions `sessionDir = workspace`; for project sessions `sessionDir = <project>/.pneuma/sessions/<sessionId>/`.
 4. **Skill install** — `skill-installer.ts` copies `modes/<mode>/skill/` to workspace (Claude: `.claude/skills/` + `CLAUDE.md`; Codex: `.agents/skills/` + `AGENTS.md`), applies `{{key}}` / `{{viewerCapabilities}}` templates
 5. **Server start** — Hono HTTP + WebSocket + backend transport bridge
 6. **Backend selection** — startup-only, workspace-locked; cannot switch mid-session
@@ -217,29 +219,35 @@ A mode package must contain `manifest.ts` exporting a `ModeManifest`.
 
 ### Session Registry
 
-Global session history for the launcher "Recent Sessions" feature:
+Global session history for the launcher "Recent Sessions" / "Recent Projects" surface:
 
 - **File:** `~/.pneuma/sessions.json`
-- **Record:** `{ id: "${workspace}::${mode}", mode, displayName, workspace, backendType, lastAccessed }`
-- Upserted on every mode launch, capped at 50 entries
-- Launcher shows recent sessions with one-click resume (no dialog)
+- **Schema (3.0):** `{ projects: ProjectRegistryEntry[], sessions: SessionRegistryEntry[] }`
+- Each session entry carries `kind: "quick" | "project"`. Quick sessions store `workspace`; project sessions also store `projectRoot` and `sessionId`.
+- Legacy 2.x array format (`SessionRegistryEntry[]`) is auto-upgraded on read; the first write persists the new shape.
+- Upserted on every mode launch and project create, capped at 50 sessions / 50 projects.
+- Launcher shows recent projects + recent sessions with one-click resume.
 
 ### User Preferences
 
-Persistent user preference files managed by the agent:
+Persistent user preference files managed by the agent. Two scopes, both with the same schema:
 
-- **Directory:** `~/.pneuma/preferences/`
-- **Files:** `profile.md` (cross-mode), `mode-{name}.md` (per-mode)
+- **Personal (cross-project):** `~/.pneuma/preferences/`
+- **Project-scoped (3.0):** `<projectRoot>/.pneuma/preferences/` — orthogonal to personal; only loaded for sessions inside that project.
+- **Files:** `profile.md` (cross-mode), `mode-{name}.md` (per-mode).
 - **Format:** Agent-managed Markdown with two system markers:
-  - `<!-- pneuma-critical:start/end -->` — Hard constraints, extracted and injected into instructions file at startup
-  - `<!-- changelog:start/end -->` — Update log for incremental refresh
-- **Injection:** `<!-- pneuma:preferences:start/end -->` marker in CLAUDE.md/AGENTS.md (critical only)
-- **Skill:** `pneuma-preferences` installed as global dependency for all modes
-- **Source:** `modes/_shared/skills/pneuma-preferences/`
+  - `<!-- pneuma-critical:start/end -->` — Hard constraints, extracted and injected into instructions file at startup.
+  - `<!-- changelog:start/end -->` — Update log for incremental refresh.
+- **Injection:** Personal critical → `<!-- pneuma:preferences:start/end -->` block. Project critical → `<!-- pneuma:project:start/end -->` block (alongside the project manifest summary).
+- **Skill:** `pneuma-preferences` installed as global dependency for all modes; `pneuma-project` is additionally installed for project sessions.
+- **Source:** `modes/_shared/skills/pneuma-preferences/`, `modes/_shared/skills/pneuma-project/`.
 
-### Per-Workspace Persistence
+### Per-Session Persistence + Project Layer
 
-Stored in `<workspace>/.pneuma/`:
+Session state lives in `<stateDir>/`. The location depends on whether the session belongs to a project:
+
+- **Quick session** — `stateDir = <workspace>/.pneuma/` (legacy 2.x layout, unchanged).
+- **Project session** — `stateDir = <projectRoot>/.pneuma/sessions/<sessionId>/`. The state files sit flat in this directory (no nested `.pneuma/`); `.claude/skills/` and `CLAUDE.md` also live here so the agent's CWD = `stateDir`.
 
 | File | Purpose |
 |------|---------|
@@ -255,19 +263,31 @@ Stored in `<workspace>/.pneuma/`:
 | `evolution/` | Evolution proposals, backups, and CLAUDE.md snapshots |
 | `deploy.json` | Deploy bindings keyed by contentSet: `{ vercel: { _default: {...} }, cfPages: { _default: {...} } }` |
 
+**Project layer (3.0)** — `<projectRoot>/.pneuma/`:
+
+| Path | Purpose |
+|------|---------|
+| `project.json` | `ProjectManifest`: `{ version, name, displayName, description?, createdAt }` |
+| `preferences/` | Project-scoped preferences (`profile.md`, `mode-{name}.md`) |
+| `sessions/<id>/.pneuma/inbound-handoff.json` | Inbound handoff payload, written by `/api/handoffs/:id/confirm` before the target session spawns; target agent reads and `rm`s on first turn |
+| `sessions/<sessionId>/` | One subdir per session; contents are the per-session table above |
+
 ### Skill Installation & Update Detection
 
-On startup, skills are copied to the backend-appropriate directory:
-- Claude Code: `<workspace>/.claude/skills/<installName>/` + `CLAUDE.md`
-- Codex: `<workspace>/.agents/skills/<installName>/` + `AGENTS.md`
+On startup, skills are copied to the backend-appropriate directory under `<sessionDir>` (= workspace for quick sessions, `<project>/.pneuma/sessions/<id>/` for project sessions):
+- Claude Code: `<sessionDir>/.claude/skills/<installName>/` + `CLAUDE.md`
+- Codex: `<sessionDir>/.agents/skills/<installName>/` + `AGENTS.md`
 
-Template params (`{{key}}`, `{{viewerCapabilities}}`) are applied. Three sections are injected into the instructions file:
+Template params (`{{key}}`, `{{viewerCapabilities}}`) are applied. The instructions file is assembled from these marker blocks:
 - `<!-- pneuma:start -->` / `<!-- pneuma:end -->` — Mode skill prompt (mode description, architecture, core rules)
 - `<!-- pneuma:viewer-api:start -->` / `<!-- pneuma:viewer-api:end -->` — Viewer API (context, actions, scaffold, locator cards, native desktop APIs)
-- `<!-- pneuma:preferences:start -->` / `<!-- pneuma:preferences:end -->` — User preferences critical constraints (extracted from `~/.pneuma/preferences/`)
+- `<!-- pneuma:preferences:start -->` / `<!-- pneuma:preferences:end -->` — Personal preferences critical constraints (extracted from `~/.pneuma/preferences/`)
+- `<!-- pneuma:project:start -->` / `<!-- pneuma:project:end -->` — *project sessions only*; project manifest summary + project-scoped preferences critical constraints
+- `<!-- pneuma:handoff:start -->` / `<!-- pneuma:handoff:end -->` — *project sessions only*; pending handoff messages targeted at this session (path + intent + suggested files; agent reads then `rm`s the file)
 
-A fourth optional section is injected by the evolution system:
-- `<!-- pneuma:evolved:start -->` / `<!-- pneuma:evolved:end -->` — Learned preferences summary (inside pneuma:start/end block)
+Two additional optional blocks are injected by other subsystems:
+- `<!-- pneuma:evolved:start -->` / `<!-- pneuma:evolved:end -->` — Learned preferences summary (inside the `pneuma:start/end` block, written by the evolution system)
+- `<!-- pneuma:resumed:start -->` / `<!-- pneuma:resumed:end -->` — Resume / replay context
 
 After install, the mode version is written to `skill-version.json`. On session resume:
 1. Launcher checks installed version vs current mode version
@@ -275,9 +295,50 @@ After install, the mode version is written to `skill-version.json`. On session r
 3. Skip records the dismissed version; same version won't prompt again
 4. `--skip-skill` flag skips skill installation entirely (used for dismissed updates)
 
+## Project Lifecycle (3.0)
+
+A project is a user directory marked by `<root>/.pneuma/project.json`. Inside a project you can run multiple sessions in different modes (or the same mode multiple times). All sessions share `<root>/.pneuma/preferences/` and coordinate through Smart Handoff (the `pneuma handoff` CLI tool the agent invokes after a `<pneuma:request-handoff>` chat tag).
+
+### Project Structure
+
+```
+<project>/
+├── .pneuma/
+│   ├── project.json                 # ProjectManifest: name, displayName, description, createdAt
+│   ├── preferences/                 # Project-scoped preferences (orthogonal to personal)
+│   │   ├── profile.md
+│   │   └── mode-{name}.md
+│   │                                # (handoffs flow through `pneuma handoff` + an in-memory proposal map; see Cross-Mode Handoff Protocol below)
+│   └── sessions/                    # Per-session state
+│       └── <sessionId>/             # session.json, history.json, .claude/, CLAUDE.md, etc.
+└── <user content>                   # deliverables — agent writes here
+```
+
+### Detection
+
+On startup, `core/project-loader.detectWorkspaceKind(workspace)` returns `"project"` iff `<workspace>/.pneuma/project.json` exists. Otherwise the run is a quick session (legacy 2.x layout). `--project <path>` forces project mode and selects/creates a session id under `sessions/`.
+
+### Environment Variables
+
+Every session injects:
+
+- `PNEUMA_SESSION_DIR` — the agent's CWD; where `.claude/skills/`, `CLAUDE.md`, and state files live
+- `PNEUMA_HOME_ROOT` — user-facing root (project root for project sessions, workspace for quick)
+- `PNEUMA_SESSION_ID` — session UUID
+
+Project sessions also inject:
+
+- `PNEUMA_PROJECT_ROOT` — absolute path to the project root
+
+### Cross-Mode Handoff Protocol
+
+The source agent invokes `pneuma handoff --json '{...}'` (a CLI tool wired up via the `PNEUMA_SERVER_URL` env var). The CLI POSTs the structured payload to `/api/handoffs/emit`; the server stores it in an in-memory `Map<handoff_id, HandoffProposal>` (30-min TTL) and broadcasts `handoff_proposed` over WS to the source session's browser. The HandoffCard renders the structured payload (intent, summary, files, decisions, open questions). On user confirm: server writes `<targetSessionDir>/.pneuma/inbound-handoff.json` atomically, kills source backend (best-effort), records `switched_out` / `switched_in` events, then spawns the target. The target's skill installer reads `inbound-handoff.json` into the CLAUDE.md `pneuma:handoff` block; the target agent reads + `rm`s the file on first turn. On user cancel: server dispatches `<pneuma:handoff-cancelled reason="..." />` as a synthetic user message back to the source agent so the conversation continues. See `server/handoff-routes.ts` and `docs/design/2026-04-28-handoff-tool-call.md`.
+
+See `docs/design/2026-04-27-pneuma-projects-design.md` for the full design and `docs/reference/viewer-agent-protocol.md` for the env-var + frontmatter reference tables.
+
 ## Launcher
 
-The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It serves a marketplace UI with sections: Recent Sessions, Built-in Modes, Local Modes, Published Modes, and Backend Picker. See `server/index.ts` launcher block and `src/components/Launcher.tsx` for endpoints and UI.
+The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It serves a marketplace UI with sections: Recent Sessions, Recent Projects, Built-in Modes, Local Modes, Published Modes, and Backend Picker. See `server/index.ts` launcher block and `src/components/Launcher.tsx` for endpoints and UI.
 
 ## Server Routes
 
@@ -335,3 +396,7 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **Windows compatibility**: Cross-platform support in `path-resolver.ts` (`where` vs `which`, PATH from `LOCALAPPDATA`/`APPDATA`), `terminal-manager.ts` (`COMSPEC`/`cmd.exe`), `system-bridge.ts` (`cmd /c start`), `server/index.ts` (`NUL`, `taskkill`). Path comparison is case-insensitive on win32.
 - **Native bridge timeout**: Routes through browser WS — if no browser tab is connected, native calls timeout after 10s.
 - **Diagram viewer**: See `modes/diagram/viewer/DiagramPreview.tsx` header comments for architecture and gotchas (native events, SVG pointer-events, sketch injection, rough.js load order).
+- **Handoff confirm cannot kill its own session**: when a project session's HandoffCard is clicked Confirm, `killActiveSession(sourceSessionId)` runs in the source session's own server — but the source process was spawned by the launcher (or directly), not by itself. The source backend keeps running until the user closes the tab. The `switched_out` history event is still recorded; the target launches normally.
+- **Project session state pollution if `--project` is dropped**: subcommands that don't parse `--project` would write state into the project root, conflicting with the project layer. All built-in subcommands (including `evolve`) now respect `--project`; external mode authors must mirror this when authoring custom CLI entry points.
+- **Empty shell renders without `modeViewer`**: the `?project=<root>` URL (no `session`, no `mode`) lands on `EmptyShell` which mounts `TopBar` *without* a session. `TopBar` gates the tabs row, share dropdown, and editing toggle on `!!modeViewer`; the left chip strip stays. Any new TopBar feature must guard for `modeViewer` being null in this state. `ProjectChip` lives in the strip and reads `projectContext` (which `EmptyShell` populates from `/api/projects/:id/sessions`); the chip's auto-open is computed inside the chip via URL inspection (no prop threading from `TopBar`).
+- **Project session id vs backend id**: for project sessions, `<projectRoot>/.pneuma/sessions/<id>/session.json`'s top-level `sessionId` is the *project session* id (= directory name = what the URL carries as `--session-id`). The backend's protocol id is stored separately in `agentSessionId`. `scanProjectSessions` falls back to the directory name if `sessionId` is missing/empty (defensive against pre-fix sessions). Reopening a project session uses the project session id; routing CLI ↔ backend uses `agentSessionId`. **Never** let the backend id leak into the registry / panel — it'll resolve to a non-existent directory.

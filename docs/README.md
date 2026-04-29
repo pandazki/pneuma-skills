@@ -44,7 +44,8 @@ docs/
 
 | 文档 | 说明 |
 |------|------|
-| [pneuma-3.0-design.md](design/pneuma-3.0-design.md) | 3.0 AI-native 微应用平台设计 |
+| [pneuma-3.0-design.md](design/pneuma-3.0-design.md) | 3.0 layout 维度：AI-native 微应用平台（`app` 布局 + Agent Bubble） |
+| [2026-04-27-pneuma-projects-design.md](design/2026-04-27-pneuma-projects-design.md) | 3.0 organization 维度：Project 层、跨 mode 接力、项目级偏好 |
 
 ### reference/
 

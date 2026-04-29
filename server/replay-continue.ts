@@ -7,6 +7,11 @@ interface ContinueOptions {
   originalMode: string;
   summary: SessionSummary;
   backendType?: string;
+  /**
+   * Per-session state directory. Defaults to `<workspace>/.pneuma` (legacy 2.x);
+   * project sessions pass `<projectRoot>/.pneuma/sessions/<id>`.
+   */
+  stateDir?: string;
 }
 
 /**
@@ -20,38 +25,38 @@ export async function prepareWorkspaceForContinue(
   workspace: string,
   options: ContinueOptions,
 ): Promise<void> {
-  const pneumaDir = join(workspace, ".pneuma");
-  mkdirSync(pneumaDir, { recursive: true });
+  const stateDir = options.stateDir ?? join(workspace, ".pneuma");
+  mkdirSync(stateDir, { recursive: true });
 
   // 1. Clear old checkpoint index and history
-  writeFileSync(join(pneumaDir, "checkpoints.jsonl"), "");
-  writeFileSync(join(pneumaDir, "history.json"), "[]");
+  writeFileSync(join(stateDir, "checkpoints.jsonl"), "");
+  writeFileSync(join(stateDir, "history.json"), "[]");
 
   // 2. Remove old shadow.git so initShadowGit creates fresh one
-  const shadowGitDir = join(pneumaDir, "shadow.git");
+  const shadowGitDir = join(stateDir, "shadow.git");
   if (existsSync(shadowGitDir)) {
     rmSync(shadowGitDir, { recursive: true, force: true });
   }
 
   // 3. Remove replay temp dirs
-  const replayCheckout = join(pneumaDir, "replay-checkout");
+  const replayCheckout = join(stateDir, "replay-checkout");
   if (existsSync(replayCheckout)) {
     rmSync(replayCheckout, { recursive: true, force: true });
   }
-  const replayDir = join(pneumaDir, "replay");
+  const replayDir = join(stateDir, "replay");
   if (existsSync(replayDir)) {
     rmSync(replayDir, { recursive: true, force: true });
   }
 
   // 4. Re-initialize shadow-git (current workspace files = initial commit)
-  await initShadowGit(workspace);
+  await initShadowGit(workspace, options.stateDir);
 
   // 5. Write resumed-context.xml for skill-installer injection
   const contextXml = buildResumedContextXml(options.summary, options.originalMode);
-  writeFileSync(join(pneumaDir, "resumed-context.xml"), contextXml, "utf-8");
+  writeFileSync(join(stateDir, "resumed-context.xml"), contextXml, "utf-8");
 
   // 6. Update session.json with resumedFrom marker
-  const sessionPath = join(pneumaDir, "session.json");
+  const sessionPath = join(stateDir, "session.json");
   if (existsSync(sessionPath)) {
     const session = JSON.parse(readFileSync(sessionPath, "utf-8"));
     session.resumedFrom = {

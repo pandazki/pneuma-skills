@@ -12,6 +12,7 @@
 
 import { join } from "node:path";
 import { existsSync, readdirSync, readFileSync, statSync, realpathSync } from "node:fs";
+import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import type { ModeManifest } from "../core/types/mode-manifest.js";
 import { getProposalsDir } from "./evolution-proposal.js";
@@ -43,8 +44,12 @@ export interface EvolutionMetadata {
 /**
  * Build the full evolution prompt to inject as a greeting into the agent session.
  * The agent will use its tools to analyze CC history and write a proposal to disk.
+ *
+ * When `PNEUMA_PROJECT_ROOT` is set in the environment, a project-scope section
+ * is appended that lists the project's session history files and instructs the
+ * agent to write project-scoped preferences to `<projectRoot>/.pneuma/preferences/`.
  */
-export function buildEvolutionPrompt(options: EvolutionPromptOptions): string {
+export async function buildEvolutionPrompt(options: EvolutionPromptOptions): Promise<string> {
   const { workspace, manifest } = options;
   const parts: string[] = [];
 
@@ -58,7 +63,42 @@ export function buildEvolutionPrompt(options: EvolutionPromptOptions): string {
   parts.push(buildCurrentSkillSection(workspace, manifest));
   parts.push(buildOutputInstructions(workspace, manifest));
 
+  const projectSection = await buildProjectScopeSection();
+  if (projectSection) parts.push(projectSection);
+
   return parts.join("\n\n---\n\n");
+}
+
+/**
+ * When the evolve session was launched with `--project`, surface the project
+ * sessions to the agent and direct project-scoped output to
+ * `<projectRoot>/.pneuma/preferences/`. Returns null when not in project mode.
+ */
+async function buildProjectScopeSection(): Promise<string | null> {
+  const projectRoot = process.env.PNEUMA_PROJECT_ROOT;
+  if (!projectRoot) return null;
+
+  const histPaths = await collectProjectHistorySources(projectRoot);
+  const lines: string[] = ["## Project Scope", ""];
+  lines.push(`You are running in a Pneuma project at \`${projectRoot}\`.`);
+  lines.push("");
+
+  if (histPaths.length > 0) {
+    lines.push("Other sessions in this project have their own histories at:");
+    lines.push("");
+    for (const p of histPaths) lines.push(`- \`${p}\``);
+    lines.push("");
+    lines.push("For project-scope evolution: scan ALL of these histories (cross-mode), look for project-specific user preferences (e.g. tone, layout choices, recurring constraints), and write the synthesized findings to:");
+  } else {
+    lines.push("No per-session histories were found yet under `.pneuma/sessions/*/history.json`. You can still scan the workspace and any current session history; write any project-specific preferences you discover to:");
+  }
+
+  lines.push("");
+  lines.push(`- \`${projectRoot}/.pneuma/preferences/profile.md\` — cross-mode project preferences`);
+  lines.push(`- \`${projectRoot}/.pneuma/preferences/mode-{mode}.md\` — per-mode project preferences`);
+  lines.push("");
+  lines.push("Use the same `<!-- pneuma-critical:start/end -->` and `<!-- changelog:start/end -->` markers as personal preferences (see the `pneuma-preferences` skill).");
+  return lines.join("\n");
 }
 
 /**
@@ -332,6 +372,29 @@ After writing the proposal file, summarize what you found and proposed in a brie
 - Key patterns or preferences discovered
 - The proposal ID
 - The user can review and take action directly from the Evolution Dashboard on the left`;
+}
+
+// ── Project History Collection ──────────────────────────────────────────────
+
+/**
+ * Collect history.json paths for all sessions under a project root.
+ * Used by project-scope evolution to feed cross-session preference learning.
+ */
+export async function collectProjectHistorySources(projectRoot: string): Promise<string[]> {
+  const dir = join(projectRoot, ".pneuma", "sessions");
+  if (!existsSync(dir)) return [];
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (const id of entries) {
+    const h = join(dir, id, "history.json");
+    if (existsSync(h)) out.push(h);
+  }
+  return out;
 }
 
 // ── History Stats Helpers ────────────────────────────────────────────────────

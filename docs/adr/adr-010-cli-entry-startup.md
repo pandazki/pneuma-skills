@@ -572,3 +572,53 @@ MVP 只有约 8 个参数，手写代码量 < 100 行，引入框架反而增加
 2. **用户需要安装 Claude Code CLI** — 前置条件
 3. **默认端口 3210** — 可能需要文档说明
 4. **自动打开浏览器** — 在无头环境中可能不适用（`--no-open`）
+
+---
+
+## 7. Amendment 2026-04-27 (3.0 Project Layer)
+
+3.0 在启动流程中加入 **project 检测分支**。详见 [3.0 Project Layer 设计](../design/2026-04-27-pneuma-projects-design.md)。
+
+### 7.1 启动逻辑分支
+
+启动时按以下顺序识别 session 形态：
+
+```
+pneuma <mode> [--workspace <path>] [--project <path>] [--session-id <id>]
+  │
+  ├─ --project 显式指定 → 项目化路径
+  │   └─ 检测/创建 <project>/.pneuma/project.json
+  │   └─ 选/建 sessionId → sessionDir = <project>/.pneuma/sessions/{sessionId}
+  │
+  ├─ --workspace 路径下存在 .pneuma/project.json → 项目化路径
+  │   └─ projectRoot = workspace；sessionDir = <project>/.pneuma/sessions/{sessionId}
+  │
+  └─ 否则 → 快会话路径（2.x 行为不变）
+      └─ sessionDir = workspace; stateDir = workspace/.pneuma; homeRoot = workspace
+```
+
+### 7.2 新增 CLI flags
+
+| Flag | 用途 |
+|------|------|
+| `--project <path>` | 显式声明 project root；启用项目化路径 |
+| `--session-id <id>` | 项目化 session 的目标 sessionId（resume 既存或开新） |
+
+### 7.3 新增环境变量
+
+启动 backend 时按形态注入：
+
+| 变量 | 快会话 | 项目化 |
+|------|--------|--------|
+| `PNEUMA_SESSION_DIR` | `<workspace>` | `<project>/.pneuma/sessions/{sessionId}` |
+| `PNEUMA_HOME_ROOT` | `<workspace>` | `<project>` |
+| `PNEUMA_PROJECT_ROOT` | (unset) | `<project>` |
+| `PNEUMA_SESSION_ID` | sessionId | sessionId |
+
+### 7.4 路径助手抽象
+
+`bin/pneuma.ts` 内部统一改用 `sessionDir`、`stateDir`、`homeRoot`、`projectRoot` 四个抽象路径变量（见 design doc §2.3），下游模块通过这些变量定位文件，不再直接拼 `<workspace>/.pneuma/...`。
+
+### 7.5 兼容性
+
+老 CLI 调用（`pneuma <mode> --workspace <path>`，path 下没有 `project.json`）行为完全不变——仍走快会话路径，沿用本 ADR 既有的全部决策。

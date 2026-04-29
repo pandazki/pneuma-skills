@@ -115,8 +115,16 @@ export interface DeployBinding {
   cfPages?: Record<string, CfPagesBinding>;
 }
 
-export function getDeployBinding(workspace: string): DeployBinding {
-  const p = join(workspace, ".pneuma", "deploy.json");
+/**
+ * Read the deploy binding for a session.
+ *
+ * @param workspace - Agent work-tree (used as legacy default).
+ * @param stateDir - Optional explicit state dir for project sessions
+ *   (`<projectRoot>/.pneuma/sessions/<id>`). Defaults to `<workspace>/.pneuma`.
+ */
+export function getDeployBinding(workspace: string, stateDir?: string): DeployBinding {
+  const dir = stateDir ?? join(workspace, ".pneuma");
+  const p = join(dir, "deploy.json");
   try {
     return JSON.parse(readFileSync(p, "utf-8"));
   } catch {
@@ -127,8 +135,9 @@ export function getDeployBinding(workspace: string): DeployBinding {
 export function saveDeployBinding(
   workspace: string,
   binding: DeployBinding,
+  stateDir?: string,
 ): void {
-  const dir = join(workspace, ".pneuma");
+  const dir = stateDir ?? join(workspace, ".pneuma");
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "deploy.json"), JSON.stringify(binding, null, 2));
 }

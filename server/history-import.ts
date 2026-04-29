@@ -74,11 +74,18 @@ export async function importHistory(pathOrDir: string, importDir?: string): Prom
   };
 }
 
+/**
+ * @param pkg - Imported replay package
+ * @param targetWorkspace - Where to extract checkpoint files
+ * @param options - Optional stateDir override; defaults to `<targetWorkspace>/.pneuma`
+ */
 export async function restoreWorkspaceFromHistory(
   pkg: ImportedPackage,
   targetWorkspace: string,
+  options: { stateDir?: string } = {},
 ): Promise<void> {
   const { manifest, hasBundle } = pkg;
+  const stateDir = options.stateDir ?? join(targetWorkspace, ".pneuma");
 
   // 1. Extract last checkpoint's files to workspace
   if (hasBundle && manifest.checkpoints.length > 0) {
@@ -86,9 +93,8 @@ export async function restoreWorkspaceFromHistory(
     await pkg.extractCheckpointFiles(lastCheckpoint.hash, targetWorkspace);
   }
 
-  // 2. Create .pneuma directory
-  const pneumaDir = join(targetWorkspace, ".pneuma");
-  mkdirSync(pneumaDir, { recursive: true });
+  // 2. Create state directory
+  mkdirSync(stateDir, { recursive: true });
 
   // 3. Write resumed-context.xml from summary
   const summary = manifest.summary;
@@ -110,10 +116,10 @@ ${summary.recentConversation}
   </recent-conversation>
 </resumed-session>`;
 
-  writeFileSync(join(pneumaDir, "resumed-context.xml"), contextXml);
+  writeFileSync(join(stateDir, "resumed-context.xml"), contextXml);
 
   // 4. Write session.json for the new session
-  writeFileSync(join(pneumaDir, "session.json"), JSON.stringify({
+  writeFileSync(join(stateDir, "session.json"), JSON.stringify({
     sessionId: crypto.randomUUID(),
     mode: manifest.metadata.mode,
     backendType: manifest.metadata.backendType,
