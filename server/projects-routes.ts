@@ -1,5 +1,12 @@
 import type { Hono } from "hono";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  statSync,
+  type Dirent,
+} from "node:fs";
 import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
@@ -340,6 +347,55 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
       project: { ...entry.manifest, root: id },
       sessions: entry.sessions,
     });
+  });
+
+  // Lists project-scoped preferences (existence + mtime, no body). The
+  // ProjectOverview surfaces these as recency indicators — body content
+  // is never returned because the web UI is observation-only; preferences
+  // are agent-managed.
+  app.get("/api/projects/:id/preferences", async (c) => {
+    const id = decodeURIComponent(c.req.param("id"));
+    const manifest = await loadProjectManifest(id);
+    if (!manifest) return c.json({ error: "project not found" }, 404);
+    const prefDir = join(id, ".pneuma", "preferences");
+    if (!existsSync(prefDir)) return c.json({ preferences: [] });
+    let entries: Dirent[] = [];
+    try {
+      entries = readdirSync(prefDir, { withFileTypes: true });
+    } catch {
+      return c.json({ preferences: [] });
+    }
+    const preferences: Array<{
+      name: string;
+      kind: string;
+      modeLabel?: string;
+      mtime: number;
+    }> = [];
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+      const stem = entry.name.replace(/\.md$/, "");
+      let kind = stem;
+      let modeLabel: string | undefined;
+      if (stem === "profile") {
+        kind = "profile";
+      } else if (stem.startsWith("mode-")) {
+        kind = stem;
+        modeLabel = stem.slice("mode-".length);
+      } else {
+        // Unknown convention — surface as-is so the user can still see it.
+        kind = stem;
+      }
+      let mtime = 0;
+      try {
+        mtime = statSync(join(prefDir, entry.name)).mtimeMs;
+      } catch {
+        // skip
+      }
+      preferences.push({ name: entry.name, kind, modeLabel, mtime });
+    }
+    // Most recent first.
+    preferences.sort((a, b) => b.mtime - a.mtime);
+    return c.json({ preferences });
   });
 
   app.get("/api/projects/:id/sessions/:sessionId/thumbnail", async (c) => {

@@ -11,6 +11,8 @@ import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
 import { python } from "@codemirror/lang-python";
 import { useStore } from "../store.js";
+import EditorPickerButton from "./EditorPickerButton.js";
+import SessionAtlas from "./SessionAtlas.js";
 
 const warmCraftEditorTheme = EditorView.theme({
   "&": { backgroundColor: "#09090b", color: "#e4e4e7" },
@@ -187,15 +189,34 @@ function FileTreeItem({
 
 export default function EditorPanel() {
   const changedFilesTick = useStore((s) => s.changedFilesTick);
+  const projectRoot = useStore((s) => s.projectContext?.projectRoot ?? null);
+  const hasSession = useStore((s) => s.session !== null);
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [gitStatuses, setGitStatuses] = useState<Record<string, string>>({});
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  // The Atlas is a virtual "file" pinned at the top of the sidebar.
+  // It's selectable in parallel with the real file tree: click Atlas →
+  // shows session overview; click any file → shows the file editor.
+  // Default-on for any live session so the user lands on the overview
+  // instead of the bare "Select a file" empty state, with the real
+  // tree always one click away.
+  const [atlasView, setAtlasView] = useState<boolean>(hasSession);
   const [content, setContent] = useState("");
   const [originalContent, setOriginalContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
   const base = getApiBase();
+
+  const selectFile = useCallback((path: string) => {
+    setSelectedPath(path);
+    setAtlasView(false);
+  }, []);
+
+  const selectAtlas = useCallback(() => {
+    setAtlasView(true);
+    setSelectedPath(null);
+  }, []);
 
   // Fetch file tree
   useEffect(() => {
@@ -264,17 +285,52 @@ export default function EditorPanel() {
     <div className="flex h-full">
       {/* File tree sidebar */}
       <div className="w-52 shrink-0 border-r border-cc-border flex flex-col">
-        <div className="px-3 py-2 border-b border-cc-border">
-          <span className="text-xs font-medium text-cc-muted">Files</span>
+        <div className="pl-3 pr-1 py-1 border-b border-cc-border flex items-center gap-2">
+          <span className="text-xs font-medium text-cc-muted flex-1">Files</span>
+          {projectRoot ? (
+            <EditorPickerButton projectRoot={projectRoot} menuPosition="below" />
+          ) : null}
         </div>
         <div className="flex-1 overflow-auto">
+          {/* Pinned virtual entry — selecting returns the right pane to
+              the SessionAtlas. Acts as the "back to overview" handle
+              after the user has opened a real file. Hidden when there's
+              no live session (replay / pre-init). */}
+          {hasSession ? (
+            <button
+              type="button"
+              onClick={selectAtlas}
+              className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors cursor-pointer ${
+                atlasView
+                  ? "bg-cc-primary/15 text-cc-primary"
+                  : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover/50"
+              }`}
+              aria-current={atlasView ? "page" : undefined}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="w-3.5 h-3.5 shrink-0"
+                aria-hidden
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+              </svg>
+              <span className="flex-1 truncate">Session</span>
+            </button>
+          ) : null}
           {tree.map((node) => (
             <FileTreeItem
               key={node.path}
               node={node}
               depth={0}
               selectedPath={selectedPath}
-              onSelect={setSelectedPath}
+              onSelect={selectFile}
               gitStatuses={gitStatuses}
             />
           ))}
@@ -329,6 +385,8 @@ export default function EditorPanel() {
               </div>
             </>
           )
+        ) : atlasView ? (
+          <SessionAtlas />
         ) : (
           <div className="flex items-center justify-center h-full text-cc-muted/50 text-sm">
             Select a file to edit

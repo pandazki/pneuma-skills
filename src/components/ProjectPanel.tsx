@@ -32,6 +32,7 @@ import { useAnimatedMount } from "../utils/useAnimatedMount.js";
 import { CoverImage, type ProjectCoverEntry } from "./ProjectCover.js";
 import { ModeIcon } from "./ModeIcon.js";
 import { InitParamForm, type InitParamWithAutoFill } from "./InitParamForm.js";
+import EditorPickerButton from "./EditorPickerButton.js";
 
 interface ProjectInfo {
   name: string;
@@ -111,22 +112,6 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
-  // Editor picker — list of detected IDEs (server-side scan), the user's
-  // last-chosen default (persisted in localStorage), and a popover state
-  // mirroring the overflow menu. Empty list = no IDE detected (or non-
-  // macOS); we hide the icon entirely in that case so the row doesn't
-  // show a non-functional control.
-  interface DetectedEditor {
-    id: string;
-    displayName: string;
-  }
-  const [editors, setEditors] = useState<DetectedEditor[]>([]);
-  const [defaultEditorId, setDefaultEditorId] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return window.localStorage.getItem("pneuma:default-editor");
-  });
-  const [editorMenuOpen, setEditorMenuOpen] = useState(false);
-  const editorMenuRef = useRef<HTMLDivElement>(null);
 
   // Fetch project info + sessions + registry + project list (for cover URL
   // and homeDir) in parallel on mount.
@@ -472,47 +457,6 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     };
   }, [moreMenuOpen]);
 
-  // Editor menu — same pattern as the overflow menu.
-  useEffect(() => {
-    if (!editorMenuOpen) return;
-    const onMouseDown = (e: MouseEvent) => {
-      if (editorMenuRef.current && !editorMenuRef.current.contains(e.target as Node)) {
-        setEditorMenuOpen(false);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        setEditorMenuOpen(false);
-      }
-    };
-    window.addEventListener("mousedown", onMouseDown, true);
-    window.addEventListener("keydown", onKey, true);
-    return () => {
-      window.removeEventListener("mousedown", onMouseDown, true);
-      window.removeEventListener("keydown", onKey, true);
-    };
-  }, [editorMenuOpen]);
-
-  // Detect installed editors once on mount. The list is small and stable
-  // across the panel's lifetime, so no re-scan is needed.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch(`${apiBase}/api/system/editors`);
-        if (!res.ok) return;
-        const data = (await res.json()) as { editors: DetectedEditor[] };
-        if (!cancelled) setEditors(data.editors ?? []);
-      } catch {
-        // Detection failure is non-fatal — the icon just stays hidden.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [apiBase]);
-
   // Esc inside the launch sheet returns to the mode grid (not closing the
   // panel). `capture: true` + stopPropagation so the chip's outer
   // close-on-Esc never fires while the sheet is open. At grid level the
@@ -620,26 +564,6 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     } catch {
       // Best-effort — surface only via the system error toast if the
       // server even responded.
-    }
-  };
-
-  const openInEditor = async (editorId: string) => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("pneuma:default-editor", editorId);
-    }
-    setDefaultEditorId(editorId);
-    setEditorMenuOpen(false);
-    try {
-      await fetch(
-        `${apiBase}/api/projects/${encodeURIComponent(projectRoot)}/open-in-editor`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ editorId }),
-        },
-      );
-    } catch {
-      // Same best-effort tone as revealInFinder.
     }
   };
 
@@ -1018,126 +942,11 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                 </svg>
               </button>
 
-              {/* Open in editor — split-style: clicking the icon opens
-                  the project in the user's last-chosen editor (1-click
-                  for the common case); clicking the chevron drops the
-                  picker. The picker is hidden entirely when no editor
-                  is detected (non-macOS or none of the supported apps
-                  installed). */}
-              {editors.length > 0 ? (
-                <div className="relative flex items-center" ref={editorMenuRef}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const target =
-                        defaultEditorId &&
-                        editors.find((e) => e.id === defaultEditorId)
-                          ? defaultEditorId
-                          : null;
-                      if (target) {
-                        void openInEditor(target);
-                      } else {
-                        // No remembered default → drop straight into the
-                        // picker so the first interaction is also the
-                        // one that sets the default.
-                        setEditorMenuOpen(true);
-                      }
-                    }}
-                    aria-label={
-                      defaultEditorId
-                        ? `Open project in ${editors.find((e) => e.id === defaultEditorId)?.displayName ?? "editor"}`
-                        : "Open project in editor"
-                    }
-                    title={
-                      defaultEditorId
-                        ? `Open in ${editors.find((e) => e.id === defaultEditorId)?.displayName ?? "editor"}`
-                        : "Open in editor"
-                    }
-                    className="flex items-center justify-center w-8 h-8 rounded-l-md rounded-r-none text-cc-muted hover:text-cc-fg hover:bg-cc-bg/40 transition-colors cursor-pointer"
-                  >
-                    {defaultEditorId &&
-                    editors.find((e) => e.id === defaultEditorId) ? (
-                      <img
-                        src={`${apiBase}/api/system/editors/${encodeURIComponent(defaultEditorId)}/icon`}
-                        alt=""
-                        className="w-5 h-5 object-contain"
-                        draggable={false}
-                      />
-                    ) : (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.75"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="w-4 h-4"
-                        aria-hidden
-                      >
-                        <polyline points="16 18 22 12 16 6" />
-                        <polyline points="8 6 2 12 8 18" />
-                      </svg>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditorMenuOpen((v) => !v)}
-                    aria-haspopup="menu"
-                    aria-expanded={editorMenuOpen}
-                    aria-label="Choose editor"
-                    title="Choose editor"
-                    className={`flex items-center justify-center w-5 h-8 rounded-r-md rounded-l-none text-cc-muted hover:text-cc-fg transition-colors cursor-pointer -ml-px ${
-                      editorMenuOpen ? "bg-cc-bg/60 text-cc-fg" : "hover:bg-cc-bg/40"
-                    }`}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      className="w-2.5 h-2.5"
-                      aria-hidden
-                    >
-                      <path d="M7 10l5 5 5-5z" />
-                    </svg>
-                  </button>
-                  {editorMenuOpen ? (
-                    <div
-                      role="menu"
-                      className="absolute bottom-full right-0 mb-2 min-w-[200px] rounded-lg border border-cc-border bg-cc-surface shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6)] py-1 [animation:overlayFadeIn_140ms_cubic-bezier(0.16,1,0.3,1)] z-10"
-                    >
-                      <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-cc-muted/60">
-                        Open in
-                      </div>
-                      {editors.map((e) => {
-                        const isDefault = e.id === defaultEditorId;
-                        return (
-                          <button
-                            key={e.id}
-                            type="button"
-                            role="menuitem"
-                            onClick={() => void openInEditor(e.id)}
-                            className="w-full text-left px-3 py-1.5 text-xs text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer flex items-center gap-2"
-                          >
-                            <img
-                              src={`${apiBase}/api/system/editors/${encodeURIComponent(e.id)}/icon`}
-                              alt=""
-                              className="w-4 h-4 object-contain shrink-0"
-                              draggable={false}
-                            />
-                            <span className="flex-1 truncate">{e.displayName}</span>
-                            {isDefault ? (
-                              <span className="text-cc-primary text-[10px]" aria-label="default">
-                                ★
-                              </span>
-                            ) : null}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
+              {/* Open-in-editor picker: detects installed IDEs and
+                  remembers the default. Hidden when no editor is found.
+                  See `EditorPickerButton` for behavior. */}
+              <EditorPickerButton projectRoot={projectRoot} menuPosition="above" />
+
 
               {/* Evolve — promoted to a primary icon affordance with an
                   AI-flavored sparkle. Icon-only at rest; on hover the
