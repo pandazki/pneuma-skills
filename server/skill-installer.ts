@@ -53,6 +53,8 @@ const PREFS_MARKER_START = "<!-- pneuma:preferences:start -->";
 const PREFS_MARKER_END = "<!-- pneuma:preferences:end -->";
 const PROJECT_MARKER_START = "<!-- pneuma:project:start -->";
 const PROJECT_MARKER_END = "<!-- pneuma:project:end -->";
+const PROJECT_ATLAS_MARKER_START = "<!-- pneuma:project-atlas:start -->";
+const PROJECT_ATLAS_MARKER_END = "<!-- pneuma:project-atlas:end -->";
 const HANDOFF_MARKER_START = "<!-- pneuma:handoff:start -->";
 const HANDOFF_MARKER_END = "<!-- pneuma:handoff:end -->";
 
@@ -229,6 +231,46 @@ export function injectProjectSection(
   );
   if (!body) return stripped;
   const block = `${PROJECT_MARKER_START}\n${body}\n${PROJECT_MARKER_END}\n`;
+  return stripped.trimEnd() + "\n\n" + block;
+}
+
+/**
+ * Read the project atlas at `<projectRoot>/.pneuma/project-atlas.md`. The
+ * atlas is a Markdown briefing maintained by the `project-evolve` mode —
+ * a high-density introduction + quick-reference index that every project
+ * session reads at startup. Returns null when the file is missing or
+ * empty (atlas hasn't been seeded yet).
+ */
+export function readProjectAtlas(projectRoot: string): string | null {
+  const path = join(projectRoot, ".pneuma", "project-atlas.md");
+  try {
+    const raw = readFileSync(path, "utf-8").trim();
+    return raw.length > 0 ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Inject (or strip) the `pneuma:project-atlas` block. Mirrors
+ * `injectProjectSection`: idempotent strip-then-append, null/empty body
+ * just strips. The atlas sits as its own block alongside `pneuma:project`
+ * so the agent can distinguish "facts about the project" from
+ * "constraints on how to work."
+ */
+export function injectProjectAtlasSection(
+  instructionsContent: string,
+  body: string | null,
+): string {
+  const stripped = instructionsContent.replace(
+    new RegExp(
+      `${escapeRegExp(PROJECT_ATLAS_MARKER_START)}[\\s\\S]*?${escapeRegExp(PROJECT_ATLAS_MARKER_END)}\\n?`,
+      "g",
+    ),
+    "",
+  );
+  if (!body) return stripped;
+  const block = `${PROJECT_ATLAS_MARKER_START}\n## Project Atlas\n\n${body}\n${PROJECT_ATLAS_MARKER_END}\n`;
   return stripped.trimEnd() + "\n\n" + block;
 }
 
@@ -1211,6 +1253,19 @@ export function installSkill(options: InstallSkillOptions): void {
   } else {
     // Idempotency: strip any stale block left from a previous install.
     content = injectProjectSection(content, null);
+  }
+
+  // 2e2. Inject/update project atlas section (project sessions only).
+  //      The atlas is the high-density briefing maintained by the
+  //      `project-evolve` mode; it sits as its own block so the agent can
+  //      distinguish facts (atlas) from constraints (project preferences).
+  //      Quick sessions skip + strip; project sessions without an atlas
+  //      yet also strip — the block only appears once an atlas exists on
+  //      disk, so empty projects don't pay for an empty section.
+  if (projectRoot) {
+    content = injectProjectAtlasSection(content, readProjectAtlas(projectRoot));
+  } else {
+    content = injectProjectAtlasSection(content, null);
   }
 
   // 2f. Inject/update handoff section (project sessions only).

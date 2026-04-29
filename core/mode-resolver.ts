@@ -27,7 +27,14 @@ export interface ResolvedMode {
 }
 
 /** Known builtin mode names */
-const BUILTIN_MODES = new Set(["doc", "slide", "draw", "mode-maker", "illustrate"]);
+const BUILTIN_MODES = new Set([
+  "doc",
+  "slide",
+  "draw",
+  "mode-maker",
+  "illustrate",
+  "project-evolve",
+]);
 
 /** Global cache directory for cloned GitHub modes */
 const MODES_CACHE_DIR = join(homedir(), ".pneuma", "modes");

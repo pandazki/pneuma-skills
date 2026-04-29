@@ -948,18 +948,18 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
               <EditorPickerButton projectRoot={projectRoot} menuPosition="above" />
 
 
-              {/* Evolve — promoted to a primary icon affordance with an
-                  AI-flavored sparkle. Icon-only at rest; on hover the
-                  button expands and reveals the label with a fade so
-                  first-time users learn what it does. `max-width`
-                  animation is constrained to the inner span so layout
-                  stays predictable. */}
+              {/* Evolve — launches the project-scoped evolution agent
+                  (`project-evolve`), which seeds the project atlas and
+                  maintains shared preferences. Distinct from the
+                  personal `evolve` mode, which targets a single
+                  workspace-level skill. Icon hover-expands its label so
+                  first-time users learn what it does. */}
               <button
                 type="button"
                 disabled={launching}
-                onClick={() => void launch("evolve")}
-                aria-label="Evolve preferences"
-                title="Evolve preferences — distill cross-session learnings into your project profile"
+                onClick={() => void launch("project-evolve")}
+                aria-label="Evolve project context"
+                title="Evolve project context — seed the atlas and shared preferences from this project's sessions"
                 className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md text-cc-muted hover:text-cc-primary hover:bg-cc-primary-muted transition-colors disabled:opacity-50 cursor-pointer"
               >
                 <svg
@@ -981,7 +981,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                 </svg>
                 <span className="grid grid-cols-[0fr] group-hover:grid-cols-[1fr] transition-[grid-template-columns] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
                   <span className="overflow-hidden whitespace-nowrap text-xs opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
-                    Evolve preferences
+                    Evolve project
                   </span>
                 </span>
               </button>

@@ -2788,7 +2788,10 @@ export async function startServer(options: ServerOptions) {
   }
 
   // ── Evolution routes (conditional) ──────────────────────────────────
-  if (options.modeName === "evolve") {
+  // Both `evolve` (per-mode personal) and `project-evolve` (project-scoped)
+  // share the proposals → review → apply dashboard plumbing. Distinct
+  // skills + targets, identical wire protocol.
+  if (options.modeName === "evolve" || options.modeName === "project-evolve") {
     registerEvolutionRoutes(app, { workspace, stateDir: options.stateDir });
   }
 
