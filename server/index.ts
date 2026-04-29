@@ -2791,8 +2791,23 @@ export async function startServer(options: ServerOptions) {
   // Both `evolve` (per-mode personal) and `project-evolve` (project-scoped)
   // share the proposals → review → apply dashboard plumbing. Distinct
   // skills + targets, identical wire protocol.
-  if (options.modeName === "evolve" || options.modeName === "project-evolve") {
+  //
+  // The stateDir tells the dashboard endpoints where proposals live on
+  // disk:
+  //   - personal `evolve`: per-session stateDir (workspace's `.pneuma/`
+  //     for quick sessions; project session dir for project sessions —
+  //     same dir the agent wrote to).
+  //   - `project-evolve`: the project's `<root>/.pneuma/`, NOT the
+  //     session's stateDir. The agent writes proposals to the project
+  //     root so they're visible across sibling sessions and apply runs
+  //     against project-level files.
+  if (options.modeName === "evolve") {
     registerEvolutionRoutes(app, { workspace, stateDir: options.stateDir });
+  } else if (options.modeName === "project-evolve") {
+    const projectEvolutionDir = options.pneumaProjectRoot
+      ? join(options.pneumaProjectRoot, ".pneuma")
+      : options.stateDir;
+    registerEvolutionRoutes(app, { workspace, stateDir: projectEvolutionDir });
   }
 
   // ── Reverse proxy for viewer API access ────────────────────────────────
