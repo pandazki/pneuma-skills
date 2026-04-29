@@ -2489,9 +2489,39 @@ export async function startServer(options: ServerOptions) {
       type: "file" | "directory";
       children?: TreeNode[];
     }
+    // Pneuma-managed state files in the session dir. They're visualized
+    // by ProjectOverview (sessions roll-up, preferences, cover) so the
+    // user doesn't need them in the file tree alongside actual content.
+    // Dot-prefixed paths (.pneuma, .claude, .agents, .git, etc.) are
+    // already filtered by the leading-dot rule below.
+    const PNEUMA_STATE_FILES = new Set([
+      "CLAUDE.md",
+      "AGENTS.md",
+      "session.json",
+      "history.json",
+      "config.json",
+      "skill-version.json",
+      "skill-dismissed.json",
+      "checkpoints.jsonl",
+      "thumbnail.png",
+      "viewer-state.json",
+      "deploy.json",
+      "resumed-context.xml",
+    ]);
+    const PNEUMA_STATE_DIRS = new Set([
+      "shadow.git",
+      "replay-checkout",
+      "evolution",
+    ]);
     function buildTree(dir: string, relBase: string): TreeNode[] {
       const entries = readdirSync(dir, { withFileTypes: true })
-        .filter((e) => !e.name.startsWith(".") && e.name !== "node_modules")
+        .filter((e) => {
+          if (e.name.startsWith(".")) return false;
+          if (e.name === "node_modules") return false;
+          if (e.isDirectory() && PNEUMA_STATE_DIRS.has(e.name)) return false;
+          if (!e.isDirectory() && PNEUMA_STATE_FILES.has(e.name)) return false;
+          return true;
+        })
         .sort((a, b) => {
           if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
           return a.name.localeCompare(b.name);

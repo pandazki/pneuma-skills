@@ -11,6 +11,8 @@ import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
 import { python } from "@codemirror/lang-python";
 import { useStore } from "../store.js";
+import EditorPickerButton from "./EditorPickerButton.js";
+import ProjectOverview from "./ProjectOverview.js";
 
 const warmCraftEditorTheme = EditorView.theme({
   "&": { backgroundColor: "#09090b", color: "#e4e4e7" },
@@ -187,6 +189,7 @@ function FileTreeItem({
 
 export default function EditorPanel() {
   const changedFilesTick = useStore((s) => s.changedFilesTick);
+  const projectRoot = useStore((s) => s.projectContext?.projectRoot ?? null);
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [gitStatuses, setGitStatuses] = useState<Record<string, string>>({});
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -264,8 +267,11 @@ export default function EditorPanel() {
     <div className="flex h-full">
       {/* File tree sidebar */}
       <div className="w-52 shrink-0 border-r border-cc-border flex flex-col">
-        <div className="px-3 py-2 border-b border-cc-border">
-          <span className="text-xs font-medium text-cc-muted">Files</span>
+        <div className="pl-3 pr-1 py-1 border-b border-cc-border flex items-center gap-2">
+          <span className="text-xs font-medium text-cc-muted flex-1">Files</span>
+          {projectRoot ? (
+            <EditorPickerButton projectRoot={projectRoot} menuPosition="below" />
+          ) : null}
         </div>
         <div className="flex-1 overflow-auto">
           {tree.map((node) => (
@@ -329,6 +335,8 @@ export default function EditorPanel() {
               </div>
             </>
           )
+        ) : projectRoot ? (
+          <ProjectOverview projectRoot={projectRoot} />
         ) : (
           <div className="flex items-center justify-center h-full text-cc-muted/50 text-sm">
             Select a file to edit
