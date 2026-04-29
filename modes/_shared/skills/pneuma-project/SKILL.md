@@ -53,18 +53,22 @@ Strict rules:
 
 If the user asks you to "make a project icon / cover / logo" and you produce an image (typically inside `illustrate`, `draw`, `kami`, or another image-producing mode), save the final asset to `$PNEUMA_PROJECT_ROOT/.pneuma/cover.png` and confirm the path back to the user. Don't drop it in your session dir — that won't be picked up.
 
-## The Project Atlas — your pre-loaded briefing
+## The Project Atlas — your canonical briefing
 
-If your CLAUDE.md contains a `<!-- pneuma:project-atlas:start --> ... <!-- pneuma:project-atlas:end -->` block, that's the **canonical project briefing**. The runtime auto-injected the contents of `$PNEUMA_PROJECT_ROOT/.pneuma/project-atlas.md` there at session start. Treat it as authoritative for:
+If your CLAUDE.md contains a `<!-- pneuma:project-atlas:start --> ... <!-- pneuma:project-atlas:end -->` block, the project has been atlas-seeded. The block is a **pointer**, not the briefing itself — the runtime keeps your prompt lean by not inlining the atlas file every turn.
+
+**On session start (or your first action of substance), Read** `$PNEUMA_PROJECT_ROOT/.pneuma/project-atlas.md`. Treat its contents as authoritative for:
 
 - What this project is, who its audience is, what's in scope
 - Project-wide conventions, file structures, naming rules
 - Locked-in design / technical decisions ("anchors")
 - Open threads the user has flagged
 
-**Use it before re-asking the user.** If the atlas already states the brand color or the deliverable directory, don't ask — just use it.
+**Use the atlas before re-asking the user.** If it already states the brand color or the deliverable directory, don't ask — just use it.
 
-The atlas is maintained by the `project-evolve` mode (the agent the user launches via the Project chip's Evolve sparkle). You should never edit `project-atlas.md` yourself unless the user explicitly asks; let the user trigger an evolution pass when the project context shifts. If you notice the atlas is missing details that would help your work, mention it — don't fabricate the missing parts inline.
+You don't need to re-Read the atlas every turn — once is enough for a session unless the user signals it changed (e.g. "I just refreshed the atlas"). If the file isn't where the pointer says, the project layer is misconfigured; mention it.
+
+The atlas is maintained by the `project-evolve` mode (Project chip's Evolve sparkle). Never edit `project-atlas.md` yourself unless the user explicitly asks; let them trigger an evolution pass when the project context shifts. If you notice the atlas is missing details that would help your work, flag the gap — don't fabricate the missing parts.
 
 If no `pneuma:project-atlas` block is in your CLAUDE.md, the project hasn't been atlas-seeded yet. That's normal for fresh projects — work from `project.json` + the user's prompt instead, and you can suggest "we could run project-evolve to seed an atlas if this becomes a multi-session effort."
 

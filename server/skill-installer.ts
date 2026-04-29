@@ -235,28 +235,49 @@ export function injectProjectSection(
 }
 
 /**
- * Read the project atlas at `<projectRoot>/.pneuma/project-atlas.md`. The
- * atlas is a Markdown briefing maintained by the `project-evolve` mode —
- * a high-density introduction + quick-reference index that every project
- * session reads at startup. Returns null when the file is missing or
- * empty (atlas hasn't been seeded yet).
+ * Build the pointer-style body for the `pneuma:project-atlas` block —
+ * a small notice telling the agent the atlas exists and where to find
+ * it, NOT the atlas contents. The agent reads `project-atlas.md` on
+ * demand via its file tools.
+ *
+ * Inlining the full atlas (300-800 words by convention, sometimes more)
+ * into every project session's CLAUDE.md would burn that text on every
+ * turn whether the agent needs it or not. Pointer-style means the
+ * prompt stays lean; the `pneuma-project` skill instructs the agent to
+ * Read the atlas at session start when this block is present.
+ *
+ * Returns null when the atlas file is missing or empty — caller should
+ * skip injection in that case so empty projects don't carry an
+ * empty-pointer block.
  */
-export function readProjectAtlas(projectRoot: string): string | null {
+export function buildProjectAtlasPointer(projectRoot: string): string | null {
   const path = join(projectRoot, ".pneuma", "project-atlas.md");
+  let stat: ReturnType<typeof statSync>;
   try {
-    const raw = readFileSync(path, "utf-8").trim();
-    return raw.length > 0 ? raw : null;
+    stat = statSync(path);
   } catch {
     return null;
   }
+  if (stat.size === 0) return null;
+  const updated = stat.mtime.toISOString().replace(/\.\d{3}Z$/, "Z");
+  const sizeKb = (stat.size / 1024).toFixed(1);
+  const lines = [
+    `A project briefing exists at \`$PNEUMA_PROJECT_ROOT/.pneuma/project-atlas.md\` — read it before starting work in this project.`,
+    ``,
+    `- Last updated: \`${updated}\``,
+    `- Size: ${sizeKb}KB`,
+    `- Maintained by the \`project-evolve\` mode (Project chip's Evolve sparkle).`,
+    ``,
+    `It encodes scope, audience, conventions, locked decisions, and open threads. Treat it as authoritative; consult it before re-asking the user. See the \`pneuma-project\` skill for the full atlas protocol.`,
+  ];
+  return lines.join("\n");
 }
 
 /**
  * Inject (or strip) the `pneuma:project-atlas` block. Mirrors
  * `injectProjectSection`: idempotent strip-then-append, null/empty body
- * just strips. The atlas sits as its own block alongside `pneuma:project`
- * so the agent can distinguish "facts about the project" from
- * "constraints on how to work."
+ * just strips. The block carries a pointer to the atlas, not its
+ * contents — see {@link buildProjectAtlasPointer}.
  */
 export function injectProjectAtlasSection(
   instructionsContent: string,
@@ -1256,14 +1277,14 @@ export function installSkill(options: InstallSkillOptions): void {
   }
 
   // 2e2. Inject/update project atlas section (project sessions only).
-  //      The atlas is the high-density briefing maintained by the
-  //      `project-evolve` mode; it sits as its own block so the agent can
-  //      distinguish facts (atlas) from constraints (project preferences).
-  //      Quick sessions skip + strip; project sessions without an atlas
-  //      yet also strip — the block only appears once an atlas exists on
-  //      disk, so empty projects don't pay for an empty section.
+  //      Pointer-only — the block tells the agent the atlas exists and
+  //      where to read it, NOT the atlas contents. Inlining the full
+  //      file would bloat every prompt with content the agent might not
+  //      need this turn (atlas is 300-800 words by convention; can grow).
+  //      The `pneuma-project` skill teaches the agent to Read the atlas
+  //      at session start when this block is present.
   if (projectRoot) {
-    content = injectProjectAtlasSection(content, readProjectAtlas(projectRoot));
+    content = injectProjectAtlasSection(content, buildProjectAtlasPointer(projectRoot));
   } else {
     content = injectProjectAtlasSection(content, null);
   }
