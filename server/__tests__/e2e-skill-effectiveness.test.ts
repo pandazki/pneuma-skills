@@ -61,7 +61,7 @@ describe("skill installation → CLAUDE.md skill reference", () => {
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
     expect(claudeMd).toContain("`pneuma-doc` skill");
-    expect(claudeMd).toContain("read it before your first action of substance");
+    expect(claudeMd).toContain("pull it in when you're about to act on a substantive task");
   });
 
   it("draw mode: CLAUDE.md directs agent to consult skill", () => {
@@ -77,7 +77,7 @@ describe("skill installation → CLAUDE.md skill reference", () => {
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
     expect(claudeMd).toContain("`pneuma-draw` skill");
-    expect(claudeMd).toContain("read it before your first action of substance");
+    expect(claudeMd).toContain("pull it in when you're about to act on a substantive task");
   });
 
   it("slide mode: CLAUDE.md directs agent to consult skill", () => {
@@ -93,7 +93,7 @@ describe("skill installation → CLAUDE.md skill reference", () => {
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
     expect(claudeMd).toContain("`pneuma-slide` skill");
-    expect(claudeMd).toContain("read it before your first action of substance");
+    expect(claudeMd).toContain("pull it in when you're about to act on a substantive task");
   });
 
   it("mode-maker: CLAUDE.md directs agent to consult skill", () => {
@@ -109,7 +109,7 @@ describe("skill installation → CLAUDE.md skill reference", () => {
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
     expect(claudeMd).toContain("`pneuma-mode-maker` skill");
-    expect(claudeMd).toContain("read it before your first action of substance");
+    expect(claudeMd).toContain("pull it in when you're about to act on a substantive task");
   });
 });
 

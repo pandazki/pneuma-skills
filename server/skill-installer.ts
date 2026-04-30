@@ -676,16 +676,59 @@ export function generatePneumaSection(
     pickScene(skillConfig.claudeMdSection) ??
     `You and the user are collaborating in Pneuma's ${display} workspace. The user watches your work in a live viewer; you read and edit files; the viewer re-renders as files change.`;
 
-  const pointer = `The mode's specific conventions, workflows, and reference material live in the \`${skillConfig.installName}\` skill — read it before your first action of substance. That's how this mode expects you to work.`;
+  // Pointer + read-priority hint, fused.
+  //
+  // Why fused: the prior version emitted a one-line "read this skill first"
+  // pointer, leaving the agent to figure out what *else* to read on its own.
+  // In practice that meant either over-reading (load atlas + README + sibling
+  // dirs on every cold start, burning context) or under-reading (skip the
+  // skill until late, then backtrack). The hint below orients on a single
+  // pass: the user's actual ask is the work; the mode skill is the procedure
+  // for substantive moves; everything else is loaded on demand. It refuses to
+  // be a "MUST read all of this before responding" rule — that would just
+  // recreate the over-reading failure mode it's trying to prevent.
+  const pointer = `The mode's specific conventions, workflows, and reference material live in the \`${skillConfig.installName}\` skill — pull it in when you're about to act on a substantive task. Read on a need-to-know basis: start with the user's actual ask, reach for this skill when you're about to act, and load wider surfaces (project atlas, sibling sessions, README) only when the task calls for them. You don't need to warm up before talking back.`;
 
   return [
-    `# Pneuma ${display} Mode · Pneuma ${shellLabel} · driven by ${backendLabel}`,
+    PNEUMA_INTRO,
+    "",
+    `_Session runtime: Pneuma ${shellLabel} · driven by ${backendLabel}._`,
+    "",
+    PNEUMA_THESIS,
+    "",
+    `# Pneuma ${display} Mode`,
     "",
     scene,
     "",
     pointer,
   ].join("\n");
 }
+
+/**
+ * Three pieces of always-on context emitted at the top of every per-mode
+ * `pneuma:start` block, in this order:
+ *
+ *   1. INTRO — one sentence naming what Pneuma is. The agent reads this
+ *      before anything else mentions "Pneuma's harness", so the later
+ *      thesis paragraph isn't grounded in an undefined term.
+ *   2. Runtime metadata line — italicized "Session runtime: Pneuma Web ·
+ *      driven by claude-code", composed at call time. Used to live in the
+ *      mode H1 ("# Pneuma {Mode} Mode · Pneuma Web · driven by claude-code")
+ *      but mashing three orthogonal facts into one heading reads weird;
+ *      pulled out as metadata so the H1 carries only the mode identity.
+ *   3. THESIS — the position-setting paragraph: what the harness does
+ *      (turns files into a player), what stays the same (the work), what's
+ *      amplified (the user's observability of that work). From that
+ *      position the right behavior is inferable — no rule list needed.
+ *
+ * The "player" framing reuses the project's existing vocabulary (viewers
+ * are live players for agent output) rather than introducing a new
+ * metaphor. Mode-specific tone lives in `mdScene`; behavior procedures
+ * live in the mode SKILL.md.
+ */
+const PNEUMA_INTRO = `**Pneuma** is a co-creation environment where you do the work and a human user watches it happen — typically through a mode-specific live player they can interact with.`;
+
+const PNEUMA_THESIS = `Pneuma's harness does one specific thing: it turns the files you're editing into that player in real time — a deck, a board, a project — so the user can watch your work, select things on it, hand you context, or step in when they need to. The work itself is the same as anywhere else. What's amplified is the user's ability to see it happen.`;
 
 /**
  * Extract the first non-empty, non-heading paragraph from a markdown blob.
