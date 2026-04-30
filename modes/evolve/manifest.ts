@@ -12,6 +12,10 @@ const evolveManifest: ModeManifest = {
   version: "1.0.0",
   displayName: "Skill Evolution",
   description: "Analyze usage patterns and evolve mode skills with AI assistance",
+  // Internal mode — surfaced through specific UI affordances (the chip's
+  // Evolve button, `pneuma evolve <mode>` CLI), not the launcher's
+  // user-pickable mode grid.
+  hidden: true,
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c-1.5 0-2.5 1-3 2-.5-1-1.5-2-3-2C4 3 2 5 2 7c0 3 4 6 6 8 .5-.5 1.5-1.5 2-2"/><path d="M12 3c1.5 0 2.5 1 3 2 .5-1 1.5-2 3-2 2 0 4 2 4 4 0 3-4 6-6 8-.5-.5-1.5-1.5-2-2"/><path d="M12 21v-8"/><path d="M9 18l3-3 3 3"/></svg>`,
 
   skill: {
