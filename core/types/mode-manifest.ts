@@ -59,8 +59,26 @@ export interface SkillConfig {
   sourceDir: string;
   /** Directory name under .claude/skills/ (e.g. "pneuma-doc") */
   installName: string;
-  /** Content snippet injected into CLAUDE.md (excluding marker comments) */
-  claudeMdSection: string;
+  /**
+   * Short scene-setting paragraph (1–3 sentences) for the `pneuma:start` block
+   * in CLAUDE.md / AGENTS.md. Describes what the user and the agent are doing
+   * together in this mode — not a system prompt or rule list. The installer
+   * wraps it in a templated header that already names the mode, runtime shell,
+   * and backend; the scene paragraph adds the human-shaped context.
+   *
+   * Mode-specific architecture, file conventions, and workflows do NOT belong
+   * here — they live in the mode's SKILL.md and load via progressive disclosure.
+   *
+   * If omitted, the installer falls back to a generic scene built from
+   * displayName + description.
+   */
+  mdScene?: string;
+  /**
+   * @deprecated Use `mdScene` for the scene paragraph and put the rest in
+   * the mode's `SKILL.md`. Retained as optional during migration; treated as
+   * an additional source of scene text if `mdScene` is missing.
+   */
+  claudeMdSection?: string;
   /**
    * Environment variable file mapping — automatically generates .env during skill installation.
    * key: environment variable name (e.g. "OPENROUTER_API_KEY")
@@ -181,8 +199,12 @@ export interface ViewerApiConfig {
     label: string;
     description?: string;
   }>;
-  /** Locator cards — clickable navigation targets in agent messages.
-   *  When set, instructions for `<viewer-locator>` tags are injected into CLAUDE.md. */
+  /**
+   * @deprecated Mode-specific locator-card guidance now lives in the mode's
+   * `SKILL.md` (loaded via progressive disclosure), not in CLAUDE.md.
+   * The slim Viewer API teaser only mentions that the channel exists.
+   * Retained as optional during migration — currently unused by the installer.
+   */
   locatorDescription?: string;
   /** Scaffold — workspace initialization/reset capability. Requires user confirmation in browser. */
   scaffold?: {

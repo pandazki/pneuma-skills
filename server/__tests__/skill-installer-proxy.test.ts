@@ -7,11 +7,12 @@ describe("generateProxySection", () => {
     expect(generateProxySection(undefined)).toBe("");
   });
 
-  test("outputs core docs for empty proxy config (mode opted in but no presets)", () => {
-    const result = generateProxySection({});
-    expect(result).toContain("### Proxy");
-    expect(result).toContain("proxy.json");
-    expect(result).not.toContain("Available proxies");
+  test("returns empty string for empty proxy config (no presets, no docs)", () => {
+    // The new slim generator emits nothing when there are no presets — the
+    // proxy-presets header only appears when concrete preconfigured routes
+    // exist. Detailed proxy docs (proxy.json overrides etc.) live in the
+    // mode's SKILL.md, not in CLAUDE.md.
+    expect(generateProxySection({})).toBe("");
   });
 
   test("includes preset routes table when config has entries", () => {
@@ -26,13 +27,15 @@ describe("generateProxySection", () => {
       },
     };
     const result = generateProxySection(proxy);
-    expect(result).toContain("### Proxy");
-    expect(result).toContain("Available proxies (from mode defaults)");
+    expect(result).toContain("### Proxy presets");
+    // Slim teaser uses fetch-style reminder + Name/Target table
+    expect(result).toContain("fetch(\"/proxy/<name>/path\")");
     expect(result).toContain("`github`");
     expect(result).toContain("https://api.github.com");
-    expect(result).toContain("GitHub REST API");
     expect(result).toContain("`weather`");
+    // Pointer to the mode's skill where deeper docs live (incl. proxy.json)
     expect(result).toContain("proxy.json");
+    expect(result).toContain("mode's skill");
   });
 
   test("handles routes without description", () => {

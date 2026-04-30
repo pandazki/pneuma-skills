@@ -440,7 +440,12 @@ function injectPreferencesSection(
     : extractPreferenceCritical(join(homedir(), ".pneuma", "preferences", `mode-${prefModeName}.md`));
 
   if (gc || mc) {
-    const prefsLines: string[] = ["### User Preferences (Critical)", ""];
+    const prefsLines: string[] = [
+      "## Critical user preferences (excerpt)",
+      "",
+      "These are the user's hard constraints — extracted from `~/.pneuma/preferences/` so you can't miss them. The full preference profile (taste, working style, history of corrections) lives in those files; the `pneuma-preferences` skill tells you when and how to read them. Don't treat the lines below as the whole picture — they're just the non-negotiable subset.",
+      "",
+    ];
     if (gc) {
       prefsLines.push("**Global:**", gc, "");
     }
@@ -611,47 +616,159 @@ function applyTemplateToDir(
 }
 
 /**
- * Generate a CLAUDE.md section describing the Viewer's self-describing API.
- * Pure function — no side effects, no dependency on Skill.
+ * Determine which Pneuma runtime shell the agent is running under — "app" for
+ * the Electron desktop client, "web" for plain browser. Used by the `pneuma:start`
+ * header so the agent's environment label matches reality.
  *
- * Returns empty string if no viewer API is declared.
+ * Resolution order:
+ *  1. Explicit `runtimeShell` argument (passed by callers that already know).
+ *  2. `PNEUMA_RUNTIME_SHELL` env var ("app" | "web") — the launcher / Electron
+ *     main process can set this when spawning per-session children.
+ *  3. Fallback: "web". The agent learns the actual capabilities through
+ *     `/api/native` discovery anyway, so "web" is the safe default.
+ */
+export function resolveRuntimeShell(
+  override?: "app" | "web",
+): "app" | "web" {
+  if (override === "app" || override === "web") return override;
+  const envHint = process.env.PNEUMA_RUNTIME_SHELL;
+  if (envHint === "app" || envHint === "web") return envHint;
+  return "web";
+}
+
+/**
+ * Build the `pneuma:start` block body — a scene-setting header that names the
+ * mode, the runtime shell, and the backend driving the agent, plus a short
+ * paragraph describing what the user and the agent are doing together here,
+ * plus a pointer to the mode's own SKILL.md for everything else.
+ *
+ * Replaces the old approach where `claudeMdSection` carried full architecture
+ * + core rules inline. Mode-specific guidance now lives in `SKILL.md` and
+ * loads via progressive disclosure; this block is just the orientation pass.
+ *
+ * Pure function — no side effects.
+ *
+ * @param skillConfig — the mode's skill config (provides `mdScene` + `installName`)
+ * @param displayName — human-readable mode name (e.g. "Illustrate"); falls back
+ *   to a title-cased `installName` derivation when empty
+ * @param backendType — "claude-code" or "codex"; defaults to "claude-code" when
+ *   unspecified, matching the rest of the installer
+ * @param runtimeShell — "app" | "web", already resolved
+ */
+export function generatePneumaSection(
+  skillConfig: SkillConfig,
+  displayName: string | undefined,
+  backendType: string | undefined,
+  runtimeShell: "app" | "web",
+): string {
+  const backendLabel = backendType === "codex" ? "codex" : "claude-code";
+  const shellLabel = runtimeShell === "app" ? "App" : "Web";
+  const fallbackDisplay = skillConfig.installName
+    .replace(/^pneuma-/, "")
+    .replace(/(?:^|[-_])(\w)/g, (_, c: string) => " " + c.toUpperCase())
+    .trim();
+  const display = (displayName && displayName.trim()) || fallbackDisplay;
+
+  // Scene paragraph: prefer mdScene; fall back to legacy claudeMdSection's
+  // first paragraph during migration; last-resort generic stub.
+  const scene =
+    pickScene(skillConfig.mdScene) ??
+    pickScene(skillConfig.claudeMdSection) ??
+    `You and the user are collaborating in Pneuma's ${display} workspace. The user watches your work in a live viewer; you read and edit files; the viewer re-renders as files change.`;
+
+  const pointer = `The mode's specific conventions, workflows, and reference material live in the \`${skillConfig.installName}\` skill — read it before your first action of substance. That's how this mode expects you to work.`;
+
+  return [
+    `# Pneuma ${display} Mode · Pneuma ${shellLabel} · driven by ${backendLabel}`,
+    "",
+    scene,
+    "",
+    pointer,
+  ].join("\n");
+}
+
+/**
+ * Extract the first non-empty, non-heading paragraph from a markdown blob.
+ * Used to derive a scene paragraph from legacy `claudeMdSection` content
+ * during migration — when a mode hasn't been ported to `mdScene` yet, we
+ * grab its lead paragraph instead of dumping the full mini-SKILL.md.
+ *
+ * Returns null when nothing usable is found.
+ */
+function pickScene(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const blocks = raw
+    .split(/\n\s*\n/)
+    .map((b) => b.trim())
+    .filter((b) => b.length > 0);
+  for (const block of blocks) {
+    if (block.startsWith("#")) continue; // skip headings
+    if (block.startsWith("-") || block.startsWith("*")) continue; // skip bullet blocks
+    if (block.startsWith("|")) continue; // skip tables
+    if (block.startsWith("```")) continue; // skip code fences
+    if (block.startsWith("{{")) continue; // skip handlebars-only blocks
+    return block;
+  }
+  return null;
+}
+
+/**
+ * Generate the slim Viewer API teaser for CLAUDE.md / AGENTS.md.
+ *
+ * The block names the channels the viewer exposes and the actions the agent
+ * can call — just enough for the agent to know they exist and reach for the
+ * right one. Detailed reference material (locator card schema, scaffold
+ * params, native API module list, proxy preset config) lives in the mode's
+ * own SKILL.md, loaded on demand.
+ *
+ * Pure function — no side effects.
+ *
+ * @param viewerApi — viewerApi config from the mode's manifest
+ * @param installName — the mode's skill install name (e.g. "pneuma-illustrate"),
+ *   used only to point the agent at the right skill for full details
+ * @returns slim markdown body (no marker comments) or empty string when the
+ *   mode declares no viewer API
  */
 export function generateViewerApiSection(
   viewerApi: ViewerApiConfig | undefined,
+  installName?: string,
 ): string {
   if (!viewerApi) return "";
-  const lines: string[] = ["## Viewer API", ""];
-  let hasContent = false;
 
-  // Workspace model
-  if (viewerApi.workspace) {
-    const ws = viewerApi.workspace;
-    const traits: string[] = [];
-    if (ws.ordered) traits.push("ordered");
-    if (ws.multiFile) traits.push("multi-file");
-    if (ws.hasActiveFile) traits.push("active file tracking");
-    lines.push("### Workspace");
-    lines.push(`- Type: ${ws.type}${traits.length > 0 ? ` (${traits.join(", ")})` : ""}`);
-    if (ws.manifestFile) lines.push(`- Index file: ${ws.manifestFile}`);
-    lines.push("");
-    hasContent = true;
+  const actions = viewerApi.actions?.filter((a) => a.agentInvocable) ?? [];
+  const hasScaffold = Boolean(viewerApi.scaffold);
+  const hasContentSets = Boolean(viewerApi.workspace?.supportsContentSets);
+  const hasLocator = Boolean(viewerApi.locatorDescription);
 
-    if (ws.supportsContentSets) {
-      lines.push("### Content Sets");
-      lines.push("This workspace may contain multiple content sets as top-level directories (e.g. en-dark/, ja-light/).");
-      lines.push("The `<viewer-context>` includes a `content-set` attribute. File paths include the content set prefix.");
-      lines.push("Always edit files within the active content set's directory unless asked to work across content sets.");
-      lines.push("");
-    }
+  const lines: string[] = [
+    "## Viewer API",
+    "",
+    "The viewer is your live window into what the user sees, plus a few channels back to them:",
+    "",
+    "- `<viewer-context>` may prefix user messages — it tells you the active file, viewport, and selection. Use it to resolve \"this\", \"here\", \"this row\".",
+    "- `<user-actions>` blocks summarize meaningful UI actions since your last turn.",
+  ];
+
+  if (hasLocator) {
+    lines.push(
+      "- Embed `<viewer-locator label=\"...\" data='{...}' />` cards in your replies for one-click navigation back to what you produced or changed. Post one whenever you create or edit content.",
+    );
   }
 
-  // Actions
-  const actions = viewerApi.actions?.filter((a) => a.agentInvocable) ?? [];
-  if (actions.length > 0) {
+  if (actions.length > 0 || hasScaffold) {
+    lines.push(
+      "- HTTP: `POST $PNEUMA_API/api/viewer/action -H 'Content-Type: application/json' -d '{\"actionId\":\"...\",\"params\":{...}}'` invokes the actions table below.",
+    );
+  }
+
+  lines.push(
+    "- HTTP: `$PNEUMA_API/api/native/*` exposes desktop APIs (clipboard, shell, notifications, ...) when running inside Pneuma App. Discover via `GET /api/native`; absent on web.",
+  );
+
+  lines.push("");
+
+  if (actions.length > 0 || hasScaffold) {
     lines.push("### Actions");
-    lines.push("");
-    lines.push("The viewer supports these operations. Invoke via Bash:");
-    lines.push("`curl -s -X POST $PNEUMA_API/api/viewer/action -H 'Content-Type: application/json' -d '{\"actionId\":\"<id>\",\"params\":{...}}'`");
     lines.push("");
     lines.push("| Action | Description | Params |");
     lines.push("|--------|-------------|--------|");
@@ -664,140 +781,75 @@ export function generateViewerApiSection(
       }
       lines.push(`| \`${action.id}\` | ${action.description || action.label} | ${paramDescs.join(", ") || "—"} |`);
     }
-    lines.push("");
-    hasContent = true;
-  }
-
-  // Scaffold
-  if (viewerApi.scaffold) {
-    const sc = viewerApi.scaffold;
-    lines.push("### Scaffold");
-    lines.push("");
-    lines.push(`${sc.description} **Requires user confirmation in browser.**`);
-    lines.push("");
-    lines.push("Invoke via the viewer action API:");
-    lines.push("`curl -s -X POST $PNEUMA_API/api/viewer/action -H 'Content-Type: application/json' -d '{\"actionId\":\"scaffold\",\"params\":{...}}'`");
-    lines.push("");
-    const paramEntries = Object.entries(sc.params);
-    if (paramEntries.length > 0) {
-      lines.push("| Param | Type | Required | Description |");
-      lines.push("|-------|------|----------|-------------|");
-      for (const [name, p] of paramEntries) {
-        lines.push(`| \`${name}\` | ${p.type} | ${p.required ? "yes" : "no"} | ${p.description} |`);
-      }
-      lines.push("");
+    if (hasScaffold) {
+      const sc = viewerApi.scaffold!;
+      lines.push(
+        `| \`scaffold\` | ${sc.description} (requires user confirmation in browser) | see skill |`,
+      );
     }
-    lines.push(`Clears: ${sc.clearPatterns.map((p) => `\`${p}\``).join(", ")}`);
     lines.push("");
-    hasContent = true;
   }
 
-  // Locator cards
-  if (viewerApi.locatorDescription) {
-    lines.push("### Locator Cards");
+  if (hasContentSets) {
+    lines.push(
+      "This workspace supports **content sets** — top-level directories as switchable projects. The `<viewer-context>` carries a `content-set` attribute; file paths include the prefix. Stay inside the active set unless asked otherwise.",
+    );
     lines.push("");
-    lines.push("You may embed clickable navigation cards in your messages using this tag:");
-    lines.push("`<viewer-locator label=\"Display Label\" data='{\"key\":\"value\"}' />`");
-    lines.push("");
-    lines.push(viewerApi.locatorDescription);
-    lines.push("");
-    lines.push("When the user clicks a locator card, the viewer navigates to that location.");
-    lines.push("");
-    lines.push("**Always** embed locator cards at the end of your response when you create or edit content. The user may have navigated away while you were working — locators let them jump directly to what changed.");
-    lines.push("");
-    hasContent = true;
   }
 
-  if (!hasContent) return "";
+  if (installName) {
+    lines.push(
+      `Locator card schema, scaffold params, the full native-API module list, and any proxy presets live in the \`${installName}\` skill — read it before your first call into one of these channels.`,
+    );
+  }
 
-  // Viewer context format description (prepend after header)
-  const contextLines = [
-    "### Viewer Context",
-    "",
-    "Each user message may be prefixed with a `<viewer-context>` block.",
-    "It describes what the user is currently seeing — the active file, viewport position, and selected elements.",
-    'Use this to resolve references like "this page", "here", "this section" in user messages.',
-    "",
-    "### User Actions",
-    "",
-    "Messages may include a `<user-actions>` block listing significant actions",
-    "the user performed in the viewer since the last message.",
-    "Use this to understand workspace state changes that happened outside of your edits.",
-    "",
-  ];
-  lines.splice(2, 0, ...contextLines);
-
-  return lines.join("\n");
+  return lines.join("\n").trimEnd();
 }
 
 /**
- * Generate a CLAUDE.md section describing the proxy mechanism.
- * Only generated when the mode declares proxy config (manifest.proxy).
- * Modes without proxy config don't need this — their viewers don't fetch external APIs.
+ * Generate the slim Proxy preset summary appended to the viewer-api block.
+ *
+ * Modes that declare proxy presets need the agent to know the preset names
+ * (so it can write `fetch("/proxy/<name>/...")` correctly). Anything beyond
+ * that — headers, methods, runtime overrides via `proxy.json` — lives in the
+ * mode's SKILL.md.
  *
  * Pure function — no side effects.
  */
 export function generateProxySection(
   proxy: Record<string, import("../core/types/mode-manifest.js").ProxyRoute> | undefined,
 ): string {
-  if (!proxy) return "";
-
-  const hasPresets = Object.keys(proxy).length > 0;
+  if (!proxy || Object.keys(proxy).length === 0) return "";
 
   const lines: string[] = [
-    "### Proxy",
+    "### Proxy presets",
     "",
-    "The runtime provides a reverse proxy at `/proxy/<name>/<path>` to avoid CORS issues when viewer code fetches external APIs.",
-    "**Always use the proxy for external API access** — never use absolute URLs directly in viewer code.",
+    "Use `fetch(\"/proxy/<name>/path\")` in viewer code to avoid CORS when calling external APIs. This mode preconfigures:",
     "",
+    "| Name | Target |",
+    "|------|--------|",
   ];
-
-  // Preset routes table
-  if (hasPresets) {
-    lines.push("**Available proxies (from mode defaults):**");
-    lines.push("");
-    lines.push("| Name | Target | Description |");
-    lines.push("|------|--------|-------------|");
-    for (const [name, route] of Object.entries(proxy)) {
-      lines.push(`| \`${name}\` | \`${route.target}\` | ${route.description ?? "—"} |`);
-    }
-    lines.push("");
-    lines.push("**Usage in viewer code:**");
-    lines.push(`- Example: \`fetch("/proxy/${Object.keys(proxy)[0]}/path/to/resource")\``);
-  } else {
-    lines.push("**Usage in viewer code:**");
-    lines.push("- Example: `fetch(\"/proxy/myapi/path/to/resource\")`");
+  for (const [name, route] of Object.entries(proxy)) {
+    lines.push(`| \`${name}\` | \`${route.target}\` |`);
   }
   lines.push("");
-
-  // Adding new proxies — use fenced code block to avoid template resolution
-  lines.push("**Adding or overriding proxies at runtime:**");
-  lines.push("Write `proxy.json` in workspace root (takes effect immediately, no restart).");
-  lines.push("Fields: `target` (required, upstream base URL), `headers` (optional, supports env var templates), `methods` (optional, defaults to GET only).");
-  lines.push("");
+  lines.push(
+    "Headers, allowed methods, and how to register additional presets via `proxy.json` are documented in the mode's skill.",
+  );
 
   return lines.join("\n");
 }
 
 /**
- * Generate a CLAUDE.md section describing the native bridge API.
- * Always injected — the API gracefully returns "not available" in non-desktop environments.
+ * The native bridge gets a one-line callout in the viewer-api teaser; the
+ * channel list there already names `/api/native/*`. This generator returns
+ * empty so the existing append site stays a no-op.
+ *
+ * Kept exported for backward compatibility with callers that still invoke it
+ * (notably `installSkill`); will be deleted once the call site is removed.
  */
 export function generateNativeBridgeSection(): string {
-  return [
-    "### Native Desktop APIs",
-    "",
-    "The runtime provides native desktop capabilities via `/api/native/`. Available when running inside the Pneuma desktop app.",
-    "",
-    "**Discovery:** `curl -s $PNEUMA_API/api/native` — returns `{ available: true, capabilities: { module: [methods...] } }` or `{ available: false }`.",
-    "Always check this first to see what's available — the capability list is dynamic and auto-generated from Electron modules.",
-    "",
-    "**Invoke:** `curl -s -X POST $PNEUMA_API/api/native/<module>/<method> -H 'Content-Type: application/json' -d '[...args]'`",
-    "Returns `{ ok: true, result: ... }` or `{ ok: false, error: \"...\" }`.",
-    "",
-    "**Common modules:** `clipboard` (readText, writeText, readImage→base64, writeImage←base64, ...), `shell` (openPath, openExternal, ...), `app` (getVersion, getPath, ...), `system` (platform, cpus, totalMemory, hostname, ...), `screen`, `nativeTheme`, `notification` (show, isSupported), `window` (minimize, maximize, setAlwaysOnTop, getBounds, ...)",
-    "",
-  ].join("\n");
+  return "";
 }
 
 /**
@@ -1063,6 +1115,22 @@ export interface InstallSkillOptions {
    * project section. Required if `projectRoot` is set.
    */
   sessionId?: string;
+  /**
+   * Runtime shell label for the `pneuma:start` header — "app" when running
+   * inside the Pneuma Electron desktop app, "web" otherwise. Defaults to "web"
+   * when undefined. The launcher is the source of truth and forwards this to
+   * per-session children; if the launcher itself doesn't know, "web" is the
+   * safe default (the agent learns the actual shell capabilities through
+   * `/api/native` discovery anyway).
+   */
+  runtimeShell?: "app" | "web";
+  /**
+   * Mode display name (e.g. "Illustrate") for the `pneuma:start` header
+   * title. Falls back to a title-cased derivation of `skillConfig.installName`
+   * when omitted, but callers should pass the manifest's `displayName` so the
+   * header reads naturally.
+   */
+  displayName?: string;
 }
 
 /**
@@ -1171,11 +1239,22 @@ export function installSkill(options: InstallSkillOptions): void {
     content = readFileSync(primaryInstructionsPath, "utf-8");
   }
 
-  let sectionContent = skillConfig.claudeMdSection;
+  // 2a. Build the `pneuma:start` block — scene-setting header (mode name +
+  //     runtime shell + backend), short scene paragraph, and a pointer back
+  //     to the mode's SKILL.md for everything else. Mode-specific guidance
+  //     (architecture, core rules, workflows) lives in SKILL.md and loads
+  //     via progressive disclosure — see docs/reference/controlled-state-surface.md.
+  const shellLabel = resolveRuntimeShell(options.runtimeShell);
+  let sceneBody = generatePneumaSection(
+    skillConfig,
+    options.displayName,
+    backendType,
+    shellLabel,
+  );
   if (params && Object.keys(params).length > 0) {
-    sectionContent = applyTemplateParams(sectionContent, params);
+    sceneBody = applyTemplateParams(sceneBody, params);
   }
-  const claudeMdSection = `${PNEUMA_MARKER_START}\n${sectionContent}\n${PNEUMA_MARKER_END}`;
+  const claudeMdSection = `${PNEUMA_MARKER_START}\n${sceneBody}\n${PNEUMA_MARKER_END}`;
 
   // Check if pneuma section already exists
   const startIdx = content.indexOf(PNEUMA_MARKER_START);
@@ -1194,19 +1273,16 @@ export function installSkill(options: InstallSkillOptions): void {
     content += "\n" + claudeMdSection + "\n";
   }
 
-  // 2b. Inject/update Viewer API section (independent marker, Viewer-owned)
-  let viewerApiContent = generateViewerApiSection(viewerApi);
+  // 2b. Inject/update Viewer API section (independent marker, Viewer-owned).
+  //     The slim teaser names the channels and lists the agent-callable
+  //     actions; deeper reference (locator schema, scaffold params, native
+  //     module list, proxy headers) lives in the mode's SKILL.md.
+  let viewerApiContent = generateViewerApiSection(viewerApi, skillConfig.installName);
   const proxyContent = generateProxySection(proxyConfig);
   if (proxyContent) {
     viewerApiContent = viewerApiContent
-      ? viewerApiContent + "\n" + proxyContent
+      ? viewerApiContent + "\n\n" + proxyContent
       : proxyContent;
-  }
-  const nativeContent = generateNativeBridgeSection();
-  if (nativeContent) {
-    viewerApiContent = viewerApiContent
-      ? viewerApiContent + "\n" + nativeContent
-      : nativeContent;
   }
   if (viewerApiContent) {
     const viewerSection = `${VIEWER_API_MARKER_START}\n${viewerApiContent}\n${VIEWER_API_MARKER_END}`;
@@ -1224,16 +1300,19 @@ export function installSkill(options: InstallSkillOptions): void {
     }
   }
 
-  // 2c. Inject/update skills dependency section
+  // 2c. Inject/update skills dependency section.
+  //     The host already auto-discovers skills under `.claude/skills/` (or
+  //     `.agents/skills/`) via their SKILL.md frontmatter — this block exists
+  //     so the agent has a quick mental map of what's installed alongside the
+  //     mode skill named in the `pneuma:start` block. Trigger logic for each
+  //     entry stays in its own SKILL.md description.
   if (skillSnippets.length > 0) {
     const skillsContent = [
-      "## Available Skills",
-      "",
-      "The following skills are installed and available for use:",
+      "## Skills available",
       "",
       ...skillSnippets,
       "",
-      "Use `/<skill-name>` to invoke these skills.",
+      "Read each skill's SKILL.md when its description matches what you're about to do — the host has already loaded their frontmatter into your available-skills list.",
     ].join("\n");
     const skillsSection = `${SKILLS_MARKER_START}\n${skillsContent}\n${SKILLS_MARKER_END}`;
     const sStart = content.indexOf(SKILLS_MARKER_START);

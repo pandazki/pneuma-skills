@@ -754,6 +754,7 @@ async function handleEvolveCommand(args: string[]) {
     workspace,
     skillConfig: manifest.skill,
     modeSourceDir: targetModeSourceDir,
+    displayName: manifest.displayName,
   });
 
   // 3b. Install evolve skill (so agent has dashboard context in SKILL.md)
@@ -765,6 +766,7 @@ async function handleEvolveCommand(args: string[]) {
     modeSourceDir: evolveModeSourceDir,
     params: {},
     viewerApi: evolveManifest.viewerApi,
+    displayName: evolveManifest.displayName,
   });
 
   // 4. Determine dev vs production mode
@@ -1629,6 +1631,7 @@ Options:
       viewerApi: manifest.viewerApi,
       backendType,
       proxyConfig: manifest.proxy,
+      displayName: manifest.displayName,
     });
     // Record installed skill version for update detection
     const skillVersionPath = join(stateDir, "skill-version.json");
@@ -2016,6 +2019,7 @@ Options:
         viewerApi: manifest.viewerApi,
         backendType,
         proxyConfig: manifest.proxy,
+        displayName: manifest.displayName,
       });
 
       // Record installed skill version
@@ -2260,6 +2264,7 @@ Options:
           viewerApi: manifest.viewerApi,
           backendType: sessionBackendType,
           proxyConfig: manifest.proxy,
+          displayName: manifest.displayName,
         });
         const skillVersionPath = join(stateDir, "skill-version.json");
         writeFileSync(skillVersionPath, JSON.stringify({ mode: modeName, version: manifest.version }));
@@ -2422,6 +2427,7 @@ Options:
             viewerApi: manifest.viewerApi,
             backendType: sessionBackendType,
             proxyConfig: manifest.proxy,
+            displayName: manifest.displayName,
           });
 
           backend = createBackend(sessionBackendType, actualPort);

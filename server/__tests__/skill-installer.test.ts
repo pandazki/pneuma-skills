@@ -299,8 +299,12 @@ describe("installSkill", () => {
     expect(content).toContain("<!-- pneuma:viewer-api:start -->");
     expect(content).toContain("<!-- pneuma:viewer-api:end -->");
     expect(content).toContain("## Viewer API");
+    // Slim teaser: action listed in the Actions table, with its description
+    expect(content).toContain("### Actions");
     expect(content).toContain("`navigate-to`");
-    expect(content).toContain("manifest.json");
+    expect(content).toContain("Navigate to a specific slide");
+    // Pointer back to the mode's skill for deeper reference
+    expect(content).toContain("`pneuma-test` skill");
   });
 
   test("viewer API section is independent of skill section", () => {
@@ -327,17 +331,11 @@ describe("installSkill", () => {
     expect(content2).toContain("<!-- pneuma:start -->");
   });
 
-  test("native bridge section always present even without viewerApi", () => {
-    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir });
-
-    const content = readFileSync(join(workspace, "CLAUDE.md"), "utf-8");
-    // Native bridge docs are always injected (universal capability)
-    expect(content).toContain("<!-- pneuma:viewer-api:start -->");
-    expect(content).toContain("Native Desktop APIs");
-    // But no mode-specific viewer sections (actions, workspace, etc.)
-    expect(content).not.toContain("### Workspace");
-    expect(content).not.toContain("### Actions");
-  });
+  // Removed: "native bridge section always present even without viewerApi".
+  // The standalone "Native Desktop APIs" section no longer exists — the
+  // native bridge is now a one-line bullet inside the slim Viewer API
+  // teaser, and the whole viewer-api block is suppressed when the mode
+  // declares no viewerApi config. See generateNativeBridgeSection (returns "").
 
   test("writes AGENTS.md when backendType is codex", () => {
     installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, backendType: "codex" });
@@ -367,19 +365,24 @@ describe("generateViewerApiSection", () => {
     expect(generateViewerApiSection(undefined)).toBe("");
   });
 
-  test("returns empty for empty viewerApi", () => {
-    expect(generateViewerApiSection({})).toBe("");
+  test("emits the channel teaser even for empty viewerApi", () => {
+    // The slim teaser is the universal description of the channels the
+    // viewer always exposes (`<viewer-context>`, `<user-actions>`, native
+    // bridge). It only collapses to "" when viewerApi is undefined — once
+    // a mode opts in (even with `{}`), the teaser appears.
+    const result = generateViewerApiSection({});
+    expect(result).toContain("## Viewer API");
+    expect(result).toContain("`<viewer-context>`");
+    expect(result).toContain("`<user-actions>`");
+    expect(result).toContain("/api/native/");
+    // No actions table when no actions / no scaffold
+    expect(result).not.toContain("### Actions");
   });
 
-  test("includes workspace model description", () => {
-    const result = generateViewerApiSection({
-      workspace: { type: "manifest", multiFile: true, ordered: true, hasActiveFile: true, manifestFile: "manifest.json" },
-    });
-    expect(result).toContain("## Viewer API");
-    expect(result).toContain("Type: manifest");
-    expect(result).toContain("ordered");
-    expect(result).toContain("manifest.json");
-  });
+  // Removed: "includes workspace model description". The slim teaser no
+  // longer dumps workspace `type` / `multiFile` / `ordered` / `manifestFile`
+  // fields into CLAUDE.md — those details live in the mode's SKILL.md and
+  // load via progressive disclosure.
 
   test("includes actions table", () => {
     const result = generateViewerApiSection({
@@ -402,12 +405,17 @@ describe("generateViewerApiSection", () => {
     expect(result).toContain("$PNEUMA_API/api/viewer/action");
   });
 
-  test("workspace only (no actions)", () => {
+  test("workspace only (no actions): teaser present, no actions table", () => {
     const result = generateViewerApiSection({
       workspace: { type: "single", multiFile: false, ordered: false, hasActiveFile: false },
     });
-    expect(result).toContain("Type: single");
+    // Slim teaser still emits the channel list; the actions table is
+    // omitted when there are no agent-invocable actions and no scaffold.
+    expect(result).toContain("## Viewer API");
+    expect(result).toContain("`<viewer-context>`");
     expect(result).not.toContain("### Actions");
+    // Curl example for /api/viewer/action only appears with actions/scaffold
+    expect(result).not.toContain("/api/viewer/action");
   });
 });
 
