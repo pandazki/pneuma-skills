@@ -690,6 +690,8 @@ export function generatePneumaSection(
   const pointer = `The mode's specific conventions, workflows, and reference material live in the \`${skillConfig.installName}\` skill — pull it in when you're about to act on a substantive task. Read on a need-to-know basis: start with the user's actual ask, reach for this skill when you're about to act, and load wider surfaces (project atlas, sibling sessions, README) only when the task calls for them. You don't need to warm up before talking back.`;
 
   return [
+    PNEUMA_PREAMBLE,
+    "",
     `# Pneuma ${display} Mode · Pneuma ${shellLabel} · driven by ${backendLabel}`,
     "",
     scene,
@@ -697,6 +699,33 @@ export function generatePneumaSection(
     pointer,
   ].join("\n");
 }
+
+/**
+ * What-is-Pneuma orientation that prefaces every per-mode `pneuma:start`
+ * block. Two parts: a single-sentence definition of the system, then three
+ * behavior-shaping axioms.
+ *
+ * Why this lives in the always-on prompt rather than a skill:
+ * - It applies to every mode, every session, every backend. Sinking it into
+ *   one of the per-mode skills would force every other skill to either
+ *   duplicate it or hope the agent loaded the right one first.
+ * - It's framed as orientation, not procedure — there's nothing for the
+ *   agent to "lazy-load" on demand. Behavior axioms work by being read once
+ *   on entry; if the agent is already 5 turns in and hasn't internalized
+ *   them, loading them late doesn't help.
+ *
+ * The axioms are deliberately three (covers files-as-surface, agent-identity,
+ * lazy/iterative posture). More than that and they stop being axioms; fewer
+ * and the agent has to extrapolate. Resist the urge to add safety MUSTs
+ * here — those belong in the preferences excerpt or the mode skill.
+ */
+const PNEUMA_PREAMBLE = `**Pneuma** is a co-creation environment where you and a human user work on the same files together — you read/edit/write through your normal tools, they watch a live viewer of your output and can select, hand you context, or steer along the way.
+
+A few axioms that orient how to be useful here:
+
+- **Files are the canonical surface.** The work IS the files; don't abstract them away or build wrappers around them.
+- **You're you.** No different persona — same judgment, same skills, just collaborating in a place built for shared observation.
+- **Lazy is fine; small wrong turns are cheap.** Pull skills, atlas, README in when the task asks for them; the user can see what you're doing live and redirect mid-flight, so you don't need to nail it in one shot.`;
 
 /**
  * Extract the first non-empty, non-heading paragraph from a markdown blob.
