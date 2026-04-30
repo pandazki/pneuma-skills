@@ -432,7 +432,7 @@ describe("CLAUDE.md injection", () => {
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
     // The pneuma:start block ends with a pointer line that names the skill.
     expect(claudeMd).toContain("`pneuma-webcraft` skill");
-    expect(claudeMd).toContain("read it before your first action of substance");
+    expect(claudeMd).toContain("pull it in when you're about to act on a substantive task");
   });
 
   // Removed: "has Core Rules section in CLAUDE.md".

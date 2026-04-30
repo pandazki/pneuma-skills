@@ -676,7 +676,18 @@ export function generatePneumaSection(
     pickScene(skillConfig.claudeMdSection) ??
     `You and the user are collaborating in Pneuma's ${display} workspace. The user watches your work in a live viewer; you read and edit files; the viewer re-renders as files change.`;
 
-  const pointer = `The mode's specific conventions, workflows, and reference material live in the \`${skillConfig.installName}\` skill — read it before your first action of substance. That's how this mode expects you to work.`;
+  // Pointer + read-priority hint, fused.
+  //
+  // Why fused: the prior version emitted a one-line "read this skill first"
+  // pointer, leaving the agent to figure out what *else* to read on its own.
+  // In practice that meant either over-reading (load atlas + README + sibling
+  // dirs on every cold start, burning context) or under-reading (skip the
+  // skill until late, then backtrack). The hint below orients on a single
+  // pass: the user's actual ask is the work; the mode skill is the procedure
+  // for substantive moves; everything else is loaded on demand. It refuses to
+  // be a "MUST read all of this before responding" rule — that would just
+  // recreate the over-reading failure mode it's trying to prevent.
+  const pointer = `The mode's specific conventions, workflows, and reference material live in the \`${skillConfig.installName}\` skill — pull it in when you're about to act on a substantive task. Read on a need-to-know basis: start with the user's actual ask, reach for this skill when you're about to act, and load wider surfaces (project atlas, sibling sessions, README) only when the task calls for them. You don't need to warm up before talking back.`;
 
   return [
     `# Pneuma ${display} Mode · Pneuma ${shellLabel} · driven by ${backendLabel}`,
