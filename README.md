@@ -14,6 +14,10 @@
 </p>
 
 <p align="center">
+  <a href="README.zh.md">中文</a> · <a href="#built-in-modes">Modes</a> · <a href="#getting-started">Getting started</a> · <a href="#projects-30">Projects</a>
+</p>
+
+<p align="center">
   <img src="docs/images/slide-mode-screenshot.png" alt="Pneuma Slide Mode" width="800" />
 </p>
 
@@ -41,12 +45,28 @@ When humans and code agents co-create content, they need more than a chat window
 | **clipcraft** | AI-orchestrated video production on [@pneuma-craft](https://github.com/pandazki/pneuma-craft) — assets, composition with tracks/clips, provenance DAG, scenes; canvas preview + 3D timeline + dive panels; image / video / TTS / BGM generation scripts | **2.38.0** |
 | **kami** | Paper-canvas typesetting — locked paper size (A4/A5/A3/Letter/Legal × portrait/landscape), Scroll / Focus / Book views, fit-discipline feedback loop, PDF / PNG / HTML export. Design language adapted from [tw93/kami](https://github.com/tw93/kami) | 2.31.0 |
 | **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export. Skill design guidelines informed by [frontend-slides](https://github.com/zarazhangrui/frontend-slides) | 2.18.0 |
-| **doc** | Markdown documents with live preview — the simplest mode, a minimal example of the mode system | 2.18.0 |
-| **draw** | Diagrams and visual thinking on an [Excalidraw](https://excalidraw.com) canvas | 2.18.0 |
+| **doc** | Markdown documents with live preview — the simplest mode, a minimal example of the mode system | 2.29.0 |
+| **draw** | Diagrams and visual thinking on an [Excalidraw](https://excalidraw.com) canvas | 2.29.0 |
 | **diagram** | Professional [draw.io](https://www.drawio.com) diagrams — flowcharts, architecture, UML, ER, with streaming render and sketch style | **2.27.0** |
-| **illustrate** | AI illustration studio — generate and curate visual assets on a row-based canvas with content sets | 2.18.0 |
-| **mode-maker** | Create custom modes with AI — fork, play-test, publish | 2.18.0 |
+| **illustrate** | AI illustration studio — generate and curate visual assets on a row-based canvas with content sets | 2.29.0 |
+| **remotion** | Code-driven video composition on [Remotion](https://www.remotion.dev) — live preview, frame-perfect animation, MP4/WebM export via WebCodecs | 2.29.0 |
+| **gridboard** | Interactive dashboards — draggable tile grid on a fixed canvas, JIT-compiled React tiles via `defineTile()`, agent-driven redesign on resize | 2.29.0 |
+| **mode-maker** | Create custom modes with AI — fork, play-test, publish | 2.35.0 |
 | **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback | 2.25.0 |
+
+## First Run — Pneuma Walks You Through It
+
+Create a project and Pneuma greets you on the way in. A hidden `project-onboard` mode auto-runs the first time you open a fresh project: it reads your README, package manifest, and visual assets, then drafts a Discovery Report — what your project is, what's already there, and two concrete next moves you can pick with one click.
+
+<p align="center">
+  <img src="modes/project-onboard/viewer/illustrations/04-auto-discovery.png" alt="Pneuma reading a fresh project, anchor cards filling in" width="720" />
+</p>
+
+While the onboarding agent works (~30–60s), the loading slot becomes a 10-frame carousel introducing what Pneuma actually is — agents working in real files, twelve modes sharing one shell, sessions that share a project's brain. By the time the report lands, you already have the map.
+
+For projects that are nearly empty (just a `test.txt` or a stub README), the agent draws a small **welcome egg** — a paper lantern in the dusk, a notebook with constellations being sketched — and writes a short greeting that matches your tone. Projects with content but no logo get an auto-generated cover so the launcher tile stops showing the dotted-letter placeholder. Both gestures only fire when an image-gen API key is configured; otherwise the report still renders, just without the gift.
+
+Prefer to set things up by hand? The Create Project dialog's chevron menu offers **Create without discovery** — you can still trigger discovery later via ProjectPanel's **Re-discover** affordance.
 
 ## Getting Started
 
@@ -102,11 +122,14 @@ Modes:
   (no argument)                Open the Launcher (marketplace UI)
   webcraft                     Web design with Impeccable.style
   clipcraft                    AI-orchestrated video production
+  kami                         Paper-canvas typesetting
   slide                        HTML presentations
   doc                          Markdown with live preview
   draw                         Excalidraw canvas
   diagram                      draw.io diagrams
   illustrate                   AI illustration studio
+  remotion                     Code-driven video composition
+  gridboard                    Interactive tile dashboards
   mode-maker                   Create custom modes with AI
   evolve                       Launch the Evolution Agent
   /path/to/mode                Load from a local directory
@@ -116,18 +139,29 @@ Modes:
 Options:
   --workspace <path>   Target workspace directory (default: cwd)
   --port <number>      Server port (default: 17996)
-  --backend <type>     Agent backend to launch (default: claude-code)
+  --backend <type>     Agent backend to launch (claude-code | codex)
+  --project <path>     Run as a session inside the project at <path>
+  --session-id <id>    Resume a project session by id (with --project)
+  --session-name <s>   Custom session display name
+  --viewing            Start in viewing mode (no agent, no skill install)
   --no-open            Don't auto-open the browser
-  --skip-skill         Skip skill installation
+  --skip-skill         Skip skill installation (silent resume)
   --debug              Enable debug mode
   --dev                Force dev mode (Vite)
 
 Subcommands:
-  evolve <mode>        Analyze history and propose skill improvements
-  mode add <url>       Install a remote mode
-  mode list            List published modes
-  mode publish         Publish current workspace as a mode
-  snapshot push/pull   Upload/download workspace snapshot
+  mode add <url>           Install a remote mode to ~/.pneuma/modes/
+  mode list                List published modes on R2
+  mode publish             Publish current workspace as a mode
+  evolve <mode>            Analyze history, propose skill improvements
+  plugin add <source>      Install a plugin from path/github/URL
+  plugin list              List builtin + external plugins
+  plugin remove <name>     Remove an external plugin
+  history export [--out]   Export this session as a shareable .tar.gz
+  history share [--title]  Export + upload to R2, return a link
+  history open <path|url>  Download / prepare a replay package
+  sessions rebuild         Restore "Continue" entries from disk
+  snapshot push / pull     Upload / download workspace snapshot
 ```
 
 ## Architecture
@@ -197,13 +231,20 @@ The preference files are living documents — full rewrites, not append-only log
 
 ## Projects (3.0)
 
-Pneuma supports an optional Project layer above sessions. A project is any user directory marked by `<root>/.pneuma/project.json`. Inside a project you can:
+Pneuma supports an optional Project layer above sessions — a way to anchor *one ongoing thing* across many sessions in many modes, with shared preferences and a shared project atlas.
 
-- Run multiple sessions in different modes (doc, webcraft, clipcraft, ...) all targeting the same project root
-- Switch modes mid-conversation — the source agent writes a handoff file and the target session consumes it
-- Maintain project-scoped preferences orthogonal to your global preferences
+<p align="center">
+  <img src="modes/project-onboard/viewer/illustrations/06-project-layer.png" alt="A project hub orbited by sessions across modes, all connected to a shared brain" width="720" />
+</p>
 
-Quick (project-less) sessions remain fully supported — projects are opt-in. Create one from the launcher's "Create Project" button. See `docs/design/2026-04-27-pneuma-projects-design.md` for the full design.
+A project is any user directory marked by `<root>/.pneuma/project.json`. Inside one you can:
+
+- **Run multiple sessions in different modes** (doc + webcraft + kami + …) — all targeting the same project root, all sharing the same atlas and preferences
+- **Smart Handoff between modes** — the source agent emits a structured `<pneuma:request-handoff>` tag, Pneuma surfaces a Handoff Card with intent + suggested files + key decisions, you confirm, and the target session spawns with the brief pre-staged in its CLAUDE.md
+- **Project-scoped preferences** at `<root>/.pneuma/preferences/`, orthogonal to your global `~/.pneuma/preferences/` — both inject into every session's startup prompt
+- **Auto-onboarding** the first time you enter a fresh project (see [First Run](#first-run--pneuma-walks-you-through-it) above)
+
+Quick (project-less) sessions remain fully supported — projects are opt-in. Create one from the launcher's "+ Create Project" button. The full design lives at [`docs/archive/proposals/2026-04-27-pneuma-projects-design.md`](docs/archive/proposals/2026-04-27-pneuma-projects-design.md) (3.0 project layer) and [`2026-04-28-handoff-tool-call.md`](docs/archive/proposals/2026-04-28-handoff-tool-call.md) (handoff protocol).
 
 ## Tech Stack
 
