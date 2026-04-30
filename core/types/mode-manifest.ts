@@ -310,6 +310,25 @@ export interface ModeManifest {
   /** Mode icon as inline SVG string (e.g. `<svg viewBox="0 0 24 24">...</svg>`) */
   icon?: string;
 
+  /**
+   * Internal mode — never offered as a user-pickable option.
+   *
+   * Hidden from every UI surface that lists modes for human selection
+   * (launcher's Built-in/Local/Published mode grids, ProjectPanel's mode
+   * picker, anywhere else a "what mode would you like to start?" choice
+   * is rendered). Such modes can still be launched programmatically —
+   * via specific UI affordances (the project chip's Evolve sparkle, the
+   * project-onboard auto-trigger), via Smart Handoff target resolution,
+   * or via direct CLI invocation. Triggers are explicit and named; the
+   * mode's identity is preserved (it shows up in registry-of-record APIs
+   * like `/api/registry`), only the discoverability surface is gated.
+   *
+   * Used by `evolve`, `project-evolve`, and `project-onboard`. Treat as
+   * an opt-in declaration — the default (omitted / false) lists the mode
+   * everywhere as before.
+   */
+  hidden?: boolean;
+
   /** Skill injection config */
   skill: SkillConfig;
   /** Content viewer config */

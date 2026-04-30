@@ -948,6 +948,43 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
               <EditorPickerButton targetPath={projectRoot} menuPosition="above" />
 
 
+              {/* Re-discover — launches the hidden `project-onboard` mode
+                  to regenerate the discovery report against the current
+                  state of the project. Useful when the project has
+                  evolved meaningfully (new content, refreshed brand) and
+                  the existing atlas/cover no longer reflect it. The
+                  auto-trigger only fires for truly-fresh projects (no
+                  sessions, no onboardedAt); this is the manual escape
+                  hatch for everyone else. */}
+              <button
+                type="button"
+                disabled={launching}
+                onClick={() => void launch("project-onboard")}
+                aria-label="Re-discover project"
+                title="Re-discover project — re-run onboarding against the current project state to refresh the atlas, cover, and task suggestions"
+                className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md text-cc-muted hover:text-cc-primary hover:bg-cc-primary-muted transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="w-4 h-4 shrink-0"
+                  aria-hidden
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="M21 21l-4.3-4.3" />
+                </svg>
+                <span className="grid grid-cols-[0fr] group-hover:grid-cols-[1fr] transition-[grid-template-columns] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+                  <span className="overflow-hidden whitespace-nowrap text-xs opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+                    Re-discover
+                  </span>
+                </span>
+              </button>
+
               {/* Evolve — launches the project-scoped evolution agent
                   (`project-evolve`), which seeds the project atlas and
                   maintains shared preferences. Distinct from the

@@ -27,6 +27,9 @@ const projectEvolveManifest: ModeManifest = {
   displayName: "Project Atlas",
   description:
     "Mine the project for high-density context and maintain shared preferences — the briefing every mode reads on startup.",
+  // Internal mode — surfaced through the Project chip's Evolve sparkle,
+  // not the launcher's user-pickable mode grid.
+  hidden: true,
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H5a2 2 0 0 0-2 2v3"/><path d="M15 4h4a2 2 0 0 1 2 2v3"/><path d="M3 15v3a2 2 0 0 0 2 2h4"/><path d="M21 15v3a2 2 0 0 1-2 2h-4"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="M2 12h3"/><path d="M19 12h3"/></svg>`,
 
   skill: {

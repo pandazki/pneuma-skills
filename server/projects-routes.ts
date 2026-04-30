@@ -7,8 +7,9 @@ import {
   statSync,
   type Dirent,
 } from "node:fs";
-import { rm } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
+import { extname, isAbsolute, join, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 import {
   loadProjectManifest,
   writeProjectManifest,
@@ -89,6 +90,22 @@ export interface ProjectListResponseEntry extends ProjectRegistryEntry {
 
 export interface ProjectsRoutesOptions {
   homeDir: string; // typically homedir(); for tests, override
+  /**
+   * Spawn a project session and return the URL the browser should navigate
+   * to. Threaded from `server/index.ts` (where `launchPneumaChild` lives) so
+   * the onboard apply route can transition the user into the chosen task's
+   * target mode without re-implementing spawn plumbing. Optional — when
+   * omitted, the apply route still writes project.json/atlas/cover but
+   * cannot launch the chosen task.
+   */
+  launchSession?: (params: {
+    mode: string;
+    project: string;
+    sessionId?: string;
+    fromSessionId?: string;
+    fromMode?: string;
+    fromDisplayName?: string;
+  }) => Promise<string>;
 }
 
 export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): void {
@@ -156,15 +173,23 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     const data = await readSessionsFile(sessionsPath);
     const project = data.projects.find((p) => p.id === id || p.root === id);
     if (!project) return c.json({ error: "project not found" }, 404);
-    const coverPath = join(project.root, ".pneuma", "cover.png");
-    if (!existsSync(coverPath)) {
+    // Multi-format cover: the onboard apply route preserves the source
+    // extension (svg vs png/jpg/webp) so vector logos stay crisp instead
+    // of getting force-renamed to `.png` and served with a wrong
+    // content-type. `.png` stays first because that's still the most
+    // common form.
+    const candidates = ["cover.png", "cover.jpg", "cover.jpeg", "cover.webp", "cover.svg"];
+    const coverPath = candidates
+      .map((name) => join(project.root, ".pneuma", name))
+      .find((p) => existsSync(p));
+    if (!coverPath) {
       return c.json({ error: "no cover image" }, 404);
     }
     const file = Bun.file(coverPath);
     return new Response(file, {
       headers: {
         "content-type": file.type || "image/png",
-        // Hash-by-mtime via a short cache so swapping a cover.png picks up
+        // Hash-by-mtime via a short cache so swapping a cover picks up
         // without forcing a hard reload.
         "cache-control": "private, max-age=60",
       },
@@ -178,6 +203,16 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
       displayName?: string;
       description?: string;
       initFromSessions?: string[];
+      /**
+       * When true, stamp `onboardedAt` on the new manifest so
+       * `EmptyShell`'s auto-trigger doesn't kick off project-onboard
+       * the first time the user enters the project. The user can
+       * still trigger discovery manually later via ProjectPanel's
+       * Re-discover button. Used by the launcher's "Create without
+       * discovery" alternate action; the default (skipOnboard=false)
+       * leaves the field unset so auto-trigger fires as designed.
+       */
+      skipOnboard?: boolean;
     };
     if (!body.root || !body.name || !body.displayName) {
       return c.json({ error: "missing fields: root, name, displayName" }, 400);
@@ -222,6 +257,7 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
       description: body.description,
       createdAt: now,
       ...(founderSessionId ? { founderSessionId } : {}),
+      ...(body.skipOnboard ? { onboardedAt: now } : {}),
     });
 
     // Best-effort: if the user pointed Pneuma at an existing git repo,
@@ -398,6 +434,42 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     return c.json({ preferences });
   });
 
+  // Generic project-rooted file fetch — used by OnboardPreview to render
+  // a cover image preview from an absolute path the agent surfaced
+  // (e.g. `/<projectRoot>/assets/nemori.png`). The per-session `/content`
+  // route serves the *session dir* (the agent's CWD), so a file at the
+  // project root isn't reachable through it; this route fills the gap.
+  // Manifest gate + path containment block traversal.
+  app.get("/api/projects/:id/file", async (c) => {
+    const id = decodeURIComponent(c.req.param("id"));
+    const rel = c.req.query("path") ?? "";
+    if (!rel) return c.json({ error: "missing path" }, 400);
+    const manifest = await loadProjectManifest(id);
+    if (!manifest) return c.json({ error: "project not found" }, 404);
+    const projectRootResolved = resolve(id);
+    const abs = resolve(projectRootResolved, rel);
+    if (!abs.startsWith(projectRootResolved + "/") && abs !== projectRootResolved) {
+      return c.json({ error: "path escapes project root" }, 403);
+    }
+    if (!existsSync(abs)) return c.json({ error: "not found" }, 404);
+    try {
+      const s = statSync(abs);
+      if (!s.isFile()) return c.json({ error: "not a file" }, 400);
+    } catch {
+      return c.json({ error: "stat failed" }, 500);
+    }
+    const file = Bun.file(abs);
+    return new Response(file, {
+      headers: {
+        "content-type": file.type || "application/octet-stream",
+        // Same short cache window as `/cover` — long enough to avoid
+        // re-fetch on viewer state changes, short enough that the user
+        // sees an updated logo within a minute of editing it.
+        "cache-control": "private, max-age=60",
+      },
+    });
+  });
+
   app.get("/api/projects/:id/sessions/:sessionId/thumbnail", async (c) => {
     const id = decodeURIComponent(c.req.param("id"));
     const sessionId = decodeURIComponent(c.req.param("sessionId"));
@@ -559,9 +631,224 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     return c.json(result, result.success ? 200 : 500);
   });
 
+  // ── project-onboard apply ───────────────────────────────────────────
+  // Lands the Discovery Report's writes (project.json with onboardedAt,
+  // project-atlas.md, optional cover) and, when the user clicked a task
+  // card rather than "Apply only", spawns the target mode session with
+  // the task's payload pre-staged as `inbound-handoff.json`. The whole
+  // operation is one round-trip from the OnboardPreview viewer; we don't
+  // route through `/api/handoffs/emit` because that's designed for an
+  // agent-driven proposal awaiting user confirm — the user already
+  // confirmed by clicking the task card here.
+  app.post("/api/projects/onboard/apply", async (c) => {
+    interface OnboardProposal {
+      schemaVersion: number;
+      project: { displayName: string; description?: string; coverSource: string | null };
+      atlas: string;
+      anchors?: Array<{ label: string; value: string; source: string }>;
+      openQuestions?: string[];
+      tasks: Array<{
+        title: string;
+        targetMode: string;
+        timeEstimate?: string;
+        rationale?: string;
+        handoffPayload: {
+          intent: string;
+          summary?: string;
+          suggested_files?: string[];
+          key_decisions?: string[];
+          open_questions?: string[];
+        };
+      }>;
+      apiKeyHints?: { missingButRecommended: string[]; rationale: string };
+    }
+
+    const body = (await c.req.json().catch(() => ({}))) as {
+      projectRoot?: string;
+      proposal?: OnboardProposal;
+      chosenTask?: string | null;
+      sourceSessionId?: string;
+    };
+
+    const projectRoot = body.projectRoot;
+    const proposal = body.proposal;
+    if (!projectRoot || !proposal) {
+      return c.json({ error: "missing fields: projectRoot, proposal" }, 400);
+    }
+    if (!existsSync(projectRoot)) {
+      return c.json({ error: "project root does not exist" }, 404);
+    }
+
+    const pneumaDir = join(projectRoot, ".pneuma");
+    await mkdir(pneumaDir, { recursive: true });
+
+    // 1. project.json — preserve existing fields, layer proposal updates,
+    // stamp onboardedAt. Reading first lets a re-discovered project keep
+    // its original createdAt and founderSessionId rather than getting
+    // rewritten. The manifest's `name` (slug) is the directory basename
+    // when missing — same fallback as `createProject`.
+    const existing = await loadProjectManifest(projectRoot);
+    const now = Date.now();
+    const slug = existing?.name ?? basenameOf(projectRoot);
+    const nextManifest = {
+      version: 1 as const,
+      name: slug,
+      displayName: proposal.project.displayName || existing?.displayName || slug,
+      ...(proposal.project.description || existing?.description
+        ? { description: proposal.project.description ?? existing?.description }
+        : {}),
+      createdAt: existing?.createdAt ?? now,
+      ...(existing?.founderSessionId ? { founderSessionId: existing.founderSessionId } : {}),
+      onboardedAt: now,
+    };
+    await writeProjectManifest(projectRoot, nextManifest);
+
+    // 2. project-atlas.md — straight write. The agent already produced
+    // a properly-formatted body (with `<!-- updatedAt: ... -->` marker
+    // at the top); we don't re-template here.
+    if (typeof proposal.atlas === "string" && proposal.atlas.trim().length > 0) {
+      await writeFile(join(pneumaDir, "project-atlas.md"), proposal.atlas, "utf-8");
+    }
+
+    // 3. cover image — copy the source as-is, preserving extension. The
+    // /cover route falls back through `.png`, `.jpg`, `.jpeg`, `.webp`,
+    // `.svg`, so an SVG logo stays an SVG and gets served with the
+    // right content-type. We only honor absolute paths that exist; the
+    // agent's SKILL.md tells it to set `coverSource: null` when nothing
+    // good was found, but defensive checks here keep a malformed
+    // proposal from corrupting the project.
+    if (
+      typeof proposal.project.coverSource === "string" &&
+      isAbsolute(proposal.project.coverSource) &&
+      existsSync(proposal.project.coverSource)
+    ) {
+      try {
+        const ext = (extname(proposal.project.coverSource) || ".png").toLowerCase();
+        const allowed = [".png", ".jpg", ".jpeg", ".webp", ".svg"];
+        const safeExt = allowed.includes(ext) ? ext : ".png";
+        // Wipe any existing cover.* siblings so a re-discovery doesn't leave
+        // a stale png next to the new svg (the /cover route would prefer
+        // the wrong one based on its candidate order).
+        for (const name of ["cover.png", "cover.jpg", "cover.jpeg", "cover.webp", "cover.svg"]) {
+          const p = join(pneumaDir, name);
+          if (existsSync(p)) {
+            try {
+              await rm(p);
+            } catch {
+              // Best-effort — leaving a stale sibling beats failing the apply.
+            }
+          }
+        }
+        await copyFile(proposal.project.coverSource, join(pneumaDir, `cover${safeExt}`));
+      } catch (err) {
+        console.warn(`[onboard-apply] failed to copy cover: ${err}`);
+      }
+    }
+
+    // 4. Register the project in `~/.pneuma/sessions.json` if it isn't
+    // already. EmptyShell's auto-trigger path ran *before* a /api/projects
+    // create, so the registry hasn't seen this root yet — registering
+    // here keeps the launcher's recents list and ProjectPanel cover
+    // lookup consistent. Idempotent via upsertProject.
+    const data = await readSessionsFile(sessionsPath);
+    const next = upsertProject(data, {
+      id: projectRoot,
+      name: slug,
+      displayName: nextManifest.displayName,
+      description: nextManifest.description,
+      root: projectRoot,
+      createdAt: nextManifest.createdAt,
+      lastAccessed: now,
+    });
+    await writeSessionsFile(sessionsPath, next);
+
+    primeProjectCache(projectRoot).catch(() => {});
+    revalidateProjectCache(projectRoot).catch(() => {});
+
+    // 5. If the user picked a task, mint a target session, stage the
+    // handoff payload, and spawn. This mirrors what `handoff-routes.ts`
+    // does on confirm, but without the proposal map / WS broadcast / kill
+    // step — the source here is a one-shot onboarding session that the
+    // user is happy to leave running until they close the tab.
+    if (body.chosenTask && options.launchSession) {
+      const task = proposal.tasks.find((t) => t.title === body.chosenTask);
+      if (!task) {
+        // Apply succeeded; only the launch failed. Surface partial success
+        // so the viewer can show the writes landed without nuking the
+        // discovery report.
+        return c.json({
+          applied: true,
+          launchUrl: null,
+          warning: `task "${body.chosenTask}" not found in proposal`,
+        });
+      }
+
+      const targetSessionId = randomUUID();
+      const targetSessionDir = join(projectRoot, ".pneuma", "sessions", targetSessionId);
+      const targetPneumaDir = join(targetSessionDir, ".pneuma");
+      try {
+        await mkdir(targetPneumaDir, { recursive: true });
+        const inbound = {
+          handoff_id: randomUUID(),
+          source_session_id: body.sourceSessionId,
+          source_mode: "project-onboard",
+          source_display_name: "Project discovery",
+          target_mode: task.targetMode,
+          target_session: targetSessionId,
+          intent: task.handoffPayload.intent,
+          summary: task.handoffPayload.summary,
+          suggested_files: task.handoffPayload.suggested_files,
+          key_decisions: task.handoffPayload.key_decisions,
+          open_questions: task.handoffPayload.open_questions,
+          proposed_at: now,
+        };
+        const inboundFile = join(targetPneumaDir, "inbound-handoff.json");
+        await writeFile(inboundFile, JSON.stringify(inbound, null, 2), "utf-8");
+      } catch (err) {
+        console.error(`[onboard-apply] failed to stage inbound handoff: ${err}`);
+        return c.json({
+          applied: true,
+          launchUrl: null,
+          warning: `apply landed but couldn't stage handoff: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+
+      try {
+        const launchUrl = await options.launchSession({
+          mode: task.targetMode,
+          project: projectRoot,
+          sessionId: targetSessionId,
+          fromSessionId: body.sourceSessionId,
+          fromMode: "project-onboard",
+          fromDisplayName: "Project discovery",
+        });
+        return c.json({ applied: true, launchUrl, target_session_id: targetSessionId });
+      } catch (err) {
+        console.error(`[onboard-apply] launch failed: ${err}`);
+        return c.json({
+          applied: true,
+          launchUrl: null,
+          warning: `apply landed but launch failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+    }
+
+    return c.json({ applied: true, launchUrl: null });
+  });
+
   // Handoff endpoints (`/api/handoffs/{emit,confirm,cancel}`) live in
   // `server/handoff-routes.ts` and are mounted separately by the server.
   // They previously lived here under the v1 file-mediated protocol; the
   // tool-call rewrite (2026-04-28) split them out so the project-routes
   // file stays focused on project CRUD.
+}
+
+/**
+ * Path basename without depending on `node:path/posix` import semantics.
+ * Used for the project slug fallback when `project.json` lacks `name`.
+ */
+function basenameOf(p: string): string {
+  const trimmed = p.replace(/[/\\]+$/, "");
+  const lastSlash = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return lastSlash === -1 ? trimmed : trimmed.slice(lastSlash + 1);
 }

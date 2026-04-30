@@ -8,7 +8,15 @@ import { DirBrowser } from "./DirBrowser.js";
 export interface CreateProjectDialogProps {
   open: boolean;
   onClose: () => void;
-  onCreated: (root: string) => void;
+  /**
+   * Called after a successful create. `skipOnboard=false` is the
+   * "Create & discover" path — the parent should navigate the user
+   * straight into the new project so EmptyShell's auto-trigger fires.
+   * `skipOnboard=true` is the "Create without discovery" path — the
+   * project's manifest already has `onboardedAt` stamped server-side,
+   * so the parent can just refresh its project list and stay put.
+   */
+  onCreated: (root: string, skipOnboard: boolean) => void;
   /** Used as fallback start path for the directory browser. */
   homeDir?: string;
 }
@@ -56,6 +64,12 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
   const rootInputRef = useRef<HTMLInputElement>(null);
   const displayNameTouchedRef = useRef(false);
 
+  // Split-button alternate-action menu (the chevron next to "Create &
+  // discover" reveals "Create without discovery"). Closes on outside-
+  // click + Esc.
+  const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const actionMenuRef = useRef<HTMLDivElement>(null);
+
   // Init-from-sessions section state
   const [importExpanded, setImportExpanded] = useState(false);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -80,14 +94,34 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
     requestAnimationFrame(() => rootInputRef.current?.focus());
   }, []);
 
-  // Esc-to-close
+  // Esc-to-close — but only when the alternate-action menu is closed.
+  // When the menu is open, Esc should close the menu first, leaving
+  // the dialog up for the user to keep working.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      if (actionMenuOpen) {
+        e.stopPropagation();
+        setActionMenuOpen(false);
+        return;
+      }
+      onClose();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [onClose, actionMenuOpen]);
+
+  // Close the alternate-action menu on outside-click.
+  useEffect(() => {
+    if (!actionMenuOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(e.target as Node)) {
+        setActionMenuOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onMouseDown, true);
+    return () => window.removeEventListener("mousedown", onMouseDown, true);
+  }, [actionMenuOpen]);
 
   // Lazy-load importable quick sessions when section first expands
   useEffect(() => {
@@ -146,9 +180,10 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
     });
   }, []);
 
-  const submit = async () => {
+  const submit = async (skipOnboard: boolean) => {
     setError("");
     setSubmitting(true);
+    setActionMenuOpen(false);
     try {
       const inferredName = basename(root);
       const payload: {
@@ -157,6 +192,7 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
         displayName: string;
         description: string;
         initFromSessions?: string[];
+        skipOnboard?: boolean;
       } = {
         root,
         name: inferredName || "project",
@@ -165,6 +201,9 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
       };
       if (selectedIds.size > 0) {
         payload.initFromSessions = Array.from(selectedIds);
+      }
+      if (skipOnboard) {
+        payload.skipOnboard = true;
       }
       const res = await fetch(`${getApiBase()}/api/projects`, {
         method: "POST",
@@ -177,7 +216,7 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
         setSubmitting(false);
         return;
       }
-      onCreated(data.root);
+      onCreated(data.root, skipOnboard);
       onClose();
     } catch (e) {
       setError(String(e));
@@ -367,14 +406,56 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
           >
             Cancel
           </button>
-          <button
-            type="button"
-            className="px-3 py-1 text-sm bg-cc-primary text-white rounded disabled:opacity-50 hover:brightness-110 cursor-pointer"
-            disabled={!root || submitting}
-            onClick={() => void submit()}
-          >
-            {submitting ? "Creating..." : "Create"}
-          </button>
+          {/* Split button: primary fires "Create & discover" (auto
+              project-onboard on entry); the chevron reveals "Create
+              without discovery" for users who want to bring their
+              own setup. Both share one rounded outline so the pair
+              reads as a single control. */}
+          <div ref={actionMenuRef} className="relative inline-flex">
+            <button
+              type="button"
+              className="px-3 py-1 text-sm bg-cc-primary text-white rounded-l border-r border-white/20 disabled:opacity-50 hover:brightness-110 cursor-pointer"
+              disabled={!root || submitting}
+              onClick={() => void submit(false)}
+            >
+              {submitting ? "Creating…" : "Create & discover"}
+            </button>
+            <button
+              type="button"
+              aria-label="More create options"
+              aria-haspopup="menu"
+              aria-expanded={actionMenuOpen}
+              className="px-2 py-1 text-sm bg-cc-primary text-white rounded-r disabled:opacity-50 hover:brightness-110 cursor-pointer flex items-center"
+              disabled={!root || submitting}
+              onClick={() => setActionMenuOpen((v) => !v)}
+            >
+              <svg
+                className={`w-3 h-3 transition-transform ${actionMenuOpen ? "rotate-180" : ""}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {actionMenuOpen && (
+              <div
+                role="menu"
+                className="absolute bottom-full right-0 mb-2 min-w-[240px] rounded-lg border border-cc-border bg-cc-surface shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6)] py-1 [animation:overlayFadeIn_140ms_cubic-bezier(0.16,1,0.3,1)] z-10"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void submit(true)}
+                  className="w-full text-left px-3 py-2 text-xs text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer flex flex-col gap-0.5"
+                >
+                  <span>Create without discovery</span>
+                  <span className="text-cc-muted/70 text-[11px]">Skip the auto-introduction; set up sessions manually.</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

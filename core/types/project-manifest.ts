@@ -26,6 +26,14 @@ export interface ProjectManifest {
   createdAt: number;
   /** Optional: ID of the session that created this project */
   founderSessionId?: string;
+  /**
+   * Timestamp (ms) when project-onboard's discovery report was applied —
+   * marks the moment the project is "set up enough" that the auto-launch
+   * of the onboarding agent should not fire again. `EmptyShell` uses this
+   * to decide whether `?project=<root>` (no session) is a fresh project
+   * (auto-trigger) or a returning user (just show the panel).
+   */
+  onboardedAt?: number;
 }
 
 /**

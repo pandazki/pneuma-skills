@@ -44,8 +44,10 @@ docs/
 
 | 文档 | 说明 |
 |------|------|
-| [pneuma-3.0-design.md](design/pneuma-3.0-design.md) | 3.0 layout 维度：AI-native 微应用平台（`app` 布局 + Agent Bubble） |
-| [2026-04-27-pneuma-projects-design.md](design/2026-04-27-pneuma-projects-design.md) | 3.0 organization 维度：Project 层、跨 mode 接力、项目级偏好 |
+| [pneuma-3.0-design.md](design/pneuma-3.0-design.md) | 3.0 layout 维度：AI-native 微应用平台（`app` 布局 + Agent Bubble）— 独立计划，未启动 |
+| [history-sharing-replay.md](design/history-sharing-replay.md) | History 分享 + Replay 整体设计（关联 ADR-013） |
+| [2026-03-20-history-export-replay-plan.md](design/2026-03-20-history-export-replay-plan.md) | 上述设计的 Phase 2-4 实现计划：Replay player UI + Continue conversation |
+| [2026-04-30-project-onboard.md](design/2026-04-30-project-onboard.md) | Project Onboarding 模式设计（PR #99，合并后归档） |
 
 ### reference/
 
@@ -65,6 +67,11 @@ docs/
 - [proposal-v2-evolution-agent.md](archive/proposals/proposal-v2-evolution-agent.md) — Evolution Agent 设计（已实现）
 - [mode-proposals-2026.md](archive/proposals/mode-proposals-2026.md) — Mode 提案（webcraft 已实现，chart/flow 待定）
 - [visual-design-spec.md](archive/proposals/visual-design-spec.md) — Ethereal Tech 视觉规范（已实现）
+- [2026-03-20-shadow-git-checkpoints-plan.md](archive/proposals/2026-03-20-shadow-git-checkpoints-plan.md) — Shadow Git Checkpoints（Phase 1，已实现 in 2.x）
+- [2026-03-31-user-preference-analysis-design.md](archive/proposals/2026-03-31-user-preference-analysis-design.md) — User Preference Analysis（已实现，对应 ADR-014）
+- [2026-04-27-pneuma-projects-design.md](archive/proposals/2026-04-27-pneuma-projects-design.md) — Pneuma 3.0 Project 层（已实现 in 2.41.0）
+- [2026-04-28-pneuma-projects-pivot.md](archive/proposals/2026-04-28-pneuma-projects-pivot.md) — Project as in-shell component UX pivot（已实现 in 2.41.0）
+- [2026-04-28-handoff-tool-call.md](archive/proposals/2026-04-28-handoff-tool-call.md) — Smart Handoff v2 tool-call protocol（已实现 in 2.41.0）
 
 工作记录：
 - [work-summary-loop-integration.md](archive/work-summaries/work-summary-loop-integration.md) — Cron/Loop 集成（已合并）

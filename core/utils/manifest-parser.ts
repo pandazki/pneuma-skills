@@ -16,6 +16,8 @@ export interface ParsedManifest {
   workspaceType?: string;
   layout?: string;
   inspiredBy?: { name: string; url: string };
+  /** Internal mode — hidden from user-pickable mode lists. See ModeManifest.hidden. */
+  hidden?: boolean;
 }
 
 /** Extract a single string field value: `fieldName: "value"` or `fieldName: 'value'` */
@@ -60,6 +62,14 @@ function extractInspiredBy(source: string): { name: string; url: string } | unde
   return undefined;
 }
 
+/** Extract a boolean literal field: `fieldName: true` / `fieldName: false`. */
+function extractBoolean(source: string, field: string): boolean | undefined {
+  const re = new RegExp(`${field}:\\s*(true|false)\\b`);
+  const match = re.exec(source);
+  if (!match) return undefined;
+  return match[1] === "true";
+}
+
 export function parseManifestTs(content: string): ParsedManifest {
   return {
     name: extractString(content, "name"),
@@ -72,5 +82,6 @@ export function parseManifestTs(content: string): ParsedManifest {
     workspaceType: extractString(content, "type"),
     layout: extractString(content, "layout"),
     inspiredBy: extractInspiredBy(content),
+    hidden: extractBoolean(content, "hidden"),
   };
 }

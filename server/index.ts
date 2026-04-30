@@ -375,30 +375,42 @@ export async function startServer(options: ServerOptions) {
     const { parseManifestTs } = await import("../core/utils/manifest-parser.js");
     const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
 
+    // The launcher's user-pickable mode grid is driven from this curated
+    // order. Modes that exist on disk but should never be offered as a
+    // user choice (evolve, project-evolve, project-onboard — all are
+    // triggered by specific UI affordances or by Pneuma itself, never by
+    // "what mode would you like to start?") declare `hidden: true` in
+    // their manifest and get filtered out below. The filter is the source
+    // of truth; the omission-from-this-list pattern is fragile (forget to
+    // add a hidden mode → it leaks).
     const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft"];
-    const builtins = builtinNames.map((name) => {
-      const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
-      let parsed: ReturnType<typeof parseManifestTs> = {};
-      try { parsed = parseManifestTs(readFileSync(manifestPath, "utf-8")); } catch { }
-      let showcase: RegistryResponse["builtins"][number]["showcase"] | undefined;
-      try {
-        const showcasePath = join(projectRoot, "modes", name, "showcase", "showcase.json");
-        if (existsSync(showcasePath)) {
-          showcase = JSON.parse(readFileSync(showcasePath, "utf-8"));
-        }
-      } catch { }
-      return {
-        name,
-        displayName: parsed.displayName || name,
-        description: parsed.description || "",
-        icon: parsed.icon,
-        version: "builtin",
-        type: "builtin" as const,
-        ...((name === "slide" || name === "illustrate" || name === "kami") ? { hasInitParams: true } : {}),
-        ...(showcase ? { showcase } : {}),
-        ...(parsed.inspiredBy ? { inspiredBy: parsed.inspiredBy } : {}),
-      };
-    });
+    const builtins = builtinNames
+      .map((name) => {
+        const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
+        let parsed: ReturnType<typeof parseManifestTs> = {};
+        try { parsed = parseManifestTs(readFileSync(manifestPath, "utf-8")); } catch { }
+        let showcase: RegistryResponse["builtins"][number]["showcase"] | undefined;
+        try {
+          const showcasePath = join(projectRoot, "modes", name, "showcase", "showcase.json");
+          if (existsSync(showcasePath)) {
+            showcase = JSON.parse(readFileSync(showcasePath, "utf-8"));
+          }
+        } catch { }
+        return {
+          name,
+          displayName: parsed.displayName || name,
+          description: parsed.description || "",
+          icon: parsed.icon,
+          version: "builtin",
+          type: "builtin" as const,
+          hidden: parsed.hidden === true,
+          ...((name === "slide" || name === "illustrate" || name === "kami") ? { hasInitParams: true } : {}),
+          ...(showcase ? { showcase } : {}),
+          ...(parsed.inspiredBy ? { inspiredBy: parsed.inspiredBy } : {}),
+        };
+      })
+      .filter((m) => !m.hidden)
+      .map(({ hidden: _hidden, ...rest }) => rest); // strip the diagnostic field before serializing
 
     let published: RegistryResponse["published"] = [];
     try {
@@ -422,6 +434,11 @@ export async function startServer(options: ServerOptions) {
           try {
             const content = readFileSync(join(entryPath, manifestFile), "utf-8");
             const parsed = parseManifestTs(content);
+            // Hidden flag honored for installed external modes too. Lets
+            // a third-party mode declare itself "internal" (e.g. an
+            // onboarding-style helper triggered by another mode) without
+            // showing up in the launcher's Local Modes grid.
+            if (parsed.hidden === true) continue;
             local.push({
               name: parsed.name || entry,
               displayName: parsed.displayName || entry,
@@ -1334,8 +1351,25 @@ export async function startServer(options: ServerOptions) {
     });
 
     // ── Project routes API (also available in launcher mode) ─────────────
+    // `launchSession` lets `/api/projects/onboard/apply` spawn the chosen
+    // task's target mode in one round-trip — same pattern as handoff
+    // confirm. The launcher mounts this so an EmptyShell auto-trigger
+    // landing on the launcher port can still complete a project-onboard
+    // → target-mode hop without bouncing off `/api/launch`.
     mountProjectsRoutes(app, {
       homeDir: homedir(),
+      launchSession: async (params) => {
+        const result = await launchPneumaChild({
+          specifier: params.mode,
+          workspace: params.project,
+          project: params.project,
+          sessionId: params.sessionId,
+          fromSessionId: params.fromSessionId,
+          fromMode: params.fromMode,
+          fromDisplayName: params.fromDisplayName,
+        });
+        return result.url;
+      },
     });
 
     // Prime the per-project cache for every known project so the launcher's
@@ -1913,7 +1947,24 @@ export async function startServer(options: ServerOptions) {
   mountRegistryRoute(app);
 
   // ── Project routes API ──────────────────────────────────────────────
-  mountProjectsRoutes(app, { homeDir: homedir() });
+  // Per-session server gets the same `launchSession` wiring as the
+  // launcher, so a project-onboard session inside this server can apply
+  // its discovery report and spawn the chosen task in-process.
+  mountProjectsRoutes(app, {
+    homeDir: homedir(),
+    launchSession: async (params) => {
+      const result = await launchPneumaChild({
+        specifier: params.mode,
+        workspace: params.project,
+        project: params.project,
+        sessionId: params.sessionId,
+        fromSessionId: params.fromSessionId,
+        fromMode: params.fromMode,
+        fromDisplayName: params.fromDisplayName,
+      });
+      return result.url;
+    },
+  });
 
   // Prime the per-project cache. Per-session servers care most about the
   // current project (high probability the user opens its panel first) but
