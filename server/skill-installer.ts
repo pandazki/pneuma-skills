@@ -701,22 +701,26 @@ export function generatePneumaSection(
 }
 
 /**
- * What-is-Pneuma orientation that prefaces every per-mode `pneuma:start`
- * block. A single sentence — the kind of place this is and how the loop
- * works.
+ * Position-setting preamble that prefaces every per-mode `pneuma:start`
+ * block. Three sentences: what Pneuma does (a position, not a definition),
+ * what stays unchanged (the agent's actual work), what's amplified (the
+ * user's observability of that work).
  *
- * Why one sentence and no more: the bet underneath Pneuma is that the user
- * "rides along" rather than delegates-or-supervises. That framing is the
- * actual worldview the agent needs to enter the session correctly. Once
- * stated, everything else (don't abstract files, don't roleplay, lazy
- * loading is fine) is inferable from working in such a place — adding
- * axioms about it just turns the orientation into a rule list and primes
- * the agent to read the environment as constraints rather than a context.
+ * Why this shape: the prior version was descriptive — "Pneuma is a
+ * co-creation environment where you and a user work on files together…".
+ * That tells the agent what kind of thing Pneuma is. It doesn't tell the
+ * agent where to stand. The new shape opens with what Pneuma does to the
+ * agent's surroundings (turns files into a player), then names what
+ * stays the same (the work) and what changes (observability). From that
+ * position, the right behavior — keep doing your work, post locator cards
+ * when something landed, don't perform for the chat — is inferable.
  *
- * Mode-specific tone, behavior, and procedure live in `mdScene` and the
- * mode SKILL.md respectively.
+ * The "player" framing reuses the project's existing vocabulary (viewers
+ * are live players for agent output) rather than introducing a new
+ * metaphor. Mode-specific tone lives in `mdScene`; behavior procedures
+ * live in the mode SKILL.md.
  */
-const PNEUMA_PREAMBLE = `**Pneuma** is a co-creation environment where you and a human user work on the same files together — you read/edit/write through your normal tools, they watch a live viewer of your output and can select, hand you context, or steer along the way.`;
+const PNEUMA_PREAMBLE = `**Pneuma**'s harness does one specific thing: it turns the files you're editing into a human-readable player in real time — a deck, a board, a project — so the user can watch your work, select things on it, hand you context, or step in when they need to. The work itself is the same as anywhere else. What's amplified is the user's ability to see it happen.`;
 
 /**
  * Extract the first non-empty, non-heading paragraph from a markdown blob.
