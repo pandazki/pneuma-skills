@@ -435,67 +435,97 @@ export default function OnboardPreview(_props: ViewerPreviewProps) {
 
 /**
  * Carousel that auto-cycles through the 10 introductory illustrations
- * while the discovery agent works. Caption text is baked into each PNG
- * so the only floating UI is the status pill + pagination dots. A
- * setTimeout keyed on `activeIndex` doubles as the auto-advance and as
- * a soft reset when the user clicks a dot — no manual pause logic
- * needed.
+ * while the discovery agent works. Two stacked layers — the bottom is
+ * always the *current* image, the top is the *outgoing* image whose
+ * `clip-path` animates from `inset(0)` to `inset(0 0 0 100%)`, sweeping
+ * left-to-right so it feels like the new image is wiping the old away
+ * (rather than crossfading). The wipe layer remounts on every advance
+ * via its `key`, restarting the animation cleanly even if the user
+ * clicks a dot mid-transition.
  */
 function CarouselLoading({ lastError }: { lastError: string | null }) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [previousIndex, setPreviousIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const id = setTimeout(() => {
+      setPreviousIndex(activeIndex);
       setActiveIndex((i) => (i + 1) % ILLUSTRATIONS.length);
     }, CAROUSEL_CYCLE_MS);
     return () => clearTimeout(id);
   }, [activeIndex]);
 
+  const goTo = (i: number) => {
+    if (i === activeIndex) return;
+    setPreviousIndex(activeIndex);
+    setActiveIndex(i);
+  };
+
   return (
-    <div className="h-full overflow-auto bg-zinc-950 text-zinc-200">
-      <div className="max-w-3xl mx-auto px-8 py-12 flex flex-col items-center gap-6">
-        {/* Carousel frame — 16:9 to match the illustrations' native ratio */}
-        <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-zinc-900 border border-zinc-800/60 shadow-[0_24px_64px_-24px_rgba(0,0,0,0.6)]">
-          {ILLUSTRATIONS.map((ill, i) => (
+    <>
+      <style>{`
+        @keyframes pneuma-wipe-out {
+          from { clip-path: inset(0 0 0 0); }
+          to   { clip-path: inset(0 0 0 100%); }
+        }
+      `}</style>
+      <div className="h-full overflow-auto bg-zinc-950 text-zinc-200 flex items-center justify-center">
+        <div className="w-full max-w-5xl px-8 py-8 flex flex-col items-center gap-6">
+          {/* Carousel frame — 16:9 to match the illustrations' native ratio */}
+          <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-zinc-900 border border-zinc-800/60 shadow-[0_24px_64px_-24px_rgba(0,0,0,0.6)]">
+            {/* Bottom layer: the current active image — always fully shown */}
             <img
-              key={i}
-              src={ill.src}
-              alt={ill.alt}
-              loading={i === 0 ? "eager" : "lazy"}
-              className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ease-in-out ${
-                i === activeIndex ? "opacity-100" : "opacity-0"
-              }`}
+              key={`active-${activeIndex}`}
+              src={ILLUSTRATIONS[activeIndex].src}
+              alt={ILLUSTRATIONS[activeIndex].alt}
+              loading="eager"
+              className="absolute inset-0 w-full h-full object-cover"
             />
-          ))}
-        </div>
+            {/* Top layer: the outgoing image, gets wiped out left-to-right.
+                Only mounted while a transition is in progress; the `key`
+                forces remount per advance so the keyframe re-fires. */}
+            {previousIndex !== null && previousIndex !== activeIndex ? (
+              <img
+                key={`wipe-${previousIndex}-${activeIndex}`}
+                src={ILLUSTRATIONS[previousIndex].src}
+                alt=""
+                aria-hidden
+                className="absolute inset-0 w-full h-full object-cover"
+                style={{
+                  animation: "pneuma-wipe-out 900ms cubic-bezier(0.85, 0, 0.15, 1) forwards",
+                }}
+              />
+            ) : null}
+          </div>
 
-        {/* Status pill — what's actually happening on the backend */}
-        <div className="flex items-center gap-2 text-sm text-zinc-400">
-          <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" aria-hidden />
-          <span>Discovering your project — a brief is taking shape.</span>
-        </div>
+          {/* Status pill — what's actually happening on the backend */}
+          <div className="flex items-center gap-2 text-sm text-zinc-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" aria-hidden />
+            <span>Discovering your project — a brief is taking shape.</span>
+          </div>
 
-        {/* Pagination dots — clickable to jump, the active one is a wider pill */}
-        <div className="flex items-center gap-1.5">
-          {ILLUSTRATIONS.map((_, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => setActiveIndex(i)}
-              aria-label={`Go to slide ${i + 1}`}
-              className={`h-1 rounded-full transition-all duration-300 cursor-pointer ${
-                i === activeIndex
-                  ? "w-8 bg-orange-500"
-                  : "w-2 bg-zinc-700 hover:bg-zinc-500"
-              }`}
-            />
-          ))}
-        </div>
+          {/* Pagination dots — clickable to jump, the active one is a wider pill */}
+          <div className="flex items-center gap-1.5">
+            {ILLUSTRATIONS.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => goTo(i)}
+                aria-label={`Go to slide ${i + 1}`}
+                className={`h-1 rounded-full transition-all duration-300 cursor-pointer ${
+                  i === activeIndex
+                    ? "w-8 bg-orange-500"
+                    : "w-2 bg-zinc-700 hover:bg-zinc-500"
+                }`}
+              />
+            ))}
+          </div>
 
-        {lastError ? (
-          <div className="text-xs text-red-400/70 mt-2 font-mono">{lastError}</div>
-        ) : null}
+          {lastError ? (
+            <div className="text-xs text-red-400/70 mt-2 font-mono">{lastError}</div>
+          ) : null}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
