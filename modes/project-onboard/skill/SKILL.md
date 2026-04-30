@@ -59,7 +59,7 @@ If nothing of the above fits AND you decide not to draw, set `coverSource: null`
 
 ## Drawing for the project
 
-You have two opportunities to put image-gen to work during onboarding. Both are **completely optional** — they're gifts, not requirements. Only attempt them if **`FAL_KEY`** is configured in `~/.pneuma/api-keys.json`. No key → silently skip both branches and proceed with the rest of the discovery.
+You have two opportunities to put image-gen to work during onboarding. Both are **completely optional** — they're gifts, not requirements. Only attempt them if **`FAL_KEY`** (or `FAL_API_KEY`) is configured in `~/.pneuma/api-keys.json`. No key → silently skip both branches and proceed with the rest of the discovery. If invocation fails for any reason (missing skill install, bad API call, network) catch it and skip — the discovery report works fine without the gift.
 
 The two branches are mutually exclusive — pick at most one based on what you saw in the project:
 
@@ -136,7 +136,7 @@ Both tasks must be doable end-to-end without API keys the user hasn't configured
 
 **Read `~/.pneuma/api-keys.json`** to see what's configured. Common keys:
 - `OPENROUTER_API_KEY` — unlocks `gpt-image-2` (best for text-heavy logos/illustrations) and `gemini-3-pro` (painterly/artistic work)
-- `FAL_KEY` — unlocks `gpt-image-2` (alternate route) plus video generation models for `clipcraft`
+- `FAL_KEY` (sometimes stored as `FAL_API_KEY` — accept either) — unlocks `gpt-image-2` (alternate route) plus video generation models for `clipcraft`
 
 If the file doesn't exist or is empty, treat the user as having no keys.
 
