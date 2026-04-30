@@ -2788,8 +2788,37 @@ export async function startServer(options: ServerOptions) {
   }
 
   // ── Evolution routes (conditional) ──────────────────────────────────
+  // Both `evolve` (per-mode personal) and `project-evolve` (project-scoped)
+  // share the proposals → review → apply dashboard plumbing. Distinct
+  // skills + targets, identical wire protocol.
+  //
+  // The stateDir tells the dashboard endpoints where proposals live on
+  // disk:
+  //   - personal `evolve`: per-session stateDir (workspace's `.pneuma/`
+  //     for quick sessions; project session dir for project sessions —
+  //     same dir the agent wrote to).
+  //   - `project-evolve`: the project's `<root>/.pneuma/`, NOT the
+  //     session's stateDir. The agent writes proposals to the project
+  //     root so they're visible across sibling sessions and apply runs
+  //     against project-level files.
   if (options.modeName === "evolve") {
     registerEvolutionRoutes(app, { workspace, stateDir: options.stateDir });
+  } else if (options.modeName === "project-evolve") {
+    // For project-evolve, route both the proposals list AND the apply
+    // target at the project root. The per-session `workspace` is the
+    // session dir for project sessions, so passing it through would
+    // make Apply write `change.file` paths into the session's own
+    // `.pneuma/` instead of the project's. Substitute projectRoot so
+    // `applyProposal(workspace, ...)` resolves `change.file` against
+    // the user-facing project tree.
+    const evolveWorkspace = options.pneumaProjectRoot ?? workspace;
+    const evolveStateDir = options.pneumaProjectRoot
+      ? join(options.pneumaProjectRoot, ".pneuma")
+      : options.stateDir;
+    registerEvolutionRoutes(app, {
+      workspace: evolveWorkspace,
+      stateDir: evolveStateDir,
+    });
   }
 
   // ── Reverse proxy for viewer API access ────────────────────────────────

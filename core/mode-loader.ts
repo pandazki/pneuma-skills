@@ -68,6 +68,13 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/evolve/pneuma-mode.js").then((m) => m.default),
   },
+  "project-evolve": {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/project-evolve/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/project-evolve/pneuma-mode.js").then((m) => m.default),
+  },
   webcraft: {
     type: "builtin",
     manifestLoader: () =>

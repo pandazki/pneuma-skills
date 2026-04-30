@@ -8,7 +8,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 
 **Version:** 2.41.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
-**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve`
+**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve`, `project-evolve`
 
 ## Tech Stack
 
@@ -283,6 +283,7 @@ Template params (`{{key}}`, `{{viewerCapabilities}}`) are applied. The instructi
 - `<!-- pneuma:viewer-api:start -->` / `<!-- pneuma:viewer-api:end -->` — Viewer API (context, actions, scaffold, locator cards, native desktop APIs)
 - `<!-- pneuma:preferences:start -->` / `<!-- pneuma:preferences:end -->` — Personal preferences critical constraints (extracted from `~/.pneuma/preferences/`)
 - `<!-- pneuma:project:start -->` / `<!-- pneuma:project:end -->` — *project sessions only*; project manifest summary + project-scoped preferences critical constraints
+- `<!-- pneuma:project-atlas:start -->` / `<!-- pneuma:project-atlas:end -->` — *project sessions only*; **pointer** (file path + mtime + size) to `<projectRoot>/.pneuma/project-atlas.md` (project briefing maintained by the `project-evolve` mode). Only emitted when the atlas file exists. Pointer-not-inline keeps the prompt lean; the `pneuma-project` skill instructs the agent to Read the file at session start.
 - `<!-- pneuma:handoff:start -->` / `<!-- pneuma:handoff:end -->` — *project sessions only*; pending handoff messages targeted at this session (path + intent + suggested files; agent reads then `rm`s the file)
 
 Two additional optional blocks are injected by other subsystems:

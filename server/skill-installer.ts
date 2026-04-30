@@ -53,6 +53,8 @@ const PREFS_MARKER_START = "<!-- pneuma:preferences:start -->";
 const PREFS_MARKER_END = "<!-- pneuma:preferences:end -->";
 const PROJECT_MARKER_START = "<!-- pneuma:project:start -->";
 const PROJECT_MARKER_END = "<!-- pneuma:project:end -->";
+const PROJECT_ATLAS_MARKER_START = "<!-- pneuma:project-atlas:start -->";
+const PROJECT_ATLAS_MARKER_END = "<!-- pneuma:project-atlas:end -->";
 const HANDOFF_MARKER_START = "<!-- pneuma:handoff:start -->";
 const HANDOFF_MARKER_END = "<!-- pneuma:handoff:end -->";
 
@@ -229,6 +231,67 @@ export function injectProjectSection(
   );
   if (!body) return stripped;
   const block = `${PROJECT_MARKER_START}\n${body}\n${PROJECT_MARKER_END}\n`;
+  return stripped.trimEnd() + "\n\n" + block;
+}
+
+/**
+ * Build the pointer-style body for the `pneuma:project-atlas` block —
+ * a small notice telling the agent the atlas exists and where to find
+ * it, NOT the atlas contents. The agent reads `project-atlas.md` on
+ * demand via its file tools.
+ *
+ * Inlining the full atlas (300-800 words by convention, sometimes more)
+ * into every project session's CLAUDE.md would burn that text on every
+ * turn whether the agent needs it or not. Pointer-style means the
+ * prompt stays lean; the `pneuma-project` skill instructs the agent to
+ * Read the atlas at session start when this block is present.
+ *
+ * Returns null when the atlas file is missing or empty — caller should
+ * skip injection in that case so empty projects don't carry an
+ * empty-pointer block.
+ */
+export function buildProjectAtlasPointer(projectRoot: string): string | null {
+  const path = join(projectRoot, ".pneuma", "project-atlas.md");
+  let stat: ReturnType<typeof statSync>;
+  try {
+    stat = statSync(path);
+  } catch {
+    return null;
+  }
+  if (stat.size === 0) return null;
+  const updated = stat.mtime.toISOString().replace(/\.\d{3}Z$/, "Z");
+  const sizeKb = (stat.size / 1024).toFixed(1);
+  const lines = [
+    `A project briefing exists at \`$PNEUMA_PROJECT_ROOT/.pneuma/project-atlas.md\` — read it before starting work in this project.`,
+    ``,
+    `- Last updated: \`${updated}\``,
+    `- Size: ${sizeKb}KB`,
+    `- Maintained by the \`project-evolve\` mode (Project chip's Evolve sparkle).`,
+    ``,
+    `It encodes scope, audience, conventions, locked decisions, and open threads. Treat it as authoritative; consult it before re-asking the user. See the \`pneuma-project\` skill for the full atlas protocol.`,
+  ];
+  return lines.join("\n");
+}
+
+/**
+ * Inject (or strip) the `pneuma:project-atlas` block. Mirrors
+ * `injectProjectSection`: idempotent strip-then-append, null/empty body
+ * just strips. The block carries a pointer to the atlas, not its
+ * contents — see {@link buildProjectAtlasPointer}.
+ */
+export function injectProjectAtlasSection(
+  instructionsContent: string,
+  body: string | null,
+): string {
+  const stripped = instructionsContent.replace(
+    new RegExp(
+      `${escapeRegExp(PROJECT_ATLAS_MARKER_START)}[\\s\\S]*?${escapeRegExp(PROJECT_ATLAS_MARKER_END)}\\n?`,
+      "g",
+    ),
+    "",
+  );
+  if (!body) return stripped;
+  const block = `${PROJECT_ATLAS_MARKER_START}\n## Project Atlas\n\n${body}\n${PROJECT_ATLAS_MARKER_END}\n`;
   return stripped.trimEnd() + "\n\n" + block;
 }
 
@@ -1211,6 +1274,19 @@ export function installSkill(options: InstallSkillOptions): void {
   } else {
     // Idempotency: strip any stale block left from a previous install.
     content = injectProjectSection(content, null);
+  }
+
+  // 2e2. Inject/update project atlas section (project sessions only).
+  //      Pointer-only — the block tells the agent the atlas exists and
+  //      where to read it, NOT the atlas contents. Inlining the full
+  //      file would bloat every prompt with content the agent might not
+  //      need this turn (atlas is 300-800 words by convention; can grow).
+  //      The `pneuma-project` skill teaches the agent to Read the atlas
+  //      at session start when this block is present.
+  if (projectRoot) {
+    content = injectProjectAtlasSection(content, buildProjectAtlasPointer(projectRoot));
+  } else {
+    content = injectProjectAtlasSection(content, null);
   }
 
   // 2f. Inject/update handoff section (project sessions only).
