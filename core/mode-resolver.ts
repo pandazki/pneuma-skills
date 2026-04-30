@@ -34,6 +34,7 @@ const BUILTIN_MODES = new Set([
   "mode-maker",
   "illustrate",
   "project-evolve",
+  "project-onboard",
 ]);
 
 /** Global cache directory for cloned GitHub modes */
