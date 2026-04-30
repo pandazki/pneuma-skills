@@ -540,10 +540,18 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
   app.post("/api/projects/:id/open-in-editor", async (c) => {
     const id = decodeURIComponent(c.req.param("id"));
     const body = await c.req.json<{ editorId: string }>();
-    const manifest = await loadProjectManifest(id);
-    if (!manifest) return c.json({ error: "project not found" }, 404);
+    // The endpoint name is a historical artifact — callers pass any
+    // directory they want opened in the IDE, not just project roots:
+    //   - ProjectPanel passes the project root (its own affordance).
+    //   - EditorPanel passes the per-session workspace (the agent's CWD,
+    //     which for project sessions is `<root>/.pneuma/sessions/<id>/`,
+    //     i.e. NOT a project root and never has a project.json).
+    // Validating against `loadProjectManifest` would 404 every session
+    // dir hit, so the only check that makes sense here is "directory
+    // exists on disk". Anything stricter belongs in the editor-bridge
+    // (`open -a` is platform-bounded; it'll surface its own errors).
     if (!existsSync(id)) {
-      return c.json({ success: false, message: "Project directory missing" }, 410);
+      return c.json({ success: false, message: "Directory not found" }, 404);
     }
     const { openInEditor } = await import("./editor-bridge.js");
     const result = await openInEditor(body.editorId, id);
