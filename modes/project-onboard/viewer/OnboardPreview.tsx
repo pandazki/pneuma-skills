@@ -94,6 +94,13 @@ interface ApiKeyHints {
   rationale: string;
 }
 
+interface WelcomeMoment {
+  /** Absolute path to the agent-generated welcome image (under sessionDir). */
+  image: string;
+  /** Short greeting copy the agent wrote — 1–2 sentences, friendly. */
+  message: string;
+}
+
 interface OnboardProposal {
   schemaVersion: number;
   project: ProposalProject;
@@ -102,6 +109,13 @@ interface OnboardProposal {
   openQuestions?: string[];
   tasks: ProposalTask[];
   apiKeyHints?: ApiKeyHints;
+  /**
+   * Branch A from the SKILL.md "Drawing for the project" section: when
+   * the project is too sparse to anchor a real Discovery Report, the
+   * agent draws a small welcome image + writes a short greeting. The
+   * viewer renders this above the rest as a hero band.
+   */
+  welcome?: WelcomeMoment;
 }
 
 // ── Polling helper ────────────────────────────────────────────────────────
@@ -146,6 +160,47 @@ function useProposal(): { proposal: OnboardProposal | null; lastError: string | 
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────
+
+function WelcomeBand({ welcome, projectRoot }: { welcome: WelcomeMoment; projectRoot: string | null }) {
+  // The agent saved welcome.image into <sessionDir>/onboard/. For
+  // project sessions, the per-session server's /content/* serves the
+  // sessionDir, so we can convert the absolute path to a relative URL
+  // by stripping the sessionDir prefix. The sessionDir always ends in
+  // the session id under <projectRoot>/.pneuma/sessions/, so we walk
+  // back from the path to find it.
+  const apiBase = getApiBase();
+  const [errored, setErrored] = useState(false);
+
+  // The welcome image lives at <sessionDir>/onboard/welcome-egg-*.png.
+  // Pull just the basename + onboard/ prefix and serve via /content/.
+  const onboardIdx = welcome.image.lastIndexOf("/onboard/");
+  const url = onboardIdx >= 0 ? `${apiBase}/content${welcome.image.slice(onboardIdx)}` : null;
+
+  return (
+    <section className="flex flex-col items-center text-center gap-5 pb-2">
+      <div className="text-[11px] uppercase tracking-[0.2em] text-orange-400/80">A small welcome</div>
+      <div className="relative w-full max-w-md aspect-square rounded-3xl overflow-hidden bg-zinc-900 border border-zinc-800/60 shadow-[0_24px_64px_-24px_rgba(0,0,0,0.6)]">
+        {url && !errored ? (
+          <img
+            src={url}
+            alt="A welcome image drawn for this project"
+            className="absolute inset-0 w-full h-full object-cover"
+            onError={() => setErrored(true)}
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-5xl font-light text-zinc-600 select-none">·</span>
+          </div>
+        )}
+        {/* Subtle warm glow at the bottom edge to anchor the image to the surrounding zinc */}
+        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-orange-500/10 to-transparent pointer-events-none" />
+      </div>
+      <p className="text-base text-zinc-200 leading-relaxed max-w-lg italic">
+        {welcome.message}
+      </p>
+    </section>
+  );
+}
 
 function CoverPreview({ source, projectRoot }: { source: string | null; projectRoot: string | null }) {
   // The proposal stores an absolute path under the project root. We
@@ -340,6 +395,13 @@ export default function OnboardPreview(_props: ViewerPreviewProps) {
   return (
     <div className="h-full overflow-auto bg-zinc-950 text-zinc-200">
       <div className="max-w-4xl mx-auto px-8 py-12 flex flex-col gap-10">
+
+        {/* Welcome band — only present when the agent decided to draw a
+            meet-cute gift for a sparse project. Sits above the regular
+            discovery report so the moment lands first. */}
+        {proposal.welcome ? (
+          <WelcomeBand welcome={proposal.welcome} projectRoot={projectRoot} />
+        ) : null}
 
         {/* Hero band */}
         <section className="flex items-center gap-6">
