@@ -579,6 +579,20 @@ function CarouselLoading({ lastError }: { lastError: string | null }) {
           mix-blend-mode: screen;
           pointer-events: none;
         }
+
+        /* Sonar-style "discovering" indicator — a steady center dot
+           plus two concentric rings emanating outward, staggered so a
+           ring is always mid-flight. Reads as active scanning rather
+           than the generic single-dot pulse.
+           Duration is paced calmly (1.6s) so it doesn't compete with
+           the carousel's slower wipe rhythm. */
+        @keyframes pneuma-discover-ping {
+          0%   { transform: scale(0.4); opacity: 0.65; }
+          100% { transform: scale(2.4); opacity: 0;    }
+        }
+        .pneuma-discover-ring {
+          animation: pneuma-discover-ping 1.6s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+        }
       `}</style>
       <div className="h-full overflow-auto bg-zinc-950 text-zinc-200 flex items-center justify-center">
         <div className="w-full max-w-5xl px-8 py-8 flex flex-col items-center gap-6">
@@ -615,9 +629,17 @@ function CarouselLoading({ lastError }: { lastError: string | null }) {
             ) : null}
           </div>
 
-          {/* Status pill — what's actually happening on the backend */}
-          <div className="flex items-center gap-2 text-sm text-zinc-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" aria-hidden />
+          {/* Status pill — what's actually happening on the backend.
+              The indicator is a sonar-style ping: a steady center dot
+              with two outgoing concentric rings, staggered so the
+              motion never rests. Reads as active "scanning" rather
+              than the generic single-dot pulse. */}
+          <div className="flex items-center gap-3 text-sm text-zinc-400">
+            <span className="relative inline-flex w-3 h-3 items-center justify-center" aria-hidden>
+              <span className="absolute inset-0 rounded-full bg-orange-500 pneuma-discover-ring" />
+              <span className="absolute inset-0 rounded-full bg-orange-500 pneuma-discover-ring [animation-delay:0.8s]" />
+              <span className="relative w-1.5 h-1.5 rounded-full bg-orange-500" />
+            </span>
             <span>Discovering your project — a brief is taking shape.</span>
           </div>
 
