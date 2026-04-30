@@ -331,6 +331,13 @@ export default function App() {
             projectDescription: d.project.projectDescription,
           });
         }
+        // The per-session working dir — equals the project session dir for
+        // project sessions, the quick-session workspace otherwise. The Editor
+        // tabbar's "open in IDE" affordance reads this so it always lands on
+        // the agent's actual surface, not the shared project root.
+        if (typeof d?.workspace === "string") {
+          useStore.getState().setSessionWorkspace(d.workspace);
+        }
         if (!explicitSession) {
           connect(d?.sessionId || "default");
         }

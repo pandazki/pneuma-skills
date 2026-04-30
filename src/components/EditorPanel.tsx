@@ -189,7 +189,14 @@ function FileTreeItem({
 
 export default function EditorPanel() {
   const changedFilesTick = useStore((s) => s.changedFilesTick);
-  const projectRoot = useStore((s) => s.projectContext?.projectRoot ?? null);
+  // Session-scoped working dir for the open-in-IDE affordance — equals the
+  // project session dir for project sessions, the workspace for quick. Project
+  // session dir takes precedence when present so the IDE lands on the agent's
+  // own surface, not the shared project root (which the ProjectPanel's own
+  // open-IDE button covers separately).
+  const sessionWorkspace = useStore(
+    (s) => s.projectContext?.sessionDir ?? s.sessionWorkspace ?? null,
+  );
   const hasSession = useStore((s) => s.session !== null);
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [gitStatuses, setGitStatuses] = useState<Record<string, string>>({});
@@ -287,8 +294,8 @@ export default function EditorPanel() {
       <div className="w-52 shrink-0 border-r border-cc-border flex flex-col">
         <div className="pl-3 pr-1 py-1 border-b border-cc-border flex items-center gap-2">
           <span className="text-xs font-medium text-cc-muted flex-1">Files</span>
-          {projectRoot ? (
-            <EditorPickerButton projectRoot={projectRoot} menuPosition="below" />
+          {sessionWorkspace ? (
+            <EditorPickerButton targetPath={sessionWorkspace} menuPosition="below" />
           ) : null}
         </div>
         <div className="flex-1 overflow-auto">

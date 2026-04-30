@@ -945,7 +945,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
               {/* Open-in-editor picker: detects installed IDEs and
                   remembers the default. Hidden when no editor is found.
                   See `EditorPickerButton` for behavior. */}
-              <EditorPickerButton projectRoot={projectRoot} menuPosition="above" />
+              <EditorPickerButton targetPath={projectRoot} menuPosition="above" />
 
 
               {/* Evolve — launches the project-scoped evolution agent

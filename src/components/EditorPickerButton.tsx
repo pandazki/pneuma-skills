@@ -9,9 +9,11 @@
  * differently (and reset the default in the process).
  *
  * Used by:
- *  - `ProjectPanel` action row → opens project root.
- *  - `EditorPanel` Files header → opens project root for the active
- *    session's workspace.
+ *  - `ProjectPanel` action row → opens the project root (the user's
+ *    shared deliverable surface).
+ *  - `EditorPanel` Files header → opens the active session's working
+ *    dir (the agent's CWD — equals the project session dir for project
+ *    sessions, the workspace for quick).
  *
  * Hidden entirely when no editor is detected (non-macOS platforms or
  * none of the supported apps installed) so the row never shows a
@@ -26,8 +28,13 @@ interface DetectedEditor {
 }
 
 interface EditorPickerButtonProps {
-  /** Project root (or any directory) to pass to `open -a <App> <path>`. */
-  projectRoot: string;
+  /**
+   * Absolute directory to open in the chosen editor. Forwarded to
+   * `/api/projects/:targetPath/open-in-editor`, which ultimately runs
+   * `open -a <App> <targetPath>` on macOS. The endpoint name is a
+   * historical relic — it accepts any directory, not just project roots.
+   */
+  targetPath: string;
   /**
    * Where the picker popover anchors. `above` for action rows pinned
    * to the bottom of a panel; `below` for headers pinned to the top.
@@ -39,7 +46,7 @@ interface EditorPickerButtonProps {
 const DEFAULT_EDITOR_LS_KEY = "pneuma:default-editor";
 
 export default function EditorPickerButton({
-  projectRoot,
+  targetPath,
   menuPosition = "above",
 }: EditorPickerButtonProps) {
   const apiBase = getApiBase();
@@ -100,7 +107,7 @@ export default function EditorPickerButton({
     setMenuOpen(false);
     try {
       await fetch(
-        `${apiBase}/api/projects/${encodeURIComponent(projectRoot)}/open-in-editor`,
+        `${apiBase}/api/projects/${encodeURIComponent(targetPath)}/open-in-editor`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },

@@ -1798,6 +1798,13 @@ export async function startServer(options: ServerOptions) {
     return c.json({
       sessionId: wsBridge.getActiveSessionId(),
       project: projectInfo,
+      // Per-session working directory — the agent's CWD. Equals the project
+      // session dir for project sessions and the quick-session workspace for
+      // quick sessions. The Editor tabbar's "open in IDE" button targets
+      // this path so the IDE always lands on the agent's actual working
+      // surface, not the shared project root (which the ProjectPanel's own
+      // open-IDE button already covers separately).
+      workspace,
     });
   });
 
