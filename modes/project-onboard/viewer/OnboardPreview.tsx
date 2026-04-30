@@ -116,25 +116,28 @@ function useProposal(): { proposal: OnboardProposal | null; lastError: string | 
 
 // ── Sub-components ────────────────────────────────────────────────────────
 
-function CoverPreview({ source }: { source: string | null }) {
-  // The proposal stores an absolute path; for the in-viewer preview we
-  // serve it through the workspace static handler. If the path is not
-  // under the served root the request 404s and we fall back to the
-  // dotted-letter placeholder, which matches what the launcher itself
-  // shows when no cover is set.
+function CoverPreview({ source, projectRoot }: { source: string | null; projectRoot: string | null }) {
+  // The proposal stores an absolute path under the project root. We
+  // serve it through the project-rooted file route (which has its own
+  // manifest gate + path containment) rather than `/content/...`,
+  // because the per-session `/content` resolves to the session dir, not
+  // the project root.
   const apiBase = getApiBase();
   const [errored, setErrored] = useState(false);
 
-  if (!source || errored) {
+  let url: string | null = null;
+  if (source && projectRoot && source.startsWith(`${projectRoot}/`)) {
+    const rel = source.slice(projectRoot.length).replace(/^\/+/, "");
+    url = `${apiBase}/api/projects/${encodeURIComponent(projectRoot)}/file?path=${encodeURIComponent(rel)}`;
+  }
+
+  if (!source || !url || errored) {
     return (
       <div className="w-32 h-32 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-center">
         <span className="text-3xl font-light text-zinc-600 select-none">·</span>
       </div>
     );
   }
-  // Best-effort static serve — the per-session server exposes /content for
-  // the workspace; out-of-tree absolute paths simply 404 (handled by onError).
-  const url = `${apiBase}/content${source}`;
   return (
     <img
       src={url}
@@ -322,7 +325,7 @@ export default function OnboardPreview(_props: ViewerPreviewProps) {
 
         {/* Hero band */}
         <section className="flex items-center gap-6">
-          <CoverPreview source={proposal.project.coverSource} />
+          <CoverPreview source={proposal.project.coverSource} projectRoot={projectRoot} />
           <div className="flex-1 min-w-0">
             <div className="text-[11px] uppercase tracking-wider text-zinc-500 mb-2">Project</div>
             <h1 className="text-3xl font-medium text-zinc-100 leading-tight mb-2">

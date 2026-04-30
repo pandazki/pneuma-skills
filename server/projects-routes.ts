@@ -423,6 +423,42 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     return c.json({ preferences });
   });
 
+  // Generic project-rooted file fetch — used by OnboardPreview to render
+  // a cover image preview from an absolute path the agent surfaced
+  // (e.g. `/<projectRoot>/assets/nemori.png`). The per-session `/content`
+  // route serves the *session dir* (the agent's CWD), so a file at the
+  // project root isn't reachable through it; this route fills the gap.
+  // Manifest gate + path containment block traversal.
+  app.get("/api/projects/:id/file", async (c) => {
+    const id = decodeURIComponent(c.req.param("id"));
+    const rel = c.req.query("path") ?? "";
+    if (!rel) return c.json({ error: "missing path" }, 400);
+    const manifest = await loadProjectManifest(id);
+    if (!manifest) return c.json({ error: "project not found" }, 404);
+    const projectRootResolved = resolve(id);
+    const abs = resolve(projectRootResolved, rel);
+    if (!abs.startsWith(projectRootResolved + "/") && abs !== projectRootResolved) {
+      return c.json({ error: "path escapes project root" }, 403);
+    }
+    if (!existsSync(abs)) return c.json({ error: "not found" }, 404);
+    try {
+      const s = statSync(abs);
+      if (!s.isFile()) return c.json({ error: "not a file" }, 400);
+    } catch {
+      return c.json({ error: "stat failed" }, 500);
+    }
+    const file = Bun.file(abs);
+    return new Response(file, {
+      headers: {
+        "content-type": file.type || "application/octet-stream",
+        // Same short cache window as `/cover` — long enough to avoid
+        // re-fetch on viewer state changes, short enough that the user
+        // sees an updated logo within a minute of editing it.
+        "cache-control": "private, max-age=60",
+      },
+    });
+  });
+
   app.get("/api/projects/:id/sessions/:sessionId/thumbnail", async (c) => {
     const id = decodeURIComponent(c.req.param("id"));
     const sessionId = decodeURIComponent(c.req.param("sessionId"));
