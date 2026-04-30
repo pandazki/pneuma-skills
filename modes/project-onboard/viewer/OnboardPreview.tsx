@@ -21,6 +21,37 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { ViewerPreviewProps } from "../../../core/types/viewer-contract.js";
 import { useStore } from "../../../src/store.js";
 
+// Pre-onboard introduction carousel — replaces the generic loading
+// spinner that used to fill this slot. While the discovery agent reads
+// the project (~30–60s), we walk a first-time user through what Pneuma
+// is, one panel every 5s. Image captions are baked into the PNGs;
+// `alt` text mirrors them for screen readers and bundle hash stability.
+import img01 from "./illustrations/01-files-canvas.png";
+import img02 from "./illustrations/02-live-players.png";
+import img03 from "./illustrations/03-twelve-modes.png";
+import img04 from "./illustrations/04-auto-discovery.png";
+import img05 from "./illustrations/05-smart-handoff.png";
+import img06 from "./illustrations/06-project-layer.png";
+import img07 from "./illustrations/07-click-locator.png";
+import img08 from "./illustrations/08-skills-coach.png";
+import img09 from "./illustrations/09-evolution.png";
+import img10 from "./illustrations/10-replay.png";
+
+const ILLUSTRATIONS: Array<{ src: string; alt: string }> = [
+  { src: img01, alt: "The directory is the canvas." },
+  { src: img02, alt: "Watch the work, not a spinner." },
+  { src: img03, alt: "One shell, twelve players." },
+  { src: img04, alt: "Reading your project — a brief takes shape." },
+  { src: img05, alt: "The next mode picks up where the last one left off." },
+  { src: img06, alt: "Many sessions. One shared brain." },
+  { src: img07, alt: "Point in the canvas — the agent already knows." },
+  { src: img08, alt: "Coaching the agent before the first message." },
+  { src: img09, alt: "Pneuma learns your taste — across every session." },
+  { src: img10, alt: "Every turn is a checkpoint. Rewind anything." },
+];
+
+const CAROUSEL_CYCLE_MS = 5000;
+
 function getApiBase(): string {
   if (import.meta.env.DEV) {
     return `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`;
@@ -298,20 +329,7 @@ export default function OnboardPreview(_props: ViewerPreviewProps) {
   );
 
   if (!proposal) {
-    return (
-      <div className="h-full overflow-auto bg-zinc-950 text-zinc-200">
-        <div className="max-w-3xl mx-auto px-8 py-24 flex flex-col items-center gap-4">
-          <div className="w-10 h-10 rounded-full border-2 border-zinc-800 border-t-orange-500 animate-spin" />
-          <div className="text-zinc-400 text-sm">Reading your project…</div>
-          <div className="text-zinc-600 text-xs leading-relaxed text-center max-w-md">
-            The onboarding agent is mining your README, package manifest, and existing visual assets to assemble a discovery report.
-          </div>
-          {lastError ? (
-            <div className="text-xs text-red-400/70 mt-4 font-mono">{lastError}</div>
-          ) : null}
-        </div>
-      </div>
-    );
+    return <CarouselLoading lastError={lastError} />;
   }
 
   const showKeyHint =
@@ -408,6 +426,75 @@ export default function OnboardPreview(_props: ViewerPreviewProps) {
           ) : null}
         </footer>
 
+      </div>
+    </div>
+  );
+}
+
+// ── Loading carousel ───────────────────────────────────────────────────────
+
+/**
+ * Carousel that auto-cycles through the 10 introductory illustrations
+ * while the discovery agent works. Caption text is baked into each PNG
+ * so the only floating UI is the status pill + pagination dots. A
+ * setTimeout keyed on `activeIndex` doubles as the auto-advance and as
+ * a soft reset when the user clicks a dot — no manual pause logic
+ * needed.
+ */
+function CarouselLoading({ lastError }: { lastError: string | null }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setActiveIndex((i) => (i + 1) % ILLUSTRATIONS.length);
+    }, CAROUSEL_CYCLE_MS);
+    return () => clearTimeout(id);
+  }, [activeIndex]);
+
+  return (
+    <div className="h-full overflow-auto bg-zinc-950 text-zinc-200">
+      <div className="max-w-3xl mx-auto px-8 py-12 flex flex-col items-center gap-6">
+        {/* Carousel frame — 16:9 to match the illustrations' native ratio */}
+        <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-zinc-900 border border-zinc-800/60 shadow-[0_24px_64px_-24px_rgba(0,0,0,0.6)]">
+          {ILLUSTRATIONS.map((ill, i) => (
+            <img
+              key={i}
+              src={ill.src}
+              alt={ill.alt}
+              loading={i === 0 ? "eager" : "lazy"}
+              className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ease-in-out ${
+                i === activeIndex ? "opacity-100" : "opacity-0"
+              }`}
+            />
+          ))}
+        </div>
+
+        {/* Status pill — what's actually happening on the backend */}
+        <div className="flex items-center gap-2 text-sm text-zinc-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" aria-hidden />
+          <span>Discovering your project — a brief is taking shape.</span>
+        </div>
+
+        {/* Pagination dots — clickable to jump, the active one is a wider pill */}
+        <div className="flex items-center gap-1.5">
+          {ILLUSTRATIONS.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => setActiveIndex(i)}
+              aria-label={`Go to slide ${i + 1}`}
+              className={`h-1 rounded-full transition-all duration-300 cursor-pointer ${
+                i === activeIndex
+                  ? "w-8 bg-orange-500"
+                  : "w-2 bg-zinc-700 hover:bg-zinc-500"
+              }`}
+            />
+          ))}
+        </div>
+
+        {lastError ? (
+          <div className="text-xs text-red-400/70 mt-2 font-mono">{lastError}</div>
+        ) : null}
       </div>
     </div>
   );
