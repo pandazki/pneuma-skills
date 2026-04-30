@@ -32,6 +32,8 @@ Preferences are not instructions. They're your understanding of who this user is
 
 Files are created by you as needed. An absent file means no profile exists yet — not an error.
 
+**Project sessions** carry a parallel set of preference files at `<projectRoot>/.pneuma/preferences/` — same schema, but scoped to one project. Those belong to the `pneuma-project` skill, not this one. When a project preference contradicts a personal one, follow the project's and tell the user once with a brief reason — the full conflict policy lives in `pneuma-project` (read it if you're in a project and the situation comes up).
+
 ## Three-Layer Model
 
 Preferences organize into three layers, each requiring different levels of evidence:
