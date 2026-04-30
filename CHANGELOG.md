@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.0] - 2026-05-01
+
+### 3.0 — Projects Are First-Class
+
+The Project layer that landed in 2.41.0 has its loop closed. Pneuma now greets you on the way into a fresh project, walks you through what it is on the way to the first session, and hands you two concrete next moves on the way out. Bumping to 3.0 marks the moment "open a directory and start co-creating in five minutes" stops being aspirational.
+
+### Added — fresh-project onboarding
+
+- **Hidden `project-onboard` mode** that auto-runs the first time you enter a project that has no sessions and no `onboardedAt` stamp. The agent reads README, package manifest, and visual assets, then writes a Discovery Report — anchors with citations, two open questions, and two concrete first-task recommendations tuned to whatever API keys you actually have configured.
+- **One-click Apply + Handoff** — clicking a task card lands the writes (`project.json` with `onboardedAt`, `project-atlas.md`, optional cover) and spawns the target session with the task's brief pre-staged in its CLAUDE.md, all in one round-trip. No HandoffCard interrupt because the user already confirmed by clicking the card.
+- **10-frame intro carousel** that fills the discovery wait time (~30–60s) instead of a generic spinner. Soft diagonal mask wipe + warm orange glow band. Each frame is a 16:9 marketing-grade illustration in the existing Ethereal Tech aesthetic — files-as-canvas, twelve-modes-one-shell, project layer, click-to-locate, evolution, replay, etc.
+- **Welcome egg** for sparse projects (a stub `test.txt`, an empty README) — the agent draws a small atmospheric image (paper lantern in the dusk, notebook with constellations being sketched, etc.) plus a short tone-matched greeting. Not persisted; lives in the session as a one-time meet-cute moment.
+- **Auto-cover** for content-rich-but-logo-less projects — minimal monogram + single orange accent line, matching Pneuma's launcher placeholder aesthetic. Wired through the existing `coverSource` field; apply route persists it like any found cover.
+- **Split-button "Create & discover"** on the Create Project dialog. Primary action navigates straight into the new project so the auto-trigger fires; chevron menu offers "Create without discovery" (server stamps `onboardedAt: now` to suppress the auto-trigger).
+- **Re-discover affordance** on `ProjectPanel` for already-onboarded projects that want a fresh take.
+- **`hidden: true`** field on `ModeManifest`. Internal modes (`evolve`, `project-evolve`, `project-onboard`) are filtered from launcher grids + ProjectPanel mode picker via `/api/registry`. Source of truth is the manifest field; the omission-from-a-curated-list pattern is fragile by comparison.
+- **`onboardedAt?: number`** field on `ProjectManifest`. Auto-trigger gate is one boolean: `!project.onboardedAt && sessions.length === 0`.
+- **`POST /api/projects/onboard/apply`** route that lands the proposal's writes and (when `chosenTask` is set) mints a target session, stages `inbound-handoff.json`, and spawns the target mode in one round-trip.
+- **`/api/projects/:id/file?path=<rel>`** route — generic project-rooted file fetch (manifest gate + path containment) for the cover preview, since per-session `/content/*` resolves to the session dir, not the project root.
+- **Cover route accepts `.png/.jpg/.jpeg/.webp/.svg`** — SVG logos stay vector with the right content-type instead of being force-renamed to `.png`.
+
+### Added — internationalization
+
+- **`README.zh.md`** — Chinese mirror of the English README. Both READMEs cross-link from a header language toggle. Voice tuned for casual Chinese tech reading rather than a literal translation.
+
+### Changed — documentation alignment
+
+- **`AGENTS.md`** is now a synced mirror of `CLAUDE.md` (Codex's convention; same project guidance for the same agent role, just read by a different runtime). The abandoned `AGENT.md` stub is deleted.
+- **README**: new "First Run — Pneuma Walks You Through It" section between modes table and Getting Started; Projects (3.0) section expanded with Smart Handoff narrative + project-scoped preferences + first-run cross-link; Built-in Modes table gains `remotion` + `gridboard`; CLI Usage block adds the 3.0 flags (`--project / --session-id / --session-name / --viewing`) and the subcommands shipped over recent minor versions (`plugin`, `history`, `sessions rebuild`).
+- Six 3.0-era design docs moved from `docs/design/` to `docs/archive/proposals/` now that they're shipped: shadow-git checkpoints, user-preference analysis, project layer, project UX pivot, handoff tool-call protocol, and fresh-project onboarding.
+
+### Compatibility
+
+- 2.x quick sessions (workspace without `project.json`) keep all prior behavior.
+- Projects without `onboardedAt` are treated as "fresh" — opening one for the first time after upgrading auto-launches the welcome flow. Use `project-onboard`'s "Apply only" if you want to mark a project as onboarded without picking a task.
+- `~/.pneuma/sessions.json` schema stays at the 3.0 shape (auto-upgraded from 2.x array on read).
+
 ## [2.41.0] - 2026-04-28
 
 ### Added — 3.0 Project Layer + UX pivot
