@@ -14,6 +14,94 @@ description: >
 
 WebCraft is a live web development surface backed by Impeccable.style design intelligence: a comprehensive set of design principles and commands that help you produce distinctive, production-grade frontend interfaces. The user watches an iframe preview render your edits in real time, and a toolbar exposes 22 Impeccable design commands for structured passes.
 
+## Working with the viewer
+
+The webcraft viewer is the user's window into the workspace. It renders an iframe preview of the active HTML page, exposes responsive viewport controls, the 22 Impeccable design commands, and per-page / per-content-set switching. Everything below is how you (the agent) coordinate with that surface.
+
+### Reading what the user sees
+
+Each user message arrives wrapped with two channels you should read before acting:
+
+- `<viewer-context>` — the live state of the preview at send time. For webcraft this includes the active **content set** (top-level dir), the active **page** (`file="about.html"`), the **viewport** size of the responsive preview, and — when the user clicked an element in the iframe — a CSS-selector-style **Selected** path plus a human-readable element description (tag, classes, accessible name). Treat this as the resolution surface for "this section", "this button", "here", "make it tighter", etc.
+- `<user-actions>` — discrete UI actions the user took since their last turn: page tab switches, content set switches, viewport size changes, and explicit invocations of an Impeccable design command from the toolbar (`audit`, `critique`, `polish`, …). Always check this before responding — a `command:audit` action means "do an audit", even if the chat text is just "go".
+
+Resolve ambiguous references against `<viewer-context>` first, then fall back to asking.
+
+### Locator cards
+
+After creating or editing pages, embed `<viewer-locator>` cards in your reply so the user can jump straight to the result. The card's `data` attribute is JSON keyed by webcraft-specific fields:
+
+| Key | Meaning |
+|---|---|
+| `page` | HTML page filename inside the active content set (e.g. `about.html`, `pricing/index.html`). |
+| `contentSet` | Top-level directory name acting as a switchable site (e.g. `pneuma`, `gazette`, `pneuma-console`). |
+| `contentSet` + `page` | Switch the set and open that page in one click. |
+
+Real examples:
+
+```html
+<viewer-locator label="Open about.html" data='{"page":"about.html"}' />
+<viewer-locator label="Switch to pneuma-console" data='{"contentSet":"pneuma-console"}' />
+<viewer-locator label="Switch to gazette / contact" data='{"contentSet":"gazette","page":"contact.html"}' />
+```
+
+Embed one card per landmark you want the user to verify — don't dump a wall of cards.
+
+### Viewer actions
+
+Webcraft exposes one agent-invocable workspace action via `POST $PNEUMA_API/api/viewer/action`:
+
+- **`scaffold`** — Initialize the current content set with HTML pages from a structure spec. Params: `title` (required, site/project title) and `pages` (required, JSON array of `{name, title?}` for each HTML page). Honors `clearPatterns: ["**/*.html", "**/manifest.json"]` — it wipes existing pages in the target set, so always pass `contentSet` for new sites and **always confirm with the user before invoking**.
+
+```bash
+curl -X POST "$PNEUMA_API/api/viewer/action" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "scaffold",
+    "params": {
+      "contentSet": "studio-portfolio",
+      "title": "Studio Portfolio",
+      "pages": "[{\"name\":\"index.html\",\"title\":\"Home\"},{\"name\":\"work.html\",\"title\":\"Work\"},{\"name\":\"contact.html\",\"title\":\"Contact\"}]"
+    }
+  }'
+```
+
+The 22 Impeccable design commands (`teach`, `document`, `shape`, `craft`, `audit`, `critique`, `polish`, …) are NOT viewer actions — they're toolbar commands the user invokes, surfaced to you via `<user-actions>` (see "Reading what the user sees" above and the "Impeccable Commands" section below).
+
+### Content sets
+
+The webcraft workspace is organized around **content sets** — each top-level directory (e.g. `pneuma/`, `gazette/`, `pneuma-console/`) is a self-contained, switchable site. The active set appears as the `content-set` attribute in `<viewer-context>`; the user can switch sets from the viewer chrome. Per-set features (page tabs, theming, export, deploy) all key off this.
+
+Rules:
+
+- **Don't dump files at the workspace root.** Pages, assets, and `manifest.json` live inside a content set.
+- **New site → new content set.** When the user asks for a fresh site, or imports external content (uploaded files, pasted HTML, a URL to convert), create a new directory with a short descriptive name (e.g. `portfolio/`, `landing-page/`) and a `manifest.json`, then edit inside it.
+- **Don't cross sets in one edit.** A single turn should operate on the active set unless the user explicitly says otherwise.
+
+For multi-page sites, drop a `manifest.json` at the content set root so the viewer renders page tabs at the bottom:
+
+```json
+{
+  "title": "My Project",
+  "pages": [
+    { "file": "index.html", "title": "Home" },
+    { "file": "about.html", "title": "About" },
+    { "file": "contact.html", "title": "Contact" }
+  ]
+}
+```
+
+The first entry is the default page. Keep `pages` in sync whenever you add or remove HTML files.
+
+### Scaffold
+
+`scaffold` is the structured way to seed a content set with empty-but-valid HTML pages from a spec. Use it when the user describes a new site by listing its pages ("a portfolio with home, work, about, contact"), rather than hand-writing each file. Two non-negotiables:
+
+1. **Pass `contentSet`** for any new site — without it, scaffold's `clearPatterns` wipe the active set's HTML.
+2. **Confirm with the user** before invoking. Show the planned `title` + `pages` list in chat first.
+
+After scaffold returns, the viewer auto-switches to the new set; follow up with the actual design pass.
+
 ## Core Principles
 
 1. **Act, don't ask**: For straightforward edits, just do them. Only ask for clarification on ambiguous requests
@@ -31,43 +119,6 @@ WebCraft is a live web development surface backed by Impeccable.style design int
 - Prefer CSS custom properties for theming and consistency
 - Keep files organized — separate concerns when complexity warrants it
 - Preserve existing structure unless asked to reorganize
-
-## Importing External Content
-
-When the user provides original content (uploaded files, pasted HTML, or a URL to convert), **always create a new content set** for it before making any edits:
-
-1. Choose a short descriptive name for the content set (e.g. `portfolio/`, `landing-page/`)
-2. Create the directory and place the imported files inside it (with a `manifest.json`)
-3. Then begin editing within that content set
-
-**Why**: the workspace is organized around content sets — each is a self-contained, switchable project. Importing into a content set (rather than dumping files at the root) preserves the seed templates, enables side-by-side comparison between sets, and ensures all built-in features (set switching, per-set theming, export) work correctly.
-
-## Locator cards
-
-After creating or editing pages, embed locator cards so the user can jump to them.
-
-- Navigate to a page: `data='{"page":"about.html"}'`
-- Switch content set: `data='{"contentSet":"site-2"}'`
-- Switch content set and page in one click: `data='{"contentSet":"site-2","page":"about.html"}'`
-
-## Multi-Page Sites
-
-For sites with multiple pages, create a `manifest.json` so the viewer shows page tabs at the bottom:
-
-```json
-{
-  "title": "My Project",
-  "pages": [
-    { "file": "index.html", "title": "Home" },
-    { "file": "about.html", "title": "About" },
-    { "file": "contact.html", "title": "Contact" }
-  ]
-}
-```
-
-- Use `pages` array with `file` (path) and `title` (display name) for each entry
-- The first page is shown by default
-- Update the manifest whenever you add or remove pages
 
 {{#imageGenEnabled}}
 ## Image Generation
@@ -167,17 +218,6 @@ When generating multiple images for one site (hero + about + feature cards), rec
 - Use the `Write` tool for creating new files or full rewrites
 - Make focused, incremental edits — the user sees changes live, so each edit should leave files in a valid state
 - Preserve existing content structure unless asked to reorganize
-
-## Context Format
-
-When the user sends a message, they may be viewing a specific file in the iframe preview. Context includes:
-- `file="index.html"` — which file the user is viewing
-- `Selected: section.hero > div.card:nth-child(2)` — which element they clicked/selected
-- `Element: button "Submit"` — human-readable element description
-- `Tag: <button>` — the HTML tag
-- `Classes: btn btn-primary` — CSS classes on the element
-
-Use this to resolve references like "this section", "this button", "here", etc.
 
 ## Constraints
 

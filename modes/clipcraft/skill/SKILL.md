@@ -18,6 +18,107 @@ ClipCraft is built for **AIGC workflows**: assets are generated, not
 uploaded. You orchestrate image / video / TTS / BGM generation by
 running bundled scripts, then record the lineage in `project.json`.
 
+## Working with the viewer
+
+The viewer is the exploded 3D timeline rendering of `project.json`.
+It is the user's source of truth for what's currently selected, what
+the playhead is on, and what they're pointing at. Four channels link
+the three actors (you, the user, the viewer):
+
+### Reading what the user sees
+
+Every user message arrives wrapped in `<viewer-context>` and (if the
+user just clicked / dragged / seeked) `<user-actions>`. Read them
+before you act. Typical clipcraft payloads:
+
+- `<viewer-context>` — `selectedClipId`, `selectedAssetId`,
+  `selectedTrackId`, `playheadTime` (seconds), `composition.duration`,
+  the active asset's metadata. Use this to disambiguate a vague
+  request like "try another take" — there's almost always a clip
+  selected that tells you which one.
+- `<user-actions>` — recent UI events: `playhead:seek`
+  (`{time}`), `clip:select` (`{clipId, trackId}`),
+  `asset:select` (`{assetId}`), `clip:drag` (`{clipId, startTime,
+  trackId}`), `track:toggle-mute`, `track:toggle-visible`. Treat
+  these as hints, not commands — the user usually expects you to
+  read them and act, not echo them back.
+
+If both are absent (cold start, command-button click), inspect
+`project.json` directly and ask if intent is ambiguous.
+
+### Locator cards
+
+After creating or editing assets, clips, or moving the playhead,
+embed `<viewer-locator>` cards so the user can jump straight to the
+change. Emit one card per distinct thing you changed — a newly
+generated asset, a clip you just placed, a time beat you built
+around — not one per response. The user sees these as clickable
+chips in chat. Use short concrete labels — "新的 VO 开场",
+"panda clip on Main", "3.5s — punchline beat" — not generic ones
+like "see asset".
+
+Four `data` shapes for clipcraft:
+
+```html
+<!-- assetId — scrolls the asset library to the asset and flashes it. -->
+<viewer-locator data='{"assetId":"asset-vo-tagline"}'>新的 VO 开场</viewer-locator>
+
+<!-- clipId — selects the clip on the timeline AND seeks the playhead
+     to its startTime, so the user lands on the frame you mean. -->
+<viewer-locator data='{"clipId":"clip-shot1-spark"}'>panda clip on Main</viewer-locator>
+
+<!-- time — seeks the playhead only (no selection change). Use for
+     pure "go look at this beat" pointers. -->
+<viewer-locator data='{"time":3.5}'>3.5s — punchline beat</viewer-locator>
+
+<!-- trackId — scrolls and flashes a track header. Use when the
+     change is track-level (mute/solo, reordered, new track). -->
+<viewer-locator data='{"trackId":"track-narration"}'>narration track</viewer-locator>
+```
+
+### Viewer commands (user → agent)
+
+The viewer toolbar exposes six command buttons. Clicks arrive as
+short natural-language messages in chat — they're hints about what
+the user wants next, usually with a clip or scene pre-selected, not
+rigid tool calls. Read `<viewer-context>` to figure out the target,
+then run the matching workflow. If intent is ambiguous (e.g. a vague
+"generate video"), confirm before spending money on `veo3.1`.
+
+| Command | Typical handling |
+|---|---|
+| Generate image | New image asset for the current selection — read context for scene/clip |
+| Generate video | New video clip; confirm before veo3.1 if vague |
+| Try another take | Variant of the selected clip's asset; register as a derived asset (provenance edge) so the variant switcher shows both options |
+| Add narration | TTS for the selected subtitle clip (or the whole caption track); match audio clip timing to subtitle clip timing |
+| Add BGM | Ask for mood/style if not given; generate, register, place on a new or existing audio track |
+| Export video | Handled in the viewer — runs `@pneuma-craft/video` ExportEngine. **No agent involvement.** |
+
+### Agent → viewer actions (HTTP)
+
+When you need to *drive* the viewer (not just respond), POST to
+`$PNEUMA_API/api/viewer/action`. Reach for this when the user asks
+"show me the part where..." and you want the playhead to land
+there before you explain, or when you've just registered an asset
+and want it pre-selected for the next take.
+
+```bash
+# Seek the playhead to a specific second.
+curl -s -X POST "$PNEUMA_API/api/viewer/action" \
+  -H 'content-type: application/json' \
+  -d '{"action":"playhead:seek","payload":{"time":4.2}}'
+
+# Select a clip on the timeline (also seeks to its start).
+curl -s -X POST "$PNEUMA_API/api/viewer/action" \
+  -H 'content-type: application/json' \
+  -d '{"action":"clip:select","payload":{"clipId":"clip-shot1-spark"}}'
+```
+
+Prefer `<viewer-locator>` cards when the user benefits from a
+clickable hand-off. Use HTTP actions when *you* need the viewer
+state to change before the next step (e.g. taking a screenshot via
+`/api/native/screenshot`).
+
 ## When to reach for which reference
 
 This SKILL.md is the map. Drill into the references when the
@@ -353,47 +454,6 @@ prompt words (no "CG render" / "virtual character" — they degrade
 output quality), and always include `--no-audio` (seedance's
 output-audio filter rejects these generations at the second gate).
 Full recipe and honest-limits disclosures in the reference doc.
-
-## Viewer commands
-
-The viewer exposes a row of command buttons (Generate image,
-Generate video, Try another take, Add narration, Add BGM, Export
-video). Clicks arrive as short natural-language messages in the
-chat — they're hints about what the user wants next, usually with a
-clip or scene pre-selected, not rigid tool calls.
-
-Interpret them conversationally: read the viewer context to see
-what's currently selected, then execute the matching workflow. If
-the intent is ambiguous (for example a vague "generate video"),
-confirm with the user before spending money on veo3.1.
-
-## Locator cards
-
-After creating or editing assets, clips, or moving the playhead,
-embed `<viewer-locator>` cards so the user can jump straight to the
-change. Emit one card per distinct thing you changed — a newly
-generated asset, a clip you just placed, a time beat you built
-around — not one per response. The user sees these as clickable
-chips in chat.
-
-Four `data` shapes, pick the one that matches what you changed:
-
-```html
-<!-- An asset in the library -->
-<viewer-locator data='{"assetId":"asset-<semantic-id>"}'>新的 VO 开场</viewer-locator>
-
-<!-- A clip on the timeline (auto-selects + seeks to its start) -->
-<viewer-locator data='{"clipId":"clip-<semantic-id>"}'>panda clip on Main</viewer-locator>
-
-<!-- Seek the playhead to a time in seconds -->
-<viewer-locator data='{"time":3.5}'>3.5s — punchline beat</viewer-locator>
-
-<!-- Focus a track -->
-<viewer-locator data='{"trackId":"track-<semantic-id>"}'>narration track</viewer-locator>
-```
-
-Use short concrete labels — "新的 VO 开场", "panda clip on Main",
-"3.5s — punchline beat" — not generic ones like "see asset".
 
 ## Gotchas
 
