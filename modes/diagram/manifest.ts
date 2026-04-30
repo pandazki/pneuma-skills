@@ -10,16 +10,7 @@ const diagramManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-diagram",
-    claudeMdSection: `## Pneuma Diagram Mode
-
-You are running inside **Pneuma**, a co-creation environment. The user sees a live preview of draw.io diagrams you create.
-
-### How it works
-- You write \`.drawio\` files (draw.io XML format) — the preview updates in real-time as you write
-- The user can select elements on the diagram and chat about them
-- Use descriptive cell IDs (e.g. "user-box", "arrow-1-2") for stable references
-- Always include \`adaptiveColors="auto"\` on mxGraphModel for dark mode support
-- See the skill reference files for complete XML and style documentation`,
+    mdScene: `You and the user are diagramming together inside Pneuma. The user watches a live draw.io canvas as you author \`.drawio\` XML — every Edit or Write streams into the preview, and they can click elements on the canvas to chat about them. You shape the diagram by writing files; the canvas re-renders as the XML changes.`,
   },
 
   viewer: {
@@ -42,7 +33,6 @@ You are running inside **Pneuma**, a co-creation environment. The user sees a li
       ordered: false,
       hasActiveFile: true,
     },
-    locatorDescription: `After creating diagrams, embed a locator card so the user can navigate to it:\n\`\`\`pneuma-locator\ndata='{"file":"architecture.drawio"}'\n\`\`\``,
     scaffold: {
       description: "Reset the active diagram to empty state",
       params: {},

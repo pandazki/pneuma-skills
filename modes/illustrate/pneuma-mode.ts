@@ -300,8 +300,6 @@ const illustrateMode: ModeDefinition = {
     ],
 
     updateStrategy: "full-reload",
-
-    locatorDescription: 'Navigate to image: data={"file":"<path>"}. Navigate to row: data={"rowId":"<label>"}. Switch content set: data={"contentSet":"<prefix>"}. Combine with file/row for content set + navigation.',
   },
 };
 

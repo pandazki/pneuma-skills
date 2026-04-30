@@ -13,10 +13,131 @@ description: Paper-canvas web design. Edit HTML/CSS/JS; viewer renders your cont
 
 Paper-canvas web design. The viewer renders your content as a single
 paper sheet. Size is **{{paperSize}} {{orientation}}**
-({{pageWidthMm}} × {{pageHeightMm}} mm), locked at workspace creation.
+({{pageWidthMm}} × {{pageHeightMm}} mm), locked at workspace creation
+in `.pneuma/config.json`. **Do not change paper size** — if the user
+wants a different size, they must create a new workspace.
 
 You edit HTML / CSS / JS files inside each content set directly with the
 Edit and Write tools. The iframe preview reflects changes live.
+
+## Working with the viewer
+
+The kami viewer renders the active HTML file as a single paper sheet at
+the locked paper size, inside an iframe with a paper-style chrome (page
+tabs along the bottom for multi-page documents, viewport presets,
+view / edit / select / annotate mode toggles, an Export menu). Everything
+below is how you (the agent) coordinate with that surface.
+
+### Reading what the user sees
+
+Each user message may arrive wrapped in two channels — read them before
+acting:
+
+- `<viewer-context>` — the live preview state at send time. For kami
+  this includes `mode="kami"`, the active HTML `file="..."` (full
+  workspace path, e.g. `kaku-portfolio/page-3.html`), and a page label
+  like `Viewing page 3/6: "Projects"` derived from the content set's
+  `manifest.json`. When the user clicks an element in the page, you also
+  get `Selected: <selector>`, `Element: <accessible name>`, `Tag: <h2>`,
+  `Classes: ...`, `Context: <nearby text>`, and `Accessibility: ...`. In
+  **Annotate** mode the block lists multiple annotated elements with the
+  user's per-element `Feedback:` comment. Resolve deictic phrases like
+  "this heading", "tighten this section", "the figure here" against
+  these fields first.
+
+  Example:
+
+  ```
+  <viewer-context mode="kami" file="kaku-portfolio/page-3.html" content-set="kaku-portfolio">
+  Viewing page 3/6: "Projects"
+  Selected: h2.section-title
+    Element: Projects
+    Tag: <h2>
+    Classes: section-title
+    Context: Projects 2024 — selected work
+  </viewer-context>
+  ```
+
+- `<user-actions>` — discrete UI actions the user took since their last
+  turn. Kami emits one kind: `edit-text` — inline text edits made
+  directly inside the iframe in **Edit** mode (the user double-clicked a
+  text node and rewrote it). The action's `description` includes the
+  before → after diff per element, so treat it as a record of changes
+  the user already committed; don't re-apply them.
+
+  ```
+  <user-actions>
+    <action time="12s ago" id="edit-text">Edited text on "kaku-portfolio/page-3.html":
+      <h2>: "项目" → "Projects"
+      <p>: "2024 年精选" → "Selected work, 2024"</action>
+  </user-actions>
+  ```
+
+  After an `edit-text` action, **re-read `.pneuma/kami-fit.json`** —
+  text rewrites can flip a page's status from `fits` to `overflow`.
+
+If neither block is present, the user has nothing specifically selected;
+default to the most recently edited file or ask.
+
+### Locator cards
+
+After creating or editing pages, embed `<viewer-locator>` cards in your
+reply so the user can jump straight to the result. The card's `data`
+attribute is JSON; for kami the navigable key is the HTML page path
+inside the active content set:
+
+| Key | Meaning |
+|---|---|
+| `page` | HTML page path inside the active content set (e.g. `index.html`, `page-3.html`). Alias `file` is accepted. |
+
+Real examples:
+
+```html
+<viewer-locator label="Open the cover" data='{"page":"index.html"}' />
+<viewer-locator label="Jump to the Projects page" data='{"page":"page-3.html"}' />
+<viewer-locator label="See the rewritten Methods page" data='{"file":"methods.html"}' />
+```
+
+One card per landmark you want the user to verify. Switching content
+sets (e.g. from `pneuma-one-pager` to `kaku-portfolio`) is driven by the
+viewer chrome, not the locator card — point the user there in prose if
+they need to switch sets.
+
+### Viewer actions
+
+Kami exposes **no agent-invocable viewer actions** today. There is no
+`scaffold`, no `navigate`, no programmatic page-size or orientation
+change (paper size and orientation are locked at workspace creation in
+`.pneuma/config.json`; see "What this mode is"). To start a new
+document, create a new content-set directory with `index.html` +
+`manifest.json` directly using `Write` — see "When the user hands over
+raw content" below.
+
+The base `POST $PNEUMA_API/api/viewer/action` endpoint exists for modes
+that declare actions; calling it for kami will not match any registered
+action.
+
+### Native bridge
+
+Desktop APIs (clipboard, shell, notifications, …) are available at
+`$PNEUMA_API/api/native/*` when the session runs inside the Pneuma App.
+Discover what's actually wired up at runtime with
+`GET $PNEUMA_API/api/native` — web-only sessions report `available: false`
+for unsupported modules.
+
+## Core rules
+
+- Edit HTML/CSS/JS files directly — the user sees updates live.
+- Keep the canvas warm (`#f5f4ed` parchment, never pure white).
+- Single accent color: ink blue `#1B365D`. No gradients, no second
+  chromatic hue, no hard drop shadows.
+- Serif (TsangerJinKai02 CN / Newsreader EN) weight locked at 500.
+  Never bold.
+- Do not edit `_shared/styles.css` tokens casually. Aesthetic drift
+  compounds fast.
+- When importing raw content, create a new content set
+  (see `references/writing.md`).
+- Do not modify `.claude/` — it's runtime-managed.
 
 ## Aesthetic rules (kami adapted)
 
@@ -298,9 +419,3 @@ Load only what the task needs. Default to the lowest tier.
 | Building a new doc type from scratch | `references/design.md` |
 | Writing tone / structure guidance | `references/writing.md` |
 | Embedding a diagram | `references/diagrams.md` |
-
-## Viewer API
-
-<!-- pneuma:viewer-api:start -->
-{{viewerCapabilities}}
-<!-- pneuma:viewer-api:end -->

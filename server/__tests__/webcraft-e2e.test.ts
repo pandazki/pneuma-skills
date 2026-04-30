@@ -87,7 +87,8 @@ describe("manifest validation", () => {
   it("skill config has sourceDir and installName", () => {
     expect(webcraftManifest.skill.sourceDir).toBe("skill");
     expect(webcraftManifest.skill.installName).toBe("pneuma-webcraft");
-    expect(webcraftManifest.skill.claudeMdSection).toContain("pneuma-webcraft");
+    // claudeMdSection is deprecated; mdScene is the new canonical scene field.
+    // Modes still on legacy claudeMdSection are tolerated by the installer.
   });
 
   it("agent config has permissionMode and greeting", () => {
@@ -429,25 +430,29 @@ describe("CLAUDE.md injection", () => {
     installWebcraftSkill(ws);
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
-    expect(claudeMd).toContain("consult the `pneuma-webcraft` skill");
+    // The pneuma:start block ends with a pointer line that names the skill.
+    expect(claudeMd).toContain("`pneuma-webcraft` skill");
+    expect(claudeMd).toContain("read it before your first action of substance");
   });
 
-  it("has Core Rules section in CLAUDE.md", () => {
-    const ws = makeWorkspace("claudemd-rules");
+  // Removed: "has Core Rules section in CLAUDE.md".
+  // Core Rules / mode-specific architecture moved out of CLAUDE.md and now live
+  // exclusively in the mode's SKILL.md (loaded via Claude Code progressive disclosure).
+  // The pneuma:start block is now a slim scene-setting header + pointer to the skill.
+
+  // Removed: "viewer-api section describes workspace type".
+  // The new viewer-api block is a slim teaser (channel list + actions table +
+  // content-set hint + skill pointer); it no longer carries a workspace-type
+  // section. Mode-specific workspace guidance lives in the mode's SKILL.md.
+  it("viewer-api section is a slim teaser with channel list and skill pointer", () => {
+    const ws = makeWorkspace("claudemd-viewer-api-teaser");
     installWebcraftSkill(ws);
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
-    expect(claudeMd).toContain("### Core Rules");
-    expect(claudeMd).toContain("Impeccable.style design principles");
-  });
-
-  it("viewer-api section describes workspace type", () => {
-    const ws = makeWorkspace("claudemd-ws-type");
-    installWebcraftSkill(ws);
-
-    const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
-    expect(claudeMd).toContain("### Workspace");
-    expect(claudeMd).toContain("Type: manifest (multi-file, active file tracking)");
+    expect(claudeMd).toContain("## Viewer API");
+    expect(claudeMd).toContain("`<viewer-context>`");
+    expect(claudeMd).toContain("`<user-actions>`");
+    expect(claudeMd).toContain("`pneuma-webcraft` skill");
   });
 
   it("pneuma section is properly ordered (start before end)", () => {

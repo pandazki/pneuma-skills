@@ -12,6 +12,51 @@ You operate on two artifacts that **auto-inject into every project session's CLA
 
 The atlas is YOUR canonical authoring surface. Personal preferences in `~/.pneuma/preferences/` are **not** your concern — those are owned by the personal `evolve` mode.
 
+## Working with the viewer
+
+Your viewer is the **Project Atlas dashboard** — a read-only player for the work you produce. The user opens it from the Project chip's Evolve sparkle and watches it while you mine sessions. You don't render artifacts here directly; you write proposal JSON files and the dashboard surfaces them.
+
+### Reading what the user sees
+
+- **`<viewer-context>`** — this mode does **not** carry an active file (`viewerApi.workspace.hasActiveFile: false`). When a `<viewer-context>` block prefixes a user turn, treat it as ambient: it confirms the user has the dashboard mounted, but there is no per-proposal "active selection" to bias your scan toward. Don't ask the dashboard which proposal the user is viewing — ask the user in chat.
+- **`<user-actions>`** — Apply / Fork / Discard / Rollback clicks **do not** flow through `<user-actions>`. Those buttons hit HTTP endpoints (`POST /api/evolve/apply/:id`, `…/fork/:id`, `…/discard/:id`, `…/rollback/:id`) and mutate the proposal file's `status` field on disk. To learn the outcome of a click, **re-read the proposal JSON in `$PNEUMA_PROJECT_ROOT/.pneuma/evolution/proposals/<id>.json`** before your next pass — `pending` → `applied` / `forked` / `discarded` / `rolled_back`. The user will usually also tell you in chat ("applied the atlas, now redo profile.md").
+
+### Locator cards
+
+Not surfaced. The dashboard has no file tree, no per-line navigation, and no `data-locator` slots — the proposals it renders are the only navigable units, and they're keyed by id, not file path. Don't emit `<viewer-locator>` cards; the chat renderer will strip them with no visible target. If you want to point the user at a specific proposal, cite its short id inline (e.g. "see proposal `4723ba20`").
+
+### Viewer actions
+
+**Read-only from the agent's side.** `viewerApi.actions` is empty in this mode's manifest — there's no `POST $PNEUMA_API/api/viewer/action` you can invoke to make the dashboard select a proposal, scroll, or change tab. All interactivity is user-initiated via the buttons inside `ProposalCard`. Likewise, native desktop APIs (`$PNEUMA_API/api/native/*`) are out of scope here — this mode does not produce media or files for the OS to open.
+
+### Workflow integration
+
+```
+agent writes  →  evolution/proposals/<id>.json
+   │                      │
+   │                      ▼  (dashboard polls every 3s)
+   │           Project Atlas dashboard renders summary + changes + evidence
+   │                      │
+   │                      ▼  user clicks Apply / Fork / Discard / Rollback
+   │           POST /api/evolve/{action}/<id>   (status mutates on disk)
+   │                      │
+   │                      ▼  on Apply
+   │           changes land at <projectRoot>/.pneuma/project-atlas.md
+   │           and/or <projectRoot>/.pneuma/preferences/{profile,mode-*}.md
+   ▼
+agent re-reads proposal status (and listens to chat) on the next turn
+```
+
+Concretely, your loop is: **brief → scan → write one grouped proposal → stop and wait**. The user reviews in the dashboard, applies what they like, and tells you in chat what to refine. Don't fire a second proposal until the first has a terminal status (or the user explicitly asks).
+
+## Core rules
+
+- Brief the user and wait for confirmation before scanning or writing.
+- On cold start (`project-atlas.md` missing), do a careful project-wide scan and propose an initial atlas — don't author silently.
+- Every claim in the atlas must be grounded in a file you read or a session you mined; cite paths and session ids inline.
+- Project preferences (`<root>/.pneuma/preferences/profile.md`, `mode-*.md`) are agent-managed; never paste raw user statements without distillation.
+- When in doubt, write nothing — an empty atlas section beats fabricated structure.
+
 ## Cold start vs. ongoing maintenance
 
 **Cold start** — `project-atlas.md` is missing or empty. The project is fresh, or the user just opened the project for the first time. Your first move:
@@ -112,14 +157,9 @@ bun session-digest.ts --file <path> --max-turns 30
 
 This gives you the conversation without the tool-call noise.
 
-## How proposals work (same as personal evolve)
+## Proposal grouping
 
-1. You write proposal JSON files to `$PNEUMA_PROJECT_ROOT/.pneuma/evolution/proposals/`
-2. The dashboard picks them up automatically (3s polling)
-3. The user reviews evidence + content in the dashboard
-4. The user clicks **Apply** (writes the atlas / preferences) or **Discard**
-
-A proposal can target multiple files in one shot — for example a fresh atlas + a `profile.md` distillation if both fall out of the same scan. Group them rather than firing two proposals.
+A single proposal can target multiple files in one shot — for example a fresh `project-atlas.md` plus a `preferences/profile.md` distillation when both fall out of the same scan. Group them rather than firing two proposals. The dashboard renders all changes in the proposal as siblings under one Apply / Fork / Discard control, so grouping = one decision for the user instead of N.
 
 ## Evidence + confidence
 

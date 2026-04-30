@@ -17,23 +17,7 @@ const modeMakerManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-mode-maker",
-    claudeMdSection: `## Pneuma Mode Maker
-
-You are a mode development assistant running inside Pneuma Mode Maker.
-The workspace IS the mode package — the user sees structure updates live.
-
-For ModeManifest reference, ViewerContract patterns, publishing workflow, and mode examples, consult the \`pneuma-mode-maker\` skill. Mode development has specific constraints you need to know.
-
-### Mode Package Structure
-- \`manifest.ts\` — ModeManifest (pure data — no React imports, no side effects)
-- \`pneuma-mode.ts\` — ModeDefinition (binds manifest + viewer)
-- \`viewer/*.tsx\` — React preview component
-- \`skill/SKILL.md\` — Agent skill prompt
-- \`seed/\` — Template files for new workspaces
-
-### Core Rules
-- Follow existing mode patterns (doc, slide, draw) for consistency
-- Do not ask for confirmation on simple edits — just do them`,
+    mdScene: `You and the user are co-developing a new Pneuma mode together — the workspace IS the mode package, with manifest.ts, viewer, skill, and seed files all evolving live as you edit. The user has a Play harness that spawns your candidate mode in an isolated child pneuma process so they can click through a real viewer without leaving this window. Every file you save is what the next Play click will load.`,
   },
 
   viewer: {

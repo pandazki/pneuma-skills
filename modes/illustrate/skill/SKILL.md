@@ -11,17 +11,156 @@ description: >
 
 # Pneuma Illustrate Skill
 
-You are an AI illustration assistant working inside Pneuma's Illustrate Mode.
-Your role is to help users create, curate, and manage AI-generated visual assets
-organized in a row-based canvas with content sets.
+This is **Illustrate Mode**: AI-powered illustration creation with content sets and row-based organization. Your role is to help users create, curate, and manage AI-generated visual assets — generate images, manage content sets, craft prompts, run edit-and-variation workflows.
+
+Read this skill before your first generation in a new conversation.
+
+## Working with the viewer
+
+The illustrate viewer is a row-based canvas. Each top-level directory is a **content set** (project) and renders as a stack of rows; the user navigates, selects images, and can scribble a highlighter mask on a region. You and the user communicate through five channels — read incoming context, embed locators in replies, call viewer actions when navigation helps, scaffold workspaces with confirmation, and switch content sets when starting a new project.
+
+### Reading what the user sees
+
+Before each turn the runtime injects a `<viewer-context>` block. Two shapes:
+
+When an image is selected:
+```xml
+<viewer-context mode="illustrate" content-set="logo-designs" file="images/logo-v1.png">
+Selected image: "Minimal Logo v1"
+Row 1/3: "Initial Concepts" (4 items)
+Prompt: "A minimalist geometric fox logo..."
+Style: minimal
+Tags: logo, geometric
+</viewer-context>
+```
+
+When nothing is selected (project overview):
+```xml
+<viewer-context mode="illustrate" content-set="logo-designs">
+Project: "Logo Project" (3 rows, 12 images)
+Styles: minimal (5), watercolor (4), flat-vector (3)
+Rows:
+  1. "Initial Concepts" (4 items)
+  2. "Warm Color Variations" (4 items)
+  3. "Final Refinements" (4 items)
+Tags: logo, geometric, warm, professional
+</viewer-context>
+```
+
+The `content-set` attribute names the active project — that's where new images go unless the user asks otherwise. Use the rest to resolve "this image", "this row", "make it darker" without guessing.
+
+User-driven gestures arrive as `<user-actions>` entries inside the next user message — for example:
+
+```xml
+<user-actions>
+- user selected image "images/logo-v1.png" in row "Initial Concepts"
+- user highlighted a region on "images/logo-v1.png" (annotation crop saved to /tmp/highlight-region.png)
+</user-actions>
+```
+
+A highlighter entry means a region crop is already saved as a temp file — pass that path as `--annotation` to `edit_image.mjs` (see the edit workflow below).
+
+### Locator cards
+
+Embed `<viewer-locator data='{...}'></viewer-locator>` in chat so the user can jump to a result with one click. The `data` payload accepts these keys, alone or combined:
+
+```html
+<!-- Navigate to a specific image in the active content set -->
+<viewer-locator data='{"file":"images/logo-fox-1.png"}'></viewer-locator>
+
+<!-- Focus a whole row (e.g. after a batch generation) -->
+<viewer-locator data='{"rowId":"row-1710000000000"}'></viewer-locator>
+
+<!-- Switch the active content set -->
+<viewer-locator data='{"contentSet":"marketing-assets"}'></viewer-locator>
+
+<!-- Switch content set AND select a specific image in one click -->
+<viewer-locator data='{"contentSet":"marketing-assets","file":"images/hero.png"}'></viewer-locator>
+```
+
+Drop a locator after every generation, edit, and variation so the canvas and the conversation stay synced.
+
+### Viewer actions
+
+For navigation that should happen without a click, POST to `$PNEUMA_API/api/viewer/action` with the action id. Three actions are available in illustrate:
+
+| Action | Params | When to use |
+|--------|--------|-------------|
+| `navigate-to` | `{ "file": "images/logo-v1.png" }` | Jump the canvas to a specific image |
+| `fit-view` | `{}` | Zoom out to show the entire content set |
+| `zoom-to-row` | `{ "rowId": "row-1710000000000" }` | Frame a row after a batch generation |
+
+Example — focus the row that just finished generating:
+
+```bash
+curl -X POST "$PNEUMA_API/api/viewer/action" \
+  -H "Content-Type: application/json" \
+  -d '{"actionId":"zoom-to-row","params":{"rowId":"row-1710000000000"}}'
+```
+
+Prefer locator cards for "here's the result, click to see it"; use viewer actions when the agent should drive the camera itself (e.g. fit-view after scaffolding a fresh project).
+
+### Content sets
+
+Illustrate uses **content sets** — each top-level directory in the workspace (`logo-designs/`, `marketing-assets/`, `blog-heroes/`, …) is a self-contained project with its own `manifest.json` + `images/`. The active set is in `<viewer-context>`'s `content-set` attribute and is what the user is currently looking at on the canvas.
+
+Rules:
+- **New project → new content set directory.** Don't dump unrelated work into an existing set; create `<descriptive-name>/manifest.json` + `<descriptive-name>/images/` instead.
+- Write all images for a turn into the active content set unless the user explicitly switches.
+- Switch sets by emitting a `contentSet` locator (see above) — the viewer changes the active project on click.
+- Each content set's `manifest.json` is independent — never cross-reference rows across sets.
+
+### Scaffold
+
+Scaffold initializes a fresh workspace: it writes a content-set directory with a starter `manifest.json` (rows + placeholder items) ready for your first generation pass. **Always confirm with the user before scaffolding** — it clears `**/images/*` and `**/manifest.json` across the workspace.
+
+Params:
+
+| Param | Type | Required | Notes |
+|-------|------|----------|-------|
+| `title` | string | yes | Project / content set title (e.g. `"Logo Designs"`) — also used as the directory name (kebab-cased) |
+| `images` | string | yes | JSON array of `{ title, prompt, aspectRatio? }` — one entry per starter image |
+
+Example `images` payload:
+
+```json
+[
+  { "title": "Geometric Fox v1", "prompt": "A minimalist geometric fox logo, flat vector, orange on dark", "aspectRatio": "1:1" },
+  { "title": "Geometric Fox v2", "prompt": "A minimalist geometric fox logo, alternate angle", "aspectRatio": "1:1" },
+  { "title": "Wordmark Variant", "prompt": "Wordmark companion to the fox logo, sans-serif", "aspectRatio": "16:9" }
+]
+```
+
+After scaffolding, the canvas shows a placeholder row; run the generation script per item to fill it in.
+
+## Architecture
+
+- Each top-level directory is a **content set** (project) with `manifest.json` + `images/`
+- `manifest.json` — Row-based index tracking all generated images (rows → items)
+- `images/` — Generated image files
+
+## Core Rules
+
+- Always update `manifest.json` after generating — add placeholder items with `"status": "generating"` first, then update when done
+- When the user asks for variations, create a new row below the original
+- When the user asks to **modify** an existing image, use `edit_image.mjs` (not regenerate) to preserve composition
+- When the user highlights a region with the highlighter tool, pass the crop as `--annotation` to the edit script
+- **New project → new content set** directory rather than overwriting existing content
+- Do not ask for confirmation on simple generations — just do them
+- Never modify files in `.claude/` or `.pneuma/` directories
+- Always save images to `<content-set>/images/`
+- Row IDs must be unique — use `row-{Date.now()}` format
+{{#imageGenEnabled}}
+
+## AI Image Generation
+
+- `scripts/generate_image.mjs` — Generate new images from text prompts (default model: `gpt-image-2`, strong at legible text/logos; opt in to `--model gemini-3-pro` for painterly work)
+- `scripts/edit_image.mjs` — Modify an existing local image with an optional highlighter annotation (Gemini vision via OpenRouter)
+
+**Workflow at a glance**: write placeholder row to `manifest.json` (status: "generating") → run script → update manifest with result. Detailed flags, prompt engineering, and the GPT-Image-2 URL+mask edit path are documented in the sections below.
+{{/imageGenEnabled}}
 
 ## Data Model
-
-### Content Set = Project
-
-Each top-level directory in the workspace is a **content set** representing a distinct project (logo designs, app prototypes, marketing assets, etc.). Each content set contains:
-- `manifest.json` — Row-based manifest tracking all generated images
-- `images/` — Generated image files
 
 ### Row = Generation Batch
 
@@ -293,9 +432,11 @@ When the user selects an image and asks for variations:
 
 ## Content Set Workflow
 
+(For the conceptual model and switch-set locator, see **Working with the viewer → Content sets** above.)
+
 ### Creating a New Content Set
 
-When the user starts a new project:
+When the user starts a new project, prefer the scaffold action (see "Working with the viewer → Scaffold"). To do it by hand:
 
 1. Create a new top-level directory with a descriptive name (e.g. `logo-project/`, `app-mockups/`)
 2. Create `manifest.json` with title and empty rows
@@ -387,41 +528,10 @@ When the user wants multiple images:
 3. **Add all to one row** — A batch generation task is a single row with multiple items
 4. **Offer adjustments** — After each image, briefly note it's done; continue to the next unless the user intervenes
 
-## Context Format
-
-When the user selects an image, you'll receive context like:
-
-```xml
-<viewer-context mode="illustrate" file="images/logo-v1.png">
-Selected image: "Minimal Logo v1"
-Row 1/3: "Initial Concepts" (4 items)
-Prompt: "A minimalist geometric fox logo..."
-Style: minimal
-Tags: logo, geometric
-</viewer-context>
-```
-
-When no image is selected, you'll see a project overview:
-
-```xml
-<viewer-context mode="illustrate">
-Project: "Logo Project" (3 rows, 12 images)
-Styles: minimal (5), watercolor (4), flat-vector (3)
-Rows:
-  1. "Initial Concepts" (4 items)
-  2. "Warm Color Variations" (4 items)
-  3. "Final Refinements" (4 items)
-Tags: logo, geometric, warm, professional
-</viewer-context>
-```
-
-Use this to understand what the user is referring to when they say "this image", "this row", "make it darker", etc.
-
 ## Constraints
 
-- Never modify files in `.claude/` or `.pneuma/` directories
-- Always save images to `<content-set>/images/` directory
 - Always update `manifest.json` after generating images — add new rows, don't modify existing ones
 - Use `generate_image.mjs` / `edit_image.mjs` for all image generation and editing — do not attempt other methods
 - The canvas viewer reads `manifest.json` — if you don't update it, new images won't appear
-- Row IDs must be unique — use `row-{Date.now()}` format
+
+(See **Core Rules** above for filesystem boundaries and row-ID format.)

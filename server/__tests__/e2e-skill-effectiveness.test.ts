@@ -43,7 +43,12 @@ function makeWorkspace(name: string): string {
 // ── 1. Skill Installation: CLAUDE.md has skill consult directive + core rules ─
 
 describe("skill installation → CLAUDE.md skill reference", () => {
-  it("doc mode: CLAUDE.md directs agent to consult skill and has core rules", () => {
+  // Note: the "core rules" assertions were removed — mode-specific Core Rules
+  // sections moved out of CLAUDE.md and now live exclusively in the mode's
+  // SKILL.md (loaded via Claude Code progressive disclosure). The pneuma:start
+  // block in CLAUDE.md is now a slim scene + pointer to the skill.
+
+  it("doc mode: CLAUDE.md directs agent to consult skill", () => {
     const ws = makeWorkspace("doc-e2e");
     const modeSourceDir = join(PROJECT_ROOT, "modes", "doc");
     installSkill({
@@ -55,11 +60,11 @@ describe("skill installation → CLAUDE.md skill reference", () => {
     });
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
-    expect(claudeMd).toContain("consult the `pneuma-doc` skill");
-    expect(claudeMd).toContain("### Core Rules");
+    expect(claudeMd).toContain("`pneuma-doc` skill");
+    expect(claudeMd).toContain("read it before your first action of substance");
   });
 
-  it("draw mode: CLAUDE.md directs agent to consult skill and has core rules", () => {
+  it("draw mode: CLAUDE.md directs agent to consult skill", () => {
     const ws = makeWorkspace("draw-e2e");
     const modeSourceDir = join(PROJECT_ROOT, "modes", "draw");
     installSkill({
@@ -71,11 +76,11 @@ describe("skill installation → CLAUDE.md skill reference", () => {
     });
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
-    expect(claudeMd).toContain("consult the `pneuma-draw` skill");
-    expect(claudeMd).toContain("bidirectional binding");
+    expect(claudeMd).toContain("`pneuma-draw` skill");
+    expect(claudeMd).toContain("read it before your first action of substance");
   });
 
-  it("slide mode: CLAUDE.md directs agent to consult skill and has core rules", () => {
+  it("slide mode: CLAUDE.md directs agent to consult skill", () => {
     const ws = makeWorkspace("slide-e2e");
     const modeSourceDir = join(PROJECT_ROOT, "modes", "slide");
     installSkill({
@@ -87,11 +92,11 @@ describe("skill installation → CLAUDE.md skill reference", () => {
     });
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
-    expect(claudeMd).toContain("consult the `pneuma-slide` skill");
-    expect(claudeMd).toContain("overflow is the #1 quality issue");
+    expect(claudeMd).toContain("`pneuma-slide` skill");
+    expect(claudeMd).toContain("read it before your first action of substance");
   });
 
-  it("mode-maker: CLAUDE.md directs agent to consult skill and has core rules", () => {
+  it("mode-maker: CLAUDE.md directs agent to consult skill", () => {
     const ws = makeWorkspace("mode-maker-e2e");
     const modeSourceDir = join(PROJECT_ROOT, "modes", "mode-maker");
     installSkill({
@@ -103,8 +108,8 @@ describe("skill installation → CLAUDE.md skill reference", () => {
     });
 
     const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
-    expect(claudeMd).toContain("consult the `pneuma-mode-maker` skill");
-    expect(claudeMd).toContain("ModeManifest reference");
+    expect(claudeMd).toContain("`pneuma-mode-maker` skill");
+    expect(claudeMd).toContain("read it before your first action of substance");
   });
 });
 
@@ -217,7 +222,8 @@ describe("evolution apply/rollback → CLAUDE.md sync (end-to-end)", () => {
     const originalClaudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
     expect(originalClaudeMd).toContain("<!-- pneuma:start -->");
     expect(originalClaudeMd).toContain("<!-- pneuma:end -->");
-    expect(originalClaudeMd).toContain("consult the `pneuma-slide` skill");
+    // pneuma:start now has a slim scene + pointer line that names the skill.
+    expect(originalClaudeMd).toContain("`pneuma-slide` skill");
     expect(originalClaudeMd).not.toContain("<!-- pneuma:evolved:start -->");
 
     // Save and apply proposal
@@ -240,8 +246,8 @@ describe("evolution apply/rollback → CLAUDE.md sync (end-to-end)", () => {
     expect(evolvedStart).toBeGreaterThan(pneumaStart);
     expect(evolvedStart).toBeLessThan(pneumaEnd);
 
-    // The skill consult directive should still be there
-    expect(appliedClaudeMd).toContain("consult the `pneuma-slide` skill");
+    // The skill pointer should still be there
+    expect(appliedClaudeMd).toContain("`pneuma-slide` skill");
 
     // Verify SKILL.md was also modified (the actual proposal changes)
     const skillMd = readFileSync(join(ws, ".claude", "skills", "pneuma-slide", "SKILL.md"), "utf-8");

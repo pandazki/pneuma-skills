@@ -2,6 +2,81 @@
 
 Create programmatic videos with React and Remotion inside the Pneuma workspace. The viewer compiles and previews compositions in real-time as files are edited.
 
+## Working with the viewer
+
+The Pneuma viewer for Remotion is a Player panel with frame-accurate scrubbing. It compiles your `src/` files in-browser within ~1 second of every Edit/Write, exposes the current composition and playback state to you, and accepts navigation/control commands. Everything below is how you read what the user sees, point them at moments, and drive the player.
+
+Frame math (relevant to every channel below): frames are 0-based and `frame = seconds × fps`. Default fps is 30, so 2 seconds = frame 60.
+
+### Reading what the user sees
+
+User messages may include a `<viewer-context mode="remotion">` block carrying:
+
+- **Active composition** — the composition ID currently mounted in the Player (matches an entry in `src/Root.tsx`).
+- **Playback state** — current frame, timecode, duration, playing/paused, playback rate.
+- **Compositions** — IDs parsed from `Root.tsx` (the dropdown list).
+- **Project files** — source file list under `src/`.
+
+The same block also surfaces `<user-actions>` — recent things the user did in the Player: seeks, composition switches, in/out point set/clear, playback rate changes. Use both together to resolve references like "this part", "the animation here", "around 2 seconds" — translate them through `frame = seconds × fps` against the composition's fps.
+
+### Locator cards
+
+After creating or editing compositions, embed locator cards in your reply so the user can jump straight to what changed. The `data` keys for remotion are:
+
+- `file` — composition ID from `Root.tsx` (required).
+- `inFrame` / `outFrame` — optional pair; when both are set, the Player sets in/out points and starts loop playback over that range.
+
+Open a composition:
+
+```
+<viewer-locator label="Open MyComposition" data='{"file":"MyComposition"}' />
+```
+
+Loop a specific range (example: a hero shot from 3s to 5s at 30fps → frames 90-150):
+
+```
+<viewer-locator label="Loop hero shot" data='{"file":"MyComposition","inFrame":90,"outFrame":150}' />
+```
+
+Reach for the loop variant whenever you modified timing in a specific section, added a new scene, or changed a transition — it lets the user see exactly what changed without scrubbing.
+
+### Viewer actions
+
+The viewer exposes 4 agent-callable actions for driving the Player. Invoke them with `POST $PNEUMA_API/api/viewer/action`.
+
+| Action | Purpose | Params |
+|---|---|---|
+| `get-playback-state` | Query current composition, frame, duration, playing, speed, all compositions list | — |
+| `seek-to-frame` | Navigate to a specific frame | `{ frame: number }` (0-based) |
+| `set-playback-rate` | Change playback speed | `{ rate: number }` (0.25 – 4) |
+| `set-composition` | Switch the active composition in the viewer | `{ compositionId: string }` |
+
+Example — seek to the start of the hero shot (frame 90 = 3s at 30fps):
+
+```bash
+curl -X POST "$PNEUMA_API/api/viewer/action" \
+  -H "Content-Type: application/json" \
+  -d '{"actionId":"seek-to-frame","params":{"frame":90}}'
+```
+
+Prefer locator cards for "look at this" — they're cheaper and the user controls the click. Reach for actions when you need to drive the Player synchronously (e.g. confirm a composition exists by switching to it, or read playback state before computing a frame range).
+
+### Native desktop APIs
+
+When running in the Electron desktop client, `$PNEUMA_API/api/native/*` exposes file-system and OS bridges (open path, reveal in finder, etc.). Web sessions return `{ available: false }` — always handle that case.
+
+## Canvas
+
+- Default composition size: {{compositionWidth}}×{{compositionHeight}}px (set when the session was created).
+- Design to fill the frame — sparse layouts read as unfinished. Treat each frame as a poster.
+- When creating new compositions, use `width={{{compositionWidth}}}` `height={{{compositionHeight}}}` unless the user requests otherwise.
+
+## Constraints
+
+- Do not modify `.claude/`, `.pneuma/`, or `node_modules/`.
+- Keep compositions in the `src/` directory.
+- Use descriptive composition IDs — they appear in the viewer dropdown and in locator cards.
+
 ## Workflow
 
 Video creation follows three stages. The goal is to ensure the content is worth expressing before any code is written — animation is expression, not decoration.
@@ -71,33 +146,6 @@ import { Img, staticFile } from "remotion";
 ```
 
 **Not supported in preview:** External packages like `@remotion/google-fonts`, `@remotion/three`, `@remotion/motion-blur`. These require running `npx remotion studio` separately.
-
-### Locator Cards
-
-After editing compositions, include locator cards so the user can jump directly to what changed.
-
-Navigate to a composition:
-```
-<viewer-locator label="My Composition" data='{"file":"MyComposition"}' />
-```
-
-Loop a specific time range (useful when editing a particular section):
-```
-<viewer-locator label="Intro Animation (0-3s)" data='{"file":"MyComposition","inFrame":0,"outFrame":90}' />
-```
-
-Frame numbers are 0-based. Calculate from time: `frame = seconds × fps` (default fps is 30).
-
-Use frame-range locators when you modified timing in a specific section, added a new scene, or changed a transition — it lets the user see exactly what changed without scrubbing.
-
-### Viewer Context
-
-User messages may include a `<viewer-context mode="remotion">` block with:
-- **Composition and playback state** — which composition, frame, timecode, playing/paused
-- **Project files** — source file list
-- **Compositions** — IDs parsed from Root.tsx
-
-Use this to resolve references like "this part", "the animation here", "around 2 seconds".
 
 ### Project Structure
 

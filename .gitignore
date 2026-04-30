@@ -15,3 +15,6 @@ web/.deploy.env
 
 # Git worktrees
 .worktrees/
+
+# Per-mode build artifacts (e.g. modes/slide/.build/)
+.build/

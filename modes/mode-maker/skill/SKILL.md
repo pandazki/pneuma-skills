@@ -10,7 +10,71 @@ description: >
 
 # Pneuma Mode Maker Skill
 
-You are working in Pneuma Mode Maker — a development environment for creating new Pneuma modes. The workspace IS the mode package you are building. The user sees a live dashboard of the mode's structure, seed previews, and skill content.
+The workspace IS the mode package you are building. The user sees a live dashboard of the mode's structure, seed previews, and skill content as files change.
+
+## Core Rules
+
+- Follow existing mode patterns (doc, slide, draw) for consistency — see "Existing Mode Examples" below.
+- Do not ask for confirmation on simple edits — just do them.
+
+## Working with the viewer
+
+Mode-maker's viewer is a development IDE for the mode package — *not* a content canvas. It lists the package files, shows the active file's contents, surfaces a completeness checklist (manifest, pneuma-mode, viewer, skill, seed), and exposes user-driven buttons: **Fork**, **Play**, **Publish**, **Reset**. The agent's role is to keep the package files correct so the next Play click loads cleanly.
+
+### Reading what the user sees
+
+Each turn, you receive a `<viewer-context>` block describing the package state. For mode-maker it looks like:
+
+```xml
+<viewer-context mode="mode-maker" file="viewer/Preview.tsx">
+Developing mode: "Quiz" (quiz)
+Status: 3/5 components
+  - manifest.ts: done
+  - pneuma-mode.ts: done
+  - viewer component: done
+  - skill/SKILL.md: missing
+  - seed content: missing
+Selected: highlight "useSource(sources.files)"
+</viewer-context>
+```
+
+What it tells you:
+
+- `file="..."` — which file the user is currently focused on in the dashboard. If they ask "fix this" or "rename this", they almost always mean this file.
+- `Status: N/5 components` — completeness checklist. Missing entries are your default backlog when the user says "finish the mode".
+- `Selected: <type> "<content>"` — present only when the user highlighted text or selected an item; otherwise omitted. Treat `viewing` (no selection) as "they're just looking, don't assume scope".
+
+There are no `<user-actions>` events in mode-maker — file selection and Play/Fork/Publish/Reset are reflected in `<viewer-context>` (active file, completeness) and in workspace file changes, not as a separate action stream.
+
+### Locator cards
+
+Mode-maker does not surface `<viewer-locator>` cards — there are no domain objects (slides, paper pages, board tiles) to anchor to. When you want to point the user at something, link the file directly in chat:
+
+```
+Take a look at [`viewer/Preview.tsx`](viewer/Preview.tsx) — the `useSource` call on line 12 is what's wrong.
+```
+
+### Viewer actions (agent → viewer)
+
+The mode-maker manifest does not declare any `actions`, so the viewer is read-only from your side — there is no `POST $PNEUMA_API/api/viewer/action` endpoint to invoke for this mode. You drive the package by editing files (Read/Edit/Write); the viewer reflects them automatically via the file watcher.
+
+The HTTP routes under `/api/mode-maker/*` (`play`, `play/stop`, `fork`, `publish`, `reset`, `modes`) are wired to **buttons in the dashboard, not to the agent**. Do not call them from your tools — when the user says "play it" or "publish it", point them at the corresponding button rather than curling the endpoint yourself.
+
+### Play harness — the primary feedback loop
+
+Play is the heartbeat of mode-maker. Clicking **Play** in the dashboard does this:
+
+1. The server spawns a child Pneuma process at **Vite 18996 / backend 18997**, pointing at the *current workspace* as a local mode source, with a fresh temp workspace as its target.
+2. The child loads your latest `manifest.ts`, `viewer/`, and `skill/` from disk — every saved file is what the next Play click sees.
+3. An iframe shows the child running. The user clicks through it like a real session.
+
+Your job around Play:
+
+- **Before the user clicks Play**, make sure the package compiles: `manifest.ts` is pure data (no React, no side effects), `pneuma-mode.ts` exports a `ModeDefinition`, and the viewer component renders without throwing on an empty workspace. A crashed Play is the most common bug class — read the existing files first, don't wing it.
+- **When the user reports a bug after Play**, ask *what they did in the child* (which seed they hit, which button they clicked) before changing anything. The child's session state is in its own temp workspace and you can't see it from here.
+- **Only one Play instance runs at a time.** If `POST /api/mode-maker/play` is already active, the dashboard shows Stop instead of Play; tell the user to stop and restart after a structural change (new init param, new seed file) so the child reloads cleanly.
+
+Native desktop APIs (`$PNEUMA_API/api/native/*`) are available the same as in any other mode — use them for file pickers or shell-open if you need to pull external assets into the package.
 
 ## Mode Package Structure
 
@@ -18,8 +82,8 @@ A complete Pneuma mode package:
 
 ```
 my-mode/
-├── manifest.ts        ← ModeManifest export (required)
-├── pneuma-mode.ts     ← ModeDefinition export (required)
+├── manifest.ts        ← ModeManifest export (required, pure data — no React imports, no side effects)
+├── pneuma-mode.ts     ← ModeDefinition export (required, binds manifest + viewer)
 ├── viewer/
 │   └── Preview.tsx    ← React component implementing ViewerPreviewProps (required)
 ├── skill/
@@ -111,9 +175,7 @@ Seed files and skill files support `{{key}}` template variables from init params
 
 ## Testing
 
-The fastest feedback loop is the **Play** button in the mode-maker viewer — it spawns a child pneuma process against the current workspace as a local mode source, in a fresh temp workspace, so you can click through a real viewer without leaving the mode-maker window. Each click runs against the latest files on disk.
-
-For direct CLI testing:
+Play (covered in **Working with the viewer**) is the primary loop. As a CLI fallback when the user wants to test outside the mode-maker window:
 
 ```bash
 # From pneuma-skills project root — any local mode directory works as the first arg

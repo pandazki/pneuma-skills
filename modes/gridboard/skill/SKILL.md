@@ -11,7 +11,77 @@ description: >
 
 # Pneuma GridBoard Mode — Dashboard Building Skill
 
-You are working in Pneuma GridBoard Mode — a live dashboard editor where the user views your edits in real-time in a browser preview panel. You create and manage tiles on a draggable grid canvas.
+GridBoard is a live dashboard editor: you create and manage tiles on a draggable grid canvas, and the user views every file edit in real-time through the preview panel.
+
+**Board canvas:** {{boardWidth}}×{{boardHeight}}px, grid: {{columns}} columns × {{rows}} rows.
+
+---
+
+## Working with the viewer
+
+The GridBoard viewer is a live tile-grid canvas the user watches while you edit. Pneuma exposes a small set of channels that flow between the viewer, you (the agent), and the user. Treat them as your primary I/O — the user is rarely in the chat alone, they're dragging, resizing, and clicking inside the board.
+
+### Reading what the user sees
+
+The runtime injects a `<viewer-context>` block into your turn whenever the user has something focused. For GridBoard it carries the active board snapshot, current layout state, and the selected tile (if any). When the user drags or resizes a tile, opens the gallery, or shifts the layout, those movements arrive as `<user-actions>` — operations the user just performed in the viewer that you should treat as ground truth, even if they contradict your last edit.
+
+**Always reconcile `<viewer-context>` and `<user-actions>` before continuing.** If the user resized `revenue-chart` from 2×2 to 4×3, that new size is the source of truth — do not "fix" it back to your earlier choice. Update `board.json` and the tile's internal breakpoints to match.
+
+### Locator cards
+
+After creating or editing tiles, embed `<viewer-locator>` cards in chat so the user can jump straight to the result with one click. The card's `data` attribute is a JSON object the viewer interprets:
+
+- `{"tileId":"<id>"}` — focuses and highlights the tile on the board (uses the `navigate-to` action under the hood)
+- `{"action":"open-gallery"}` — opens the tile-type gallery for browsing available templates
+
+Real examples:
+
+```html
+<!-- Jump to a specific tile you just edited -->
+<viewer-locator label="Open revenue chart tile" data='{"tileId":"revenue-chart"}' />
+
+<!-- Open the gallery so the user can browse what else is available -->
+<viewer-locator label="Open the gallery" data='{"action":"open-gallery"}' />
+```
+
+Emit a locator card whenever you change something the user benefits from looking at — a new tile, a redesigned tier, a fresh gallery entry. One card per concrete destination; do not spam.
+
+### Viewer actions (agent → viewer)
+
+You can drive the viewer programmatically by `POST $PNEUMA_API/api/viewer/action` with a JSON body `{"id":"<action-id>","params":{...}}`. The action set for GridBoard (declared in the manifest) is:
+
+| Action | Params | Use it when |
+|---|---|---|
+| `navigate-to` | `{ tileId }` | You want to focus the user's eye on a tile after editing it |
+| `open-gallery` | `{}` | The user asked what else is available, or you want to suggest templates |
+| `lock-tile` | `{ tileId }` | About to edit a tile's component — show a "modifying" overlay so the user doesn't drag it mid-edit |
+| `unlock-tile` | `{ tileId }` | Done editing — remove the overlay |
+| `capture-tile` | `{ tileId }` | You need a screenshot of one tile (e.g. to verify a render) |
+| `capture-board` | `{}` | You need a screenshot of the whole board (layout review) |
+
+`lock-tile` / `unlock-tile` should bracket multi-edit tile work so the user sees the in-progress state without grabbing a half-edited component. `capture-tile` and `capture-board` return an image you can inspect — use them when a visual check would beat reading code.
+
+Example — focus a tile after a render rewrite:
+
+```bash
+curl -s -X POST "$PNEUMA_API/api/viewer/action" \
+  -H "Content-Type: application/json" \
+  -d '{"id":"navigate-to","params":{"tileId":"revenue-chart"}}'
+```
+
+Example — screenshot the whole board to review layout:
+
+```bash
+curl -s -X POST "$PNEUMA_API/api/viewer/action" \
+  -H "Content-Type: application/json" \
+  -d '{"id":"capture-board","params":{}}'
+```
+
+### Scaffold (commands)
+
+GridBoard exposes one user-invocable command, `create-tile`, which scaffolds a new tile directory + `Tile.tsx` and registers it in `board.json`. The user triggers this from the viewer's command palette; you'll then see the new files appear and can iterate. You don't call commands directly — that channel is for the user. When they run it, treat the resulting empty `Tile.tsx` as your starting point.
+
+---
 
 ## Core Principles
 
@@ -294,6 +364,8 @@ What does NOT count: bigger fonts, more padding, same elements rearranged.
 2. If the tile's size requirements changed, update `minSize`/`maxSize` in the definition
 3. If position or size on the board changed, update `board.json`
 4. Never modify `.claude/` or `.pneuma/` — managed by the runtime
+
+---
 
 ## External API Access (Proxy)
 

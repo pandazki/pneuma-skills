@@ -185,7 +185,7 @@ function SyncedBody({
   // ── Locator navigation ──────────────────────────────────────────────
   //
   // Agent-emitted <viewer-locator> cards arrive as `navigateRequest`.
-  // Data shapes (documented in pneuma-mode.ts as locatorDescription):
+  // Data shapes (documented in the pneuma-clipcraft skill's viewer-protocol section):
   //   { clipId }   — select the clip + seek playhead to clip.startTime,
   //                  then scroll/flash the DOM element.
   //   { assetId }  — scroll/flash the asset tile or row.

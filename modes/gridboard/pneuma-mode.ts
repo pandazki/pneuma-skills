@@ -168,8 +168,6 @@ const gridboardMode: ModeDefinition = {
     },
 
     updateStrategy: "full-reload",
-
-    locatorDescription: gridboardManifest.viewerApi?.locatorDescription,
   },
 };
 
