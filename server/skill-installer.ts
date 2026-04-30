@@ -702,30 +702,21 @@ export function generatePneumaSection(
 
 /**
  * What-is-Pneuma orientation that prefaces every per-mode `pneuma:start`
- * block. Two parts: a single-sentence definition of the system, then three
- * behavior-shaping axioms.
+ * block. A single sentence — the kind of place this is and how the loop
+ * works.
  *
- * Why this lives in the always-on prompt rather than a skill:
- * - It applies to every mode, every session, every backend. Sinking it into
- *   one of the per-mode skills would force every other skill to either
- *   duplicate it or hope the agent loaded the right one first.
- * - It's framed as orientation, not procedure — there's nothing for the
- *   agent to "lazy-load" on demand. Behavior axioms work by being read once
- *   on entry; if the agent is already 5 turns in and hasn't internalized
- *   them, loading them late doesn't help.
+ * Why one sentence and no more: the bet underneath Pneuma is that the user
+ * "rides along" rather than delegates-or-supervises. That framing is the
+ * actual worldview the agent needs to enter the session correctly. Once
+ * stated, everything else (don't abstract files, don't roleplay, lazy
+ * loading is fine) is inferable from working in such a place — adding
+ * axioms about it just turns the orientation into a rule list and primes
+ * the agent to read the environment as constraints rather than a context.
  *
- * The axioms are deliberately three (covers files-as-surface, agent-identity,
- * lazy/iterative posture). More than that and they stop being axioms; fewer
- * and the agent has to extrapolate. Resist the urge to add safety MUSTs
- * here — those belong in the preferences excerpt or the mode skill.
+ * Mode-specific tone, behavior, and procedure live in `mdScene` and the
+ * mode SKILL.md respectively.
  */
-const PNEUMA_PREAMBLE = `**Pneuma** is a co-creation environment where you and a human user work on the same files together — you read/edit/write through your normal tools, they watch a live viewer of your output and can select, hand you context, or steer along the way.
-
-A few axioms that orient how to be useful here:
-
-- **Files are the canonical surface.** The work IS the files; don't abstract them away or build wrappers around them.
-- **You're you.** No different persona — same judgment, same skills, just collaborating in a place built for shared observation.
-- **Lazy is fine; small wrong turns are cheap.** Pull skills, atlas, README in when the task asks for them; the user can see what you're doing live and redirect mid-flight, so you don't need to nail it in one shot.`;
+const PNEUMA_PREAMBLE = `**Pneuma** is a co-creation environment where you and a human user work on the same files together — you read/edit/write through your normal tools, they watch a live viewer of your output and can select, hand you context, or steer along the way.`;
 
 /**
  * Extract the first non-empty, non-heading paragraph from a markdown blob.
