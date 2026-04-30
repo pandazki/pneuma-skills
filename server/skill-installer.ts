@@ -738,7 +738,13 @@ export function generateViewerApiSection(
   const actions = viewerApi.actions?.filter((a) => a.agentInvocable) ?? [];
   const hasScaffold = Boolean(viewerApi.scaffold);
   const hasContentSets = Boolean(viewerApi.workspace?.supportsContentSets);
-  const hasLocator = Boolean(viewerApi.locatorDescription);
+  // Locator cards are a runtime-universal feature — every mode that has any
+  // viewer surface can use them. The legacy `locatorDescription` flag was a
+  // mode-side opt-in for the old verbose section; under the slim teaser the
+  // wrapper syntax is universal and the mode-specific `data` schema lives in
+  // each mode's SKILL.md. Always emit the channel bullet so the agent doesn't
+  // hallucinate a different card-tag syntax from training-data priors.
+  const hasLocator = true;
 
   const lines: string[] = [
     "## Viewer API",
@@ -750,8 +756,15 @@ export function generateViewerApiSection(
   ];
 
   if (hasLocator) {
+    // Use a fully-concrete example, not a `<...>` placeholder. Empirically, an
+    // abstract `<viewer-locator label="..." data='{...}' />` template gets
+    // overridden by training-data priors for `::admonition::` / RST / Docusaurus
+    // card syntaxes — the agent invents its own wrapper. Anchoring with a real
+    // tag the agent can copy-paste prevents that. The `data` keys still vary
+    // per mode, so the schema pointer at the end stays.
+    const skillRef = installName ? `the \`${installName}\` skill` : "the mode's skill";
     lines.push(
-      "- Embed `<viewer-locator label=\"...\" data='{...}' />` cards in your replies for one-click navigation back to what you produced or changed. Post one whenever you create or edit content.",
+      `- Post \`<viewer-locator>\` cards for one-click navigation back to what you produced — self-closing HTML, e.g. \`<viewer-locator label="Open the result" data='{"key":"value"}' />\`. The \`data\` keys are mode-specific; ${skillRef} names this mode's schema.`,
     );
   }
 
