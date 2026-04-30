@@ -279,7 +279,4 @@ export interface ViewerContract {
 
   /** Capture current viewport screenshot (optional, dynamically injected by PreviewComponent after mount) */
   captureViewport?: () => Promise<{ data: string; media_type: string } | null>;
-
-  /** Locator format description — injected into CLAUDE.md to guide the agent in generating <viewer-locator> tags */
-  locatorDescription?: string;
 }

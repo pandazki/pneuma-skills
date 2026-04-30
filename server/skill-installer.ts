@@ -713,21 +713,29 @@ function pickScene(raw: string | undefined): string | null {
 }
 
 /**
- * Generate the slim Viewer API teaser for CLAUDE.md / AGENTS.md.
+ * Generate the pure-router Viewer API block for CLAUDE.md / AGENTS.md.
  *
- * The block names the channels the viewer exposes and the actions the agent
- * can call — just enough for the agent to know they exist and reach for the
- * right one. Detailed reference material (locator card schema, scaffold
- * params, native API module list, proxy preset config) lives in the mode's
- * own SKILL.md, loaded on demand.
+ * Names the channels available between the viewer, the agent, and the user —
+ * nothing more. Concrete shapes (locator card schema, action IDs and param
+ * types, scaffold params, content-set conventions, native API modules, proxy
+ * presets) all live in each mode's own SKILL.md as a prominent top-level
+ * "viewer protocol" section, loaded on demand by the host.
+ *
+ * Why pure-router: empirically, inlining concrete syntax samples or actions
+ * tables in CLAUDE.md created two problems. (1) Abstract placeholders (e.g.
+ * `<viewer-locator label="..." data='{...}' />`) lost to training-data priors
+ * and the agent invented other card-tag syntaxes. (2) Concrete inline samples
+ * created dual-source drift with the SKILL.md reference. Treating CLAUDE.md
+ * as a router and the SKILL.md as the single canonical source resolves both.
  *
  * Pure function — no side effects.
  *
- * @param viewerApi — viewerApi config from the mode's manifest
+ * @param viewerApi — viewerApi config from the mode's manifest. Used only to
+ *   detect whether the mode has a viewer surface at all.
  * @param installName — the mode's skill install name (e.g. "pneuma-illustrate"),
- *   used only to point the agent at the right skill for full details
- * @returns slim markdown body (no marker comments) or empty string when the
- *   mode declares no viewer API
+ *   used to point the agent at the right skill for the canonical schema.
+ * @returns markdown body (no marker comments) or empty string when the mode
+ *   declares no viewer API
  */
 export function generateViewerApiSection(
   viewerApi: ViewerApiConfig | undefined,
@@ -735,88 +743,21 @@ export function generateViewerApiSection(
 ): string {
   if (!viewerApi) return "";
 
-  const actions = viewerApi.actions?.filter((a) => a.agentInvocable) ?? [];
-  const hasScaffold = Boolean(viewerApi.scaffold);
-  const hasContentSets = Boolean(viewerApi.workspace?.supportsContentSets);
-  // Locator cards are a runtime-universal feature — every mode that has any
-  // viewer surface can use them. The legacy `locatorDescription` flag was a
-  // mode-side opt-in for the old verbose section; under the slim teaser the
-  // wrapper syntax is universal and the mode-specific `data` schema lives in
-  // each mode's SKILL.md. Always emit the channel bullet so the agent doesn't
-  // hallucinate a different card-tag syntax from training-data priors.
-  const hasLocator = true;
+  const skillRef = installName ? `the \`${installName}\` skill` : "the mode's skill";
 
-  const lines: string[] = [
+  return [
     "## Viewer API",
     "",
-    "The viewer is your live window into what the user sees, plus a few channels back to them:",
+    "Channels between the viewer, you, and the user:",
     "",
-    "- `<viewer-context>` may prefix user messages — it tells you the active file, viewport, and selection. Use it to resolve \"this\", \"here\", \"this row\".",
-    "- `<user-actions>` blocks summarize meaningful UI actions since your last turn.",
-  ];
-
-  if (hasLocator) {
-    // Use a fully-concrete example, not a `<...>` placeholder. Empirically, an
-    // abstract `<viewer-locator label="..." data='{...}' />` template gets
-    // overridden by training-data priors for `::admonition::` / RST / Docusaurus
-    // card syntaxes — the agent invents its own wrapper. Anchoring with a real
-    // tag the agent can copy-paste prevents that. The `data` keys still vary
-    // per mode, so the schema pointer at the end stays.
-    const skillRef = installName ? `the \`${installName}\` skill` : "the mode's skill";
-    lines.push(
-      `- Post \`<viewer-locator>\` cards for one-click navigation back to what you produced — self-closing HTML, e.g. \`<viewer-locator label="Open the result" data='{"key":"value"}' />\`. The \`data\` keys are mode-specific; ${skillRef} names this mode's schema.`,
-    );
-  }
-
-  if (actions.length > 0 || hasScaffold) {
-    lines.push(
-      "- HTTP: `POST $PNEUMA_API/api/viewer/action -H 'Content-Type: application/json' -d '{\"actionId\":\"...\",\"params\":{...}}'` invokes the actions table below.",
-    );
-  }
-
-  lines.push(
-    "- HTTP: `$PNEUMA_API/api/native/*` exposes desktop APIs (clipboard, shell, notifications, ...) when running inside Pneuma App. Discover via `GET /api/native`; absent on web.",
-  );
-
-  lines.push("");
-
-  if (actions.length > 0 || hasScaffold) {
-    lines.push("### Actions");
-    lines.push("");
-    lines.push("| Action | Description | Params |");
-    lines.push("|--------|-------------|--------|");
-    for (const action of actions) {
-      const paramDescs: string[] = [];
-      if (action.params) {
-        for (const [name, p] of Object.entries(action.params)) {
-          paramDescs.push(`${name}${p.required ? "" : "?"}: ${p.type}`);
-        }
-      }
-      lines.push(`| \`${action.id}\` | ${action.description || action.label} | ${paramDescs.join(", ") || "—"} |`);
-    }
-    if (hasScaffold) {
-      const sc = viewerApi.scaffold!;
-      lines.push(
-        `| \`scaffold\` | ${sc.description} (requires user confirmation in browser) | see skill |`,
-      );
-    }
-    lines.push("");
-  }
-
-  if (hasContentSets) {
-    lines.push(
-      "This workspace supports **content sets** — top-level directories as switchable projects. The `<viewer-context>` carries a `content-set` attribute; file paths include the prefix. Stay inside the active set unless asked otherwise.",
-    );
-    lines.push("");
-  }
-
-  if (installName) {
-    lines.push(
-      `Locator card schema, scaffold params, the full native-API module list, and any proxy presets live in the \`${installName}\` skill — read it before your first call into one of these channels.`,
-    );
-  }
-
-  return lines.join("\n").trimEnd();
+    "- `<viewer-context>` — may prefix user messages with the active file, viewport, and selection.",
+    "- `<user-actions>` — recent UI interactions the user took since your last turn.",
+    "- `<viewer-locator>` cards — embed in your replies to give the user one-click navigation back to results.",
+    "- `POST $PNEUMA_API/api/viewer/action` — drive the viewer (navigate, fit, scaffold, …).",
+    "- `$PNEUMA_API/api/native/*` — desktop APIs (clipboard, shell, notifications, …) when running inside Pneuma App; discover via `GET /api/native`.",
+    "",
+    `Concrete shapes — locator card schema with this mode's \`data\` keys, action IDs and params, scaffold params, content-set conventions, native module list — live in ${skillRef} under its viewer-protocol section. Read it before your first call.`,
+  ].join("\n");
 }
 
 /**

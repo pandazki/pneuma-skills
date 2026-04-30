@@ -281,6 +281,11 @@ describe("installSkill", () => {
   });
 
   test("injects viewer API section with independent markers", () => {
+    // The viewer-api block is now a pure router: a 5-bullet channel list
+    // plus a single skill-pointer paragraph. Mode-specific shapes (locator
+    // card `data` keys, action IDs/params, scaffold params, content-set
+    // conventions, native module list) all live in the mode's SKILL.md
+    // under its viewer-protocol section, not in CLAUDE.md.
     const viewerApi: ViewerApiConfig = {
       workspace: { type: "manifest", multiFile: true, ordered: true, hasActiveFile: true, manifestFile: "manifest.json" },
       actions: [
@@ -295,15 +300,17 @@ describe("installSkill", () => {
     // Skill section
     expect(content).toContain("<!-- pneuma:start -->");
     expect(content).toContain("<!-- pneuma:end -->");
-    // Viewer API section (independent)
+    // Viewer API section (independent markers + heading)
     expect(content).toContain("<!-- pneuma:viewer-api:start -->");
     expect(content).toContain("<!-- pneuma:viewer-api:end -->");
     expect(content).toContain("## Viewer API");
-    // Slim teaser: action listed in the Actions table, with its description
-    expect(content).toContain("### Actions");
-    expect(content).toContain("`navigate-to`");
-    expect(content).toContain("Navigate to a specific slide");
-    // Pointer back to the mode's skill for deeper reference
+    // Channel list: each of the five bullets the router always emits
+    expect(content).toContain("`<viewer-context>`");
+    expect(content).toContain("`<user-actions>`");
+    expect(content).toContain("`<viewer-locator>` cards");
+    expect(content).toContain("$PNEUMA_API/api/viewer/action");
+    expect(content).toContain("/api/native/");
+    // Skill pointer paragraph references this mode's installed skill
     expect(content).toContain("`pneuma-test` skill");
   });
 
@@ -384,19 +391,9 @@ describe("generateViewerApiSection", () => {
   // fields into CLAUDE.md — those details live in the mode's SKILL.md and
   // load via progressive disclosure.
 
-  test("includes actions table", () => {
-    const result = generateViewerApiSection({
-      actions: [
-        { id: "navigate-to", label: "Go", category: "navigate", agentInvocable: true,
-          params: { file: { type: "string", description: "path", required: true } },
-          description: "Navigate" },
-        { id: "internal", label: "X", category: "custom", agentInvocable: false },
-      ],
-    });
-    expect(result).toContain("`navigate-to`");
-    // Non-agent-invocable actions should be filtered out
-    expect(result).not.toContain("`internal`");
-  });
+  // Removed: "includes actions table". The router no longer emits an
+  // `### Actions` table — action IDs/params live in each mode's SKILL.md
+  // viewer-protocol section.
 
   test("uses $PNEUMA_API env var in curl examples", () => {
     const result = generateViewerApiSection({
@@ -405,18 +402,10 @@ describe("generateViewerApiSection", () => {
     expect(result).toContain("$PNEUMA_API/api/viewer/action");
   });
 
-  test("workspace only (no actions): teaser present, no actions table", () => {
-    const result = generateViewerApiSection({
-      workspace: { type: "single", multiFile: false, ordered: false, hasActiveFile: false },
-    });
-    // Slim teaser still emits the channel list; the actions table is
-    // omitted when there are no agent-invocable actions and no scaffold.
-    expect(result).toContain("## Viewer API");
-    expect(result).toContain("`<viewer-context>`");
-    expect(result).not.toContain("### Actions");
-    // Curl example for /api/viewer/action only appears with actions/scaffold
-    expect(result).not.toContain("/api/viewer/action");
-  });
+  // Removed: "workspace only (no actions): teaser present, no actions table".
+  // The router output is now identical regardless of `actions` presence
+  // (the channel list always includes `/api/viewer/action`), so this stub
+  // for the previous slimmed shape no longer maps to current behavior.
 });
 
 // ── installMcpServers ──────────────────────────────────────────────────────

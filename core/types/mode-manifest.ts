@@ -199,13 +199,6 @@ export interface ViewerApiConfig {
     label: string;
     description?: string;
   }>;
-  /**
-   * @deprecated Mode-specific locator-card guidance now lives in the mode's
-   * `SKILL.md` (loaded via progressive disclosure), not in CLAUDE.md.
-   * The slim Viewer API teaser only mentions that the channel exists.
-   * Retained as optional during migration — currently unused by the installer.
-   */
-  locatorDescription?: string;
   /** Scaffold — workspace initialization/reset capability. Requires user confirmation in browser. */
   scaffold?: {
     description: string;
