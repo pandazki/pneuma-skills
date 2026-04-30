@@ -203,6 +203,16 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
       displayName?: string;
       description?: string;
       initFromSessions?: string[];
+      /**
+       * When true, stamp `onboardedAt` on the new manifest so
+       * `EmptyShell`'s auto-trigger doesn't kick off project-onboard
+       * the first time the user enters the project. The user can
+       * still trigger discovery manually later via ProjectPanel's
+       * Re-discover button. Used by the launcher's "Create without
+       * discovery" alternate action; the default (skipOnboard=false)
+       * leaves the field unset so auto-trigger fires as designed.
+       */
+      skipOnboard?: boolean;
     };
     if (!body.root || !body.name || !body.displayName) {
       return c.json({ error: "missing fields: root, name, displayName" }, 400);
@@ -247,6 +257,7 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
       description: body.description,
       createdAt: now,
       ...(founderSessionId ? { founderSessionId } : {}),
+      ...(body.skipOnboard ? { onboardedAt: now } : {}),
     });
 
     // Best-effort: if the user pointed Pneuma at an existing git repo,

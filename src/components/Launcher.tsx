@@ -3991,7 +3991,20 @@ export default function Launcher() {
       <CreateProjectDialog
         open={createProjectOpen}
         onClose={() => setCreateProjectOpen(false)}
-        onCreated={() => void reloadProjects()}
+        onCreated={(root, skipOnboard) => {
+          // Refresh the list either way so the new project tile shows
+          // up if the user navigates back to the launcher.
+          void reloadProjects();
+          if (!skipOnboard) {
+            // Default path — jump straight into the new project so
+            // EmptyShell auto-triggers project-onboard. Saves the
+            // user a "click your new tile" step and matches the
+            // button copy "Create & discover".
+            window.location.href = `/?project=${encodeURIComponent(root)}`;
+          }
+          // skipOnboard path — stay on the launcher, the new tile
+          // joins the grid via reloadProjects().
+        }}
         homeDir={homeDir}
       />
     </div>
