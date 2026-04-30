@@ -15,27 +15,7 @@ const gridboardManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-gridboard",
-    claudeMdSection: `## Pneuma GridBoard Mode
-
-You are running inside **Pneuma**, a co-creation workspace where you and the user build dashboards together — you edit files, the user sees live results in a browser preview panel.
-
-This is **GridBoard Mode**: an interactive dashboard builder with a draggable tile grid.
-
-For tile component patterns, layout rules, and theming conventions, consult the \`pneuma-gridboard\` skill.
-
-### Architecture
-- \`board.json\` — Board layout config: tile positions, sizes, and metadata
-- \`theme.css\` — Shared CSS theme via custom properties (colors, fonts, spacing)
-- \`tiles/<id>/Tile.tsx\` — Individual tile React components (one directory per tile)
-
-### Core Rules
-- Always use \`defineTile()\` helper to register tile components — do not export bare components
-- Use CSS custom properties from \`theme.css\` for all colors, fonts, and spacing — no hardcoded values
-- Keep \`board.json\` in sync after every structural change (add/move/resize/remove tiles)
-- Size tiles appropriately for their content: charts need more space than stat cards
-- Adapt tile content on resize — tiles should look good at both small and large sizes
-- Board canvas: {{boardWidth}}×{{boardHeight}}px, grid: {{columns}} columns × {{rows}} rows
-- Do not ask for confirmation on simple edits — just do them`,
+    mdScene: `You and the user are building a personal dashboard together inside Pneuma. The user watches a draggable tile grid in the preview panel as you create and edit tiles — every file change re-renders live, and they can drag, resize, or open the gallery while you work. You shape the board by writing tile components and keeping board.json in sync; the canvas reflects the result instantly.`,
   },
 
   layout: "app",
@@ -161,7 +141,6 @@ The user just opened the workspace. You are ready to assist with dashboard creat
         description: "Scaffold a new tile component and register it in board.json",
       },
     ],
-    locatorDescription: "After creating or editing tiles, embed locator cards so the user can jump to them. Navigate by tile ID: `data='{\"tileId\":\"revenue-chart\"}'`. Open the gallery: `data='{\"action\":\"open-gallery\"}'`.",
   },
 
   init: {

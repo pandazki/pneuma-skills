@@ -13,10 +13,26 @@ description: Paper-canvas web design. Edit HTML/CSS/JS; viewer renders your cont
 
 Paper-canvas web design. The viewer renders your content as a single
 paper sheet. Size is **{{paperSize}} {{orientation}}**
-({{pageWidthMm}} × {{pageHeightMm}} mm), locked at workspace creation.
+({{pageWidthMm}} × {{pageHeightMm}} mm), locked at workspace creation
+in `.pneuma/config.json`. **Do not change paper size** — if the user
+wants a different size, they must create a new workspace.
 
 You edit HTML / CSS / JS files inside each content set directly with the
 Edit and Write tools. The iframe preview reflects changes live.
+
+## Core rules
+
+- Edit HTML/CSS/JS files directly — the user sees updates live.
+- Keep the canvas warm (`#f5f4ed` parchment, never pure white).
+- Single accent color: ink blue `#1B365D`. No gradients, no second
+  chromatic hue, no hard drop shadows.
+- Serif (TsangerJinKai02 CN / Newsreader EN) weight locked at 500.
+  Never bold.
+- Do not edit `_shared/styles.css` tokens casually. Aesthetic drift
+  compounds fast.
+- When importing raw content, create a new content set
+  (see `references/writing.md`).
+- Do not modify `.claude/` — it's runtime-managed.
 
 ## Aesthetic rules (kami adapted)
 

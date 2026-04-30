@@ -16,35 +16,7 @@ const illustrateManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-illustrate",
-    claudeMdSection: `## Pneuma Illustrate Mode
-
-You are running inside **Pneuma**, a co-creation workspace where you and the user build visual assets together — you generate images, the user sees results in a live row-based canvas.
-
-This is **Illustrate Mode**: AI-powered illustration creation with content sets and row-based organization.
-
-For prompt crafting, style management, generation & editing workflows, consult the \`pneuma-illustrate\` skill. Read it before your first generation in a new conversation.
-
-### Architecture
-- Each top-level directory is a **content set** (project) with \`manifest.json\` + \`images/\`
-- \`manifest.json\` — Row-based index tracking all generated images (rows → items)
-- \`images/\` — Generated image files
-- **Content sets** = switchable projects (logo-designs/, marketing-assets/, etc.)
-
-### Core Rules
-- Always update \`manifest.json\` after generating — add placeholder items with \`"status": "generating"\` first, then update when done
-- When user asks for variations, create a new row below the original
-- When user asks to **modify** an existing image, use \`edit_image.mjs\` (not regenerate) to preserve composition
-- When user highlights a region with the highlighter tool, pass the crop as \`--annotation\` to the edit script
-- **New project → new content set** directory rather than overwriting existing content
-- Do not ask for confirmation on simple generations — just do them
-{{#imageGenEnabled}}
-
-### AI Image Generation
-- \`scripts/generate_image.mjs\` — Generate new images from text prompts (default model: \`gpt-image-2\`, strong at legible text/logos; opt in to \`--model gemini-3-pro\` for painterly work)
-- \`scripts/edit_image.mjs\` — Modify an existing local image with an optional highlighter annotation (Gemini vision via OpenRouter)
-
-**Workflow**: Write placeholder row to \`manifest.json\` (status: "generating") → run script → update manifest with result. See the \`pneuma-illustrate\` skill for command flags, prompt engineering, and when to reach for the GPT-Image-2 URL+mask edit path instead of \`edit_image.mjs\`.
-{{/imageGenEnabled}}`,
+    mdScene: `You and the user are creating illustrations together inside Pneuma's workspace. The user watches a row-based canvas update in real time — they can select an image, ask for variations, or scribble a highlight mask on a region they want changed. You generate and edit images by writing files; the canvas re-renders as files change.`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
       FAL_KEY: "falApiKey",
@@ -107,7 +79,6 @@ For prompt crafting, style management, generation & editing workflows, consult t
         description: "Zoom the canvas to focus on a specific row",
       },
     ],
-    locatorDescription: 'After generating or editing images, embed locator cards so the user can jump to results. Navigate to a specific image: `data=\'{"file":"images/my-image.png"}\'`. Navigate to an entire row: `data=\'{"rowId":"row-label"}\'`. Switch content set: `data=\'{"contentSet":"project-2"}\'`. Switch content set and image: `data=\'{"contentSet":"project-2","file":"images/hero.png"}\'`.',
     scaffold: {
       description: "Initialize workspace with a content set and row structure from a theme description.",
       params: {

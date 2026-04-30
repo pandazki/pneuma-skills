@@ -12,7 +12,7 @@ description: >
 
 # Pneuma WebCraft Mode — Web Design with Impeccable.style
 
-You are working in Pneuma WebCraft Mode — a live web development environment where the user views your edits in real-time in an iframe preview panel. You have access to Impeccable.style design intelligence: a comprehensive set of design principles and commands that help you produce distinctive, production-grade frontend interfaces.
+WebCraft is a live web development surface backed by Impeccable.style design intelligence: a comprehensive set of design principles and commands that help you produce distinctive, production-grade frontend interfaces. The user watches an iframe preview render your edits in real time, and a toolbar exposes 22 Impeccable design commands for structured passes.
 
 ## Core Principles
 
@@ -20,14 +20,35 @@ You are working in Pneuma WebCraft Mode — a live web development environment w
 2. **Incremental edits**: Make focused changes — the user sees each edit live as you make it
 3. **Design with intention**: Every visual choice should be deliberate. Avoid generic "AI slop" aesthetics
 4. **Quality over speed**: Production-grade code with exceptional attention to aesthetic details
+5. **Follow Impeccable.style**: avoid AI slop aesthetics, commit to bold design directions
+6. **Honor commands**: when the user invokes an Impeccable command (audit, critique, polish, etc.), follow the corresponding command reference
 
 ## File Conventions
 
 - The workspace contains web files (`.html`, `.css`, `.js`, `.jsx`, `.ts`, `.tsx`, `.json`, `.svg`, etc.)
-- Edit existing files or create new ones as requested
+- Edit existing files or create new ones as requested — the user sees updates in real-time via iframe preview
 - Use modern, semantic HTML5 with proper accessibility
 - Prefer CSS custom properties for theming and consistency
 - Keep files organized — separate concerns when complexity warrants it
+- Preserve existing structure unless asked to reorganize
+
+## Importing External Content
+
+When the user provides original content (uploaded files, pasted HTML, or a URL to convert), **always create a new content set** for it before making any edits:
+
+1. Choose a short descriptive name for the content set (e.g. `portfolio/`, `landing-page/`)
+2. Create the directory and place the imported files inside it (with a `manifest.json`)
+3. Then begin editing within that content set
+
+**Why**: the workspace is organized around content sets — each is a self-contained, switchable project. Importing into a content set (rather than dumping files at the root) preserves the seed templates, enables side-by-side comparison between sets, and ensures all built-in features (set switching, per-set theming, export) work correctly.
+
+## Locator cards
+
+After creating or editing pages, embed locator cards so the user can jump to them.
+
+- Navigate to a page: `data='{"page":"about.html"}'`
+- Switch content set: `data='{"contentSet":"site-2"}'`
+- Switch content set and page in one click: `data='{"contentSet":"site-2","page":"about.html"}'`
 
 ## Multi-Page Sites
 
@@ -48,6 +69,7 @@ For sites with multiple pages, create a `manifest.json` so the viewer shows page
 - The first page is shown by default
 - Update the manifest whenever you add or remove pages
 
+{{#imageGenEnabled}}
 ## Image Generation
 
 Two scripts live under `{SKILL_PATH}/scripts/`:
@@ -135,6 +157,7 @@ For edits on an already-deployed / uploaded image, prefer `--image-urls <url> --
 ### Consistency Across a Series
 
 When generating multiple images for one site (hero + about + feature cards), record your style descriptors on the first call and reuse them verbatim on subsequent calls. The viewer lives next to the prompts; drifting midway through a batch is how decks start looking stitched-together.
+{{/imageGenEnabled}}
 
 ---
 

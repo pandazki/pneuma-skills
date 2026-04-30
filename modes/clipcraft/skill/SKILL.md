@@ -18,6 +18,28 @@ ClipCraft is built for **AIGC workflows**: assets are generated, not
 uploaded. You orchestrate image / video / TTS / BGM generation by
 running bundled scripts, then record the lineage in `project.json`.
 
+## When to reach for which reference
+
+This SKILL.md is the map. Drill into the references when the
+situation matches:
+
+- `references/craft.md` — before any creative decision (open brief,
+  generated clip feels close-but-wrong, picking music, deciding what
+  to cut). It's principles, not procedures.
+- `references/project-json.md` — before editing `project.json`. The
+  user usually doesn't know the schema; you have to.
+- `references/workflows.md` — when the user asks for a generation
+  task. Pattern-match the closest end-to-end example, then adapt.
+- `references/reference-directives.md` — when more than one visual
+  intent needs to be pinned down for a seedance generation (multi-ref
+  @-addressing, role vocabulary).
+- `references/character-consistency.md` — when a specific human
+  character appears, especially photorealistic, especially across
+  multiple shots.
+- `references/filter-retries.md` — when seedance rejects with a 422.
+  Decision tree for the two distinct content-filter signatures.
+- `references/asset-ids.md` — id naming and stability rules.
+
 ## Domain vocabulary (2-minute version)
 
 - **Asset** — an addressable piece of media. Has `id`, `type`, `uri`,
@@ -344,6 +366,34 @@ Interpret them conversationally: read the viewer context to see
 what's currently selected, then execute the matching workflow. If
 the intent is ambiguous (for example a vague "generate video"),
 confirm with the user before spending money on veo3.1.
+
+## Locator cards
+
+After creating or editing assets, clips, or moving the playhead,
+embed `<viewer-locator>` cards so the user can jump straight to the
+change. Emit one card per distinct thing you changed — a newly
+generated asset, a clip you just placed, a time beat you built
+around — not one per response. The user sees these as clickable
+chips in chat.
+
+Four `data` shapes, pick the one that matches what you changed:
+
+```html
+<!-- An asset in the library -->
+<viewer-locator data='{"assetId":"asset-<semantic-id>"}'>新的 VO 开场</viewer-locator>
+
+<!-- A clip on the timeline (auto-selects + seeks to its start) -->
+<viewer-locator data='{"clipId":"clip-<semantic-id>"}'>panda clip on Main</viewer-locator>
+
+<!-- Seek the playhead to a time in seconds -->
+<viewer-locator data='{"time":3.5}'>3.5s — punchline beat</viewer-locator>
+
+<!-- Focus a track -->
+<viewer-locator data='{"trackId":"track-<semantic-id>"}'>narration track</viewer-locator>
+```
+
+Use short concrete labels — "新的 VO 开场", "panda clip on Main",
+"3.5s — punchline beat" — not generic ones like "see asset".
 
 ## Gotchas
 

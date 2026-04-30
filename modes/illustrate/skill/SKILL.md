@@ -11,9 +11,58 @@ description: >
 
 # Pneuma Illustrate Skill
 
-You are an AI illustration assistant working inside Pneuma's Illustrate Mode.
-Your role is to help users create, curate, and manage AI-generated visual assets
-organized in a row-based canvas with content sets.
+This is **Illustrate Mode**: AI-powered illustration creation with content sets and row-based organization. Your role is to help users create, curate, and manage AI-generated visual assets — generate images, manage content sets, craft prompts, run edit-and-variation workflows.
+
+Read this skill before your first generation in a new conversation.
+
+## Architecture
+
+- Each top-level directory is a **content set** (project) with `manifest.json` + `images/`
+- `manifest.json` — Row-based index tracking all generated images (rows → items)
+- `images/` — Generated image files
+- **Content sets** = switchable projects (`logo-designs/`, `marketing-assets/`, etc.)
+
+## Core Rules
+
+- Always update `manifest.json` after generating — add placeholder items with `"status": "generating"` first, then update when done
+- When the user asks for variations, create a new row below the original
+- When the user asks to **modify** an existing image, use `edit_image.mjs` (not regenerate) to preserve composition
+- When the user highlights a region with the highlighter tool, pass the crop as `--annotation` to the edit script
+- **New project → new content set** directory rather than overwriting existing content
+- Do not ask for confirmation on simple generations — just do them
+- Never modify files in `.claude/` or `.pneuma/` directories
+- Always save images to `<content-set>/images/`
+- Row IDs must be unique — use `row-{Date.now()}` format
+{{#imageGenEnabled}}
+
+## AI Image Generation
+
+- `scripts/generate_image.mjs` — Generate new images from text prompts (default model: `gpt-image-2`, strong at legible text/logos; opt in to `--model gemini-3-pro` for painterly work)
+- `scripts/edit_image.mjs` — Modify an existing local image with an optional highlighter annotation (Gemini vision via OpenRouter)
+
+**Workflow at a glance**: write placeholder row to `manifest.json` (status: "generating") → run script → update manifest with result. Detailed flags, prompt engineering, and the GPT-Image-2 URL+mask edit path are documented in the sections below.
+{{/imageGenEnabled}}
+
+## Locator cards
+
+After generating or editing images, embed `<viewer-locator>` cards so the user can jump to results.
+
+- Navigate to a specific image:
+  ```html
+  <viewer-locator data='{"file":"images/my-image.png"}'></viewer-locator>
+  ```
+- Navigate to an entire row:
+  ```html
+  <viewer-locator data='{"rowId":"row-1710000000000"}'></viewer-locator>
+  ```
+- Switch content set:
+  ```html
+  <viewer-locator data='{"contentSet":"project-2"}'></viewer-locator>
+  ```
+- Switch content set and image together:
+  ```html
+  <viewer-locator data='{"contentSet":"project-2","file":"images/hero.png"}'></viewer-locator>
+  ```
 
 ## Data Model
 
@@ -419,9 +468,8 @@ Use this to understand what the user is referring to when they say "this image",
 
 ## Constraints
 
-- Never modify files in `.claude/` or `.pneuma/` directories
-- Always save images to `<content-set>/images/` directory
 - Always update `manifest.json` after generating images — add new rows, don't modify existing ones
 - Use `generate_image.mjs` / `edit_image.mjs` for all image generation and editing — do not attempt other methods
 - The canvas viewer reads `manifest.json` — if you don't update it, new images won't appear
-- Row IDs must be unique — use `row-{Date.now()}` format
+
+(See **Core Rules** above for filesystem boundaries and row-ID format.)

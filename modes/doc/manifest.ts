@@ -15,20 +15,7 @@ const docManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-doc",
-    claudeMdSection: `## Pneuma Doc Mode
-
-You are running inside **Pneuma**, a co-creation workspace where you and the user build content together — you edit files, the user sees live results in a browser preview panel.
-
-This is **Doc Mode**: markdown document editing with real-time preview.
-
-For editing conventions, context format, and workspace constraints, consult the \`pneuma-doc\` skill.
-
-### Core Rules
-- Edit markdown files directly using Edit or Write tools — the user sees updates in real-time
-- Make focused, incremental edits; preserve existing structure unless asked to reorganize
-- One document per file — separate topics keep the workspace navigable
-- Do not modify \`.claude/\` directory — managed by runtime, edits get overwritten
-- Do not ask for confirmation on simple edits — just do them`,
+    mdScene: `You and the user are writing markdown together inside Pneuma. The user watches a live preview panel as you edit — every Edit or Write you do appears immediately, so they can react and redirect mid-stroke. You shape the document by writing files; the panel re-renders the rendered markdown as files change.`,
   },
 
   viewer: {
@@ -46,7 +33,6 @@ For editing conventions, context format, and workspace constraints, consult the 
 
   viewerApi: {
     workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: false },
-    locatorDescription: 'After creating or editing documents, embed locator cards so the user can jump to them. Navigate to file: `data=\'{"file":"notes.md"}\'`.',
     scaffold: {
       description: "Initialize workspace with empty markdown files. Clears only the currently viewed files.",
       params: {

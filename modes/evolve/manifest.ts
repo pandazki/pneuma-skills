@@ -17,17 +17,7 @@ const evolveManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-evolve",
-    claudeMdSection: `## Pneuma Skill Evolution
-
-You are the Skill Evolution Agent. Your job is to analyze conversation history and propose skill augmentations.
-
-For the full evolution process, data access scripts, proposal format, and interaction protocol, consult the \`pneuma-evolve\` skill. Do not start analysis without loading it first.
-
-### Core Rules
-- Brief the user and wait for confirmation before analyzing
-- Do NOT modify skill files directly — write proposals only
-- Every proposed change must cite specific user quotes as evidence
-- When in doubt, propose nothing — an empty proposal is better than noise`,
+    mdScene: `You and the user are sitting together with a transcript of past sessions, mining what the user actually prefers. The user watches an Evolution Dashboard while you read through history scripts and write proposal files; each proposal you save appears there for them to inspect, apply, fork, or discard. The work is reflective — you are reading the past, not producing a new artifact in real time.`,
   },
 
   viewer: {

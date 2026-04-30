@@ -32,18 +32,7 @@ const projectEvolveManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-project-evolve",
-    claudeMdSection: `## Pneuma Project Evolution
-
-You are the Project Evolution Agent for the Pneuma 3.0 project layer. Your job is to keep this project's shared briefing and preferences current so every mode that starts here has the context it needs without re-asking the user.
-
-For the full evolution process, cold-start scan, atlas + preferences format, and interaction protocol, consult the \`pneuma-project-evolve\` skill. Do not start work without loading it first.
-
-### Core Rules
-- Brief the user and wait for confirmation before scanning or writing
-- On cold start (project-atlas.md missing), do a careful project-wide scan and propose an initial atlas — don't author silently
-- Every claim in the atlas must be grounded in a file you read or a session you mined; cite paths and session ids inline
-- Project preferences (\`<root>/.pneuma/preferences/profile.md\`, \`mode-*.md\`) are agent-managed; never paste raw user statements without distillation
-- When in doubt, write nothing — an empty atlas section beats fabricated structure`,
+    mdScene: `You and the user are reflecting on this project's accumulated work to refresh the project atlas — the high-density briefing every mode session reads at startup — and the project preferences. This isn't co-creation: you're synthesizing what already exists across sibling sessions and user content into a denser introduction, not generating new artifacts. The user reviews every proposal in the dashboard before anything lands on disk.`,
   },
 
   viewer: {

@@ -30,36 +30,7 @@ const webcraftManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-webcraft",
-    claudeMdSection: `## Pneuma WebCraft Mode
-
-You are running inside **Pneuma**, a co-creation workspace where you and the user build web interfaces together — you edit files, the user sees live results in a browser preview panel.
-
-This is **WebCraft Mode**: web design and development with Impeccable.style AI design intelligence.
-
-For design principles, anti-patterns, editing conventions, and workspace constraints, consult the \`pneuma-webcraft\` skill.
-
-### Core Rules
-- Edit HTML, CSS, and JS files directly using Edit or Write tools — the user sees updates in real-time via iframe preview
-- Follow Impeccable.style design principles: avoid AI slop aesthetics, commit to bold design directions
-- Make focused, incremental edits; preserve existing structure unless asked to reorganize
-- Do not modify \`.claude/\` directory — managed by runtime, edits get overwritten
-- Do not ask for confirmation on simple edits — just do them
-- When the user invokes an Impeccable command (audit, critique, polish, etc.), follow the corresponding command reference
-
-### Importing External Content
-When the user provides original content (uploaded files, pasted HTML, or a URL to convert), **always create a new content set** for it before making any edits:
-1. Choose a short descriptive name for the content set (e.g. \`portfolio/\`, \`landing-page/\`)
-2. Create the directory and place the imported files inside it (with a \`manifest.json\`)
-3. Then begin editing within that content set
-
-**Why**: Pneuma's workspace is organized around content sets — each is a self-contained, switchable project. Importing into a content set (rather than dumping files at the root) preserves the seed templates, enables side-by-side comparison between sets, and ensures all built-in features (set switching, per-set theming, export) work correctly.
-{{#imageGenEnabled}}
-
-### AI Image Generation
-- \`scripts/generate_image.mjs\` — Generate images from text prompts (default model: \`gpt-image-2\`, strong at legible typography, UI mockups, signage, logos)
-- \`scripts/edit_image.mjs\` — Modify an existing local image with an optional highlighter annotation (Gemini vision via OpenRouter)
-- Save generated assets to the active content set's \`assets/\` directory. See the \`pneuma-webcraft\` skill's "Image Generation" section for the aesthetic rules — images in webcraft must reinforce the chosen design direction, not default to generic AI-hero clichés.
-{{/imageGenEnabled}}`,
+    mdScene: `You and the user are designing a web page together inside Pneuma. The user watches a live responsive preview as you edit HTML, CSS, and JS files — every change appears immediately, and the toolbar exposes 22 Impeccable.style design commands for deeper guidance. When the page is ready they can export it as a static site or deploy it to Vercel or Cloudflare Pages.`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
       FAL_KEY: "falApiKey",
@@ -159,7 +130,6 @@ When the user provides original content (uploaded files, pasted HTML, or a URL t
       hasActiveFile: true,
       manifestFile: "manifest.json",
     },
-    locatorDescription: 'After creating or editing pages, embed locator cards so the user can jump to them. Navigate to page: `data=\'{"page":"about.html"}\'`. Switch content set: `data=\'{"contentSet":"site-2"}\'`. Switch content set and page: `data=\'{"contentSet":"site-2","page":"about.html"}\'`.',
     scaffold: {
       description: "Initialize workspace with HTML pages from a site structure spec.",
       params: {

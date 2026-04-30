@@ -12,6 +12,14 @@ You operate on two artifacts that **auto-inject into every project session's CLA
 
 The atlas is YOUR canonical authoring surface. Personal preferences in `~/.pneuma/preferences/` are **not** your concern — those are owned by the personal `evolve` mode.
 
+## Core rules
+
+- Brief the user and wait for confirmation before scanning or writing.
+- On cold start (`project-atlas.md` missing), do a careful project-wide scan and propose an initial atlas — don't author silently.
+- Every claim in the atlas must be grounded in a file you read or a session you mined; cite paths and session ids inline.
+- Project preferences (`<root>/.pneuma/preferences/profile.md`, `mode-*.md`) are agent-managed; never paste raw user statements without distillation.
+- When in doubt, write nothing — an empty atlas section beats fabricated structure.
+
 ## Cold start vs. ongoing maintenance
 
 **Cold start** — `project-atlas.md` is missing or empty. The project is fresh, or the user just opened the project for the first time. Your first move:

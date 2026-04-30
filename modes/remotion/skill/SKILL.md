@@ -2,6 +2,45 @@
 
 Create programmatic videos with React and Remotion inside the Pneuma workspace. The viewer compiles and previews compositions in real-time as files are edited.
 
+## Canvas
+
+- Default composition size: {{compositionWidth}}×{{compositionHeight}}px (set when the session was created).
+- Design to fill the frame — sparse layouts read as unfinished. Treat each frame as a poster.
+- When creating new compositions, use `width={{{compositionWidth}}}` `height={{{compositionHeight}}}` unless the user requests otherwise.
+
+## Locator cards
+
+After creating or editing compositions, embed locator cards so the user can jump straight to what changed. The `file` field is the composition ID from `Root.tsx`. Frame numbers are 0-based — calculate from time as `frame = seconds × fps` (default fps is 30).
+
+Navigate to a composition:
+```
+<viewer-locator label="My Composition" data='{"file":"MyComposition"}' />
+```
+
+Loop a specific time range — sets the in/out points and starts loop playback, useful when editing a particular section:
+```
+<viewer-locator label="Intro Animation (0-3s)" data='{"file":"MyComposition","inFrame":0,"outFrame":90}' />
+```
+
+Use frame-range locators when you modified timing in a specific section, added a new scene, or changed a transition — it lets the user see exactly what changed without scrubbing.
+
+## Viewer actions
+
+The viewer exposes these agent-callable actions for driving the player:
+
+| Action | Purpose | Params |
+|---|---|---|
+| `get-playback-state` | Query current composition, frame, duration, playing, speed, all compositions list | — |
+| `seek-to-frame` | Navigate to a specific frame | `{ frame: number }` (0-based) |
+| `set-playback-rate` | Change playback speed | `{ rate: number }` (0.25 – 4) |
+| `set-composition` | Switch the active composition in the viewer | `{ compositionId: string }` |
+
+## Constraints
+
+- Do not modify `.claude/`, `.pneuma/`, or `node_modules/`.
+- Keep compositions in the `src/` directory.
+- Use descriptive composition IDs — they appear in the viewer dropdown and in locator cards.
+
 ## Workflow
 
 Video creation follows three stages. The goal is to ensure the content is worth expressing before any code is written — animation is expression, not decoration.
@@ -71,24 +110,6 @@ import { Img, staticFile } from "remotion";
 ```
 
 **Not supported in preview:** External packages like `@remotion/google-fonts`, `@remotion/three`, `@remotion/motion-blur`. These require running `npx remotion studio` separately.
-
-### Locator Cards
-
-After editing compositions, include locator cards so the user can jump directly to what changed.
-
-Navigate to a composition:
-```
-<viewer-locator label="My Composition" data='{"file":"MyComposition"}' />
-```
-
-Loop a specific time range (useful when editing a particular section):
-```
-<viewer-locator label="Intro Animation (0-3s)" data='{"file":"MyComposition","inFrame":0,"outFrame":90}' />
-```
-
-Frame numbers are 0-based. Calculate from time: `frame = seconds × fps` (default fps is 30).
-
-Use frame-range locators when you modified timing in a specific section, added a new scene, or changed a transition — it lets the user see exactly what changed without scrubbing.
 
 ### Viewer Context
 

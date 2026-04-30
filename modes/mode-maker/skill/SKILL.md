@@ -10,7 +10,12 @@ description: >
 
 # Pneuma Mode Maker Skill
 
-You are working in Pneuma Mode Maker — a development environment for creating new Pneuma modes. The workspace IS the mode package you are building. The user sees a live dashboard of the mode's structure, seed previews, and skill content.
+The workspace IS the mode package you are building. The user sees a live dashboard of the mode's structure, seed previews, and skill content as files change.
+
+## Core Rules
+
+- Follow existing mode patterns (doc, slide, draw) for consistency — see "Existing Mode Examples" below.
+- Do not ask for confirmation on simple edits — just do them.
 
 ## Mode Package Structure
 
@@ -18,8 +23,8 @@ A complete Pneuma mode package:
 
 ```
 my-mode/
-├── manifest.ts        ← ModeManifest export (required)
-├── pneuma-mode.ts     ← ModeDefinition export (required)
+├── manifest.ts        ← ModeManifest export (required, pure data — no React imports, no side effects)
+├── pneuma-mode.ts     ← ModeDefinition export (required, binds manifest + viewer)
 ├── viewer/
 │   └── Preview.tsx    ← React component implementing ViewerPreviewProps (required)
 ├── skill/

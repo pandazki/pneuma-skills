@@ -21,48 +21,7 @@ const remotionManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-remotion",
-    claudeMdSection: `## Pneuma Remotion Mode
-
-You are running inside **Pneuma**, a co-creation workspace where you and the user build content together — you edit files, the user sees live results in a browser preview panel.
-
-This is **Remotion Mode**: programmatic video creation with React.
-
-**The viewer automatically compiles and previews your compositions in real-time — no need to start any dev server for preview.**
-
-For animation patterns, timing, sequencing, and all Remotion API details, consult the \`pneuma-remotion\` skill.
-
-### Core Rules
-- All animation MUST use Remotion's frame-based APIs (\`useCurrentFrame\`, \`interpolate\`, \`spring\`)
-- **CSS transitions/animations are FORBIDDEN** — they don't render to video
-- Always import from \`"remotion"\` — the viewer provides these APIs at runtime
-- Use \`staticFile()\` for assets in \`public/\`
-- Follow Impeccable.style design principles for visual quality
-
-### Canvas
-- Default composition size: {{compositionWidth}}×{{compositionHeight}}px
-- All visual content must fit within this canvas — design to fill the frame, avoid sparse layouts
-- When creating new compositions, use width={{{compositionWidth}}} height={{{compositionHeight}}} unless the user specifies otherwise
-
-### Architecture
-- \`src/index.ts\` — Entry point (\`registerRoot()\`)
-- \`src/Root.tsx\` — Composition registry (declare all compositions here)
-- \`src/*.tsx\` — Video components
-- \`public/\` — Static assets (reference via \`staticFile()\`)
-
-### Viewer Capabilities
-The viewer provides these agent-callable actions:
-- \`get-playback-state\` — Query current composition, frame, playing state
-- \`seek-to-frame\` — Navigate to a specific frame (\`params: { frame: number }\`)
-- \`set-playback-rate\` — Adjust playback speed (\`params: { rate: number }\`)
-- \`set-composition\` — Switch active composition (\`params: { compositionId: string }\`)
-
-### Preview Limitations
-The live preview compiles your code in-browser with core Remotion APIs. For features requiring additional packages (\`@remotion/google-fonts\`, \`@remotion/three\`, etc.), tell the user to use Remotion Studio: \`npx remotion studio\`.
-
-### Constraints
-- Do not modify \`.claude/\`, \`.pneuma/\`, or \`node_modules/\`
-- Keep compositions in \`src/\` directory
-- Use descriptive composition IDs (they appear in the viewer dropdown)`,
+    mdScene: `You and the user are creating programmatic video together inside Pneuma. The user watches a live Player panel as you write Remotion compositions — every Edit or Write you do recompiles in-browser within a second, with frame-accurate scrubbing, so they can react to motion the moment it appears. You shape the video by writing React files in \`src/\`; the panel renders the active composition as files change.`,
   },
 
   viewer: {
@@ -102,7 +61,6 @@ The live preview compiles your code in-browser with core Remotion APIs. For feat
       hasActiveFile: true,
       topBarNavigation: true,
     },
-    locatorDescription: 'After creating or editing compositions, embed locator cards so the user can jump to them. Navigate by composition: `data=\'{"file":"MyComposition"}\'`. Loop a specific section: `data=\'{"file":"MyComposition","inFrame":90,"outFrame":150}\'` — this sets the in/out points and starts loop playback. The "file" field is the composition ID from Root.tsx. Frame numbers are 0-based.',
     actions: [
       {
         id: "get-playback-state",

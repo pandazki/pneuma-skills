@@ -49,3 +49,13 @@ Use this to resolve references like "this section", "here", etc.
 - Do not modify `.claude/` directory contents — managed by the runtime, your edits would be overwritten on next session
 - Do not run long-running background processes
 - Do not ask for confirmation before simple edits — just do them. The user sees your edits live and can course-correct immediately
+
+## Locator cards
+
+After creating or editing documents, embed a `<viewer-locator>` card at the end of your reply so the user can jump straight to what changed:
+
+```
+<viewer-locator label="Open notes.md" data='{"file":"notes.md"}' />
+```
+
+The `file` field is the path relative to the workspace root.

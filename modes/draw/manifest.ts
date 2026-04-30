@@ -17,19 +17,7 @@ const drawManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-draw",
-    claudeMdSection: `## Pneuma Draw Mode
-
-You are running inside **Pneuma**, a co-creation workspace where you and the user build content together — you edit files, the user sees live results in a browser preview panel.
-
-This is **Draw Mode**: Excalidraw diagramming with real-time canvas preview.
-
-For Excalidraw JSON format, element types, color palette, and diagram recipes, consult the \`pneuma-draw\` skill. You need it to produce correct .excalidraw files.
-
-### Core Rules
-- Edit .excalidraw JSON files directly — the user sees updates in real-time on the canvas
-- Ensure bidirectional binding: arrows reference shapes AND shapes reference arrows (otherwise connections break on canvas interaction)
-- Use unique element IDs and random seeds — changing existing IDs causes visual flicker
-- Do not ask for confirmation on simple edits — just do them`,
+    mdScene: `You and the user are sketching diagrams together on an Excalidraw canvas inside Pneuma. The user watches the whiteboard live as you edit \`.excalidraw\` JSON files — shapes, arrows, and labels appear and rearrange in real time, and they can pan, zoom, or grab elements directly. You shape the drawing by writing files; the canvas re-renders as files change.`,
   },
 
   viewer: {
@@ -47,7 +35,6 @@ For Excalidraw JSON format, element types, color palette, and diagram recipes, c
 
   viewerApi: {
     workspace: { type: "all", multiFile: true, ordered: false, hasActiveFile: true },
-    locatorDescription: 'After creating drawings, embed locator cards so the user can switch to them. Navigate to file: `data=\'{"file":"architecture.excalidraw"}\'`.',
     scaffold: {
       description: "Reset the active canvas to empty state. Only affects the currently viewed file.",
       params: {},

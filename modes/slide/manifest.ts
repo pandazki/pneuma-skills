@@ -16,34 +16,7 @@ const slideManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-slide",
-    claudeMdSection: `## Pneuma Slide Mode
-
-You are running inside **Pneuma**, a co-creation workspace where you and the user build content together — you edit files, the user sees live results in a browser preview panel.
-
-This is **Slide Mode**: HTML presentation creation with live fixed-viewport preview.
-
-For design workflow, height calculation rules, layout patterns, and quality checklist, consult the \`pneuma-slide\` skill. Slides have no scroll — getting the layout right requires the skill's guidance.
-
-### Architecture
-- \`slides/*.html\` — HTML fragments per slide (no \`<html>\`/\`<body>\` tags)
-- \`manifest.json\` — Slide ordering (always update when adding/removing slides)
-- \`theme.css\` — Shared CSS theme via custom properties
-- Canvas: {{slideWidth}}×{{slideHeight}}px fixed viewport — content beyond this is invisible
-- **Content sets**: Each top-level directory (e.g. \`en-dark/\`, \`my-deck/\`) is a switchable content set with its own slides, manifest, and theme
-
-### Core Rules
-- Content must fit within {{slideWidth}}×{{slideHeight}}px — overflow is the #1 quality issue (no scroll)
-- No CSS animations — they break snapshot-based export and print
-- **New task → new content set**: When the user asks for a completely new presentation, create a new top-level directory (content set) rather than overwriting existing content — this preserves seed templates and prior work
-- **Importing external content → new content set**: When the user provides original content (uploaded files, pasted slides, or a URL), always create a new content set for it. Place imported files inside the new directory with a proper \`manifest.json\` and \`theme.css\`. This ensures seed templates are preserved and all built-in features (set switching, comparison, export) work correctly.
-- For new decks: design outline first → theme → scaffold → fill content
-- Do not ask for confirmation on simple edits — just do them
-{{#imageGenEnabled}}
-### AI Image Generation
-- Available via the skill's \`scripts/generate_image.mjs\` (default model: \`gpt-image-2\`, strong at legible typography and UI mockups; opt in to \`--model gemini-3-pro\` for painterly work)
-- Prefer CSS/SVG for shapes and icons — use AI images for photos, complex illustrations, and legible-text mockups
-- Place generated images in \`assets/\`
-{{/imageGenEnabled}}`,
+    mdScene: `You and the user are building an HTML presentation together inside Pneuma. The user watches a live deck preview as you edit — each slide is a fixed-viewport HTML fragment, and the workspace can hold multiple content sets the user flips between via drag-reorder, presenter mode, or the set switcher. You shape the deck by writing files; the panel re-renders slides as \`slides/*.html\`, \`manifest.json\`, and \`theme.css\` change.`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
       FAL_KEY: "falApiKey",
@@ -121,7 +94,6 @@ The user just opened the workspace. You are ready to assist with presentation cr
         description: "Navigate to a specific slide",
       },
     ],
-    locatorDescription: 'After creating or editing slides, embed locator cards so the user can jump to them. Navigate by file: `data=\'{"file":"slides/slide-03.html"}\'`. Navigate by number: `data=\'{"index":3}\'`. Switch content set: `data=\'{"contentSet":"deck-2"}\'`. Switch content set and slide: `data=\'{"contentSet":"deck-2","index":1}\'`.',
     scaffold: {
       description: "Initialize workspace with slide scaffolding from a structure spec. When creating a new theme/deck, pass contentSet to avoid overwriting the active content set.",
       params: {

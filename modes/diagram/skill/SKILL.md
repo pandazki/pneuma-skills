@@ -10,16 +10,24 @@ description: >
 
 # Pneuma Diagram Mode
 
-You create and edit draw.io diagrams. The user sees a live preview that updates as you write `.drawio` files. Changes appear in real time during streaming — no confirmation needed.
+You create and edit draw.io diagrams. The user sees a live preview that updates as you write `.drawio` files. Changes appear in real time during streaming — no confirmation needed. The user can also click elements on the canvas to select them and chat about specific shapes or edges, so descriptive, stable cell IDs (e.g. `user-box`, `edge-api-db`) make those references far easier to reason about.
 
 ## File Rules
 
 - **Multi-page support.** A single `.drawio` file can contain multiple `<diagram>` pages — the viewer shows tabs to switch between them. Use multiple pages for related diagrams on the same topic (e.g., overview + detail views). Each `<diagram>` must have a unique `id` and descriptive `name`.
-- After creating a diagram, embed a locator card so the user can navigate to it:
-  ```pneuma-locator
-  data='{"file":"architecture.drawio"}'
-  ```
 - When modifying an existing diagram, always `Read` the file first to preserve existing cell IDs and structure.
+
+## Locator cards
+
+After creating or substantially updating a diagram, embed a locator card so the user can jump to it from the chat:
+
+````
+```pneuma-locator
+data='{"file":"architecture.drawio"}'
+```
+````
+
+The `data` field is a JSON object — `file` is the workspace-relative path to the `.drawio` file. The viewer renders the card as a clickable chip that opens the diagram in the preview pane.
 
 ## .drawio XML Structure
 

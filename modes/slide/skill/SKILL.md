@@ -105,6 +105,8 @@ When the user asks you to create a presentation from scratch or from source mate
 
 **Always create a new top-level directory** (content set) for a new presentation task — never overwrite existing content sets or seed templates. Name the directory descriptively (e.g. `quarterly-review/`, `product-launch/`, `tech-talk/`). The viewer auto-discovers top-level directories as switchable content sets, so the user can flip between decks.
 
+**Importing external content also gets a new content set.** When the user provides original material (uploaded files, pasted slides, a URL to scrape), create a new content set for it with its own `manifest.json` and `theme.css`. Don't dump imported files alongside an existing deck — that breaks set switching, comparison, and export.
+
 All subsequent files (`manifest.json`, `theme.css`, `slides/`, `assets/`) go inside this new directory.
 
 ### Phase 1: Design Outline
@@ -430,6 +432,19 @@ When the user sends a message, context may include:
 - `[User selected: heading (level 1) "Our Solution"]` — which element they clicked on
 
 Use this context to understand what the user wants to change. If they say "make this bigger", they mean the selected element on the viewed slide.
+
+---
+
+## Locator cards
+
+After creating or editing slides, embed locator cards inline so the user can jump to them with one click. The card carries a JSON `data` payload that the viewer interprets.
+
+- **By file** — `data='{"file":"slides/slide-03.html"}'`
+- **By number** (1-indexed within the active set) — `data='{"index":3}'`
+- **Switch content set** (lands on the set's first slide) — `data='{"contentSet":"deck-2"}'`
+- **Switch content set + slide** — `data='{"contentSet":"deck-2","index":1}'` or `data='{"contentSet":"deck-2","file":"slides/slide-03.html"}'`
+
+Use `index` for short references like "slide 3"; use `file` when you've just edited that specific path; use `contentSet` whenever the action lives in a different deck than the user is currently viewing.
 
 ---
 

@@ -28,13 +28,7 @@ const clipcraftManifest: ModeManifest = {
       OPENROUTER_API_KEY: "openrouterApiKey",
       FAL_KEY: "falApiKey",
     },
-    claudeMdSection: `## Pneuma ClipCraft Mode
-
-You are running inside **Pneuma**, a co-creation workspace. This is **ClipCraft Mode** — AI-orchestrated video production on \`@pneuma-craft\`.
-
-Your domain knowledge lives in the \`pneuma-clipcraft\` skill. Read \`.claude/skills/pneuma-clipcraft/SKILL.md\` at session start; reference \`references/craft.md\` before creative decisions, \`references/project-json.md\` when editing \`project.json\`, \`references/workflows.md\` when the user asks for a generation task, \`references/reference-directives.md\` for the seedance multi-reference directive language, \`references/character-consistency.md\` when a specific human character appears, and \`references/filter-retries.md\` when seedance rejects with a 422.
-
-The \`scripts/\` directory holds six generator CLIs: \`generate_image.mjs\` (shared, GPT-Image-2 default — legible text, multi-layer composition, complex UI mockups, precise mask edits); \`edit_image.mjs\` (shared, Gemini vision for annotation-driven edits); \`generate-video.mjs\` (seedance 2.0 with veo3.1 fallback); \`generate-tts.mjs\`; \`generate-bgm.mjs\`; \`make-character-sheet.mjs\` (recovery tool for the image-side content filter). GPT-Image-2's strength at rendering text, preserving layout across multiple references, and holding an aesthetic direction makes the video-side pipeline much more controlled — first/last frames, title cards, text overlays, character sheets, and complex single-frame compositions all hold up now in ways that used to require heavy post-processing.`,
+    mdScene: `You and the user are producing an AI-generated video together inside Pneuma's ClipCraft workspace. The user watches an exploded 3D timeline of tracks, clips, and assets — every asset you generate and every edit you make to \`project.json\` re-hydrates the composition live, so they can hear the new TTS take or see the new shot land on the timeline as soon as it's ready. You orchestrate the work by running the bundled generation scripts and editing \`project.json\`; the viewer plays the result back as the file changes.`,
   },
 
   viewer: {
@@ -83,8 +77,6 @@ The \`scripts/\` directory holds six generator CLIs: \`generate_image.mjs\` (sha
           "Export the project as an MP4. Handled directly in the viewer — clicking this button runs @pneuma-craft/video's ExportEngine against the live composition and downloads the finished file. No agent involvement.",
       },
     ],
-    locatorDescription:
-      'After creating or editing assets, clips, or moving the playhead, embed <viewer-locator> cards so the user can jump straight to the change. Emit one card per distinct thing you changed (a newly generated asset, a clip you just placed, a time beat you built around) — not one per response. Data shapes: navigate to an asset in the library via `data=\'{"assetId":"asset-<semantic-id>"}\'`; navigate to a clip on the timeline (auto-selects the clip and seeks the playhead to its start) via `data=\'{"clipId":"clip-<semantic-id>"}\'`; seek the playhead to a time in seconds via `data=\'{"time":3.5}\'`; focus a track via `data=\'{"trackId":"track-<semantic-id>"}\'`. Use short concrete labels like "新的 VO 开场" or "panda clip on Main" — the user will see these cards in chat and click to navigate.',
   },
 
   agent: {

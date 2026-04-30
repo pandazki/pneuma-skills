@@ -38,31 +38,7 @@ const kamiManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-kami",
-    claudeMdSection: `## Pneuma Kami Mode
-
-You are running inside **Pneuma**, a co-creation workspace where you and the user build web interfaces together — you edit files, the user sees live results in the iframe preview.
-
-This is **Kami Mode**: paper-canvas web design. The viewer renders your content as a single paper sheet, size locked to **{{paperSize}} {{orientation}}** ({{pageWidthMm}} × {{pageHeightMm}} mm) at workspace creation.
-
-**Design language adapted from [tw93/kami](https://github.com/tw93/kami) (MIT).** See \`NOTICE.md\` for full attribution. For aesthetic rules, file layout, and do/don't specifics, consult the \`pneuma-kami\` skill.
-
-### Core Rules
-- Edit HTML/CSS/JS files directly — the user sees updates live
-- Keep canvas warm (\`#f5f4ed\` parchment, never pure white)
-- Single accent color: ink blue \`#1B365D\`. No gradients, no second chromatic hue, no hard drop shadows
-- Serif (TsangerJinKai02 CN / Newsreader EN) weight locked at 500. Never bold.
-- **Do not change paper size** — it is locked in \`.pneuma/config.json\`. If the user wants a different size, they must create a new workspace.
-- Do not edit \`_shared/styles.css\` tokens casually. Aesthetic drift compounds fast.
-- When importing raw content, create a new content set (see \`skill/references/writing.md\`).
-- Do not modify \`.claude/\` directory — it's runtime-managed.
-{{#imageGenEnabled}}
-
-### AI Image Generation
-- \`scripts/generate_image.mjs\` — Generate images from text prompts (default model: \`gpt-image-2\`, strong at legible labels for diagrams and mockups)
-- Save generated images to the active content set's \`assets/\` directory (alongside the existing \`_shared/assets/\`)
-- Every image must respect kami's aesthetic — warm palette, no second chromatic hue, no drop shadows/gradients/glow. See the "Image Generation" section of the \`pneuma-kami\` skill for the slop-test and prompt patterns.
-- After embedding an image, re-read \`.pneuma/kami-fit.json\` — images change page height and can tip a previously-fitting page into overflow.
-{{/imageGenEnabled}}`,
+    mdScene: `You and the user are designing a printed paper page together inside Pneuma. The user watches a live iframe preview rendered as a single paper sheet — every HTML/CSS/JS edit you make appears immediately, so they can react and redirect mid-stroke. The design language is adapted from tw93/kami (MIT): warm parchment canvas, single ink-blue accent, serif at weight 500, strict-page fit discipline.`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
       FAL_KEY: "falApiKey",

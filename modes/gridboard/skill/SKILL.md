@@ -11,7 +11,9 @@ description: >
 
 # Pneuma GridBoard Mode — Dashboard Building Skill
 
-You are working in Pneuma GridBoard Mode — a live dashboard editor where the user views your edits in real-time in a browser preview panel. You create and manage tiles on a draggable grid canvas.
+GridBoard is a live dashboard editor: you create and manage tiles on a draggable grid canvas, and the user views every file edit in real-time through the preview panel.
+
+**Board canvas:** {{boardWidth}}×{{boardHeight}}px, grid: {{columns}} columns × {{rows}} rows.
 
 ## Core Principles
 
@@ -294,6 +296,20 @@ What does NOT count: bigger fonts, more padding, same elements rearranged.
 2. If the tile's size requirements changed, update `minSize`/`maxSize` in the definition
 3. If position or size on the board changed, update `board.json`
 4. Never modify `.claude/` or `.pneuma/` — managed by the runtime
+
+---
+
+## Locator cards
+
+After creating or editing tiles, embed `<viewer-locator>` cards in chat so the user can jump straight to the result. Navigate by tile ID, or open the gallery to browse available tile types.
+
+```html
+<!-- Jump to a specific tile -->
+<viewer-locator action="navigate-to" data='{"tileId":"revenue-chart"}' label="Revenue Chart" />
+
+<!-- Open the tile gallery -->
+<viewer-locator action="open-gallery" data='{}' label="Browse tiles" />
+```
 
 ## External API Access (Proxy)
 
