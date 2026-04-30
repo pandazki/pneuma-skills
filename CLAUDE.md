@@ -8,7 +8,14 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 
 **Version:** 2.41.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
-**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve`, `project-evolve`
+**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`
+
+> Modes can declare `hidden: true` in their manifest to disappear from
+> user-pickable lists (launcher grids, ProjectPanel mode-tile picker).
+> Internal modes (`evolve`, `project-evolve`, `project-onboard`) are
+> hidden — they're triggered by specific UI affordances (Evolve /
+> Re-discover buttons) or programmatically (auto-trigger), never by a
+> "what mode would you like to start?" choice.
 
 ## Tech Stack
 
@@ -267,7 +274,7 @@ Session state lives in `<stateDir>/`. The location depends on whether the sessio
 
 | Path | Purpose |
 |------|---------|
-| `project.json` | `ProjectManifest`: `{ version, name, displayName, description?, createdAt }` |
+| `project.json` | `ProjectManifest`: `{ version, name, displayName, description?, createdAt, founderSessionId?, onboardedAt? }` |
 | `preferences/` | Project-scoped preferences (`profile.md`, `mode-{name}.md`) |
 | `sessions/<id>/.pneuma/inbound-handoff.json` | Inbound handoff payload, written by `/api/handoffs/:id/confirm` before the target session spawns; target agent reads and `rm`s on first turn |
 | `sessions/<sessionId>/` | One subdir per session; contents are the per-session table above |
@@ -318,6 +325,10 @@ A project is a user directory marked by `<root>/.pneuma/project.json`. Inside a 
 ### Detection
 
 On startup, `core/project-loader.detectWorkspaceKind(workspace)` returns `"project"` iff `<workspace>/.pneuma/project.json` exists. Otherwise the run is a quick session (legacy 2.x layout). `--project <path>` forces project mode and selects/creates a session id under `sessions/`.
+
+### Fresh-project onboarding (`project-onboard`)
+
+When a user opens a project URL (`?project=<root>`) that has *no* sessions and no `onboardedAt` stamp on the manifest, `EmptyShell` auto-launches the hidden `project-onboard` mode. The agent mines the directory (README, package manifest, visual assets) and writes a single `proposal.json` to `<sessionDir>/onboard/`; the Discovery Report viewer renders it (hero + anchors + open questions + two task cards) and `POST /api/projects/onboard/apply` lands the writes — `project.json` (with `onboardedAt` stamped), `project-atlas.md`, and `cover.{png,jpg,jpeg,webp,svg}` (extension preserved from the agent-surfaced source). When the user clicks a task card the apply route also mints a target session, stages `inbound-handoff.json`, and spawns the target mode in one round-trip. The auto-trigger gate is one-shot per project; users with already-onboarded projects can re-run via the **Re-discover** affordance in `ProjectPanel`.
 
 ### Environment Variables
 
