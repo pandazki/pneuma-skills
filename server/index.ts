@@ -1351,8 +1351,25 @@ export async function startServer(options: ServerOptions) {
     });
 
     // ── Project routes API (also available in launcher mode) ─────────────
+    // `launchSession` lets `/api/projects/onboard/apply` spawn the chosen
+    // task's target mode in one round-trip — same pattern as handoff
+    // confirm. The launcher mounts this so an EmptyShell auto-trigger
+    // landing on the launcher port can still complete a project-onboard
+    // → target-mode hop without bouncing off `/api/launch`.
     mountProjectsRoutes(app, {
       homeDir: homedir(),
+      launchSession: async (params) => {
+        const result = await launchPneumaChild({
+          specifier: params.mode,
+          workspace: params.project,
+          project: params.project,
+          sessionId: params.sessionId,
+          fromSessionId: params.fromSessionId,
+          fromMode: params.fromMode,
+          fromDisplayName: params.fromDisplayName,
+        });
+        return result.url;
+      },
     });
 
     // Prime the per-project cache for every known project so the launcher's
@@ -1930,7 +1947,24 @@ export async function startServer(options: ServerOptions) {
   mountRegistryRoute(app);
 
   // ── Project routes API ──────────────────────────────────────────────
-  mountProjectsRoutes(app, { homeDir: homedir() });
+  // Per-session server gets the same `launchSession` wiring as the
+  // launcher, so a project-onboard session inside this server can apply
+  // its discovery report and spawn the chosen task in-process.
+  mountProjectsRoutes(app, {
+    homeDir: homedir(),
+    launchSession: async (params) => {
+      const result = await launchPneumaChild({
+        specifier: params.mode,
+        workspace: params.project,
+        project: params.project,
+        sessionId: params.sessionId,
+        fromSessionId: params.fromSessionId,
+        fromMode: params.fromMode,
+        fromDisplayName: params.fromDisplayName,
+      });
+      return result.url;
+    },
+  });
 
   // Prime the per-project cache. Per-session servers care most about the
   // current project (high probability the user opens its panel first) but

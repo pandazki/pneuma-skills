@@ -19,6 +19,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { ViewerPreviewProps } from "../../../core/types/viewer-contract.js";
+import { useStore } from "../../../src/store.js";
 
 function getApiBase(): string {
   if (import.meta.env.DEV) {
@@ -230,36 +231,67 @@ function TaskCard({
 export default function OnboardPreview(_props: ViewerPreviewProps) {
   const { proposal, lastError } = useProposal();
   const apiBase = getApiBase();
+  const projectRoot = useStore((s) => s.projectContext?.projectRoot ?? null);
+  const sourceSessionId = useStore((s) => s.session?.session_id ?? null);
   const [keyHintDismissed, setKeyHintDismissed] = useState(false);
   const [applying, setApplying] = useState<string | null>(null); // "apply-only" | task title
+  const [applyError, setApplyError] = useState<string | null>(null);
 
   const onApply = useCallback(
     async (task: ProposalTask | null) => {
       if (!proposal) return;
+      if (!projectRoot) {
+        setApplyError("Project root unavailable — cannot apply outside a project session.");
+        return;
+      }
       const label = task ? task.title : "apply-only";
       setApplying(label);
+      setApplyError(null);
       try {
         const res = await fetch(`${apiBase}/api/projects/onboard/apply`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
+            projectRoot,
             proposal,
             chosenTask: task ? task.title : null,
+            sourceSessionId: sourceSessionId ?? undefined,
           }),
         });
         if (!res.ok) {
-          // The apply route is a follow-up phase. Surface the failure
-          // non-fatally so the user can still see the report and the
-          // agent can continue evolving it.
-          console.warn(`[onboard] apply failed: ${res.status}`);
+          const data = (await res.json().catch(() => ({}))) as { error?: string };
+          setApplyError(data.error ?? `Apply failed (${res.status})`);
+          return;
+        }
+        const data = (await res.json()) as {
+          applied: boolean;
+          launchUrl?: string | null;
+          warning?: string;
+        };
+        if (data.warning) {
+          // Apply landed but the launch failed — show the warning so
+          // the user knows the discovery write succeeded and they can
+          // pick another task.
+          setApplyError(data.warning);
+          return;
+        }
+        if (data.launchUrl) {
+          window.location.href = data.launchUrl;
+          return;
+        }
+        // Apply-only — reload to land back in EmptyShell, which now
+        // sees `onboardedAt` set and won't re-trigger onboarding.
+        // The user gets the panel ready for their next move.
+        if (projectRoot) {
+          window.location.href = `/?project=${encodeURIComponent(projectRoot)}`;
         }
       } catch (err) {
-        console.warn("[onboard] apply error:", err);
+        setApplyError(err instanceof Error ? err.message : String(err));
       } finally {
         setApplying(null);
       }
     },
-    [apiBase, proposal],
+    [apiBase, proposal, projectRoot, sourceSessionId],
   );
 
   if (!proposal) {
@@ -348,22 +380,29 @@ export default function OnboardPreview(_props: ViewerPreviewProps) {
         </section>
 
         {/* Footer controls */}
-        <footer className="flex items-center justify-between pt-6 border-t border-zinc-900/80">
-          <button
-            type="button"
-            onClick={() => void onApply(null)}
-            disabled={applying !== null}
-            className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Apply only — don't start a task yet
-          </button>
-          <div className="text-xs text-zinc-600">
-            {applying ? (
-              <span>Applying {applying === "apply-only" ? "metadata" : `"${applying}"`}…</span>
-            ) : (
-              <span>Review the report, then pick a path.</span>
-            )}
+        <footer className="flex flex-col gap-3 pt-6 border-t border-zinc-900/80">
+          <div className="flex items-center justify-between gap-4">
+            <button
+              type="button"
+              onClick={() => void onApply(null)}
+              disabled={applying !== null}
+              className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Apply only — don't start a task yet
+            </button>
+            <div className="text-xs text-zinc-600 text-right">
+              {applying ? (
+                <span>Applying {applying === "apply-only" ? "metadata" : `"${applying}"`}…</span>
+              ) : (
+                <span>Review the report, then pick a path.</span>
+              )}
+            </div>
           </div>
+          {applyError ? (
+            <div className="text-xs text-red-400/80" role="alert">
+              {applyError}
+            </div>
+          ) : null}
         </footer>
 
       </div>
