@@ -464,9 +464,58 @@ function CarouselLoading({ lastError }: { lastError: string | null }) {
   return (
     <>
       <style>{`
-        @keyframes pneuma-wipe-out {
-          from { clip-path: inset(0 0 0 0); }
-          to   { clip-path: inset(0 0 0 100%); }
+        /* Registered so CSS can interpolate it across keyframes — without
+           @property a custom percentage var would just snap between
+           values instead of animating smoothly. */
+        @property --pneuma-wipe {
+          syntax: '<percentage>';
+          inherits: false;
+          initial-value: 0%;
+        }
+
+        @keyframes pneuma-wipe-progress {
+          from { --pneuma-wipe: -10%; }
+          to   { --pneuma-wipe: 110%; }
+        }
+
+        /* The outgoing image wipes out via a soft-edged gradient mask
+           rather than a hard clip-path. The mask is a diagonal
+           (~12° off-vertical) gradient with a 14% transition band, so
+           the boundary feels like a lit dissolve sweeping across the
+           frame instead of a razor-sharp clip. */
+        .pneuma-wipe-out {
+          --pneuma-wipe: -10%;
+          -webkit-mask-image: linear-gradient(
+            102deg,
+            transparent calc(var(--pneuma-wipe) - 7%),
+            #000 calc(var(--pneuma-wipe) + 7%)
+          );
+          mask-image: linear-gradient(
+            102deg,
+            transparent calc(var(--pneuma-wipe) - 7%),
+            #000 calc(var(--pneuma-wipe) + 7%)
+          );
+          animation: pneuma-wipe-progress 1100ms cubic-bezier(0.76, 0, 0.24, 1) forwards;
+        }
+
+        /* A faint warm orange luminance band rides the same gradient
+           position, painted in screen-blend to add a "lit reveal"
+           glow without darkening either image. Kept low-opacity (peak
+           ~22%) so it reads as atmospheric warmth, not a scanner. */
+        .pneuma-wipe-glow {
+          --pneuma-wipe: -10%;
+          background: linear-gradient(
+            102deg,
+            transparent calc(var(--pneuma-wipe) - 7%),
+            rgba(249, 115, 22, 0.0) calc(var(--pneuma-wipe) - 4%),
+            rgba(249, 115, 22, 0.16) calc(var(--pneuma-wipe) + 1%),
+            rgba(249, 115, 22, 0.22) calc(var(--pneuma-wipe) + 3%),
+            rgba(249, 115, 22, 0.08) calc(var(--pneuma-wipe) + 5%),
+            transparent calc(var(--pneuma-wipe) + 7%)
+          );
+          animation: pneuma-wipe-progress 1100ms cubic-bezier(0.76, 0, 0.24, 1) forwards;
+          mix-blend-mode: screen;
+          pointer-events: none;
         }
       `}</style>
       <div className="h-full overflow-auto bg-zinc-950 text-zinc-200 flex items-center justify-center">
@@ -481,20 +530,26 @@ function CarouselLoading({ lastError }: { lastError: string | null }) {
               loading="eager"
               className="absolute inset-0 w-full h-full object-cover"
             />
-            {/* Top layer: the outgoing image, gets wiped out left-to-right.
-                Only mounted while a transition is in progress; the `key`
-                forces remount per advance so the keyframe re-fires. */}
+            {/* Wipe-out layers — only mounted during a transition. Two
+                stacked elements share the same wipe-position via the
+                same keyframe + custom-property: the masked image
+                fades out softly while the orange glow band rides the
+                leading edge to give it a lit, atmospheric feel. */}
             {previousIndex !== null && previousIndex !== activeIndex ? (
-              <img
-                key={`wipe-${previousIndex}-${activeIndex}`}
-                src={ILLUSTRATIONS[previousIndex].src}
-                alt=""
-                aria-hidden
-                className="absolute inset-0 w-full h-full object-cover"
-                style={{
-                  animation: "pneuma-wipe-out 900ms cubic-bezier(0.85, 0, 0.15, 1) forwards",
-                }}
-              />
+              <>
+                <img
+                  key={`wipe-img-${previousIndex}-${activeIndex}`}
+                  src={ILLUSTRATIONS[previousIndex].src}
+                  alt=""
+                  aria-hidden
+                  className="absolute inset-0 w-full h-full object-cover pneuma-wipe-out"
+                />
+                <div
+                  key={`wipe-glow-${previousIndex}-${activeIndex}`}
+                  aria-hidden
+                  className="absolute inset-0 pneuma-wipe-glow"
+                />
+              </>
             ) : null}
           </div>
 
