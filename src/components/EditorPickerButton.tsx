@@ -30,9 +30,8 @@ interface DetectedEditor {
 interface EditorPickerButtonProps {
   /**
    * Absolute directory to open in the chosen editor. Forwarded to
-   * `/api/projects/:targetPath/open-in-editor`, which ultimately runs
-   * `open -a <App> <targetPath>` on macOS. The endpoint name is a
-   * historical relic — it accepts any directory, not just project roots.
+   * `/api/system/open-in-editor` in the body, which ultimately runs
+   * `open -a <App> <targetPath>` on macOS.
    */
   targetPath: string;
   /**
@@ -106,14 +105,11 @@ export default function EditorPickerButton({
     setDefaultEditorId(editorId);
     setMenuOpen(false);
     try {
-      await fetch(
-        `${apiBase}/api/projects/${encodeURIComponent(targetPath)}/open-in-editor`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ editorId }),
-        },
-      );
+      await fetch(`${apiBase}/api/system/open-in-editor`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ editorId, path: targetPath }),
+      });
     } catch {
       // Best-effort — failures don't surface today.
     }
