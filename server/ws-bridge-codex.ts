@@ -42,13 +42,21 @@ export function attachCodexAdapterHandlers(
     if (msg.type === "session_init") {
       session.state = { ...session.state, ...msg.session, backend_type: "codex" };
       deps.persistSession?.(session);
-      // Broadcast merged state (adapter's partial may lack agent_capabilities)
-      deps.broadcastToBrowsers(session, { type: "session_init", session: session.state });
+      // Broadcast merged state (adapter's partial may lack agent_capabilities).
+      // `cli_busy` reflects the bridge-internal cliIdle so a browser that
+      // joins mid-turn can hydrate UI status from the snapshot.
+      deps.broadcastToBrowsers(session, {
+        type: "session_init",
+        session: { ...session.state, cli_busy: !session.cliIdle },
+      });
       return;
     } else if (msg.type === "session_update") {
       session.state = { ...session.state, ...msg.session, backend_type: "codex" };
       deps.persistSession?.(session);
-      deps.broadcastToBrowsers(session, { type: "session_update", session: session.state });
+      deps.broadcastToBrowsers(session, {
+        type: "session_update",
+        session: { ...session.state, cli_busy: !session.cliIdle },
+      });
       return;
     } else if (msg.type === "status_change") {
       session.state.is_compacting = msg.status === "compacting";
