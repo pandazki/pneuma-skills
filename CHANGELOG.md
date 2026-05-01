@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.1] - 2026-05-01
+
+### Fixed — three post-3.0 dogfood findings
+
+- **Auto-spawn / handoff-target / mid-turn refresh UI showed "Idle" while the agent was streaming.** A browser joining a session that was already mid-turn hard-coded `sessionStatus="idle"` on `session_init`, and `turnInProgress` only flipped on via the user-send path or the synthetic-user-message broadcast — neither fires for a joining browser. The chat input stayed enabled (race-prone) and the top-right read "Idle" while the agent produced text behind the scenes. `SessionState` (the wire shape) now carries an optional `cli_busy` field, computed at every `session_init` / `session_update` broadcast as `!session.cliIdle`. The browser hydrates `sessionStatus` + `turnInProgress` from it. Live transitions (assistant → running, result → idle) keep working as before; the new code only matters at the moment a browser connects to a session that's already running.
+- **Webcraft scaffold timed out on the first turn of a freshly-spawned session.** `VIEWER_ACTION_TIMEOUT_MS` was 15s, which broke a real scenario: a Smart Handoff spawned a fresh webcraft session and the agent's first turn included `scaffold` while the browser was still navigating to the new per-session URL + loading the mode bundle + reconnecting WS. The 15s window often closed before the viewer could even register the action handler, even though the actual work was milliseconds. Bumped to 60s — most viewer actions are sub-second; the timeout is a safety net for hung browsers, not a real upper bound on legitimate work.
+- **OnboardPreview's "Discovering your project…" status pill** now uses a sonar-style ping (steady center + two staggered concentric rings) instead of a single orange pulse-dot. Reads as active scanning, matching the verb in the copy. 1.6s cycle paced calmly so it doesn't compete with the carousel's wipe.
+
 ## [3.0.0] - 2026-05-01
 
 ### 3.0 — Projects Are First-Class
