@@ -326,7 +326,16 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
     case "session_init": {
       store.setSession(data.session);
       store.setCliConnected(true);
-      store.setSessionStatus("idle");
+      // Hydrate live status from the snapshot. Without this, a browser
+      // joining a session that's already mid-turn (auto-spawned
+      // project-onboard, post-handoff target, or just a tab refresh
+      // while the agent is processing) hard-codes UI to "idle" + lets
+      // the user type into the chat — even though the agent is
+      // streaming behind the scenes. The server now ships
+      // `cli_busy` on every session_init / session_update broadcast.
+      const isBusy = (data.session as { cli_busy?: boolean }).cli_busy === true;
+      store.setSessionStatus(isBusy ? "running" : "idle");
+      store.setTurnInProgress(isBusy);
       break;
     }
 

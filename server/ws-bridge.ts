@@ -400,10 +400,15 @@ export class WsBridge {
     session.browserSockets.add(ws);
     console.log(`[ws-bridge] Browser connected for session ${sessionId} (${session.browserSockets.size} browsers)`);
 
-    // Send current session state as snapshot
+    // Send current session state as snapshot. `cli_busy` is computed
+    // here (inverse of the internal `cliIdle` flag) so the joining
+    // browser can hydrate `sessionStatus` / `turnInProgress` from the
+    // actual live state — otherwise an auto-spawn (project-onboard)
+    // or post-handoff target would stream into a UI that thinks the
+    // agent is idle.
     const snapshot: BrowserIncomingMessage = {
       type: "session_init",
-      session: session.state,
+      session: { ...session.state, cli_busy: !session.cliIdle },
     };
     this.sendToBrowser(ws, snapshot);
 
@@ -565,7 +570,7 @@ export class WsBridge {
 
       this.broadcastToBrowsers(session, {
         type: "session_init",
-        session: session.state,
+        session: { ...session.state, cli_busy: !session.cliIdle },
       });
 
       // Flush any messages queued before CLI was initialized

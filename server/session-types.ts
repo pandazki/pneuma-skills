@@ -420,6 +420,21 @@ export interface SessionState {
   available_models?: { id: string; name?: string }[];
   pid?: number;
   fast_mode_state?: unknown;
+  /**
+   * Whether the agent backend is currently processing a turn.
+   *
+   * Inverted view of the bridge-internal `Session.cliIdle` flag, surfaced
+   * on the wire so a browser that joins a session mid-turn (after a
+   * `Create & discover` auto-spawn, or after a Smart Handoff confirm)
+   * can hydrate `sessionStatus` + `turnInProgress` from the snapshot
+   * instead of waiting for the next `assistant` chunk to figure it out
+   * — and instead of leaving the chat input enabled while the agent is
+   * already streaming.
+   *
+   * Computed at every `session_init` / `session_update` broadcast; not
+   * persisted in `session.state`. Default `false`.
+   */
+  cli_busy?: boolean;
 }
 
 // ─── Permission Types ────────────────────────────────────────────────────────
