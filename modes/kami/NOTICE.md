@@ -44,8 +44,19 @@ English templates fall through to **Charter** (macOS / iOS bundled),
 **Georgia**, and **Palatino**. Japanese templates fall through to
 **YuMincho** / **Hiragino Mincho ProN** (macOS / iOS bundled) and **Noto
 Serif CJK JP**. None are shipped with this mode; the OS provides them or
-the page falls through to a generic serif. This matches the upstream v1.2.0
-single-serif-per-page model.
+the page falls through to a generic serif. This matches the upstream
+single-serif-per-page model (locked since v1.2.0).
+
+## Tracked upstream version
+
+Diagrams and reference docs in this mode are synced against
+[tw93/kami **V1.4.1**](https://github.com/tw93/Kami/releases/tag/V1.4.1)
+("Steadier Hand", 2026-05-05). Items intentionally not synced from
+upstream because they don't apply to Pneuma's iframe paper-canvas /
+browser-print model: the WeasyPrint runtime, the `build.py` /
+`ensure-fonts.sh` build pipeline, the Claude Code plugin marketplace
+install path, `llms.txt` / sitemap / JSON-LD landing-page assets, and
+the brand profile loaded from `~/.config/kami/brand.md`.
 
 ## Seed demos
 

@@ -142,6 +142,52 @@ Branded documents should first make the subject recognizable, then use decoratio
 - If project images are missing, mark the gap. Do not fill the layout with unrelated imagery
 - Don't list every tech stack - a mono tag row is enough
 
+### Proposal (long-doc variant)
+
+A proposal is a long-doc whose body argues for a specific commercial engagement. Three voice rules are unique to this variant:
+
+#### 1. Work-volume frame vs attention frame
+
+A pricing page can be written two ways. The work-volume frame lists deliverables, hours, or session counts; readers price-anchor against market hourly rates. The attention frame describes a senior advisor's judgment allocated across a few directions; readers price-anchor against the value of the directions. Pick one frame and stay consistent.
+
+| Dimension | Work-volume frame | Attention frame |
+|---|---|---|
+| What is sold | Execution of N items | Allocation of judgment |
+| Pricing basis | Hours / deliverables | Total engagement |
+| Workload density | Fixed commitment | Flexes with the buyer's cadence |
+| Reader posture | Procurement | Hiring an advisor |
+| Signals | "I can do these tasks" | "I bet on these directions" |
+| Fits | Outsourced delivery | Senior advisory work |
+
+The work-volume frame backfires for advisor pricing: the more itemized the breakdown, the more the reader divides total fee by hours and decides "this is a vendor, can it cut corners?" Avoid these patterns when writing in the attention frame:
+
+- Rigid monthly volume: `每月 N 份 / 节 / 篇`. Replace with "by milestone" or "as the cadence requires".
+- Exhaustive coverage: `每个发布节点全程参与`. Replace with "deep involvement at major milestones".
+- Specific session counts: `20 节课程`. Replace with "depth of content" anchors and let scheduling adjust.
+- "Full-X" totalizers: `全方位 / 全链路 / 全程`. Replace with "key X" or "core X".
+
+#### 2. With-price vs without-price modes
+
+Whether to print the number depends on the reader. Use these defaults and switch by audience:
+
+| Audience | Mode | Reasoning |
+|---|---|---|
+| Operating founder, direct buyer | **With price** | Direct decision-makers want the number to evaluate fit |
+| Intermediary, business contact | **Without price** | Leave room for the intermediary's own commercial layer |
+| Investor, board reader | **Without price** | Strategy first, money second; a number breaks the register |
+
+The without-price variant drops the large-figure hero and keeps the value anchors. Rename the chapter from "合作方案与投入" (Plan & investment) to "合作方向与价值" (Directions & value) so the title matches the content.
+
+#### 3. Kickoff-period emphasis pattern
+
+Twelve-month timelines fail when every month is described at equal weight: the reader cannot tell what is urgent. Surface the first 60 days as a separate beat ahead of the timeline table:
+
+- One paragraph on time scarcity ("this window closes; recovering it later costs several times more").
+- One paragraph per month: bold the date, name the module, list 2-3 concrete actions, state the outcome.
+- Then the full month-by-month table, which reads as detail rather than the story.
+
+The pattern is "story before grid": the reader leaves the timeline section knowing one thing (the kickoff is dense), not twelve things (every month).
+
 ### Resume
 
 The most constrained document type in kami.
@@ -226,6 +272,12 @@ Structure is necessary but not sufficient. These bars define what separates comp
 4. Reading just the slide titles in sequence should tell the full argument
 5. Include a "so what" moment every 3-4 slides to re-anchor the audience
 6. End with one clear ask, not a bullet list of "key points"
+
+**Eyebrow vs title non-duplication**: the eyebrow is a stable, cross-slide section label ("Growth / Q3 Results"). The title is a page-unique declarative claim ("Revenue grew 23% because enterprise deals closed 2x faster"). They must never say the same thing in different words. If removing the eyebrow would make the title ambiguous, the title is too weak. If reading the title makes the eyebrow redundant, the eyebrow is a topic label masquerading as context.
+
+**Deck rhythm (>=12 slides)**: before writing any slide, sketch a layout-type sequence. Rules: every 4-6 slides must include a `chapter_slide` (ink-blue full-bleed divider); never run more than 5 consecutive `content_slides` without a divider; the deck must include at least one `quote_slide` or `metrics_slide` to vary density. Monotony is a structure failure, not a content one.
+
+**Term consistency self-check**: after drafting, list every domain term that appears 3 or more times (product names, feature names, roles, metrics). Confirm there is exactly one spelling and capitalization for each. Inconsistent casing ("LLM" vs "llm" vs "large language model") signals an unreviewed draft.
 
 ### Equity Report
 

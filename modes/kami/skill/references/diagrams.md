@@ -93,18 +93,18 @@ Edit the `<text>` and `<rect>` values directly. Rules:
 
 ### Color token map
 
-Shared tokens across the three diagrams, mapping directly to kami's design system:
+Shared tokens across kami's diagram set, mapping directly to the design system. All fills are solid hex values pre-blended on parchment; never use `rgba()` in SVG fills or strokes (it disagrees with the warm-tone palette and complicates WeasyPrint output).
 
 | SVG role | kami token | Value |
 |---|---|---|
 | Canvas | `--parchment` | `#f5f4ed` |
-| Standard node fill | (white) | `#ffffff` |
+| Standard node fill | `--ivory` | `#faf9f5` |
 | Standard node stroke | `--near-black` | `#141413` |
-| Store node fill | near-black 5% | `rgba(20,20,19,0.05)` |
+| Store node fill | near-black 5% (solid) | `#EAE9E2` |
 | Store node stroke | `--olive` | `#504e49` |
-| Cloud node fill | near-black 3% | `rgba(20,20,19,0.03)` |
-| Cloud node stroke | near-black 30% | `rgba(20,20,19,0.30)` |
-| External node fill | olive 8% | `rgba(94,93,89,0.08)` |
+| Cloud node fill | near-black 3% (solid) | `#EEEDE6` |
+| Cloud node stroke | near-black 30% (solid) | `#B2B1AC` |
+| External node fill | olive 8% (solid) | `#E9E8E1` |
 | External node stroke | `--stone` | `#6b6a64` |
 | **Focal fill** | `--brand-tint` | `#EEF2F7` |
 | **Focal stroke** | `--brand` | `#1B365D` |
@@ -115,6 +115,59 @@ Shared tokens across the three diagrams, mapping directly to kami's design syste
 | Tertiary text / small mono label | `--stone` | `#6b6a64` |
 
 Don't add a fourth state ("warning amber", "success green"). kami has one accent.
+
+### Shared `<defs>` fragment
+
+Every diagram opens with the same parchment + dotted-noise overlay. Copy this block verbatim into new diagrams so the texture stays uniform:
+
+```html
+<defs>
+  <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+    <circle cx="1" cy="1" r="0.9" fill="#E3E2DC"/>
+  </pattern>
+</defs>
+
+<rect width="100%" height="100%" fill="#f5f4ed"/>
+<rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+```
+
+`#E3E2DC` is the parchment-blended solid for `rgba(20,20,19,0.08)`; the `opacity="0.55"` on the overlay rect is a deliberate decoration, not a violation of the no-rgba-on-tag-backgrounds rule (which targets CSS tag fills, not SVG dot textures).
+
+### Embedded font calibration (override standalone sizes)
+
+Standalone diagram sizes (`7 / 9 / 12`) are too small once embedded in A4 long-doc / portfolio. The render width drops to about 470pt while the viewBox stays at 1000, so the scale factor is roughly `0.47`. To keep diagram text aligned with the 11pt body baseline, raise the SVG `font-size` values when embedding:
+
+| Visual target | Visual weight | SVG `font-size` |
+|---|---|---|
+| Same as h2 / focal node name | 11pt | **24** |
+| Same as body | 11pt | **22-24** |
+| Same as h3 / sub-label | 9-10pt | **18-20** |
+| Same as caption | 8pt | **15-16** |
+| Mono uppercase tag (letter-spacing 2.5) | 7pt | **14** |
+
+Compensation factor is roughly `1.8-2.0x` over standalone. `font-size: 24` with `font-weight: 600` and the body serif renders at about 1.05x the body, which reads as h2-equivalent without dominating the page.
+
+For tall diagrams (e.g. 5-layer stack), a working layout is `viewBox: 0 0 1000 560`, layer height `88`, gap `8`, and inside each layer:
+
+- Tag baseline `y+24`, font-size `14`, mono, letter-spacing `2.5`
+- Name baseline `y+54`, font-size `24`, serif weight `600`
+- Description baseline `y+76`, font-size `14`, mono, normal
+- Right-side role tag `x=900`, `text-anchor=end`, font-size `13`
+
+### In-SVG header line (figure number + title)
+
+For embedded diagrams, put the "FIGURE N · TITLE" header inside the SVG instead of using `<figcaption>`. The diagram becomes a self-contained editorial unit, and the brand-colored header doubles as a section anchor.
+
+```svg
+<text x="80" y="38" fill="#1B365D" font-size="13" font-weight="600"
+      font-family="mono" letter-spacing="3">FIGURE  1</text>
+<text x="195" y="38" fill="#504e49" font-size="13"
+      font-family="mono" letter-spacing="3">DIAGRAM TITLE GOES HERE</text>
+<line x1="80" y1="52" x2="920" y2="52"
+      stroke="#1B365D" stroke-width="0.8"/>
+```
+
+Two spaces between `FIGURE` and the number. With `letter-spacing: 3`, a single space lets the digit collide with the preceding letter.
 
 ---
 

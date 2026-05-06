@@ -515,6 +515,179 @@ For displaying pseudocode or code snippets in slides. More structured than a pla
 
 **Content philosophy**: use pseudocode style. Comments should outnumber code lines. The reader sees logic, not syntax.
 
+### Glance Grid
+
+Four key-number cells, placed after the TOC or on a chapter-opening page of a long-doc / proposal.
+
+```html
+<div class="glance-grid">
+  <div class="glance-cell">
+    <div class="glance-label">REPORTING PERIOD</div>
+    <div class="glance-value">Q1 2026</div>
+    <div class="glance-note">Three core themes</div>
+  </div>
+  <!-- 4 cells total -->
+</div>
+```
+
+```css
+.glance-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14pt;
+  margin: 18pt 0;
+}
+.glance-cell {
+  padding: 12pt 0 10pt 14pt;
+  border-left: 2pt solid var(--brand);
+  border-radius: 1.5pt;
+}
+.glance-label {
+  font-family: var(--mono);
+  font-size: 8.5pt;
+  color: var(--brand);
+  letter-spacing: 1pt;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+.glance-value {
+  font-size: 18pt;
+  font-weight: 500;
+  color: var(--near-black);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5pt;
+}
+.glance-note {
+  font-size: 9pt;
+  color: var(--olive);
+  line-height: 1.4;
+}
+```
+
+### Module Block
+
+Proposal A / B / C structure: each module gets a brand-colored letter, a Chinese title, and an uppercase English subtitle.
+
+```html
+<div class="module">
+  <div class="module-head">
+    <div class="module-letter">A</div>
+    <div class="module-title">模块标题</div>
+    <div class="module-sub">MODULE SUBTITLE</div>
+  </div>
+  <p>...</p>
+  <ul>...</ul>
+</div>
+```
+
+Visual recipe: letter at 28pt brand, title at 17pt, English subtitle at 10pt mono brand `letter-spacing: 2pt`, head separated from body by a 0.3pt warm-gray hairline (not brand color).
+
+### Module Note (group explanation)
+
+A short note that explains the relationship between two or more modules. Same family as `.callout`, lighter weight, no decorative bar.
+
+```html
+<div class="module-note">
+  <div class="module-note-label">ABOUT B + C</div>
+  <p>B 是上游能力建设，C 是下游验证。两者构成一个最小闭环。</p>
+</div>
+```
+
+ivory background + 4pt radius + `module-note-label` at 8.5pt brand uppercase mono.
+
+### Position Table
+
+Three-column industry-comparison table whose final row highlights the current project / subject.
+
+```html
+<table class="position-table">
+  <thead>
+    <tr><th>Direction</th><th>Reference project</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>...</td><td>...</td><td>...</td></tr>
+    <tr class="highlight"><td><strong>本项目</strong></td>...</tr>
+  </tbody>
+</table>
+```
+
+`.highlight` row: ivory fill + brand text. Do not bold the entire row; let the `<strong>` carry the emphasis.
+
+### Pricing Card
+
+Headline-figure price block. Eyebrow + price + short note.
+
+```html
+<div class="pricing-card">
+  <div class="pricing-eyebrow">PROJECT TERM</div>
+  <div class="pricing-price">
+    <span class="currency">¥</span>
+    <span class="amount">XXX,XXX</span>
+    <span class="unit">/ term</span>
+  </div>
+  <div class="pricing-note">Paid by milestone</div>
+</div>
+```
+
+Digits: serif 500, 44pt, `tabular-nums`, `letter-spacing: 0.5pt`. Without the letter-spacing, large digits crowd each other and read as too dense.
+
+For the without-price variant (see writing.md "Proposal voice"), drop the `.pricing-price` block and follow the eyebrow with the Value Anchors list below.
+
+### Value Anchors
+
+Replaces pricing line-item breakdowns with a short list of capability anchors. Pairs with Pricing Card or stands alone in the without-price variant.
+
+```html
+<ul class="value-anchors">
+  <li><strong>能力锚点 A</strong>：一句具体说明能力来源的事实陈述</li>
+  <li><strong>能力锚点 B</strong>：一句具体说明锚点稀缺性的事实陈述</li>
+  <!-- 4-6 items -->
+</ul>
+```
+
+```css
+.value-anchors {
+  list-style: none;
+  padding: 0;
+  margin: 12pt 0 18pt 0;
+}
+.value-anchors li {
+  position: relative;
+  padding: 9pt 0 9pt 18pt;
+  border-bottom: 0.3pt solid var(--border-soft);
+  line-height: 1.55;
+  font-size: 10.5pt;
+}
+.value-anchors li:last-child { border-bottom: none; }
+.value-anchors li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 17pt;
+  width: 8pt;
+  height: 1.5pt;
+  background: var(--brand);
+}
+.value-anchors li strong {
+  color: var(--brand);
+  font-weight: 500;
+  margin-right: 6pt;
+}
+```
+
+The 8pt × 1.5pt brand bar (`::before`) replaces the round `<ul>` bullet. A round bullet next to CJK body reads juvenile; the bar reads editorial.
+
+### Decoration density: editorial vs structured
+
+Long-doc / proposal layouts have two acceptable decoration densities. Pick one and stay consistent across the whole document.
+
+| Context | Mode | Pattern |
+|---|---|---|
+| Data report, white paper, technical brief | **Structured** | Top hairlines (0.6-0.8pt brand) on callouts, glance cells, and pricing blocks. Roughly 5-8 brand lines per page. |
+| Proposal, advisory pitch, founder-facing brief | **Editorial** (default) | No decorative lines. Brand color appears only in text (chapter number, `.hl`, `<strong>`, digits, labels). Containers use ivory fill + 4pt radius. |
+
+The editorial mode reads as "content speaks"; the structured mode reads as "structure helps". The wrong mode is the third one: brand lines plus ivory plus radius plus borders, which signals over-packaging. When unsure, default to editorial.
+
 ---
 
 ## 5. Depth & Shadow
@@ -569,10 +742,21 @@ Long docs alternate parchment `#f5f4ed` and `#141413` dark sections. This sectio
 ### break-inside protection
 
 ```css
-.card, .metric, .project-item, .quote, .code-block, figure, .callout {
+.card, .metric, .project-item, .quote, .code-block, figure, .callout,
+.takeaway, .module, .module-note, .glance-grid, .pricing-card,
+table.compact {
   break-inside: avoid;
 }
+
+/* Headings should never sit alone at the bottom of a page */
+h1, h2, h3 { break-after: avoid; }
+
+/* Widow / orphan minimums for body text */
+body { widows: 3; orphans: 3; }
+p    { widows: 2; orphans: 2; }
 ```
+
+CSS alone cannot prevent "the last two lines of a chapter pushed onto a fresh page". For long-doc / proposal output, follow up with a render-time density check (see production.md "Verify & Debug").
 
 ### Force break
 
@@ -615,18 +799,208 @@ Not on this table -> return to first principles: **serif carries authority, sans
 
 ---
 
-## 8. Deck Recipe (long deck rules)
+## 8. Deck Recipe
 
-For decks longer than 20 slides, the following rules apply. Each came from real production work.
+Slides in kami use WeasyPrint HTML to PDF as the primary rendering path. The pptx path (`slides.py`) is available as a fallback when the user explicitly requires an editable PPTX file.
 
-| Rule | Content |
-|------|---------|
-| R1 | Slide container fixed at 1920×1080, scaled externally. No dynamic vh/vw units |
-| R2 | Slide titles use Display (64px), not H1 (30px). H1 is a print hierarchy level |
-| R4 | Slide letter-spacing = print value / 2. 8px tracking "falls apart" on screen |
-| R5 | Section header: gap below rule ≥ 36px (at least 2x the gap above) |
-| R6 | Eyebrow dot uses `align-items: center`, not baseline (dot is geometric, not text) |
-| R7 | Slide padding-top 72-80px (print is 96-120px; slides are more compact) |
-| R8 | Images use `object-fit: contain` + flex centering. Never stretch or crop |
-| R9 | Use `.kami-slide-footer` for page number and deck mark, absolutely positioned to bottom |
-| R10 | Code uses pseudocode style: more comment lines than code lines. Show logic, not syntax |
+### Architecture
+
+**Why WeasyPrint over python-pptx:** pptx output passed through LibreOffice loses CJK font weight, tracking, and glyph spacing. WeasyPrint embeds fonts exactly, giving pixel-level CSS control.
+
+Use `assets/templates/slides-weasy.html` (CN) or `assets/templates/slides-weasy-en.html` (EN) as the starting point.
+
+### Page size
+
+Default `280mm 158mm`. Change in `@page` and `.slide` together.
+
+| Size | `@page` | Use when |
+|---|---|---|
+| Compact (default) | `280mm 158mm` | Standard density, fits most content |
+| Standard | `297mm 167mm` | Slightly more room per slide |
+| Wide | `338mm 190mm` | Heavy content, many data points |
+
+### Typography
+
+Global parameters for the slide body:
+
+```css
+body {
+  font-size: 13pt;
+  line-height: 1.65;
+  letter-spacing: 0.3pt;   /* CJK: critical for breathing room */
+}
+```
+
+Heading scale:
+
+| Element | Size | Weight | Notes |
+|---|---|---|---|
+| `h2` | 24pt | 500 | Page title; `margin-bottom: 14pt` |
+| `h3` | 15pt | 500 | Section heading; `color: var(--brand)` |
+| `.eyebrow` | 9.5pt | 400 | Mono, `letter-spacing: 2pt`, `color: var(--stone)` |
+| `.lead` | 12pt | 400 | Below `h2`; `color: var(--olive)` |
+
+Content element scale:
+
+| Class | Size | Notes |
+|---|---|---|
+| `.mt` | 16pt | Module title, used with `.ml` |
+| `.ml` | 24pt | Large letter prefix in `var(--brand)`, paired with `.mt` |
+| `.ms` | 7.5pt mono | Module sub-label; `border-bottom` separator |
+| `.mb` | 11pt | Module body description |
+| `.mi` | 11pt | Module line item; `padding: 8pt 0` |
+| `.mc` | 9.5pt | Delivery rhythm or cadence note; `border-top` |
+| `.co` | 11pt bold | Bottom callout; `position: absolute; bottom: 12mm` |
+
+### Layout patterns
+
+**Two-column (`.c2`)**: CSS Grid, `grid-template-columns: 1fr 1fr; gap: 22pt`. Use for side-by-side modules with independent heights.
+
+**2×2 aligned (`.t2x2`)**: HTML `<table>`, not CSS Grid. Grid does not guarantee row alignment across cells; table rows share height naturally.
+
+```html
+<table class="t2x2">
+  <tr>
+    <td> <!-- top-left --> </td>
+    <td> <!-- top-right --> </td>
+  </tr>
+  <tr>
+    <td> <!-- bottom-left --> </td>
+    <td> <!-- bottom-right --> </td>
+  </tr>
+</table>
+```
+
+**Pinned callout (`.co`)**: `position: absolute; bottom: 12mm; left: 20mm; right: 20mm`. The whitespace above it is intentional, not empty.
+
+### Table styles
+
+```css
+table.data td {
+  padding: 8pt;
+  border-bottom: 0.3pt solid var(--border);
+  font-size: 11pt;
+}
+table.data td:first-child {
+  font-weight: 500;
+  color: var(--brand);   /* first column: brand blue bold */
+}
+```
+
+### SVG constraints
+
+- `viewBox` width fixed at `920`; adjust height to content
+- `max-height: 105mm` on `svg` element to prevent overflow
+- WeasyPrint does not support `fill="url(#gradient)"` or CSS Grid inside SVG
+- Draw arrowheads as explicit `<path>` elements; `marker-end` with `orient="auto"` does not rotate in WeasyPrint
+
+### Content rules
+
+| Rule | Detail |
+|---|---|
+| No section divider slides | Use `.eyebrow` for section numbering instead; saves one slide per section |
+| No CJK parentheses | Replace `（...）` with `·` or `,` |
+| One line per bullet | Trim until each item fits on one line; never let it wrap |
+| Empty space handling | Priority: shrink page size > pin `.co` callout > add content > merge slides |
+| Cover | No horizontal rule; title centered `38pt`; subtitle on one line; bottom meta centered |
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Content overflows to next page | Add `max-height` or trim content |
+| 2×2 columns misaligned | Switch from CSS Grid to `table.t2x2` |
+| Large blank at slide bottom | Reduce to `280mm 158mm` or pin `.co` callout |
+| CJK text looks tight | Add `letter-spacing: 0.3pt` |
+
+### Core principles
+
+1. `letter-spacing` matters more than `font-size` for CJK density
+2. 2×2 layouts use `table`, not grid
+3. No section divider slides
+4. No white card panels on parchment; use border lines to divide
+5. Callout pins to bottom; whitespace above is the design
+6. Each bullet fits one line
+7. Shrink page first before adding more content
+
+---
+
+## 9. Horizontal Funnel / Progress Bar Pattern
+
+No dedicated `funnel.html` diagram prototype exists. When generating a horizontal bar chart with external percentage labels (conversion funnel, progress tracker, ranked list), use a three-column grid so the label column is fixed-width and never drifts with bar length.
+
+```css
+.funnel-row {
+  display: grid;
+  grid-template-columns: 80pt 1fr 40pt;  /* label | track | external % */
+  align-items: center;
+  gap: 8pt;
+  margin: 4pt 0;
+}
+.funnel-track {
+  position: relative;
+  height: 18pt;
+  background: var(--border-soft);
+  border-radius: 2pt;
+}
+.funnel-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--brand);
+  border-radius: 2pt;
+}
+.funnel-pct {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--stone);
+  font-size: 9pt;
+}
+```
+
+Example row (77.8% fill):
+
+```html
+<div class="funnel-row">
+  <span>Stage Name</span>
+  <div class="funnel-track">
+    <div class="funnel-fill" style="width:77.8%"></div>
+  </div>
+  <span class="funnel-pct">77.8%</span>
+</div>
+```
+
+Key rules:
+
+- Use the three-column grid, not flex. The third column is always 40pt wide; the percentage never moves regardless of bar length.
+- Color: single `--brand` fill only. No color gradients or per-row hues. Vary opacity (e.g. `opacity: 0.7`) if a visual ranking is needed, not hue.
+- Inline labels inside the bar (count, name) go in an absolutely positioned child inside `.funnel-track`, not in the grid's third column.
+
+---
+
+## 10. Image Aspect Ratios and Cropping
+
+Use this table when placing images in any Kami template. The ratios are defaults, not constraints; adjust by one step if the source image differs significantly.
+
+| Context | Preferred ratio | Notes |
+|---|---|---|
+| Hero full-bleed (slides / cover) | 16:9 | One image fills the slide; use `object-fit: cover` |
+| Main document image (long-doc / portfolio spread) | 4:3 or 16:10 | Standard editorial proportion |
+| Side-by-side grid (two images per row) | 3:2 | Even weight, comfortable scanning |
+| Magazine inset (text wraps around) | 3:2 or 3:4 | Portrait works when the subject is a person |
+| Square thumbnail (icon grid, avatar, logo) | 1:1 | Enforced with `aspect-ratio: 1/1` |
+| Slide image grid (26vh fixed-height row) | Fixed height, free width | Grid items share a row height; clip width to fit |
+
+**Cropping rule**: always `object-position: top center`. Crop from the bottom first, then from the sides. Never crop from the top; heads, titles, and focal points live there.
+
+```css
+.frame-img,
+figure img,
+.hero-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+```
+
+Apply this rule to any `<img>` placed inside a fixed-size container. For `object-fit: contain` (slides, logos), `object-position` has no visible effect; omit it.

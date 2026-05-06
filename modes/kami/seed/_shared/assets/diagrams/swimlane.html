@@ -61,7 +61,6 @@
 
   .caption {
     font-family: var(--serif);
-    font-style: italic;
     font-size: 0.95rem;
     color: var(--olive);
     margin-top: 1rem;
@@ -77,7 +76,7 @@
     <svg viewBox="0 0 960 460" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
-          <circle cx="1" cy="1" r="0.9" fill="rgba(20,20,19,0.08)"/>
+          <circle cx="1" cy="1" r="0.9" fill="#E3E2DC"/>
         </pattern>
       </defs>
 
@@ -86,11 +85,11 @@
 
       <!-- ── Lane backgrounds ── -->
       <!-- Lane 1: Client, y=56..176 -->
-      <rect x="64" y="56" width="880" height="120" rx="0" fill="rgba(20,20,19,0.02)"/>
+      <rect x="64" y="56" width="880" height="120" rx="0" fill="#F0F0E9"/>
       <!-- Lane 2: Server, y=176..296 (focal) -->
       <rect x="64" y="176" width="880" height="120" fill="#EEF2F7" opacity="0.40"/>
       <!-- Lane 3: Database, y=296..416 -->
-      <rect x="64" y="296" width="880" height="120" rx="0" fill="rgba(20,20,19,0.02)"/>
+      <rect x="64" y="296" width="880" height="120" rx="0" fill="#F0F0E9"/>
 
       <!-- Lane dividers -->
       <line x1="64" y1="56"  x2="944" y2="56"  stroke="#e8e6dc" stroke-width="1"/>
@@ -139,10 +138,10 @@
       <!-- N1: Request, Lane 1, x=80 y=92 w=144 h=48 -->
       <rect x="80" y="92" width="144" height="48" rx="6" fill="#f5f4ed"/>
       <rect x="80" y="92" width="144" height="48" rx="6"
-            fill="rgba(94,93,89,0.08)" stroke="#6b6a64" stroke-width="1"/>
+            fill="#E9E8E1" stroke="#6b6a64" stroke-width="1"/>
       <text x="102" y="108" fill="#6b6a64" font-size="7" font-family="'JetBrains Mono', monospace"
             letter-spacing="0.15em">USER</text>
-      <text x="152" y="124" fill="#141413" font-size="12" font-weight="600"
+      <text x="152" y="124" fill="#141413" font-size="12" font-weight="500"
             font-family="inherit" text-anchor="middle">Request</text>
 
       <!-- N2: Validate, Lane 2, x=80 y=212 w=144 h=48 FOCAL -->
@@ -151,34 +150,34 @@
             fill="#EEF2F7" stroke="#1B365D" stroke-width="1"/>
       <text x="102" y="228" fill="#1B365D" font-size="7" font-family="'JetBrains Mono', monospace"
             letter-spacing="0.15em">FOCAL</text>
-      <text x="152" y="244" fill="#141413" font-size="12" font-weight="600"
+      <text x="152" y="244" fill="#141413" font-size="12" font-weight="500"
             font-family="inherit" text-anchor="middle">Validate</text>
 
       <!-- N3: Route, Lane 2, x=288 y=212 w=144 h=48 -->
       <rect x="288" y="212" width="144" height="48" rx="6" fill="#f5f4ed"/>
       <rect x="288" y="212" width="144" height="48" rx="6"
-            fill="rgba(20,20,19,0.03)" stroke="rgba(20,20,19,0.30)" stroke-width="1"/>
+            fill="#EEEDE6" stroke="#B2B1AC" stroke-width="1"/>
       <text x="310" y="228" fill="#6b6a64" font-size="7" font-family="'JetBrains Mono', monospace"
             letter-spacing="0.15em">HANDLER</text>
-      <text x="360" y="244" fill="#141413" font-size="12" font-weight="600"
+      <text x="360" y="244" fill="#141413" font-size="12" font-weight="500"
             font-family="inherit" text-anchor="middle">Route</text>
 
       <!-- N4: Query, Lane 3, x=496 y=332 w=144 h=48 -->
       <rect x="496" y="332" width="144" height="48" rx="6" fill="#f5f4ed"/>
       <rect x="496" y="332" width="144" height="48" rx="6"
-            fill="rgba(20,20,19,0.05)" stroke="#504e49" stroke-width="1"/>
+            fill="#EAE9E2" stroke="#504e49" stroke-width="1"/>
       <text x="518" y="348" fill="#504e49" font-size="7" font-family="'JetBrains Mono', monospace"
             letter-spacing="0.15em">STORE</text>
-      <text x="568" y="364" fill="#141413" font-size="12" font-weight="600"
+      <text x="568" y="364" fill="#141413" font-size="12" font-weight="500"
             font-family="inherit" text-anchor="middle">Query</text>
 
       <!-- N5: Respond, Lane 1, x=740 y=92 w=144 h=48 -->
       <rect x="740" y="92" width="144" height="48" rx="6" fill="#f5f4ed"/>
       <rect x="740" y="92" width="144" height="48" rx="6"
-            fill="rgba(94,93,89,0.08)" stroke="#6b6a64" stroke-width="1"/>
+            fill="#E9E8E1" stroke="#6b6a64" stroke-width="1"/>
       <text x="762" y="108" fill="#6b6a64" font-size="7" font-family="'JetBrains Mono', monospace"
             letter-spacing="0.15em">USER</text>
-      <text x="812" y="124" fill="#141413" font-size="12" font-weight="600"
+      <text x="812" y="124" fill="#141413" font-size="12" font-weight="500"
             font-family="inherit" text-anchor="middle">Respond</text>
 
       <!-- ── Legend ── -->
@@ -187,9 +186,9 @@
             letter-spacing="0.22em">LEGEND</text>
       <rect x="160" y="426" width="14" height="10" rx="2" fill="#EEF2F7" stroke="#1B365D" stroke-width="1"/>
       <text x="180" y="434" fill="#504e49" font-size="8.5" font-family="inherit">Focal lane / node</text>
-      <rect x="320" y="426" width="14" height="10" rx="2" fill="rgba(20,20,19,0.05)" stroke="#504e49" stroke-width="1"/>
+      <rect x="320" y="426" width="14" height="10" rx="2" fill="#EAE9E2" stroke="#504e49" stroke-width="1"/>
       <text x="340" y="434" fill="#504e49" font-size="8.5" font-family="inherit">Store</text>
-      <rect x="420" y="426" width="14" height="10" rx="2" fill="rgba(94,93,89,0.08)" stroke="#6b6a64" stroke-width="1"/>
+      <rect x="420" y="426" width="14" height="10" rx="2" fill="#E9E8E1" stroke="#6b6a64" stroke-width="1"/>
       <text x="440" y="434" fill="#504e49" font-size="8.5" font-family="inherit">Client / external</text>
     </svg>
 
