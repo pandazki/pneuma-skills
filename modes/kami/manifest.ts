@@ -33,6 +33,13 @@ const kamiManifest: ModeManifest = {
   version: "1.1.0",
   displayName: "Kami",
   description: "Paper-canvas web design with warm parchment aesthetic — design language adapted from tw93/kami (MIT)",
+  changelog: {
+    "1.1.0": [
+      "Synced upstream tw93/kami v1.2.0 → V1.4.1 (Steadier Hand)",
+      "14 SVG diagrams re-normalized: font-weight 500, no italic, solid hex pre-blended on parchment",
+      "Reference docs (design / diagrams / writing) refreshed to V1.4.1; upstream now contains our former Pneuma-only sections verbatim",
+    ],
+  },
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>`,
 
   skill: {

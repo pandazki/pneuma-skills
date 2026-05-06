@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.2] - 2026-05-06
+
+### Improved — Kami mode synced to upstream V1.4.1
+
+- **Kami mode synced to tw93/kami V1.4.1 ("Steadier Hand")**, last tracked at V1.2.0. All 14 SVG diagrams re-normalized per upstream's tightened invariants (`font-weight 500`, no italic, every `rgba(...)` fill replaced with solid hex pre-blended onto parchment so colors render identically across viewers). Reference docs (`design.md`, `diagrams.md`, `writing.md`) refreshed to V1.4.1 with our 6-line attribution header preserved. A side benefit of catching up: upstream V1.4.1 absorbed our former Pneuma-only sections verbatim ("Icon style" in diagrams, "Diagrams and infographics" in writing, the "Third-party figures" bullet) — we no longer carry divergent reference content. Kami mode manifest version bumped to `1.1.0`. WeasyPrint runtime, `build.py` / `ensure-fonts.sh` build pipeline, Claude Code plugin marketplace, `llms.txt` / sitemap / JSON-LD assets, and the `~/.config/kami/brand.md` brand profile are intentionally not synced — they don't apply to Pneuma's iframe paper-canvas / browser-print model. NOTICE.md now pins the tracked upstream version and lists what we deliberately skip.
+
 ## [3.0.1] - 2026-05-01
 
 ### Fixed — three post-3.0 dogfood findings
