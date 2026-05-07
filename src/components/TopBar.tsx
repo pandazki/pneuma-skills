@@ -374,9 +374,15 @@ export default function TopBar() {
   }, [createEmpty]);
 
   return (
-    <div className="flex items-center px-4 pt-4 pb-2 bg-transparent text-sm select-none z-20 relative">
+    <div
+      className="flex items-center px-4 pt-4 pb-2 bg-transparent text-sm select-none z-20 relative"
+      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+    >
       {/* Left: logo + selectors */}
-      <div className="flex items-center gap-3 bg-cc-surface/50 border border-white/5 backdrop-blur-md px-4 py-1.5 rounded-full shadow-sm min-w-0 shrink-0">
+      <div
+        className="flex items-center gap-3 bg-cc-surface/50 border border-white/5 backdrop-blur-md px-4 py-1.5 rounded-full shadow-sm min-w-0 shrink-0"
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
         <div className="flex items-center gap-1.5">
           <img src="/logo.png" alt="" className="w-5 h-5 rounded" />
           <span className="font-logo text-sm text-cc-fg tracking-tight">Pneuma</span>
@@ -436,7 +442,10 @@ export default function TopBar() {
 
       {/* Center: tabs (hidden in empty shell — no session = no panels) */}
       {hasModeViewer && (
-        <div className="flex items-center gap-1 mx-auto bg-cc-bg/80 border border-cc-border/50 rounded-full p-1 shadow-inner">
+        <div
+          className="flex items-center gap-1 mx-auto bg-cc-bg/80 border border-cc-border/50 rounded-full p-1 shadow-inner"
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
           {visibleTabs.map((tab) => {
             const disabledByReplay = replayMode && tab.id !== "chat";
             const disabledByGit = tab.id === "diff" && gitAvailable === false;
@@ -469,7 +478,10 @@ export default function TopBar() {
       {/* Right: share dropdown or replay badge (hidden in empty shell) */}
       {hasModeViewer && (
         replayMode ? (
-          <div className="flex items-center gap-2 shrink-0">
+          <div
+            className="flex items-center gap-2 shrink-0"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          >
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cc-primary/10 border border-cc-primary/20 text-cc-primary text-xs font-medium">
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
                 <path d="M4 2l10 6-10 6V2z"/>
@@ -481,7 +493,10 @@ export default function TopBar() {
             )}
           </div>
         ) : (
-          <div className="flex items-center gap-2 shrink-0">
+          <div
+            className="flex items-center gap-2 shrink-0"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          >
             <EditingToggle />
             <ShareDropdown />
           </div>

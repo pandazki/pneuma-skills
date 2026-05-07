@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.3] - 2026-05-07
+
+### Fixed — TopBar buttons clickable in launcher-reused windows
+
+- **TopBar pill buttons (chip selectors, Chat/Editor/Diffs/Terminal/Processes tabs, share/edit) had their upper edge silently swallowed by macOS's title-bar drag region.** Repro: open a project / recent session from the launcher (which navigates the launcher window via `window.location.href` instead of spawning a new mode window). The launcher window keeps its `titleBarStyle: "hiddenInset"` + `trafficLightPosition: { y: 18 }`; macOS Sequoia extends the OS-managed drag inset down to roughly y≈56 to fit the lowered traffic lights, which sits a few pixels into the TopBar pills (`pt-4` only buys 16px of safe zone, not the ~20px the lowered traffic lights need). Confirmed via `elementFromPoint` — React DOM said the button was on top, but the click event never reached the renderer; the docked DevTools panel showed the same blocked band, ruling out any React/CSS occluder. Fix mirrors the Launcher header's existing pattern: TopBar root is `WebkitAppRegion: "drag"` so the bar still moves the window, and the three pill sub-containers (left chip strip, center tabs, right share/edit + replay-badge variant) are `WebkitAppRegion: "no-drag"` so every button is reachable. No-op in non-hiddenInset windows.
+
 ## [3.0.2] - 2026-05-06
 
 ### Improved — Kami mode synced to upstream V1.4.1
