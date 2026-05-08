@@ -6,6 +6,7 @@ import type {
 } from "../core/types/agent-backend.js";
 import { ClaudeCodeBackend } from "./claude-code/index.js";
 import { CodexBackend } from "./codex/index.js";
+import { KimiCliBackend } from "./kimi-cli/index.js";
 import { resolveBinary } from "../server/path-resolver.js";
 
 const BACKEND_DESCRIPTORS: AgentBackendDescriptor[] = [
@@ -112,6 +113,6 @@ export function createBackend(type: AgentBackendType, port: number): AgentBacken
     case "codex":
       return new CodexBackend();
     case "kimi-cli":
-      throw new Error("KimiCliBackend not yet wired (Task 7 of plan 2026-05-08-kimi-backend)");
+      return new KimiCliBackend();
   }
 }
