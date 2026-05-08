@@ -81,12 +81,12 @@ Download the latest release for your platform:
 | Windows ARM64 | [`.exe` installer](https://github.com/pandazki/pneuma-skills/releases/latest) |
 | Linux x64 | [`.AppImage`](https://github.com/pandazki/pneuma-skills/releases/latest) / [`.deb`](https://github.com/pandazki/pneuma-skills/releases/latest) |
 
-The desktop app bundles Bun — no runtime install needed. Install [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) and you're ready to go. The launcher shows available backends — currently Claude Code and Codex are implemented.
+The desktop app bundles Bun — no runtime install needed. Install [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) and you're ready to go. The launcher shows available backends — currently Claude Code, Codex, and Moonshot Kimi are implemented.
 
 ### CLI
 
 ```bash
-# Prerequisites: Bun >= 1.3.5, Claude Code CLI and/or Codex CLI
+# Prerequisites: Bun >= 1.3.5, plus one or more of: Claude Code CLI, Codex CLI, Kimi CLI
 
 # Open the Launcher (marketplace UI)
 bunx pneuma-skills
@@ -139,7 +139,7 @@ Modes:
 Options:
   --workspace <path>   Target workspace directory (default: cwd)
   --port <number>      Server port (default: 17996)
-  --backend <type>     Agent backend to launch (claude-code | codex)
+  --backend <type>     Agent backend to launch (claude-code | codex | kimi-cli)
   --project <path>     Run as a session inside the project at <path>
   --session-id <id>    Resume a project session by id (with --project)
   --session-name <s>   Custom session display name
@@ -227,7 +227,7 @@ Pneuma agents remember who you are. Every mode ships with a built-in preference 
 
 The preference files are living documents — full rewrites, not append-only logs. Contradictions are preserved, not resolved. Everything is deletable. The agent builds understanding over time, not a label database.
 
-**Quick start tip:** If you already have a history of working with Claude Code, try asking the agent in any mode: *"Do a full preference refresh from my session history."* The agent will scan your past Pneuma sessions, extract your patterns and preferences, and build your profile in one pass — you might be surprised by what it picks up. This works with both Claude Code and Codex backends.
+**Quick start tip:** If you already have a history of working with Claude Code, try asking the agent in any mode: *"Do a full preference refresh from my session history."* The agent will scan your past Pneuma sessions, extract your patterns and preferences, and build your profile in one pass — you might be surprised by what it picks up. Works with Claude Code, Codex, and Kimi backends.
 
 ## Projects (3.0)
 
@@ -260,7 +260,7 @@ Quick (project-less) sessions remain fully supported — projects are opt-in. Cr
 | Video | [Remotion](https://www.remotion.dev) 4.0 + @remotion/player + @babel/standalone |
 | Canvas | [@xyflow/react](https://reactflow.dev) 12 (Illustrate mode) |
 | File Watching | [chokidar](https://github.com/paulmillr/chokidar) 5 |
-| Agent | Claude Code CLI via stdio stream-json (`-p --input-format/--output-format stream-json`); Codex CLI via app-server stdio JSON-RPC |
+| Agent | Claude Code CLI via stdio stream-json (`-p --input-format/--output-format stream-json`); Codex CLI via app-server stdio JSON-RPC; Moonshot Kimi CLI via stdio stream-json (`kimi --print …`) |
 
 ## Backend Model
 
