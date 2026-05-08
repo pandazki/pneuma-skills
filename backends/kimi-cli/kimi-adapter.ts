@@ -72,6 +72,23 @@ export class KimiAdapter {
     this.stdin.write(line);
   }
 
+  /**
+   * Seed the session id without waiting for the stderr regex. Used when the
+   * launcher pre-allocates the kimi session UUID and passes it via `-r` —
+   * kimi only emits the "kimi -r <id>" resume hint on exit, so for live
+   * multi-turn sessions we'd never know the id otherwise. Fires the same
+   * `onSessionId` callback chain the regex would.
+   */
+  seedSessionId(kimiSessionId: string): void {
+    if (kimiSessionId === this.lastEmittedSessionId) return;
+    this.lastEmittedSessionId = kimiSessionId;
+    for (const handler of this.sessionIdHandlers) {
+      try { handler(kimiSessionId); } catch (err) {
+        console.error(`[kimi-adapter ${this.sessionId}] sessionId handler error:`, err);
+      }
+    }
+  }
+
   async disconnect(): Promise<void> {
     if (this.disconnected) return;
     this.disconnected = true;

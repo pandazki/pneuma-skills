@@ -80,15 +80,22 @@ export class KimiCliLauncher {
       return;
     }
 
+    // Pre-allocate the kimi session UUID so we know it before the agent starts.
+    // Kimi only prints `kimi -r <uuid>` to stderr at process exit, so we can't
+    // capture it from a live session — but it accepts any UUID via -r and
+    // creates a new session with that id when not found.
+    const kimiSessionId = options.resumeKimiSessionId ?? randomUUID();
+    info.kimiSessionId = kimiSessionId;
+
     const args: string[] = [
       "--print",
       "--input-format", "stream-json",
       "--output-format", "stream-json",
       "-y",
       "--work-dir", info.cwd,
+      "-r", kimiSessionId,
     ];
     if (options.model) args.push("--model", options.model);
-    if (options.resumeKimiSessionId) args.push("-r", options.resumeKimiSessionId);
 
     const binaryDir = resolve(binary, "..");
     const enrichedPath = getEnrichedPath();
@@ -144,6 +151,11 @@ export class KimiCliLauncher {
     for (const handler of this.adapterCreatedHandlers) {
       try { handler(sessionId, adapter); } catch {}
     }
+
+    // Now that both the launcher's and the bridge's onSessionId subscribers
+    // are wired, seed the kimi session id we pre-allocated. This fires the
+    // bridge's onCLISessionId callback which persists agentSessionId to disk.
+    adapter.seedSessionId(kimiSessionId);
 
     nodeProc.once("exit", (exitCode) => {
       const session = this.sessions.get(sessionId);
