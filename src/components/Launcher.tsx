@@ -13,7 +13,7 @@ import { timeAgo, runningDuration } from "../utils/timeAgo.js";
 import { shortenPath } from "../utils/string.js";
 import type { InitParam } from "../../core/types/mode-manifest.js";
 
-type BackendType = "claude-code" | "codex";
+type BackendType = "claude-code" | "codex" | "kimi-cli";
 
 interface BackendOption {
   type: BackendType;
@@ -28,7 +28,21 @@ const FALLBACK_BACKENDS: BackendOption[] = [
   {
     type: "claude-code",
     label: "Claude Code",
-    description: "Anthropic Claude Code CLI via --sdk-url WebSocket transport.",
+    description: "Anthropic Claude Code CLI via stdio stream-json transport.",
+    implemented: true,
+    available: true,
+  },
+  {
+    type: "codex",
+    label: "Codex",
+    description: "OpenAI Codex CLI via app-server transport.",
+    implemented: true,
+    available: true,
+  },
+  {
+    type: "kimi-cli",
+    label: "Kimi",
+    description: "Moonshot AI Kimi Code CLI via stdio stream-json transport.",
     implemented: true,
     available: true,
   },
@@ -348,7 +362,11 @@ function PrimaryButton({
 
 
 function backendLabel(backendType: BackendType): string {
-  return backendType === "claude-code" ? "Claude" : "Codex";
+  switch (backendType) {
+    case "claude-code": return "Claude";
+    case "codex": return "Codex";
+    case "kimi-cli": return "Kimi";
+  }
 }
 
 function BackendLogo({ type, className }: { type: BackendType; className?: string }) {
@@ -356,6 +374,14 @@ function BackendLogo({ type, className }: { type: BackendType; className?: strin
     return (
       <svg className={className} viewBox="0 0 24 24" fill="currentColor">
         <path d="M17.303 3.073a.75.75 0 01.573.88l-1.97 10.236a5.156 5.156 0 01-1.402 2.776l-2.2 2.279a.75.75 0 01-1.08 0l-2.2-2.279a5.156 5.156 0 01-1.402-2.776L5.652 3.953a.75.75 0 011.476-.284l1.97 10.236a3.656 3.656 0 00.994 1.968L12 17.878l1.908-2.005a3.656 3.656 0 00.994-1.968l1.97-10.236a.75.75 0 01.431-.596z" />
+      </svg>
+    );
+  }
+  if (type === "kimi-cli") {
+    // Kimi — crescent moon (evokes Moonshot AI without using brand assets)
+    return (
+      <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
       </svg>
     );
   }
