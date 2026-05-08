@@ -1046,13 +1046,29 @@ export class WsBridge {
       }
     }
 
-    // For Kimi sessions, route applicable messages through the adapter.
-    // Kimi has a smaller capability surface than Codex: no permission flow,
-    // no runtime model switch, no in-flight interrupt — those just no-op
-    // and fall through to the default switch (which is also a no-op for
-    // those types when no other transport is connected).
+    // For Kimi sessions, drop messages the kimi adapter can't act on.
+    // Kimi's smaller capability surface excludes: permission flow, runtime model switch,
+    // in-flight interrupt, session control. Without this early return, unsupported types
+    // would fall through to sendToCLI, queuing in `pendingMessages` forever (cliSocket
+    // is always null for kimi since it uses stdio). The frontend gates corresponding UI
+    // on `agent_capabilities`, so reaching this branch usually means a stale UI element.
     const kimiAdapter = this.kimiAdapters.get(session.id);
     if (kimiAdapter) {
+      const kimiUnsupported = new Set([
+        "permission_response",
+        "interrupt",
+        "set_model",
+        "end_session",
+        "update_environment_variables",
+        "stop_task",
+      ]);
+      if (kimiUnsupported.has(msg.type)) {
+        console.debug(
+          `[ws-bridge] kimi session ${session.id} ignoring unsupported message type "${msg.type}"`,
+        );
+        return;
+      }
+
       switch (msg.type) {
         case "user_message":
           this.handleKimiUserMessage(session, kimiAdapter, msg);
