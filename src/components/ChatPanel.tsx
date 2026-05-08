@@ -37,13 +37,13 @@ function buildGlobalToolUseMap(messages: ChatMessage[]): Map<string, ToolUseInfo
 function CronTriggerBubble({ prompt }: { prompt: string }) {
   return (
     <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
-      <div className="max-w-[85%] rounded-[20px] rounded-br-[6px] bg-amber-400/5 border border-amber-400/20 overflow-hidden shadow-sm">
+      <div className="max-w-[85%] rounded-[20px] rounded-br-[6px] bg-cc-card/60 border border-cc-border overflow-hidden shadow-sm">
         <div className="flex items-center gap-1.5 px-3 pt-2 pb-0.5">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3 text-amber-400/70 shrink-0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3 text-cc-muted/70 shrink-0">
             <circle cx="12" cy="12" r="10" />
             <path d="M12 6v6l4 2" />
           </svg>
-          <span className="text-[10px] font-medium text-amber-400/70 tracking-wide uppercase">
+          <span className="text-[10px] font-medium text-cc-muted/70 tracking-wide uppercase">
             Scheduled Task
           </span>
         </div>

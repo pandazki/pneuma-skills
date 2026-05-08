@@ -837,100 +837,91 @@ function ContentBlockRenderer({
     const content = typeof block.content === "string" ? block.content : JSON.stringify(block.content);
     const linkedTool = toolUseById.get(block.tool_use_id);
     const isError = block.is_error ?? false;
-    const isBash = linkedTool?.name === "Bash";
-    // Optional protocol-extracted status (currently set by the kimi-cli
-    // backend's protocol module to surface its `<system>...</system>`
-    // wrappers as a small header above the body — see
-    // `backends/kimi-cli/protocol.ts:extractKimiSystemMetadata`). Other
-    // backends omit this field and the renderer falls back to the
-    // pre-existing styles.
+    // Optional protocol-extracted status. Currently set by the kimi-cli
+    // backend (lifts `<system>...</system>` wrappers out of the body — see
+    // `backends/kimi-cli/protocol.ts:extractKimiSystemMetadata`); other
+    // backends leave it unset.
     const metadata = (block as { metadata?: string }).metadata;
-
-    if (isBash) {
-      return <BashResultBlock text={content} isError={isError} metadata={metadata} />;
-    }
-
-    return <ToolResultBlock text={content} isError={isError} metadata={metadata} />;
+    return (
+      <ToolResultBlock
+        text={content}
+        isError={isError}
+        metadata={metadata}
+        toolName={linkedTool?.name}
+      />
+    );
   }
 
   return null;
 }
 
-// ─── BashResultBlock ───────────────────────────────────────────────────────
-
-function BashResultBlock({ text, isError, metadata }: { text: string; isError: boolean; metadata?: string }) {
-  const lines = text.split(/\r?\n/);
-  const hasMore = lines.length > 20;
-  const [showFull, setShowFull] = useState(false);
-  const rendered = showFull || !hasMore ? text : lines.slice(-20).join("\n");
-
-  return (
-    <div className={`rounded-lg border ${isError ? "bg-cc-error/5 border-cc-error/20" : "bg-cc-card border-cc-border"
-      }`}>
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-cc-border gap-3">
-        <span className={`text-[10px] font-medium truncate ${isError ? "text-cc-error" : "text-cc-muted"}`}>
-          {metadata ?? (hasMore && !showFull ? "Output (last 20 lines)" : "Output")}
-        </span>
-        {hasMore && (
-          <button
-            onClick={() => setShowFull(!showFull)}
-            className="text-[10px] text-cc-primary hover:underline cursor-pointer shrink-0"
-          >
-            {showFull ? "Show tail" : "Show full"}
-          </button>
-        )}
-      </div>
-      {text && (
-        <pre className={`text-xs font-mono-code px-3 py-2 whitespace-pre-wrap max-h-60 overflow-y-auto ${isError ? "text-cc-error" : "text-cc-muted"
-          }`}>
-          {rendered}
-        </pre>
-      )}
-    </div>
-  );
-}
-
 // ─── ToolResultBlock ─────────────────────────────────────────────────────────
 //
-// Generic tool-result renderer used for non-Bash tool calls. Mirrors the
-// BashResultBlock layout (status header + collapsible body) so kimi-cli's
-// `<system>...</system>` metadata gets a real header, and large outputs
-// (e.g. ReadFile of a 100-line file) start collapsed instead of the previous
-// 160px-tall scrollable wall-of-text. Backends that don't surface metadata
-// (Claude, Codex) just see "Result" as the header label.
+// Single canonical tool-result renderer. Layout: small `text-cc-muted` header
+// with the metadata / status, optional "Show full" toggle when the body
+// overflows the preview window. Body styled as compact mono with a soft
+// max-height — the chrome stays neutral so it doesn't compete with the
+// tool_use card's own header.
+//
+// Two preview modes by tool name:
+//   - Bash: keep the LAST N lines (a long stdout is usually about the tail).
+//   - Anything else: keep the FIRST N lines (file reads, JSON dumps, etc.).
+// The chrome (border, radius, padding, header type, toggle position) is the
+// same in both — only the slice direction differs.
 
-function ToolResultBlock({ text, isError, metadata }: { text: string; isError: boolean; metadata?: string }) {
+function ToolResultBlock({
+  text,
+  isError,
+  metadata,
+  toolName,
+}: {
+  text: string;
+  isError: boolean;
+  metadata?: string;
+  toolName?: string;
+}) {
+  const isBash = toolName === "Bash";
+  const previewLimit = isBash ? 20 : 6;
   const lines = text ? text.split(/\r?\n/) : [];
-  const hasMore = lines.length > 6;
-  // Default-collapse when there's metadata (kimi-style — body is usually long
-  // and the status alone often tells the story) or when the body exceeds the
-  // preview window. Pure short bodies render fully expanded.
-  const [showFull, setShowFull] = useState(!metadata && !hasMore);
-  const previewLines = showFull ? lines : lines.slice(0, 6);
-  const rendered = previewLines.join("\n");
-  const headerLabel = metadata ?? (isError ? "Error" : "Result");
-  const collapsedRemaining = hasMore && !showFull ? lines.length - previewLines.length : 0;
+  const hasOverflow = lines.length > previewLimit;
+  const [showFull, setShowFull] = useState(false);
+
+  const previewText = isBash
+    ? lines.slice(-previewLimit).join("\n")
+    : lines.slice(0, previewLimit).join("\n");
+  const renderedText = showFull || !hasOverflow ? text : previewText;
+  const headerLabel = metadata ?? (isError ? "Error" : isBash ? "Output" : "Result");
+  const remaining = hasOverflow && !showFull ? lines.length - previewLimit : 0;
+  const toggleLabel = showFull
+    ? (isBash ? "Show tail" : "Hide")
+    : remaining > 0
+      ? `Show full (+${remaining} lines)`
+      : "Show full";
 
   return (
-    <div className={`rounded-lg border ${isError ? "bg-cc-error/5 border-cc-error/20" : "bg-cc-card border-cc-border"
-      }`}>
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-cc-border gap-3">
+    <div
+      className={`rounded-lg border ${isError ? "bg-cc-error/5 border-cc-error/20" : "bg-cc-card/50 border-cc-border"
+        }`}
+    >
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-cc-border/70 gap-3">
         <span className={`text-[10px] font-medium truncate ${isError ? "text-cc-error" : "text-cc-muted"}`}>
           {headerLabel}
         </span>
-        {(hasMore || (metadata && text)) && (
+        {hasOverflow && (
           <button
             onClick={() => setShowFull(!showFull)}
-            className="text-[10px] text-cc-primary hover:underline cursor-pointer shrink-0"
+            className="text-[10px] text-cc-muted/70 hover:text-cc-fg transition-colors cursor-pointer shrink-0"
           >
-            {showFull ? "Hide" : collapsedRemaining > 0 ? `Show full (+${collapsedRemaining} lines)` : "Show full"}
+            {toggleLabel}
           </button>
         )}
       </div>
-      {text && (showFull || !metadata || hasMore) && (
-        <pre className={`text-xs font-mono-code px-3 py-2 whitespace-pre-wrap max-h-60 overflow-y-auto ${isError ? "text-cc-error" : "text-cc-muted"
-          }`}>
-          {rendered}
+      {!!text && (
+        <pre
+          className={`text-xs font-mono-code px-3 py-2 whitespace-pre-wrap max-h-60 overflow-y-auto ${isError ? "text-cc-error" : "text-cc-muted"
+            }`}
+        >
+          {renderedText}
         </pre>
       )}
     </div>
@@ -950,11 +941,11 @@ function ThinkingBlock({ text, hasSignature = false }: { text: string; hasSignat
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="border border-cc-primary/20 rounded-[16px] bg-cc-primary/[0.03] shadow-[0_0_15px_rgba(249,115,22,0.05)] relative before:absolute before:inset-0 before:rounded-[16px] before:bg-gradient-to-b before:from-cc-primary/10 before:to-transparent before:opacity-0 hover:before:opacity-100 before:transition-opacity before:pointer-events-none">
+    <div className="border border-cc-border/60 rounded-lg bg-cc-card/50 transition-colors hover:border-cc-border">
       <button
         onClick={() => !isEncryptedOnly && setOpen(!open)}
         disabled={isEncryptedOnly}
-        className={`w-full flex items-center gap-2 px-3 py-2.5 text-xs text-cc-muted transition-colors relative z-10 ${isEncryptedOnly ? "cursor-default" : "hover:bg-cc-primary/10 cursor-pointer"}`}
+        className={`w-full flex items-center gap-2 px-3 py-2.5 text-xs text-cc-muted transition-colors ${isEncryptedOnly ? "cursor-default" : "hover:bg-cc-hover/40 cursor-pointer"}`}
       >
         {!isEncryptedOnly && (
           <svg
@@ -965,7 +956,7 @@ function ThinkingBlock({ text, hasSignature = false }: { text: string; hasSignat
             <path d="M6 4l4 4-4 4" />
           </svg>
         )}
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-cc-primary/10 text-cc-primary shrink-0">
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-cc-card text-cc-muted/80 shrink-0">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
             <path d="M8 2.5a3.5 3.5 0 013.5 3.5c0 1.3-.7 2.1-1.4 2.8-.6.6-1.1 1.1-1.1 1.7V11" strokeLinecap="round" />
             <circle cx="8" cy="13" r="0.7" fill="currentColor" stroke="none" />
