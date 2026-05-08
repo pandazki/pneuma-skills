@@ -1,67 +1,263 @@
 /**
- * ws-bridge-kimi — KimiAdapter integration for WsBridge.
+ * KimiBridge — `BridgeBackend` implementation for kimi-cli.
  *
- * The adapter emits Pneuma-shape messages (already translated from kimi
- * NDJSON); this module wraps each as the standard `assistant` envelope the
- * frontend already knows how to render and broadcasts it. Both kimi's
- * `assistant` (text + tool_use) AND `tool` (tool_result) outputs ride the
- * `assistant` envelope on the way to the browser — the chat panel pairs
- * tool_use / tool_result by `tool_use_id` and renders the result with the
- * compact BashResultBlock / scrollable card styling, NOT as a giant prose
- * bubble. (See `src/components/ChatPanel.tsx:buildGlobalToolUseMap` and the
- * codex-mirroring rationale documented there.)
+ * Encapsulates every kimi-protocol-specific quirk so `WsBridge` can stay
+ * backend-agnostic. The bridge sees only the `BridgeBackend` interface;
+ * everything in this file is internal to the kimi integration.
  *
- * Kimi's stream-json has no `result` envelope or `system.init` envelope, so
- * we synthesise both:
- *   - `session_init` is broadcast at attach time by `WsBridge.attachKimiAdapter`
- *     (one shot, with model + capabilities).
- *   - `result` is synthesised here on every turn yield (assistant message
- *     whose last content block isn't `tool_use`). Without it the frontend's
- *     `sessionStatus` never flips back to "idle" and the input stays disabled
- *     behind a "queue" placeholder.
+ * What this class owns:
+ *
+ *   - **Adapter event wiring** — translate kimi's `PneumaMessage` events
+ *     (assistant text + tool_use, tool_result echoes) into the `assistant`
+ *     envelope the chat panel renders. Both kimi-`assistant` and kimi-`tool`
+ *     outputs ride the SAME `assistant` envelope so the chat panel pairs
+ *     `tool_use` / `tool_result` blocks via `tool_use_id` (see
+ *     `src/components/ChatPanel.tsx:buildGlobalToolUseMap`). Without this
+ *     a `<system>...</system>`-style tool_result would render as a giant
+ *     prose bubble instead of a compact result card.
+ *
+ *   - **Synthesised envelopes** — kimi's `--print --output-format stream-json`
+ *     never emits `system.init` (model/agent_version), `result` (turn end),
+ *     or `stream_event:message_start` (turn start). All three are required
+ *     for the frontend's status-pill / activity-indicator state machine to
+ *     work. We synthesise them here:
+ *       * `session_init` — at attach time, with `model: "kimi"` and capabilities
+ *       * `result` — on every turn yield (assistant message whose last
+ *         content block isn't `tool_use`)
+ *       * `stream_event:message_start` — every time we forward a user
+ *         message TO kimi (turn start). The frontend's existing
+ *         `case "stream_event"` handling sets `activity={phase:"thinking"}`
+ *         which gives the user visible feedback while kimi is reasoning
+ *         silently before its first emission. Cleared automatically when
+ *         the synthesised `result` lands at turn end.
+ *
+ *   - **Browser → agent message routing** — kimi-cli has a smaller capability
+ *     surface than codex (no permission flow, no runtime model switch, no
+ *     session control). Messages it can't handle are explicitly dropped
+ *     (returned as `"unsupported"`) so they don't queue indefinitely in
+ *     `pendingMessages`. The frontend gates the corresponding UI on
+ *     `agent_capabilities`; reaching the unsupported branch usually means
+ *     a stale UI element or a buggy synthetic dispatcher.
+ *
+ *   - **Interrupt** — Stop-button → SIGINT to the kimi process. Kimi's
+ *     print-mode signal handler aborts the in-flight step but keeps the
+ *     process alive for the next user message; we push a `session_update`
+ *     with `cli_busy: false` so the input unlocks immediately rather than
+ *     waiting for whatever assistant turn kimi might emit on its way out.
  */
 
 import { randomBytes } from "node:crypto";
-import type { BrowserIncomingMessage, ContentBlock } from "./session-types.js";
+import type {
+  BrowserIncomingMessage,
+  BrowserOutgoingMessage,
+  ContentBlock,
+} from "./session-types.js";
 import type { Session } from "./ws-bridge-types.js";
 import type { KimiAdapter } from "../backends/kimi-cli/kimi-adapter.js";
 import type { PneumaMessage } from "../backends/kimi-cli/protocol.js";
 import { enqueueCheckpoint, isShadowGitAvailable } from "./shadow-git.js";
-
-export interface KimiBridgeDeps {
-  broadcastToBrowsers: (session: Session, msg: BrowserIncomingMessage) => void;
-  workspace?: string;
-}
+import type { BridgeBackend, BridgeBackendDeps, RouteResult } from "./ws-bridge-backend.js";
 
 function shortId(): string {
   return randomBytes(3).toString("hex");
 }
 
-export function attachKimiAdapterHandlers(
-  sessionId: string,
-  session: Session,
-  adapter: KimiAdapter,
-  deps: KimiBridgeDeps,
-): void {
-  // Track when the current turn started so the synthesised `result` envelope
-  // carries a sensible duration for the cost / token UI (we have no real
-  // timing data — kimi's stream-json doesn't surface it).
-  let turnStartedAt: number | null = null;
+/**
+ * Browser-outgoing message types kimi explicitly doesn't support. These are
+ * dropped (with a debug log) instead of being routed to the adapter — kimi-cli
+ * has no JSON-RPC verbs for permission approvals, runtime model switches, or
+ * session-lifecycle control. The frontend gates the corresponding UI on
+ * `agent_capabilities`, so a message in this set reaching us usually means a
+ * stale UI element or a buggy synthetic dispatcher; without explicit-drop they
+ * would silently grow `session.pendingMessages` forever.
+ */
+const KIMI_UNSUPPORTED_MESSAGE_TYPES = new Set<BrowserOutgoingMessage["type"]>([
+  "permission_response",
+  "set_model",
+  "end_session",
+  "update_environment_variables",
+  "stop_task",
+]);
 
-  adapter.onMessage((pneuma: PneumaMessage) => {
-    if (turnStartedAt === null) turnStartedAt = Date.now();
+export class KimiBridge implements BridgeBackend {
+  readonly backendType = "kimi-cli" as const;
 
-    // Both assistant and tool_result messages get the `assistant` envelope.
-    // The chat panel walks every assistant message's content blocks once to
-    // build a global tool_use_id → tool_use map, so a `tool_result` block
-    // arriving in a separate message still pairs with its tool_use card.
+  /** Per-session user-message counter (history id suffix). */
+  private userMsgCounter = 0;
+
+  /**
+   * Tracks when the current kimi turn started — used for the synthesised
+   * `result` envelope's `duration_ms`. `null` between turns; set on the
+   * first message of a turn (whether forwarded from browser or fired by
+   * kimi's adapter). Reset on turn yield.
+   */
+  private turnStartedAt: number | null = null;
+
+  constructor(
+    private readonly sessionId: string,
+    private readonly session: Session,
+    private readonly adapter: KimiAdapter,
+    private readonly deps: BridgeBackendDeps,
+  ) {}
+
+  attach(): void {
+    this.adapter.onMessage((pneuma) => this.onAdapterMessage(pneuma));
+    this.adapter.onSessionId((kimiSessionId) => {
+      this.deps.onAgentSessionId?.(this.sessionId, kimiSessionId);
+    });
+    this.adapter.onDisconnect(() => {
+      this.deps.broadcastToBrowsers(this.session, { type: "cli_disconnected" });
+      for (const [reqId] of this.session.pendingPermissions) {
+        this.deps.broadcastToBrowsers(this.session, {
+          type: "permission_cancelled",
+          request_id: reqId,
+        });
+      }
+      this.session.pendingPermissions.clear();
+    });
+
+    // Kimi-cli's stream-json doesn't include a `system.init` envelope, so
+    // the browser would otherwise see "no model" forever. Seed the
+    // session-state shape and broadcast it as a `session_init`.
+    if (!this.session.state.model) this.session.state.model = "kimi";
+    if (!this.session.state.agent_version) this.session.state.agent_version = "kimi-cli";
+    this.deps.broadcastToBrowsers(this.session, { type: "cli_connected" });
+    this.deps.broadcastToBrowsers(this.session, {
+      type: "session_init",
+      session: { ...this.session.state, cli_busy: !this.session.cliIdle },
+    });
+
+    // Flush user messages queued before the adapter was ready.
+    if (this.session.pendingMessages.length > 0) {
+      console.log(
+        `[ws-bridge] Flushing ${this.session.pendingMessages.length} queued message(s) via Kimi adapter for session ${this.sessionId}`,
+      );
+      const queued = this.session.pendingMessages.splice(0);
+      for (const ndjson of queued) {
+        try {
+          const parsed: unknown = JSON.parse(ndjson);
+          let content: string | null = null;
+          if (
+            parsed
+            && typeof parsed === "object"
+            && (parsed as { type?: unknown }).type === "user"
+            && typeof (parsed as { message?: { content?: unknown } }).message?.content === "string"
+          ) {
+            content = (parsed as { message: { content: string } }).message.content;
+          } else if (
+            parsed
+            && typeof parsed === "object"
+            && (parsed as { type?: unknown }).type === "user_message"
+            && typeof (parsed as { content?: unknown }).content === "string"
+          ) {
+            content = (parsed as { content: string }).content;
+          }
+          if (content !== null) this.sendToAdapter(content);
+        } catch (err) {
+          console.error(
+            `[ws-bridge] Failed to parse/send queued message for session ${this.sessionId}:`,
+            err,
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * Server-injected user message — greeting, env tag, handoff cancel notice.
+   * Not recorded in `messageHistory` (matches the existing `injectGreeting`
+   * contract: the user never sees the synthetic prompt).
+   */
+  injectUserMessage(content: string): void {
+    this.session.cliIdle = false;
+    this.sendToAdapter(content);
+  }
+
+  routeBrowserMessage(msg: BrowserOutgoingMessage): RouteResult {
+    if (KIMI_UNSUPPORTED_MESSAGE_TYPES.has(msg.type)) {
+      console.debug(
+        `[ws-bridge] kimi session ${this.sessionId} ignoring unsupported message type "${msg.type}"`,
+      );
+      return "unsupported";
+    }
+
+    switch (msg.type) {
+      case "user_message":
+        this.handleBrowserUserMessage(msg);
+        return "handled";
+      case "interrupt":
+        // SIGINT the kimi process — its print-mode signal handler aborts
+        // the in-flight step but keeps the process alive for the next user
+        // message. The bridge's broadcast machinery doesn't synthesise a
+        // `result` envelope on its own, so we'd otherwise leave the
+        // frontend stuck on "Running"; push an idle snapshot so the input
+        // unlocks immediately.
+        this.adapter.interrupt();
+        this.session.cliIdle = true;
+        this.deps.broadcastToBrowsers(this.session, {
+          type: "session_update",
+          session: { ...this.session.state, cli_busy: false },
+        });
+        this.deps.broadcastToBrowsers(this.session, { type: "status_change", status: "idle" });
+        return "handled";
+      default:
+        // Bridge-internal types (viewer_action_response, viewer_notification,
+        // session_subscribe, session_ack) — fall through so WsBridge handles
+        // them via its own helpers.
+        return "passthrough";
+    }
+  }
+
+  async disconnect(): Promise<void> {
+    return this.adapter.disconnect();
+  }
+
+  // ── internals ──────────────────────────────────────────────────────────────
+
+  /**
+   * Route a browser-originated user message through the agent: record in
+   * history, flip cliIdle, write to kimi stdin, light up the thinking
+   * indicator. Kimi-cli is text-only today (no inline image/file blocks),
+   * so attachments would require a separate uploads-on-disk + notification
+   * path — out of scope until the backend grows multimodal support.
+   */
+  private handleBrowserUserMessage(msg: { type: "user_message"; content: string }): void {
+    const ts = Date.now();
+    this.session.messageHistory.push({
+      type: "user_message",
+      content: msg.content,
+      timestamp: ts,
+      id: `user-${ts}-${this.userMsgCounter++}`,
+    });
+    this.session.cliIdle = false;
+    this.sendToAdapter(msg.content);
+  }
+
+  /**
+   * Forward content to kimi stdin AND fire the synthetic
+   * `stream_event:message_start` so the frontend's thinking indicator
+   * activates. Single chokepoint — every kimi-bound user message (browser,
+   * server-injected, queue flush) goes through here.
+   */
+  private sendToAdapter(content: string): void {
+    this.adapter.sendUserMessage(content);
+    this.deps.broadcastToBrowsers(this.session, {
+      type: "stream_event",
+      event: { type: "message_start" },
+      parent_tool_use_id: null,
+    });
+  }
+
+  private onAdapterMessage(pneuma: PneumaMessage): void {
+    if (this.turnStartedAt === null) this.turnStartedAt = Date.now();
+
     const assistantMsg: BrowserIncomingMessage = {
       type: "assistant",
       message: {
-        id: `kimi-${sessionId}-${Date.now()}-${shortId()}`,
+        id: `kimi-${this.sessionId}-${Date.now()}-${shortId()}`,
         type: "message",
         role: "assistant",
-        model: session.state.model || "kimi",
+        model: this.session.state.model || "kimi",
         content: pneuma.content as ContentBlock[],
         stop_reason: null,
         usage: {
@@ -74,39 +270,34 @@ export function attachKimiAdapterHandlers(
       parent_tool_use_id: null,
       timestamp: Date.now(),
     };
-    session.messageHistory.push(assistantMsg);
-    deps.broadcastToBrowsers(session, assistantMsg);
+    this.session.messageHistory.push(assistantMsg);
+    this.deps.broadcastToBrowsers(this.session, assistantMsg);
 
     // Idle bookkeeping — a turn yields when:
     //   1. the message originated from kimi's `assistant` role (NOT a tool_result), AND
-    //   2. its last content block isn't `tool_use` (kimi is calling another tool).
-    // Tool_result messages always keep the session busy because the next
-    // event will be either another tool round or the wrap-up assistant turn.
+    //   2. its last content block isn't `tool_use` (kimi will call another tool next).
     const lastBlock = pneuma.content[pneuma.content.length - 1];
     const isToolResultMsg = pneuma.type === "user";
     const lastIsToolUse = !!lastBlock && lastBlock.type === "tool_use";
     const yielded = !isToolResultMsg && !lastIsToolUse;
 
     if (!yielded) {
-      session.cliIdle = false;
-      // Push the busy snapshot so a browser that joined mid-turn (or one
-      // catching up after reconnect) sees a fresh `cli_busy: true`.
-      deps.broadcastToBrowsers(session, {
+      this.session.cliIdle = false;
+      this.deps.broadcastToBrowsers(this.session, {
         type: "session_update",
-        session: { ...session.state, cli_busy: true },
+        session: { ...this.session.state, cli_busy: true },
       });
       return;
     }
 
-    // Turn yielded — tally num_turns, broadcast `result` so the frontend
-    // flips `sessionStatus` to "idle" and `turnInProgress` to false (the
-    // `result` case in `src/ws.ts` is the canonical end-of-turn signal),
+    // Turn yielded — tally num_turns, fire the synthesised `result` envelope
+    // (the canonical end-of-turn signal — see `case "result"` in `src/ws.ts`),
     // then push the idle session snapshot.
-    const numTurns = (session.state.num_turns ?? 0) + 1;
-    session.state.num_turns = numTurns;
-    session.cliIdle = true;
-    const durationMs = turnStartedAt ? Date.now() - turnStartedAt : 0;
-    turnStartedAt = null;
+    const numTurns = (this.session.state.num_turns ?? 0) + 1;
+    this.session.state.num_turns = numTurns;
+    this.session.cliIdle = true;
+    const durationMs = this.turnStartedAt ? Date.now() - this.turnStartedAt : 0;
+    this.turnStartedAt = null;
 
     const resultMsg: BrowserIncomingMessage = {
       type: "result",
@@ -126,26 +317,18 @@ export function attachKimiAdapterHandlers(
           cache_read_input_tokens: 0,
         },
         uuid: `kimi-result-${Date.now()}-${shortId()}`,
-        session_id: sessionId,
+        session_id: this.sessionId,
       },
     };
-    session.messageHistory.push(resultMsg);
-    deps.broadcastToBrowsers(session, resultMsg);
-    deps.broadcastToBrowsers(session, {
+    this.session.messageHistory.push(resultMsg);
+    this.deps.broadcastToBrowsers(this.session, resultMsg);
+    this.deps.broadcastToBrowsers(this.session, {
       type: "session_update",
-      session: { ...session.state, cli_busy: false },
+      session: { ...this.session.state, cli_busy: false },
     });
 
-    if (deps.workspace && isShadowGitAvailable(deps.workspace)) {
-      enqueueCheckpoint(deps.workspace, numTurns - 1);
+    if (this.deps.workspace && isShadowGitAvailable(this.deps.workspace)) {
+      enqueueCheckpoint(this.deps.workspace, numTurns - 1);
     }
-  });
-
-  adapter.onDisconnect(() => {
-    deps.broadcastToBrowsers(session, { type: "cli_disconnected" });
-    for (const [reqId] of session.pendingPermissions) {
-      deps.broadcastToBrowsers(session, { type: "permission_cancelled", request_id: reqId });
-    }
-    session.pendingPermissions.clear();
-  });
+  }
 }
