@@ -9,7 +9,7 @@ describe("backend registry", () => {
     expect(getDefaultBackendType()).toBe("claude-code");
   });
 
-  test("lists both declared backends with implementation flags", () => {
+  test("lists all declared backends with implementation flags", () => {
     expect(getBackendDescriptors()).toEqual([
       {
         type: "claude-code",
@@ -23,11 +23,21 @@ describe("backend registry", () => {
         description: "OpenAI Codex CLI via app-server transport.",
         implemented: true,
       },
+      {
+        type: "kimi-cli",
+        label: "Kimi",
+        description: "Moonshot AI Kimi Code CLI via stdio stream-json transport.",
+        implemented: true,
+      },
     ]);
   });
 
-  test("implemented backends include both Claude Code and Codex", () => {
-    expect(getImplementedBackends().map((backend) => backend.type)).toEqual(["claude-code", "codex"]);
+  test("implemented backends include Claude Code, Codex, and Kimi", () => {
+    expect(getImplementedBackends().map((backend) => backend.type)).toEqual([
+      "claude-code",
+      "codex",
+      "kimi-cli",
+    ]);
   });
 
   test("exposes capability defaults per backend type", () => {
@@ -43,6 +53,14 @@ describe("backend registry", () => {
       streaming: true,
       resume: true,
       permissions: true,
+      toolProgress: false,
+      modelSwitch: true,
+    });
+
+    expect(getBackendCapabilities("kimi-cli")).toEqual({
+      streaming: true,
+      resume: true,
+      permissions: false,
       toolProgress: false,
       modelSwitch: true,
     });
