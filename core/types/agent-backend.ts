@@ -10,7 +10,7 @@
 
 // ── Agent Lifecycle ──────────────────────────────────────────────────────────
 
-export type AgentBackendType = "claude-code" | "codex";
+export type AgentBackendType = "claude-code" | "codex" | "kimi-cli";
 
 export interface AgentBackendDescriptor {
   type: AgentBackendType;

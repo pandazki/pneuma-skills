@@ -21,6 +21,12 @@ const BACKEND_DESCRIPTORS: AgentBackendDescriptor[] = [
     description: "OpenAI Codex CLI via app-server transport.",
     implemented: true,
   },
+  {
+    type: "kimi-cli",
+    label: "Kimi",
+    description: "Moonshot AI Kimi Code CLI via stdio stream-json transport.",
+    implemented: true,
+  },
 ];
 
 const BACKEND_CAPABILITIES: Record<AgentBackendType, AgentCapabilities> = {
@@ -35,6 +41,13 @@ const BACKEND_CAPABILITIES: Record<AgentBackendType, AgentCapabilities> = {
     streaming: true,
     resume: true,
     permissions: true,
+    toolProgress: false,
+    modelSwitch: true,
+  },
+  "kimi-cli": {
+    streaming: true,
+    resume: true,
+    permissions: false,
     toolProgress: false,
     modelSwitch: true,
   },
@@ -60,6 +73,7 @@ export function getBackendCapabilities(type: AgentBackendType): AgentCapabilitie
 const BACKEND_BINARIES: Record<AgentBackendType, string> = {
   "claude-code": "claude",
   codex: "codex",
+  "kimi-cli": "kimi",
 };
 
 export interface BackendAvailability {
@@ -97,5 +111,7 @@ export function createBackend(type: AgentBackendType, port: number): AgentBacken
       return new ClaudeCodeBackend(port);
     case "codex":
       return new CodexBackend();
+    case "kimi-cli":
+      throw new Error("KimiCliBackend not yet wired (Task 7 of plan 2026-05-08-kimi-backend)");
   }
 }
