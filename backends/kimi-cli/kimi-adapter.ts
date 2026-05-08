@@ -61,6 +61,15 @@ export class KimiAdapter {
   }
   onSessionId(cb: (kimiSessionId: string) => void): void {
     this.sessionIdHandlers.push(cb);
+    // Replay-on-subscribe: if the id was already seeded (launcher pre-allocates
+    // and seeds before the WsBridge attaches), fire immediately so late
+    // subscribers don't miss it. Subsequent regex/seed updates with a new id
+    // will fire normally via the dedup'd `lastEmittedSessionId` path.
+    if (this.lastEmittedSessionId) {
+      try { cb(this.lastEmittedSessionId); } catch (err) {
+        console.error(`[kimi-adapter ${this.sessionId}] sessionId handler error (replay):`, err);
+      }
+    }
   }
   onDisconnect(cb: () => void): void {
     this.disconnectHandlers.push(cb);

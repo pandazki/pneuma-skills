@@ -70,6 +70,18 @@ describe("KimiAdapter", () => {
     ]);
   });
 
+  it("onSessionId replays the last seeded id to late subscribers", () => {
+    // The launcher seeds the kimi session id BEFORE the WsBridge attaches
+    // (because attachKimiAdapter runs after backend.launch returns). Without
+    // replay-on-subscribe, the bridge's callback would never fire and
+    // agentSessionId would never reach session.json.
+    const { adapter } = makeAdapter();
+    adapter.seedSessionId("seed-early");
+    const fires: string[] = [];
+    adapter.onSessionId((sid) => fires.push(sid));
+    expect(fires).toEqual(["seed-early"]);
+  });
+
   it("seedSessionId fires onSessionId synchronously and dedups", () => {
     const { adapter } = makeAdapter();
     const fires: string[] = [];
