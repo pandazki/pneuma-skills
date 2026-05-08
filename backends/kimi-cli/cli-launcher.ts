@@ -135,6 +135,12 @@ export class KimiCliLauncher {
           nodeProc.once("exit", () => { clearTimeout(timer); res(); });
         });
       },
+      interruptProcess: () => {
+        // SIGINT (not SIGTERM) — kimi's print-mode signal handler turns SIGINT
+        // into a `cancel_event` that aborts the in-flight step but keeps the
+        // process alive to read the next user message. SIGTERM would kill it.
+        try { nodeProc.kill("SIGINT"); } catch {}
+      },
     });
     this.adapters.set(sessionId, adapter);
 

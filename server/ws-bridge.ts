@@ -137,7 +137,18 @@ export class WsBridge {
       if (this.onCLISessionId) this.onCLISessionId(sessionId, kimiSessionId);
     });
 
+    // Kimi-cli's stream-json doesn't include a `system.init` envelope (Claude
+    // does, Codex synthesises one), so the browser would otherwise see a
+    // permanent "no model" pill in the header and never learn which model is
+    // running. Seed the session-state shape the frontend expects from a fresh
+    // backend start, then broadcast it as a `session_init`.
+    if (!session.state.model) session.state.model = "kimi";
+    if (!session.state.agent_version) session.state.agent_version = "kimi-cli";
     this.broadcastToBrowsers(session, { type: "cli_connected" });
+    this.broadcastToBrowsers(session, {
+      type: "session_init",
+      session: { ...session.state, cli_busy: !session.cliIdle },
+    });
 
     // Flush any user messages queued before the adapter was ready.
     if (session.pendingMessages.length > 0) {
@@ -1054,9 +1065,14 @@ export class WsBridge {
     // on `agent_capabilities`, so reaching this branch usually means a stale UI element.
     const kimiAdapter = this.kimiAdapters.get(session.id);
     if (kimiAdapter) {
+      // Kimi-cli's smaller capability surface — drop messages the adapter
+      // can't act on so they don't pile up in `pendingMessages` (sendToCLI
+      // queues NDJSON when cliSocket is null, which is always true for kimi
+      // since it uses stdio). The frontend gates corresponding UI on
+      // `agent_capabilities`; reaching this branch usually means a stale UI
+      // element.
       const kimiUnsupported = new Set([
         "permission_response",
-        "interrupt",
         "set_model",
         "end_session",
         "update_environment_variables",
@@ -1072,6 +1088,23 @@ export class WsBridge {
       switch (msg.type) {
         case "user_message":
           this.handleKimiUserMessage(session, kimiAdapter, msg);
+          return;
+        case "interrupt":
+          // SIGINT the kimi process — its print-mode signal handler aborts
+          // the in-flight step but keeps the process alive for the next
+          // user message. The bridge's broadcast machinery doesn't synthesise
+          // a `result` envelope on its own, so we'd otherwise leave the
+          // frontend stuck on "Running". Push an idle snapshot so the user
+          // can type again immediately; if kimi happens to emit one more
+          // assistant turn after the interrupt lands, ws-bridge-kimi will
+          // synthesise the canonical `result` envelope at that point.
+          kimiAdapter.interrupt();
+          session.cliIdle = true;
+          this.broadcastToBrowsers(session, {
+            type: "session_update",
+            session: { ...session.state, cli_busy: false },
+          });
+          this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
           return;
         case "viewer_action_response":
           handleViewerActionResponse(session, msg);

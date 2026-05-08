@@ -28,6 +28,12 @@ export interface KimiAdapterOptions {
   stdout: Readable;
   stderr: Readable;
   killProcess: () => Promise<void>;
+  /**
+   * Send SIGINT to the kimi process — interrupts the in-flight step but
+   * keeps the process alive so it can accept the next user message.
+   * Optional: if not provided, `interrupt()` becomes a no-op.
+   */
+  interruptProcess?: () => void;
 }
 
 const SESSION_ID_RE = /kimi -r ([0-9a-f-]{36})/;
@@ -36,6 +42,7 @@ export class KimiAdapter {
   readonly sessionId: string;
   private stdin: Writable;
   private killProcess: () => Promise<void>;
+  private interruptProcess: (() => void) | undefined;
 
   private messageHandlers: ((msg: PneumaMessage) => void)[] = [];
   private sessionIdHandlers: ((kimiSessionId: string) => void)[] = [];
@@ -50,6 +57,7 @@ export class KimiAdapter {
     this.sessionId = opts.sessionId;
     this.stdin = opts.stdin;
     this.killProcess = opts.killProcess;
+    this.interruptProcess = opts.interruptProcess;
 
     opts.stdout.on("data", (chunk: Buffer | string) => this.onStdout(chunk.toString("utf-8")));
     opts.stdout.on("close", () => this.fireDisconnect());
@@ -79,6 +87,20 @@ export class KimiAdapter {
     if (this.disconnected) return;
     const line = JSON.stringify(pneumaUserToKimi(content)) + "\n";
     this.stdin.write(line);
+  }
+
+  /**
+   * Interrupt the current step without killing the process. Sends SIGINT to
+   * kimi, which sets its internal `cancel_event` (per `kimi_cli/ui/print/__init__.py`),
+   * aborts the in-flight LLM call / tool, and loops back to read the next
+   * stdin line. The session stays alive — the bridge synthesises a `result`
+   * envelope so the frontend flips to idle.
+   */
+  interrupt(): void {
+    if (this.disconnected) return;
+    try { this.interruptProcess?.(); } catch (err) {
+      console.error(`[kimi-adapter ${this.sessionId}] interrupt error:`, err);
+    }
   }
 
   /**
