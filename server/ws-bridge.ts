@@ -51,6 +51,8 @@ import {
 import { handleViewerActionResponse } from "./ws-bridge-viewer.js";
 import type { CodexAdapter } from "../backends/codex/codex-adapter.js";
 import { attachCodexAdapterHandlers } from "./ws-bridge-codex.js";
+import type { KimiAdapter } from "../backends/kimi-cli/kimi-adapter.js";
+import { attachKimiAdapterHandlers } from "./ws-bridge-kimi.js";
 
 // ─── Bridge ───────────────────────────────────────────────────────────────────
 
@@ -64,6 +66,7 @@ export class WsBridge {
   ]);
   private sessions = new Map<string, Session>();
   private codexAdapters = new Map<string, CodexAdapter>();
+  private kimiAdapters = new Map<string, KimiAdapter>();
   private onCLISessionId: ((sessionId: string, cliSessionId: string) => void) | null = null;
   private userMsgCounter = 0;
   private workspace = "";
@@ -118,6 +121,55 @@ export class WsBridge {
   }
 
   /**
+   * Attach a Kimi adapter to a session.
+   * Called when a Kimi backend launches — wires adapter events to the bridge.
+   */
+  attachKimiAdapter(sessionId: string, adapter: KimiAdapter): void {
+    const session = this.getOrCreateSession(sessionId, "kimi-cli");
+    this.kimiAdapters.set(sessionId, adapter);
+
+    attachKimiAdapterHandlers(sessionId, session, adapter, {
+      broadcastToBrowsers: (s, msg) => this.broadcastToBrowsers(s, msg),
+      workspace: this.workspace,
+    });
+
+    adapter.onSessionId((kimiSessionId) => {
+      if (this.onCLISessionId) this.onCLISessionId(sessionId, kimiSessionId);
+    });
+
+    this.broadcastToBrowsers(session, { type: "cli_connected" });
+
+    // Flush any user messages queued before the adapter was ready.
+    if (session.pendingMessages.length > 0) {
+      console.log(`[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) via Kimi adapter for session ${sessionId}`);
+      const queued = session.pendingMessages.splice(0);
+      for (const ndjson of queued) {
+        try {
+          const msg = JSON.parse(ndjson);
+          // The CLI-bound NDJSON shape is `{ type: "user", message: { role, content } }`
+          // — extract the plain string and pass it to the kimi adapter.
+          let content: string | null = null;
+          if (msg && msg.type === "user" && msg.message && typeof msg.message.content === "string") {
+            content = msg.message.content;
+          } else if (msg && msg.type === "user_message" && typeof msg.content === "string") {
+            content = msg.content;
+          }
+          if (content !== null) {
+            adapter.sendUserMessage(content);
+          }
+        } catch (err) {
+          console.error(`[ws-bridge] Failed to parse/send queued message for session ${sessionId}:`, err);
+        }
+      }
+    }
+  }
+
+  /** Check if a session is using the Kimi adapter (vs CLI WebSocket / Codex). */
+  isKimiSession(sessionId: string): boolean {
+    return this.kimiAdapters.has(sessionId);
+  }
+
+  /**
    * Send a greeting message to the CLI without recording it in messageHistory.
    * The user never sees the prompt — only the agent's response appears in chat.
    */
@@ -129,6 +181,13 @@ export class WsBridge {
     const codexAdapter = this.codexAdapters.get(sessionId);
     if (codexAdapter) {
       codexAdapter.sendBrowserMessage({ type: "user_message", content });
+      return;
+    }
+
+    // For Kimi sessions, write directly to the adapter's stdin.
+    const kimiAdapter = this.kimiAdapters.get(sessionId);
+    if (kimiAdapter) {
+      kimiAdapter.sendUserMessage(content);
       return;
     }
 
@@ -159,8 +218,11 @@ export class WsBridge {
   sendUserMessage(sessionId: string, content: string): void {
     const session = this.getOrCreateSession(sessionId);
     const codexAdapter = this.codexAdapters.get(sessionId);
+    const kimiAdapter = this.kimiAdapters.get(sessionId);
     if (codexAdapter) {
       this.handleCodexUserMessage(session, codexAdapter, { type: "user_message", content });
+    } else if (kimiAdapter) {
+      this.handleKimiUserMessage(session, kimiAdapter, { type: "user_message", content });
     } else {
       this.handleUserMessage(session, { type: "user_message", content });
     }
@@ -207,7 +269,7 @@ export class WsBridge {
   getActiveSessionId(): string | null {
     for (const [id, session] of this.sessions) {
       // CLI WebSocket (Claude) or Codex adapter (stdio)
-      if (session.cliSocket || this.codexAdapters.has(id)) return id;
+      if (session.cliSocket || this.codexAdapters.has(id) || this.kimiAdapters.has(id)) return id;
     }
     return null;
   }
@@ -291,6 +353,13 @@ export class WsBridge {
     if (codexAdapter) {
       codexAdapter.disconnect().catch(() => {});
       this.codexAdapters.delete(sessionId);
+    }
+
+    // Clean up Kimi adapter if present
+    const kimiAdapter = this.kimiAdapters.get(sessionId);
+    if (kimiAdapter) {
+      kimiAdapter.disconnect().catch(() => {});
+      this.kimiAdapters.delete(sessionId);
     }
 
     if (session.cliSocket) {
@@ -425,8 +494,8 @@ export class WsBridge {
       this.sendToBrowser(ws, { type: "permission_request", request: perm });
     }
 
-    // Notify if CLI is not connected (skip for Codex — it uses stdio, not WebSocket)
-    if (!session.cliSocket && !this.codexAdapters.has(sessionId)) {
+    // Notify if CLI is not connected (skip for Codex / Kimi — both use stdio, not WebSocket)
+    if (!session.cliSocket && !this.codexAdapters.has(sessionId) && !this.kimiAdapters.has(sessionId)) {
       this.sendToBrowser(ws, { type: "cli_disconnected" });
     }
   }
@@ -977,6 +1046,26 @@ export class WsBridge {
       }
     }
 
+    // For Kimi sessions, route applicable messages through the adapter.
+    // Kimi has a smaller capability surface than Codex: no permission flow,
+    // no runtime model switch, no in-flight interrupt — those just no-op
+    // and fall through to the default switch (which is also a no-op for
+    // those types when no other transport is connected).
+    const kimiAdapter = this.kimiAdapters.get(session.id);
+    if (kimiAdapter) {
+      switch (msg.type) {
+        case "user_message":
+          this.handleKimiUserMessage(session, kimiAdapter, msg);
+          return;
+        case "viewer_action_response":
+          handleViewerActionResponse(session, msg);
+          return;
+        case "viewer_notification":
+          this.handleViewerNotification(session, msg);
+          return;
+      }
+    }
+
     switch (msg.type) {
       case "user_message":
         this.handleUserMessage(session, msg);
@@ -1122,6 +1211,30 @@ export class WsBridge {
       content: msg.content,
       images: msg.images,
     });
+  }
+
+  /**
+   * Handle user messages for Kimi sessions — records history then writes the
+   * plain text to the kimi process's stdin. Kimi-cli today is text-only
+   * (no inline image / file content blocks), so attachments would require
+   * a separate uploads-on-disk + notification path — out of scope until
+   * the backend grows multimodal support.
+   */
+  private handleKimiUserMessage(
+    session: Session,
+    adapter: KimiAdapter,
+    msg: { type: "user_message"; content: string; session_id?: string; images?: { media_type: string; data: string }[]; files?: { name: string; media_type: string; data: string; size: number }[] },
+  ): void {
+    const ts = Date.now();
+    session.messageHistory.push({
+      type: "user_message",
+      content: msg.content,
+      timestamp: ts,
+      id: `user-${ts}-${this.userMsgCounter++}`,
+    });
+
+    session.cliIdle = false;
+    adapter.sendUserMessage(msg.content);
   }
 
   private handleUserMessage(
