@@ -307,7 +307,20 @@ export type CLIMessage =
 export type ContentBlock =
   | { type: "text"; text: string }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
-  | { type: "tool_result"; tool_use_id: string; content: string | ContentBlock[]; is_error?: boolean }
+  | {
+    type: "tool_result";
+    tool_use_id: string;
+    content: string | ContentBlock[];
+    is_error?: boolean;
+    /**
+     * Optional inline status the backend's protocol extracted from the tool's
+     * raw output. Rendered as a small muted header above the result body —
+     * useful for backends (notably kimi-cli) that prepend agent-facing
+     * `<system>...</system>` metadata to every tool result. Backends whose
+     * tool results don't carry such metadata simply omit this field.
+     */
+    metadata?: string;
+  }
   | { type: "thinking"; thinking: string; budget_tokens?: number };
 
 // ─── Browser Message Types (browser <-> bridge) ──────────────────────────────

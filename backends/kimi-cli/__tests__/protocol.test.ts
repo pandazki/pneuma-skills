@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  extractKimiSystemMetadata,
   parseKimiLine,
   kimiToPneumaMessages,
   pneumaUserToKimi,
@@ -65,7 +66,7 @@ describe("kimiToPneumaMessages", () => {
     ]);
   });
 
-  it("translates a tool result by collapsing text parts and exposing tool_call_id", () => {
+  it("translates a tool result, lifting the leading <system> wrapper into metadata", () => {
     const kimi: KimiToolMessage = {
       role: "tool",
       tool_call_id: "functions.Shell:0",
@@ -82,11 +83,63 @@ describe("kimiToPneumaMessages", () => {
           {
             type: "tool_result",
             tool_use_id: "functions.Shell:0",
-            content: "<system>ok</system>\nhello\n",
+            content: "hello\n",
+            metadata: "ok",
           },
         ],
       },
     ]);
+  });
+
+  it("translates a status-only tool result into metadata + empty content", () => {
+    // Shell sometimes prints only the system status with no stdout — kimi
+    // still wraps it in `<system>...</system>`. The body should end up empty
+    // after stripping; the frontend renders just the status header.
+    const kimi: KimiToolMessage = {
+      role: "tool",
+      tool_call_id: "functions.Shell:0",
+      content: [{ type: "text", text: "<system>Command executed successfully.</system>" }],
+    };
+    const out = kimiToPneumaMessages(kimi);
+    expect(out[0].content[0]).toEqual({
+      type: "tool_result",
+      tool_use_id: "functions.Shell:0",
+      content: "",
+      metadata: "Command executed successfully.",
+    });
+  });
+
+  it("leaves tool_result.metadata unset when the body has no <system> wrapper", () => {
+    const kimi: KimiToolMessage = {
+      role: "tool",
+      tool_call_id: "id",
+      content: "just plain output\n",
+    };
+    const out = kimiToPneumaMessages(kimi);
+    const block = out[0].content[0] as { metadata?: string; content: string };
+    expect(block.content).toBe("just plain output\n");
+    expect("metadata" in block).toBe(false);
+  });
+
+  it("leaves interior <system> tags inside the body alone", () => {
+    // Only LEADING <system> wrappers get lifted. A tag deep in the body —
+    // e.g. an LLM-generated output that happens to mention `<system>` —
+    // stays as-is.
+    const kimi: KimiToolMessage = {
+      role: "tool",
+      tool_call_id: "id",
+      content: [
+        { type: "text", text: "<system>head</system>" },
+        { type: "text", text: "real body\n<system>nested-not-lifted</system> trailing\n" },
+      ],
+    };
+    const out = kimiToPneumaMessages(kimi);
+    expect(out[0].content[0]).toEqual({
+      type: "tool_result",
+      tool_use_id: "id",
+      content: "real body\n<system>nested-not-lifted</system> trailing\n",
+      metadata: "head",
+    });
   });
 
   it("tolerates malformed tool-call arguments by stringifying them", () => {
@@ -107,6 +160,36 @@ describe("kimiToPneumaMessages", () => {
       id: "x",
       name: "X",
       input: { _raw: "not-json" },
+    });
+  });
+});
+
+describe("extractKimiSystemMetadata", () => {
+  it("returns null metadata when no leading <system> wrapper is present", () => {
+    expect(extractKimiSystemMetadata("plain output")).toEqual({
+      metadata: null,
+      content: "plain output",
+    });
+  });
+
+  it("lifts a single leading wrapper", () => {
+    expect(extractKimiSystemMetadata("<system>ok</system>\nbody\n")).toEqual({
+      metadata: "ok",
+      content: "body\n",
+    });
+  });
+
+  it("joins multiple consecutive leading wrappers with a separator", () => {
+    expect(extractKimiSystemMetadata("<system>part-1</system> <system>part-2</system>body")).toEqual({
+      metadata: "part-1 · part-2",
+      content: "body",
+    });
+  });
+
+  it("treats a status-only payload as metadata with empty content", () => {
+    expect(extractKimiSystemMetadata("<system>Command executed successfully.</system>")).toEqual({
+      metadata: "Command executed successfully.",
+      content: "",
     });
   });
 });

@@ -49,6 +49,14 @@ export interface PneumaToolResultBlock {
   type: "tool_result";
   tool_use_id: string;
   content: string;
+  /**
+   * Agent-facing status that kimi prepends to tool results in the form
+   * `<system>...</system>` (see `kimi_cli/agents/default/system.md`). Extracted
+   * here so the bridge can keep tool_result.content as just the actual stdout /
+   * file body, and the frontend renders metadata as a small status header
+   * above the result. Empty string when the tool result carries no metadata.
+   */
+  metadata?: string;
 }
 
 export type PneumaContentBlock =
@@ -118,14 +126,55 @@ export function kimiToPneumaMessages(msg: KimiMessage): PneumaMessage[] {
   const text = typeof msg.content === "string"
     ? msg.content
     : msg.content.map((p) => p.text).join("\n");
-  return [
-    {
-      type: "user",
-      content: [
-        { type: "tool_result", tool_use_id: msg.tool_call_id, content: text },
-      ],
-    },
-  ];
+  const { metadata, content } = extractKimiSystemMetadata(text);
+  const block: PneumaToolResultBlock = { type: "tool_result", tool_use_id: msg.tool_call_id, content };
+  if (metadata) block.metadata = metadata;
+  return [{ type: "user", content: [block] }];
+}
+
+// ── kimi `<system>` metadata extraction ──────────────────────────────────────
+
+/**
+ * Kimi-cli prepends agent-facing status to every tool result in the form
+ * `<system>...</system>` (see `kimi_cli/agents/default/system.md` and the
+ * various tool wrappers under `kimi_cli/tools/`). Examples:
+ *
+ *   - `<system>Command executed successfully.</system>` (Shell)
+ *   - `<system>103 lines read from file starting from line 1. ...</system>`
+ *     followed by the actual file body (ReadFile)
+ *   - `<system>ERROR: ... is not an absolute path. ...</system>` (failed tool)
+ *
+ * These markers are noise for human display, so we lift them out of the body
+ * here. Multiple `<system>` blocks (occasionally seen on multi-step tools)
+ * are joined with " · " into a single metadata string. The remaining text —
+ * with leading/trailing whitespace from the lift trimmed off but interior
+ * whitespace preserved — is the body the user actually wants to see.
+ *
+ * Returns `metadata` as `null` when no markers are present so callers can
+ * cheaply skip setting the optional field.
+ */
+export function extractKimiSystemMetadata(raw: string): { metadata: string | null; content: string } {
+  // Non-greedy match across newlines; only consume `<system>` blocks anchored
+  // at the start of the (remaining) buffer with optional leading whitespace.
+  // We deliberately do NOT match `<system>` blocks deeper in the body — those
+  // are part of the actual content and should stay visible.
+  const headRe = /^\s*<system>([\s\S]*?)<\/system>\s*/;
+  const parts: string[] = [];
+  let rest = raw;
+  while (true) {
+    const m = rest.match(headRe);
+    if (!m) break;
+    parts.push(m[1].trim());
+    rest = rest.slice(m[0].length);
+  }
+  if (parts.length === 0) {
+    return { metadata: null, content: raw };
+  }
+  return {
+    metadata: parts.join(" · "),
+    // Preserve the body verbatim once the leading metadata is stripped.
+    content: rest,
+  };
 }
 
 // ── Pneuma → kimi ────────────────────────────────────────────────────────────

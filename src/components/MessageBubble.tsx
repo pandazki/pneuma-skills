@@ -838,19 +838,19 @@ function ContentBlockRenderer({
     const linkedTool = toolUseById.get(block.tool_use_id);
     const isError = block.is_error ?? false;
     const isBash = linkedTool?.name === "Bash";
+    // Optional protocol-extracted status (currently set by the kimi-cli
+    // backend's protocol module to surface its `<system>...</system>`
+    // wrappers as a small header above the body — see
+    // `backends/kimi-cli/protocol.ts:extractKimiSystemMetadata`). Other
+    // backends omit this field and the renderer falls back to the
+    // pre-existing styles.
+    const metadata = (block as { metadata?: string }).metadata;
 
     if (isBash) {
-      return <BashResultBlock text={content} isError={isError} />;
+      return <BashResultBlock text={content} isError={isError} metadata={metadata} />;
     }
 
-    return (
-      <div className={`text-xs font-mono-code rounded-lg px-3 py-2 border ${isError
-        ? "bg-cc-error/5 border-cc-error/20 text-cc-error"
-        : "bg-cc-card border-cc-border text-cc-muted"
-        } max-h-40 overflow-y-auto whitespace-pre-wrap`}>
-        {content}
-      </div>
-    );
+    return <ToolResultBlock text={content} isError={isError} metadata={metadata} />;
   }
 
   return null;
@@ -858,7 +858,7 @@ function ContentBlockRenderer({
 
 // ─── BashResultBlock ───────────────────────────────────────────────────────
 
-function BashResultBlock({ text, isError }: { text: string; isError: boolean }) {
+function BashResultBlock({ text, isError, metadata }: { text: string; isError: boolean; metadata?: string }) {
   const lines = text.split(/\r?\n/);
   const hasMore = lines.length > 20;
   const [showFull, setShowFull] = useState(false);
@@ -867,23 +867,72 @@ function BashResultBlock({ text, isError }: { text: string; isError: boolean }) 
   return (
     <div className={`rounded-lg border ${isError ? "bg-cc-error/5 border-cc-error/20" : "bg-cc-card border-cc-border"
       }`}>
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-cc-border">
-        <span className={`text-[10px] font-medium ${isError ? "text-cc-error" : "text-cc-muted"}`}>
-          {hasMore && !showFull ? "Output (last 20 lines)" : "Output"}
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-cc-border gap-3">
+        <span className={`text-[10px] font-medium truncate ${isError ? "text-cc-error" : "text-cc-muted"}`}>
+          {metadata ?? (hasMore && !showFull ? "Output (last 20 lines)" : "Output")}
         </span>
         {hasMore && (
           <button
             onClick={() => setShowFull(!showFull)}
-            className="text-[10px] text-cc-primary hover:underline cursor-pointer"
+            className="text-[10px] text-cc-primary hover:underline cursor-pointer shrink-0"
           >
             {showFull ? "Show tail" : "Show full"}
           </button>
         )}
       </div>
-      <pre className={`text-xs font-mono-code px-3 py-2 whitespace-pre-wrap max-h-60 overflow-y-auto ${isError ? "text-cc-error" : "text-cc-muted"
-        }`}>
-        {rendered}
-      </pre>
+      {text && (
+        <pre className={`text-xs font-mono-code px-3 py-2 whitespace-pre-wrap max-h-60 overflow-y-auto ${isError ? "text-cc-error" : "text-cc-muted"
+          }`}>
+          {rendered}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+// ─── ToolResultBlock ─────────────────────────────────────────────────────────
+//
+// Generic tool-result renderer used for non-Bash tool calls. Mirrors the
+// BashResultBlock layout (status header + collapsible body) so kimi-cli's
+// `<system>...</system>` metadata gets a real header, and large outputs
+// (e.g. ReadFile of a 100-line file) start collapsed instead of the previous
+// 160px-tall scrollable wall-of-text. Backends that don't surface metadata
+// (Claude, Codex) just see "Result" as the header label.
+
+function ToolResultBlock({ text, isError, metadata }: { text: string; isError: boolean; metadata?: string }) {
+  const lines = text ? text.split(/\r?\n/) : [];
+  const hasMore = lines.length > 6;
+  // Default-collapse when there's metadata (kimi-style — body is usually long
+  // and the status alone often tells the story) or when the body exceeds the
+  // preview window. Pure short bodies render fully expanded.
+  const [showFull, setShowFull] = useState(!metadata && !hasMore);
+  const previewLines = showFull ? lines : lines.slice(0, 6);
+  const rendered = previewLines.join("\n");
+  const headerLabel = metadata ?? (isError ? "Error" : "Result");
+  const collapsedRemaining = hasMore && !showFull ? lines.length - previewLines.length : 0;
+
+  return (
+    <div className={`rounded-lg border ${isError ? "bg-cc-error/5 border-cc-error/20" : "bg-cc-card border-cc-border"
+      }`}>
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-cc-border gap-3">
+        <span className={`text-[10px] font-medium truncate ${isError ? "text-cc-error" : "text-cc-muted"}`}>
+          {headerLabel}
+        </span>
+        {(hasMore || (metadata && text)) && (
+          <button
+            onClick={() => setShowFull(!showFull)}
+            className="text-[10px] text-cc-primary hover:underline cursor-pointer shrink-0"
+          >
+            {showFull ? "Hide" : collapsedRemaining > 0 ? `Show full (+${collapsedRemaining} lines)` : "Show full"}
+          </button>
+        )}
+      </div>
+      {text && (showFull || !metadata || hasMore) && (
+        <pre className={`text-xs font-mono-code px-3 py-2 whitespace-pre-wrap max-h-60 overflow-y-auto ${isError ? "text-cc-error" : "text-cc-muted"
+          }`}>
+          {rendered}
+        </pre>
+      )}
     </div>
   );
 }
