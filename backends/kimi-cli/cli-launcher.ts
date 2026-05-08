@@ -186,14 +186,20 @@ export class KimiCliLauncher {
 
   async kill(sessionId: string): Promise<boolean> {
     const adapter = this.adapters.get(sessionId);
-    if (adapter) await adapter.disconnect();
-    const proc = this.nodeProcesses.get(sessionId);
-    if (!proc) return false;
-    proc.kill("SIGTERM");
+    if (adapter) {
+      await adapter.disconnect();
+      this.adapters.delete(sessionId);
+    }
+
+    const nodeProc = this.nodeProcesses.get(sessionId);
+    if (!nodeProc) return false;
+
+    nodeProc.kill("SIGTERM");
     await new Promise<void>((res) => {
-      const timer = setTimeout(() => { proc.kill("SIGKILL"); res(); }, 5000);
-      proc.once("exit", () => { clearTimeout(timer); res(); });
+      const timer = setTimeout(() => { nodeProc.kill("SIGKILL"); res(); }, 5000);
+      nodeProc.once("exit", () => { clearTimeout(timer); res(); });
     });
+
     const session = this.sessions.get(sessionId);
     if (session) { session.state = "exited"; session.exitCode = -1; }
     this.nodeProcesses.delete(sessionId);
