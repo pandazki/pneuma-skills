@@ -1,7 +1,13 @@
 /**
- * Skill installer — copies mode-specific skill to the appropriate skills directory
- * (.claude/skills/ for Claude Code, .agents/skills/ for Codex) and
- * injects Pneuma configuration into CLAUDE.md / AGENTS.md.
+ * Skill installer — copies a mode's skill files into the active backend's
+ * skills directory and merges Pneuma's marker blocks into the active
+ * backend's project-level instructions file.
+ *
+ * The "active backend" is anything that implements `BackendInstallHandler`
+ * (see `./skill-installer-backend.ts`). The installer body itself is
+ * backend-agnostic — every choice that depends on the backend goes through
+ * the handler. Adding a new backend means adding a registry entry, not
+ * threading new `if (backendType === "...")` branches through this file.
  *
  * Parameterized by SkillConfig from ModeManifest — no hardcoded mode knowledge.
  */
@@ -11,23 +17,18 @@ import { join, dirname, extname } from "node:path";
 import { homedir } from "node:os";
 import type { SkillConfig, ViewerApiConfig, McpServerConfig, SkillDependency } from "../core/types/mode-manifest.js";
 import { isProjectManifest, type ProjectManifest } from "../core/types/project-manifest.js";
-
-/** Return the workspace-relative skills directory for a given backend. */
-function skillsDir(backendType?: string): string {
-  return backendType === "codex" ? join(".agents", "skills") : join(".claude", "skills");
-}
+import { getBackendInstallHandler } from "./skill-installer-backend.js";
 
 /**
  * Resolve the absolute path where plugin skills should be installed for the
  * current session. Project sessions install under the per-session dir (which
  * is the agent's CWD); quick sessions install under the workspace root
  * (legacy 2.x layout). Mirrors the resolution `installSkill` uses for the
- * mode skill so plugin skills sit alongside it under the same `.claude/`
- * (or `.agents/`) tree.
+ * mode skill so plugin skills sit alongside it under the same backend tree.
  *
  * @param workspace — project root or quick-session workspace
  * @param sessionDir — per-session state dir for project sessions; undefined for quick
- * @param backendType — selects `.claude/skills` vs `.agents/skills`
+ * @param backendType — selects the backend handler (skills dir comes from it)
  */
 export function resolvePluginSkillsBase(
   workspace: string,
@@ -35,12 +36,7 @@ export function resolvePluginSkillsBase(
   backendType?: string,
 ): string {
   const root = sessionDir ?? workspace;
-  return join(root, skillsDir(backendType));
-}
-
-/** Return the instructions filename for a given backend. */
-function instructionsFile(backendType?: string): string {
-  return backendType === "codex" ? "AGENTS.md" : "CLAUDE.md";
+  return join(root, getBackendInstallHandler(backendType).skillsDir);
 }
 
 const PNEUMA_MARKER_START = "<!-- pneuma:start -->";
@@ -493,8 +489,7 @@ export async function buildAndInjectPreferences(
   hookBus: import("../core/hook-bus.js").HookBus,
   sessionInfo: import("../core/types/plugin.js").SessionInfo,
 ): Promise<void> {
-  const instrFile = backendType === "codex" ? "AGENTS.md" : "CLAUDE.md";
-  const instructionsPath = join(workspace, instrFile);
+  const instructionsPath = join(workspace, getBackendInstallHandler(backendType).instructionsFile);
 
   let content: string;
   try {
@@ -661,7 +656,7 @@ export function generatePneumaSection(
   backendType: string | undefined,
   runtimeShell: "app" | "web",
 ): string {
-  const backendLabel = backendType === "codex" ? "codex" : "claude-code";
+  const backendLabel = getBackendInstallHandler(backendType).displayLabel;
   const shellLabel = runtimeShell === "app" ? "App" : "Web";
   const fallbackDisplay = skillConfig.installName
     .replace(/^pneuma-/, "")
@@ -960,7 +955,7 @@ export function installSkillDependencies(
     }
 
     const depSource = join(modeSourceDir, dep.sourceDir);
-    const depTarget = join(workspace, skillsDir(backendType), dep.name);
+    const depTarget = join(workspace, getBackendInstallHandler(backendType).skillsDir, dep.name);
 
     if (existsSync(depSource)) {
       // Purge prior install to drop stale files from older dependency versions.
@@ -1153,7 +1148,8 @@ export function installSkill(options: InstallSkillOptions): void {
 
   // 1. Copy skill to the backend-appropriate skills directory
   const skillSource = join(modeSourceDir, skillConfig.sourceDir);
-  const skillTarget = join(installTarget, skillsDir(backendType), skillConfig.installName);
+  const handler = getBackendInstallHandler(backendType);
+  const skillTarget = join(installTarget, handler.skillsDir, skillConfig.installName);
 
   if (existsSync(skillSource)) {
     // Purge prior install to prevent stale files from older skill versions.
@@ -1229,7 +1225,7 @@ export function installSkill(options: InstallSkillOptions): void {
 
   // 2. Inject/update instructions file with pneuma configuration
   //    Claude Code uses CLAUDE.md, Codex uses AGENTS.md
-  const primaryInstructionsPath = join(installTarget, instructionsFile(backendType));
+  const primaryInstructionsPath = join(installTarget, handler.instructionsFile);
   let content = "";
 
   if (existsSync(primaryInstructionsPath)) {
@@ -1410,7 +1406,7 @@ export function injectMemorySourceInfo(
   memorySources: Array<{ name: string; displayName: string; routePrefix: string }>,
   backendType?: string,
 ): void {
-  const skillDir = join(workspace, skillsDir(backendType), "pneuma-preferences");
+  const skillDir = join(workspace, getBackendInstallHandler(backendType).skillsDir, "pneuma-preferences");
   const skillMdPath = join(skillDir, "SKILL.md");
   if (!existsSync(skillMdPath)) return;
 
@@ -1467,9 +1463,7 @@ export function injectResumedContext(
   const section = `${markerStart}\n${context}\n${markerEnd}`;
 
   const instrTarget = instructionsDir ?? workspace;
-  const instructionsPath = backendType === "codex"
-    ? join(instrTarget, "AGENTS.md")
-    : join(instrTarget, "CLAUDE.md");
+  const instructionsPath = join(instrTarget, getBackendInstallHandler(backendType).instructionsFile);
 
   if (!existsSync(instructionsPath)) return;
 

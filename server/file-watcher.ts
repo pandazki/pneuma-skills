@@ -33,12 +33,15 @@ const DEFAULT_IGNORE = [
   // IDE metadata
   "**/.idea/**",
   "**/.vscode/**",
-  // Pneuma / agent internal
+  // Pneuma / agent internal — every backend's native skills tree + the
+  // project-level instructions file the corresponding CLI reads.
   "**/.pneuma/**",
   "**/.claude/**",
   "**/.agents/**",
+  "**/.kimi/**",
   "**/CLAUDE.md",
   "**/AGENTS.md",
+  "**/agents.md",
   // Environment & secrets
   "**/.env",
   "**/.env.*",

@@ -6,16 +6,20 @@
  * session subdir under `<projectRoot>/.pneuma/sessions/<newSessionId>/`.
  *
  * Sources of state for a quick session live at `<workspace>/.pneuma/`. The
- * skill files (`.claude/skills/`, `CLAUDE.md`) live at `<workspace>/`. We
- * copy:
+ * skill files (one of `.claude/skills/`, `.agents/skills/`, `.kimi/skills/`
+ * depending on backend) and the project-level instructions file (one of
+ * `CLAUDE.md` / `AGENTS.md`) live at `<workspace>/`. We copy whichever ones
+ * the source actually has — `copyIfExists` makes the missing-entry case a
+ * no-op so the function stays backend-agnostic:
  *
  *   <source>/.pneuma/{session.json, history.json, config.json,
  *     skill-version.json, shadow.git/, checkpoints.jsonl}
  *     → <newSessionDir>/{...}
- *   <source>/.claude/skills/  → <newSessionDir>/.claude/skills/
- *   <source>/CLAUDE.md        → <newSessionDir>/CLAUDE.md
- *   <source>/.agents/skills/  → <newSessionDir>/.agents/skills/  (codex)
- *   <source>/AGENTS.md        → <newSessionDir>/AGENTS.md         (codex)
+ *   <source>/.claude/skills/  → <newSessionDir>/.claude/skills/   (claude-code)
+ *   <source>/.agents/skills/  → <newSessionDir>/.agents/skills/   (codex)
+ *   <source>/.kimi/skills/    → <newSessionDir>/.kimi/skills/      (kimi-cli)
+ *   <source>/CLAUDE.md        → <newSessionDir>/CLAUDE.md          (claude-code)
+ *   <source>/AGENTS.md        → <newSessionDir>/AGENTS.md          (codex + kimi-cli)
  *
  * The `session.json` is rewritten to use the freshly-minted UUID. The
  * `agentSessionId` is preserved so resume continues to work; the agent CLI
@@ -141,9 +145,12 @@ async function importOneSession(
   // shadow.git/ — recursive
   await copyIfExists(join(sourceStateDir, "shadow.git"), join(paths.stateDir, "shadow.git"));
 
-  // 3) Skill files at workspace root.
+  // 3) Skill files at workspace root — every backend's native dir + every
+  // possible instructions filename. Whichever ones the source workspace
+  // actually has get carried over; missing entries are no-ops via copyIfExists.
   await copyIfExists(join(source.workspace, ".claude"), join(paths.stateDir, ".claude"));
   await copyIfExists(join(source.workspace, ".agents"), join(paths.stateDir, ".agents"));
+  await copyIfExists(join(source.workspace, ".kimi"), join(paths.stateDir, ".kimi"));
   await copyIfExists(join(source.workspace, "CLAUDE.md"), join(paths.stateDir, "CLAUDE.md"));
   await copyIfExists(join(source.workspace, "AGENTS.md"), join(paths.stateDir, "AGENTS.md"));
 

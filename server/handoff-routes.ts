@@ -295,8 +295,9 @@ export function mountHandoffRoutes(
     const projectRoot = proposal.project_root;
 
     // Write inbound-handoff.json BEFORE spawn, so the target's skill installer
-    // has the file in place when CLAUDE.md is generated. Atomic via .tmp +
-    // rename so a concurrent reader never sees a half-written payload.
+    // has the file in place when the project-level instructions file
+    // (CLAUDE.md / AGENTS.md, depending on backend) is generated. Atomic via
+    // .tmp + rename so a concurrent reader never sees a half-written payload.
     //
     // Path: `<targetSessionDir>/.pneuma/inbound-handoff.json`. Project sessions
     // store their flat state directly in `<projectRoot>/.pneuma/sessions/<id>/`,
