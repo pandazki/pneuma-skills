@@ -47,6 +47,45 @@ describe("kimiToPneumaMessages", () => {
     ]);
   });
 
+  it("translates an assistant message with array content (managed kimi-code shape)", () => {
+    // The managed `kimi-code` subscription provider emits the assistant's
+    // reasoning as a separate `{type:"think"}` part alongside the answer
+    // `{type:"text"}` part. Old code crashed on this shape because it tried
+    // to call `.trim()` on the array — regression-pin the new behavior.
+    const out = kimiToPneumaMessages({
+      role: "assistant",
+      content: [
+        { type: "think", think: "Let me think about this.", encrypted: null },
+        { type: "text", text: "OK" },
+      ],
+    });
+    expect(out).toEqual([
+      {
+        type: "assistant",
+        content: [
+          { type: "thinking", thinking: "Let me think about this." },
+          { type: "text", text: "OK" },
+        ],
+      },
+    ]);
+  });
+
+  it("skips empty/whitespace text and think parts when array content is mixed", () => {
+    const out = kimiToPneumaMessages({
+      role: "assistant",
+      content: [
+        { type: "think", think: "   " }, // whitespace-only — skip
+        { type: "text", text: "" }, // empty — skip
+        { type: "think", think: "real reasoning" },
+        { type: "text", text: "final" },
+      ],
+    });
+    expect(out[0].content).toEqual([
+      { type: "thinking", thinking: "real reasoning" },
+      { type: "text", text: "final" },
+    ]);
+  });
+
   it("translates an assistant message with tool_calls into separate tool_use blocks", () => {
     const kimi: KimiAssistantMessage = {
       role: "assistant",

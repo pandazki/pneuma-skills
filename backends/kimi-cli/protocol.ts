@@ -19,9 +19,32 @@ export interface KimiToolCall {
   function: { name: string; arguments: string };
 }
 
+/**
+ * Content part inside an assistant message when kimi is configured with a
+ * provider that surfaces internal reasoning (notably the managed `kimi-code`
+ * subscription, which emits `{type:"think", think:"...", encrypted: null}`
+ * blocks alongside `{type:"text", ...}`). The OpenRouter provider keeps
+ * content as a plain string instead, so both shapes have to be tolerated.
+ */
+export interface KimiThinkPart {
+  type: "think";
+  think: string;
+  encrypted?: string | null;
+}
+export interface KimiAssistantTextPart {
+  type: "text";
+  text: string;
+}
+export type KimiAssistantContentPart = KimiThinkPart | KimiAssistantTextPart;
+
 export interface KimiAssistantMessage {
   role: "assistant";
-  content: string;
+  /**
+   * Plain string when the LLM provider doesn't separate reasoning from the
+   * answer (OpenRouter); array of content parts when it does (managed
+   * kimi-code with thinking enabled). The translator handles both.
+   */
+  content: string | KimiAssistantContentPart[];
   tool_calls?: KimiToolCall[];
 }
 
@@ -59,10 +82,23 @@ export interface PneumaToolResultBlock {
   metadata?: string;
 }
 
+/**
+ * Internal reasoning surfaced as a separate content block. Kimi emits these
+ * via `{type:"think"}` parts when the configured provider supports
+ * thinking-stream output (managed `kimi-code` subscription); we translate
+ * them into Pneuma's canonical `thinking` block so the chat panel's existing
+ * `ThinkingBlock` component renders them as a collapsible reasoning card.
+ */
+export interface PneumaThinkingBlock {
+  type: "thinking";
+  thinking: string;
+}
+
 export type PneumaContentBlock =
   | PneumaTextBlock
   | PneumaToolUseBlock
-  | PneumaToolResultBlock;
+  | PneumaToolResultBlock
+  | PneumaThinkingBlock;
 
 export interface PneumaAssistantMessage {
   type: "assistant";
@@ -101,13 +137,26 @@ export function kimiToPneumaMessages(msg: KimiMessage): PneumaMessage[] {
 
   if (msg.role === "assistant") {
     const blocks: PneumaContentBlock[] = [];
-    const text = (msg.content ?? "").trim();
-    if (text.length > 0 && !msg.tool_calls?.length) {
-      blocks.push({ type: "text", text: msg.content });
-    } else if (text.length > 0 && msg.tool_calls?.length) {
-      // Some assistant turns ship narration alongside a tool call.
-      blocks.push({ type: "text", text: msg.content });
+
+    // `content` can be either a plain string (OpenRouter provider) or an
+    // array of `{type:"think"|"text"}` parts (managed kimi-code provider
+    // with thinking enabled). Walk parts in order so the chat panel renders
+    // reasoning before its corresponding answer.
+    if (typeof msg.content === "string") {
+      const text = msg.content;
+      if (text.trim().length > 0) {
+        blocks.push({ type: "text", text });
+      }
+    } else if (Array.isArray(msg.content)) {
+      for (const part of msg.content) {
+        if (part.type === "think" && typeof part.think === "string" && part.think.trim().length > 0) {
+          blocks.push({ type: "thinking", thinking: part.think });
+        } else if (part.type === "text" && typeof part.text === "string" && part.text.trim().length > 0) {
+          blocks.push({ type: "text", text: part.text });
+        }
+      }
     }
+
     for (const call of msg.tool_calls ?? []) {
       let input: Record<string, unknown>;
       try {
