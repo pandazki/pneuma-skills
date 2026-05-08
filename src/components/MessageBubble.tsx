@@ -881,7 +881,12 @@ function ToolResultBlock({
   toolName?: string;
 }) {
   const isBash = toolName === "Bash";
-  const previewLimit = isBash ? 20 : 6;
+  // 6 lines preview for every tool. Bash used to default to 20-line tail
+  // because long-running commands' tail is usually the interesting bit, but
+  // 20 lines stretches the chat panel too far when the agent strings several
+  // shell calls together — 6 fits in a glance and "Show full" is one click
+  // away for the rare case where you actually need the full output.
+  const previewLimit = 6;
   const lines = text ? text.split(/\r?\n/) : [];
   const hasOverflow = lines.length > previewLimit;
   const [showFull, setShowFull] = useState(false);
