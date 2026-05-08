@@ -495,6 +495,21 @@ function checkBackendRequirements(backendType: AgentBackendType) {
     return;
   }
 
+  if (backendType === "kimi-cli") {
+    const resolved = resolveBinary("kimi");
+    if (!resolved) {
+      p.cancel(
+        "Kimi CLI not found.\n" +
+        "  Pneuma requires Kimi CLI to be installed and authenticated.\n" +
+        "  Install: uv tool install kimi-cli\n" +
+        "  Then run: kimi login\n" +
+        "  Docs: https://moonshotai.github.io/kimi-cli/"
+      );
+      process.exit(1);
+    }
+    return;
+  }
+
   p.cancel(`Backend "${backendType}" is not implemented yet.`);
   process.exit(1);
 }
@@ -812,6 +827,22 @@ async function handleEvolveCommand(args: string[]) {
       backend.onAdapterCreated((sid, adapter) => {
         if (sid === session.sessionId) {
           wsBridge.attachCodexAdapter(sid, adapter);
+        }
+      });
+    }
+  }
+
+  // Wire Kimi adapter if applicable
+  if (backendType === "kimi-cli") {
+    const { KimiCliBackend } = await import("../backends/kimi-cli/index.js");
+    if (backend instanceof KimiCliBackend) {
+      const existingAdapter = backend.getAdapter(session.sessionId);
+      if (existingAdapter) {
+        wsBridge.attachKimiAdapter(session.sessionId, existingAdapter);
+      }
+      backend.onAdapterCreated((sid, adapter) => {
+        if (sid === session.sessionId) {
+          wsBridge.attachKimiAdapter(sid, adapter);
         }
       });
     }
@@ -2076,6 +2107,18 @@ Options:
         }
       }
 
+      // Wire Kimi adapter if needed
+      if (backendType === "kimi-cli") {
+        const { KimiCliBackend } = await import("../backends/kimi-cli/index.js");
+        if (backend instanceof KimiCliBackend) {
+          const existingAdapter = backend.getAdapter(sessionId);
+          if (existingAdapter) wsBridge.attachKimiAdapter(sessionId, existingAdapter);
+          backend.onAdapterCreated((sid, adapter) => {
+            if (sid === sessionId) wsBridge.attachKimiAdapter(sid, adapter);
+          });
+        }
+      }
+
       // Persist session (keep same sessionId)
       saveSession(stateDir, {
         sessionId,
@@ -2172,6 +2215,22 @@ Options:
       }
     };
 
+    // Helper: wire Kimi adapter if needed
+    const wireKimiAdapter = async (sid: string) => {
+      if (sessionBackendType === "kimi-cli") {
+        const { KimiCliBackend } = await import("../backends/kimi-cli/index.js");
+        if (backend instanceof KimiCliBackend) {
+          const existingAdapter = backend.getAdapter(sid);
+          if (existingAdapter) {
+            wsBridge.attachKimiAdapter(sid, existingAdapter);
+          }
+          backend.onAdapterCreated((adapterId, adapter) => {
+            if (adapterId === sid) wsBridge.attachKimiAdapter(adapterId, adapter);
+          });
+        }
+      }
+    };
+
     // Helper: wire agent exit handler
     const wireAgentExitHandler = (agentSessionId: string, resuming: boolean) => {
       backend!.onSessionExited((exitedId, exitCode) => {
@@ -2182,12 +2241,16 @@ Options:
               ? "Claude Code CLI not found. Please install it: https://docs.anthropic.com/claude-code"
               : sessionBackendType === "codex"
               ? "Codex CLI not found. Please install it: npm install -g @openai/codex"
+              : sessionBackendType === "kimi-cli"
+              ? "Kimi CLI not found. Please install it: uv tool install kimi-cli (then run: kimi login)"
               : `Backend "${sessionBackendType}" CLI not found.`;
           } else {
             errorMsg = sessionBackendType === "claude-code"
               ? `Claude Code exited unexpectedly (code ${exitCode}). Check CLI installation and subscription status.`
               : sessionBackendType === "codex"
               ? `Codex exited unexpectedly (code ${exitCode}). Check CLI installation and login status.`
+              : sessionBackendType === "kimi-cli"
+              ? `Kimi exited unexpectedly (code ${exitCode}). Check CLI installation and login status (kimi login).`
               : `${sessionBackendType} exited unexpectedly (code ${exitCode}).`;
           }
           wsBridge.broadcastToSession(exitedId, { type: "error", message: errorMsg });
@@ -2284,6 +2347,7 @@ Options:
 
         wsBridge.getOrCreateSession(sessionId, sessionBackendType);
         await wireCodexAdapter(sessionId);
+        await wireKimiAdapter(sessionId);
         wireAgentExitHandler(agentSession.sessionId, false);
 
         // First-time switch from viewing → edit counts as the agent's
@@ -2374,6 +2438,7 @@ Options:
       p.log.info(`Agent session: ${session.sessionId}`);
       wsBridge.getOrCreateSession(session.sessionId, sessionBackendType);
       await wireCodexAdapter(session.sessionId);
+      await wireKimiAdapter(session.sessionId);
 
       // Auto-greeting for fresh sessions (driven by manifest)
       if (!resuming && manifest.agent?.greeting) {
@@ -2444,6 +2509,7 @@ Options:
 
           wsBridge.getOrCreateSession(sessionId, sessionBackendType);
           await wireCodexAdapter(sessionId);
+          await wireKimiAdapter(sessionId);
           wireAgentExitHandler(agentSession.sessionId, false);
 
           // Re-register kill callback for next edit → viewing switch
