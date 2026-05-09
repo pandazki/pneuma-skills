@@ -15,11 +15,20 @@ import { existsSync, readdirSync, readFileSync, statSync, realpathSync } from "n
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import type { ModeManifest } from "../core/types/mode-manifest.js";
+import { getInstallConventions } from "../backends/index.js";
 import { getProposalsDir } from "./evolution-proposal.js";
 
 export interface EvolutionPromptOptions {
   workspace: string;
   manifest: ModeManifest;
+  /**
+   * Active agent backend for the session (claude-code, codex, …). Drives
+   * the skills directory used in prompts and metadata so cross-backend
+   * evolve sessions write proposals against the right paths
+   * (`.claude/skills/` for claude-code, `.agents/skills/` for codex).
+   * Defaults to claude-code conventions when omitted (legacy callers).
+   */
+  backendType?: string;
 }
 
 /**
@@ -50,18 +59,18 @@ export interface EvolutionMetadata {
  * agent to write project-scoped preferences to `<projectRoot>/.pneuma/preferences/`.
  */
 export async function buildEvolutionPrompt(options: EvolutionPromptOptions): Promise<string> {
-  const { workspace, manifest } = options;
+  const { workspace, manifest, backendType } = options;
   const parts: string[] = [];
 
-  parts.push(SYSTEM_CONTEXT);
+  parts.push(buildSystemContext(backendType));
 
   const directive = manifest.evolution?.directive ?? DEFAULT_DIRECTIVE;
   parts.push(`## Evolution Directive\n\n${directive}`);
 
   parts.push(buildWorkspaceInfoSection(workspace, manifest));
-  parts.push(buildDataSourceSection(workspace, manifest));
-  parts.push(buildCurrentSkillSection(workspace, manifest));
-  parts.push(buildOutputInstructions(workspace, manifest));
+  parts.push(buildDataSourceSection(workspace, manifest, backendType));
+  parts.push(buildCurrentSkillSection(workspace, manifest, backendType));
+  parts.push(buildOutputInstructions(workspace, manifest, backendType));
 
   const projectSection = await buildProjectScopeSection();
   if (projectSection) parts.push(projectSection);
@@ -106,11 +115,12 @@ async function buildProjectScopeSection(): Promise<string | null> {
  * Saved to .pneuma/config.json as initParams so the viewer dashboard can display it.
  */
 export function buildEvolutionMetadata(options: EvolutionPromptOptions): EvolutionMetadata {
-  const { workspace, manifest } = options;
+  const { workspace, manifest, backendType } = options;
   const directive = manifest.evolution?.directive ?? DEFAULT_DIRECTIVE;
   const primary = getPrimaryHistoryStats(workspace);
   const global = getGlobalHistoryStats();
-  const skillDir = join(workspace, ".claude", "skills", manifest.skill.installName);
+  const skillsDir = getInstallConventions(backendType).skillsDir;
+  const skillDir = join(workspace, skillsDir, manifest.skill.installName);
 
   return {
     targetMode: manifest.name,
@@ -137,11 +147,18 @@ function buildWorkspaceInfoSection(workspace: string, manifest: ModeManifest): s
   return lines.join("\n");
 }
 
-export function buildDataSourceSection(workspace: string, _manifest: ModeManifest): string {
+export function buildDataSourceSection(
+  workspace: string,
+  _manifest: ModeManifest,
+  backendType?: string,
+): string {
   const primary = getPrimaryHistoryStats(workspace);
   const global = getGlobalHistoryStats();
-  // Scripts are always installed under the evolve skill, not the target mode's skill
-  const scriptsDir = join(workspace, ".claude", "skills", "pneuma-evolve", "scripts");
+  // Scripts are always installed under the evolve skill, not the target mode's skill.
+  // The skills directory depends on the active backend (.claude/ for claude-code,
+  // .agents/ for codex), routed through the BackendModule registry.
+  const skillsDir = getInstallConventions(backendType).skillsDir;
+  const scriptsDir = join(workspace, skillsDir, "pneuma-evolve", "scripts");
 
   const lines: string[] = ["## Available Data Sources", ""];
 
@@ -249,8 +266,13 @@ export function buildDataSourceSection(workspace: string, _manifest: ModeManifes
   return lines.join("\n");
 }
 
-function buildCurrentSkillSection(workspace: string, manifest: ModeManifest): string {
-  const skillDir = join(workspace, ".claude", "skills", manifest.skill.installName);
+function buildCurrentSkillSection(
+  workspace: string,
+  manifest: ModeManifest,
+  backendType?: string,
+): string {
+  const skillsDir = getInstallConventions(backendType).skillsDir;
+  const skillDir = join(workspace, skillsDir, manifest.skill.installName);
   const lines: string[] = ["## Target Skill — What You Are Evolving", ""];
 
   lines.push(`Mode: **${manifest.displayName}** (\`${manifest.name}\`)`);
@@ -289,9 +311,20 @@ function buildCurrentSkillSection(workspace: string, manifest: ModeManifest): st
   return lines.join("\n");
 }
 
-function buildOutputInstructions(workspace: string, manifest: ModeManifest): string {
+function buildOutputInstructions(
+  workspace: string,
+  manifest: ModeManifest,
+  backendType?: string,
+): string {
   const proposalsDir = getProposalsDir(workspace);
   const installName = manifest.skill.installName;
+  // Skills directory depends on the active backend (.claude/skills/ for
+  // claude-code, .agents/skills/ for codex). Proposal `file` paths are joined
+  // to `workspace` at apply time, so they MUST point at the backend's actual
+  // install location.
+  const skillsDir = getInstallConventions(backendType).skillsDir;
+  const skillFileRel = `${skillsDir}/${installName}/SKILL.md`;
+  const skillsRootRel = `${skillsDir}/`;
 
   return `## Output Instructions
 
@@ -318,7 +351,7 @@ The proposal MUST follow this exact JSON schema:
   "summary": "A 1-3 sentence summary of what you propose to change and why",
   "changes": [
     {
-      "file": ".claude/skills/${installName}/SKILL.md",
+      "file": "${skillFileRel}",
       "action": "modify",
       "description": "What this change does",
       "confidence": "high",
@@ -338,8 +371,8 @@ The proposal MUST follow this exact JSON schema:
 
 ### Rules for the proposal:
 
-- \`file\`: Relative path from workspace root. Only files under \`.claude/skills/\` are allowed.
-  - **Do NOT include CLAUDE.md in your proposal changes.** The system automatically syncs CLAUDE.md when proposals are applied.
+- \`file\`: Relative path from workspace root. Only files under \`${skillsRootRel}\` are allowed.
+  - **Do NOT include ${getInstallConventions(backendType).instructionsFile} in your proposal changes.** The system automatically syncs ${getInstallConventions(backendType).instructionsFile} when proposals are applied.
 - \`action\`: "modify" (add content to existing file), "create" (new file), or "remove" (prune stale content).
 - \`confidence\`: Required. "high" (multi-session explicit evidence), "medium" (clear pattern), or "low" (single implicit signal).
 - \`evidence\`: At least one evidence item per change. Quote the user's actual words.
@@ -490,7 +523,22 @@ function getGlobalHistoryStats(): GlobalHistoryStats {
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-const SYSTEM_CONTEXT = `# Pneuma Skill Evolution Agent
+/**
+ * Build the static system context section. Backend-aware so the prose
+ * accurately reflects where skills are installed and which instructions
+ * file is in play (`.claude/skills/` + `CLAUDE.md` for claude-code,
+ * `.agents/skills/` + `AGENTS.md` for codex).
+ */
+function buildSystemContext(backendType?: string): string {
+  const conventions = getInstallConventions(backendType);
+  const skillsRoot = `${conventions.skillsDir}/`;
+  const instructionsFile = conventions.instructionsFile;
+  return SYSTEM_CONTEXT_TEMPLATE
+    .replace("{{skillsRoot}}", skillsRoot)
+    .replace("{{instructionsFile}}", instructionsFile);
+}
+
+const SYSTEM_CONTEXT_TEMPLATE = `# Pneuma Skill Evolution Agent
 
 You are the Skill Evolution Agent for Pneuma, an infrastructure for humans and code agents to co-create content.
 
@@ -544,7 +592,7 @@ Write the proposal JSON file and summarize findings in chat.
 
 ## What is Pneuma
 
-Pneuma provides "Modes" (doc, slide, draw, etc.) that inject domain-specific knowledge ("Skills") into an AI agent. Skills are installed at \`.claude/skills/\` and project-level instructions live in \`CLAUDE.md\`. Together they shape how the agent behaves in a given domain.
+Pneuma provides "Modes" (doc, slide, draw, etc.) that inject domain-specific knowledge ("Skills") into an AI agent. Skills are installed at \`{{skillsRoot}}\` and project-level instructions live in \`{{instructionsFile}}\`. Together they shape how the agent behaves in a given domain.
 
 ## Why Evolution Matters
 

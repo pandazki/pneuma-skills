@@ -749,8 +749,8 @@ async function handleEvolveCommand(args: string[]) {
 
   // 2. Build evolution prompt + metadata, save metadata as initParams
   const { buildEvolutionPrompt, buildEvolutionMetadata } = await import("../server/evolution-agent.js");
-  const evolutionPrompt = await buildEvolutionPrompt({ workspace, manifest });
-  const metadata = buildEvolutionMetadata({ workspace, manifest });
+  const evolutionPrompt = await buildEvolutionPrompt({ workspace, manifest, backendType });
+  const metadata = buildEvolutionMetadata({ workspace, manifest, backendType });
 
   // Save metadata to .pneuma/config.json so the viewer dashboard can read it
   const pneumaDir = join(workspace, ".pneuma");

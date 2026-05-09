@@ -40,8 +40,11 @@ const evolveManifest: ModeManifest = {
     // No greeting — dynamically injected by CLI with evolution prompt
   },
 
-  // Evolution currently relies on Claude Code features (--sdk-url, NDJSON protocol)
-  supportedBackends: ["claude-code"],
+  // Evolution agent uses only the generic Read / Bash / Write tools and writes
+  // proposal JSON to disk, so it works with any backend whose skill installer
+  // routes through `BackendModule.skillsDir`. Kimi is excluded — its `--print`
+  // mode can't yet drive the structured proposal flow reliably.
+  supportedBackends: ["claude-code", "codex"],
 };
 
 export default evolveManifest;

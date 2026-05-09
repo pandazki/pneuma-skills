@@ -19,28 +19,7 @@ import { join, dirname, extname } from "node:path";
 import { homedir } from "node:os";
 import type { SkillConfig, ViewerApiConfig, McpServerConfig, SkillDependency } from "../core/types/mode-manifest.js";
 import { isProjectManifest, type ProjectManifest } from "../core/types/project-manifest.js";
-import type { BackendModule } from "../core/types/agent-backend.js";
-import { getBackendModule } from "../backends/index.js";
-
-/**
- * Resolve install conventions (skillsDir / instructionsFile / displayLabel)
- * for a backend type. Falls back to claude-code's conventions when
- * `backendType` is undefined or unknown — that's the legacy 2.x default and
- * matches how the installer behaved before kimi / codex were added.
- *
- * Centralised here so every callsite below stays a single lookup; the
- * registry itself owns the per-backend file layout via `BackendModule`.
- */
-function getInstallConventions(backendType?: string): BackendModule {
-  if (
-    backendType === "claude-code" ||
-    backendType === "codex" ||
-    backendType === "kimi-cli"
-  ) {
-    return getBackendModule(backendType);
-  }
-  return getBackendModule("claude-code");
-}
+import { getInstallConventions } from "../backends/index.js";
 
 /**
  * Resolve the absolute path where plugin skills should be installed for the

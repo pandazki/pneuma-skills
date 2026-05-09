@@ -37,6 +37,30 @@ export function getBackendModule(type: AgentBackendType): BackendModule {
   return MODULES[type];
 }
 
+/**
+ * Resolve install conventions (skillsDir / instructionsFile / displayLabel /
+ * etc.) for a backend type. Tolerant variant of `getBackendModule` that
+ * accepts an `unknown`/legacy string and falls back to claude-code when the
+ * value is undefined or doesn't match a known backend — that's the legacy
+ * 2.x default and matches how the skill installer behaved before kimi /
+ * codex were added.
+ *
+ * Use this from any consumer that has to deal with a stored / on-disk
+ * `backendType` string of unverified type (skill installer, evolution
+ * agent, replay loaders). The runtime guard keeps a single fallback policy
+ * in one place — callers should never branch on `if (type === ...)`.
+ */
+export function getInstallConventions(backendType?: string): BackendModule {
+  if (
+    backendType === "claude-code" ||
+    backendType === "codex" ||
+    backendType === "kimi-cli"
+  ) {
+    return getBackendModule(backendType);
+  }
+  return getBackendModule("claude-code");
+}
+
 export function getAllBackendModules(): BackendModule[] {
   return Object.values(MODULES);
 }
