@@ -7,13 +7,29 @@
 <p align="center">视觉环境、技能体系、持续学习、分发能力 —— <br>把人和 agent 协作时所需的所有东西，做成一层共享底座。</p>
 
 <p align="center"><strong>支持的 Coding Agent</strong></p>
-<p align="center">
-  <a href="https://docs.anthropic.com/en/docs/claude-code"><img src="https://img.shields.io/badge/Claude%20Code-D97757?logo=anthropic&logoColor=white&style=for-the-badge" alt="Claude Code" height="32" /></a>
-  &nbsp;
-  <a href="https://github.com/openai/codex"><img src="https://img.shields.io/badge/Codex-412991?logo=openai&logoColor=white&style=for-the-badge" alt="Codex" height="32" /></a>
-  &nbsp;
-  <a href="https://moonshotai.github.io/kimi-cli/"><img src="https://img.shields.io/badge/Kimi-1F2937?logo=moonshot&logoColor=white&style=for-the-badge" alt="Kimi (Moonshot AI)" height="32" /></a>
-</p>
+<table align="center"><tr>
+  <td align="center" width="160">
+    <a href="https://docs.anthropic.com/en/docs/claude-code">
+      <img src="docs/images/backends/anthropic.png" alt="Anthropic" width="72" height="72" />
+      <br /><strong>Claude Code</strong>
+    </a>
+    <br /><sub>Anthropic 出品</sub>
+  </td>
+  <td align="center" width="160">
+    <a href="https://github.com/openai/codex">
+      <img src="docs/images/backends/openai.png" alt="OpenAI" width="72" height="72" />
+      <br /><strong>Codex</strong>
+    </a>
+    <br /><sub>OpenAI 出品</sub>
+  </td>
+  <td align="center" width="160">
+    <a href="https://moonshotai.github.io/kimi-cli/">
+      <img src="docs/images/backends/moonshot.png" alt="Moonshot AI" width="72" height="72" />
+      <br /><strong>Kimi</strong>
+    </a>
+    <br /><sub>月之暗面 出品</sub>
+  </td>
+</tr></table>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/pneuma-skills"><img src="https://img.shields.io/npm/v/pneuma-skills.svg" alt="npm version" /></a>
