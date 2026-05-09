@@ -36,6 +36,13 @@ before you act. Typical clipcraft payloads:
   the active asset's metadata. Use this to disambiguate a vague
   request like "try another take" — there's almost always a clip
   selected that tells you which one.
+- `<preview-frames>` (nested inside `<viewer-context>`) — summary of
+  the planning layer: `total="N"` attribute + per-track `<track id="..."
+  name="..." count="..." />` lines for tracks that carry preview frames.
+  When `total="0"` (or the tag is absent), the timeline has no
+  planning layer yet — a fresh project. Use this to decide whether
+  to start with sketch overlay (see `references/storyboard-workflow.md`)
+  vs jumping straight to generation.
 - `<user-actions>` — recent UI events: `playhead:seek`
   (`{time}`), `clip:select` (`{clipId, trackId}`),
   `asset:select` (`{assetId}`), `clip:drag` (`{clipId, startTime,
@@ -57,7 +64,7 @@ chips in chat. Use short concrete labels — "新的 VO 开场",
 "panda clip on Main", "3.5s — punchline beat" — not generic ones
 like "see asset".
 
-Four `data` shapes for clipcraft:
+Five `data` shapes for clipcraft:
 
 ```html
 <!-- assetId — scrolls the asset library to the asset and flashes it. -->
@@ -74,6 +81,15 @@ Four `data` shapes for clipcraft:
 <!-- trackId — scrolls and flashes a track header. Use when the
      change is track-level (mute/solo, reordered, new track). -->
 <viewer-locator data='{"trackId":"track-narration"}'>narration track</viewer-locator>
+
+<!-- previewFrameId — selects the referenced image asset, seeks the
+     playhead to the preview frame's anchor time, and flashes the
+     strip thumbnail on the timeline. Use when pointing at a sketch
+     or anchor on the planning layer (e.g. "I generated 3 sketches
+     for the opening; here's panel 4"). The preview frame's id is
+     stable across move/rebind, so locator references survive
+     re-pacing. -->
+<viewer-locator data='{"previewFrameId":"pf-04"}'>panel 4 — opening sketch</viewer-locator>
 ```
 
 ### Viewer commands (user → agent)
@@ -92,6 +108,7 @@ then run the matching workflow. If intent is ambiguous (e.g. a vague
 | Try another take | Variant of the selected clip's asset; register as a derived asset (provenance edge) so the variant switcher shows both options |
 | Add narration | TTS for the selected subtitle clip (or the whole caption track); match audio clip timing to subtitle clip timing |
 | Add BGM | Ask for mood/style if not given; generate, register, place on a new or existing audio track |
+| Export draft | Handled in the viewer — runs ExportEngine with `includePreviewFrames: true` so sketches + anchors bake in. **No agent involvement** for the click. Used during planning to verify pacing before committing to expensive seedance generation. |
 | Export video | Handled in the viewer — runs `@pneuma-craft/video` ExportEngine. **No agent involvement.** |
 
 ### Agent → viewer actions (HTTP)
@@ -140,6 +157,18 @@ situation matches:
 - `references/filter-retries.md` — when seedance rejects with a 422.
   Decision tree for the two distinct content-filter signatures.
 - `references/asset-ids.md` — id naming and stability rules.
+- `references/storyboard-workflow.md` — when the user wants a multi-beat
+  video segment (more than a single trivial shot). Walks through the
+  three-layer planning workflow (sketch → anchor → real clip), density
+  recipes, the `previewFrameId` locator card, the **Export draft**
+  toolbar / `export-draft` command, and the Path B long-form-gen recipe.
+- `references/storyboard-design.md` — **read this before generating any
+  sketches for a multi-shot project.** Pre-production thinking: project
+  metadata, flow intention metaphor, camera grammar arc, color palette,
+  character design + casting. Per-panel template (shot type / breath
+  beat / camera / action / mood). Three output options: JSON-only,
+  per-panel rich prompts, or a full pre-production storyboard page
+  image. Worked examples included.
 
 ## Domain vocabulary (2-minute version)
 
@@ -483,4 +512,5 @@ Full recipe and honest-limits disclosures in the reference doc.
 - `references/reference-directives.md` — @-addressing, role vocabulary, worked multi-ref example
 - `references/character-consistency.md` — photo-body + sketch-head sheet workflow for realistic human characters
 - `references/filter-retries.md` — decision tree for the two seedance 422 signatures
+- `references/storyboard-workflow.md` — progressive-fidelity playbook (sketch → anchor → real clip)
 - `scripts/` — the five bundled generator CLIs (including `make-character-sheet.mjs` recovery tool)

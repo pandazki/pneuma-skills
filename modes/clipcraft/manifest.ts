@@ -13,7 +13,7 @@ import {
 
 const clipcraftManifest: ModeManifest = {
   name: "clipcraft",
-  version: "0.7.2",
+  version: "0.8.0",
   displayName: "ClipCraft",
   description: "AI video production with seedance and gpt-image-2 — first-/last-frame anchoring, 3D timeline, full provenance lineage",
 
@@ -28,7 +28,7 @@ const clipcraftManifest: ModeManifest = {
       OPENROUTER_API_KEY: "openrouterApiKey",
       FAL_KEY: "falApiKey",
     },
-    mdScene: `You and the user are producing an AI-generated video together inside Pneuma's ClipCraft workspace. The user watches an exploded 3D timeline of tracks, clips, and assets — every asset you generate and every edit you make to \`project.json\` re-hydrates the composition live, so they can hear the new TTS take or see the new shot land on the timeline as soon as it's ready. You orchestrate the work by running the bundled generation scripts and editing \`project.json\`; the viewer plays the result back as the file changes.`,
+    mdScene: `You and the user are producing an AI-generated video together inside Pneuma's ClipCraft workspace. The user watches an exploded 3D timeline of tracks, clips, and assets — every asset you generate and every edit you make to \`project.json\` re-hydrates the composition live, so they can hear the new TTS take or see the new shot land on the timeline as soon as it's ready. You orchestrate the work by running the bundled generation scripts and editing \`project.json\`; the viewer plays the result back as the file changes. For multi-beat segments you can stage planning visuals on the timeline before running expensive seedance generation: line-art sketches across the whole video, then photoreal anchor frames at gen boundaries, then the real video clips replacing the planning layer; see \`references/storyboard-workflow.md\` when the request is more than a single trivial shot.`,
   },
 
   viewer: {
@@ -69,6 +69,12 @@ const clipcraftManifest: ModeManifest = {
         label: "Add BGM",
         description:
           "Add background music. Ask the user for a mood/style if they haven't said. Generate, register, and add as a clip on a new or existing audio track.",
+      },
+      {
+        id: "export-draft",
+        label: "Export draft",
+        description:
+          "Export the current composition with preview frames (sketch + anchor) baked in, so the user can scrub a real video file before committing to expensive seedance generation. Use this proactively after stage-1 sketches are placed and after stage-2 anchors are placed, asking the user to review pacing.",
       },
       {
         id: "export-video",

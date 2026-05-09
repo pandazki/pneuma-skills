@@ -4,6 +4,7 @@ import {
   useDispatch,
   useSelection,
 } from "@pneuma-craft/react";
+import type { Operation } from "@pneuma-craft/core";
 import type { Clip } from "@pneuma-craft/timeline";
 import { useClipProvenance } from "../hooks/useClipProvenance.js";
 import { VariantSwitcher } from "./VariantSwitcher.js";
@@ -42,7 +43,7 @@ export function ClipInspector() {
 
 function ClipInspectorActive({ clip }: { clip: Clip }) {
   const dispatch = useDispatch();
-  const { summary } = useClipProvenance(clip);
+  const { operation, summary } = useClipProvenance(clip);
 
   // Local draft state to allow free-form editing before dispatching.
   const [inPoint, setInPoint] = useState(clip.inPoint);
@@ -144,21 +145,117 @@ function ClipInspectorActive({ clip }: { clip: Clip }) {
         }}
       >
         <span style={sectionLabelStyle}>Source</span>
+        <ProvenanceBlock operation={operation} summary={summary} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Multi-line provenance display for the inspector. Shows model + prompt
+ * peek + ref count + lineage when available. Falls back to summary text
+ * when no operation is recorded.
+ */
+function ProvenanceBlock({
+  operation,
+  summary,
+}: {
+  operation: Operation | null;
+  summary: string;
+}) {
+  if (!operation) {
+    return (
+      <span
+        style={{
+          fontFamily: theme.font.numeric,
+          fontSize: theme.text.sm,
+          color: theme.color.ink2,
+          letterSpacing: theme.text.trackingBase,
+        }}
+      >
+        —
+      </span>
+    );
+  }
+
+  const params = (operation.params ?? {}) as Record<string, unknown>;
+  const model = typeof params.model === "string" ? params.model : null;
+  const prompt = typeof params.prompt === "string" ? params.prompt : null;
+  const provider = typeof params.provider === "string" ? params.provider : null;
+  const subcommand = typeof params.subcommand === "string" ? params.subcommand : null;
+  const imageRefs = Array.isArray(params.imageRefs) ? (params.imageRefs as string[]) : [];
+  const videoRefs = Array.isArray(params.videoRefs) ? (params.videoRefs as string[]) : [];
+  const audioRefs = Array.isArray(params.audioRefs) ? (params.audioRefs as string[]) : [];
+  const refsTotal = imageRefs.length + videoRefs.length + audioRefs.length;
+
+  const lineStyle: React.CSSProperties = {
+    fontFamily: theme.font.numeric,
+    fontSize: theme.text.xs,
+    color: theme.color.ink2,
+    letterSpacing: theme.text.trackingBase,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+        minWidth: 0,
+      }}
+      title={summary}
+    >
+      {model && (
+        <span style={{ ...lineStyle, color: theme.color.ink1, fontWeight: theme.text.weightMedium }}>
+          {operation.type}
+          {subcommand ? ` · ${subcommand}` : ""}
+          {" · "}
+          {model}
+          {provider ? ` (${provider})` : ""}
+        </span>
+      )}
+      {prompt && (
         <span
           style={{
-            fontFamily: theme.font.numeric,
-            fontSize: theme.text.sm,
+            ...lineStyle,
+            whiteSpace: "normal",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
             color: theme.color.ink1,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            letterSpacing: theme.text.trackingBase,
           }}
-          title={summary}
         >
-          {summary.split("\n").slice(-1)[0] || "—"}
+          “{prompt}”
         </span>
-      </div>
+      )}
+      {refsTotal > 0 && (
+        <span style={lineStyle}>
+          refs:{" "}
+          {imageRefs.length > 0 && (
+            <span title={imageRefs.join(", ")}>
+              {imageRefs.length} image
+            </span>
+          )}
+          {videoRefs.length > 0 && (
+            <span title={videoRefs.join(", ")}>
+              {imageRefs.length > 0 ? " · " : ""}
+              {videoRefs.length} video
+            </span>
+          )}
+          {audioRefs.length > 0 && (
+            <span title={audioRefs.join(", ")}>
+              {imageRefs.length + videoRefs.length > 0 ? " · " : ""}
+              {audioRefs.length} audio
+            </span>
+          )}
+        </span>
+      )}
+      {!model && !prompt && refsTotal === 0 && (
+        <span style={lineStyle}>{summary.split("\n").slice(-1)[0] || "—"}</span>
+      )}
     </div>
   );
 }

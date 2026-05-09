@@ -19,9 +19,9 @@
         "@dnd-kit/utilities": "^3.2.2",
         "@excalidraw/excalidraw": "^0.18.0",
         "@pneuma-craft/core": "^0.1.0",
-        "@pneuma-craft/react": "^0.3.0",
-        "@pneuma-craft/timeline": "^0.3.0",
-        "@pneuma-craft/video": "^0.4.0",
+        "@pneuma-craft/react": "^0.3.2",
+        "@pneuma-craft/timeline": "^0.4.0",
+        "@pneuma-craft/video": "^0.5.1",
         "@remotion/player": "4.0.438",
         "@remotion/web-renderer": "4.0.438",
         "@tailwindcss/typography": "^0.5.19",
@@ -289,11 +289,11 @@
 
     "@pneuma-craft/core": ["@pneuma-craft/core@0.1.0", "", { "dependencies": { "nanoid": "^5.1.7" } }, "sha512-AzviYtDZ+3J+xpZD2wDTFSRSNLrygs/U6p/y98tBoq706GjkT1DNHsO9vUgAn1lWBK7uwOfdTxPstIGJDKoGVA=="],
 
-    "@pneuma-craft/react": ["@pneuma-craft/react@0.3.0", "", { "dependencies": { "@pneuma-craft/core": "0.1.0", "@pneuma-craft/timeline": "0.3.0", "@pneuma-craft/video": "0.4.0", "zustand": "^5.0.0" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-d2AiD3iBfon0iezfV11E06Bd29bS8fpj/Wn0CZcabGpbIwiSdxSiy2NaSTGAJn574YsQ+ouWOI4WgX4hCnAwqg=="],
+    "@pneuma-craft/react": ["@pneuma-craft/react@0.3.2", "", { "dependencies": { "@pneuma-craft/core": "0.1.0", "@pneuma-craft/timeline": "0.4.0", "@pneuma-craft/video": "0.5.1", "zustand": "^5.0.0" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-5jfp96h0nB8icCQp0lX5s4u6Dn4s9gJvlooQNgyKjks6xtvvScOksS+u6gSfc9GbtRiBqBlBbP+Y6uug+I9HDA=="],
 
-    "@pneuma-craft/timeline": ["@pneuma-craft/timeline@0.3.0", "", { "dependencies": { "@pneuma-craft/core": "0.1.0" } }, "sha512-ijw8Tk/8oc+S6AkZ3fyhdTWEyViFXDCqNzvwkrfL9Y5q6bqf4fF51yDIfn6gXKPv90EDFcP5l4nOnoi8DjaKFQ=="],
+    "@pneuma-craft/timeline": ["@pneuma-craft/timeline@0.4.0", "", { "dependencies": { "@pneuma-craft/core": "0.1.0" } }, "sha512-4xzk/ov3bQcAtYO60jGUpI2FAklA6zTvB9zASjtcah64qeVhkqHsr97+uCNURIYD2tS5aCo7ilMEJ9PgGsAAQg=="],
 
-    "@pneuma-craft/video": ["@pneuma-craft/video@0.4.0", "", { "dependencies": { "@pneuma-craft/core": "0.1.0", "@pneuma-craft/timeline": "0.3.0", "mediabunny": "^1.40.0" } }, "sha512-JZ5DeXTj/Bgs3j+g2cLbHzhCsggbeLHNEYQ4N/AHPzIWRgHHVuzU9veF4EUtcqfRBTbco2Myee/JoIVHXJ/Prg=="],
+    "@pneuma-craft/video": ["@pneuma-craft/video@0.5.1", "", { "dependencies": { "@pneuma-craft/core": "0.1.0", "@pneuma-craft/timeline": "0.4.0", "mediabunny": "^1.40.0" } }, "sha512-VJ0lmWI04oJpThnMOdky+2C8Db3JHJE17OADpteDgY9Pb77ym2axz2+TvA/KkJ9CZeSmrWLA4evj2orSweyGpQ=="],
 
     "@radix-ui/primitive": ["@radix-ui/primitive@1.1.1", "", {}, "sha512-SJ31y+Q/zAyShtXJc8x83i9TYdbAfHZ++tUZnvjJJqFjzsdUnKsxPL6IEtBlxKkU7yzer//GQtZSV4GbldL3YA=="],
 
