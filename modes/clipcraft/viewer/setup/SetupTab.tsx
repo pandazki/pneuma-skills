@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useSetupListing } from "./useSetupListing.js";
 import { BibleSection } from "./BibleSection.js";
 import { CardSection } from "./CardSection.js";
+import { StoryboardSection } from "./StoryboardSection.js";
 import { theme } from "../theme/tokens.js";
 
 /**
@@ -110,7 +111,21 @@ export function SetupTab() {
           </>
         }
       />
-      {/* StoryboardSection is wired in Task 7. */}
+      <StoryboardSection
+        storyboards={data?.storyboards ?? []}
+        workspaceUrl={workspaceUrl}
+        emptyHint={
+          <>
+            <strong style={{ color: theme.color.ink1 }}>
+              No storyboards yet.
+            </strong>{" "}
+            Ask the agent: <em>“storyboard the next 4-12 beats”</em>. The agent
+            will generate a single composite image with all panels and slice it
+            into individual references — one $0.16 generation, dramatically
+            higher internal consistency than independent panel generations.
+          </>
+        }
+      />
     </div>
   );
 }
