@@ -366,11 +366,17 @@ class MessageStore {
 class ClaudeStdioObserver {
   private sendInput: ((line: string) => void) | null = null;
   private close: (() => void) | null = null;
+  private readonly connectPromise: Promise<void>;
+  private resolveConnect!: () => void;
 
   constructor(
     private readonly sessionId: string,
     private readonly store: MessageStore,
-  ) {}
+  ) {
+    this.connectPromise = new Promise<void>((resolve) => {
+      this.resolveConnect = resolve;
+    });
+  }
 
   handlers(): {
     onMessage: (sessionId: string, line: string) => void;
@@ -382,6 +388,7 @@ class ClaudeStdioObserver {
       onConnect: (_sid, sendInput, close) => {
         this.sendInput = sendInput;
         this.close = close;
+        this.resolveConnect();
       },
       onDisconnect: (_sid) => {
         this.sendInput = null;
@@ -390,9 +397,19 @@ class ClaudeStdioObserver {
     };
   }
 
-  send(content: string): void {
+  /**
+   * Wait for the launcher's stdin pipe to be ready. The harness calls
+   * `backend.launch()` and then immediately sends a prompt; without this
+   * await, race conditions surface on slower spawn paths.
+   */
+  awaitConnect(): Promise<void> {
+    return this.connectPromise;
+  }
+
+  async send(content: string): Promise<void> {
+    await this.connectPromise;
     if (!this.sendInput) {
-      throw new Error("ClaudeStdioObserver.send: stdin not yet connected");
+      throw new Error("ClaudeStdioObserver.send: stdin gone after disconnect");
     }
     const line = JSON.stringify({
       type: "user",
@@ -488,16 +505,18 @@ type ScenarioFn = (ctx: ScenarioContext) => Promise<void>;
 
 const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
   boot: async (ctx) => {
-    if (ctx.module.type !== "claude-code") {
-      // codex/kimi: backend already launched in createScenarioContext (so the
-      // adapter exists for createBridgeBackend). For consistency, do nothing
-      // extra — `attach()` will have synthesized the session_init.
-    } else {
+    // claude-code only emits its `system.init` envelope AFTER it sees the
+    // first user prompt — there is no observable "ready" signal before then.
+    // codex emits its session header eagerly via `app-server`; kimi's bridge
+    // synthesises one at attach time. So for claude-code we lazily launch +
+    // send a tiny probe; for the other two the work was done in setup.
+    if (ctx.module.type === "claude-code") {
       ctx.backend.launch({ cwd: ctx.workspace, sessionId: ctx.sessionId });
+      await sendPrompt(ctx, "Reply with the single word: ok");
     }
     const init = await ctx.store.waitFor(
       (m) => m.type === "session_init",
-      30_000,
+      45_000,
       "session_init",
     );
     expect(init.type).toBe("session_init");
@@ -516,34 +535,29 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
   greeting: async (ctx) => {
     if (ctx.module.type === "claude-code") {
       ctx.backend.launch({ cwd: ctx.workspace, sessionId: ctx.sessionId });
-      await ctx.store.waitFor((m) => m.type === "session_init", 30_000, "session_init");
-      claudeObserver(ctx).send("Reply with the single word: hi");
-    } else {
-      sendUserMessage(ctx, "Reply with the single word: hi");
     }
-    await ctx.store.waitFor((m) => m.type === "assistant", 45_000, "assistant message");
-    await ctx.store.waitFor((m) => m.type === "result", 45_000, "result envelope");
+    // Don't pre-wait on session_init — for claude-code it only fires AFTER
+    // the prompt, so waiting first deadlocks. We instead gate on the
+    // downstream assistant + result envelopes which require init by definition.
+    await sendPrompt(ctx, "Reply with the single word: hi");
+    await ctx.store.waitFor((m) => m.type === "assistant", 60_000, "assistant message");
+    await ctx.store.waitFor((m) => m.type === "result", 60_000, "result envelope");
   },
 
   "tool-flow": async (ctx) => {
     const targetPath = join(ctx.workspace, "hello.txt");
     if (ctx.module.type === "claude-code") {
       ctx.backend.launch({ cwd: ctx.workspace, sessionId: ctx.sessionId });
-      await ctx.store.waitFor((m) => m.type === "session_init", 30_000, "session_init");
-      claudeObserver(ctx).send(
-        `Use the Write tool to create a file at ${targetPath} with the exact content "hi". Then stop.`,
-      );
-    } else {
-      sendUserMessage(
-        ctx,
-        `Use the Write tool to create a file at ${targetPath} with the exact content "hi". Then stop.`,
-      );
     }
+    await sendPrompt(
+      ctx,
+      `Use the Write tool to create a file at ${targetPath} with the exact content "hi". Then stop.`,
+    );
 
     // Wait for the result envelope (turn end). This indicates the agent has
     // finished — easier to assert against than racing for a tool_result
     // mid-stream which has different shapes per backend.
-    await ctx.store.waitFor((m) => m.type === "result", 60_000, "result envelope after tool turn");
+    await ctx.store.waitFor((m) => m.type === "result", 90_000, "result envelope after tool turn");
 
     // Filesystem is the canonical proof — the agent either wrote the file or
     // it didn't. We give it a brief grace period since some backends emit the
@@ -559,21 +573,16 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
   interrupt: async (ctx) => {
     if (ctx.module.type === "claude-code") {
       ctx.backend.launch({ cwd: ctx.workspace, sessionId: ctx.sessionId });
-      await ctx.store.waitFor((m) => m.type === "session_init", 30_000, "session_init");
-      claudeObserver(ctx).send(
-        "Count slowly from 1 to 50, one number per line, pausing 1 second between each.",
-      );
-    } else {
-      sendUserMessage(
-        ctx,
-        "Count slowly from 1 to 50, one number per line, pausing 1 second between each.",
-      );
     }
+    await sendPrompt(
+      ctx,
+      "Count slowly from 1 to 50, one number per line, pausing 1 second between each.",
+    );
 
     // Let the turn actually start streaming before we interrupt.
     await ctx.store.waitFor(
       (m) => m.type === "assistant" || m.type === "stream_event",
-      30_000,
+      45_000,
       "first stream chunk",
     );
 
@@ -585,8 +594,6 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
       // assertion at this layer.
       await ctx.backend.kill(ctx.sessionId);
     } else {
-      // Find the bridge backend by snooping ctx.attached — we registered it
-      // there in createScenarioContext.
       sendInterrupt(ctx);
       // Give the backend a beat to honour the interrupt.
       await sleep(500);
@@ -602,30 +609,17 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
   "multi-turn": async (ctx) => {
     if (ctx.module.type === "claude-code") {
       ctx.backend.launch({ cwd: ctx.workspace, sessionId: ctx.sessionId });
-      await ctx.store.waitFor((m) => m.type === "session_init", 30_000, "session_init");
-      const obs = claudeObserver(ctx);
-      obs.send("Say the single word: alpha");
-      await ctx.store.waitFor((m) => m.type === "result", 45_000, "first turn result");
-      obs.send("Say the single word: beta");
-      await ctx.store.waitFor(
-        (m) =>
-          m.type === "result"
-          && ctx.store.entries().filter((x) => x.type === "result").length >= 2,
-        45_000,
-        "second turn result",
-      );
-    } else {
-      sendUserMessage(ctx, "Say the single word: alpha");
-      await ctx.store.waitFor((m) => m.type === "result", 45_000, "first turn result");
-      sendUserMessage(ctx, "Say the single word: beta");
-      await ctx.store.waitFor(
-        (m) =>
-          m.type === "result"
-          && ctx.store.entries().filter((x) => x.type === "result").length >= 2,
-        45_000,
-        "second turn result",
-      );
     }
+    await sendPrompt(ctx, "Say the single word: alpha");
+    await ctx.store.waitFor((m) => m.type === "result", 60_000, "first turn result");
+    await sendPrompt(ctx, "Say the single word: beta");
+    await ctx.store.waitFor(
+      (m) =>
+        m.type === "result"
+        && ctx.store.entries().filter((x) => x.type === "result").length >= 2,
+      60_000,
+      "second turn result",
+    );
 
     const assistants = ctx.store.entries().filter((m) => m.type === "assistant");
     expect(assistants.length).toBeGreaterThanOrEqual(2);
@@ -641,29 +635,13 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
     }
 
     // First turn — needs to surface the agent's session id so we can resume.
-    let agentSessionId: string | undefined;
     if (ctx.module.type === "claude-code") {
       ctx.backend.launch({ cwd: ctx.workspace, sessionId: ctx.sessionId });
-      const init = await ctx.store.waitFor(
-        (m) => m.type === "session_init",
-        30_000,
-        "session_init",
-      );
-      // session_init.session.session_id is the harness-provided id; the CC
-      // session id sits in the raw `system.init` envelope. Pull it from the
-      // backend (which captures it via `setAgentSessionId` indirectly via
-      // CliLauncher's stdout handler — but that only fires from WsBridge.
-      // For the harness, peek at the backend's getSession() instead).
-      void init;
-      const obs = claudeObserver(ctx);
-      obs.send("Remember the magic word: paprika.");
-      await ctx.store.waitFor((m) => m.type === "result", 45_000, "first turn result");
-      agentSessionId = ctx.backend.getSession(ctx.sessionId)?.agentSessionId;
-    } else {
-      sendUserMessage(ctx, "Remember the magic word: paprika.");
-      await ctx.store.waitFor((m) => m.type === "result", 45_000, "first turn result");
-      agentSessionId = ctx.backend.getSession(ctx.sessionId)?.agentSessionId;
     }
+    await sendPrompt(ctx, "Remember the magic word: paprika.");
+    await ctx.store.waitFor((m) => m.type === "result", 60_000, "first turn result");
+    const agentSessionId: string | undefined =
+      ctx.backend.getSession(ctx.sessionId)?.agentSessionId;
 
     if (!agentSessionId) {
       // We can't resume without the backend's internal id. Don't crash —
@@ -697,11 +675,10 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
         sessionId: resumedSessionId,
         resumeSessionId: agentSessionId,
       });
-      await resumedStore.waitFor((m) => m.type === "session_init", 30_000, "resumed session_init");
-      resumedObs.send("What was the magic word I told you?");
+      await resumedObs.send("What was the magic word I told you?");
       const result = await resumedStore.waitFor(
         (m) => m.type === "assistant",
-        45_000,
+        60_000,
         "resumed assistant",
       );
       try {
@@ -780,6 +757,23 @@ function sendUserMessage(ctx: ScenarioContext, content: string): void {
     );
   }
   ctx.attached.bridge.routeBrowserMessage({ type: "user_message", content });
+}
+
+/**
+ * Backend-agnostic prompt sender. Claude-code's `ClaudeStdioObserver.send` is
+ * async (awaits stdin connect); the bridge path is synchronous. Both surfaces
+ * are wrapped here so scenarios stay backend-agnostic at the call site.
+ *
+ * The scenario's preceding step is responsible for ensuring the backend is
+ * launched (codex/kimi launch in `createScenarioContext`; claude-code launches
+ * lazily inside the scenario before this call).
+ */
+async function sendPrompt(ctx: ScenarioContext, content: string): Promise<void> {
+  if (ctx.attached.kind === "bridge") {
+    ctx.attached.bridge.routeBrowserMessage({ type: "user_message", content });
+    return;
+  }
+  await ctx.attached.observer.send(content);
 }
 
 function sendInterrupt(ctx: ScenarioContext): void {
