@@ -87,6 +87,25 @@ export function pickGrid(panels, aspect) {
   return entry[orientation];
 }
 
+const IMAGE_SIZES = {
+  square_hd:      { preset: "square_hd",      width: 1024, height: 1024 },
+  landscape_16_9: { preset: "landscape_16_9", width: 1536, height: 1024 },
+  portrait_16_9:  { preset: "portrait_16_9",  width: 1024, height: 1536 },
+};
+
+/**
+ * Pick the gpt-image-2 output size for a chosen grid + video aspect.
+ * The composite always matches the video orientation, regardless of
+ * the grid's internal aspect ratio. The cells inside the composite
+ * land at exact video aspect by construction (see computeBboxes).
+ */
+export function pickImageSize(grid, aspect) {
+  if (aspect === "9:16") return IMAGE_SIZES.portrait_16_9;
+  if (aspect === "16:9") return IMAGE_SIZES.landscape_16_9;
+  if (aspect === "1:1")  return IMAGE_SIZES.square_hd;
+  throw new Error(`Unsupported aspect '${aspect}'`);
+}
+
 // ---------------------------------------------------------------------------
 // CLI entry detection — guard so test imports don't trigger side effects.
 // ---------------------------------------------------------------------------

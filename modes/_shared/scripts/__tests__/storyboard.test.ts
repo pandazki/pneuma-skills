@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { pickGrid } from "../storyboard.mjs";
+import { pickGrid, pickImageSize } from "../storyboard.mjs";
 
 describe("pickGrid", () => {
   test("4 panels → 2x2 regardless of aspect", () => {
@@ -43,5 +43,40 @@ describe("pickGrid", () => {
 
   test("rejects unknown aspect", () => {
     expect(() => pickGrid(4, "21:9")).toThrow(/aspect/i);
+  });
+});
+
+describe("pickImageSize", () => {
+  test("portrait 9:16 video chooses 1024x1536", () => {
+    expect(pickImageSize({ rows: 4, cols: 2 }, "9:16")).toEqual({
+      preset: "portrait_16_9",
+      width: 1024,
+      height: 1536,
+    });
+  });
+
+  test("landscape 16:9 video chooses 1536x1024", () => {
+    expect(pickImageSize({ rows: 2, cols: 4 }, "16:9")).toEqual({
+      preset: "landscape_16_9",
+      width: 1536,
+      height: 1024,
+    });
+  });
+
+  test("1:1 video with square grid chooses 1024x1024", () => {
+    expect(pickImageSize({ rows: 2, cols: 2 }, "1:1")).toEqual({
+      preset: "square_hd",
+      width: 1024,
+      height: 1024,
+    });
+  });
+
+  test("9:16 with 3x3 grid still chooses portrait", () => {
+    // square grid + portrait aspect → portrait composite
+    expect(pickImageSize({ rows: 3, cols: 3 }, "9:16")).toEqual({
+      preset: "portrait_16_9",
+      width: 1024,
+      height: 1536,
+    });
   });
 });
