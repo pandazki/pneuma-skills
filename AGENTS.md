@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.0.1
+**Version:** 3.2.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`
 
@@ -30,7 +30,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 | Diagramming | draw.io viewer-static.min.js (CDN) + rough.js 4.6 |
 | Video | remotion 4.0 + @remotion/player + @remotion/web-renderer + @babel/standalone |
 | Desktop | Electron 41 + electron-builder + electron-updater |
-| Agent | Claude Code CLI via stdio stream-json (`-p --input-format stream-json --output-format stream-json`); Codex CLI via `app-server` stdio JSON-RPC (`node:child_process`) |
+| Agent | Claude Code CLI via stdio stream-json (`-p --input-format stream-json --output-format stream-json`); Codex CLI via `app-server` stdio JSON-RPC (`node:child_process`); Moonshot Kimi CLI via stdio stream-json (`kimi --print --input-format stream-json --output-format stream-json -y`) |
 
 ## CLI Commands
 
@@ -116,14 +116,27 @@ pneuma-skills/
 ├── modes/_shared/skills/      # Global skills installed for all modes (e.g. pneuma-preferences)
 ├── modes/_shared/scripts/     # Shared script sources (generate_image.mjs, edit_image.mjs) — opted into per-mode via SkillConfig.sharedScripts, copied into each mode's installed skill dir at install time
 ├── backends/
-│   ├── index.ts               # Backend registry + descriptors + capabilities + availability
+│   ├── index.ts               # Pure registry over per-backend manifests; exports getInstallConventions(backendType?) + getBackendModule + descriptor / capability / availability helpers
+│   ├── __tests__/
+│   │   └── lifecycle-harness.ts   # Shared 6-scenario lifecycle harness reused by every backend
 │   ├── claude-code/           # Claude backend — node:child_process with -p --input-format/--output-format stream-json
-│   └── codex/                 # Codex backend — stdio JSON-RPC via node:child_process
+│   │   ├── manifest.ts        # BackendModule (identity, capabilities, install layout, default models, factories)
+│   │   ├── README.md          # Protocol shape, capabilities, install layout, gotchas, references
+│   │   └── __tests__/lifecycle.test.ts  # Shared harness wired against this backend
+│   ├── codex/                 # Codex backend — stdio JSON-RPC via node:child_process
+│   │   ├── manifest.ts
+│   │   ├── README.md
+│   │   └── __tests__/lifecycle.test.ts
+│   └── kimi-cli/              # Kimi CLI backend — stdio stream-json (--print) via node:child_process
+│       ├── manifest.ts
+│       ├── README.md
+│       └── __tests__/lifecycle.test.ts
 ├── server/                    # Hono server, WS bridges, skill installer, file watcher, etc.
 │   ├── index.ts               # Main server + launcher endpoints + WS routing
 │   ├── routes/                # Export routes, deploy UI
-│   ├── ws-bridge*.ts          # Dual WebSocket bridge (browser JSON ↔ CLI NDJSON / Codex stdio)
-│   ├── skill-installer.ts     # Skill copy + template engine + instructions injection
+│   ├── ws-bridge*.ts          # WS bridge to browsers (JSON), with per-backend BridgeBackend handlers in ws-bridge-{kimi,codex}.ts
+│   ├── ws-bridge-backend.ts   # BridgeBackend lifecycle interface (attach / routeBrowserMessage / injectUserMessage / disconnect)
+│   ├── skill-installer.ts     # Skill copy + template engine + instructions injection (resolves layout via getInstallConventions(backendType))
 │   └── shadow-git.ts          # Shadow git init, checkpoint capture, bundle export
 ├── src/                       # React frontend (Vite)
 │   ├── App.tsx                # Root layout, dynamic viewer loading
@@ -154,7 +167,9 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 |----------|------|---------|
 | **ModeManifest** | `core/types/mode-manifest.ts` | Skill, viewer config, agent preferences, init params, evolution |
 | **ViewerContract** | `core/types/viewer-contract.ts` | Preview component, context extraction, workspace model |
-| **AgentBackend** | `core/types/agent-backend.ts` | Launch, resume, kill, capabilities |
+| **AgentBackend** | `core/types/agent-backend.ts` | Launch, resume, kill, capabilities (process-lifecycle layer) |
+| **BridgeBackend** | `server/ws-bridge-backend.ts` | Per-backend bridge handler — attach / routeBrowserMessage / injectUserMessage / disconnect; non-Claude backends (codex, kimi-cli) implement this so the central WsBridge stays backend-agnostic |
+| **BackendModule** | `core/types/agent-backend.ts` | Self-describing per-backend manifest — identity, capabilities, install conventions (skillsDir / instructionsFile / displayLabel), install hint, default models, and lifecycle factories. Each backend ships its own `manifest.ts` exporting a `BackendModule`; `backends/index.ts` is a pure registry over them. Subsumes the former `BackendInstallHandler` registry |
 | **EvolutionConfig** | `core/types/mode-manifest.ts` | Evolution directive, tools (part of ModeManifest) |
 | **SharedHistoryPackage** | `core/types/shared-history.ts` | Exported session bundle: messages, checkpoints, metadata, summary |
 | **PluginManifest** | `core/types/plugin.ts` | Plugin capabilities: hooks, slots, routes, settings |
@@ -281,9 +296,10 @@ Session state lives in `<stateDir>/`. The location depends on whether the sessio
 
 ### Skill Installation & Update Detection
 
-On startup, skills are copied to the backend-appropriate directory under `<sessionDir>` (= workspace for quick sessions, `<project>/.pneuma/sessions/<id>/` for project sessions):
+On startup, skills are copied to the backend-appropriate directory under `<sessionDir>` (= workspace for quick sessions, `<project>/.pneuma/sessions/<id>/` for project sessions). The mapping lives in each backend's `manifest.ts` (`installConventions` field on the exported `BackendModule`); `server/skill-installer.ts` resolves it via `getInstallConventions(backendType)` from `backends/index.ts`:
 - Claude Code: `<sessionDir>/.claude/skills/<installName>/` + `CLAUDE.md`
 - Codex: `<sessionDir>/.agents/skills/<installName>/` + `AGENTS.md`
+- Kimi CLI: `<sessionDir>/.kimi/skills/<installName>/` + `AGENTS.md` (kimi explicitly reads `AGENTS.md` and `.kimi/AGENTS.md` per `kimi_cli/soul/agent.py:88-132`; it does NOT read `CLAUDE.md`)
 
 Template params (`{{key}}`, `{{viewerCapabilities}}`) are applied. The instructions file is assembled from these marker blocks:
 - `<!-- pneuma:start -->` / `<!-- pneuma:end -->` — Mode skill prompt (mode description, architecture, core rules)
@@ -392,16 +408,16 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **Vite WS proxy + Bun.serve**: Browser WS connects directly to backend port, bypassing Vite.
 - **Stale `dist/`**: If `dist/index.html` exists, the server falls back to production mode. Delete `dist/` or pass `--dev` explicitly. Launcher-spawned children auto-inherit `--dev`.
 - **Bun.serve dual-stack**: Must set `hostname: "0.0.0.0"` to avoid IPv6/IPv4 port collision on macOS.
-- **CLAUDECODE env var**: Must be unset when spawning Claude Code CLI.
 - **Backend persistence**: `backendType` in `.pneuma/session.json` and `~/.pneuma/sessions.json` is part of resume identity.
-- **NDJSON**: Each message to CLI must end with `\n`.
 - **Empty assistant messages**: `MessageBubble` returns null when content is empty (tool_use-only messages).
 - **modelUsage cumulative**: Use delta (current - previous) for per-turn cost.
 - **`backdrop-filter` containing block**: Creates a containing block for fixed-positioned children, causing coordinate offset in Excalidraw. Avoid or account for it.
 - **`@zumer/snapdom`**: Capture iframes must be `display: none` during snapdom calls — visible iframes cause foreignObject text reflow. See `useSlideThumbnails.ts` and `export.ts`.
 - **GridBoard JSX tag limitation**: Tile compiler (Babel + eval) cannot resolve locally-defined components as JSX tags. Use `{renderMyComponent(...)}` function calls instead.
 - **Shadow-git checkpoint queue**: All checkpoint operations are serialized via Promise chain to prevent `index.lock` conflicts. Do not parallelize.
-- **Codex gotchas**: (1) `ws-bridge-codex.ts` must merge adapter's partial session with server's full state before broadcasting — adapter omits `agent_capabilities`, causing UI crashes if sent raw. (2) Bun's `proc.stdout` ReadableStream may close prematurely; Codex uses `node:child_process` instead — do not switch back without verifying the Bun bug is fixed. (3) Codex uses stdio (no `cliSocket`), so `handleBrowserOpen` and `getActiveSessionId` must check `codexAdapters` map to avoid `cli_disconnected` or null.
+- **Claude Code backend**: see `backends/claude-code/README.md` for NDJSON termination, `CLAUDECODE` env requirement, and `system.init`-after-first-prompt behavior.
+- **Codex backend**: see `backends/codex/README.md` for protocol details, `node:child_process` rationale, adapter quirks, and the codex-cli 0.128+ approval-policy variant.
+- **Kimi-cli backend**: see `backends/kimi-cli/README.md` for pre-allocated UUID, synthesised envelopes, `<system>` markers, and k2.6 model bugs.
 - **Replay gotchas**: (1) When `--replay` is passed, agent launch is deferred until `/api/replay/continue`; server holds a `replayContinueCallback`. (2) Each checkout cleans `.pneuma/replay-checkout/` before extracting for checkpoint-accurate state; Continue Work extracts final checkpoint to workspace root. (3) File navigation must run AFTER checkpoint loads (not during `displayMessage`), because content sets aren't computed until `setFiles` completes.
 - **Proxy gotchas**: (1) `proxy.json` changes are hot-reloaded via chokidar, no restart needed. (2) Default allowed method is GET only — POST/PUT/PATCH require explicit `"methods"` in config. (3) Bun's `fetch()` auto-decompresses gzip/br; proxy strips `content-encoding` to prevent double-decompression.
 - **Editing/readonly distinction**: `editing` is a session boolean (`true` = creating, `false` = consuming). Modes opt in via `editing: { supported: true }` in manifest. When `editing: false`, no agent runs; switching to `true` triggers skill install + agent spawn; switching back kills the agent. `readonly` (replay) disables ALL interactions, while `editing: false` only hides Pneuma editing UI — content-internal interactions (clicks, links) remain functional.
@@ -411,4 +427,5 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **Handoff confirm cannot kill its own session**: when a project session's HandoffCard is clicked Confirm, `killActiveSession(sourceSessionId)` runs in the source session's own server — but the source process was spawned by the launcher (or directly), not by itself. The source backend keeps running until the user closes the tab. The `switched_out` history event is still recorded; the target launches normally.
 - **Project session state pollution if `--project` is dropped**: subcommands that don't parse `--project` would write state into the project root, conflicting with the project layer. All built-in subcommands (including `evolve`) now respect `--project`; external mode authors must mirror this when authoring custom CLI entry points.
 - **Empty shell renders without `modeViewer`**: the `?project=<root>` URL (no `session`, no `mode`) lands on `EmptyShell` which mounts `TopBar` *without* a session. `TopBar` gates the tabs row, share dropdown, and editing toggle on `!!modeViewer`; the left chip strip stays. Any new TopBar feature must guard for `modeViewer` being null in this state. `ProjectChip` lives in the strip and reads `projectContext` (which `EmptyShell` populates from `/api/projects/:id/sessions`); the chip's auto-open is computed inside the chip via URL inspection (no prop threading from `TopBar`).
+- **TopBar drag region in launcher-reused windows**: `TopBar` is wrapped with `WebkitAppRegion: "drag"` and its three pill sub-containers (left chip strip, center tabs, right share/edit) are `WebkitAppRegion: "no-drag"`. This is required because the launcher's `window.location.href` flow (`Launcher.tsx:3210/3326/4003`, `ProjectPanel.tsx:290`, `EmptyShell` auto-onboard) reuses the launcher `BrowserWindow` for sessions — the window keeps `titleBarStyle: "hiddenInset"` + `trafficLightPosition: { y: 18 }`, and on macOS Sequoia the OS-managed drag inset extends to ~y=56 to fit the lowered traffic lights, eating clicks on the upper edge of TopBar pills. Any new clickable element added directly under the TopBar root must carry `no-drag` (or sit inside one of the existing `no-drag` sub-containers); pure spacers can stay at the inherited `drag` so the bar still moves the window. No-op in non-hiddenInset windows.
 - **Project session id vs backend id**: for project sessions, `<projectRoot>/.pneuma/sessions/<id>/session.json`'s top-level `sessionId` is the *project session* id (= directory name = what the URL carries as `--session-id`). The backend's protocol id is stored separately in `agentSessionId`. `scanProjectSessions` falls back to the directory name if `sessionId` is missing/empty (defensive against pre-fix sessions). Reopening a project session uses the project session id; routing CLI ↔ backend uses `agentSessionId`. **Never** let the backend id leak into the registry / panel — it'll resolve to a non-existent directory.

@@ -374,7 +374,7 @@ When a workspace resumes, the launcher detects the webcraft version change (1.1.
 ## [2.29.0] - 2026-04-13
 
 ### Added
-- **`Source<T>` data-channel abstraction** — viewer-contract-layer infrastructure that realizes the "viewer is the whole app UI" vision from `docs/design/pneuma-3.0-design.md`. Every mode viewer now consumes typed, origin-aware, subscription-shaped data channels via `props.sources` instead of a raw `files: ViewerFileContent[]` prop
+- **`Source<T>` data-channel abstraction** — viewer-contract-layer infrastructure that realizes the "viewer is the whole app UI" vision from `docs/archive/proposals/2026-03-12-pneuma-3.0-design.md`. Every mode viewer now consumes typed, origin-aware, subscription-shaped data channels via `props.sources` instead of a raw `files: ViewerFileContent[]` prop
 - **Four built-in source providers** in `core/sources/`:
   - `memory` — ephemeral in-process state
   - `file-glob` — multi-file aggregate read (domain is files)

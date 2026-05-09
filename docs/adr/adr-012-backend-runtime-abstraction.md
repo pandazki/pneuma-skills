@@ -1,9 +1,20 @@
 # ADR-012: Backend Registry 与运行时会话抽象
 
-> **状态**: Accepted
+> **状态**: Accepted (扩展实现见下)
 > **日期**: 2026-03-10
 > **决策者**: Pandazki
 > **关联**: ADR-001, ADR-002, ADR-003, ADR-008, ADR-010
+
+> **2026-05-09 更新**：本 ADR 提出的「Backend 运行时抽象」愿景已在 3.2.0
+> 完成扩展实现 —— 接入第三个 backend (Kimi) 并把 backend 自描述统一收到
+> 单一 `BackendModule` 类型下（`core/types/agent-backend.ts`）。原 ADR
+> 描述的 `AgentBackend` / `BACKEND_DESCRIPTORS` / `BACKEND_CAPABILITIES`
+> 注册表现在退化为「`backends/index.ts` 仅做 `MODULES` 字典」+ 每个
+> backend 自己的 `manifest.ts`。具体接入指南见各 backend 的 README：
+> `backends/{claude-code,codex,kimi-cli}/README.md`。
+>
+> 本 ADR 保持 Accepted 状态作为决策历史；具体 API 形态以 `BackendModule`
+> 接口为准。
 
 ---
 

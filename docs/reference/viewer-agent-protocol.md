@@ -4,13 +4,13 @@
 
 ## 基本立场
 
-Pneuma 的协议建立在一条基本立场上：**coding agent（Claude Code / Codex）直接在 workspace 的文件上干活，这是它的母语，不被中介也不被替代。** `pneuma-3.0-design.md` 把这条立场推到终点：Viewer 不是一个文件预览器，而是一个 **针对特定任务的 player + 可选参与面板**——人通过它实时观察 agent 的工作、在需要时直接介入（拖、删、重排）或通过结构化命令提建议。
+Pneuma 的协议建立在一条基本立场上：**coding agent（Claude Code / Codex / Kimi）直接在 workspace 的文件上干活，这是它的母语，不被中介也不被替代。** [`pneuma-3.0-design.md`](../archive/proposals/2026-03-12-pneuma-3.0-design.md) 把这条立场推到终点：Viewer 不是一个文件预览器，而是一个 **针对特定任务的 player + 可选参与面板**——人通过它实时观察 agent 的工作、在需要时直接介入（拖、删、重排）或通过结构化命令提建议。
 
 这带来三层正交的关注点：
 
 | 层 | 归谁 | 服务谁 | 动词 |
 |---|---|---|---|
-| **Layer 1 — 文件系统** | Agent 的母语 | Claude Code / Codex 通过 Read/Edit/Write 工具跟世界对话 | read / edit / write file by path |
+| **Layer 1 — 文件系统** | Agent 的母语 | Claude Code / Codex / Kimi 通过 Read/Edit/Write 工具跟世界对话 | read / edit / write file by path |
 | **Layer 2 — 传输** | Runtime 基础设施 | 把 Layer 1 的变化变成可订阅的事件流 | chokidar → pendingSelfWrites → WS → event bus |
 | **Layer 3 — Source** | Viewer 的输入/输出协议 | mode 作者写 viewer 时只看这一层，用 domain 类型订阅 | `Source<T>.subscribe` / `write`，T 是 domain 而非 file shape |
 
@@ -26,7 +26,7 @@ Pneuma 的协议建立在一条基本立场上：**coding agent（Claude Code / 
 |------|------|------|
 | **User** | 浏览器中的人类 | 观察 viewer 播放、选择元素、输入消息、审批权限、按需参与 |
 | **Viewer** | Mode 级 React 组件 | 把 agent 的工作成果以 domain 语言渲染成实时 player；捕获用户交互；执行 Agent 请求的操作；主动上报观测 |
-| **Agent** | Claude Code / Codex 进程 | 理解意图、**直接编辑 workspace 文件**、调用工具、请求 Viewer 操作 |
+| **Agent** | Claude Code / Codex / Kimi 进程 | 理解意图、**直接编辑 workspace 文件**、调用工具、请求 Viewer 操作 |
 
 ---
 
@@ -161,7 +161,7 @@ Runtime 在 Agent 空闲时 flush notification，作为系统消息注入。
 - **source-registry**: manifest.sources → runtime 按 kind 实例化 Source；built-in provider + plugin-registered provider 都在同一个 registry 里（参见末尾 Sources 小节）
 - **store + props**: manifest → Viewer props（注入 commands、actions、sources、workspace items）
 - **proxy middleware**: manifest.proxy + workspace proxy.json → `/proxy/<name>/*` 反向代理（Viewer 用相对路径访问外部 API，Runtime 服务端转发）
-- **WS bridge**: browser JSON ↔ backend transport（Claude NDJSON / Codex stdio JSON-RPC）
+- **WS bridge**: browser JSON ↔ backend transport（Claude NDJSON / Codex stdio JSON-RPC / Kimi stdio NDJSON），统一通过 `BridgeBackend` 接口分发，每个 backend 自带 `manifest.ts` 声明能力与传输形态
 - **context injection**: `extractContext()` → `<viewer-context>` 注入到 user message
 
 ---
@@ -247,7 +247,7 @@ useSource in Viewer React tree    ← Layer 3: Viewer 的 player 渲染
 
 ### Agent 和 Source 的关系
 
-**Source 层不替代文件系统。** Agent backend（Claude Code / Codex）继续通过它原生的 Edit / Write / Read 工具直接操作 workspace 里的文件——这是 Pneuma 跟 coding agent 协作的基本契约，不会也不应该被中介。服务端的 `pendingSelfWrites` origin 标记机制对 agent 写入完全透明：agent 直接调 Edit，产生的 chokidar 事件被标为 `origin: "external"`，viewer 的 source 订阅者因此知道「这是 agent 干的，不是我自己刚 write 的」，并可以选择合适的 reconcile 策略（重挂载 domain store、动画高亮、prompt 用户合并等）。**Source 层和 agent 的 file tools 是两个独立的写入路径，共享同一份磁盘状态，通过 origin 标记相互识别。**
+**Source 层不替代文件系统。** Agent backend（Claude Code / Codex / Kimi）继续通过它原生的 Edit / Write / Read 工具直接操作 workspace 里的文件——这是 Pneuma 跟 coding agent 协作的基本契约，不会也不应该被中介。服务端的 `pendingSelfWrites` origin 标记机制对 agent 写入完全透明：agent 直接调 Edit，产生的 chokidar 事件被标为 `origin: "external"`，viewer 的 source 订阅者因此知道「这是 agent 干的，不是我自己刚 write 的」，并可以选择合适的 reconcile 策略（重挂载 domain store、动画高亮、prompt 用户合并等）。**Source 层和 agent 的 file tools 是两个独立的写入路径，共享同一份磁盘状态，通过 origin 标记相互识别。**
 
 ### Built-in providers
 
@@ -278,7 +278,7 @@ useSource in Viewer React tree    ← Layer 3: Viewer 的 player 渲染
 
 ### 设计 rationale
 
-完整的设计讨论 + 为什么 `fileChannel` 作为「domain 就是文件」型 mode 的逃生口 + 三层正交的讲解，见实施计划 `docs/superpowers/plans/2026-04-13-source-abstraction.md`。原始的 ClipCraft-only transport 提案 `docs/superpowers/plans/2026-04-13-mode-sync-transport.md` 是这套设计的起点，已被上面那份 superseded。Source 抽象是 `docs/design/pneuma-3.0-design.md` 描述的「viewer 是整个 app 的 UI」这一愿景的 **viewer-contract 层基础设施**——3.0 要求 viewer 用 domain 语言驱动 UI，这正是 `Source<T>` 里那个 `T` 的含义。
+完整的设计讨论 + 为什么 `fileChannel` 作为「domain 就是文件」型 mode 的逃生口 + 三层正交的讲解，见实施计划 `docs/superpowers/plans/2026-04-13-source-abstraction.md`。原始的 ClipCraft-only transport 提案 `docs/superpowers/plans/2026-04-13-mode-sync-transport.md` 是这套设计的起点，已被上面那份 superseded。Source 抽象是 [`docs/archive/proposals/2026-03-12-pneuma-3.0-design.md`](../archive/proposals/2026-03-12-pneuma-3.0-design.md) 描述的「viewer 是整个 app 的 UI」这一愿景的 **viewer-contract 层基础设施**——3.0 要求 viewer 用 domain 语言驱动 UI，这正是 `Source<T>` 里那个 `T` 的含义。
 
 ---
 
