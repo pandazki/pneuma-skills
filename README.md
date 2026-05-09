@@ -10,21 +10,21 @@
 <table align="center"><tr>
   <td align="center" width="160">
     <a href="https://docs.anthropic.com/en/docs/claude-code">
-      <img src="docs/images/backends/anthropic.png" alt="Anthropic" width="72" height="72" />
+      <img src="docs/images/backends/claude-code.png" alt="Claude Code" width="72" height="72" />
       <br /><strong>Claude Code</strong>
     </a>
     <br /><sub>by Anthropic</sub>
   </td>
   <td align="center" width="160">
     <a href="https://github.com/openai/codex">
-      <img src="docs/images/backends/openai.png" alt="OpenAI" width="72" height="72" />
+      <img src="docs/images/backends/codex.png" alt="Codex" width="72" height="72" />
       <br /><strong>Codex</strong>
     </a>
     <br /><sub>by OpenAI</sub>
   </td>
   <td align="center" width="160">
     <a href="https://moonshotai.github.io/kimi-cli/">
-      <img src="docs/images/backends/moonshot.png" alt="Moonshot AI" width="72" height="72" />
+      <img src="docs/images/backends/kimi.png" alt="Kimi" width="72" height="72" />
       <br /><strong>Kimi</strong>
     </a>
     <br /><sub>by Moonshot AI</sub>
