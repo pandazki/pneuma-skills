@@ -106,6 +106,53 @@ export function pickImageSize(grid, aspect) {
   throw new Error(`Unsupported aspect '${aspect}'`);
 }
 
+/**
+ * Compute panel bounding boxes for a grid laid out inside the
+ * composite image. Each cell is exact video aspect ratio. Grid is
+ * centered with uniform margins absorbing any size mismatch between
+ * the chosen gpt-image-2 preset and the (cols x rows) of cells.
+ */
+export function computeBboxes(grid, imgSize, aspect) {
+  const [vw, vh] = aspect.split(":").map(Number);
+  const cellAspect = vw / vh;
+
+  const maxCellW = Math.floor(imgSize.width / grid.cols);
+  const maxCellH = Math.floor(imgSize.height / grid.rows);
+
+  // Cell must satisfy: cellW / cellH = cellAspect.
+  // Try fitting by width first; if that exceeds maxCellH, fit by height.
+  let cellW = maxCellW;
+  let cellH = Math.floor(cellW / cellAspect);
+  if (cellH > maxCellH) {
+    cellH = maxCellH;
+    cellW = Math.floor(cellH * cellAspect);
+  }
+
+  const totalW = cellW * grid.cols;
+  const totalH = cellH * grid.rows;
+  const marginX = Math.floor((imgSize.width - totalW) / 2);
+  const marginY = Math.floor((imgSize.height - totalH) / 2);
+
+  const panels = [];
+  for (let row = 0; row < grid.rows; row++) {
+    for (let col = 0; col < grid.cols; col++) {
+      panels.push({
+        index: row * grid.cols + col + 1,
+        row,
+        col,
+        bbox: {
+          x: marginX + col * cellW,
+          y: marginY + row * cellH,
+          w: cellW,
+          h: cellH,
+        },
+      });
+    }
+  }
+
+  return { cellWidth: cellW, cellHeight: cellH, marginX, marginY, panels };
+}
+
 // ---------------------------------------------------------------------------
 // CLI entry detection — guard so test imports don't trigger side effects.
 // ---------------------------------------------------------------------------
