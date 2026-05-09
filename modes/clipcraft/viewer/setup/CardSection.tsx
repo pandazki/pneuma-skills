@@ -28,10 +28,7 @@ export function CardSection({ title, emptyHint, cards, workspaceUrl }: Props) {
 
   return (
     <>
-      <SectionShell
-        title={`${title} (${count})`}
-        defaultOpen={count > 0}
-      >
+      <SectionShell title={`${title} (${count})`} defaultOpen>
         {count === 0 ? (
           <EmptyHint>{emptyHint}</EmptyHint>
         ) : (

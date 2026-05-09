@@ -51,7 +51,7 @@ export function BibleSection({ bible, workspaceUrl }: Props) {
 
   if (!bible) {
     return (
-      <SectionShell title="Project Bible (0)">
+      <SectionShell title="Project Bible (0)" defaultOpen>
         <EmptyHint>
           <strong style={{ color: theme.color.ink1 }}>No project bible yet.</strong>{" "}
           Ask the agent: <em>“set up the project bible”</em>. The bible is where

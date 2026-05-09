@@ -40,10 +40,7 @@ interface Props {
 export function StoryboardSection({ storyboards, workspaceUrl, emptyHint }: Props) {
   const count = storyboards.length;
   return (
-    <SectionShell
-      title={`Storyboards (${count})`}
-      defaultOpen={count > 0}
-    >
+    <SectionShell title={`Storyboards (${count})`} defaultOpen>
       {count === 0 ? (
         <EmptyHint>{emptyHint}</EmptyHint>
       ) : (
