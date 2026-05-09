@@ -431,6 +431,7 @@ function validateRefs(refs) {
 export function buildStdoutJson({
   compositePath, compositeUrl, endpoint, grid, imageSize,
   finalPrompt, panels, refs, baseName, aspect, panelCount,
+  quality = "high",
 }) {
   const now = Date.now();
   const compositeAssetId = `asset-storyboard-composite-${now}`;
@@ -466,7 +467,7 @@ export function buildStdoutJson({
         prompt: finalPrompt,
         imageSize: imageSize.preset,
         imageUrls: refs ?? [],
-        quality: "high",
+        quality,
         videoAspect: aspect,
         grid,
         panelCount,
@@ -675,6 +676,7 @@ async function main() {
     baseName: values.name,
     aspect,
     panelCount,
+    quality: values.quality,
   });
 
   // --keep-composite default is true; v1 always keeps the composite.
