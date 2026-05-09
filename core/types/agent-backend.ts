@@ -98,6 +98,14 @@ export interface AgentCapabilities {
   toolProgress: boolean;
   /** Supports runtime model switching */
   modelSwitch: boolean;
+  /** Scheduled / cron tasks supported (Claude Code currently only). */
+  scheduling?: boolean;
+  /** Backend reports per-message / cumulative cost via `total_cost_usd`. */
+  costTracking?: boolean;
+  /** Backend exposes context-window stats (used / total tokens). */
+  contextWindow?: boolean;
+  /** Open metadata escape hatch — never read by core; backends + frontend may use this for per-backend extras. */
+  extras?: Record<string, unknown>;
 }
 
 // ── Agent Protocol Adaptation ────────────────────────────────────────────────
@@ -123,4 +131,62 @@ export interface AgentProtocolAdapter {
 
   /** Encode standard messages into a format the Agent can accept */
   encodeOutgoing(msg: unknown): string;
+}
+
+// ── BackendModule (single source of truth) ───────────────────────────────────
+
+// Type-only imports from `server/` are erased at compile time, so this file
+// remains free of runtime dependencies on the server layer. Both `core/` and
+// `server/` are listed in `tsconfig.json#include`, so the resolver finds them.
+import type { BridgeBackend, BridgeBackendDeps } from "../../server/ws-bridge-backend.js";
+
+/** A model exposed by a backend in the launcher / model-switcher UI. */
+export interface ModelOption {
+  id: string;
+  label: string;
+  icon: string;
+}
+
+/** Result of `BackendModule.checkRequirements()` — binary availability probe. */
+export interface BackendRequirementResult {
+  ok: boolean;
+  reason?: string;
+  binaryPath?: string;
+}
+
+/**
+ * Single source of truth for everything backend-specific. Each backend ships
+ * one of these from `backends/<backend>/manifest.ts`. The central registry
+ * (`backends/index.ts`) iterates over the modules — no `if (type === ...)`
+ * lives outside this file or the manifest.
+ */
+export interface BackendModule {
+  // Identity
+  readonly type: AgentBackendType;
+  readonly label: string;
+  readonly description: string;
+  readonly displayLabel: string;
+
+  // CLI requirements
+  readonly binary: string;
+  readonly installHint: string;
+
+  // File-layout conventions
+  readonly skillsDir: string;
+  readonly instructionsFile: string;
+
+  // Capability declarations
+  readonly capabilities: AgentCapabilities;
+  readonly defaultModels?: ModelOption[];
+
+  // Lifecycle factories
+  createBackend(port: number): AgentBackend;
+  createBridgeBackend(
+    deps: BridgeBackendDeps,
+    backend: AgentBackend,
+    sessionId: string,
+  ): BridgeBackend | null;
+
+  // Self-describing helpers
+  checkRequirements(): BackendRequirementResult;
 }
