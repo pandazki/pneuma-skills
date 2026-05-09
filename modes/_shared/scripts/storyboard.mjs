@@ -153,6 +153,48 @@ export function computeBboxes(grid, imgSize, aspect) {
   return { cellWidth: cellW, cellHeight: cellH, marginX, marginY, panels };
 }
 
+const ANNOTATION_BLOCK = `Annotations baked into each panel use this color vocabulary:
+  - RED solid arrows: body movement / posture changes
+  - BLUE dashed arrows: camera movement / framing arcs
+  - GREEN brackets: key framing intersections (rule of thirds)
+  - ORANGE sun-ray glyphs: lighting source + shadow direction
+  - PURPLE eighth-note glyphs: emotional / musical beat markers
+  - BLACK typewriter margin notes: lens / technical specs
+Annotations should be visually clear without obscuring the subject.`;
+
+/**
+ * Assemble the final prompt: grid prelude + (optional annotation
+ * color system) + faithfulness directive + user's per-panel content.
+ */
+export function assemblePrompt({ userPrompt, grid, aspect, includeAnnotations }) {
+  const N = grid.rows * grid.cols;
+  const orientation =
+    aspect === "9:16" ? "portrait"
+    : aspect === "16:9" ? "landscape"
+    : "square";
+
+  const lines = [
+    `A clean storyboard sheet, ${grid.rows} rows by ${grid.cols} columns of numbered panels (${N} total).`,
+    `Each cell is exactly ${aspect} aspect ratio (the target video aspect ratio). Composite orientation: ${orientation}.`,
+    `Panels numbered 1 through ${N}, left-to-right top-to-bottom. Thin gutter between cells, neutral background.`,
+    "",
+  ];
+
+  if (includeAnnotations) {
+    lines.push(ANNOTATION_BLOCK, "");
+  }
+
+  lines.push(
+    "CONSISTENCY RULE (STRICT): Character look, wardrobe, palette, and lighting language remain identical across all panels. No reinterpretation panel-to-panel.",
+    "",
+    "Per-panel content:",
+    "",
+    userPrompt,
+  );
+
+  return lines.join("\n");
+}
+
 // ---------------------------------------------------------------------------
 // CLI entry detection — guard so test imports don't trigger side effects.
 // ---------------------------------------------------------------------------

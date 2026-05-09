@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { pickGrid, pickImageSize, computeBboxes } from "../storyboard.mjs";
+import {
+  pickGrid,
+  pickImageSize,
+  computeBboxes,
+  assemblePrompt,
+} from "../storyboard.mjs";
 
 describe("pickGrid", () => {
   test("4 panels → 2x2 regardless of aspect", () => {
@@ -148,5 +153,62 @@ describe("computeBboxes", () => {
       expect(p.bbox.x + p.bbox.w).toBeLessThanOrEqual(imgSize.width);
       expect(p.bbox.y + p.bbox.h).toBeLessThanOrEqual(imgSize.height);
     }
+  });
+});
+
+describe("assemblePrompt", () => {
+  test("includes grid + cell aspect + numbering instruction", () => {
+    const grid = { rows: 3, cols: 2 };
+    const out = assemblePrompt({
+      userPrompt: "Six dance moves",
+      grid,
+      aspect: "9:16",
+      includeAnnotations: false,
+    });
+    expect(out).toMatch(/3.{1,3}rows/i);
+    expect(out).toMatch(/2.{1,3}col/i);
+    expect(out).toMatch(/9:16/);
+    expect(out).toMatch(/1.{0,5}6/); // numbering
+    expect(out).toMatch(/Six dance moves/);
+  });
+
+  test("includes annotation color system when enabled", () => {
+    const grid = { rows: 2, cols: 2 };
+    const out = assemblePrompt({
+      userPrompt: "x",
+      grid,
+      aspect: "1:1",
+      includeAnnotations: true,
+    });
+    expect(out).toMatch(/red/i);
+    expect(out).toMatch(/blue/i);
+    expect(out).toMatch(/green/i);
+    expect(out).toMatch(/orange/i);
+    expect(out).toMatch(/purple/i);
+    expect(out).toMatch(/black/i);
+  });
+
+  test("excludes annotations when disabled", () => {
+    const grid = { rows: 2, cols: 2 };
+    const out = assemblePrompt({
+      userPrompt: "x",
+      grid,
+      aspect: "1:1",
+      includeAnnotations: false,
+    });
+    // No "annotation color system" preamble
+    expect(out).not.toMatch(/annotation color system/i);
+    // But the basic grid prelude should still be there
+    expect(out).toMatch(/CONSISTENCY RULE/i);
+  });
+
+  test("includes faithfulness and consistency directives by default", () => {
+    const out = assemblePrompt({
+      userPrompt: "x",
+      grid: { rows: 2, cols: 2 },
+      aspect: "1:1",
+      includeAnnotations: false,
+    });
+    expect(out).toMatch(/CONSISTENCY RULE.*STRICT/i);
   });
 });
