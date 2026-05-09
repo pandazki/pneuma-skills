@@ -15,7 +15,7 @@
 import {
   readFileSync, writeFileSync, mkdirSync, existsSync,
 } from "node:fs";
-import { dirname, join, resolve, isAbsolute } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { spawnSync } from "node:child_process";
@@ -55,32 +55,20 @@ function printUsage() {
   console.error(USAGE);
 }
 
-const { values, positionals } = parseArgs({
-  args: process.argv.slice(2),
-  options: {
-    aspect:           { type: "string" },
-    panels:           { type: "string" },
-    prompt:           { type: "string" },
-    "prompt-file":    { type: "string" },
-    "out-dir":        { type: "string", default: "." },
-    name:             { type: "string", default: "panel" },
-    ref:              { type: "string", multiple: true },
-    "no-annotations": { type: "boolean", default: false },
-    "keep-composite": { type: "boolean", default: true },
-    quality:          { type: "string", default: "high" },
-    "output-format":  { type: "string", default: "png" },
-    help:             { type: "boolean", short: "h" },
-  },
-  allowPositionals: false,
-});
+// ---------------------------------------------------------------------------
+// CLI entry detection — guard so test imports don't trigger side effects.
+// ---------------------------------------------------------------------------
 
-if (values.help) {
-  printUsage();
-  process.exit(0);
+function isCliEntry() {
+  // Bun: import.meta.main is true when the file is the entrypoint.
+  if (typeof import.meta.main === "boolean") return import.meta.main;
+  // Node: compare argv[1] to this module's resolved path.
+  const entry = process.argv[1] ? resolve(process.argv[1]) : null;
+  return entry === __filename;
 }
 
 // ---------------------------------------------------------------------------
-// CLI argument resolution + validation
+// CLI body — only runs as the script entrypoint.
 // ---------------------------------------------------------------------------
 
 function fail(msg) {
@@ -89,41 +77,74 @@ function fail(msg) {
   process.exit(1);
 }
 
-const aspect = values.aspect;
-if (!aspect) fail("--aspect is required");
-if (!ASPECTS.includes(aspect)) {
-  fail(`invalid --aspect '${aspect}'. Choices: ${ASPECTS.join(", ")}`);
+async function main() {
+  const { values } = parseArgs({
+    args: process.argv.slice(2),
+    options: {
+      aspect:           { type: "string" },
+      panels:           { type: "string" },
+      prompt:           { type: "string" },
+      "prompt-file":    { type: "string" },
+      "out-dir":        { type: "string", default: "." },
+      name:             { type: "string", default: "panel" },
+      ref:              { type: "string", multiple: true },
+      "no-annotations": { type: "boolean", default: false },
+      "keep-composite": { type: "boolean", default: true },
+      quality:          { type: "string", default: "high" },
+      "output-format":  { type: "string", default: "png" },
+      help:             { type: "boolean", short: "h" },
+    },
+    allowPositionals: false,
+  });
+
+  if (values.help) {
+    printUsage();
+    process.exit(0);
+  }
+
+  const aspect = values.aspect;
+  if (!aspect) fail("--aspect is required");
+  if (!ASPECTS.includes(aspect)) {
+    fail(`invalid --aspect '${aspect}'. Choices: ${ASPECTS.join(", ")}`);
+  }
+
+  const panelsRaw = values.panels;
+  if (!panelsRaw) fail("--panels is required");
+  const panelCount = Number.parseInt(panelsRaw, 10);
+  if (!Number.isFinite(panelCount) || !PANEL_COUNTS.includes(panelCount)) {
+    fail(`invalid --panels '${panelsRaw}'. Supported: ${PANEL_COUNTS.join(", ")}`);
+  }
+
+  if (!values.prompt && !values["prompt-file"]) {
+    fail("either --prompt or --prompt-file is required");
+  }
+  if (values.prompt && values["prompt-file"]) {
+    fail("--prompt and --prompt-file are mutually exclusive");
+  }
+
+  let userPrompt;
+  if (values["prompt-file"]) {
+    const promptPath = resolve(values["prompt-file"]);
+    if (!existsSync(promptPath)) fail(`--prompt-file not found: ${promptPath}`);
+    userPrompt = readFileSync(promptPath, "utf-8");
+  } else {
+    userPrompt = values.prompt;
+  }
+  if (!userPrompt || !userPrompt.trim()) {
+    fail("prompt body is empty");
+  }
+
+  if (!QUALITIES.includes(values.quality)) {
+    fail(`invalid --quality '${values.quality}'. Choices: ${QUALITIES.join(", ")}`);
+  }
+  if (!OUTPUT_FORMATS.includes(values["output-format"])) {
+    fail(`invalid --output-format '${values["output-format"]}'. Choices: ${OUTPUT_FORMATS.join(", ")}`);
+  }
+
+  // The remaining pipeline (env loading, fal.ai call, ffmpeg slicing,
+  // stdout JSON) is added in subsequent tasks.
 }
 
-const panelsRaw = values.panels;
-if (!panelsRaw) fail("--panels is required");
-const panelCount = Number.parseInt(panelsRaw, 10);
-if (!Number.isFinite(panelCount) || !PANEL_COUNTS.includes(panelCount)) {
-  fail(`invalid --panels '${panelsRaw}'. Supported: ${PANEL_COUNTS.join(", ")}`);
-}
-
-if (!values.prompt && !values["prompt-file"]) {
-  fail("either --prompt or --prompt-file is required");
-}
-if (values.prompt && values["prompt-file"]) {
-  fail("--prompt and --prompt-file are mutually exclusive");
-}
-
-let userPrompt;
-if (values["prompt-file"]) {
-  const promptPath = resolve(values["prompt-file"]);
-  if (!existsSync(promptPath)) fail(`--prompt-file not found: ${promptPath}`);
-  userPrompt = readFileSync(promptPath, "utf-8");
-} else {
-  userPrompt = values.prompt;
-}
-if (!userPrompt || !userPrompt.trim()) {
-  fail("prompt body is empty");
-}
-
-if (!QUALITIES.includes(values.quality)) {
-  fail(`invalid --quality '${values.quality}'. Choices: ${QUALITIES.join(", ")}`);
-}
-if (!OUTPUT_FORMATS.includes(values["output-format"])) {
-  fail(`invalid --output-format '${values["output-format"]}'. Choices: ${OUTPUT_FORMATS.join(", ")}`);
+if (isCliEntry()) {
+  await main();
 }
