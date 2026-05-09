@@ -376,6 +376,38 @@ function ensureFfmpeg() {
   }
 }
 
+// Read actual pixel dimensions from a downloaded image. fal.ai's
+// gpt-image-2 presets (portrait_16_9, landscape_16_9, square_hd) are
+// nominal — the actual returned image dimensions can differ (e.g.
+// portrait_16_9 may return 608x1088 instead of 1024x1536, both still
+// at the requested 9:16 aspect). Bbox math MUST use actual dimensions
+// or the slices will be misaligned.
+function readImageDimensions(filePath) {
+  const res = spawnSync(
+    "ffprobe",
+    [
+      "-v", "error",
+      "-select_streams", "v:0",
+      "-show_entries", "stream=width,height",
+      "-of", "csv=p=0:s=x",
+      filePath,
+    ],
+    { encoding: "utf-8" },
+  );
+  if (res.status !== 0) {
+    console.error(`ERROR: ffprobe failed for ${filePath}: ${res.stderr ?? ""}`);
+    process.exit(1);
+  }
+  const parts = String(res.stdout).trim().split("x");
+  const width = parseInt(parts[0], 10);
+  const height = parseInt(parts[1], 10);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    console.error(`ERROR: ffprobe returned bad dimensions for ${filePath}: '${res.stdout}'`);
+    process.exit(1);
+  }
+  return { width, height };
+}
+
 function sliceComposite({ compositePath, panels, outputDir, baseName, format }) {
   const slices = [];
   for (const panel of panels) {
@@ -655,7 +687,19 @@ async function main() {
     outputDir: outDir,
   });
 
-  const { panels } = computeBboxes(grid, imageSize, aspect);
+  // fal.ai presets are nominal — read actual dimensions from the
+  // downloaded composite before slicing. Aspect ratio is honored, but
+  // pixel size can differ (e.g. portrait_16_9 → 608x1088 vs requested
+  // 1024x1536), and bbox math MUST run against the real pixel grid.
+  const actualImageSize = {
+    preset: imageSize.preset,
+    ...readImageDimensions(composite.compositePath),
+  };
+  console.error(
+    `[storyboard] composite actual=${actualImageSize.width}x${actualImageSize.height} (preset nominal=${imageSize.width}x${imageSize.height})`,
+  );
+
+  const { panels } = computeBboxes(grid, actualImageSize, aspect);
   const slices = sliceComposite({
     compositePath: composite.compositePath,
     panels,
@@ -669,7 +713,7 @@ async function main() {
     compositeUrl: composite.compositeUrl,
     endpoint: composite.endpoint,
     grid,
-    imageSize,
+    imageSize: actualImageSize,
     finalPrompt,
     panels: slices,
     refs,
