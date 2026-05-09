@@ -3,11 +3,13 @@
  * skills directory and merges Pneuma's marker blocks into the active
  * backend's project-level instructions file.
  *
- * The "active backend" is anything that implements `BackendInstallHandler`
- * (see `./skill-installer-backend.ts`). The installer body itself is
- * backend-agnostic — every choice that depends on the backend goes through
- * the handler. Adding a new backend means adding a registry entry, not
- * threading new `if (backendType === "...")` branches through this file.
+ * The "active backend" is described by a `BackendModule` (see
+ * `core/types/agent-backend.ts` and the per-backend `manifest.ts` files).
+ * The installer body itself is backend-agnostic — every choice that depends
+ * on the backend goes through the module's `skillsDir` / `instructionsFile`
+ * / `displayLabel` fields. Adding a new backend means adding a manifest +
+ * registry entry, not threading new `if (backendType === "...")` branches
+ * through this file.
  *
  * Parameterized by SkillConfig from ModeManifest — no hardcoded mode knowledge.
  */
@@ -17,7 +19,28 @@ import { join, dirname, extname } from "node:path";
 import { homedir } from "node:os";
 import type { SkillConfig, ViewerApiConfig, McpServerConfig, SkillDependency } from "../core/types/mode-manifest.js";
 import { isProjectManifest, type ProjectManifest } from "../core/types/project-manifest.js";
-import { getBackendInstallHandler } from "./skill-installer-backend.js";
+import type { BackendModule } from "../core/types/agent-backend.js";
+import { getBackendModule } from "../backends/index.js";
+
+/**
+ * Resolve install conventions (skillsDir / instructionsFile / displayLabel)
+ * for a backend type. Falls back to claude-code's conventions when
+ * `backendType` is undefined or unknown — that's the legacy 2.x default and
+ * matches how the installer behaved before kimi / codex were added.
+ *
+ * Centralised here so every callsite below stays a single lookup; the
+ * registry itself owns the per-backend file layout via `BackendModule`.
+ */
+function getInstallConventions(backendType?: string): BackendModule {
+  if (
+    backendType === "claude-code" ||
+    backendType === "codex" ||
+    backendType === "kimi-cli"
+  ) {
+    return getBackendModule(backendType);
+  }
+  return getBackendModule("claude-code");
+}
 
 /**
  * Resolve the absolute path where plugin skills should be installed for the
@@ -36,7 +59,7 @@ export function resolvePluginSkillsBase(
   backendType?: string,
 ): string {
   const root = sessionDir ?? workspace;
-  return join(root, getBackendInstallHandler(backendType).skillsDir);
+  return join(root, getInstallConventions(backendType).skillsDir);
 }
 
 const PNEUMA_MARKER_START = "<!-- pneuma:start -->";
@@ -489,7 +512,7 @@ export async function buildAndInjectPreferences(
   hookBus: import("../core/hook-bus.js").HookBus,
   sessionInfo: import("../core/types/plugin.js").SessionInfo,
 ): Promise<void> {
-  const instructionsPath = join(workspace, getBackendInstallHandler(backendType).instructionsFile);
+  const instructionsPath = join(workspace, getInstallConventions(backendType).instructionsFile);
 
   let content: string;
   try {
@@ -656,7 +679,7 @@ export function generatePneumaSection(
   backendType: string | undefined,
   runtimeShell: "app" | "web",
 ): string {
-  const backendLabel = getBackendInstallHandler(backendType).displayLabel;
+  const backendLabel = getInstallConventions(backendType).displayLabel;
   const shellLabel = runtimeShell === "app" ? "App" : "Web";
   const fallbackDisplay = skillConfig.installName
     .replace(/^pneuma-/, "")
@@ -955,7 +978,7 @@ export function installSkillDependencies(
     }
 
     const depSource = join(modeSourceDir, dep.sourceDir);
-    const depTarget = join(workspace, getBackendInstallHandler(backendType).skillsDir, dep.name);
+    const depTarget = join(workspace, getInstallConventions(backendType).skillsDir, dep.name);
 
     if (existsSync(depSource)) {
       // Purge prior install to drop stale files from older dependency versions.
@@ -1148,8 +1171,8 @@ export function installSkill(options: InstallSkillOptions): void {
 
   // 1. Copy skill to the backend-appropriate skills directory
   const skillSource = join(modeSourceDir, skillConfig.sourceDir);
-  const handler = getBackendInstallHandler(backendType);
-  const skillTarget = join(installTarget, handler.skillsDir, skillConfig.installName);
+  const conventions = getInstallConventions(backendType);
+  const skillTarget = join(installTarget, conventions.skillsDir, skillConfig.installName);
 
   if (existsSync(skillSource)) {
     // Purge prior install to prevent stale files from older skill versions.
@@ -1225,7 +1248,7 @@ export function installSkill(options: InstallSkillOptions): void {
 
   // 2. Inject/update instructions file with pneuma configuration
   //    Claude Code uses CLAUDE.md, Codex uses AGENTS.md
-  const primaryInstructionsPath = join(installTarget, handler.instructionsFile);
+  const primaryInstructionsPath = join(installTarget, conventions.instructionsFile);
   let content = "";
 
   if (existsSync(primaryInstructionsPath)) {
@@ -1406,7 +1429,7 @@ export function injectMemorySourceInfo(
   memorySources: Array<{ name: string; displayName: string; routePrefix: string }>,
   backendType?: string,
 ): void {
-  const skillDir = join(workspace, getBackendInstallHandler(backendType).skillsDir, "pneuma-preferences");
+  const skillDir = join(workspace, getInstallConventions(backendType).skillsDir, "pneuma-preferences");
   const skillMdPath = join(skillDir, "SKILL.md");
   if (!existsSync(skillMdPath)) return;
 
@@ -1463,7 +1486,7 @@ export function injectResumedContext(
   const section = `${markerStart}\n${context}\n${markerEnd}`;
 
   const instrTarget = instructionsDir ?? workspace;
-  const instructionsPath = join(instrTarget, getBackendInstallHandler(backendType).instructionsFile);
+  const instructionsPath = join(instrTarget, getInstallConventions(backendType).instructionsFile);
 
   if (!existsSync(instructionsPath)) return;
 

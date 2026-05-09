@@ -1,65 +1,57 @@
+/**
+ * Pure backend registry.
+ *
+ * Every backend ships a `BackendModule` from its own `manifest.ts` (see
+ * `backends/<name>/manifest.ts` and `core/types/agent-backend.ts:BackendModule`).
+ * This file is the only place those modules are aggregated; the rest of the
+ * system (skill installer, bin/pneuma launcher, frontend availability badges)
+ * goes through the helpers below — it never reaches into the per-backend
+ * folders directly, and it never branches on `if (type === ...)`.
+ *
+ * Adding a new backend:
+ *   1. Create `backends/<name>/manifest.ts` exporting a `BackendModule`.
+ *   2. Add it to `MODULES` below.
+ *   3. Done — descriptors, capabilities, availability probes, factory calls,
+ *      and skill-installer file conventions all flow through automatically.
+ */
+
 import type {
   AgentBackend,
   AgentBackendDescriptor,
-  AgentCapabilities,
   AgentBackendType,
+  AgentCapabilities,
+  BackendModule,
+  BackendRequirementResult,
 } from "../core/types/agent-backend.js";
-import { ClaudeCodeBackend } from "./claude-code/index.js";
-import { CodexBackend } from "./codex/index.js";
-import { KimiCliBackend } from "./kimi-cli/index.js";
-import { resolveBinary } from "../server/path-resolver.js";
+import { claudeCodeModule } from "./claude-code/manifest.js";
+import { codexModule } from "./codex/manifest.js";
+import { kimiCliModule } from "./kimi-cli/manifest.js";
 
-const BACKEND_DESCRIPTORS: AgentBackendDescriptor[] = [
-  {
-    type: "claude-code",
-    label: "Claude Code",
-    description: "Anthropic Claude Code CLI via stdio stream-json transport.",
-    implemented: true,
-  },
-  {
-    type: "codex",
-    label: "Codex",
-    description: "OpenAI Codex CLI via app-server transport.",
-    implemented: true,
-  },
-  {
-    type: "kimi-cli",
-    label: "Kimi",
-    description: "Moonshot AI Kimi Code CLI via stdio stream-json transport.",
-    implemented: true,
-  },
-];
-
-const BACKEND_CAPABILITIES: Record<AgentBackendType, AgentCapabilities> = {
-  "claude-code": {
-    streaming: true,
-    resume: true,
-    permissions: true,
-    toolProgress: true,
-    modelSwitch: true,
-  },
-  codex: {
-    streaming: true,
-    resume: true,
-    permissions: true,
-    toolProgress: false,
-    modelSwitch: true,
-  },
-  "kimi-cli": {
-    streaming: true,
-    resume: true,
-    permissions: false,
-    toolProgress: false,
-    modelSwitch: true,
-  },
+const MODULES: Record<AgentBackendType, BackendModule> = {
+  "claude-code": claudeCodeModule,
+  codex: codexModule,
+  "kimi-cli": kimiCliModule,
 };
 
+export function getBackendModule(type: AgentBackendType): BackendModule {
+  return MODULES[type];
+}
+
+export function getAllBackendModules(): BackendModule[] {
+  return Object.values(MODULES);
+}
+
 export function getBackendDescriptors(): AgentBackendDescriptor[] {
-  return BACKEND_DESCRIPTORS;
+  return getAllBackendModules().map((m) => ({
+    type: m.type,
+    label: m.label,
+    description: m.description,
+    implemented: true,
+  }));
 }
 
 export function getImplementedBackends(): AgentBackendDescriptor[] {
-  return BACKEND_DESCRIPTORS.filter((backend) => backend.implemented);
+  return getBackendDescriptors();
 }
 
 export function getDefaultBackendType(): AgentBackendType {
@@ -67,15 +59,8 @@ export function getDefaultBackendType(): AgentBackendType {
 }
 
 export function getBackendCapabilities(type: AgentBackendType): AgentCapabilities {
-  return BACKEND_CAPABILITIES[type];
+  return MODULES[type].capabilities;
 }
-
-/** Binary name each backend requires on the system PATH. */
-const BACKEND_BINARIES: Record<AgentBackendType, string> = {
-  "claude-code": "claude",
-  codex: "codex",
-  "kimi-cli": "kimi",
-};
 
 export interface BackendAvailability {
   type: AgentBackendType;
@@ -89,30 +74,14 @@ export interface BackendAvailability {
  * Results are NOT cached — call sparingly (shell PATH probe is ~50ms each).
  */
 export function detectBackendAvailability(): BackendAvailability[] {
-  return BACKEND_DESCRIPTORS.map((desc) => {
-    if (!desc.implemented) {
-      return { type: desc.type, available: false, reason: "Not yet implemented" };
-    }
-    const binary = BACKEND_BINARIES[desc.type];
-    const resolved = resolveBinary(binary);
-    if (!resolved) {
-      return {
-        type: desc.type,
-        available: false,
-        reason: `"${binary}" CLI not found in PATH`,
-      };
-    }
-    return { type: desc.type, available: true, binaryPath: resolved };
+  return getAllBackendModules().map((m) => {
+    const r: BackendRequirementResult = m.checkRequirements();
+    return r.ok
+      ? { type: m.type, available: true, binaryPath: r.binaryPath }
+      : { type: m.type, available: false, reason: r.reason };
   });
 }
 
 export function createBackend(type: AgentBackendType, port: number): AgentBackend {
-  switch (type) {
-    case "claude-code":
-      return new ClaudeCodeBackend(port);
-    case "codex":
-      return new CodexBackend();
-    case "kimi-cli":
-      return new KimiCliBackend();
-  }
+  return MODULES[type].createBackend(port);
 }

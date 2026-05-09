@@ -13,6 +13,9 @@ describe("makeDefaultState", () => {
       permissions: true,
       toolProgress: true,
       modelSwitch: true,
+      scheduling: true,
+      costTracking: true,
+      contextWindow: true,
     });
   });
 
