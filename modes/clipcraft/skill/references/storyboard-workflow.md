@@ -173,6 +173,20 @@ The user may not care about the planning layer once final clips land. By default
 
 If they do, dispatch `composition:remove-preview-frame { previewFrameId }` for each, in any order. The undo will be one step per frame; warn the user before bulk-removing more than 5 at a time ("撤销会一格一格回，要彻底清空建议直接让我重新生成").
 
+## Three paths to the final timeline
+
+Stages 1–5 above describe **Path A** — sequential multi-cut: each
+beat gets its own seedance call, anchors at boundaries, sketches
+between for pacing review. It's the most flexible path but the most
+expensive and the easiest to drift across cuts.
+
+Two alternatives are worth knowing:
+
+- **Path B** — single long-form generation with internal beats
+- **Path C** — composite-and-slice for high panel-count consistency
+
+Pick by: panel count, internal continuity importance, budget tolerance.
+
 ## Path B — single long-form generation with internal beats
 
 When the user wants a single 15s continuous shot with multiple internal beats (the Kōda latte art recipe), don't split into N seedance calls. Place anchors at the visible "beat moments" but at gen time issue **one** seedance call:
@@ -189,6 +203,100 @@ node .claude/skills/pneuma-clipcraft/scripts/generate-video.mjs from-image \
 
 Result is a single 15s clip; it auto-fall-goes all preview frames in `[0, 15)`. The interleaved beat anchors stay in the data as audit trail (and as backup if the user wants to redo with a different gen strategy).
 
+A variant: if you have multiple anchors that need to be honored during the single long generation, use the `reference` subcommand instead of `from-image` and pass each anchor as an `--image-url` (up to 9). Seedance will respect them as compositional intent. The prompt should describe the temporal order ("first @image1, then @image2, ending on @image3"). See `references/reference-directives.md`.
+
+## Path C — composite-and-slice for high panel-count consistency
+
+When the user wants 4–16 distinct panels (storyboard sketches, music-driven cuts, multi-shot beats), generating each panel as an independent gpt-image-2 call costs N × $0.16 and produces panels that drift in character look, palette, and lighting. **Path C generates one composite image containing all N panels in a grid, then engineering-slices it into N individual files.** Trade-off summary:
+
+- **Cost:** ~$0.16 total (vs N×$0.16 for Path A sketches)
+- **Internal consistency:** dramatically higher — gpt-image-2 spends one image's attention budget across all panels at once
+- **Constraint:** panels must fit a 2×2 / 3×2 / 4×2 / 3×3 / 4×3 / 4×4 grid (4–16 panels)
+- **Best for:** sketch stage of a multi-panel project, or as the source of references for a Path B reference-mode seedance call
+
+### How it works
+
+`scripts/storyboard.mjs` is a single CLI that orchestrates compose + slice:
+
+1. Computes grid layout (`rows × cols`) from panel count + video aspect ratio. Grid orientation tracks video orientation: 9:16 video → cols ≤ rows; 16:9 → cols ≥ rows.
+2. Picks the closest gpt-image-2 output size (1024², 1024×1536, or 1536×1024).
+3. Wraps your prompt with the grid prelude and (by default) the annotation color system vocabulary from `references/direction-notation.md`.
+4. Generates the composite via gpt-image-2 (passing any `--ref` images for character/style refs).
+5. Computes panel bounding boxes from the grid (each cell exactly the video aspect by construction).
+6. Crops each panel with ffmpeg.
+7. Emits a JSON summary on stdout listing each panel, the final prompt, and suggested provenance entries.
+
+The script does NOT touch `project.json` — the agent reads stdout and decides what to register / place.
+
+### Calling the script
+
+```bash
+node .claude/skills/pneuma-clipcraft/scripts/storyboard.mjs \
+  --aspect 9:16 \
+  --panels 6 \
+  --prompt-file storyboard-prompt.md \
+  --out-dir assets/sketches/sb-opening \
+  --name panel \
+  --ref setup/cast/anya.png \
+  --ref setup/world/attic-room.png
+```
+
+Flags:
+
+- `--aspect <W:H>` — target video aspect (9:16 / 16:9 / 1:1). Required.
+- `--panels <N>` — 4 to 16. Required.
+- `--prompt <text>` or `--prompt-file <path>` — the storyboard description (per-panel content). Either flag works.
+- `--out-dir <path>` — output directory; created if missing.
+- `--name <basename>` — file prefix for panel slices (default `panel`).
+- `--ref <path>` — character/style reference image. Repeatable; up to 4 refs (gpt-image-2 limit).
+- `--no-annotations` — disable the annotation color system prelude (use when the panels don't need annotated direction).
+- `--keep-composite` (default true) — keep `composite.png` alongside slices (the composite is also useful as a presentation artifact).
+
+### Workflow integration
+
+```
+1. Build the bible       (see references/production-bible.md)
+2. Write the shot list   (see references/storyboard-design.md, panel template)
+3. Compose + slice       (storyboard.mjs Path C — generates one composite, slices to N files)
+4. Register as preview   (each panel becomes a previewFrame asset; metadata.fidelity = "sketch")
+5. Place on timeline     (one previewFrame per panel at its beat time)
+6. Draft export          (user reviews pacing)
+7. Promote to anchors    (regenerate selected panels at higher quality)
+8. Run seedance          (Path A per-cut, OR Path B single long-form with sliced panels as refs)
+```
+
+Step 5 — register the slices in `project.json` with the slice provenance (`fromAssetId` pointing at the composite asset, `operation.type: "slice"`, `operation.params: { row, col, bbox }`). The composite itself is also an asset (root: `fromAssetId: null`, `operation.type: "generate"`, `model: "gpt-image-2"`, full prompt and refs in `params`). Lineage view: composite → panel-1 / panel-2 / … / panel-N.
+
+Step 8 — when feeding sliced panels as references for a single-long-form seedance call, use the `reference` subcommand (not `from-image`):
+
+```bash
+node .claude/skills/pneuma-clipcraft/scripts/generate-video.mjs reference \
+  --prompt "<long-form narration that references @image1 through @imageN as panel beats in order>" \
+  --image-url assets/sketches/sb-opening/panel-01.png \
+  --image-url assets/sketches/sb-opening/panel-02.png \
+  --image-url assets/sketches/sb-opening/panel-03.png \
+  --image-url assets/sketches/sb-opening/panel-04.png \
+  --duration 8 \
+  --aspect-ratio 9:16 \
+  --output assets/clips/opening.mp4
+```
+
+The 4-image-ref ceiling caps how many panels can ride in one Path B seedance call. For 6+ panels needing a single video, either:
+- Split into two Path B segments (panels 1-3 → segment A, panels 4-6 → segment B), each with its own anchor pair
+- Use Path A (per-cut) with the slices as anchors
+
+### Decision criteria
+
+| Situation | Path |
+|---|---|
+| Single static shot (≤8s, 1 scene) | None — just generate |
+| 2-3 cuts in 30s, distinct scenes | A |
+| 1 long shot with 3-5 internal beats (music / dance) | B |
+| Sketch stage of a 4-12 panel project, multi-character | C, then promote selected panels to anchors |
+| 4-12 panels needing one continuous video | C → B (slices as refs in single seedance call, capped at 4 image refs) |
+| 13-16 panels needing distinct cuts | C for sketches → A for anchors and gens |
+| Faces are the primary content across many shots | C with FACS notation per panel (see direction-notation.md) |
+
 ## Density and pacing recipes
 
 | Total length | Cuts / beats | Pattern |
@@ -196,8 +304,11 @@ Result is a single 15s clip; it auto-fall-goes all preview frames in `[0, 15)`. 
 | 4-8s | 1 (single shot) | No storyboard needed; just generate |
 | 10-15s | 1 (long held shot) | No storyboard needed |
 | 10-15s | 3-5 (musical / dialogue) | Path B: single gen, N internal beats, ~3 anchors total |
+| 10-15s | 4-12 panels with internal music sync | Path C → B: composite → slice → up to 4 slices as seedance refs |
 | 30s | 2-3 cuts | Path A: 2-3 separate gens, 3-4 anchors at boundaries, 5-8 sketches between |
+| 30s | 6-12 sketch panels in planning | Path C for sketches → A or B per cut |
 | 60s | 3-5 cuts | Path A: 3-5 separate gens, 4-6 anchors, 10-15 sketches |
+| 60s | 12-16 sketch panels | Path C × 1-2 sheets → A per cut |
 
 ## Move semantics — re-pacing without losing identity
 
