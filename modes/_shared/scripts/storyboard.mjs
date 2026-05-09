@@ -56,6 +56,38 @@ function printUsage() {
 }
 
 // ---------------------------------------------------------------------------
+// Pure helpers (exported for tests)
+// ---------------------------------------------------------------------------
+
+const GRID_TABLE = {
+  4:  { rows: 2, cols: 2 },              // square
+  6:  { landscape: { rows: 2, cols: 3 }, portrait: { rows: 3, cols: 2 } },
+  8:  { landscape: { rows: 2, cols: 4 }, portrait: { rows: 4, cols: 2 } },
+  9:  { rows: 3, cols: 3 },              // square
+  12: { landscape: { rows: 3, cols: 4 }, portrait: { rows: 4, cols: 3 } },
+  16: { rows: 4, cols: 4 },              // square
+};
+
+/**
+ * Pick a grid layout for the requested panel count + video aspect.
+ * For aspect-flexible panel counts (6, 8, 12), grid orientation matches
+ * the video orientation (16:9 → wide grid, 9:16 → tall grid). For 1:1,
+ * treat as landscape.
+ */
+export function pickGrid(panels, aspect) {
+  if (!ASPECTS.includes(aspect)) {
+    throw new Error(`Unsupported aspect '${aspect}'. Choices: ${ASPECTS.join(", ")}`);
+  }
+  const entry = GRID_TABLE[panels];
+  if (!entry) {
+    throw new Error(`Unsupported panel count ${panels}. Supported: ${PANEL_COUNTS.join(", ")}`);
+  }
+  if (entry.rows && entry.cols) return entry;
+  const orientation = aspect === "9:16" ? "portrait" : "landscape";
+  return entry[orientation];
+}
+
+// ---------------------------------------------------------------------------
 // CLI entry detection — guard so test imports don't trigger side effects.
 // ---------------------------------------------------------------------------
 

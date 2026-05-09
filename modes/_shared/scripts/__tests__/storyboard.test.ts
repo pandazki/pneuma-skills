@@ -1,0 +1,47 @@
+import { describe, expect, test } from "bun:test";
+import { pickGrid } from "../storyboard.mjs";
+
+describe("pickGrid", () => {
+  test("4 panels → 2x2 regardless of aspect", () => {
+    expect(pickGrid(4, "16:9")).toEqual({ rows: 2, cols: 2 });
+    expect(pickGrid(4, "9:16")).toEqual({ rows: 2, cols: 2 });
+    expect(pickGrid(4, "1:1")).toEqual({ rows: 2, cols: 2 });
+  });
+
+  test("6 panels → 3x2 for landscape, 2x3 for portrait", () => {
+    expect(pickGrid(6, "16:9")).toEqual({ rows: 2, cols: 3 });
+    expect(pickGrid(6, "9:16")).toEqual({ rows: 3, cols: 2 });
+    expect(pickGrid(6, "1:1")).toEqual({ rows: 2, cols: 3 });
+  });
+
+  test("8 panels → 4x2 for landscape, 2x4 for portrait", () => {
+    expect(pickGrid(8, "16:9")).toEqual({ rows: 2, cols: 4 });
+    expect(pickGrid(8, "9:16")).toEqual({ rows: 4, cols: 2 });
+  });
+
+  test("9 panels → 3x3 always", () => {
+    expect(pickGrid(9, "16:9")).toEqual({ rows: 3, cols: 3 });
+    expect(pickGrid(9, "9:16")).toEqual({ rows: 3, cols: 3 });
+  });
+
+  test("12 panels → 4x3 for landscape, 3x4 for portrait", () => {
+    expect(pickGrid(12, "16:9")).toEqual({ rows: 3, cols: 4 });
+    expect(pickGrid(12, "9:16")).toEqual({ rows: 4, cols: 3 });
+  });
+
+  test("16 panels → 4x4 always", () => {
+    expect(pickGrid(16, "16:9")).toEqual({ rows: 4, cols: 4 });
+    expect(pickGrid(16, "9:16")).toEqual({ rows: 4, cols: 4 });
+  });
+
+  test("rejects unsupported panel counts", () => {
+    expect(() => pickGrid(5, "16:9")).toThrow(/panel count/i);
+    expect(() => pickGrid(7, "16:9")).toThrow(/panel count/i);
+    expect(() => pickGrid(10, "16:9")).toThrow(/panel count/i);
+    expect(() => pickGrid(13, "16:9")).toThrow(/panel count/i);
+  });
+
+  test("rejects unknown aspect", () => {
+    expect(() => pickGrid(4, "21:9")).toThrow(/aspect/i);
+  });
+});
