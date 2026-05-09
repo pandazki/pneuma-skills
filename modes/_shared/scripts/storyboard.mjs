@@ -196,6 +196,192 @@ export function assemblePrompt({ userPrompt, grid, aspect, includeAnnotations })
 }
 
 // ---------------------------------------------------------------------------
+// .env loading (copied verbatim from generate_image.mjs; see that file
+// for the canonical version. Kept self-contained to match the
+// "each script is self-contained" pattern of _shared/scripts/.)
+// ---------------------------------------------------------------------------
+
+function findEnvFile() {
+  // 1. Check skill root directory (parent of scripts/)
+  const skillRoot = dirname(__dirname);
+  const skillEnv = join(skillRoot, ".env");
+  if (existsSync(skillEnv)) return skillEnv;
+
+  // 2. Fallback: search from cwd upward
+  let dir = process.cwd();
+  while (true) {
+    const envPath = join(dir, ".env");
+    if (existsSync(envPath)) return envPath;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+function loadEnvKeys() {
+  const keys = {};
+
+  // Check environment variables first
+  for (const name of ["FAL_KEY", "OPENROUTER_API_KEY"]) {
+    if (process.env[name]) keys[name] = process.env[name];
+  }
+
+  const envPath = findEnvFile();
+  if (!envPath) return keys;
+
+  const content = readFileSync(envPath, "utf-8");
+  for (const raw of content.split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eqIdx = line.indexOf("=");
+    if (eqIdx === -1) continue;
+    const key = line.slice(0, eqIdx).trim();
+    let value = line.slice(eqIdx + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if ((key === "FAL_KEY" || key === "OPENROUTER_API_KEY") && value && !keys[key]) {
+      keys[key] = value;
+    }
+  }
+  return keys;
+}
+
+// ---------------------------------------------------------------------------
+// fal.ai queue helper (no SDK — direct REST). Copied verbatim from
+// generate_image.mjs.
+// ---------------------------------------------------------------------------
+
+async function falSubscribe({ apiKey, appId, payload, tag }) {
+  const baseUrl = `https://queue.fal.run/${appId}`;
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Key ${apiKey}`,
+  };
+
+  console.error(`[${tag}] Sending request...`);
+  const submitResp = await fetch(baseUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!submitResp.ok) {
+    const text = await submitResp.text();
+    console.error(`ERROR: fal.ai submit returned ${submitResp.status}: ${text}`);
+    process.exit(1);
+  }
+
+  const submitJson = await submitResp.json();
+  const { request_id } = submitJson;
+  // Use the URLs fal returns in the submit response — for some endpoints
+  // (e.g. `openai/gpt-image-2/edit`) requests are queued under a parent
+  // path (`openai/gpt-image-2`), so building from appId 404s.
+  const statusUrl = submitJson.status_url ?? `${baseUrl}/requests/${request_id}/status`;
+  const responseUrl = submitJson.response_url ?? `${baseUrl}/requests/${request_id}`;
+  const seenLogs = new Set();
+
+  while (true) {
+    const statusResp = await fetch(`${statusUrl}?logs=1`, { headers });
+    if (!statusResp.ok) {
+      const text = await statusResp.text();
+      console.error(`ERROR: fal.ai status returned ${statusResp.status}: ${text}`);
+      process.exit(1);
+    }
+    const status = await statusResp.json();
+    if (Array.isArray(status.logs)) {
+      for (const log of status.logs) {
+        const key = `${log.timestamp ?? ""}|${log.message ?? ""}`;
+        if (!seenLogs.has(key)) {
+          seenLogs.add(key);
+          console.error(`  [log] ${log.message}`);
+        }
+      }
+    }
+    if (status.status === "COMPLETED") break;
+    if (status.status === "FAILED") {
+      console.error(`ERROR: fal.ai generation failed: ${status.error ?? "unknown"}`);
+      process.exit(1);
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+
+  const resultResp = await fetch(responseUrl, { headers });
+  if (!resultResp.ok) {
+    const text = await resultResp.text();
+    console.error(`ERROR: fal.ai result returned ${resultResp.status}: ${text}`);
+    process.exit(1);
+  }
+  return await resultResp.json();
+}
+
+// ---------------------------------------------------------------------------
+// Composite generation
+// ---------------------------------------------------------------------------
+
+async function downloadComposite(result, outputFormat, outputDir, tag) {
+  mkdirSync(outputDir, { recursive: true });
+  const images = Array.isArray(result.images) ? result.images : [];
+  if (images.length === 0) {
+    console.error(`ERROR: fal.ai returned no images for ${tag}`);
+    process.exit(1);
+  }
+  const url = images[0].url;
+  const filepath = join(outputDir, `composite.${outputFormat}`);
+  const imgResp = await fetch(url);
+  if (!imgResp.ok) {
+    console.error(`ERROR: download failed ${imgResp.status} for ${url}`);
+    process.exit(1);
+  }
+  writeFileSync(filepath, Buffer.from(await imgResp.arrayBuffer()));
+  console.error(`[${tag}] composite saved: ${filepath}`);
+  return { filepath, url };
+}
+
+async function generateComposite({
+  apiKey, finalPrompt, imageSize, refs, quality, outputFormat, outputDir,
+}) {
+  const isEdit = Array.isArray(refs) && refs.length > 0;
+  const appId = isEdit ? "openai/gpt-image-2/edit" : "openai/gpt-image-2";
+  const tag = isEdit ? "fal:gpt-image-2/edit" : "fal:gpt-image-2";
+
+  const payload = {
+    prompt: finalPrompt,
+    num_images: 1,
+    quality,
+    output_format: outputFormat,
+    image_size: imageSize.preset,
+  };
+  if (isEdit) {
+    payload.image_urls = refs;
+  }
+
+  const result = await falSubscribe({ apiKey, appId, payload, tag });
+  const { filepath, url } = await downloadComposite(result, outputFormat, outputDir, tag);
+  return { compositePath: filepath, compositeUrl: url, endpoint: appId };
+}
+
+// Reject local file paths in --ref. The fal.ai edit endpoint requires
+// remote URLs (or data: URLs) for image_urls; for v1 we don't auto-upload.
+function validateRefs(refs) {
+  if (!Array.isArray(refs)) return;
+  for (const ref of refs) {
+    if (!ref) continue;
+    const isHttp = ref.startsWith("http://") || ref.startsWith("https://");
+    const isData = ref.startsWith("data:");
+    if (!isHttp && !isData) {
+      console.error(
+        `ERROR: --ref '${ref}' must be an http(s) URL or data: URI. Local file paths are not supported in v1 — upload first and pass the URL.`,
+      );
+      process.exit(1);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // CLI entry detection — guard so test imports don't trigger side effects.
 // ---------------------------------------------------------------------------
 
