@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useSetupListing } from "./useSetupListing.js";
 import { BibleSection } from "./BibleSection.js";
+import { CardSection } from "./CardSection.js";
 import { theme } from "../theme/tokens.js";
 
 /**
@@ -78,7 +79,38 @@ export function SetupTab() {
       )}
 
       <BibleSection bible={data?.bible ?? null} workspaceUrl={workspaceUrl} />
-      {/* Cast / Settings / Storyboards sections are wired in subsequent tasks. */}
+      <CardSection
+        title="Cast"
+        cards={data?.cast ?? []}
+        workspaceUrl={workspaceUrl}
+        emptyHint={
+          <>
+            <strong style={{ color: theme.color.ink1 }}>
+              No character cards yet.
+            </strong>{" "}
+            Ask the agent: <em>“add a character card for [name]”</em>. A
+            character card is the durable reference image + bible that every
+            later shot prompt cites — the consistency engine for multi-shot
+            work.
+          </>
+        }
+      />
+      <CardSection
+        title="Settings"
+        cards={data?.world ?? []}
+        workspaceUrl={workspaceUrl}
+        emptyHint={
+          <>
+            <strong style={{ color: theme.color.ink1 }}>
+              No setting cards yet.
+            </strong>{" "}
+            Ask the agent: <em>“add a setting card for [location or signature
+            prop]”</em>. Used when a location or prop should look identical
+            across multiple shots.
+          </>
+        }
+      />
+      {/* StoryboardSection is wired in Task 7. */}
     </div>
   );
 }
