@@ -297,11 +297,14 @@ function buildCurrentSkillSection(
 
   lines.push("");
 
-  // Embed the claudeMdSection (the hook injected into CLAUDE.md)
+  // Embed the claudeMdSection (the hook injected into the active backend's
+  // instructions file). Field name is historical (claude-only when introduced)
+  // but it now flows into whichever instructions file the active backend reads.
   if (manifest.skill.claudeMdSection) {
-    lines.push("### claudeMdSection (injected into CLAUDE.md)");
+    const conventions = getInstallConventions(backendType);
+    lines.push(`### claudeMdSection (injected into ${conventions.instructionsFile})`);
     lines.push("");
-    lines.push("This is the short prompt injected into the workspace's CLAUDE.md. It directs the main agent to consult the skill.");
+    lines.push(`This is the short prompt injected into the workspace's ${conventions.instructionsFile}. It directs the main agent to consult the skill.`);
     lines.push("");
     lines.push("```markdown");
     lines.push(manifest.skill.claudeMdSection.trimEnd());
@@ -533,9 +536,11 @@ function buildSystemContext(backendType?: string): string {
   const conventions = getInstallConventions(backendType);
   const skillsRoot = `${conventions.skillsDir}/`;
   const instructionsFile = conventions.instructionsFile;
+  // replaceAll — the template currently has one occurrence of each token but
+  // future edits may add more; defensive substitution prevents silent token leak.
   return SYSTEM_CONTEXT_TEMPLATE
-    .replace("{{skillsRoot}}", skillsRoot)
-    .replace("{{instructionsFile}}", instructionsFile);
+    .replaceAll("{{skillsRoot}}", skillsRoot)
+    .replaceAll("{{instructionsFile}}", instructionsFile);
 }
 
 const SYSTEM_CONTEXT_TEMPLATE = `# Pneuma Skill Evolution Agent

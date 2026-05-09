@@ -757,7 +757,10 @@ async function handleEvolveCommand(args: string[]) {
   mkdirSync(pneumaDir, { recursive: true });
   writeFileSync(join(pneumaDir, "config.json"), JSON.stringify(metadata, null, 2));
 
-  // 3a. Install target mode's skill (so agent can read the current skill to augment)
+  // 3a. Install target mode's skill (so agent can read the current skill to augment).
+  // CRITICAL: pass backendType so skills land at the path the spawned agent will
+  // actually read (`.claude/skills/` for claude-code, `.agents/skills/` for codex).
+  // Without this, codex evolve boots into an empty workspace.
   const targetModeSourceDir = resolved.type === "builtin"
     ? join(PROJECT_ROOT, "modes", resolved.name)
     : resolved.path;
@@ -766,6 +769,7 @@ async function handleEvolveCommand(args: string[]) {
     skillConfig: manifest.skill,
     modeSourceDir: targetModeSourceDir,
     displayName: manifest.displayName,
+    backendType,
   });
 
   // 3b. Install evolve skill (so agent has dashboard context in SKILL.md)
@@ -778,6 +782,7 @@ async function handleEvolveCommand(args: string[]) {
     params: {},
     viewerApi: evolveManifest.viewerApi,
     displayName: evolveManifest.displayName,
+    backendType,
   });
 
   // 4. Determine dev vs production mode
