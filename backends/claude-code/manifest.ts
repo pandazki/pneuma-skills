@@ -30,7 +30,7 @@ export const claudeCodeModule: BackendModule = {
   },
 
   defaultModels: [
-    { id: "claude-opus-4-6", label: "Opus", icon: "O" },
+    { id: "claude-opus-4-7", label: "Opus", icon: "O" },
     { id: "claude-sonnet-4-6", label: "Sonnet", icon: "S" },
     { id: "claude-haiku-4-5-20251001", label: "Haiku", icon: "H" },
   ],
