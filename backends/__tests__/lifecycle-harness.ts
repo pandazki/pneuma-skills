@@ -501,6 +501,10 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
       "session_init",
     );
     expect(init.type).toBe("session_init");
+    // Pin that the backend really did launch (catches a regression where a
+    // future refactor moves launch() out of createScenarioContext without
+    // updating this scenario — boot would silently become a no-op observation).
+    expect(ctx.backend.isAlive(ctx.sessionId)).toBe(true);
     if (init.type === "session_init") {
       // model is non-empty for claude-code (from system.init); for codex it
       // ships in session_update; for kimi we synthesize "kimi" at attach.
