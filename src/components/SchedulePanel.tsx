@@ -55,10 +55,14 @@ function versionCompare(a: string, b: string): number {
 export default function SchedulePanel() {
   const cronJobs = useStore((s) => s.cronJobs);
   const turnInProgress = useStore((s) => s.turnInProgress);
-  const backendType = useStore((s) => s.session?.backend_type);
+  const scheduleAvailable = useStore((s) => s.session?.agent_capabilities?.scheduling ?? false);
   const agentVersion = useStore((s) => s.session?.agent_version || s.session?.claude_code_version);
-  const isClaudeBackend = !backendType || backendType === "claude-code";
-  const needsUpgrade = isClaudeBackend && agentVersion ? versionCompare(agentVersion, MIN_CC_VERSION) < 0 : false;
+  // The version-upgrade banner is specific to the Claude Code cron tools,
+  // which are the only scheduling implementation today. If a future backend
+  // also declares `scheduling: true` it'll need its own version gate — for
+  // now, "scheduling capability + claude_code_version present" is a safe
+  // proxy for "the Claude cron tools are in play".
+  const needsUpgrade = scheduleAvailable && agentVersion ? versionCompare(agentVersion, MIN_CC_VERSION) < 0 : false;
 
   const handleDelete = (jobId: string) => {
     sendUserMessage(`Please cancel the scheduled job with id "${jobId}" using CronDelete.`);
@@ -77,7 +81,7 @@ export default function SchedulePanel() {
         </span>
         <button
           onClick={handleRefresh}
-          disabled={turnInProgress || needsUpgrade || !isClaudeBackend}
+          disabled={turnInProgress || needsUpgrade || !scheduleAvailable}
           className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400
             hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -86,7 +90,7 @@ export default function SchedulePanel() {
       </div>
 
       {/* Version warning */}
-      {!isClaudeBackend && (
+      {!scheduleAvailable && (
         <div className="mx-3 mt-3 px-3 py-2.5 rounded-lg bg-neutral-800/40 border border-neutral-700/80">
           <div className="text-xs font-medium text-neutral-300 mb-1">
             Backend-specific feature

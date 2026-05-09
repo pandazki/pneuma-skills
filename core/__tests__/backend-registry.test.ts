@@ -20,7 +20,7 @@ describe("backend registry", () => {
       {
         type: "codex",
         label: "Codex",
-        description: "OpenAI Codex CLI via app-server transport.",
+        description: "OpenAI Codex CLI via app-server JSON-RPC over stdio.",
         implemented: true,
       },
       {
@@ -47,6 +47,9 @@ describe("backend registry", () => {
       permissions: true,
       toolProgress: true,
       modelSwitch: true,
+      scheduling: true,
+      costTracking: true,
+      contextWindow: true,
     });
 
     expect(getBackendCapabilities("codex")).toEqual({

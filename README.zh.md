@@ -81,12 +81,12 @@ agent 干活的 30–60 秒里，loading 槽位会变成一段 10 帧的 carouse
 | Windows ARM64 | [`.exe`](https://github.com/pandazki/pneuma-skills/releases/latest) |
 | Linux x64 | [`.AppImage`](https://github.com/pandazki/pneuma-skills/releases/latest) / [`.deb`](https://github.com/pandazki/pneuma-skills/releases/latest) |
 
-桌面应用自带 Bun，无需另装 runtime。装好 [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) 即可使用。Launcher 里会列出可用后端，目前 Claude Code 与 Codex 都已实现。
+桌面应用自带 Bun，无需另装 runtime。装好 [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) 即可使用。Launcher 里会列出可用后端，目前 Claude Code、Codex、Moonshot Kimi 三个后端都已实现。
 
 ### 命令行
 
 ```bash
-# 前置：Bun >= 1.3.5、Claude Code CLI 和/或 Codex CLI
+# 前置：Bun >= 1.3.5，及以下任一 CLI：Claude Code CLI / Codex CLI / Kimi CLI
 
 # 打开 Launcher（市场化 UI）
 bunx pneuma-skills
@@ -139,7 +139,7 @@ Modes:
 Options:
   --workspace <path>   工作区目录（默认：cwd）
   --port <number>      服务端口（默认：17996）
-  --backend <type>     启动期选后端（claude-code | codex）
+  --backend <type>     启动期选后端（claude-code | codex | kimi-cli）
   --project <path>     作为该项目的会话运行
   --session-id <id>    按 id 恢复一个项目内会话（与 --project 配合）
   --session-name <s>   自定义会话显示名
@@ -227,7 +227,7 @@ Pneuma 的 agent 记得你是谁。每个 mode 都自带一份偏好 skill，让
 
 偏好文件是活文档 —— 整体重写，不是 append-only 日志。矛盾会被保留，不会被强行调和。所有内容都可删除。Agent 是在时间维度上慢慢搭建理解，不是在堆标签数据库。
 
-**冷启动小窍门：** 如果你已经用 Claude Code 干过不少活，可以在任何 mode 里跟 agent 说："*把我所有的会话历史扫一遍，做一次完整的偏好刷新。*" agent 会扫过你过去的 Pneuma 会话，把模式和偏好抽出来，一次性给你画好画像 —— 你可能会被它注意到的东西惊到。Claude Code 和 Codex 后端都支持。
+**冷启动小窍门：** 如果你已经用 Claude Code 干过不少活，可以在任何 mode 里跟 agent 说："*把我所有的会话历史扫一遍，做一次完整的偏好刷新。*" agent 会扫过你过去的 Pneuma 会话，把模式和偏好抽出来，一次性给你画好画像 —— 你可能会被它注意到的东西惊到。Claude Code、Codex、Kimi 后端都支持。
 
 ## Projects (3.0)
 
@@ -260,7 +260,7 @@ Pneuma 支持在 session 之上的可选 Project 层 —— 用来锚定**一件
 | 视频 | [Remotion](https://www.remotion.dev) 4.0 + @remotion/player + @babel/standalone |
 | 节点画布 | [@xyflow/react](https://reactflow.dev) 12（Illustrate mode） |
 | 文件监听 | [chokidar](https://github.com/paulmillr/chokidar) 5 |
-| Agent | Claude Code CLI 走 stdio stream-json（`-p --input-format/--output-format stream-json`）；Codex CLI 走 app-server stdio JSON-RPC |
+| Agent | Claude Code CLI 走 stdio stream-json（`-p --input-format/--output-format stream-json`）；Codex CLI 走 app-server stdio JSON-RPC；Moonshot Kimi CLI 走 stdio stream-json（`kimi --print …`） |
 
 ## 后端模型
 

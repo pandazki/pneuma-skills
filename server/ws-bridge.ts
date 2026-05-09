@@ -85,40 +85,61 @@ export class WsBridge {
   }
 
   /**
-   * Build the cross-cutting deps every `BridgeBackend` needs. Cheap to call
-   * per-attach; closes over the bridge instance so per-backend handlers don't
-   * have to know about the bridge's internals.
+   * Build the cross-cutting deps every `BridgeBackend` needs. Public so the
+   * CLI launcher (`bin/pneuma.ts`) can hand them to
+   * `BackendModule.createBridgeBackend()` — the polymorphic path that replaced
+   * the per-backend `attach*Adapter` switches. Cheap to call per-attach;
+   * closes over the bridge instance so per-backend handlers don't have to
+   * know about the bridge's internals.
    */
-  private bridgeBackendDeps(): BridgeBackendDeps {
+  bridgeBackendDeps(): BridgeBackendDeps {
     return {
       broadcastToBrowsers: (s, msg) => this.broadcastToBrowsers(s, msg),
       workspace: this.workspace,
       onAgentSessionId: (sessionId, agentSessionId) => {
         if (this.onCLISessionId) this.onCLISessionId(sessionId, agentSessionId);
       },
+      getOrCreateSession: (sessionId, backendType) =>
+        this.getOrCreateSession(sessionId, backendType),
     };
   }
 
   /**
+   * Polymorphic attach for any `BridgeBackend` (codex, kimi-cli, …). Built
+   * by `BackendModule.createBridgeBackend()` and handed in here so the bridge
+   * never has to ask "which backend is this?" — the only place left that
+   * does per-backend wiring is the manifest itself.
+   *
+   * The legacy `attachCodexAdapter` / `attachKimiAdapter` helpers below are
+   * thin wrappers that build the bridge inline; they're retained for tests
+   * (`server/__tests__/ws-bridge-{codex,kimi}.test.ts`) that want to attach
+   * a fake adapter without standing up the whole `BackendModule`.
+   */
+  attachStreamingBackend(sessionId: string, bridgeBackend: BridgeBackend): void {
+    this.streamingBackends.set(sessionId, bridgeBackend);
+    bridgeBackend.attach();
+  }
+
+  /**
    * Attach a Codex adapter — wraps it in a `CodexBridge` and registers it as
-   * the active streaming backend for the session.
+   * the active streaming backend for the session. Test-friendly entry point
+   * that bypasses `BackendModule.createBridgeBackend()`.
    */
   attachCodexAdapter(sessionId: string, adapter: CodexAdapter): void {
     const session = this.getOrCreateSession(sessionId, "codex");
     const bridge = new CodexBridge(sessionId, session, adapter, this.bridgeBackendDeps());
-    this.streamingBackends.set(sessionId, bridge);
-    bridge.attach();
+    this.attachStreamingBackend(sessionId, bridge);
   }
 
   /**
    * Attach a Kimi adapter — wraps it in a `KimiBridge` and registers it as
-   * the active streaming backend for the session.
+   * the active streaming backend for the session. Test-friendly entry point
+   * that bypasses `BackendModule.createBridgeBackend()`.
    */
   attachKimiAdapter(sessionId: string, adapter: KimiAdapter): void {
     const session = this.getOrCreateSession(sessionId, "kimi-cli");
     const bridge = new KimiBridge(sessionId, session, adapter, this.bridgeBackendDeps());
-    this.streamingBackends.set(sessionId, bridge);
-    bridge.attach();
+    this.attachStreamingBackend(sessionId, bridge);
   }
 
   /** Backwards-compat predicates kept for the few callers that gate on backend identity. */

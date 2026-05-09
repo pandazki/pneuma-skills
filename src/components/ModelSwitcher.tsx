@@ -1,18 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useStore } from "../store.js";
 import { sendSetModel } from "../ws.js";
-
-interface ModelOption {
-  id: string;
-  label: string;
-  icon: string;
-}
-
-const CLAUDE_MODELS: ModelOption[] = [
-  { id: "claude-opus-4-6", label: "Opus", icon: "O" },
-  { id: "claude-sonnet-4-6", label: "Sonnet", icon: "S" },
-  { id: "claude-haiku-4-5-20251001", label: "Haiku", icon: "H" },
-];
+import type { ModelOption } from "../../core/types/agent-backend.js";
 
 /** Derive a short icon string from a model id. */
 function modelIcon(id: string): string {
@@ -47,12 +36,16 @@ function modelDisplay(modelId: string, models: ModelOption[]): { label: string; 
 export default function ModelSwitcher() {
   const model = useStore((s) => s.session?.model ?? "");
   const canSwitchModel = useStore((s) => s.session?.agent_capabilities?.modelSwitch ?? false);
-  const backendType = useStore((s) => s.session?.backend_type ?? "claude-code");
   const availableModels = useStore((s) => s.session?.available_models);
+  // Static fallback list shipped by the backend manifest. Backends that emit
+  // their own list dynamically (codex, kimi-cli) leave this undefined; the
+  // dynamic `available_models` branch above takes precedence either way.
+  const defaultModels = useStore((s) => s.session?.default_models);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Build model options: use dynamic list from backend if available, else fallback
+  // Build model options: use dynamic list from backend if available, else
+  // fall back to the manifest-declared static list, else just show current.
   const models: ModelOption[] = useMemo(() => {
     if (availableModels && availableModels.length > 0) {
       return availableModels.map((m) => ({
@@ -61,11 +54,9 @@ export default function ModelSwitcher() {
         icon: modelIcon(m.id),
       }));
     }
-    // Fallback for Claude (which doesn't send available_models)
-    if (backendType === "claude-code") return CLAUDE_MODELS;
-    // Unknown backend with no model list — show current model only
+    if (defaultModels && defaultModels.length > 0) return defaultModels;
     return model ? [{ id: model, label: modelLabel(model), icon: modelIcon(model) }] : [];
-  }, [availableModels, backendType, model]);
+  }, [availableModels, defaultModels, model]);
 
   const current = useMemo(() => modelDisplay(model, models), [model, models]);
 

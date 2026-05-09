@@ -103,10 +103,16 @@ function SessionInfo() {
   const session = useStore((s) => s.session);
   if (!session) return null;
 
+  // Cost is gated on capability (claude-code-only today). Context-window % is
+  // populated by any backend that reports it (claude-code, codex) — let the
+  // `> 0` self-suppression decide visibility instead of a capability gate, so
+  // we don't accidentally hide a value the backend is actually shipping.
+  const costTracking = session.agent_capabilities?.costTracking ?? false;
+
   return (
     <div className="flex items-center gap-2 text-xs text-cc-muted">
       <span>{session.model || "no model"}</span>
-      {session.backend_type === "claude-code" && session.total_cost_usd > 0 && (
+      {costTracking && session.total_cost_usd > 0 && (
         <>
           <span className="text-cc-border">&middot;</span>
           <span>${session.total_cost_usd.toFixed(4)}</span>

@@ -3,7 +3,7 @@
 // backend identity and capability flags so the UI does not depend on Claude-only assumptions.
 
 import type { AgentBackendType } from "../core/types/agent-backend.js";
-import type { AgentCapabilities } from "../core/types/agent-backend.js";
+import type { AgentCapabilities, ModelOption } from "../core/types/agent-backend.js";
 
 // ─── CLI Message Types (NDJSON from Claude Code CLI) ──────────────────────────
 
@@ -431,6 +431,14 @@ export interface SessionState {
   total_lines_removed: number;
   /** Available models for switching (populated by backends that support model/list). */
   available_models?: { id: string; name?: string }[];
+  /**
+   * Static fallback model list shipped by the backend manifest
+   * (`BackendModule.defaultModels`). Used by the model switcher when
+   * the backend doesn't emit `available_models` over the wire (notably
+   * claude-code, whose model list is a manifest constant). May be
+   * undefined for backends that always supply `available_models`.
+   */
+  default_models?: ModelOption[];
   pid?: number;
   fast_mode_state?: unknown;
   /**

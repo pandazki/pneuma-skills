@@ -13,7 +13,8 @@ import { existsSync, copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSyn
 import { homedir, tmpdir } from "node:os";
 import * as p from "@clack/prompts";
 import { startServer } from "../server/index.js";
-import { createBackend, getDefaultBackendType } from "../backends/index.js";
+import { createBackend, getDefaultBackendType, getBackendModule } from "../backends/index.js";
+import { ClaudeCodeBackend } from "../backends/claude-code/index.js";
 import { installSkill, readInboundHandoff, type InboundHandoffPayload } from "../server/skill-installer.js";
 import { buildEnvTag } from "./env-tag.js";
 import { startFileWatcher } from "../server/file-watcher.js";
@@ -24,7 +25,6 @@ import type { AgentBackendType } from "../core/types/agent-backend.js";
 import { applyTemplateParams } from "../server/skill-installer.js";
 import { resolveMode as resolveModeSource, isExternalMode } from "../core/mode-resolver.js";
 import type { ResolvedMode } from "../core/mode-resolver.js";
-import { resolveBinary } from "../server/path-resolver.js";
 import {
   normalizePersistedSession,
   normalizeSessionRecord,
@@ -58,14 +58,16 @@ const PROJECT_ROOT = resolve(dirname(import.meta.path), "..");
  * round-trip. Must run BEFORE `backend.launch()` because the launcher
  * fires its `onConnect` callback synchronously inside spawn.
  *
- * No-op when the backend is anything other than claude-code.
+ * No-op when the backend is anything other than claude-code — every other
+ * backend uses its own `BridgeBackend` (codex/kimi) instead of the legacy
+ * stdio-NDJSON path. Identity is checked via `instanceof` so this stays
+ * the only place in the launcher that has to know about claude-code's
+ * concrete class.
  */
-async function wireClaudeCodeStdio(
+function wireClaudeCodeStdio(
   backend: ReturnType<typeof createBackend>,
   wsBridge: import("../server/ws-bridge.js").WsBridge,
-): Promise<void> {
-  if (backend.name !== "claude-code") return;
-  const { ClaudeCodeBackend } = await import("../backends/claude-code/index.js");
+): void {
   if (!(backend instanceof ClaudeCodeBackend)) return;
   backend.setStreamHandlers({
     onMessage: (sid, line) => wsBridge.feedCLIMessage(sid, line),
@@ -73,6 +75,32 @@ async function wireClaudeCodeStdio(
       wsBridge.attachCLITransport(sid, { send: sendInput, close }),
     onDisconnect: (sid) => wsBridge.detachCLITransport(sid),
   });
+}
+
+/**
+ * Build and attach the streaming `BridgeBackend` for backends that don't use
+ * the legacy stdio-NDJSON path (codex, kimi-cli). Returns silently for
+ * claude-code, whose `BackendModule.createBridgeBackend()` returns `null`.
+ *
+ * MUST run after `backend.launch()` — the codex/kimi manifests look up the
+ * adapter via `backend.getAdapter(sessionId)` and that adapter is only
+ * registered as part of the launch path.
+ */
+function attachBridgeBackend(
+  backendType: AgentBackendType,
+  backend: ReturnType<typeof createBackend>,
+  sessionId: string,
+  wsBridge: import("../server/ws-bridge.js").WsBridge,
+): void {
+  const module = getBackendModule(backendType);
+  const bridgeBackend = module.createBridgeBackend(
+    wsBridge.bridgeBackendDeps(),
+    backend,
+    sessionId,
+  );
+  if (bridgeBackend) {
+    wsBridge.attachStreamingBackend(sessionId, bridgeBackend);
+  }
 }
 
 // ── Session persistence ──────────────────────────────────────────────────────
@@ -468,50 +496,18 @@ async function checkForUpdate(currentVersion: string) {
 }
 
 function checkBackendRequirements(backendType: AgentBackendType) {
-  if (backendType === "claude-code") {
-    const resolved = resolveBinary("claude");
-    if (!resolved) {
-      p.cancel(
-        "Claude Code CLI not found.\n" +
-        "  Pneuma requires Claude Code to be installed and authenticated.\n" +
-        "  Install: curl -fsSL https://claude.ai/install.sh | bash\n" +
-        "  Quickstart: https://code.claude.com/docs/en/quickstart"
-      );
-      process.exit(1);
-    }
-    return;
+  // Each backend's manifest carries its own binary name + install hint, so
+  // the launcher just dispatches through the registry — no per-backend
+  // branches survive here. Adding a new backend means writing a manifest;
+  // this function never has to change.
+  const module = getBackendModule(backendType);
+  const result = module.checkRequirements();
+  if (!result.ok) {
+    p.cancel(
+      `${module.label} is required but unavailable.\n${result.reason ?? "(no detail provided)"}`,
+    );
+    process.exit(1);
   }
-
-  if (backendType === "codex") {
-    const resolved = resolveBinary("codex");
-    if (!resolved) {
-      p.cancel(
-        "Codex CLI not found.\n" +
-        "  Pneuma requires Codex to be installed and authenticated.\n" +
-        "  Install: npm install -g @openai/codex"
-      );
-      process.exit(1);
-    }
-    return;
-  }
-
-  if (backendType === "kimi-cli") {
-    const resolved = resolveBinary("kimi");
-    if (!resolved) {
-      p.cancel(
-        "Kimi CLI not found.\n" +
-        "  Pneuma requires Kimi CLI to be installed and authenticated.\n" +
-        "  Install: uv tool install kimi-cli\n" +
-        "  Then run: kimi login\n" +
-        "  Docs: https://moonshotai.github.io/kimi-cli/"
-      );
-      process.exit(1);
-    }
-    return;
-  }
-
-  p.cancel(`Backend "${backendType}" is not implemented yet.`);
-  process.exit(1);
 }
 
 async function handleEvolveCommand(args: string[]) {
@@ -753,15 +749,18 @@ async function handleEvolveCommand(args: string[]) {
 
   // 2. Build evolution prompt + metadata, save metadata as initParams
   const { buildEvolutionPrompt, buildEvolutionMetadata } = await import("../server/evolution-agent.js");
-  const evolutionPrompt = await buildEvolutionPrompt({ workspace, manifest });
-  const metadata = buildEvolutionMetadata({ workspace, manifest });
+  const evolutionPrompt = await buildEvolutionPrompt({ workspace, manifest, backendType });
+  const metadata = buildEvolutionMetadata({ workspace, manifest, backendType });
 
   // Save metadata to .pneuma/config.json so the viewer dashboard can read it
   const pneumaDir = join(workspace, ".pneuma");
   mkdirSync(pneumaDir, { recursive: true });
   writeFileSync(join(pneumaDir, "config.json"), JSON.stringify(metadata, null, 2));
 
-  // 3a. Install target mode's skill (so agent can read the current skill to augment)
+  // 3a. Install target mode's skill (so agent can read the current skill to augment).
+  // CRITICAL: pass backendType so skills land at the path the spawned agent will
+  // actually read (`.claude/skills/` for claude-code, `.agents/skills/` for codex).
+  // Without this, codex evolve boots into an empty workspace.
   const targetModeSourceDir = resolved.type === "builtin"
     ? join(PROJECT_ROOT, "modes", resolved.name)
     : resolved.path;
@@ -770,6 +769,7 @@ async function handleEvolveCommand(args: string[]) {
     skillConfig: manifest.skill,
     modeSourceDir: targetModeSourceDir,
     displayName: manifest.displayName,
+    backendType,
   });
 
   // 3b. Install evolve skill (so agent has dashboard context in SKILL.md)
@@ -782,6 +782,7 @@ async function handleEvolveCommand(args: string[]) {
     params: {},
     viewerApi: evolveManifest.viewerApi,
     displayName: evolveManifest.displayName,
+    backendType,
   });
 
   // 4. Determine dev vs production mode
@@ -804,7 +805,7 @@ async function handleEvolveCommand(args: string[]) {
 
   // 6. Launch agent via the selected backend (fresh session, bypassPermissions)
   const backend = createBackend(backendType, actualPort);
-  await wireClaudeCodeStdio(backend, wsBridge);
+  wireClaudeCodeStdio(backend, wsBridge);
   const agentEnv: Record<string, string> = {};
   if (projectRoot) agentEnv.PNEUMA_PROJECT_ROOT = projectRoot;
   const session = backend.launch({
@@ -816,37 +817,10 @@ async function handleEvolveCommand(args: string[]) {
   p.log.info(`Agent session: ${session.sessionId}`);
   wsBridge.getOrCreateSession(session.sessionId, backendType);
 
-  // Wire Codex adapter if applicable
-  if (backendType === "codex") {
-    const { CodexBackend } = await import("../backends/codex/index.js");
-    if (backend instanceof CodexBackend) {
-      const existingAdapter = backend.getAdapter(session.sessionId);
-      if (existingAdapter) {
-        wsBridge.attachCodexAdapter(session.sessionId, existingAdapter);
-      }
-      backend.onAdapterCreated((sid, adapter) => {
-        if (sid === session.sessionId) {
-          wsBridge.attachCodexAdapter(sid, adapter);
-        }
-      });
-    }
-  }
-
-  // Wire Kimi adapter if applicable
-  if (backendType === "kimi-cli") {
-    const { KimiCliBackend } = await import("../backends/kimi-cli/index.js");
-    if (backend instanceof KimiCliBackend) {
-      const existingAdapter = backend.getAdapter(session.sessionId);
-      if (existingAdapter) {
-        wsBridge.attachKimiAdapter(session.sessionId, existingAdapter);
-      }
-      backend.onAdapterCreated((sid, adapter) => {
-        if (sid === session.sessionId) {
-          wsBridge.attachKimiAdapter(sid, adapter);
-        }
-      });
-    }
-  }
+  // Wire the streaming `BridgeBackend` for codex / kimi via the manifest. For
+  // claude-code (which uses the legacy stdio path) `createBridgeBackend()`
+  // returns null and `attachBridgeBackend` is a no-op.
+  attachBridgeBackend(backendType, backend, session.sessionId, wsBridge);
 
   // 7. Inject evolution prompt as greeting (dynamic, not from manifest)
   wsBridge.injectGreeting(session.sessionId, evolutionPrompt);
@@ -910,6 +884,12 @@ async function main() {
   }
 
   if (parsedArgs.showHelp) {
+    // Pull the list of available backends straight from the registry so the
+    // help text never drifts from what `--backend` actually accepts. Adding
+    // a new backend updates this line automatically.
+    const { getAllBackendModules } = await import("../backends/index.js");
+    const backendList = getAllBackendModules().map((m) => m.type).join(", ");
+    const defaultBackend = getDefaultBackendType();
     console.log(`pneuma-skills [mode] [options]
 
 Modes:
@@ -928,7 +908,7 @@ Modes:
 Options:
   --workspace <path>           Target workspace directory (default: cwd)
   --port <number>              Preferred server port
-  --backend <type>             Agent backend to launch (default: claude-code)
+  --backend <type>             Agent backend (${backendList}; default: ${defaultBackend})
   --no-open                    Don't auto-open the browser
   --no-prompt                  Non-interactive mode
   --skip-skill                 Skip skill installation
@@ -1409,7 +1389,7 @@ Options:
       const pneumaBin = join(PROJECT_ROOT, "bin", "pneuma.ts");
       for (const rec of appRecords) {
         const launchArgs = ["bun", pneumaBin, rec.mode, "--workspace", rec.workspace, "--viewing", "--no-prompt", "--no-open"];
-        launchArgs.push("--backend", rec.backendType || "claude-code");
+        launchArgs.push("--backend", rec.backendType || getDefaultBackendType());
         if (debug) launchArgs.push("--debug");
         if (isDev) launchArgs.push("--dev");
 
@@ -2060,7 +2040,7 @@ Options:
       // Initialize shadow-git for new session (prepareWorkspaceForContinue already does this)
       // Launch agent backend
       backend = createBackend(backendType, actualPort);
-      await wireClaudeCodeStdio(backend, wsBridge);
+      wireClaudeCodeStdio(backend, wsBridge);
       const agentEnv: Record<string, string> = {
         PNEUMA_API: `http://localhost:${actualPort}`,
         ...pneumaEnv,
@@ -2095,29 +2075,9 @@ Options:
         }
       });
 
-      // Wire Codex adapter if needed
-      if (backendType === "codex") {
-        const { CodexBackend } = await import("../backends/codex/index.js");
-        if (backend instanceof CodexBackend) {
-          const existingAdapter = backend.getAdapter(sessionId);
-          if (existingAdapter) wsBridge.attachCodexAdapter(sessionId, existingAdapter);
-          backend.onAdapterCreated((sid, adapter) => {
-            if (sid === sessionId) wsBridge.attachCodexAdapter(sid, adapter);
-          });
-        }
-      }
-
-      // Wire Kimi adapter if needed
-      if (backendType === "kimi-cli") {
-        const { KimiCliBackend } = await import("../backends/kimi-cli/index.js");
-        if (backend instanceof KimiCliBackend) {
-          const existingAdapter = backend.getAdapter(sessionId);
-          if (existingAdapter) wsBridge.attachKimiAdapter(sessionId, existingAdapter);
-          backend.onAdapterCreated((sid, adapter) => {
-            if (sid === sessionId) wsBridge.attachKimiAdapter(sid, adapter);
-          });
-        }
-      }
+      // Wire the streaming `BridgeBackend` (codex / kimi) via the manifest.
+      // No-op for claude-code (handled by `wireClaudeCodeStdio` above).
+      attachBridgeBackend(backendType, backend, sessionId, wsBridge);
 
       // Persist session (keep same sessionId)
       saveSession(stateDir, {
@@ -2199,60 +2159,17 @@ Options:
       });
     };
 
-    // Helper: wire Codex adapter if needed
-    const wireCodexAdapter = async (sid: string) => {
-      if (sessionBackendType === "codex") {
-        const { CodexBackend } = await import("../backends/codex/index.js");
-        if (backend instanceof CodexBackend) {
-          const existingAdapter = backend.getAdapter(sid);
-          if (existingAdapter) {
-            wsBridge.attachCodexAdapter(sid, existingAdapter);
-          }
-          backend.onAdapterCreated((adapterId, adapter) => {
-            if (adapterId === sid) wsBridge.attachCodexAdapter(adapterId, adapter);
-          });
-        }
-      }
-    };
-
-    // Helper: wire Kimi adapter if needed
-    const wireKimiAdapter = async (sid: string) => {
-      if (sessionBackendType === "kimi-cli") {
-        const { KimiCliBackend } = await import("../backends/kimi-cli/index.js");
-        if (backend instanceof KimiCliBackend) {
-          const existingAdapter = backend.getAdapter(sid);
-          if (existingAdapter) {
-            wsBridge.attachKimiAdapter(sid, existingAdapter);
-          }
-          backend.onAdapterCreated((adapterId, adapter) => {
-            if (adapterId === sid) wsBridge.attachKimiAdapter(adapterId, adapter);
-          });
-        }
-      }
-    };
-
-    // Helper: wire agent exit handler
+    // Helper: wire agent exit handler. The exit message is generic — the
+    // install detail lives in the backend's manifest (`installHint`) and is
+    // surfaced when the binary is missing at startup, not on every crash.
     const wireAgentExitHandler = (agentSessionId: string, resuming: boolean) => {
+      const sessionModule = getBackendModule(sessionBackendType);
       backend!.onSessionExited((exitedId, exitCode) => {
         if (exitCode !== 0 && exitCode !== 143 /* SIGTERM = normal shutdown */) {
-          let errorMsg: string;
-          if (exitCode === 127) {
-            errorMsg = sessionBackendType === "claude-code"
-              ? "Claude Code CLI not found. Please install it: https://docs.anthropic.com/claude-code"
-              : sessionBackendType === "codex"
-              ? "Codex CLI not found. Please install it: npm install -g @openai/codex"
-              : sessionBackendType === "kimi-cli"
-              ? "Kimi CLI not found. Please install it: uv tool install kimi-cli (then run: kimi login)"
-              : `Backend "${sessionBackendType}" CLI not found.`;
-          } else {
-            errorMsg = sessionBackendType === "claude-code"
-              ? `Claude Code exited unexpectedly (code ${exitCode}). Check CLI installation and subscription status.`
-              : sessionBackendType === "codex"
-              ? `Codex exited unexpectedly (code ${exitCode}). Check CLI installation and login status.`
-              : sessionBackendType === "kimi-cli"
-              ? `Kimi exited unexpectedly (code ${exitCode}). Check CLI installation and login status (kimi login).`
-              : `${sessionBackendType} exited unexpectedly (code ${exitCode}).`;
-          }
+          const errorMsg =
+            exitCode === 127
+              ? `${sessionModule.label} CLI not found.\n${sessionModule.installHint}`
+              : `${sessionModule.label} exited unexpectedly (code ${exitCode}). Check CLI installation and login status.`;
           wsBridge.broadcastToSession(exitedId, { type: "error", message: errorMsg });
         }
 
@@ -2334,7 +2251,7 @@ Options:
 
         backend = createBackend(sessionBackendType, actualPort);
         wireCLISessionId();
-        await wireClaudeCodeStdio(backend, wsBridge);
+        wireClaudeCodeStdio(backend, wsBridge);
 
         const agentEnv = buildAgentEnv();
         const permissionMode = manifest.agent?.permissionMode;
@@ -2346,8 +2263,7 @@ Options:
         });
 
         wsBridge.getOrCreateSession(sessionId, sessionBackendType);
-        await wireCodexAdapter(sessionId);
-        await wireKimiAdapter(sessionId);
+        attachBridgeBackend(sessionBackendType, backend, sessionId, wsBridge);
         wireAgentExitHandler(agentSession.sessionId, false);
 
         // First-time switch from viewing → edit counts as the agent's
@@ -2371,7 +2287,7 @@ Options:
       // ── Edit mode: full agent launch ──────────────────────────────────
       backend = createBackend(sessionBackendType, actualPort);
       wireCLISessionId();
-      await wireClaudeCodeStdio(backend, wsBridge);
+      wireClaudeCodeStdio(backend, wsBridge);
 
       let resuming = false;
       const agentEnv = buildAgentEnv();
@@ -2437,8 +2353,7 @@ Options:
 
       p.log.info(`Agent session: ${session.sessionId}`);
       wsBridge.getOrCreateSession(session.sessionId, sessionBackendType);
-      await wireCodexAdapter(session.sessionId);
-      await wireKimiAdapter(session.sessionId);
+      attachBridgeBackend(sessionBackendType, backend, session.sessionId, wsBridge);
 
       // Auto-greeting for fresh sessions (driven by manifest)
       if (!resuming && manifest.agent?.greeting) {
@@ -2497,7 +2412,7 @@ Options:
 
           backend = createBackend(sessionBackendType, actualPort);
           wireCLISessionId();
-          await wireClaudeCodeStdio(backend, wsBridge);
+          wireClaudeCodeStdio(backend, wsBridge);
 
           const freshEnv = buildAgentEnv();
           const agentSession = backend.launch({
@@ -2508,8 +2423,7 @@ Options:
           });
 
           wsBridge.getOrCreateSession(sessionId, sessionBackendType);
-          await wireCodexAdapter(sessionId);
-          await wireKimiAdapter(sessionId);
+          attachBridgeBackend(sessionBackendType, backend, sessionId, wsBridge);
           wireAgentExitHandler(agentSession.sessionId, false);
 
           // Re-register kill callback for next edit → viewing switch

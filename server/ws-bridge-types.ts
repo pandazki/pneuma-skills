@@ -7,7 +7,7 @@ import type {
 } from "./session-types.js";
 import type { AgentBackendType } from "../core/types/agent-backend.js";
 import type { ViewerActionResult } from "../core/types/viewer-contract.js";
-import { getBackendCapabilities } from "../backends/index.js";
+import { getBackendCapabilities, getBackendModule } from "../backends/index.js";
 
 export interface CLISocketData {
   kind: "cli";
@@ -71,6 +71,7 @@ export function makeDefaultState(
   sessionId: string,
   backendType: AgentBackendType = "claude-code",
 ): SessionState {
+  const mod = getBackendModule(backendType);
   return {
     session_id: sessionId,
     backend_type: backendType,
@@ -91,5 +92,10 @@ export function makeDefaultState(
     is_compacting: false,
     total_lines_added: 0,
     total_lines_removed: 0,
+    // Static manifest fallback for the model switcher. Codex/kimi-cli emit
+    // their own list via `available_models`; their modules omit defaultModels,
+    // so this stays undefined and the switcher falls through to the dynamic
+    // list. claude-code ships a static list because it doesn't emit one.
+    default_models: mod.defaultModels,
   };
 }

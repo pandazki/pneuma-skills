@@ -1605,7 +1605,10 @@ export class CodexAdapter {
       case "bypassPermissions":
         return "never";
       default:
-        return "unless-allow-listed";
+        // codex-cli 0.128+ removed "unless-allow-listed"; use "on-request"
+        // (ask before each exec unless approved) as the closest equivalent.
+        // Accepted variants: untrusted, on-failure, on-request, granular, never.
+        return "on-request";
     }
   }
 

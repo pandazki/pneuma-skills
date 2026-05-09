@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.2.0] - 2026-05-09
+
+### Added
+- **BackendModule self-describing manifests.** Each backend now ships `manifest.ts` declaring identity, capabilities, install layout, install hint, default models, and lifecycle factories. Single source of truth — no more central `Record` tables.
+- **Lifecycle harness.** `backends/__tests__/lifecycle-harness.ts` exposes 6 shared scenarios (boot / greeting / tool-flow / interrupt / multi-turn / resume) exercised against all three backends. Skip-when-binary-unavailable + per-scenario timeout overrides.
+- **Per-backend READMEs.** `backends/{claude-code,codex,kimi-cli}/README.md` document each backend's protocol shape, capabilities, install layout, gotchas, and references — entry point for new contributors.
+- **Evolve cross-backend support.** Evolve mode now declares `supportedBackends: ["claude-code", "codex"]`; routes skill paths through `BackendModule.skillsDir` instead of hardcoded `.claude/skills/`.
+- **Frontend capability-driven UI.** ChatPanel, ContextPanel, ModelSwitcher, SchedulePanel, TopBar all read `session.agent_capabilities.X` instead of `backend_type === "claude-code"`. Default model list ships from `BackendModule.defaultModels`.
+- **Extended AgentCapabilities.** Optional `scheduling? / costTracking? / contextWindow? / extras?` fields propagate end-to-end via `session_init`.
+
+### Fixed
+- **codex-cli 0.128+ approval-policy variant.** `mapApprovalPolicy` now returns `"on-request"` instead of removed `"unless-allow-listed"` — fixes any codex caller that doesn't pass `bypassPermissions`.
+- **Lifecycle harness deadlock for claude-code.** `system.init` only fires after first user prompt; harness was waiting before sending. Restructured to send + observe.
+
+### Improved
+- **CLI cleanup.** Removed 6 `if (backendType === ...)` switches from `bin/pneuma.ts`. Adapter wiring now polymorphic via `WsBridge.attachStreamingBackend`.
+- **Pure registry.** `backends/index.ts` collapsed to a manifest registry — no more central `BACKEND_DESCRIPTORS` / `BACKEND_CAPABILITIES` / `BACKEND_BINARIES` Records. `server/skill-installer-backend.ts` retired.
+
 ## [3.1.0] - 2026-05-08
 
 ### Added — kimi-cli as a third agent backend
@@ -356,7 +374,7 @@ When a workspace resumes, the launcher detects the webcraft version change (1.1.
 ## [2.29.0] - 2026-04-13
 
 ### Added
-- **`Source<T>` data-channel abstraction** — viewer-contract-layer infrastructure that realizes the "viewer is the whole app UI" vision from `docs/design/pneuma-3.0-design.md`. Every mode viewer now consumes typed, origin-aware, subscription-shaped data channels via `props.sources` instead of a raw `files: ViewerFileContent[]` prop
+- **`Source<T>` data-channel abstraction** — viewer-contract-layer infrastructure that realizes the "viewer is the whole app UI" vision from `docs/archive/proposals/2026-03-12-pneuma-3.0-design.md`. Every mode viewer now consumes typed, origin-aware, subscription-shaped data channels via `props.sources` instead of a raw `files: ViewerFileContent[]` prop
 - **Four built-in source providers** in `core/sources/`:
   - `memory` — ephemeral in-process state
   - `file-glob` — multi-file aggregate read (domain is files)
