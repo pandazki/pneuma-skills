@@ -291,7 +291,6 @@ const TABS: { id: Tab; label: string }[] = [
 export default function TopBar() {
   const activeTab = useStore((s) => s.activeTab);
   const setActiveTab = useStore((s) => s.setActiveTab);
-  const backendType = useStore((s) => s.session?.backend_type);
   const gitAvailable = useStore((s) => s.gitAvailable);
   const cronJobCount = useStore((s) => s.cronJobs.length);
   const contentSets = useStore((s) => s.contentSets);
@@ -305,7 +304,11 @@ export default function TopBar() {
   const createEmpty = modeViewer?.workspace?.createEmpty;
   const replayMode = useStore((s) => s.replayMode);
   const replayMetadata = useStore((s) => s.replayMetadata);
-  const scheduleAvailable = !backendType || backendType === "claude-code";
+  // Schedule tab is gated on backend capability (declared in the manifest),
+  // not on backend identity — any backend that supports scheduling tools
+  // gets the tab. Default false means "hide until a session has loaded its
+  // capabilities", which matches the previous "no session yet" behaviour.
+  const scheduleAvailable = useStore((s) => s.session?.agent_capabilities?.scheduling ?? false);
   const visibleTabs = scheduleAvailable ? TABS : TABS.filter((tab) => tab.id !== "schedules");
   // Empty-shell predicate. The chip strip on the left always renders; the
   // tabs row + share dropdown + editing toggle only matter once a mode

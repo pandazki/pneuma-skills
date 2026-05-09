@@ -103,16 +103,23 @@ function SessionInfo() {
   const session = useStore((s) => s.session);
   if (!session) return null;
 
+  // Cost + context-window stats are reported by the backend's result/usage
+  // messages; gate the chip rows on the matching capability flag instead
+  // of hardcoding backend identity.
+  const caps = session.agent_capabilities;
+  const costTracking = caps?.costTracking ?? false;
+  const contextWindow = caps?.contextWindow ?? false;
+
   return (
     <div className="flex items-center gap-2 text-xs text-cc-muted">
       <span>{session.model || "no model"}</span>
-      {session.backend_type === "claude-code" && session.total_cost_usd > 0 && (
+      {costTracking && session.total_cost_usd > 0 && (
         <>
           <span className="text-cc-border">&middot;</span>
           <span>${session.total_cost_usd.toFixed(4)}</span>
         </>
       )}
-      {session.context_used_percent > 0 && (
+      {contextWindow && session.context_used_percent > 0 && (
         <>
           <span className="text-cc-border">&middot;</span>
           <span>ctx {session.context_used_percent}%</span>

@@ -9,6 +9,14 @@ function SessionStatsSection() {
   const session = useStore((s) => s.session);
   if (!session) return null;
 
+  // Gate per-turn cost + lines-added/removed on backends that actually
+  // populate the underlying numbers. Both fields ride in claude-code's
+  // `result` message; backends without `costTracking` leave them at the
+  // default zero, so we don't render a misleading "$0.0000 / +0 / -0" row.
+  const caps = session.agent_capabilities;
+  const showCost = caps?.costTracking ?? false;
+  const showLines = caps?.costTracking ?? false;
+
   return (
     <section className="space-y-2">
       <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">Session</h3>
@@ -25,7 +33,7 @@ function SessionStatsSection() {
         <span className="text-cc-muted">Working dir</span>
         <span className="text-cc-fg truncate" title={session.cwd}>{session.cwd || "—"}</span>
 
-        {session.backend_type === "claude-code" && (
+        {showCost && (
           <>
             <span className="text-cc-muted">Cost</span>
             <span className="text-cc-fg">${session.total_cost_usd.toFixed(4)}</span>
@@ -35,7 +43,7 @@ function SessionStatsSection() {
         <span className="text-cc-muted">Turns</span>
         <span className="text-cc-fg">{session.num_turns}</span>
 
-        {session.backend_type === "claude-code" && (
+        {showLines && (
           <>
             <span className="text-cc-muted">Lines</span>
             <span className="text-cc-fg">
