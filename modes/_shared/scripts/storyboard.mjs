@@ -364,6 +364,43 @@ async function generateComposite({
   return { compositePath: filepath, compositeUrl: url, endpoint: appId };
 }
 
+// ---------------------------------------------------------------------------
+// ffmpeg slicing
+// ---------------------------------------------------------------------------
+
+function ensureFfmpeg() {
+  const res = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" });
+  if (res.status !== 0) {
+    console.error("ERROR: ffmpeg not found on PATH. Install ffmpeg.");
+    process.exit(1);
+  }
+}
+
+function sliceComposite({ compositePath, panels, outputDir, baseName, format }) {
+  const slices = [];
+  for (const panel of panels) {
+    const filename = `${baseName}-${String(panel.index).padStart(2, "0")}.${format}`;
+    const outPath = join(outputDir, filename);
+    const { x, y, w, h } = panel.bbox;
+    const args = [
+      "-y",
+      "-i", compositePath,
+      "-vf", `crop=${w}:${h}:${x}:${y}`,
+      "-frames:v", "1",
+      outPath,
+    ];
+    const res = spawnSync("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
+    if (res.status !== 0) {
+      const stderr = res.stderr ? res.stderr.toString() : "";
+      console.error(`ERROR: ffmpeg crop failed for panel ${panel.index}:\n${stderr}`);
+      process.exit(1);
+    }
+    console.error(`[slice] panel ${panel.index} → ${outPath}`);
+    slices.push({ ...panel, path: outPath });
+  }
+  return slices;
+}
+
 // Reject local file paths in --ref. The fal.ai edit endpoint requires
 // remote URLs (or data: URLs) for image_urls; for v1 we don't auto-upload.
 function validateRefs(refs) {
