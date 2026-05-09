@@ -6,6 +6,15 @@
 <p align="center"><strong>Co-creation Infrastructure for Humans × Code Agents</strong></p>
 <p align="center">Visual environment, skills, continuous learning, and distribution — <br>everything humans and agents need to build content together.</p>
 
+<p align="center"><strong>Works with</strong></p>
+<p align="center">
+  <a href="https://docs.anthropic.com/en/docs/claude-code"><img src="https://img.shields.io/badge/Claude%20Code-D97757?logo=anthropic&logoColor=white&style=for-the-badge" alt="Claude Code" height="32" /></a>
+  &nbsp;
+  <a href="https://github.com/openai/codex"><img src="https://img.shields.io/badge/Codex-412991?logo=openai&logoColor=white&style=for-the-badge" alt="Codex" height="32" /></a>
+  &nbsp;
+  <a href="https://moonshotai.github.io/kimi-cli/"><img src="https://img.shields.io/badge/Kimi-1F2937?logo=moonshot&logoColor=white&style=for-the-badge" alt="Kimi (Moonshot AI)" height="32" /></a>
+</p>
+
 <p align="center">
   <a href="https://www.npmjs.com/package/pneuma-skills"><img src="https://img.shields.io/npm/v/pneuma-skills.svg" alt="npm version" /></a>
   <a href="https://www.npmjs.com/package/pneuma-skills"><img src="https://img.shields.io/npm/dm/pneuma-skills.svg" alt="npm downloads" /></a>
