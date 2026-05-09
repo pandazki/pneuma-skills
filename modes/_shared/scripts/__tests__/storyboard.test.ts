@@ -4,6 +4,7 @@ import {
   pickImageSize,
   computeBboxes,
   assemblePrompt,
+  buildStdoutJson,
 } from "../storyboard.mjs";
 
 describe("pickGrid", () => {
@@ -210,5 +211,45 @@ describe("assemblePrompt", () => {
       includeAnnotations: false,
     });
     expect(out).toMatch(/CONSISTENCY RULE.*STRICT/i);
+  });
+});
+
+describe("buildStdoutJson", () => {
+  test("structure matches contract", () => {
+    const out = buildStdoutJson({
+      compositePath: "/tmp/sb/composite.png",
+      compositeUrl: "https://example.com/composite.png",
+      endpoint: "openai/gpt-image-2",
+      grid: { rows: 2, cols: 2 },
+      imageSize: { preset: "square_hd", width: 1024, height: 1024 },
+      finalPrompt: "test prompt",
+      panels: [
+        { index: 1, row: 0, col: 0, bbox: { x: 0, y: 0, w: 512, h: 512 }, path: "/tmp/sb/panel-01.png" },
+        { index: 2, row: 0, col: 1, bbox: { x: 512, y: 0, w: 512, h: 512 }, path: "/tmp/sb/panel-02.png" },
+        { index: 3, row: 1, col: 0, bbox: { x: 0, y: 512, w: 512, h: 512 }, path: "/tmp/sb/panel-03.png" },
+        { index: 4, row: 1, col: 1, bbox: { x: 512, y: 512, w: 512, h: 512 }, path: "/tmp/sb/panel-04.png" },
+      ],
+      refs: [],
+      baseName: "panel",
+      aspect: "1:1",
+      panelCount: 4,
+    });
+
+    expect(out.composite.assetId).toBeTruthy();
+    expect(out.panels).toHaveLength(4);
+    expect(out.panels[0].assetId).toBeTruthy();
+    expect(out.panels[0].assetId).toContain("panel-01");
+    expect(out.suggestedAssets).toHaveLength(5); // 1 composite + 4 panels
+    expect(out.suggestedProvenance).toHaveLength(5);
+
+    // Composite has fromAssetId: null
+    expect(out.suggestedProvenance[0].fromAssetId).toBeNull();
+    // Slices have fromAssetId pointing at composite
+    expect(out.suggestedProvenance[1].fromAssetId).toBe(out.composite.assetId);
+    expect(out.suggestedProvenance[1].operation.type).toBe("slice");
+    expect(out.suggestedProvenance[1].operation.params.bbox).toBeTruthy();
+
+    // Final prompt is preserved
+    expect(out.finalPrompt).toBe("test prompt");
   });
 });

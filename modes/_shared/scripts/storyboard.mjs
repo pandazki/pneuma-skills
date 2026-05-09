@@ -419,6 +419,118 @@ function validateRefs(refs) {
 }
 
 // ---------------------------------------------------------------------------
+// Stdout JSON builder
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the structured JSON written to stdout. The agent reads this and
+ * registers the composite + panel slices in project.json with the
+ * suggested asset metadata + provenance edges. No project.json mutation
+ * happens inside this script.
+ */
+export function buildStdoutJson({
+  compositePath, compositeUrl, endpoint, grid, imageSize,
+  finalPrompt, panels, refs, baseName, aspect, panelCount,
+}) {
+  const now = Date.now();
+  const compositeAssetId = `asset-storyboard-composite-${now}`;
+  const compositeAsset = {
+    id: compositeAssetId,
+    type: "image",
+    uri: compositePath,
+    name: `Storyboard composite (${grid.rows}x${grid.cols})`,
+    metadata: {
+      width: imageSize.width,
+      height: imageSize.height,
+      grid,
+      panelCount,
+      videoAspect: aspect,
+    },
+    tags: ["storyboard", "composite"],
+    status: "ready",
+    createdAt: now,
+  };
+
+  const compositeProvenance = {
+    toAssetId: compositeAssetId,
+    fromAssetId: null,
+    operation: {
+      type: "generate",
+      actor: "agent",
+      agentId: "claude-clipcraft-storyboard",
+      timestamp: now,
+      params: {
+        model: "gpt-image-2",
+        provider: "fal.ai",
+        endpoint,
+        prompt: finalPrompt,
+        imageSize: imageSize.preset,
+        imageUrls: refs ?? [],
+        quality: "high",
+        videoAspect: aspect,
+        grid,
+        panelCount,
+      },
+    },
+  };
+
+  const sliceAssets = panels.map((p) => ({
+    id: `asset-${baseName}-${String(p.index).padStart(2, "0")}`,
+    type: "image",
+    uri: p.path,
+    name: `Panel ${p.index}`,
+    metadata: {
+      fidelity: "sketch", // default fidelity; agent can override
+      width: p.bbox.w,
+      height: p.bbox.h,
+      panelIndex: p.index,
+      row: p.row,
+      col: p.col,
+    },
+    tags: ["storyboard", "panel"],
+    status: "ready",
+    createdAt: now,
+  }));
+
+  const sliceProvenance = panels.map((p, i) => ({
+    toAssetId: sliceAssets[i].id,
+    fromAssetId: compositeAssetId,
+    operation: {
+      type: "slice",
+      actor: "agent",
+      agentId: "claude-clipcraft-storyboard",
+      timestamp: now,
+      params: {
+        tool: "ffmpeg",
+        bbox: p.bbox,
+        row: p.row,
+        col: p.col,
+        index: p.index,
+      },
+    },
+  }));
+
+  return {
+    composite: { path: compositePath, url: compositeUrl, assetId: compositeAssetId },
+    grid,
+    imageSize: imageSize.preset,
+    videoAspect: aspect,
+    panelCount,
+    panels: panels.map((p, i) => ({
+      index: p.index,
+      row: p.row,
+      col: p.col,
+      bbox: p.bbox,
+      path: p.path,
+      assetId: sliceAssets[i].id,
+    })),
+    finalPrompt,
+    suggestedAssets: [compositeAsset, ...sliceAssets],
+    suggestedProvenance: [compositeProvenance, ...sliceProvenance],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // CLI entry detection — guard so test imports don't trigger side effects.
 // ---------------------------------------------------------------------------
 
@@ -504,8 +616,72 @@ async function main() {
     fail(`invalid --output-format '${values["output-format"]}'. Choices: ${OUTPUT_FORMATS.join(", ")}`);
   }
 
-  // The remaining pipeline (env loading, fal.ai call, ffmpeg slicing,
-  // stdout JSON) is added in subsequent tasks.
+  const refs = values.ref ?? [];
+  validateRefs(refs);
+
+  // ---- pipeline ----
+  ensureFfmpeg();
+
+  const keys = loadEnvKeys();
+  if (!keys.FAL_KEY) {
+    console.error("ERROR: FAL_KEY not found.");
+    console.error("Add FAL_KEY=... to the skill .env or export it in the environment.");
+    console.error("Get one at https://fal.ai/dashboard/keys.");
+    process.exit(1);
+  }
+
+  const grid = pickGrid(panelCount, aspect);
+  const imageSize = pickImageSize(grid, aspect);
+  const includeAnnotations = !values["no-annotations"];
+  const finalPrompt = assemblePrompt({
+    userPrompt, grid, aspect, includeAnnotations,
+  });
+
+  const outDir = resolve(values["out-dir"]);
+  mkdirSync(outDir, { recursive: true });
+
+  console.error(
+    `[storyboard] grid=${grid.rows}x${grid.cols}, image=${imageSize.preset}, panels=${panelCount}, aspect=${aspect}`,
+  );
+
+  const composite = await generateComposite({
+    apiKey: keys.FAL_KEY,
+    finalPrompt,
+    imageSize,
+    refs,
+    quality: values.quality,
+    outputFormat: values["output-format"],
+    outputDir: outDir,
+  });
+
+  const { panels } = computeBboxes(grid, imageSize, aspect);
+  const slices = sliceComposite({
+    compositePath: composite.compositePath,
+    panels,
+    outputDir: outDir,
+    baseName: values.name,
+    format: values["output-format"],
+  });
+
+  const out = buildStdoutJson({
+    compositePath: composite.compositePath,
+    compositeUrl: composite.compositeUrl,
+    endpoint: composite.endpoint,
+    grid,
+    imageSize,
+    finalPrompt,
+    panels: slices,
+    refs,
+    baseName: values.name,
+    aspect,
+    panelCount,
+  });
+
+  // --keep-composite default is true; v1 always keeps the composite.
+  // Skipping deletion intentionally (the composite is useful as a
+  // reference asset registered in the provenance graph).
+
+  console.log(JSON.stringify(out, null, 2));
 }
 
 if (isCliEntry()) {
