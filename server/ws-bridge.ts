@@ -96,6 +96,8 @@ export class WsBridge {
       onAgentSessionId: (sessionId, agentSessionId) => {
         if (this.onCLISessionId) this.onCLISessionId(sessionId, agentSessionId);
       },
+      getOrCreateSession: (sessionId, backendType) =>
+        this.getOrCreateSession(sessionId, backendType),
     };
   }
 

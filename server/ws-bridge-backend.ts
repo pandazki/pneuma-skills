@@ -39,6 +39,14 @@ export interface BridgeBackendDeps {
    * Bridge persists this to `session.json#agentSessionId` for resume.
    */
   onAgentSessionId?: (sessionId: string, agentSessionId: string) => void;
+  /**
+   * Obtain (or lazily create) the bridge-internal `Session` record for a given
+   * sessionId. Backends that need the session at construction time (codex,
+   * kimi-cli) call this from their manifest's `createBridgeBackend` so the
+   * registry can stay generic — `BackendModule.createBridgeBackend` doesn't
+   * have to grow a `session` parameter.
+   */
+  getOrCreateSession?: (sessionId: string, backendType: AgentBackendType) => Session;
 }
 
 /**
