@@ -23,7 +23,7 @@ const clipcraftManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-clipcraft",
-    sharedScripts: ["generate_image.mjs", "edit_image.mjs"],
+    sharedScripts: ["generate_image.mjs", "edit_image.mjs", "storyboard.mjs"],
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
       FAL_KEY: "falApiKey",
