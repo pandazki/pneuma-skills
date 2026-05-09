@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.2.1] - 2026-05-09
+
+### Fixed
+- **`projects: []` corruption from concurrent registry writes.** `~/.pneuma/sessions.json` is now written atomically (write-tmp + rename(2)). Two pneuma instances writing in quick succession (desktop app + CLI dev server, common in dev) could previously interleave bytes or land last-writer-wins on a fresh-read, silently wiping every Pneuma 3.0 project entry from the launcher. Fixes recurring "Recent Projects panel is empty" reports.
+- **Reconciler now recovers Pneuma 3.0 projects.** `bin/pneuma.ts:reconcileSessionsRegistry()` previously only re-attached legacy `.pneuma/session.json` workspaces. It now also detects `.pneuma/project.json` markers under `~/pneuma-projects/` and re-upserts them into `projects[]` — so a wiped registry heals on next launcher boot. Project recovery cap: 100 projects (separate from session 200 cap, matches the design in CLAUDE.md). Externally-rooted projects (e.g. under `~/Codes/`) still need a one-time re-open via the launcher to get re-registered.
+
 ## [3.2.0] - 2026-05-09
 
 ### Added

@@ -304,11 +304,58 @@ function reconcileSessionsRegistry(): void {
   const currentData: SessionsFile = readSessionsFileSync(SESSIONS_REGISTRY);
 
   const byId = new Map(currentData.sessions.map((r) => [r.id, r]));
-  let added = 0;
+  const projectsById = new Map(currentData.projects.map((p) => [p.id, p]));
+  let addedSessions = 0;
+  let addedProjects = 0;
 
   for (const entry of readdirSync(projectsDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const workspace = join(projectsDir, entry.name);
+
+    // ── Pneuma 3.0 project marker ──────────────────────────────────────
+    // `<workspace>/.pneuma/project.json` identifies a project (multi-session
+    // container). Recover it into `projects[]` if missing — this heals
+    // registries wiped by historical bugs / concurrent writes / manual edits.
+    // Sessions under the project are recovered separately via the
+    // `<projectRoot>/.pneuma/sessions/<sid>/session.json` walk below.
+    const projectJsonPath = join(workspace, ".pneuma", "project.json");
+    if (existsSync(projectJsonPath)) {
+      try {
+        const manifest = JSON.parse(readFileSync(projectJsonPath, "utf-8")) as {
+          schemaVersion?: number;
+          projectId?: string;
+          name?: string;
+          displayName?: string;
+          description?: string;
+          createdAt?: string | number;
+          updatedAt?: string | number;
+        };
+        if (!projectsById.has(workspace)) {
+          const stat = statSync(projectJsonPath);
+          const toMs = (v: string | number | undefined, fb: number): number => {
+            if (typeof v === "number") return v;
+            if (typeof v === "string") {
+              const t = Date.parse(v);
+              if (Number.isFinite(t)) return t;
+            }
+            return fb;
+          };
+          const slug = manifest.name || entry.name;
+          projectsById.set(workspace, {
+            id: workspace,
+            name: slug,
+            displayName: manifest.displayName || slug,
+            description: manifest.description,
+            root: workspace,
+            createdAt: toMs(manifest.createdAt, stat.birthtimeMs || stat.mtimeMs),
+            lastAccessed: toMs(manifest.updatedAt, stat.mtimeMs),
+          });
+          addedProjects++;
+        }
+      } catch { /* skip malformed project.json */ }
+    }
+
+    // ── Quick-session recovery (legacy 2.x) ────────────────────────────
     const sessionJsonPath = join(workspace, ".pneuma", "session.json");
     if (!existsSync(sessionJsonPath)) continue;
     try {
@@ -342,23 +389,26 @@ function reconcileSessionsRegistry(): void {
         lastAccessed,
         editing: sess.editing ?? true,
       } as AnySessionRegistryEntry);
-      added++;
+      addedSessions++;
     } catch { /* skip malformed session.json */ }
   }
 
-  if (added === 0) return;
+  if (addedSessions === 0 && addedProjects === 0) return;
   const rebuilt = [...byId.values()].sort((a, b) => b.lastAccessed - a.lastAccessed);
   const cap = 200;
   const saved = rebuilt.slice(0, cap);
-  // Preserve the existing projects array — earlier versions wrote `[]` here
-  // unconditionally, which silently wiped every Pneuma 3.0 project entry on
-  // each launcher boot.
+  const projectCap = 100;
+  const projectsSorted = [...projectsById.values()].sort((a, b) => b.lastAccessed - a.lastAccessed);
+  const projectsSaved = projectsSorted.slice(0, projectCap);
   writeSessionsFileSync(SESSIONS_REGISTRY, {
-    projects: currentData.projects,
+    projects: projectsSaved,
     sessions: saved,
   });
-  const truncatedNote = rebuilt.length > saved.length ? ` (cap ${cap}; ${rebuilt.length - saved.length} oldest dropped)` : "";
-  console.log(`[sessions] Reconciled registry: ${added} workspace(s) recovered, ${saved.length} active${truncatedNote}.`);
+  const sessionTrunc = rebuilt.length > saved.length ? ` (cap ${cap}; ${rebuilt.length - saved.length} oldest dropped)` : "";
+  const parts: string[] = [];
+  if (addedSessions) parts.push(`${addedSessions} session(s)`);
+  if (addedProjects) parts.push(`${addedProjects} project(s)`);
+  console.log(`[sessions] Reconciled registry: recovered ${parts.join(" + ")}, now ${saved.length} session(s)${sessionTrunc} + ${projectsSaved.length} project(s).`);
 }
 
 // ── Init params persistence ──────────────────────────────────────────────────

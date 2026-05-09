@@ -541,3 +541,50 @@ describe("project archive (Phase 4 — soft-delete)", () => {
     expect(reloaded.projects[0].archived).toBe(true);
   });
 });
+
+describe("writeSessionsFile — atomic write semantics", () => {
+  test("leaves no .tmp siblings after a successful write (async)", async () => {
+    const { readdirSync } = await import("node:fs");
+    const file = join(dir, "sessions.json");
+    await writeSessionsFile(file, { projects: [], sessions: [] });
+    const leftovers = readdirSync(dir).filter((n) => n.startsWith("sessions.json.tmp"));
+    expect(leftovers).toEqual([]);
+  });
+
+  test("leaves no .tmp siblings after a successful write (sync)", () => {
+    const { readdirSync } = require("node:fs") as typeof import("node:fs");
+    const file = join(dir, "sessions.json");
+    writeSessionsFileSync(file, { projects: [], sessions: [] });
+    const leftovers = readdirSync(dir).filter((n) => n.startsWith("sessions.json.tmp"));
+    expect(leftovers).toEqual([]);
+  });
+
+  test("concurrent writers can't produce a partially-written file", async () => {
+    const file = join(dir, "sessions.json");
+    // Race 8 writers in parallel; the file must always parse cleanly afterward
+    // (no torn writes / interleaved bytes — the historical failure mode that
+    // produced `projects: []` corruption when two pneuma instances raced).
+    const writers: Promise<void>[] = [];
+    for (let i = 0; i < 8; i++) {
+      writers.push(
+        writeSessionsFile(file, {
+          projects: [
+            {
+              id: `/p${i}`,
+              name: `p${i}`,
+              displayName: `P${i}`,
+              root: `/p${i}`,
+              createdAt: i,
+              lastAccessed: i,
+            },
+          ],
+          sessions: [],
+        }),
+      );
+    }
+    await Promise.all(writers);
+    const final = await readSessionsFile(file);
+    expect(Array.isArray(final.projects)).toBe(true);
+    expect(final.projects.length).toBe(1);
+  });
+});

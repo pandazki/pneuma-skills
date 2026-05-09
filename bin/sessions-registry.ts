@@ -9,9 +9,10 @@
  * File: ~/.pneuma/sessions.json
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { dirname } from "node:path";
+import { randomBytes } from "node:crypto";
 import type { AgentBackendType } from "../core/types/agent-backend.js";
 import { getDefaultBackendType } from "../backends/index.js";
 
@@ -213,8 +214,17 @@ export function readSessionsFileSync(path: string): SessionsFile {
 }
 
 /**
- * Write sessions.json in the new shape.
- * Creates parent directory if needed.
+ * Write sessions.json atomically — write to a unique tmp sibling, then
+ * rename(2) over the destination. POSIX rename is atomic on the same
+ * filesystem, so concurrent pneuma processes can't observe a partial
+ * write or interleave each other's bytes.
+ *
+ * Even with atomic writes, two processes can still race at the read+write
+ * level (last-writer-wins on the underlying state). The atomic part only
+ * removes torn writes / empty files / interleaved bytes — symptoms that
+ * historically caused `projects: []` corruption when two writers landed
+ * concurrently. Logical concurrency above this layer is the caller's
+ * problem (every caller already does read-modify-write within one tick).
  *
  * @param path — path to ~/.pneuma/sessions.json
  * @param data — SessionsFile object to persist
@@ -224,16 +234,20 @@ export async function writeSessionsFile(
   data: SessionsFile
 ): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(data, null, 2), "utf-8");
+  const tmp = `${path}.tmp.${process.pid}.${randomBytes(4).toString("hex")}`;
+  await writeFile(tmp, JSON.stringify(data, null, 2), "utf-8");
+  await rename(tmp, path);
 }
 
 /**
  * Synchronous sibling of {@link writeSessionsFile}. Used by code paths that
- * cannot easily go async. Same logic.
+ * cannot easily go async. Same atomic write semantics.
  */
 export function writeSessionsFileSync(path: string, data: SessionsFile): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(data, null, 2), "utf-8");
+  const tmp = `${path}.tmp.${process.pid}.${randomBytes(4).toString("hex")}`;
+  writeFileSync(tmp, JSON.stringify(data, null, 2), "utf-8");
+  renameSync(tmp, path);
 }
 
 /**
