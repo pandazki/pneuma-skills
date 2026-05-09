@@ -1,12 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useStore } from "../store.js";
 import { sendSetModel } from "../ws.js";
-
-interface ModelOption {
-  id: string;
-  label: string;
-  icon: string;
-}
+import type { ModelOption } from "../../core/types/agent-backend.js";
 
 /** Derive a short icon string from a model id. */
 function modelIcon(id: string): string {

@@ -103,12 +103,11 @@ function SessionInfo() {
   const session = useStore((s) => s.session);
   if (!session) return null;
 
-  // Cost + context-window stats are reported by the backend's result/usage
-  // messages; gate the chip rows on the matching capability flag instead
-  // of hardcoding backend identity.
-  const caps = session.agent_capabilities;
-  const costTracking = caps?.costTracking ?? false;
-  const contextWindow = caps?.contextWindow ?? false;
+  // Cost is gated on capability (claude-code-only today). Context-window % is
+  // populated by any backend that reports it (claude-code, codex) — let the
+  // `> 0` self-suppression decide visibility instead of a capability gate, so
+  // we don't accidentally hide a value the backend is actually shipping.
+  const costTracking = session.agent_capabilities?.costTracking ?? false;
 
   return (
     <div className="flex items-center gap-2 text-xs text-cc-muted">
@@ -119,7 +118,7 @@ function SessionInfo() {
           <span>${session.total_cost_usd.toFixed(4)}</span>
         </>
       )}
-      {contextWindow && session.context_used_percent > 0 && (
+      {session.context_used_percent > 0 && (
         <>
           <span className="text-cc-border">&middot;</span>
           <span>ctx {session.context_used_percent}%</span>

@@ -307,7 +307,9 @@ export default function TopBar() {
   // Schedule tab is gated on backend capability (declared in the manifest),
   // not on backend identity — any backend that supports scheduling tools
   // gets the tab. Default false means "hide until a session has loaded its
-  // capabilities", which matches the previous "no session yet" behaviour.
+  // capabilities" — diverges from pre-3.1 behaviour, which showed the tab
+  // by default with no session loaded. Hiding is the correct UX: there's no
+  // agent to act on the schedule yet.
   const scheduleAvailable = useStore((s) => s.session?.agent_capabilities?.scheduling ?? false);
   const visibleTabs = scheduleAvailable ? TABS : TABS.filter((tab) => tab.id !== "schedules");
   // Empty-shell predicate. The chip strip on the left always renders; the

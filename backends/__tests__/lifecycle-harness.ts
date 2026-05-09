@@ -588,8 +588,10 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
       await sleep(500);
     }
 
-    expect(ctx.backend.isAlive(ctx.sessionId) || true).toBe(true); // soft check
-    // The hard assertion: killAll resolves cleanly without throwing.
+    // The load-bearing assertion: killAll resolves cleanly (no zombie processes,
+    // no hung child waits). Whether the model honoured the interrupt mid-stream
+    // is hard to test deterministically across backends — the kill-cleanup is
+    // the regression we'd notice in production.
     await ctx.backend.killAll();
   },
 
