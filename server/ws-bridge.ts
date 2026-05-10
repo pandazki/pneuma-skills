@@ -730,6 +730,42 @@ export class WsBridge {
   }
 
   private handleAssistantMessage(session: Session, msg: CLIAssistantMessage) {
+    // Compatibility shim for Claude Code 2.x: the CLI no longer sends a
+    // `can_use_tool` permission request for AskUserQuestion in any
+    // permission mode. Instead it auto-denies the tool with an
+    // `is_error: true` tool_result whose content is the tool's
+    // `checkPermissions().message` ("Answer questions?"). To keep the
+    // existing in-chat picker UI working we (a) fabricate a synthetic
+    // permission record so the browser shows the picker, and (b) when the
+    // user submits an answer, send it back as a plain user message rather
+    // than a tool_result (the auto-deny already won the tool_use_id race).
+    // The agent reads the natural-language follow-up message and continues.
+    const content = (msg.message as { content?: unknown }).content;
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        const b = block as { type?: string; name?: string; id?: string; input?: Record<string, unknown> };
+        if (b.type !== "tool_use" || b.name !== "AskUserQuestion" || !b.id) continue;
+        const synthId = `synthetic:${b.id}`;
+        if (session.pendingPermissions.has(synthId)) continue;
+        let alreadyHasPerm = false;
+        for (const p of session.pendingPermissions.values()) {
+          if (p.tool_use_id === b.id) { alreadyHasPerm = true; break; }
+        }
+        if (alreadyHasPerm) continue;
+        const perm: PermissionRequest = {
+          request_id: synthId,
+          tool_name: "AskUserQuestion",
+          input: b.input ?? {},
+          tool_use_id: b.id,
+          timestamp: Date.now(),
+        };
+        session.pendingPermissions.set(synthId, perm);
+        this.broadcastToBrowsers(session, {
+          type: "permission_request",
+          request: perm,
+        });
+      }
+    }
     const browserMsg: BrowserIncomingMessage = {
       type: "assistant",
       message: msg.message,

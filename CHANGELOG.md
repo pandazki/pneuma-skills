@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.3.1] - 2026-05-10
+
+### Fixed — AskUserQuestion picker round-trip on Claude Code 2.x
+
+Restores the in-chat picker for Claude Code 2.1.x, which stopped sending a `can_use_tool` permission gate for `AskUserQuestion` and instead auto-denies the tool with an `is_error: true` tool_result whose content is the tool's `checkPermissions().message` ("Answer questions?"). Symptom: the picker either showed `Waiting for question...` forever, or — once the synthetic-perm shim landed — the agent saw the auto-deny first and reported "tool errored, please retry by text".
+
+The bridge now (a) fabricates a synthetic `PermissionRequest` when an `AskUserQuestion` `tool_use` arrives so the existing browser picker still renders, and (b) on user submit, sends the answer back as a plain `<pneuma:askq-answer>` user message rather than a `tool_result` (the auto-deny already won the `tool_use_id` race). The agent reads the natural-language follow-up after seeing the auto-deny and continues with the user's selection. UX residual: the auto-deny tool_result is briefly visible in chat — cosmetic, not functional.
+
+- `server/ws-bridge.ts` — synthetic-perm fabrication in `handleAssistantMessage` for `tool_name === "AskUserQuestion"`.
+- `server/ws-bridge-browser.ts` — `handlePermissionResponse` detects `synthetic:` request_ids and dispatches `buildAskUserQuestionFollowupMessage`, which writes a `user` message wrapped in `<pneuma:askq-answer tool_use_id="...">…</pneuma:askq-answer>` to the CLI's stdin. The auto-deny is acknowledged inline so the agent ignores it.
+- No browser changes — picker UI and `recordAnsweredQuestion` Q&A summary continue to work as in 0.9.0.
+
 ## [3.3.0] - 2026-05-09
 
 ### ClipCraft 0.8.0 — Storyboard preview track

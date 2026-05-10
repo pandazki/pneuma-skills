@@ -108,6 +108,19 @@ export function handlePermissionResponse(
   const pending = session.pendingPermissions.get(msg.request_id);
   session.pendingPermissions.delete(msg.request_id);
 
+  // Compatibility shim for Claude Code 2.x AskUserQuestion: the CLI does not
+  // send a can_use_tool gate for AskUserQuestion any more (it auto-denies
+  // the tool with an is_error tool_result before the user can pick). The WS
+  // bridge fabricates a synthetic perm in handleAssistantMessage so the
+  // picker still renders. Here we translate the user's submission into a
+  // plain user message; the agent reads it as a natural-language follow-up
+  // after seeing the auto-deny.
+  if (msg.request_id.startsWith("synthetic:") && pending) {
+    const ndjson = buildAskUserQuestionFollowupMessage(session, pending, msg);
+    sendToCLI(session, ndjson);
+    return;
+  }
+
   if (msg.behavior === "allow") {
     const response: Record<string, unknown> = {
       behavior: "allow",
@@ -140,3 +153,52 @@ export function handlePermissionResponse(
     sendToCLI(session, ndjson);
   }
 }
+
+function buildAskUserQuestionFollowupMessage(
+  session: Session,
+  pending: import("./session-types.js").PermissionRequest,
+  msg: {
+    behavior: "allow" | "deny";
+    updated_input?: Record<string, unknown>;
+    message?: string;
+  },
+): string {
+  const indexedAnswers = (msg.updated_input?.answers ?? {}) as Record<string, string>;
+  const questions = Array.isArray(pending.input.questions)
+    ? (pending.input.questions as Array<Record<string, unknown>>)
+    : [];
+
+  let bodyText: string;
+  if (msg.behavior === "deny") {
+    bodyText = msg.message || "User declined to answer.";
+  } else if (questions.length > 0) {
+    const lines = questions.map((q, i) => {
+      const qText = typeof q.question === "string" ? q.question : "";
+      const ans = indexedAnswers[String(i)] ?? "(no option selected)";
+      return `- "${qText}" → "${ans}"`;
+    });
+    bodyText = lines.join("\n");
+  } else {
+    const fallbackQ = typeof pending.input.question === "string" ? pending.input.question : "(question)";
+    const fallbackA = Object.values(indexedAnswers).join(", ") || "(no answer)";
+    bodyText = `- "${fallbackQ}" → "${fallbackA}"`;
+  }
+
+  // Wrap in a recognisable tag the agent can pattern-match. The leading
+  // <pneuma:askq-answer> hint is harmless natural language; an agent that
+  // ignores tags still understands the structure from the bullet list.
+  const content =
+`<pneuma:askq-answer tool_use_id="${pending.tool_use_id}">
+The picker UI in the chat panel captured the user's answer. Disregard the prior \`AskUserQuestion\` is_error tool_result ("Answer questions?") — that was the SDK's auto-deny in non-interactive mode, not a real failure. Continue based on this answer:
+
+${bodyText}
+</pneuma:askq-answer>`;
+
+  return JSON.stringify({
+    type: "user",
+    message: { role: "user", content },
+    parent_tool_use_id: null,
+    session_id: session.state.session_id || "",
+  });
+}
+
