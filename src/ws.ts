@@ -31,6 +31,25 @@ function findUnescapedQuote(s: string): number {
 
 const WS_RECONNECT_DELAY_MS = 2000;
 
+/**
+ * Filter out CLI-internal diagnostic errors that are noise to the user.
+ * Currently covers:
+ *   - `[ede_diagnostic] result_type=...` – Claude Code 2.x emits these on
+ *     turns where it self-repaired tool_result pairing (typical when our
+ *     AskUserQuestion follow-up arrives after the auto-deny).
+ *   - `ensureToolResultPairing: repaired …` – the same self-repair message.
+ * The repair already happened; surfacing the diagnostic only confuses the
+ * user.
+ */
+function isInternalDiagnosticError(err: string): boolean {
+  if (typeof err !== "string") return false;
+  return (
+    err.includes("[ede_diagnostic]") ||
+    err.includes("ensureToolResultPairing") ||
+    err.includes("Request was aborted")
+  );
+}
+
 function getWsUrl(sessionId: string): string {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   // In dev mode (Vite on 17996), connect directly to backend to avoid WS proxy issues.
@@ -486,12 +505,15 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       // Pending queue flush is handled by the store subscriber (flushPendingQueue)
 
       if (r.is_error && r.errors?.length) {
-        store.appendMessage({
-          id: nextId(),
-          role: "system",
-          content: `Error: ${r.errors.join(", ")}`,
-          timestamp: Date.now(),
-        });
+        const filtered = r.errors.filter((e) => !isInternalDiagnosticError(e));
+        if (filtered.length > 0) {
+          store.appendMessage({
+            id: nextId(),
+            role: "system",
+            content: `Error: ${filtered.join(", ")}`,
+            timestamp: Date.now(),
+          });
+        }
       }
       break;
     }
@@ -707,17 +729,58 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
           });
         } else if (histMsg.type === "assistant") {
           const msg = histMsg.message;
-          chatMessages.push({
-            id: msg.id,
-            role: "assistant",
-            content: extractTextFromBlocks(msg.content),
-            contentBlocks: msg.content,
-            timestamp: histMsg.timestamp || Date.now(),
-            parentToolUseId: histMsg.parent_tool_use_id,
-            model: msg.model,
-            stopReason: msg.stop_reason,
-            ...(!historyTurnUserInitiated ? { cronTriggered: inferCronPrompt(useStore.getState().cronJobs) } : {}),
-          });
+          const newText = extractTextFromBlocks(msg.content).trim();
+          // Resume-induced duplicate guard — Claude Code 2.x re-emits the
+          // last assistant message on `--resume` and Pneuma also redispatches
+          // an `<pneuma:env reason="opened">` envelope every reopen, so the
+          // persisted history accumulates duplicates of the same greeting
+          // separated only by env markers. Walk back over `<pneuma:*>`
+          // markers; if the previous *real* assistant turn has the same
+          // trimmed text, replace it instead of appending.
+          let prevAssistantIdx = -1;
+          let blocked = false;
+          for (let k = chatMessages.length - 1; k >= 0; k--) {
+            const m = chatMessages[k];
+            if (m.role === "assistant") { prevAssistantIdx = k; break; }
+            if (m.role === "user") {
+              const c = (m.content || "").trim();
+              const isPneumaMarker =
+                /^<pneuma:[^>]*\/>$/i.test(c) ||
+                /^<pneuma:[a-z-]+\b[^>]*>[\s\S]*<\/pneuma:[a-z-]+>$/i.test(c);
+              if (!isPneumaMarker && c.length > 0) { blocked = true; break; }
+            }
+          }
+          if (
+            !blocked &&
+            prevAssistantIdx !== -1 &&
+            newText.length > 0 &&
+            (chatMessages[prevAssistantIdx].content || "").trim() === newText
+          ) {
+            chatMessages.length = prevAssistantIdx;
+            chatMessages.push({
+              id: msg.id,
+              role: "assistant",
+              content: newText,
+              contentBlocks: msg.content,
+              timestamp: histMsg.timestamp || Date.now(),
+              parentToolUseId: histMsg.parent_tool_use_id,
+              model: msg.model,
+              stopReason: msg.stop_reason,
+              ...(!historyTurnUserInitiated ? { cronTriggered: inferCronPrompt(useStore.getState().cronJobs) } : {}),
+            });
+          } else {
+            chatMessages.push({
+              id: msg.id,
+              role: "assistant",
+              content: newText,
+              contentBlocks: msg.content,
+              timestamp: histMsg.timestamp || Date.now(),
+              parentToolUseId: histMsg.parent_tool_use_id,
+              model: msg.model,
+              stopReason: msg.stop_reason,
+              ...(!historyTurnUserInitiated ? { cronTriggered: inferCronPrompt(useStore.getState().cronJobs) } : {}),
+            });
+          }
           extractTasksFromBlocks(msg.content);
           extractCronJobsFromBlocks(msg.content);
           // Mark AskUserQuestion blocks as answered for history replay
@@ -736,12 +799,15 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
           historyTurnUserInitiated = false;
           const r = histMsg.data;
           if (r.is_error && r.errors?.length) {
-            chatMessages.push({
-              id: nextId(),
-              role: "system",
-              content: `Error: ${r.errors.join(", ")}`,
-              timestamp: Date.now(),
-            });
+            const filtered = r.errors.filter((e) => !isInternalDiagnosticError(e));
+            if (filtered.length > 0) {
+              chatMessages.push({
+                id: nextId(),
+                role: "system",
+                content: `Error: ${filtered.join(", ")}`,
+                timestamp: Date.now(),
+              });
+            }
           }
         } else {
           // Any other message type (command_output, system_event, etc.) indicates

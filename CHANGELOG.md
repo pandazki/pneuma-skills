@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.3.2] - 2026-05-10
+
+### Fixed — chat polish around the AskUserQuestion shim
+
+Three follow-up fixes layered on the 3.3.1 AskUserQuestion bridge:
+
+- **Suppress CLI internal diagnostic noise.** Claude Code 2.x raises `[ede_diagnostic] result_type=user … stop_reason=tool_use` and `ensureToolResultPairing: repaired …` warnings on turns where it self-repaired tool_result pairing — typical when the AskUserQuestion follow-up arrives after the auto-deny. The repair already happened, so the diagnostic only confused users. Filtered out at `src/ws.ts` via a new `isInternalDiagnosticError` helper applied to both live `result.errors` and the history-replay path.
+- **Dedup resume-induced assistant duplicates.** Claude Code 2.x re-emits the last assistant message with a fresh `message.id` on every `--resume`, and Pneuma also redispatches an `<pneuma:env reason="opened">` envelope every reopen, so the chat used to render the same greeting twice (once from history, once from the live re-emit). Now deduped at three layers — server-side `messageHistory` (`server/ws-bridge.ts`), browser `appendMessage` (`src/store/chat-slice.ts`), and the history-replay loader (`src/ws.ts`). Each walks back over `<pneuma:*>` markers and system events; if the previous *real* assistant turn has the same trimmed text content, the new message overwrites it instead of appending.
+
 ## [3.3.1] - 2026-05-10
 
 ### Fixed — AskUserQuestion picker round-trip on Claude Code 2.x

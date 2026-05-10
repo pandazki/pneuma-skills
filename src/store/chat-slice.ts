@@ -70,6 +70,45 @@ export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, 
         updated[existingIdx] = merged;
         return { messages: updated };
       }
+      // Resume-induced duplicate guard — Claude Code 2.x re-emits the last
+      // assistant message on `--resume` and Pneuma also redispatches an
+      // `<pneuma:env reason="opened">` envelope on every session reopen,
+      // so the chat shows the same greeting twice (once from history,
+      // once from the live re-emit). Walk back over `<pneuma:*>` markers,
+      // system events, and the env-tag user message; if the previous
+      // *real* assistant turn has the same trimmed text, overwrite it.
+      if (msg.role === "assistant" && s.messages.length > 0) {
+        const newText = (msg.content || "").trim();
+        if (newText.length > 0) {
+          let lastAssistantIdx = -1;
+          let blockedByMeaningfulInput = false;
+          for (let i = s.messages.length - 1; i >= 0; i--) {
+            const m = s.messages[i];
+            if (m.role === "assistant") { lastAssistantIdx = i; break; }
+            if (m.role === "user") {
+              const c = (m.content || "").trim();
+              const isPneumaMarker =
+                /^<pneuma:[^>]*\/>$/i.test(c) ||
+                /^<pneuma:[a-z-]+\b[^>]*>[\s\S]*<\/pneuma:[a-z-]+>$/i.test(c);
+              if (!isPneumaMarker && c.length > 0) {
+                blockedByMeaningfulInput = true;
+                break;
+              }
+            }
+          }
+          if (!blockedByMeaningfulInput && lastAssistantIdx !== -1) {
+            const last = s.messages[lastAssistantIdx];
+            if ((last.content || "").trim() === newText) {
+              const updated = [...s.messages];
+              updated[lastAssistantIdx] = mergeAssistantMessage(last, msg);
+              // Drop everything between the deduped assistant and now —
+              // those are stale env / system markers from the same resume.
+              const trimmed = updated.slice(0, lastAssistantIdx + 1);
+              return { messages: trimmed };
+            }
+          }
+        }
+      }
       return { messages: [...s.messages, msg] };
     }),
 

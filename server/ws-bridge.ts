@@ -780,9 +780,74 @@ export class WsBridge {
     if (existingIdx !== -1) {
       session.messageHistory[existingIdx] = browserMsg;
     } else {
+      // On `--resume`, the CLI replays the conversation and re-emits the
+      // last assistant message with a fresh `message.id`. Without a content
+      // check the persisted history grows a duplicate every reopen (the
+      // same reply rendered twice in chat). If the new message text matches
+      // the last persisted assistant message AND no real user / tool turn
+      // has happened since (system events / env tags don't count), treat
+      // it as a resume re-emit and overwrite that entry rather than append.
+      const lastAssistantIdx = session.messageHistory.findLastIndex((h) => h.type === "assistant");
+      if (lastAssistantIdx !== -1) {
+        const lastAssistant = session.messageHistory[lastAssistantIdx] as Extract<
+          BrowserIncomingMessage,
+          { type: "assistant" }
+        >;
+        const sameText =
+          WsBridge.assistantTextContent(lastAssistant.message.content) ===
+          WsBridge.assistantTextContent(msg.message.content as unknown[]);
+        const hasMeaningfulInputSince = WsBridge.hasMeaningfulUserInputSince(
+          session.messageHistory,
+          lastAssistantIdx,
+        );
+        if (sameText && !hasMeaningfulInputSince && lastAssistant.message.id !== msg.message.id) {
+          session.messageHistory[lastAssistantIdx] = browserMsg;
+          this.broadcastToBrowsers(session, browserMsg);
+          return;
+        }
+      }
       session.messageHistory.push(browserMsg);
     }
     this.broadcastToBrowsers(session, browserMsg);
+  }
+
+  private static assistantTextContent(content: unknown): string {
+    if (!Array.isArray(content)) return "";
+    const out: string[] = [];
+    for (const block of content) {
+      const b = block as { type?: string; text?: string };
+      if (b.type === "text" && typeof b.text === "string") out.push(b.text);
+    }
+    return out.join("\n").trim();
+  }
+
+  /**
+   * "Meaningful" user input excludes purely-marker user messages — env
+   * tags, viewer notifications, and other `<pneuma:*>` envelopes that
+   * Pneuma synthesises on session open / refresh / handoff. Without this
+   * filter the resume-dedup path mis-classifies an auto-redispatched
+   * `<pneuma:env reason="opened">` as fresh user input and keeps the
+   * duplicate greeting.
+   */
+  private static hasMeaningfulUserInputSince(
+    history: BrowserIncomingMessage[],
+    afterIdx: number,
+  ): boolean {
+    for (let i = afterIdx + 1; i < history.length; i++) {
+      const h = history[i];
+      if (h.type !== "user_message") continue;
+      const raw = (h as { content?: unknown }).content;
+      if (typeof raw === "string") {
+        const trimmed = raw.trim();
+        if (trimmed.length === 0) continue;
+        // Pure `<pneuma:* … />` envelope or `<pneuma:*>…</pneuma:*>` block — not real input.
+        if (/^<pneuma:[^>]*\/>$/i.test(trimmed)) continue;
+        if (/^<pneuma:[a-z-]+\b[^>]*>[\s\S]*<\/pneuma:[a-z-]+>$/i.test(trimmed)) continue;
+        return true;
+      }
+      if (Array.isArray(raw) && raw.length > 0) return true;
+    }
+    return false;
   }
 
   private handleResultMessage(session: Session, msg: CLIResultMessage) {
