@@ -61,4 +61,34 @@ describe("computePreviewSegments", () => {
       { previewFrameId: "p1", startTime: 8, endTime: 10 },
     ]);
   });
+
+  test("unsorted previews are sorted defensively", () => {
+    // Hand-crafted project.json may write previews in unsorted order.
+    // The helper sorts internally so naturalEnd never collapses to
+    // <= naturalStart and silently drops the segment.
+    const previews = [pf("p2", 4), pf("p1", 0), pf("p3", 8)];
+    expect(computePreviewSegments(previews, [], 10)).toEqual([
+      { previewFrameId: "p1", startTime: 0, endTime: 4 },
+      { previewFrameId: "p2", startTime: 4, endTime: 8 },
+      { previewFrameId: "p3", startTime: 8, endTime: 10 },
+    ]);
+  });
+
+  test("preview at or past duration is dropped", () => {
+    expect(
+      computePreviewSegments([pf("p1", 0), pf("p2", 12)], [], 10),
+    ).toEqual([{ previewFrameId: "p1", startTime: 0, endTime: 10 }]);
+    expect(computePreviewSegments([pf("p1", 10)], [], 10)).toEqual([]);
+  });
+
+  test("trailing segment is capped at duration", () => {
+    // If the next preview lives past the composition end, the prior
+    // preview's trailing segment caps at duration rather than emitting
+    // an out-of-bounds endTime.
+    const previews = [pf("p1", 0), pf("p2", 8)];
+    expect(computePreviewSegments(previews, [], 6)).toEqual([
+      { previewFrameId: "p1", startTime: 0, endTime: 6 },
+      // p2 is past duration → dropped.
+    ]);
+  });
 });

@@ -7,6 +7,7 @@ import { useStore, nextId } from "./store.js";
 import type { ElementSelection } from "./store.js";
 import type { BrowserIncomingMessage, BrowserOutgoingMessage, ContentBlock, ChatMessage, SelectionContext, SelectionType, Annotation } from "./types.js";
 import type { ViewerSelectionContext, ContentSet } from "../core/types/viewer-contract.js";
+import { isPneumaMarkerOnly } from "../core/utils/pneuma-markers.js";
 import { getNativeCapabilities, handleNativeRequest } from "./native-bridge.js";
 
 let socket: WebSocket | null = null;
@@ -40,13 +41,16 @@ const WS_RECONNECT_DELAY_MS = 2000;
  *   - `ensureToolResultPairing: repaired …` – the same self-repair message.
  * The repair already happened; surfacing the diagnostic only confuses the
  * user.
+ *
+ * "Request was aborted" is intentionally NOT filtered — it's the signal
+ * the user receives after pressing Stop or after a network blip, and they
+ * need to see it to know the turn ended early.
  */
 function isInternalDiagnosticError(err: string): boolean {
   if (typeof err !== "string") return false;
   return (
     err.includes("[ede_diagnostic]") ||
-    err.includes("ensureToolResultPairing") ||
-    err.includes("Request was aborted")
+    err.includes("ensureToolResultPairing")
   );
 }
 
@@ -744,10 +748,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
             if (m.role === "assistant") { prevAssistantIdx = k; break; }
             if (m.role === "user") {
               const c = (m.content || "").trim();
-              const isPneumaMarker =
-                /^<pneuma:[^>]*\/>$/i.test(c) ||
-                /^<pneuma:[a-z-]+\b[^>]*>[\s\S]*<\/pneuma:[a-z-]+>$/i.test(c);
-              if (!isPneumaMarker && c.length > 0) { blocked = true; break; }
+              if (!isPneumaMarkerOnly(c) && c.length > 0) { blocked = true; break; }
             }
           }
           if (

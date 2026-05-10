@@ -196,18 +196,31 @@ function SyncedBody({
   // black mp4 — technically correct but useless to the user. The user
   // wants Export draft (which bakes in sketches/anchors) until at least
   // one real clip lands.
+  // Disable Export draft when neither clips nor preview frames exist —
+  // that path produces the same useless 4-second black mp4 even with
+  // includePreviewFrames=true.
   const hasAnyClip = useMemo(
     () => !!composition && composition.tracks.some((t) => t.clips.length > 0),
     [composition],
   );
+  const hasAnyPreviewFrame = useMemo(
+    () =>
+      !!composition &&
+      composition.tracks.some((t) => (t.previewFrames?.length ?? 0) > 0),
+    [composition],
+  );
   const disabledCommands = useMemo<Record<string, string>>(() => {
-    const empty: Record<string, string> = {};
-    if (hasAnyClip) return empty;
-    return {
-      "export-video":
-        "No video clips on the timeline yet. Use Export draft to bake in sketches / anchors, or generate at least one clip first.",
-    };
-  }, [hasAnyClip]);
+    const out: Record<string, string> = {};
+    if (!hasAnyClip) {
+      out["export-video"] =
+        "No video clips on the timeline yet. Use Export draft to bake in sketches / anchors, or generate at least one clip first.";
+    }
+    if (!hasAnyClip && !hasAnyPreviewFrame) {
+      out["export-draft"] =
+        "Nothing to draft yet — generate at least one storyboard sketch, anchor frame, or video clip first.";
+    }
+    return out;
+  }, [hasAnyClip, hasAnyPreviewFrame]);
   // Tracks which instance was most recently kicked off so the progress
   // UI surfaces the latest run when both are non-idle (e.g. user
   // clicked Export draft, saw the "done" toast, then clicked Export

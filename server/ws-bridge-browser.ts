@@ -187,8 +187,15 @@ function buildAskUserQuestionFollowupMessage(
   // Wrap in a recognisable tag the agent can pattern-match. The leading
   // <pneuma:askq-answer> hint is harmless natural language; an agent that
   // ignores tags still understands the structure from the bullet list.
+  // tool_use_id comes from the upstream CLI but is interpolated into an
+  // attribute value, so escape `&`, `<`, and `"` to keep the wrapper
+  // well-formed even if a future CLI starts emitting unusual characters.
+  const escapedToolUseId = pending.tool_use_id
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/"/g, "&quot;");
   const content =
-`<pneuma:askq-answer tool_use_id="${pending.tool_use_id}">
+`<pneuma:askq-answer tool_use_id="${escapedToolUseId}">
 The picker UI in the chat panel captured the user's answer. Disregard the prior \`AskUserQuestion\` is_error tool_result ("Answer questions?") — that was the SDK's auto-deny in non-interactive mode, not a real failure. Continue based on this answer:
 
 ${bodyText}

@@ -2,6 +2,7 @@ import type { StateCreator } from "zustand";
 import type { ChatMessage, PermissionRequest, Annotation } from "../types.js";
 import type { AppState, Activity, AnsweredQuestion, ElementSelection } from "./types.js";
 import { mergeAssistantMessage } from "./helpers.js";
+import { isPneumaMarkerOnly } from "../../core/utils/pneuma-markers.js";
 
 export interface PendingUserPayload {
   text: string;
@@ -87,10 +88,7 @@ export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, 
             if (m.role === "assistant") { lastAssistantIdx = i; break; }
             if (m.role === "user") {
               const c = (m.content || "").trim();
-              const isPneumaMarker =
-                /^<pneuma:[^>]*\/>$/i.test(c) ||
-                /^<pneuma:[a-z-]+\b[^>]*>[\s\S]*<\/pneuma:[a-z-]+>$/i.test(c);
-              if (!isPneumaMarker && c.length > 0) {
+              if (!isPneumaMarkerOnly(c) && c.length > 0) {
                 blockedByMeaningfulInput = true;
                 break;
               }

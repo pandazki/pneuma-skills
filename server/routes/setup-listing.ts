@@ -72,10 +72,21 @@ function detectBible(workspace: string): BibleEntry | null {
 }
 
 function findCardImage(dir: string, baseName: string): string | null {
-  // Skip the .md and .prompt.md siblings; only look at images.
+  // Skip the .md and .prompt.md siblings; only look at images. Case-insensitive
+  // extension match so KIRA.PNG resolves on case-sensitive filesystems
+  // (consistent with the inner-dir scan in detectCardsIn).
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return null;
+  }
+  const baseLower = baseName.toLowerCase();
   for (const ext of IMAGE_PRIORITY) {
-    const candidate = join(dir, `${baseName}${ext}`);
-    if (existsSync(candidate)) return candidate;
+    const found = entries.find(
+      (n) => n.toLowerCase() === `${baseLower}${ext}`,
+    );
+    if (found) return join(dir, found);
   }
   return null;
 }
@@ -188,7 +199,14 @@ function detectStoryboards(workspace: string): StoryboardEntry[] {
     let grid: StoryboardEntry["grid"] = null;
     let hasStdoutJson = false;
 
-    if (existsSync(stdoutJsonPath)) {
+    // Cap the read at 1 MB. The structured stdout.json is tiny by design
+    // (a few KB even for 16 panels). A pathologically large file means
+    // either bad input or a different file at this path; either way,
+    // blocking the event loop on a multi-MB sync read is wrong, and we
+    // can fall through to the lex-fallback panel listing below.
+    const STDOUT_JSON_MAX_BYTES = 1_000_000;
+    const stdoutSt = safeStat(stdoutJsonPath);
+    if (stdoutSt && stdoutSt.isFile() && stdoutSt.size <= STDOUT_JSON_MAX_BYTES) {
       try {
         const raw = readFileSync(stdoutJsonPath, "utf-8");
         const parsed = JSON.parse(raw);

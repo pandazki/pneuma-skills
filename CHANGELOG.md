@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.3.3] - 2026-05-10
+
+### Fixed — review-driven hardening across the chat bridge, ClipCraft preview track, and storyboard tooling
+
+Follow-ups to the recent ClipCraft 0.8.0 / 0.9.0 + AskUserQuestion bridge work, addressing the high-confidence findings from the post-merge code review:
+
+- **`<pneuma:*>` marker dedup regex was too greedy.** The pattern `/^<pneuma:[a-z-]+\b[^>]*>[\s\S]*<\/pneuma:[a-z-]+>$/i` had no backreference between open and close tag names and used a greedy body, so a user message of the shape `<pneuma:env … />\nplease continue\n<pneuma:askq-answer>…</pneuma:askq-answer>` was mis-classified as a single non-meaningful marker — letting the resume-dedup walk-back overwrite legitimate distinct assistant turns. Fix: extracted a single `isPneumaMarkerOnly` helper to `core/utils/pneuma-markers.ts` (with bun:test coverage) backreferencing the tag name and forbidding any nested `</pneuma:` in the body, so two adjacent markers never collapse into one. Wired into all three dedup sites: `server/ws-bridge.ts` (messageHistory), `src/store/chat-slice.ts` (appendMessage), and `src/ws.ts` (history-replay loader). Single source of truth — no more drift across the server / browser bundles.
+- **`isInternalDiagnosticError` swallowed user-stop signals.** `"Request was aborted"` is the legitimate signal Claude Code emits when the user hits Stop or a network blip ends a turn early; users need to see it. Removed from the filter; the `[ede_diagnostic]` and `ensureToolResultPairing` self-repair messages remain filtered.
+- **`AskUserQuestion` follow-up `tool_use_id` now escaped.** `buildAskUserQuestionFollowupMessage` interpolated the upstream-supplied `tool_use_id` into a `<pneuma:askq-answer tool_use_id="…">` attribute without escaping. Cheap insurance: now escapes `&`, `<`, and `"` before string-interpolation so an unusual id from a future CLI can't corrupt the wrapper.
+- **`computePreviewSegments` defensive sort.** The helper assumed ascending-time order — true for upstream-sorted programmatic writes, but a hand-crafted `project.json` could feed unsorted previews and silently drop segments via `naturalEnd <= naturalStart`. Sorts internally now (O(N log N) for tiny N) and caps the trailing segment at composition `duration` so a preview past the end doesn't blow past the timeline. Two new test cases lock the contract — unsorted input round-trips, and trailing duration cap.
+- **`Export draft` now disabled when there's nothing to draft.** Already disabled `Export video` when no clips existed (avoiding a 4-second black mp4); same trap exists for `Export draft` if neither clips nor preview frames are present. Disabled with an explanatory tooltip.
+- **`storyboard.mjs` ffmpeg argv hardening.** `spawnSync` is argv-based (no shell injection), but a `--name "-foo"` would produce an output filename starting with `-` that ffmpeg would parse as a flag. Now passes the output path after `--` so it's always treated as a positional.
+- **Setup-listing route safety polish.** `stdout.json` reads now cap at 1 MB (previously unbounded — a pathologically large file would block the event loop on a sync read). `findCardImage` now matches extensions case-insensitively, consistent with the inner-directory scan in `detectCardsIn`, so `KIRA.PNG` resolves on case-sensitive filesystems.
+
 ## [3.3.2] - 2026-05-10
 
 ### Fixed — chat polish around the AskUserQuestion shim
@@ -44,7 +58,6 @@ Progressive-fidelity planning on the timeline before any expensive seedance gene
 - **Lightweight dive integration deferred.** The dive canvas selects its root asset from the active clip at the playhead, not the global craft selection. Clicking a preview frame strip thumbnail correctly selects the referenced image asset, but dive doesn't see it because there's no clip at that time. Deeper integration (preview-frame fallback or selection-priority root) is a separate design pass.
 - **Selection-aware `<preview-frame />` element in `<viewer-context>` deferred** — would require bridging the craft `Selection` enum (`asset / clip / track / time-range / none`) with the protocol-level `ViewerSelectionContext`. Out of scope for this release; the `<preview-frames>` summary still gives the agent useful planning-layer awareness.
 - **Production cutover** for `@pneuma-craft/{timeline,video,core,react}` — currently consumed via `bun link` from `~/Codes/pneuma-craft`. Final commit (`bun unlink` + bump `package.json` constraints) lands once upstream publishes `0.4.0` / `0.5.0`.
->>>>>>> 747a309 (release(clipcraft): 0.8.0 — storyboard preview track)
 
 ## [3.1.0] - 2026-05-08
 

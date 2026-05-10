@@ -37,12 +37,25 @@ export function computePreviewSegments(
 ): PreviewSegment[] {
   if (previews.length === 0) return [];
 
+  // Lock the ascending-time invariant at the helper boundary. Upstream
+  // sortPreviewFrames sorts on every insert/update, so programmatic
+  // writers always feed ordered input — but a hand-crafted project.json
+  // can land out-of-order, and naturalEnd assumes ordered neighbors. A
+  // defensive sort here costs O(N log N) for tiny N and removes the
+  // silent-drop failure mode (naturalEnd <= naturalStart skips the segment).
+  const ordered =
+    previews.length < 2
+      ? (previews as readonly PreviewFrame[])
+      : [...previews].sort((a, b) => a.time - b.time);
+
   const segments: PreviewSegment[] = [];
 
-  for (let i = 0; i < previews.length; i++) {
-    const pf = previews[i]!;
+  for (let i = 0; i < ordered.length; i++) {
+    const pf = ordered[i]!;
     const naturalStart = pf.time;
-    const naturalEnd = i + 1 < previews.length ? previews[i + 1]!.time : duration;
+    const rawNext = i + 1 < ordered.length ? ordered[i + 1]!.time : duration;
+    // Cap trailing segments at composition duration.
+    const naturalEnd = Math.min(rawNext, duration);
     if (naturalStart >= duration) continue;
     if (naturalEnd <= naturalStart) continue;
 

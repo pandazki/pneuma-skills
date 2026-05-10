@@ -414,11 +414,14 @@ function sliceComposite({ compositePath, panels, outputDir, baseName, format }) 
     const filename = `${baseName}-${String(panel.index).padStart(2, "0")}.${format}`;
     const outPath = join(outputDir, filename);
     const { x, y, w, h } = panel.bbox;
+    // Pass the output path after `--` so ffmpeg never interprets a
+    // leading-dash filename (e.g. from `--name "-foo"`) as a flag.
     const args = [
       "-y",
       "-i", compositePath,
       "-vf", `crop=${w}:${h}:${x}:${y}`,
       "-frames:v", "1",
+      "--",
       outPath,
     ];
     const res = spawnSync("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });

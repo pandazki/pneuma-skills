@@ -32,6 +32,7 @@ import type {
 import { makeDefaultState } from "./ws-bridge-types.js";
 import type { AgentBackendType } from "../core/types/agent-backend.js";
 import { getBackendCapabilities } from "../backends/index.js";
+import { isPneumaMarkerOnly } from "../core/utils/pneuma-markers.js";
 export type { SocketData } from "./ws-bridge-types.js";
 import {
   isDuplicateClientMessage,
@@ -840,9 +841,8 @@ export class WsBridge {
       if (typeof raw === "string") {
         const trimmed = raw.trim();
         if (trimmed.length === 0) continue;
-        // Pure `<pneuma:* … />` envelope or `<pneuma:*>…</pneuma:*>` block — not real input.
-        if (/^<pneuma:[^>]*\/>$/i.test(trimmed)) continue;
-        if (/^<pneuma:[a-z-]+\b[^>]*>[\s\S]*<\/pneuma:[a-z-]+>$/i.test(trimmed)) continue;
+        // Pure pneuma envelope (self-closing or paired) — not real input.
+        if (isPneumaMarkerOnly(trimmed)) continue;
         return true;
       }
       if (Array.isArray(raw) && raw.length > 0) return true;
