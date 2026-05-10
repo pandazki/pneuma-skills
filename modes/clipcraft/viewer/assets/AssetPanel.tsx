@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAssets, type Asset, type AssetType } from "@pneuma-craft/react";
 import { AssetGroup } from "./AssetGroup.js";
 import { AssetLightbox } from "./AssetLightbox.js";
@@ -11,8 +11,10 @@ import { reconcileAssets } from "./reconcile.js";
 import { theme } from "../theme/tokens.js";
 import { SparkleIcon, UploadIcon } from "../icons/index.js";
 import { useGenerationDialog } from "../generation/useGenerationDialog.js";
+import { SetupTab } from "../setup/SetupTab.js";
+import { useSetupListing } from "../setup/useSetupListing.js";
 
-type Tab = "assets" | "script";
+type Tab = "setup" | "assets" | "script";
 
 interface GroupSpec {
   label: string;
@@ -30,11 +32,43 @@ export function AssetPanel() {
   const assets = useAssets();
   const { upload } = useAssetActions();
   const [tab, setTab] = useState<Tab>("assets");
+  // Tracks whether the user explicitly chose a tab. Once they have, the
+  // smart-default effect below will not override their choice — the
+  // setup tab is only auto-selected on initial cold-start.
+  const userTouchedTab = useRef(false);
   const [preview, setPreview] = useState<Asset | null>(null);
   const [managerOpen, setManagerOpen] = useState(false);
   const { openForCreate } = useGenerationDialog();
 
   const { entries: fsEntries, refetch: refetchFs } = useAssetFsListing();
+  const setupListing = useSetupListing();
+
+  // Smart default: if the workspace has setup content (bible / cards /
+  // storyboards) but no assets registered yet, land the user on the
+  // Setup tab so they see the project bible they just authored. Once
+  // they pick a tab manually, leave them alone.
+  const hasSetup = useMemo(() => {
+    const data = setupListing.data;
+    if (!data) return false;
+    return (
+      data.bible !== null ||
+      data.cast.length > 0 ||
+      data.world.length > 0 ||
+      data.storyboards.length > 0
+    );
+  }, [setupListing.data]);
+  useEffect(() => {
+    if (userTouchedTab.current) return;
+    if (!setupListing.data) return; // wait for the listing to land
+    if (hasSetup && assets.length === 0 && tab === "assets") {
+      setTab("setup");
+    }
+  }, [setupListing.data, hasSetup, assets.length, tab]);
+
+  const handleTabClick = useCallback((next: Tab) => {
+    userTouchedTab.current = true;
+    setTab(next);
+  }, []);
 
   const grouped = useMemo(() => {
     const byType = new Map<AssetType, Asset[]>();
@@ -97,13 +131,13 @@ export function AssetPanel() {
           flexShrink: 0,
         }}
       >
-        {(["assets", "script"] as const).map((t) => {
+        {(["setup", "assets", "script"] as const).map((t) => {
           const active = tab === t;
           return (
             <button
               key={t}
               type="button"
-              onClick={() => setTab(t)}
+              onClick={() => handleTabClick(t)}
               aria-pressed={active}
               style={{
                 flex: 1,
@@ -123,7 +157,7 @@ export function AssetPanel() {
                 transition: `color ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
               }}
             >
-              {t === "assets" ? "Assets" : "Script"}
+              {t === "setup" ? "Setup" : t === "assets" ? "Assets" : "Script"}
             </button>
           );
         })}
@@ -168,7 +202,9 @@ export function AssetPanel() {
         </div>
       )}
 
-      {tab === "assets" ? (
+      {tab === "setup" ? (
+        <SetupTab />
+      ) : tab === "assets" ? (
         <div
           style={{
             padding: `${theme.space.space3}px ${theme.space.space3}px`,

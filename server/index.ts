@@ -18,6 +18,7 @@ import { openPath, revealPath, openUrl } from "./system-bridge.js";
 import { pathStartsWith, isWin } from "./utils.js";
 import { registerExportRoutes } from "./routes/export.js";
 import { registerAssetFsRoutes } from "./routes/asset-fs.js";
+import { registerSetupListing } from "./routes/setup-listing.js";
 import { listCheckpoints } from "./shadow-git.js";
 import { exportHistory } from "./history-export.js";
 import { importHistory } from "./history-import.js";
@@ -2458,6 +2459,9 @@ export async function startServer(options: ServerOptions) {
 
   // ── Asset filesystem listing (clipcraft-style modes) ───────────────
   registerAssetFsRoutes(app, { workspace });
+
+  // ── Setup tab listing (clipcraft production-bible artifacts) ───────
+  registerSetupListing(app, { workspace });
 
   // ── Save file ────────────────────────────────────────────────────────
   app.post("/api/files", async (c) => {
