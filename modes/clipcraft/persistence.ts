@@ -43,6 +43,13 @@ export interface ProjectClip {
   fadeOut?: number;
 }
 
+export interface ProjectPreviewFrame {
+  id: string;
+  trackId: string;
+  time: number;
+  assetId: string;
+}
+
 export type ProjectTrackType = "video" | "audio" | "subtitle";
 
 export interface ProjectTrack {
@@ -54,6 +61,7 @@ export interface ProjectTrack {
   locked: boolean;
   visible: boolean;
   clips: ProjectClip[];
+  previewFrames?: ProjectPreviewFrame[];
 }
 
 export interface ProjectTransition {
@@ -151,6 +159,41 @@ function validateProjectFile(value: unknown): ParseResult<ProjectFile> {
   if (!Array.isArray(value.assets)) return { ok: false, error: "assets must be an array" };
   if (!Array.isArray(value.provenance)) return { ok: false, error: "provenance must be an array" };
 
+  // Validate tracks and their previewFrames
+  if (!Array.isArray(value.composition.tracks)) {
+    return { ok: false, error: "composition.tracks must be an array" };
+  }
+  for (let trackIdx = 0; trackIdx < value.composition.tracks.length; trackIdx++) {
+    const track = value.composition.tracks[trackIdx];
+    if (!isObject(track)) {
+      return { ok: false, error: `composition.tracks[${trackIdx}] must be an object` };
+    }
+    // Validate previewFrames if present
+    if (track.previewFrames !== undefined) {
+      if (!Array.isArray(track.previewFrames)) {
+        return { ok: false, error: `composition.tracks[${trackIdx}].previewFrames must be an array` };
+      }
+      for (let pfIdx = 0; pfIdx < track.previewFrames.length; pfIdx++) {
+        const pf = track.previewFrames[pfIdx];
+        if (!isObject(pf)) {
+          return { ok: false, error: `composition.tracks[${trackIdx}].previewFrames[${pfIdx}] must be an object` };
+        }
+        if (typeof pf.id !== "string") {
+          return { ok: false, error: `composition.tracks[${trackIdx}].previewFrames[${pfIdx}].id must be a string` };
+        }
+        if (typeof pf.trackId !== "string") {
+          return { ok: false, error: `composition.tracks[${trackIdx}].previewFrames[${pfIdx}].trackId must be a string` };
+        }
+        if (typeof pf.time !== "number" || pf.time < 0) {
+          return { ok: false, error: `composition.tracks[${trackIdx}].previewFrames[${pfIdx}].time must be a non-negative number` };
+        }
+        if (typeof pf.assetId !== "string") {
+          return { ok: false, error: `composition.tracks[${trackIdx}].previewFrames[${pfIdx}].assetId must be a string` };
+        }
+      }
+    }
+  }
+
   if (value.scenes !== undefined) {
     if (!Array.isArray(value.scenes)) {
       return { ok: false, error: "scenes must be an array" };
@@ -203,9 +246,9 @@ function makeEnvelope(
  * dispatched in order, reproduce the on-disk state inside the craft store.
  *
  * Order: composition:create → asset:register* → provenance:* → composition:add-track*
- *        → composition:add-clip* (per track).
+ *        → composition:add-clip* (per track) → composition:add-preview-frame* (per track).
  *
- * Ids are preserved: asset.id, track.id, clip.id from the on-disk file are
+ * Ids are preserved: asset.id, track.id, clip.id, preview-frame.id from the on-disk file are
  * passed through to craft's commands unchanged (Plan 3a). Craft rejects
  * duplicate ids at dispatch time, so the hook's try/catch will log and
  * continue if the same content is accidentally hydrated twice.
@@ -304,6 +347,21 @@ export function projectFileToCommands(
         },
       } as CompositionCommand, ts));
     }
+
+    // 4b. Preview frames — emitted after all clips for this track so the
+    //     track exists in craft state. Preserves id so locator-card references
+    //     survive hydration.
+    if (track.previewFrames) {
+      for (const pf of track.previewFrames) {
+        cmds.push(makeEnvelope("human", {
+          type: "composition:add-preview-frame",
+          trackId: pf.trackId,
+          time: pf.time,
+          assetId: pf.assetId,
+          id: pf.id,
+        } as CompositionCommand, ts));
+      }
+    }
   }
 
   return cmds;
@@ -393,29 +451,46 @@ export function serializeProject(
     });
   }
 
-  // 4. Tracks + clips
+  // 4. Tracks + clips + previewFrames.
+  //
+  // Field order on each track mirrors the on-disk seed shape:
+  //   id, type, name, muted, volume, locked, visible, clips, previewFrames?
+  //
+  // previewFrames is only emitted when the track has at least one frame —
+  // legacy project.json files (pre-storyboard) had no field, and we want
+  // them to round-trip byte-identically. This mirrors how scenes/captionStyle
+  // are conditionally emitted at the top level.
   const tracks: ProjectTrack[] = composition
-    ? composition.tracks.map((track) => ({
-        id: track.id,
-        type: track.type,
-        name: track.name,
-        muted: track.muted,
-        volume: track.volume,
-        locked: track.locked,
-        visible: track.visible,
-        clips: track.clips.map((clip) => ({
-          id: clip.id,
-          assetId: clip.assetId,
-          startTime: clip.startTime,
-          duration: clip.duration,
-          inPoint: clip.inPoint,
-          outPoint: clip.outPoint,
-          ...(clip.text !== undefined ? { text: clip.text } : {}),
-          ...(clip.volume !== undefined ? { volume: clip.volume } : {}),
-          ...(clip.fadeIn !== undefined ? { fadeIn: clip.fadeIn } : {}),
-          ...(clip.fadeOut !== undefined ? { fadeOut: clip.fadeOut } : {}),
-        })),
-      }))
+    ? composition.tracks.map((track) => {
+        const previewFrames: ProjectPreviewFrame[] = track.previewFrames.map((pf) => ({
+          id: pf.id,
+          trackId: pf.trackId,
+          time: pf.time,
+          assetId: pf.assetId,
+        }));
+        return {
+          id: track.id,
+          type: track.type,
+          name: track.name,
+          muted: track.muted,
+          volume: track.volume,
+          locked: track.locked,
+          visible: track.visible,
+          clips: track.clips.map((clip) => ({
+            id: clip.id,
+            assetId: clip.assetId,
+            startTime: clip.startTime,
+            duration: clip.duration,
+            inPoint: clip.inPoint,
+            outPoint: clip.outPoint,
+            ...(clip.text !== undefined ? { text: clip.text } : {}),
+            ...(clip.volume !== undefined ? { volume: clip.volume } : {}),
+            ...(clip.fadeIn !== undefined ? { fadeIn: clip.fadeIn } : {}),
+            ...(clip.fadeOut !== undefined ? { fadeOut: clip.fadeOut } : {}),
+          })),
+          ...(previewFrames.length > 0 ? { previewFrames } : {}),
+        };
+      })
     : [];
 
   // 5. Transitions — pass through (currently unused)

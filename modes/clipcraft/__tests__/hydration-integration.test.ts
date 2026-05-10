@@ -321,4 +321,201 @@ describe("full-stack hydration", () => {
 
     expect(text2).toBe(text1);
   });
+
+  it("hydrates preview frames with preserved id", () => {
+    // Build a ProjectFile with an image asset and a single preview frame
+    // at t=4 on the video track, with an explicit id for round-trip verification.
+    const fileWithPreview: ProjectFile = {
+      $schema: "pneuma-craft/project/v1",
+      title: "Preview Frame Test",
+      composition: {
+        settings: { width: 1920, height: 1080, fps: 30, aspectRatio: "16:9" },
+        tracks: [
+          {
+            id: "track-video-2",
+            type: "video",
+            name: "Video Track",
+            muted: false,
+            volume: 1,
+            locked: false,
+            visible: true,
+            clips: [
+              {
+                id: "clip-1",
+                assetId: "asset-video-1",
+                startTime: 0,
+                duration: 10,
+                inPoint: 0,
+                outPoint: 10,
+              },
+            ],
+            previewFrames: [
+              {
+                id: "preview-frame-1",
+                trackId: "track-video-2",
+                time: 4,
+                assetId: "asset-image-1",
+              },
+            ],
+          },
+        ],
+        transitions: [],
+      },
+      assets: [
+        {
+          id: "asset-video-1",
+          type: "video",
+          uri: "assets/video.mp4",
+          name: "video",
+          metadata: { duration: 10 },
+          createdAt: 1712934000000,
+        },
+        {
+          id: "asset-image-1",
+          type: "image",
+          uri: "assets/frame.png",
+          name: "frame",
+          metadata: { width: 1920, height: 1080 },
+          createdAt: 1712934001000,
+        },
+      ],
+      provenance: [],
+    };
+
+    // Hydrate into a fresh TimelineCore
+    const core = hydrate(fileWithPreview);
+    const composition = core.getComposition();
+
+    // Verify the track exists
+    expect(composition).not.toBeNull();
+    expect(composition!.tracks).toHaveLength(1);
+    const track = composition!.tracks[0];
+    expect(track.id).toBe("track-video-2");
+
+    // Verify the preview frame was added and id is preserved
+    expect(track.previewFrames).toBeDefined();
+    expect(track.previewFrames).toHaveLength(1);
+    const pf = track.previewFrames![0];
+    expect(pf.id).toBe("preview-frame-1");
+    expect(pf.trackId).toBe("track-video-2");
+    expect(pf.time).toBe(4);
+    expect(pf.assetId).toBe("asset-image-1");
+  });
+
+  it("round-trips preview frames byte-identically (hydrate → serialize → format)", () => {
+    // Build a ProjectFile with two preview frames (at t=0 and t=4) on the
+    // video track. Field order on the track matches the serializer's emission
+    // order so the formatProjectJson comparison is byte-equal.
+    //
+    // Serializer's track field order (post-Task 1.4):
+    //   id, type, name, muted, volume, locked, visible, clips, previewFrames
+    //
+    // previewFrames is omitted from the serialized output when the array is
+    // empty, mirroring how scenes/captionStyle are omitted at the top level.
+    const fileWithPreview: ProjectFile = {
+      $schema: "pneuma-craft/project/v1",
+      title: "Preview Frame Round-Trip",
+      composition: {
+        settings: { width: 1920, height: 1080, fps: 30, aspectRatio: "16:9" },
+        tracks: [
+          {
+            id: "track-video-rt",
+            type: "video",
+            name: "Video Track",
+            muted: false,
+            volume: 1,
+            locked: false,
+            visible: true,
+            clips: [
+              {
+                id: "clip-rt-1",
+                assetId: "asset-video-rt",
+                startTime: 0,
+                duration: 10,
+                inPoint: 0,
+                outPoint: 10,
+              },
+            ],
+            previewFrames: [
+              {
+                id: "preview-frame-rt-0",
+                trackId: "track-video-rt",
+                time: 0,
+                assetId: "asset-image-rt-a",
+              },
+              {
+                id: "preview-frame-rt-4",
+                trackId: "track-video-rt",
+                time: 4,
+                assetId: "asset-image-rt-b",
+              },
+            ],
+          },
+        ],
+        transitions: [],
+      },
+      assets: [
+        {
+          id: "asset-video-rt",
+          type: "video",
+          uri: "assets/video-rt.mp4",
+          name: "video-rt",
+          metadata: { duration: 10 },
+          createdAt: 1712934000000,
+        },
+        {
+          id: "asset-image-rt-a",
+          type: "image",
+          uri: "assets/frame-rt-a.png",
+          name: "frame-rt-a",
+          metadata: { width: 1920, height: 1080 },
+          createdAt: 1712934001000,
+        },
+        {
+          id: "asset-image-rt-b",
+          type: "image",
+          uri: "assets/frame-rt-b.png",
+          name: "frame-rt-b",
+          metadata: { width: 1920, height: 1080 },
+          createdAt: 1712934002000,
+        },
+      ],
+      provenance: [],
+    };
+
+    // Hydrate → serialize
+    const core = hydrate(fileWithPreview);
+    const serialized = serializeProject(
+      core.getCoreState(),
+      core.getComposition(),
+      fileWithPreview.title,
+    );
+
+    // 1) The serialized track carries previewFrames with all four fields
+    //    preserved (id, trackId, time, assetId) and entries sorted ascending
+    //    by time.
+    const serializedTrack = serialized.composition.tracks[0];
+    expect(serializedTrack.previewFrames).toBeDefined();
+    expect(serializedTrack.previewFrames).toHaveLength(2);
+
+    // Sorted ascending by time — the on-disk fixture is already in that
+    // order so the serializer's output order should match.
+    expect(serializedTrack.previewFrames![0]).toEqual({
+      id: "preview-frame-rt-0",
+      trackId: "track-video-rt",
+      time: 0,
+      assetId: "asset-image-rt-a",
+    });
+    expect(serializedTrack.previewFrames![1]).toEqual({
+      id: "preview-frame-rt-4",
+      trackId: "track-video-rt",
+      time: 4,
+      assetId: "asset-image-rt-b",
+    });
+
+    // 2) Byte-identical round-trip — formatProjectJson(serialized) must equal
+    //    formatProjectJson(original). This is the standing invariant for
+    //    project files: parse → hydrate → serialize is byte-stable.
+    expect(formatProjectJson(serialized)).toBe(formatProjectJson(fileWithPreview));
+  });
 });

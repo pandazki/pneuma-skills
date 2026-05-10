@@ -55,11 +55,25 @@ export interface UseExportVideoResult {
   dismiss: () => void;
 }
 
+export interface UseExportVideoOptions {
+  readonly subtitleRenderer?: SubtitleRenderer;
+  /**
+   * Include preview frames (the planning-layer sketches and anchors)
+   * in the exported video. Default: false (final cut, sketches absent).
+   * Set true when producing a "draft / 草样片" export — useful for the
+   * user to scrub through pacing before committing to expensive
+   * generation. Forwarded to upstream `createExportEngine`.
+   */
+  readonly includePreviewFrames?: boolean;
+}
+
 export function useExportVideo(
   composition: Composition | null,
   resolver: WorkspaceAssetResolver,
-  subtitleRenderer?: SubtitleRenderer,
+  options?: UseExportVideoOptions,
 ): UseExportVideoResult {
+  const subtitleRenderer = options?.subtitleRenderer;
+  const includePreviewFrames = options?.includePreviewFrames ?? false;
   const [state, setState] = useState<ExportState>(INITIAL);
   const engineRef = useRef<ReturnType<typeof createExportEngine> | null>(null);
   const urlRef = useRef<string | null>(null);
@@ -103,7 +117,10 @@ export function useExportVideo(
         byteSize: null,
       });
 
-      const engine = createExportEngine({ subtitleRenderer });
+      const engine = createExportEngine({
+        subtitleRenderer,
+        includePreviewFrames,
+      });
       engineRef.current = engine;
       const offProgress = engine.onProgress((p) => {
         setState((s) => ({
@@ -152,7 +169,7 @@ export function useExportVideo(
         engineRef.current = null;
       }
     },
-    [composition, resolver, revokeUrl, subtitleRenderer],
+    [composition, resolver, revokeUrl, subtitleRenderer, includePreviewFrames],
   );
 
   const abort = useCallback(() => {

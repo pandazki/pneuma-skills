@@ -13,9 +13,9 @@ import {
 
 const clipcraftManifest: ModeManifest = {
   name: "clipcraft",
-  version: "0.7.2",
+  version: "0.9.0",
   displayName: "ClipCraft",
-  description: "AI video production with seedance and gpt-image-2 — first-/last-frame anchoring, 3D timeline, full provenance lineage",
+  description: "AI video production — production bibles, storyboard paths (A/B/C), direction notation, sketch→anchor→clip iteration, provenance lineage",
 
   supportedBackends: ["claude-code", "codex"],
   layout: "editor",
@@ -23,12 +23,12 @@ const clipcraftManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-clipcraft",
-    sharedScripts: ["generate_image.mjs", "edit_image.mjs"],
+    sharedScripts: ["generate_image.mjs", "edit_image.mjs", "storyboard.mjs"],
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
       FAL_KEY: "falApiKey",
     },
-    mdScene: `You and the user are producing an AI-generated video together inside Pneuma's ClipCraft workspace. The user watches an exploded 3D timeline of tracks, clips, and assets — every asset you generate and every edit you make to \`project.json\` re-hydrates the composition live, so they can hear the new TTS take or see the new shot land on the timeline as soon as it's ready. You orchestrate the work by running the bundled generation scripts and editing \`project.json\`; the viewer plays the result back as the file changes.`,
+    mdScene: `You and the user are producing an AI-generated video together inside Pneuma's ClipCraft workspace. The user watches an exploded 3D timeline; every asset you generate and every edit you make to \`project.json\` re-hydrates the composition live. ClipCraft is more than a thin wrapper over generation APIs — it encapsulates a layered body of techniques for AIGC video, organized in six layers: (1) Production Bible — lock the world before generating any pixel, (2) Storyboard Paths — choose A/B/C generation strategy and structure the shot list, (3) Direction Notation — encode intent precisely (color system, FACS, IPA, production triggers, faithfulness), (4) Iteration Workflow — sketch → anchor → real clip on the timeline with draft exports between stages, (5) Provenance Graph — lineage as audit trail and "try another take" foundation, (6) Generation Tools — run the actual APIs, recover from filter rejections. For multi-shot briefs, build the bible (\`references/production-bible.md\`) before the storyboard. For 4-16 panels, prefer Path C (compose-and-slice via \`scripts/storyboard.mjs\`) over independent generations — one composite, dramatically higher internal consistency, ~$0.16 instead of N×$0.16. See SKILL.md's "6-layer technique stack" section for the full decision tree.`,
   },
 
   viewer: {
@@ -69,6 +69,12 @@ const clipcraftManifest: ModeManifest = {
         label: "Add BGM",
         description:
           "Add background music. Ask the user for a mood/style if they haven't said. Generate, register, and add as a clip on a new or existing audio track.",
+      },
+      {
+        id: "export-draft",
+        label: "Export draft",
+        description:
+          "Export the current composition with preview frames (sketch + anchor) baked in, so the user can scrub a real video file before committing to expensive seedance generation. Use this proactively after stage-1 sketches are placed and after stage-2 anchors are placed, asking the user to review pacing.",
       },
       {
         id: "export-video",

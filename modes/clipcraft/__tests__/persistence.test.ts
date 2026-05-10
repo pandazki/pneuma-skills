@@ -72,6 +72,135 @@ describe("parseProjectFile", () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.assets[0].status).toBe("generating");
   });
+
+  it("parseProjectFile accepts a track with previewFrames", () => {
+    const json = JSON.stringify({
+      $schema: "pneuma-craft/project/v1",
+      title: "test",
+      composition: {
+        settings: { width: 1280, height: 720, fps: 30, aspectRatio: "16:9" },
+        tracks: [
+          {
+            id: "track-1",
+            type: "video",
+            name: "Plan",
+            clips: [],
+            previewFrames: [
+              { id: "pf-1", trackId: "track-1", time: 0, assetId: "asset-1" },
+              { id: "pf-2", trackId: "track-1", time: 4, assetId: "asset-2" },
+            ],
+            muted: false,
+            volume: 1,
+            locked: false,
+            visible: true,
+          },
+        ],
+        transitions: [],
+      },
+      assets: [
+        { id: "asset-1", type: "image", uri: "/sketches/01.png", name: "sketch 01", metadata: {}, tags: [], status: "ready", createdAt: 1700000000000 },
+        { id: "asset-2", type: "image", uri: "/sketches/02.png", name: "sketch 02", metadata: {}, tags: [], status: "ready", createdAt: 1700000000000 },
+      ],
+      provenance: [],
+    });
+
+    const result = parseProjectFile(json);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const track = result.value.composition.tracks[0];
+    expect(track.previewFrames).toHaveLength(2);
+    expect(track.previewFrames?.[0]).toEqual({
+      id: "pf-1", trackId: "track-1", time: 0, assetId: "asset-1",
+    });
+  });
+
+  it("parseProjectFile defaults previewFrames to undefined when absent (legacy file)", () => {
+    const json = JSON.stringify({
+      $schema: "pneuma-craft/project/v1",
+      title: "legacy",
+      composition: {
+        settings: { width: 1280, height: 720, fps: 30, aspectRatio: "16:9" },
+        tracks: [
+          {
+            id: "track-1",
+            type: "video",
+            name: "Main",
+            clips: [],
+            // No previewFrames field — pre-feature project file.
+            muted: false, volume: 1, locked: false, visible: true,
+          },
+        ],
+        transitions: [],
+      },
+      assets: [],
+      provenance: [],
+    });
+
+    const result = parseProjectFile(json);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.composition.tracks[0].previewFrames).toBeUndefined();
+  });
+
+  it("parseProjectFile rejects previewFrame with missing id", () => {
+    const json = JSON.stringify({
+      $schema: "pneuma-craft/project/v1",
+      title: "invalid",
+      composition: {
+        settings: { width: 1280, height: 720, fps: 30, aspectRatio: "16:9" },
+        tracks: [
+          {
+            id: "track-1",
+            type: "video",
+            name: "Main",
+            clips: [],
+            previewFrames: [
+              { trackId: "track-1", time: 0, assetId: "asset-1" }, // missing id
+            ],
+            muted: false, volume: 1, locked: false, visible: true,
+          },
+        ],
+        transitions: [],
+      },
+      assets: [],
+      provenance: [],
+    });
+
+    const result = parseProjectFile(json);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("id must be a string");
+  });
+
+  it("parseProjectFile rejects previewFrame with negative time", () => {
+    const json = JSON.stringify({
+      $schema: "pneuma-craft/project/v1",
+      title: "invalid",
+      composition: {
+        settings: { width: 1280, height: 720, fps: 30, aspectRatio: "16:9" },
+        tracks: [
+          {
+            id: "track-1",
+            type: "video",
+            name: "Main",
+            clips: [],
+            previewFrames: [
+              { id: "pf-1", trackId: "track-1", time: -1, assetId: "asset-1" }, // negative time
+            ],
+            muted: false, volume: 1, locked: false, visible: true,
+          },
+        ],
+        transitions: [],
+      },
+      assets: [],
+      provenance: [],
+    });
+
+    const result = parseProjectFile(json);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("time must be a non-negative number");
+  });
 });
 
 describe("projectFileToCommands", () => {

@@ -2,29 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
-## [3.2.1] - 2026-05-09
+## [3.3.0] - 2026-05-09
 
-### Fixed
-- **`projects: []` corruption from concurrent registry writes.** `~/.pneuma/sessions.json` is now written atomically (write-tmp + rename(2)). Two pneuma instances writing in quick succession (desktop app + CLI dev server, common in dev) could previously interleave bytes or land last-writer-wins on a fresh-read, silently wiping every Pneuma 3.0 project entry from the launcher. Fixes recurring "Recent Projects panel is empty" reports.
-- **Reconciler now recovers Pneuma 3.0 projects.** `bin/pneuma.ts:reconcileSessionsRegistry()` previously only re-attached legacy `.pneuma/session.json` workspaces. It now also detects `.pneuma/project.json` markers under `~/pneuma-projects/` and re-upserts them into `projects[]` — so a wiped registry heals on next launcher boot. Project recovery cap: 100 projects (separate from session 200 cap, matches the design in CLAUDE.md). Externally-rooted projects (e.g. under `~/Codes/`) still need a one-time re-open via the launcher to get re-registered.
+### ClipCraft 0.8.0 — Storyboard preview track
 
-## [3.2.0] - 2026-05-09
+Progressive-fidelity planning on the timeline before any expensive seedance generation. Backed by the upstream `PreviewFrame` capability in `@pneuma-craft/timeline ≥ 0.4.0` and `@pneuma-craft/video ≥ 0.5.0` (currently consumed via local `bun link`; production-version cutover is a follow-up commit once upstream publishes).
 
-### Added
-- **BackendModule self-describing manifests.** Each backend now ships `manifest.ts` declaring identity, capabilities, install layout, install hint, default models, and lifecycle factories. Single source of truth — no more central `Record` tables.
-- **Lifecycle harness.** `backends/__tests__/lifecycle-harness.ts` exposes 6 shared scenarios (boot / greeting / tool-flow / interrupt / multi-turn / resume) exercised against all three backends. Skip-when-binary-unavailable + per-scenario timeout overrides.
-- **Per-backend READMEs.** `backends/{claude-code,codex,kimi-cli}/README.md` document each backend's protocol shape, capabilities, install layout, gotchas, and references — entry point for new contributors.
-- **Evolve cross-backend support.** Evolve mode now declares `supportedBackends: ["claude-code", "codex"]`; routes skill paths through `BackendModule.skillsDir` instead of hardcoded `.claude/skills/`.
-- **Frontend capability-driven UI.** ChatPanel, ContextPanel, ModelSwitcher, SchedulePanel, TopBar all read `session.agent_capabilities.X` instead of `backend_type === "claude-code"`. Default model list ships from `BackendModule.defaultModels`.
-- **Extended AgentCapabilities.** Optional `scheduling? / costTracking? / contextWindow? / extras?` fields propagate end-to-end via `session_init`.
+- **Three planning layers on the same track** — sketches (cheap line-art `gpt-image-2` overlay across the whole timeline), then anchors (photoreal first/last frames at gen boundaries), then real video clips. Auto-fallback per upstream's half-open interval rule: clip wins where covered, else the most recent preview frame, else nothing. Preview-frame data stays in `track.previewFrames` even after a clip lands — useful for audit / undo / revisit.
+- **Persistence migration** — `project.json` carries a new optional `track.previewFrames: { id, trackId, time, assetId }[]`. Legacy files without the field parse unchanged. Round-trip preserved byte-identically.
+- **Timeline preview strip** — new `PreviewFrameStrip` component renders thumbnails in regions not covered by clips. Sketch fidelity (`asset.metadata.fidelity === "sketch"`) gets a dashed border + 70% opacity; anchor / absent gets solid + full opacity. Pending / failed / missing assets render explicit SVG placeholders.
+- **`previewFrameId` locator card** — agents can emit `<viewer-locator data='{"previewFrameId":"pf-04"}'>panel 4 — opening sketch</viewer-locator>` to land users on a specific anchor / sketch on the timeline. Click selects the referenced asset, seeks the playhead, and flashes the strip thumbnail. The id is stable across move / rebind so the locator survives re-pacing.
+- **`<preview-frames>` viewer-context** — `extractContext` parses `project.json` and emits a `<preview-frames total="N">` summary with per-track counts inside the existing `<viewer-context>`. Agents see the planning layer's scale every turn.
+- **Export draft** toolbar button — produces an MP4 with sketches + anchors baked in for review before committing to expensive seedance generation. Uses `useExportVideo({ includePreviewFrames: true })` against the upstream `createExportEngine` flag. Manifest exposes `export-draft` viewerApi command id alongside the existing `export-video`.
+- **`generate_image.mjs --style sketch | photo`** — sketch mode appends a fixed line-art prompt suffix and drops `--quality` to `low` (unless explicitly set) for cheap stage-1 storyboard generation. Photo mode (default) preserves the existing behaviour.
+- **`references/storyboard-workflow.md`** — agent-facing playbook covering the three-stage progressive-fidelity flow, density / pacing recipes, the Path B single-clip multi-beat long-form gen, move semantics, locator card usage, and known pitfalls. SKILL.md and `mdScene` cite it.
 
-### Fixed
-- **codex-cli 0.128+ approval-policy variant.** `mapApprovalPolicy` now returns `"on-request"` instead of removed `"unless-allow-listed"` — fixes any codex caller that doesn't pass `bypassPermissions`.
-- **Lifecycle harness deadlock for claude-code.** `system.init` only fires after first user prompt; harness was waiting before sending. Restructured to send + observe.
+#### Known limitations / deferred follow-ups
 
-### Improved
-- **CLI cleanup.** Removed 6 `if (backendType === ...)` switches from `bin/pneuma.ts`. Adapter wiring now polymorphic via `WsBridge.attachStreamingBackend`.
-- **Pure registry.** `backends/index.ts` collapsed to a manifest registry — no more central `BACKEND_DESCRIPTORS` / `BACKEND_CAPABILITIES` / `BACKEND_BINARIES` Records. `server/skill-installer-backend.ts` retired.
+- **`@pneuma-craft/react` doesn't expose `playbackEngineOptions`** on `PneumaCraftProvider` / `PneumaCraftStoreOptions` yet, so we can't explicitly set `includePreviewFrames` through the React provider. Functionally fine — upstream `PlaybackEngineOptions.includePreviewFrames` defaults to `true`, and ClipCraft documents the gap at the provider mount site. Push upstream when convenient.
+- **Lightweight dive integration deferred.** The dive canvas selects its root asset from the active clip at the playhead, not the global craft selection. Clicking a preview frame strip thumbnail correctly selects the referenced image asset, but dive doesn't see it because there's no clip at that time. Deeper integration (preview-frame fallback or selection-priority root) is a separate design pass.
+- **Selection-aware `<preview-frame />` element in `<viewer-context>` deferred** — would require bridging the craft `Selection` enum (`asset / clip / track / time-range / none`) with the protocol-level `ViewerSelectionContext`. Out of scope for this release; the `<preview-frames>` summary still gives the agent useful planning-layer awareness.
+- **Production cutover** for `@pneuma-craft/{timeline,video,core,react}` — currently consumed via `bun link` from `~/Codes/pneuma-craft`. Final commit (`bun unlink` + bump `package.json` constraints) lands once upstream publishes `0.4.0` / `0.5.0`.
+>>>>>>> 747a309 (release(clipcraft): 0.8.0 — storyboard preview track)
 
 ## [3.1.0] - 2026-05-08
 

@@ -437,6 +437,7 @@ const { values, positionals } = parseArgs({
     "image-size":       { type: "string" },
     "image-urls":       { type: "string", multiple: true },
     "mask-url":         { type: "string" },
+    style:              { type: "string", default: "photo" },
     // Common
     "output-dir":       { type: "string", default: "." },
     "filename-prefix":  { type: "string", default: "illustration" },
@@ -466,6 +467,11 @@ GPT-Image-2 only:
   --image-size <preset|WxH>    e.g. 'landscape_4_3' or '1024x1024'. Overrides --aspect-ratio.
   --image-urls <url> [...]     Switch to edit endpoint; one or more reference image URLs
   --mask-url <url>             Optional mask URL (edit endpoint only)
+  --style <sketch|photo>       Output style (default: photo).
+                               sketch → appends a line-art prompt suffix and
+                               drops --quality to 'low' (unless explicitly set)
+                               for cheap planning-layer storyboard sketches.
+                               photo → unchanged behaviour (the default).
 
 Gemini 3 Pro only:
   --resolution <res>         ${RESOLUTIONS.join(", ")} (default: 1K)
@@ -480,9 +486,29 @@ Notes:
   process.exit(positionals.length === 0 ? 1 : 0);
 }
 
-const prompt = positionals[0];
+const STYLES = ["sketch", "photo"];
+
+let prompt = positionals[0];
 const model = values.model;
 const numImages = parseInt(values["num-images"], 10);
+const style = values.style;
+
+if (!STYLES.includes(style)) {
+  console.error(`ERROR: invalid --style. Choices: ${STYLES.join(", ")}`);
+  process.exit(1);
+}
+
+// Sketch style: append a fixed line-art prompt suffix and drop quality
+// to 'low' (unless the user explicitly passed --quality). Cheap stage-1
+// planning visuals — see modes/clipcraft/skill/references/storyboard-workflow.md.
+const userPassedQuality = process.argv.slice(2).some((a) => a === "--quality" || a.startsWith("--quality="));
+if (style === "sketch") {
+  prompt = `${prompt} in clean black-and-white pencil sketch style, line art, no shading, white background`;
+  if (!userPassedQuality) {
+    values.quality = "low";
+  }
+  console.error(`[style] sketch → appended line-art suffix, quality=${values.quality}`);
+}
 const aspectRatio = values["aspect-ratio"];
 const outputFormat = values["output-format"];
 const resolution = values.resolution;

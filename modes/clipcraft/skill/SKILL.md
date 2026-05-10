@@ -36,6 +36,13 @@ before you act. Typical clipcraft payloads:
   the active asset's metadata. Use this to disambiguate a vague
   request like "try another take" — there's almost always a clip
   selected that tells you which one.
+- `<preview-frames>` (nested inside `<viewer-context>`) — summary of
+  the planning layer: `total="N"` attribute + per-track `<track id="..."
+  name="..." count="..." />` lines for tracks that carry preview frames.
+  When `total="0"` (or the tag is absent), the timeline has no
+  planning layer yet — a fresh project. Use this to decide whether
+  to start with sketch overlay (see `references/storyboard-workflow.md`)
+  vs jumping straight to generation.
 - `<user-actions>` — recent UI events: `playhead:seek`
   (`{time}`), `clip:select` (`{clipId, trackId}`),
   `asset:select` (`{assetId}`), `clip:drag` (`{clipId, startTime,
@@ -57,7 +64,7 @@ chips in chat. Use short concrete labels — "新的 VO 开场",
 "panda clip on Main", "3.5s — punchline beat" — not generic ones
 like "see asset".
 
-Four `data` shapes for clipcraft:
+Five `data` shapes for clipcraft:
 
 ```html
 <!-- assetId — scrolls the asset library to the asset and flashes it. -->
@@ -74,6 +81,15 @@ Four `data` shapes for clipcraft:
 <!-- trackId — scrolls and flashes a track header. Use when the
      change is track-level (mute/solo, reordered, new track). -->
 <viewer-locator data='{"trackId":"track-narration"}'>narration track</viewer-locator>
+
+<!-- previewFrameId — selects the referenced image asset, seeks the
+     playhead to the preview frame's anchor time, and flashes the
+     strip thumbnail on the timeline. Use when pointing at a sketch
+     or anchor on the planning layer (e.g. "I generated 3 sketches
+     for the opening; here's panel 4"). The preview frame's id is
+     stable across move/rebind, so locator references survive
+     re-pacing. -->
+<viewer-locator data='{"previewFrameId":"pf-04"}'>panel 4 — opening sketch</viewer-locator>
 ```
 
 ### Viewer commands (user → agent)
@@ -92,6 +108,7 @@ then run the matching workflow. If intent is ambiguous (e.g. a vague
 | Try another take | Variant of the selected clip's asset; register as a derived asset (provenance edge) so the variant switcher shows both options |
 | Add narration | TTS for the selected subtitle clip (or the whole caption track); match audio clip timing to subtitle clip timing |
 | Add BGM | Ask for mood/style if not given; generate, register, place on a new or existing audio track |
+| Export draft | Handled in the viewer — runs ExportEngine with `includePreviewFrames: true` so sketches + anchors bake in. **No agent involvement** for the click. Used during planning to verify pacing before committing to expensive seedance generation. |
 | Export video | Handled in the viewer — runs `@pneuma-craft/video` ExportEngine. **No agent involvement.** |
 
 ### Agent → viewer actions (HTTP)
@@ -119,27 +136,53 @@ clickable hand-off. Use HTTP actions when *you* need the viewer
 state to change before the next step (e.g. taking a screenshot via
 `/api/native/screenshot`).
 
-## When to reach for which reference
+## The 6-layer technique stack
 
-This SKILL.md is the map. Drill into the references when the
-situation matches:
+ClipCraft is more than a thin wrapper over generation APIs. The
+mode encapsulates a **body of techniques** — a way of thinking about
+AIGC video production — organized in six layers. When a brief lands,
+scan top-down and figure out which layers it touches; drill into
+those references and skip the rest. A one-shot 4s clip is Layer 6
+only. A music video exercises all six.
 
-- `references/craft.md` — before any creative decision (open brief,
-  generated clip feels close-but-wrong, picking music, deciding what
-  to cut). It's principles, not procedures.
-- `references/project-json.md` — before editing `project.json`. The
-  user usually doesn't know the schema; you have to.
-- `references/workflows.md` — when the user asks for a generation
-  task. Pattern-match the closest end-to-end example, then adapt.
-- `references/reference-directives.md` — when more than one visual
-  intent needs to be pinned down for a seedance generation (multi-ref
-  @-addressing, role vocabulary).
-- `references/character-consistency.md` — when a specific human
-  character appears, especially photorealistic, especially across
-  multiple shots.
-- `references/filter-retries.md` — when seedance rejects with a 422.
-  Decision tree for the two distinct content-filter signatures.
-- `references/asset-ids.md` — id naming and stability rules.
+| Layer | Concern | Primary reference(s) |
+|---|---|---|
+| **1. Production Bible** | Lock the world before generating any pixel — characters, settings, project bible | `references/production-bible.md` (+ `craft.md` for principles, `character-consistency.md` for the seedance-filter special case) |
+| **2. Storyboard Paths** | Choose A/B/C generation strategy; structure the shot list | `references/storyboard-design.md` |
+| **3. Direction Notation** | Encode intent precisely in prompts and references — production triggers, annotation color system, FACS, IPA, faithfulness, anti-patterns | `references/direction-notation.md` (+ `reference-directives.md` for `@-addressing`) |
+| **4. Iteration Workflow** | Sketch → anchor → clip on the timeline; draft exports between stages | `references/storyboard-workflow.md` |
+| **5. Provenance Graph** | Lineage as audit trail and "try another take" foundation | `references/project-json.md` (+ `asset-ids.md` for id rules) |
+| **6. Generation Tools** | Run the actual APIs; recover from filter rejections | `references/workflows.md` (worked examples), `references/filter-retries.md` (422 retry tree) |
+
+### Decision tree by brief shape
+
+| Brief shape | Layers to touch |
+|---|---|
+| "make a 4s clip of X" | 6 only |
+| "10s opening, single character" | 1 (light bible) + 4 + 6 |
+| "30s mini-story with a recurring character" | 1 (full bible) + 2 + 4 + 6 |
+| "music video / dance / dialogue-heavy" | 1 + 2 + 3 + 4 + 6 |
+| "60s ad with multiple characters across scenes" | All 6 |
+| Compositing intent into one ref image (Path C, dance, etc.) | 3 (annotation system) heavily |
+| Photoreal human getting rejected by seedance | 1 (`character-consistency.md`) + 6 (`filter-retries.md`) |
+
+### When in doubt — Layer 1 first
+
+The single biggest failure mode in multi-shot AIGC video work is
+**drift across shots**: the character's face changes, the location
+mutates, the palette wanders. Layer 1 is the antidote, and it's
+cheap (~$0.50–$2 in upstream image generations) compared to the
+cost of regenerating a Path A run because the protagonist looks
+different in panel 5. If a brief has *any* recurring character,
+location, or signature prop, build the bible before the storyboard.
+
+### Layers are not strictly sequential
+
+Plan top-down (1 → 2 → 3 → 4) but execute bottom-up where
+appropriate: you might generate a quick test sketch (Layer 6) to
+calibrate the bible (Layer 1), then redesign. Provenance (Layer 5)
+is recorded continuously, not in a phase. Direction Notation (Layer
+3) is consulted whenever you write a prompt at any other layer.
 
 ## Domain vocabulary (2-minute version)
 
@@ -185,6 +228,7 @@ Six CLI scripts wrap the provider APIs. Call them via the Bash tool.
 | `scripts/generate-tts.mjs` | Text→speech (expressive: inline `[laughing]` / `[sigh]` tags, 30 voices) | fal.ai `gemini-3.1-flash-tts` | `FAL_KEY` |
 | `scripts/generate-bgm.mjs` | Text→background music | OpenRouter `google/lyria-3-pro-preview` | `OPENROUTER_API_KEY` |
 | `scripts/make-character-sheet.mjs` | Photo → photo-body / sketch-head 16:9 character reference sheet (deterministic recovery shortcut for seedance's image-side filter; see `references/filter-retries.md`) | fal.ai `nano-banana-2/edit` | `FAL_KEY` |
+| `scripts/storyboard.mjs` | Compose-and-slice: one gpt-image-2 call generates an N-cell composite at the target video aspect ratio; ffmpeg slices into N individual panel images with provenance metadata. Engine layer for Path C (see `references/storyboard-workflow.md`). | OpenAI `gpt-image-2` (fal.ai) | `FAL_KEY` |
 
 `generate_image.mjs` and `edit_image.mjs` share their output shape —
 a JSON object on stdout with `files`, `urls`, and `description`. They
@@ -476,11 +520,28 @@ Full recipe and honest-limits disclosures in the reference doc.
 
 ## See also
 
-- `references/craft.md` — the craft of short video: principles over procedures
-- `references/project-json.md` — full `project.json` schema
-- `references/workflows.md` — three end-to-end worked examples
+Organized by the 6-layer technique stack:
+
+**Layer 1 — Production Bible** (lock the world before generating)
+- `references/production-bible.md` — character cards (director-grade template), setting cards, project bible
+- `references/character-consistency.md` — *seedance filter recovery*: photo-body / sketch-head sheet for photoreal humans (orthogonal to bible)
+- `references/craft.md` — broader principles of short-video craft
+
+**Layer 2 — Storyboard Paths** (choose A/B/C, structure the shot list)
+- `references/storyboard-design.md` — five-layer pre-pro design + per-panel template + delivery options A/B/C
+
+**Layer 3 — Direction Notation** (precision in prompts and references)
+- `references/direction-notation.md` — production triggers, annotation color system, FACS, IPA, faithfulness directives, anti-patterns
+- `references/reference-directives.md` — `@-addressing`, multi-ref role vocabulary
+
+**Layer 4 — Iteration Workflow** (sketch → anchor → clip)
+- `references/storyboard-workflow.md` — Path A/B/C, density recipes, draft exports, locator cards, atomic-edit rules
+
+**Layer 5 — Provenance Graph** (lineage + audit trail)
+- `references/project-json.md` — full schema
 - `references/asset-ids.md` — id naming and stability rules
-- `references/reference-directives.md` — @-addressing, role vocabulary, worked multi-ref example
-- `references/character-consistency.md` — photo-body + sketch-head sheet workflow for realistic human characters
+
+**Layer 6 — Generation Tools** (run the APIs, recover from rejection)
+- `references/workflows.md` — three end-to-end worked examples
 - `references/filter-retries.md` — decision tree for the two seedance 422 signatures
-- `scripts/` — the five bundled generator CLIs (including `make-character-sheet.mjs` recovery tool)
+- `scripts/` — the seven bundled generator CLIs (`generate_image.mjs`, `edit_image.mjs`, `generate-video.mjs`, `generate-tts.mjs`, `generate-bgm.mjs`, `make-character-sheet.mjs`, `storyboard.mjs`)

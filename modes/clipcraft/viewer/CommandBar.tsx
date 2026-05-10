@@ -7,6 +7,7 @@ import {
   ScissorsIcon,
   SpeakerIcon,
   UploadIcon,
+  PencilIcon,
   type IconProps,
 } from "./icons/index.js";
 import { theme } from "./theme/tokens.js";
@@ -21,6 +22,7 @@ const ICON_FOR_COMMAND: Record<string, IconComponent> = {
   "regenerate-variant": ScissorsIcon,
   "add-narration": SpeakerIcon,
   "add-bgm": AudioIcon,
+  "export-draft": PencilIcon,
   "export-video": UploadIcon,
 };
 
@@ -38,6 +40,14 @@ interface CommandBarProps {
    * export that don't need to round-trip through the agent.
    */
   handlers?: Record<string, () => void>;
+  /**
+   * Map of command id → disabled reason. When a command is disabled,
+   * the button renders dimmed and unclickable; the tooltip is replaced
+   * with the reason. Used to gate `export-video` when the composition
+   * has no real clips (would produce a black mp4 — the user wants
+   * `export-draft` instead).
+   */
+  disabledCommands?: Record<string, string>;
 }
 
 /**
@@ -55,9 +65,11 @@ export function CommandBar({
   commands,
   onNotifyAgent,
   handlers,
+  disabledCommands,
 }: CommandBarProps) {
   const handleClick = useCallback(
     (cmd: ViewerCommandDescriptor) => {
+      if (disabledCommands?.[cmd.id]) return;
       const direct = handlers?.[cmd.id];
       if (direct) {
         direct();
@@ -73,7 +85,7 @@ export function CommandBar({
         summary: `/${cmd.id}`,
       });
     },
-    [onNotifyAgent, handlers],
+    [onNotifyAgent, handlers, disabledCommands],
   );
 
   if (commands.length === 0) return null;
@@ -105,12 +117,15 @@ export function CommandBar({
       </span>
       {commands.map((cmd) => {
         const Icon = iconFor(cmd.id);
+        const disabledReason = disabledCommands?.[cmd.id];
+        const isDisabled = !!disabledReason;
         return (
           <button
             key={cmd.id}
             type="button"
             onClick={() => handleClick(cmd)}
-            title={cmd.description}
+            disabled={isDisabled}
+            title={disabledReason ?? cmd.description}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -120,20 +135,23 @@ export function CommandBar({
               background: theme.color.surface2,
               border: `1px solid ${theme.color.borderWeak}`,
               borderRadius: theme.radius.sm,
-              color: theme.color.ink1,
+              color: isDisabled ? theme.color.ink4 : theme.color.ink1,
+              opacity: isDisabled ? 0.5 : 1,
               fontFamily: theme.font.ui,
               fontSize: theme.text.xs,
               fontWeight: theme.text.weightMedium,
               letterSpacing: theme.text.trackingBase,
-              cursor: "pointer",
+              cursor: isDisabled ? "not-allowed" : "pointer",
               transition: `background ${theme.duration.quick}ms ${theme.easing.out}, color ${theme.duration.quick}ms ${theme.easing.out}, border-color ${theme.duration.quick}ms ${theme.easing.out}`,
             }}
             onMouseEnter={(e) => {
+              if (isDisabled) return;
               e.currentTarget.style.background = theme.color.surface3;
               e.currentTarget.style.borderColor = theme.color.accentBorder;
               e.currentTarget.style.color = theme.color.accentBright;
             }}
             onMouseLeave={(e) => {
+              if (isDisabled) return;
               e.currentTarget.style.background = theme.color.surface2;
               e.currentTarget.style.borderColor = theme.color.borderWeak;
               e.currentTarget.style.color = theme.color.ink1;

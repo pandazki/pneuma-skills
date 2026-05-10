@@ -4,10 +4,12 @@ import { useMemo } from "react";
 import type { Track, Clip } from "@pneuma-craft/timeline";
 import {
   useAsset,
+  useComposition,
   useDispatch,
   usePlayback,
   usePneumaCraftStore,
 } from "@pneuma-craft/react";
+import { PreviewFrameStrip } from "./PreviewFrameStrip.js";
 import { useFrameExtractor } from "./hooks/useFrameExtractor.js";
 import { useTrackDragEngine } from "./hooks/useTrackDragEngine.js";
 import { useClipResize } from "./hooks/useClipResize.js";
@@ -375,6 +377,8 @@ export function VideoTrack({
   onSelect,
 }: Props) {
   const dispatch = useDispatch();
+  const composition = useComposition();
+  const playback = usePlayback();
   const drag = useTrackDragEngine(track, pixelsPerSecond, dispatch);
   const resize = useClipResize(track, pixelsPerSecond, dispatch);
   const drop = useTrackDropTarget(track, pixelsPerSecond, scrollLeft);
@@ -398,6 +402,20 @@ export function VideoTrack({
       onDragLeave={drop.onDragLeave}
       onDrop={drop.onDrop}
     >
+      <PreviewFrameStrip
+        track={track}
+        duration={composition?.duration ?? 0}
+        pixelsPerSecond={pixelsPerSecond}
+        trackHeight={TRACK_H}
+        scrollLeft={scrollLeft}
+        onSelect={(_previewFrameId, anchorTime, assetId) => {
+          dispatch("human", {
+            type: "selection:set",
+            selection: { type: "asset", ids: [assetId] },
+          });
+          playback.seek(anchorTime);
+        }}
+      />
       {track.clips.map((clip) => {
         const previewStart = drag.displayStartFor(clip.id) ?? clip.startTime;
         const previewDuration = resize.displayDurationFor(clip.id) ?? clip.duration;

@@ -95,6 +95,13 @@ const ClipCraftPreview: ComponentType<ViewerPreviewProps> = ({
 
   const errorMessage = status.lastError?.message ?? null;
 
+  // Playback engine: includePreviewFrames defaults to true upstream, so the
+  // planning visuals attached to a track render whenever no real clip covers
+  // the playhead. ClipCraft relies on this default — playback always shows
+  // planning visuals so the user can scrub the agent's planned vibe before
+  // any real video clips land. The upstream React surface (0.3.0) does not
+  // expose a hook to declare this explicitly; if/when it does, pass
+  // `playbackEngineOptions: { includePreviewFrames: true }` here for clarity.
   return (
     <PneumaCraftProvider
       key={providerKey}
@@ -172,15 +179,75 @@ function SyncedBody({
   // round-trip, no backend invocation. The hook manages its own state
   // (progress, download url, error) so the CommandBar button can remain
   // a thin dispatcher.
-  const exportVideo = useExportVideo(composition, assetResolver, subtitleRenderer);
+  //
+  // Two instances:
+  // - `exportVideo`     — final cut (preview frames excluded by default).
+  // - `draftExport`     — review cut with sketch + anchor preview frames
+  //                       baked in, so the user can scrub a real MP4
+  //                       before committing to expensive seedance runs.
+  const exportVideo = useExportVideo(composition, assetResolver, { subtitleRenderer });
+  const draftExport = useExportVideo(composition, assetResolver, {
+    subtitleRenderer,
+    includePreviewFrames: true,
+  });
+
+  // Disable Export video when the composition has no real clips. Without
+  // clips and with includePreviewFrames=false the export produces a 4-second
+  // black mp4 — technically correct but useless to the user. The user
+  // wants Export draft (which bakes in sketches/anchors) until at least
+  // one real clip lands.
+  const hasAnyClip = useMemo(
+    () => !!composition && composition.tracks.some((t) => t.clips.length > 0),
+    [composition],
+  );
+  const disabledCommands = useMemo<Record<string, string>>(() => {
+    const empty: Record<string, string> = {};
+    if (hasAnyClip) return empty;
+    return {
+      "export-video":
+        "No video clips on the timeline yet. Use Export draft to bake in sketches / anchors, or generate at least one clip first.",
+    };
+  }, [hasAnyClip]);
+  // Tracks which instance was most recently kicked off so the progress
+  // UI surfaces the latest run when both are non-idle (e.g. user
+  // clicked Export draft, saw the "done" toast, then clicked Export
+  // video without dismissing — we want the new run visible, not the
+  // stale draft download link).
+  const lastStartedRef = useRef<"final" | "draft" | null>(null);
   const commandHandlers = useMemo(
     () => ({
       "export-video": () => {
+        lastStartedRef.current = "final";
         void exportVideo.start(currentTitleRef.current);
       },
+      "export-draft": () => {
+        lastStartedRef.current = "draft";
+        void draftExport.start(`${currentTitleRef.current ?? "clipcraft"}-draft`);
+      },
     }),
-    [exportVideo, currentTitleRef],
+    [exportVideo, draftExport, currentTitleRef],
   );
+
+  // Single progress UI surface — only one export runs at a time in
+  // practice. Priority:
+  //   1. mid-flight run (preparing / exporting) wins
+  //   2. otherwise, if both are non-idle (done/error not dismissed),
+  //      the most recently triggered one wins
+  //   3. otherwise, whichever is non-idle (or default to exportVideo)
+  const isMidFlight = (s: string) =>
+    s === "preparing" || s === "exporting";
+  const activeExport = isMidFlight(exportVideo.state.status)
+    ? exportVideo
+    : isMidFlight(draftExport.state.status)
+      ? draftExport
+      : exportVideo.state.status !== "idle" &&
+          draftExport.state.status !== "idle"
+        ? lastStartedRef.current === "draft"
+          ? draftExport
+          : exportVideo
+        : exportVideo.state.status !== "idle"
+          ? exportVideo
+          : draftExport;
 
   // ── Locator navigation ──────────────────────────────────────────────
   //
@@ -214,7 +281,29 @@ function SyncedBody({
     if (!navigateRequest) return;
     const { data } = navigateRequest;
 
-    if (typeof data.clipId === "string") {
+    if (typeof data.previewFrameId === "string") {
+      const previewFrameId = data.previewFrameId;
+      let pf: { time: number; assetId: string } | null = null;
+      if (composition) {
+        for (const track of composition.tracks) {
+          const found = track.previewFrames?.find((p) => p.id === previewFrameId);
+          if (found) {
+            pf = { time: found.time, assetId: found.assetId };
+            break;
+          }
+        }
+      }
+      if (pf) {
+        dispatch("human", {
+          type: "selection:set",
+          selection: { type: "asset", ids: [pf.assetId] },
+        });
+        playback.seek(Math.max(0, pf.time));
+      }
+      requestAnimationFrame(() =>
+        flashElement(`[data-preview-frame-id="${CSS.escape(previewFrameId)}"]`),
+      );
+    } else if (typeof data.clipId === "string") {
       const clipId = data.clipId;
       let clipStart: number | null = null;
       if (composition) {
@@ -351,11 +440,12 @@ function SyncedBody({
         commands={commands}
         onNotifyAgent={onNotifyAgent}
         handlers={commandHandlers}
+        disabledCommands={disabledCommands}
       />
       <ExportProgress
-        state={exportVideo.state}
-        onAbort={exportVideo.abort}
-        onDismiss={exportVideo.dismiss}
+        state={activeExport.state}
+        onAbort={activeExport.abort}
+        onDismiss={activeExport.dismiss}
       />
       <div style={{ flex: 1, minHeight: 0 }}>
         <PreviewPanel hydrationError={hydrationError} />
