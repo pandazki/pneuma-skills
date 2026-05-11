@@ -57,6 +57,7 @@ import type { KimiAdapter } from "../backends/kimi-cli/kimi-adapter.js";
 import type { PneumaMessage } from "../backends/kimi-cli/protocol.js";
 import { enqueueCheckpoint, isShadowGitAvailable } from "./shadow-git.js";
 import type { BridgeBackend, BridgeBackendDeps, RouteResult } from "./ws-bridge-backend.js";
+import { stampFileRefs } from "./file-ref.js";
 
 function shortId(): string {
   return randomBytes(3).toString("hex");
@@ -270,6 +271,9 @@ export class KimiBridge implements BridgeBackend {
       parent_tool_use_id: null,
       timestamp: Date.now(),
     };
+    if (assistantMsg.type === "assistant" && Array.isArray(assistantMsg.message?.content)) {
+      stampFileRefs(assistantMsg.message.content, "kimi-cli");
+    }
     this.session.messageHistory.push(assistantMsg);
     this.deps.broadcastToBrowsers(this.session, assistantMsg);
 

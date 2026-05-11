@@ -17,6 +17,7 @@ import type { CodexAdapter } from "../backends/codex/codex-adapter.js";
 import type { Session } from "./ws-bridge-types.js";
 import { enqueueCheckpoint, isShadowGitAvailable, nextTurnIndex } from "./shadow-git.js";
 import type { BridgeBackend, BridgeBackendDeps, RouteResult } from "./ws-bridge-backend.js";
+import { stampFileRefs } from "./file-ref.js";
 
 export class CodexBridge implements BridgeBackend {
   readonly backendType = "codex" as const;
@@ -162,6 +163,9 @@ export class CodexBridge implements BridgeBackend {
 
     // Track message history for replay.
     if (msg.type === "assistant") {
+      if (Array.isArray(msg.message?.content)) {
+        stampFileRefs(msg.message.content, "codex");
+      }
       const assistantMsg = { ...msg, timestamp: msg.timestamp || Date.now() };
       // Replace any prior entry with the same id (codex deltas resolve to a
       // final message; we keep just the final).

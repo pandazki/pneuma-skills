@@ -50,6 +50,7 @@ import {
   handlePermissionResponse,
 } from "./ws-bridge-browser.js";
 import { handleViewerActionResponse } from "./ws-bridge-viewer.js";
+import { stampFileRefs } from "./file-ref.js";
 import type { CodexAdapter } from "../backends/codex/codex-adapter.js";
 import { CodexBridge } from "./ws-bridge-codex.js";
 import type { KimiAdapter } from "../backends/kimi-cli/kimi-adapter.js";
@@ -766,6 +767,9 @@ export class WsBridge {
           request: perm,
         });
       }
+    }
+    if (Array.isArray(msg.message?.content)) {
+      stampFileRefs(msg.message.content, "claude-code");
     }
     const browserMsg: BrowserIncomingMessage = {
       type: "assistant",
