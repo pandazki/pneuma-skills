@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.4.0
+**Version:** 3.5.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`
 
@@ -169,7 +169,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 | **ViewerContract** | `core/types/viewer-contract.ts` | Preview component, context extraction, workspace model |
 | **AgentBackend** | `core/types/agent-backend.ts` | Launch, resume, kill, capabilities (process-lifecycle layer) |
 | **BridgeBackend** | `server/ws-bridge-backend.ts` | Per-backend bridge handler — attach / routeBrowserMessage / injectUserMessage / disconnect; non-Claude backends (codex, kimi-cli) implement this so the central WsBridge stays backend-agnostic |
-| **BackendModule** | `core/types/agent-backend.ts` | Self-describing per-backend manifest — identity, capabilities, install conventions (skillsDir / instructionsFile / displayLabel), install hint, default models, and lifecycle factories. Each backend ships its own `manifest.ts` exporting a `BackendModule`; `backends/index.ts` is a pure registry over them. Subsumes the former `BackendInstallHandler` registry |
+| **BackendModule** | `core/types/agent-backend.ts` | Self-describing per-backend manifest — identity, capabilities, install conventions (skillsDir / instructionsFile / displayLabel), install hint, default models, and lifecycle factories. Each backend ships its own `manifest.ts` exporting a `BackendModule`; `backends/index.ts` is a pure registry over them. Subsumes the former `BackendInstallHandler` registry; optional `toolFileRef(name, input)` → normalized file ref for chat previews/actions |
 | **EvolutionConfig** | `core/types/mode-manifest.ts` | Evolution directive, tools (part of ModeManifest) |
 | **SharedHistoryPackage** | `core/types/shared-history.ts` | Exported session bundle: messages, checkpoints, metadata, summary |
 | **PluginManifest** | `core/types/plugin.ts` | Plugin capabilities: hooks, slots, routes, settings |
@@ -201,6 +201,7 @@ Extensible plugin architecture for deploy workflows, metadata injection, and fut
 - Claude: `claude --print --output-format stream-json --input-format stream-json --include-partial-messages --include-hook-events --verbose --permission-mode bypassPermissions [--resume <id>]` via `node:child_process`; the launcher hands its stdin/stdout pipes to `WsBridge.attachCLITransport` / `feedCLIMessage` so the existing `routeCLIMessage` pipeline keeps working unchanged
 - Codex: `codex app-server` via `node:child_process` stdio; `CodexAdapter` translates protocol via `ws-bridge-codex.ts`
 - Browser session init carries normalized `backend_type`, `agent_capabilities`, `agent_version` for UI feature gating
+- `tool_use` blocks may carry a normalized `fileRef` (`{ path, kind }`), stamped server-side by `stampFileRefs` (`server/file-ref.ts`) from each `BackendModule`'s `toolFileRef`; the chat reads it to render inline image previews (`FilePreview`) + system-open actions (`ToolFileActions` — open / editor / reveal via `/api/system/*`) on file tool-call blocks, with zero tool-name knowledge in the UI
 
 ## Mode Lifecycle
 
@@ -371,7 +372,7 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 
 ## Server Routes
 
-Server routes are defined in `server/index.ts` (main), `server/routes/export.ts` (export), `server/evolution-routes.ts` (evolution), `server/mode-maker-routes.ts` (mode maker). WebSocket paths: `/ws/browser/:sessionId` (JSON), `/ws/cli/:sessionId` (NDJSON), `/ws/terminal/:terminalId` (binary). Codex uses stdio JSON-RPC, not WebSocket.
+Server routes are defined in `server/index.ts` (main), `server/routes/export.ts` (export), `server/evolution-routes.ts` (evolution), `server/mode-maker-routes.ts` (mode maker). WebSocket paths: `/ws/browser/:sessionId` (JSON), `/ws/cli/:sessionId` (NDJSON), `/ws/terminal/:terminalId` (binary). Codex uses stdio JSON-RPC, not WebSocket. `GET /api/file?path=<abs>` serves workspace-contained file reads (used by chat image previews).
 
 Native desktop APIs (`/api/native/*`) are available only in Electron. Architecture: Server → WS `native_request` → Browser → Electron IPC → result → WS `native_result` → Server. Web environments return `{ available: false }`.
 

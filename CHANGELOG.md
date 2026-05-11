@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.5.0] - 2026-05-11
+
+### Added — scene-type preview + system-open actions for file tool calls
+
+The chat now surfaces what the agent touches. A `Read` of an image renders an inline thumbnail (the tool block defaults to expanded; click the thumbnail for a full-screen lightbox), and every file-touching tool call (`Read` / `Write` / `Edit` / `NotebookEdit`, plus whatever the active backend normalizes to those — Codex's `fileChange` lands as `Edit`) gets a one-click action row: open with the OS default app, open in a detected code editor (split-button, remembers your choice), reveal in Finder/Explorer.
+
+- **Backend-agnostic by construction.** Backend tool-naming differences live in a new optional `BackendModule.toolFileRef(toolName, input)` pure resolver (a shared `defaultToolFileRef` covers the Claude-shaped `Read`/`Write`/`Edit`/`NotebookEdit` + `file_path` convention, used verbatim by claude-code and codex; kimi-cli layers a generic `path`/`file_path` fallback). A `stampFileRefs` helper, called on every assistant-message broadcast in all three backend bridges, stamps a normalized `fileRef: { path, kind }` onto `tool_use` blocks. The chat UI reads `block.fileRef` only — no tool-name strings, no `if (backend === …)` branching.
+- **`GET /api/file?path=<abs>`** — a workspace-contained file server (strict `resolve` + workspace-root prefix check) so the chat's `<img>` can point at any file the agent read.
+- **New mode-agnostic chat components** — `FilePreview` (image thumbnail v1; the file-type dispatch leaves a clean seam for markdown/JSON/video/audio/PDF later), `ToolFileActions` (the open/editor/reveal row; shares the editor-picker `localStorage` key with `EditorPickerButton`), `ImageLightbox` (full-screen overlay, Esc/backdrop close, focus-trap), and `src/hooks/useFocusTrap` (lifted from `modes/clipcraft/`).
+
+#### Known limitations / follow-ups
+
+- Inline preview is images only in v1; other types fall through to the existing code-block rendering.
+- Grouped tool blocks (`ToolGroupBlock` — several `Read`s collapsed into one row) don't show per-item thumbnails/actions; only standalone tool blocks do.
+- `ToolFileActions` and `EditorPickerButton` are separate components that now share the remembered-editor `localStorage` key but not the UI; unifying them is a future cleanup.
+
 ## [3.4.0] - 2026-05-11
 
 ### Changed — Project lifecycle simplified
