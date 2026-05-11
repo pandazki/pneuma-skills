@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { mountProjectsRoutes } from "../projects-routes.js";
+import { shutdownProjectCache } from "../projects-cache.js";
 
 let home: string;
 let testApp: Hono;
@@ -16,6 +17,12 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // POST /api/projects (and archive / restore / delete) call primeProjectCache /
+  // revalidateProjectCache, which start persistent chokidar watchers. Without
+  // tearing them down, `bun test` won't exit after this file finishes — the
+  // live watchers keep the event loop alive (the CI symptom: "Run tests" hangs
+  // for hours instead of completing in minutes). Mirrors projects-cache.test.ts.
+  await shutdownProjectCache();
   await rm(home, { recursive: true, force: true });
 });
 

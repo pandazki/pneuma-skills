@@ -33,6 +33,11 @@ The new shape:
 - Anyone who relied on `pneuma sessions rebuild` to rehydrate their registry: run `pneuma project add <path>` for each Project root instead, or just click *Create Project* on each path in the launcher.
 - Anyone who relied on the implicit scan finding their Projects under `~/pneuma-projects/`: same — use either entry point above.
 
+### Fixed — CI test step could hang for hours
+
+- **`server/__tests__/projects-routes.test.ts` leaked chokidar watchers.** `POST /api/projects` (and archive / restore / delete) call `primeProjectCache` / `revalidateProjectCache`, which start persistent watchers; the test's `afterEach` removed the tmp dir but never tore the watchers down, so `bun test` couldn't drain its event loop and the CI "Run tests" step would stall for hours instead of finishing in minutes. Added `await shutdownProjectCache()` to the `afterEach`, mirroring `projects-cache.test.ts`.
+- **CI hardening.** `release.yml` gains `timeout-minutes: 25` on the test/build job (and `45` on the desktop matrix) so a wedged step fails fast instead of burning a runner; `bun test --timeout 60000` caps any single test; bun pinned `1.3.10 → 1.3.11` to match local dev.
+
 ## [3.3.4] - 2026-05-11
 
 ### Fixed — ClipCraft Setup tab dialog a11y + markdown rendering
