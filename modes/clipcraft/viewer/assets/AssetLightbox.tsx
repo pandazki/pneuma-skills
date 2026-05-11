@@ -7,6 +7,7 @@ import { theme } from "../theme/tokens.js";
 import { AssetInfoView } from "../assetInfo/AssetInfoView.js";
 import { useGenerationDialog } from "../generation/useGenerationDialog.js";
 import { sourceFromAsset } from "../generation/dispatchGeneration.js";
+import { useFocusTrap } from "../hooks/useFocusTrap.js";
 
 /**
  * Full-screen preview of a single asset. Two-column layout: the media
@@ -38,6 +39,10 @@ export function AssetLightbox({
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
+
+  // Focus-trap on the inner modal so Tab keys cycle within the dialog
+  // instead of leaking out to the underlying chat / timeline.
+  const modalRef = useFocusTrap<HTMLDivElement>(true);
 
   const coreState = usePneumaCraftStore((s) => s.coreState);
   const edge = useMemo(() => {
@@ -119,6 +124,7 @@ export function AssetLightbox({
 
   return (
     <div
+      ref={modalRef}
       onClick={onClose}
       style={{
         position: "fixed",
@@ -161,6 +167,9 @@ export function AssetLightbox({
       </button>
 
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Asset: ${asset.name}`}
         onClick={(e) => e.stopPropagation()}
         style={{
           display: "grid",

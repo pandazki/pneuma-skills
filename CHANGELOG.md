@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.3.4] - 2026-05-11
+
+### Fixed — ClipCraft Setup tab dialog a11y + markdown rendering
+
+Follow-ups to the post-merge code review on ClipCraft 0.9.0 setup tab:
+
+- **Focus-trap + focus-restore on both lightboxes.** `AssetLightbox` and the new `CardLightbox` opened modal dialogs but never trapped Tab focus inside them, so keyboard users could Tab into the underlying chat / timeline behind the backdrop. Extracted a shared `useFocusTrap` hook (`modes/clipcraft/viewer/hooks/useFocusTrap.ts`) that (a) moves focus to the first focusable inside the dialog on open, (b) cycles Tab / Shift+Tab between the first and last focusable so focus stays inside, and (c) restores focus to the previously-active element on close. Wired into both lightboxes so they stay in parity. Inner modal container also gains `role="dialog"` + `aria-modal` + `aria-label` so assistive tech announces the dialog correctly.
+- **Dropped `rehypeRaw` from the setup-tab markdown renderers.** `BibleSection` and `CardLightbox` rendered agent-authored markdown via `react-markdown` + `rehype-raw`, which (1) opens an XSS sink the moment any external template or snapshot is ever imported into a project, and (2) actively breaks the angle-bracket placeholder syntax the bible / character-card templates use (`TITLE: <project name>`, `FLOW INTENTION: <one-sentence emotional metaphor>`, etc.) by trying to parse those as HTML tags. With `rehype-raw` removed, react-markdown's default escapes those placeholders to literal text so the template reads correctly, and there's no surface for raw HTML to land. `doc` and `mode-maker` modes keep `rehype-raw` — different threat model (the user authors that content directly).
+
 ## [3.3.3] - 2026-05-10
 
 ### Fixed — review-driven hardening across the chat bridge, ClipCraft preview track, and storyboard tooling

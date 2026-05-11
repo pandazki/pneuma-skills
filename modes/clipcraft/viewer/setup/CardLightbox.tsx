@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import { usePneumaCraftStore } from "@pneuma-craft/react";
 import { theme } from "../theme/tokens.js";
 import { XIcon } from "../icons/index.js";
+import { useFocusTrap } from "../hooks/useFocusTrap.js";
 import type { CardEntry } from "./useSetupListing.js";
 
 /**
@@ -39,6 +39,10 @@ export function CardLightbox({ card, kind, workspaceUrl, onClose }: Props) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
+
+  // Focus-trap on the inner modal so Tab keys cycle within the dialog
+  // instead of leaking out to the underlying chat / timeline.
+  const modalRef = useFocusTrap<HTMLDivElement>(true);
 
   // Fetch the markdown body. mtime is included as a cache-buster.
   useEffect(() => {
@@ -114,6 +118,7 @@ export function CardLightbox({ card, kind, workspaceUrl, onClose }: Props) {
 
   return (
     <div
+      ref={modalRef}
       onClick={onClose}
       style={{
         position: "fixed",
@@ -156,6 +161,9 @@ export function CardLightbox({ card, kind, workspaceUrl, onClose }: Props) {
       </button>
 
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${titleLabel}: ${card.name}`}
         onClick={(e) => e.stopPropagation()}
         style={{
           display: "grid",
@@ -278,10 +286,7 @@ export function CardLightbox({ card, kind, workspaceUrl, onClose }: Props) {
                 Failed to load: {error}
               </div>
             ) : (
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeRaw]}
-              >
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {body}
               </ReactMarkdown>
             )}

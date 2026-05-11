@@ -1,6 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import { theme } from "../theme/tokens.js";
 import type { BibleEntry } from "./useSetupListing.js";
@@ -84,9 +83,7 @@ export function BibleSection({ bible, workspaceUrl }: Props) {
           }}
           className="setup-tab-markdown"
         >
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-            {body}
-          </ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown>
         </div>
       )}
     </SectionShell>
