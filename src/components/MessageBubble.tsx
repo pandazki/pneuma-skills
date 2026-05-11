@@ -336,6 +336,7 @@ interface ToolGroupItem {
   id: string;
   name: string;
   input: Record<string, unknown>;
+  fileRef?: { path: string; kind: "read" | "write" | "edit" };
 }
 
 interface ToolUseInfo {
@@ -371,12 +372,12 @@ function groupContentBlocks(blocks: ContentBlock[]): GroupedBlock[] {
       }
       const last = groups[groups.length - 1];
       if (last?.kind === "tool_group" && last.name === block.name) {
-        last.items.push({ id: block.id, name: block.name, input: block.input });
+        last.items.push({ id: block.id, name: block.name, input: block.input, fileRef: block.fileRef });
       } else {
         groups.push({
           kind: "tool_group",
           name: block.name,
-          items: [{ id: block.id, name: block.name, input: block.input }],
+          items: [{ id: block.id, name: block.name, input: block.input, fileRef: block.fileRef }],
         });
       }
     } else {
@@ -447,7 +448,7 @@ function AssistantMessage({
           }
           if (group.items.length === 1) {
             const item = group.items[0];
-            return <ToolBlock key={i} name={item.name} input={item.input} toolUseId={item.id} />;
+            return <ToolBlock key={i} name={item.name} input={item.input} toolUseId={item.id} fileRef={item.fileRef} />;
           }
           return <ToolGroupBlock key={i} name={group.name} items={group.items} />;
         })}
@@ -830,7 +831,7 @@ function ContentBlockRenderer({
   }
 
   if (block.type === "tool_use") {
-    return <ToolBlock name={block.name} input={block.input} toolUseId={block.id} />;
+    return <ToolBlock name={block.name} input={block.input} toolUseId={block.id} fileRef={block.fileRef} />;
   }
 
   if (block.type === "tool_result") {

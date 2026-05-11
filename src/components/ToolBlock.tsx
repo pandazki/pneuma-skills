@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { FilePreview, isInlinePreviewable } from "./FilePreview.js";
+import { ToolFileActions } from "./ToolFileActions.js";
 
 const TOOL_ICONS: Record<string, string> = {
   Bash: "terminal",
@@ -78,12 +80,16 @@ export function getPreview(name: string, input: Record<string, unknown>): string
 export function ToolBlock({
   name,
   input,
+  fileRef,
 }: {
   name: string;
   input: Record<string, unknown>;
   toolUseId: string;
+  fileRef?: { path: string; kind: "read" | "write" | "edit" };
 }) {
-  const [open, setOpen] = useState(false);
+  // Image file reads default to expanded so the thumbnail is visible without a click.
+  const startExpanded = !!fileRef && isInlinePreviewable(fileRef.path);
+  const [open, setOpen] = useState(startExpanded);
   const iconType = getToolIcon(name);
   const label = getToolLabel(name);
   const preview = getPreview(name, input);
@@ -115,6 +121,8 @@ export function ToolBlock({
           <div className="mt-2">
             <ToolDetail name={name} input={input} />
           </div>
+          {fileRef && isInlinePreviewable(fileRef.path) && <FilePreview path={fileRef.path} />}
+          {fileRef && <ToolFileActions path={fileRef.path} />}
         </div>
       )}
     </div>
