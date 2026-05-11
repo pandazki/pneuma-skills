@@ -139,6 +139,7 @@ export interface AgentProtocolAdapter {
 // remains free of runtime dependencies on the server layer. Both `core/` and
 // `server/` are listed in `tsconfig.json#include`, so the resolver finds them.
 import type { BridgeBackend, BridgeBackendDeps } from "../../server/ws-bridge-backend.js";
+import type { ToolFileRef } from "../../backends/tool-file-ref.js";
 
 /** A model exposed by a backend in the launcher / model-switcher UI. */
 export interface ModelOption {
@@ -204,4 +205,14 @@ export interface BackendModule {
    * drives launcher availability badges + CLI startup checks.
    */
   checkRequirements(): BackendRequirementResult;
+
+  /**
+   * Pure helper: given a tool_use block's name + input, return a normalized
+   * reference to the file it operates on, or undefined if the tool isn't a
+   * file op. Lets the chat UI render inline previews / system-open actions
+   * without knowing this backend's tool naming. Optional — backends that
+   * don't implement it simply don't get previews/actions on their tool
+   * calls (graceful, no special-casing).
+   */
+  toolFileRef?(toolName: string, input: Record<string, unknown>): ToolFileRef | undefined;
 }

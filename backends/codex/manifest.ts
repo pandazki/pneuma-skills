@@ -1,5 +1,6 @@
 import type { BackendModule } from "../../core/types/agent-backend.js";
 import { resolveBinary } from "../../server/path-resolver.js";
+import { defaultToolFileRef } from "../tool-file-ref.js";
 import { CodexBackend } from "./index.js";
 import { CodexBridge } from "../../server/ws-bridge-codex.js";
 
@@ -69,4 +70,6 @@ export const codexModule: BackendModule = {
     }
     return { ok: true, binaryPath: resolved };
   },
+
+  toolFileRef: defaultToolFileRef,
 };

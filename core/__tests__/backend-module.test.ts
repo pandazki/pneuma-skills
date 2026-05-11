@@ -9,6 +9,8 @@
 
 import { describe, it, expect } from "bun:test";
 import type { BackendModule, AgentCapabilities } from "../types/agent-backend.js";
+import { claudeCodeModule } from "../../backends/claude-code/manifest.js";
+import { codexModule } from "../../backends/codex/manifest.js";
 
 describe("BackendModule type", () => {
   it("compiles with all required fields and capabilities extras", () => {
@@ -50,5 +52,18 @@ describe("BackendModule type", () => {
     };
     expect(minimal.scheduling).toBeUndefined();
     expect(minimal.costTracking).toBeUndefined();
+  });
+});
+
+describe("BackendModule.toolFileRef", () => {
+  it("claude-code resolves an Edit call to a file ref", () => {
+    expect(claudeCodeModule.toolFileRef?.("Edit", { file_path: "/w/a.ts" })).toEqual({ path: "/w/a.ts", kind: "edit" });
+    expect(claudeCodeModule.toolFileRef?.("Read", { file_path: "/w/a.png" })).toEqual({ path: "/w/a.png", kind: "read" });
+  });
+  it("codex resolves an Edit call to a file ref", () => {
+    expect(codexModule.toolFileRef?.("Edit", { file_path: "/w/main.ts" })).toEqual({ path: "/w/main.ts", kind: "edit" });
+  });
+  it("returns undefined for non-file tools", () => {
+    expect(claudeCodeModule.toolFileRef?.("Bash", { command: "ls" })).toBeUndefined();
   });
 });

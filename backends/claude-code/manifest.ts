@@ -1,5 +1,6 @@
 import type { BackendModule } from "../../core/types/agent-backend.js";
 import { resolveBinary } from "../../server/path-resolver.js";
+import { defaultToolFileRef } from "../tool-file-ref.js";
 import { ClaudeCodeBackend } from "./index.js";
 
 const INSTALL_HINT = `Install: npm install -g @anthropic-ai/claude-code
@@ -55,4 +56,6 @@ export const claudeCodeModule: BackendModule = {
     }
     return { ok: true, binaryPath: resolved };
   },
+
+  toolFileRef: defaultToolFileRef,
 };
