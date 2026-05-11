@@ -306,7 +306,19 @@ export type CLIMessage =
 
 export type ContentBlock =
   | { type: "text"; text: string }
-  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
+  | {
+    type: "tool_use";
+    id: string;
+    name: string;
+    input: Record<string, unknown>;
+    /**
+     * Normalized file reference, stamped by `stampFileRefs` from the
+     * backend's `toolFileRef`. Present only for file-touching tool calls
+     * the backend recognizes. The chat reads this to render inline
+     * previews + system-open actions without knowing any tool naming.
+     */
+    fileRef?: { path: string; kind: "read" | "write" | "edit" };
+  }
   | {
     type: "tool_result";
     tool_use_id: string;
