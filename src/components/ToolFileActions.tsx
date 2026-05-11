@@ -22,7 +22,7 @@ import { useEffect, useRef, useState } from "react";
 import { getApiBase } from "../utils/api.js";
 
 /** localStorage key for the remembered "open in editor" choice. Part of the persistence contract — keep stable. */
-export const LAST_EDITOR_STORAGE_KEY = "pneuma.lastEditor";
+export const LAST_EDITOR_STORAGE_KEY = "pneuma:default-editor";
 
 interface DetectedEditor {
   id: string;
