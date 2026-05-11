@@ -11,6 +11,7 @@ import { describe, it, expect } from "bun:test";
 import type { BackendModule, AgentCapabilities } from "../types/agent-backend.js";
 import { claudeCodeModule } from "../../backends/claude-code/manifest.js";
 import { codexModule } from "../../backends/codex/manifest.js";
+import { kimiCliModule } from "../../backends/kimi-cli/manifest.js";
 
 describe("BackendModule type", () => {
   it("compiles with all required fields and capabilities extras", () => {
@@ -65,5 +66,20 @@ describe("BackendModule.toolFileRef", () => {
   });
   it("returns undefined for non-file tools", () => {
     expect(claudeCodeModule.toolFileRef?.("Bash", { command: "ls" })).toBeUndefined();
+  });
+});
+
+describe("kimi-cli toolFileRef", () => {
+  it("resolves Claude-shaped names via the default", () => {
+    expect(kimiCliModule.toolFileRef?.("Read", { file_path: "/w/a.png" })).toEqual({ path: "/w/a.png", kind: "read" });
+  });
+  it("resolves a generic `path` key to kind=edit", () => {
+    expect(kimiCliModule.toolFileRef?.("view_file", { path: "/w/a.ts" })).toEqual({ path: "/w/a.ts", kind: "edit" });
+  });
+  it("resolves a generic `file_path` key on an unknown tool to kind=edit", () => {
+    expect(kimiCliModule.toolFileRef?.("str_replace", { file_path: "/w/a.ts" })).toEqual({ path: "/w/a.ts", kind: "edit" });
+  });
+  it("returns undefined when there's no usable path", () => {
+    expect(kimiCliModule.toolFileRef?.("run_shell", { command: "ls" })).toBeUndefined();
   });
 });

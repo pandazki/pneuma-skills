@@ -2,10 +2,20 @@ import type { BackendModule } from "../../core/types/agent-backend.js";
 import { resolveBinary } from "../../server/path-resolver.js";
 import { KimiCliBackend } from "./index.js";
 import { KimiBridge } from "../../server/ws-bridge-kimi.js";
+import { defaultToolFileRef, type ToolFileRef } from "../tool-file-ref.js";
 
 const INSTALL_HINT = `Install: uv tool install kimi-cli
 Verify: kimi --version
 Docs: https://moonshotai.github.io/kimi-cli/`;
+
+function kimiToolFileRef(toolName: string, input: Record<string, unknown>): ToolFileRef | undefined {
+  const claudeShaped = defaultToolFileRef(toolName, input);
+  if (claudeShaped) return claudeShaped;
+  // kimi exposes its own tool names; fall back to "does the input name a file?".
+  const raw = input.path ?? input.file_path;
+  if (typeof raw === "string" && raw.length > 0) return { path: raw, kind: "edit" };
+  return undefined;
+}
 
 export const kimiCliModule: BackendModule = {
   type: "kimi-cli",
@@ -28,6 +38,8 @@ export const kimiCliModule: BackendModule = {
   },
 
   // Kimi emits its own model list dynamically — no static fallback needed.
+
+  toolFileRef: kimiToolFileRef,
 
   createBackend() {
     // KimiCliBackend takes no constructor args (the `port` parameter from the
