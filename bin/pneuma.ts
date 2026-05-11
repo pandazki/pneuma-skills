@@ -39,14 +39,13 @@ import {
   readSessionsFile,
   writeSessionsFile,
   readSessionsFileSync,
-  writeSessionsFileSync,
   upsertSession,
   upsertProject,
   pickSessionName,
   type AnySessionRegistryEntry,
   type SessionsFile,
 } from "./sessions-registry.js";
-import { loadProjectManifest } from "../core/project-loader.js";
+import { loadProjectManifest, writeProjectManifest } from "../core/project-loader.js";
 
 const PROJECT_ROOT = resolve(dirname(import.meta.path), "..");
 
@@ -248,167 +247,6 @@ async function recordSession(opts: {
   }
 
   await writeSessionsFile(SESSIONS_REGISTRY, next);
-}
-
-/**
- * Scan `~/pneuma-projects/` for workspaces whose `.pneuma/session.json`
- * exists but which are missing from the registry, and add them back.
- *
- * Runs once per launcher boot. Exists because prior versions of the launcher
- * over-wrote the registry with mode-maker Play sandbox entries (every click
- * created a new `/var/folders/.../T/pneuma-play-<uuid>` entry), quickly
- * pushing legitimate workspace records out of the 50-entry cap. The root
- * cause is now fixed in `recordSession`; this reconciliation heals machines
- * that were already affected so users updating to 2.33.1+ don't open the
- * launcher to an empty Continue list and assume their work is gone.
- *
- * Safe properties: purely additive (never removes), merges by the same
- * `${workspace}::${mode}` id `recordSession` uses, preserves any entries
- * the registry already has (including custom `sessionName`).
- */
-function reconcileSessionsRegistry(): void {
-  const projectsDir = join(homedir(), "pneuma-projects");
-  if (!existsSync(projectsDir)) return;
-
-  // Collect built-in + local mode display names once so the recovered
-  // entries show the same label the user saw originally.
-  const modeNames = new Map<string, string>();
-  let parseManifestTs: ((text: string) => { name?: string; displayName?: string }) | null = null;
-  try {
-    // Dynamic import to avoid a hard dep in startup paths that don't need it.
-    ({ parseManifestTs } = require("../core/utils/manifest-parser.ts"));
-  } catch {
-    try { ({ parseManifestTs } = require("../core/utils/manifest-parser.js")); } catch { /* skip display-name enrichment */ }
-  }
-  if (parseManifestTs) {
-    for (const dir of [join(PROJECT_ROOT, "modes"), join(homedir(), ".pneuma", "modes")]) {
-      if (!existsSync(dir)) continue;
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (!entry.isDirectory()) continue;
-        const manifestPath = ["manifest.ts", "manifest.js"]
-          .map((f) => join(dir, entry.name, f))
-          .find((p) => existsSync(p));
-        if (!manifestPath) continue;
-        try {
-          const parsed = parseManifestTs(readFileSync(manifestPath, "utf-8"));
-          if (parsed.name && parsed.displayName) modeNames.set(parsed.name, parsed.displayName);
-          if (parsed.displayName) modeNames.set(entry.name, parsed.displayName);
-        } catch { /* skip */ }
-      }
-    }
-  }
-
-  // Load current sessions synchronously for reconciliation.
-  // Uses the canonical reader so legacy-array upgrade and new-shape parsing
-  // share a single code path with the rest of the registry callers.
-  const currentData: SessionsFile = readSessionsFileSync(SESSIONS_REGISTRY);
-
-  const byId = new Map(currentData.sessions.map((r) => [r.id, r]));
-  const projectsById = new Map(currentData.projects.map((p) => [p.id, p]));
-  let addedSessions = 0;
-  let addedProjects = 0;
-
-  for (const entry of readdirSync(projectsDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const workspace = join(projectsDir, entry.name);
-
-    // ── Pneuma 3.0 project marker ──────────────────────────────────────
-    // `<workspace>/.pneuma/project.json` identifies a project (multi-session
-    // container). Recover it into `projects[]` if missing — this heals
-    // registries wiped by historical bugs / concurrent writes / manual edits.
-    // Sessions under the project are recovered separately via the
-    // `<projectRoot>/.pneuma/sessions/<sid>/session.json` walk below.
-    const projectJsonPath = join(workspace, ".pneuma", "project.json");
-    if (existsSync(projectJsonPath)) {
-      try {
-        const manifest = JSON.parse(readFileSync(projectJsonPath, "utf-8")) as {
-          schemaVersion?: number;
-          projectId?: string;
-          name?: string;
-          displayName?: string;
-          description?: string;
-          createdAt?: string | number;
-          updatedAt?: string | number;
-        };
-        if (!projectsById.has(workspace)) {
-          const stat = statSync(projectJsonPath);
-          const toMs = (v: string | number | undefined, fb: number): number => {
-            if (typeof v === "number") return v;
-            if (typeof v === "string") {
-              const t = Date.parse(v);
-              if (Number.isFinite(t)) return t;
-            }
-            return fb;
-          };
-          const slug = manifest.name || entry.name;
-          projectsById.set(workspace, {
-            id: workspace,
-            name: slug,
-            displayName: manifest.displayName || slug,
-            description: manifest.description,
-            root: workspace,
-            createdAt: toMs(manifest.createdAt, stat.birthtimeMs || stat.mtimeMs),
-            lastAccessed: toMs(manifest.updatedAt, stat.mtimeMs),
-          });
-          addedProjects++;
-        }
-      } catch { /* skip malformed project.json */ }
-    }
-
-    // ── Quick-session recovery (legacy 2.x) ────────────────────────────
-    const sessionJsonPath = join(workspace, ".pneuma", "session.json");
-    if (!existsSync(sessionJsonPath)) continue;
-    try {
-      const sess = JSON.parse(readFileSync(sessionJsonPath, "utf-8")) as {
-        mode?: string;
-        backendType?: AgentBackendType;
-        createdAt?: number;
-        editing?: boolean;
-      };
-      if (!sess.mode) continue;
-      const id = `${workspace}::${sess.mode}`;
-      if (byId.has(id)) continue;
-
-      // Use the latest mtime across key session files as lastAccessed —
-      // reflects "when this workspace was last worked on" more accurately
-      // than createdAt alone.
-      const candidates = ["session.json", "history.json", "thumbnail.png"]
-        .map((f) => join(workspace, ".pneuma", f))
-        .filter((p) => existsSync(p))
-        .map((p) => statSync(p).mtimeMs);
-      const lastAccessed = candidates.length ? Math.max(...candidates) : (sess.createdAt || Date.now());
-
-      byId.set(id, {
-        id,
-        kind: "quick" as const,
-        mode: sess.mode,
-        displayName: modeNames.get(sess.mode) || sess.mode,
-        workspace,
-        sessionDir: workspace,
-        backendType: sess.backendType || getDefaultBackendType(),
-        lastAccessed,
-        editing: sess.editing ?? true,
-      } as AnySessionRegistryEntry);
-      addedSessions++;
-    } catch { /* skip malformed session.json */ }
-  }
-
-  if (addedSessions === 0 && addedProjects === 0) return;
-  const rebuilt = [...byId.values()].sort((a, b) => b.lastAccessed - a.lastAccessed);
-  const cap = 200;
-  const saved = rebuilt.slice(0, cap);
-  const projectCap = 100;
-  const projectsSorted = [...projectsById.values()].sort((a, b) => b.lastAccessed - a.lastAccessed);
-  const projectsSaved = projectsSorted.slice(0, projectCap);
-  writeSessionsFileSync(SESSIONS_REGISTRY, {
-    projects: projectsSaved,
-    sessions: saved,
-  });
-  const sessionTrunc = rebuilt.length > saved.length ? ` (cap ${cap}; ${rebuilt.length - saved.length} oldest dropped)` : "";
-  const parts: string[] = [];
-  if (addedSessions) parts.push(`${addedSessions} session(s)`);
-  if (addedProjects) parts.push(`${addedProjects} project(s)`);
-  console.log(`[sessions] Reconciled registry: recovered ${parts.join(" + ")}, now ${saved.length} session(s)${sessionTrunc} + ${projectsSaved.length} project(s).`);
 }
 
 // ── Init params persistence ──────────────────────────────────────────────────
@@ -1066,13 +904,72 @@ Options:
     return;
   }
 
-  // Sessions subcommand — rebuild the launcher registry from on-disk workspaces
-  if (rawArgs[0] === "sessions" && rawArgs[1] === "rebuild") {
-    const before = readSessionsFileSync(SESSIONS_REGISTRY).sessions.length;
-    reconcileSessionsRegistry();
-    const after = readSessionsFileSync(SESSIONS_REGISTRY).sessions.length;
-    console.log(`[sessions] rebuild: ${before} → ${after} entries`);
-    return;
+  // Project subcommand — add an existing project path into the launcher's
+  // Recent Projects registry. Replaces the implicit `~/pneuma-projects/`
+  // startup scan that 3.4.0 removed. Use cases:
+  //   - The user restored a project from backup and wants it back in the
+  //     launcher without manually editing sessions.json.
+  //   - The project lives outside `~/pneuma-projects/` (the old scan only
+  //     ever found the default folder) and was never registered.
+  //
+  // Behavior matches the `/api/projects` POST migrate path: existing
+  // manifest wins for identity; missing manifest is synthesized from
+  // directory basename. `onboardedAt` is preserved or stamped so
+  // EmptyShell's auto-trigger doesn't re-run project-onboard.
+  if (rawArgs[0] === "project") {
+    if (rawArgs[1] === "add") {
+      const target = rawArgs[2];
+      if (!target) {
+        p.cancel("Usage: pneuma project add <path>");
+        process.exit(1);
+      }
+      const root = resolve(target);
+      if (!existsSync(root)) {
+        p.cancel(`Path does not exist: ${root}`);
+        process.exit(1);
+      }
+      const pneumaDir = join(root, ".pneuma");
+      const sessionsDir = join(pneumaDir, "sessions");
+      const existing = await loadProjectManifest(root);
+      const hasSessionsDir = existsSync(sessionsDir);
+      if (!existing && !hasSessionsDir) {
+        p.cancel(`No Pneuma data found at ${root}. Use the launcher's "Create Project" dialog for a fresh setup.`);
+        process.exit(1);
+      }
+      const now = Date.now();
+      const slug = existing?.name ?? root.split(/[/\\]/).filter(Boolean).pop() ?? "project";
+      const displayName = existing?.displayName ?? slug;
+      const manifest: import("../core/types/project-manifest.js").ProjectManifest = {
+        version: 1,
+        name: slug,
+        displayName,
+        createdAt: existing?.createdAt ?? now,
+        onboardedAt: existing?.onboardedAt ?? now,
+      };
+      if (existing?.description) manifest.description = existing.description;
+      if (existing?.founderSessionId) manifest.founderSessionId = existing.founderSessionId;
+      await writeProjectManifest(root, manifest);
+      const data = await readSessionsFile(SESSIONS_REGISTRY);
+      const next = upsertProject(data, {
+        id: root,
+        name: slug,
+        displayName,
+        description: manifest.description,
+        root,
+        createdAt: manifest.createdAt,
+        lastAccessed: now,
+      });
+      await writeSessionsFile(SESSIONS_REGISTRY, next);
+      const wasMigrate = !!existing;
+      console.log(
+        wasMigrate
+          ? `[project] Registered existing project "${displayName}" at ${root}`
+          : `[project] Synthesized manifest + registered "${displayName}" at ${root}`,
+      );
+      return;
+    }
+    p.cancel("Usage: pneuma project add <path>");
+    process.exit(1);
   }
 
   // Mode subcommand — publish, list
@@ -1359,11 +1256,6 @@ Options:
 
   // Launcher mode — no mode arg → start marketplace UI
   if (!mode) {
-    // Heal any user whose session registry was pruned by the prior Play
-    // pollution bug (fixed in 2.33.1). Additive and idempotent — safe to
-    // run on every launcher boot; a no-op once everything's already there.
-    try { reconcileSessionsRegistry(); } catch { /* never block startup on this */ }
-
     const { homedir } = await import("node:os");
     const launcherPort = port || 17996;
     const distDir = resolve(PROJECT_ROOT, "dist");

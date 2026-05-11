@@ -418,23 +418,123 @@ describe("POST /api/projects", () => {
     expect(m.displayName).toBe("My Project");
   });
 
-  test("rejects when project.json already exists", async () => {
+  test("Open-or-Create: existing project.json reopens with identity preserved", async () => {
+    // Pre-3.4.0 this returned 409. The new behavior loads the existing
+    // manifest, ignores the body's name/displayName, stamps onboardedAt
+    // so the empty-shell auto-trigger doesn't re-run project-onboard,
+    // and upserts into the registry. This is how a user "recovers" a
+    // project that fell out of ~/.pneuma/sessions.json — the launcher's
+    // auto-scan was removed in 3.4.0 and this is the explicit path back.
     const projRoot = join(home, "exists");
     await mkdir(join(projRoot, ".pneuma"), { recursive: true });
     await writeFile(
       join(projRoot, ".pneuma", "project.json"),
-      JSON.stringify({ version: 1, name: "x", displayName: "X", createdAt: 1 })
+      JSON.stringify({
+        version: 1,
+        name: "original-name",
+        displayName: "Original Name",
+        description: "original description",
+        createdAt: 123,
+        founderSessionId: "founder-1",
+      })
     );
     const res = await testApp.request("/api/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         root: projRoot,
-        name: "x",
-        displayName: "X",
+        // User typed different values in the dialog — these should be
+        // ignored because the on-disk manifest is the source of truth.
+        name: "user-typed-name",
+        displayName: "User Typed Name",
       }),
     });
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.created).toBe(true);
+    expect(body.migrated).toBe(true);
+    // Manifest preserved: original identity wins.
+    const manifestPath = join(projRoot, ".pneuma", "project.json");
+    const m = JSON.parse(await readFile(manifestPath, "utf-8"));
+    expect(m.name).toBe("original-name");
+    expect(m.displayName).toBe("Original Name");
+    expect(m.description).toBe("original description");
+    expect(m.createdAt).toBe(123);
+    expect(m.founderSessionId).toBe("founder-1");
+    // onboardedAt stamped so empty-shell won't auto-trigger discovery.
+    expect(typeof m.onboardedAt).toBe("number");
+    expect(m.onboardedAt).toBeGreaterThan(0);
+    // Registry row picks up the existing identity, not the body.
+    const sessionsRaw = await readFile(join(home, ".pneuma", "sessions.json"), "utf-8");
+    const sessions = JSON.parse(sessionsRaw);
+    expect(sessions.projects).toHaveLength(1);
+    expect(sessions.projects[0].name).toBe("original-name");
+    expect(sessions.projects[0].displayName).toBe("Original Name");
+  });
+
+  test("Open-or-Create: existing onboardedAt is preserved (not re-stamped)", async () => {
+    const projRoot = join(home, "already-onboarded");
+    await mkdir(join(projRoot, ".pneuma"), { recursive: true });
+    await writeFile(
+      join(projRoot, ".pneuma", "project.json"),
+      JSON.stringify({
+        version: 1,
+        name: "p",
+        displayName: "P",
+        createdAt: 1,
+        onboardedAt: 999,
+      })
+    );
+    const res = await testApp.request("/api/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ root: projRoot, name: "p", displayName: "P" }),
+    });
+    expect(res.status).toBe(200);
+    const m = JSON.parse(await readFile(join(projRoot, ".pneuma", "project.json"), "utf-8"));
+    expect(m.onboardedAt).toBe(999);
+  });
+
+  test("Open-or-Create: sessions/ without manifest synthesizes a manifest", async () => {
+    // Recovers a project whose manifest was lost while the sessions/
+    // directory survived. The dialog's name/displayName are used here
+    // (no existing manifest to defer to).
+    const projRoot = join(home, "manifest-lost");
+    await mkdir(join(projRoot, ".pneuma", "sessions", "s-1"), { recursive: true });
+    await writeFile(
+      join(projRoot, ".pneuma", "sessions", "s-1", "session.json"),
+      JSON.stringify({ sessionId: "s-1", mode: "doc", backendType: "claude-code", createdAt: 1 })
+    );
+    const res = await testApp.request("/api/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        root: projRoot,
+        name: "recovered",
+        displayName: "Recovered",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.migrated).toBe(true);
+    const m = JSON.parse(await readFile(join(projRoot, ".pneuma", "project.json"), "utf-8"));
+    expect(m.name).toBe("recovered");
+    expect(m.displayName).toBe("Recovered");
+    expect(typeof m.onboardedAt).toBe("number");
+  });
+
+  test("Open-or-Create: fresh path returns migrated=false", async () => {
+    const projRoot = join(home, "fresh");
+    await mkdir(projRoot, { recursive: true });
+    const res = await testApp.request("/api/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ root: projRoot, name: "f", displayName: "F" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.created).toBe(true);
+    expect(body.migrated).toBe(false);
   });
 
   test("rejects when required fields missing", async () => {

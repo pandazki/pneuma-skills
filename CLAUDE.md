@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.3.4
+**Version:** 3.4.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`
 
@@ -51,8 +51,8 @@ pneuma mode add <url>    # Install remote mode to ~/.pneuma/modes/
 pneuma mode list         # List published modes on R2
 pneuma mode publish      # Publish current workspace as mode
 
-# Session registry
-pneuma sessions rebuild  # Scan ~/pneuma-projects/ and restore missing Continue entries
+# Project recovery
+pneuma project add <path>    # Register an existing Pneuma project at <path> into ~/.pneuma/sessions.json (open-or-migrate)
 
 # Plugin management
 pneuma plugin add <source>   # Install plugin from path/github/URL to ~/.pneuma/plugins/
@@ -243,12 +243,13 @@ A mode package must contain `manifest.ts` exporting a `ModeManifest`.
 
 Global session history for the launcher "Recent Sessions" / "Recent Projects" surface:
 
-- **File:** `~/.pneuma/sessions.json`
+- **File:** `~/.pneuma/sessions.json` (single source of truth — no auto-scan, no auto-recovery).
 - **Schema (3.0):** `{ projects: ProjectRegistryEntry[], sessions: SessionRegistryEntry[] }`
 - Each session entry carries `kind: "quick" | "project"`. Quick sessions store `workspace`; project sessions also store `projectRoot` and `sessionId`.
 - Legacy 2.x array format (`SessionRegistryEntry[]`) is auto-upgraded on read; the first write persists the new shape.
 - Upserted on every mode launch and project create, capped at 50 sessions / 50 projects.
 - Launcher shows recent projects + recent sessions with one-click resume.
+- **Project recovery (3.4.0):** if a Project drops out of the registry (deleted file, schema reset, projects living outside `~/pneuma-projects/`), the user gets it back via either (a) clicking *Create Project* on the same path — the route's **Open-or-Create** logic detects an existing `<root>/.pneuma/project.json` (or a sessions/ dir without manifest), loads/synthesizes it, stamps `onboardedAt` so discovery doesn't re-run, and upserts; or (b) `pneuma project add <path>` from the CLI. The startup auto-scan of `~/pneuma-projects/` (`reconcileSessionsRegistry`) was removed in 3.4.0 — predictable, audit-able registry state over silent recovery.
 
 ### User Preferences
 

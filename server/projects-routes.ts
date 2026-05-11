@@ -217,48 +217,98 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     if (!body.root || !body.name || !body.displayName) {
       return c.json({ error: "missing fields: root, name, displayName" }, 400);
     }
-    const manifestPath = join(body.root, ".pneuma", "project.json");
-    if (existsSync(manifestPath)) {
-      return c.json({ error: "project already exists at this path" }, 409);
-    }
     const now = Date.now();
+    const pneumaDir = join(body.root, ".pneuma");
+    const manifestPath = join(pneumaDir, "project.json");
+    const sessionsDir = join(pneumaDir, "sessions");
 
-    // Optional session import. We import first (it doesn't need the manifest
-    // on disk yet) so that, if exactly one session is selected, the manifest
-    // can record it as the founder.
-    const initIds = Array.isArray(body.initFromSessions) ? body.initFromSessions : [];
+    // Open-or-Create. Three states for the chosen path:
+    //   1. Fresh (no .pneuma/project.json, no .pneuma/sessions/)
+    //        → scaffold a new project, optionally import sessions, Onboard
+    //          fires unless the caller passed skipOnboard.
+    //   2. Existing manifest at .pneuma/project.json
+    //        → load it. The on-disk manifest is the source of truth for
+    //          identity (name / displayName / description / createdAt /
+    //          founderSessionId); body.name / displayName are ignored. We
+    //          stamp onboardedAt so EmptyShell's auto-trigger doesn't kick
+    //          off project-onboard on what's already a set-up project. The
+    //          registry row is upserted to lift the project back into the
+    //          launcher's Recent Projects list.
+    //   3. Sessions directory but no manifest
+    //        → synthesize a minimal manifest from body.name / displayName
+    //          (and the user's --description if provided), stamp
+    //          onboardedAt, then upsert. Recovers projects whose
+    //          project.json was lost while the sessions/ tree survived.
+    //
+    // Replaces the prior 409-on-existing path. The auto-recovery scan that
+    // walked ~/pneuma-projects on startup was removed in 3.4.0 — this is
+    // the explicit recovery flow.
+    const hasManifest = existsSync(manifestPath);
+    const hasSessionsDir = existsSync(sessionsDir);
+    const migrate = hasManifest || hasSessionsDir;
+
     let importedSessions: Array<{
       sessionId: string;
       mode: string;
       displayName: string;
     }> = [];
-    let founderSessionId: string | undefined;
-    if (initIds.length > 0) {
-      const result = await importSessionsIntoProject({
-        projectRoot: body.root,
-        sourceSessionIds: initIds,
-        sessionsRegistryPath: sessionsPath,
-        now,
-      });
-      importedSessions = result.imported.map((i) => ({
-        sessionId: i.sessionId,
-        mode: i.mode,
-        displayName: i.displayName,
-      }));
-      if (result.imported.length === 1) {
-        founderSessionId = result.imported[0].sessionId;
-      }
-    }
 
-    await writeProjectManifest(body.root, {
-      version: 1,
-      name: body.name,
-      displayName: body.displayName,
-      description: body.description,
-      createdAt: now,
-      ...(founderSessionId ? { founderSessionId } : {}),
-      ...(body.skipOnboard ? { onboardedAt: now } : {}),
-    });
+    if (!migrate) {
+      // ── Fresh create ──
+      // Optional session import goes first so the manifest can record a
+      // founder when exactly one session was selected.
+      const initIds = Array.isArray(body.initFromSessions) ? body.initFromSessions : [];
+      let founderSessionId: string | undefined;
+      if (initIds.length > 0) {
+        const result = await importSessionsIntoProject({
+          projectRoot: body.root,
+          sourceSessionIds: initIds,
+          sessionsRegistryPath: sessionsPath,
+          now,
+        });
+        importedSessions = result.imported.map((i) => ({
+          sessionId: i.sessionId,
+          mode: i.mode,
+          displayName: i.displayName,
+        }));
+        if (result.imported.length === 1) {
+          founderSessionId = result.imported[0].sessionId;
+        }
+      }
+      await writeProjectManifest(body.root, {
+        version: 1,
+        name: body.name,
+        displayName: body.displayName,
+        description: body.description,
+        createdAt: now,
+        ...(founderSessionId ? { founderSessionId } : {}),
+        ...(body.skipOnboard ? { onboardedAt: now } : {}),
+      });
+    } else {
+      // ── Open-or-migrate ──
+      // Load existing manifest when present; existing fields win for
+      // identity. When only sessions/ exists, synthesize from body.
+      const existing = hasManifest ? await loadProjectManifest(body.root) : null;
+      const nextManifest: import("../core/types/project-manifest.js").ProjectManifest = {
+        version: 1,
+        name: existing?.name ?? body.name,
+        displayName: existing?.displayName ?? body.displayName,
+        createdAt: existing?.createdAt ?? now,
+        // Preserve / set onboardedAt so the empty-shell auto-trigger
+        // doesn't re-run project-onboard on a set-up project. Users can
+        // still manually Re-discover via ProjectPanel.
+        onboardedAt: existing?.onboardedAt ?? now,
+      };
+      const description = existing?.description ?? body.description;
+      if (description) nextManifest.description = description;
+      if (existing?.founderSessionId) {
+        nextManifest.founderSessionId = existing.founderSessionId;
+      }
+      await writeProjectManifest(body.root, nextManifest);
+      // initFromSessions only makes sense for greenfield projects; on
+      // migrate, sessions either already live under .pneuma/sessions/ or
+      // the user will create new ones inside the reopened project.
+    }
 
     // Best-effort: if the user pointed Pneuma at an existing git repo,
     // add `.pneuma/` to its `.gitignore` so the per-session state we're
@@ -266,16 +316,19 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     // directories (no `.git`) are skipped.
     ensurePneumaIgnored(body.root);
 
-    // register in sessions.json projects[] — re-read because session import
-    // already mutated and persisted the file.
+    // Upsert into the registry. Re-read first because the import path may
+    // have mutated `sessions.json` on disk, and re-read the on-disk
+    // manifest so the registry row matches what we just wrote (relevant
+    // for the migrate path where existing fields wins over body).
     const data = await readSessionsFile(sessionsPath);
+    const finalManifest = await loadProjectManifest(body.root);
     const next = upsertProject(data, {
       id: body.root,
-      name: body.name,
-      displayName: body.displayName,
-      description: body.description,
+      name: finalManifest?.name ?? body.name,
+      displayName: finalManifest?.displayName ?? body.displayName,
+      description: finalManifest?.description ?? body.description,
       root: body.root,
-      createdAt: now,
+      createdAt: finalManifest?.createdAt ?? now,
       lastAccessed: now,
     });
     await writeSessionsFile(sessionsPath, next);
@@ -288,6 +341,7 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
 
     return c.json({
       created: true,
+      migrated: migrate,
       root: body.root,
       importedSessions,
     });

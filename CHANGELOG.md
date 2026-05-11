@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.4.0] - 2026-05-11
+
+### Changed — Project lifecycle simplified
+
+The launcher's "Recent Projects" list is now a single source of truth: `~/.pneuma/sessions.json`. No more startup scans, no more silent recovery. The previous design walked `~/pneuma-projects/` on every launcher boot to re-add Projects whose registry rows had vanished, which had two failure modes that drove the user nuts:
+
+1. Projects living outside `~/pneuma-projects/` could never be recovered (the scan only knew about one folder).
+2. The scan made it impossible to actually *delete* a Project — every boot resurrected whatever it found on disk.
+
+The new shape:
+
+- **Startup auto-scan removed.** `reconcileSessionsRegistry()` and the `pneuma sessions rebuild` subcommand are gone. The launcher reads `~/.pneuma/sessions.json` as-is.
+- **`POST /api/projects` is now Open-or-Create.** Three branches depending on the chosen path:
+  - **Fresh path** (no `.pneuma/`): scaffold a new Project as before — Onboard fires unless the caller passed `skipOnboard`.
+  - **Existing `.pneuma/project.json`**: load it. The on-disk manifest is the source of truth for identity (`name` / `displayName` / `description` / `createdAt` / `founderSessionId`); the dialog's typed values are ignored. `onboardedAt` is preserved or freshly stamped so `EmptyShell`'s auto-trigger doesn't re-run `project-onboard` on a set-up project. Registry row upserted.
+  - **`.pneuma/sessions/` exists but no manifest**: synthesize a minimal manifest from the dialog's `name` / `displayName`, stamp `onboardedAt`, upsert. Recovers Projects whose `project.json` was lost while the sessions/ tree survived.
+- **Response carries `migrated: boolean`** so the dialog (or any future caller) can distinguish a fresh create from an "I opened an existing path" outcome.
+- **`pneuma project add <path>` CLI.** Same Open-or-Create logic exposed as a one-line CLI for users who want to bulk-recover from a backup, register a Project that lives outside the default folder, or otherwise script their setup. Replaces the implicit auto-scan.
+
+#### Server / CLI
+
+- `server/projects-routes.ts` POST `/api/projects` — branch on `.pneuma/project.json` + `.pneuma/sessions/` presence; preserve existing manifest fields on migrate; idempotent registry upsert.
+- `bin/pneuma.ts` — `reconcileSessionsRegistry()` (~160 lines), its startup call, and the `pneuma sessions rebuild` subcommand removed. New `pneuma project add <path>` subcommand added.
+- `server/__tests__/projects-routes.test.ts` — old 409-on-existing test replaced with four tests covering the three Open-or-Create branches plus `onboardedAt` preservation.
+
+#### Migration notes
+
+- Existing `~/.pneuma/sessions.json` files keep working unchanged. The schema is the same.
+- Anyone who relied on `pneuma sessions rebuild` to rehydrate their registry: run `pneuma project add <path>` for each Project root instead, or just click *Create Project* on each path in the launcher.
+- Anyone who relied on the implicit scan finding their Projects under `~/pneuma-projects/`: same — use either entry point above.
+
 ## [3.3.4] - 2026-05-11
 
 ### Fixed — ClipCraft Setup tab dialog a11y + markdown rendering
