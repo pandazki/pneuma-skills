@@ -96,6 +96,38 @@ export interface ServerOptions {
   pneumaProjectRoot?: string;
 }
 
+/**
+ * Mount the `GET /api/file?path=<abs>` route — serves a single file by
+ * absolute path, gated by a workspace-containment check (path-traversal
+ * guard). Used by the chat's inline image previews to fetch a workspace
+ * file the agent read. Factored out of `startServer` so it can be unit
+ * tested against a bare `new Hono()`.
+ */
+export function mountFileRoute(app: Hono, opts: { workspace: string }): void {
+  const workspaceRoot = resolve(opts.workspace);
+  app.get("/api/file", (c) => {
+    const rel = c.req.query("path");
+    if (!rel) return c.json({ error: "missing path" }, 400);
+    const abs = resolve(rel);
+    if (abs !== workspaceRoot && !abs.startsWith(workspaceRoot + sep)) {
+      return c.json({ error: "path escapes workspace" }, 403);
+    }
+    if (!existsSync(abs)) return c.json({ error: "not found" }, 404);
+    try {
+      if (!statSync(abs).isFile()) return c.json({ error: "not a file" }, 400);
+    } catch {
+      return c.json({ error: "stat failed" }, 500);
+    }
+    const file = Bun.file(abs);
+    return new Response(file, {
+      headers: {
+        "content-type": file.type || "application/octet-stream",
+        "cache-control": "private, max-age=60",
+      },
+    });
+  });
+}
+
 export async function startServer(options: ServerOptions) {
   const port = options.port ?? DEFAULT_PORT;
   const workspace = resolve(options.workspace);
@@ -2379,6 +2411,10 @@ export async function startServer(options: ServerOptions) {
     if (!body.path) return c.json({ success: false, message: "path is required" }, 400);
     return c.json(await revealPath(workspace, body.path));
   });
+
+  // Workspace-contained file server — chat inline image previews fetch a
+  // file the agent read by its absolute path. Containment-checked.
+  mountFileRoute(app, { workspace });
 
   // ── Workspace Scaffold API ───────────────────────────────────────────
   app.post("/api/workspace/scaffold", async (c) => {
