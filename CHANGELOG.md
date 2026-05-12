@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.5.1] - 2026-05-12
+
+### Fixed — session thumbnails, launcher "Continue" staleness, chat file actions
+
+A polish wave across the launcher and chat surfaces.
+
+#### Session thumbnails — real captures, settled frames, project sessions
+
+- **Desktop builds capture a real window screenshot** — `webContents.capturePage(rect)` via a new `pneuma:capture-page` IPC, instead of serializing the DOM with snapdom. So iframe-based viewers (WebCraft, mode-maker Play), web fonts, and full-window (`layout: app`) viewers finally get a faithful thumbnail. Browser-only dev keeps the snapdom fallback (no iframe contents — accepted). Capture priority: viewer-supplied `captureViewport()` → `capturePage` → snapdom-family fallback.
+- **Capture waits for the render to settle** — a short minimum delay, then until no finite CSS animations/transitions are running in the viewer subtree (entry/appear animations no longer get caught mid-frame), then a couple of rAFs + idle.
+- **Escalating + debounced passes** — a few passes after the viewer mounts (≈1.5s / 5s / 14s — covers short-lived sessions that close before file activity) plus a 6s debounce after any file change; each pass overwrites the previous one.
+- **Near-uniform frames are rejected** — an all-white / all-dark capture is dropped rather than uploaded, so a blank frame never replaces a good thumbnail. (An iframe viewer whose snapdom capture comes out blank now falls back to its mode icon instead of a white rectangle.)
+- **`GET /api/running` carries `thumbnailUrl`** — so the launcher's "Continue" cards show a thumbnail for project sessions too, not just quick sessions.
+
+#### Launcher "Continue" — system-wide running sessions, no stale modes
+
+- **New shared running-session registry** — `~/.pneuma/running/`, one pid-file per live `pneuma <mode>` process, written on startup and removed on exit; readers prune dead PIDs. `GET /api/running` returns *all* running sessions system-wide, each carrying that process's *current* mode. "Continue" now sources its running items from here instead of the launcher's own `childProcesses` map — so a project that switched modes internally (a Smart Handoff target, or a `project-onboard` "apply task" target — spawned by a *different* session server, previously invisible to the launcher) shows its current mode, not a stale one. A workspace with more than one running session collapses to the most-recent.
+- **Stop works on any running session** — the kill endpoint will signal a known running session even when it isn't one of this launcher's own children.
+
+#### Launcher — opening a Project opens a new window
+
+- **Clicking a Project card** (and the meta-row quick-resume, "Create & discover", and replay-a-recent-session) opens a **new window** (`window.open` → Electron's `setWindowOpenHandler` → a fresh mode window) instead of navigating the launcher window itself — the launcher keeps its main-window role. In a browser it's a new tab. In-project navigation (picking a session in `ProjectPanel`, `EmptyShell`'s auto-onboard) is unchanged — those stay within the project's own window.
+
+#### Chat — file tool-call action row
+
+- **"Open" / "Reveal" work on files outside the session workspace** — `/api/system/open` and `/api/system/reveal` no longer require the path to live inside the workspace (matching `/api/system/open-in-editor`, which never did); they just require the path to exist. Agents routinely `Read`/`Edit` files in sibling projects, docs, and configs — the affordance now opens *that* file.
+- **The "Editor" picker dropdown is no longer clipped** — it renders in a portal anchored to the split-button (flips above / clamps to the viewport, repositions on scroll), so the tool block's `overflow: hidden` and the chat scroller no longer eat it.
+
 ## [3.5.0] - 2026-05-11
 
 ### Added — scene-type preview + system-open actions for file tool calls

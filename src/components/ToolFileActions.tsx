@@ -18,7 +18,8 @@
  * No emoji: plain text labels paired with tiny inline SVG icons in the
  * `ToolIcon` style used elsewhere in the chat chrome.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { getApiBase } from "../utils/api.js";
 
 /** localStorage key for the remembered "open in editor" choice. Part of the persistence contract — keep stable. */
@@ -109,15 +110,53 @@ export function ToolFileActions({ path }: { path: string }) {
   // null = not yet loaded; [] = loaded but none detected.
   const [editors, setEditors] = useState<DetectedEditor[] | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Fixed-position coordinates for the (portaled) editor dropdown. Kept in a
+  // portal so an ancestor's `overflow: hidden` (the tool block has rounded
+  // corners; the chat scroller clips) can't eat the menu.
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  // Close the dropdown on outside-click / Esc.
+  const MENU_W = 188;
+
+  /** Anchor the dropdown below the split-button, flipping above / clamping to the viewport. */
+  const placeMenu = () => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
+    const measured = menuRef.current?.offsetHeight ?? 0;
+    const estH = measured > 0
+      ? measured
+      : editors === null
+        ? 60
+        : Math.max(34, Math.min(editors.length || 1, 8) * 30 + 12);
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let top = r.bottom + 4;
+    if (top + estH > vh - 8) top = Math.max(8, r.top - estH - 4);
+    let left = r.left;
+    if (left + MENU_W > vw - 8) left = Math.max(8, vw - MENU_W - 8);
+    setMenuPos({ top, left });
+  };
+
+  // Place / re-place the menu once it's in the DOM (real height available),
+  // and whenever the editor list loads and changes the menu's height.
+  useLayoutEffect(() => {
+    if (menuOpen) placeMenu();
+    // placeMenu reads stable refs + `editors`; deps cover what actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuOpen, editors]);
+
+  // Close the dropdown on outside-click / Esc; keep it glued to the anchor
+  // while open (chat scroll, window resize).
   useEffect(() => {
     if (!menuOpen) return;
     const onMouseDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
+      const t = e.target as Node;
+      const insideRow = rootRef.current?.contains(t) ?? false;
+      const insideMenu = menuRef.current?.contains(t) ?? false;
+      if (!insideRow && !insideMenu) setMenuOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -125,13 +164,19 @@ export function ToolFileActions({ path }: { path: string }) {
         setMenuOpen(false);
       }
     };
+    const reposition = () => placeMenu();
     window.addEventListener("mousedown", onMouseDown, true);
     window.addEventListener("keydown", onKey, true);
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
     return () => {
       window.removeEventListener("mousedown", onMouseDown, true);
       window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
     };
-  }, [menuOpen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuOpen, editors]);
 
   const run = async (label: string, fn: () => Promise<boolean>) => {
     setErr(null);
@@ -168,12 +213,15 @@ export function ToolFileActions({ path }: { path: string }) {
     }
   };
 
+  const openMenu = () => {
+    if (editors === null) void loadEditors();
+    placeMenu();
+    setMenuOpen(true);
+  };
+
   const toggleMenu = () => {
-    setMenuOpen((open) => {
-      const next = !open;
-      if (next && editors === null) void loadEditors();
-      return next;
-    });
+    if (menuOpen) setMenuOpen(false);
+    else openMenu();
   };
 
   const onEditorMainClick = () => {
@@ -182,8 +230,7 @@ export function ToolFileActions({ path }: { path: string }) {
       openInEditor(remembered);
       return;
     }
-    if (!menuOpen && editors === null) void loadEditors();
-    setMenuOpen(true);
+    openMenu();
   };
 
   return (
@@ -193,7 +240,7 @@ export function ToolFileActions({ path }: { path: string }) {
         Open
       </button>
 
-      <div className="relative inline-flex">
+      <div ref={anchorRef} className="relative inline-flex">
         <button
           type="button"
           className={`${btnBase} rounded-r-none`}
@@ -215,30 +262,35 @@ export function ToolFileActions({ path }: { path: string }) {
         >
           <ChevronIcon />
         </button>
-        {menuOpen ? (
-          <div
-            role="menu"
-            className="absolute top-full left-0 mt-1 min-w-[180px] rounded-lg border border-cc-border bg-cc-surface shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6)] py-1 z-20"
-          >
-            {editors === null ? (
-              <div className="px-3 py-1.5 text-[11px] text-cc-muted/70">Loading…</div>
-            ) : editors.length === 0 ? (
-              <div className="px-3 py-1.5 text-[11px] text-cc-muted/70">No code editor detected</div>
-            ) : (
-              editors.map((e) => (
-                <button
-                  key={e.id}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => openInEditor(e.id)}
-                  className="w-full text-left px-3 py-1.5 text-[11px] text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer truncate"
-                >
-                  {e.displayName}
-                </button>
-              ))
-            )}
-          </div>
-        ) : null}
+        {menuOpen && menuPos
+          ? createPortal(
+              <div
+                ref={menuRef}
+                role="menu"
+                style={{ position: "fixed", top: menuPos.top, left: menuPos.left }}
+                className="min-w-[180px] max-h-[60vh] overflow-y-auto rounded-lg border border-cc-border bg-cc-surface shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6)] py-1 z-[100]"
+              >
+                {editors === null ? (
+                  <div className="px-3 py-1.5 text-[11px] text-cc-muted/70">Loading…</div>
+                ) : editors.length === 0 ? (
+                  <div className="px-3 py-1.5 text-[11px] text-cc-muted/70">No code editor detected</div>
+                ) : (
+                  editors.map((e) => (
+                    <button
+                      key={e.id}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => openInEditor(e.id)}
+                      className="w-full text-left px-3 py-1.5 text-[11px] text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer truncate"
+                    >
+                      {e.displayName}
+                    </button>
+                  ))
+                )}
+              </div>,
+              document.body,
+            )
+          : null}
       </div>
 
       <button type="button" className={btnBase} disabled={busy} onClick={reveal} title="Reveal in Finder / Explorer">

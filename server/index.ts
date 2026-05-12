@@ -46,6 +46,7 @@ import {
   upsertSession,
   type AnySessionRegistryEntry,
 } from "../bin/sessions-registry.js";
+import { readRunning } from "../bin/running-registry.js";
 
 const DEFAULT_PORT = 17007;
 
@@ -1043,7 +1044,7 @@ export async function startServer(options: ServerOptions) {
       }
     });
 
-    // List running child processes
+    // List running child processes (the children *this* launcher spawned).
     app.get("/api/processes/children", (c) => {
       const processes = Array.from(childProcesses.entries()).map(([pid, info]) => ({
         pid,
@@ -1055,18 +1056,60 @@ export async function startServer(options: ServerOptions) {
       return c.json({ processes });
     });
 
-    // Kill a specific child process
+    // List ALL running `pneuma <mode>` sessions, system-wide — read from the
+    // shared running-session registry (`~/.pneuma/running/`), not just this
+    // launcher's own children. Each entry carries that process's *current*
+    // mode, so a session that switched modes internally (handoff / onboard
+    // task-card) is reflected accurately. Shape mirrors `/api/processes/children`
+    // (`specifier` = the mode) so the launcher consumes it uniformly, plus a
+    // `thumbnailUrl` when one exists (project sessions in particular — the
+    // launcher otherwise only knows how to find quick-session thumbnails).
+    app.get("/api/running", (c) => {
+      const processes = readRunning().map((r) => {
+        let thumbnailUrl: string | undefined;
+        try {
+          if (r.kind === "project" && r.projectRoot && r.sessionId) {
+            if (existsSync(join(r.sessionDir, "thumbnail.png"))) {
+              thumbnailUrl = `/api/projects/${encodeURIComponent(r.projectRoot)}/sessions/${encodeURIComponent(r.sessionId)}/thumbnail`;
+            }
+          } else if (existsSync(join(r.workspace, ".pneuma", "thumbnail.png"))) {
+            thumbnailUrl = `/api/sessions/thumbnail?workspace=${encodeURIComponent(r.workspace)}`;
+          }
+        } catch { /* ignore */ }
+        return {
+          pid: r.pid,
+          specifier: r.mode,
+          workspace: r.workspace,
+          url: r.url,
+          startedAt: r.startedAt,
+          ...(thumbnailUrl ? { thumbnailUrl } : {}),
+        };
+      });
+      return c.json({ processes });
+    });
+
+    // Kill a specific running session by pid. Prefers our own child handle
+    // (lets `Bun.Subprocess.kill` clean up the pipe); otherwise, if the pid
+    // belongs to a known running session (e.g. a handoff target spawned by a
+    // different server), signal it directly. The target's exit handler removes
+    // its registry entry; a dead-PID prune covers the SIGKILL case.
     app.post("/api/processes/children/:pid/kill", (c) => {
       const pid = parseInt(c.req.param("pid"), 10);
       const entry = childProcesses.get(pid);
-      if (!entry) {
-        return c.json({ error: "Process not found" }, 404);
+      if (entry) {
+        try {
+          entry.proc.kill();
+          childProcesses.delete(pid);
+        } catch { }
+        return c.json({ ok: true });
       }
       try {
-        entry.proc.kill();
-        childProcesses.delete(pid);
+        if (readRunning().some((r) => r.pid === pid)) {
+          process.kill(pid, "SIGTERM");
+          return c.json({ ok: true });
+        }
       } catch { }
-      return c.json({ ok: true });
+      return c.json({ error: "Process not found" }, 404);
     });
 
     // R2 Configuration

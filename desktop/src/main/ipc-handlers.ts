@@ -38,6 +38,36 @@ export function registerIpcHandlers() {
     }
   });
 
+  // Screenshot the sender's window (optionally a sub-rect, in DIPs/CSS px) and
+  // return a downscaled PNG as base64. Used for session thumbnails — a real
+  // window capture renders iframe content (webcraft, mode-maker play), fonts,
+  // and full-window viewers correctly, unlike a DOM serializer (snapdom),
+  // which web-only builds fall back to.
+  ipcMain.handle(
+    "pneuma:capture-page",
+    async (event, rect?: { x: number; y: number; width: number; height: number }) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win) return null;
+      try {
+        const image =
+          rect && rect.width > 1 && rect.height > 1
+            ? await win.webContents.capturePage({
+                x: Math.max(0, Math.round(rect.x)),
+                y: Math.max(0, Math.round(rect.y)),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+              })
+            : await win.webContents.capturePage();
+        if (image.isEmpty()) return null;
+        const { width } = image.getSize();
+        const out = width > 1280 ? image.resize({ width: 1280 }) : image;
+        return out.toPNG().toString("base64");
+      } catch {
+        return null;
+      }
+    },
+  );
+
   ipcMain.handle(
     "pneuma:show-open-dialog",
     async (event, options: { title?: string; defaultPath?: string; buttonLabel?: string }) => {

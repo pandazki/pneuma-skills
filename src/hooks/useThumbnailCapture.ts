@@ -1,19 +1,33 @@
 import { getApiBase } from "../utils/api.js";
 
 /**
- * useThumbnailCapture — periodically captures the viewer panel as a PNG thumbnail.
+ * useThumbnailCapture — captures the viewer panel as a PNG thumbnail.
  *
- * Generic smart capture — works for all viewer types without per-viewer implementation:
- *   1. Canvas elements (Excalidraw, etc.) → canvas.toDataURL()
- *   2. Image elements (React Flow/Illustrate, etc.) → composite by bounding rect
- *   3. Pure DOM (Doc, Slide, etc.) → @zumer/snapdom
+ * Capture path, in priority order:
+ *   0. Viewer-supplied captureViewport() — a domain-specific renderer (e.g.
+ *      diagram exports the diagram). Cleanest when available.
+ *   1. Desktop app (Electron): a real window screenshot of the viewer's rect
+ *      via `pneumaDesktop.capturePage` — renders iframe content (webcraft,
+ *      mode-maker play), web fonts, and full-window viewers exactly.
+ *   2. Browser dev (no Electron): best-effort DOM serializer —
+ *      a) largest <canvas> (Excalidraw) b) dominant/hi-res <img> (Illustrate,
+ *      Slide) c) @zumer/snapdom DOM snapshot (Doc, Slide). Cannot see into
+ *      iframes — webcraft etc. won't get a real thumbnail here.
  *
- * Viewers can still provide captureViewport() to override the generic behavior.
+ * Capture triggers (each pass overwrites the previous one, so a later, more
+ * settled frame always wins):
+ *   - A few escalating passes after mount (CAPTURE_PASSES_MS) — covers entry
+ *     animations and content that lands a couple seconds in (including short-
+ *     lived sessions that close before the file-change debounce fires).
+ *   - Debounced after any file change (FILE_CHANGE_DEBOUNCE_MS).
+ *   - Only when the viewer is visible (PreviewComponent loaded).
  *
- * Capture triggers:
- *   - 2s after mount (initial capture)
- *   - 30s after any file change (debounced)
- *   - Only when the viewer is visible (PreviewComponent loaded)
+ * Each pass first waits for the render to settle: a short minimum delay, then
+ * until no finite CSS animations/transitions are running in the viewer subtree
+ * (bounded by SETTLE_MAX_MS), then a couple of rAFs + idle. Captures that come
+ * out near-uniform (blank white / blank dark chrome — e.g. an iframe viewer
+ * whose contents snapdom can't reach) are dropped rather than uploaded, so a
+ * blank frame never replaces a good one.
  */
 
 import { useEffect, useRef } from "react";
@@ -21,11 +35,106 @@ import { snapdom } from "@zumer/snapdom";
 
 const THUMB_WIDTH = 1280;
 const THUMB_HEIGHT = 800;
-const INITIAL_DELAY = 2_000;
-const DEBOUNCE_DELAY = 10_000;
+
+/** Escalating capture passes (ms after the viewer mounts). */
+const CAPTURE_PASSES_MS = [1500, 5000, 14000];
+/** Debounce after the last file change before recapturing. */
+const FILE_CHANGE_DEBOUNCE_MS = 6000;
+/** Minimum settle wait inside a pass (let React commit + first paint). */
+const SETTLE_MIN_MS = 250;
+/** Upper bound on waiting for finite animations to finish. */
+const SETTLE_MAX_MS = 6000;
+/** Per-channel spread (over a downscaled grid) at/below which a frame is "blank". */
+const BLANK_SPREAD_THRESHOLD = 10;
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+const idle = (timeout: number) =>
+  new Promise<void>((r) => {
+    const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback;
+    if (ric) ric(() => r(), { timeout });
+    else setTimeout(r, 0);
+  });
+
+/**
+ * Count finite (non-infinite) CSS animations/transitions currently running in
+ * the element's subtree. Infinite/looping effects (spinners, pulses) never
+ * settle, so they're ignored — otherwise every capture would wait the full
+ * SETTLE_MAX_MS.
+ */
+function runningFiniteAnimations(el: HTMLElement): number {
+  const getAnimations = (el as unknown as { getAnimations?: (opts?: { subtree?: boolean }) => Animation[] }).getAnimations;
+  if (typeof getAnimations !== "function") return 0;
+  let anims: Animation[];
+  try {
+    anims = getAnimations.call(el, { subtree: true });
+  } catch {
+    return 0;
+  }
+  let n = 0;
+  for (const a of anims) {
+    if (a.playState !== "running") continue;
+    let iterations: number | undefined;
+    try {
+      iterations = (a.effect as KeyframeEffect | null)?.getComputedTiming?.().iterations as number | undefined;
+    } catch {
+      iterations = undefined;
+    }
+    if (iterations !== undefined && !Number.isFinite(iterations)) continue; // skip infinite loops
+    n++;
+  }
+  return n;
+}
+
+/**
+ * Wait for the viewer subtree to look render-stable before snapshotting.
+ */
+async function waitForStableRender(el: HTMLElement): Promise<void> {
+  const start = performance.now();
+  await sleep(SETTLE_MIN_MS);
+  while (performance.now() - start < SETTLE_MAX_MS) {
+    if (runningFiniteAnimations(el) === 0) break;
+    await nextFrame();
+    await sleep(120);
+  }
+  await nextFrame();
+  await nextFrame();
+  await idle(400);
+}
+
+/**
+ * True if the rendered frame is effectively a single flat color (blank white,
+ * blank dark chrome, fully transparent) — i.e. there's nothing worth keeping.
+ */
+function looksBlank(srcCanvas: HTMLCanvasElement): boolean {
+  try {
+    const gw = 32;
+    const gh = 20;
+    const tmp = document.createElement("canvas");
+    tmp.width = gw;
+    tmp.height = gh;
+    const tctx = tmp.getContext("2d", { willReadFrequently: true });
+    if (!tctx) return false;
+    tctx.drawImage(srcCanvas, 0, 0, gw, gh);
+    const { data } = tctx.getImageData(0, 0, gw, gh);
+    let rMin = 255, rMax = 0, gMin = 255, gMax = 0, bMin = 255, bMax = 0, aMin = 255, aMax = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+      if (r < rMin) rMin = r; if (r > rMax) rMax = r;
+      if (g < gMin) gMin = g; if (g > gMax) gMax = g;
+      if (b < bMin) bMin = b; if (b > bMax) bMax = b;
+      if (a < aMin) aMin = a; if (a > aMax) aMax = a;
+    }
+    const spread = Math.max(rMax - rMin, gMax - gMin, bMax - bMin, aMax - aMin);
+    return spread <= BLANK_SPREAD_THRESHOLD;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Scale a source image data URL to thumbnail dimensions (cover-fit).
+ * Resolves null if the source can't be loaded or the result is blank.
  */
 function scaleToThumb(dataUrl: string): Promise<string | null> {
   return new Promise((resolve) => {
@@ -43,6 +152,8 @@ function scaleToThumb(dataUrl: string): Promise<string | null> {
       const sx = (img.width - sw) / 2;
       const sy = (img.height - sh) / 2;
       ctx.drawImage(img, sx, sy, sw, sh, 0, 0, THUMB_WIDTH, THUMB_HEIGHT);
+
+      if (looksBlank(canvas)) { resolve(null); return; }
 
       const thumbDataUrl = canvas.toDataURL("image/png", 0.8);
       resolve(thumbDataUrl.split(",")[1] || null);
@@ -87,16 +198,17 @@ function captureViaCanvas(el: HTMLElement): string | null {
   });
 
   if (!best || bestArea === 0) return null;
+  const bestCanvas = best as HTMLCanvasElement;
 
   try {
     // Check if canvas has actual drawn content (not just blank/transparent)
-    const ctx = (best as HTMLCanvasElement).getContext("2d");
+    const ctx = bestCanvas.getContext("2d");
     if (ctx) {
-      const sample = ctx.getImageData(0, 0, Math.min(best.width, 100), Math.min(best.height, 100));
+      const sample = ctx.getImageData(0, 0, Math.min(bestCanvas.width, 100), Math.min(bestCanvas.height, 100));
       const hasContent = sample.data.some((v, i) => i % 4 === 3 && v > 0); // any non-transparent pixel
       if (!hasContent) return null;
     }
-    return (best as HTMLCanvasElement).toDataURL("image/png");
+    return bestCanvas.toDataURL("image/png");
   } catch {
     // Tainted canvas (cross-origin) or SecurityError — can't capture
     return null;
@@ -204,6 +316,42 @@ async function captureGeneric(el: HTMLElement): Promise<string | null> {
   return null;
 }
 
+/** Electron preload bridge — present only in the desktop app. */
+type DesktopBridge = { capturePage?: (rect?: { x: number; y: number; width: number; height: number }) => Promise<string | null> };
+function electronCapture(): DesktopBridge["capturePage"] | undefined {
+  if (typeof window === "undefined") return undefined;
+  const api = (window as unknown as { pneumaDesktop?: DesktopBridge }).pneumaDesktop;
+  return typeof api?.capturePage === "function" ? api.capturePage.bind(api) : undefined;
+}
+
+/**
+ * Preferred capture path in the desktop app: a real screenshot of this
+ * window's viewer region. Unlike the DOM-serializer fallback (snapdom) this
+ * renders iframe content (webcraft, mode-maker play), web fonts, and
+ * full-window viewers exactly as the user sees them.
+ *
+ * Returns null if the capture failed *or* came back blank — we deliberately
+ * don't fall back to snapdom on a blank result (snapdom would happily produce
+ * a worse render, e.g. an iframe shown as a white rectangle); a later pass
+ * retries instead.
+ */
+async function captureViaElectron(
+  el: HTMLElement,
+  capturePage: NonNullable<DesktopBridge["capturePage"]>,
+): Promise<string | null> {
+  try {
+    const r = el.getBoundingClientRect();
+    const rect = r.width > 1 && r.height > 1
+      ? { x: r.left, y: r.top, width: r.width, height: r.height }
+      : undefined;
+    const base64 = await capturePage(rect);
+    if (!base64) return null;
+    return scaleToThumb(`data:image/png;base64,${base64}`);
+  } catch {
+    return null;
+  }
+}
+
 async function uploadThumbnail(base64: string): Promise<void> {
   try {
     await fetch(`${getApiBase()}/api/session/thumbnail`, {
@@ -222,47 +370,69 @@ export function useThumbnailCapture(
   fileVersion: number,
   captureViewport?: (() => Promise<{ data: string; media_type: string } | null>) | null,
 ): void {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const capturingRef = useRef(false);
+  const fileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runningRef = useRef(false);
+  const pendingRef = useRef(false);
   const lastCaptureRef = useRef<string | null>(null);
 
-  const doCaptureRef = useRef(() => {});
-  doCaptureRef.current = () => {
-    const el = previewRef.current;
-    if (!el || capturingRef.current) return;
-    capturingRef.current = true;
-
-    const promise = captureViewport
-      ? captureViaViewer(captureViewport)
-      : captureGeneric(el);
-
-    promise
-      .then((base64) => {
-        if (base64 && base64 !== lastCaptureRef.current) {
-          lastCaptureRef.current = base64;
-          uploadThumbnail(base64);
-        }
-      })
+  // captureOnce + trigger are kept in a ref so the timers always call the
+  // latest closure (which captures the current `captureViewport` prop) without
+  // re-subscribing the effects.
+  const triggerRef = useRef(() => {});
+  triggerRef.current = () => {
+    if (runningRef.current) { pendingRef.current = true; return; }
+    runningRef.current = true;
+    captureOnce()
       .catch(() => {})
       .finally(() => {
-        capturingRef.current = false;
+        runningRef.current = false;
+        if (pendingRef.current) { pendingRef.current = false; triggerRef.current(); }
       });
   };
 
-  // Initial capture after viewer loads
+  async function captureOnce(): Promise<void> {
+    let el = previewRef.current;
+    if (!el) return;
+    await waitForStableRender(el);
+    el = previewRef.current;
+    if (!el || !el.isConnected) return;
+    let base64: string | null = null;
+    if (captureViewport) {
+      // A viewer-supplied renderer (e.g. diagram exports the diagram) — cleanest.
+      base64 = await captureViaViewer(captureViewport);
+    } else {
+      const capturePage = electronCapture();
+      if (capturePage) {
+        // Desktop app: real window screenshot. If it's blank we just skip this
+        // pass rather than fall back to the worse snapdom render.
+        base64 = await captureViaElectron(el, capturePage);
+      } else {
+        // Browser dev: best-effort DOM serializer (no iframe contents).
+        base64 = await captureGeneric(el);
+      }
+    }
+    if (base64 && base64 !== lastCaptureRef.current) {
+      lastCaptureRef.current = base64;
+      await uploadThumbnail(base64);
+    }
+  }
+
+  // Escalating capture passes after the viewer loads.
   useEffect(() => {
     if (!hasViewer) return;
-    const timer = setTimeout(() => doCaptureRef.current(), INITIAL_DELAY);
-    return () => clearTimeout(timer);
+    const timers = CAPTURE_PASSES_MS.map((ms) =>
+      setTimeout(() => triggerRef.current(), ms),
+    );
+    return () => { for (const t of timers) clearTimeout(t); };
   }, [hasViewer]);
 
-  // Debounced capture on file changes
+  // Debounced capture on file changes.
   useEffect(() => {
     if (!hasViewer || fileVersion === 0) return;
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => doCaptureRef.current(), DEBOUNCE_DELAY);
+    if (fileTimerRef.current) clearTimeout(fileTimerRef.current);
+    fileTimerRef.current = setTimeout(() => triggerRef.current(), FILE_CHANGE_DEBOUNCE_MS);
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      if (fileTimerRef.current) clearTimeout(fileTimerRef.current);
     };
   }, [hasViewer, fileVersion]);
 }

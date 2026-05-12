@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.5.0
+**Version:** 3.5.1
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`
 
@@ -252,6 +252,10 @@ Global session history for the launcher "Recent Sessions" / "Recent Projects" su
 - Launcher shows recent projects + recent sessions with one-click resume.
 - **Project recovery (3.4.0):** if a Project drops out of the registry (deleted file, schema reset, projects living outside `~/pneuma-projects/`), the user gets it back via either (a) clicking *Create Project* on the same path — the route's **Open-or-Create** logic detects an existing `<root>/.pneuma/project.json` (or a sessions/ dir without manifest), loads/synthesizes it, stamps `onboardedAt` so discovery doesn't re-run, and upserts; or (b) `pneuma project add <path>` from the CLI. The startup auto-scan of `~/pneuma-projects/` (`reconcileSessionsRegistry`) was removed in 3.4.0 — predictable, audit-able registry state over silent recovery.
 
+### Running-Session Registry (3.5.1)
+
+`~/.pneuma/running/` — a directory of small pid-files, one per live `pneuma <mode>` process (`bin/running-registry.ts`). Each session process writes its own entry on startup (`{ id, kind, mode, displayName, workspace, projectRoot?, sessionId?, sessionDir, backendType, url, pid, startedAt }`, `id` = the `sessions.json` id scheme) and removes it on exit; readers prune dead-PID / gone-workspace entries. This is the system-wide source of truth for "which sessions are running" — orthogonal to a launcher's own `childProcesses` map, which only knows the children *it* spawned (a Smart Handoff target or a `project-onboard` apply-task target is spawned by a *different* session server). `GET /api/running` reads it; the launcher's "Continue" surface sources its running items from there, so a project that switched modes internally shows its *current* mode. Temp workspaces and the launcher process itself are skipped (same gate as `recordSession`).
+
 ### User Preferences
 
 Persistent user preference files managed by the agent. Two scopes, both with the same schema:
@@ -372,7 +376,7 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 
 ## Server Routes
 
-Server routes are defined in `server/index.ts` (main), `server/routes/export.ts` (export), `server/evolution-routes.ts` (evolution), `server/mode-maker-routes.ts` (mode maker). WebSocket paths: `/ws/browser/:sessionId` (JSON), `/ws/cli/:sessionId` (NDJSON), `/ws/terminal/:terminalId` (binary). Codex uses stdio JSON-RPC, not WebSocket. `GET /api/file?path=<abs>` serves workspace-contained file reads (used by chat image previews).
+Server routes are defined in `server/index.ts` (main), `server/routes/export.ts` (export), `server/evolution-routes.ts` (evolution), `server/mode-maker-routes.ts` (mode maker). WebSocket paths: `/ws/browser/:sessionId` (JSON), `/ws/cli/:sessionId` (NDJSON), `/ws/terminal/:terminalId` (binary). Codex uses stdio JSON-RPC, not WebSocket. `GET /api/file?path=<abs>` serves workspace-contained file reads (used by chat image previews). `GET /api/running` (launcher) returns all running `pneuma <mode>` sessions system-wide (reads `~/.pneuma/running/`); each entry carries the process's current mode + a `thumbnailUrl` when one exists. `POST /api/session/thumbnail` accepts a base64 PNG and writes it to `<stateDir>/thumbnail.png` (capture mechanics: see the thumbnail-capture gotcha).
 
 Native desktop APIs (`/api/native/*`) are available only in Electron. Architecture: Server → WS `native_request` → Browser → Electron IPC → result → WS `native_result` → Server. Web environments return `{ available: false }`.
 
@@ -415,6 +419,7 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **modelUsage cumulative**: Use delta (current - previous) for per-turn cost.
 - **`backdrop-filter` containing block**: Creates a containing block for fixed-positioned children, causing coordinate offset in Excalidraw. Avoid or account for it.
 - **`@zumer/snapdom`**: Capture iframes must be `display: none` during snapdom calls — visible iframes cause foreignObject text reflow. See `useSlideThumbnails.ts` and `export.ts`.
+- **Session thumbnail capture** (`src/hooks/useThumbnailCapture.ts`): priority is viewer-supplied `captureViewport()` → Electron `pneumaDesktop.capturePage(rect)` (a real window screenshot — the only path that sees iframe content, e.g. webcraft / mode-maker Play) → snapdom-family fallback (browser dev only; no iframe contents). Each pass first waits for finite CSS animations in the viewer subtree to settle; passes fire on a few escalating timers after mount + a debounce after file changes; near-uniform (blank) frames are dropped, never uploaded. A blank Electron capture is *not* backfilled with snapdom (snapdom would render an iframe as a white rectangle — worse than the mode-icon fallback). Web dev: webcraft etc. simply won't get a real thumbnail.
 - **GridBoard JSX tag limitation**: Tile compiler (Babel + eval) cannot resolve locally-defined components as JSX tags. Use `{renderMyComponent(...)}` function calls instead.
 - **Shadow-git checkpoint queue**: All checkpoint operations are serialized via Promise chain to prevent `index.lock` conflicts. Do not parallelize.
 - **Claude Code backend**: see `backends/claude-code/README.md` for NDJSON termination, `CLAUDECODE` env requirement, and `system.init`-after-first-prompt behavior.

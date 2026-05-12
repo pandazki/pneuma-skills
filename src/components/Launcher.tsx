@@ -124,6 +124,8 @@ interface ChildProcess {
   workspace: string;
   url: string;
   startedAt: number;
+  /** Relative URL of this session's thumbnail.png, when one exists (from /api/running). */
+  thumbnailUrl?: string;
 }
 
 // Any mode type for the gallery
@@ -861,6 +863,16 @@ function SessionCard({
   const displayName = session?.sessionName || session?.displayName || runningProcess?.specifier.split("/").pop() || "Unknown";
   const workspace = session?.workspace || runningProcess?.workspace || "";
 
+  // Thumbnail: prefer the URL the server resolved (works for project sessions
+  // too), else the quick-session convention. `t=` is a coarse cache-buster so
+  // a freshly-recaptured thumbnail.png shows up without a hard reload.
+  const thumbPath =
+    runningProcess?.thumbnailUrl ??
+    (session?.hasThumbnail ? `/api/sessions/thumbnail?workspace=${encodeURIComponent(workspace)}` : undefined);
+  const thumbSrc = thumbPath
+    ? `${getApiBase()}${thumbPath}${thumbPath.includes("?") ? "&" : "?"}t=${Math.floor(Date.now() / 5000)}`
+    : undefined;
+
   const cardGradient = isLight
     ? "linear-gradient(135deg, rgba(234,88,12,0.05) 0%, rgba(234,88,12,0.015) 100%)"
     : "linear-gradient(135deg, rgba(249,115,22,0.06) 0%, rgba(249,115,22,0.02) 100%)";
@@ -895,9 +907,9 @@ function SessionCard({
         <div className={`relative aspect-[16/10] rounded-lg overflow-hidden ${
           isRunning ? "bg-cc-bg/80" : "bg-cc-bg/60"
         }`}>
-          {session?.hasThumbnail ? (
+          {thumbSrc ? (
             <img
-              src={`${getApiBase()}/api/sessions/thumbnail?workspace=${encodeURIComponent(workspace)}&t=${Math.floor(Date.now() / 5000)}`}
+              src={thumbSrc}
               alt=""
               className="absolute inset-0 w-full h-full object-cover"
             />
@@ -3170,7 +3182,10 @@ export default function Launcher() {
   }, []);
 
   const refreshRunning = useCallback(() => {
-    fetch(`${getApiBase()}/api/processes/children`)
+    // `/api/running` = all running `pneuma <mode>` sessions system-wide (read
+    // from the shared registry), not just children this launcher spawned — so
+    // a project that switched modes internally shows its current mode.
+    fetch(`${getApiBase()}/api/running`)
       .then((r) => r.json())
       .then((data) => setRunning(data.processes || []))
       .catch(() => { });
@@ -3233,7 +3248,9 @@ export default function Launcher() {
         });
         const launchData = (await launchRes.json()) as { url?: string };
         if (launchData.url) {
-          window.location.href = launchData.url;
+          // Open in a new window — keep the launcher as the main window.
+          // In Electron, `setWindowOpenHandler` routes this to a mode window.
+          window.open(launchData.url, "_blank");
         }
       } catch {
         // tolerate transient failures — the card's main link still works
@@ -3266,7 +3283,7 @@ export default function Launcher() {
       fetch(`${getApiBase()}/api/backends`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/registry`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/sessions`).then((r) => r.json()),
-      fetch(`${getApiBase()}/api/processes/children`).then((r) => r.json()),
+      fetch(`${getApiBase()}/api/running`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/projects`).then((r) => r.json()).catch(() => ({ projects: [] })),
       fetch(`${getApiBase()}/api/projects?archived=true`)
         .then((r) => r.json())
@@ -3349,7 +3366,8 @@ export default function Launcher() {
       });
       const data = await res.json();
       if (data.url) {
-        window.location.href = data.url;
+        // New window — keep the launcher as the main window.
+        window.open(data.url, "_blank");
       }
     } catch { }
   }, []);
@@ -3423,17 +3441,27 @@ export default function Launcher() {
 
   // Merge sessions + running for the "Continue" section (max 3 on homepage)
   const runningWorkspaces = new Set(running.map((r) => r.workspace));
+  // A workspace can have more than one running session — e.g. a project that
+  // switched modes internally before the superseded session was torn down.
+  // Collapse to the most-recent one (latest startedAt) so "Continue" reflects
+  // where the user actually is, not a now-stale earlier mode.
+  const latestRunningByWorkspace = new Map<string, ChildProcess>();
+  for (const proc of running) {
+    if (appWorkspaces.has(proc.workspace)) continue;
+    const prev = latestRunningByWorkspace.get(proc.workspace);
+    if (!prev || (proc.startedAt ?? 0) > (prev.startedAt ?? 0)) {
+      latestRunningByWorkspace.set(proc.workspace, proc);
+    }
+  }
   const allContinueItems = [
     // Running processes first (exclude app sessions)
-    ...running
-      .filter((proc) => !appWorkspaces.has(proc.workspace))
-      .map((proc) => ({
-        type: "running" as const,
-        key: proc.workspace,
-        process: proc,
-        session: sessions.find((s) => s.workspace === proc.workspace),
-        modeName: proc.specifier.split("/").pop() || proc.specifier,
-      })),
+    ...Array.from(latestRunningByWorkspace.values()).map((proc) => ({
+      type: "running" as const,
+      key: proc.workspace,
+      process: proc,
+      session: sessions.find((s) => s.workspace === proc.workspace),
+      modeName: proc.specifier.split("/").pop() || proc.specifier,
+    })),
     // Then recent sessions (not currently running, not app sessions)
     ...sessions
       .filter((s) => !runningWorkspaces.has(s.workspace) && !appWorkspaces.has(s.workspace))
@@ -4022,11 +4050,12 @@ export default function Launcher() {
           // up if the user navigates back to the launcher.
           void reloadProjects();
           if (!skipOnboard) {
-            // Default path — jump straight into the new project so
-            // EmptyShell auto-triggers project-onboard. Saves the
-            // user a "click your new tile" step and matches the
-            // button copy "Create & discover".
-            window.location.href = `/?project=${encodeURIComponent(root)}`;
+            // Default path — open the new project in its own window so
+            // EmptyShell auto-triggers project-onboard, while the
+            // launcher keeps its main-window role. Saves the user a
+            // "click your new tile" step and matches the button copy
+            // "Create & discover".
+            window.open(`/?project=${encodeURIComponent(root)}`, "_blank");
           }
           // skipOnboard path — stay on the launcher, the new tile
           // joins the grid via reloadProjects().

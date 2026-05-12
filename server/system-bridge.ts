@@ -29,6 +29,26 @@ export function resolveAndValidate(workspace: string, inputPath: string): string
   return abs;
 }
 
+/**
+ * Resolve a path for an OS hand-off action (open / reveal).
+ *
+ * Unlike `resolveAndValidate`, this does NOT require the path to live inside
+ * the session workspace — agents routinely read/edit files outside it
+ * (sibling projects, docs, configs), and the "Open" / "Reveal" affordances on
+ * a file tool-call block exist precisely to hand *that* file off to the OS.
+ * The user clicks the button; the path the agent already touched is shown
+ * right next to it. We only require the resolved path to exist on disk —
+ * which mirrors `/api/system/open-in-editor`, which has always accepted any
+ * existing path. Relative inputs resolve against the session CWD.
+ */
+export function resolveOsHandoffPath(workspace: string, inputPath: string): string {
+  const abs = resolve(workspace, inputPath);
+  if (!existsSync(abs)) {
+    throw new Error("Path does not exist");
+  }
+  return abs;
+}
+
 // ── URL validation ───────────────────────────────────────────────────────────
 
 export function validateUrl(url: string): void {
@@ -84,10 +104,7 @@ async function spawn(cmd: string[]): Promise<void> {
 
 export async function openPath(workspace: string, path: string): Promise<{ success: boolean; message?: string }> {
   try {
-    const abs = resolveAndValidate(workspace, path);
-    if (!existsSync(abs)) {
-      return { success: false, message: "Path does not exist" };
-    }
+    const abs = resolveOsHandoffPath(workspace, path);
     await spawn(buildOpenCommand(abs, getPlatform()));
     return { success: true };
   } catch (err) {
@@ -97,10 +114,7 @@ export async function openPath(workspace: string, path: string): Promise<{ succe
 
 export async function revealPath(workspace: string, path: string): Promise<{ success: boolean; message?: string }> {
   try {
-    const abs = resolveAndValidate(workspace, path);
-    if (!existsSync(abs)) {
-      return { success: false, message: "Path does not exist" };
-    }
+    const abs = resolveOsHandoffPath(workspace, path);
     await spawn(buildRevealCommand(abs, getPlatform()));
     return { success: true };
   } catch (err) {

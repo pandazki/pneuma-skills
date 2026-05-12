@@ -5,7 +5,10 @@
  * - "featured" (large, top tier): cover area + name + description + meta row
  * - "compact"  (list, lower tier): small cover thumbnail + name/path + meta
  *
- * Both variants navigate to `/?project=<root>` on click.
+ * Both variants open `/?project=<root>` in a new window (target="_blank") —
+ * in Electron the launcher's `setWindowOpenHandler` routes this to a fresh
+ * mode window, so the launcher keeps its main-window role; in a browser it's
+ * a new tab.
  *
  * Cover + meta line live in `ProjectCover.tsx` so the Project Panel (3.0
  * pivot) can reuse them.
@@ -112,6 +115,8 @@ function FeaturedCard({
   return (
     <a
       href={`/?project=${encodeURIComponent(project.root)}`}
+      target="_blank"
+      rel="noopener"
       title={project.root}
       className="group flex flex-col bg-cc-surface border border-cc-border rounded-xl overflow-hidden hover:border-cc-primary/40 hover:shadow-[0_0_0_1px_rgba(249,115,22,0.15),0_8px_30px_-12px_rgba(249,115,22,0.18)] transition-all duration-200"
     >
@@ -167,6 +172,8 @@ function CompactCard({
   return (
     <a
       href={`/?project=${encodeURIComponent(project.root)}`}
+      target="_blank"
+      rel="noopener"
       title={project.root}
       className="group flex items-center gap-3 bg-cc-surface border border-cc-border rounded-lg p-2.5 hover:border-cc-primary/40 transition-colors duration-150"
     >

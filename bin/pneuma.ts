@@ -45,6 +45,7 @@ import {
   type AnySessionRegistryEntry,
   type SessionsFile,
 } from "./sessions-registry.js";
+import { recordRunning, removeRunning } from "./running-registry.js";
 import { loadProjectManifest, writeProjectManifest } from "../core/project-loader.js";
 
 const PROJECT_ROOT = resolve(dirname(import.meta.path), "..");
@@ -2442,6 +2443,39 @@ Options:
   const layoutParam = manifest.layout ? `&layout=${manifest.layout}` : "";
   const windowParam = manifest.window ? `&w=${manifest.window.width}&h=${manifest.window.height}` : "";
   const browserUrl = `http://localhost:${browserPort}?session=${sessionId}&mode=${modeName}${debugParam}${replayParam}${layoutParam}${windowParam}`;
+
+  // Register in the system-wide running-session registry so the launcher (and
+  // other servers) see this session — including after an in-project mode
+  // switch, where the new session is spawned by a different server and so is
+  // invisible to the launcher's own `childProcesses` map. Carries this
+  // process's *current* mode, so the launcher's "Continue" doesn't go stale.
+  const runningId =
+    startup.kind === "project"
+      ? `${startup.paths.projectRoot}::${startup.sessionId}`
+      : `${workspace}::${modeName}`;
+  if (!isTemporaryWorkspace(workspace)) {
+    recordRunning({
+      id: runningId,
+      kind: startup.kind,
+      mode: modeName,
+      displayName: manifest.displayName,
+      workspace: startup.kind === "project" ? startup.paths.projectRoot! : workspace,
+      ...(startup.kind === "project"
+        ? { projectRoot: startup.paths.projectRoot!, sessionId: startup.sessionId }
+        : {}),
+      sessionDir: startup.paths.sessionDir,
+      backendType,
+      url: browserUrl,
+      pid: process.pid,
+      startedAt: Date.now(),
+    });
+    // Belt-and-suspenders: `shutdown` (SIGTERM/SIGINT) removes the entry too,
+    // but a plain `process.exit` elsewhere wouldn't run it. `rmSync` is sync,
+    // so it's safe in an `exit` handler. (SIGKILL / crashes fall back to the
+    // dead-PID prune that readers do.)
+    process.on("exit", () => { try { removeRunning(runningId); } catch { /* ignore */ } });
+  }
+
   // Always print ready message (used by mode-maker play to detect startup)
   console.log(`[pneuma] ready ${browserUrl}`);
 
@@ -2461,6 +2495,7 @@ Options:
 
   // Graceful shutdown
   const shutdown = async () => {
+    removeRunning(runningId);
     if (historyInterval) clearInterval(historyInterval);
     // Final history save (only for normal mode)
     if (!replayPackage) {

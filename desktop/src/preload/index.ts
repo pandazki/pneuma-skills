@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld("pneumaDesktop", {
   showOpenDialog: (options: { title?: string; defaultPath?: string; buttonLabel?: string }) =>
     ipcRenderer.invoke("pneuma:show-open-dialog", options),
   closeModeWindow: (url: string) => ipcRenderer.invoke("pneuma:close-mode-window", url),
+  capturePage: (rect?: { x: number; y: number; width: number; height: number }) =>
+    ipcRenderer.invoke("pneuma:capture-page", rect) as Promise<string | null>,
   setEditing: (editing: boolean, opts?: { width?: number; height?: number; resizable?: boolean }) =>
     ipcRenderer.invoke("pneuma:set-editing", editing, opts),
   invoke: (capability: string, method: string, ...args: unknown[]) =>
