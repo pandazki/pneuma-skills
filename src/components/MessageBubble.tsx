@@ -210,7 +210,13 @@ function SelectionCard({ sel, interactive }: { sel: SelectionContext; interactiv
     };
     typeLabel = typeLabels[sel.type] || sel.type;
   }
-  const preview = sel.content.length > 80 ? sel.content.slice(0, 77) + "..." : sel.content;
+  // The text excerpt may be absent — e.g. an element with no text, or a card
+  // restored from history (selector-based selections don't persist their
+  // excerpt). Omit the line rather than render an empty `""`.
+  const trimmedContent = (sel.content || "").trim();
+  const preview = trimmedContent
+    ? (trimmedContent.length > 80 ? trimmedContent.slice(0, 77) + "..." : trimmedContent)
+    : null;
 
   const handleClick = () => {
     if (!interactive) return;
@@ -236,7 +242,9 @@ function SelectionCard({ sel, interactive }: { sel: SelectionContext; interactiv
             {typeLabel}
             <span className="text-cc-muted font-normal ml-1.5">in {sel.file}</span>
           </div>
-          <div className="text-cc-muted mt-0.5 break-words leading-snug">"{preview}"</div>
+          {preview !== null && (
+            <div className="text-cc-muted mt-0.5 break-words leading-snug">"{preview}"</div>
+          )}
         </div>
       </div>
     </div>

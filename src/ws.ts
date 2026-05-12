@@ -64,26 +64,54 @@ function getWsUrl(sessionId: string): string {
   return `${proto}//${host}/ws/browser/${sessionId}`;
 }
 
+const KNOWN_SELECTION_TYPES: SelectionType[] = [
+  "heading", "paragraph", "list", "code", "blockquote", "image", "table",
+  "text-range", "section", "link", "container", "interactive", "region",
+];
+
 /**
  * Parse selection context from enriched user message content.
  * Supports both legacy format ([User is viewing: ...]) and new XML format (<viewer-context ...>).
+ *
+ * For the XML format we recover whatever the `<viewer-context>` body carries —
+ * the locator path / element label / tag / classes / nearby text — so a card
+ * restored from history isn't just "paragraph in file". The element's text
+ * excerpt isn't emitted for selector-based selections (so it can't be
+ * recovered), and the inline-SVG thumbnail isn't persisted at all; the card
+ * renders gracefully without either rather than showing an empty `""`.
  */
 function parseSelectionFromContent(raw: string): { content: string; selectionContext?: SelectionContext } {
   // New XML format: <viewer-context mode="..." file="...">...\n</viewer-context>\n\nuser message
   if (raw.startsWith("<viewer-context ")) {
     const closeTag = "</viewer-context>";
     const closeIdx = raw.indexOf(closeTag);
-    if (closeIdx !== -1) {
-      const xmlBlock = raw.slice(0, closeIdx + closeTag.length);
-      const userContent = raw.slice(closeIdx + closeTag.length).replace(/^\n\n/, "");
-      // Extract file from attributes
-      const fileMatch = xmlBlock.match(/file="([^"]+)"/);
-      const file = fileMatch?.[1] || "";
-      return {
-        content: userContent,
-        selectionContext: file ? { file, type: "paragraph" as SelectionType, content: "" } : undefined,
-      };
+    if (closeIdx === -1) return { content: raw };
+    const xmlBlock = raw.slice(0, closeIdx + closeTag.length);
+    const userContent = raw.slice(closeIdx + closeTag.length).replace(/^\n\n/, "");
+    const file = xmlBlock.match(/file="([^"]+)"/)?.[1] || "";
+    const selectedRaw = xmlBlock.match(/^[ \t]*Selected:[ \t]*(.+)$/m)?.[1]?.trim();
+    if (!file || !selectedRaw) {
+      // No element selection in this context (pure "viewing" / annotations) —
+      // strip the XML, but don't synthesize a locator card.
+      return { content: userContent };
     }
+    const sel: SelectionContext = { file, type: "container", content: "" };
+    // `Selected: <type> ["(level N)"] "<excerpt>"` (no-selector form) vs a raw CSS path.
+    const typed = selectedRaw.match(/^([a-z][a-z-]*)(?:\s+\(level\s+(\d+)\))?\s+"([\s\S]*)"$/i);
+    if (typed && (KNOWN_SELECTION_TYPES as string[]).includes(typed[1].toLowerCase())) {
+      sel.type = typed[1].toLowerCase() as SelectionType;
+      if (typed[2]) sel.level = Number(typed[2]);
+      sel.content = typed[3];
+    } else {
+      sel.selector = selectedRaw;
+    }
+    const grab = (re: RegExp): string | undefined => xmlBlock.match(re)?.[1]?.trim() || undefined;
+    const label = grab(/^[ \t]*Element:[ \t]*(.+)$/m); if (label) sel.label = label;
+    const tag = grab(/^[ \t]*Tag:[ \t]*<([^>]+)>[ \t]*$/m); if (tag) sel.tag = tag;
+    const classes = grab(/^[ \t]*Classes:[ \t]*(.+)$/m); if (classes) sel.classes = classes;
+    const ctx = grab(/^[ \t]*Context:[ \t]*(.+)$/m); if (ctx) sel.nearbyText = ctx;
+    const a11y = grab(/^[ \t]*Accessibility:[ \t]*(.+)$/m); if (a11y) sel.accessibility = a11y;
+    return { content: userContent, selectionContext: sel };
   }
 
   // Legacy format: [User is viewing: file]\n[User selected: type "content"]\n\nactual message

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.5.2] - 2026-05-12
+
+### Fixed — selection cards restored from history no longer look broken
+
+When a session reopens and the chat reloads from `history.json`, a viewer-selection card used to degrade to a generic `paragraph in file.html` header followed by an empty `""` — the only thing recovered from the persisted `<viewer-context>` block was the `file` attribute. Now:
+
+- **The locator card recovers what the persisted block actually carries** — the CSS locator path, element label, tag, classes, and nearby text — so a restored card shows the real `▷ div.shell > main > section.metrics in index.html`, not `paragraph`. For text-style selections (`heading (level 2) "Title"`, etc.) the type/level/excerpt are recovered too, since those *are* in the block. (The element's text excerpt isn't emitted for selector-based selections and the inline-SVG widget thumbnail isn't persisted at all — those stay absent, by design.)
+- **An empty excerpt is dropped, not rendered** — the card omits the `"…"` line entirely when there's no text, rather than showing `""`.
+- **No phantom cards** — a pure "viewing"-context message (no element selected) no longer synthesizes a locator card on reload.
+
 ## [3.5.1] - 2026-05-12
 
 ### Fixed — session thumbnails, launcher "Continue" staleness, chat file actions
