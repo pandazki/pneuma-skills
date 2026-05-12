@@ -122,6 +122,13 @@ export function createModeWindow(
   (win as any).__url = url;
   urlToWindow.set(url, win);
 
+  // Every URL this window navigates to. A project shell window bounces
+  // through `?project=…` → `?session=onboard` → `?session=webcraft` (handoff);
+  // each session server is a separate process the launcher can't reliably tear
+  // down on its own (the handoff target is spawned by *another* session server
+  // and may end up reparented to init). On close we kill all of them.
+  const visitedUrls = new Set<string>([url]);
+
   win.once("ready-to-show", () => {
     win.maximize();
     win.show();
@@ -154,48 +161,72 @@ export function createModeWindow(
     }
   });
 
+  // Track in-app navigations (the project shell → session, handoff → next
+  // session) so close-on-window tears down whatever session(s) this window
+  // ended up hosting — and keep `__url` / `urlToWindow` pointing at the
+  // current page.
+  win.webContents.on("did-navigate", (_event, navUrl) => {
+    if (!navUrl.startsWith("http://localhost:") && !navUrl.startsWith("http://127.0.0.1:")) return;
+    visitedUrls.add(navUrl);
+    const prev = (win as any).__url as string | undefined;
+    if (prev && prev !== navUrl) urlToWindow.delete(prev);
+    (win as any).__url = navUrl;
+    urlToWindow.set(navUrl, win);
+  });
+
   modeWindows.add(win);
   win.on("closed", () => {
     modeWindows.delete(win);
     const winUrl = (win as any).__url as string | undefined;
     if (winUrl) urlToWindow.delete(winUrl);
 
-    // Kill the session process via launcher API
-    killSessionByUrl(winUrl);
+    // Tear down every session server this window hosted.
+    void killSessionsByUrls(visitedUrls);
   });
 
   return win;
 }
 
 /**
- * When a mode window is closed, kill the corresponding session process
- * by calling the launcher server's API.
+ * When a mode window closes, kill the session process(es) it hosted by asking
+ * the launcher server. Sessions are matched by port (each session server has
+ * its own). Queries the system-wide running registry first so sessions
+ * spawned by *other* servers (handoff targets) are covered; falls back to the
+ * launcher's own children. The kill endpoint escalates SIGTERM→SIGKILL, so a
+ * wedged session still goes down.
  */
-async function killSessionByUrl(url?: string) {
-  if (!url) return;
+async function killSessionsByUrls(urls: Iterable<string>) {
+  const ports = new Set<string>();
+  for (const u of urls) {
+    try { const p = new URL(u).port; if (p) ports.add(p); } catch {}
+  }
+  if (ports.size === 0) return;
   try {
     const launcherUrl = getLauncherUrl();
     if (!launcherUrl) return;
     const launcherOrigin = new URL(launcherUrl).origin;
 
-    const res = await fetch(`${launcherOrigin}/api/processes/children`);
-    if (!res.ok) return;
-    const data = await res.json() as { processes: Array<{ pid: number; url: string }> };
-
-    // Match by port (each session server has a unique port)
-    const targetPort = new URL(url).port;
-    for (const proc of data.processes) {
+    let procs: Array<{ pid: number; url: string }> = [];
+    try {
+      const r = await fetch(`${launcherOrigin}/api/running`);
+      if (r.ok) procs = (await r.json() as { processes?: Array<{ pid: number; url: string }> }).processes ?? [];
+    } catch {}
+    if (procs.length === 0) {
       try {
-        if (new URL(proc.url).port === targetPort) {
-          await fetch(`${launcherOrigin}/api/processes/children/${proc.pid}/kill`, {
-            method: "POST",
-          });
-          break;
-        }
+        const r = await fetch(`${launcherOrigin}/api/processes/children`);
+        if (r.ok) procs = (await r.json() as { processes?: Array<{ pid: number; url: string }> }).processes ?? [];
       } catch {}
     }
+
+    for (const proc of procs) {
+      let procPort = "";
+      try { procPort = new URL(proc.url).port; } catch {}
+      if (procPort && ports.has(procPort)) {
+        try { await fetch(`${launcherOrigin}/api/processes/children/${proc.pid}/kill`, { method: "POST" }); } catch {}
+      }
+    }
   } catch (err) {
-    console.error("[window-manager] Failed to kill session:", err);
+    console.error("[window-manager] Failed to kill session(s):", err);
   }
 }
 

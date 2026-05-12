@@ -2494,8 +2494,15 @@ Options:
   }
 
   // Graceful shutdown
+  let shuttingDown = false;
   const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     removeRunning(runningId);
+    // Force-exit fuse: if the cleanup below ever wedges (an unresponsive agent
+    // backend, a stuck `server.stop`), bail anyway — this process must not turn
+    // into an un-closable zombie.
+    setTimeout(() => process.exit(0), 4000).unref();
     if (historyInterval) clearInterval(historyInterval);
     // Final history save (only for normal mode)
     if (!replayPackage) {

@@ -46,7 +46,7 @@ import {
   upsertSession,
   type AnySessionRegistryEntry,
 } from "../bin/sessions-registry.js";
-import { readRunning } from "../bin/running-registry.js";
+import { readRunning, removeRunning } from "../bin/running-registry.js";
 
 const DEFAULT_PORT = 17007;
 
@@ -1088,28 +1088,34 @@ export async function startServer(options: ServerOptions) {
       return c.json({ processes });
     });
 
-    // Kill a specific running session by pid. Prefers our own child handle
-    // (lets `Bun.Subprocess.kill` clean up the pipe); otherwise, if the pid
-    // belongs to a known running session (e.g. a handoff target spawned by a
-    // different server), signal it directly. The target's exit handler removes
-    // its registry entry; a dead-PID prune covers the SIGKILL case.
+    // Kill a running session by pid — our own child or any known running
+    // session (e.g. a handoff target spawned by a different server). SIGTERM
+    // first; then, after a short grace, SIGKILL if it's still alive. The
+    // graceful path runs the session's own shutdown (final history save,
+    // registry de-register); the force path covers wedged processes (a
+    // hung shutdown, or a signal handler that just doesn't fire) so a stuck
+    // session can never become an un-closable "running" card. The dead-PID
+    // prune on the next `/api/running` read clears the registry entry; we
+    // also drop it here for a snappy refresh.
     app.post("/api/processes/children/:pid/kill", (c) => {
       const pid = parseInt(c.req.param("pid"), 10);
-      const entry = childProcesses.get(pid);
-      if (entry) {
+      if (!Number.isInteger(pid) || pid <= 0) return c.json({ error: "Bad pid" }, 400);
+      const own = childProcesses.get(pid);
+      const runningEntry = readRunning().find((r) => r.pid === pid);
+      if (!own && !runningEntry) return c.json({ error: "Process not found" }, 404);
+
+      try { (own ? own.proc.kill() : process.kill(pid, "SIGTERM")); } catch { /* already gone */ }
+      if (own) childProcesses.delete(pid);
+
+      setTimeout(() => {
         try {
-          entry.proc.kill();
-          childProcesses.delete(pid);
-        } catch { }
-        return c.json({ ok: true });
-      }
-      try {
-        if (readRunning().some((r) => r.pid === pid)) {
-          process.kill(pid, "SIGTERM");
-          return c.json({ ok: true });
-        }
-      } catch { }
-      return c.json({ error: "Process not found" }, 404);
+          process.kill(pid, 0);          // throws if it already exited
+          process.kill(pid, "SIGKILL");
+        } catch { /* exited gracefully — good */ }
+        if (runningEntry) { try { removeRunning(runningEntry.id); } catch { /* ignore */ } }
+      }, 1500);
+
+      return c.json({ ok: true });
     });
 
     // R2 Configuration

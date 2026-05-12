@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.5.3] - 2026-05-12
+
+### Fixed — no more un-closable "running" sessions
+
+After 3.5.1 surfaced *all* running sessions in the launcher's "Continue" (not just children the launcher spawned), an orphaned session — e.g. a Smart Handoff target whose spawning server already exited, reparented to init, and not honoring SIGTERM — showed up as a "running" card that "Stop" couldn't kill. Now:
+
+- **The kill endpoint escalates** — `POST /api/processes/children/:pid/kill` sends SIGTERM, then SIGKILL after a short grace if the process is still alive, and drops the registry entry. SIGKILL can't be caught, so a wedged session always goes down; the dead-PID prune on the next `/api/running` read clears the card. Works for sessions spawned by *any* server, not just the launcher's own children.
+- **Session shutdown can't wedge** — `bin/pneuma.ts`'s SIGTERM/SIGINT handler now has a force-exit fuse (and a re-entry guard), so a hung cleanup (unresponsive agent backend, stuck `server.stop`) can't keep the process alive.
+- **Closing a mode window tears down everything it hosted** — a desktop window tracks every URL it navigates through (project shell → onboard → handoff target) and, on close, kills all those session servers (matched by port via the system-wide running registry — so a handoff target spawned by a different server is covered too), rather than only the URL the window was first opened with. This is what was leaving orphans behind in the first place.
+
 ## [3.5.2] - 2026-05-12
 
 ### Fixed — selection cards restored from history no longer look broken
