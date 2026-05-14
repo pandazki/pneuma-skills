@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.5.6] - 2026-05-14
+
+### Fixed — Chinese export names, restored chat attachments
+
+Two small but visible bugs that surfaced from project-mode sessions with non-ASCII content.
+
+#### Export name no longer collapses on CJK titles
+
+- **Webcraft / slides / remotion export filenames now fall back to the content-set directory when the title is non-ASCII.** The slug regex `/[^\w\s.-]/g` was stripping CJK to underscore runs (a pure-Chinese manifest title like "我的作品集" became "____.zip"), and the hardcoded fallbacks never fired because the slug was technically non-empty. A new shared `safeDownloadName(rawTitle, contentSet, fallback)` helper picks: (1) the slug if it keeps at least one word char ("Kaku 作品集" → "Kaku"), (2) the content-set directory name (always Latin/kebab-case by SKILL.md + scaffold convention), (3) the hardcoded literal.
+- **Two related drive-by fixes.** `/export/slides/download` had a malformed `Content-Disposition` header (stray spaces in `filename = "..."; filename *= UTF - 8''...`) that fell back to URL-derived filenames; the ZIP route only set the ASCII `filename=` form. Both now use the proper `filename="<ascii>"; filename*=UTF-8''<utf8>` pair so modern browsers display the readable name.
+
+#### Chat-attached files restore on session reopen
+
+- **User-message attachments survive the persist/rehydrate round trip.** `WsBridge.handleUserMessage` saved uploaded files + images to disk but persisted only `content`, `timestamp`, `id` into `session.messageHistory`. On reopen the chat bubble re-rendered as text-only — the original files still on disk, invisible. The history entry now carries optional `images: { media_type, path }[]` and `files: { name, size, path? }[]`; `history.json` stays small (path only, no base64); the browser fetches image bytes through the existing `/api/file?path=<abs>` route. `MessageBubble` renders `data` (fresh send) or `path` (rehydrated) — same look either way.
+- **Scope:** fix lands on the Claude Code bridge (the default backend). The Codex and kimi-cli bridges have their own `handleBrowserUserMessage` that drop the same metadata; they'll get the matching treatment in a follow-up that extracts the `saveImageToDisk` / `saveFileToDisk` helpers behind a shared module so the three bridges don't fork on disk-save logic.
+
 ## [3.5.5] - 2026-05-14
 
 ### Fixed — packaged app finally ships its builtin deploy plugins
