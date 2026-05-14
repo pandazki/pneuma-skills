@@ -379,7 +379,16 @@ export type BrowserIncomingMessageBase =
   | { type: "error"; message: string }
   | { type: "cli_disconnected" }
   | { type: "cli_connected" }
-  | { type: "user_message"; content: string; timestamp: number; id?: string }
+  | {
+    type: "user_message";
+    content: string;
+    timestamp: number;
+    id?: string;
+    /** Image attachments — disk paths only; rendered via /api/file?path=… on rehydrate. */
+    images?: { media_type: string; path: string }[];
+    /** Non-image file attachments — name + size for chip display, path for inspection. */
+    files?: { name: string; size: number; path?: string }[];
+  }
   | { type: "message_history"; messages: BrowserIncomingMessage[] }
   | { type: "event_replay"; events: BufferedBrowserEvent[] }
   | { type: "content_update"; files: { path: string; content: string }[] }

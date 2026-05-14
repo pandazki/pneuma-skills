@@ -752,12 +752,16 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
         if (histMsg.type === "user_message") {
           historyTurnUserInitiated = true;
           const parsed = parseSelectionFromContent(histMsg.content);
+          const histImages = (histMsg as { images?: { media_type: string; path: string }[] }).images;
+          const histFiles = (histMsg as { files?: { name: string; size: number; path?: string }[] }).files;
           chatMessages.push({
             id: histMsg.id || nextId(),
             role: "user",
             content: parsed.content,
             timestamp: histMsg.timestamp,
             ...(parsed.selectionContext ? { selectionContext: parsed.selectionContext } : {}),
+            ...(histImages?.length ? { images: histImages } : {}),
+            ...(histFiles?.length ? { files: histFiles } : {}),
           });
         } else if (histMsg.type === "assistant") {
           const msg = histMsg.message;

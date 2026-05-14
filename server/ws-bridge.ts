@@ -1243,20 +1243,11 @@ export class WsBridge {
     session: Session,
     msg: { type: "user_message"; content: string; session_id?: string; images?: { media_type: string; data: string }[]; files?: { name: string; media_type: string; data: string; size: number }[] }
   ) {
-    // Store user message in history for replay
     const ts = Date.now();
-    session.messageHistory.push({
-      type: "user_message",
-      content: msg.content,
-      timestamp: ts,
-      id: `user-${ts}-${this.userMsgCounter++}`,
-    });
 
-    // Save non-image files to disk and build notification
-    const savedImagePaths: string[] = [];
-    const largeImagePaths = new Set<string>(); // images too large for inline content blocks
+    // Save non-image files to disk and collect metadata for both the CLI
+    // upload-notification and the history entry below.
     const savedFiles: { path: string; name: string; size: number; mediaType: string; inlineContent?: string }[] = [];
-
     if (this.workspace && msg.files?.length) {
       const TEXT_INLINE_LIMIT = 32 * 1024; // 32 KB
       for (const file of msg.files) {
@@ -1268,7 +1259,6 @@ export class WsBridge {
             size: file.size,
             mediaType: file.media_type,
           };
-          // Inline small text files
           if (WsBridge.isTextMimeType(file.media_type) && file.size <= TEXT_INLINE_LIMIT) {
             try {
               entry.inlineContent = readFileSync(filePath, "utf-8");
@@ -1281,27 +1271,52 @@ export class WsBridge {
       }
     }
 
-    // Build content: if images are present, use content block array; otherwise plain string.
-    // Large images (>5 MB base64) are saved to disk only — not inlined as content blocks —
-    // to avoid exceeding WebSocket payload limits.
+    // Pre-pass: save images to disk before pushing history, so the history
+    // entry can carry their saved paths and the chat rehydrates the bubble's
+    // image previews on session reopen. Large images (>5 MB base64) are saved
+    // to disk only — not inlined as content blocks — to avoid exceeding
+    // WebSocket payload limits when forwarding to the CLI.
     const IMAGE_INLINE_LIMIT = 5 * 1024 * 1024; // 5 MB base64 chars ≈ 3.75 MB raw
+    const savedImagePaths: string[] = [];
+    const largeImagePaths = new Set<string>();
+    if (this.workspace && msg.images?.length) {
+      for (const img of msg.images) {
+        try {
+          const savedPath = this.saveImageToDisk(img.media_type, img.data);
+          savedImagePaths.push(savedPath);
+          if (img.data.length > IMAGE_INLINE_LIMIT) largeImagePaths.add(savedPath);
+        } catch (err) {
+          console.warn("[ws-bridge] Failed to save uploaded image to disk:", err);
+        }
+      }
+    }
+
+    // Persist the message to history with attachment metadata so a session
+    // reopen restores image previews + file tags in the chat stream. Only the
+    // disk path is stored, not the base64 payload — history.json stays small;
+    // the browser loads the bytes through /api/file?path=<abs> on render.
+    const historyImages = msg.images?.length
+      ? msg.images.map((img, i) => ({ media_type: img.media_type, path: savedImagePaths[i] }))
+          .filter((entry): entry is { media_type: string; path: string } => Boolean(entry.path))
+      : [];
+    const historyFiles = savedFiles.map((f) => ({ name: f.name, size: f.size, path: f.path }));
+    session.messageHistory.push({
+      type: "user_message",
+      content: msg.content,
+      timestamp: ts,
+      id: `user-${ts}-${this.userMsgCounter++}`,
+      ...(historyImages.length ? { images: historyImages } : {}),
+      ...(historyFiles.length ? { files: historyFiles } : {}),
+    });
+
+    // Build content for the CLI: if images are present, use a content block
+    // array; otherwise a plain string.
     let content: string | unknown[];
     if (msg.images?.length) {
       const blocks: unknown[] = [];
-
       for (const img of msg.images) {
-        if (this.workspace) {
-          try {
-            const savedPath = this.saveImageToDisk(img.media_type, img.data);
-            savedImagePaths.push(savedPath);
-            if (img.data.length > IMAGE_INLINE_LIMIT) {
-              largeImagePaths.add(savedPath);
-            }
-          } catch (err) {
-            console.warn("[ws-bridge] Failed to save uploaded image to disk:", err);
-          }
-        }
-        // Only inline small images as content blocks
+        // Only inline small images as content blocks; large ones are
+        // referenced by disk path through buildUploadNotification.
         if (img.data.length <= IMAGE_INLINE_LIMIT) {
           blocks.push({
             type: "image",
@@ -1314,7 +1329,6 @@ export class WsBridge {
       textContent = this.buildUploadNotification(savedImagePaths, savedFiles, largeImagePaths) + textContent;
 
       blocks.push({ type: "text", text: textContent });
-      // Only use content block array if we actually have inline images
       content = blocks.length > 1 ? blocks : textContent;
     } else if (savedFiles.length > 0) {
       content = this.buildUploadNotification(savedImagePaths, savedFiles) + msg.content;

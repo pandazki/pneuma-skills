@@ -50,10 +50,14 @@ export interface ChatMessage {
   isCollapsible?: boolean;
   /** Subtype for specialized rendering (e.g. "context" for /context output) */
   subtype?: string;
-  /** Attached images (base64 data URLs for display) */
-  images?: { media_type: string; data: string }[];
-  /** Non-image file attachments (metadata only, no data) */
-  files?: { name: string; size: number }[];
+  /**
+   * Attached images for display. Fresh sends carry `data` (base64 from the
+   * composer); rehydrated history entries carry `path` only and the bubble
+   * loads bytes via `/api/file?path=<path>`. At least one of the two is set.
+   */
+  images?: { media_type: string; data?: string; path?: string }[];
+  /** Non-image file attachments (metadata only; `path` exposed after persist). */
+  files?: { name: string; size: number; path?: string }[];
   /** Debug mode: enriched content + images + files actually sent to CLI */
   debugPayload?: { enrichedContent: string; images?: { media_type: string; data: string }[]; files?: { name: string; media_type: string; size: number }[] };
   /** Viewer-initiated notification sent to agent (shown as context card in user bubble) */

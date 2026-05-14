@@ -143,14 +143,25 @@ export default function MessageBubble({
           {notif ? <ViewerNotificationCard notification={notif} /> : null}
           {imgs && imgs.length > 0 && (
             <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
-              {imgs.map((img, i) => (
-                <img
-                  key={i}
-                  src={`data:${img.media_type};base64,${img.data}`}
-                  alt=""
-                  className="max-w-[200px] max-h-[200px] rounded-lg object-cover border border-white/10"
-                />
-              ))}
+              {imgs.map((img, i) => {
+                // Fresh send carries `data` (base64 from the composer);
+                // rehydrated history entries carry `path` only and the server
+                // streams the bytes through /api/file?path=…
+                const src = img.data
+                  ? `data:${img.media_type};base64,${img.data}`
+                  : img.path
+                    ? `/api/file?path=${encodeURIComponent(img.path)}`
+                    : "";
+                if (!src) return null;
+                return (
+                  <img
+                    key={i}
+                    src={src}
+                    alt=""
+                    className="max-w-[200px] max-h-[200px] rounded-lg object-cover border border-white/10"
+                  />
+                );
+              })}
             </div>
           )}
           {files && files.length > 0 && (
