@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.5.5] - 2026-05-14
+
+### Fixed — packaged app finally ships its builtin deploy plugins
+
+The desktop app silently shipped without any builtin plugins, so a workspace with valid Vercel / CF Pages config detected no providers and the deploy UI showed nothing — even though running the same workspace under `bun run dev` worked. Now:
+
+- **`plugins/` is bundled into the .app's extraResources** — mirroring the existing `../modes -> pneuma/modes` clause in `desktop/electron-builder.yml`. `PluginRegistry` resolves the builtin directory as `join(import.meta.dir, "..", "plugins")` relative to `server/`, which is `pneuma/plugins/` in the packaged layout; the missing clause meant `existsSync(dir)` returned false and discovery silently exited with zero manifests. vercel-deploy, cf-pages-deploy, and obsidian-memory now load in production builds the same way they always loaded in dev.
+
 ## [3.5.4] - 2026-05-14
 
 ### Improved — WebCraft skill resynced to Impeccable v3.1.0; backend picker in the project launcher
