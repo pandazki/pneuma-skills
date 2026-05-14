@@ -22,6 +22,28 @@ export interface ExportOptions {
   sessionInfo?: SessionInfo;
 }
 
+/**
+ * Build a download-safe ASCII filename (used in `Content-Disposition: filename=`,
+ * which doesn't accept non-ASCII even though the matching `filename*=UTF-8''…`
+ * does). The fallback chain prefers, in order: the manifest title — if it
+ * survives ASCII slugging with at least one word char — then the content-set
+ * directory name (always slug-safe by construction: scaffold + SKILL.md
+ * enforce Latin / kebab-case), then a hardcoded literal.
+ *
+ * Without the content-set step a Chinese-only title (e.g. "我的作品集")
+ * stripped down to "____", which looked like a missing-name bug in the
+ * browser save dialog and on the Vercel / CF deploy modal's autofill.
+ */
+function safeDownloadName(rawTitle: string | undefined, contentSet: string | undefined, fallback: string): string {
+  const raw = rawTitle?.trim() ?? "";
+  if (raw) {
+    const slug = raw.replace(/[^\w\s.-]+/g, "_").replace(/^[_\s.-]+|[_\s.-]+$/g, "");
+    if (/\w/.test(slug)) return slug;
+  }
+  if (contentSet) return contentSet;
+  return fallback;
+}
+
 export function registerExportRoutes(app: Hono, options: ExportOptions) {
   const workspace = options.workspace;
   const { hookBus, sessionInfo } = options;
@@ -1111,12 +1133,12 @@ ${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
     const result = buildExportHtml({ inline: true, contentSet: enriched.contentSet });
     if ("error" in result) return c.text(result.error, result.status as any);
     if (hookBus && sessionInfo) hookBus.emit("export:after", { format: enriched.format, result: { title: result.title }, contentSet: enriched.contentSet }, sessionInfo).catch(() => {});
-    const safeFilename = result.title.replace(/[^\w\s.-]/g, "_") + ".html";
+    const safeFilename = safeDownloadName(result.title, enriched.contentSet, "slides") + ".html";
     const utf8Filename = encodeURIComponent(result.title + ".html");
     return new Response(result.html, {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
-        "Content-Disposition": `attachment; filename = "${safeFilename}"; filename *= UTF - 8''${utf8Filename} `,
+        "Content-Disposition": `attachment; filename="${safeFilename}"; filename*=UTF-8''${utf8Filename}`,
       },
     });
   });
@@ -2106,7 +2128,7 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
     const html = inlineAssets(readFileSync(pagePath, "utf-8"), baseDir);
     const title = targetPage.title || manifest.title || targetPage.file.replace(/\.html$/i, "");
     if (hookBus && sessionInfo) hookBus.emit("export:after", { format: enriched.format, result: { title }, contentSet: enriched.contentSet, page: enriched.page }, sessionInfo).catch(() => {});
-    const safeFilename = title.replace(/[^\w\s.-]/g, "_") + ".html";
+    const safeFilename = safeDownloadName(title, enriched.contentSet, "webcraft-project") + ".html";
     const utf8Filename = encodeURIComponent(title + ".html");
     return new Response(html, {
       headers: {
@@ -2723,19 +2745,23 @@ async function downloadPdf() {
       if (!(await file.exists())) return c.text("Export failed", 500);
       const content = await file.arrayBuffer();
       try { await Bun.spawn(["rm", tmpFile]).exited; } catch {}
-      // Try to get title from manifest for filename
-      let zipName = "webcraft-project";
+      // Try to get title from manifest for filename — fall back to the
+      // content-set directory name when the title is CJK-only (its ASCII
+      // slug would collapse to underscore noise).
+      let rawTitle: string | undefined;
       try {
         const mPath = join(exportDir, "manifest.json");
         if (existsSync(mPath)) {
           const m = JSON.parse(readFileSync(mPath, "utf-8"));
-          if (m.title) zipName = m.title.replace(/[^\w\s.-]/g, "_");
+          if (m.title) rawTitle = m.title;
         }
       } catch { /* ignore */ }
+      const zipName = safeDownloadName(rawTitle, contentSet, "webcraft-project");
+      const utf8ZipName = encodeURIComponent((rawTitle ?? zipName) + ".zip");
       return new Response(content, {
         headers: {
           "Content-Type": "application/zip",
-          "Content-Disposition": `attachment; filename="${zipName}.zip"`,
+          "Content-Disposition": `attachment; filename="${zipName}.zip"; filename*=UTF-8''${utf8ZipName}`,
         },
       });
     } catch {
@@ -3434,7 +3460,7 @@ ${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
     const result = buildRemotionExportHtml({ inline: true, composition: enriched.composition });
     if ("error" in result) return c.text(result.error, result.status as any);
     if (hookBus && sessionInfo) hookBus.emit("export:after", { format: enriched.format, result: { title: result.title }, composition: enriched.composition }, sessionInfo).catch(() => {});
-    const safeFilename = result.title.replace(/[^\w\s.-]/g, "_") + ".html";
+    const safeFilename = safeDownloadName(result.title, enriched.composition, "remotion") + ".html";
     const utf8Filename = encodeURIComponent(result.title + ".html");
     return new Response(result.html, {
       headers: {
