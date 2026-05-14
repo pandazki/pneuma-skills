@@ -40,6 +40,14 @@ extraResources:
     to: "pneuma/core"
   - from: "../modes"
     to: "pneuma/modes"
+  # Builtin plugins (vercel-deploy, cf-pages-deploy, obsidian-memory).
+  # Plugin registry discovers via `join(import.meta.dir, "..", "plugins")` from
+  # server/, so the directory must sit at pneuma/plugins next to server/. Without
+  # this clause the packaged app discovers zero builtin plugins and the deploy
+  # UI silently shows nothing — even though Vercel / CF Pages config is present
+  # in the workspace.
+  - from: "../plugins"
+    to: "pneuma/plugins"
   - from: "../snapshot"
     to: "pneuma/snapshot"
   - from: "../dist"
