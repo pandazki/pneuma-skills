@@ -73,6 +73,15 @@ For each touched mode:
 - Keep at most ~6 bullets per version. The full prose lives in the project `CHANGELOG.md`.
 - Don't backfill old versions you didn't ship — only annotate the version you're releasing now (and leave any pre-existing entries untouched).
 
+**Also grep for the old literal before bumping**, in case a test hardcodes it. Tests under `server/__tests__/` and the `backends/*/[__tests__]/` lifecycle harnesses sometimes pin `webcraftManifest.version`, `slideManifest.version`, etc. with a string equality. Before the commit:
+
+```bash
+# e.g. webcraft going 1.3.0 → 1.4.0
+grep -rn '"1\.3\.0"' --include="*.ts" --include="*.tsx" --exclude-dir=node_modules --exclude-dir=.claude --exclude-dir=.worktrees .
+```
+
+Any test hit needs the new string. A miss here is silent locally but fails CI's `Release > Test, Build & Release` step on push and forces a follow-up commit.
+
 The desktop auto-updater also surfaces highlights in its "Update Available" / "Update Ready" dialogs, but it parses them straight from the project `CHANGELOG.md` you wrote in step 3 — so a well-formed `- **Bold headline** — description` bullet there is enough; no extra wiring needed.
 
 ### 5. Bump version
@@ -88,6 +97,24 @@ Commit message format:
 ```
 chore: bump version to X.Y.Z — <brief milestone description>
 ```
+
+### 5b. Pre-push sanity — run the test suite
+
+Before pushing, run the full test suite locally:
+
+```
+bun test
+```
+
+CI runs the same suite as the gate before tagging + publishing — so a local pass is the cheapest way to avoid burning a CI cycle on a hardcoded-version mismatch or a typing slip that only manifests when something downstream re-imports the manifest. Expected output:
+
+```
+ NNNN pass
+ NN skip
+ 0 fail
+```
+
+A non-zero `fail` count means stop and fix before pushing. The backend lifecycle suites under `backends/*/[__tests__]/` count their `(skip) ... binary not available` lines toward `skip`, not `fail`; those are fine. A `fail` for a hardcoded version expectation usually points back at step 4b's grep — re-run that grep with the previous version string and patch every hit.
 
 ### 6. Push
 
