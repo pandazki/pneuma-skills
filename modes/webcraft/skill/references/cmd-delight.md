@@ -5,11 +5,19 @@ argument-hint: "[target]"
 user-invocable: true
 ---
 
-Identify opportunities to add moments of joy, personality, and unexpected polish that transform functional interfaces into delightful experiences.
+Find the moments where personality and unexpected polish would turn a functional interface into one users remember and tell other people about. Add only where the moment earns it; delight everywhere reads as noise.
 
 ## MANDATORY PREPARATION
 
 Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `teach` command (see [cmd-teach](cmd-teach.md)) first. Additionally gather: what's appropriate for the domain (playful vs professional vs quirky vs elegant).
+
+---
+
+## Register
+
+Brand: delight can be distributed across copy voice, section transitions, discovery rewards, seasonal touches, personality across the whole surface.
+
+Product: delight concentrates in completion and celebration moments (publish, ship, finish). The rest of the surface stays calm so the moment lands.
 
 ---
 
@@ -300,4 +308,4 @@ Test that delight actually delights:
 - **Appropriate**: Matches brand and context
 - **Accessible**: Works with reduced motion, screen readers
 
-Remember: Delight is the difference between a tool and an experience. Add personality, surprise users positively, and create moments worth sharing. But always respect usability - delight should enhance, never obstruct.
+When the delight moments land in the right places, hand off to the `polish` command (see [cmd-polish](cmd-polish.md)) for the final pass.

@@ -5,11 +5,19 @@ argument-hint: "[target]"
 user-invocable: true
 ---
 
-Strategically introduce color to designs that are too monochromatic, gray, or lacking in visual warmth and personality.
+Replace timid grayscale or single-accent designs with a strategic palette: pick a color strategy, choose a hue family that fits the brand, then apply color with intent. More color ≠ better. Strategic color beats rainbow vomit.
 
 ## MANDATORY PREPARATION
 
 Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `teach` command (see [cmd-teach](cmd-teach.md)) first. Additionally gather: existing brand colors.
+
+---
+
+## Register
+
+Brand: palette IS voice. Pick a color strategy first per SKILL.md (Restrained / Committed / Full palette / Drenched) and follow its dosage. Committed, Full palette, and Drenched deliberately exceed the ≤10% rule; that rule is Restrained only. Unexpected combinations are allowed; a dominant color can own the page when the chosen strategy calls for it.
+
+Product: Restrained by default. Color carries semantic meaning (status, hierarchy, action) rather than decoration; broad surfaces stay neutral. Committed only inside contained accent regions (a marketing card, an empty state, a celebration moment), never across whole task surfaces. Full palette and Drenched are off-register for product unless explicitly briefed.
 
 ---
 
@@ -39,12 +47,13 @@ If any of these are unclear from the codebase, {{ask_instruction}}
 
 Create a purposeful color introduction plan:
 
+- **Color strategy**: Restrained / Committed / Full palette / Drenched. Choose one and follow its dosage.
 - **Color palette**: What colors match the brand/context? (Choose 2-4 colors max beyond neutrals)
-- **Dominant color**: Which color owns 60% of colored elements?
-- **Accent colors**: Which colors provide contrast and highlights? (30% and 10%)
+- **Dominant color**: Which color owns the majority of colored elements?
+- **Accent colors**: Which colors provide contrast and highlights?
 - **Application strategy**: Where does each color appear and why?
 
-**IMPORTANT**: Color should enhance hierarchy and meaning, not create chaos. Less is more when it matters more.
+**IMPORTANT**: Color should enhance hierarchy and meaning, not create chaos. Strategy first, dosage second.
 
 ## Introduce Color Strategically
 
@@ -100,13 +109,13 @@ Add color systematically across these dimensions:
 
 ## Balance & Refinement
 
-Ensure color addition improves rather than overwhelms:
+Ensure color addition improves rather than overwhelms. Dosage depends on the strategy you picked:
 
-### Maintain Hierarchy
-- **Dominant color** (60%): Primary brand color or most used accent
-- **Secondary color** (30%): Supporting color for variety
-- **Accent color** (10%): High contrast for key moments
-- **Neutrals** (remaining): Gray/black/white for structure
+### Strategy dosage
+- **Restrained**: Tinted neutrals carry most of the surface; one accent ≤10%. The 60/30/10 distribution applies here.
+- **Committed**: One saturated color carries 30–60% of the surface. The ≤10% rule does not apply.
+- **Full palette**: 3–4 named color roles, each used deliberately and consistently.
+- **Drenched**: The surface IS the color. Saturation can cover most of the visible area.
 
 ### Accessibility
 - **Contrast ratios**: Ensure WCAG compliance (4.5:1 for text, 3:1 for UI components)
@@ -119,24 +128,24 @@ Ensure color addition improves rather than overwhelms:
 - **Temperature consistency**: Warm palette stays warm, cool stays cool
 
 **NEVER**:
-- Use every color in the rainbow (choose 2-4 colors beyond neutrals)
+- Use every color in the rainbow without a strategy (Full palette is still 3–4 deliberate roles, not chaos)
 - Apply color randomly without semantic meaning
-- Put gray text on colored backgrounds—it looks washed out; use a darker shade of the background color or transparency instead
-- Use pure gray for neutrals—add subtle color tint (warm or cool) for sophistication
+- Put gray text on colored backgrounds; it looks washed out. Use a darker shade of the background color or transparency instead
+- Use pure gray for neutrals; add subtle color tint (warm or cool) for sophistication
 - Use pure black (`#000`) or pure white (`#fff`) for large areas
 - Violate WCAG contrast requirements
 - Use color as the only indicator (accessibility issue)
-- Make everything colorful (defeats the purpose)
 - Default to purple-blue gradients (AI slop aesthetic)
+- Apply the ≤10% accent rule outside the Restrained strategy
 
 ## Verify Color Addition
 
 Test that colorization improves the experience:
 
+- **Strategy honored**: Does the actual dosage match the strategy you chose?
 - **Better hierarchy**: Does color guide attention appropriately?
 - **Clearer meaning**: Does color help users understand states/categories?
 - **More engaging**: Does the interface feel warmer and more inviting?
 - **Still accessible**: Do all color combinations meet WCAG standards?
-- **Not overwhelming**: Is color balanced and purposeful?
 
-Remember: Color is emotional and powerful. Use it to create warmth, guide attention, communicate meaning, and express personality. But restraint and strategy matter more than saturation and variety. Be colorful, but be intentional.
+When the palette reads as intentional, hand off to the `polish` command (see [cmd-polish](cmd-polish.md)) for the final pass.

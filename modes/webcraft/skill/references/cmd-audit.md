@@ -11,7 +11,7 @@ Before proceeding, consult the "Impeccable.style Design Intelligence" section of
 
 ---
 
-Run systematic **technical** quality checks and generate a comprehensive report. Don't fix issues — document them for other commands to address.
+Run systematic **technical** quality checks and generate a comprehensive report. Don't fix issues; document them for other commands to address.
 
 This is a code-level audit, not a design critique. Check what's measurable and verifiable in the implementation.
 
@@ -35,7 +35,7 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 
 **Check for**:
 - **Layout thrashing**: Reading/writing layout properties in loops
-- **Expensive animations**: Animating layout properties (width, height, top, left) instead of transform/opacity
+- **Expensive animations**: Casual layout-property animation, unbounded blur/filter/shadow effects, or effects that visibly drop frames
 - **Missing optimization**: Images without lazy loading, unoptimized assets, missing will-change
 - **Bundle size**: Unnecessary imports, unused dependencies
 - **Render performance**: Unnecessary re-renders, missing memoization
@@ -65,7 +65,7 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 
 ### 5. Anti-Patterns (CRITICAL)
 
-Check against ALL the **DON'T** guidelines in the impeccable skill. Look for AI slop tells (AI color palette, gradient text, glassmorphism, hero metrics, card grids, generic fonts) and general design anti-patterns (gray on color, nested cards, bounce easing, redundant copy).
+Check against ALL the **DON'T** guidelines in the pneuma-webcraft SKILL.md "Impeccable.style Design Intelligence" section. Look for AI slop tells (AI color palette, gradient text, glassmorphism, hero metrics, card grids, generic fonts) and general design anti-patterns (gray on color, nested cards, bounce easing, redundant copy).
 
 **Score 0-4**: 0=AI slop gallery (5+ tells), 1=Heavy AI aesthetic (3-4 tells), 2=Some tells (1-2 noticeable), 3=Mostly clean (subtle issues only), 4=No AI tells (distinctive, intentional design)
 
@@ -96,10 +96,10 @@ Check against ALL the **DON'T** guidelines in the impeccable skill. Look for AI 
 ### Detailed Findings by Severity
 
 Tag every issue with **P0-P3 severity**:
-- **P0 Blocking**: Prevents task completion — fix immediately
-- **P1 Major**: Significant difficulty or WCAG AA violation — fix before release
-- **P2 Minor**: Annoyance, workaround exists — fix in next pass
-- **P3 Polish**: Nice-to-fix, no real user impact — fix if time permits
+- **P0 Blocking**: Prevents task completion. Fix immediately
+- **P1 Major**: Significant difficulty or WCAG AA violation. Fix before release
+- **P2 Minor**: Annoyance, workaround exists. Fix in next pass
+- **P3 Polish**: Nice-to-fix, no real user impact. Fix if time permits
 
 For each issue, document:
 - **[P?] Issue name**
@@ -118,14 +118,14 @@ Identify recurring problems that indicate systemic gaps rather than one-off mist
 
 ### Positive Findings
 
-Note what's working well — good practices to maintain and replicate.
+Note what's working well: good practices to maintain and replicate.
 
 ## Recommended Actions
 
 List recommended commands in priority order (P0 first, then P1, then P2):
 
-1. **[P?] `command-name`** — Brief description (specific context from audit findings)
-2. **[P?] `command-name`** — Brief description (specific context)
+1. **[P?] `command-name`**: Brief description (specific context from audit findings)
+2. **[P?] `command-name`**: Brief description (specific context)
 
 **Rules**: Only recommend commands from: {{available_commands}}. Map findings to the most appropriate command. End with the `polish` command as the final step if any fixes were recommended.
 
@@ -143,5 +143,3 @@ After presenting the summary, tell the user:
 - Skip positive findings (celebrate what works)
 - Forget to prioritize (everything can't be P0)
 - Report false positives without verification
-
-Remember: You're a technical quality auditor. Document systematically, prioritize ruthlessly, cite specific code locations, and provide clear paths to improvement.

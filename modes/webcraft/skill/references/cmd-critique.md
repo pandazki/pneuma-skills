@@ -5,31 +5,39 @@ argument-hint: "[area (feature, page, component...)]"
 user-invocable: true
 ---
 
-## STEPS
-
-### Step 1: Preparation
+## MANDATORY PREPARATION
 
 Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `teach` command first (see [cmd-teach](cmd-teach.md)). Additionally gather: what the interface is trying to accomplish.
 
-### Step 2: Gather Assessments
+---
 
-Launch two independent assessments. **Neither must see the other's output** to avoid bias.
+## Setup: Resolve Target and Load Ignore List
 
-You SHOULD delegate each assessment to a separate sub-agent for independence. Use your environment's agent spawning mechanism (e.g., Claude Code's `Agent` tool, or Codex's subagent spawning). Sub-agents should return their findings as structured text. Do NOT output findings to the user yet.
+Before gathering assessments, do two small bookkeeping steps. They cost almost nothing and they're what makes critique iterative across runs.
 
-If sub-agents are not available in the current environment, complete each assessment sequentially, writing findings to internal notes before proceeding.
+1. **Resolve the primary artifact.** The user's phrasing ("the homepage", "the pricing flow") is not stable enough to track across runs. Resolve it to a concrete file path or URL: the same one you'd already need to scan code or open in a browser. Examples:
+   - "the homepage" → `site/pages/index.astro` (or `http://localhost:3000/` if you're inspecting live)
+   - "the settings modal" → the primary component file (e.g., `src/components/Settings.tsx`)
+   - "this page" → the URL or the page's source file
+   Prefer the source file path over the dev-server URL when both exist; ports drift between runs, file paths don't.
 
-**Tab isolation**: When browser automation is available, each assessment MUST create its own new tab. Never reuse an existing tab, even if one is already open at the correct URL. This prevents the two assessments from interfering with each other's page state.
+2. **Compute a slug** from the resolved target. A simple lowercase + `-`/`_` slug works (e.g. `site/pages/index.astro` → `site-pages-index-astro`). Keep the slug. It identifies this target's stream across runs. If the target is too vague to slug (root-level, no concrete file or URL), skip persistence for this run and tell the user; the trend won't update but the critique still goes ahead.
 
-#### Assessment A: LLM Design Review
+3. **Read the ignore list** at `.impeccable/critique/ignore.md` if it exists. Plain markdown; each non-empty, non-comment line is something the user has marked as "do not re-raise" (deferred tradeoffs, designer-intended deviations, false-positives the user accepts). When a finding's text matches a line here (case-insensitive substring against rule name or snippet), **drop it silently**. Do not mention it in the report. This is the ONLY input critique consumes from prior runs; anchoring on prior findings would defeat the point of independent assessment.
 
-Read the relevant source files (HTML, CSS, JS/TS) and, if browser automation is available, visually inspect the live page. **Create a new tab** for this; do not reuse existing tabs. After navigation, label the tab by setting the document title:
-```javascript
-document.title = '[LLM] ' + document.title;
-```
-Think like a design director. Evaluate:
+## Gather Assessments
 
-**AI Slop Detection (CRITICAL)**: Does this look like every other AI-generated interface? Review against ALL **DON'T** guidelines in the impeccable skill. Check for AI color palette, gradient text, dark glows, glassmorphism, hero metric layouts, identical card grids, generic fonts, and all other tells. **The test**: If someone said "AI made this," would you believe them immediately?
+Launch two independent assessments. **Neither may see the other's output.** This isolation is what makes the combined score honest. Running both in one head silently anchors them to each other; do not shortcut it for cost, speed, or context-size reasons.
+
+Delegate each assessment to a separate sub-agent when your environment supports it (e.g., Claude Code's `Agent` tool, Codex's subagent spawning). Each returns structured findings as text. Do NOT output findings to the user yet.
+
+Fall back to sequential in-head work only if the environment genuinely cannot spawn sub-agents.
+
+### Assessment A: LLM Design Review
+
+Read the relevant source files (HTML, CSS, JS/TS) and visually inspect the live page via the Pneuma viewer iframe (or any browser-automation tool available in this session). Think like a design director. Evaluate:
+
+**AI Slop Detection (CRITICAL)**: Does this look like every other AI-generated interface? Review against ALL **DON'T** guidelines in the pneuma-webcraft SKILL.md "Impeccable.style Design Intelligence" section. Check for AI color palette, gradient text, dark glows, glassmorphism, hero metric layouts, identical card grids, generic fonts, and all other tells. **The test**: If someone said "AI made this," would you believe them immediately?
 
 **Holistic Design Review**: visual hierarchy (eye flow, primary action clarity), information architecture (structure, grouping, cognitive load), emotional resonance (does it match brand and audience?), discoverability (are interactive elements obvious?), composition (balance, whitespace, rhythm), typography (hierarchy, readability, font choices), color (purposeful use, cohesion, accessibility), states & edge cases (empty, loading, error, success), microcopy (clarity, tone, helpfulness).
 
@@ -48,21 +56,21 @@ Score each of the 10 heuristics 0-4. This scoring will be presented in the repor
 
 Return structured findings covering: AI slop verdict, heuristic scores, cognitive load assessment, what's working (2-3 items), priority issues (3-5 with what/why/fix), minor observations, and provocative questions.
 
-#### Assessment B: Automated Detection
+### Assessment B: Pattern Catalog Scan
 
-Review the source files for the 25 specific patterns (AI slop tells + general design quality) documented in the impeccable skill. Catalog each finding with file location and specific evidence.
+Review the source files for the specific anti-patterns documented in the pneuma-webcraft SKILL.md "Impeccable.style Design Intelligence" section (AI slop tells + general design quality patterns). Catalog each finding with file location and specific evidence.
 
 For large targets (many files), prioritize: components referenced on primary user flows, shared/reusable components, and any file flagged by Assessment A's visual review.
 
 Return: file-based findings catalog, and any ambiguous cases flagged for reconciliation with Assessment A.
 
-### Step 3: Generate Combined Critique Report
+## Generate Combined Critique Report
 
 Synthesize both assessments into a single report. Do NOT simply concatenate. Weave the findings together, noting where the LLM review and the pattern catalog agree, where the catalog caught issues the LLM missed, and where pattern matches are false positives.
 
 Structure your feedback as a design director would:
 
-#### Design Health Score
+### Design Health Score
 > *Consult [heuristics-scoring](heuristics-scoring.md)*
 
 Present the Nielsen's 10 heuristics scores as a table:
@@ -83,7 +91,7 @@ Present the Nielsen's 10 heuristics scores as a table:
 
 Be honest with scores. A 4 means genuinely excellent. Most real interfaces score 20-32.
 
-#### Anti-Patterns Verdict
+### Anti-Patterns Verdict
 
 **Start here.** Does this look AI-generated?
 
@@ -91,13 +99,13 @@ Be honest with scores. A 4 means genuinely excellent. Most real interfaces score
 
 **Pattern catalog scan**: Summarize what the pattern-based review found, with counts and file locations. Note any additional issues the catalog caught that you missed, and flag any false positives.
 
-#### Overall Impression
+### Overall Impression
 A brief gut reaction: what works, what doesn't, and the single biggest opportunity.
 
-#### What's Working
+### What's Working
 Highlight 2-3 things done well. Be specific about why they work.
 
-#### Priority Issues
+### Priority Issues
 The 3-5 most impactful design problems, ordered by importance.
 
 For each issue, tag with **P0-P3 severity** (consult [heuristics-scoring](heuristics-scoring.md) for severity definitions):
@@ -106,7 +114,7 @@ For each issue, tag with **P0-P3 severity** (consult [heuristics-scoring](heuris
 - **Fix**: What to do about it (be concrete)
 - **Suggested command**: Which command could address this (from: {{available_commands}})
 
-#### Persona Red Flags
+### Persona Red Flags
 > *Consult [personas](personas.md)*
 
 Auto-select 2-3 personas most relevant to this interface type (use the selection table in the reference). If `{{config_file}}` contains a `## Design Context` section from a prior `teach` run, also generate 1-2 project-specific personas from the audience/brand info.
@@ -119,10 +127,10 @@ For each selected persona, walk through the primary user action and list specifi
 
 Be specific. Name the exact elements and interactions that fail each persona. Don't write generic persona descriptions; write what broke for them.
 
-#### Minor Observations
+### Minor Observations
 Quick notes on smaller issues worth addressing.
 
-#### Questions to Consider
+### Questions to Consider
 Provocative questions that might unlock better solutions:
 - "What if the primary action were more prominent?"
 - "Does this need to feel this complex?"
@@ -132,11 +140,45 @@ Provocative questions that might unlock better solutions:
 - Be direct. Vague feedback wastes everyone's time.
 - Be specific. "The submit button," not "some elements."
 - Say what's wrong AND why it matters to users.
-- Give concrete suggestions, not just "consider exploring..."
+- Give concrete suggestions. Cut "consider exploring..." entirely.
 - Prioritize ruthlessly. If everything is important, nothing is.
 - Don't soften criticism. Developers need honest feedback to ship great design.
 
-### Step 4: Ask the User
+## Persist the Snapshot
+
+Once the report above is finalized, write it to `.impeccable/critique/` so the user can refer back, and so the `polish` command can pick up the priority issues without a copy-paste.
+
+Skip this step if Setup couldn't produce a stable slug (vague or root-level target).
+
+1. **Compose the snapshot.** Take the full report body (heuristic table, anti-patterns verdict, priority issues, persona red flags) and stop before the "Ask the User" / "Recommended Actions" sections that come later. Prepend a small YAML frontmatter block with structured metadata:
+
+   ```markdown
+   ---
+   target: <user phrasing>
+   resolved: <file path or URL>
+   total_score: <0–40>
+   p0_count: <n>
+   p1_count: <n>
+   ts: <ISO-8601 timestamp>
+   ---
+
+   <report body>
+   ```
+
+2. **Write the file** using the Write tool to `.impeccable/critique/<YYYYMMDD-HHMMSS>__<slug>.md` (timestamp first so files sort newest-last in the directory, then `__` separator, then the slug from Setup).
+
+3. **Read the recent trend** for context: use the Read tool to list the directory or read the most recent 4 files for this slug. Pull their `total_score` from frontmatter to form the trend series (oldest → newest, ending with the one you just wrote).
+
+4. **Append a single line to the user-visible output**, after the report and before the questions:
+
+   > **Trend for `<slug>` (last 5 runs): 24 → 28 → 32 → 29 → 32**
+   > Wrote `.impeccable/critique/<filename>`.
+
+   If this is the first run for the slug, the trend is just one score; say so: "First run for this target, no trend yet."
+
+Persistence is fire-and-forget. Failures here should not block the rest of the flow; print the error and move on. Mention the existence of `.impeccable/critique/ignore.md` to the user if they bring up false positives — that's where they can curate deviations the next critique should ignore.
+
+## Ask the User
 
 **After presenting findings**, use targeted questions based on what was actually found. {{ask_instruction}} These answers will shape the action plan.
 
@@ -154,13 +196,13 @@ Ask questions along these lines (adapt to the specific findings; do NOT ask gene
 - Every question must reference specific findings from the report. Never ask generic "who is your audience?" questions.
 - Keep it to 2-4 questions maximum. Respect the user's time.
 - Offer concrete options, not open-ended prompts.
-- If findings are straightforward (e.g., only 1-2 clear issues), skip questions and go directly to Step 5.
+- If findings are straightforward (e.g., only 1-2 clear issues), skip questions and go directly to Recommended Actions.
 
-### Step 5: Recommended Actions
+## Recommended Actions
 
-**After receiving the user's answers**, present a prioritized action summary reflecting the user's priorities and scope from Step 4.
+**After receiving the user's answers**, present a prioritized action summary reflecting the user's priorities and scope.
 
-#### Action Summary
+### Action Summary
 
 List recommended commands in priority order, based on the user's answers:
 

@@ -33,6 +33,12 @@ import { CoverImage, type ProjectCoverEntry } from "./ProjectCover.js";
 import { ModeIcon } from "./ModeIcon.js";
 import { InitParamForm, type InitParamWithAutoFill } from "./InitParamForm.js";
 import EditorPickerButton from "./EditorPickerButton.js";
+import {
+  BackendLogo,
+  FALLBACK_BACKENDS,
+  type BackendOption,
+  type BackendType,
+} from "./Launcher.js";
 
 interface ProjectInfo {
   name: string;
@@ -125,10 +131,11 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
         // fetch covers cover URL lookup + path shortening. We deliberately
         // avoid `/api/sessions` (launcher-only) to prevent 404s in active
         // sessions.
-        const [pRes, mRes, listRes] = await Promise.all([
+        const [pRes, mRes, listRes, bRes] = await Promise.all([
           fetch(`${apiBase}/api/projects/${encodeURIComponent(projectRoot)}/sessions`),
           fetch(`${apiBase}/api/registry`),
           fetch(`${apiBase}/api/projects`).catch(() => null),
+          fetch(`${apiBase}/api/backends`).catch(() => null),
         ]);
         if (cancelled) return;
         if (pRes.ok) {
@@ -173,6 +180,29 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
             if (listData.homeDir) setHomeDir(listData.homeDir);
           } catch { /* ignore */ }
         }
+        if (bRes && bRes.ok) {
+          try {
+            const bData = (await bRes.json()) as {
+              backends?: BackendOption[];
+              defaultBackendType?: BackendType;
+            };
+            if (bData.backends?.length) setBackendOptions(bData.backends);
+            // Default selection follows the server's preference — but only
+            // when the chosen default is actually available, mirroring
+            // BackendLaunchDialog's auto-select-first-available behavior.
+            const opts = bData.backends ?? FALLBACK_BACKENDS;
+            const preferred = bData.defaultBackendType;
+            const preferredAvail = preferred
+              ? opts.find((o) => o.type === preferred)
+              : undefined;
+            if (preferred && preferredAvail?.available !== false) {
+              setSelectedBackendType(preferred);
+            } else {
+              const firstAvail = opts.find((o) => o.available && o.implemented);
+              if (firstAvail) setSelectedBackendType(firstAvail.type);
+            }
+          } catch { /* ignore */ }
+        }
       } catch {
         // tolerate transient errors; panel renders an empty state
       } finally {
@@ -198,6 +228,15 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [smartHandoff, setSmartHandoff] = useState(false);
   const [handoffIntent, setHandoffIntent] = useState("");
+  // Backend picker for new sessions. Mirrors the launcher's
+  // BackendLaunchDialog — defaults to the server's `defaultBackendType` once
+  // /api/backends responds, otherwise falls back to "codex" matching
+  // Launcher's initial state. Selection is only meaningful when launching a
+  // fresh session in this project; resumes/continues ignore it.
+  const [backendOptions, setBackendOptions] =
+    useState<BackendOption[]>(FALLBACK_BACKENDS);
+  const [selectedBackendType, setSelectedBackendType] =
+    useState<BackendType>("codex");
 
   const deleteSession = async (sessionId: string) => {
     if (deleting) return;
@@ -278,7 +317,10 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
           specifier,
           workspace: projectRoot,
           project: projectRoot,
-          ...(sessionId ? { sessionId } : {}),
+          // Only attach backendType when spawning a fresh session — resumes
+          // (sessionId present) read the persisted backend from session.json
+          // and ignore this field server-side.
+          ...(sessionId ? { sessionId } : { backendType: selectedBackendType }),
           ...(initParams && Object.keys(initParams).length > 0
             ? { initParams }
             : {}),
@@ -1147,6 +1189,44 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                 </svg>
               </button>
             </div>
+
+            {backendOptions.length > 1 ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-[11px] uppercase tracking-wider text-cc-muted/60 font-medium">
+                  Agent
+                </p>
+                <div className="flex gap-2 flex-wrap">
+                  {backendOptions.map((backend) => {
+                    const active = selectedBackendType === backend.type;
+                    const unavailable = !backend.implemented || backend.available === false;
+                    return (
+                      <button
+                        key={backend.type}
+                        type="button"
+                        disabled={unavailable}
+                        title={unavailable ? (backend.reason || "Not available") : backend.label}
+                        onClick={() => setSelectedBackendType(backend.type)}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                          active && !unavailable
+                            ? "border-cc-primary/50 bg-cc-primary/10 text-cc-fg"
+                            : unavailable
+                              ? "border-cc-border/30 bg-cc-surface/20 text-cc-muted/40 cursor-not-allowed"
+                              : "border-cc-border bg-cc-input-bg text-cc-muted hover:text-cc-fg hover:border-cc-border cursor-pointer"
+                        }`}
+                      >
+                        <BackendLogo type={backend.type} className="w-4 h-4 shrink-0" />
+                        <span className="font-medium">{backend.label}</span>
+                        {unavailable ? (
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/10 text-red-400 uppercase tracking-wide leading-none">
+                            {!backend.implemented ? "Soon" : "N/A"}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
 
             {sheetPreparing ? (
               <div className="text-xs text-cc-muted/70">Loading parameters…</div>

@@ -8,10 +8,18 @@ import { loadSite, saveSite } from "./domain.js";
 
 const webcraftManifest: ModeManifest = {
   name: "webcraft",
-  version: "1.3.0",
+  version: "1.4.0",
   displayName: "WebCraft",
   description: "Web design powered by Impeccable.style — 22 AI design commands, responsive preview, and export",
   changelog: {
+    "1.4.0": [
+      "Synced Impeccable.style guidance to upstream v3.1.0",
+      "Craft now enforces four STOP gates between shape and code, plus a mock-fidelity inventory and image gate",
+      "Critique writes persistent snapshots; polish reads the latest snapshot for the same target",
+      "User-curated .impeccable/critique/ignore.md silences flagged-but-intentional deviations",
+      "New anti-patterns flagged: italic-serif hero h1, uppercase eyebrow chip, body text at the viewport edge, two-altitude category-reflex",
+      "Image-led brand surfaces no longer accept abstract-panel fallbacks when the brief demands real imagery",
+    ],
     "1.3.0": [
       "Synced Impeccable.style guidance to upstream v3.0.1",
       "Added Document and Onboard commands (22 total)",

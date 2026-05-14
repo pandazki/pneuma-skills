@@ -5,27 +5,29 @@ argument-hint: "[target]"
 user-invocable: true
 ---
 
+Perform a meticulous final pass to catch all the small details that separate good work from great work. The difference between shipped and polished.
+
+Automated QA output is defect evidence only. A clean script result is never proof that the design is strong; gather browser evidence and inspect the real interaction path.
+
 ## MANDATORY PREPARATION
 
 Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `teach` command first (see [cmd-teach](cmd-teach.md)). Additionally gather: quality bar (MVP vs flagship).
 
 ---
 
-Perform a meticulous final pass to catch all the small details that separate good work from great work. The difference between shipped and polished.
-
 ## Design System Discovery
 
-Before polishing, understand the system you are polishing toward:
+Aligning the feature to the design system is **not optional**. Polish without alignment is decoration on top of drift, and it makes the next person's job harder. Discovery comes before any other polish work.
 
-1. **Find the design system**: Search for design system documentation, component libraries, style guides, or token definitions. Study the core patterns: color tokens, spacing scale, typography styles, component API.
-2. **Note the conventions**: How are shared components imported? What spacing scale is used? Which colors come from tokens vs hard-coded values? What motion and interaction patterns are established?
-3. **Identify drift**: Where does the target feature deviate from the system? Hard-coded values that should be tokens, custom components that duplicate shared ones, spacing that doesn't match the scale.
+1. **Find the design system**: Search for design system documentation, component libraries, style guides, or token definitions. Study the core patterns: design principles, target audience, color tokens, spacing scale, typography styles, component API, motion conventions.
+2. **Note the conventions**: How are shared components imported? What spacing scale is used? Which colors come from tokens vs hard-coded values? What motion and interaction patterns are established? What flow shapes are used for comparable actions (modal vs full-page, inline vs route, save-on-blur vs explicit submit)?
+3. **Identify drift, then name the root cause**: For every deviation, classify it as a **missing token** (the value should exist in the system but doesn't), a **one-off implementation** (a shared component already exists but wasn't used), or a **conceptual misalignment** (the feature's flow, IA, or hierarchy doesn't match neighboring features). The fix differs by category: patch the value, swap to the shared component, or rework the flow. Fixing the symptom without naming the cause is how drift compounds.
 
-If a design system exists, polish should align the feature with it. If none exists, polish against the conventions visible in the codebase.
+If a design system exists, polish **must** align the feature with it. If none exists, polish against the conventions visible in the codebase. **If anything about the system is ambiguous, ask. Never guess at design system principles.**
 
 ## Pre-Polish Assessment
 
-Understand the current state and goals:
+Understand the current state and goals before touching anything:
 
 1. **Review completeness**:
    - Is it functionally complete?
@@ -33,13 +35,20 @@ Understand the current state and goals:
    - What's the quality bar? (MVP vs flagship feature?)
    - When does it ship? (How much time for polish?)
 
-2. **Identify polish areas**:
+2. **Think experience-first**: Who actually uses this, and what's the best possible experience for them? Effective design beats decorative polish; a feature that looks beautiful but fights the user's flow is not polished. Walk the path from their perspective before opening DevTools.
+
+3. **Identify polish areas**:
    - Visual inconsistencies
    - Spacing and alignment issues
    - Interaction state gaps
    - Copy inconsistencies
    - Edge cases and error states
    - Loading and transition smoothness
+   - Information architecture and flow drift (does this feature reveal complexity the way neighboring features do?)
+
+4. **Pull in any prior critique** (optional signal): If the `critique` command has been run on the same target, its priority issues are a useful prior for what to address first. Resolve the target to a file path or URL, compute its slug (same simple lowercase + `-`/`_` rule the critique command uses), then list `.impeccable/critique/` for the most recent `*__<slug>.md` snapshot. Use the Read tool. If a snapshot is found, fold the P0/P1 items into your polish list and mention the snapshot path so the user sees what you read. If no snapshot exists, continue without it. Respect `.impeccable/critique/ignore.md` if present — items listed there are explicit user-curated deviations that polish must not "fix." The critique is one input among many. Do your own pass either way.
+
+5. **Triage cosmetic vs functional**: Classify each issue as **cosmetic** (looks off, doesn't impede the user) or **functional** (breaks, blocks, or confuses the experience). When polish time is tight, functional issues ship first; cosmetic ones can land in a follow-up. Quality should be consistent; never perfect one corner while leaving another rough.
 
 **CRITICAL**: Polish is the last step, not the first. Don't polish work that's not functionally complete.
 
@@ -61,6 +70,16 @@ Work through these dimensions methodically:
 - Test at multiple viewport sizes
 - Look for elements that "feel" off
 
+### Information Architecture & Flow
+
+Visual polish on a misshapen flow is wasted work. Match the *shape* of the experience to the system, not just the surface.
+
+- **Progressive disclosure**: Match how much is revealed when, compared to neighboring features. A settings page exposing 40 fields when the rest of the app reveals 5 at a time is drift, even if every field is perfectly styled.
+- **Established user flows**: Multi-step actions follow the same shape as comparable flows elsewhere: modal vs full-page, inline edit vs separate route, save-on-blur vs explicit submit, optimistic vs pessimistic updates.
+- **Hierarchy & complexity**: The same conceptual weight gets the same visual weight throughout. Primary actions don't become tertiary in one corner of the product, and tertiary actions don't shout.
+- **Empty, loading, and arrival transitions**: How content arrives, updates, and leaves matches how it does in adjacent features.
+- **Naming and mental model**: The feature uses the same nouns and verbs as the rest of the system. A "Workspace" here shouldn't be a "Project" three screens away.
+
 ### Typography Refinement
 
 - **Hierarchy consistency**: Same elements use same sizes/weights throughout
@@ -78,8 +97,8 @@ Work through these dimensions methodically:
 - **Theme consistency**: Works in all theme variants
 - **Color meaning**: Same colors mean same things throughout
 - **Accessible focus**: Focus indicators visible with sufficient contrast
-- **Tinted neutrals**: No pure gray or pure black—add subtle color tint (0.01 chroma)
-- **Gray on color**: Never put gray text on colored backgrounds—use a shade of that color or transparency
+- **Tinted neutrals**: No pure gray or pure black; add subtle color tint (0.01 chroma)
+- **Gray on color**: Never put gray text on colored backgrounds; use a shade of that color or transparency
 
 ### Interaction States
 
@@ -99,8 +118,8 @@ Every interactive element needs all states:
 ### Micro-interactions & Transitions
 
 - **Smooth transitions**: All state changes animated appropriately (150-300ms)
-- **Consistent easing**: Use ease-out-quart/quint/expo for natural deceleration. Never bounce or elastic—they feel dated.
-- **No jank**: 60fps animations, only animate transform and opacity
+- **Consistent easing**: Use ease-out-quart/quint/expo for natural deceleration. Never bounce or elastic; they feel dated.
+- **No jank**: Smooth animations; use atmospheric blur/filter/mask/shadow effects when they add polish, but bound expensive paint areas and avoid casual layout-property animation
 - **Appropriate motion**: Motion serves purpose, not decoration
 - **Reduced motion**: Respects `prefers-reduced-motion`
 
@@ -169,6 +188,8 @@ Every interactive element needs all states:
 
 Go through systematically:
 
+- [ ] Aligned to the design system (drift named and resolved by root cause)
+- [ ] Information architecture and flow shape match neighboring features
 - [ ] Visual alignment perfect at all breakpoints
 - [ ] Spacing uses design tokens consistently
 - [ ] Typography hierarchy consistent
@@ -192,24 +213,31 @@ Go through systematically:
 
 **IMPORTANT**: Polish is about details. Zoom in. Squint at it. Use it yourself. The little things add up.
 
+Sweat the details. Zoom in until the alignment is right and the spacing reads as deliberate. Then ship.
+
 **NEVER**:
 - Polish before it's functionally complete
+- Polish without aligning to the design system; that's decoration on drift
+- Guess at design system principles instead of asking when something is ambiguous
 - Spend hours on polish if it ships in 30 minutes (triage)
 - Introduce bugs while polishing (test thoroughly)
-- Ignore systematic issues (if spacing is off everywhere, fix the system)
+- Ignore systematic issues (if spacing is off everywhere, fix the system, not just one screen)
 - Perfect one thing while leaving others rough (consistent quality level)
 - Create new one-off components when design system equivalents exist
 - Hard-code values that should use design tokens
+- Introduce new patterns or flows that diverge from established ones
+- "Fix" items the user has placed in `.impeccable/critique/ignore.md`
 
 ## Final Verification
 
 Before marking as done:
 
-- **Use it yourself**: Actually interact with the feature
-- **Test on real devices**: Not just browser DevTools
-- **Ask someone else to review**: Fresh eyes catch things
-- **Compare to design**: Match intended design
-- **Check all states**: Don't just test happy path
+- **Use it yourself**: Actually interact with the feature.
+- **Test on real devices**: Not just browser DevTools.
+- **Ask someone else to review**: Fresh eyes catch things.
+- **Compare to design**: Match intended design.
+- **Check all states**: Don't just test happy path.
+- **Treat automation carefully**: Run QA scripts when they are available and relevant, fix their defects, but never cite a clean result as proof that the work is polished.
 
 ## Clean Up
 
@@ -219,5 +247,3 @@ After polishing, ensure code quality:
 - **Remove orphaned code**: Delete unused styles, components, or files made obsolete by polish.
 - **Consolidate tokens**: If you introduced new values, check whether they should be tokens.
 - **Verify DRYness**: Look for duplication introduced during polishing and consolidate.
-
-Remember: You have impeccable attention to detail and exquisite taste. Polish until it feels effortless, looks intentional, and works flawlessly. Sweat the details - they matter.

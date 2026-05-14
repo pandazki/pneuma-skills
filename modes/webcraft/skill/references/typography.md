@@ -4,7 +4,7 @@
 
 ### Vertical Rhythm
 
-Your line-height should be the base unit for ALL vertical spacing. If body text has `line-height: 1.5` on `16px` type (= 24px), spacing values should be multiples of 24px. This creates subconscious harmony—text and space share a mathematical foundation.
+Your line-height should be the base unit for ALL vertical spacing. If body text has `line-height: 1.5` on `16px` type (= 24px), spacing values should be multiples of 24px. This creates subconscious harmony; text and space share a mathematical foundation.
 
 ### Modular Scale & Hierarchy
 
@@ -24,7 +24,7 @@ Popular ratios: 1.25 (major third), 1.333 (perfect fourth), 1.5 (perfect fifth).
 
 ### Readability & Measure
 
-Use `ch` units for character-based measure (`max-width: 65ch`). Line-height scales inversely with line length—narrow columns need tighter leading, wide columns need more.
+Use `ch` units for character-based measure (`max-width: 65ch`). Line-height scales inversely with line length: narrow columns need tighter leading, wide columns need more.
 
 **Non-obvious**: Light text on dark backgrounds needs compensation on three axes, not just one. Bump line-height by 0.05–0.1, add a touch of letter-spacing (0.01–0.02em), and optionally step the body weight up one notch (regular → medium). The perceived weight drops across all three; fix all three.
 
@@ -32,7 +32,7 @@ Use `ch` units for character-based measure (`max-width: 65ch`). Line-height scal
 
 ## Font Selection & Pairing
 
-The tactical selection procedure and the reflex-reject list live in [reference/brand.md](brand.md) under **Font selection procedure** and **Reflex-reject list** (loaded for brand-register tasks). The rest of this section covers the adjacent knowledge: anti-reflex corrections, system font use, and pairing rules.
+The tactical selection procedure and the reflex-reject list live in [brand.md](brand.md) under **Font selection procedure** and **Reflex-reject list** (loaded for brand-register tasks). The rest of this section covers the adjacent knowledge: anti-reflex corrections, system font use, and pairing rules.
 
 ### Anti-reflexes worth defending against
 
@@ -42,6 +42,10 @@ The tactical selection procedure and the reflex-reject list live in [reference/b
 - A "modern" brief does NOT need a geometric sans. The most modern thing you can do is not use the font everyone else is using.
 
 **System fonts are underrated**: `-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui` looks native, loads instantly, and is highly readable. Consider this for apps where performance > personality.
+
+### Italic-serif display hero detector
+
+Hero `h1` set in an italic display serif (Fraunces, Recoleta, Newsreader, Playfair, Cormorant, Tiempos) is a primary saturation tell on brand surfaces. Treat it as a flag, not a rule: italic display serifs are a legitimate editorial move when the brief is genuinely editorial, but the default reflex pick should fail the [brand.md](brand.md) inverse test before you commit. If the page reads as "another Stripe-adjacent landing page with a Fraunces italic hero," reach for a different cut or a different lane.
 
 ### Pairing Principles
 
@@ -93,15 +97,24 @@ Tools like [Fontaine](https://github.com/unjs/fontaine) calculate these override
 
 ### Fluid Type
 
-Fluid typography via `clamp(min, preferred, max)` scales text smoothly with the viewport. The middle value (e.g., `5vw + 1rem`) controls scaling rate—higher vw = faster scaling. Add a rem offset so it doesn't collapse to 0 on small screens.
+Fluid typography via `clamp(min, preferred, max)` scales text smoothly with the viewport. The middle value (e.g., `5vw + 1rem`) controls scaling rate (higher vw = faster scaling). Add a rem offset so it doesn't collapse to 0 on small screens.
 
 **Use fluid type for**: Headings and display text on marketing/content pages where text dominates the layout and needs to breathe across viewport sizes.
 
-**Use fixed `rem` scales for**: App UIs, dashboards, and data-dense interfaces. No major app design system (Material, Polaris, Primer, Carbon) uses fluid type in product UI — fixed scales with optional breakpoint adjustments give the spatial predictability that container-based layouts need. Body text should also be fixed even on marketing pages, since the size difference across viewports is too small to warrant it.
+**Use fixed `rem` scales for**: App UIs, dashboards, and data-dense interfaces. No major app design system (Material, Polaris, Primer, Carbon) uses fluid type in product UI; fixed scales with optional breakpoint adjustments give the spatial predictability that container-based layouts need. Body text should also be fixed even on marketing pages, since the size difference across viewports is too small to warrant it.
 
 **Bound your clamp()**: keep `max-size ≤ ~2.5 × min-size`. Wider ratios break the browser's zoom and reflow behaviour and make large viewports feel like the page is shouting.
 
 **Scale container width and font-size together** so effective character measure stays in the 45–75ch band at every viewport. A heading that widens faster than its container drifts out of the comfortable measure at the top end.
+
+### Hero eyebrow chips
+
+A small uppercase, letter-spaced label sitting above a hero `h1` is the dominant 2026 brand pattern. It works when the eyebrow does real work (category, location, edition), but defaults to AI scaffolding when it appears for ornament. Variants:
+
+- Plain text eyebrow — short uppercase label, 5–12% tracking, in a muted neutral or the brand accent.
+- Pill-chip eyebrow — same label inside a pill (rounded background, small inline icon optional).
+
+Either variant is fine once per page. Repeating a tracked uppercase label above every section heading is the section-grammar failure mode listed in [brand.md](brand.md) bans. Body text running to the absolute viewport edge (no horizontal padding) is the other adjacent move that reads as 2026-AI-default; reach for it only when the wide measure is the point.
 
 ### OpenType Features
 

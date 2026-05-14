@@ -5,11 +5,19 @@ argument-hint: "[target]"
 user-invocable: true
 ---
 
-Increase visual impact and personality in designs that are too safe, generic, or visually underwhelming, creating more engaging and memorable experiences.
+When asked for "bolder," AI defaults to the same tired tricks: cyan/purple gradients, glassmorphism, neon accents on dark backgrounds, gradient text on metrics. These are the opposite of bold. Reject them first, then increase visual impact and personality through stronger hierarchy, committed scale, and decisive type.
 
 ## MANDATORY PREPARATION
 
 Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `teach` command (see [cmd-teach](cmd-teach.md)) first.
+
+---
+
+## Register
+
+Brand: "bolder" means distinctive. Extreme scale, unexpected color, typographic risk, committed POV.
+
+Product: "bolder" rarely means theatrics; those undermine trust. It means stronger hierarchy, clearer weight contrast, one sharper accent, more committed density. The amplification is in clarity, not drama.
 
 ---
 
@@ -35,7 +43,7 @@ If any of these are unclear from the codebase, {{ask_instruction}}
 
 **CRITICAL**: "Bolder" doesn't mean chaotic or garish. It means distinctive, memorable, and confident. Think intentional drama, not random chaos.
 
-**WARNING - AI SLOP TRAP**: When making things "bolder," AI defaults to the same tired tricks: cyan/purple gradients, glassmorphism, neon accents on dark backgrounds, gradient text on metrics. These are the OPPOSITE of bold—they're generic. Review ALL the DON'T guidelines in the pneuma-webcraft SKILL.md "Impeccable.style Design Intelligence" section before proceeding. Bold means distinctive, not "more effects."
+**WARNING - AI SLOP TRAP**: Review ALL the DON'T guidelines in the pneuma-webcraft SKILL.md "Impeccable.style Design Intelligence" section before proceeding. Bold means distinctive, not "more effects."
 
 ## Plan Amplification
 
@@ -53,14 +61,14 @@ Create a strategy to increase impact while maintaining coherence:
 Systematically increase impact across these dimensions:
 
 ### Typography Amplification
-- **Replace generic fonts**: Swap system fonts for distinctive choices (see the pneuma-webcraft SKILL.md "Impeccable.style Design Intelligence" section for inspiration)
+- **Replace generic fonts**: Swap system fonts for distinctive choices (see the pneuma-webcraft SKILL.md "Impeccable.style Design Intelligence" section and [typography](typography.md) for inspiration)
 - **Extreme scale**: Create dramatic size jumps (3x-5x differences, not 1.5x)
 - **Weight contrast**: Pair 900 weights with 200 weights, not 600 with 400
 - **Unexpected choices**: Variable fonts, display fonts for headlines, condensed/extended widths, monospace as intentional accent (not as lazy "dev tool" default)
 
 ### Color Intensification
 - **Increase saturation**: Shift to more vibrant, energetic colors (but not neon)
-- **Bold palette**: Introduce unexpected color combinations—avoid the purple-blue gradient AI slop
+- **Bold palette**: Introduce unexpected color combinations. Avoid the purple-blue gradient AI slop
 - **Dominant color strategy**: Let one bold color own 60% of the design
 - **Sharp accents**: High-contrast accent colors that pop
 - **Tinted neutrals**: Replace pure grays with tinted grays that harmonize with your palette
@@ -76,7 +84,7 @@ Systematically increase impact across these dimensions:
 ### Visual Effects
 - **Dramatic shadows**: Large, soft shadows for elevation (but not generic drop shadows on rounded rectangles)
 - **Background treatments**: Mesh patterns, noise textures, geometric patterns, intentional gradients (not purple-to-blue)
-- **Texture & depth**: Grain, halftone, duotone, layered elements—NOT glassmorphism (it's overused AI slop)
+- **Texture & depth**: Grain, halftone, duotone, layered elements. NOT glassmorphism (it's overused AI slop)
 - **Borders & frames**: Thick borders, decorative frames, custom shapes (not rounded rectangles with colored border on one side)
 - **Custom elements**: Illustrative elements, custom icons, decorative details that reinforce brand
 
@@ -84,7 +92,7 @@ Systematically increase impact across these dimensions:
 - **Entrance choreography**: Staggered, dramatic page load animations with 50-100ms delays
 - **Scroll effects**: Parallax, reveal animations, scroll-triggered sequences
 - **Micro-interactions**: Satisfying hover effects, click feedback, state changes
-- **Transitions**: Smooth, noticeable transitions using ease-out-quart/quint/expo (not bounce or elastic—they cheapen the effect)
+- **Transitions**: Smooth, noticeable transitions using ease-out-quart/quint/expo (not bounce or elastic, which cheapen the effect)
 
 ### Composition Boldness
 - **Hero moments**: Create clear focal points with dramatic treatment
@@ -95,7 +103,7 @@ Systematically increase impact across these dimensions:
 **NEVER**:
 - Add effects randomly without purpose (chaos ≠ bold)
 - Sacrifice readability for aesthetics (body text must be readable)
-- Make everything bold (then nothing is bold - need contrast)
+- Make everything bold (then nothing is bold; you need contrast)
 - Ignore accessibility (bold design must still meet WCAG standards)
 - Overwhelm with motion (animation fatigue is real)
 - Copy trendy aesthetics blindly (bold means distinctive, not derivative)
@@ -113,4 +121,4 @@ Ensure amplification maintains usability and coherence:
 
 **The test**: If you showed this to someone and said "AI made this bolder," would they believe you immediately? If yes, you've failed. Bold means distinctive, not "more AI effects."
 
-Remember: Bold design is confident design. It takes risks, makes statements, and creates memorable experiences. But bold without strategy is just loud. Be intentional, be dramatic, be unforgettable.
+When the result feels right, hand off to the `polish` command (see [cmd-polish](cmd-polish.md)) for the final pass.

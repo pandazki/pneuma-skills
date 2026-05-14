@@ -5,7 +5,13 @@ argument-hint: "[target]"
 user-invocable: true
 ---
 
-Identify and fix performance issues to create faster, smoother user experiences.
+Performance is a feature. Identify the actual bottleneck for THIS interface, fix it, then measure. Don't optimize what isn't slow.
+
+## MANDATORY PREPARATION
+
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `teach` command first (see [cmd-teach](cmd-teach.md)).
+
+---
 
 ## Assess Performance Issues
 
@@ -41,7 +47,7 @@ Create systematic improvement plan:
 - Use CDN for faster delivery
 
 ```html
-<img 
+<img
   src="hero.webp"
   srcset="hero-400.webp 400w, hero-800.webp 800w, hero-1200.webp 1200w"
   sizes="(max-width: 400px) 400px, (max-width: 800px) 800px, 1200px"
@@ -95,13 +101,13 @@ const HeavyChart = lazy(() => import('./HeavyChart'));
 
 **Avoid Layout Thrashing**:
 ```javascript
-// ❌ Bad: Alternating reads and writes (causes reflows)
+// Bad: Alternating reads and writes (causes reflows)
 elements.forEach(el => {
   const height = el.offsetHeight; // Read (forces layout)
   el.style.height = height * 2; // Write
 });
 
-// ✅ Good: Batch reads, then batch writes
+// Good: Batch reads, then batch writes
 const heights = elements.map(el => el.offsetHeight); // All reads
 elements.forEach((el, i) => {
   el.style.height = heights[i] * 2; // All writes
@@ -116,22 +122,22 @@ elements.forEach((el, i) => {
 - Virtual scrolling for very long lists (react-window, react-virtualized)
 
 **Reduce Paint & Composite**:
-- Use `transform` and `opacity` for animations (GPU-accelerated)
-- Avoid animating layout properties (width, height, top, left)
+- Use `transform` and `opacity` for reliable movement, but allow blur, filters, masks, clip paths, shadows, and color shifts when they create meaningful polish
+- Avoid casual animation of layout-driving properties (`width`, `height`, `top`, `left`, margins)
 - Use `will-change` sparingly for known expensive operations
-- Minimize paint areas (smaller is faster)
+- Bound expensive paint areas for blur/filter/shadow effects (smaller and isolated is faster)
 
 ### Animation Performance
 
 **GPU Acceleration**:
 ```css
-/* ✅ GPU-accelerated (fast) */
+/* GPU-accelerated (fast) */
 .animated {
   transform: translateX(100px);
   opacity: 0.5;
 }
 
-/* ❌ CPU-bound (slow) */
+/* CPU-bound (slow) */
 .animated {
   left: 100px;
   width: 300px;
@@ -262,4 +268,4 @@ Test that optimizations worked:
 - **No regressions**: Ensure functionality still works
 - **User perception**: Does it *feel* faster?
 
-Remember: Performance is a feature. Fast experiences feel more responsive, more polished, more professional. Optimize systematically, measure ruthlessly, and prioritize user-perceived performance.
+When the user-facing numbers move, hand off to the `polish` command (see [cmd-polish](cmd-polish.md)) for the final pass.

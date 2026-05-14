@@ -5,7 +5,13 @@ argument-hint: "[target]"
 user-invocable: true
 ---
 
-Strengthen interfaces against edge cases, errors, internationalization issues, and real-world usage scenarios that break idealized designs.
+Designs that only work with perfect data aren't production-ready. Harden the interface against the inputs, errors, languages, and network conditions that real users will throw at it.
+
+## MANDATORY PREPARATION
+
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `teach` command first (see [cmd-teach](cmd-teach.md)).
+
+---
 
 ## Assess Hardening Needs
 
@@ -98,10 +104,10 @@ Systematically improve resilience:
 - Avoid fixed widths on text containers
 
 ```jsx
-// ❌ Bad: Assumes short English text
+// Bad: Assumes short English text
 <button className="w-24">Submit</button>
 
-// ✅ Good: Adapts to content
+// Good: Adapts to content
 <button className="px-4 py-2">Submit</button>
 ```
 
@@ -124,22 +130,22 @@ border-inline-end: 1px solid; /* Not border-right */
 
 **Date/Time formatting**:
 ```javascript
-// ✅ Use Intl API for proper formatting
+// Use Intl API for proper formatting
 new Intl.DateTimeFormat('en-US').format(date); // 1/15/2024
 new Intl.DateTimeFormat('de-DE').format(date); // 15.1.2024
 
-new Intl.NumberFormat('en-US', { 
-  style: 'currency', 
-  currency: 'USD' 
+new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD'
 }).format(1234.56); // $1,234.56
 ```
 
 **Pluralization**:
 ```javascript
-// ❌ Bad: Assumes English pluralization
+// Bad: Assumes English pluralization
 `${count} item${count !== 1 ? 's' : ''}`
 
-// ✅ Good: Use proper i18n library
+// Good: Use proper i18n library
 t('items', { count }) // Handles complex plural rules
 ```
 
@@ -241,9 +247,9 @@ Empty state types to handle:
 - **No permissions**: explain why, how to get access
 
 **First-run experience**: Get users to their "aha moment" as quickly as possible.
-- Show, don't tell -- working examples over descriptions
-- Progressive disclosure -- teach one thing at a time, not everything upfront
-- Make onboarding optional -- let experienced users skip
+- Show, don't tell — working examples over descriptions
+- Progressive disclosure — teach one thing at a time, not everything upfront
+- Make onboarding optional — let experienced users skip
 - Provide smart defaults so required setup is minimal
 
 **Feature discovery**: Teach features when users need them, not upfront.
@@ -276,7 +282,7 @@ Empty state types to handle:
 **Constraint handling**:
 ```html
 <!-- Set clear constraints -->
-<input 
+<input
   type="text"
   maxlength="100"
   pattern="[A-Za-z0-9]+"
@@ -385,4 +391,4 @@ Test thoroughly with edge cases:
 - **Errors**: Force API errors, test all error states
 - **Empty**: Remove all data, test empty states
 
-Remember: You're hardening for production reality, not demo perfection. Expect users to input weird data, lose connection mid-flow, and use your product in unexpected ways. Build resilience into every component.
+When edge cases are covered, hand off to the `polish` command (see [cmd-polish](cmd-polish.md)) for the final pass.

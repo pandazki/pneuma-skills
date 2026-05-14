@@ -155,6 +155,8 @@ Reflex images to reject — your training-data defaults:
 
 These are the visual equivalent of the `reflex_fonts_to_reject` list. Reject them every time. Look further.
 
+**Image-led surfaces don't get to degrade into abstract panels.** Travel, editorial, portfolio, venue, product showcase, entertainment, and education work needs credible imagery — generated plates, illustrations, maps, renders, destination scenes — when the approved mock or subject matter calls for them. Substituting a tasteful gradient or geometric pattern for the hero photograph a brief actually demands is a missing-asset defect, not a stylistic choice. Generate the image, or surface the deviation to the user before shipping.
+
 ### Prompt Discipline: Reinforce, Don't Contradict, the Design Direction
 
 An image in a webcraft project has to live next to the site's typography, color system, and voice. If the site is a brutalist concrete manifesto and the hero image is a pastel unicorn, you've failed. Before typing the prompt:
@@ -345,6 +347,8 @@ DO NOT put large icons with rounded corners above every heading. They rarely add
 DO NOT use only one font family for the entire page. Pair a distinctive display font with a refined body font.
 DO NOT use a flat type hierarchy where sizes are too close together. Aim for at least a 1.25 ratio between steps.
 DO NOT set long body passages in uppercase. Reserve all-caps for short labels and headings.
+DO NOT use oversized italic serif (Fraunces, Recoleta, Newsreader, Playfair, Cormorant, Tiempos) as the primary hero h1. This pattern is the late-2025 / early-2026 AI marketing-page fingerprint. Editorial and magazine surfaces that legitimately want the pattern can override on purpose.
+DO NOT pair a hero h1 with an uppercase letter-spaced eyebrow label sitting directly above it, including the pill-chip variant (background plus 999px border-radius). The eyebrow chip is one of the most-trained hero patterns and reads as templated. Short labels at small sizes for editorial captions and ordinary subheads are fine.
 </typography_rules>
 
 #### Color & Theme
@@ -425,6 +429,7 @@ DO NOT use the hero metric layout template (big number, small label, supporting 
 DO NOT center everything. Left-aligned text with asymmetric layouts feels more designed.
 DO NOT use the same spacing everywhere. Without rhythm, layouts feel monotonous.
 DO NOT let body text wrap beyond ~80 characters per line. Add a max-width like 65–75ch so the eye can track easily.
+DO NOT let body text run to the absolute viewport edge. Wrap content in a container with horizontal padding (or a constrained max-width) so paragraphs never bleed into the screen border on any breakpoint.
 </spatial_rules>
 
 #### Visual Details
@@ -508,7 +513,10 @@ A distinctive interface should make someone ask "how was this made?" not "which 
 
 Review the DON'T guidelines above — they are the fingerprints of AI-generated work from 2024-2025.
 
-**Category-reflex check.** If someone could guess the theme and palette from the category name alone — "observability → dark blue", "healthcare → white + teal", "finance → navy + gold", "crypto → neon on black" — it's the training-data reflex. Rework the scene sentence and color strategy until the answer is no longer obvious from the domain.
+**Category-reflex check.** Run at two altitudes; the second one catches what the first one misses.
+
+- **First-order:** if someone could guess the theme and palette from the category name alone — "observability → dark blue", "healthcare → white + teal", "finance → navy + gold", "crypto → neon on black" — it's the first training-data reflex. Rework the scene sentence and color strategy until the answer is no longer obvious from the domain.
+- **Second-order:** if someone could guess the aesthetic family from category-plus-anti-references — "AI workflow tool that's not SaaS-cream → editorial-typographic with italic serif heroes", "fintech that's not navy-and-gold → terminal-native dark mode" — it's the trap one tier deeper. The first reflex was avoided; the second wasn't. Rework until both answers are not obvious. The brand reference's reflex-reject aesthetic lanes list catches the currently-saturated families.
 
 ### Implementation Principles
 

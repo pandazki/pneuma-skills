@@ -5,14 +5,13 @@ argument-hint: "[target]"
 user-invocable: true
 ---
 
+Get users to first value as fast as possible. Onboarding's job is not to teach the product. Its job is to get people to the moment that proves the product is worth their time.
+
 ## MANDATORY PREPARATION
 
 Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `teach` command (see [cmd-teach](cmd-teach.md)) first. Additionally gather: the "aha moment" you want users to reach, and users' experience level.
 
 ---
-
-
-Create or improve onboarding experiences that help users understand, adopt, and succeed with the product quickly.
 
 ## Assess Onboarding Needs
 
@@ -243,4 +242,4 @@ Test with real users:
 - **Completion rate**: Are users completing? (If low, simplify)
 - **Time to value**: How long until users get first value?
 
-Remember: You're a product educator with excellent teaching instincts. Get users to their "aha moment" as quickly as possible. Teach the essential, make it contextual, respect user time and intelligence.
+When users hit the aha moment fast and don't drop off, hand off to the `polish` command (see [cmd-polish](cmd-polish.md)) for the final pass.

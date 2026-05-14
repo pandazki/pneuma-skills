@@ -13,9 +13,9 @@ import { timeAgo, runningDuration } from "../utils/timeAgo.js";
 import { shortenPath } from "../utils/string.js";
 import type { InitParam } from "../../core/types/mode-manifest.js";
 
-type BackendType = "claude-code" | "codex" | "kimi-cli";
+export type BackendType = "claude-code" | "codex" | "kimi-cli";
 
-interface BackendOption {
+export interface BackendOption {
   type: BackendType;
   label: string;
   description: string;
@@ -24,7 +24,7 @@ interface BackendOption {
   reason?: string;
 }
 
-const FALLBACK_BACKENDS: BackendOption[] = [
+export const FALLBACK_BACKENDS: BackendOption[] = [
   {
     type: "claude-code",
     label: "Claude Code",
@@ -363,7 +363,7 @@ function PrimaryButton({
 }
 
 
-function backendLabel(backendType: BackendType): string {
+export function backendLabel(backendType: BackendType): string {
   switch (backendType) {
     case "claude-code": return "Claude";
     case "codex": return "Codex";
@@ -371,7 +371,7 @@ function backendLabel(backendType: BackendType): string {
   }
 }
 
-function BackendLogo({ type, className }: { type: BackendType; className?: string }) {
+export function BackendLogo({ type, className }: { type: BackendType; className?: string }) {
   if (type === "claude-code") {
     return (
       <svg className={className} viewBox="0 0 24 24" fill="currentColor">

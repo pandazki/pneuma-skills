@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.5.4] - 2026-05-14
+
+### Improved — WebCraft skill resynced to Impeccable v3.1.0; backend picker in the project launcher
+
+Two unrelated touch-ups in one release: the WebCraft mode's skill content jumps from upstream Impeccable v3.0.1 to v3.1.0 (the upstream "Skill 3.1.0" tag), and the project-launcher mode-tile drawer finally gets the Agent (backend) picker it had been quietly missing.
+
+#### WebCraft skill — synced to Impeccable v3.1.0
+
+- **The mode skill jumps from Impeccable v3.0.1 to v3.1.0** — all 22 verb command references (`cmd-craft.md`, `cmd-shape.md`, `cmd-critique.md`, …) and all 12 topic references (`brand.md`, `typography.md`, `spatial-design.md`, …) are reset against the upstream `skill-v3.1.0` tag, then re-adapted to Pneuma's iframe paper-canvas runtime. `NOTICE.md` tracks the new version + nine adaptation rows. The webcraft mode's manifest version bumps to **1.4.0**, so existing workspaces see a skill-update prompt on next open.
+- **`craft` enforces explicit gates again.** Four STOP markers between shape and code (direction questions, palette generation, mock generation, mock approval), plus a new mock-fidelity inventory and image gate before any HTML is written. A compact shape's "confirm or override" no longer reads as code-green by accident.
+- **`critique` writes a snapshot; `polish` reads it.** Each critique persists to `.impeccable/critique/<YYYYMMDD-HHMMSS>__<slug>.md` (YAML frontmatter carries `total_score` / `p0_count` / `p1_count`); `polish` pulls the latest snapshot for the same target as additional signal, so backlogs aren't re-derived from scratch. A user-curated `.impeccable/critique/ignore.md` is honored — flagged-but-intentional deviations stop re-raising.
+- **New anti-patterns in `SKILL.md`'s catalog.** Italic-serif display heroes (Fraunces, Recoleta, Newsreader, Playfair, Cormorant, Tiempos as primary hero h1), uppercase letter-spaced hero eyebrow chips (incl. the 999px-radius pill variant), body text running to the absolute viewport edge, and a two-altitude category-reflex check that catches both first-order ("observability → dark blue") and second-order ("AI tool that isn't SaaS-cream → editorial-typographic") training-data tells.
+- **Image-led brand surfaces can't degrade into abstract panels.** Travel, editorial, portfolio, venue, product showcase, entertainment, and education work needs credible imagery (generated plates, illustrations, maps, renders, destination scenes) when the approved mock or subject matter calls for it — a tasteful gradient is a missing-asset defect, not a stylistic choice.
+- **Live mode and Codex's native image-gen path stay unadopted.** Pneuma's iframe preview already provides the live surface upstream's `live` command wraps around; image generation continues to flow through `scripts/generate_image.mjs` / `edit_image.mjs` taught in `SKILL.md`. `reference/codex.md`, `skill/agents/impeccable-asset-producer.md`, and the `skill/scripts/live-*` family are intentionally not ported (documented in `NOTICE.md`).
+
+#### Project launcher — Agent picker in the mode-tile drawer
+
+- **A mode-tile click in `ProjectPanel` now lets you pick the backend** — Claude Code / Codex / Kimi — before confirming. Mirrors the picker in the standalone-launcher's `BackendLaunchDialog` (same 3-button layout, "Soon" / "N/A" badges for unavailable backends), defaults to the server's `defaultBackendType`, and only ships in the `/api/launch` payload for fresh sessions; resuming a session still reads the persisted `backendType` from its `session.json`. The launcher's `BackendType` / `BackendOption` / `FALLBACK_BACKENDS` / `BackendLogo` / `backendLabel` are now exported so the picker doesn't fork.
+
 ## [3.5.3] - 2026-05-12
 
 ### Fixed — no more un-closable "running" sessions
