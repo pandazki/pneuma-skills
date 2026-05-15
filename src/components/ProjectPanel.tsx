@@ -31,6 +31,7 @@ import { sendUserMessage } from "../ws.js";
 import { useAnimatedMount } from "../utils/useAnimatedMount.js";
 import { CoverImage, type ProjectCoverEntry } from "./ProjectCover.js";
 import { ModeIcon } from "./ModeIcon.js";
+import { useFavorites } from "../hooks/useFavorites.js";
 import { InitParamForm, type InitParamWithAutoFill } from "./InitParamForm.js";
 import EditorPickerButton from "./EditorPickerButton.js";
 import {
@@ -433,6 +434,14 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     () => ["webcraft", "doc", "slide", "illustrate", "draw", "kami", "diagram", "remotion"],
     [],
   );
+  const { favorites: favoritesList, isFavorite } = useFavorites();
+  // Ordering rules, top to bottom:
+  //   1. Favorites in their persisted order — explicit user pins always
+  //      surface first regardless of project history.
+  //   2. Used modes (non-favorite) ranked by recency in this project.
+  //   3. Unused modes (non-favorite) ranked by BUILTIN_PRIORITY.
+  // This honors the user's "favorites always show at the front" rule
+  // while keeping project-local recency relevant within the rest.
   const orderedModes = useMemo(() => {
     if (modes.length === 0) return [] as ModeInfo[];
     const usedModeRecency = new Map<string, number>();
@@ -440,8 +449,12 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
       const prev = usedModeRecency.get(s.mode) ?? 0;
       usedModeRecency.set(s.mode, Math.max(prev, s.lastAccessed ?? 0));
     }
+    const favIdx = new Map(favoritesList.map((n, i) => [n, i] as const));
+    const favs = modes
+      .filter((m) => favIdx.has(m.name))
+      .sort((a, b) => (favIdx.get(a.name)! - favIdx.get(b.name)!));
     const used = modes
-      .filter((m) => usedModeRecency.has(m.name))
+      .filter((m) => !favIdx.has(m.name) && usedModeRecency.has(m.name))
       .sort(
         (a, b) =>
           (usedModeRecency.get(b.name) ?? 0) - (usedModeRecency.get(a.name) ?? 0),
@@ -451,10 +464,10 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
       return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
     };
     const unused = modes
-      .filter((m) => !usedModeRecency.has(m.name))
+      .filter((m) => !favIdx.has(m.name) && !usedModeRecency.has(m.name))
       .sort((a, b) => priority(a.name) - priority(b.name));
-    return [...used, ...unused];
-  }, [modes, sessions, BUILTIN_PRIORITY]);
+    return [...favs, ...used, ...unused];
+  }, [modes, sessions, BUILTIN_PRIORITY, favoritesList]);
   const visibleModes = showAllModes
     ? orderedModes
     : orderedModes.slice(0, DEFAULT_VISIBLE_MODE_COUNT);
@@ -912,6 +925,20 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                             <span className="text-sm text-cc-fg font-medium truncate">
                               {m.displayName ?? m.name}
                             </span>
+                            {isFavorite(m.name) && (
+                              // Matches the QuickStartTile pin badge — same
+                              // glyph, same orange, just inline next to the
+                              // title since project tiles aren't tall enough
+                              // for a corner anchor.
+                              <span
+                                className="w-3 h-3 text-cc-primary/70 shrink-0"
+                                aria-label="Favorite"
+                              >
+                                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                  <path d="M12 17.27l5.18 3.73-1.64-6.81L21 9.74l-7.19-.61L12 2 10.19 9.13 3 9.74l5.46 4.45L6.82 21z" />
+                                </svg>
+                              </span>
+                            )}
                             {count > 0 ? (
                               <span className="text-[10px] text-cc-muted/40 ml-auto shrink-0">
                                 · {count}

@@ -1554,6 +1554,34 @@ export async function startServer(options: ServerOptions) {
       },
     });
 
+    // ── Favorites (launcher-scope) ─────────────────────────────────────
+    // Persistent user-pinned modes. The launcher reads this list to
+    // order Quick Start tiles and to mark favorited tiles with a small
+    // badge. The project mode-tile picker reads the same list. Sourced
+    // from `~/.pneuma/favorites.json` so it survives browser reset and
+    // is shared across all launcher sessions on this machine.
+    app.get("/api/favorites", async (c) => {
+      try {
+        const { readFavorites, DEFAULT_FAVORITES } = await import("../core/favorites.js");
+        return c.json({ favorites: readFavorites(), defaults: [...DEFAULT_FAVORITES] });
+      } catch (err) {
+        return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+      }
+    });
+    app.post("/api/favorites", async (c) => {
+      try {
+        const body = await c.req.json<{ favorites?: unknown }>();
+        if (!Array.isArray(body.favorites)) {
+          return c.json({ error: "favorites must be an array of mode names" }, 400);
+        }
+        const { writeFavorites, readFavorites } = await import("../core/favorites.js");
+        writeFavorites(body.favorites as string[]);
+        return c.json({ favorites: readFavorites() });
+      } catch (err) {
+        return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+      }
+    });
+
     // The launcher mounts these so any project session whose own server
     // hands a request through `/api/handoffs/emit` (e.g. via cross-port
     // proxy) still resolves correctly. The per-session server below also

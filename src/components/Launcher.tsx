@@ -7,6 +7,7 @@ import { CreateProjectDialog } from "./CreateProjectDialog.js";
 import { DirBrowser } from "./DirBrowser.js";
 import { ProjectCard, type ProjectCardEntry } from "./ProjectCard.js";
 import { ModeIcon } from "./ModeIcon.js";
+import { useFavorites, sortFavoritesFirst } from "../hooks/useFavorites.js";
 import { InitParamForm, type InitParamWithAutoFill } from "./InitParamForm.js";
 import { useAnimatedMount } from "../utils/useAnimatedMount.js";
 import { timeAgo, runningDuration } from "../utils/timeAgo.js";
@@ -1413,6 +1414,7 @@ function QuickStartTile({
   icon,
   isModeMaker,
   librarySource,
+  isFavorite,
   onClick,
 }: {
   name: string;
@@ -1422,6 +1424,8 @@ function QuickStartTile({
   isModeMaker?: boolean;
   /** When set, a small "from {lib}" chip is rendered at the top-right. */
   librarySource?: { id: string; name: string; displayName?: string };
+  /** When true, a small filled star sits in the top-left to mark this tile as pinned. */
+  isFavorite?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -1433,6 +1437,20 @@ function QuickStartTile({
           : "bg-cc-surface/30 hover:bg-cc-surface/60 border border-transparent hover:border-cc-border/30"
       }`}
     >
+      {isFavorite && (
+        // Favorite marker — sits top-left so it pairs with the library
+        // link glyph (top-right) without colliding. Filled orange star
+        // at low opacity; brightens on tile hover. Toggling happens in
+        // the gallery card, not here — Quick Start is for fast launch.
+        <span
+          className="absolute top-2 left-2 w-3 h-3 text-cc-primary/60 group-hover:text-cc-primary transition-colors pointer-events-none"
+          aria-label="Favorite"
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 17.27l5.18 3.73-1.64-6.81L21 9.74l-7.19-.61L12 2 10.19 9.13 3 9.74l5.46 4.45L6.82 21z" />
+          </svg>
+        </span>
+      )}
       {librarySource && (
         // Origin mark: signal "from external library" without competing
         // with the tile's title. A tiny link glyph sits in the corner;
@@ -1540,6 +1558,8 @@ function ModeGallery({
   onAddFromUrl,
   onAddLibrary,
   onPublishLibrary,
+  isFavorite,
+  onToggleFavorite,
   className,
   closing,
   headerHeight = 0,
@@ -1564,6 +1584,10 @@ function ModeGallery({
   onAddLibrary?: () => void;
   /** Open the PublishToLibraryDialog targeted at a specific library. */
   onPublishLibrary?: (library: InstalledLibrary) => void;
+  /** Membership check for the star toggle on each card. */
+  isFavorite?: (modeName: string) => boolean;
+  /** Toggle the favorite state for a mode. */
+  onToggleFavorite?: (modeName: string) => void;
   className?: string;
   closing?: boolean;
   headerHeight?: number;
@@ -1676,6 +1700,8 @@ function ModeGallery({
                       onEvolve={!isToolMode && onEvolve ? () => onEvolve(mode) : undefined}
                       onDelete={mode.source === "local" && onDeleteLocal ? () => onDeleteLocal(mode.name) : undefined}
                       isLight={isLight}
+                      isFavorite={!isToolMode && isFavorite ? isFavorite(mode.name) : undefined}
+                      onToggleFavorite={!isToolMode && onToggleFavorite ? () => onToggleFavorite(mode.name) : undefined}
                     />
                   );
                 })}
@@ -1736,6 +1762,8 @@ function ModeGallery({
                             onEvolve={onEvolve ? () => onEvolve(mode) : undefined}
                             isLight={isLight}
                             library={lib}
+                            isFavorite={isFavorite ? isFavorite(mode.name) : undefined}
+                            onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(mode.name) : undefined}
                           />
                         );
                       })}
@@ -1991,6 +2019,8 @@ function GalleryModeCard({
   onDelete,
   isLight,
   library,
+  isFavorite,
+  onToggleFavorite,
 }: {
   mode: AnyMode;
   expanded: boolean;
@@ -2009,6 +2039,10 @@ function GalleryModeCard({
    * its library's group header to remember what it came from.
    */
   library?: InstalledLibrary;
+  /** When true, the star toggle shows its filled state. */
+  isFavorite?: boolean;
+  /** Toggle this mode in the user's favorites list. Optional — when omitted, the star button hides entirely. */
+  onToggleFavorite?: () => void;
 }) {
   const [activeHighlight, setActiveHighlight] = useState(0);
   const [evolveHovered, setEvolveHovered] = useState(false);
@@ -2091,6 +2125,37 @@ function GalleryModeCard({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-[11px] text-cc-muted/40 font-mono">{mode.source !== "builtin" ? mode.version : ""}</span>
+
+          {/* Favorite toggle — primary pinning surface. The Quick Start
+              tile shows a static badge but doesn't toggle there; users
+              come here to manage their pins. Filled orange when active,
+              outline muted when inactive. */}
+          {onToggleFavorite && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+              className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                isFavorite
+                  ? "text-cc-primary hover:text-cc-primary/80"
+                  : "text-cc-muted/40 hover:text-cc-primary"
+              }`}
+              title={isFavorite ? "Unpin from Quick Start" : "Pin to Quick Start"}
+              aria-label={isFavorite ? "Unpin from favorites" : "Pin to favorites"}
+              aria-pressed={isFavorite ? true : false}
+            >
+              <svg
+                className="w-3.5 h-3.5"
+                viewBox="0 0 24 24"
+                fill={isFavorite ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth={1.6}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 17.27l5.18 3.73-1.64-6.81L21 9.74l-7.19-.61L12 2 10.19 9.13 3 9.74l5.46 4.45L6.82 21z" />
+              </svg>
+            </button>
+          )}
 
           {/* Evolve button */}
           {onEvolve && (
@@ -4458,11 +4523,16 @@ export default function Launcher() {
     ...published.map((m) => ({ ...m, source: "published" as const, specifier: m.archiveUrl })),
   ], [builtins, local, published]);
 
-  // All modes for quick start (exclude featured, add mode-maker at end)
+  const { favorites, isFavorite, toggle: toggleFavorite } = useFavorites();
+
+  // All modes for quick start (exclude featured, add mode-maker at end).
+  // Favorites bubble to the front of the grid in their persisted order;
+  // everything else preserves the original allModes ordering. mode-maker
+  // and evolve are filtered out — they live in the hero / settings flows.
   const quickStartModes = React.useMemo(() => {
     const modes = allModes.filter((m) => m.name !== "mode-maker" && m.name !== "evolve");
-    return modes;
-  }, [allModes, featuredMode]);
+    return sortFavoritesFirst(modes, favorites, (m) => m.name);
+  }, [allModes, favorites]);
 
   const handleGalleryLaunch = (mode: AnyMode) => {
     setShowGallery(false);
@@ -4863,12 +4933,21 @@ export default function Launcher() {
             <WarmSpotlightWrap gridClass="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3" radius={160}>
               {quickStartModes.map((mode) => (
                 <QuickStartTile
-                  key={mode.name}
+                  // Multiple modes can share a manifest `name` (e.g. a
+                  // builtin and its locally-evolved fork both manifest
+                  // as `slide`). Composing the React key from source +
+                  // path keeps each tile distinct even when names
+                  // collide, eliminating the "two children with the
+                  // same key" warning and the resulting render
+                  // ambiguity that made favorite badges appear on
+                  // only some of the colliding tiles.
+                  key={`${mode.source}::${mode.path || mode.name}`}
                   name={mode.name}
                   displayName={mode.displayName}
                   description={mode.description}
                   icon={mode.icon}
                   librarySource={mode.librarySource}
+                  isFavorite={isFavorite(mode.name)}
                   onClick={() => setLaunchTarget({
                     specifier: mode.specifier,
                     displayName: mode.displayName,
@@ -4910,6 +4989,8 @@ export default function Launcher() {
           onLaunch={handleGalleryLaunch}
           onAddLibrary={() => setAddLibraryOpen(true)}
           onPublishLibrary={(lib) => setPublishTarget(lib)}
+          isFavorite={isFavorite}
+          onToggleFavorite={toggleFavorite}
           onEdit={(mode) => {
             setShowGallery(false);
             // "Edit" on a mode = start a mode-maker session seeded from that
