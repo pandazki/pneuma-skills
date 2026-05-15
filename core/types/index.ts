@@ -79,3 +79,11 @@ export type {
 
 export type { ProjectManifest, ProjectSummary } from "./project-manifest.js";
 export { isProjectManifest } from "./project-manifest.js";
+
+export type {
+  LibraryManifest,
+  LibraryModeEntry,
+  LibrarySource,
+  InstalledLibrary,
+  InstalledLibraryMode,
+} from "./library.js";

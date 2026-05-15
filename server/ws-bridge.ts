@@ -215,6 +215,22 @@ export class WsBridge {
     this.broadcastToBrowsers(session, msg);
   }
 
+  /**
+   * Push a message to every connected browser across all sessions. Used by
+   * system-wide notifications (e.g. `libraries_updated`) where the launcher
+   * UI has no specific session affinity. Quiet no-op when nothing is
+   * connected — callers can fire-and-forget.
+   */
+  broadcastAll(msg: BrowserIncomingMessage): void {
+    for (const session of this.sessions.values()) {
+      try {
+        this.broadcastToBrowsers(session, msg);
+      } catch {
+        // One session's failure must not block the others.
+      }
+    }
+  }
+
   /** Dispatch a viewer action to the active browser session, return the result. */
   async dispatchViewerAction(
     actionId: string,

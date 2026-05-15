@@ -430,6 +430,16 @@ export type BrowserIncomingMessageBase =
     displayName?: string;
     description?: string;
     refinedAt: number;
+  }
+  | {
+    /**
+     * Emitted after a library mutation (`/api/libraries/*` link, sync,
+     * activate/deactivate, accept-update, publish, init, unlink) so the
+     * launcher's Libraries section can revalidate without polling. No
+     * payload — consumers refetch `GET /api/libraries`.
+     */
+    type: "libraries_updated";
+    ts: number;
   };
 
 export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };

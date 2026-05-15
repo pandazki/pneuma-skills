@@ -12,6 +12,7 @@ import { useAnimatedMount } from "../utils/useAnimatedMount.js";
 import { timeAgo, runningDuration } from "../utils/timeAgo.js";
 import { shortenPath } from "../utils/string.js";
 import type { InitParam } from "../../core/types/mode-manifest.js";
+import type { InstalledLibrary } from "../../core/types/library.js";
 
 export type BackendType = "claude-code" | "codex" | "kimi-cli";
 
@@ -86,6 +87,10 @@ interface LocalMode {
   version: string;
   path: string;
   icon?: string;
+  /** Set when this mode comes from an installed library (vs single-mode install). */
+  librarySource?: { id: string; name: string; displayName?: string };
+  /** True when the library's manifestVersion is ahead of installedVersion. */
+  updateAvailable?: boolean;
 }
 
 interface RecentSession {
@@ -143,6 +148,8 @@ type AnyMode = {
   hasInitParams?: boolean;
   showcase?: BuiltinMode["showcase"];
   inspiredBy?: BuiltinMode["inspiredBy"];
+  /** Propagated from LocalMode for library-sourced modes (chip on tiles). */
+  librarySource?: { id: string; name: string; displayName?: string };
 };
 
 // ── Theme ────────────────────────────────────────────────────────────────
@@ -1405,6 +1412,7 @@ function QuickStartTile({
   description,
   icon,
   isModeMaker,
+  librarySource,
   onClick,
 }: {
   name: string;
@@ -1412,17 +1420,27 @@ function QuickStartTile({
   description?: string;
   icon?: string;
   isModeMaker?: boolean;
+  /** When set, a small "from {lib}" chip is rendered at the top-right. */
+  librarySource?: { id: string; name: string; displayName?: string };
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`group flex flex-col items-center gap-3 p-5 rounded-xl transition-all duration-200 cursor-pointer ${
+      className={`group relative flex flex-col items-center gap-3 p-5 rounded-xl transition-all duration-200 cursor-pointer ${
         isModeMaker
           ? "bg-cc-primary/5 border border-cc-primary/15 hover:border-cc-primary/30 hover:bg-cc-primary/8"
           : "bg-cc-surface/30 hover:bg-cc-surface/60 border border-transparent hover:border-cc-border/30"
       }`}
     >
+      {librarySource && (
+        <span
+          className="absolute top-1.5 right-1.5 px-1.5 py-0.5 text-[9px] rounded-full bg-cc-fg/5 text-cc-muted/60 border border-cc-border/30 truncate max-w-[90%]"
+          title={`from library: ${librarySource.displayName || librarySource.name}`}
+        >
+          from {librarySource.displayName || librarySource.name}
+        </span>
+      )}
       <div className={`w-11 h-11 flex items-center justify-center rounded-lg transition-all duration-200 ${
         isModeMaker
           ? "bg-cc-primary/10 text-cc-primary group-hover:scale-105"
@@ -2735,6 +2753,810 @@ function PluginsSection() {
   );
 }
 
+// ── GitHubSection ─────────────────────────────────────────────────────────
+//
+// Surfaces `gh` install + auth status inside the launcher SettingsPanel. The
+// route is read-only — actionable changes (`brew install gh`, `gh auth login`)
+// are copyable snippets the user runs in their own terminal. Polled on mount
+// rather than live-watched: the panel reopens often enough that drift isn't
+// painful, and `detectGh` shells out to several subprocesses we don't want
+// on a timer.
+
+interface GhStatusUI {
+  installed: boolean;
+  authenticated: boolean;
+  username?: string;
+  version?: string;
+  hint?: string;
+}
+
+function CopySnippet({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch { /* clipboard blocked — silent */ }
+  };
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-cc-fg/5 border border-cc-border/30">
+      <code className="flex-1 text-[11px] text-cc-fg/80 font-mono truncate">{text}</code>
+      <button
+        onClick={handleCopy}
+        className="text-[10px] text-cc-muted/60 hover:text-cc-fg transition-colors cursor-pointer whitespace-nowrap"
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
+function GitHubSection() {
+  const [status, setStatus] = useState<GhStatusUI | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${getApiBase()}/api/github/status`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setStatus(data as GhStatusUI);
+      })
+      .catch(() => { })
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">GitHub</h3>
+      <p className="text-[10px] text-cc-muted/60 leading-relaxed">
+        Required for creating, syncing, and publishing mode libraries on GitHub.
+      </p>
+      {loading || !status ? (
+        <div className="text-[11px] text-cc-muted/50">Checking gh status…</div>
+      ) : !status.installed ? (
+        <div className="space-y-2">
+          <div className="text-[11px] text-cc-fg/80">GitHub CLI not installed</div>
+          {status.hint && (
+            <div className="text-[10px] text-cc-muted/60">{status.hint}</div>
+          )}
+          <CopySnippet text="brew install gh" />
+          <a
+            href="https://cli.github.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block text-[10px] text-cc-primary hover:opacity-80 transition-opacity"
+          >
+            cli.github.com →
+          </a>
+        </div>
+      ) : !status.authenticated ? (
+        <div className="space-y-2">
+          <div className="text-[11px] text-cc-fg/80">
+            Installed{status.version ? ` (${status.version})` : ""} · Not signed in
+          </div>
+          {status.hint && (
+            <div className="text-[10px] text-cc-muted/60">{status.hint}</div>
+          )}
+          <CopySnippet text="gh auth login" />
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-[11px] text-cc-fg/80">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.6)]" />
+          <span>
+            Signed in as <span className="text-cc-fg">@{status.username || "?"}</span>
+            {status.version && (
+              <span className="text-cc-muted/40"> · gh {status.version}</span>
+            )}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── LibraryCard ───────────────────────────────────────────────────────────
+//
+// One card per installed library. Shows source, counts, and an updates
+// pill; clicking the card body expands a per-mode list with activate
+// toggles + per-mode update affordances. Action footer: Sync / Publish /
+// Unlink (with inline confirm).
+
+function LibraryIcon({ kind, className }: { kind: "github" | "url" | "local"; className?: string }) {
+  if (kind === "github") {
+    return (
+      <svg viewBox="0 0 16 16" fill="currentColor" className={className}>
+        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+      </svg>
+    );
+  }
+  if (kind === "local") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+    </svg>
+  );
+}
+
+function LibraryCard({
+  library,
+  onPublish,
+}: {
+  library: InstalledLibrary;
+  onPublish: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const modeCount = library.modes.length;
+  const activatedCount = library.modes.filter((m) => m.activated).length;
+  const updateCount = library.modes.filter(
+    (m) => m.installedVersion !== m.manifestVersion,
+  ).length;
+
+  const sourceKind = library.source.type;
+  const sourceUrl =
+    library.source.type === "github"
+      ? library.source.url
+      : library.source.type === "url"
+        ? library.source.url
+        : "local";
+
+  const handleSync = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSyncing(true);
+    setError(null);
+    try {
+      const res = await fetch(`${getApiBase()}/api/libraries/${encodeURIComponent(library.id)}/sync`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleUnlink = async () => {
+    setBusy("unlink");
+    setError(null);
+    try {
+      const res = await fetch(`${getApiBase()}/api/libraries/${encodeURIComponent(library.id)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unlink failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleToggle = async (modeName: string, currentlyActive: boolean) => {
+    setBusy(`toggle-${modeName}`);
+    setError(null);
+    try {
+      const action = currentlyActive ? "deactivate" : "activate";
+      const res = await fetch(
+        `${getApiBase()}/api/libraries/${encodeURIComponent(library.id)}/mode/${encodeURIComponent(modeName)}/${action}`,
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Toggle failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleAcceptUpdate = async (modeName: string) => {
+    setBusy(`update-${modeName}`);
+    setError(null);
+    try {
+      const res = await fetch(
+        `${getApiBase()}/api/libraries/${encodeURIComponent(library.id)}/mode/${encodeURIComponent(modeName)}/accept-update`,
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="rounded-xl bg-cc-surface/30 hover:bg-cc-surface/40 border border-cc-border/20 hover:border-cc-border/40 backdrop-blur-sm transition-all duration-200">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full text-left px-4 py-3 cursor-pointer"
+      >
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 flex items-center justify-center rounded-lg bg-cc-fg/5 text-cc-muted/70 shrink-0">
+            <LibraryIcon kind={sourceKind} className="w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-medium text-cc-fg truncate">
+                {library.displayName || library.name}
+              </h3>
+              {updateCount > 0 && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded-full bg-cc-primary/15 text-cc-primary border border-cc-primary/25">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-2.5 h-2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m0 0l-7.5-7.5M12 19.5l7.5-7.5" />
+                  </svg>
+                  {updateCount} update{updateCount === 1 ? "" : "s"}
+                </span>
+              )}
+            </div>
+            <div
+              className="text-[10px] text-cc-muted/50 truncate mt-0.5"
+              title={sourceUrl}
+            >
+              {sourceUrl}
+            </div>
+            <div className="text-[10px] text-cc-muted/60 mt-1">
+              {modeCount} mode{modeCount === 1 ? "" : "s"} · {activatedCount} activated
+            </div>
+          </div>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            className={`w-4 h-4 text-cc-muted/40 transition-transform duration-200 shrink-0 ${expanded ? "rotate-180" : ""}`}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        </div>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pb-3 space-y-1.5 border-t border-cc-border/20 pt-3">
+              {library.modes.length === 0 && (
+                <div className="text-[11px] text-cc-muted/50 px-2 py-1">
+                  No modes in this library.
+                </div>
+              )}
+              {library.modes.map((m) => {
+                const updateAvailable = m.installedVersion !== m.manifestVersion;
+                const toggling = busy === `toggle-${m.name}`;
+                const updating = busy === `update-${m.name}`;
+                return (
+                  <div
+                    key={m.name}
+                    className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-cc-fg/5 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-cc-fg/85 truncate">{m.name}</span>
+                        <span className="text-[10px] text-cc-muted/40">v{m.manifestVersion}</span>
+                        {updateAvailable && (
+                          <button
+                            disabled={updating}
+                            onClick={(e) => { e.stopPropagation(); void handleAcceptUpdate(m.name); }}
+                            className="text-[9px] px-1.5 py-0.5 rounded-full bg-cc-primary/15 text-cc-primary hover:bg-cc-primary/25 border border-cc-primary/25 transition-colors cursor-pointer disabled:opacity-40"
+                          >
+                            {updating ? "…" : "Update"}
+                          </button>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-cc-muted/40 truncate">{m.path}</div>
+                    </div>
+                    {/* Activate toggle */}
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={m.activated}
+                      disabled={toggling}
+                      onClick={(e) => { e.stopPropagation(); void handleToggle(m.name, m.activated); }}
+                      className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border transition-colors disabled:opacity-50 ${
+                        m.activated
+                          ? "bg-cc-primary/80 border-cc-primary/40"
+                          : "bg-cc-fg/10 border-cc-border/40"
+                      }`}
+                      title={m.activated ? "Deactivate" : "Activate"}
+                    >
+                      <span
+                        className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all duration-150 ${
+                          m.activated ? "left-[14px]" : "left-0.5"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Footer actions */}
+      <div className="flex items-center gap-1 px-3 py-2 border-t border-cc-border/20">
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="p-1.5 rounded-lg text-cc-muted/50 hover:text-cc-fg hover:bg-cc-fg/5 transition-colors cursor-pointer disabled:opacity-40"
+          title="Sync library"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+          </svg>
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onPublish(); }}
+          className="p-1.5 rounded-lg text-cc-muted/50 hover:text-cc-fg hover:bg-cc-fg/5 transition-colors cursor-pointer"
+          title="Publish a mode to this library"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-4 h-4">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+          </svg>
+        </button>
+        <div className="flex-1" />
+        {error && (
+          <span className="text-[10px] text-red-400/90 truncate" title={error}>{error}</span>
+        )}
+        <ConfirmButton
+          stopPropagation
+          label="Unlink"
+          onConfirm={handleUnlink}
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+            </svg>
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── AddLibraryDialog ──────────────────────────────────────────────────────
+//
+// Two tabs: Link existing (specifier → /api/libraries/link) and Create new
+// (name + optional GitHub-side init → /api/libraries/init). Errors render
+// inline.
+
+function AddLibraryDialog({
+  open,
+  onClose,
+  onLinked,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onLinked: () => void;
+}) {
+  const [mode, setMode] = useState<"link" | "create">("link");
+  const [specifier, setSpecifier] = useState("");
+  const [name, setName] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [description, setDescription] = useState("");
+  const [createOnGithub, setCreateOnGithub] = useState(false);
+  const [githubName, setGithubName] = useState("");
+  const [visibility, setVisibility] = useState<"public" | "private">("private");
+  const [status, setStatus] = useState<"idle" | "working" | "done" | "error">("idle");
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<{ kind: "single" | "library"; githubUrl?: string } | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setMode("link");
+      setSpecifier("");
+      setName("");
+      setDisplayName("");
+      setDescription("");
+      setCreateOnGithub(false);
+      setGithubName("");
+      setVisibility("private");
+      setStatus("idle");
+      setError("");
+      setResult(null);
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  const handleLink = async () => {
+    if (!specifier.trim()) return;
+    setStatus("working");
+    setError("");
+    try {
+      const res = await fetch(`${getApiBase()}/api/libraries/link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ specifier: specifier.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      setResult({ kind: data.kind });
+      setStatus("done");
+      onLinked();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Link failed");
+      setStatus("error");
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!name.trim()) return;
+    setStatus("working");
+    setError("");
+    try {
+      const body: Record<string, unknown> = { name: name.trim() };
+      if (displayName.trim()) body.displayName = displayName.trim();
+      if (description.trim()) body.description = description.trim();
+      if (createOnGithub && githubName.trim()) {
+        body.github = { name: githubName.trim(), visibility };
+      }
+      const res = await fetch(`${getApiBase()}/api/libraries/init`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      setResult({ kind: "library", githubUrl: data.githubUrl });
+      setStatus("done");
+      onLinked();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Create failed");
+      setStatus("error");
+    }
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" style={{ animation: "overlayFadeIn 200ms ease" }} onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+        <div
+          className="bg-cc-bg border border-cc-border rounded-xl shadow-2xl w-[480px] max-w-[90vw] pointer-events-auto"
+          style={{ animation: "warmFadeIn 200ms ease" }}
+        >
+          <div className="px-5 py-4 border-b border-cc-border">
+            <h3 className="text-sm font-semibold text-cc-fg">Add Mode Library</h3>
+            <p className="text-[10px] text-cc-muted mt-1">
+              Link a multi-mode GitHub repo, or scaffold a new library locally and optionally publish it.
+            </p>
+            <div className="mt-3 inline-flex rounded-lg border border-cc-border overflow-hidden text-[10px]">
+              {(["link", "create"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => { setMode(m); setStatus("idle"); setError(""); setResult(null); }}
+                  className={`px-3 py-1 transition-colors cursor-pointer ${mode === m ? "bg-cc-primary/15 text-cc-primary" : "text-cc-muted hover:text-cc-fg"}`}
+                >
+                  {m === "link" ? "Link existing" : "Create new"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="px-5 py-4 space-y-3">
+            {status === "done" && result && (
+              <div className="px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-300/90">
+                {result.kind === "single"
+                  ? "Linked single-mode repo. It appears under Local Modes."
+                  : "Library linked. Activate modes in the card below."}
+                {result.githubUrl && (
+                  <>
+                    {" "}
+                    <a href={result.githubUrl} target="_blank" rel="noopener noreferrer" className="text-cc-primary hover:opacity-80 underline underline-offset-2">
+                      Open on GitHub →
+                    </a>
+                  </>
+                )}
+              </div>
+            )}
+
+            {mode === "link" && status !== "done" && (
+              <>
+                <div>
+                  <label className="text-[10px] text-cc-muted block mb-1">Specifier</label>
+                  <input
+                    autoFocus
+                    placeholder="github:user/repo  or  https://.../repo.tar.gz"
+                    value={specifier}
+                    onChange={(e) => setSpecifier(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleLink()}
+                    className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
+                  />
+                  <p className="text-[10px] text-cc-muted/60 mt-1.5">
+                    A repo with a <code className="text-cc-muted">pneuma.library.json</code> at its root (or N mode dirs) installs as a multi-mode library; otherwise it falls back to a single-mode install.
+                  </p>
+                </div>
+              </>
+            )}
+
+            {mode === "create" && status !== "done" && (
+              <>
+                <div>
+                  <label className="text-[10px] text-cc-muted block mb-1">Library name (slug)</label>
+                  <input
+                    autoFocus
+                    placeholder="my-modes"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-cc-muted block mb-1">Display name (optional)</label>
+                  <input
+                    placeholder="My Modes"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-cc-muted block mb-1">Description (optional)</label>
+                  <input
+                    placeholder="A collection of Pneuma modes for…"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-[11px] text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={createOnGithub}
+                    onChange={(e) => setCreateOnGithub(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-[#f97316]"
+                  />
+                  Create on GitHub (requires <code>gh</code> auth)
+                </label>
+                {createOnGithub && (
+                  <div className="pl-5 space-y-2">
+                    <div>
+                      <label className="text-[10px] text-cc-muted block mb-1">Repo name</label>
+                      <input
+                        placeholder={name || "my-modes"}
+                        value={githubName}
+                        onChange={(e) => setGithubName(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-cc-muted block mb-1">Visibility</label>
+                      <div className="inline-flex rounded-lg border border-cc-border overflow-hidden text-[10px]">
+                        {(["private", "public"] as const).map((v) => (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={() => setVisibility(v)}
+                            className={`px-3 py-1 transition-colors cursor-pointer ${visibility === v ? "bg-cc-primary/15 text-cc-primary" : "text-cc-muted hover:text-cc-fg"}`}
+                          >
+                            {v}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {status === "error" && error && (
+              <div className="px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-[11px] text-red-300/90">
+                {error}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
+              >
+                {status === "done" ? "Close" : "Cancel"}
+              </button>
+              {status !== "done" && (
+                <button
+                  onClick={mode === "link" ? handleLink : handleCreate}
+                  disabled={
+                    status === "working" ||
+                    (mode === "link" ? !specifier.trim() : !name.trim() || (createOnGithub && !githubName.trim() && !name.trim()))
+                  }
+                  className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 transition-all cursor-pointer"
+                >
+                  {status === "working" ? "…" : mode === "link" ? "Link" : "Create"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── PublishToLibraryDialog ────────────────────────────────────────────────
+//
+// Picks a source mode from the currently installed Local Modes (excluding
+// modes that already live in this library) and POSTs to
+// /api/libraries/:id/publish. Optional `push: true` triggers a `git push`
+// follow-up on the library side.
+
+function PublishToLibraryDialog({
+  library,
+  localModes,
+  onClose,
+  onPublished,
+}: {
+  library: InstalledLibrary | null;
+  localModes: LocalMode[];
+  onClose: () => void;
+  onPublished: () => void;
+}) {
+  const [sourceName, setSourceName] = useState("");
+  const [overrideName, setOverrideName] = useState("");
+  const [pushAfter, setPushAfter] = useState(false);
+  const [status, setStatus] = useState<"idle" | "working" | "done" | "error">("idle");
+  const [error, setError] = useState("");
+  const [pushed, setPushed] = useState<boolean | null>(null);
+
+  // Filter: drop modes that already belong to *this* library — publishing
+  // them back to the same library is a no-op + likely user confusion.
+  const eligible = (library
+    ? localModes.filter((m) => m.librarySource?.id !== library.id)
+    : []);
+
+  useEffect(() => {
+    if (library) {
+      setSourceName("");
+      setOverrideName("");
+      setPushAfter(false);
+      setStatus("idle");
+      setError("");
+      setPushed(null);
+    }
+  }, [library?.id]);
+
+  if (!library) return null;
+
+  const selected = eligible.find((m) => m.name === sourceName);
+
+  const handlePublish = async () => {
+    if (!selected) return;
+    setStatus("working");
+    setError("");
+    try {
+      const body: Record<string, unknown> = {
+        sourcePath: selected.path,
+        push: pushAfter,
+      };
+      if (overrideName.trim()) body.name = overrideName.trim();
+      const res = await fetch(`${getApiBase()}/api/libraries/${encodeURIComponent(library.id)}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      setPushed(data.pushed === true);
+      setStatus("done");
+      onPublished();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Publish failed");
+      setStatus("error");
+    }
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" style={{ animation: "overlayFadeIn 200ms ease" }} onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+        <div
+          className="bg-cc-bg border border-cc-border rounded-xl shadow-2xl w-[440px] max-w-[90vw] pointer-events-auto"
+          style={{ animation: "warmFadeIn 200ms ease" }}
+        >
+          <div className="px-5 py-4 border-b border-cc-border">
+            <h3 className="text-sm font-semibold text-cc-fg">Publish to {library.displayName || library.name}</h3>
+            <p className="text-[10px] text-cc-muted mt-1">
+              Copy an installed local mode into this library and stage it for commit.
+            </p>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            {status === "done" ? (
+              <div className="px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-300/90">
+                Published.{pushed ? " Pushed to GitHub." : pushed === false ? " (Not pushed.)" : ""}
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="text-[10px] text-cc-muted block mb-1">Source mode</label>
+                  {eligible.length === 0 ? (
+                    <div className="text-[11px] text-cc-muted/60">
+                      No eligible local modes. Install a mode (or create one with Mode Maker) first.
+                    </div>
+                  ) : (
+                    <select
+                      value={sourceName}
+                      onChange={(e) => setSourceName(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg outline-none focus:border-cc-primary/50 transition-colors"
+                    >
+                      <option value="">— pick a mode —</option>
+                      {eligible.map((m) => (
+                        <option key={m.path} value={m.name}>
+                          {m.displayName} ({m.name})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div>
+                  <label className="text-[10px] text-cc-muted block mb-1">Name override (optional)</label>
+                  <input
+                    placeholder={selected?.name || "(use source name)"}
+                    value={overrideName}
+                    onChange={(e) => setOverrideName(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-[11px] text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={pushAfter}
+                    onChange={(e) => setPushAfter(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-[#f97316]"
+                  />
+                  Push to GitHub after commit
+                </label>
+              </>
+            )}
+            {status === "error" && error && (
+              <div className="px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-[11px] text-red-300/90">
+                {error}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
+              >
+                {status === "done" ? "Close" : "Cancel"}
+              </button>
+              {status !== "done" && (
+                <button
+                  onClick={handlePublish}
+                  disabled={!selected || status === "working"}
+                  className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 transition-all cursor-pointer"
+                >
+                  {status === "working" ? "…" : "Publish"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   if (!open) return null;
 
@@ -2766,6 +3588,7 @@ function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }
           <BackendsSection />
           <ApiKeysSection />
           <CloudStorageSection />
+          <GitHubSection />
           <PluginsSection />
         </div>
       </div>
@@ -3075,6 +3898,9 @@ export default function Launcher() {
   const [sessions, setSessions] = useState<RecentSession[]>([]);
   const [running, setRunning] = useState<ChildProcess[]>([]);
   const [projects, setProjects] = useState<ProjectListEntry[]>([]);
+  const [libraries, setLibraries] = useState<InstalledLibrary[]>([]);
+  const [addLibraryOpen, setAddLibraryOpen] = useState(false);
+  const [publishTarget, setPublishTarget] = useState<InstalledLibrary | null>(null);
   // Phase 4 — archived bucket. Fetched once on mount and after a restore;
   // NOT refetched on every render. Toggled open by the inline "Archived"
   // header link, which only appears when `archivedProjects.length > 0`.
@@ -3180,6 +4006,22 @@ export default function Launcher() {
       })
       .catch(() => { });
   }, []);
+
+  const refreshLibraries = useCallback(() => {
+    fetch(`${getApiBase()}/api/libraries`)
+      .then((r) => r.json())
+      .then((data) => setLibraries(data.libraries || []))
+      .catch(() => { });
+  }, []);
+
+  // Refresh libraries on mount + whenever the server broadcasts a
+  // `libraries_updated` event (dispatched as a window event by ws.ts).
+  useEffect(() => {
+    refreshLibraries();
+    const handler = () => refreshLibraries();
+    window.addEventListener("pneuma:libraries-updated", handler);
+    return () => window.removeEventListener("pneuma:libraries-updated", handler);
+  }, [refreshLibraries]);
 
   const refreshRunning = useCallback(() => {
     // `/api/running` = all running `pneuma <mode>` sessions system-wide (read
@@ -3908,6 +4750,7 @@ export default function Launcher() {
                   displayName={mode.displayName}
                   description={mode.description}
                   icon={mode.icon}
+                  librarySource={mode.librarySource}
                   onClick={() => setLaunchTarget({
                     specifier: mode.specifier,
                     displayName: mode.displayName,
@@ -3929,6 +4772,57 @@ export default function Launcher() {
                 })}
               />
             </div>
+          </section>
+
+          {/* Mode Libraries */}
+          <section
+            className="pt-12"
+            style={{ animation: "launcherFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both" }}
+          >
+            <div className="flex items-baseline justify-between mb-5">
+              <div>
+                <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide">Mode Libraries</h2>
+                <p className="text-xs text-cc-muted/50 mt-1">Shared mode collections from GitHub</p>
+              </div>
+              <button
+                onClick={() => setAddLibraryOpen(true)}
+                className="text-xs text-cc-primary hover:opacity-80 transition-opacity cursor-pointer"
+              >
+                + Add library
+              </button>
+            </div>
+            {libraries.length === 0 ? (
+              <div className="text-xs text-cc-muted/50">
+                No libraries linked yet.{" "}
+                <button
+                  onClick={() => setAddLibraryOpen(true)}
+                  className="text-cc-primary hover:opacity-80 transition-opacity cursor-pointer underline underline-offset-2"
+                >
+                  Link one
+                </button>
+                .
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <AnimatePresence mode="popLayout">
+                  {libraries.map((lib) => (
+                    <motion.div
+                      key={lib.id}
+                      layout
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8, transition: { duration: 0.15 } }}
+                      transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                    >
+                      <LibraryCard
+                        library={lib}
+                        onPublish={() => setPublishTarget(lib)}
+                      />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            )}
           </section>
 
           {/* (Import & R2 moved to SettingsPanel + ImportDialog) */}
@@ -4061,6 +4955,21 @@ export default function Launcher() {
           // joins the grid via reloadProjects().
         }}
         homeDir={homeDir}
+      />
+
+      {/* Add Library dialog — link existing or create new */}
+      <AddLibraryDialog
+        open={addLibraryOpen}
+        onClose={() => setAddLibraryOpen(false)}
+        onLinked={() => { refreshLibraries(); refreshModes(); }}
+      />
+
+      {/* Publish Mode dialog — pick a source mode from local list */}
+      <PublishToLibraryDialog
+        library={publishTarget}
+        localModes={local}
+        onClose={() => setPublishTarget(null)}
+        onPublished={() => { refreshLibraries(); refreshModes(); }}
       />
     </div>
   );

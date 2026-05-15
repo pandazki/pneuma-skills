@@ -101,6 +101,24 @@ describe("parseModeSpecifier", () => {
   test("throws for invalid github specifier (empty user)", () => {
     expect(() => parseModeSpecifier("github:/repo")).toThrow("Invalid GitHub mode specifier");
   });
+
+  // ── URL specifiers ─────────────────────────────────────────────────
+
+  test("parses R2-style modes/<name>/<version>.tar.gz URL", () => {
+    const result = parseModeSpecifier("https://r2.example.com/modes/foo/1.0.tar.gz");
+    expect(result.type).toBe("url");
+    expect(result.name).toBe("foo");
+    expect(result.urlSpec?.url).toBe("https://r2.example.com/modes/foo/1.0.tar.gz");
+  });
+
+  test("parses a non-R2 tar.gz URL by falling back to filename stem", () => {
+    // No `modes/<name>/<version>.tar.gz` shape — fall back to the filename
+    // with version-like trailing tokens stripped.
+    const result = parseModeSpecifier("https://example.com/downloads/widget-1.2.3.tar.gz");
+    expect(result.type).toBe("url");
+    expect(result.urlSpec?.url).toBe("https://example.com/downloads/widget-1.2.3.tar.gz");
+    expect(result.name.length).toBeGreaterThan(0);
+  });
 });
 
 // ── resolveMode integration tests ─────────────────────────────────────
