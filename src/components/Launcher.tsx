@@ -1517,23 +1517,39 @@ function ModeMakerHero({ onClick }: { onClick: () => void }) {
 
 function ModeGallery({
   modes,
+  libraries,
   onClose,
   onLaunch,
   onEdit,
   onEvolve,
   onDeleteLocal,
   onAddFromUrl,
+  onAddLibrary,
+  onPublishLibrary,
   className,
   closing,
   headerHeight = 0,
 }: {
   modes: AnyMode[];
+  /**
+   * All installed mode libraries. Each library renders a sub-group inside the
+   * gallery's "Libraries" section: a header strip with sync / publish / unlink
+   * controls, then GalleryModeCards for its activated modes. Inactive modes
+   * collapse behind a "N inactive" toggle. Library-sourced modes also appear
+   * in the launcher's Quick Start grid via `/api/registry` `local[]`; the
+   * gallery is where they're organised + managed.
+   */
+  libraries: InstalledLibrary[];
   onClose: () => void;
   onLaunch: (mode: AnyMode) => void;
   onEdit?: (mode: AnyMode) => void;
   onEvolve?: (mode: AnyMode) => void;
   onDeleteLocal?: (name: string) => void;
   onAddFromUrl?: () => void;
+  /** Open the AddLibraryDialog (state lives on the Launcher). */
+  onAddLibrary?: () => void;
+  /** Open the PublishToLibraryDialog targeted at a specific library. */
+  onPublishLibrary?: (library: InstalledLibrary) => void;
   className?: string;
   closing?: boolean;
   headerHeight?: number;
@@ -1552,10 +1568,31 @@ function ModeGallery({
       )
     : modes;
 
-  // Group by source
+  // Source taxonomy:
+  //   Built-in    — modes shipped with Pneuma
+  //   Local       — single-mode external installs in ~/.pneuma/modes/
+  //                 (NO `librarySource` — library-sourced modes are split out)
+  //   Libraries   — multi-mode repos under ~/.pneuma/libraries/<id>/.
+  //                 One sub-group per linked library, with management controls.
+  //   Published   — community R2 marketplace
+  // The split between Local and Libraries makes management surface obvious:
+  // single-mode installs have no peers, libraries have N modes sharing a source.
   const builtin = filtered.filter((m) => m.source === "builtin");
-  const local = filtered.filter((m) => m.source === "local");
+  const local = filtered.filter((m) => m.source === "local" && !m.librarySource);
+  const libraryModes = filtered.filter((m) => m.source === "local" && m.librarySource);
   const published = filtered.filter((m) => m.source === "published");
+
+  // Group library-sourced modes by library id. We keep the launcher-side
+  // library list (with its source URL + last-sync ts) as the source of
+  // truth for ordering and metadata — gallery just renders activated
+  // modes underneath each library's header strip.
+  const modesByLibrary = new Map<string, AnyMode[]>();
+  for (const m of libraryModes) {
+    const id = m.librarySource!.id;
+    const arr = modesByLibrary.get(id) ?? [];
+    arr.push(m);
+    modesByLibrary.set(id, arr);
+  }
 
   return (
     <div
@@ -1632,10 +1669,299 @@ function ModeGallery({
             </div>
           ))}
 
-        {filtered.length === 0 && (
+        {/* Libraries group — peers with Built-in / Local / Published. Rendered
+            before Published so the "your stuff" rhythm (Built-in → Local →
+            Libraries → Published) flows from most-trusted/most-yours to
+            most-public. Empty state still shows the section header + "+ Add
+            library" so first-time users have a discoverable entry point. */}
+        {(libraries.length > 0 || onAddLibrary) && (
+          <div className="mb-12">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xs font-medium text-cc-muted/60 uppercase tracking-widest">Libraries</h2>
+              {onAddLibrary && (
+                <button
+                  onClick={onAddLibrary}
+                  className="text-[10px] text-cc-muted hover:text-cc-primary transition-colors cursor-pointer flex items-center gap-1"
+                  title="Link a GitHub repo containing one or more Pneuma modes"
+                >
+                  <span className="text-sm leading-none">+</span>
+                  <span>Add library</span>
+                </button>
+              )}
+            </div>
+            {libraries.length === 0 ? (
+              <p className="text-[11px] text-cc-muted/50 italic">
+                No libraries linked yet — paste a <code className="text-cc-muted/70">github:user/repo</code> above to install a multi-mode collection.
+              </p>
+            ) : (
+              <div className="space-y-10">
+                {libraries.map((lib) => {
+                  const activeModes = modesByLibrary.get(lib.id) ?? [];
+                  const inactiveCount = lib.modes.length - lib.modes.filter((m) => m.activated).length;
+                  // When the gallery is filtered by search, hide libraries
+                  // whose modes don't match — but always show empty libraries
+                  // (0 modes) so the user can still see + manage them.
+                  if (search && activeModes.length === 0 && lib.modes.length > 0) return null;
+                  return (
+                    <LibraryGalleryGroup
+                      key={lib.id}
+                      library={lib}
+                      inactiveCount={inactiveCount}
+                      onPublish={onPublishLibrary ? () => onPublishLibrary(lib) : undefined}
+                    >
+                      {activeModes.map((mode) => {
+                        const modeKey = `${mode.source}::lib:${lib.id}::${mode.name}`;
+                        return (
+                          <GalleryModeCard
+                            key={modeKey}
+                            mode={mode}
+                            expanded={expandedMode === modeKey}
+                            onToggle={() => setExpandedMode(expandedMode === modeKey ? null : modeKey)}
+                            onLaunch={() => onLaunch(mode)}
+                            onEdit={onEdit ? () => onEdit(mode) : undefined}
+                            onEvolve={onEvolve ? () => onEvolve(mode) : undefined}
+                            isLight={isLight}
+                          />
+                        );
+                      })}
+                    </LibraryGalleryGroup>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {filtered.length === 0 && libraries.length === 0 && (
           <p className="text-center text-cc-muted/60 py-20">No modes match your search.</p>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Library sub-group inside the gallery's Libraries section. Renders the
+ * library identity strip (name, source URL chip, sync timestamp) and
+ * inline management actions (Sync / Publish / Unlink) above the
+ * `GalleryModeCard` children for activated modes.
+ *
+ * Visual rhythm mirrors the gallery's group headers (uppercase tracking-
+ * widest small caps) but adds a second metadata row and a quiet action
+ * cluster. Inactive modes collapse behind a small footer toggle that
+ * stays muted until expanded — keeps the gallery scan-friendly when
+ * users only care about activated content.
+ *
+ * Match the design constraint: GalleryModeCard is rendered verbatim,
+ * only the surrounding chrome is new. No card visual is altered for
+ * library-sourced modes.
+ */
+function LibraryGalleryGroup({
+  library,
+  inactiveCount,
+  onPublish,
+  children,
+}: {
+  library: InstalledLibrary;
+  inactiveCount: number;
+  onPublish?: () => void;
+  children: React.ReactNode;
+}) {
+  const [syncing, setSyncing] = useState(false);
+  const [unlinkConfirm, setUnlinkConfirm] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const inactive = library.modes.filter((m) => !m.activated);
+
+  const fireUpdated = () =>
+    window.dispatchEvent(new Event("pneuma:libraries-updated"));
+
+  const sourceLabel =
+    library.source.type === "github"
+      ? library.source.url
+      : library.source.type === "url"
+        ? library.source.url
+        : "local";
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `${getApiBase()}/api/libraries/${encodeURIComponent(library.id)}/sync`,
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      fireUpdated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleUnlink = async () => {
+    setError(null);
+    try {
+      const res = await fetch(
+        `${getApiBase()}/api/libraries/${encodeURIComponent(library.id)}`,
+        { method: "DELETE" },
+      );
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      fireUpdated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unlink failed");
+      setUnlinkConfirm(false);
+    }
+  };
+
+  const handleActivate = async (modeName: string, currentlyActive: boolean) => {
+    setBusy(modeName);
+    setError(null);
+    try {
+      const action = currentlyActive ? "deactivate" : "activate";
+      const res = await fetch(
+        `${getApiBase()}/api/libraries/${encodeURIComponent(library.id)}/mode/${encodeURIComponent(modeName)}/${action}`,
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      fireUpdated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Toggle failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const lastSync = library.lastSync
+    ? new Date(library.lastSync).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
+
+  return (
+    <div>
+      {/* Library identity + actions strip — sub-header rhythm, not a card */}
+      <div className="mb-4 pb-3 border-b border-cc-border/15">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <h3 className="text-sm font-medium text-cc-fg">
+              {library.displayName || library.name}
+            </h3>
+            <div className="mt-1 flex items-center gap-2 text-[11px] text-cc-muted/60 flex-wrap">
+              <code className="font-mono text-cc-muted/70">{sourceLabel}</code>
+              {lastSync && (
+                <>
+                  <span className="text-cc-muted/30">·</span>
+                  <span>synced {lastSync}</span>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-3 shrink-0 text-[10px]">
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="text-cc-muted hover:text-cc-primary transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-50"
+              title="Refresh from source"
+            >
+              <span>↻</span>
+              <span>{syncing ? "Syncing…" : "Sync"}</span>
+            </button>
+            {onPublish && (
+              <button
+                onClick={onPublish}
+                className="text-cc-muted hover:text-cc-primary transition-colors cursor-pointer flex items-center gap-1"
+                title="Copy a local mode into this library"
+              >
+                <span className="text-sm leading-none">+</span>
+                <span>Publish</span>
+              </button>
+            )}
+            {unlinkConfirm ? (
+              <span className="flex items-center gap-2">
+                <button
+                  onClick={handleUnlink}
+                  className="text-cc-primary hover:opacity-80 transition-opacity cursor-pointer"
+                >
+                  Confirm
+                </button>
+                <button
+                  onClick={() => setUnlinkConfirm(false)}
+                  className="text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                onClick={() => setUnlinkConfirm(true)}
+                className="text-cc-muted hover:text-cc-primary transition-colors cursor-pointer"
+                title="Remove this library"
+              >
+                Unlink
+              </button>
+            )}
+          </div>
+        </div>
+        {error && (
+          <p className="mt-2 text-[11px] text-cc-primary/80">{error}</p>
+        )}
+      </div>
+
+      {/* Activated modes — existing GalleryModeCard, untouched */}
+      {React.Children.count(children) > 0 ? (
+        <div className="space-y-6">{children}</div>
+      ) : library.modes.length > 0 ? (
+        <p className="text-[11px] text-cc-muted/50 italic">
+          All modes in this library are inactive. Activate one below to launch it.
+        </p>
+      ) : (
+        <p className="text-[11px] text-cc-muted/50 italic">
+          This library is empty. Publish a mode into it from a local install.
+        </p>
+      )}
+
+      {/* Inactive modes — muted summary row + collapsible list with Activate */}
+      {inactive.length > 0 && (
+        <div className="mt-5">
+          <button
+            onClick={() => setShowInactive((v) => !v)}
+            className="text-[10px] text-cc-muted/60 hover:text-cc-muted transition-colors cursor-pointer flex items-center gap-1"
+          >
+            <span className={`inline-block transition-transform ${showInactive ? "rotate-90" : ""}`}>›</span>
+            <span>
+              {inactiveCount} inactive {inactiveCount === 1 ? "mode" : "modes"}
+            </span>
+          </button>
+          {showInactive && (
+            <ul className="mt-3 space-y-1.5 pl-3">
+              {inactive.map((m) => (
+                <li key={m.name} className="flex items-center justify-between text-[12px] text-cc-muted/70 py-1">
+                  <span className="font-mono">
+                    {m.name}
+                    <span className="ml-2 text-cc-muted/40">v{m.manifestVersion}</span>
+                  </span>
+                  <button
+                    onClick={() => handleActivate(m.name, false)}
+                    disabled={busy === m.name}
+                    className="text-cc-muted hover:text-cc-primary transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {busy === m.name ? "…" : "Activate"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -2855,300 +3181,6 @@ function GitHubSection() {
           </span>
         </div>
       )}
-    </div>
-  );
-}
-
-// ── LibraryCard ───────────────────────────────────────────────────────────
-//
-// One card per installed library. Shows source, counts, and an updates
-// pill; clicking the card body expands a per-mode list with activate
-// toggles + per-mode update affordances. Action footer: Sync / Publish /
-// Unlink (with inline confirm).
-
-function LibraryIcon({ kind, className }: { kind: "github" | "url" | "local"; className?: string }) {
-  if (kind === "github") {
-    return (
-      <svg viewBox="0 0 16 16" fill="currentColor" className={className}>
-        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-      </svg>
-    );
-  }
-  if (kind === "local") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
-    </svg>
-  );
-}
-
-function LibraryCard({
-  library,
-  onPublish,
-}: {
-  library: InstalledLibrary;
-  onPublish: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const modeCount = library.modes.length;
-  const activatedCount = library.modes.filter((m) => m.activated).length;
-  const updateCount = library.modes.filter(
-    (m) => m.installedVersion !== m.manifestVersion,
-  ).length;
-
-  const sourceKind = library.source.type;
-  const sourceUrl =
-    library.source.type === "github"
-      ? library.source.url
-      : library.source.type === "url"
-        ? library.source.url
-        : "local";
-
-  // Mutations rely on a refetch driven by the `pneuma:libraries-updated`
-  // DOM event. The WS-based path (`ws.ts` → broadcastAll → event dispatch)
-  // only fires for connected sessions, and the launcher has no session ID
-  // so it never registers a WS browser socket — meaning the WS event
-  // never reaches it. We dispatch the same event locally after every
-  // successful POST so the launcher's own listener refetches; a second
-  // browser tab on a real session still gets the WS-driven path
-  // independently. Keeping the trigger paths converged on one event name
-  // means components don't need to learn a second refresh signal.
-  const fireUpdated = () => {
-    window.dispatchEvent(new Event("pneuma:libraries-updated"));
-  };
-
-  const handleSync = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSyncing(true);
-    setError(null);
-    try {
-      const res = await fetch(`${getApiBase()}/api/libraries/${encodeURIComponent(library.id)}/sync`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
-      fireUpdated();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Sync failed");
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  const handleUnlink = async () => {
-    setBusy("unlink");
-    setError(null);
-    try {
-      const res = await fetch(`${getApiBase()}/api/libraries/${encodeURIComponent(library.id)}`, {
-        method: "DELETE",
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
-      fireUpdated();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unlink failed");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleToggle = async (modeName: string, currentlyActive: boolean) => {
-    setBusy(`toggle-${modeName}`);
-    setError(null);
-    try {
-      const action = currentlyActive ? "deactivate" : "activate";
-      const res = await fetch(
-        `${getApiBase()}/api/libraries/${encodeURIComponent(library.id)}/mode/${encodeURIComponent(modeName)}/${action}`,
-        { method: "POST" },
-      );
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
-      fireUpdated();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Toggle failed");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleAcceptUpdate = async (modeName: string) => {
-    setBusy(`update-${modeName}`);
-    setError(null);
-    try {
-      const res = await fetch(
-        `${getApiBase()}/api/libraries/${encodeURIComponent(library.id)}/mode/${encodeURIComponent(modeName)}/accept-update`,
-        { method: "POST" },
-      );
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
-      fireUpdated();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Update failed");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  return (
-    <div className="rounded-xl bg-cc-surface/30 hover:bg-cc-surface/40 border border-cc-border/20 hover:border-cc-border/40 backdrop-blur-sm transition-all duration-200">
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full text-left px-4 py-3 cursor-pointer"
-      >
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 flex items-center justify-center rounded-lg bg-cc-fg/5 text-cc-muted/70 shrink-0">
-            <LibraryIcon kind={sourceKind} className="w-4 h-4" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-medium text-cc-fg truncate">
-                {library.displayName || library.name}
-              </h3>
-              {updateCount > 0 && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded-full bg-cc-primary/15 text-cc-primary border border-cc-primary/25">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-2.5 h-2.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m0 0l-7.5-7.5M12 19.5l7.5-7.5" />
-                  </svg>
-                  {updateCount} update{updateCount === 1 ? "" : "s"}
-                </span>
-              )}
-            </div>
-            <div
-              className="text-[10px] text-cc-muted/50 truncate mt-0.5"
-              title={sourceUrl}
-            >
-              {sourceUrl}
-            </div>
-            <div className="text-[10px] text-cc-muted/60 mt-1">
-              {modeCount} mode{modeCount === 1 ? "" : "s"} · {activatedCount} activated
-            </div>
-          </div>
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            className={`w-4 h-4 text-cc-muted/40 transition-transform duration-200 shrink-0 ${expanded ? "rotate-180" : ""}`}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-          </svg>
-        </div>
-      </button>
-
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-            className="overflow-hidden"
-          >
-            <div className="px-4 pb-3 space-y-1.5 border-t border-cc-border/20 pt-3">
-              {library.modes.length === 0 && (
-                <div className="text-[11px] text-cc-muted/50 px-2 py-1">
-                  No modes in this library.
-                </div>
-              )}
-              {library.modes.map((m) => {
-                const updateAvailable = m.installedVersion !== m.manifestVersion;
-                const toggling = busy === `toggle-${m.name}`;
-                const updating = busy === `update-${m.name}`;
-                return (
-                  <div
-                    key={m.name}
-                    className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-cc-fg/5 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-cc-fg/85 truncate">{m.name}</span>
-                        <span className="text-[10px] text-cc-muted/40">v{m.manifestVersion}</span>
-                        {updateAvailable && (
-                          <button
-                            disabled={updating}
-                            onClick={(e) => { e.stopPropagation(); void handleAcceptUpdate(m.name); }}
-                            className="text-[9px] px-1.5 py-0.5 rounded-full bg-cc-primary/15 text-cc-primary hover:bg-cc-primary/25 border border-cc-primary/25 transition-colors cursor-pointer disabled:opacity-40"
-                          >
-                            {updating ? "…" : "Update"}
-                          </button>
-                        )}
-                      </div>
-                      <div className="text-[10px] text-cc-muted/40 truncate">{m.path}</div>
-                    </div>
-                    {/* Activate toggle */}
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={m.activated}
-                      disabled={toggling}
-                      onClick={(e) => { e.stopPropagation(); void handleToggle(m.name, m.activated); }}
-                      className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border transition-colors disabled:opacity-50 ${
-                        m.activated
-                          ? "bg-cc-primary/80 border-cc-primary/40"
-                          : "bg-cc-fg/10 border-cc-border/40"
-                      }`}
-                      title={m.activated ? "Deactivate" : "Activate"}
-                    >
-                      <span
-                        className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all duration-150 ${
-                          m.activated ? "left-[14px]" : "left-0.5"
-                        }`}
-                      />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Footer actions */}
-      <div className="flex items-center gap-1 px-3 py-2 border-t border-cc-border/20">
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="p-1.5 rounded-lg text-cc-muted/50 hover:text-cc-fg hover:bg-cc-fg/5 transition-colors cursor-pointer disabled:opacity-40"
-          title="Sync library"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-          </svg>
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onPublish(); }}
-          className="p-1.5 rounded-lg text-cc-muted/50 hover:text-cc-fg hover:bg-cc-fg/5 transition-colors cursor-pointer"
-          title="Publish a mode to this library"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-4 h-4">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-          </svg>
-        </button>
-        <div className="flex-1" />
-        {error && (
-          <span className="text-[10px] text-red-400/90 truncate" title={error}>{error}</span>
-        )}
-        <ConfirmButton
-          stopPropagation
-          label="Unlink"
-          onConfirm={handleUnlink}
-          icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-4 h-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-            </svg>
-          }
-        />
-      </div>
     </div>
   );
 }
@@ -4799,56 +4831,10 @@ export default function Launcher() {
             </div>
           </section>
 
-          {/* Mode Libraries */}
-          <section
-            className="pt-12"
-            style={{ animation: "launcherFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both" }}
-          >
-            <div className="flex items-baseline justify-between mb-5">
-              <div>
-                <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide">Mode Libraries</h2>
-                <p className="text-xs text-cc-muted/50 mt-1">Shared mode collections from GitHub</p>
-              </div>
-              <button
-                onClick={() => setAddLibraryOpen(true)}
-                className="text-xs text-cc-primary hover:opacity-80 transition-opacity cursor-pointer"
-              >
-                + Add library
-              </button>
-            </div>
-            {libraries.length === 0 ? (
-              <div className="text-xs text-cc-muted/50">
-                No libraries linked yet.{" "}
-                <button
-                  onClick={() => setAddLibraryOpen(true)}
-                  className="text-cc-primary hover:opacity-80 transition-opacity cursor-pointer underline underline-offset-2"
-                >
-                  Link one
-                </button>
-                .
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                <AnimatePresence mode="popLayout">
-                  {libraries.map((lib) => (
-                    <motion.div
-                      key={lib.id}
-                      layout
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -8, transition: { duration: 0.15 } }}
-                      transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                    >
-                      <LibraryCard
-                        library={lib}
-                        onPublish={() => setPublishTarget(lib)}
-                      />
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </div>
-            )}
-          </section>
+          {/* Mode Libraries surface moved into the Mode Gallery overlay
+              (gallery's Libraries group). Launcher main now only carries the
+              fast-path Quick Start grid — full mode catalog + library
+              management live one click away under "All Modes". */}
 
           {/* (Import & R2 moved to SettingsPanel + ImportDialog) */}
         </main>
@@ -4858,8 +4844,11 @@ export default function Launcher() {
       {galleryAnim.mounted && (
         <ModeGallery
           modes={allModes}
+          libraries={libraries}
           onClose={() => setShowGallery(false)}
           onLaunch={handleGalleryLaunch}
+          onAddLibrary={() => setAddLibraryOpen(true)}
+          onPublishLibrary={(lib) => setPublishTarget(lib)}
           onEdit={(mode) => {
             setShowGallery(false);
             // "Edit" on a mode = start a mode-maker session seeded from that
