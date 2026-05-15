@@ -2914,6 +2914,19 @@ function LibraryCard({
         ? library.source.url
         : "local";
 
+  // Mutations rely on a refetch driven by the `pneuma:libraries-updated`
+  // DOM event. The WS-based path (`ws.ts` → broadcastAll → event dispatch)
+  // only fires for connected sessions, and the launcher has no session ID
+  // so it never registers a WS browser socket — meaning the WS event
+  // never reaches it. We dispatch the same event locally after every
+  // successful POST so the launcher's own listener refetches; a second
+  // browser tab on a real session still gets the WS-driven path
+  // independently. Keeping the trigger paths converged on one event name
+  // means components don't need to learn a second refresh signal.
+  const fireUpdated = () => {
+    window.dispatchEvent(new Event("pneuma:libraries-updated"));
+  };
+
   const handleSync = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setSyncing(true);
@@ -2924,6 +2937,7 @@ function LibraryCard({
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      fireUpdated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sync failed");
     } finally {
@@ -2940,6 +2954,7 @@ function LibraryCard({
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      fireUpdated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unlink failed");
     } finally {
@@ -2958,6 +2973,7 @@ function LibraryCard({
       );
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      fireUpdated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Toggle failed");
     } finally {
@@ -2975,6 +2991,7 @@ function LibraryCard({
       );
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      fireUpdated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed");
     } finally {
@@ -4015,13 +4032,21 @@ export default function Launcher() {
   }, []);
 
   // Refresh libraries on mount + whenever the server broadcasts a
-  // `libraries_updated` event (dispatched as a window event by ws.ts).
+  // `libraries_updated` event (dispatched as a window event by ws.ts,
+  // or fired locally by LibraryCard / dialog handlers after a
+  // mutation — see the "trigger paths converged on one event name"
+  // comment in LibraryCard). Also re-runs `refreshModes` because
+  // activated library modes surface in `/api/registry` `local[]` —
+  // toggle one off and the Quick Start tile has to disappear.
   useEffect(() => {
     refreshLibraries();
-    const handler = () => refreshLibraries();
+    const handler = () => {
+      refreshLibraries();
+      refreshModes();
+    };
     window.addEventListener("pneuma:libraries-updated", handler);
     return () => window.removeEventListener("pneuma:libraries-updated", handler);
-  }, [refreshLibraries]);
+  }, [refreshLibraries, refreshModes]);
 
   const refreshRunning = useCallback(() => {
     // `/api/running` = all running `pneuma <mode>` sessions system-wide (read
