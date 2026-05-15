@@ -19,6 +19,15 @@ export interface SessionSlice {
   sessionStatus: "idle" | "running" | "compacting" | null;
   /** True from user message send until result received — controls input disable */
   turnInProgress: boolean;
+  /**
+   * Monotonic tick incremented every time the server broadcasts a
+   * `session_meta_updated` event (after `pneuma session refine` rewrites
+   * a session's displayName / description). Components that list sessions
+   * — currently `ProjectPanel` — depend on this in their fetch effect so
+   * the row updates without a manual reload. Reset is unnecessary; only
+   * the delta matters.
+   */
+  sessionMetaTick: number;
 
   setSession: (session: SessionState) => void;
   updateSession: (updates: Partial<SessionState>) => void;
@@ -28,6 +37,7 @@ export interface SessionSlice {
   setCliConnected: (connected: boolean) => void;
   setSessionStatus: (status: "idle" | "running" | "compacting" | null) => void;
   setTurnInProgress: (v: boolean) => void;
+  bumpSessionMetaTick: () => void;
 }
 
 export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = (set) => ({
@@ -38,6 +48,7 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
   cliConnected: false,
   sessionStatus: null,
   turnInProgress: false,
+  sessionMetaTick: 0,
 
   setSession: (session) => set({ session }),
   updateSession: (updates) =>
@@ -50,4 +61,5 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
   setCliConnected: (connected) => set({ cliConnected: connected }),
   setSessionStatus: (status) => set({ sessionStatus: status }),
   setTurnInProgress: (v) => set({ turnInProgress: v }),
+  bumpSessionMetaTick: () => set((s) => ({ sessionMetaTick: s.sessionMetaTick + 1 })),
 });

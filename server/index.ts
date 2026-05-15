@@ -45,6 +45,7 @@ import {
   writeSessionsFileSync,
   upsertSession,
   type AnySessionRegistryEntry,
+  type SessionsFile,
 } from "../bin/sessions-registry.js";
 import { readRunning, removeRunning } from "../bin/running-registry.js";
 
@@ -1992,6 +1993,139 @@ export async function startServer(options: ServerOptions) {
 
     console.log(`[server] Editing: ${oldEditing} → ${newEditing} (agent: ${agentStatus})`);
     return c.json({ ok: true, agentStatus });
+  });
+
+  // ── Session-meta refine (agent-driven via `pneuma session refine` CLI) ─
+  //
+  // The agent calls `pneuma session refine --json '{...}'` when the
+  // conversation has produced enough substance for a meaningful title /
+  // one-line summary, or when the user explicitly asks for a re-titling.
+  // The CLI POSTs here; we atomically rewrite `<sessionDir>/session.json`,
+  // sync the registry entry so the launcher's next list-fetch reflects the
+  // change, and broadcast `session_meta_updated` so any open browsers
+  // refresh their row in place.
+  //
+  // Capacity caps are mirrored client-side in `bin/session-cli.ts`; the
+  // server is the source of truth so any future CLI clones can't bypass them.
+  app.post("/api/session/refine", async (c) => {
+    const DISPLAY_NAME_MAX = 40;
+    const DESCRIPTION_MAX = 280;
+
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+
+    const coerce = (key: string, maxLen: number): string | undefined => {
+      const value = body[key];
+      if (value === undefined || value === null) return undefined;
+      if (typeof value !== "string") {
+        throw new Error(`field "${key}" must be a string`);
+      }
+      const trimmed = value.trim();
+      if (trimmed.length === 0) return undefined;
+      if (trimmed.length > maxLen) {
+        throw new Error(`field "${key}" must be ≤${maxLen} characters (got ${trimmed.length})`);
+      }
+      return trimmed;
+    };
+
+    let displayName: string | undefined;
+    let description: string | undefined;
+    try {
+      displayName = coerce("displayName", DISPLAY_NAME_MAX);
+      description = coerce("description", DESCRIPTION_MAX);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+    if (displayName === undefined && description === undefined) {
+      return c.json(
+        { error: 'payload must include at least one of "displayName" or "description"' },
+        400,
+      );
+    }
+
+    const refinedAt = Date.now();
+    const sessionPath = join(stateDirForSession, "session.json");
+
+    // 1. Patch session.json (canonical source). Merge into the existing file
+    //    so we don't clobber sessionId / agentSessionId / backendType / etc.
+    let persisted: Record<string, unknown> = {};
+    try {
+      if (existsSync(sessionPath)) {
+        persisted = JSON.parse(readFileSync(sessionPath, "utf-8"));
+      }
+    } catch (err) {
+      console.warn("[server] /api/session/refine: failed to read session.json:", err);
+    }
+    if (displayName !== undefined) persisted.displayName = displayName;
+    if (description !== undefined) persisted.description = description;
+    persisted.refinedAt = refinedAt;
+    try {
+      writeFileSync(sessionPath, JSON.stringify(persisted, null, 2));
+    } catch (err) {
+      console.error("[server] /api/session/refine: failed to write session.json:", err);
+      return c.json({ error: "failed to persist session meta" }, 500);
+    }
+
+    // 2. Sync the global registry entry so the launcher's next list-fetch
+    //    sees the refined fields without round-tripping through session.json.
+    //    The id format mirrors `recordSession()` in bin/pneuma.ts.
+    try {
+      const modeName = options.modeName ?? "";
+      const candidateId = options.pneumaProjectRoot
+        ? `${options.pneumaProjectRoot}::${options.sessionId ?? ""}`
+        : `${workspace}::${modeName}`;
+      const registryPath = join(homedir(), ".pneuma", "sessions.json");
+      const data = readSessionsFileSync(registryPath);
+      const idx = data.sessions.findIndex((s) => s.id === candidateId);
+      if (idx >= 0) {
+        const existing = data.sessions[idx];
+        const merged: AnySessionRegistryEntry = { ...existing };
+        // Refined displayName only overrides the resolved name when the user
+        // hasn't manually set a `sessionName` — explicit user intent wins.
+        if (displayName !== undefined && !existing.sessionName) {
+          merged.displayName = displayName;
+        }
+        if (description !== undefined) merged.description = description;
+        else if (description === undefined && existing.description) merged.description = existing.description;
+        merged.refinedAt = refinedAt;
+        const next: SessionsFile = {
+          projects: data.projects,
+          sessions: [...data.sessions.slice(0, idx), merged, ...data.sessions.slice(idx + 1)],
+        };
+        writeSessionsFileSync(registryPath, next);
+      }
+      // Miss is non-fatal — the entry will get refreshed on next session
+      // start via recordSession(), and ProjectPanel reads from session.json
+      // directly (via scanProjectSessions) so project rows already see the
+      // update.
+    } catch (err) {
+      console.warn("[server] /api/session/refine: registry sync failed:", err);
+    }
+
+    // 3. Broadcast to any attached browsers so the chip / row updates in
+    //    place. ProjectPanel + Launcher Recent Sessions listen for this.
+    const activeId = wsBridge.getActiveSessionId();
+    if (activeId) {
+      try {
+        wsBridge.broadcastToSession(activeId, {
+          type: "session_meta_updated",
+          session_id: activeId,
+          ...(displayName !== undefined ? { displayName } : {}),
+          ...(description !== undefined ? { description } : {}),
+          refinedAt,
+        });
+      } catch (err) {
+        // Broadcast failures are non-fatal — the persistence above is the
+        // source of truth and the next reload will pick it up.
+        console.warn("[server] /api/session/refine: broadcast failed:", err);
+      }
+    }
+
+    return c.json({
+      ok: true,
+      ...(displayName !== undefined ? { displayName } : {}),
+      ...(description !== undefined ? { description } : {}),
+      refinedAt,
+    });
   });
 
   // ── App settings (window size, resizable, etc.) ────────────────────────

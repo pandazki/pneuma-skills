@@ -53,14 +53,22 @@ interface SessionRef {
   sessionDir: string;
   /** Backend the session was created with — drives resume routing. */
   backendType?: string;
-  /** Optional human-readable name (from --session-name / rename). */
+  /** Optional human-readable name (from --session-name / rename / agent refine). */
   displayName?: string;
   /** Last-accessed mtime; populated server-side when available. */
   lastAccessed?: number;
   /** Per-session viewer thumbnail URL (only when thumbnail.png exists on disk). */
   thumbnailUrl?: string;
-  /** One-line preview from history.json's first user message. */
+  /** One-line preview from history.json's first non-synthetic user message. */
   preview?: string;
+  /**
+   * Agent-refined one-line summary, set by `pneuma session refine`. When
+   * present, the row shows this instead of `preview` — refined summaries
+   * are higher-signal than the raw first prompt.
+   */
+  description?: string;
+  /** Wall-clock ms of the most recent `pneuma session refine`. */
+  refinedAt?: number;
 }
 
 interface ModeInfo {
@@ -88,6 +96,11 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   // — i.e. NOT the empty shell. We read all three so the toggle only
   // appears when the source agent actually exists.
   const sessionMode = useStore((s) => s.modeManifest?.name ?? null);
+  // Increments on every `session_meta_updated` WS broadcast — the row for
+  // the session that just refined needs to re-fetch its displayName /
+  // description from /api/projects/:id/sessions so the panel updates in
+  // place without forcing the user to reopen the chip.
+  const sessionMetaTick = useStore((s) => s.sessionMetaTick);
 
   const [project, setProject] = useState<ProjectInfo | null>(null);
   const [sessions, setSessions] = useState<SessionRef[]>([]);
@@ -212,7 +225,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     return () => {
       cancelled = true;
     };
-  }, [projectRoot, apiBase]);
+  }, [projectRoot, apiBase, sessionMetaTick]);
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -750,20 +763,43 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                         </span>
                       )}
                       <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-                        <span
-                          className="text-sm text-cc-fg truncate leading-tight"
-                          title={title}
-                        >
-                          {title}
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="text-sm text-cc-fg truncate leading-tight min-w-0"
+                            title={title}
+                          >
+                            {title}
+                          </span>
+                          {/* Small mode-icon chip next to the title.
+                             Once a refined `displayName` replaces "WebCraft
+                             session", the row no longer carries the mode in
+                             its title text. The chip keeps the mode legible
+                             at a glance; the `title` attribute exposes the
+                             full mode name on hover. Always rendered (not
+                             just when the thumbnail is absent) so visually
+                             the chip is the canonical "mode" affordance. */}
+                          <span
+                            className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-[3px] bg-cc-primary/8 text-cc-primary/70"
+                            title={modeMeta?.displayName ?? s.mode}
+                            aria-label={`${modeMeta?.displayName ?? s.mode} mode`}
+                          >
+                            <ModeIcon
+                              svg={modeMeta?.icon}
+                              className="w-2.5 h-2.5"
+                            />
+                          </span>
                         </span>
                         {launchingId === s.sessionId ? (
                           <span className="text-xs text-cc-primary leading-snug inline-flex items-center gap-1.5">
                             <span className="w-3 h-3 border-[1.5px] border-cc-primary/30 border-t-cc-primary rounded-full animate-spin shrink-0" />
                             Starting session…
                           </span>
-                        ) : s.preview ? (
-                          <span className="text-xs text-cc-muted/60 line-clamp-1 leading-snug">
-                            {s.preview}
+                        ) : (s.description ?? s.preview) ? (
+                          <span
+                            className="text-xs text-cc-muted/60 line-clamp-1 leading-snug"
+                            title={s.description ?? s.preview}
+                          >
+                            {s.description ?? s.preview}
                           </span>
                         ) : null}
                         {s.lastAccessed && launchingId !== s.sessionId ? (

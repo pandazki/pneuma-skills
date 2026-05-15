@@ -931,6 +931,14 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       }
       break;
     }
+    case "session_meta_updated": {
+      // The agent ran `pneuma session refine`. The server already rewrote
+      // session.json + synced the registry; just bump the tick so any open
+      // listing components (ProjectPanel's session list) refetch in place.
+      // No store mutation of fields here — components own their own copy.
+      store.bumpSessionMetaTick();
+      break;
+    }
   }
 }
 

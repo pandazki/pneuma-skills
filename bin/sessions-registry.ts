@@ -69,6 +69,14 @@ export interface QuickSessionRegistryEntry {
   lastAccessed: number;
   /** Whether editing is enabled */
   editing?: boolean;
+  /**
+   * Refined one-line summary, set by `pneuma session refine`. When present,
+   * the UI shows this in place of the history-derived preview. Cached here
+   * for cheap listing; canonical source is `<sessionDir>/session.json`.
+   */
+  description?: string;
+  /** Wall-clock ms of the last refine; drives "refined N min ago" labels. */
+  refinedAt?: number;
 }
 
 /**
@@ -97,6 +105,14 @@ export interface ProjectSessionRegistryEntry {
   lastAccessed: number;
   /** Whether editing is enabled */
   editing?: boolean;
+  /**
+   * Refined one-line summary, set by `pneuma session refine`. When present,
+   * the UI shows this in place of the history-derived preview. Cached here
+   * for cheap listing; canonical source is `<sessionDir>/session.json`.
+   */
+  description?: string;
+  /** Wall-clock ms of the last refine; drives "refined N min ago" labels. */
+  refinedAt?: number;
 }
 
 /**

@@ -9,6 +9,20 @@ export interface PersistedSession {
   backendType: AgentBackendType;
   createdAt: number;
   editing?: boolean;
+  /**
+   * Refined session metadata — the agent rewrites these via the
+   * `pneuma session refine` CLI when the conversation has produced enough
+   * substance for a meaningful title / one-line summary. Both override the
+   * UI fallbacks (`${mode} session` for the title, the first user-prompt
+   * preview for the description). Absent on freshly created sessions.
+   *
+   * Precedence note: an explicit `sessionName` (from `--session-name` or a
+   * future rename UI) still wins over `displayName` — user intent beats
+   * agent inference.
+   */
+  displayName?: string;
+  description?: string;
+  refinedAt?: number;
 }
 
 export interface SessionRecord {

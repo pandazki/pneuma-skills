@@ -81,6 +81,14 @@ export interface ProjectSessionRef {
    * sentence. Undefined when history is missing or contains no user message.
    */
   preview?: string;
+  /**
+   * Agent-refined one-line summary, set by `pneuma session refine` when the
+   * conversation has produced enough substance for a meaningful description.
+   * When present, the project panel renders this in place of `preview`.
+   */
+  description?: string;
+  /** Wall-clock ms of the last `session refine`; surfaces "refined N min ago" labels. */
+  refinedAt?: number;
 }
 
 /**
@@ -130,6 +138,12 @@ function extractPreviewFromHistory(raw: string): string | undefined {
     const cleaned = text.replace(/^\s*<viewer-context[^>]*>[\s\S]*?<\/viewer-context>\s*/i, "");
     const trimmed = cleaned.trim();
     if (!trimmed) continue;
+    // Skip pneuma:* synthetic system tags (env, request-handoff,
+    // handoff-cancelled, askq-answer). These ride the user-message channel so
+    // the agent receives them, but they carry zero information for a human
+    // scanning the session list. Loop to the next entry — usually the real
+    // first user prompt.
+    if (/^<pneuma:[a-z-]+/i.test(trimmed)) continue;
     // Take only the first sentence (split on ., !, ?, or newline).
     const sentenceMatch = trimmed.match(/^[\s\S]*?[.!?](?=\s|$)/);
     let firstSentence = sentenceMatch ? sentenceMatch[0].trim() : trimmed.split(/\n/)[0]!.trim();
@@ -161,6 +175,8 @@ export async function scanProjectSessions(
         backendType?: string;
         sessionName?: string;
         displayName?: string;
+        description?: string;
+        refinedAt?: number;
         createdAt?: number;
       };
       if (typeof data.mode !== "string") continue;
@@ -237,6 +253,10 @@ export async function scanProjectSessions(
         ...(lastAccessed !== undefined ? { lastAccessed } : {}),
         ...(thumbnailUrl !== undefined ? { thumbnailUrl } : {}),
         ...(preview !== undefined ? { preview } : {}),
+        ...(typeof data.description === "string" && data.description.length > 0
+          ? { description: data.description }
+          : {}),
+        ...(typeof data.refinedAt === "number" ? { refinedAt: data.refinedAt } : {}),
       });
     } catch {
       // skip corrupt session

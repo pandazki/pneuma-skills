@@ -851,6 +851,41 @@ Options:
     process.exit(exitCode);
   }
 
+  // `pneuma session refine --json '<json>'` — agent-driven rewrite of the
+  // active session's title/description in session.json. Same shape and env
+  // contract as `pneuma handoff`: single-shot HTTP POST to the running
+  // server, exit code 0 on success.
+  if (rawArgs[0] === "session" && rawArgs[1] === "refine") {
+    const { runSessionRefineCommand } = await import("./session-cli.js");
+    const exitCode = await runSessionRefineCommand(
+      rawArgs.slice(2),
+      {
+        PNEUMA_SERVER_URL: process.env.PNEUMA_SERVER_URL,
+        PNEUMA_SESSION_ID: process.env.PNEUMA_SESSION_ID,
+      },
+      {
+        stdout: (line) => console.log(line),
+        stderr: (line) => console.error(line),
+        readStdin: async () => {
+          const chunks: string[] = [];
+          for await (const chunk of process.stdin as unknown as AsyncIterable<Buffer>) {
+            chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
+          }
+          return chunks.join("");
+        },
+        fetch: async (url, init) => {
+          const res = await fetch(url, init);
+          return {
+            status: res.status,
+            json: () => res.json(),
+            text: () => res.text(),
+          };
+        },
+      },
+    );
+    process.exit(exitCode);
+  }
+
   if (rawArgs[0] === "history") {
     if (rawArgs[1] === "export") {
       let histWorkspace = process.cwd();

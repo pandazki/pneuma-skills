@@ -1048,6 +1048,19 @@ function getGlobalSkillDependencies(inProject = false): SkillDependency[] {
     });
   }
 
+  // Session-meta refine — universal, mode-agnostic. The agent rewrites the
+  // session's title / one-line summary via `pneuma session refine` when the
+  // user asks or when the row would be more useful with a real label. Lives
+  // alongside pneuma-preferences in the same shared directory.
+  const sessionDir = join(sharedDir, "skills", "pneuma-session");
+  if (existsSync(sessionDir)) {
+    deps.push({
+      name: "pneuma-session",
+      sourceDir: "skills/pneuma-session",
+      claudeMdSnippet: "**pneuma-session** — Refine the active session's launcher row (displayName + description). Use when the user asks to re-title / re-summarize this session, or proactively (via Task subagent) when the session has produced substantive work and the default \"<Mode> session\" row is now uninformative.",
+    });
+  }
+
   if (inProject) {
     const projectDir = join(sharedDir, "skills", "pneuma-project");
     if (existsSync(projectDir)) {

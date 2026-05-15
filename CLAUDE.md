@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.5.6
+**Version:** 3.6.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`
 
@@ -279,7 +279,7 @@ Session state lives in `<stateDir>/`. The location depends on whether the sessio
 
 | File | Purpose |
 |------|---------|
-| `session.json` | sessionId, agentSessionId, mode, backendType, createdAt |
+| `session.json` | sessionId, agentSessionId, mode, backendType, createdAt — plus optional `displayName` / `description` / `refinedAt` rewritten by `pneuma session refine` (see "Session-meta refine" below) |
 | `history.json` | Message history (auto-saved every 5s) |
 | `config.json` | Init params (e.g. slideWidth, API keys) |
 | `skill-version.json` | `{ mode, version }` — installed skill version for update detection |
@@ -299,6 +299,15 @@ Session state lives in `<stateDir>/`. The location depends on whether the sessio
 | `preferences/` | Project-scoped preferences (`profile.md`, `mode-{name}.md`) |
 | `sessions/<id>/.pneuma/inbound-handoff.json` | Inbound handoff payload, written by `/api/handoffs/:id/confirm` before the target session spawns; target agent reads and `rm`s on first turn |
 | `sessions/<sessionId>/` | One subdir per session; contents are the per-session table above |
+
+### Session-meta refine (3.6.0)
+
+Every session — quick or project — has a row in the launcher's Recent Sessions / ProjectPanel's Recent Sessions list. The row's title and one-line summary default to `"<Mode> session"` + the first user-message preview, which for project sessions is the synthetic `<pneuma:env reason="opened">` tag — uninformative. The `pneuma session refine` capability lets the agent rewrite those two fields once the conversation has produced enough substance to warrant a real label.
+
+- **CLI:** `pneuma session refine --json '{"displayName": "<≤40 chars>", "description": "<≤280 chars>"}'` (modeled on `pneuma handoff`; reads `PNEUMA_SERVER_URL` / `PNEUMA_SESSION_ID`).
+- **Server route:** `POST /api/session/refine` — atomically rewrites `<sessionDir>/session.json` (adding optional `displayName` / `description` / `refinedAt` next to the existing `sessionId` / `agentSessionId` / `mode` / `backendType` / `createdAt`), syncs the registry entry under `~/.pneuma/sessions.json` (when `sessionName` isn't set; explicit user renames still win), and broadcasts `session_meta_updated` so the panel updates in place.
+- **Skill:** `pneuma-session`, installed as a global dependency alongside `pneuma-preferences` for all sessions. Teaches the agent (a) when to refine (user asks, or substantive progress + default title still in place), (b) how to phrase a title/description that describes the session's topic rather than the work done, (c) to use a Task subagent for proactive non-blocking refines so the main turn isn't stalled.
+- **UI:** ProjectPanel's session row prefers `description` over `preview`, places a small mode-icon chip next to the title (since the refined title no longer carries the mode name), and re-fetches the session list when the WS `session_meta_updated` tick advances.
 
 ### Skill Installation & Update Detection
 

@@ -417,6 +417,19 @@ export type BrowserIncomingMessageBase =
     type: "handoff_cancelled";
     handoff_id: string;
     reason?: string;
+  }
+  | {
+    /**
+     * Emitted after `POST /api/session/refine` rewrites a session's
+     * displayName / description so the launcher and ProjectPanel can refresh
+     * the affected row in place without a poll. Only the changed fields are
+     * present; consumers merge into local state.
+     */
+    type: "session_meta_updated";
+    session_id: string;
+    displayName?: string;
+    description?: string;
+    refinedAt: number;
   };
 
 export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };

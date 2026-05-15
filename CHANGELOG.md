@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.6.0] - 2026-05-15
+
+### Added — `pneuma session refine`: the agent can rewrite a session's UI identity
+
+A session's row in the launcher / ProjectPanel used to read `"<Mode> session"` plus the first user-message preview, which for project sessions is the synthetic `<pneuma:env reason="opened">` tag — pure placeholder. Three sessions of the same mode were indistinguishable except by thumbnail and timestamp memory. This release gives the agent the ability to rewrite both fields once the conversation has produced enough substance, mirroring the existing "refine project meta / generate atlas" pattern but scoped down to a single session and run inline (no separate evolve mode, no separate process).
+
+#### Layer 1 — preview no longer says `<pneuma:env>`
+
+- **`extractPreviewFromHistory` walks past synthetic pneuma tags.** The first user message in a project session is always a server-emitted `<pneuma:env reason="opened" />` (or `<pneuma:request-handoff>`, `<pneuma:handoff-cancelled>`, `<pneuma:askq-answer>`) — these ride the user-message channel for the agent's benefit but carry zero information for a human scanning the panel. The preview computation now skips any message whose trimmed content begins with `<pneuma:` and surfaces the first real user prompt instead. Pure server-side; no agent involvement.
+
+#### Layers 2 + 3 — schema + agent CLI + server route + WS broadcast
+
+- **`<sessionDir>/session.json` gains optional `displayName`, `description`, `refinedAt` fields** alongside the existing `sessionId` / `agentSessionId` / `mode` / `backendType` / `createdAt`. The `ProjectSessionRegistryEntry` and `QuickSessionRegistryEntry` in `~/.pneuma/sessions.json` mirror `description` + `refinedAt` so the launcher's flat list-fetch doesn't have to crack open every session file.
+- **New `pneuma session refine --json '<json>'` CLI subcommand** (in `bin/session-cli.ts`, modeled directly on `pneuma handoff`). Reads JSON inline or from stdin, validates that at least one of `displayName` (≤40 chars) / `description` (≤280 chars) is present, POSTs to `${PNEUMA_SERVER_URL}/api/session/refine`. Single-shot, no retries.
+- **New `POST /api/session/refine` server route** atomically rewrites the session-local `session.json`, syncs the corresponding registry entry (refined `displayName` only overrides the resolved row title when no explicit user `sessionName` is set — manual rename still wins), and broadcasts `session_meta_updated` over WS so any open browsers refresh the affected row in place.
+- **`BrowserIncomingMessage` gets a `session_meta_updated` member** + a new `sessionMetaTick` counter on the store. Components that list sessions (currently ProjectPanel) bump-tick to re-fetch instead of mutating local state — keeps the data path single-source.
+
+#### Layer 4 — `pneuma-session` skill (global, mode-agnostic)
+
+- **New `modes/_shared/skills/pneuma-session/`** installed automatically for every session alongside `pneuma-preferences`. Teaches the agent: (a) when to refine — user asks ("整理一下会话信息", "rename this session", etc.) or substantive progress (15+ user turns + the default title still in place + a clear topic has emerged); (b) what makes a good title and description — describe the session's topic, not the work done, in the user's language; (c) to launch a Task subagent for proactive refines so the main turn doesn't stall; (d) a soft cadence cap (≈once per 20 turns) so the row doesn't flicker between titles.
+
+#### UI — mode icon next to the refined title, live row updates
+
+- **A small mode-icon chip sits next to every session-row title in ProjectPanel.** Since the refined `displayName` replaces "WebCraft session" wholesale, the mode used to disappear from view. The chip restores it at a glance and exposes the full mode name via `title=` / `aria-label` on hover.
+- **The row prefers `description` over the history-derived `preview`** — refined summaries are higher-signal. Both are line-clamped to one row with the full text in a hover tooltip.
+- **The panel re-fetches its session list when `sessionMetaTick` advances** (driven by the WS `session_meta_updated` broadcast from the active server). Manual refresh is no longer required for the row that just refined.
+
+#### Documentation
+
+- **`CLAUDE.md` gains a "Session-meta refine (3.6.0)" subsection** describing the CLI / route / WS / skill / UI surface, and the per-session-files table now notes the optional `displayName` / `description` / `refinedAt` fields on `session.json`.
+
 ## [3.5.6] - 2026-05-14
 
 ### Fixed — Chinese export names, restored chat attachments

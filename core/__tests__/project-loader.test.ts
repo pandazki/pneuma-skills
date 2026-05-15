@@ -284,6 +284,45 @@ describe("scanProjectSessions", () => {
     expect(ref!.preview!.endsWith("…")).toBe(true);
   });
 
+  test("preview skips pneuma:* synthetic tags and uses the first real user prompt", async () => {
+    // Project sessions always start with a server-emitted `<pneuma:env>`
+    // message (opened/handed-off/switched), and Smart-Handoff cancellation
+    // injects another synthetic tag (`<pneuma:handoff-cancelled>`). These
+    // ride the user-message channel so the agent sees them, but they have
+    // zero information for a human scanning the panel — the preview should
+    // walk past them and pick the first prompt the user actually typed.
+    const base = join(tmp, ".pneuma", "sessions");
+    await mkdir(join(base, "with-pneuma-tags"), { recursive: true });
+    await writeFile(
+      join(base, "with-pneuma-tags", "session.json"),
+      JSON.stringify({ sessionId: "with-pneuma-tags", mode: "webcraft", backendType: "claude-code", createdAt: 1 })
+    );
+    await writeFile(
+      join(base, "with-pneuma-tags", "history.json"),
+      JSON.stringify([
+        {
+          type: "user_message",
+          content: '<pneuma:env reason="opened" project="Tanka Work Memory Plugin" />',
+          timestamp: 1,
+        },
+        {
+          type: "user_message",
+          content: '<pneuma:handoff-cancelled reason="user-changed-mind" />',
+          timestamp: 2,
+        },
+        {
+          type: "user_message",
+          content: "Make the hero feel cinematic.",
+          timestamp: 3,
+        },
+      ])
+    );
+
+    const sessions = await scanProjectSessions(tmp);
+    const ref = sessions.find((s) => s.sessionId === "with-pneuma-tags");
+    expect(ref?.preview).toBe("Make the hero feel cinematic.");
+  });
+
   test("preview handles Anthropic-style array content blocks", async () => {
     // Defensive against future shapes — Anthropic SDK content can be an
     // array of blocks. The first text block wins.
