@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.6.0
+**Version:** 3.7.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`
 
@@ -47,9 +47,20 @@ bun test                 # All tests (bun:test)
 pneuma evolve <mode>     # Launch evolution agent for a mode's skill
 
 # Mode management
-pneuma mode add <url>    # Install remote mode to ~/.pneuma/modes/
+pneuma mode add <url>    # Install remote mode (single-mode → ~/.pneuma/modes/; multi-mode library → ~/.pneuma/libraries/)
 pneuma mode list         # List published modes on R2
 pneuma mode publish      # Publish current workspace as mode
+
+# Mode libraries (multi-mode GitHub repos)
+pneuma library init <name> [--github user/repo] [--private]  # Scaffold a new library locally, optionally create + push to GitHub
+pneuma library link <github:user/repo>                       # Alias for `mode add` when the source is a library
+pneuma library list                                          # List linked libraries
+pneuma library sync <id>                                     # Pull latest from source (git fetch + checkout for github sources)
+pneuma library publish <mode> [--to id] [--as name] [--push] # Copy a local mode into a library, commit, optionally push
+pneuma library push <id>                                     # `git push origin HEAD` from the library's clone
+pneuma library activate <id> <mode>                          # Surface a library mode in the launcher / gallery
+pneuma library deactivate <id> <mode>                        # Hide it without removing from disk
+pneuma library unlink <id>                                   # Remove the library + its on-disk clone
 
 # Project recovery
 pneuma project add <path>    # Register an existing Pneuma project at <path> into ~/.pneuma/sessions.json (open-or-migrate)
@@ -102,9 +113,13 @@ pneuma history open <path-or-url>      # Download/prepare replay package
 pneuma-skills/
 ├── bin/                       # CLI entry — mode resolution, agent launch, session registry
 ├── core/
-│   ├── types/                 # Contract types (ModeManifest, ViewerContract, AgentBackend, SharedHistory, PluginManifest)
+│   ├── types/                 # Contract types (ModeManifest, ViewerContract, AgentBackend, SharedHistory, PluginManifest, LibraryManifest)
 │   ├── mode-loader.ts         # Mode discovery & loading (builtin + external)
-│   ├── mode-resolver.ts       # Source resolution (builtin/local/github/url → disk path)
+│   ├── mode-resolver.ts       # Source resolution (builtin/local/github/url → disk path); detects single-mode vs multi-mode library shape at install time
+│   ├── library-registry.ts    # `~/.pneuma/libraries/<id>/` CRUD: detectRepoShape, linkLibrary, syncLibrary, activate / unlink, sidecar atomic I/O
+│   ├── library-publish.ts     # Author-side: initLocalLibrary, publishModeToLibrary, pushLibrary
+│   ├── github-cli.ts          # Thin wrapper around the local `gh` binary — detectGh + createRepo
+│   ├── favorites.ts           # `~/.pneuma/favorites.json` read / write / defaults
 │   ├── plugin-registry.ts     # Plugin discovery, filtering, loading, activation, route mounting
 │   ├── hook-bus.ts            # Waterfall event bus for plugin hooks (soft error)
 │   ├── settings-manager.ts    # Plugin settings persistence (~/.pneuma/settings.json)
@@ -134,6 +149,7 @@ pneuma-skills/
 ├── server/                    # Hono server, WS bridges, skill installer, file watcher, etc.
 │   ├── index.ts               # Main server + launcher endpoints + WS routing
 │   ├── routes/                # Export routes, deploy UI
+│   ├── library-routes.ts      # `/api/libraries/*` + `/api/github/status` — launcher-scope only; broadcasts `libraries_updated` on every mutation and invalidates the `/api/registry` SWR cache
 │   ├── ws-bridge*.ts          # WS bridge to browsers (JSON), with per-backend BridgeBackend handlers in ws-bridge-{kimi,codex}.ts
 │   ├── ws-bridge-backend.ts   # BridgeBackend lifecycle interface (attach / routeBrowserMessage / injectUserMessage / disconnect)
 │   ├── skill-installer.ts     # Skill copy + template engine + instructions injection (resolves layout via getInstallConventions(backendType))
@@ -141,6 +157,7 @@ pneuma-skills/
 ├── src/                       # React frontend (Vite)
 │   ├── App.tsx                # Root layout, dynamic viewer loading
 │   ├── store/                 # Zustand store (9 protocol-aligned slices, including plugin-slice)
+│   ├── hooks/                 # Reusable React hooks (useFavorites, useThumbnailCapture, …)
 │   ├── ws.ts                  # WebSocket client
 │   └── components/            # Chat, permissions, launcher, replay, context panels
 ├── desktop/                   # Electron desktop client (main process, preload, build scripts)
@@ -227,10 +244,11 @@ Modes can come from four sources, resolved by `core/mode-resolver.ts`:
 |------|-----------|---------------|
 | **builtin** | `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve` | `modes/<name>/` |
 | **local** | `/abs/path`, `./rel` | As-is |
-| **github** | `github:user/repo` | `~/.pneuma/modes/<user>-<repo>/` |
-| **url** | `https://...tar.gz` | `~/.pneuma/modes/<name>/` |
+| **github (single)** | `github:user/repo` with `manifest.ts` at repo root | `~/.pneuma/modes/<user>-<repo>/` |
+| **github (library)** | `github:user/repo` with `pneuma.library.json` OR N subdirs each containing `manifest.ts` | `~/.pneuma/libraries/<user>-<repo>/` (see Mode Libraries) |
+| **url** | `https://...tar.gz` | `~/.pneuma/modes/<name>/` (or `~/.pneuma/libraries/<name>/` if the archive contains a library) |
 
-A mode package must contain `manifest.ts` exporting a `ModeManifest`.
+A mode package must contain `manifest.ts` exporting a `ModeManifest`. A multi-mode library package may carry an optional `pneuma.library.json` at the repo root listing its modes; absent that, the resolver auto-scans immediate subdirs for `manifest.ts`. Library detection is performed AFTER clone/extract and is automatic — the single-mode path stays byte-identical for repos that don't look like libraries.
 
 ### Local Mode Management
 
@@ -239,6 +257,35 @@ A mode package must contain `manifest.ts` exporting a `ModeManifest`.
 - Launcher scans this directory and displays "Local Modes" section
 - Modes can be deleted from the launcher UI (inline confirm, not popup)
 - `parseManifestTs()` in `core/utils/manifest-parser.ts` extracts metadata via regex without TS evaluation
+
+### Mode Libraries (3.7.0)
+
+A library is a multi-mode GitHub repo. One `pneuma mode add` clones the whole repo into `~/.pneuma/libraries/<id>/`; each contained mode is independently activated, version-tracked, and surfaced in the Mode Gallery + Quick Start grid.
+
+| Path | Purpose |
+|------|---------|
+| `~/.pneuma/libraries/<id>/` | Cloned repo (or scaffolded by `pneuma library init`). `<id>` defaults to `<user>-<repo>` for github sources. |
+| `~/.pneuma/libraries/<id>/.library.json` | Consume-side sidecar Pneuma maintains: `{ version, id, name, source, sha, lastSync, modes: [{ name, path, manifestVersion, activated, installedVersion }] }`. Atomic tmp-then-rename writes. |
+| `<repo-root>/pneuma.library.json` | Optional repo-side manifest the author maintains. When absent, the resolver auto-scans subdirs for `manifest.ts`. |
+
+**Resolver behavior** (`core/mode-resolver.ts`):
+- `resolveModeOrLibrary(specifier)` is the install-aware entry point and returns a discriminated `ResolveResult` (`kind: "single" \| "library"`). Used by `pneuma mode add`, `pneuma library link`, and the `/api/libraries/link` route.
+- Legacy `resolveMode(specifier)` still returns `ResolvedMode` for launch-path callers. When handed a library specifier it throws a helpful error directing the user to `pneuma mode add` then `pneuma <mode-name>`.
+- Shape detection (`detectRepoShape` in `core/library-registry.ts`): root `manifest.ts` → single (legacy path unchanged); root `pneuma.library.json` → library by explicit index; otherwise auto-scan immediate subdirs.
+
+**Consume side** lives in `core/library-registry.ts`: `linkLibrary`, `syncLibrary` (reconciles sidecar against current repo state — preserves activation across syncs, surfaces updates without auto-accepting them), `setModeActivated`, `acceptModeUpdate`, `unlinkLibrary`, `getLibraryModePath`.
+
+**Author side** lives in `core/library-publish.ts`: `initLocalLibrary` (scaffold dir + git init + initial commit), `publishModeToLibrary` (cp -r the mode in, upsert the repo-side index, sync the sidecar, commit), `pushLibrary` (`git push origin HEAD`). The optional `--github` flag on `library init` calls `core/github-cli.ts::createRepo` which invokes `gh repo create --source --push` in one shot. No PAT fallback in v1 — Settings → GitHub card surfaces install + sign-in hints when `gh` is missing or unauthenticated.
+
+**Surface in Mode Gallery**: a Libraries group sits between Local and Published. Each library renders as a sub-group with an identity strip (display name, source URL chip, last-synced ts) + inline Sync / + Publish / Unlink actions, followed by the existing `GalleryModeCard` for activated modes, followed by a collapsible "N inactive modes" footer. Library-activated modes ALSO appear in the launcher Quick Start grid via `/api/registry` `local[]` (carrying a `librarySource: { id, name, displayName? }` tag); the gallery is where they're organized + managed.
+
+### Favorites (3.7.0)
+
+A small persistent list of pinned modes that bubble to the front of every mode picker.
+
+- **File:** `~/.pneuma/favorites.json` — atomic write, graceful fallback to `["webcraft", "slide", "diagram", "illustrate", "remotion", "kami"]` when missing or malformed.
+- **Hook:** `src/hooks/useFavorites.ts` — `useFavorites()` returns `{ favorites, isFavorite, toggle }`. Optimistic toggle with a write-sequence guard so a slow earlier POST can't clobber a later state once it lands. `sortFavoritesFirst(modes, favorites, getName)` is a stable-sort helper used by callers that don't need to fold in additional ordering.
+- **Surfaces**: QuickStartTile renders a small filled-star top-left when favorited (pairs with the library link glyph top-right — opposite corners, never collide). GalleryModeCard header has a star toggle next to Evolve / Edit — the only management surface. ProjectPanel's mode-tile picker orders favorites first → used-in-project by recency → rest by builtin priority, and renders the same inline star badge next to favorited tile titles.
 
 ### Session Registry
 
@@ -385,7 +432,7 @@ The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It ser
 
 ## Server Routes
 
-Server routes are defined in `server/index.ts` (main), `server/routes/export.ts` (export), `server/evolution-routes.ts` (evolution), `server/mode-maker-routes.ts` (mode maker). WebSocket paths: `/ws/browser/:sessionId` (JSON), `/ws/cli/:sessionId` (NDJSON), `/ws/terminal/:terminalId` (binary). Codex uses stdio JSON-RPC, not WebSocket. `GET /api/file?path=<abs>` serves workspace-contained file reads (used by chat image previews). `GET /api/running` (launcher) returns all running `pneuma <mode>` sessions system-wide (reads `~/.pneuma/running/`); each entry carries the process's current mode + a `thumbnailUrl` when one exists. `POST /api/session/thumbnail` accepts a base64 PNG and writes it to `<stateDir>/thumbnail.png` (capture mechanics: see the thumbnail-capture gotcha).
+Server routes are defined in `server/index.ts` (main), `server/routes/export.ts` (export), `server/evolution-routes.ts` (evolution), `server/mode-maker-routes.ts` (mode maker), `server/library-routes.ts` (libraries — launcher-scope only). WebSocket paths: `/ws/browser/:sessionId` (JSON), `/ws/cli/:sessionId` (NDJSON), `/ws/terminal/:terminalId` (binary). Codex uses stdio JSON-RPC, not WebSocket. `GET /api/file?path=<abs>` serves workspace-contained file reads (used by chat image previews). `GET /api/running` (launcher) returns all running `pneuma <mode>` sessions system-wide (reads `~/.pneuma/running/`); each entry carries the process's current mode + a `thumbnailUrl` when one exists. `POST /api/session/thumbnail` accepts a base64 PNG and writes it to `<stateDir>/thumbnail.png` (capture mechanics: see the thumbnail-capture gotcha). `GET/POST /api/favorites` reads/writes the pinned-modes list at `~/.pneuma/favorites.json`. `GET /api/github/status` returns `{ installed, authenticated, username?, version?, hint? }` from a `gh` probe — used by the launcher Settings → GitHub card. The launcher-only `/api/libraries/*` family (`GET`, `link`, `init`, `:id/sync`, `:id/mode/:name/(activate|deactivate|accept-update)`, `:id/publish`, `:id/push`, `DELETE :id`) broadcasts `libraries_updated` over WS on every mutation and invalidates the `/api/registry` SWR cache so library-activated modes appear in Quick Start without lag.
 
 Native desktop APIs (`/api/native/*`) are available only in Electron. Architecture: Server → WS `native_request` → Browser → Electron IPC → result → WS `native_result` → Server. Web environments return `{ available: false }`.
 
@@ -445,3 +492,6 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, and publishe
 - **Empty shell renders without `modeViewer`**: the `?project=<root>` URL (no `session`, no `mode`) lands on `EmptyShell` which mounts `TopBar` *without* a session. `TopBar` gates the tabs row, share dropdown, and editing toggle on `!!modeViewer`; the left chip strip stays. Any new TopBar feature must guard for `modeViewer` being null in this state. `ProjectChip` lives in the strip and reads `projectContext` (which `EmptyShell` populates from `/api/projects/:id/sessions`); the chip's auto-open is computed inside the chip via URL inspection (no prop threading from `TopBar`).
 - **TopBar drag region in launcher-reused windows**: `TopBar` is wrapped with `WebkitAppRegion: "drag"` and its three pill sub-containers (left chip strip, center tabs, right share/edit) are `WebkitAppRegion: "no-drag"`. This is required because the launcher's `window.location.href` flow (`Launcher.tsx:3210/3326/4003`, `ProjectPanel.tsx:290`, `EmptyShell` auto-onboard) reuses the launcher `BrowserWindow` for sessions — the window keeps `titleBarStyle: "hiddenInset"` + `trafficLightPosition: { y: 18 }`, and on macOS Sequoia the OS-managed drag inset extends to ~y=56 to fit the lowered traffic lights, eating clicks on the upper edge of TopBar pills. Any new clickable element added directly under the TopBar root must carry `no-drag` (or sit inside one of the existing `no-drag` sub-containers); pure spacers can stay at the inherited `drag` so the bar still moves the window. No-op in non-hiddenInset windows.
 - **Project session id vs backend id**: for project sessions, `<projectRoot>/.pneuma/sessions/<id>/session.json`'s top-level `sessionId` is the *project session* id (= directory name = what the URL carries as `--session-id`). The backend's protocol id is stored separately in `agentSessionId`. `scanProjectSessions` falls back to the directory name if `sessionId` is missing/empty (defensive against pre-fix sessions). Reopening a project session uses the project session id; routing CLI ↔ backend uses `agentSessionId`. **Never** let the backend id leak into the registry / panel — it'll resolve to a non-existent directory.
+- **Launcher has no agent session, so WS broadcasts don't reach it (3.7.0)**: `WsBridge.broadcastAll` iterates over connected per-session browser sockets, but the launcher main page mounts before any session exists. Library-routes (and any future launcher-scope mutation) must dispatch `pneuma:libraries-updated` (or equivalent) DOM events locally from each handler's success path; the launcher's window-event listener fans out to `refreshLibraries()` + `refreshModes()`. A sibling tab inside a real session still gets the WS-driven refresh independently — the two trigger paths converge on the same event name.
+- **`line-clamp` requires `display: -webkit-box`, which the Tailwind `block` utility overrides in source order (3.7.0)**: pairing `block` with `line-clamp-N` silently disables the clamp because the explicit `display: block` lands after Tailwind's `-webkit-box` declaration. `QuickStartTile` learned this when Guizang Ppt's marathon description ballooned to ~10 lines while neighbors clamped at 2. Drop `block`; line-clamp's own display rule is enough.
+- **React key collision for same-named modes (3.7.0)**: when a builtin (`slide`) is evolved locally into `slide-evolved-*`, each fork's `manifest.ts` typically keeps the same `name: "slide"`. Using `mode.name` as a React key collides across the registry's `builtins[]` + `local[]` and makes per-tile state (favorite badge, library origin glyph) render onto only one of the colliding tiles. Compose the key from `${source}::${path || name}` for any list rendering both builtin and local modes — applies to the Quick Start grid; future surfaces should follow the same pattern.

@@ -2,6 +2,47 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.7.0] - 2026-05-16
+
+### Added — Mode Libraries: ship N modes from one GitHub repo, pin favorites to the front
+
+A single GitHub repo can now host many Pneuma modes as a library. `pneuma mode add github:<user>/<repo>` detects the shape at install time, drops a multi-mode repo into `~/.pneuma/libraries/<id>/` with a `.library.json` sidecar tracking per-mode activation + last-synced sha, and surfaces the contained modes in the Mode Gallery alongside Built-in / Local / Published. Author side adds init / publish / push so anyone can run a personal community library on their own GitHub account — same flow that the launcher uses to install other people's libraries. The launcher also gains a favorites layer: a small persistent list of pinned modes that bubble to the front of Quick Start and the project mode-tile picker.
+
+#### Multi-mode library distribution
+
+- **New `~/.pneuma/libraries/<id>/` layout** keyed by `<user>-<repo>` for github sources. Each library carries a `.library.json` sidecar with the source URL/ref, the git sha observed on last sync, and per-mode rows `{ name, manifestVersion, activated, installedVersion }`. Activation is local-only — every contained mode lives on disk after the initial clone; toggling visibility is a zero-cost sidecar flip.
+- **Auto-detect at install time.** `core/mode-resolver.ts` clones into the single-mode cache as before, then inspects the layout: root `manifest.ts` → single-mode (legacy path unchanged); root `pneuma.library.json` or N subdirs with manifests → library. Library shape moves the clone into `~/.pneuma/libraries/<id>/` atomically and writes the sidecar; the legacy `resolveMode()` path throws a friendly error for library specifiers so the launch flow stays single-mode-only.
+- **New `pneuma library` CLI family** mirroring the existing mode/plugin subcommand rhythm: `init [--github user/repo] [--private]`, `link <source>`, `list`, `sync <id>`, `publish <mode> [--to id] [--as name] [--push]`, `push <id>`, `unlink <id>`, `activate <id> <mode>`, `deactivate <id> <mode>`. `--to` auto-infers when exactly one library is linked.
+- **Author flow.** `core/library-publish.ts` adds `initLocalLibrary` (scaffolds dir + git init + initial commit), `publishModeToLibrary` (copies a mode in, updates the repo-side `pneuma.library.json` idempotently, syncs the consume-side sidecar, optionally pushes), and `pushLibrary`. Repo creation uses the local `gh` binary via `core/github-cli.ts` — `gh repo create --source --push` in one shot. No PAT fallback in v1; the launcher's Settings → GitHub card surfaces install + sign-in hints when `gh` is missing or unauthenticated.
+
+#### Server surface
+
+- **`/api/libraries/*` route family** mounted launcher-scope: `GET /api/libraries`, `POST /api/libraries/link`, `POST /api/libraries/init`, sync / activate / deactivate / accept-update / publish / push / delete, plus `GET /api/github/status`. Every mutation broadcasts a `libraries_updated` WS event via new `WsBridge.broadcastAll` so connected browsers refresh without polling — and invalidates the launcher's `/api/registry` SWR cache so the Quick Start grid picks up newly activated library modes in the same tick instead of after a 60s TTL.
+- **`/api/registry`'s `local[]`** gets two optional fields per entry: `librarySource: { id, name, displayName? }` and `updateAvailable: boolean`. Library-activated modes surface through the existing local-mode plumbing; the gallery uses `librarySource` to group them under their library headers.
+
+#### Mode Gallery v2
+
+- **Libraries section sits as a peer of Built-in / Local / Published** between Local and Published — "yours trending toward public". Each linked library renders as a sub-group: an identity strip (display name, source URL chip, last-synced timestamp) with inline Sync / + Publish / Unlink actions, then the existing `GalleryModeCard` for activated modes (visual aesthetic preserved verbatim), then a collapsible "N inactive modes" footer with per-mode Activate buttons. Library management is now contextually right next to the modes it owns — no separate panel cluttering the gallery, no second click to reach Sync.
+- **Library provenance band** appears at the bottom of an expanded library mode card showing `From <displayName> · <source.url> · synced <ts>`. The Quick Start tile's corner chip carries this as a tooltip; the gallery card has room to spell it out.
+- **Add Library / Publish dialog entry points** moved from the launcher main page into the gallery's Libraries section header (`+ Add library`) and each library's `+ Publish` action. Launcher main is back to "Quick Start grid + Mode Maker hero" — the dedicated Mode Libraries section + unused LibraryCard / LibraryIcon helpers (~330 lines) were removed.
+
+#### Quick Start favorites
+
+- **Persistent favorites at `~/.pneuma/favorites.json`** — atomic write, graceful fallback to a curated default set (`webcraft`, `slide`, `diagram`, `illustrate`, `remotion`, `kami`) when the file is missing or malformed.
+- **`useFavorites()` hook** with optimistic-toggle + a write-sequence guard so a slow earlier POST can't clobber a later state once it lands. Exposes `favorites`, `isFavorite`, `toggle`.
+- **Quick Start tile gets a small filled-star top-left when favorited**; pairs with the existing library link glyph (top-right) without colliding. Toggling happens in the gallery card header (next to Evolve / Edit) — Quick Start is for fast launch, not management.
+- **ProjectPanel's mode-tile picker re-orders** by the same favorites list: favorites in their persisted order, then used-in-this-project modes by recency, then the rest by builtin priority. The inline favorite glyph rides next to the title.
+
+### Fixed
+
+- **Tile descriptions actually clamp now.** The `block` Tailwind utility was clobbering `line-clamp-2`'s `display: -webkit-box` in source order, silently disabling the clamp and letting Guizang Ppt's marathon description balloon QuickStartTiles to ~10 lines while neighbors stayed at 2. Removed `block`; the clamp's own display rule handles it.
+- **Library origin chip no longer dominates the tile.** The previous full pill (`from E2E Library Roundtrip`) competed with the mode title and varied wildly with library name length. Replaced with a 12px corner link glyph; the full library name lives in the tooltip.
+- **Quick Start grid React keys.** `key={mode.name}` collided whenever multiple modes manifested the same name (the builtin `slide` plus each `slide-evolved-*` fork all say `name: "slide"`). React was warning about duplicate keys and the favorite badge appeared on only one of the colliding tiles per render. Composite key `${source}::${path || name}` restores per-tile stability.
+
+### Changed
+
+- **Launcher main page no longer carries a Mode Libraries section.** Quick Start grid (with favorites pinned + library-sourced tiles inline-merged via `/api/registry`) sits above the Mode Maker hero, and that's it. Library management lives in the gallery's Libraries group.
+
 ## [3.6.0] - 2026-05-15
 
 ### Added — `pneuma session refine`: the agent can rewrite a session's UI identity

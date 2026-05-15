@@ -175,9 +175,16 @@ Options:
   --dev                Force dev mode (Vite)
 
 Subcommands:
-  mode add <url>           Install a remote mode to ~/.pneuma/modes/
+  mode add <url>           Install a remote mode (single → ~/.pneuma/modes/; library → ~/.pneuma/libraries/)
   mode list                List published modes on R2
   mode publish             Publish current workspace as a mode
+  library init <name>      Scaffold a new mode library locally; --github user/repo creates + pushes
+  library link <source>    Alias for `mode add` when the source is a library
+  library list             List linked libraries
+  library sync <id>        Refresh a library from source
+  library publish <mode>   Copy a local mode into a linked library; --to <id> --push
+  library push <id>        Push the library's local clone to its remote
+  library unlink <id>      Remove a library and its on-disk clone
   evolve <mode>            Analyze history, propose skill improvements
   plugin add <source>      Install a plugin from path/github/URL
   plugin list              List builtin + external plugins
