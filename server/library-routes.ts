@@ -58,6 +58,14 @@ export interface LibraryRoutesBridge {
 export interface RegisterLibraryRoutesOptions {
   /** Used by `resolveModeOrLibrary` for builtin resolution + cache dirs. */
   projectRoot: string;
+  /**
+   * Optional hook the launcher passes in to drop its in-memory
+   * `/api/registry` cache. Library mutations change which modes appear
+   * in `local[]` (activated library modes surface there); without this
+   * invalidation the launcher Quick Start grid stays stale for up to
+   * 60 seconds. Tests can omit this — registry caching is launcher-only.
+   */
+  invalidateRegistry?: () => void;
 }
 
 /**
@@ -70,7 +78,20 @@ export function registerLibraryRoutes(
   wsBridge: LibraryRoutesBridge,
   options: RegisterLibraryRoutesOptions,
 ): void {
-  const broadcastLibrariesUpdated = (): void => {
+  /**
+   * Single fan-out for every library mutation: drop the launcher's
+   * registry cache so a follow-up `GET /api/registry` sees the new
+   * mode list, then push a `libraries_updated` WS tick so any open
+   * Launcher tab refetches without polling. Order matters — cache
+   * first, broadcast second — so the tick arrives at a frontend that
+   * will hit a fresh registry on its next call.
+   */
+  const notifyLibrariesChanged = (): void => {
+    try {
+      options.invalidateRegistry?.();
+    } catch (err) {
+      console.warn(`[library-routes] registry invalidate failed: ${err}`);
+    }
     if (typeof wsBridge.broadcastAll !== "function") return;
     try {
       const msg: BrowserIncomingMessage = {
@@ -82,6 +103,9 @@ export function registerLibraryRoutes(
       console.warn(`[library-routes] broadcast failed: ${err}`);
     }
   };
+  // Older name kept as a local alias so route handlers don't all need
+  // re-edit; both invocations route through the new fan-out.
+  const broadcastLibrariesUpdated = notifyLibrariesChanged;
 
   // GET /api/libraries ──────────────────────────────────────────────────
   app.get("/api/libraries", (c) => {

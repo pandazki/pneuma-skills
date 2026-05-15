@@ -1544,6 +1544,14 @@ export async function startServer(options: ServerOptions) {
     registerLibraryRoutes(app, wsBridge, {
       projectRoot:
         options.projectRoot || resolve(dirname(import.meta.path), ".."),
+      // Library mutations change which modes surface in `/api/registry`
+      // `local[]` (every activated library mode lands there). Dropping the
+      // SWR cache here lets the launcher Quick Start grid see new library
+      // modes on the same tick as the WS `libraries_updated` broadcast,
+      // instead of waiting for the 60s TTL to elapse.
+      invalidateRegistry: () => {
+        registryCache = null;
+      },
     });
 
     // The launcher mounts these so any project session whose own server
