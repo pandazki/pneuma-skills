@@ -1434,11 +1434,20 @@ function QuickStartTile({
       }`}
     >
       {librarySource && (
+        // Origin mark: signal "from external library" without competing
+        // with the tile's title. A tiny link glyph sits in the corner;
+        // the library name lives in the `title` tooltip so users can
+        // discover provenance on hover without it dominating the scan.
+        // Quiet by default (muted/40), warms on tile hover.
         <span
-          className="absolute top-1.5 right-1.5 px-1.5 py-0.5 text-[9px] rounded-full bg-cc-fg/5 text-cc-muted/60 border border-cc-border/30 truncate max-w-[90%]"
-          title={`from library: ${librarySource.displayName || librarySource.name}`}
+          className="absolute top-2 right-2 w-3 h-3 text-cc-muted/40 group-hover:text-cc-muted/70 transition-colors pointer-events-auto"
+          title={`From library: ${librarySource.displayName || librarySource.name}`}
+          aria-label={`From library: ${librarySource.displayName || librarySource.name}`}
         >
-          from {librarySource.displayName || librarySource.name}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+          </svg>
         </span>
       )}
       <div className={`w-11 h-11 flex items-center justify-center rounded-lg transition-all duration-200 ${
@@ -1457,7 +1466,12 @@ function QuickStartTile({
           {displayName}
         </span>
         {description && (
-          <span className="text-[10px] text-cc-muted/40 mt-0.5 block leading-tight line-clamp-2">{description}</span>
+          // line-clamp-2 sets `display: -webkit-box` — pairing it with the
+          // `block` utility overrode the box display in source order and
+          // disabled the clamp, letting Guizang Ppt's marathon description
+          // push the tile to ~10 lines while neighbors sat at 2. The clamp
+          // is the display now; tile heights stay even across the grid.
+          <span className="text-[10px] text-cc-muted/40 mt-0.5 leading-tight line-clamp-2">{description}</span>
         )}
       </div>
     </button>
