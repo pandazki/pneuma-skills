@@ -1735,6 +1735,7 @@ function ModeGallery({
                             onEdit={onEdit ? () => onEdit(mode) : undefined}
                             onEvolve={onEvolve ? () => onEvolve(mode) : undefined}
                             isLight={isLight}
+                            library={lib}
                           />
                         );
                       })}
@@ -1989,6 +1990,7 @@ function GalleryModeCard({
   onEvolve,
   onDelete,
   isLight,
+  library,
 }: {
   mode: AnyMode;
   expanded: boolean;
@@ -1998,6 +2000,15 @@ function GalleryModeCard({
   onEvolve?: () => void;
   onDelete?: () => void;
   isLight?: boolean;
+  /**
+   * Resolved source library when this mode came from one. The header stays
+   * clean (the small corner glyph + tooltip in QuickStartTile already
+   * signals origin); inside the expanded body we have room to show the
+   * full provenance — display name, source URL, last-synced timestamp —
+   * so users investigating a library mode don't have to scroll back to
+   * its library's group header to remember what it came from.
+   */
+  library?: InstalledLibrary;
 }) {
   const [activeHighlight, setActiveHighlight] = useState(0);
   const [evolveHovered, setEvolveHovered] = useState(false);
@@ -2188,6 +2199,42 @@ function GalleryModeCard({
                     <p className="text-[11px] text-cc-muted/40 font-mono mt-1">{mode.path}</p>
                   )}
                 </div>
+              </div>
+            )}
+            {/* Library provenance — only when the mode came from a linked
+                library. Lives at the bottom of the expanded body where the
+                showcase column has plenty of room; quiet styling so it
+                informs without competing with the highlight content. */}
+            {library && (
+              <div className="mt-5 pt-4 border-t border-cc-border/15 flex items-center gap-3 text-[11px] text-cc-muted/60">
+                <span className="text-cc-muted/40 shrink-0">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden="true">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                  </svg>
+                </span>
+                <span className="text-cc-fg/70 font-medium">
+                  From {library.displayName || library.name}
+                </span>
+                <span className="text-cc-muted/30">·</span>
+                <code className="font-mono text-cc-muted/70 truncate">
+                  {library.source.type === "github" || library.source.type === "url"
+                    ? library.source.url
+                    : "local"}
+                </code>
+                {library.lastSync && (
+                  <>
+                    <span className="text-cc-muted/30">·</span>
+                    <span className="shrink-0">
+                      synced {new Date(library.lastSync).toLocaleString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </>
+                )}
               </div>
             )}
           </div>
