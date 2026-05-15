@@ -23,8 +23,27 @@ import { loadModeManifest, listBuiltinModes, registerExternalMode } from "../cor
 import type { ModeManifest } from "../core/types/mode-manifest.js";
 import type { AgentBackendType } from "../core/types/agent-backend.js";
 import { applyTemplateParams } from "../server/skill-installer.js";
-import { resolveMode as resolveModeSource, isExternalMode } from "../core/mode-resolver.js";
+import {
+  resolveMode as resolveModeSource,
+  resolveModeOrLibrary,
+  isExternalMode,
+} from "../core/mode-resolver.js";
 import type { ResolvedMode } from "../core/mode-resolver.js";
+import {
+  listLibraries,
+  syncLibrary,
+  setModeActivated,
+  unlinkLibrary,
+  getLibraryDir,
+  detectRepoShape,
+  readLibrary,
+} from "../core/library-registry.js";
+import {
+  initLocalLibrary,
+  publishModeToLibrary,
+  pushLibrary,
+} from "../core/library-publish.js";
+import { createRepo } from "../core/github-cli.js";
 import {
   normalizePersistedSession,
   normalizeSessionRecord,
@@ -1050,11 +1069,42 @@ Options:
         process.exit(1);
       }
       try {
-        const resolved = await resolveModeSource(specifier, PROJECT_ROOT);
-        if (resolved.type === "builtin") {
-          p.log.info(`"${resolved.name}" is a built-in mode — no need to add.`);
+        const result = await resolveModeOrLibrary(specifier, PROJECT_ROOT);
+        if (result.kind === "single") {
+          const resolved = result.resolved;
+          if (resolved.type === "builtin") {
+            p.log.info(`"${resolved.name}" is a built-in mode — no need to add.`);
+          } else {
+            p.log.success(`Mode "${resolved.name}" added at ${resolved.path}`);
+          }
         } else {
-          p.log.success(`Mode "${resolved.name}" added at ${resolved.path}`);
+          // Library install: print a one-shot summary of what landed and
+          // which modes are activated by default. Update reports for a
+          // re-link surface added / removed / version-changed modes.
+          const r = result.report;
+          const lib = r.library;
+          const total = lib.modes.length;
+          const activated = lib.modes.filter((m) => m.activated).length;
+          if (r.noop) {
+            p.log.info(
+              `Library "${lib.name}" already up to date (${total} mode${total === 1 ? "" : "s"}, ${activated} activated).`,
+            );
+          } else if (r.added.length || r.removed.length || r.updated.length) {
+            p.log.success(
+              `Library "${lib.name}" synced at ${result.libraryDir}\n` +
+                `  ${total} mode${total === 1 ? "" : "s"} (${activated} activated)` +
+                (r.added.length ? `\n  + added: ${r.added.join(", ")}` : "") +
+                (r.removed.length ? `\n  - removed: ${r.removed.join(", ")}` : "") +
+                (r.updated.length
+                  ? `\n  ↻ updated: ${r.updated.map((u) => `${u.name} ${u.from} → ${u.to}`).join(", ")}`
+                  : ""),
+            );
+          } else {
+            p.log.success(
+              `Library "${lib.name}" linked at ${result.libraryDir}\n` +
+                `  ${total} mode${total === 1 ? "" : "s"} (${activated} activated): ${lib.modes.map((m) => m.name).join(", ")}`,
+            );
+          }
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -1064,6 +1114,350 @@ Options:
       return;
     }
     // Unknown mode subcommand — fall through to normal mode resolution
+  }
+
+  // Library subcommand — init, link, list, sync, publish, push, unlink, (de)activate
+  if (rawArgs[0] === "library") {
+    const sub = rawArgs[1];
+    const usage =
+      "Usage:\n" +
+      "  pneuma library init <name> [--display \"...\"] [--description \"...\"] [--github user/repo] [--private]\n" +
+      "  pneuma library link <source>\n" +
+      "  pneuma library list\n" +
+      "  pneuma library sync <id>\n" +
+      "  pneuma library publish <mode> [--to <library-id>] [--as <new-name>] [--push]\n" +
+      "  pneuma library push <id>\n" +
+      "  pneuma library unlink <id> [--force]\n" +
+      "  pneuma library activate <id> <mode>\n" +
+      "  pneuma library deactivate <id> <mode>";
+
+    /** Read the value following a `--flag` option, returning undefined when absent. */
+    const readOpt = (flag: string): string | undefined => {
+      const idx = rawArgs.indexOf(flag);
+      if (idx === -1 || idx + 1 >= rawArgs.length) return undefined;
+      return rawArgs[idx + 1];
+    };
+    const hasFlag = (flag: string): boolean => rawArgs.indexOf(flag) !== -1;
+
+    if (sub === "init") {
+      const name = rawArgs[2];
+      if (!name || name.startsWith("--")) {
+        p.cancel("Usage: pneuma library init <name> [--display \"...\"] [--description \"...\"] [--github user/repo] [--private]");
+        process.exit(1);
+      }
+      const displayName = readOpt("--display");
+      const description = readOpt("--description");
+      const githubSlug = readOpt("--github");
+      const isPrivate = hasFlag("--private");
+      try {
+        const lib = initLocalLibrary({
+          name,
+          ...(displayName ? { displayName } : {}),
+          ...(description ? { description } : {}),
+        });
+        const dir = getLibraryDir(lib.id);
+        p.log.success(`Library "${lib.name}" initialized at ${dir}`);
+        if (githubSlug) {
+          try {
+            const repo = await createRepo({
+              name: githubSlug,
+              visibility: isPrivate ? "private" : "public",
+              sourcePath: dir,
+              ...(description ? { description } : {}),
+            });
+            p.log.success(`Pushed to ${repo.url}`);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            p.cancel(`GitHub repo create failed: ${msg}`);
+            process.exit(1);
+          }
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        p.cancel(`Failed to init library: ${msg}`);
+        process.exit(1);
+      }
+      return;
+    }
+
+    if (sub === "link") {
+      const source = rawArgs[2];
+      if (!source) {
+        p.cancel("Usage: pneuma library link <source>");
+        process.exit(1);
+      }
+      try {
+        const result = await resolveModeOrLibrary(source, PROJECT_ROOT);
+        if (result.kind === "single") {
+          p.cancel("That repo is a single mode, not a library — use `pneuma mode add` instead.");
+          process.exit(1);
+        }
+        const r = result.report;
+        const lib = r.library;
+        const total = lib.modes.length;
+        const activated = lib.modes.filter((m) => m.activated).length;
+        if (r.noop) {
+          p.log.info(
+            `Library "${lib.name}" already up to date (${total} mode${total === 1 ? "" : "s"}, ${activated} activated).`,
+          );
+        } else if (r.added.length || r.removed.length || r.updated.length) {
+          p.log.success(
+            `Library "${lib.name}" synced at ${result.libraryDir}\n` +
+              `  ${total} mode${total === 1 ? "" : "s"} (${activated} activated)` +
+              (r.added.length ? `\n  + added: ${r.added.join(", ")}` : "") +
+              (r.removed.length ? `\n  - removed: ${r.removed.join(", ")}` : "") +
+              (r.updated.length
+                ? `\n  ↻ updated: ${r.updated.map((u) => `${u.name} ${u.from} → ${u.to}`).join(", ")}`
+                : ""),
+          );
+        } else {
+          p.log.success(
+            `Library "${lib.name}" linked at ${result.libraryDir}\n` +
+              `  ${total} mode${total === 1 ? "" : "s"} (${activated} activated): ${lib.modes.map((m) => m.name).join(", ")}`,
+          );
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        p.cancel(`Failed to link library: ${msg}`);
+        process.exit(1);
+      }
+      return;
+    }
+
+    if (sub === "list") {
+      const libs = listLibraries();
+      if (libs.length === 0) {
+        console.log("No libraries linked. Try `pneuma library link github:user/repo`.");
+        return;
+      }
+      for (const lib of libs) {
+        const total = lib.modes.length;
+        const activated = lib.modes.filter((m) => m.activated).length;
+        const sourceStr =
+          lib.source.type === "github"
+            ? lib.source.url
+            : lib.source.type === "url"
+              ? lib.source.url
+              : lib.source.path;
+        console.log(
+          `  ${lib.id}  (${total} mode${total === 1 ? "" : "s"}, ${activated} activated)  ← ${sourceStr}`,
+        );
+      }
+      return;
+    }
+
+    if (sub === "sync") {
+      const id = rawArgs[2];
+      if (!id) {
+        p.cancel("Usage: pneuma library sync <id>");
+        process.exit(1);
+      }
+      try {
+        const lib = readLibrary(id);
+        if (!lib) {
+          p.cancel(`Library "${id}" is not linked.`);
+          process.exit(1);
+        }
+        const dir = getLibraryDir(id);
+        let newSha: string | null = null;
+        if (lib.source.type === "github") {
+          // Mirror ensureGithubMode's fetch + checkout, inline.
+          const ref = lib.source.ref || "main";
+          const fetchProc = Bun.spawnSync(["git", "fetch", "origin", ref], { cwd: dir, stdout: "pipe", stderr: "pipe" });
+          if (fetchProc.exitCode !== 0) {
+            const err = new TextDecoder().decode(fetchProc.stderr).trim();
+            p.cancel(`git fetch failed: ${err}`);
+            process.exit(1);
+          }
+          const coProc = Bun.spawnSync(["git", "checkout", `origin/${ref}`, "--force"], { cwd: dir, stdout: "pipe", stderr: "pipe" });
+          if (coProc.exitCode !== 0) {
+            const err = new TextDecoder().decode(coProc.stderr).trim();
+            p.cancel(`git checkout failed: ${err}`);
+            process.exit(1);
+          }
+          const shaProc = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: dir, stdout: "pipe", stderr: "pipe" });
+          if (shaProc.exitCode === 0) {
+            const sha = new TextDecoder().decode(shaProc.stdout).trim();
+            newSha = sha || null;
+          }
+        }
+        // Re-detect shape against the (possibly updated) on-disk repo.
+        const shape = detectRepoShape(dir, id);
+        if (shape.kind !== "library") {
+          p.cancel(`Library "${id}" no longer looks like a library on disk.`);
+          process.exit(1);
+        }
+        const report = syncLibrary(id, shape, newSha);
+        const total = report.library.modes.length;
+        const activated = report.library.modes.filter((m) => m.activated).length;
+        if (report.noop) {
+          p.log.info(`Library "${id}" already up to date (${total} mode${total === 1 ? "" : "s"}, ${activated} activated).`);
+        } else {
+          p.log.success(
+            `Library "${id}" synced (${total} mode${total === 1 ? "" : "s"}, ${activated} activated)` +
+              (report.added.length ? `\n  + added: ${report.added.join(", ")}` : "") +
+              (report.removed.length ? `\n  - removed: ${report.removed.join(", ")}` : "") +
+              (report.updated.length
+                ? `\n  ↻ updated: ${report.updated.map((u) => `${u.name} ${u.from} → ${u.to}`).join(", ")}`
+                : ""),
+          );
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        p.cancel(`Failed to sync library: ${msg}`);
+        process.exit(1);
+      }
+      return;
+    }
+
+    if (sub === "publish") {
+      const modeArg = rawArgs[2];
+      if (!modeArg || modeArg.startsWith("--")) {
+        p.cancel("Usage: pneuma library publish <mode> [--to <library-id>] [--as <new-name>] [--push]");
+        process.exit(1);
+      }
+      const toLib = readOpt("--to");
+      const asName = readOpt("--as");
+      const push = hasFlag("--push");
+
+      // Resolve source mode dir.
+      let sourceModeDir: string | null = null;
+      const isPathLike =
+        modeArg.startsWith("/") ||
+        modeArg.startsWith("./") ||
+        modeArg.startsWith("../") ||
+        modeArg.startsWith("~");
+      if (isPathLike) {
+        const expanded = modeArg.startsWith("~") ? join(homedir(), modeArg.slice(1)) : resolve(modeArg);
+        if (!existsSync(expanded)) {
+          p.cancel(`Mode path not found: ${expanded}`);
+          process.exit(1);
+        }
+        sourceModeDir = expanded;
+      } else {
+        const candidates = [
+          join(homedir(), ".pneuma", "modes", modeArg),
+          join(PROJECT_ROOT, "modes", modeArg),
+        ];
+        for (const c of candidates) {
+          if (existsSync(c)) {
+            sourceModeDir = c;
+            break;
+          }
+        }
+        if (!sourceModeDir) {
+          p.cancel(`Mode "${modeArg}" not found in ~/.pneuma/modes/ or builtin modes/.`);
+          process.exit(1);
+        }
+      }
+
+      // Resolve target library id.
+      let libraryId = toLib;
+      if (!libraryId) {
+        const libs = listLibraries();
+        if (libs.length === 0) {
+          p.cancel("No libraries linked. Run `pneuma library init <name>` or `pneuma library link <source>` first.");
+          process.exit(1);
+        }
+        if (libs.length > 1) {
+          p.cancel(`Multiple libraries linked — pass --to <library-id>. Available: ${libs.map((l) => l.id).join(", ")}`);
+          process.exit(1);
+        }
+        libraryId = libs[0].id;
+      }
+
+      try {
+        const result = publishModeToLibrary({
+          sourceModeDir,
+          libraryId,
+          ...(asName ? { name: asName } : {}),
+          push,
+        });
+        p.log.success(`Published ${modeArg} to ${libraryId} at ${result.destDir}`);
+        if (push && result.pushed) {
+          p.log.success(`Pushed`);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        p.cancel(`Failed to publish: ${msg}`);
+        process.exit(1);
+      }
+      return;
+    }
+
+    if (sub === "push") {
+      const id = rawArgs[2];
+      if (!id) {
+        p.cancel("Usage: pneuma library push <id>");
+        process.exit(1);
+      }
+      try {
+        pushLibrary(id);
+        p.log.success(`Pushed library "${id}"`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        p.cancel(msg);
+        process.exit(1);
+      }
+      return;
+    }
+
+    if (sub === "unlink") {
+      const id = rawArgs[2];
+      if (!id) {
+        p.cancel("Usage: pneuma library unlink <id> [--force]");
+        process.exit(1);
+      }
+      const force = hasFlag("--force");
+      if (!force) {
+        const confirmed = await p.confirm({
+          message: `Unlink library "${id}"? This will delete its on-disk clone.`,
+          initialValue: false,
+        });
+        if (p.isCancel(confirmed) || !confirmed) {
+          p.cancel("Cancelled.");
+          process.exit(0);
+        }
+      }
+      try {
+        const removed = unlinkLibrary(id);
+        if (removed) {
+          p.log.success(`Library "${id}" removed`);
+        } else {
+          p.log.info(`Library "${id}" not linked.`);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        p.cancel(`Failed to unlink: ${msg}`);
+        process.exit(1);
+      }
+      return;
+    }
+
+    if (sub === "activate" || sub === "deactivate") {
+      const id = rawArgs[2];
+      const modeName = rawArgs[3];
+      if (!id || !modeName) {
+        p.cancel(`Usage: pneuma library ${sub} <id> <mode>`);
+        process.exit(1);
+      }
+      try {
+        setModeActivated(id, modeName, sub === "activate");
+        p.log.success(
+          sub === "activate"
+            ? `Mode "${modeName}" activated in ${id}`
+            : `Mode "${modeName}" deactivated in ${id}`,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        p.cancel(msg);
+        process.exit(1);
+      }
+      return;
+    }
+
+    p.cancel(`Unknown library subcommand: ${sub ?? "(none)"}\n${usage}`);
+    process.exit(1);
   }
 
   // Plugin subcommand — add, list, remove

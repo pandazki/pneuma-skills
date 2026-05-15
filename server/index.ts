@@ -32,6 +32,7 @@ import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./
 import type { ProxyRoute } from "../core/types/mode-manifest.js";
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
 import { mountHandoffRoutes } from "./handoff-routes.js";
+import { registerLibraryRoutes } from "./library-routes.js";
 import { mountNativeRoutes } from "./native-bridge.js";
 import { mountProjectsRoutes } from "./projects-routes.js";
 import {
@@ -400,7 +401,26 @@ export async function startServer(options: ServerOptions) {
       inspiredBy?: { name: string; url: string };
     }>;
     published: Array<{ name: string; displayName: string; description?: string; version: string; publishedAt: string; archiveUrl: string; icon?: string }>;
-    local: Array<{ name: string; displayName: string; description?: string; version: string; path: string; icon?: string }>;
+    /**
+     * Locally installed modes. Covers two sources:
+     * - `~/.pneuma/modes/<id>/` — single-mode external installs (legacy).
+     * - `~/.pneuma/libraries/<id>/<mode>/` — modes inside a multi-mode
+     *   library that the user has activated. These entries carry
+     *   `librarySource` so the launcher can group them under a "Mode
+     *   Libraries" section + render a source chip. Deactivated modes
+     *   stay on disk but do not appear here.
+     */
+    local: Array<{
+      name: string;
+      displayName: string;
+      description?: string;
+      version: string;
+      path: string;
+      icon?: string;
+      librarySource?: { id: string; name: string; displayName?: string };
+      /** True when the library's recorded `manifestVersion` is ahead of `installedVersion` */
+      updateAvailable?: boolean;
+    }>;
   }
 
   let registryCache: { value: RegistryResponse; fetchedAt: number } | null = null;
@@ -486,6 +506,47 @@ export async function startServer(options: ServerOptions) {
         }
       }
     } catch { }
+
+    // Library-installed modes — append activated entries with a
+    // `librarySource` tag so the launcher can group them and offer
+    // per-library "Check updates" without a separate API call. The path
+    // is the absolute on-disk mode dir, identical to the single-mode
+    // path, so existing launch logic (`Launcher.tsx` POSTs `specifier:
+    // mode.path` to `/api/launch`) keeps working untouched.
+    try {
+      const { listLibraries, getLibraryModePath } = await import("../core/library-registry.js");
+      for (const lib of listLibraries()) {
+        for (const m of lib.modes) {
+          if (!m.activated) continue;
+          const abs = getLibraryModePath(lib.id, m.name);
+          if (!abs) continue; // skip stale sidecar entries
+          let parsed: ReturnType<typeof parseManifestTs> = {};
+          try {
+            const manifestPath = ["manifest.ts", "manifest.js"]
+              .map((f) => join(abs, f))
+              .find((p) => existsSync(p));
+            if (manifestPath) parsed = parseManifestTs(readFileSync(manifestPath, "utf-8"));
+          } catch { /* tolerate parse failures, fall back to sidecar fields */ }
+          if (parsed.hidden === true) continue;
+          local.push({
+            name: parsed.name || m.name,
+            displayName: parsed.displayName || m.name,
+            description: parsed.description,
+            icon: parsed.icon,
+            version: parsed.version || m.manifestVersion,
+            path: abs,
+            librarySource: {
+              id: lib.id,
+              name: lib.name,
+              ...(lib.displayName ? { displayName: lib.displayName } : {}),
+            },
+            ...(m.installedVersion && m.installedVersion !== m.manifestVersion
+              ? { updateAvailable: true }
+              : {}),
+          });
+        }
+      }
+    } catch { /* library subsystem failure should not break the registry */ }
 
     return { builtins, published, local };
   };
@@ -1477,6 +1538,50 @@ export async function startServer(options: ServerOptions) {
     }
 
     // ── Handoff routes (v2 tool-call protocol) ─────────────────────────
+    // Mount `/api/libraries/*` + `/api/github/status` — launcher-scope only
+    // (libraries are a launcher-wide concern; per-session servers don't
+    // register these). Broadcasts `libraries_updated` on every mutation.
+    registerLibraryRoutes(app, wsBridge, {
+      projectRoot:
+        options.projectRoot || resolve(dirname(import.meta.path), ".."),
+      // Library mutations change which modes surface in `/api/registry`
+      // `local[]` (every activated library mode lands there). Dropping the
+      // SWR cache here lets the launcher Quick Start grid see new library
+      // modes on the same tick as the WS `libraries_updated` broadcast,
+      // instead of waiting for the 60s TTL to elapse.
+      invalidateRegistry: () => {
+        registryCache = null;
+      },
+    });
+
+    // ── Favorites (launcher-scope) ─────────────────────────────────────
+    // Persistent user-pinned modes. The launcher reads this list to
+    // order Quick Start tiles and to mark favorited tiles with a small
+    // badge. The project mode-tile picker reads the same list. Sourced
+    // from `~/.pneuma/favorites.json` so it survives browser reset and
+    // is shared across all launcher sessions on this machine.
+    app.get("/api/favorites", async (c) => {
+      try {
+        const { readFavorites, DEFAULT_FAVORITES } = await import("../core/favorites.js");
+        return c.json({ favorites: readFavorites(), defaults: [...DEFAULT_FAVORITES] });
+      } catch (err) {
+        return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+      }
+    });
+    app.post("/api/favorites", async (c) => {
+      try {
+        const body = await c.req.json<{ favorites?: unknown }>();
+        if (!Array.isArray(body.favorites)) {
+          return c.json({ error: "favorites must be an array of mode names" }, 400);
+        }
+        const { writeFavorites, readFavorites } = await import("../core/favorites.js");
+        writeFavorites(body.favorites as string[]);
+        return c.json({ favorites: readFavorites() });
+      } catch (err) {
+        return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+      }
+    });
+
     // The launcher mounts these so any project session whose own server
     // hands a request through `/api/handoffs/emit` (e.g. via cross-port
     // proxy) still resolves correctly. The per-session server below also

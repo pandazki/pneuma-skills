@@ -939,6 +939,15 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       store.bumpSessionMetaTick();
       break;
     }
+    case "libraries_updated": {
+      // The launcher's library-routes mutated something (link / sync /
+      // activate / publish / unlink). Fire a DOM event the Launcher
+      // component listens for to refetch `/api/libraries`. Kept as a
+      // window-level event rather than a store slice because libraries
+      // are launcher-only state — no other component needs them.
+      window.dispatchEvent(new Event("pneuma:libraries-updated"));
+      break;
+    }
   }
 }
 

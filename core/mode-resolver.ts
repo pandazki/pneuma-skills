@@ -7,11 +7,35 @@
  * - github: "github:user/repo" or "github:user/repo#branch" — GitHub repository
  *
  * GitHub repositories are cloned to the ~/.pneuma/modes/{user}-{repo}/ cache directory.
+ *
+ * Multi-mode repos ("libraries") are detected at install time and routed
+ * to `~/.pneuma/libraries/<id>/` instead, with a `.library.json` sidecar
+ * tracking per-mode activation + last-synced git sha. See
+ * `core/library-registry.ts` for the shape rules.
  */
 
 import { resolve, join, basename } from "node:path";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+  statSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
 import { homedir } from "node:os";
+import {
+  detectRepoShape,
+  getLibrariesDir,
+  getLibraryDir,
+  getLibrarySidecarPath,
+  linkLibrary,
+  syncLibrary,
+  unlinkLibrary,
+  type LibrarySyncReport,
+} from "./library-registry.js";
 
 export type ModeSourceType = "builtin" | "local" | "github" | "url";
 
@@ -121,8 +145,154 @@ export function parseModeSpecifier(specifier: string): {
 }
 
 /**
+ * Result of resolving a mode source — either a single mode or a library
+ * containing many modes. Single-mode resolution preserves the existing
+ * `ResolvedMode` shape for legacy callers (mode launch path).
+ */
+export type ResolveResult =
+  | { kind: "single"; resolved: ResolvedMode }
+  | {
+      kind: "library";
+      /** Atomic state after link/sync — added/removed/updated counts. */
+      report: LibrarySyncReport;
+      /** Absolute path to the library's on-disk root. */
+      libraryDir: string;
+      /** Original specifier as provided by the user. */
+      specifier: string;
+    };
+
+/**
+ * Resolve a mode specifier, supporting both single-mode and multi-mode
+ * (library) repos. Use this from install-aware callers (`pneuma mode add`,
+ * library server routes). Launch-path callers should keep using
+ * {@link resolveMode}, which throws a helpful error when the specifier
+ * points at a library.
+ */
+export async function resolveModeOrLibrary(
+  specifier: string,
+  projectRoot: string,
+): Promise<ResolveResult> {
+  const parsed = parseModeSpecifier(specifier);
+
+  switch (parsed.type) {
+    case "builtin":
+    case "local": {
+      // No library possibility — these specifiers point at a single mode
+      // by definition (either a builtin name or an absolute path).
+      const resolved = await resolveMode(specifier, projectRoot);
+      return { kind: "single", resolved };
+    }
+
+    case "github": {
+      const { user, repo, ref } = parsed.github!;
+      const id = `${user}-${repo}`;
+
+      // Path A — already installed as a library. Update in-place and sync
+      // the sidecar so activation flags and installedVersion carry over.
+      if (existsSync(getLibrarySidecarPath(id))) {
+        const libDir = getLibraryDir(id);
+        await ensureGithubMode(user, repo, ref, libDir);
+        const shape = detectRepoShape(libDir, id);
+        if (shape.kind === "library") {
+          const sha = await readGitSha(libDir);
+          const report = syncLibrary(id, shape, sha);
+          return { kind: "library", report, libraryDir: libDir, specifier };
+        }
+        // Repo morphed away from library back to single — rare, but rather
+        // than leave a stale sidecar around, drop it and fall through to
+        // the normal single-mode path which clones into modes/<id>/.
+        unlinkLibrary(id);
+      }
+
+      // Path B — fresh install. Clone into the single-mode cache; if it
+      // turns out to be a library, move into libraries/<id>/ and write a
+      // fresh sidecar.
+      const singleDir = join(MODES_CACHE_DIR, id);
+      await ensureGithubMode(user, repo, ref, singleDir);
+      const shape = detectRepoShape(singleDir, id);
+
+      if (shape.kind === "single") {
+        validateModePackage(singleDir);
+        return {
+          kind: "single",
+          resolved: { type: "github", name: id, path: singleDir, specifier },
+        };
+      }
+
+      const libDir = getLibraryDir(id);
+      mkdirSync(getLibrariesDir(), { recursive: true });
+      if (existsSync(libDir)) {
+        rmSync(libDir, { recursive: true, force: true });
+      }
+      renameSync(singleDir, libDir);
+      const sha = await readGitSha(libDir);
+      const report = linkLibrary(
+        id,
+        libDir,
+        shape,
+        { type: "github", url: specifier, ref },
+        sha,
+      );
+      return { kind: "library", report, libraryDir: libDir, specifier };
+    }
+
+    case "url": {
+      const { url } = parsed.urlSpec!;
+      const id = parsed.name;
+
+      // Path A — already a library. Re-extract in-place (URL tarballs
+      // have no incremental update story), then reconcile sidecar.
+      if (existsSync(getLibrarySidecarPath(id))) {
+        const libDir = getLibraryDir(id);
+        await ensureUrlMode(url, libDir);
+        const shape = detectRepoShape(libDir, id);
+        if (shape.kind === "library") {
+          const report = syncLibrary(id, shape, null);
+          return { kind: "library", report, libraryDir: libDir, specifier };
+        }
+        unlinkLibrary(id);
+      }
+
+      // Path B — fresh extract to the single-mode cache, then maybe move.
+      const singleDir = join(MODES_CACHE_DIR, id);
+      await ensureUrlMode(url, singleDir);
+      const shape = detectRepoShape(singleDir, id);
+
+      if (shape.kind === "single") {
+        validateModePackage(singleDir);
+        return {
+          kind: "single",
+          resolved: { type: "url", name: id, path: singleDir, specifier },
+        };
+      }
+
+      const libDir = getLibraryDir(id);
+      mkdirSync(getLibrariesDir(), { recursive: true });
+      if (existsSync(libDir)) {
+        rmSync(libDir, { recursive: true, force: true });
+      }
+      renameSync(singleDir, libDir);
+      const report = linkLibrary(
+        id,
+        libDir,
+        shape,
+        { type: "url", url },
+        null,
+      );
+      return { kind: "library", report, libraryDir: libDir, specifier };
+    }
+  }
+}
+
+/**
  * Resolve a mode specifier to a local directory path.
  * For GitHub modes, this clones/updates the repository.
+ *
+ * When the specifier points at a multi-mode repo (library), this throws
+ * with a message directing the caller to {@link resolveModeOrLibrary} or
+ * to the `pneuma mode add` CLI. The launch path should never receive a
+ * library specifier directly — library modes are launched by their
+ * resolved on-disk path after `mode add`.
  *
  * @param specifier — Mode specifier string (e.g. "doc", "./my-mode", "github:user/repo")
  * @param projectRoot — Absolute path to the pneuma-skills project root
@@ -159,30 +329,20 @@ export async function resolveMode(
       };
     }
 
-    case "github": {
-      const { user, repo, ref } = parsed.github!;
-      const cacheDir = join(MODES_CACHE_DIR, `${user}-${repo}`);
-      await ensureGithubMode(user, repo, ref, cacheDir);
-      validateModePackage(cacheDir);
-      return {
-        type: "github",
-        name: parsed.name,
-        path: cacheDir,
-        specifier,
-      };
-    }
-
+    case "github":
     case "url": {
-      const { url } = parsed.urlSpec!;
-      const cacheDir = join(MODES_CACHE_DIR, parsed.name);
-      await ensureUrlMode(url, cacheDir);
-      validateModePackage(cacheDir);
-      return {
-        type: "url",
-        name: parsed.name,
-        path: cacheDir,
-        specifier,
-      };
+      // Delegate to library-aware resolver so a library specifier produces
+      // a single, helpful error instead of failing the "missing manifest.ts"
+      // check on the cloned repo root.
+      const r = await resolveModeOrLibrary(specifier, projectRoot);
+      if (r.kind === "library") {
+        const names = r.report.library.modes.map((m) => m.name).join(", ");
+        throw new Error(
+          `"${specifier}" is a mode library with ${r.report.library.modes.length} mode(s). ` +
+            `Run \`pneuma mode add ${specifier}\` first, then launch one of: ${names}.`,
+        );
+      }
+      return r.resolved;
     }
   }
 }
@@ -334,6 +494,22 @@ function patchViteEnvTokens(cacheDir: string): void {
       console.log(`[mode-resolver] Patched import.meta.env tokens in ${patched} bundle file(s) under .build/`);
     }
   } catch { /* .build/ access failed, skip */ }
+}
+
+/**
+ * Read the HEAD sha of a clone. Returns null when the directory isn't a
+ * git repo (e.g. URL-tarball extracts) or when `git` itself fails — both
+ * are non-fatal: callers persist the null and the library still works,
+ * just without sha-based "no updates" short-circuit.
+ */
+async function readGitSha(cacheDir: string): Promise<string | null> {
+  try {
+    const out = await runGit(["rev-parse", "HEAD"], cacheDir);
+    const sha = out.trim();
+    return sha || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
