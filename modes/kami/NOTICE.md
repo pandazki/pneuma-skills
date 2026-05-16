@@ -25,12 +25,17 @@ the full license text. Excerpt:
 
 ## Fonts
 
-### TsangerJinKai02-W04 (CN serif)
+### TsangerJinKai02-W04 + W05 (CN serif, dual face)
 
-`seed/_shared/assets/fonts/TsangerJinKai02-W04.ttf` is bundled under the
-vendor's free-for-personal-use license. **Commercial use requires a
-separate license** from [tsanger.cn](https://tsanger.cn). End-users
-producing commercial documents are responsible for securing that license.
+`seed/_shared/assets/fonts/TsangerJinKai02-W04.ttf` (400-weight body)
+and `seed/_shared/assets/fonts/TsangerJinKai02-W05.ttf` (500-weight
+headings) are bundled under the vendor's free-for-personal-use license.
+The dual-face setup matches upstream V1.5.0: two separate `@font-face`
+declarations under the same family name let the browser pick a real
+500-weight file for headings instead of synthetically bolding W04.
+**Commercial use requires a separate license** from
+[tsanger.cn](https://tsanger.cn). End-users producing commercial
+documents are responsible for securing that license.
 
 ### JetBrains Mono (OFL)
 
