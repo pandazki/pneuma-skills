@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.7.1] - 2026-05-17
+
+### Improved — kami and webcraft upstream skill syncs
+
+Pure skill-content release: both upstream-tracked modes pull in their latest design intelligence. No platform code changes — modes/* only.
+
+#### Kami: tw93/kami V1.4.1 → V1.5.0 "Live Paper"
+
+The substantive sync of the release cycle. Two stacked PRs (drop-in references first, prose + font second) bring kami to upstream-parity for everything that fits Pneuma's iframe paper-canvas model. The WeasyPrint runtime, `build.py` / `ensure-fonts.sh` pipeline, Claude Code plugin marketplace path, `llms.txt` / sitemap / JSON-LD landing-page assets, and the `~/.config/kami/brand.md` profile loader remain explicitly non-adopted per `modes/kami/NOTICE.md`.
+
+- **Two new skill references.** `anti-patterns.md` is a six-category quality checklist (Emptiness / Fabrication / Mimicry / Excess / Source gaps / Tone) that any kami session can consult before drafting. `resume-writing.md` extracts the three-part bullet structure (Role / Actions / Impact) with explicit per-language char/word limits and metric layout rules — content that used to live inline inside `writing.md` and is now its own first-class doc to mirror upstream.
+- **`design.md` gains Pygments-style syntax highlighting guidance** reframed for client-side highlighters (highlight.js / Prism, same five token-to-CSS-var bindings: `Keyword → --brand`, `Comment → --stone`, etc.). Plus a slide-caption floor, a CJK-screen-body line-height row, a cascading-break-inside browser-print note, and tightened sparse-slide handling cells in the Deck Recipe table ("merge with neighbor first; shrink page size last").
+- **`writing.md` gains two new core principles.** #7 "Term annotation half-life" governs when a parenthetical English gloss after a CJK term can drop on subsequent appearances. #8 "English-term density in CJK text" sets a per-paragraph ceiling so prose stays readable.
+- **`diagrams.md` adds a slide-section sizing rule.** SVG diagrams now fill ≥65% of slide area — keeps diagrams from looking lost on a 1280×720 paper.
+- **`SKILL.md` grows by 179 net lines.** A new doc-type genre map covers 8 supported genres (one-pager, long-doc, letter, portfolio, resume, slides, equity-report, changelog — `landing-page` stays deferred while we decide whether kami or `webcraft` owns it). An "Auto-select charts from data" decision tree maps data shape to the right chart type. Per-page density rules — items-per-page hard floors per template — are reframed against the existing `kami-fit.json sparse` status + `<div class="page">` / `.co` callout vocabulary. A new three-step "When the user hands over raw content" subflow runs source/material pass → layout note → content-set creation before any code lands. A single-line Note defers output format selection to the viewer's Export menu so agent-side and UI-side selection can't fight.
+- **Headings now ship in TsangerJinKai02-W05 (500-weight) alongside W04 body.** New 18.9 MB `seed/_shared/assets/fonts/TsangerJinKai02-W05.ttf` joins the existing W04 ttf. `styles.css` replaces the previous single-face `font-weight: 400 500` synthetic-interpolation declaration with two fixed-weight `@font-face` blocks (W04 at 400, W05 at 500) — upstream-faithful, avoids engines fabricating a synthetic 500 when both faces ARE present. The Tsanger commercial-use caveat in `NOTICE.md` now applies to both faces.
+- **Manifest skill version 1.1.0 → 1.3.0** (two minor bumps in one release cycle): 1.2.0 captures the drop-in references, 1.3.0 closes the prose + font sync.
+
+#### WebCraft: pbakaus/impeccable skill-v3.1.0 → skill-v3.1.1
+
+Pure bookkeeping. The 3.1.0 → 3.1.1 upstream diff is a Windows path fix in `cli/.../critique-storage.mjs` (CLI-only — Pneuma doesn't ship the upstream CLI), an antipattern-detector tweak in `cli/engine/detect-antipatterns.mjs` (also CLI engine), and the SKILL.md frontmatter `version:` line. The skill body, every `references/cmd-*.md` verb file, every `references/*.md` topic file, and every adaptation in `NOTICE.md` are byte-identical to 3.1.0.
+
+- **NOTICE.md tracked-version line** moves to `impeccable skill-v3.1.1 (May 14, 2026)`.
+- **Manifest skill version 1.4.0 → 1.4.1** (patch — no content delta, just the tracking pin honesty).
+
+### Process note — stacked-PR pitfall caught and patched
+
+The kami sync shipped as two stacked PRs (#109 drop-in references, #110 prose + font). When #109 squash-merged to `main`, its branch was auto-deleted; GitHub then "merged" #110 into the orphaned branch and the merge commit landed nowhere reachable from `main`. Caught during the bump pass — `ls modes/kami/seed/_shared/assets/fonts/` showed no W05 file despite #110's status reporting `MERGED`. Recovered by cherry-picking the original PR-2 commit onto a fresh branch from current `main` and re-opening as #111 (the diff was exactly the 5 expected files, no merge conflicts). Going forward: for stacked PRs, use merge commits on the base PR (not squash) so dependent PRs can rebase cleanly, or manually rebase the dependent PR onto `main` after the base PR squash-merges.
+
 ## [3.7.0] - 2026-05-16
 
 ### Added — Mode Libraries: ship N modes from one GitHub repo, pin favorites to the front
