@@ -9,7 +9,7 @@ motion-design, interaction-design, responsive-design, ux-writing) is
 adapted from [pbakaus/impeccable](https://github.com/pbakaus/impeccable)
 ("Impeccable.style") under the Apache 2.0 License.
 
-**Synced against:** impeccable skill-v3.1.0 (May 13, 2026).
+**Synced against:** impeccable skill-v3.1.1 (May 14, 2026).
 
 ### Local adaptations
 

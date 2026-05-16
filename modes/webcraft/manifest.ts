@@ -8,10 +8,13 @@ import { loadSite, saveSite } from "./domain.js";
 
 const webcraftManifest: ModeManifest = {
   name: "webcraft",
-  version: "1.4.0",
+  version: "1.4.1",
   displayName: "WebCraft",
   description: "Web design powered by Impeccable.style — 22 AI design commands, responsive preview, and export",
   changelog: {
+    "1.4.1": [
+      "Tracked Impeccable.style upstream pin moved to skill-v3.1.1 (Windows CLI fix release — no skill content delta)",
+    ],
     "1.4.0": [
       "Synced Impeccable.style guidance to upstream v3.1.0",
       "Craft now enforces four STOP gates between shape and code, plus a mock-fidelity inventory and image gate",

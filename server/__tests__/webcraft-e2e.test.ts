@@ -78,7 +78,7 @@ describe("mode loading", () => {
 describe("manifest validation", () => {
   it("has all required top-level fields", () => {
     expect(webcraftManifest.name).toBe("webcraft");
-    expect(webcraftManifest.version).toBe("1.4.0");
+    expect(webcraftManifest.version).toBe("1.4.1");
     expect(webcraftManifest.displayName).toBe("WebCraft");
     expect(webcraftManifest.description).toContain("Impeccable");
     expect(webcraftManifest.icon).toContain("<svg");
