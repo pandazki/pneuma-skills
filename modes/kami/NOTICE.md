@@ -50,8 +50,8 @@ single-serif-per-page model (locked since v1.2.0).
 ## Tracked upstream version
 
 Diagrams and reference docs in this mode are synced against
-[tw93/kami **V1.4.1**](https://github.com/tw93/Kami/releases/tag/V1.4.1)
-("Steadier Hand", 2026-05-05). Items intentionally not synced from
+[tw93/kami **V1.5.0**](https://github.com/tw93/Kami/releases/tag/V1.5.0)
+("Live Paper", 2026-05-15). Items intentionally not synced from
 upstream because they don't apply to Pneuma's iframe paper-canvas /
 browser-print model: the WeasyPrint runtime, the `build.py` /
 `ensure-fonts.sh` build pipeline, the Claude Code plugin marketplace

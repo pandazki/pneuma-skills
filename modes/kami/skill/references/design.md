@@ -143,6 +143,8 @@ Any font-family that may render Chinese or Japanese must include a CJK fallback,
 **Screen (px)** ≈ pt × 1.33 (9pt ≈ 12px, 18pt ≈ 24px).
 **Minimum floor**: web text >= 12px, PDF text >= 9pt.
 
+**Slide caption floor**: slides 上 caption 至少 24px (不是 12px)。Print 9pt 在投影距离不可读，slide caption 用 pt x 2.67。
+
 ### Weight
 
 - **Serif body**: 400 (W04 font file)
@@ -166,6 +168,7 @@ Print documents are **tighter** than English web body. English web typically run
 | Dense body | 1.40-1.45 | Resume, one-pager, dense information |
 | Reading body | 1.50-1.55 | Long-doc chapters, letters |
 | Label / caption | 1.30-1.40 | Small labels, multi-line metadata |
+| CJK screen body | 1.55-1.65 | 中日文 serif 在 slide scale (27-33px) 下比 print x1.33 更需松行高 |
 
 **Forbidden**:
 - 1.60+ - loose feel, web rhythm, not print
@@ -515,6 +518,26 @@ For displaying pseudocode or code snippets in slides. More structured than a pla
 
 **Content philosophy**: use pseudocode style. Comments should outnumber code lines. The reader sees logic, not syntax.
 
+### Syntax Highlighting
+
+Code blocks with `class="language-*"` on the `<code>` element get tokenized syntax highlighting. The palette uses existing tokens only:
+
+| Token | Hex | Token var |
+|---|---|---|
+| Keyword | `#1B365D` | `--brand` |
+| Comment | `#6b6a64` | `--stone` |
+| String | `#504e49` | `--olive` |
+| Number | `#3d3d3a` | `--dark-warm` |
+| Function/Class | `#141413` | `--near-black` |
+
+```html
+<pre><code class="language-python">def analyze(data):
+    """Transform raw data."""
+    return transform(data)</code></pre>
+```
+
+Blocks without `class="language-*"` stay monochrome. Pneuma renders in a browser, so highlighting runs client-side — load highlight.js or Prism and bind the same five tokens above to the kami CSS vars instead of using the library's default theme.
+
 ### Glance Grid
 
 Four key-number cells, placed after the TOC or on a chapter-opening page of a long-doc / proposal.
@@ -758,6 +781,8 @@ p    { widows: 2; orphans: 2; }
 
 CSS alone cannot prevent "the last two lines of a chapter pushed onto a fresh page". For long-doc / proposal output, follow up with a render-time density check (see production.md "Verify & Debug").
 
+**Cascading break-inside**: when two `break-inside: avoid` blocks sit next to each other and the first would split, both get pushed to the next page together. A chapter with more than two `break-inside: avoid` blocks (quote + table + callout, etc.) near a page boundary is at high risk of leaving 40-80mm of trailing whitespace on the previous page. Fix by splitting the chapter, or downgrade one block (allow the table to break with a repeating header `<thead>`). Browser print engines honor `break-inside: avoid` widely, so the same cascade applies in Pneuma's iframe-to-print path.
+
 ### Force break
 
 ```css
@@ -901,7 +926,8 @@ table.data td:first-child {
 | No section divider slides | Use `.eyebrow` for section numbering instead; saves one slide per section |
 | No CJK parentheses | Replace `（...）` with `·` or `,` |
 | One line per bullet | Trim until each item fits on one line; never let it wrap |
-| Empty space handling | Priority: shrink page size > pin `.co` callout > add content > merge slides |
+| Empty space ≥50% | Draft defect. Order: merge with neighbor slide > pin `.co` callout > add a chart that earns the space. Shrinking page size is a last resort and must apply to the whole deck, not per slide. |
+| Empty space 25-50% | Acceptable if the slide has a pinned `.co` callout. Otherwise add one supporting bullet or a small inline figure. Never pad with filler prose. |
 | Cover | No horizontal rule; title centered `38pt`; subtitle on one line; bottom meta centered |
 
 ### Troubleshooting
@@ -910,7 +936,7 @@ table.data td:first-child {
 |---|---|
 | Content overflows to next page | Add `max-height` or trim content |
 | 2×2 columns misaligned | Switch from CSS Grid to `table.t2x2` |
-| Large blank at slide bottom | Reduce to `280mm 158mm` or pin `.co` callout |
+| Large blank at slide bottom | First check item count (target 3-5 items per slide). If content is genuinely short, pin a `.co` callout. Only reduce page size when the entire deck is uniformly sparse. |
 | CJK text looks tight | Add `letter-spacing: 0.3pt` |
 
 ### Core principles

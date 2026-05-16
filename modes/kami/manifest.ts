@@ -30,10 +30,18 @@ const SAFE_MARGINS_MM: Record<string, { top: number; side: number; bottom: numbe
 
 const kamiManifest: ModeManifest = {
   name: "kami",
-  version: "1.1.0",
+  version: "1.2.0",
   displayName: "Kami",
   description: "Paper-canvas web design with warm parchment aesthetic — design language adapted from tw93/kami (MIT)",
   changelog: {
+    "1.2.0": [
+      "Synced upstream tw93/kami v1.4.1 → V1.5.0 (Live Paper)",
+      "New anti-patterns reference — six-category quality checklist (Emptiness / Fabrication / Mimicry / Excess / Source gaps / Tone)",
+      "New resume-writing reference — three-part bullet structure (Role / Actions / Impact) with per-language char limits",
+      "design.md gains Pygments-style syntax highlighting token map and tightened sparse-slide handling",
+      "writing.md gains Term annotation half-life + English-term density rules",
+      "diagrams.md adds slide-scale SVG sizing rule (>=65% slide area)",
+    ],
     "1.1.0": [
       "Synced upstream tw93/kami v1.2.0 → V1.4.1 (Steadier Hand)",
       "14 SVG diagrams re-normalized: font-weight 500, no italic, solid hex pre-blended on parchment",
