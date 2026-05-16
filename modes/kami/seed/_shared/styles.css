@@ -10,10 +10,25 @@
  * --sans aliases --serif. Per-language stacks chosen by content authors.
  */
 
+/*
+ * Dual @font-face for TsangerJinKai02 (upstream V1.5.0 pattern):
+ *   • W04 supplies the 400-weight body face
+ *   • W05 supplies a real 500-weight face for headings — not a
+ *     synthetic bold of W04
+ * Two separate declarations under the same family name let the
+ * browser pick the file that matches the requested font-weight.
+ */
 @font-face {
   font-family: "TsangerJinKai02";
   src: url("./assets/fonts/TsangerJinKai02-W04.ttf") format("truetype");
-  font-weight: 400 500;
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "TsangerJinKai02";
+  src: url("./assets/fonts/TsangerJinKai02-W05.ttf") format("truetype");
+  font-weight: 500;
   font-style: normal;
   font-display: swap;
 }

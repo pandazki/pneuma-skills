@@ -30,10 +30,18 @@ const SAFE_MARGINS_MM: Record<string, { top: number; side: number; bottom: numbe
 
 const kamiManifest: ModeManifest = {
   name: "kami",
-  version: "1.2.0",
+  version: "1.3.0",
   displayName: "Kami",
   description: "Paper-canvas web design with warm parchment aesthetic — design language adapted from tw93/kami (MIT)",
   changelog: {
+    "1.3.0": [
+      "SKILL.md gains equity-report and changelog doc routing, plus 11 new diagram routes (bar-chart, candlestick, donut-chart, layer-stack, line-chart, state-machine, swimlane, timeline, tree, venn, waterfall)",
+      "New \"Auto-select charts from data\" decision tree maps data shape to the right diagram type",
+      "Per-page density rules tightened — items-per-page contracts per template, expressed as kami-fit-loop thresholds",
+      "New Step \"Source and material pass\" before drafting — explicit materials status block",
+      "Optional layout-note step gives the user a non-blocking editor preview before code",
+      "Headings now ship in TsangerJinKai02-W05 (500-weight) alongside W04 body — matching upstream dual-face stack",
+    ],
     "1.2.0": [
       "Synced upstream tw93/kami v1.4.1 → V1.5.0 (Live Paper)",
       "New anti-patterns reference — six-category quality checklist (Emptiness / Fabrication / Mimicry / Excess / Source gaps / Tone)",

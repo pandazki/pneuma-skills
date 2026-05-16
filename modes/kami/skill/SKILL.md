@@ -174,12 +174,116 @@ Each content set has an `index.html` + `manifest.json` (+ a `README.md`
 for provenance). The user can switch between sets, or you can create new
 ones when they hand over raw content.
 
+## Doc types this mode handles
+
+One design language across these document genres. Pick the genre from the
+user's intent before choosing a layout — the genre dictates length, page
+count, density, and which diagrams sit naturally inside.
+
+| User says | Genre |
+|---|---|
+| "one-pager / 方案 / 执行摘要 / exec summary" | One-Pager |
+| "white paper / 白皮书 / 长文 / 年度总结 / technical report" | Long Doc |
+| "formal letter / 信件 / 辞职信 / 推荐信 / memo" | Letter |
+| "portfolio / 作品集 / case studies" | Portfolio |
+| "resume / CV / 简历 / 履歴書" | Resume |
+| "slides / PPT / deck / 演示" | Slides |
+| "个股研报 / equity report / 估值分析 / investment memo / 股票分析" | Equity Report |
+| "更新日志 / changelog / release notes / 版本记录" | Changelog |
+
+Seed demos cover three points on this spectrum (`pneuma-one-pager/`,
+`kaku-portfolio/`, `nvda-equity-report/`); the rest you build from
+scratch into a new content set.
+
+> Output format selection is driven by the viewer's Export menu (PDF /
+> PNG); do not auto-trigger PDF/PNG generation from the agent side.
+
 ## When the user hands over raw content
 
+The flow below assumes you've already classified the doc type using the
+table above.
+
+### Step 1 · Source and material pass
+
+Run this before distilling or filling when the document depends on facts
+or materials outside the user's draft. Skip only for personal drafts
+where the user supplied everything needed.
+
+**Source check.** Trigger when the document mentions a specific company,
+product, person, release date, version, funding round, metric, market
+fact, or technical spec — any current fact likely to change.
+
+- Use primary sources before writing: user-provided material, official
+  site, docs, filings, press release, app store page, or repo release.
+- Keep a short note of source names and dates for facts that drive the
+  document.
+- If sources conflict or a fact cannot be checked quickly, ask the user
+  instead of choosing silently.
+- Avoid current-sounding claims ("latest", "recent", "new", version
+  numbers, launch dates, financial figures) unless they are checked.
+
+**Material check.** Trigger when the document is about a company,
+product, project, venue, or personal brand. Confirm the materials that
+make the subject recognizable before layout:
+
+| Need | Required when | Accept |
+|---|---|---|
+| Logo | Any branded document | User file or official SVG/PNG |
+| Product image | Physical product / venue / object | Official image, user image, or marked gap |
+| UI screenshot | App / SaaS / website / tool | Current screenshot, official product image, or user capture |
+| Brand colors | Branded one-pager / portfolio / deck | Official value, extracted asset value, or keep kami ink-blue |
+| Fonts | Only if brand typography matters | Official font, close system fallback, or kami default |
+
+If a required item is missing, use a compact gap table and ask once. Do
+not replace missing material with generic imagery, approximate logo
+drawings, or invented values.
+
+**Materials status block.** After the material check, output a structured
+status block before continuing. One-shot transparency display, not a
+question:
+
+```
+Materials status:
+- Logo: OK assets/client-logo.svg
+- Brand colors: OK #1B365D mapped to --brand
+- Product screenshot: MISSING (proceeding with kami default placeholder)
+- UI screenshot: not required for this doc type
+```
+
+Use `OK`, `MISSING`, or `not required`. If a required item is missing and
+no user input arrived, ask once with the gap table; otherwise continue
+silently.
+
+### Step 2 · Layout note (transparent, non-blocking)
+
+Before creating the content set, write a short editor-style note stating
+the layout intent: doc genre, length target, narrative arc, embedded
+diagrams, material status. Match the user's language. Keep it under 80
+words, written as prose, not a status panel. Continue immediately after;
+do not wait for approval.
+
+Example (EN):
+
+> Layout intent: Equity Report (EN), two pages A4. Open with thesis and
+> price target, run through valuation (DCF and comparables), close on
+> catalysts and risks. A revenue line chart and an FY26 waterfall sit
+> mid-doc. Logo is in hand; product image is absent, so the header stays
+> text-only.
+
+Example (CN):
+
+> 排版意图：Equity Report 中文版，2 页 A4。先立论与目标价，进入估值 (DCF
+> 与可比公司)，落于催化剂与风险。中段嵌一张营收趋势折线和 FY26 收入桥瀑
+> 布。Logo 已就位，产品图暂缺，header 改走纯文字。
+
+The note is for transparency, not approval. If the user pushes back,
+adjust; otherwise proceed to Step 3.
+
+### Step 3 · Create the content set
+
 1. Pick a short content-set name (e.g. `acme-whitepaper/`).
-2. Create the directory with an `index.html` that starts from the blank
-   scaffold (copy `blank/index.html` as the skeleton), a `manifest.json`,
-   and a `README.md`.
+2. Create the directory with an `index.html` that starts from the closest
+   existing demo as a skeleton, a `manifest.json`, and a `README.md`.
 3. Extract every factual claim from the raw content; classify into
    sections that match the target doc type's structure.
 4. Gap-check: list what the layout needs but the content doesn't have.
@@ -231,6 +335,49 @@ Reaching `fits` across every page is the quality bar before you tell
 the user the document is ready. Silence on your part implies the fit is
 passing. See `references/cmd-fit.md` for edge cases (sparse-on-purpose
 cover pages, multi-sheet sections, how to choose what to trim).
+
+### Per-page density target (multi-page docs only)
+
+Applies to long-doc / portfolio / slides / equity-report / changelog.
+Does **not** apply to resume / one-pager / letter — those have their own
+length contracts.
+
+Body-page fill target is **60–80%**. Cover, table-of-contents, and final
+sign-off pages are exempt. This rule guards against AI-generated drafts
+that fragment content too thin to fill the sheets they occupy. The fill
+percentage is `content_height_mm / paper_height_mm` from `kami-fit.json`;
+the existing `sparse` status (`overflow_mm < -50` ≈ <~83% on A4) already
+flags the worst cases — the per-template thresholds below sharpen the
+decision for borderline pages.
+
+**Items-per-page contract** (thresholds from upstream V1.5.0):
+
+| Genre | Typical body page | Hard floor (merge if below) |
+|---|---|---|
+| Slides | 1 assertion title + 3–5 supporting items, or 1 chart + 2–3 callouts | <3 items and no chart → merge into adjacent slide |
+| Long doc | 1 chapter heading + 2–4 paragraphs + at most 1 figure | Chapter renders <40% page → merge into neighbor |
+| Portfolio | 1 project header + 1 hero image + 3–5 outcome bullets | No image and <3 outcomes → merge with adjacent project |
+| Equity report | 1 section + 1 table/chart + supporting prose | Only a 2-row table on the page → combine sections |
+| Changelog | 1 version block + 4–8 entries | Version has <4 entries → place on the same page as the prior version |
+
+**Sparse-page merge rule.** Any body page rendering under 50% full
+(i.e. `kami-fit.json` reports `status: "sparse"` *and* the items-per-page
+floor for the genre is breached) → apply, in order:
+
+1. Merge upward into the previous section.
+2. Merge downward into the next section.
+3. Promote a list to a small diagram or table that earns the space.
+4. Pin a `.co` callout to the bottom (slides only). Whitespace above a
+   pinned callout is intentional, not sparse.
+
+Forbidden ways to "fill" a sparse page: padding with filler prose,
+repeating the heading as a sentence, inventing statistics, restating the
+prior page in different words. If the merge options don't apply, the page
+itself shouldn't exist — delete the `<div class="page">` block.
+
+**Last-page exemption.** The last body page is allowed 40–60% fill;
+forcing balance there usually means padding. The cover and closing
+colophon may have any fill level.
 
 ## Image generation (only when the user has configured a key)
 
@@ -399,10 +546,28 @@ Read `references/diagrams.md` once before drawing — it has the selection
 guide, kami token map, and the AI-slop anti-pattern table.
 
 **Auto-select charts from data.** When the page content includes numeric
-data (revenue splits, trends, category comparisons), pick the right chart
-type and embed it without waiting for the user to ask. Selection guide:
-proportional → donut, time series → line, category compare → bar, price
-history → candlestick, value decomposition → waterfall.
+data, pick the right chart type and embed it without waiting for the user
+to ask. Decision tree (first match wins, from upstream V1.5.0):
+
+| Data shape | Chart |
+|---|---|
+| Has open/high/low/close fields, or per-day price | Candlestick |
+| Has + and − contributions that sum to a total (bridge, waterfall, P&L) | Waterfall |
+| One series, values sum to ~100%, items ≤ 6 | Donut |
+| One series, values sum to ~100%, items ≥ 7 | Horizontal bar |
+| Two or more series across time (months, quarters, years) | Line |
+| One series across time, large count changes dominate (not rate) | Bar |
+| Multiple categories, same time snapshot, 2+ series | Grouped bar |
+| 2×2 strategic or priority positioning | Quadrant |
+| Hierarchical data with depth ≥ 2 | Tree |
+| Process with decision branches | Flowchart |
+| Cross-team or cross-role process with ≥ 3 actors | Swimlane |
+| Set overlaps or shared attributes between 2–3 groups | Venn |
+| Category comparison, single series, no time axis | Bar |
+
+When data fits multiple types, prefer the one that shows variance most
+clearly. Always embed inside a `<figure>` with a caption that states the
+insight, not just the data range.
 
 Before drawing, ask: **would a well-written paragraph teach the reader
 less than this diagram?** If no, don't draw.
