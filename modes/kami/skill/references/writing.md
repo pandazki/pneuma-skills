@@ -57,6 +57,19 @@ Branded documents should first make the subject recognizable, then use decoratio
 - If brand color is unknown, keep kami ink-blue rather than inventing a new color
 - **Third-party figures**: when redrawing a paper figure, patent illustration, or official architecture diagram for visual consistency, mark the redraw as `Schematic redrawn` /「示意重绘」in the caption. Do not style a redrawn version to look like the original screenshot. If the figure carries primary evidentiary value (patent, official spec), embed the original with attribution rather than redrawing it
 
+### 7. Term annotation half-life
+
+术语首次出现时注解。注解在 8-10 页或 10 张 slide 后过期。超出半衰期再次使用时，用更短的提示重标，不要假设读者还记得。Cap、卡片副标题、章节摘要这类快速阅读位置尤其严格。
+
+- 首次: "LTV (Lifetime Value, 用户在流失前贡献的总收入)"
+- 超过半衰期后重现: "LTV (用户终身价值)"
+- 半衰期内不要重标，读起来像在解释已知概念
+- 适用于 slides、long-doc、equity report 等超过 8 页的文档。Resume 和 one-pager 太短，不触发
+
+### 8. English term density in CJK text
+
+中日文正文里，单句未注解英文术语 ≤ 1 个。超过就拆句或加 inline 注解。注解优先用动作词 (warmup → 升起来, rollout → 跑一遍生成, credit assignment → 把功劳分到具体哪一步)，不用概念词 (预热, 轨迹生成, 信用分配)。动作词描述发生了什么，概念词只是换个外壳。
+
 ---
 
 ## Per-document strategies
@@ -431,6 +444,8 @@ Run through before every draft:
 - [ ] Number format consistent (commas, percent signs, arrows)?
 - [ ] Chinese punctuation and Chinese / Latin spacing consistent where applicable?
 - [ ] Page count within the document's constraint (resume 2, one-pager 1, letter 1)?
+- [ ] Any AI writing cliches? CN: 本质是 / 这意味着 / 值得注意的是 / 不仅...而且 / 破折号堆砌。EN: em dashes, "It's worth noting", "This means that". See anti-patterns #27.
+- [ ] Multi-page docs (>8 pages / >10 slides): domain terms re-annotated beyond the half-life window? See principle #7.
 
 ---
 

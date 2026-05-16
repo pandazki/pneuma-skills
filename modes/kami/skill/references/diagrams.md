@@ -252,7 +252,7 @@ Scan for these when drawing or reviewing:
 - **No diagrams.** Resume real-estate costs more than diagrams. Rare exception: a URL to a portfolio diagram when showing system-level capability.
 
 ### Slides
-- One diagram per slide, max. The diagram is the body. Text is caption, not a sidebar.
+- One diagram per slide, max. The diagram is the body. Text is caption, not a sidebar. At slide scale (1920x1080), scale the SVG to fill >=65% of the slide area; print-sized diagram on screen slide leaves ~35% dead space.
 
 ---
 
