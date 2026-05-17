@@ -13,7 +13,44 @@
  * configure them.
  */
 
+import { getEnrichedPath, resolveBinary } from "../server/path-resolver.js";
+
 const GH_PROBE_TIMEOUT_MS = 5_000;
+
+/**
+ * Resolve the gh binary's absolute path once. Packaged Electron apps on
+ * macOS start with a stripped launchd PATH (typically `/usr/bin:/bin:
+ * /usr/sbin:/sbin`) that doesn't include `/opt/homebrew/bin` where
+ * Homebrew gh lives on Apple Silicon. `resolveBinary` walks the user's
+ * shell PATH + common install dirs to find it; falls back to the bare
+ * name `"gh"` so a `PATH` augmentation alone is enough on systems where
+ * the binary doesn't get an absolute resolution.
+ *
+ * Cached because PATH discovery spawns a login shell once — paying that
+ * cost on every `detectGh` call would be silly for a probe the settings
+ * panel hits every few seconds.
+ */
+let _ghBinary: string | null | undefined;
+function ghBinary(): string {
+  if (_ghBinary === undefined) {
+    try {
+      _ghBinary = resolveBinary("gh");
+    } catch {
+      _ghBinary = null;
+    }
+  }
+  return _ghBinary || "gh";
+}
+
+/**
+ * Spawn env that always carries the enriched PATH. Belt-and-braces with
+ * the absolute-path resolution above: even if `resolveBinary` fell back
+ * to the bare name, the enriched PATH gives the spawn a fighting chance
+ * to find gh inside `/opt/homebrew/bin` etc.
+ */
+function ghSpawnEnv(): Record<string, string> {
+  return { ...(process.env as Record<string, string>), PATH: getEnrichedPath() };
+}
 
 export interface GhStatus {
   /** True when `gh` is on PATH and responds to `gh --version`. */
@@ -41,9 +78,10 @@ export async function detectGh(): Promise<GhStatus> {
   // probe.
   let version: string | undefined;
   try {
-    const proc = Bun.spawn(["gh", "--version"], {
+    const proc = Bun.spawn([ghBinary(), "--version"], {
       stdout: "pipe",
       stderr: "pipe",
+      env: ghSpawnEnv(),
     });
     const exited = await Promise.race([
       proc.exited,
@@ -81,9 +119,10 @@ export async function detectGh(): Promise<GhStatus> {
   // generic hint, since the UX is the same.
   let authed = false;
   try {
-    const proc = Bun.spawn(["gh", "auth", "status"], {
+    const proc = Bun.spawn([ghBinary(), "auth", "status"], {
       stdout: "pipe",
       stderr: "pipe",
+      env: ghSpawnEnv(),
     });
     const exited = await Promise.race([
       proc.exited,
@@ -116,9 +155,10 @@ export async function detectGh(): Promise<GhStatus> {
   // to show.
   let username: string | undefined;
   try {
-    const proc = Bun.spawn(["gh", "api", "user", "--jq", ".login"], {
+    const proc = Bun.spawn([ghBinary(), "api", "user", "--jq", ".login"], {
       stdout: "pipe",
       stderr: "pipe",
+      env: ghSpawnEnv(),
     });
     const exited = await Promise.race([
       proc.exited,
@@ -204,9 +244,10 @@ export async function createRepo(opts: CreateRepoOptions): Promise<CreateRepoRes
     args.push("--description", opts.description);
   }
 
-  const proc = Bun.spawn(["gh", ...args], {
+  const proc = Bun.spawn([ghBinary(), ...args], {
     stdout: "pipe",
     stderr: "pipe",
+    env: ghSpawnEnv(),
   });
   const exited = await proc.exited;
   const stdout = (await new Response(proc.stdout).text()).trim();
