@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.7.2] - 2026-05-17
+
+### Fixed
+
+- **`gh` probe inside the packaged Electron app.** Settings → GitHub reported `GitHub CLI not installed` in the .app even when `gh` was at `/opt/homebrew/bin/gh` — macOS GUI apps inherit the launchd PATH (`/usr/bin:/bin:/usr/sbin:/sbin` only), which doesn't include Homebrew on Apple Silicon. The `Bun.spawn(["gh", …])` calls in `core/github-cli.ts` ran with that minimal env and silently ENOENT'd. The backend CLIs (claude / codex / kimi) already route through `server/path-resolver.ts` for the same reason; `gh` is now wired up the same way — `resolveBinary("gh")` finds the absolute path via the user's interactive shell PATH, and every spawn passes `env: { ...process.env, PATH: getEnrichedPath() }`. Dev (`bun run dev`) was unaffected because it inherits the user's shell PATH directly.
+
 ## [3.7.1] - 2026-05-17
 
 ### Improved — kami and webcraft upstream skill syncs
