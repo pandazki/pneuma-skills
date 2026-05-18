@@ -11,7 +11,7 @@ import { useFavorites, sortFavoritesFirst, favoriteKey } from "../hooks/useFavor
 import { InitParamForm, type InitParamWithAutoFill } from "./InitParamForm.js";
 import { useAnimatedMount } from "../utils/useAnimatedMount.js";
 import { timeAgo, runningDuration } from "../utils/timeAgo.js";
-import { shortenPath } from "../utils/string.js";
+import { basename, shortenPath } from "../utils/string.js";
 import type { InitParam } from "../../core/types/mode-manifest.js";
 import type { InstalledLibrary } from "../../core/types/library.js";
 
@@ -1703,7 +1703,11 @@ function ModeGallery({
                 {group.items.map((mode) => {
                   // mode-maker and evolve themselves don't get edit/evolve buttons
                   const isToolMode = mode.name === "mode-maker" || mode.name === "evolve";
-                  const modeKey = `${mode.source}::${mode.name}`;
+                  // Include `path` so two locally-evolved forks that both
+                  // manifest as `name: "slide"` don't collide on React key
+                  // or expand state. Falls back to `name` for builtins +
+                  // any future shape without a path.
+                  const modeKey = `${mode.source}::${mode.path || mode.name}`;
                   return (
                     <GalleryModeCard
                       key={modeKey}
@@ -1713,7 +1717,15 @@ function ModeGallery({
                       onLaunch={() => onLaunch(mode)}
                       onEdit={!isToolMode && onEdit ? () => onEdit(mode) : undefined}
                       onEvolve={!isToolMode && onEvolve ? () => onEvolve(mode) : undefined}
-                      onDelete={mode.source === "local" && onDeleteLocal ? () => onDeleteLocal(mode.name) : undefined}
+                      // Pass the on-disk dir name, not the manifest name —
+                      // `evolve` produces dir names like `slide-evolved-…`
+                      // while the manifest retains `name: "slide"`, so
+                      // `DELETE /api/modes/:name` (which acts on a dir
+                      // under `~/.pneuma/modes/`) would 404 on the
+                      // manifest name. Library-sourced modes never reach
+                      // this branch — they're split into a separate group
+                      // upstream with their own unlink flow.
+                      onDelete={mode.source === "local" && mode.path && onDeleteLocal ? () => onDeleteLocal(basename(mode.path!)) : undefined}
                       isLight={isLight}
                       isFavorite={!isToolMode && isFavorite ? isFavorite(mode) : undefined}
                       onToggleFavorite={!isToolMode && onToggleFavorite ? () => onToggleFavorite(mode) : undefined}
@@ -4368,9 +4380,13 @@ export default function Launcher() {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [refreshSessions, refreshRunning]);
 
-  const deleteLocalMode = useCallback(async (name: string) => {
+  // Argument is the on-disk directory name under `~/.pneuma/modes/`
+  // (i.e. `basename(mode.path)`), not the manifest's `name` field —
+  // `evolve` produces dir names like `slide-evolved-…` while keeping
+  // the manifest name as `"slide"`. Callers must pass the basename.
+  const deleteLocalMode = useCallback(async (dir: string) => {
     try {
-      await fetch(`${getApiBase()}/api/modes/${encodeURIComponent(name)}`, { method: "DELETE" });
+      await fetch(`${getApiBase()}/api/modes/${encodeURIComponent(dir)}`, { method: "DELETE" });
       refreshModes();
     } catch { }
   }, [refreshModes]);
