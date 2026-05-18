@@ -1,0 +1,18 @@
+{
+  "opened_in_project": "Opened a fresh {{mode}} session in {{project}}",
+  "opened": "Opened a fresh {{mode}} session",
+  "switched_from": "Switched here from {{from}}{{fromMode}}",
+  "handed_off": "Handed off from {{fromMode}}",
+  "env_unknown": "Environment signal: {{reason}}",
+  "request_handoff": "Requesting handoff to {{target}}",
+  "request_handoff_with_intent": "Requesting handoff to {{target}} — {{intent}}",
+  "handoff_cancelled": "Handoff cancelled",
+  "handoff_cancelled_with_reason": "Handoff cancelled — {{reason}}",
+  "default_signal": "Pneuma signal: {{kind}}",
+  "another_session": "another session",
+  "another_mode": "another mode",
+  "session_word": "session",
+  "tooltip_debug": "Pneuma signal (debug always on)",
+  "tooltip_hide": "Hide raw tag",
+  "tooltip_show": "Show raw tag"
+}

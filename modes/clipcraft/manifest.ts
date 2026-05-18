@@ -14,8 +14,16 @@ import {
 const clipcraftManifest: ModeManifest = {
   name: "clipcraft",
   version: "0.9.0",
-  displayName: "ClipCraft",
-  description: "AI video production — production bibles, storyboard paths (A/B/C), direction notation, sketch→anchor→clip iteration, provenance lineage",
+  displayName: {
+    en: "ClipCraft",
+    "zh-CN": "ClipCraft",
+    ja: "ClipCraft",
+  },
+  description: {
+    en: "AI video production — production bibles, storyboard paths (A/B/C), direction notation, sketch→anchor→clip iteration, provenance lineage",
+    "zh-CN": "AI 视频制作 —— 制作宝典、分镜路径（A/B/C）、导演记号、草图→锚点→成片迭代、来源谱系",
+    ja: "AI 動画制作 —— プロダクションバイブル、絵コンテ経路（A/B/C）、演出記法、ラフ→アンカー→本編の反復、来歴トレース",
+  },
 
   supportedBackends: ["claude-code", "codex"],
   layout: "editor",

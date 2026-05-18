@@ -1,0 +1,18 @@
+{
+  "session": "会话",
+  "model": "模型",
+  "backend": "后端",
+  "version": "版本",
+  "working_dir": "工作目录",
+  "cost": "费用",
+  "turns": "轮次",
+  "lines": "代码行",
+  "tasks": "任务",
+  "no_tasks": "暂无任务",
+  "blocked": "已阻塞",
+  "mcp_servers": "MCP 服务器",
+  "tools": "工具 ({{count}})",
+  "more_tools": "还有 {{count}} 个…",
+  "git": "Git",
+  "no_active_session": "无活动会话"
+}

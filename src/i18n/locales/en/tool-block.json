@@ -1,0 +1,22 @@
+{
+  "labels": {
+    "Bash": "Terminal",
+    "Read": "Read File",
+    "Write": "Write File",
+    "Edit": "Edit File",
+    "Glob": "Find Files",
+    "Grep": "Search Content",
+    "WebSearch": "Web Search",
+    "WebFetch": "Web Fetch",
+    "Task": "Subagent",
+    "TodoWrite": "Tasks",
+    "NotebookEdit": "Notebook",
+    "SendMessage": "Message"
+  },
+  "tasks_count_one": "{{count}} task",
+  "tasks_count_other": "{{count}} tasks",
+  "replace_all": "replace all",
+  "in_path": "in: ",
+  "path": "path: ",
+  "glob_label": "glob: "
+}

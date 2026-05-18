@@ -20,6 +20,7 @@
  * non-functional control.
  */
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getApiBase } from "../utils/api.js";
 
 interface DetectedEditor {
@@ -48,6 +49,7 @@ export default function EditorPickerButton({
   targetPath,
   menuPosition = "above",
 }: EditorPickerButtonProps) {
+  const { t } = useTranslation("editor-picker");
   const apiBase = getApiBase();
   const [editors, setEditors] = useState<DetectedEditor[]>([]);
   const [defaultEditorId, setDefaultEditorId] = useState<string | null>(() => {
@@ -139,13 +141,13 @@ export default function EditorPickerButton({
         }}
         aria-label={
           defaultEditor
-            ? `Open in ${defaultEditor.displayName}`
-            : "Open in editor"
+            ? t("open_in_named", { name: defaultEditor.displayName })
+            : t("open_in_editor")
         }
         title={
           defaultEditor
-            ? `Open in ${defaultEditor.displayName}`
-            : "Open in editor"
+            ? t("open_in_named", { name: defaultEditor.displayName })
+            : t("open_in_editor")
         }
         className="flex items-center justify-center w-8 h-8 rounded-l-md rounded-r-none text-cc-muted hover:text-cc-fg hover:bg-cc-bg/40 transition-colors cursor-pointer"
       >
@@ -178,8 +180,8 @@ export default function EditorPickerButton({
         onClick={() => setMenuOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        aria-label="Choose editor"
-        title="Choose editor"
+        aria-label={t("choose_editor")}
+        title={t("choose_editor")}
         className={`flex items-center justify-center w-5 h-8 rounded-r-md rounded-l-none text-cc-muted hover:text-cc-fg transition-colors cursor-pointer -ml-px ${
           menuOpen ? "bg-cc-bg/60 text-cc-fg" : "hover:bg-cc-bg/40"
         }`}
@@ -200,7 +202,7 @@ export default function EditorPickerButton({
           className={`${menuClass} min-w-[200px] rounded-lg border border-cc-border bg-cc-surface shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6)] py-1 [animation:overlayFadeIn_140ms_cubic-bezier(0.16,1,0.3,1)] z-10`}
         >
           <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-cc-muted/60">
-            Open in
+            {t("open_in_header")}
           </div>
           {editors.map((e) => {
             const isDefault = e.id === defaultEditorId;
@@ -220,7 +222,7 @@ export default function EditorPickerButton({
                 />
                 <span className="flex-1 truncate">{e.displayName}</span>
                 {isDefault ? (
-                  <span className="text-cc-primary text-[10px]" aria-label="default">
+                  <span className="text-cc-primary text-[10px]" aria-label={t("default_aria")}>
                     ★
                   </span>
                 ) : null}

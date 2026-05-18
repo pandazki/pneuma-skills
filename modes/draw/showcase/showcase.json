@@ -1,22 +1,50 @@
 {
-  "tagline": "Excalidraw whiteboard for visual thinking",
+  "tagline": {
+    "en": "Excalidraw whiteboard for visual thinking",
+    "zh-CN": "面向视觉思考的 Excalidraw 白板",
+    "ja": "ビジュアル思考のための Excalidraw ホワイトボード"
+  },
   "hero": "hero.png",
   "highlights": [
     {
-      "title": "Describe → Diagram",
-      "description": "Tell the agent what you need — flowcharts, architectures, mind maps — and watch shapes and arrows appear on the canvas.",
+      "title": {
+        "en": "Describe → Diagram",
+        "zh-CN": "描述即作图",
+        "ja": "言葉から図解へ"
+      },
+      "description": {
+        "en": "Tell the agent what you need — flowcharts, architectures, mind maps — and watch shapes and arrows appear on the canvas.",
+        "zh-CN": "把需求告诉代理 —— 流程图、架构图、思维导图 —— 形状与箭头会在画布上自然浮现。",
+        "ja": "必要なものをエージェントに伝えるだけ —— フローチャート、アーキテクチャ、マインドマップ —— シェイプと矢印がキャンバスに現れていく。"
+      },
       "media": "ai-diagrams.png",
       "mediaType": "image"
     },
     {
-      "title": "Hand-Drawn Style",
-      "description": "Excalidraw's signature sketchy aesthetic makes diagrams feel approachable. Toggle roughness for clean or hand-drawn looks.",
+      "title": {
+        "en": "Hand-Drawn Style",
+        "zh-CN": "手绘风格",
+        "ja": "手描き風スタイル"
+      },
+      "description": {
+        "en": "Excalidraw's signature sketchy aesthetic makes diagrams feel approachable. Toggle roughness for clean or hand-drawn looks.",
+        "zh-CN": "Excalidraw 标志性的草图美感让图示更亲切。可切换粗糙度，在干净与手绘风格之间自由选择。",
+        "ja": "Excalidraw 特有のスケッチ感が図解を親しみやすくする。ラフネスを切り替えてクリーンにも手描き調にも調整可能。"
+      },
       "media": "canvas.png",
       "mediaType": "image"
     },
     {
-      "title": "Select & Refine",
-      "description": "Click any shape to select it — the agent sees what you picked (with a thumbnail). Say 'change this color' and it just works.",
+      "title": {
+        "en": "Select & Refine",
+        "zh-CN": "选中即精修",
+        "ja": "選択して洗練"
+      },
+      "description": {
+        "en": "Click any shape to select it — the agent sees what you picked (with a thumbnail). Say 'change this color' and it just works.",
+        "zh-CN": "点击任意形状即可选中，代理会看到你选的对象（含缩略图）。说一句「换个颜色」就生效。",
+        "ja": "任意のシェイプをクリックすれば選択完了 —— エージェントは選んだ対象（サムネイル付き）を把握する。「この色を変えて」と言えばそのまま反映される。"
+      },
       "media": "bidirectional.png",
       "mediaType": "image"
     }

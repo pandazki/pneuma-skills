@@ -1,0 +1,77 @@
+{
+  "dialog_label": "项目面板",
+  "sections": {
+    "recent_sessions": "最近会话",
+    "start_in_any_mode": "选择模式启动",
+    "agent": "代理",
+    "parameters": "参数"
+  },
+  "loading": {
+    "sessions": "加载会话中…",
+    "modes": "加载模式中…",
+    "parameters": "加载参数中…"
+  },
+  "empty": {
+    "no_sessions_title": "还没有会话",
+    "no_sessions_hint": "从右侧选择一个模式，开始你的第一个会话。"
+  },
+  "session": {
+    "default_title": "{{mode}} 会话",
+    "starting": "正在启动会话…",
+    "mode_chip_aria": "{{mode}} 模式",
+    "delete_tooltip": "删除会话"
+  },
+  "favorite_aria": "收藏",
+  "mode_count_suffix": "· {{count}}",
+  "show_all": "查看全部 {{count}} 个模式 →",
+  "show_less": "收起 ↑",
+  "actions": {
+    "delete": "删除",
+    "cancel": "取消",
+    "confirm": "确认",
+    "delete_permanently": "永久删除",
+    "archiving": "归档中…",
+    "deleting": "删除中…",
+    "open_in_finder_aria": "在 Finder 中打开项目文件夹",
+    "open_in_finder_tooltip": "在 Finder 中打开项目文件夹",
+    "rediscover": "重新发现",
+    "rediscover_aria": "重新发现项目",
+    "rediscover_tooltip": "重新发现项目 — 基于当前项目状态重新运行 Onboarding，刷新图谱、封面和任务建议",
+    "evolve": "演进项目",
+    "evolve_aria": "演进项目上下文",
+    "evolve_tooltip": "演进项目上下文 — 从本项目的会话中提炼图谱与共享偏好",
+    "more_aria": "更多操作",
+    "more_tooltip": "更多操作",
+    "archive_project": "归档项目",
+    "delete_project_permanently": "永久删除项目"
+  },
+  "confirm": {
+    "archive_question": "确定归档此项目吗？",
+    "delete_question": "确定永久删除此项目吗？会话和 .pneuma 数据将被清除 — 其它文件保持不变。"
+  },
+  "error": {
+    "delete_failed": "删除失败",
+    "delete_failed_status": "删除失败（{{status}}）",
+    "launch_failed": "启动失败",
+    "launch_failed_status": "启动失败（{{status}}）",
+    "prepare_failed": "启动准备失败",
+    "archive_failed": "归档失败",
+    "archive_failed_status": "归档失败（{{status}}）",
+    "delete_action_failed": "删除失败",
+    "delete_action_failed_status": "删除失败（{{status}}）",
+    "tell_session_what_to_do": "请告诉新会话要做什么"
+  },
+  "launch_sheet": {
+    "close": "关闭",
+    "backend_unavailable": "不可用",
+    "backend_soon": "即将",
+    "backend_na": "不可用",
+    "smart_handoff_label": "从当前会话智能交接",
+    "smart_handoff_desc": "当前代理会写入包含相关上下文的交接文件，你在对话中确认切换。",
+    "intent_label": "新会话需要做什么？",
+    "intent_placeholder": "把这个设计变成幻灯片",
+    "cancel": "取消",
+    "confirm": "确认",
+    "launching": "启动中…"
+  }
+}

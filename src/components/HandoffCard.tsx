@@ -12,10 +12,12 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useStore } from "../store/index.js";
 import { getApiBase } from "../utils/api.js";
 
 export default function HandoffCard() {
+  const { t } = useTranslation("handoff");
   const proposed = useStore((s) => s.proposedHandoff);
   const status = useStore((s) => s.handoffStatus);
   const setProposed = useStore((s) => s.setProposedHandoff);
@@ -43,7 +45,7 @@ export default function HandoffCard() {
       );
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(data.error ?? `Confirm failed (${res.status})`);
+        setError(data.error ?? t("confirm_failed_code", { code: res.status }));
         setStatus("idle");
         return;
       }
@@ -54,11 +56,11 @@ export default function HandoffCard() {
         setProposed(null);
         window.location.href = data.launchUrl;
       } else {
-        setError("Server did not return a launch URL");
+        setError(t("no_launch_url"));
         setStatus("idle");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Confirm failed");
+      setError(err instanceof Error ? err.message : t("confirm_failed"));
       setStatus("idle");
     }
   };
@@ -78,7 +80,7 @@ export default function HandoffCard() {
       );
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(data.error ?? `Cancel failed (${res.status})`);
+        setError(data.error ?? t("cancel_failed_code", { code: res.status }));
         setStatus("idle");
         return;
       }
@@ -89,7 +91,7 @@ export default function HandoffCard() {
       setCancelReason("");
       setStatus("idle");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Cancel failed");
+      setError(err instanceof Error ? err.message : t("cancel_failed"));
       setStatus("idle");
     }
   };
@@ -102,12 +104,12 @@ export default function HandoffCard() {
     <div className="fixed bottom-6 right-6 z-50 w-[460px] flex flex-col gap-3 pointer-events-none">
       <div
         role="dialog"
-        aria-label="Pending handoff review"
+        aria-label={t("dialog_aria")}
         className="bg-cc-surface border border-cc-border rounded-xl shadow-2xl p-5 pointer-events-auto backdrop-blur-xl"
       >
         <div className="flex items-center justify-between mb-3">
           <span className="text-cc-muted text-xs uppercase tracking-wider">
-            Handoff ready
+            {t("ready")}
           </span>
           <span className="text-cc-primary text-xs font-mono-code">
             {sourceLabel} → {payload.target_mode}
@@ -126,7 +128,7 @@ export default function HandoffCard() {
         {payload.suggested_files && payload.suggested_files.length > 0 ? (
           <div className="mb-3">
             <div className="text-[11px] uppercase tracking-wider text-cc-muted/70 mb-1.5">
-              Files
+              {t("files")}
             </div>
             <div className="flex flex-wrap gap-1.5">
               {payload.suggested_files.map((f) => (
@@ -144,7 +146,7 @@ export default function HandoffCard() {
         {payload.key_decisions && payload.key_decisions.length > 0 ? (
           <div className="mb-3">
             <div className="text-[11px] uppercase tracking-wider text-cc-muted/70 mb-1.5">
-              Decisions locked in
+              {t("decisions_locked")}
             </div>
             <ul className="text-xs text-cc-fg/85 list-disc pl-4 space-y-0.5">
               {payload.key_decisions.map((d, i) => (
@@ -157,7 +159,7 @@ export default function HandoffCard() {
         {payload.open_questions && payload.open_questions.length > 0 ? (
           <div className="mb-3">
             <div className="text-[11px] uppercase tracking-wider text-cc-muted/70 mb-1.5">
-              Open questions
+              {t("open_questions")}
             </div>
             <ul className="text-xs text-cc-fg/85 list-disc pl-4 space-y-0.5">
               {payload.open_questions.map((q, i) => (
@@ -177,7 +179,7 @@ export default function HandoffCard() {
               autoFocus
               value={cancelReason}
               onChange={(e) => setCancelReason(e.target.value)}
-              placeholder="Why? (optional)"
+              placeholder={t("cancel_reason_placeholder")}
               rows={2}
               className="w-full text-xs px-2 py-1.5 rounded border border-cc-border bg-cc-hover/30 text-cc-fg placeholder:text-cc-muted/50 focus:border-cc-primary/60 focus:outline-none"
             />
@@ -197,7 +199,7 @@ export default function HandoffCard() {
                   setError(null);
                 }}
               >
-                Back
+                {t("back")}
               </button>
               <button
                 type="button"
@@ -205,7 +207,7 @@ export default function HandoffCard() {
                 className="px-3 py-1.5 text-sm border border-cc-border rounded-md hover:border-cc-muted disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleCancel}
               >
-                {status === "sending-cancel" ? "Cancelling…" : "Cancel handoff"}
+                {status === "sending-cancel" ? t("cancelling") : t("cancel_handoff")}
               </button>
             </>
           ) : (
@@ -219,7 +221,7 @@ export default function HandoffCard() {
                   setError(null);
                 }}
               >
-                Cancel
+                {t("cancel")}
               </button>
               <button
                 type="button"
@@ -227,7 +229,7 @@ export default function HandoffCard() {
                 className="px-3 py-1.5 text-sm bg-cc-primary text-white rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleConfirm}
               >
-                {status === "sending-confirm" ? "Switching…" : "Confirm switch"}
+                {status === "sending-confirm" ? t("switching") : t("confirm_switch")}
               </button>
             </>
           )}

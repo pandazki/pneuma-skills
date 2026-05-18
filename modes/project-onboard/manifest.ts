@@ -29,9 +29,16 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 const projectOnboardManifest: ModeManifest = {
   name: "project-onboard",
   version: "1.0.0",
-  displayName: "Project Onboarding",
-  description:
-    "Mine a fresh project for existing material — README, logos, palette, configs — and propose project metadata + atlas + two tailored next-step tasks.",
+  displayName: {
+    en: "Project Onboarding",
+    "zh-CN": "项目入门",
+    ja: "プロジェクト入門",
+  },
+  description: {
+    en: "Mine a fresh project for existing material — README, logos, palette, configs — and propose project metadata + atlas + two tailored next-step tasks.",
+    "zh-CN": "为全新项目挖掘已有素材 —— README、Logo、配色、配置 —— 提出项目元数据、项目图谱与两项贴合实际的下一步任务。",
+    ja: "新規プロジェクトから既存素材（README、ロゴ、パレット、設定）を発掘し、プロジェクトメタデータ・アトラスと、ぴったりな次の 2 つのタスクを提案。",
+  },
   // Internal mode — auto-launched on fresh project open or via the
   // ProjectPanel's "Re-discover" affordance, never picked from the
   // launcher's user-pickable mode grid.

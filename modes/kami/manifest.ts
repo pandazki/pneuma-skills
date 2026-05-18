@@ -31,8 +31,16 @@ const SAFE_MARGINS_MM: Record<string, { top: number; side: number; bottom: numbe
 const kamiManifest: ModeManifest = {
   name: "kami",
   version: "1.3.0",
-  displayName: "Kami",
-  description: "Paper-canvas web design with warm parchment aesthetic — design language adapted from tw93/kami (MIT)",
+  displayName: {
+    en: "Kami",
+    "zh-CN": "Kami",
+    ja: "Kami",
+  },
+  description: {
+    en: "Paper-canvas web design with warm parchment aesthetic — design language adapted from tw93/kami (MIT)",
+    "zh-CN": "纸张画布式网页设计，带温润羊皮纸质感 —— 设计语言取自 tw93/kami（MIT 许可）",
+    ja: "温かみのある羊皮紙の質感を持つ紙キャンバス型ウェブデザイン —— デザイン言語は tw93/kami（MIT）から取り入れ",
+  },
   changelog: {
     "1.3.0": [
       "SKILL.md gains equity-report and changelog doc routing, plus 11 new diagram routes (bar-chart, candlestick, donut-chart, layer-stack, line-chart, state-machine, swimlane, timeline, tree, venn, waterfall)",

@@ -1,0 +1,9 @@
+{
+  "changed_files": "変更ファイル ({{count}})",
+  "diff_base_tooltip": "差分の基準:{{base}}",
+  "head": "HEAD",
+  "branch": "ブランチ",
+  "no_changes": "変更なし",
+  "loading": "読み込み中…",
+  "select_a_file": "ファイルを選択して差分を表示"
+}

@@ -1,3 +1,5 @@
+import { t } from "./i18n.js";
+
 /**
  * `pneuma handoff` CLI — emits a structured handoff payload to the running
  * Pneuma server, which broadcasts a `handoff_proposed` event to the source
@@ -85,24 +87,7 @@ export function parseHandoffArgs(args: string[]): {
   return out;
 }
 
-const HELP_TEXT = `Usage: pneuma handoff --json '<json>' | --stdin
-
-Emit a structured handoff to the active Pneuma session. The server shows the
-user a HandoffCard; if confirmed, the target session is spawned with the
-payload pre-loaded. Reads JSON with these fields:
-
-  target_mode       string   required  Mode name (e.g. "webcraft")
-  target_session    string   optional  Existing session id, "auto", or omit
-  intent            string   required  One sentence — what the target does
-  summary           string   optional  Few sentences on what's done here
-  suggested_files   string[] optional  Project-relative paths, ordered
-  key_decisions     string[] optional  Locked-in decisions for the target
-  open_questions    string[] optional  Things the target should resolve
-
-Env vars:
-  PNEUMA_SERVER_URL   POSTed against
-  PNEUMA_SESSION_ID   source session id (auto-injected)
-`;
+const HELP_TEXT = (): string => t("handoff.usage");
 
 /**
  * Coerce + validate a parsed JSON payload into the typed input. Throws Error
@@ -180,25 +165,25 @@ export async function runHandoffCommand(
   const parsed = parseHandoffArgs(args);
 
   if (parsed.help) {
-    io.stdout(HELP_TEXT);
+    io.stdout(HELP_TEXT());
     return 0;
   }
 
   if (!parsed.json && !parsed.stdin) {
-    io.stderr("error: pass --json '<json>' or --stdin");
-    io.stderr(HELP_TEXT);
+    io.stderr(t("handoff.missing_args"));
+    io.stderr(HELP_TEXT());
     return 2;
   }
 
   const sourceSessionId = env.PNEUMA_SESSION_ID;
   if (!sourceSessionId) {
-    io.stderr("error: PNEUMA_SESSION_ID env var not set (must run inside a session)");
+    io.stderr(t("handoff.missing_session_id"));
     return 2;
   }
 
   const serverUrl = env.PNEUMA_SERVER_URL;
   if (!serverUrl) {
-    io.stderr("error: PNEUMA_SERVER_URL env var not set (must run inside a session)");
+    io.stderr(t("handoff.missing_server_url"));
     return 2;
   }
 
@@ -207,7 +192,7 @@ export async function runHandoffCommand(
     rawJson = await io.readStdin();
   }
   if (!rawJson || rawJson.trim().length === 0) {
-    io.stderr("error: empty JSON payload");
+    io.stderr(t("handoff.empty_payload"));
     return 2;
   }
 
@@ -215,7 +200,7 @@ export async function runHandoffCommand(
   try {
     parsedPayload = JSON.parse(rawJson);
   } catch (err) {
-    io.stderr(`error: invalid JSON — ${err instanceof Error ? err.message : String(err)}`);
+    io.stderr(t("handoff.invalid_json", { message: err instanceof Error ? err.message : String(err) }));
     return 2;
   }
 
@@ -223,7 +208,7 @@ export async function runHandoffCommand(
   try {
     body = validateHandoffPayload(parsedPayload, sourceSessionId);
   } catch (err) {
-    io.stderr(`error: ${err instanceof Error ? err.message : String(err)}`);
+    io.stderr(t("handoff.validation_error", { message: err instanceof Error ? err.message : String(err) }));
     return 2;
   }
 
@@ -236,7 +221,7 @@ export async function runHandoffCommand(
       body: JSON.stringify(body),
     });
   } catch (err) {
-    io.stderr(`error: failed to reach Pneuma server at ${url}: ${err instanceof Error ? err.message : String(err)}`);
+    io.stderr(t("handoff.fetch_failed", { url, message: err instanceof Error ? err.message : String(err) }));
     return 1;
   }
 
@@ -247,9 +232,8 @@ export async function runHandoffCommand(
     } catch {
       // Server should return JSON, but a non-JSON 2xx still counts as success.
     }
-    io.stdout(
-      `Handoff submitted; awaiting user confirmation.${parsedBody.handoff_id ? ` (id ${parsedBody.handoff_id})` : ""}`,
-    );
+    const idSuffix = parsedBody.handoff_id ? t("handoff.submitted_id", { id: parsedBody.handoff_id }) : "";
+    io.stdout(t("handoff.submitted", { idSuffix }));
     return 0;
   }
 
@@ -266,6 +250,6 @@ export async function runHandoffCommand(
       // Fall back to the status-code-only message.
     }
   }
-  io.stderr(`error: ${serverError}`);
+  io.stderr(t("handoff.server_error", { message: serverError }));
   return 1;
 }

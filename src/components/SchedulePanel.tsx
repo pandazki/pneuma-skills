@@ -1,8 +1,10 @@
+import { Trans, useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
 import type { CronJob } from "../store.js";
 import { sendUserMessage } from "../ws.js";
 
 function JobRow({ job, onDelete }: { job: CronJob; onDelete: () => void }) {
+  const { t } = useTranslation("schedule-panel");
   return (
     <div className="flex items-start gap-3 px-3 py-3 hover:bg-neutral-800/30 group">
       <div className="flex-1 min-w-0">
@@ -13,16 +15,16 @@ function JobRow({ job, onDelete }: { job: CronJob; onDelete: () => void }) {
           <span className="text-[10px] font-mono text-neutral-500">{job.humanSchedule || job.cron}</span>
           {job.recurring ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-400 font-medium">
-              recurring
+              {t("recurring")}
             </span>
           ) : (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-700/50 text-neutral-400 font-medium">
-              one-shot
+              {t("one_shot")}
             </span>
           )}
           {job.durable && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-400/10 text-blue-400 font-medium">
-              durable
+              {t("durable")}
             </span>
           )}
         </div>
@@ -31,9 +33,9 @@ function JobRow({ job, onDelete }: { job: CronJob; onDelete: () => void }) {
         onClick={onDelete}
         className="shrink-0 text-red-400/60 hover:text-red-400 text-xs px-1.5 py-0.5 rounded
           opacity-0 group-hover:opacity-100 transition-opacity"
-        title="Cancel this scheduled job"
+        title={t("cancel_job_tooltip")}
       >
-        Cancel
+        {t("cancel")}
       </button>
     </div>
   );
@@ -53,6 +55,7 @@ function versionCompare(a: string, b: string): number {
 }
 
 export default function SchedulePanel() {
+  const { t } = useTranslation("schedule-panel");
   const cronJobs = useStore((s) => s.cronJobs);
   const turnInProgress = useStore((s) => s.turnInProgress);
   const scheduleAvailable = useStore((s) => s.session?.agent_capabilities?.scheduling ?? false);
@@ -77,7 +80,7 @@ export default function SchedulePanel() {
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800">
         <span className="text-xs font-medium text-neutral-400">
-          Scheduled Jobs ({cronJobs.length})
+          {t("scheduled_jobs", { count: cronJobs.length })}
         </span>
         <button
           onClick={handleRefresh}
@@ -85,7 +88,7 @@ export default function SchedulePanel() {
           className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400
             hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          Refresh
+          {t("refresh")}
         </button>
       </div>
 
@@ -93,10 +96,10 @@ export default function SchedulePanel() {
       {!scheduleAvailable && (
         <div className="mx-3 mt-3 px-3 py-2.5 rounded-lg bg-neutral-800/40 border border-neutral-700/80">
           <div className="text-xs font-medium text-neutral-300 mb-1">
-            Backend-specific feature
+            {t("backend_specific_title")}
           </div>
           <div className="text-[11px] text-neutral-400 leading-relaxed">
-            Scheduled tasks currently depend on Claude Code cron tools and are unavailable for the active backend.
+            {t("backend_specific_body")}
           </div>
         </div>
       )}
@@ -107,11 +110,15 @@ export default function SchedulePanel() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 shrink-0">
               <path d="M12 9v4m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
             </svg>
-            Claude Code upgrade required
+            {t("upgrade_required")}
           </div>
           <div className="text-[11px] text-neutral-400 leading-relaxed">
-            Scheduled tasks require Claude Code {MIN_CC_VERSION}+. Current version: {agentVersion}.
-            Run <span className="font-mono text-neutral-300">claude update</span> to upgrade.
+            <Trans
+              i18nKey="upgrade_body"
+              ns="schedule-panel"
+              values={{ minVersion: MIN_CC_VERSION, currentVersion: agentVersion }}
+              components={{ 1: <span className="font-mono text-neutral-300" /> }}
+            />
           </div>
         </div>
       )}
@@ -126,7 +133,11 @@ export default function SchedulePanel() {
             </svg>
           </div>
           <div className="text-neutral-500 text-xs leading-relaxed max-w-[220px]">
-            No scheduled jobs. Use <span className="font-mono text-neutral-400">/loop</span> in the chat to create recurring tasks.
+            <Trans
+              i18nKey="empty_hint"
+              ns="schedule-panel"
+              components={{ 1: <span className="font-mono text-neutral-400" /> }}
+            />
           </div>
         </div>
       ) : (

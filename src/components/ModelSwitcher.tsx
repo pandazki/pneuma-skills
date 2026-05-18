@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
 import { sendSetModel } from "../ws.js";
 import type { ModelOption } from "../../core/types/agent-backend.js";
@@ -34,6 +35,7 @@ function modelDisplay(modelId: string, models: ModelOption[]): { label: string; 
 }
 
 export default function ModelSwitcher() {
+  const { t } = useTranslation("model-switcher");
   const model = useStore((s) => s.session?.model ?? "");
   const canSwitchModel = useStore((s) => s.session?.agent_capabilities?.modelSwitch ?? false);
   const availableModels = useStore((s) => s.session?.available_models);
@@ -73,7 +75,7 @@ export default function ModelSwitcher() {
     return (
       <div
         className="flex items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 bg-neutral-800 rounded"
-        title={model || "Model switching unavailable for this backend"}
+        title={model || t("unavailable_tooltip")}
       >
         <span className="w-4 h-4 rounded bg-neutral-800 flex items-center justify-center text-[10px] font-bold text-neutral-400">
           {current.icon}

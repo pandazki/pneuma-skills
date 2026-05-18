@@ -1,0 +1,19 @@
+{
+  "dialog_aria": "保留中のハンドオフレビュー",
+  "ready": "ハンドオフ準備完了",
+  "files": "ファイル",
+  "decisions_locked": "確定した決定事項",
+  "open_questions": "未解決の質問",
+  "cancel_reason_placeholder": "理由は?(任意)",
+  "back": "戻る",
+  "cancel_handoff": "ハンドオフをキャンセル",
+  "cancelling": "キャンセル中…",
+  "cancel": "キャンセル",
+  "confirm_switch": "切り替えを確認",
+  "switching": "切り替え中…",
+  "confirm_failed_code": "確認に失敗 ({{code}})",
+  "cancel_failed_code": "キャンセルに失敗 ({{code}})",
+  "confirm_failed": "確認に失敗",
+  "cancel_failed": "キャンセルに失敗",
+  "no_launch_url": "サーバーが起動 URL を返しませんでした"
+}

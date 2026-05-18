@@ -1,0 +1,60 @@
+{
+  "system": {
+    "output_label": "出力"
+  },
+  "selection": {
+    "in_file": "{{file}} 内",
+    "types": {
+      "paragraph": "段落",
+      "list": "リスト",
+      "code": "コードブロック",
+      "blockquote": "引用",
+      "image": "画像",
+      "table": "テーブル",
+      "text_range": "選択テキスト",
+      "section": "セクション",
+      "link": "リンク",
+      "container": "コンテナ",
+      "interactive": "インタラクティブ要素"
+    }
+  },
+  "annotations": {
+    "count_one": "注釈 {{count}} 件",
+    "count_other": "注釈 {{count}} 件"
+  },
+  "ask_user": {
+    "waiting": "質問を待機中…",
+    "qa_label": "Q&A",
+    "fallback_title": "質問",
+    "other_option": "その他…",
+    "answer_placeholder": "回答を入力…",
+    "enter_hint": "Enter キーで送信",
+    "submit": "回答を送信"
+  },
+  "thinking": {
+    "label": "推論",
+    "encrypted": "Anthropic により非表示（適応的思考）",
+    "char_count": "{{count}} 文字",
+    "no_text": "推論テキストは取得できませんでした。"
+  },
+  "tool_result": {
+    "header": {
+      "output": "出力",
+      "error": "エラー",
+      "result": "結果"
+    },
+    "show_tail": "末尾を表示",
+    "hide": "非表示",
+    "show_full_with_remaining": "全文を表示（+{{count}} 行）",
+    "show_full": "全文を表示"
+  },
+  "context_usage": {
+    "title": "コンテキスト使用状況",
+    "tokens_summary": "{{used}} / {{total}} トークン（{{percent}}%）"
+  },
+  "debug": {
+    "payload_label": "ペイロード",
+    "payload_tooltip": "デバッグ：CLI ペイロードを表示",
+    "image_alt": "デバッグ画像 {{index}}"
+  }
+}

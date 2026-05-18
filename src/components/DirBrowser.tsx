@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 
 /**
  * DirBrowser — file-system directory picker overlay used by dialogs that
@@ -23,6 +24,7 @@ export interface DirBrowserProps {
 }
 
 export function DirBrowser({ startPath, apiBase, onSelect, onClose }: DirBrowserProps) {
+  const { t } = useTranslation("dir-browser");
   const [currentPath, setCurrentPath] = useState(startPath);
   const [dirs, setDirs] = useState<Array<{ name: string; path: string }>>([]);
   const [parentPath, setParentPath] = useState<string | null>(null);
@@ -43,7 +45,7 @@ export function DirBrowser({ startPath, apiBase, onSelect, onClose }: DirBrowser
       setDirs(data.dirs || []);
       setParentPath(data.parent || null);
     } catch {
-      setError("Failed to browse directory");
+      setError(t("browse_failed"));
     }
     setLoading(false);
   }, [apiBase]);
@@ -117,7 +119,7 @@ export function DirBrowser({ startPath, apiBase, onSelect, onClose }: DirBrowser
               </button>
             ))}
             {dirs.length === 0 && !error && (
-              <div className="py-4 text-center text-cc-muted/60 text-xs">Empty directory</div>
+              <div className="py-4 text-center text-cc-muted/60 text-xs">{t("empty_directory")}</div>
             )}
           </>
         )}
@@ -130,7 +132,7 @@ export function DirBrowser({ startPath, apiBase, onSelect, onClose }: DirBrowser
           onClick={() => { onSelect(currentPath); onClose(); }}
           className="shrink-0 rounded-md px-3 py-1 text-xs font-medium bg-cc-primary text-white transition-all duration-200 cursor-pointer hover:brightness-110 hover:shadow-[0_0_16px_rgba(249,115,22,0.2)]"
         >
-          Select
+          {t("select")}
         </button>
       </div>
     </div>

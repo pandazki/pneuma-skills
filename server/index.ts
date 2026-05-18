@@ -423,10 +423,45 @@ export async function startServer(options: ServerOptions) {
     }>;
   }
 
-  let registryCache: { value: RegistryResponse; fetchedAt: number } | null = null;
-  let registryInflight: Promise<RegistryResponse> | null = null;
+  const registryCache: Map<string, { value: RegistryResponse; fetchedAt: number }> = new Map();
+  const registryInflight: Map<string, Promise<RegistryResponse>> = new Map();
 
-  const buildRegistry = async (): Promise<RegistryResponse> => {
+  // Pick a locale from a value in a localized-string-or-plain JSON field.
+  const pickLocalized = (value: unknown, locale: string): string | undefined => {
+    if (value == null) return undefined;
+    if (typeof value === "string") return value;
+    if (typeof value !== "object") return undefined;
+    const map = value as Record<string, unknown>;
+    if (typeof map[locale] === "string") return map[locale] as string;
+    if (typeof map.en === "string") return map.en as string;
+    for (const v of Object.values(map)) {
+      if (typeof v === "string" && v.length > 0) return v;
+    }
+    return undefined;
+  };
+
+  const localizeShowcase = (raw: unknown, locale: string): RegistryResponse["builtins"][number]["showcase"] | undefined => {
+    if (!raw || typeof raw !== "object") return undefined;
+    const data = raw as Record<string, unknown>;
+    const out: NonNullable<RegistryResponse["builtins"][number]["showcase"]> = {};
+    const tagline = pickLocalized(data.tagline, locale);
+    if (tagline) out.tagline = tagline;
+    if (typeof data.hero === "string") out.hero = data.hero;
+    if (Array.isArray(data.highlights)) {
+      out.highlights = data.highlights.map((h) => {
+        const hi = h as Record<string, unknown>;
+        return {
+          title: pickLocalized(hi.title, locale) || "",
+          description: pickLocalized(hi.description, locale) || "",
+          media: typeof hi.media === "string" ? hi.media : "",
+          ...(typeof hi.mediaType === "string" ? { mediaType: hi.mediaType } : {}),
+        };
+      });
+    }
+    return out;
+  };
+
+  const buildRegistry = async (locale: string): Promise<RegistryResponse> => {
     const { parseManifestTs } = await import("../core/utils/manifest-parser.js");
     const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
 
@@ -443,12 +478,13 @@ export async function startServer(options: ServerOptions) {
       .map((name) => {
         const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
         let parsed: ReturnType<typeof parseManifestTs> = {};
-        try { parsed = parseManifestTs(readFileSync(manifestPath, "utf-8")); } catch { }
+        try { parsed = parseManifestTs(readFileSync(manifestPath, "utf-8"), locale); } catch { }
         let showcase: RegistryResponse["builtins"][number]["showcase"] | undefined;
         try {
           const showcasePath = join(projectRoot, "modes", name, "showcase", "showcase.json");
           if (existsSync(showcasePath)) {
-            showcase = JSON.parse(readFileSync(showcasePath, "utf-8"));
+            const raw = JSON.parse(readFileSync(showcasePath, "utf-8"));
+            showcase = localizeShowcase(raw, locale);
           }
         } catch { }
         return {
@@ -488,7 +524,7 @@ export async function startServer(options: ServerOptions) {
           if (!manifestFile) continue;
           try {
             const content = readFileSync(join(entryPath, manifestFile), "utf-8");
-            const parsed = parseManifestTs(content);
+            const parsed = parseManifestTs(content, locale);
             // Hidden flag honored for installed external modes too. Lets
             // a third-party mode declare itself "internal" (e.g. an
             // onboarding-style helper triggered by another mode) without
@@ -525,7 +561,7 @@ export async function startServer(options: ServerOptions) {
             const manifestPath = ["manifest.ts", "manifest.js"]
               .map((f) => join(abs, f))
               .find((p) => existsSync(p));
-            if (manifestPath) parsed = parseManifestTs(readFileSync(manifestPath, "utf-8"));
+            if (manifestPath) parsed = parseManifestTs(readFileSync(manifestPath, "utf-8"), locale);
           } catch { /* tolerate parse failures, fall back to sidecar fields */ }
           if (parsed.hidden === true) continue;
           local.push({
@@ -552,56 +588,93 @@ export async function startServer(options: ServerOptions) {
   };
 
   /**
-   * SWR registry getter. If cache fresh (< TTL) → return immediately. If
-   * stale → return stale + revalidate in background. If empty → block
-   * until first fetch (one-time cost). Concurrent calls dedupe via the
-   * in-flight Promise.
+   * SWR registry getter, scoped per locale. If cache fresh (< TTL) → return
+   * immediately. If stale → return stale + revalidate in background. If
+   * empty → block until first fetch (one-time cost). Concurrent callers
+   * for the same locale dedupe via the in-flight Promise map.
    */
-  const getRegistry = async (): Promise<RegistryResponse> => {
+  const getRegistry = async (locale: string): Promise<RegistryResponse> => {
     const now = Date.now();
-    if (registryCache && now - registryCache.fetchedAt < REGISTRY_TTL_MS) {
-      return registryCache.value;
+    const cached = registryCache.get(locale);
+    if (cached && now - cached.fetchedAt < REGISTRY_TTL_MS) {
+      return cached.value;
     }
-    if (registryCache) {
-      // Stale → return stale + revalidate in background
-      if (!registryInflight) {
-        registryInflight = buildRegistry()
+    if (cached) {
+      if (!registryInflight.has(locale)) {
+        registryInflight.set(
+          locale,
+          buildRegistry(locale)
+            .then((value) => {
+              registryCache.set(locale, { value, fetchedAt: Date.now() });
+              registryInflight.delete(locale);
+              return value;
+            })
+            .catch((err) => {
+              console.warn(`[registry-cache] revalidate failed (${locale}): ${err}`);
+              registryInflight.delete(locale);
+              return cached.value;
+            }),
+        );
+      }
+      return cached.value;
+    }
+    if (!registryInflight.has(locale)) {
+      registryInflight.set(
+        locale,
+        buildRegistry(locale)
           .then((value) => {
-            registryCache = { value, fetchedAt: Date.now() };
-            registryInflight = null;
+            registryCache.set(locale, { value, fetchedAt: Date.now() });
+            registryInflight.delete(locale);
             return value;
           })
           .catch((err) => {
-            console.warn(`[registry-cache] revalidate failed: ${err}`);
-            registryInflight = null;
-            return registryCache!.value;
-          });
-      }
-      return registryCache.value;
+            registryInflight.delete(locale);
+            throw err;
+          }),
+      );
     }
-    // First call — wait for build, dedupe concurrent first-callers
-    if (!registryInflight) {
-      registryInflight = buildRegistry()
-        .then((value) => {
-          registryCache = { value, fetchedAt: Date.now() };
-          registryInflight = null;
-          return value;
-        })
-        .catch((err) => {
-          registryInflight = null;
-          throw err;
-        });
-    }
-    return registryInflight;
+    return registryInflight.get(locale)!;
   };
 
-  // Prime in the background so the first /api/registry call is instant.
-  void getRegistry().catch(() => { /* already logged */ });
+  // Resolver: pick the request's locale from query string or fall back to user setting.
+  const resolveRequestLocale = async (queryLocale: string | undefined): Promise<string> => {
+    const { normalizeLocale, getUserLocale, detectSystemLocale } = await import("../core/locale.js");
+    return normalizeLocale(queryLocale) || getUserLocale() || detectSystemLocale();
+  };
+
+  // Prime English in the background so the first /api/registry call is instant.
+  void getRegistry("en").catch(() => { /* already logged */ });
 
   const mountRegistryRoute = (target: Hono) => {
     target.get("/api/registry", async (c) => {
-      const data = await getRegistry();
+      const locale = await resolveRequestLocale(c.req.query("locale"));
+      const data = await getRegistry(locale);
       return c.json(data);
+    });
+  };
+
+  // User locale (UI language). Persisted in ~/.pneuma/settings.json under
+  // top-level "locale". Mounted on every server flavour (launcher + per-
+  // session) because the frontend `syncLocaleFromServer` fires on every
+  // page load regardless of which port served it; a 404 here silently
+  // falls the user back to browser-detected locale.
+  const mountUserLocaleRoutes = (target: Hono) => {
+    target.get("/api/user-locale", async (c) => {
+      const { getUserLocale, detectSystemLocale } = await import("../core/locale.js");
+      return c.json({ locale: getUserLocale(), systemLocale: detectSystemLocale() });
+    });
+    target.post("/api/user-locale", async (c) => {
+      const body = await c.req.json<{ locale?: string | null }>();
+      const { setUserLocale, normalizeLocale } = await import("../core/locale.js");
+      const normalized = body.locale === null ? null : normalizeLocale(body.locale);
+      if (body.locale && !normalized) {
+        return c.json({ error: `Unsupported locale: ${body.locale}` }, 400);
+      }
+      setUserLocale(normalized);
+      // Invalidate registry cache so the next /api/registry call rebuilds
+      // localized strings for the new locale instead of serving stale data.
+      registryCache.clear();
+      return c.json({ ok: true, locale: normalized });
     });
   };
 
@@ -665,7 +738,8 @@ export async function startServer(options: ServerOptions) {
           if (manifestFile) {
             const { parseManifestTs } = await import("../core/utils/manifest-parser.js");
             const content = readFileSync(join(resolved.path, manifestFile), "utf-8");
-            const parsed = parseManifestTs(content);
+            const installLocale = await resolveRequestLocale(c.req.query("locale"));
+            const parsed = parseManifestTs(content, installLocale);
             displayName = parsed.displayName || resolved.name;
             description = parsed.description;
             version = parsed.version || "local";
@@ -1276,6 +1350,8 @@ export async function startServer(options: ServerOptions) {
       return c.json({ ok: true });
     });
 
+    mountUserLocaleRoutes(app);
+
     // Keep Vercel status/teams/config routes for backward compatibility during transition
     // These delegate to the same underlying functions
     // Vercel Configuration
@@ -1550,7 +1626,7 @@ export async function startServer(options: ServerOptions) {
       // modes on the same tick as the WS `libraries_updated` broadcast,
       // instead of waiting for the 60s TTL to elapse.
       invalidateRegistry: () => {
-        registryCache = null;
+        registryCache.clear();
       },
     });
 
@@ -2266,6 +2342,7 @@ export async function startServer(options: ServerOptions) {
   // per-session server so the dropdown works regardless of which port it
   // talks to.
   mountRegistryRoute(app);
+  mountUserLocaleRoutes(app);
 
   // ── Project routes API ──────────────────────────────────────────────
   // Per-session server gets the same `launchSession` wiring as the

@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, lazy, Suspense } from "react";
+import { useTranslation } from "react-i18next";
 import { getApiBase } from "./utils/api.js";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import TopBar from "./components/TopBar.js";
@@ -35,9 +36,10 @@ const EmptyShell = lazy(() =>
 );
 
 function LazyFallback() {
+  const { t } = useTranslation("common");
   return (
     <div className="flex items-center justify-center h-full text-cc-muted text-sm">
-      Loading...
+      {t("loading")}
     </div>
   );
 }
@@ -273,9 +275,11 @@ export default function App() {
       }
 
       const def = await loadMode(modeName);
+      const { resolveLocalized } = await import("../core/types/mode-manifest.js");
+      const lang = (await import("./i18n/index.js")).currentLocale();
       useStore.getState().setModeViewer(def.viewer);
       useStore.getState().setModeManifest(def.manifest);
-      useStore.getState().setModeDisplayName(def.manifest.displayName);
+      useStore.getState().setModeDisplayName(resolveLocalized(def.manifest.displayName, lang));
       useStore.getState().setModeCommands(def.manifest.viewerApi?.commands ?? []);
     };
 

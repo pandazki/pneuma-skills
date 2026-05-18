@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { FilePreview, isInlinePreviewable } from "./FilePreview.js";
 import { ToolFileActions } from "./ToolFileActions.js";
 
@@ -23,7 +25,21 @@ export function getToolIcon(name: string): string {
   return TOOL_ICONS[name] || "tool";
 }
 
-export function getToolLabel(name: string): string {
+const KNOWN_TOOL_NAMES = new Set([
+  "Bash", "Read", "Write", "Edit", "Glob", "Grep",
+  "WebSearch", "WebFetch", "Task", "TodoWrite", "NotebookEdit", "SendMessage",
+]);
+
+/**
+ * Translate a tool name into its user-facing label. Accepts an optional
+ * `t` function from `useTranslation("tool-block")`; falls back to the
+ * raw tool name when called from non-React code (no translator available).
+ */
+export function getToolLabel(name: string, t?: TFunction): string {
+  if (KNOWN_TOOL_NAMES.has(name)) {
+    if (t) return t(`labels.${name}`);
+    // Fall through to defaults below.
+  }
   if (name === "Bash") return "Terminal";
   if (name === "Read") return "Read File";
   if (name === "Write") return "Write File";
@@ -40,7 +56,7 @@ export function getToolLabel(name: string): string {
   return name;
 }
 
-export function getPreview(name: string, input: Record<string, unknown>): string {
+export function getPreview(name: string, input: Record<string, unknown>, t?: TFunction): string {
   if (name === "Bash" && typeof input.command === "string") {
     if (input.description && typeof input.description === "string" && input.description.length <= 60) {
       return input.description;
@@ -69,7 +85,11 @@ export function getPreview(name: string, input: Record<string, unknown>): string
   }
   if (name === "Task" && input.description) return String(input.description);
   if (name === "TodoWrite" && Array.isArray(input.todos)) {
-    return `${input.todos.length} task${input.todos.length !== 1 ? "s" : ""}`;
+    const count = input.todos.length;
+    if (t) {
+      return t(count === 1 ? "tasks_count_one" : "tasks_count_other", { count });
+    }
+    return `${count} task${count !== 1 ? "s" : ""}`;
   }
   if (name === "SendMessage" && input.recipient) {
     return `\u2192 ${String(input.recipient)}`;
@@ -87,12 +107,13 @@ export function ToolBlock({
   toolUseId: string;
   fileRef?: { path: string; kind: "read" | "write" | "edit" };
 }) {
+  const { t } = useTranslation("tool-block");
   // Image file reads default to expanded so the thumbnail is visible without a click.
   const startExpanded = !!fileRef && isInlinePreviewable(fileRef.path);
   const [open, setOpen] = useState(startExpanded);
   const iconType = getToolIcon(name);
-  const label = getToolLabel(name);
-  const preview = getPreview(name, input);
+  const label = getToolLabel(name, t);
+  const preview = getPreview(name, input, t);
 
   return (
     <div className="border border-cc-border/60 rounded-lg overflow-hidden bg-cc-card/50 transition-colors hover:border-cc-border">
@@ -130,6 +151,7 @@ export function ToolBlock({
 }
 
 function ToolDetail({ name, input }: { name: string; input: Record<string, unknown> }) {
+  const { t } = useTranslation("tool-block");
   switch (name) {
     case "Bash":
       return (
@@ -149,7 +171,7 @@ function ToolDetail({ name, input }: { name: string; input: Record<string, unkno
           {input.file_path ? <div className="text-xs text-cc-muted font-mono-code">{String(input.file_path)}</div> : null}
           {!!input.replace_all && (
             <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-cc-warning/10 text-cc-warning">
-              replace all
+              {t("replace_all")}
             </span>
           )}
           {(input.old_string || input.new_string) ? (
@@ -189,7 +211,7 @@ function ToolDetail({ name, input }: { name: string; input: Record<string, unkno
         <div className="space-y-1">
           <div className="text-xs font-mono-code text-cc-code-fg">{String(input.pattern || "")}</div>
           {!!input.path && (
-            <div className="text-[10px] text-cc-muted">in: <span className="font-mono-code">{String(input.path)}</span></div>
+            <div className="text-[10px] text-cc-muted">{t("in_path")}<span className="font-mono-code">{String(input.path)}</span></div>
           )}
         </div>
       );
@@ -200,8 +222,8 @@ function ToolDetail({ name, input }: { name: string; input: Record<string, unkno
             {String(input.pattern || "")}
           </pre>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-cc-muted">
-            {!!input.path && <span>path: <span className="font-mono-code">{String(input.path)}</span></span>}
-            {!!input.glob && <span>glob: <span className="font-mono-code">{String(input.glob)}</span></span>}
+            {!!input.path && <span>{t("path")}<span className="font-mono-code">{String(input.path)}</span></span>}
+            {!!input.glob && <span>{t("glob_label")}<span className="font-mono-code">{String(input.glob)}</span></span>}
           </div>
         </div>
       );

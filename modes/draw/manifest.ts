@@ -10,8 +10,16 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 const drawManifest: ModeManifest = {
   name: "draw",
   version: "1.0.0",
-  displayName: "Draw",
-  description: "Diagrams and visual thinking on an Excalidraw canvas — showcasing viewer extensibility with a rich third-party component",
+  displayName: {
+    en: "Draw",
+    "zh-CN": "绘图",
+    ja: "ドロー",
+  },
+  description: {
+    en: "Diagrams and visual thinking on an Excalidraw canvas — showcasing viewer extensibility with a rich third-party component",
+    "zh-CN": "在 Excalidraw 画布上绘制图示与视觉思考 —— 借助成熟的第三方组件展示 viewer 的扩展能力",
+    ja: "Excalidraw キャンバスでの図解とビジュアル思考 —— 充実したサードパーティコンポーネントでビューア拡張性を示すモード",
+  },
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.89 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.89l12.683-12.683zM16.862 4.487L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/></svg>`,
 
   skill: {

@@ -24,9 +24,16 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 const projectEvolveManifest: ModeManifest = {
   name: "project-evolve",
   version: "1.0.0",
-  displayName: "Project Atlas",
-  description:
-    "Mine the project for high-density context and maintain shared preferences — the briefing every mode reads on startup.",
+  displayName: {
+    en: "Project Atlas",
+    "zh-CN": "项目图谱",
+    ja: "プロジェクトアトラス",
+  },
+  description: {
+    en: "Mine the project for high-density context and maintain shared preferences — the briefing every mode reads on startup.",
+    "zh-CN": "为项目挖掘高密度上下文并维护共享偏好 —— 每个模式启动时都会读取的简报。",
+    ja: "プロジェクトから濃密なコンテキストを抽出し、共有プリファレンスを保守 —— あらゆるモードが起動時に読むブリーフィング。",
+  },
   // Internal mode — surfaced through the Project chip's Evolve sparkle,
   // not the launcher's user-pickable mode grid.
   hidden: true,

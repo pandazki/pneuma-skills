@@ -1,22 +1,50 @@
 {
-  "tagline": "AI image generation on a row-based canvas",
+  "tagline": {
+    "en": "AI image generation on a row-based canvas",
+    "zh-CN": "在按行组织的画布上生成 AI 图像",
+    "ja": "行ベースのキャンバスで AI 画像生成"
+  },
   "hero": "hero.png",
   "highlights": [
     {
-      "title": "Prompt → Images",
-      "description": "Describe what you need and the agent generates 1-4 variations. Shimmer placeholders show progress before results land.",
+      "title": {
+        "en": "Prompt → Images",
+        "zh-CN": "提示词即出图",
+        "ja": "プロンプトから画像へ"
+      },
+      "description": {
+        "en": "Describe what you need and the agent generates 1-4 variations. Shimmer placeholders show progress before results land.",
+        "zh-CN": "描述需求，代理会生成 1–4 张变体。结果落地前由微光占位符展示进度。",
+        "ja": "欲しい絵を伝えれば、エージェントが 1–4 枚のバリアントを生成。結果が届く前はシマー表示のプレースホルダーが進捗を示す。"
+      },
       "media": "text-to-image.png",
       "mediaType": "image"
     },
     {
-      "title": "Row-Based Canvas",
-      "description": "Images organized in labeled rows — each row is a generation batch. Pan, zoom, and compare like a mood board with minimap navigation.",
+      "title": {
+        "en": "Row-Based Canvas",
+        "zh-CN": "按行组织的画布",
+        "ja": "行ベースのキャンバス"
+      },
+      "description": {
+        "en": "Images organized in labeled rows — each row is a generation batch. Pan, zoom, and compare like a mood board with minimap navigation.",
+        "zh-CN": "图片按带标签的行组织 —— 每一行就是一次生成批次。像情绪板一样可平移、缩放和对比，还配有小地图导航。",
+        "ja": "画像はラベル付きの行に整理され、各行が 1 回の生成バッチに対応。ムードボードのようにパン・ズーム・比較ができ、ミニマップでも回遊できる。"
+      },
       "media": "row-canvas.png",
       "mediaType": "image"
     },
     {
-      "title": "Region Editing",
-      "description": "Hold Cmd and draw on any image to highlight a region. The agent edits just that area — fix colors, details, or composition without regenerating.",
+      "title": {
+        "en": "Region Editing",
+        "zh-CN": "区域编辑",
+        "ja": "領域編集"
+      },
+      "description": {
+        "en": "Hold Cmd and draw on any image to highlight a region. The agent edits just that area — fix colors, details, or composition without regenerating.",
+        "zh-CN": "按住 Cmd 在任意图片上涂抹即可圈选区域。代理只会改动该区域 —— 修色、补细节或调构图都无需重新生成。",
+        "ja": "Cmd を押しながら画像上をなぞれば領域をハイライトできる。エージェントはその範囲だけを編集 —— 再生成せずに色、ディテール、構図を修正可能。"
+      },
       "media": "region-edit.png",
       "mediaType": "image"
     }

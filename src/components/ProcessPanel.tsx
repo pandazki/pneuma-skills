@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
 
@@ -32,6 +33,7 @@ function formatDuration(ms: number): string {
 }
 
 function ProcessRow({ proc, onKill }: { proc: ProcessItem; onKill: () => void }) {
+  const { t } = useTranslation("process-panel");
   const [elapsed, setElapsed] = useState(Date.now() - proc.startedAt);
 
   useEffect(() => {
@@ -47,6 +49,12 @@ function ProcessRow({ proc, onKill }: { proc: ProcessItem; onKill: () => void })
     stopped: "text-neutral-500",
   };
 
+  const statusLabel =
+    proc.status === "completed" ? t("status.completed")
+    : proc.status === "failed" ? t("status.failed")
+    : proc.status === "stopped" ? t("status.stopped")
+    : proc.status;
+
   return (
     <div className="flex items-center gap-2 px-3 py-2 hover:bg-neutral-800/30 text-xs">
       <span className={`w-2 h-2 rounded-full shrink-0 ${
@@ -59,11 +67,11 @@ function ProcessRow({ proc, onKill }: { proc: ProcessItem; onKill: () => void })
         <div className="text-neutral-500 truncate font-mono">{proc.command}</div>
       </div>
       <span className={`shrink-0 ${statusColors[proc.status] || "text-neutral-500"}`}>
-        {proc.status === "running" ? formatDuration(elapsed) : proc.status}
+        {proc.status === "running" ? formatDuration(elapsed) : statusLabel}
       </span>
       {proc.status === "running" && (
         <button onClick={onKill} className="shrink-0 text-red-400 hover:text-red-300 px-1">
-          Kill
+          {t("kill")}
         </button>
       )}
     </div>
@@ -71,6 +79,7 @@ function ProcessRow({ proc, onKill }: { proc: ProcessItem; onKill: () => void })
 }
 
 function SystemProcessRow({ proc, onKill }: { proc: SystemProcess; onKill: () => void }) {
+  const { t } = useTranslation("process-panel");
   return (
     <div className="flex items-center gap-2 px-3 py-2 hover:bg-neutral-800/30 text-xs">
       <span className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
@@ -91,9 +100,9 @@ function SystemProcessRow({ proc, onKill }: { proc: SystemProcess; onKill: () =>
             :{p}
           </a>
         ))}
-        <span className="text-neutral-600">PID {proc.pid}</span>
+        <span className="text-neutral-600">{t("pid", { pid: proc.pid })}</span>
         <button onClick={onKill} className="text-red-400 hover:text-red-300 px-1">
-          Kill
+          {t("kill")}
         </button>
       </div>
     </div>
@@ -101,6 +110,7 @@ function SystemProcessRow({ proc, onKill }: { proc: SystemProcess; onKill: () =>
 }
 
 export default function ProcessPanel() {
+  const { t } = useTranslation("process-panel");
   const processes = useStore((s) => s.sessionProcesses);
   const [systemProcs, setSystemProcs] = useState<SystemProcess[]>([]);
   const [scanning, setScanning] = useState(false);
@@ -146,7 +156,7 @@ export default function ProcessPanel() {
       {processes.length > 0 && (
         <div className="border-b border-neutral-800">
           <div className="px-3 py-2 text-xs font-medium text-neutral-400">
-            Background Jobs ({processes.length})
+            {t("background_jobs", { count: processes.length })}
           </div>
           {running.map((p) => (
             <ProcessRow key={p.taskId} proc={p} onKill={() => killProcess(p.taskId)} />
@@ -161,19 +171,19 @@ export default function ProcessPanel() {
       <div>
         <div className="flex items-center justify-between px-3 py-2">
           <span className="text-xs font-medium text-neutral-400">
-            Dev Servers ({systemProcs.length})
+            {t("dev_servers", { count: systemProcs.length })}
           </span>
           <button
             onClick={scanSystemProcesses}
             disabled={scanning}
             className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 hover:text-neutral-200"
           >
-            {scanning ? "Scanning..." : "Scan"}
+            {scanning ? t("scanning_short") : t("scan")}
           </button>
         </div>
         {systemProcs.length === 0 ? (
           <div className="px-3 py-6 text-center text-neutral-600 text-xs">
-            {scanning ? "Scanning for dev servers..." : "No dev servers found"}
+            {scanning ? t("scanning_long") : t("no_dev_servers")}
           </div>
         ) : (
           systemProcs.map((p) => (

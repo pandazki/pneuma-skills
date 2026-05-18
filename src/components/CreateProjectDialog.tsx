@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { getApiBase } from "../utils/api.js";
 import { basename, basenameToTitleCase, shortenPath } from "../utils/string.js";
 import { timeAgo } from "../utils/timeAgo.js";
@@ -49,12 +50,13 @@ export function CreateProjectDialog({ open, onClose, onCreated, homeDir }: Creat
 
 interface InnerProps {
   onClose: () => void;
-  onCreated: (root: string) => void;
+  onCreated: (root: string, skipOnboard: boolean) => void;
   homeDir?: string;
   closing: boolean;
 }
 
 function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: InnerProps) {
+  const { t } = useTranslation("create-project");
   const [root, setRoot] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
@@ -196,7 +198,7 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
       } = {
         root,
         name: inferredName || "project",
-        displayName: displayName || inferredName || "Untitled",
+        displayName: displayName || inferredName || t("defaults.untitled"),
         description,
       };
       if (selectedIds.size > 0) {
@@ -212,7 +214,7 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || `create failed (${res.status})`);
+        setError(data.error || t("error.create_failed", { status: res.status }));
         setSubmitting(false);
         return;
       }
@@ -241,12 +243,12 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
         aria-labelledby="create-project-dialog-title"
       >
         <h2 id="create-project-dialog-title" className="text-cc-fg text-lg mb-4">
-          Create Project
+          {t("title")}
         </h2>
         <div className="space-y-3">
           <div>
             <label htmlFor="cp-root" className="block text-sm">
-              <span className="text-cc-muted">Project root path (must already exist or be createable)</span>
+              <span className="text-cc-muted">{t("root_label")}</span>
             </label>
             <div className="relative mt-1">
               <div className="flex gap-1.5">
@@ -256,7 +258,7 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
                   className="flex-1 min-w-0 bg-cc-input-bg border border-cc-border rounded px-2 py-1 text-cc-fg outline-none focus:border-cc-primary"
                   value={root}
                   onChange={(e) => handleRootChange(e.target.value)}
-                  placeholder="/Users/x/Code/my-project"
+                  placeholder={t("root_placeholder")}
                 />
                 <button
                   type="button"
@@ -266,7 +268,7 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
                     }).pneumaDesktop;
                     if (desktop?.showOpenDialog) {
                       const selected = await desktop.showOpenDialog({
-                        title: "Select Project Root",
+                        title: t("select_project_root"),
                         defaultPath: root || homeDir || undefined,
                       });
                       if (selected) handleRootChange(selected);
@@ -279,8 +281,8 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
                       ? "bg-cc-primary/20 border-cc-primary/50 text-cc-primary"
                       : "bg-cc-input-bg border-cc-border text-cc-muted hover:text-cc-fg"
                   }`}
-                  title="Browse directories"
-                  aria-label="Browse directories"
+                  title={t("browse_directories")}
+                  aria-label={t("browse_directories")}
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
@@ -298,16 +300,16 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
             </div>
           </div>
           <label className="block text-sm">
-            <span className="text-cc-muted">Display name</span>
+            <span className="text-cc-muted">{t("display_name_label")}</span>
             <input
               className="w-full mt-1 bg-cc-input-bg border border-cc-border rounded px-2 py-1 text-cc-fg outline-none focus:border-cc-primary"
               value={displayName}
               onChange={(e) => handleDisplayNameChange(e.target.value)}
-              placeholder={basenameToTitleCase(root) || "My Project"}
+              placeholder={basenameToTitleCase(root) || t("display_name_placeholder_fallback")}
             />
           </label>
           <label className="block text-sm">
-            <span className="text-cc-muted">Description (optional)</span>
+            <span className="text-cc-muted">{t("description_label")}</span>
             <textarea
               className="w-full mt-1 bg-cc-input-bg border border-cc-border rounded px-2 py-1 text-cc-fg outline-none focus:border-cc-primary"
               rows={2}
@@ -334,12 +336,12 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                 </svg>
-                <span className="text-cc-muted">Initialize from existing sessions</span>
-                <span className="text-cc-muted/50 text-xs">(optional)</span>
+                <span className="text-cc-muted">{t("import.header")}</span>
+                <span className="text-cc-muted/50 text-xs">{t("import.optional_suffix")}</span>
               </span>
               {selectedIds.size > 0 && (
                 <span className="text-xs text-cc-primary font-medium">
-                  {selectedIds.size} selected
+                  {t("import.selected_count", { count: selectedIds.size })}
                 </span>
               )}
             </button>
@@ -355,7 +357,7 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
                 )}
                 {!sessionsLoading && !sessionsError && availableSessions.length === 0 && (
                   <div className="px-3 py-4 text-center text-cc-muted/60 text-xs">
-                    No quick sessions to import.
+                    {t("import.empty")}
                   </div>
                 )}
                 {!sessionsLoading && availableSessions.map((s) => {
@@ -404,7 +406,7 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
             className="px-3 py-1 text-sm border border-cc-border rounded text-cc-fg hover:border-cc-muted cursor-pointer"
             onClick={onClose}
           >
-            Cancel
+            {t("actions.cancel")}
           </button>
           {/* Split button: primary fires "Create & discover" (auto
               project-onboard on entry); the chevron reveals "Create
@@ -418,11 +420,11 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
               disabled={!root || submitting}
               onClick={() => void submit(false)}
             >
-              {submitting ? "Creating…" : "Create & discover"}
+              {submitting ? t("actions.creating") : t("actions.create_and_discover")}
             </button>
             <button
               type="button"
-              aria-label="More create options"
+              aria-label={t("actions.more_options")}
               aria-haspopup="menu"
               aria-expanded={actionMenuOpen}
               className="px-2 py-1 text-sm bg-cc-primary text-white rounded-r disabled:opacity-50 hover:brightness-110 cursor-pointer flex items-center"
@@ -450,8 +452,8 @@ function CreateProjectDialogInner({ onClose, onCreated, homeDir, closing }: Inne
                   onClick={() => void submit(true)}
                   className="w-full text-left px-3 py-2 text-xs text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer flex flex-col gap-0.5"
                 >
-                  <span>Create without discovery</span>
-                  <span className="text-cc-muted/70 text-[11px]">Skip the auto-introduction; set up sessions manually.</span>
+                  <span>{t("actions.create_without_discovery")}</span>
+                  <span className="text-cc-muted/70 text-[11px]">{t("actions.create_without_discovery_desc")}</span>
                 </button>
               </div>
             )}

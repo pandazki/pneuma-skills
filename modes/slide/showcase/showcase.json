@@ -1,22 +1,50 @@
 {
-  "tagline": "HTML presentations — pixel-perfect on a 1280×720 canvas",
+  "tagline": {
+    "en": "HTML presentations — pixel-perfect on a 1280×720 canvas",
+    "zh-CN": "HTML 演示文稿 —— 在 1280×720 画布上像素级精准",
+    "ja": "HTML プレゼンテーション —— 1280×720 キャンバスにピクセル単位でフィット"
+  },
   "hero": "hero.png",
   "highlights": [
     {
-      "title": "Fixed-Viewport Slides",
-      "description": "Each slide is crafted HTML on a precise 1280×720 canvas — no scrolling, just clean layouts with theme.css design tokens.",
+      "title": {
+        "en": "Fixed-Viewport Slides",
+        "zh-CN": "固定视口幻灯片",
+        "ja": "固定ビューポートのスライド"
+      },
+      "description": {
+        "en": "Each slide is crafted HTML on a precise 1280×720 canvas — no scrolling, just clean layouts with theme.css design tokens.",
+        "zh-CN": "每一页都是在精准 1280×720 画布上打磨的 HTML —— 不滚动，只有干净的版面和 theme.css 设计令牌。",
+        "ja": "各スライドは 1280×720 のキャンバスに丁寧に組まれた HTML —— スクロールはなく、theme.css のデザイントークンを使った端正なレイアウトだけ。"
+      },
       "media": "canvas.png",
       "mediaType": "image"
     },
     {
-      "title": "Thumbnail Navigator",
-      "description": "Drag slide thumbnails to reorder your story. Switch between content sets for locale variants or theme experiments.",
+      "title": {
+        "en": "Thumbnail Navigator",
+        "zh-CN": "缩略图导航",
+        "ja": "サムネイル・ナビゲータ"
+      },
+      "description": {
+        "en": "Drag slide thumbnails to reorder your story. Switch between content sets for locale variants or theme experiments.",
+        "zh-CN": "拖动缩略图就能重排叙事顺序。切换内容集即可在多语言版本与主题实验之间自由穿梭。",
+        "ja": "サムネイルをドラッグするだけでストーリーの順序を組み替えられる。コンテンツセットを切り替えればロケール版や別テーマの実験も自在。"
+      },
       "media": "drag-reorder.png",
       "mediaType": "image"
     },
     {
-      "title": "Highlighter & Export",
-      "description": "Draw freehand on any slide to mark areas for the agent. Export your deck as HTML or print to PDF when ready.",
+      "title": {
+        "en": "Highlighter & Export",
+        "zh-CN": "高亮笔与导出",
+        "ja": "ハイライターとエクスポート"
+      },
+      "description": {
+        "en": "Draw freehand on any slide to mark areas for the agent. Export your deck as HTML or print to PDF when ready.",
+        "zh-CN": "在任意一页随手涂画即可向代理标注区域。准备好后可导出为 HTML 或打印成 PDF。",
+        "ja": "任意のスライドに手描きで印を付ければ、エージェントへ箇所を伝えられる。仕上がったら HTML として書き出すか、PDF として印刷できる。"
+      },
       "media": "export.png",
       "mediaType": "image"
     }

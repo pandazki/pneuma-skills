@@ -19,6 +19,38 @@
 
 import type { SourceDescriptor } from "./source.js";
 
+/**
+ * Localized string — either a plain English string (backwards compatible)
+ * or an object keyed by locale. Unknown locales fall back to `en`, then to
+ * the first available value. Use `resolveLocalized()` to convert at read
+ * time; never compare LocalizedString values directly.
+ */
+export type LocalizedString = string | LocalizedStringMap;
+
+export interface LocalizedStringMap {
+  en: string;
+  "zh-CN"?: string;
+  ja?: string;
+  /** Allow forward-compatible additional locales without a type-check failure. */
+  [locale: string]: string | undefined;
+}
+
+/**
+ * Pick a value from a LocalizedString by locale, with fallback order:
+ * exact match → "en" → first available string. Returns empty string only
+ * when the input is completely empty.
+ */
+export function resolveLocalized(value: LocalizedString | undefined, locale: string = "en"): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (value[locale]) return value[locale]!;
+  if (value.en) return value.en;
+  for (const v of Object.values(value)) {
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return "";
+}
+
 /** MCP server declaration — automatically registered to the workspace's .mcp.json during skill installation */
 export interface McpServerConfig {
   /** Server name (key under mcpServers in .mcp.json) */
@@ -250,10 +282,10 @@ export interface EvolutionTool {
 
 /** Showcase highlight — a single feature to display in the carousel */
 export interface ShowcaseHighlight {
-  /** Feature title (e.g. "Responsive Preview") */
-  title: string;
-  /** Short description (1-2 sentences) */
-  description: string;
+  /** Feature title (e.g. "Responsive Preview"). Accepts a plain string or a per-locale map. */
+  title: LocalizedString;
+  /** Short description (1-2 sentences). Accepts a plain string or a per-locale map. */
+  description: LocalizedString;
   /** Media file path relative to showcase/ directory */
   media: string;
   /** Media type — determines rendering (default: "image") */
@@ -266,8 +298,8 @@ export interface ShowcaseHighlight {
  * `GET /api/modes/:name/showcase/*`.
  */
 export interface ModeShowcase {
-  /** Short tagline shown under the mode name (e.g. "17 AI design commands") */
-  tagline?: string;
+  /** Short tagline shown under the mode name (e.g. "17 AI design commands"). Accepts a plain string or a per-locale map. */
+  tagline?: LocalizedString;
   /** Hero image path relative to showcase/ directory (16:9 recommended) */
   hero?: string;
   /** Feature highlights — displayed as a carousel with hover-to-switch */
@@ -303,10 +335,10 @@ export interface ModeManifest {
    * user-visible improvements since the last skill release.
    */
   changelog?: Record<string, string[]>;
-  /** Human-readable display name (e.g. "Document") */
-  displayName: string;
-  /** Short description */
-  description: string;
+  /** Human-readable display name (e.g. "Document"). Accepts a plain string or a per-locale map. */
+  displayName: LocalizedString;
+  /** Short description. Accepts a plain string or a per-locale map. */
+  description: LocalizedString;
   /** Mode icon as inline SVG string (e.g. `<svg viewBox="0 0 24 24">...</svg>`) */
   icon?: string;
 

@@ -1,0 +1,39 @@
+{
+  "settings_tooltip": "App settings",
+  "view_button_view": "View",
+  "view_button_edit": "Edit",
+  "switch_to_viewing": "Switch to viewing",
+  "switch_to_editing": "Switch to editing",
+  "new_empty_content": "New empty content",
+  "share": {
+    "title": "Share",
+    "tooltip": "Share",
+    "result": "Share Result",
+    "result_desc": "Upload current files (no history)",
+    "process": "Share Process",
+    "process_desc": "Upload with chat history & checkpoints",
+    "export_local": "Export to local file",
+    "export_local_desc": "Save as .tar.gz without cloud upload",
+    "r2_required": "Cloud sharing requires R2 storage configuration.",
+    "r2_hint": "Configure R2 credentials in the Launcher settings to enable cloud sharing.",
+    "sharing": "Sharing...",
+    "success": "Shared successfully!",
+    "copy": "Copy",
+    "again": "Share again",
+    "share_failed": "Share failed",
+    "export_failed": "Export failed",
+    "try_again": "Try again"
+  },
+  "tabs": {
+    "chat": "Chat",
+    "editor": "Editor",
+    "diff": "Diffs",
+    "terminal": "Terminal",
+    "processes": "Processes",
+    "context": "Context",
+    "schedules": "Schedules"
+  },
+  "disabled_replay": "Not available in replay mode",
+  "disabled_git": "Diffs require a git repository. Run `git init` in the workspace.",
+  "replay_badge": "Replay"
+}

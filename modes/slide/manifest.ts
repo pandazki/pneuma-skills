@@ -9,8 +9,16 @@ import { loadDeck, saveDeck } from "./domain.js";
 const slideManifest: ModeManifest = {
   name: "slide",
   version: "1.2.0",
-  displayName: "Slide",
-  description: "HTML presentations with content sets, drag-reorder, presenter mode, and PDF/image export",
+  displayName: {
+    en: "Slide",
+    "zh-CN": "幻灯片",
+    ja: "スライド",
+  },
+  description: {
+    en: "HTML presentations with content sets, drag-reorder, presenter mode, and PDF/image export",
+    "zh-CN": "支持内容集、拖拽重排、演讲者模式与 PDF / 图片导出的 HTML 演示文稿",
+    ja: "コンテンツセット、ドラッグ並べ替え、発表者モード、PDF・画像エクスポートに対応した HTML プレゼンテーション",
+  },
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605"/></svg>`,
 
   skill: {

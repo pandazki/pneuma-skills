@@ -1,0 +1,30 @@
+{
+  "title": "创建项目",
+  "root_label": "项目根路径（必须已存在或可创建）",
+  "root_placeholder": "/Users/x/Code/my-project",
+  "browse_directories": "浏览目录",
+  "select_project_root": "选择项目根目录",
+  "display_name_label": "显示名称",
+  "display_name_placeholder_fallback": "我的项目",
+  "description_label": "描述（可选）",
+  "import": {
+    "header": "从现有会话初始化",
+    "optional_suffix": "（可选）",
+    "selected_count": "已选 {{count}} 项",
+    "empty": "没有可导入的快速会话。"
+  },
+  "actions": {
+    "cancel": "取消",
+    "creating": "创建中…",
+    "create_and_discover": "创建并发现",
+    "more_options": "更多创建选项",
+    "create_without_discovery": "创建但不发现",
+    "create_without_discovery_desc": "跳过自动介绍，手动设置会话。"
+  },
+  "defaults": {
+    "untitled": "未命名"
+  },
+  "error": {
+    "create_failed": "创建失败（{{status}}）"
+  }
+}

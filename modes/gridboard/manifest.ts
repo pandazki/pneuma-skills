@@ -8,8 +8,16 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 const gridboardManifest: ModeManifest = {
   name: "gridboard",
   version: "0.1.0",
-  displayName: "GridBoard",
-  description: "Interactive dashboard builder with draggable tile grid",
+  displayName: {
+    en: "GridBoard",
+    "zh-CN": "GridBoard",
+    ja: "GridBoard",
+  },
+  description: {
+    en: "Interactive dashboard builder with draggable tile grid",
+    "zh-CN": "支持拖拽磁贴网格的交互式仪表盘构建器",
+    ja: "ドラッグ可能なタイルグリッドでインタラクティブにダッシュボードを構築",
+  },
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="4" rx="1"/><rect x="14" y="11" width="7" height="10" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>`,
 
   skill: {

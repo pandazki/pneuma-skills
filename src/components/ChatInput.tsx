@@ -1,4 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo, type KeyboardEvent, type ClipboardEvent, type DragEvent } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useStore } from "../store.js";
 import { sendUserMessage, sendInterrupt } from "../ws.js";
 import ModelSwitcher from "./ModelSwitcher.js";
@@ -17,26 +19,30 @@ interface FileAttachment {
 }
 
 /** Format selection info for display in the chip */
-function formatSelectionLabel(sel: { type: string; content: string; level?: number; file: string; tag?: string; classes?: string; selector?: string }): string {
+function formatSelectionLabel(
+  sel: { type: string; content: string; level?: number; file: string; tag?: string; classes?: string; selector?: string },
+  t: TFunction,
+): string {
   if (sel.selector) {
     const preview = sel.content.length > 40 ? sel.content.slice(0, 37) + "..." : sel.content;
     return preview ? `${sel.selector}  "${preview}"` : sel.selector;
   }
-  const typeLabels: Record<string, string> = {
-    heading: `h${sel.level || 1}`,
-    paragraph: "paragraph",
-    list: "list",
-    code: "code block",
-    blockquote: "blockquote",
-    image: "image",
-    table: "table",
-    "text-range": "text",
-    section: "section",
-    link: "link",
-    container: "container",
-    interactive: "interactive",
+  const typeKey: Record<string, string> = {
+    heading: "selection_types.heading",
+    paragraph: "selection_types.paragraph",
+    list: "selection_types.list",
+    code: "selection_types.code",
+    blockquote: "selection_types.blockquote",
+    image: "selection_types.image",
+    table: "selection_types.table",
+    "text-range": "selection_types.text_range",
+    section: "selection_types.section",
+    link: "selection_types.link",
+    container: "selection_types.container",
+    interactive: "selection_types.interactive",
   };
-  const type = typeLabels[sel.type] || sel.type;
+  const key = typeKey[sel.type];
+  const type = key ? t(key, { level: sel.level || 1 }) : sel.type;
   const preview = sel.content.length > 60 ? sel.content.slice(0, 57) + "..." : sel.content;
   return `${type}: "${preview}"`;
 }
@@ -66,6 +72,7 @@ function fileToAttachment(file: File): Promise<FileAttachment | null> {
 }
 
 export default function ChatInput() {
+  const { t } = useTranslation("chat-input");
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const [slashOpen, setSlashOpen] = useState(false);
@@ -299,13 +306,13 @@ export default function ChatInput() {
         <div className="mb-2 rounded-lg border border-cc-border bg-cc-card/50 overflow-hidden">
           <div className="flex items-center justify-between px-3 py-1.5 border-b border-cc-border/50">
             <span className="text-xs font-medium text-cc-fg">
-              Annotations ({annotations.length})
+              {t("annotations_label", { count: annotations.length })}
             </span>
             <button
               onClick={clearAnnotations}
               className="text-[11px] text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
             >
-              Clear all
+              {t("clear_all")}
             </button>
           </div>
           <div className="max-h-[200px] overflow-y-auto divide-y divide-cc-border/30">
@@ -326,14 +333,14 @@ export default function ChatInput() {
                       type="text"
                       value={ann.comment}
                       onChange={(e) => updateAnnotationComment(ann.id, e.target.value)}
-                      placeholder="Add comment..."
+                      placeholder={t("add_comment_placeholder")}
                       className="mt-1 w-full bg-cc-bg/60 text-cc-fg text-xs rounded px-2 py-1 border border-cc-border/40 placeholder-cc-muted/50 focus:outline-none focus:border-cc-primary/50"
                     />
                   </div>
                   <button
                     onClick={() => removeAnnotation(ann.id)}
                     className="shrink-0 text-cc-muted hover:text-cc-fg transition-colors cursor-pointer opacity-0 group-hover:opacity-100 mt-0.5"
-                    title="Remove annotation"
+                    title={t("remove_annotation")}
                   >
                     <CloseIcon />
                   </button>
@@ -353,12 +360,12 @@ export default function ChatInput() {
             )}
             <div className="flex items-center gap-1.5 px-2.5 py-1.5">
               <PinIcon />
-              <span className="truncate">{formatSelectionLabel(selection)}</span>
+              <span className="truncate">{formatSelectionLabel(selection, t)}</span>
               <span className="shrink-0 text-cc-muted text-[11px]">{selection.file}</span>
               <button
                 onClick={() => setSelection(null)}
                 className="shrink-0 ml-0.5 hover:text-cc-fg transition-colors cursor-pointer"
-                title="Clear selection"
+                title={t("clear_selection")}
               >
                 <CloseIcon />
               </button>
@@ -376,7 +383,7 @@ export default function ChatInput() {
               className="flex items-center gap-1.5 px-2.5 py-1.5 bg-cc-surface/40 border border-cc-border/30 rounded-lg group"
             >
               <span className={`text-[10px] font-medium shrink-0 ${msg.kind === "notification" ? "text-amber-500/70" : "text-cc-primary/60"}`}>
-                {msg.kind === "notification" ? "viewer" : "queued"}
+                {msg.kind === "notification" ? t("queue_label_notification") : t("queue_label_user")}
               </span>
               <span className="text-xs text-cc-muted truncate flex-1">
                 {msg.kind === "user" ? msg.text : msg.notification.summary || msg.notification.type}
@@ -384,7 +391,7 @@ export default function ChatInput() {
               <button
                 onClick={() => removePendingMessage(msg.id)}
                 className="shrink-0 text-cc-muted/40 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                title="Remove from queue"
+                title={t("remove_from_queue")}
               >
                 <CloseIcon />
               </button>
@@ -413,7 +420,7 @@ export default function ChatInput() {
               <button
                 onClick={() => removeAttachment(att.id)}
                 className="absolute top-0.5 right-0.5 w-4 h-4 bg-cc-card/80 hover:bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                title="Remove"
+                title={t("remove_attachment")}
               >
                 <CloseIcon />
               </button>
@@ -465,16 +472,16 @@ export default function ChatInput() {
             onPaste={handlePaste}
             placeholder={
               !cliConnected
-                ? "Waiting for CLI connection..."
+                ? t("placeholder.waiting")
                 : isBusy
-                  ? "Type to queue next message..."
+                  ? t("placeholder.busy")
                   : hasAnnotations
-                    ? "Add notes (optional)..."
+                    ? t("placeholder.annotations")
                     : selection
-                      ? "Tell Claude what to change..."
+                      ? t("placeholder.selection")
                       : previewMode === "annotate"
-                        ? "Click elements to annotate, then send..."
-                        : "Send a message... (drop files, paste images, type / for commands)"
+                        ? t("placeholder.annotate_mode")
+                        : t("placeholder.default")
             }
             disabled={!cliConnected}
             rows={1}
@@ -490,12 +497,12 @@ export default function ChatInput() {
               type="button"
               onClick={handleFilePickerClick}
               className="flex items-center gap-1 px-2 py-1 text-xs text-cc-muted hover:text-cc-fg bg-cc-card hover:bg-cc-hover rounded transition-colors"
-              title="Attach file"
+              title={t("attach_file")}
             >
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
                 <path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z" />
               </svg>
-              <span>File</span>
+              <span>{t("file_button")}</span>
             </button>
             <input
               ref={fileInputRef}
@@ -513,7 +520,7 @@ export default function ChatInput() {
                 onClick={sendInterrupt}
                 className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-medium text-xs rounded-full transition-all shadow-[0_0_12px_rgba(220,38,38,0.4)]"
               >
-                Stop
+                {t("stop")}
               </button>
             )}
             <button
@@ -521,7 +528,7 @@ export default function ChatInput() {
               disabled={(!text.trim() && attachments.length === 0 && !hasAnnotations) || !cliConnected}
               className="px-5 py-2 bg-cc-primary hover:bg-cc-primary-hover text-cc-bg font-medium text-xs rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(249,115,22,0.4)] disabled:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isBusy ? "Queue" : "Send"}
+              {isBusy ? t("queue") : t("send")}
             </button>
           </div>
         </div>

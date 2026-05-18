@@ -1,3 +1,5 @@
+import { t } from "./i18n.js";
+
 /**
  * `pneuma session refine` CLI — pushes a refined session title + description
  * to the running Pneuma server, which rewrites the active session's
@@ -49,24 +51,7 @@ export interface SessionCliIo {
   ) => Promise<{ status: number; json: () => Promise<unknown>; text: () => Promise<string> }>;
 }
 
-const HELP_TEXT = `Usage: pneuma session refine --json '<json>' | --stdin
-
-Rewrite the active Pneuma session's UI metadata so the launcher and
-ProjectPanel rows reflect what the session is actually about, instead of
-the mode-based default + the first \`<pneuma:env>\` synthetic message.
-
-JSON payload fields (at least one is required):
-
-  displayName   string   ≤40 chars — a short title for the session
-  description   string   ≤280 chars — one or two sentences
-
-The agent uses this when the conversation has produced enough substance for
-a meaningful summary, or when the user explicitly asks for a re-titling.
-
-Env vars:
-  PNEUMA_SERVER_URL   POSTed against
-  PNEUMA_SESSION_ID   active session id (auto-injected)
-`;
+const HELP_TEXT = (): string => t("session.refine.usage");
 
 const DISPLAY_NAME_MAX = 40;
 const DESCRIPTION_MAX = 280;
@@ -152,25 +137,25 @@ export async function runSessionRefineCommand(
   const parsed = parseSessionRefineArgs(args);
 
   if (parsed.help) {
-    io.stdout(HELP_TEXT);
+    io.stdout(HELP_TEXT());
     return 0;
   }
 
   if (!parsed.json && !parsed.stdin) {
-    io.stderr("error: pass --json '<json>' or --stdin");
-    io.stderr(HELP_TEXT);
+    io.stderr(t("session.refine.missing_args"));
+    io.stderr(HELP_TEXT());
     return 2;
   }
 
   const sessionId = env.PNEUMA_SESSION_ID;
   if (!sessionId) {
-    io.stderr("error: PNEUMA_SESSION_ID env var not set (must run inside a session)");
+    io.stderr(t("session.refine.missing_session_id"));
     return 2;
   }
 
   const serverUrl = env.PNEUMA_SERVER_URL;
   if (!serverUrl) {
-    io.stderr("error: PNEUMA_SERVER_URL env var not set (must run inside a session)");
+    io.stderr(t("session.refine.missing_server_url"));
     return 2;
   }
 
@@ -179,7 +164,7 @@ export async function runSessionRefineCommand(
     rawJson = await io.readStdin();
   }
   if (!rawJson || rawJson.trim().length === 0) {
-    io.stderr("error: empty JSON payload");
+    io.stderr(t("session.refine.empty_payload"));
     return 2;
   }
 
@@ -187,7 +172,7 @@ export async function runSessionRefineCommand(
   try {
     parsedPayload = JSON.parse(rawJson);
   } catch (err) {
-    io.stderr(`error: invalid JSON — ${err instanceof Error ? err.message : String(err)}`);
+    io.stderr(t("session.refine.invalid_json", { message: err instanceof Error ? err.message : String(err) }));
     return 2;
   }
 
@@ -195,7 +180,7 @@ export async function runSessionRefineCommand(
   try {
     body = validateSessionRefinePayload(parsedPayload);
   } catch (err) {
-    io.stderr(`error: ${err instanceof Error ? err.message : String(err)}`);
+    io.stderr(t("session.refine.validation_error", { message: err instanceof Error ? err.message : String(err) }));
     return 2;
   }
 
@@ -208,14 +193,14 @@ export async function runSessionRefineCommand(
       body: JSON.stringify(body),
     });
   } catch (err) {
-    io.stderr(`error: failed to reach Pneuma server at ${url}: ${err instanceof Error ? err.message : String(err)}`);
+    io.stderr(t("session.refine.fetch_failed", { url, message: err instanceof Error ? err.message : String(err) }));
     return 1;
   }
 
   if (response.status >= 200 && response.status < 300) {
-    io.stdout(
-      `Session meta refined.${body.displayName ? ` title="${body.displayName}"` : ""}${body.description ? ` description="${body.description}"` : ""}`,
-    );
+    const titleSuffix = body.displayName ? t("session.refine.success_title", { title: body.displayName }) : "";
+    const descSuffix = body.description ? t("session.refine.success_desc", { description: body.description }) : "";
+    io.stdout(t("session.refine.success", { titleSuffix, descSuffix }));
     return 0;
   }
 
@@ -231,6 +216,6 @@ export async function runSessionRefineCommand(
       // Fall back to the status-code-only message.
     }
   }
-  io.stderr(`error: ${serverError}`);
+  io.stderr(t("session.refine.server_error", { message: serverError }));
   return 1;
 }

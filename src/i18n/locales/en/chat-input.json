@@ -1,0 +1,38 @@
+{
+  "selection_types": {
+    "heading": "h{{level}}",
+    "paragraph": "paragraph",
+    "list": "list",
+    "code": "code block",
+    "blockquote": "blockquote",
+    "image": "image",
+    "table": "table",
+    "text_range": "text",
+    "section": "section",
+    "link": "link",
+    "container": "container",
+    "interactive": "interactive"
+  },
+  "annotations_label": "Annotations ({{count}})",
+  "clear_all": "Clear all",
+  "add_comment_placeholder": "Add comment...",
+  "remove_annotation": "Remove annotation",
+  "clear_selection": "Clear selection",
+  "queue_label_notification": "viewer",
+  "queue_label_user": "queued",
+  "remove_from_queue": "Remove from queue",
+  "remove_attachment": "Remove",
+  "attach_file": "Attach file",
+  "file_button": "File",
+  "stop": "Stop",
+  "send": "Send",
+  "queue": "Queue",
+  "placeholder": {
+    "waiting": "Waiting for CLI connection...",
+    "busy": "Type to queue next message...",
+    "annotations": "Add notes (optional)...",
+    "selection": "Tell Claude what to change...",
+    "annotate_mode": "Click elements to annotate, then send...",
+    "default": "Send a message... (drop files, paste images, type / for commands)"
+  }
+}

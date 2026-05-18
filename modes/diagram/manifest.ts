@@ -3,8 +3,16 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 const diagramManifest: ModeManifest = {
   name: "diagram",
   version: "1.0.0",
-  displayName: "Diagram",
-  description: "Professional diagrams powered by draw.io — flowcharts, architecture, UML, and more",
+  displayName: {
+    en: "Diagram",
+    "zh-CN": "图表",
+    ja: "図表",
+  },
+  description: {
+    en: "Professional diagrams powered by draw.io — flowcharts, architecture, UML, and more",
+    "zh-CN": "由 draw.io 驱动的专业图表 —— 流程图、架构图、UML 等",
+    ja: "draw.io によるプロフェッショナル図表 —— フローチャート、アーキテクチャ、UML など",
+  },
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><path d="M10 6.5h4M6.5 10v4M17.5 10v4"/></svg>`,
 
   skill: {

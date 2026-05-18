@@ -1,0 +1,30 @@
+{
+  "title": "プロジェクトを作成",
+  "root_label": "プロジェクトのルートパス（既存または作成可能なパス）",
+  "root_placeholder": "/Users/x/Code/my-project",
+  "browse_directories": "ディレクトリを参照",
+  "select_project_root": "プロジェクトのルートを選択",
+  "display_name_label": "表示名",
+  "display_name_placeholder_fallback": "マイプロジェクト",
+  "description_label": "説明（任意)",
+  "import": {
+    "header": "既存のセッションから初期化",
+    "optional_suffix": "(任意)",
+    "selected_count": "{{count}} 件選択中",
+    "empty": "インポート可能なクイックセッションはありません。"
+  },
+  "actions": {
+    "cancel": "キャンセル",
+    "creating": "作成中…",
+    "create_and_discover": "作成して発見",
+    "more_options": "その他の作成オプション",
+    "create_without_discovery": "発見せずに作成",
+    "create_without_discovery_desc": "自動紹介をスキップし、セッションを手動で設定します。"
+  },
+  "defaults": {
+    "untitled": "無題"
+  },
+  "error": {
+    "create_failed": "作成に失敗しました ({{status}})"
+  }
+}

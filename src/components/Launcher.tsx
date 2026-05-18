@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { getApiBase } from "../utils/api.js";
+import {
+  SUPPORTED_LOCALES,
+  LOCALE_LABELS,
+  DEFAULT_LOCALE,
+  currentLocale,
+  persistLocale,
+  type Locale,
+} from "../i18n/index.js";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import SpotlightCard from "./reactbits/SpotlightCard";
 import Galaxy from "./reactbits/Galaxy";
@@ -174,6 +183,7 @@ function getUrlIcon(url: string) {
 }
 
 function InspiredByTag({ name, url, className = "" }: { name: string; url: string; className?: string }) {
+  const { t } = useTranslation("launcher");
   const icon = getUrlIcon(url);
   return (
     <a
@@ -182,10 +192,10 @@ function InspiredByTag({ name, url, className = "" }: { name: string; url: strin
       rel="noopener noreferrer"
       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-cc-muted/60 hover:text-cc-muted bg-cc-surface/30 hover:bg-cc-surface/50 border border-cc-border/20 transition-colors ${className}`}
       onClick={(e) => e.stopPropagation()}
-      title={`Inspired by ${name}`}
+      title={t("inspired_by_tooltip", { name })}
     >
       {icon}
-      <span className="opacity-60">inspired by</span>
+      <span className="opacity-60">{t("inspired_by_prefix")}</span>
       <span>{name}</span>
     </a>
   );
@@ -232,11 +242,12 @@ function useTheme() {
 }
 
 function ThemeToggle({ preference, onClick }: { preference: Theme; onClick: () => void }) {
+  const { t } = useTranslation("launcher");
   return (
     <button
       onClick={onClick}
       className="p-2 text-cc-muted/70 hover:text-cc-fg transition-colors cursor-pointer"
-      title={`Theme: ${preference}`}
+      title={t("theme_tooltip", { preference })}
     >
       {preference === "light" ? (
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -270,6 +281,7 @@ function ConfirmButton({
   className?: string;
   stopPropagation?: boolean;
 }) {
+  const { t } = useTranslation("launcher");
   const [open, setOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -329,7 +341,7 @@ function ConfirmButton({
           onClick={handleCancel}
           className="px-1.5 py-0.5 text-[10px] text-cc-muted hover:text-cc-fg rounded transition-colors cursor-pointer"
         >
-          Cancel
+          {t("confirm_button.cancel")}
         </button>
       </div>
     </div>
@@ -618,6 +630,7 @@ function FeaturedMode({
   onExplore: () => void;
   isLight?: boolean;
 }) {
+  const { t } = useTranslation("launcher");
   const [activeHighlight, setActiveHighlight] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const highlights = mode.showcase?.highlights;
@@ -751,13 +764,13 @@ function FeaturedMode({
 
           <div className="flex items-center gap-3 mt-auto pt-4 shrink-0">
             <PrimaryButton onClick={onLaunch} className="py-2.5">
-              Launch
+              {t("featured.launch")}
             </PrimaryButton>
             <button
               onClick={onExplore}
               className="px-5 py-2.5 text-sm font-medium rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg hover:border-cc-muted/40 transition-colors cursor-pointer"
             >
-              Explore All Modes
+              {t("featured.explore_all")}
             </button>
           </div>
         </div>
@@ -797,6 +810,7 @@ function SessionCard({
   isLight?: boolean;
   backendUnavailableReason?: string;
 }) {
+  const { t } = useTranslation("launcher");
   const [launching, setLaunching] = useState(false);
   const [skillUpdate, setSkillUpdate] = useState<{
     currentVersion: string;
@@ -959,7 +973,7 @@ function SessionCard({
           {isRunning && onStop && (
             <ConfirmButton
               icon={<svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>}
-              label="Stop"
+              label={t("session_card.stop")}
               onConfirm={onStop}
               stopPropagation
             />
@@ -968,7 +982,7 @@ function SessionCard({
             <button
               onClick={(e) => { e.stopPropagation(); onReplay(); }}
               className="p-1.5 rounded-md bg-black/40 backdrop-blur-sm text-cc-muted/70 hover:text-cc-primary hover:bg-black/60 transition-colors cursor-pointer"
-              title="Replay"
+              title={t("session_card.replay")}
             >
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M4.5 2.5a.75.75 0 011.2-.6l8 6a.75.75 0 010 1.2l-8 6a.75.75 0 01-1.2-.6v-12z" /></svg>
             </button>
@@ -976,7 +990,7 @@ function SessionCard({
           {!isRunning && onDelete && (
             <ConfirmButton
               icon={<svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" /></svg>}
-              label="Remove"
+              label={t("session_card.remove")}
               onConfirm={onDelete}
               stopPropagation
             />
@@ -1008,14 +1022,14 @@ function SessionCard({
             />
           ) : (
             <span className="text-sm font-medium text-cc-fg/90 truncate">
-              {launching ? "Launching..." : displayName}
+              {launching ? t("session_card.launching") : displayName}
             </span>
           )}
           {!editing && session && !isRunning && onRename && (
             <button
               onClick={(e) => { e.stopPropagation(); setEditValue(displayName); setEditing(true); }}
               className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-cc-muted/40 hover:text-cc-primary transition-all cursor-pointer shrink-0"
-              title="Rename"
+              title={t("session_card.rename")}
             >
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25a1.75 1.75 0 01.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L3.464 11.1a.25.25 0 00-.064.108l-.457 1.6 1.6-.457a.25.25 0 00.108-.064l8.609-8.609a.25.25 0 000-.354l-1.086-1.086z" /></svg>
             </button>
@@ -1034,14 +1048,14 @@ function SessionCard({
         <div className="absolute inset-x-0 bottom-0 p-3 bg-cc-surface/95 backdrop-blur-sm border-t border-cc-primary/20" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-[10px] font-semibold text-cc-primary uppercase tracking-wider">Update Available</span>
+              <span className="text-[10px] font-semibold text-cc-primary uppercase tracking-wider">{t("session_card.skill_update")}</span>
               <span className="text-[10px] text-cc-muted/60 ml-2">
                 v{skillUpdate.installedVersion} → v{skillUpdate.currentVersion}
               </span>
             </div>
             <div className="flex gap-1.5">
-              <button onClick={handleSkip} className="px-2 py-1 text-[10px] rounded border border-cc-border/50 text-cc-muted hover:text-cc-fg cursor-pointer transition-colors">Skip</button>
-              <button onClick={handleUpdate} className="px-2 py-1 text-[10px] rounded bg-cc-primary/20 text-cc-primary hover:bg-cc-primary hover:text-white font-medium cursor-pointer transition-colors">Update</button>
+              <button onClick={handleSkip} className="px-2 py-1 text-[10px] rounded border border-cc-border/50 text-cc-muted hover:text-cc-fg cursor-pointer transition-colors">{t("session_card.skip")}</button>
+              <button onClick={handleUpdate} className="px-2 py-1 text-[10px] rounded bg-cc-primary/20 text-cc-primary hover:bg-cc-primary hover:text-white font-medium cursor-pointer transition-colors">{t("session_card.update")}</button>
             </div>
           </div>
           {skillUpdate.highlights && skillUpdate.highlights.length > 0 && (
@@ -1063,7 +1077,7 @@ function SessionCard({
                   rel="noreferrer"
                   className="mt-1.5 inline-block text-[10px] text-cc-primary hover:underline"
                 >
-                  View full changelog →
+                  {t("session_card.view_changelog")}
                 </a>
               )}
             </div>
@@ -1095,6 +1109,7 @@ function CompactSessionRow({
   onRename?: (name: string) => void;
   backendUnavailableReason?: string;
 }) {
+  const { t } = useTranslation("launcher");
   const [launching, setLaunching] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
@@ -1169,14 +1184,14 @@ function CompactSessionRow({
             />
           ) : (
             <span className="text-sm font-medium text-cc-fg/90 truncate block">
-              {launching ? "Launching..." : (session.sessionName || session.displayName)}
+              {launching ? t("compact_session.launching") : (session.sessionName || session.displayName)}
             </span>
           )}
           {!editing && onRename && (
             <button
               onClick={(e) => { e.stopPropagation(); setEditValue(session.sessionName || session.displayName); setEditing(true); }}
               className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-cc-muted/40 hover:text-cc-primary transition-all cursor-pointer shrink-0"
-              title="Rename"
+              title={t("compact_session.rename")}
             >
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25a1.75 1.75 0 01.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L3.464 11.1a.25.25 0 00-.064.108l-.457 1.6 1.6-.457a.25.25 0 00.108-.064l8.609-8.609a.25.25 0 000-.354l-1.086-1.086z" /></svg>
             </button>
@@ -1199,14 +1214,14 @@ function CompactSessionRow({
           <button
             onClick={(e) => { e.stopPropagation(); onReplay(); }}
             className="p-1 rounded text-cc-muted/50 hover:text-cc-primary transition-colors cursor-pointer"
-            title="Replay"
+            title={t("compact_session.replay")}
           >
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M4.5 2.5a.75.75 0 011.2-.6l8 6a.75.75 0 010 1.2l-8 6a.75.75 0 01-1.2-.6v-12z" /></svg>
           </button>
         )}
         <ConfirmButton
           icon={<svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" /></svg>}
-          label="Remove"
+          label={t("compact_session.remove")}
           onConfirm={onDelete}
           stopPropagation
         />
@@ -1220,9 +1235,9 @@ function CompactSessionRow({
             <button
               onClick={() => setHighlightsOpen((v) => !v)}
               className="text-[10px] text-cc-muted hover:text-cc-fg cursor-pointer flex items-center gap-0.5"
-              title="What's new"
+              title={t("compact_session.whats_new")}
             >
-              What's new
+              {t("compact_session.whats_new")}
               <svg viewBox="0 0 16 16" fill="currentColor" className={`w-2.5 h-2.5 transition-transform ${highlightsOpen ? "rotate-180" : ""}`}><path d="M3.22 5.97a.75.75 0 011.06 0L8 9.69l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L3.22 7.03a.75.75 0 010-1.06z" /></svg>
             </button>
           )}
@@ -1230,18 +1245,18 @@ function CompactSessionRow({
             onClick={async () => { setSkillUpdate(null); setLaunching(true); await onResume(true); setLaunching(false); }}
             className="text-[10px] text-cc-muted hover:text-cc-fg cursor-pointer"
           >
-            Skip
+            {t("compact_session.skip")}
           </button>
           <button
             onClick={async () => { setSkillUpdate(null); setLaunching(true); await onResume(false); setLaunching(false); }}
             className="text-[10px] text-cc-primary font-medium cursor-pointer"
           >
-            Update
+            {t("compact_session.update")}
           </button>
           {highlightsOpen && skillUpdate.highlights && skillUpdate.highlights.length > 0 && (
             <div className="absolute right-0 top-full mt-1 z-20 w-72 max-h-60 overflow-y-auto rounded-lg border border-cc-border/50 bg-cc-surface/98 backdrop-blur-md shadow-lg p-2.5">
               <div className="text-[10px] font-semibold text-cc-primary uppercase tracking-wider mb-1.5">
-                What's new in v{skillUpdate.currentVersion}
+                {t("compact_session.whats_new_in", { version: skillUpdate.currentVersion })}
               </div>
               <ul className="space-y-1">
                 {skillUpdate.highlights.flatMap((h) =>
@@ -1260,7 +1275,7 @@ function CompactSessionRow({
                   rel="noreferrer"
                   className="mt-2 inline-block text-[10px] text-cc-primary hover:underline"
                 >
-                  View full changelog →
+                  {t("compact_session.view_changelog")}
                 </a>
               )}
             </div>
@@ -1300,6 +1315,7 @@ function AllSessions({
   closing?: boolean;
   headerHeight?: number;
 }) {
+  const { t } = useTranslation("launcher");
   const isLight = className?.includes("launcher-light") ?? false;
   const [search, setSearch] = useState("");
   const query = search.toLowerCase().trim();
@@ -1323,7 +1339,7 @@ function AllSessions({
     >
       <div className="sticky top-0 z-10 bg-cc-bg/80 backdrop-blur-sm border-b border-cc-border/30">
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center gap-4">
-          <h1 className="font-display text-lg text-cc-fg">All Sessions</h1>
+          <h1 className="font-display text-lg text-cc-fg">{t("all_sessions.title")}</h1>
           <div className="flex-1 max-w-xs ml-4">
             <div className="relative">
               <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-cc-muted/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1331,14 +1347,14 @@ function AllSessions({
               </svg>
               <input
                 type="text"
-                placeholder="Search sessions..."
+                placeholder={t("all_sessions.search_placeholder")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 text-sm bg-cc-input-bg border border-cc-border/50 rounded-lg text-cc-fg placeholder:text-cc-muted/40 focus:outline-none focus:border-cc-primary/50"
               />
             </div>
           </div>
-          <span className="text-xs text-cc-muted/50 ml-auto">{filtered.length}{query ? ` / ${items.length}` : ""} sessions</span>
+          <span className="text-xs text-cc-muted/50 ml-auto">{query ? t("all_sessions.count_filtered", { filtered: filtered.length, total: items.length }) : t("all_sessions.count_total", { count: filtered.length })}</span>
         </div>
       </div>
 
@@ -1346,7 +1362,7 @@ function AllSessions({
         {/* Running */}
         {filtered.some((i) => i.type === "running") && (
           <div className="mb-10">
-            <h2 className="text-xs font-medium text-cc-muted/60 uppercase tracking-widest mb-4">Running</h2>
+            <h2 className="text-xs font-medium text-cc-muted/60 uppercase tracking-widest mb-4">{t("all_sessions.running")}</h2>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
               {filtered.filter((i) => i.type === "running").map((item) => (
                 <SessionCard
@@ -1378,7 +1394,7 @@ function AllSessions({
         {/* Recent */}
         {filtered.some((i) => i.type === "recent") && (
           <div>
-            <h2 className="text-xs font-medium text-cc-muted/60 uppercase tracking-widest mb-4">Recent</h2>
+            <h2 className="text-xs font-medium text-cc-muted/60 uppercase tracking-widest mb-4">{t("all_sessions.recent")}</h2>
             <div className="flex flex-col gap-0.5">
               {filtered.filter((i) => i.type === "recent").map((item) => (
                 <CompactSessionRow
@@ -1398,7 +1414,7 @@ function AllSessions({
         )}
 
         {filtered.length === 0 && (
-          <p className="text-center text-cc-muted/60 py-20">{query ? "No matching sessions." : "No sessions yet."}</p>
+          <p className="text-center text-cc-muted/60 py-20">{query ? t("all_sessions.no_match") : t("all_sessions.no_sessions")}</p>
         )}
       </div>
     </div>
@@ -1428,6 +1444,7 @@ function QuickStartTile({
   isFavorite?: boolean;
   onClick: () => void;
 }) {
+  const { t } = useTranslation("launcher");
   return (
     <button
       onClick={onClick}
@@ -1444,7 +1461,7 @@ function QuickStartTile({
         // the gallery card, not here — Quick Start is for fast launch.
         <span
           className="absolute top-2 left-2 w-3 h-3 text-cc-primary/60 group-hover:text-cc-primary transition-colors pointer-events-none"
-          aria-label="Favorite"
+          aria-label={t("quick_start_tile.favorite_aria")}
         >
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M12 17.27l5.18 3.73-1.64-6.81L21 9.74l-7.19-.61L12 2 10.19 9.13 3 9.74l5.46 4.45L6.82 21z" />
@@ -1459,8 +1476,8 @@ function QuickStartTile({
         // Quiet by default (muted/40), warms on tile hover.
         <span
           className="absolute top-2 right-2 w-3 h-3 text-cc-muted/40 group-hover:text-cc-muted/70 transition-colors pointer-events-auto"
-          title={`From library: ${librarySource.displayName || librarySource.name}`}
-          aria-label={`From library: ${librarySource.displayName || librarySource.name}`}
+          title={t("quick_start_tile.from_library", { name: librarySource.displayName || librarySource.name })}
+          aria-label={t("quick_start_tile.from_library", { name: librarySource.displayName || librarySource.name })}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
@@ -1499,6 +1516,7 @@ function QuickStartTile({
 // ── ModeMakerHero ─────────────────────────────────────────────────────────
 
 function ModeMakerHero({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation("launcher");
   return (
     <div
       onClick={onClick}
@@ -1529,13 +1547,13 @@ function ModeMakerHero({ onClick }: { onClick: () => void }) {
           <ModeIcon svg={MODE_MAKER_ICON} className="w-6 h-6 text-cc-primary drop-shadow-[0_0_4px_rgba(249,115,22,0.5)]" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="text-base font-semibold text-white">Mode Maker</h3>
+          <h3 className="text-base font-semibold text-white">{t("mode_maker_hero.title")}</h3>
           <p className="text-sm text-white/70 mt-0.5">
-            Build, test, and publish your own Pneuma modes — or fork an existing one to make it yours.
+            {t("mode_maker_hero.description")}
           </p>
         </div>
         <div className="shrink-0 flex items-center gap-2 text-sm text-cc-primary/80 group-hover:text-cc-primary transition-all duration-300 drop-shadow-[0_0_4px_rgba(249,115,22,0.3)] group-hover:drop-shadow-[0_0_12px_rgba(249,115,22,0.7)]">
-          <span className="font-semibold">Create</span>
+          <span className="font-semibold">{t("mode_maker_hero.cta")}</span>
           <svg className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
           </svg>
@@ -1593,6 +1611,7 @@ function ModeGallery({
   closing?: boolean;
   headerHeight?: number;
 }) {
+  const { t } = useTranslation("launcher");
   const [search, setSearch] = useState("");
   const [expandedMode, setExpandedMode] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -1644,21 +1663,21 @@ function ModeGallery({
       {/* Sub-header */}
       <div className="sticky top-0 z-10 bg-cc-bg/80 backdrop-blur-sm border-b border-cc-border/30">
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center gap-4">
-          <h1 className="font-display text-lg text-cc-fg">Mode Gallery</h1>
+          <h1 className="font-display text-lg text-cc-fg">{t("gallery.title")}</h1>
           <div className="ml-auto w-64">
             <div className="relative">
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search..."
+                placeholder={t("gallery.search_placeholder")}
                 className={`w-full pl-3 ${search ? "pr-8" : "pr-3"} py-1.5 bg-transparent border border-cc-border/40 rounded-lg text-sm text-cc-fg placeholder:text-cc-muted/40 outline-none focus:border-cc-muted/50 transition-colors`}
               />
               {search && (
                 <button
                   type="button"
                   onClick={() => setSearch("")}
-                  aria-label="Clear search"
+                  aria-label={t("gallery.clear_search")}
                   className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-5 h-5 rounded text-cc-muted/60 hover:text-cc-fg hover:bg-cc-border/30 transition-colors cursor-pointer"
                 >
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -1674,33 +1693,33 @@ function ModeGallery({
       {/* Gallery content */}
       <div className="max-w-6xl mx-auto px-6 py-8" ref={ref}>
         {[
-          { label: "Built-in", items: builtin, alwaysShow: false },
+          { id: "builtin", label: t("gallery.group_builtin"), items: builtin, alwaysShow: false },
           // Local always renders its header when an install action exists, so users can
           // still reach "Add from URL" before they've installed anything. During an
-          // active search we step out of the way: the "暂无本地模式" empty state is
-          // about "no modes installed yet", not "nothing matched" — leaving it on
-          // looks like a stray local item that matches every query.
-          { label: "Local", items: local, alwaysShow: !!onAddFromUrl && !search },
-          { label: "Published", items: published, alwaysShow: false },
+          // active search we step out of the way: the "no modes installed yet" empty
+          // state is not "nothing matched" — leaving it on looks like a stray local
+          // item that matches every query.
+          { id: "local", label: t("gallery.group_local"), items: local, alwaysShow: !!onAddFromUrl && !search },
+          { id: "published", label: t("gallery.group_published"), items: published, alwaysShow: false },
         ]
           .filter((g) => g.items.length > 0 || g.alwaysShow)
           .map((group) => (
-            <div key={group.label} className="mb-12">
+            <div key={group.id} className="mb-12">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xs font-medium text-cc-muted/60 uppercase tracking-widest">{group.label}</h2>
-                {group.label === "Local" && onAddFromUrl && (
+                {group.id === "local" && onAddFromUrl && (
                   <button
                     onClick={onAddFromUrl}
                     className="text-[10px] text-cc-muted hover:text-cc-primary transition-colors cursor-pointer flex items-center gap-1"
-                    title="Install a mode from a URL or github:user/repo"
+                    title={t("gallery.add_from_url_tooltip")}
                   >
                     <span className="text-sm leading-none">+</span>
-                    <span>Add from URL</span>
+                    <span>{t("gallery.add_from_url")}</span>
                   </button>
                 )}
               </div>
-              {group.items.length === 0 && group.label === "Local" ? (
-                <p className="text-[11px] text-cc-muted/50 italic">No local modes yet — paste a .tar.gz URL or <code className="text-cc-muted/70">github:user/repo</code> above.</p>
+              {group.items.length === 0 && group.id === "local" ? (
+                <p className="text-[11px] text-cc-muted/50 italic" dangerouslySetInnerHTML={{ __html: t("gallery.no_local_modes_hint").replace("<code>", "<code class=\"text-cc-muted/70\">") }} />
               ) : null}
               <div className="space-y-6">
                 {group.items.map((mode) => {
@@ -1747,22 +1766,20 @@ function ModeGallery({
         {(libraries.length > 0 || onAddLibrary) && !(search && libraryModes.length === 0) && (
           <div className="mb-12">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xs font-medium text-cc-muted/60 uppercase tracking-widest">Libraries</h2>
+              <h2 className="text-xs font-medium text-cc-muted/60 uppercase tracking-widest">{t("gallery.group_libraries")}</h2>
               {onAddLibrary && (
                 <button
                   onClick={onAddLibrary}
                   className="text-[10px] text-cc-muted hover:text-cc-primary transition-colors cursor-pointer flex items-center gap-1"
-                  title="Link a GitHub repo containing one or more Pneuma modes"
+                  title={t("gallery.add_library_tooltip")}
                 >
                   <span className="text-sm leading-none">+</span>
-                  <span>Add library</span>
+                  <span>{t("gallery.add_library")}</span>
                 </button>
               )}
             </div>
             {libraries.length === 0 ? (
-              <p className="text-[11px] text-cc-muted/50 italic">
-                No libraries linked yet — paste a <code className="text-cc-muted/70">github:user/repo</code> above to install a multi-mode collection.
-              </p>
+              <p className="text-[11px] text-cc-muted/50 italic" dangerouslySetInnerHTML={{ __html: t("gallery.no_libraries_hint").replace("<code>", "<code class=\"text-cc-muted/70\">") }} />
             ) : (
               <div className="space-y-10">
                 {libraries.map((lib) => {
@@ -1808,7 +1825,7 @@ function ModeGallery({
         )}
 
         {search && filtered.length === 0 && (
-          <p className="text-center text-cc-muted/60 py-20">No modes match your search.</p>
+          <p className="text-center text-cc-muted/60 py-20">{t("gallery.no_modes_match")}</p>
         )}
       </div>
     </div>
@@ -1842,6 +1859,7 @@ function LibraryGalleryGroup({
   onPublish?: () => void;
   children: React.ReactNode;
 }) {
+  const { t } = useTranslation("launcher");
   const [syncing, setSyncing] = useState(false);
   const [unlinkConfirm, setUnlinkConfirm] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
@@ -1871,7 +1889,7 @@ function LibraryGalleryGroup({
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
       fireUpdated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sync failed");
+      setError(err instanceof Error ? err.message : t("library_group.sync_failed"));
     } finally {
       setSyncing(false);
     }
@@ -1888,7 +1906,7 @@ function LibraryGalleryGroup({
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
       fireUpdated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unlink failed");
+      setError(err instanceof Error ? err.message : t("library_group.unlink_failed"));
       setUnlinkConfirm(false);
     }
   };
@@ -1906,7 +1924,7 @@ function LibraryGalleryGroup({
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
       fireUpdated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Toggle failed");
+      setError(err instanceof Error ? err.message : t("library_group.toggle_failed"));
     } finally {
       setBusy(null);
     }
@@ -1935,7 +1953,7 @@ function LibraryGalleryGroup({
               {lastSync && (
                 <>
                   <span className="text-cc-muted/30">·</span>
-                  <span>synced {lastSync}</span>
+                  <span>{t("library_group.synced_at", { when: lastSync })}</span>
                 </>
               )}
             </div>
@@ -1945,19 +1963,19 @@ function LibraryGalleryGroup({
               onClick={handleSync}
               disabled={syncing}
               className="text-cc-muted hover:text-cc-primary transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-50"
-              title="Refresh from source"
+              title={t("library_group.sync_tooltip")}
             >
               <span>↻</span>
-              <span>{syncing ? "Syncing…" : "Sync"}</span>
+              <span>{syncing ? t("library_group.syncing") : t("library_group.sync")}</span>
             </button>
             {onPublish && (
               <button
                 onClick={onPublish}
                 className="text-cc-muted hover:text-cc-primary transition-colors cursor-pointer flex items-center gap-1"
-                title="Copy a local mode into this library"
+                title={t("library_group.publish_tooltip")}
               >
                 <span className="text-sm leading-none">+</span>
-                <span>Publish</span>
+                <span>{t("library_group.publish")}</span>
               </button>
             )}
             {unlinkConfirm ? (
@@ -1966,22 +1984,22 @@ function LibraryGalleryGroup({
                   onClick={handleUnlink}
                   className="text-cc-primary hover:opacity-80 transition-opacity cursor-pointer"
                 >
-                  Confirm
+                  {t("library_group.confirm")}
                 </button>
                 <button
                   onClick={() => setUnlinkConfirm(false)}
                   className="text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
                 >
-                  Cancel
+                  {t("library_group.cancel")}
                 </button>
               </span>
             ) : (
               <button
                 onClick={() => setUnlinkConfirm(true)}
                 className="text-cc-muted hover:text-cc-primary transition-colors cursor-pointer"
-                title="Remove this library"
+                title={t("library_group.unlink_tooltip")}
               >
-                Unlink
+                {t("library_group.unlink")}
               </button>
             )}
           </div>
@@ -1996,11 +2014,11 @@ function LibraryGalleryGroup({
         <div className="space-y-6">{children}</div>
       ) : library.modes.length > 0 ? (
         <p className="text-[11px] text-cc-muted/50 italic">
-          All modes in this library are inactive. Activate one below to launch it.
+          {t("library_group.all_inactive")}
         </p>
       ) : (
         <p className="text-[11px] text-cc-muted/50 italic">
-          This library is empty. Publish a mode into it from a local install.
+          {t("library_group.library_empty")}
         </p>
       )}
 
@@ -2013,7 +2031,9 @@ function LibraryGalleryGroup({
           >
             <span className={`inline-block transition-transform ${showInactive ? "rotate-90" : ""}`}>›</span>
             <span>
-              {inactiveCount} inactive {inactiveCount === 1 ? "mode" : "modes"}
+              {inactiveCount === 1
+                ? t("library_group.inactive_one", { count: inactiveCount })
+                : t("library_group.inactive_other", { count: inactiveCount })}
             </span>
           </button>
           {showInactive && (
@@ -2029,7 +2049,7 @@ function LibraryGalleryGroup({
                     disabled={busy === m.name}
                     className="text-cc-muted hover:text-cc-primary transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    {busy === m.name ? "…" : "Activate"}
+                    {busy === m.name ? "…" : t("library_group.activate")}
                   </button>
                 </li>
               ))}
@@ -2076,6 +2096,7 @@ function GalleryModeCard({
   /** Toggle this mode in the user's favorites list. Optional — when omitted, the star button hides entirely. */
   onToggleFavorite?: () => void;
 }) {
+  const { t } = useTranslation("launcher");
   const [activeHighlight, setActiveHighlight] = useState(0);
   const [evolveHovered, setEvolveHovered] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -2170,8 +2191,8 @@ function GalleryModeCard({
                   ? "text-cc-primary hover:text-cc-primary/80"
                   : "text-cc-muted/40 hover:text-cc-primary"
               }`}
-              title={isFavorite ? "Unpin from Quick Start" : "Pin to Quick Start"}
-              aria-label={isFavorite ? "Unpin from favorites" : "Pin to favorites"}
+              title={isFavorite ? t("gallery_card.unpin_tooltip") : t("gallery_card.pin_tooltip")}
+              aria-label={isFavorite ? t("gallery_card.unpin_aria") : t("gallery_card.pin_aria")}
               aria-pressed={isFavorite ? true : false}
             >
               <svg
@@ -2197,7 +2218,7 @@ function GalleryModeCard({
               onMouseEnter={handleEvolveEnter}
               onMouseLeave={() => setEvolveHovered(false)}
               className="p-1.5 rounded-md text-cc-muted/40 hover:text-cc-fg transition-colors cursor-pointer"
-              title="Evolve skill"
+              title={t("gallery_card.evolve_tooltip")}
             >
               <ModeIcon svg={EVOLVE_ICON} className="w-3.5 h-3.5" />
             </button>
@@ -2208,7 +2229,7 @@ function GalleryModeCard({
             <button
               onClick={(e) => { e.stopPropagation(); onEdit(); }}
               className="p-1.5 rounded-md text-cc-muted/40 hover:text-cc-primary hover:bg-cc-primary/10 transition-colors cursor-pointer"
-              title="Edit in Mode Maker"
+              title={t("gallery_card.edit_tooltip")}
             >
               <ModeIcon svg={MODE_MAKER_ICON} className="w-3.5 h-3.5" />
             </button>
@@ -2222,7 +2243,7 @@ function GalleryModeCard({
                   <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
                 </svg>
               }
-              label="Delete"
+              label={t("gallery_card.delete")}
               onConfirm={onDelete}
               stopPropagation
             />
@@ -2231,7 +2252,7 @@ function GalleryModeCard({
             onClick={(e) => { e.stopPropagation(); onLaunch(); }}
             className="px-3.5 py-1.5 text-xs font-medium rounded-md bg-cc-primary/10 text-cc-primary hover:bg-cc-primary hover:text-white transition-colors cursor-pointer"
           >
-            Launch
+            {t("gallery_card.launch")}
           </button>
           <svg
             className={`w-4 h-4 text-cc-muted/40 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
@@ -2311,7 +2332,7 @@ function GalleryModeCard({
                   </svg>
                 </span>
                 <span className="text-cc-fg/70 font-medium">
-                  From {library.displayName || library.name}
+                  {t("gallery_card.from_library", { name: library.displayName || library.name })}
                 </span>
                 <span className="text-cc-muted/30">·</span>
                 <code className="font-mono text-cc-muted/70 truncate">
@@ -2323,12 +2344,12 @@ function GalleryModeCard({
                   <>
                     <span className="text-cc-muted/30">·</span>
                     <span className="shrink-0">
-                      synced {new Date(library.lastSync).toLocaleString(undefined, {
+                      {t("gallery_card.synced_at", { when: new Date(library.lastSync).toLocaleString(undefined, {
                         month: "short",
                         day: "numeric",
                         hour: "numeric",
                         minute: "2-digit",
-                      })}
+                      }) })}
                     </span>
                   </>
                 )}
@@ -2378,6 +2399,7 @@ function LaunchDialog({
   onClose: () => void;
   closing?: boolean;
 }) {
+  const { t } = useTranslation("launcher");
   const safeName = /[\\/]/.test(specifier) ? specifier.split(/[\\/]/).filter(Boolean).pop()! : specifier;
   const timeTag = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 13);
   const fallback = homeDir
@@ -2447,7 +2469,7 @@ function LaunchDialog({
           setParamValues(defaults);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to prepare launch");
+        setError(err instanceof Error ? err.message : t("launch_dialog.prepare_failed"));
       }
       setPreparing(false);
       if (defaultWorkspace) {
@@ -2496,7 +2518,7 @@ function LaunchDialog({
         onClose();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Launch failed");
+      setError(err instanceof Error ? err.message : t("launch_dialog.launch_failed"));
       setLoading(false);
     }
   }, [specifier, workspace, selectedBackendType, existingSession, paramValues, onClose, forkSource]);
@@ -2516,7 +2538,7 @@ function LaunchDialog({
   // ── Form section (shared between layouts) ──
   const formContent = (
     <>
-      <label className="block text-sm text-cc-muted mb-1">Workspace path</label>
+      <label className="block text-sm text-cc-muted mb-1">{t("launch_dialog.workspace_label")}</label>
       <div className="relative mb-4">
         <div className="flex gap-1.5">
           <input
@@ -2531,7 +2553,7 @@ function LaunchDialog({
               const desktop = (window as any).pneumaDesktop;
               if (desktop?.showOpenDialog) {
                 const selected = await desktop.showOpenDialog({
-                  title: "Select Workspace",
+                  title: t("launch_dialog.select_workspace_title"),
                   defaultPath: workspace || undefined,
                 });
                 if (selected) {
@@ -2546,7 +2568,7 @@ function LaunchDialog({
                 ? "bg-cc-primary/20 border-cc-primary/50 text-cc-primary"
                 : "bg-cc-input-bg border-cc-border text-cc-muted hover:text-cc-fg"
             }`}
-            title="Browse directories"
+            title={t("launch_dialog.browse_tooltip")}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
@@ -2565,7 +2587,7 @@ function LaunchDialog({
 
       {!existingSession && (
         <>
-          <label className="block text-sm text-cc-muted mb-1">Session name</label>
+          <label className="block text-sm text-cc-muted mb-1">{t("launch_dialog.session_name_label")}</label>
           <input
             type="text"
             value={sessionNameValue}
@@ -2577,12 +2599,12 @@ function LaunchDialog({
       )}
 
       {preparing && (
-        <p className="text-sm text-cc-muted mb-4">Loading configuration...</p>
+        <p className="text-sm text-cc-muted mb-4">{t("launch_dialog.loading_config")}</p>
       )}
 
       {backendOptions.length > 1 && (
         <div className="mb-4">
-          <label className="block text-xs text-cc-muted/60 mb-2">Agent</label>
+          <label className="block text-xs text-cc-muted/60 mb-2">{t("launch_dialog.agent_label")}</label>
           <div className="flex gap-2">
             {backendOptions.map((backend) => {
               const active = (existingSession?.backendType || selectedBackendType) === backend.type;
@@ -2593,7 +2615,7 @@ function LaunchDialog({
                   key={backend.type}
                   type="button"
                   disabled={disabled}
-                  title={unavailable ? (backend.reason || "Not available") : backend.label}
+                  title={unavailable ? (backend.reason || t("launch_dialog.agent_unavailable")) : backend.label}
                   onClick={() => setSelectedBackendType(backend.type)}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors ${
                     active && !unavailable
@@ -2607,7 +2629,7 @@ function LaunchDialog({
                   <span className="font-medium">{backend.label}</span>
                   {unavailable && (
                     <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/10 text-red-400 uppercase tracking-wide leading-none">
-                      {!backend.implemented ? "Soon" : "N/A"}
+                      {!backend.implemented ? t("launch_dialog.agent_soon") : t("launch_dialog.agent_na")}
                     </span>
                   )}
                 </button>
@@ -2623,7 +2645,7 @@ function LaunchDialog({
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <span className="text-xs text-cc-primary">
-            Existing workspace — will resume {backendLabel(existingSession.backendType)} session
+            {t("launch_dialog.existing_session_hint", { backend: backendLabel(existingSession.backendType) })}
           </span>
         </div>
       )}
@@ -2631,8 +2653,8 @@ function LaunchDialog({
       {initParams.length > 0 && !defaultWorkspace && (
         <div className="mb-4 space-y-3">
           <p className="text-sm font-medium text-cc-fg">
-            Parameters
-            {existingSession && <span className="text-xs text-cc-muted font-normal ml-2">(read-only)</span>}
+            {t("launch_dialog.parameters")}
+            {existingSession && <span className="text-xs text-cc-muted font-normal ml-2">{t("launch_dialog.parameters_readonly")}</span>}
           </p>
           <InitParamForm
             params={initParams as InitParamWithAutoFill[]}
@@ -2655,10 +2677,10 @@ function LaunchDialog({
         onClick={onClose}
         className="px-5 py-2 text-sm rounded-lg border border-cc-border/50 text-cc-muted hover:text-cc-fg hover:border-cc-border transition-all duration-200 cursor-pointer"
       >
-        Cancel
+        {t("launch_dialog.cancel")}
       </button>
       <PrimaryButton onClick={handleLaunch} disabled={loading || preparing}>
-        {loading ? "Launching..." : "Launch"}
+        {loading ? t("launch_dialog.launching") : t("launch_dialog.launch")}
       </PrimaryButton>
     </div>
   );
@@ -2789,6 +2811,7 @@ function LaunchDialog({
 // ── Settings Panel (slide-out) ────────────────────────────────────────────
 
 function BackendsSection() {
+  const { t } = useTranslation("launcher");
   const [backends, setBackends] = useState<any[]>([]);
 
   useEffect(() => {
@@ -2800,7 +2823,7 @@ function BackendsSection() {
 
   return (
     <div className="space-y-3">
-      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">Backends</h3>
+      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">{t("backends_section.title")}</h3>
       <div className="space-y-2">
         {backends.map((b: any) => (
           <div key={b.type} className="flex items-center justify-between p-3 rounded-lg border border-cc-border bg-cc-surface/30">
@@ -2810,7 +2833,7 @@ function BackendsSection() {
             </div>
             <div className="flex items-center gap-1.5">
               <span className={`w-2 h-2 rounded-full ${b.available ? "bg-cc-success" : "bg-cc-muted/30"}`} />
-              <span className="text-[10px] text-cc-muted">{b.available ? "Ready" : "Not found"}</span>
+              <span className="text-[10px] text-cc-muted">{b.available ? t("backends_section.ready") : t("backends_section.not_found")}</span>
             </div>
           </div>
         ))}
@@ -2820,6 +2843,7 @@ function BackendsSection() {
 }
 
 function ApiKeysSection() {
+  const { t } = useTranslation("launcher");
   const [keys, setKeys] = useState<Record<string, string>>({});
   const [addingName, setAddingName] = useState("");
   const [addingValue, setAddingValue] = useState("");
@@ -2856,13 +2880,13 @@ function ApiKeysSection() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">API Keys</h3>
+        <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">{t("api_keys.title")}</h3>
         {!showAddForm && (
-          <button onClick={() => setShowAddForm(true)} className="text-[10px] text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">+ Add</button>
+          <button onClick={() => setShowAddForm(true)} className="text-[10px] text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">{t("api_keys.add")}</button>
         )}
       </div>
       <p className="text-[10px] text-cc-muted/60 leading-relaxed">
-        Keys are stored locally on your machine (encrypted). When a project needs a matching key name, it will be auto-imported.
+        {t("api_keys.description")}
       </p>
 
       {keyEntries.length > 0 && (
@@ -2873,28 +2897,28 @@ function ApiKeysSection() {
                 <div className="text-xs text-cc-fg font-mono">{name}</div>
                 <div className="text-[10px] text-cc-muted mt-0.5">{maskedValue}</div>
               </div>
-              <button onClick={() => removeKey(name)} className="text-[10px] text-cc-muted/50 hover:text-cc-error transition-colors cursor-pointer">Remove</button>
+              <button onClick={() => removeKey(name)} className="text-[10px] text-cc-muted/50 hover:text-cc-error transition-colors cursor-pointer">{t("api_keys.remove")}</button>
             </div>
           ))}
         </div>
       )}
 
       {keyEntries.length === 0 && !showAddForm && (
-        <div className="text-[10px] text-cc-muted/40 py-2">No keys configured yet.</div>
+        <div className="text-[10px] text-cc-muted/40 py-2">{t("api_keys.empty")}</div>
       )}
 
       {showAddForm && (
         <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30 space-y-2">
           <input
             autoFocus
-            placeholder="Key name (e.g. OPENROUTER_API_KEY)"
+            placeholder={t("api_keys.name_placeholder")}
             value={addingName}
             onChange={(e) => setAddingName(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))}
             className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg font-mono placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
           />
           <input
             type="password"
-            placeholder="Value"
+            placeholder={t("api_keys.value_placeholder")}
             value={addingValue}
             onChange={(e) => setAddingValue(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addingName && addingValue && saveKey(addingName, addingValue)}
@@ -2903,9 +2927,9 @@ function ApiKeysSection() {
           <div className="flex gap-2">
             <button onClick={() => addingName && addingValue && saveKey(addingName, addingValue)}
               disabled={!addingName || !addingValue}
-              className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer">Save</button>
+              className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer">{t("api_keys.save")}</button>
             <button onClick={() => { setShowAddForm(false); setAddingName(""); setAddingValue(""); }}
-              className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">Cancel</button>
+              className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">{t("api_keys.cancel")}</button>
           </div>
         </div>
       )}
@@ -2914,6 +2938,7 @@ function ApiKeysSection() {
 }
 
 function CloudStorageSection() {
+  const { t } = useTranslation("launcher");
   const [status, setStatus] = useState<"loading" | "configured" | "unconfigured" | "editing">("loading");
   const [config, setConfig] = useState<any>(null);
   const [form, setForm] = useState({ accountId: "", accessKeyId: "", secretAccessKey: "", bucket: "pneuma-playground", publicUrl: "" });
@@ -2949,41 +2974,39 @@ function CloudStorageSection() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">Cloud Storage</h3>
+        <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">{t("cloud_storage.title")}</h3>
         {status === "configured" && (
           <button onClick={() => { setForm({ accountId: config?.accountId || "", accessKeyId: "", secretAccessKey: "", bucket: config?.bucket || "pneuma-playground", publicUrl: config?.publicUrl || "" }); setStatus("editing"); }}
-            className="text-[10px] text-cc-muted/50 hover:text-cc-fg transition-colors cursor-pointer">Edit</button>
+            className="text-[10px] text-cc-muted/50 hover:text-cc-fg transition-colors cursor-pointer">{t("cloud_storage.edit")}</button>
         )}
       </div>
       <p className="text-[10px] text-cc-muted/60 leading-relaxed">
-        Cloudflare R2 storage for sharing and snapshots. You manage your own bucket — data stays under your control.
+        {t("cloud_storage.description")}
       </p>
 
       {status === "configured" && config && (
         <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30 space-y-1.5">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-cc-success" />
-            <span className="text-xs text-cc-fg">Connected</span>
+            <span className="text-xs text-cc-fg">{t("cloud_storage.connected")}</span>
           </div>
-          <div className="text-[10px] text-cc-muted">Bucket: {config.bucket}</div>
-          <div className="text-[10px] text-cc-muted truncate">URL: {config.publicUrl}</div>
+          <div className="text-[10px] text-cc-muted">{t("cloud_storage.bucket", { name: config.bucket })}</div>
+          <div className="text-[10px] text-cc-muted truncate">{t("cloud_storage.url", { url: config.publicUrl })}</div>
         </div>
       )}
 
       {(status === "unconfigured" || status === "editing") && (
         <div className="space-y-3">
           {status === "unconfigured" && (
-            <div className="text-[10px] text-cc-muted/60 leading-relaxed">
-              Create a Cloudflare R2 bucket with public access at <span className="text-cc-fg">dash.cloudflare.com</span>, then enter credentials below.
-            </div>
+            <div className="text-[10px] text-cc-muted/60 leading-relaxed" dangerouslySetInnerHTML={{ __html: t("cloud_storage.setup_hint").replace("<span>", "<span class=\"text-cc-fg\">") }} />
           )}
           <div className="space-y-2">
             {[
-              { key: "accountId", placeholder: "Account ID", type: "text" },
-              { key: "accessKeyId", placeholder: "Access Key ID", type: "text" },
-              { key: "secretAccessKey", placeholder: "Secret Access Key", type: "password" },
-              { key: "bucket", placeholder: "Bucket name", type: "text" },
-              { key: "publicUrl", placeholder: "Public URL (e.g. https://pub-xxx.r2.dev)", type: "text" },
+              { key: "accountId", placeholder: t("cloud_storage.account_id"), type: "text" },
+              { key: "accessKeyId", placeholder: t("cloud_storage.access_key_id"), type: "text" },
+              { key: "secretAccessKey", placeholder: t("cloud_storage.secret_access_key"), type: "password" },
+              { key: "bucket", placeholder: t("cloud_storage.bucket_name"), type: "text" },
+              { key: "publicUrl", placeholder: t("cloud_storage.public_url"), type: "text" },
             ].map(({ key, placeholder, type }) => (
               <input
                 key={key}
@@ -2998,12 +3021,12 @@ function CloudStorageSection() {
           <div className="flex gap-2">
             <button onClick={handleSave} disabled={saving || !form.accountId || !form.accessKeyId || !form.secretAccessKey || !form.publicUrl}
               className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer">
-              {saving ? "Saving..." : "Save"}
+              {saving ? t("cloud_storage.saving") : t("cloud_storage.save")}
             </button>
             {status === "editing" && (
               <button onClick={() => setStatus("configured")}
                 className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">
-                Cancel
+                {t("cloud_storage.cancel")}
               </button>
             )}
           </div>
@@ -3020,6 +3043,7 @@ const PLUGIN_STATUS_APIS: Record<string, string> = {
 };
 
 function PluginSettingsCard({ plugin }: { plugin: any }) {
+  const { t } = useTranslation("launcher");
   const [enabled, setEnabled] = useState(false);
   const [config, setConfig] = useState<Record<string, any>>({});
   const [form, setForm] = useState<Record<string, any>>({});
@@ -3100,7 +3124,7 @@ function PluginSettingsCard({ plugin }: { plugin: any }) {
           <span className={`w-2 h-2 rounded-full shrink-0 ${enabled ? "bg-cc-success" : "bg-cc-muted/30"}`} />
           <span className="text-xs text-cc-fg font-medium truncate">{plugin.displayName}</span>
           <span className="text-[10px] text-cc-muted/60 shrink-0">v{plugin.version}</span>
-          {plugin.builtin && <span className="text-[10px] text-cc-muted/40 shrink-0">(Built-in)</span>}
+          {plugin.builtin && <span className="text-[10px] text-cc-muted/40 shrink-0">{t("plugin_card.builtin_label")}</span>}
         </div>
         {/* Toggle */}
         <button
@@ -3120,8 +3144,8 @@ function PluginSettingsCard({ plugin }: { plugin: any }) {
           <span className={`w-1.5 h-1.5 rounded-full ${status.available ? "bg-cc-success" : "bg-yellow-500"}`} />
           <span className="text-[10px] text-cc-muted">
             {status.available
-              ? `${status.method === "cli" ? "CLI" : "Token"} connected${status.user ? ` as ${status.user}` : ""}`
-              : "Not connected — install CLI or configure token below"
+              ? `${status.method === "cli" ? t("plugin_card.cli_connected") : t("plugin_card.token_connected")}${status.user ? t("plugin_card.connected_as", { user: status.user }) : ""}`
+              : t("plugin_card.not_connected")
             }
           </span>
         </div>
@@ -3155,7 +3179,7 @@ function PluginSettingsCard({ plugin }: { plugin: any }) {
                       onChange={(e) => setForm({ ...form, [key]: e.target.value })}
                       className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg outline-none focus:border-cc-primary/50 transition-colors"
                     >
-                      <option value="">Select...</option>
+                      <option value="">{t("plugin_card.select_placeholder")}</option>
                       {(schema.options ?? []).map((opt: any) => (
                         <option key={typeof opt === "string" ? opt : opt.value} value={typeof opt === "string" ? opt : opt.value}>
                           {typeof opt === "string" ? opt : opt.label}
@@ -3200,7 +3224,7 @@ function PluginSettingsCard({ plugin }: { plugin: any }) {
           </div>
           <button onClick={handleSave} disabled={saving}
             className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer">
-            {saving ? "Saving..." : "Save"}
+            {saving ? t("plugin_card.saving") : t("plugin_card.save")}
           </button>
         </div>
       )}
@@ -3209,6 +3233,7 @@ function PluginSettingsCard({ plugin }: { plugin: any }) {
 }
 
 function PluginsSection() {
+  const { t } = useTranslation("launcher");
   const [plugins, setPlugins] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -3224,9 +3249,9 @@ function PluginsSection() {
 
   return (
     <div className="space-y-3">
-      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">Plugins</h3>
+      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">{t("plugins.title")}</h3>
       <p className="text-[10px] text-cc-muted/60 leading-relaxed">
-        Manage installed plugins. Enable or disable plugins and configure their settings.
+        {t("plugins.description")}
       </p>
       <div className="space-y-2">
         {plugins.map((plugin) => (
@@ -3255,6 +3280,7 @@ interface GhStatusUI {
 }
 
 function CopySnippet({ text }: { text: string }) {
+  const { t } = useTranslation("launcher");
   const [copied, setCopied] = useState(false);
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -3271,13 +3297,65 @@ function CopySnippet({ text }: { text: string }) {
         onClick={handleCopy}
         className="text-[10px] text-cc-muted/60 hover:text-cc-fg transition-colors cursor-pointer whitespace-nowrap"
       >
-        {copied ? "Copied" : "Copy"}
+        {copied ? t("copy_snippet.copied") : t("copy_snippet.copy")}
       </button>
     </div>
   );
 }
 
+function LanguageSection() {
+  const { t, i18n: i18nInstance } = useTranslation("settings");
+  const [current, setCurrent] = useState<Locale>(currentLocale());
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setCurrent(currentLocale());
+    const handler = (lng: string) => {
+      const normalized = SUPPORTED_LOCALES.includes(lng as Locale) ? (lng as Locale) : DEFAULT_LOCALE;
+      setCurrent(normalized);
+    };
+    i18nInstance.on("languageChanged", handler);
+    return () => {
+      i18nInstance.off("languageChanged", handler);
+    };
+  }, [i18nInstance]);
+
+  const handleSelect = async (locale: Locale) => {
+    if (locale === current || saving) return;
+    setSaving(true);
+    await persistLocale(locale, getApiBase());
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">{t("language.title")}</h3>
+      <p className="text-[10px] text-cc-muted/60 leading-relaxed">{t("language.description")}</p>
+      <div className="grid grid-cols-3 gap-2">
+        {SUPPORTED_LOCALES.map((locale) => {
+          const selected = current === locale;
+          return (
+            <button
+              key={locale}
+              onClick={() => handleSelect(locale)}
+              disabled={saving}
+              className={`px-3 py-2 rounded-md text-[11px] transition-colors cursor-pointer ${
+                selected
+                  ? "bg-cc-primary/15 border border-cc-primary/40 text-cc-fg"
+                  : "bg-cc-surface/40 border border-cc-border/60 text-cc-muted hover:text-cc-fg hover:border-cc-border"
+              }`}
+            >
+              {LOCALE_LABELS[locale]}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function GitHubSection() {
+  const { t } = useTranslation("launcher");
   const [status, setStatus] = useState<GhStatusUI | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -3296,15 +3374,15 @@ function GitHubSection() {
 
   return (
     <div className="space-y-3">
-      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">GitHub</h3>
+      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">{t("github.title")}</h3>
       <p className="text-[10px] text-cc-muted/60 leading-relaxed">
-        Required for creating, syncing, and publishing mode libraries on GitHub.
+        {t("github.description")}
       </p>
       {loading || !status ? (
-        <div className="text-[11px] text-cc-muted/50">Checking gh status…</div>
+        <div className="text-[11px] text-cc-muted/50">{t("github.checking")}</div>
       ) : !status.installed ? (
         <div className="space-y-2">
-          <div className="text-[11px] text-cc-fg/80">GitHub CLI not installed</div>
+          <div className="text-[11px] text-cc-fg/80">{t("github.not_installed")}</div>
           {status.hint && (
             <div className="text-[10px] text-cc-muted/60">{status.hint}</div>
           )}
@@ -3321,7 +3399,7 @@ function GitHubSection() {
       ) : !status.authenticated ? (
         <div className="space-y-2">
           <div className="text-[11px] text-cc-fg/80">
-            Installed{status.version ? ` (${status.version})` : ""} · Not signed in
+            {t("github.installed_not_signed_in", { version: status.version ? ` (${status.version})` : "" })}
           </div>
           {status.hint && (
             <div className="text-[10px] text-cc-muted/60">{status.hint}</div>
@@ -3332,9 +3410,9 @@ function GitHubSection() {
         <div className="flex items-center gap-2 text-[11px] text-cc-fg/80">
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.6)]" />
           <span>
-            Signed in as <span className="text-cc-fg">@{status.username || "?"}</span>
+            <span dangerouslySetInnerHTML={{ __html: t("github.signed_in_as", { username: status.username || "?" }).replace("<bold>", "<span class=\"text-cc-fg\">").replace("</bold>", "</span>") }} />
             {status.version && (
-              <span className="text-cc-muted/40"> · gh {status.version}</span>
+              <span className="text-cc-muted/40">{t("github.version_suffix", { version: status.version })}</span>
             )}
           </span>
         </div>
@@ -3358,6 +3436,7 @@ function AddLibraryDialog({
   onClose: () => void;
   onLinked: () => void;
 }) {
+  const { t } = useTranslation("launcher");
   const [mode, setMode] = useState<"link" | "create">("link");
   const [specifier, setSpecifier] = useState("");
   const [name, setName] = useState("");
@@ -3404,7 +3483,7 @@ function AddLibraryDialog({
       setStatus("done");
       onLinked();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Link failed");
+      setError(err instanceof Error ? err.message : t("add_library_dialog.link_failed"));
       setStatus("error");
     }
   };
@@ -3431,7 +3510,7 @@ function AddLibraryDialog({
       setStatus("done");
       onLinked();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Create failed");
+      setError(err instanceof Error ? err.message : t("add_library_dialog.create_failed"));
       setStatus("error");
     }
   };
@@ -3445,9 +3524,9 @@ function AddLibraryDialog({
           style={{ animation: "warmFadeIn 200ms ease" }}
         >
           <div className="px-5 py-4 border-b border-cc-border">
-            <h3 className="text-sm font-semibold text-cc-fg">Add Mode Library</h3>
+            <h3 className="text-sm font-semibold text-cc-fg">{t("add_library_dialog.title")}</h3>
             <p className="text-[10px] text-cc-muted mt-1">
-              Link a multi-mode GitHub repo, or scaffold a new library locally and optionally publish it.
+              {t("add_library_dialog.description")}
             </p>
             <div className="mt-3 inline-flex rounded-lg border border-cc-border overflow-hidden text-[10px]">
               {(["link", "create"] as const).map((m) => (
@@ -3456,7 +3535,7 @@ function AddLibraryDialog({
                   onClick={() => { setMode(m); setStatus("idle"); setError(""); setResult(null); }}
                   className={`px-3 py-1 transition-colors cursor-pointer ${mode === m ? "bg-cc-primary/15 text-cc-primary" : "text-cc-muted hover:text-cc-fg"}`}
                 >
-                  {m === "link" ? "Link existing" : "Create new"}
+                  {m === "link" ? t("add_library_dialog.tab_link") : t("add_library_dialog.tab_create")}
                 </button>
               ))}
             </div>
@@ -3466,13 +3545,13 @@ function AddLibraryDialog({
             {status === "done" && result && (
               <div className="px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-300/90">
                 {result.kind === "single"
-                  ? "Linked single-mode repo. It appears under Local Modes."
-                  : "Library linked. Activate modes in the card below."}
+                  ? t("add_library_dialog.linked_single")
+                  : t("add_library_dialog.linked_library")}
                 {result.githubUrl && (
                   <>
                     {" "}
                     <a href={result.githubUrl} target="_blank" rel="noopener noreferrer" className="text-cc-primary hover:opacity-80 underline underline-offset-2">
-                      Open on GitHub →
+                      {t("add_library_dialog.open_on_github")}
                     </a>
                   </>
                 )}
@@ -3482,18 +3561,16 @@ function AddLibraryDialog({
             {mode === "link" && status !== "done" && (
               <>
                 <div>
-                  <label className="text-[10px] text-cc-muted block mb-1">Specifier</label>
+                  <label className="text-[10px] text-cc-muted block mb-1">{t("add_library_dialog.specifier_label")}</label>
                   <input
                     autoFocus
-                    placeholder="github:user/repo  or  https://.../repo.tar.gz"
+                    placeholder={t("add_library_dialog.specifier_placeholder")}
                     value={specifier}
                     onChange={(e) => setSpecifier(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleLink()}
                     className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
                   />
-                  <p className="text-[10px] text-cc-muted/60 mt-1.5">
-                    A repo with a <code className="text-cc-muted">pneuma.library.json</code> at its root (or N mode dirs) installs as a multi-mode library; otherwise it falls back to a single-mode install.
-                  </p>
+                  <p className="text-[10px] text-cc-muted/60 mt-1.5" dangerouslySetInnerHTML={{ __html: t("add_library_dialog.specifier_hint").replace("<code>", "<code class=\"text-cc-muted\">") }} />
                 </div>
               </>
             )}
@@ -3501,28 +3578,28 @@ function AddLibraryDialog({
             {mode === "create" && status !== "done" && (
               <>
                 <div>
-                  <label className="text-[10px] text-cc-muted block mb-1">Library name (slug)</label>
+                  <label className="text-[10px] text-cc-muted block mb-1">{t("add_library_dialog.name_label")}</label>
                   <input
                     autoFocus
-                    placeholder="my-modes"
+                    placeholder={t("add_library_dialog.name_placeholder")}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-cc-muted block mb-1">Display name (optional)</label>
+                  <label className="text-[10px] text-cc-muted block mb-1">{t("add_library_dialog.display_name_label")}</label>
                   <input
-                    placeholder="My Modes"
+                    placeholder={t("add_library_dialog.display_name_placeholder")}
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-cc-muted block mb-1">Description (optional)</label>
+                  <label className="text-[10px] text-cc-muted block mb-1">{t("add_library_dialog.description_label")}</label>
                   <input
-                    placeholder="A collection of Pneuma modes for…"
+                    placeholder={t("add_library_dialog.description_placeholder")}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
@@ -3535,12 +3612,12 @@ function AddLibraryDialog({
                     onChange={(e) => setCreateOnGithub(e.target.checked)}
                     className="w-3.5 h-3.5 accent-[#f97316]"
                   />
-                  Create on GitHub (requires <code>gh</code> auth)
+                  <span dangerouslySetInnerHTML={{ __html: t("add_library_dialog.create_on_github") }} />
                 </label>
                 {createOnGithub && (
                   <div className="pl-5 space-y-2">
                     <div>
-                      <label className="text-[10px] text-cc-muted block mb-1">Repo name</label>
+                      <label className="text-[10px] text-cc-muted block mb-1">{t("add_library_dialog.repo_name_label")}</label>
                       <input
                         placeholder={name || "my-modes"}
                         value={githubName}
@@ -3549,7 +3626,7 @@ function AddLibraryDialog({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-cc-muted block mb-1">Visibility</label>
+                      <label className="text-[10px] text-cc-muted block mb-1">{t("add_library_dialog.visibility_label")}</label>
                       <div className="inline-flex rounded-lg border border-cc-border overflow-hidden text-[10px]">
                         {(["private", "public"] as const).map((v) => (
                           <button
@@ -3558,7 +3635,7 @@ function AddLibraryDialog({
                             onClick={() => setVisibility(v)}
                             className={`px-3 py-1 transition-colors cursor-pointer ${visibility === v ? "bg-cc-primary/15 text-cc-primary" : "text-cc-muted hover:text-cc-fg"}`}
                           >
-                            {v}
+                            {v === "private" ? t("add_library_dialog.visibility_private") : t("add_library_dialog.visibility_public")}
                           </button>
                         ))}
                       </div>
@@ -3579,7 +3656,7 @@ function AddLibraryDialog({
                 onClick={onClose}
                 className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
               >
-                {status === "done" ? "Close" : "Cancel"}
+                {status === "done" ? t("add_library_dialog.close") : t("add_library_dialog.cancel")}
               </button>
               {status !== "done" && (
                 <button
@@ -3590,7 +3667,7 @@ function AddLibraryDialog({
                   }
                   className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 transition-all cursor-pointer"
                 >
-                  {status === "working" ? "…" : mode === "link" ? "Link" : "Create"}
+                  {status === "working" ? t("add_library_dialog.working") : mode === "link" ? t("add_library_dialog.link") : t("add_library_dialog.create")}
                 </button>
               )}
             </div>
@@ -3619,6 +3696,7 @@ function PublishToLibraryDialog({
   onClose: () => void;
   onPublished: () => void;
 }) {
+  const { t } = useTranslation("launcher");
   const [sourceName, setSourceName] = useState("");
   const [overrideName, setOverrideName] = useState("");
   const [pushAfter, setPushAfter] = useState(false);
@@ -3668,7 +3746,7 @@ function PublishToLibraryDialog({
       setStatus("done");
       onPublished();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Publish failed");
+      setError(err instanceof Error ? err.message : t("publish_dialog.publish_failed"));
       setStatus("error");
     }
   };
@@ -3682,23 +3760,23 @@ function PublishToLibraryDialog({
           style={{ animation: "warmFadeIn 200ms ease" }}
         >
           <div className="px-5 py-4 border-b border-cc-border">
-            <h3 className="text-sm font-semibold text-cc-fg">Publish to {library.displayName || library.name}</h3>
+            <h3 className="text-sm font-semibold text-cc-fg">{t("publish_dialog.title", { library: library.displayName || library.name })}</h3>
             <p className="text-[10px] text-cc-muted mt-1">
-              Copy an installed local mode into this library and stage it for commit.
+              {t("publish_dialog.description")}
             </p>
           </div>
           <div className="px-5 py-4 space-y-3">
             {status === "done" ? (
               <div className="px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-300/90">
-                Published.{pushed ? " Pushed to GitHub." : pushed === false ? " (Not pushed.)" : ""}
+                {t("publish_dialog.published")}{pushed ? t("publish_dialog.pushed") : pushed === false ? t("publish_dialog.not_pushed") : ""}
               </div>
             ) : (
               <>
                 <div>
-                  <label className="text-[10px] text-cc-muted block mb-1">Source mode</label>
+                  <label className="text-[10px] text-cc-muted block mb-1">{t("publish_dialog.source_mode_label")}</label>
                   {eligible.length === 0 ? (
                     <div className="text-[11px] text-cc-muted/60">
-                      No eligible local modes. Install a mode (or create one with Mode Maker) first.
+                      {t("publish_dialog.no_eligible_modes")}
                     </div>
                   ) : (
                     <select
@@ -3706,19 +3784,19 @@ function PublishToLibraryDialog({
                       onChange={(e) => setSourceName(e.target.value)}
                       className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg outline-none focus:border-cc-primary/50 transition-colors"
                     >
-                      <option value="">— pick a mode —</option>
+                      <option value="">{t("publish_dialog.pick_a_mode")}</option>
                       {eligible.map((m) => (
                         <option key={m.path} value={m.name}>
-                          {m.displayName} ({m.name})
+                          {t("publish_dialog.mode_option", { displayName: m.displayName, name: m.name })}
                         </option>
                       ))}
                     </select>
                   )}
                 </div>
                 <div>
-                  <label className="text-[10px] text-cc-muted block mb-1">Name override (optional)</label>
+                  <label className="text-[10px] text-cc-muted block mb-1">{t("publish_dialog.name_override_label")}</label>
                   <input
-                    placeholder={selected?.name || "(use source name)"}
+                    placeholder={selected?.name || t("publish_dialog.name_override_placeholder")}
                     value={overrideName}
                     onChange={(e) => setOverrideName(e.target.value)}
                     className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
@@ -3731,7 +3809,7 @@ function PublishToLibraryDialog({
                     onChange={(e) => setPushAfter(e.target.checked)}
                     className="w-3.5 h-3.5 accent-[#f97316]"
                   />
-                  Push to GitHub after commit
+                  {t("publish_dialog.push_after_commit")}
                 </label>
               </>
             )}
@@ -3745,7 +3823,7 @@ function PublishToLibraryDialog({
                 onClick={onClose}
                 className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
               >
-                {status === "done" ? "Close" : "Cancel"}
+                {status === "done" ? t("publish_dialog.close") : t("publish_dialog.cancel")}
               </button>
               {status !== "done" && (
                 <button
@@ -3753,7 +3831,7 @@ function PublishToLibraryDialog({
                   disabled={!selected || status === "working"}
                   className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 transition-all cursor-pointer"
                 >
-                  {status === "working" ? "…" : "Publish"}
+                  {status === "working" ? t("publish_dialog.working") : t("publish_dialog.publish")}
                 </button>
               )}
             </div>
@@ -3765,6 +3843,7 @@ function PublishToLibraryDialog({
 }
 
 function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation("launcher");
   if (!open) return null;
 
   return (
@@ -3782,7 +3861,7 @@ function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-cc-border sticky top-0 bg-cc-bg/95 backdrop-blur-md z-10">
-          <h2 className="text-sm font-semibold text-cc-fg">Settings</h2>
+          <h2 className="text-sm font-semibold text-cc-fg">{t("settings_panel.title")}</h2>
           <button onClick={onClose} className="text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
               <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" />
@@ -3792,6 +3871,7 @@ function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }
 
         {/* Sections */}
         <div className="p-6 space-y-8">
+          <LanguageSection />
           <BackendsSection />
           <ApiKeysSection />
           <CloudStorageSection />
@@ -3823,6 +3903,7 @@ function ImportDialog({
   initialKind?: ImportKind;
   onInstalledMode?: (mode: InstalledMode) => void;
 }) {
+  const { t } = useTranslation("launcher");
   const [kind, setKind] = useState<ImportKind>(initialKind);
   const [url, setUrl] = useState("");
   const [workspace, setWorkspace] = useState("");
@@ -3877,7 +3958,7 @@ function ImportDialog({
       setStatus("done");
       onImported?.();
     } catch (err: any) {
-      setError(err.message || "Import failed");
+      setError(err.message || t("import_dialog.import_failed"));
       setStatus("error");
     }
   };
@@ -3896,7 +3977,7 @@ function ImportDialog({
       setStatus("done");
       onImported?.();
     } catch (err: any) {
-      setError(err.message || "Import failed");
+      setError(err.message || t("import_dialog.import_failed"));
       setStatus("error");
     }
   };
@@ -3918,7 +3999,7 @@ function ImportDialog({
       setStatus("done");
       onImported?.();
     } catch (err: any) {
-      setError(err.message || "Install failed");
+      setError(err.message || t("import_dialog.install_failed"));
       setStatus("error");
     }
   };
@@ -3958,11 +4039,11 @@ function ImportDialog({
         <div className="bg-cc-bg border border-cc-border rounded-xl shadow-2xl w-[440px] max-w-[90vw] pointer-events-auto"
           style={{ animation: "warmFadeIn 200ms ease" }}>
           <div className="px-5 py-4 border-b border-cc-border">
-            <h3 className="text-sm font-semibold text-cc-fg">{kind === "mode" ? "Add Mode" : "Import Session"}</h3>
+            <h3 className="text-sm font-semibold text-cc-fg">{kind === "mode" ? t("import_dialog.title_mode") : t("import_dialog.title_session")}</h3>
             <p className="text-[10px] text-cc-muted mt-1">
               {kind === "mode"
-                ? "Install a mode from a URL (.tar.gz) or github:user/repo. Installed modes appear in Local."
-                : "Paste a share URL or select a local archive (.tar.gz)."}
+                ? t("import_dialog.description_mode")
+                : t("import_dialog.description_session")}
             </p>
             <div className="mt-3 inline-flex rounded-lg border border-cc-border overflow-hidden text-[10px]">
               {(["session", "mode"] as const).map((k) => (
@@ -3971,7 +4052,7 @@ function ImportDialog({
                   onClick={() => { setKind(k); setStatus("idle"); setError(""); setResult(null); setInstalled(null); }}
                   className={`px-3 py-1 transition-colors cursor-pointer ${kind === k ? "bg-cc-primary/15 text-cc-primary" : "text-cc-muted hover:text-cc-fg"}`}
                 >
-                  {k === "session" ? "Session" : "Mode"}
+                  {k === "session" ? t("import_dialog.tab_session") : t("import_dialog.tab_mode")}
                 </button>
               ))}
             </div>
@@ -3982,15 +4063,15 @@ function ImportDialog({
                 <div className="flex gap-2 items-center">
                   <input
                     autoFocus
-                    placeholder="https://..."
+                    placeholder={t("import_dialog.url_placeholder_session")}
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleImport()}
                     className="flex-1 px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
                   />
-                  <span className="text-[10px] text-cc-muted/40">or</span>
+                  <span className="text-[10px] text-cc-muted/40">{t("import_dialog.or")}</span>
                   <label className="px-3 py-2.5 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg hover:border-cc-muted/30 transition-colors cursor-pointer whitespace-nowrap">
-                    Local file
+                    {t("import_dialog.local_file")}
                     <input type="file" accept=".tar.gz,.tgz,.gz,application/gzip,application/x-gzip,application/x-tar" className="hidden" onChange={(e) => {
                       const f = e.target.files?.[0];
                       if (f) handleFileUpload(f);
@@ -3998,18 +4079,18 @@ function ImportDialog({
                   </label>
                 </div>
                 <div>
-                  <label className="text-[10px] text-cc-muted block mb-1">Workspace directory (optional)</label>
+                  <label className="text-[10px] text-cc-muted block mb-1">{t("import_dialog.workspace_label")}</label>
                   <input
-                    placeholder="~/pneuma-projects/my-project"
+                    placeholder={t("import_dialog.workspace_placeholder")}
                     value={workspace}
                     onChange={(e) => setWorkspace(e.target.value)}
                     className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
                   />
                 </div>
                 <div className="flex justify-end gap-2">
-                  <button onClick={onClose} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">Cancel</button>
+                  <button onClick={onClose} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">{t("import_dialog.cancel")}</button>
                   <button onClick={handleImport} disabled={!url.trim()}
-                    className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 transition-all cursor-pointer">Import</button>
+                    className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 transition-all cursor-pointer">{t("import_dialog.import")}</button>
                 </div>
               </>
             )}
@@ -4018,62 +4099,62 @@ function ImportDialog({
                 <div>
                   <input
                     autoFocus
-                    placeholder="https://.../mode.tar.gz  or  github:user/repo"
+                    placeholder={t("import_dialog.url_placeholder_mode")}
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleInstall()}
                     className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors"
                   />
-                  <p className="text-[10px] text-cc-muted/60 mt-1.5">Downloads + extracts to <code className="text-cc-muted">~/.pneuma/modes/</code>.</p>
+                  <p className="text-[10px] text-cc-muted/60 mt-1.5" dangerouslySetInnerHTML={{ __html: t("import_dialog.install_hint").replace("<code>", "<code class=\"text-cc-muted\">") }} />
                 </div>
                 <div className="flex justify-end gap-2">
-                  <button onClick={onClose} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">Cancel</button>
+                  <button onClick={onClose} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">{t("import_dialog.cancel")}</button>
                   <button onClick={handleInstall} disabled={!url.trim()}
-                    className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 transition-all cursor-pointer">Install</button>
+                    className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 disabled:opacity-40 transition-all cursor-pointer">{t("import_dialog.install")}</button>
                 </div>
               </>
             )}
             {status === "importing" && (
               <div className="text-xs text-cc-muted animate-pulse py-2">
-                {kind === "mode" ? "Installing..." : "Importing..."}
+                {kind === "mode" ? t("import_dialog.installing") : t("import_dialog.importing")}
               </div>
             )}
             {status === "done" && kind === "session" && result && (
               <div className="space-y-3">
-                <div className="text-xs text-cc-success">Imported successfully!</div>
+                <div className="text-xs text-cc-success">{t("import_dialog.imported_success")}</div>
                 <div className="text-[10px] text-cc-muted">
                   {result.displayName && <span className="text-cc-fg">{result.displayName}</span>}
                 </div>
                 {result.type === "process" ? (
                   <>
-                    <p className="text-[10px] text-cc-muted/60">This share includes the creation process with chat history and checkpoints.</p>
+                    <p className="text-[10px] text-cc-muted/60">{t("import_dialog.process_share_hint")}</p>
                     <div className="flex justify-end gap-2">
-                      <button onClick={onClose} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">Close</button>
+                      <button onClick={onClose} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">{t("import_dialog.close")}</button>
                       <button onClick={() => handleLaunchImported(false)}
-                        className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-fg hover:border-cc-primary hover:text-cc-primary transition-colors cursor-pointer">Continue Working</button>
+                        className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-fg hover:border-cc-primary hover:text-cc-primary transition-colors cursor-pointer">{t("import_dialog.continue_working")}</button>
                       <button onClick={() => handleLaunchImported(true)}
-                        className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 transition-all cursor-pointer">Replay</button>
+                        className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 transition-all cursor-pointer">{t("import_dialog.replay")}</button>
                     </div>
                   </>
                 ) : (
                   <div className="flex justify-end gap-2">
-                    <button onClick={onClose} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">Close</button>
+                    <button onClick={onClose} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">{t("import_dialog.close")}</button>
                     <button onClick={() => handleLaunchImported(false)}
-                      className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 transition-all cursor-pointer">Open</button>
+                      className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 transition-all cursor-pointer">{t("import_dialog.open")}</button>
                   </div>
                 )}
               </div>
             )}
             {status === "done" && kind === "mode" && installed && (
               <div className="space-y-3">
-                <div className="text-xs text-cc-success">Installed "{installed.displayName}" ({installed.version}).</div>
+                <div className="text-xs text-cc-success">{t("import_dialog.installed_success", { name: installed.displayName, version: installed.version })}</div>
                 {installed.description && (
                   <p className="text-[10px] text-cc-muted/70">{installed.description}</p>
                 )}
                 <div className="flex justify-end gap-2">
-                  <button onClick={onClose} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">Close</button>
+                  <button onClick={onClose} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">{t("import_dialog.close")}</button>
                   <button onClick={handleLaunchInstalled}
-                    className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 transition-all cursor-pointer">Launch</button>
+                    className="px-4 py-2 text-xs rounded-lg bg-cc-primary text-white font-medium hover:brightness-110 transition-all cursor-pointer">{t("import_dialog.launch")}</button>
                 </div>
               </div>
             )}
@@ -4081,7 +4162,7 @@ function ImportDialog({
               <div className="space-y-2">
                 <div className="text-xs text-cc-error">{error}</div>
                 <div className="flex justify-end">
-                  <button onClick={() => setStatus("idle")} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">Try again</button>
+                  <button onClick={() => setStatus("idle")} className="px-4 py-2 text-xs rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">{t("import_dialog.try_again")}</button>
                 </div>
               </div>
             )}
@@ -4095,6 +4176,7 @@ function ImportDialog({
 // ── Main Launcher ────────────────────────────────────────────────────────
 
 export default function Launcher() {
+  const { t } = useTranslation("launcher");
   const { preference: themePref, resolved: theme, cycle: cycleTheme } = useTheme();
   const isLight = theme === "light";
   const [backendOptions, setBackendOptions] = useState<BackendOption[]>(FALLBACK_BACKENDS);
@@ -4195,7 +4277,8 @@ export default function Launcher() {
   }, [hasOverlay, launchTarget, showGallery, showAllSessions]);
 
   const refreshModes = useCallback(() => {
-    fetch(`${getApiBase()}/api/registry`)
+    const locale = currentLocale();
+    fetch(`${getApiBase()}/api/registry?locale=${encodeURIComponent(locale)}`)
       .then((r) => r.json())
       .then((data) => {
         setBuiltins(data.builtins || []);
@@ -4204,6 +4287,14 @@ export default function Launcher() {
       })
       .catch(() => { });
   }, []);
+
+  // Re-fetch registry whenever the user switches UI locale so the
+  // server-localised displayName/showcase strings refresh on the same tick.
+  useEffect(() => {
+    const onLocaleChange = () => refreshModes();
+    window.addEventListener("pneuma:locale-changed", onLocaleChange);
+    return () => window.removeEventListener("pneuma:locale-changed", onLocaleChange);
+  }, [refreshModes]);
 
   const refreshSessions = useCallback(() => {
     fetch(`${getApiBase()}/api/sessions`)
@@ -4339,7 +4430,7 @@ export default function Launcher() {
   useEffect(() => {
     Promise.all([
       fetch(`${getApiBase()}/api/backends`).then((r) => r.json()),
-      fetch(`${getApiBase()}/api/registry`).then((r) => r.json()),
+      fetch(`${getApiBase()}/api/registry?locale=${encodeURIComponent(currentLocale())}`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/sessions`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/running`).then((r) => r.json()),
       fetch(`${getApiBase()}/api/projects`).then((r) => r.json()).catch(() => ({ projects: [] })),
@@ -4449,12 +4540,12 @@ export default function Launcher() {
   const getBackendUnavailableReason = useCallback(
     (type: BackendType) => {
       const b = backendOptions.find((o) => o.type === type);
-      if (!b) return `Unknown backend "${type}"`;
-      if (!b.implemented) return "Coming soon";
-      if (b.available === false) return b.reason || "Not available";
+      if (!b) return t("backend_unavailable.unknown", { type });
+      if (!b.implemented) return t("backend_unavailable.coming_soon");
+      if (b.available === false) return b.reason || t("backend_unavailable.not_available");
       return undefined;
     },
-    [backendOptions],
+    [backendOptions, t],
   );
 
   // Direct launch for session resume — no dialog, just go
@@ -4632,7 +4723,7 @@ export default function Launcher() {
             <button
               onClick={() => setShowSettings(true)}
               className="p-2 text-cc-muted/70 hover:text-cc-fg transition-colors cursor-pointer"
-              title="Settings"
+              title={t("main.settings_tooltip")}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
@@ -4694,7 +4785,7 @@ export default function Launcher() {
               className="mb-10 pt-8 border-t border-cc-border"
               style={{ animation: "launcherFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both" }}
             >
-              <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide mb-5">My Apps</h2>
+              <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide mb-5">{t("main.my_apps")}</h2>
               <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
                 {appSessions.map((s) => {
                   const isAppRunning = running.some((r) => r.workspace === s.workspace);
@@ -4722,7 +4813,7 @@ export default function Launcher() {
                         </div>
                       </div>
                       {isAppRunning && (
-                        <span className="flex-shrink-0 w-2 h-2 rounded-full bg-emerald-400" title="Running" />
+                        <span className="flex-shrink-0 w-2 h-2 rounded-full bg-emerald-400" title={t("main.my_apps_running")} />
                       )}
                     </button>
                   );
@@ -4764,7 +4855,7 @@ export default function Launcher() {
               >
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide">
-                    Recent Projects
+                    {t("main.recent_projects")}
                     {projects.length > 0 && (
                       <span className="text-cc-muted/40 ml-2">({projects.length})</span>
                     )}
@@ -4780,7 +4871,7 @@ export default function Launcher() {
                         className="text-[11px] text-cc-muted/50 hover:text-cc-primary cursor-pointer transition-colors"
                         onClick={() => setShowArchived((v) => !v)}
                       >
-                        {showArchived ? "Hide archived" : `Archived (${archivedProjects.length})`}
+                        {showArchived ? t("main.hide_archived") : t("main.show_archived", { count: archivedProjects.length })}
                       </button>
                     )}
                     <button
@@ -4788,12 +4879,12 @@ export default function Launcher() {
                       className="text-xs text-cc-primary hover:opacity-80 transition-opacity cursor-pointer"
                       onClick={() => setCreateProjectOpen(true)}
                     >
-                      + Create Project
+                      {t("main.create_project")}
                     </button>
                   </div>
                 </div>
                 {projects.length === 0 ? (
-                  <div className="text-cc-muted/60 text-sm">No projects yet.</div>
+                  <div className="text-cc-muted/60 text-sm">{t("main.no_projects")}</div>
                 ) : (
                   <>
                     {featured.length > 0 && (
@@ -4813,7 +4904,7 @@ export default function Launcher() {
                       <div>
                         {featured.length > 0 && (
                           <h3 className="text-xs uppercase tracking-wider text-cc-muted/50 mb-3">
-                            All Projects ({rest.length})
+                            {t("main.all_projects_count", { count: rest.length })}
                           </h3>
                         )}
                         <div className="grid grid-cols-1 gap-2">
@@ -4837,7 +4928,7 @@ export default function Launcher() {
                 {showArchived && archivedProjects.length > 0 && (
                   <div className="border-t border-cc-border/40 pt-4 mt-6">
                     <h3 className="text-xs uppercase tracking-wider text-cc-muted/50 mb-3">
-                      Archived ({archivedProjects.length})
+                      {t("main.archived_count", { count: archivedProjects.length })}
                     </h3>
                     <div className="grid grid-cols-1 gap-2">
                       {archivedProjects.map((p) => (
@@ -4864,20 +4955,20 @@ export default function Launcher() {
               style={{ animation: "launcherFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both" }}
             >
               <div className="flex items-baseline justify-between mb-5">
-                <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide">Continue</h2>
+                <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide">{t("main.continue_title")}</h2>
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setShowImportDialog(true)}
                     className="text-xs text-cc-muted/50 hover:text-cc-primary transition-colors cursor-pointer"
                   >
-                    Import
+                    {t("main.import")}
                   </button>
                   {allContinueItems.length > 3 && (
                     <button
                       onClick={() => setShowAllSessions(true)}
                       className="text-xs text-cc-muted/50 hover:text-cc-fg transition-colors cursor-pointer"
                     >
-                      All Sessions ({allContinueItems.length})
+                      {t("main.all_sessions_count", { count: allContinueItems.length })}
                     </button>
                   )}
                 </div>
@@ -4960,14 +5051,14 @@ export default function Launcher() {
           <section className="pt-12" style={{ animation: "launcherFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both" }}>
             <div className="flex items-baseline justify-between mb-5">
               <div>
-                <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide">Create New</h2>
-                <p className="text-xs text-cc-muted/50 mt-1">Start a fresh workspace</p>
+                <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide">{t("main.create_new")}</h2>
+                <p className="text-xs text-cc-muted/50 mt-1">{t("main.create_new_subtitle")}</p>
               </div>
               <button
                 onClick={() => setShowGallery(true)}
                 className="text-xs text-cc-muted/50 hover:text-cc-fg transition-colors cursor-pointer"
               >
-                All Modes ({allModes.length})
+                {t("main.all_modes_count", { count: allModes.length })}
               </button>
             </div>
             <WarmSpotlightWrap gridClass="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3" radius={160}>
@@ -5005,7 +5096,7 @@ export default function Launcher() {
               <ModeMakerHero
                 onClick={() => setLaunchTarget({
                   specifier: "mode-maker",
-                  displayName: "Mode Maker",
+                  displayName: t("main.mode_maker_title"),
                 })}
               />
             </div>
@@ -5040,7 +5131,7 @@ export default function Launcher() {
             // path and auto-fork the source mode into it on first load.
             setLaunchTarget({
               specifier: "mode-maker",
-              displayName: `Edit: ${mode.displayName}`,
+              displayName: t("main.edit_prefix", { name: mode.displayName }),
               forkSource: {
                 sourceMode: mode.name,
                 sourcePath: mode.source === "local" ? mode.path : undefined,
@@ -5052,7 +5143,7 @@ export default function Launcher() {
             const workspace = mode.path || undefined;
             setLaunchTarget({
               specifier: "evolve",
-              displayName: `Evolve: ${mode.displayName}`,
+              displayName: t("main.evolve_prefix", { name: mode.displayName }),
               defaultWorkspace: workspace,
               defaultInitParams: { targetMode: mode.name },
             });

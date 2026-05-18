@@ -1,0 +1,39 @@
+{
+  "settings_tooltip": "アプリ設定",
+  "view_button_view": "ビュー",
+  "view_button_edit": "編集",
+  "switch_to_viewing": "ビューモードに切り替え",
+  "switch_to_editing": "編集モードに切り替え",
+  "new_empty_content": "新規空コンテンツ",
+  "share": {
+    "title": "共有",
+    "tooltip": "共有",
+    "result": "結果を共有",
+    "result_desc": "現在のファイルをアップロード（履歴なし)",
+    "process": "プロセスを共有",
+    "process_desc": "チャット履歴とチェックポイントをアップロード",
+    "export_local": "ローカルファイルにエクスポート",
+    "export_local_desc": ".tar.gz として保存（クラウドアップロードなし)",
+    "r2_required": "クラウド共有には R2 ストレージの設定が必要です。",
+    "r2_hint": "ランチャー設定で R2 認証情報を構成するとクラウド共有が有効になります。",
+    "sharing": "共有中…",
+    "success": "共有しました!",
+    "copy": "コピー",
+    "again": "再共有",
+    "share_failed": "共有に失敗しました",
+    "export_failed": "エクスポートに失敗しました",
+    "try_again": "再試行"
+  },
+  "tabs": {
+    "chat": "チャット",
+    "editor": "エディタ",
+    "diff": "差分",
+    "terminal": "ターミナル",
+    "processes": "プロセス",
+    "context": "コンテキスト",
+    "schedules": "スケジュール"
+  },
+  "disabled_replay": "再生モードでは利用できません",
+  "disabled_git": "差分には Git リポジトリが必要です。ワークスペースで `git init` を実行してください。",
+  "replay_badge": "再生"
+}

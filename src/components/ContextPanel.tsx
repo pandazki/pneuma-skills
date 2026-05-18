@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
 import type { TaskItem } from "../store.js";
@@ -6,6 +7,7 @@ import type { TaskItem } from "../store.js";
 // ── Section: Session Stats ──────────────────────────────────────────────────
 
 function SessionStatsSection() {
+  const { t } = useTranslation("context-panel");
   const session = useStore((s) => s.session);
   if (!session) return null;
 
@@ -19,33 +21,33 @@ function SessionStatsSection() {
 
   return (
     <section className="space-y-2">
-      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">Session</h3>
+      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">{t("session")}</h3>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-        <span className="text-cc-muted">Model</span>
+        <span className="text-cc-muted">{t("model")}</span>
         <span className="text-cc-fg truncate">{session.model || "—"}</span>
 
-        <span className="text-cc-muted">Backend</span>
+        <span className="text-cc-muted">{t("backend")}</span>
         <span className="text-cc-fg truncate">{session.backend_type || "—"}</span>
 
-        <span className="text-cc-muted">Version</span>
+        <span className="text-cc-muted">{t("version")}</span>
         <span className="text-cc-fg truncate">{session.agent_version || session.claude_code_version || "—"}</span>
 
-        <span className="text-cc-muted">Working dir</span>
+        <span className="text-cc-muted">{t("working_dir")}</span>
         <span className="text-cc-fg truncate" title={session.cwd}>{session.cwd || "—"}</span>
 
         {showResultStats && (
           <>
-            <span className="text-cc-muted">Cost</span>
+            <span className="text-cc-muted">{t("cost")}</span>
             <span className="text-cc-fg">${session.total_cost_usd.toFixed(4)}</span>
           </>
         )}
 
-        <span className="text-cc-muted">Turns</span>
+        <span className="text-cc-muted">{t("turns")}</span>
         <span className="text-cc-fg">{session.num_turns}</span>
 
         {showResultStats && (
           <>
-            <span className="text-cc-muted">Lines</span>
+            <span className="text-cc-muted">{t("lines")}</span>
             <span className="text-cc-fg">
               <span className="text-green-400">+{session.total_lines_added}</span>
               {" / "}
@@ -84,13 +86,14 @@ function TaskStatusIcon({ status }: { status: TaskItem["status"] }) {
 }
 
 function TasksSection() {
+  const { t: tr } = useTranslation("context-panel");
   const tasks = useStore((s) => s.tasks);
   const completedCount = tasks.filter((t) => t.status === "completed").length;
 
   return (
     <section className="space-y-2">
       <div className="flex items-center gap-2">
-        <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">Tasks</h3>
+        <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">{tr("tasks")}</h3>
         {tasks.length > 0 && (
           <span className="text-[10px] text-cc-muted bg-cc-card px-1.5 py-0.5 rounded-full">
             {completedCount}/{tasks.length}
@@ -98,7 +101,7 @@ function TasksSection() {
         )}
       </div>
       {tasks.length === 0 ? (
-        <p className="text-xs text-cc-muted/50">No tasks yet</p>
+        <p className="text-xs text-cc-muted/50">{tr("no_tasks")}</p>
       ) : (
         <ul className="space-y-1.5">
           {tasks.map((task) => (
@@ -121,7 +124,7 @@ function TasksSection() {
                   )}
                 </span>
                 {task.blockedBy && task.blockedBy.length > 0 && task.status !== "completed" && (
-                  <span className="ml-1.5 text-[10px] text-amber-500">blocked</span>
+                  <span className="ml-1.5 text-[10px] text-amber-500">{tr("blocked")}</span>
                 )}
               </div>
             </li>
@@ -145,12 +148,13 @@ function statusColor(status: string): string {
 }
 
 function McpServersSection() {
+  const { t } = useTranslation("context-panel");
   const servers = useStore((s) => s.session?.mcp_servers);
   if (!servers?.length) return null;
 
   return (
     <section className="space-y-2">
-      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">MCP Servers</h3>
+      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">{t("mcp_servers")}</h3>
       <ul className="space-y-1">
         {servers.map((srv) => (
           <li key={srv.name} className="flex items-center gap-2 text-xs">
@@ -167,6 +171,7 @@ function McpServersSection() {
 // ── Section: Tools ──────────────────────────────────────────────────────────
 
 function ToolsSection() {
+  const { t } = useTranslation("context-panel");
   const tools = useStore((s) => s.session?.tools);
   const [expanded, setExpanded] = useState(false);
 
@@ -181,7 +186,7 @@ function ToolsSection() {
         onClick={() => setExpanded((v) => !v)}
         className="flex items-center gap-1 text-xs font-semibold text-cc-muted uppercase tracking-wider hover:text-cc-fg transition-colors"
       >
-        <span>Tools ({tools.length})</span>
+        <span>{t("tools", { count: tools.length })}</span>
         <svg
           viewBox="0 0 16 16"
           fill="currentColor"
@@ -202,7 +207,7 @@ function ToolsSection() {
           onClick={() => setExpanded(true)}
           className="text-xs text-cc-muted/50 hover:text-cc-fg transition-colors"
         >
-          +{tools.length - 8} more...
+          {t("more_tools", { count: tools.length - 8 })}
         </button>
       )}
     </section>
@@ -212,6 +217,7 @@ function ToolsSection() {
 // ── Section: Git Info ───────────────────────────────────────────────────────
 
 function GitInfoSection() {
+  const { t } = useTranslation("context-panel");
   const gitAvailable = useStore((s) => s.gitAvailable);
   const [gitInfo, setGitInfo] = useState<{ branch: string | null; ahead: number; behind: number } | null>(null);
 
@@ -227,7 +233,7 @@ function GitInfoSection() {
 
   return (
     <section className="space-y-2">
-      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">Git</h3>
+      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">{t("git")}</h3>
       <div className="flex items-center gap-2 text-xs">
         <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 text-cc-muted shrink-0">
           <path d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.492 2.492 0 016 7h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z" />
@@ -248,12 +254,13 @@ function GitInfoSection() {
 // ── Main Panel ──────────────────────────────────────────────────────────────
 
 export default function ContextPanel() {
+  const { t } = useTranslation("context-panel");
   const session = useStore((s) => s.session);
 
   if (!session) {
     return (
       <div className="flex items-center justify-center h-full text-cc-muted/50 text-sm">
-        No active session
+        {t("no_active_session")}
       </div>
     );
   }

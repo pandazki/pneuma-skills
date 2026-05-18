@@ -1,0 +1,77 @@
+{
+  "dialog_label": "Project panel",
+  "sections": {
+    "recent_sessions": "Recent sessions",
+    "start_in_any_mode": "Start in any mode",
+    "agent": "Agent",
+    "parameters": "Parameters"
+  },
+  "loading": {
+    "sessions": "Loading sessions…",
+    "modes": "Loading modes…",
+    "parameters": "Loading parameters…"
+  },
+  "empty": {
+    "no_sessions_title": "No sessions yet",
+    "no_sessions_hint": "Pick a mode on the right to start your first session."
+  },
+  "session": {
+    "default_title": "{{mode}} session",
+    "starting": "Starting session…",
+    "mode_chip_aria": "{{mode}} mode",
+    "delete_tooltip": "Delete session"
+  },
+  "favorite_aria": "Favorite",
+  "mode_count_suffix": "· {{count}}",
+  "show_all": "Show all {{count}} modes →",
+  "show_less": "Show less ↑",
+  "actions": {
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "delete_permanently": "Delete permanently",
+    "archiving": "Archiving…",
+    "deleting": "Deleting…",
+    "open_in_finder_aria": "Open project folder in Finder",
+    "open_in_finder_tooltip": "Open project folder in Finder",
+    "rediscover": "Re-discover",
+    "rediscover_aria": "Re-discover project",
+    "rediscover_tooltip": "Re-discover project — re-run onboarding against the current project state to refresh the atlas, cover, and task suggestions",
+    "evolve": "Evolve project",
+    "evolve_aria": "Evolve project context",
+    "evolve_tooltip": "Evolve project context — seed the atlas and shared preferences from this project's sessions",
+    "more_aria": "More actions",
+    "more_tooltip": "More actions",
+    "archive_project": "Archive project",
+    "delete_project_permanently": "Delete project permanently"
+  },
+  "confirm": {
+    "archive_question": "Archive this project?",
+    "delete_question": "Permanently delete this project? Sessions and .pneuma data will be wiped — your other files stay."
+  },
+  "error": {
+    "delete_failed": "Delete failed",
+    "delete_failed_status": "Delete failed ({{status}})",
+    "launch_failed": "Launch failed",
+    "launch_failed_status": "Launch failed ({{status}})",
+    "prepare_failed": "Failed to prepare launch",
+    "archive_failed": "Archive failed",
+    "archive_failed_status": "Archive failed ({{status}})",
+    "delete_action_failed": "Delete failed",
+    "delete_action_failed_status": "Delete failed ({{status}})",
+    "tell_session_what_to_do": "Tell the new session what to do"
+  },
+  "launch_sheet": {
+    "close": "Close",
+    "backend_unavailable": "Not available",
+    "backend_soon": "Soon",
+    "backend_na": "N/A",
+    "smart_handoff_label": "Smart handoff from current session",
+    "smart_handoff_desc": "The current agent writes a handoff file with relevant context; you confirm the switch in chat.",
+    "intent_label": "What should the new session do?",
+    "intent_placeholder": "Take this design and turn it into a slide deck",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "launching": "Launching…"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "labels": {
+    "Bash": "终端",
+    "Read": "读取文件",
+    "Write": "写入文件",
+    "Edit": "编辑文件",
+    "Glob": "查找文件",
+    "Grep": "搜索内容",
+    "WebSearch": "网页搜索",
+    "WebFetch": "网页抓取",
+    "Task": "子代理",
+    "TodoWrite": "任务",
+    "NotebookEdit": "笔记本",
+    "SendMessage": "消息"
+  },
+  "tasks_count_one": "{{count}} 个任务",
+  "tasks_count_other": "{{count}} 个任务",
+  "replace_all": "全部替换",
+  "in_path": "在:",
+  "path": "路径:",
+  "glob_label": "glob:"
+}

@@ -1,0 +1,14 @@
+{
+  "recurring": "繰り返し",
+  "one_shot": "1 回のみ",
+  "durable": "永続化",
+  "cancel_job_tooltip": "このスケジュールタスクをキャンセル",
+  "cancel": "キャンセル",
+  "scheduled_jobs": "スケジュールタスク ({{count}})",
+  "refresh": "更新",
+  "backend_specific_title": "バックエンド固有機能",
+  "backend_specific_body": "スケジュールタスクは現在 Claude Code の cron ツールに依存しており、現在のバックエンドでは利用できません。",
+  "upgrade_required": "Claude Code のアップグレードが必要",
+  "upgrade_body": "スケジュールタスクには Claude Code {{minVersion}}+ が必要です。現在のバージョン:{{currentVersion}}。<1>claude update</1> を実行してアップグレードしてください。",
+  "empty_hint": "スケジュールタスクはありません。チャットで <1>/loop</1> を使って繰り返しタスクを作成してください。"
+}

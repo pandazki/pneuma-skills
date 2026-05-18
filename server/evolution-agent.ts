@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { existsSync, readdirSync, readFileSync, statSync, realpathSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import type { ModeManifest } from "../core/types/mode-manifest.js";
+import { type ModeManifest, resolveLocalized } from "../core/types/mode-manifest.js";
 import { getInstallConventions } from "../backends/index.js";
 import { getProposalsDir } from "./evolution-proposal.js";
 
@@ -124,7 +124,7 @@ export function buildEvolutionMetadata(options: EvolutionPromptOptions): Evoluti
 
   return {
     targetMode: manifest.name,
-    targetDisplayName: manifest.displayName,
+    targetDisplayName: resolveLocalized(manifest.displayName, "en"),
     directive,
     workspace,
     primaryHistoryDir: primary.dir,
@@ -141,7 +141,7 @@ export function buildEvolutionMetadata(options: EvolutionPromptOptions): Evoluti
 function buildWorkspaceInfoSection(workspace: string, manifest: ModeManifest): string {
   const lines: string[] = ["## Workspace Info", ""];
   lines.push(`Workspace path: ${workspace}`);
-  lines.push(`Mode: ${manifest.name} (${manifest.displayName})`);
+  lines.push(`Mode: ${manifest.name} (${resolveLocalized(manifest.displayName, "en")})`);
   lines.push(`Skill install name: ${manifest.skill.installName}`);
   lines.push(`Proposals directory: ${getProposalsDir(workspace)}`);
   return lines.join("\n");
@@ -275,7 +275,7 @@ function buildCurrentSkillSection(
   const skillDir = join(workspace, skillsDir, manifest.skill.installName);
   const lines: string[] = ["## Target Skill — What You Are Evolving", ""];
 
-  lines.push(`Mode: **${manifest.displayName}** (\`${manifest.name}\`)`);
+  lines.push(`Mode: **${resolveLocalized(manifest.displayName, "en")}** (\`${manifest.name}\`)`);
   lines.push(`Skill directory: \`${skillDir}/\``);
   lines.push("");
 

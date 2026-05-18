@@ -10,8 +10,16 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 const evolveManifest: ModeManifest = {
   name: "evolve",
   version: "1.0.0",
-  displayName: "Skill Evolution",
-  description: "Analyze usage patterns and evolve mode skills with AI assistance",
+  displayName: {
+    en: "Skill Evolution",
+    "zh-CN": "技能演进",
+    ja: "スキル進化",
+  },
+  description: {
+    en: "Analyze usage patterns and evolve mode skills with AI assistance",
+    "zh-CN": "在 AI 协助下分析使用模式，让模式技能持续演进",
+    ja: "利用パターンを分析し、AI の支援でモードのスキルを進化させる",
+  },
   // Internal mode — surfaced through specific UI affordances (the chip's
   // Evolve button, `pneuma evolve <mode>` CLI), not the launcher's
   // user-pickable mode grid.

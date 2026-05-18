@@ -1,22 +1,50 @@
 {
-  "tagline": "Describe it, watch it build, refine it live",
+  "tagline": {
+    "en": "Describe it, watch it build, refine it live",
+    "zh-CN": "说出需求，看图生成，实时打磨",
+    "ja": "言葉で伝え、組み上がる様子を見て、その場で磨く"
+  },
   "hero": "hero.png",
   "highlights": [
     {
-      "title": "Describe to Diagram",
-      "description": "Type what you need in natural language — flowcharts, architecture, ER diagrams, network topology — and watch professional diagrams appear.",
+      "title": {
+        "en": "Describe to Diagram",
+        "zh-CN": "描述即出图",
+        "ja": "言葉から図表へ"
+      },
+      "description": {
+        "en": "Type what you need in natural language — flowcharts, architecture, ER diagrams, network topology — and watch professional diagrams appear.",
+        "zh-CN": "用自然语言写下需求 —— 流程图、架构图、ER 图、网络拓扑 —— 专业图表会随之浮现。",
+        "ja": "自然言語で要件を伝えるだけ —— フローチャート、アーキテクチャ、ER 図、ネットワークトポロジ —— プロフェッショナルな図表が立ち上がる。"
+      },
       "media": "describe-to-diagram.png",
       "mediaType": "image"
     },
     {
-      "title": "Live Streaming",
-      "description": "Diagrams build in real-time as AI generates them. Shapes and connections appear one by one with smooth fade-in.",
+      "title": {
+        "en": "Live Streaming",
+        "zh-CN": "实时流式生成",
+        "ja": "ライブストリーミング"
+      },
+      "description": {
+        "en": "Diagrams build in real-time as AI generates them. Shapes and connections appear one by one with smooth fade-in.",
+        "zh-CN": "AI 生成时图表实时搭建，形状与连接逐个柔和淡入。",
+        "ja": "AI の生成に合わせて図表がリアルタイムに組み上がる。シェイプと接続線が一つずつ滑らかにフェードインする。"
+      },
       "media": "live-streaming.png",
       "mediaType": "image"
     },
     {
-      "title": "Select & Refine",
-      "description": "Click any element to select it, hover to preview. AI knows which component you picked — refine through conversation.",
+      "title": {
+        "en": "Select & Refine",
+        "zh-CN": "选中即精修",
+        "ja": "選択して洗練"
+      },
+      "description": {
+        "en": "Click any element to select it, hover to preview. AI knows which component you picked — refine through conversation.",
+        "zh-CN": "点击任意元素即可选中，悬停可预览。AI 清楚知道你挑选的是哪个组件，通过对话继续打磨即可。",
+        "ja": "任意の要素をクリックして選択、ホバーでプレビュー。AI はあなたが選んだコンポーネントを把握し、対話で磨き込んでいける。"
+      },
       "media": "select-refine.png",
       "mediaType": "image"
     }

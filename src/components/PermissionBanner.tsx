@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
 import { sendPermissionResponse } from "../ws.js";
 import type { PermissionRequest } from "../types.js";
@@ -21,11 +22,12 @@ export default function PermissionBanner() {
 }
 
 function ToolPermissionCard({ perm }: { perm: PermissionRequest }) {
+  const { t } = useTranslation("permission");
   const displayName = perm.display_name || perm.tool_name;
   return (
     <div className="bg-amber-900/40 border border-amber-700/50 rounded-lg p-3">
       <div className="text-sm font-medium text-amber-200 mb-1">
-        Permission Request: {displayName}
+        {t("permission_request", { tool: displayName })}
       </div>
       {perm.title && (
         <div className="text-xs text-amber-300/70 mb-1">
@@ -50,13 +52,13 @@ function ToolPermissionCard({ perm }: { perm: PermissionRequest }) {
           onClick={() => sendPermissionResponse(perm.request_id, "allow")}
           className="px-3 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded transition-colors"
         >
-          Allow
+          {t("allow")}
         </button>
         <button
           onClick={() => sendPermissionResponse(perm.request_id, "deny")}
           className="px-3 py-1 text-xs bg-red-700 hover:bg-red-600 text-white rounded transition-colors"
         >
-          Deny
+          {t("deny")}
         </button>
       </div>
     </div>

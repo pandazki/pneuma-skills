@@ -1,0 +1,6 @@
+{
+  "terminal": "终端",
+  "kill": "终止",
+  "new": "新建",
+  "process_exited": "[进程已退出,退出码 {{code}}]"
+}

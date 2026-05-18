@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { getApiBase } from "../utils/api.js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -33,6 +34,7 @@ function getWsUrl(terminalId: string): string {
 }
 
 export default function TerminalPanel() {
+  const { t } = useTranslation("terminal-panel");
   const terminalId = useStore((s) => s.terminalId);
   const setTerminalId = useStore((s) => s.setTerminalId);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -126,7 +128,7 @@ export default function TerminalPanel() {
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === "exit") {
-            xterm.writeln(`\r\n[Process exited with code ${msg.exitCode}]`);
+            xterm.writeln(`\r\n${t("process_exited", { code: msg.exitCode })}`);
             setTerminalId(null);
           }
         } catch { }
@@ -181,20 +183,20 @@ export default function TerminalPanel() {
 
       {/* Toolbar (floating pill) */}
       <div className="absolute top-3 right-4 z-20 flex items-center gap-2 px-3 py-1.5 bg-black/60 backdrop-blur-md border border-white/10 rounded-md shadow-sm">
-        <span className="text-xs text-cc-muted font-medium mr-2">Terminal</span>
+        <span className="text-xs text-cc-muted font-medium mr-2">{t("terminal")}</span>
         {terminalId && (
           <button
             onClick={killTerminal}
             className="text-xs px-2 py-0.5 rounded bg-cc-hover hover:bg-cc-active text-cc-muted hover:text-cc-error transition-colors"
           >
-            Kill
+            {t("kill")}
           </button>
         )}
         <button
           onClick={spawnTerminal}
           className="text-xs px-2 py-0.5 rounded bg-cc-hover hover:bg-cc-active text-cc-muted hover:text-cc-fg transition-colors"
         >
-          New
+          {t("new")}
         </button>
       </div>
       {/* Terminal container */}

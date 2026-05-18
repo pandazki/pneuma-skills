@@ -1,0 +1,38 @@
+{
+  "selection_types": {
+    "heading": "h{{level}}",
+    "paragraph": "段落",
+    "list": "リスト",
+    "code": "コードブロック",
+    "blockquote": "引用",
+    "image": "画像",
+    "table": "テーブル",
+    "text_range": "テキスト",
+    "section": "セクション",
+    "link": "リンク",
+    "container": "コンテナ",
+    "interactive": "インタラクティブ要素"
+  },
+  "annotations_label": "注釈 ({{count}})",
+  "clear_all": "すべてクリア",
+  "add_comment_placeholder": "コメントを追加…",
+  "remove_annotation": "注釈を削除",
+  "clear_selection": "選択をクリア",
+  "queue_label_notification": "viewer",
+  "queue_label_user": "キュー",
+  "remove_from_queue": "キューから削除",
+  "remove_attachment": "削除",
+  "attach_file": "ファイルを添付",
+  "file_button": "ファイル",
+  "stop": "停止",
+  "send": "送信",
+  "queue": "キューに追加",
+  "placeholder": {
+    "waiting": "CLI 接続を待機中…",
+    "busy": "入力して次のメッセージをキューに追加…",
+    "annotations": "メモを追加(任意)…",
+    "selection": "Claude に変更内容を伝える…",
+    "annotate_mode": "要素をクリックして注釈し、送信…",
+    "default": "メッセージを送信…(ファイルをドロップ、画像を貼り付け、/ でコマンド)"
+  }
+}

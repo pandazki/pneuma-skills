@@ -1,0 +1,14 @@
+{
+  "open": "打开",
+  "open_default_tooltip": "在默认应用中打开",
+  "editor": "编辑器",
+  "editor_main_tooltip": "在代码编辑器中打开",
+  "choose_editor": "选择编辑器",
+  "reveal": "显示",
+  "reveal_tooltip": "在 Finder / 资源管理器中显示",
+  "loading": "加载中…",
+  "no_editor_detected": "未检测到代码编辑器",
+  "error_open": "无法打开文件。",
+  "error_reveal": "无法显示文件。",
+  "error_open_in_editor": "无法在编辑器中打开。"
+}

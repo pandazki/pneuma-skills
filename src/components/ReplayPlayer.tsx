@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useStore } from "../store/index";
 import { startPlayback, stopPlayback, seekTo } from "../replay-engine";
 import { getApiBase } from "../utils/api";
 
 export function ReplayPlayer() {
+  const { t } = useTranslation("replay-player");
   const {
     replayMode, replayMessages, replayMetadata,
     currentSeq, playbackSpeed, isPlaying,
@@ -35,7 +37,7 @@ export function ReplayPlayer() {
       return {
         hash: cp.hash,
         position: Math.max(0, Math.min(1, position)),
-        label: cp.label || `Step ${idx + 1}`,
+        label: cp.label || t("step", { n: idx + 1 }),
       };
     });
   })();
@@ -92,7 +94,7 @@ export function ReplayPlayer() {
       {/* Controls */}
       <div className="flex items-center gap-3 px-4 pb-2 text-xs min-w-0">
         <div className="flex items-center gap-0.5 shrink-0">
-          <button onClick={prevTurn} className="w-6 h-6 flex items-center justify-center rounded hover:bg-cc-hover text-cc-muted transition-colors cursor-pointer" title="Previous turn">
+          <button onClick={prevTurn} className="w-6 h-6 flex items-center justify-center rounded hover:bg-cc-hover text-cc-muted transition-colors cursor-pointer" title={t("previous_turn")}>
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M13 13V3L8 8zm-5 0V3L3 8z" /></svg>
           </button>
           <button
@@ -105,7 +107,7 @@ export function ReplayPlayer() {
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M4 2l10 6-10 6z" /></svg>
             )}
           </button>
-          <button onClick={nextTurn} className="w-6 h-6 flex items-center justify-center rounded hover:bg-cc-hover text-cc-muted transition-colors cursor-pointer" title="Next turn">
+          <button onClick={nextTurn} className="w-6 h-6 flex items-center justify-center rounded hover:bg-cc-hover text-cc-muted transition-colors cursor-pointer" title={t("next_turn")}>
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M3 3l5 5-5 5zm5 0l5 5-5 5z" /></svg>
           </button>
         </div>
@@ -123,6 +125,7 @@ export function ReplayPlayer() {
 }
 
 function ContinueWorkButton() {
+  const { t } = useTranslation("replay-player");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -144,7 +147,7 @@ function ContinueWorkButton() {
       window.location.href = url.toString();
     } catch (err: any) {
       console.error("[continue-work]", err);
-      setError(err.message || "Continue failed");
+      setError(err.message || t("continue_failed"));
       setLoading(false);
     }
   };
@@ -153,10 +156,10 @@ function ContinueWorkButton() {
     <button
       onClick={handleContinue}
       disabled={loading}
-      title={error || "Switch to normal editing mode and continue working"}
+      title={error || t("continue_tooltip")}
       className="ml-2 px-4 py-1.5 rounded-lg bg-cc-primary text-white text-xs font-medium hover:brightness-110 transition-all whitespace-nowrap disabled:opacity-50 cursor-pointer"
     >
-      {loading ? "Starting..." : error ? `Retry (${error})` : "Continue Work"}
+      {loading ? t("continue_starting") : error ? t("continue_retry", { error }) : t("continue_work")}
     </button>
   );
 }

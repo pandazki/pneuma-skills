@@ -1,22 +1,50 @@
 {
-  "tagline": "Programmatic video creation with React",
+  "tagline": {
+    "en": "Programmatic video creation with React",
+    "zh-CN": "用 React 编程式创作视频",
+    "ja": "React でプログラマブルに動画制作"
+  },
   "hero": "hero.png",
   "highlights": [
     {
-      "title": "Live Preview",
-      "description": "Write React components, see your video update instantly. No dev server, no build step — the viewer compiles and plays as you code.",
+      "title": {
+        "en": "Live Preview",
+        "zh-CN": "实时预览",
+        "ja": "ライブプレビュー"
+      },
+      "description": {
+        "en": "Write React components, see your video update instantly. No dev server, no build step — the viewer compiles and plays as you code.",
+        "zh-CN": "写下 React 组件，视频即时更新。无需 dev server，也无需构建步骤 —— viewer 在你编码的同时完成编译与播放。",
+        "ja": "React コンポーネントを書けば、動画は即座に更新される。dev サーバーもビルドステップも不要 —— コードを書いている横でビューアがそのままコンパイル・再生する。"
+      },
       "media": "live-preview.png",
       "mediaType": "image"
     },
     {
-      "title": "Frame-Perfect Animation",
-      "description": "Every frame is deterministic. Use interpolate(), spring(), and Sequence to build precise, reproducible motion — no CSS hacks.",
+      "title": {
+        "en": "Frame-Perfect Animation",
+        "zh-CN": "帧级精准动画",
+        "ja": "フレーム単位の精密アニメーション"
+      },
+      "description": {
+        "en": "Every frame is deterministic. Use interpolate(), spring(), and Sequence to build precise, reproducible motion — no CSS hacks.",
+        "zh-CN": "每一帧都是确定的。借助 interpolate()、spring() 与 Sequence 构建精准、可复现的动效 —— 无需 CSS 黑魔法。",
+        "ja": "あらゆるフレームが決定論的。interpolate()、spring()、Sequence を使い、CSS の小手先テクニックなしで精密かつ再現性のあるモーションを構築できる。"
+      },
       "media": "frame-animation.png",
       "mediaType": "image"
     },
     {
-      "title": "Export to Video",
-      "description": "Render compositions to MP4 or WebM directly in the browser. Choose format, quality, and download — no command line needed.",
+      "title": {
+        "en": "Export to Video",
+        "zh-CN": "导出为视频",
+        "ja": "動画として書き出し"
+      },
+      "description": {
+        "en": "Render compositions to MP4 or WebM directly in the browser. Choose format, quality, and download — no command line needed.",
+        "zh-CN": "在浏览器里直接把合成渲染为 MP4 或 WebM。选格式、定画质、下载即得 —— 无需命令行。",
+        "ja": "コンポジションを MP4 または WebM としてブラウザ内で直接レンダリング。フォーマットと画質を選んでダウンロード —— コマンドラインは要らない。"
+      },
       "media": "export-video.png",
       "mediaType": "image"
     }

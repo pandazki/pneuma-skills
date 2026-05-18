@@ -1,22 +1,50 @@
 {
-  "tagline": "Typeset documents on warm parchment — paper size locked at creation",
+  "tagline": {
+    "en": "Typeset documents on warm parchment — paper size locked at creation",
+    "zh-CN": "在温润羊皮纸上排版文档 —— 纸张尺寸创建即锁定",
+    "ja": "温かな羊皮紙の上で文書を組版 —— 紙サイズは作成時に固定"
+  },
   "hero": "hero.png",
   "highlights": [
     {
-      "title": "Paper Size Is Sacred",
-      "description": "Pick A4, A5, A3, Letter, or Legal (portrait or landscape) when you create the workspace — the size is locked for the life of the document. Every edit respects the sheet, and print lands on the same paper you chose.",
+      "title": {
+        "en": "Paper Size Is Sacred",
+        "zh-CN": "纸张尺寸不可侵犯",
+        "ja": "紙サイズは絶対"
+      },
+      "description": {
+        "en": "Pick A4, A5, A3, Letter, or Legal (portrait or landscape) when you create the workspace — the size is locked for the life of the document. Every edit respects the sheet, and print lands on the same paper you chose.",
+        "zh-CN": "创建工作区时选择 A4、A5、A3、Letter 或 Legal（纵向或横向），尺寸将贯穿整份文档不再变动。每次编辑都尊重纸面，最终打印也落在同一张纸上。",
+        "ja": "ワークスペース作成時に A4・A5・A3・Letter・Legal（縦か横）を選ぶと、サイズはドキュメントの生涯にわたり固定される。あらゆる編集が紙面を尊重し、印刷も最初に選んだ用紙にそのまま収まる。"
+      },
       "media": "paper-locked.png",
       "mediaType": "image"
     },
     {
-      "title": "Editorial Typography",
-      "description": "Ink-blue accent, warm neutrals, serif-first hierarchy. TsangerJinKai02 for Chinese, Newsreader for English — weight locked at 500, never bold. No gradients, no hard shadows. Design adapted from tw93/kami so it reads like literature, not a dashboard.",
+      "title": {
+        "en": "Editorial Typography",
+        "zh-CN": "编辑级排版",
+        "ja": "エディトリアル・タイポグラフィ"
+      },
+      "description": {
+        "en": "Ink-blue accent, warm neutrals, serif-first hierarchy. TsangerJinKai02 for Chinese, Newsreader for English — weight locked at 500, never bold. No gradients, no hard shadows. Design adapted from tw93/kami so it reads like literature, not a dashboard.",
+        "zh-CN": "墨蓝点缀、暖色中性调、衬线体优先的层级。中文用仓耳今楷 02，英文用 Newsreader，字重锁定 500，绝不加粗。不用渐变也不用硬阴影。设计取自 tw93/kami，让阅读体验更像文学作品，而非仪表盘。",
+        "ja": "インクブルーのアクセント、暖かいニュートラル、セリフ優先の階層構造。中国語は TsangerJinKai02、英語は Newsreader、ウェイトは 500 に固定し太字にはしない。グラデーションも強い影もなし。デザインは tw93/kami から取り入れ、ダッシュボードではなく文学のように読める。"
+      },
       "media": "typography.png",
       "mediaType": "image"
     },
     {
-      "title": "Paper-First Export",
-      "description": "One export page, three artifacts: PDF (pages match your paper size), ZIP of per-page PNGs, or a self-contained HTML with warm letterbox that centers gracefully on any screen. No print-dialog gymnastics required.",
+      "title": {
+        "en": "Paper-First Export",
+        "zh-CN": "以纸为本的导出",
+        "ja": "ペーパーファーストのエクスポート"
+      },
+      "description": {
+        "en": "One export page, three artifacts: PDF (pages match your paper size), ZIP of per-page PNGs, or a self-contained HTML with warm letterbox that centers gracefully on any screen. No print-dialog gymnastics required.",
+        "zh-CN": "一个导出页面，三种产物：PDF（页面与所选纸张一致）、按页 PNG 打包的 ZIP，或带暖色 letterbox 的自包含 HTML，可在任意屏幕上居中显示。无需再与打印对话框周旋。",
+        "ja": "1 つのエクスポート画面から 3 種類の成果物：PDF（用紙サイズと完全一致）、ページ単位 PNG の ZIP、暖色のレターボックスでどの画面にも美しく収まるセルフコンテインド HTML。印刷ダイアログと格闘する必要はない。"
+      },
       "media": "export.png",
       "mediaType": "image"
     }

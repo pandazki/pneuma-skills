@@ -18,6 +18,7 @@
  * (mode loading, file fetch, WS connect) — there's no agent here.
  */
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import TopBar from "./TopBar.js";
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
@@ -29,6 +30,7 @@ interface FetchedProject {
 }
 
 export function EmptyShell({ projectRoot }: { projectRoot: string }) {
+  const { t } = useTranslation("empty-shell");
   // `triggering` covers the brief window between deciding to auto-launch
   // and the navigation actually firing. Showing it as a soft inline hint
   // (rather than a full-screen takeover) keeps the editor chrome stable
@@ -109,7 +111,7 @@ export function EmptyShell({ projectRoot }: { projectRoot: string }) {
           {triggering ? (
             <div className="flex flex-col items-center gap-3 text-cc-muted/80">
               <div className="w-8 h-8 rounded-full border-2 border-cc-border border-t-cc-primary animate-spin" />
-              <div className="text-sm">Reading your project — a discovery report will open in a moment.</div>
+              <div className="text-sm">{t("reading_project")}</div>
             </div>
           ) : null}
         </div>

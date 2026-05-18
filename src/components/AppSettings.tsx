@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { getApiBase } from "../utils/api.js";
 
 interface AppSettingsData {
@@ -12,6 +13,7 @@ interface AppSettingsData {
  * Anchored to a trigger element, positioned below-left.
  */
 export default function AppSettings({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation("app-settings");
   const [settings, setSettings] = useState<AppSettingsData>({});
   const [saving, setSaving] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -73,12 +75,12 @@ export default function AppSettings({ onClose }: { onClose: () => void }) {
       }}
     >
       <div style={{ fontWeight: 600, color: "#e4e4e7", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-        App Settings
+        {t("title")}
       </div>
 
       {/* Window size */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span>Window</span>
+        <span>{t("window")}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <input
             type="number"
@@ -98,7 +100,7 @@ export default function AppSettings({ onClose }: { onClose: () => void }) {
 
       {/* Resizable */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span>Resizable</span>
+        <span>{t("resizable")}</span>
         <button
           onClick={() => save({ resizable: !settings.resizable })}
           style={{
@@ -116,7 +118,7 @@ export default function AppSettings({ onClose }: { onClose: () => void }) {
         </button>
       </div>
 
-      {saving && <div style={{ fontSize: 10, color: "#52525b" }}>Saving...</div>}
+      {saving && <div style={{ fontSize: 10, color: "#52525b" }}>{t("saving")}</div>}
     </div>
   );
 }

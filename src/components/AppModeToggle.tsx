@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useStore } from "../store/index.js";
 import { getApiBase } from "../utils/api.js";
 
@@ -12,6 +13,7 @@ const desktop = (window as any).pneumaDesktop as {
  * Zero visual footprint when not hovered.
  */
 export default function AppModeToggle() {
+  const { t } = useTranslation("app-mode-toggle");
   const setEditing = useStore((s) => s.setEditing);
   const [hovering, setHovering] = useState(false);
   const [switching, setSwitching] = useState(false);
@@ -75,7 +77,7 @@ export default function AppModeToggle() {
             e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)";
           }
         }}
-        title="Edit dashboard"
+        title={t("edit_tooltip")}
       >
         {switching ? (
           <div style={{ width: 12, height: 12, border: "1.5px solid rgba(249,115,22,0.3)", borderTopColor: "#f97316", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
@@ -84,7 +86,7 @@ export default function AppModeToggle() {
             <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
           </svg>
         )}
-        <span style={{ opacity: hovering ? 1 : 0, transition: "opacity 0.25s" }}>Edit</span>
+        <span style={{ opacity: hovering ? 1 : 0, transition: "opacity 0.25s" }}>{t("edit_button")}</span>
       </button>
     </div>
   );

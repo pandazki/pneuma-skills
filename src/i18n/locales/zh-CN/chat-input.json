@@ -1,0 +1,38 @@
+{
+  "selection_types": {
+    "heading": "h{{level}}",
+    "paragraph": "段落",
+    "list": "列表",
+    "code": "代码块",
+    "blockquote": "引用",
+    "image": "图片",
+    "table": "表格",
+    "text_range": "文本",
+    "section": "区块",
+    "link": "链接",
+    "container": "容器",
+    "interactive": "交互元素"
+  },
+  "annotations_label": "标注 ({{count}})",
+  "clear_all": "全部清除",
+  "add_comment_placeholder": "添加备注…",
+  "remove_annotation": "删除标注",
+  "clear_selection": "清除选区",
+  "queue_label_notification": "viewer",
+  "queue_label_user": "排队中",
+  "remove_from_queue": "从队列移除",
+  "remove_attachment": "移除",
+  "attach_file": "附加文件",
+  "file_button": "文件",
+  "stop": "停止",
+  "send": "发送",
+  "queue": "加入队列",
+  "placeholder": {
+    "waiting": "等待 CLI 连接…",
+    "busy": "输入以排队下一条消息…",
+    "annotations": "添加备注(可选)…",
+    "selection": "告诉 Claude 要改什么…",
+    "annotate_mode": "点击元素以标注,然后发送…",
+    "default": "发送消息…(拖入文件、粘贴图片、输入 / 触发命令)"
+  }
+}

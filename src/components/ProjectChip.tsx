@@ -13,6 +13,7 @@
  * thread a prop down.
  */
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
 import { basename } from "../utils/string.js";
 
@@ -33,6 +34,7 @@ function detectAutoOpen(): boolean {
 }
 
 export default function ProjectChip({ autoOpen }: ProjectChipProps = {}) {
+  const { t } = useTranslation("project-chip");
   const projectContext = useStore((s) => s.projectContext);
   const projectRoot = projectContext?.projectRoot ?? null;
   const [open, setOpen] = useState<boolean>(() => autoOpen ?? detectAutoOpen());
@@ -66,7 +68,7 @@ export default function ProjectChip({ autoOpen }: ProjectChipProps = {}) {
   // re-check here so this component is safe to render anywhere.
   if (!projectRoot) return null;
 
-  const label = projectContext?.projectName || basename(projectRoot) || "Project";
+  const label = projectContext?.projectName || basename(projectRoot) || t("fallback_label");
 
   return (
     <div className="relative" ref={wrapperRef}>

@@ -1,0 +1,233 @@
+{
+  "common": {
+    "cancelled": "キャンセルしました。",
+    "goodbye": "さようなら！",
+    "fatal_error": "致命的なエラー：{{message}}"
+  },
+  "pneuma": {
+    "intro": "pneuma-skills v{{version}}",
+    "version_label": "pneuma-skills v{{version}}",
+    "help": "pneuma-skills [mode] [options]\n\nモード：\n  (引数なし)                   ランチャーを開く（マーケットプレイスUI）\n  webcraft                     Impeccable.style でのWebデザイン\n  slide                        HTML プレゼンテーション\n  doc                          ライブプレビュー付き Markdown\n  draw                         Excalidraw キャンバス\n  illustrate                   AI イラストスタジオ\n  mode-maker                   AI でカスタムモードを作成\n  evolve                       進化エージェントを起動\n  /path/to/mode                ローカルディレクトリから読み込み\n  github:user/repo             GitHub から読み込み\n  https://...tar.gz            URL から読み込み\n\nオプション：\n  --workspace <path>           対象のワークスペースディレクトリ（既定：カレントディレクトリ）\n  --port <number>              優先サーバーポート\n  --backend <type>             エージェントバックエンド（{{backendList}}；既定：{{defaultBackend}}）\n  --no-open                    ブラウザを自動で開かない\n  --no-prompt                  非対話モード\n  --skip-skill                 スキルのインストールをスキップ\n  --debug                      デバッグモードを有効化\n  --dev                        開発モードを強制（Vite）\n  --help, -h                   このヘルプを表示\n  --version, -v                バージョンを表示",
+    "bun_not_running": "Bun で実行されていません。Pneuma は Bun >= {{min}} が必要です",
+    "bun_too_old": "Bun {{current}} を検出しましたが、>= {{min}} が必要です。ターミナル機能が動作しない場合があります。`bun upgrade` で更新してください。",
+    "update": {
+      "available": "更新が利用可能：{{current}} → {{latest}}",
+      "prompt": "最新バージョンに更新しますか？",
+      "updating": "pneuma-skills@{{version}} に更新中…"
+    },
+    "backend_unavailable": "{{label}} が必要ですが利用できません。\n{{reason}}",
+    "backend_unavailable_no_detail": "（詳細なし）",
+    "workspace_create_prompt": "ワークスペースが存在しません：{{workspace}}\n  作成しますか？",
+    "workspace_created": "ワークスペースを作成しました：{{workspace}}",
+    "mode_info": "モード：{{displayName}}（{{name}}）",
+    "workspace_info": "ワークスペース：{{workspace}}",
+    "project_session_info": "プロジェクトセッション：{{sessionId}}",
+    "external_mode_loaded": "外部モード \"{{name}}\" を {{path}} から読み込みました",
+    "resolve_failed": "モード \"{{mode}}\" を解決できませんでした：{{message}}",
+    "load_failed": "モード \"{{mode}}\" を読み込めませんでした：{{message}}",
+    "mode_unsupported_backend": "モード \"{{mode}}\" は次のバックエンドのみサポートします：{{backends}}。選択したバックエンド \"{{backend}}\" は非対応です。",
+    "backend_mismatch": "ワークスペースは既にバックエンド \"{{backend}}\" にバインドされています。--backend {{backend}} で起動するか、.pneuma/session.json を削除して新規に開始してください。",
+    "configuring_params": "モードパラメータを設定中…",
+    "loaded_init_params": ".pneuma/config.json から初期化パラメータを読み込みました",
+    "default_init_params": "既定の初期化パラメータを使用（非対話モード）",
+    "saved_init_params": "初期化パラメータを .pneuma/config.json に保存しました",
+    "installing_skill": "スキルをインストールし環境を準備中…",
+    "skill_replace_prompt": "スキルは既に存在します。最新版で置き換えますか？",
+    "skill_deps_incomplete": "スキルの依存関係が不完全です：",
+    "skill_deps_bundled_hint": "実行前に、スキルファイルをモードパッケージに同梱してください。",
+    "skill_deps_fix_hint": "モードパッケージを修正してから再試行してください。",
+    "dev_mode": "開発モード（Vite 経由で提供）",
+    "prod_mode": "本番モード（ビルド済みアセットを提供）",
+    "compiling_viewer": "本番用にモードビューワーをコンパイル中…",
+    "using_prebuilt_viewer": "プリビルド済みモードビューワーのバンドルを使用",
+    "viewer_compiled": "モードビューワーのコンパイルに成功しました",
+    "viewer_compile_failed": "モードビューワーのコンパイルに失敗 — ビューワーが読み込まれない可能性があります",
+    "seeded_workspace": "ワークスペースにシードファイルを配置：{{path}}",
+    "installing_deps": "依存関係をインストール中…",
+    "vite_starting": "Vite 開発サーバーをポート {{port}} で起動中…",
+    "marketplace_ready": "マーケットプレイス → {{url}}",
+    "ready": "準備完了 → {{url}}",
+    "open_browser_failed": "ブラウザを開けませんでした。次の URL にアクセスしてください：{{url}}",
+    "auto_starting_app": "アプリを自動起動：{{name}}（{{workspace}}）",
+    "replay_mode": "再生モード：{{path}}",
+    "continue_work_installing": "作業を継続：スキルをインストール中…",
+    "continue_work_launched": "作業を継続：エージェントを起動、セッションを開始しました",
+    "exporting_replay_source": "次のソースから再生データを書き出し中：{{source}}",
+    "exported_replay_package": "再生パッケージを書き出しました：{{path}}",
+    "export_replay_failed": "ソースからの再生書き出しに失敗：{{message}}。再生なしで続行します。",
+    "viewing_dashboard_only": "閲覧モード：ダッシュボードのみ、エージェントは起動しません",
+    "resuming_session": "セッションを再開中：{{id}}",
+    "agent_session": "エージェントセッション：{{id}}",
+    "switching_to_edit": "編集モードに切り替え中：スキルをインストールしエージェントを起動…",
+    "switching_to_viewing": "閲覧モードに切り替え中：エージェントを停止…",
+    "edit_mode_launched": "編集モード：エージェントを起動しました",
+    "project": {
+      "usage_add": "用法：pneuma project add <path>",
+      "path_missing": "パスが存在しません：{{path}}",
+      "no_pneuma_data": "{{path}} に Pneuma データが見つかりません。新規作成にはランチャーの「プロジェクトを作成」を使用してください。",
+      "registered_existing": "[project] 既存プロジェクト \"{{name}}\" を {{path}} に登録しました",
+      "registered_synthesized": "[project] マニフェストを合成し \"{{name}}\" を {{path}} に登録しました"
+    },
+    "evolve": {
+      "no_proposals": "進化提案が見つかりませんでした。",
+      "proposal_count": "{{count}} 件の提案：",
+      "no_proposals_error": "提案が見つかりません。まず `pneuma evolve` を実行してください。",
+      "proposal_already_handled": "提案 {{id}} は既に {{status}} 状態です。",
+      "apply_prompt": "この提案を適用しますか？",
+      "applied": "{{count}} ファイルを適用しました。`pneuma evolve rollback` で取り消せます。",
+      "apply_failed": "適用に失敗：{{message}}",
+      "no_applied_to_rollback": "ロールバックできる適用済みの提案はありません。",
+      "rollback_prompt": "提案 {{id}} をロールバックしますか？",
+      "rolled_back": "{{count}} ファイルをロールバックしました。",
+      "rollback_failed": "ロールバックに失敗：{{message}}",
+      "no_mode_specified": "モードが指定されておらず、.pneuma/session.json も見つかりません。\n用法：pneuma evolve --mode <mode> --workspace <path>",
+      "default_recent_mode": "--mode 未指定；最新のプロジェクトセッションのモードを使用：{{mode}}",
+      "default_doc_mode": "--mode 未指定かつプロジェクトセッションが見つかりません；スキル初期化のため 'doc' を既定とします。",
+      "unsupported_backend": "進化モードは次のバックエンドのみサポートします：{{backends}}。選択したバックエンド \"{{backend}}\" は非対応です。",
+      "evolving": "{{displayName}} モードのスキルを進化中…",
+      "project_root": "プロジェクトルート：{{path}}"
+    },
+    "mode": {
+      "add": {
+        "usage": "用法：pneuma mode add <url|github:user/repo>",
+        "is_builtin": "\"{{name}}\" は組み込みモードです — 追加は不要です。",
+        "added": "モード \"{{name}}\" を {{path}} に追加しました",
+        "failed": "モードの追加に失敗：{{message}}",
+        "library_up_to_date": "ライブラリ \"{{name}}\" は最新です（{{total}} {{modesWord}}、{{activated}} 個有効）。",
+        "library_synced": "ライブラリ \"{{name}}\" を {{dir}} に同期しました\n  {{total}} {{modesWord}}（{{activated}} 個有効）{{changes}}",
+        "library_linked": "ライブラリ \"{{name}}\" を {{dir}} にリンクしました\n  {{total}} {{modesWord}}（{{activated}} 個有効）：{{modeNames}}",
+        "added_label": "追加",
+        "removed_label": "削除",
+        "updated_label": "更新"
+      },
+      "list": {
+        "none": "[mode] 公開済みモードは見つかりません。",
+        "header": "[mode] {{count}} 個の公開済みモード：\n",
+        "updated_at": "更新日時：{{date}}"
+      },
+      "modes_word_one": "モード",
+      "modes_word_many": "モード"
+    },
+    "library": {
+      "usage": "用法：\n  pneuma library init <name> [--display \"...\"] [--description \"...\"] [--github user/repo] [--private]\n  pneuma library link <source>\n  pneuma library list\n  pneuma library sync <id>\n  pneuma library publish <mode> [--to <library-id>] [--as <new-name>] [--push]\n  pneuma library push <id>\n  pneuma library unlink <id> [--force]\n  pneuma library activate <id> <mode>\n  pneuma library deactivate <id> <mode>",
+      "unknown_subcommand": "不明な library サブコマンド：{{sub}}\n{{usage}}",
+      "subcommand_none": "（なし）",
+      "init": {
+        "usage": "用法：pneuma library init <name> [--display \"...\"] [--description \"...\"] [--github user/repo] [--private]",
+        "initialized": "ライブラリ \"{{name}}\" を {{dir}} で初期化しました",
+        "pushed": "{{url}} にプッシュしました",
+        "github_failed": "GitHub リポジトリ作成に失敗：{{message}}",
+        "failed": "ライブラリ初期化に失敗：{{message}}"
+      },
+      "link": {
+        "usage": "用法：pneuma library link <source>",
+        "is_single_mode": "そのリポジトリはライブラリではなく単一モードです — 代わりに `pneuma mode add` を使用してください。",
+        "failed": "ライブラリのリンクに失敗：{{message}}"
+      },
+      "list": {
+        "none": "リンク済みのライブラリはありません。`pneuma library link github:user/repo` を試してください。"
+      },
+      "sync": {
+        "usage": "用法：pneuma library sync <id>",
+        "not_linked": "ライブラリ \"{{id}}\" はリンクされていません。",
+        "fetch_failed": "git fetch に失敗：{{message}}",
+        "checkout_failed": "git checkout に失敗：{{message}}",
+        "not_library_on_disk": "ライブラリ \"{{id}}\" はディスク上でライブラリの形状ではありません。",
+        "up_to_date": "ライブラリ \"{{id}}\" は最新です（{{total}} {{modesWord}}、{{activated}} 個有効）。",
+        "synced": "ライブラリ \"{{id}}\" を同期しました（{{total}} {{modesWord}}、{{activated}} 個有効）{{changes}}",
+        "failed": "ライブラリの同期に失敗：{{message}}"
+      },
+      "publish": {
+        "usage": "用法：pneuma library publish <mode> [--to <library-id>] [--as <new-name>] [--push]",
+        "mode_path_missing": "モードのパスが見つかりません：{{path}}",
+        "mode_not_found": "モード \"{{mode}}\" は ~/.pneuma/modes/ と組み込みの modes/ のいずれにも見つかりませんでした。",
+        "no_libraries": "リンク済みのライブラリはありません。まず `pneuma library init <name>` または `pneuma library link <source>` を実行してください。",
+        "multiple_libraries": "複数のライブラリがリンクされています — --to <library-id> を指定してください。利用可能：{{ids}}",
+        "success": "{{mode}} を {{library}}（{{dir}}）に公開しました",
+        "pushed": "プッシュしました",
+        "failed": "公開に失敗：{{message}}"
+      },
+      "push": {
+        "usage": "用法：pneuma library push <id>",
+        "success": "ライブラリ \"{{id}}\" をプッシュしました"
+      },
+      "unlink": {
+        "usage": "用法：pneuma library unlink <id> [--force]",
+        "confirm": "ライブラリ \"{{id}}\" のリンクを解除しますか？ディスク上のクローンが削除されます。",
+        "removed": "ライブラリ \"{{id}}\" を削除しました",
+        "not_linked": "ライブラリ \"{{id}}\" はリンクされていません。",
+        "failed": "リンク解除に失敗：{{message}}"
+      },
+      "activate": {
+        "usage": "用法：pneuma library {{action}} <id> <mode>",
+        "activated": "モード \"{{mode}}\" を {{library}} で有効化しました",
+        "deactivated": "モード \"{{mode}}\" を {{library}} で無効化しました"
+      }
+    },
+    "plugin": {
+      "usage": "用法：pneuma plugin <add|list|remove>",
+      "add": {
+        "usage": "用法：pneuma plugin add <path|github:user/repo|url>",
+        "invalid_github": "無効な GitHub 指定子です。期待される形式：github:user/repo または github:user/repo#branch",
+        "updating_existing": "既存のプラグイン \"{{name}}\" を更新中…",
+        "cloning": "{{url}} をクローン中…",
+        "downloading": "{{url}} をダウンロード中…",
+        "path_missing": "パスが見つかりません：{{path}}",
+        "invalid_no_manifest": "無効なプラグイン：{{path}} に manifest.ts が見つかりません",
+        "installed": "プラグイン \"{{name}}\" を {{path}} にインストールしました",
+        "failed": "プラグインの追加に失敗：{{message}}"
+      },
+      "list": {
+        "none": "[plugin] プラグインは見つかりません。",
+        "builtin_header": "  組み込みプラグイン：",
+        "external_header": "  外部プラグイン：",
+        "enabled": "（有効）",
+        "disabled": "（無効）",
+        "builtin_tag": "[組み込み]"
+      },
+      "remove": {
+        "usage": "用法：pneuma plugin remove <name>",
+        "is_builtin": "\"{{name}}\" は組み込みプラグインのため削除できません。設定から無効化できます。",
+        "not_found": "プラグイン \"{{name}}\" は {{dir}} で見つかりません",
+        "removed": "プラグイン \"{{name}}\" を削除しました。"
+      }
+    },
+    "history": {
+      "exported": "{{messages}} 件のメッセージと {{checkpoints}} 個のチェックポイントを書き出しました",
+      "output": "出力：{{path}}",
+      "open_usage": "用法：pneuma history open <path-or-url>",
+      "replay_ready": "再生パッケージの準備が完了しました：{{path}}",
+      "replay_hint": "実行中のセッションで再生するには：",
+      "replay_post_example": "  POST /api/replay/load に {\"path\": \"{{path}}\"} を送信"
+    }
+  },
+  "handoff": {
+    "usage": "用法：pneuma handoff --json '<json>' | --stdin\n\nアクティブな Pneuma セッションに構造化されたハンドオフを送信します。サーバーは\nハンドオフカードを表示し、確認されるとペイロードを事前に読み込んだ状態で\nターゲットセッションを起動します。読み込む JSON のフィールド：\n\n  target_mode       string   必須  モード名（例：\"webcraft\"）\n  target_session    string   任意  既存セッション id、\"auto\"、または省略\n  intent            string   必須  一文 — ターゲットが行うこと\n  summary           string   任意  ここまでの作業内容の簡潔な要約\n  suggested_files   string[] 任意  プロジェクト相対パス、順序付き\n  key_decisions     string[] 任意  ターゲットに渡す確定済みの決定事項\n  open_questions    string[] 任意  ターゲットが解決すべき項目\n\n環境変数：\n  PNEUMA_SERVER_URL   POST 先\n  PNEUMA_SESSION_ID   ソースセッション id（自動注入）\n",
+    "missing_args": "error: --json '<json>' または --stdin を指定してください",
+    "missing_session_id": "error: PNEUMA_SESSION_ID 環境変数が未設定です（セッション内で実行する必要があります）",
+    "missing_server_url": "error: PNEUMA_SERVER_URL 環境変数が未設定です（セッション内で実行する必要があります）",
+    "empty_payload": "error: JSON ペイロードが空です",
+    "invalid_json": "error: 無効な JSON — {{message}}",
+    "validation_error": "error: {{message}}",
+    "fetch_failed": "error: Pneuma サーバー {{url}} に接続できません：{{message}}",
+    "server_error": "error: {{message}}",
+    "submitted": "ハンドオフを送信しました。ユーザーの確認待ちです。{{idSuffix}}",
+    "submitted_id": "（id {{id}}）"
+  },
+  "session": {
+    "refine": {
+      "usage": "用法：pneuma session refine --json '<json>' | --stdin\n\nアクティブな Pneuma セッションの UI メタデータを書き換え、ランチャーと\nProjectPanel の行がセッションの実際の主題を反映するようにします。\nモードベースの既定値 + 最初の `<pneuma:env>` 合成メッセージの代わりです。\n\nJSON ペイロードのフィールド（少なくとも 1 つ必須）：\n\n  displayName   string   ≤40 文字 — セッションの短いタイトル\n  description   string   ≤280 文字 — 一〜二文の要約\n\n対話で十分な内容が蓄積され意味のある要約が書ける場合、またはユーザーが\n明示的にリネームを要求した場合に、エージェントがこのコマンドを使用します。\n\n環境変数：\n  PNEUMA_SERVER_URL   POST 先\n  PNEUMA_SESSION_ID   アクティブセッション id（自動注入）\n",
+      "missing_args": "error: --json '<json>' または --stdin を指定してください",
+      "missing_session_id": "error: PNEUMA_SESSION_ID 環境変数が未設定です（セッション内で実行する必要があります）",
+      "missing_server_url": "error: PNEUMA_SERVER_URL 環境変数が未設定です（セッション内で実行する必要があります）",
+      "empty_payload": "error: JSON ペイロードが空です",
+      "invalid_json": "error: 無効な JSON — {{message}}",
+      "validation_error": "error: {{message}}",
+      "fetch_failed": "error: Pneuma サーバー {{url}} に接続できません：{{message}}",
+      "server_error": "error: {{message}}",
+      "success": "セッションメタを更新しました。{{titleSuffix}}{{descSuffix}}",
+      "success_title": " title=\"{{title}}\"",
+      "success_desc": " description=\"{{description}}\""
+    }
+  }
+}

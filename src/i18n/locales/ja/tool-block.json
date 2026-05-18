@@ -1,0 +1,22 @@
+{
+  "labels": {
+    "Bash": "ターミナル",
+    "Read": "ファイル読み込み",
+    "Write": "ファイル書き込み",
+    "Edit": "ファイル編集",
+    "Glob": "ファイル検索",
+    "Grep": "コンテンツ検索",
+    "WebSearch": "ウェブ検索",
+    "WebFetch": "ウェブ取得",
+    "Task": "サブエージェント",
+    "TodoWrite": "タスク",
+    "NotebookEdit": "ノートブック",
+    "SendMessage": "メッセージ"
+  },
+  "tasks_count_one": "{{count}} 件のタスク",
+  "tasks_count_other": "{{count}} 件のタスク",
+  "replace_all": "すべて置換",
+  "in_path": "場所:",
+  "path": "パス:",
+  "glob_label": "glob:"
+}

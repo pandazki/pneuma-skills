@@ -14,6 +14,7 @@
  * pivot) can reuse them.
  */
 
+import { useTranslation } from "react-i18next";
 import { shortenPath } from "../utils/string.js";
 import { timeAgo } from "../utils/timeAgo.js";
 import { CoverImage, SessionMeta } from "./ProjectCover.js";
@@ -77,6 +78,7 @@ function QuickResumeMeta({
   project: ProjectCardEntry;
   onQuickResume: (project: ProjectCardEntry) => void;
 }) {
+  const { t } = useTranslation("project-card");
   const handle = (e: React.SyntheticEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -90,7 +92,7 @@ function QuickResumeMeta({
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") handle(e);
       }}
-      title="Resume the most recent session"
+      title={t("resume_tooltip")}
       className="quick-resume group/qr inline-flex items-center gap-1 cursor-pointer transition-colors hover:text-cc-primary"
     >
       <SessionMeta project={project} />
@@ -110,6 +112,7 @@ function FeaturedCard({
   homeDir: string;
   onQuickResume?: (project: ProjectCardEntry) => void;
 }) {
+  const { t } = useTranslation("project-card");
   const path = shortenPath(project.root, homeDir);
   const canResume = !!onQuickResume && project.sessionCount > 0;
   return (
@@ -138,7 +141,7 @@ function FeaturedCard({
             {project.description}
           </p>
         ) : (
-          <p className="text-xs text-cc-muted/40 italic">No description</p>
+          <p className="text-xs text-cc-muted/40 italic">{t("no_description")}</p>
         )}
         <div className="flex items-center justify-between gap-2 mt-1.5 pt-2 border-t border-cc-border/40 text-[11px]">
           {canResume ? (
@@ -217,6 +220,7 @@ function ArchivedRow({
   homeDir: string;
   onRestore: (project: ProjectCardEntry) => void;
 }) {
+  const { t } = useTranslation("project-card");
   const path = shortenPath(project.root, homeDir);
   return (
     <div
@@ -230,7 +234,7 @@ function ArchivedRow({
         <div className="text-sm text-cc-fg/80 truncate flex items-center">
           <span className="truncate">{project.displayName}</span>
           <span className="text-[10px] text-cc-muted/50 ml-2 shrink-0">
-            archived
+            {t("archived")}
           </span>
         </div>
         <div className="text-[11px] text-cc-muted/60 truncate font-mono mt-0.5">
@@ -242,7 +246,7 @@ function ArchivedRow({
         onClick={() => onRestore(project)}
         className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer shrink-0"
       >
-        Restore
+        {t("restore")}
       </button>
     </div>
   );

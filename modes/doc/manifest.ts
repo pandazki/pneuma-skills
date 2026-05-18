@@ -8,8 +8,16 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 const docManifest: ModeManifest = {
   name: "doc",
   version: "1.0.0",
-  displayName: "Document",
-  description: "Markdown documents with live preview — the simplest mode, a minimal example of the Pneuma mode system",
+  displayName: {
+    en: "Document",
+    "zh-CN": "文档",
+    ja: "ドキュメント",
+  },
+  description: {
+    en: "Markdown documents with live preview — the simplest mode, a minimal example of the Pneuma mode system",
+    "zh-CN": "带实时预览的 Markdown 文档 —— 最简单的模式，也是 Pneuma 模式系统的最小示例",
+    ja: "ライブプレビュー付きの Markdown ドキュメント —— 最もシンプルなモード、Pneuma モードシステムの最小例",
+  },
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>`,
 
   skill: {
