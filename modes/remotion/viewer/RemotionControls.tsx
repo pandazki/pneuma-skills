@@ -95,20 +95,20 @@ export default function RemotionControls({
 
   const handlePointerUp = useCallback(() => setIsDragging(false), []);
 
-  const accent = "var(--cc-primary, #f97316)";
+  const accent = "var(--color-cc-primary, #f97316)";
 
   // Shared button style for icon buttons
-  const iconBtnClass = "w-7 h-7 flex items-center justify-center rounded-md hover:bg-white/10 transition-colors";
+  const iconBtnClass = "w-7 h-7 flex items-center justify-center rounded-md hover:bg-cc-hover transition-colors";
 
   return (
     <div className="flex flex-col gap-2 px-4 py-3"
-      style={{ background: "var(--cc-bg-secondary, #18181b)" }}>
+      style={{ background: "var(--color-cc-surface, #18181b)" }}>
 
       {/* ── Timeline ─────────────────────────────────────────────── */}
       <div
         ref={trackRef}
         className="relative h-2 rounded-full cursor-pointer group"
-        style={{ background: "var(--cc-bg-tertiary, #27272a)" }}
+        style={{ background: "var(--color-cc-user-bubble, #27272a)" }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -146,7 +146,7 @@ export default function RemotionControls({
       </div>
 
       {/* ── Controls row ─────────────────────────────────────────── */}
-      <div className="flex items-center gap-2" style={{ color: "var(--cc-text-secondary, #a1a1aa)" }}>
+      <div className="flex items-center gap-2" style={{ color: "var(--color-cc-muted, #a1a1aa)" }}>
 
         {/* Play / Pause */}
         <button onClick={onPlayPause} className={iconBtnClass} title={playing ? "Pause (Space)" : "Play (Space)"}>
@@ -164,7 +164,7 @@ export default function RemotionControls({
 
         {/* Time display */}
         <button
-          className="font-mono text-[11px] tabular-nums hover:text-white transition-colors min-w-[110px] text-left"
+          className="font-mono text-[11px] tabular-nums hover:text-cc-fg transition-colors min-w-[110px] text-left"
           onClick={() => setShowFrames(!showFrames)}
           title="Click to toggle frame numbers"
         >
@@ -175,7 +175,7 @@ export default function RemotionControls({
 
         {/* ── Range group: [ ] ↻ ✕ ── */}
         <div className="flex items-center rounded-md overflow-hidden"
-          style={{ background: "var(--cc-bg-tertiary, #27272a)" }}>
+          style={{ background: "var(--color-cc-user-bubble, #27272a)" }}>
           <button onClick={onSetIn} className={iconBtnClass} style={{ color: inFrame !== null ? accent : undefined, borderRadius: 0 }} title="Set in-point (I)">
             <svg width={ICON_SIZE} height={ICON_SIZE} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <path d="M5 3v10" />
@@ -199,7 +199,7 @@ export default function RemotionControls({
             </svg>
           </button>
           {hasRange && (
-            <button onClick={onClearRange} className={iconBtnClass} style={{ color: "var(--cc-text-tertiary, #52525b)", borderRadius: 0 }} title="Clear range">
+            <button onClick={onClearRange} className={iconBtnClass} style={{ color: "var(--color-cc-muted, #52525b)", opacity: 0.7, borderRadius: 0 }} title="Clear range">
               <svg width={ICON_SIZE} height={ICON_SIZE} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                 <path d="M4 4l8 8M12 4l-8 8" />
               </svg>
@@ -211,7 +211,7 @@ export default function RemotionControls({
 
         {/* Speed */}
         <div className="flex items-center rounded-md overflow-hidden"
-          style={{ background: "var(--cc-bg-tertiary, #27272a)" }}>
+          style={{ background: "var(--color-cc-user-bubble, #27272a)" }}>
           {SPEED_OPTIONS.map((speed) => (
             <button
               key={speed}

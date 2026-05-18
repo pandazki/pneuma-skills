@@ -389,7 +389,7 @@ export default function TopBar() {
     >
       {/* Left: logo + selectors */}
       <div
-        className="flex items-center gap-3 bg-cc-surface/50 border border-white/5 backdrop-blur-md px-4 py-1.5 rounded-full shadow-sm min-w-0 shrink-0"
+        className="flex items-center gap-3 bg-cc-surface/70 border border-cc-border/60 backdrop-blur-md px-4 py-1.5 rounded-full shadow-sm min-w-0 shrink-0"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
         <div className="flex items-center gap-1.5">
@@ -452,7 +452,7 @@ export default function TopBar() {
       {/* Center: tabs (hidden in empty shell — no session = no panels) */}
       {hasModeViewer && (
         <div
-          className="flex items-center gap-1 mx-auto bg-cc-bg/80 border border-cc-border/50 rounded-full p-1 shadow-inner"
+          className="flex items-center gap-1 mx-auto bg-cc-surface/70 border border-cc-border/60 backdrop-blur-md rounded-full p-1 shadow-sm"
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >
           {visibleTabs.map((tab) => {

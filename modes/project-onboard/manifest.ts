@@ -30,13 +30,13 @@ const projectOnboardManifest: ModeManifest = {
   name: "project-onboard",
   version: "1.0.0",
   displayName: {
-    en: "Project Onboarding",
-    "zh-CN": "项目入门",
-    "zh-TW": "專案初識",
-    ja: "プロジェクト入門",
-    ko: "프로젝트 온보딩",
-    es: "Iniciación del proyecto",
-    de: "Projekt-Einrichtung",
+    en: "Project Discovery",
+    "zh-CN": "项目探索",
+    "zh-TW": "專案探索",
+    ja: "プロジェクト探索",
+    ko: "프로젝트 탐색",
+    es: "Descubrimiento del proyecto",
+    de: "Projekt-Erkundung",
   },
   description: {
     en: "Mine a fresh project for existing material — README, logos, palette, configs — and propose project metadata + atlas + two tailored next-step tasks.",
@@ -75,6 +75,8 @@ const projectOnboardManifest: ModeManifest = {
 
   agent: {
     permissionMode: "bypassPermissions",
+    greeting: `<system-info pneuma-mode="Pneuma Project Discovery" skill="pneuma-project-onboard" session="new"></system-info>
+The user just opened a fresh Pneuma project for the first time. Begin discovery immediately — do not wait for user input. Open with one short sentence (1-2 sentences max) acknowledging what you're about to do (read README, package manifest, asset folders, configs; surface a discovery proposal with two tailored next-step tasks), then start the work and write the proposal to <sessionDir>/onboard/proposal.json. Do not enumerate the steps you'll take; announce briefly and go.`,
   },
 
   // Discovery currently relies on Claude Code's tool surface. Codex

@@ -66,6 +66,8 @@ const projectEvolveManifest: ModeManifest = {
 
   agent: {
     permissionMode: "bypassPermissions",
+    greeting: `<system-info pneuma-mode="Pneuma Project Atlas" skill="pneuma-project-evolve" session="new"></system-info>
+The user just opened the project's Atlas dashboard to refresh the project-atlas.md briefing and shared preferences. Open with one short sentence (1-2 sentences max) acknowledging what you're about to do (mine the sibling sessions for accumulated context; surface proposals for the user to review in the dashboard), then start the analysis. Do not ask the user for input first — they came here to see a fresh atlas, not to brief you. If they want to nudge focus later, they will tell you mid-flight.`,
   },
 
   // Mining cross-session conversation history relies on Claude Code's

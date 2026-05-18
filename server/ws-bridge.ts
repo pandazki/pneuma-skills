@@ -349,9 +349,18 @@ export class WsBridge {
   loadMessageHistory(sessionId: string, history: BrowserIncomingMessage[]): void {
     const session = this.getOrCreateSession(sessionId);
     // Deduplicate assistant messages with the same ID (legacy files may have duplicates)
+    // Also drop transient `system_event`s that pre-3.8.0 persisted to disk
+    // (`hook_started` / `hook_response`); they're live-status pings that
+    // bloated history.json by 10–100× and the browser doesn't render them,
+    // so they served no replay purpose. Newer code opts them out of
+    // persistence at write time; this strips any that landed before the fix.
     const deduped: BrowserIncomingMessage[] = [];
     const assistantIdToIdx = new Map<string, number>();
     for (const msg of history) {
+      if (msg.type === "system_event") {
+        const sub = (msg as { event?: { subtype?: string } }).event?.subtype;
+        if (sub === "hook_started" || sub === "hook_response" || sub === "hook_progress") continue;
+      }
       if (msg.type === "assistant" && msg.message?.id) {
         const existing = assistantIdToIdx.get(msg.message.id);
         if (existing !== undefined) {
@@ -726,7 +735,7 @@ export class WsBridge {
         hook_event: msg.hook_event,
         uuid: msg.uuid,
         session_id: msg.session_id,
-      });
+      }, { persistInHistory: false });
       return;
     }
 
@@ -758,7 +767,7 @@ export class WsBridge {
         outcome: msg.outcome,
         uuid: msg.uuid,
         session_id: msg.session_id,
-      });
+      }, { persistInHistory: false });
       return;
     }
   }
