@@ -15,6 +15,13 @@ web/.deploy.env
 
 # Git worktrees
 .worktrees/
+.claude/worktrees/
+
+# Claude Code local state (only .claude/commands/ is tracked)
+.claude/skills/
+.claude/e2e-*.png
+.claude/*.lock
+.claude/settings.local.json
 
 # Per-mode build artifacts (e.g. modes/slide/.build/)
 .build/
