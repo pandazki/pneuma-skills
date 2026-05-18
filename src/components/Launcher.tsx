@@ -7,7 +7,7 @@ import { CreateProjectDialog } from "./CreateProjectDialog.js";
 import { DirBrowser } from "./DirBrowser.js";
 import { ProjectCard, type ProjectCardEntry } from "./ProjectCard.js";
 import { ModeIcon } from "./ModeIcon.js";
-import { useFavorites, sortFavoritesFirst } from "../hooks/useFavorites.js";
+import { useFavorites, sortFavoritesFirst, favoriteKey } from "../hooks/useFavorites.js";
 import { InitParamForm, type InitParamWithAutoFill } from "./InitParamForm.js";
 import { useAnimatedMount } from "../utils/useAnimatedMount.js";
 import { timeAgo, runningDuration } from "../utils/timeAgo.js";
@@ -1584,10 +1584,11 @@ function ModeGallery({
   onAddLibrary?: () => void;
   /** Open the PublishToLibraryDialog targeted at a specific library. */
   onPublishLibrary?: (library: InstalledLibrary) => void;
-  /** Membership check for the star toggle on each card. */
-  isFavorite?: (modeName: string) => boolean;
+  /** Membership check for the star toggle on each card. Accepts the
+   *  full mode so callers don't have to know the composite-key shape. */
+  isFavorite?: (mode: AnyMode) => boolean;
   /** Toggle the favorite state for a mode. */
-  onToggleFavorite?: (modeName: string) => void;
+  onToggleFavorite?: (mode: AnyMode) => void;
   className?: string;
   closing?: boolean;
   headerHeight?: number;
@@ -1700,8 +1701,8 @@ function ModeGallery({
                       onEvolve={!isToolMode && onEvolve ? () => onEvolve(mode) : undefined}
                       onDelete={mode.source === "local" && onDeleteLocal ? () => onDeleteLocal(mode.name) : undefined}
                       isLight={isLight}
-                      isFavorite={!isToolMode && isFavorite ? isFavorite(mode.name) : undefined}
-                      onToggleFavorite={!isToolMode && onToggleFavorite ? () => onToggleFavorite(mode.name) : undefined}
+                      isFavorite={!isToolMode && isFavorite ? isFavorite(mode) : undefined}
+                      onToggleFavorite={!isToolMode && onToggleFavorite ? () => onToggleFavorite(mode) : undefined}
                     />
                   );
                 })}
@@ -1762,8 +1763,8 @@ function ModeGallery({
                             onEvolve={onEvolve ? () => onEvolve(mode) : undefined}
                             isLight={isLight}
                             library={lib}
-                            isFavorite={isFavorite ? isFavorite(mode.name) : undefined}
-                            onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(mode.name) : undefined}
+                            isFavorite={isFavorite ? isFavorite(mode) : undefined}
+                            onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(mode) : undefined}
                           />
                         );
                       })}
@@ -4115,6 +4116,7 @@ export default function Launcher() {
     description?: string;
     icon?: string;
     showcase?: BuiltinMode["showcase"];
+    inspiredBy?: BuiltinMode["inspiredBy"];
     defaultWorkspace?: string;
     defaultInitParams?: Record<string, string>;
     /** When launching mode-maker to seed a new mode package from an existing
@@ -4529,9 +4531,12 @@ export default function Launcher() {
   // Favorites bubble to the front of the grid in their persisted order;
   // everything else preserves the original allModes ordering. mode-maker
   // and evolve are filtered out — they live in the hero / settings flows.
+  // Sorting + membership both go through `favoriteKey` so an evolved
+  // local fork (which keeps `name: "slide"` per the React-key gotcha)
+  // is distinguishable from its builtin parent.
   const quickStartModes = React.useMemo(() => {
     const modes = allModes.filter((m) => m.name !== "mode-maker" && m.name !== "evolve");
-    return sortFavoritesFirst(modes, favorites, (m) => m.name);
+    return sortFavoritesFirst(modes, favorites, favoriteKey);
   }, [allModes, favorites]);
 
   const handleGalleryLaunch = (mode: AnyMode) => {
@@ -4947,7 +4952,7 @@ export default function Launcher() {
                   description={mode.description}
                   icon={mode.icon}
                   librarySource={mode.librarySource}
-                  isFavorite={isFavorite(mode.name)}
+                  isFavorite={isFavorite(favoriteKey(mode))}
                   onClick={() => setLaunchTarget({
                     specifier: mode.specifier,
                     displayName: mode.displayName,
@@ -4989,8 +4994,8 @@ export default function Launcher() {
           onLaunch={handleGalleryLaunch}
           onAddLibrary={() => setAddLibraryOpen(true)}
           onPublishLibrary={(lib) => setPublishTarget(lib)}
-          isFavorite={isFavorite}
-          onToggleFavorite={toggleFavorite}
+          isFavorite={(m) => isFavorite(favoriteKey(m))}
+          onToggleFavorite={(m) => toggleFavorite(favoriteKey(m))}
           onEdit={(mode) => {
             setShowGallery(false);
             // "Edit" on a mode = start a mode-maker session seeded from that

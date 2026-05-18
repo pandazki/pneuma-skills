@@ -31,7 +31,7 @@ import { sendUserMessage } from "../ws.js";
 import { useAnimatedMount } from "../utils/useAnimatedMount.js";
 import { CoverImage, type ProjectCoverEntry } from "./ProjectCover.js";
 import { ModeIcon } from "./ModeIcon.js";
-import { useFavorites } from "../hooks/useFavorites.js";
+import { useFavorites, favoriteKey } from "../hooks/useFavorites.js";
 import { InitParamForm, type InitParamWithAutoFill } from "./InitParamForm.js";
 import EditorPickerButton from "./EditorPickerButton.js";
 import {
@@ -77,6 +77,17 @@ interface ModeInfo {
   displayName?: string;
   description?: string;
   icon?: string;
+  /**
+   * Origin — needed to derive the favorites composite key so an evolved
+   * local fork doesn't share a star with its builtin parent. ProjectPanel
+   * dedupes its picker by name (builtins win), so in practice we only
+   * see one entry per name today, but the key has to be stable across
+   * surfaces — Quick Start, gallery, and this picker all read the same
+   * favorites file. Builtins omit `path`; local + library modes carry
+   * the absolute mode dir.
+   */
+  source: "builtin" | "local";
+  path?: string;
 }
 
 interface ProjectPanelProps {
@@ -162,14 +173,18 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
         }
         if (mRes && mRes.ok) {
           const reg = (await mRes.json()) as {
-            builtins?: ModeInfo[];
-            local?: ModeInfo[];
+            builtins?: Array<{ name: string; displayName?: string; description?: string; icon?: string }>;
+            local?: Array<{ name: string; displayName?: string; description?: string; icon?: string; path?: string }>;
           };
           // Dedupe by name — local copies of builtins share names; builtins
           // win since they appear first. Mirrors ModeSwitcherDropdown:81-89.
+          // We stamp `source` (and `path` for locals) on each entry so the
+          // favorites check can compose the same composite key the launcher
+          // writes — without these, a builtin and its evolved local fork
+          // would resolve to the same key and re-introduce the bug.
           const seen = new Set<string>();
           const merged: ModeInfo[] = [];
-          for (const m of [...(reg.builtins ?? []), ...(reg.local ?? [])]) {
+          for (const m of reg.builtins ?? []) {
             if (seen.has(m.name)) continue;
             seen.add(m.name);
             merged.push({
@@ -177,6 +192,19 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
               displayName: m.displayName,
               description: m.description,
               icon: m.icon,
+              source: "builtin",
+            });
+          }
+          for (const m of reg.local ?? []) {
+            if (seen.has(m.name)) continue;
+            seen.add(m.name);
+            merged.push({
+              name: m.name,
+              displayName: m.displayName,
+              description: m.description,
+              icon: m.icon,
+              source: "local",
+              path: m.path,
             });
           }
           setModes(merged);
@@ -449,12 +477,13 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
       const prev = usedModeRecency.get(s.mode) ?? 0;
       usedModeRecency.set(s.mode, Math.max(prev, s.lastAccessed ?? 0));
     }
-    const favIdx = new Map(favoritesList.map((n, i) => [n, i] as const));
+    const favIdx = new Map(favoritesList.map((k, i) => [k, i] as const));
+    const keyOf = (m: ModeInfo) => favoriteKey(m);
     const favs = modes
-      .filter((m) => favIdx.has(m.name))
-      .sort((a, b) => (favIdx.get(a.name)! - favIdx.get(b.name)!));
+      .filter((m) => favIdx.has(keyOf(m)))
+      .sort((a, b) => (favIdx.get(keyOf(a))! - favIdx.get(keyOf(b))!));
     const used = modes
-      .filter((m) => !favIdx.has(m.name) && usedModeRecency.has(m.name))
+      .filter((m) => !favIdx.has(keyOf(m)) && usedModeRecency.has(m.name))
       .sort(
         (a, b) =>
           (usedModeRecency.get(b.name) ?? 0) - (usedModeRecency.get(a.name) ?? 0),
@@ -464,7 +493,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
       return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
     };
     const unused = modes
-      .filter((m) => !favIdx.has(m.name) && !usedModeRecency.has(m.name))
+      .filter((m) => !favIdx.has(keyOf(m)) && !usedModeRecency.has(m.name))
       .sort((a, b) => priority(a.name) - priority(b.name));
     return [...favs, ...used, ...unused];
   }, [modes, sessions, BUILTIN_PRIORITY, favoritesList]);
@@ -925,7 +954,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                             <span className="text-sm text-cc-fg font-medium truncate">
                               {m.displayName ?? m.name}
                             </span>
-                            {isFavorite(m.name) && (
+                            {isFavorite(favoriteKey(m)) && (
                               // Matches the QuickStartTile pin badge — same
                               // glyph, same orange, just inline next to the
                               // title since project tiles aren't tall enough
