@@ -1646,13 +1646,27 @@ function ModeGallery({
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center gap-4">
           <h1 className="font-display text-lg text-cc-fg">Mode Gallery</h1>
           <div className="ml-auto w-64">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search..."
-              className="w-full px-3 py-1.5 bg-transparent border border-cc-border/40 rounded-lg text-sm text-cc-fg placeholder:text-cc-muted/40 outline-none focus:border-cc-muted/50 transition-colors"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search..."
+                className={`w-full pl-3 ${search ? "pr-8" : "pr-3"} py-1.5 bg-transparent border border-cc-border/40 rounded-lg text-sm text-cc-fg placeholder:text-cc-muted/40 outline-none focus:border-cc-muted/50 transition-colors`}
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-5 h-5 rounded text-cc-muted/60 hover:text-cc-fg hover:bg-cc-border/30 transition-colors cursor-pointer"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
