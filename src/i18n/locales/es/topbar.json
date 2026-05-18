@@ -1,0 +1,39 @@
+{
+  "settings_tooltip": "Ajustes de la app",
+  "view_button_view": "Ver",
+  "view_button_edit": "Editar",
+  "switch_to_viewing": "Cambiar a vista",
+  "switch_to_editing": "Cambiar a edición",
+  "new_empty_content": "Nuevo contenido vacío",
+  "share": {
+    "title": "Compartir",
+    "tooltip": "Compartir",
+    "result": "Compartir resultado",
+    "result_desc": "Subir los archivos actuales (sin historial)",
+    "process": "Compartir proceso",
+    "process_desc": "Subir con el historial del chat y los puntos de control",
+    "export_local": "Exportar a un archivo local",
+    "export_local_desc": "Guardar como .tar.gz sin subir a la nube",
+    "r2_required": "Compartir en la nube requiere configurar el almacenamiento R2.",
+    "r2_hint": "Configura las credenciales de R2 en los ajustes del lanzador para habilitar compartir en la nube.",
+    "sharing": "Compartiendo...",
+    "success": "¡Compartido correctamente!",
+    "copy": "Copiar",
+    "again": "Compartir de nuevo",
+    "share_failed": "Error al compartir",
+    "export_failed": "Error al exportar",
+    "try_again": "Reintentar"
+  },
+  "tabs": {
+    "chat": "Chat",
+    "editor": "Editor",
+    "diff": "Diferencias",
+    "terminal": "Terminal",
+    "processes": "Procesos",
+    "context": "Contexto",
+    "schedules": "Programaciones"
+  },
+  "disabled_replay": "No disponible en modo reproducción",
+  "disabled_git": "Las diferencias requieren un repositorio git. Ejecuta `git init` en el espacio de trabajo.",
+  "replay_badge": "Reproducción"
+}

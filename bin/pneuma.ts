@@ -12,6 +12,7 @@ import { resolve, dirname, join, basename, sep } from "node:path";
 import { existsSync, copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync, statSync, realpathSync, readdirSync, rmSync, unlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import * as p from "@clack/prompts";
+import { t } from "./i18n.js";
 import { startServer } from "../server/index.js";
 import { createBackend, getDefaultBackendType, getBackendModule } from "../backends/index.js";
 import { ClaudeCodeBackend } from "../backends/claude-code/index.js";
@@ -20,7 +21,7 @@ import { buildEnvTag } from "./env-tag.js";
 import { startFileWatcher } from "../server/file-watcher.js";
 import { initShadowGit } from "../server/shadow-git.js";
 import { loadModeManifest, listBuiltinModes, registerExternalMode } from "../core/mode-loader.js";
-import type { ModeManifest } from "../core/types/mode-manifest.js";
+import { type ModeManifest, resolveLocalized } from "../core/types/mode-manifest.js";
 import type { AgentBackendType } from "../core/types/agent-backend.js";
 import { applyTemplateParams } from "../server/skill-installer.js";
 import {
@@ -237,7 +238,7 @@ async function recordSession(opts: {
       next = upsertProject(next, {
         id: projectRoot,
         name: manifest.name,
-        displayName: manifest.displayName,
+        displayName: resolveLocalized(manifest.displayName, "en"),
         description: manifest.description,
         root: projectRoot,
         createdAt: manifest.createdAt,
@@ -294,7 +295,7 @@ async function promptInitParams(
   const initParams = manifest.init?.params;
   if (!initParams || initParams.length === 0) return params;
 
-  p.log.step("Configuring mode parameters...");
+  p.log.step(t("pneuma.configuring_params"));
   for (const param of initParams) {
     const effectiveDefault = defaultOverrides?.[param.name] ?? String(param.defaultValue);
     const suffix = param.description ? ` (${param.description})` : "";
@@ -309,7 +310,7 @@ async function promptInitParams(
         initialValue: effectiveDefault,
       });
       if (p.isCancel(answer)) {
-        p.cancel("Cancelled.");
+        p.cancel(t("common.cancelled"));
         process.exit(0);
       }
       params[param.name] = String(answer);
@@ -322,7 +323,7 @@ async function promptInitParams(
       defaultValue: effectiveDefault,
     });
     if (p.isCancel(answer)) {
-      p.cancel("Cancelled.");
+      p.cancel(t("common.cancelled"));
       process.exit(0);
     }
     if (answer === "" || answer === String(param.defaultValue)) {
@@ -343,7 +344,7 @@ function checkBunVersion() {
   const MIN_BUN = "1.3.5"; // Required for Bun.spawn terminal (PTY) support
   const current = typeof Bun !== "undefined" ? Bun.version : null;
   if (!current) {
-    p.log.warn("Not running under Bun. Pneuma requires Bun >= " + MIN_BUN);
+    p.log.warn(t("pneuma.bun_not_running", { min: MIN_BUN }));
     return;
   }
   const [curMajor, curMinor, curPatch] = current.split(".").map(Number);
@@ -353,9 +354,7 @@ function checkBunVersion() {
     (curMajor === minMajor && curMinor > minMinor) ||
     (curMajor === minMajor && curMinor === minMinor && curPatch >= minPatch);
   if (!ok) {
-    p.log.warn(
-      `Bun ${current} detected, but >= ${MIN_BUN} is required. Terminal features may not work. Run \`bun upgrade\` to update.`
-    );
+    p.log.warn(t("pneuma.bun_too_old", { current, min: MIN_BUN }));
   }
 }
 
@@ -383,13 +382,13 @@ async function checkForUpdate(currentVersion: string) {
       (latMaj === curMaj && latMin === curMin && latPat > curPat);
     if (!isNewer) return;
 
-    p.log.warn(`Update available: ${currentVersion} → ${latest}`);
+    p.log.warn(t("pneuma.update.available", { current: currentVersion, latest }));
     const shouldUpdate = await p.confirm({
-      message: "Update to latest version?",
+      message: t("pneuma.update.prompt"),
     });
     if (p.isCancel(shouldUpdate) || !shouldUpdate) return;
 
-    p.log.step(`Updating to pneuma-skills@${latest}...`);
+    p.log.step(t("pneuma.update.updating", { version: latest }));
     const originalArgs = process.argv.slice(2);
     const child = Bun.spawn(["bunx", `pneuma-skills@${latest}`, ...originalArgs], {
       stdin: "inherit",
@@ -412,7 +411,10 @@ function checkBackendRequirements(backendType: AgentBackendType) {
   const result = module.checkRequirements();
   if (!result.ok) {
     p.cancel(
-      `${module.label} is required but unavailable.\n${result.reason ?? "(no detail provided)"}`,
+      t("pneuma.backend_unavailable", {
+        label: module.label,
+        reason: result.reason ?? t("pneuma.backend_unavailable_no_detail"),
+      }),
     );
     process.exit(1);
   }
@@ -454,9 +456,9 @@ async function handleEvolveCommand(args: string[]) {
   if (subAction === "list") {
     const proposals = listProposals(workspace);
     if (proposals.length === 0) {
-      p.log.info("No evolution proposals found.");
+      p.log.info(t("pneuma.evolve.no_proposals"));
     } else {
-      p.log.info(`${proposals.length} proposal(s):`);
+      p.log.info(t("pneuma.evolve.proposal_count", { count: proposals.length }));
       for (const prop of proposals) {
         const changesCount = prop.changes.length;
         p.log.message(`  ${prop.id}  [${prop.status}]  ${prop.mode}  ${changesCount} change(s)  ${prop.createdAt}`);
@@ -468,7 +470,7 @@ async function handleEvolveCommand(args: string[]) {
   if (subAction === "show") {
     const proposal = loadLatestProposal(workspace);
     if (!proposal) {
-      p.log.error("No proposals found. Run `pneuma evolve` first.");
+      p.log.error(t("pneuma.evolve.no_proposals_error"));
       process.exit(1);
     }
     console.log(formatProposalForDisplay(proposal));
@@ -478,31 +480,31 @@ async function handleEvolveCommand(args: string[]) {
   if (subAction === "apply") {
     const proposal = loadLatestProposal(workspace);
     if (!proposal) {
-      p.log.error("No proposals found. Run `pneuma evolve` first.");
+      p.log.error(t("pneuma.evolve.no_proposals_error"));
       process.exit(1);
     }
     if (proposal.status !== "pending") {
-      p.log.error(`Proposal ${proposal.id} is already ${proposal.status}.`);
+      p.log.error(t("pneuma.evolve.proposal_already_handled", { id: proposal.id, status: proposal.status }));
       process.exit(1);
     }
 
     console.log(formatProposalForDisplay(proposal));
     console.log("");
 
-    const confirm = await p.confirm({ message: "Apply this proposal?" });
+    const confirm = await p.confirm({ message: t("pneuma.evolve.apply_prompt") });
     if (p.isCancel(confirm) || !confirm) {
-      p.log.info("Cancelled.");
+      p.log.info(t("common.cancelled"));
       return;
     }
 
     const result = applyProposal(workspace, proposal.id);
     if (result.success) {
-      p.log.success(`Applied ${result.appliedFiles.length} file(s). Use \`pneuma evolve rollback\` to revert.`);
+      p.log.success(t("pneuma.evolve.applied", { count: result.appliedFiles.length }));
       for (const f of result.appliedFiles) {
         p.log.step(`  ✓ ${f}`);
       }
     } else {
-      p.log.error(`Apply failed: ${result.error}`);
+      p.log.error(t("pneuma.evolve.apply_failed", { message: result.error }));
     }
     return;
   }
@@ -511,24 +513,24 @@ async function handleEvolveCommand(args: string[]) {
     const proposals = listProposals(workspace);
     const applied = proposals.find(p => p.status === "applied");
     if (!applied) {
-      p.log.error("No applied proposals to rollback.");
+      p.log.error(t("pneuma.evolve.no_applied_to_rollback"));
       process.exit(1);
     }
 
-    const confirm = await p.confirm({ message: `Rollback proposal ${applied.id}?` });
+    const confirm = await p.confirm({ message: t("pneuma.evolve.rollback_prompt", { id: applied.id }) });
     if (p.isCancel(confirm) || !confirm) {
-      p.log.info("Cancelled.");
+      p.log.info(t("common.cancelled"));
       return;
     }
 
     const result = rollbackProposal(workspace, applied.id);
     if (result.success) {
-      p.log.success(`Rolled back ${result.restoredFiles.length} file(s).`);
+      p.log.success(t("pneuma.evolve.rolled_back", { count: result.restoredFiles.length }));
       for (const f of result.restoredFiles) {
         p.log.step(`  ✓ ${f}`);
       }
     } else {
-      p.log.error(`Rollback failed: ${result.error}`);
+      p.log.error(t("pneuma.evolve.rollback_failed", { message: result.error }));
     }
     return;
   }
@@ -594,18 +596,18 @@ async function handleEvolveCommand(args: string[]) {
           candidates.sort((a, b) => b.mtime - a.mtime);
           if (candidates.length > 0) {
             modeName = candidates[0].mode;
-            p.log.info(`No --mode given; defaulting to most recent project session mode: ${modeName}`);
+            p.log.info(t("pneuma.evolve.default_recent_mode", { mode: modeName }));
           }
         }
       } catch {}
       // Final fallback for project-scope: doc is a safe, lightweight builtin.
       if (!modeName) {
         modeName = "doc";
-        p.log.info("No --mode given and no project sessions found; defaulting to 'doc' for skill bootstrap.");
+        p.log.info(t("pneuma.evolve.default_doc_mode"));
       }
     }
     if (!modeName) {
-      p.cancel("No mode specified and no .pneuma/session.json found.\nUse: pneuma evolve --mode <mode> --workspace <path>");
+      p.cancel(t("pneuma.evolve.no_mode_specified"));
       process.exit(1);
     }
   }
@@ -616,8 +618,10 @@ async function handleEvolveCommand(args: string[]) {
   const evolveManifestCheck = await loadModeManifest("evolve");
   if (evolveManifestCheck.supportedBackends && !evolveManifestCheck.supportedBackends.includes(backendType)) {
     p.cancel(
-      `Evolve mode only supports backends: ${evolveManifestCheck.supportedBackends.join(", ")}. ` +
-      `Selected backend "${backendType}" is not compatible.`
+      t("pneuma.evolve.unsupported_backend", {
+        backends: evolveManifestCheck.supportedBackends.join(", "),
+        backend: backendType,
+      }),
     );
     process.exit(1);
   }
@@ -628,7 +632,7 @@ async function handleEvolveCommand(args: string[]) {
     resolved = await resolveModeSource(modeName, PROJECT_ROOT);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    p.cancel(`Failed to resolve mode "${modeName}": ${msg}`);
+    p.cancel(t("pneuma.resolve_failed", { mode: modeName, message: msg }));
     process.exit(1);
   }
 
@@ -641,18 +645,18 @@ async function handleEvolveCommand(args: string[]) {
     manifest = await loadModeManifest(resolved.name);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    p.cancel(`Failed to load mode "${resolved.name}": ${msg}`);
+    p.cancel(t("pneuma.load_failed", { mode: resolved.name, message: msg }));
     process.exit(1);
   }
 
-  p.log.step(`Evolving skill for ${manifest.displayName} mode...`);
-  p.log.info(`Workspace: ${workspace}`);
+  p.log.step(t("pneuma.evolve.evolving", { displayName: resolveLocalized(manifest.displayName) }));
+  p.log.info(t("pneuma.workspace_info", { workspace }));
   if (projectRoot) {
     // Surface project root to both the in-process prompt builder and the
     // spawned agent so project-scope evolution knows which sessions to scan
     // and where to write project-level preferences.
     process.env.PNEUMA_PROJECT_ROOT = projectRoot;
-    p.log.info(`Project root: ${projectRoot}`);
+    p.log.info(t("pneuma.evolve.project_root", { path: projectRoot }));
   }
 
   // 2. Build evolution prompt + metadata, save metadata as initParams
@@ -676,7 +680,7 @@ async function handleEvolveCommand(args: string[]) {
     workspace,
     skillConfig: manifest.skill,
     modeSourceDir: targetModeSourceDir,
-    displayName: manifest.displayName,
+    displayName: resolveLocalized(manifest.displayName, "en"),
     backendType,
   });
 
@@ -689,7 +693,7 @@ async function handleEvolveCommand(args: string[]) {
     modeSourceDir: evolveModeSourceDir,
     params: {},
     viewerApi: evolveManifest.viewerApi,
-    displayName: evolveManifest.displayName,
+    displayName: resolveLocalized(evolveManifest.displayName, "en"),
     backendType,
   });
 
@@ -722,7 +726,7 @@ async function handleEvolveCommand(args: string[]) {
     ...(projectRoot ? { env: agentEnv } : {}),
   });
 
-  p.log.info(`Agent session: ${session.sessionId}`);
+  p.log.info(t("pneuma.agent_session", { id: session.sessionId }));
   wsBridge.getOrCreateSession(session.sessionId, backendType);
 
   // Wire the streaming `BridgeBackend` for codex / kimi via the manifest. For
@@ -740,7 +744,7 @@ async function handleEvolveCommand(args: string[]) {
 
   if (isDev) {
     const VITE_PORT = 17996;
-    p.log.step(`Starting Vite dev server on port ${VITE_PORT}...`);
+    p.log.step(t("pneuma.vite_starting", { port: VITE_PORT }));
     const viteResult = await startViteDev({
       projectRoot: PROJECT_ROOT,
       port: VITE_PORT,
@@ -756,7 +760,7 @@ async function handleEvolveCommand(args: string[]) {
   console.log(`[pneuma] ready ${browserUrl}`);
 
   if (!noOpen) {
-    p.log.success(`Ready → ${browserUrl}`);
+    p.log.success(t("pneuma.ready", { url: browserUrl }));
     try {
       if (process.platform === "win32") {
         Bun.spawn(["cmd", "/c", "start", "", browserUrl], { stdout: "ignore", stderr: "ignore" });
@@ -765,7 +769,7 @@ async function handleEvolveCommand(args: string[]) {
         Bun.spawn([opener, browserUrl], { stdout: "ignore", stderr: "ignore" });
       }
     } catch {
-      p.log.warn(`Could not open browser. Visit: ${browserUrl}`);
+      p.log.warn(t("pneuma.open_browser_failed", { url: browserUrl }));
     }
   }
 
@@ -774,7 +778,7 @@ async function handleEvolveCommand(args: string[]) {
     viteProc?.kill();
     await backend.killAll();
     server.stop(true);
-    p.outro("Goodbye!");
+    p.outro(t("common.goodbye"));
     process.exit(0);
   };
   process.on("SIGINT", shutdown);
@@ -787,7 +791,7 @@ async function main() {
   const parsedArgs = parseCliArgs(process.argv);
 
   if (parsedArgs.showVersion) {
-    console.log(`pneuma-skills v${pkg.version}`);
+    console.log(t("pneuma.version_label", { version: pkg.version }));
     return;
   }
 
@@ -798,36 +802,11 @@ async function main() {
     const { getAllBackendModules } = await import("../backends/index.js");
     const backendList = getAllBackendModules().map((m) => m.type).join(", ");
     const defaultBackend = getDefaultBackendType();
-    console.log(`pneuma-skills [mode] [options]
-
-Modes:
-  (no argument)                Open the Launcher (marketplace UI)
-  webcraft                     Web design with Impeccable.style
-  slide                        HTML presentations
-  doc                          Markdown with live preview
-  draw                         Excalidraw canvas
-  illustrate                   AI illustration studio
-  mode-maker                   Create custom modes with AI
-  evolve                       Launch the Evolution Agent
-  /path/to/mode                Load from a local directory
-  github:user/repo             Load from GitHub
-  https://...tar.gz            Load from URL
-
-Options:
-  --workspace <path>           Target workspace directory (default: cwd)
-  --port <number>              Preferred server port
-  --backend <type>             Agent backend (${backendList}; default: ${defaultBackend})
-  --no-open                    Don't auto-open the browser
-  --no-prompt                  Non-interactive mode
-  --skip-skill                 Skip skill installation
-  --debug                      Enable debug mode
-  --dev                        Force dev mode (Vite)
-  --help, -h                   Show this help
-  --version, -v                Show version`);
+    console.log(t("pneuma.help", { backendList, defaultBackend }));
     return;
   }
 
-  p.intro(`pneuma-skills v${pkg.version}`);
+  p.intro(t("pneuma.intro", { version: pkg.version }));
 
   checkBunVersion();
   await checkForUpdate(pkg.version);
@@ -917,8 +896,8 @@ Options:
       }
       const { exportHistory } = await import("../server/history-export.js");
       const result = await exportHistory(histWorkspace, { output, title });
-      console.log(`Exported ${result.messageCount} messages, ${result.checkpointCount} checkpoints`);
-      console.log(`Output: ${result.outputPath}`);
+      console.log(t("pneuma.history.exported", { messages: result.messageCount, checkpoints: result.checkpointCount }));
+      console.log(t("pneuma.history.output", { path: result.outputPath }));
       return;
     }
     if (rawArgs[1] === "share") {
@@ -935,7 +914,7 @@ Options:
     if (rawArgs[1] === "open") {
       const target = rawArgs[2];
       if (!target) {
-        console.error("Usage: pneuma history open <path-or-url>");
+        console.error(t("pneuma.history.open_usage"));
         process.exit(1);
       }
       let filePath: string;
@@ -945,9 +924,9 @@ Options:
       } else {
         filePath = resolve(target);
       }
-      console.log(`\nReplay package ready: ${filePath}`);
-      console.log(`\nTo replay in a running session:`);
-      console.log(`  POST /api/replay/load with {"path": "${filePath}"}`);
+      console.log(`\n${t("pneuma.history.replay_ready", { path: filePath })}`);
+      console.log(`\n${t("pneuma.history.replay_hint")}`);
+      console.log(t("pneuma.history.replay_post_example", { path: filePath }));
       return;
     }
   }
@@ -975,12 +954,12 @@ Options:
     if (rawArgs[1] === "add") {
       const target = rawArgs[2];
       if (!target) {
-        p.cancel("Usage: pneuma project add <path>");
+        p.cancel(t("pneuma.project.usage_add"));
         process.exit(1);
       }
       const root = resolve(target);
       if (!existsSync(root)) {
-        p.cancel(`Path does not exist: ${root}`);
+        p.cancel(t("pneuma.project.path_missing", { path: root }));
         process.exit(1);
       }
       const pneumaDir = join(root, ".pneuma");
@@ -988,7 +967,7 @@ Options:
       const existing = await loadProjectManifest(root);
       const hasSessionsDir = existsSync(sessionsDir);
       if (!existing && !hasSessionsDir) {
-        p.cancel(`No Pneuma data found at ${root}. Use the launcher's "Create Project" dialog for a fresh setup.`);
+        p.cancel(t("pneuma.project.no_pneuma_data", { path: root }));
         process.exit(1);
       }
       const now = Date.now();
@@ -1018,12 +997,12 @@ Options:
       const wasMigrate = !!existing;
       console.log(
         wasMigrate
-          ? `[project] Registered existing project "${displayName}" at ${root}`
-          : `[project] Synthesized manifest + registered "${displayName}" at ${root}`,
+          ? t("pneuma.project.registered_existing", { name: displayName, path: root })
+          : t("pneuma.project.registered_synthesized", { name: displayName, path: root }),
       );
       return;
     }
-    p.cancel("Usage: pneuma project add <path>");
+    p.cancel(t("pneuma.project.usage_add"));
     process.exit(1);
   }
 
@@ -1050,14 +1029,14 @@ Options:
       // Filter to only latest.json entries for a clean listing
       const latestEntries = modes.filter((m) => m.key.endsWith("/latest.json"));
       if (latestEntries.length === 0) {
-        console.log("[mode] No published modes found.");
+        console.log(t("pneuma.mode.list.none"));
       } else {
-        console.log(`[mode] ${latestEntries.length} published mode(s):\n`);
+        console.log(t("pneuma.mode.list.header", { count: latestEntries.length }));
         for (const entry of latestEntries) {
           const name = entry.key.replace("modes/", "").replace("/latest.json", "");
           const date = new Date(entry.lastModified).toLocaleString();
           console.log(`  ${name}`);
-          console.log(`    Updated: ${date}\n`);
+          console.log(`    ${t("pneuma.mode.list.updated_at", { date })}\n`);
         }
       }
       return;
@@ -1065,7 +1044,7 @@ Options:
     if (rawArgs[1] === "add") {
       const specifier = rawArgs[2];
       if (!specifier) {
-        p.cancel("Usage: pneuma mode add <url|github:user/repo>");
+        p.cancel(t("pneuma.mode.add.usage"));
         process.exit(1);
       }
       try {
@@ -1073,9 +1052,9 @@ Options:
         if (result.kind === "single") {
           const resolved = result.resolved;
           if (resolved.type === "builtin") {
-            p.log.info(`"${resolved.name}" is a built-in mode — no need to add.`);
+            p.log.info(t("pneuma.mode.add.is_builtin", { name: resolved.name }));
           } else {
-            p.log.success(`Mode "${resolved.name}" added at ${resolved.path}`);
+            p.log.success(t("pneuma.mode.add.added", { name: resolved.name, path: resolved.path }));
           }
         } else {
           // Library install: print a one-shot summary of what landed and
@@ -1085,30 +1064,44 @@ Options:
           const lib = r.library;
           const total = lib.modes.length;
           const activated = lib.modes.filter((m) => m.activated).length;
+          const modesWord = total === 1 ? t("pneuma.mode.modes_word_one") : t("pneuma.mode.modes_word_many");
           if (r.noop) {
             p.log.info(
-              `Library "${lib.name}" already up to date (${total} mode${total === 1 ? "" : "s"}, ${activated} activated).`,
+              t("pneuma.mode.add.library_up_to_date", { name: lib.name, total, activated, modesWord }),
             );
           } else if (r.added.length || r.removed.length || r.updated.length) {
+            const changes =
+              (r.added.length ? `\n  + ${t("pneuma.mode.add.added_label")}: ${r.added.join(", ")}` : "") +
+              (r.removed.length ? `\n  - ${t("pneuma.mode.add.removed_label")}: ${r.removed.join(", ")}` : "") +
+              (r.updated.length
+                ? `\n  ↻ ${t("pneuma.mode.add.updated_label")}: ${r.updated.map((u) => `${u.name} ${u.from} → ${u.to}`).join(", ")}`
+                : "");
             p.log.success(
-              `Library "${lib.name}" synced at ${result.libraryDir}\n` +
-                `  ${total} mode${total === 1 ? "" : "s"} (${activated} activated)` +
-                (r.added.length ? `\n  + added: ${r.added.join(", ")}` : "") +
-                (r.removed.length ? `\n  - removed: ${r.removed.join(", ")}` : "") +
-                (r.updated.length
-                  ? `\n  ↻ updated: ${r.updated.map((u) => `${u.name} ${u.from} → ${u.to}`).join(", ")}`
-                  : ""),
+              t("pneuma.mode.add.library_synced", {
+                name: lib.name,
+                dir: result.libraryDir,
+                total,
+                activated,
+                modesWord,
+                changes,
+              }),
             );
           } else {
             p.log.success(
-              `Library "${lib.name}" linked at ${result.libraryDir}\n` +
-                `  ${total} mode${total === 1 ? "" : "s"} (${activated} activated): ${lib.modes.map((m) => m.name).join(", ")}`,
+              t("pneuma.mode.add.library_linked", {
+                name: lib.name,
+                dir: result.libraryDir,
+                total,
+                activated,
+                modesWord,
+                modeNames: lib.modes.map((m) => m.name).join(", "),
+              }),
             );
           }
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        p.cancel(`Failed to add mode: ${msg}`);
+        p.cancel(t("pneuma.mode.add.failed", { message: msg }));
         process.exit(1);
       }
       return;
@@ -1119,17 +1112,7 @@ Options:
   // Library subcommand — init, link, list, sync, publish, push, unlink, (de)activate
   if (rawArgs[0] === "library") {
     const sub = rawArgs[1];
-    const usage =
-      "Usage:\n" +
-      "  pneuma library init <name> [--display \"...\"] [--description \"...\"] [--github user/repo] [--private]\n" +
-      "  pneuma library link <source>\n" +
-      "  pneuma library list\n" +
-      "  pneuma library sync <id>\n" +
-      "  pneuma library publish <mode> [--to <library-id>] [--as <new-name>] [--push]\n" +
-      "  pneuma library push <id>\n" +
-      "  pneuma library unlink <id> [--force]\n" +
-      "  pneuma library activate <id> <mode>\n" +
-      "  pneuma library deactivate <id> <mode>";
+    const usage = t("pneuma.library.usage");
 
     /** Read the value following a `--flag` option, returning undefined when absent. */
     const readOpt = (flag: string): string | undefined => {
@@ -1142,7 +1125,7 @@ Options:
     if (sub === "init") {
       const name = rawArgs[2];
       if (!name || name.startsWith("--")) {
-        p.cancel("Usage: pneuma library init <name> [--display \"...\"] [--description \"...\"] [--github user/repo] [--private]");
+        p.cancel(t("pneuma.library.init.usage"));
         process.exit(1);
       }
       const displayName = readOpt("--display");
@@ -1156,7 +1139,7 @@ Options:
           ...(description ? { description } : {}),
         });
         const dir = getLibraryDir(lib.id);
-        p.log.success(`Library "${lib.name}" initialized at ${dir}`);
+        p.log.success(t("pneuma.library.init.initialized", { name: lib.name, dir }));
         if (githubSlug) {
           try {
             const repo = await createRepo({
@@ -1165,16 +1148,16 @@ Options:
               sourcePath: dir,
               ...(description ? { description } : {}),
             });
-            p.log.success(`Pushed to ${repo.url}`);
+            p.log.success(t("pneuma.library.init.pushed", { url: repo.url }));
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            p.cancel(`GitHub repo create failed: ${msg}`);
+            p.cancel(t("pneuma.library.init.github_failed", { message: msg }));
             process.exit(1);
           }
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        p.cancel(`Failed to init library: ${msg}`);
+        p.cancel(t("pneuma.library.init.failed", { message: msg }));
         process.exit(1);
       }
       return;
@@ -1183,42 +1166,56 @@ Options:
     if (sub === "link") {
       const source = rawArgs[2];
       if (!source) {
-        p.cancel("Usage: pneuma library link <source>");
+        p.cancel(t("pneuma.library.link.usage"));
         process.exit(1);
       }
       try {
         const result = await resolveModeOrLibrary(source, PROJECT_ROOT);
         if (result.kind === "single") {
-          p.cancel("That repo is a single mode, not a library — use `pneuma mode add` instead.");
+          p.cancel(t("pneuma.library.link.is_single_mode"));
           process.exit(1);
         }
         const r = result.report;
         const lib = r.library;
         const total = lib.modes.length;
         const activated = lib.modes.filter((m) => m.activated).length;
+        const modesWord = total === 1 ? t("pneuma.mode.modes_word_one") : t("pneuma.mode.modes_word_many");
         if (r.noop) {
           p.log.info(
-            `Library "${lib.name}" already up to date (${total} mode${total === 1 ? "" : "s"}, ${activated} activated).`,
+            t("pneuma.mode.add.library_up_to_date", { name: lib.name, total, activated, modesWord }),
           );
         } else if (r.added.length || r.removed.length || r.updated.length) {
+          const changes =
+            (r.added.length ? `\n  + ${t("pneuma.mode.add.added_label")}: ${r.added.join(", ")}` : "") +
+            (r.removed.length ? `\n  - ${t("pneuma.mode.add.removed_label")}: ${r.removed.join(", ")}` : "") +
+            (r.updated.length
+              ? `\n  ↻ ${t("pneuma.mode.add.updated_label")}: ${r.updated.map((u) => `${u.name} ${u.from} → ${u.to}`).join(", ")}`
+              : "");
           p.log.success(
-            `Library "${lib.name}" synced at ${result.libraryDir}\n` +
-              `  ${total} mode${total === 1 ? "" : "s"} (${activated} activated)` +
-              (r.added.length ? `\n  + added: ${r.added.join(", ")}` : "") +
-              (r.removed.length ? `\n  - removed: ${r.removed.join(", ")}` : "") +
-              (r.updated.length
-                ? `\n  ↻ updated: ${r.updated.map((u) => `${u.name} ${u.from} → ${u.to}`).join(", ")}`
-                : ""),
+            t("pneuma.mode.add.library_synced", {
+              name: lib.name,
+              dir: result.libraryDir,
+              total,
+              activated,
+              modesWord,
+              changes,
+            }),
           );
         } else {
           p.log.success(
-            `Library "${lib.name}" linked at ${result.libraryDir}\n` +
-              `  ${total} mode${total === 1 ? "" : "s"} (${activated} activated): ${lib.modes.map((m) => m.name).join(", ")}`,
+            t("pneuma.mode.add.library_linked", {
+              name: lib.name,
+              dir: result.libraryDir,
+              total,
+              activated,
+              modesWord,
+              modeNames: lib.modes.map((m) => m.name).join(", "),
+            }),
           );
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        p.cancel(`Failed to link library: ${msg}`);
+        p.cancel(t("pneuma.library.link.failed", { message: msg }));
         process.exit(1);
       }
       return;
@@ -1227,12 +1224,13 @@ Options:
     if (sub === "list") {
       const libs = listLibraries();
       if (libs.length === 0) {
-        console.log("No libraries linked. Try `pneuma library link github:user/repo`.");
+        console.log(t("pneuma.library.list.none"));
         return;
       }
       for (const lib of libs) {
         const total = lib.modes.length;
         const activated = lib.modes.filter((m) => m.activated).length;
+        const modesWord = total === 1 ? t("pneuma.mode.modes_word_one") : t("pneuma.mode.modes_word_many");
         const sourceStr =
           lib.source.type === "github"
             ? lib.source.url
@@ -1240,7 +1238,7 @@ Options:
               ? lib.source.url
               : lib.source.path;
         console.log(
-          `  ${lib.id}  (${total} mode${total === 1 ? "" : "s"}, ${activated} activated)  ← ${sourceStr}`,
+          `  ${lib.id}  (${total} ${modesWord}, ${activated} activated)  ← ${sourceStr}`,
         );
       }
       return;
@@ -1249,13 +1247,13 @@ Options:
     if (sub === "sync") {
       const id = rawArgs[2];
       if (!id) {
-        p.cancel("Usage: pneuma library sync <id>");
+        p.cancel(t("pneuma.library.sync.usage"));
         process.exit(1);
       }
       try {
         const lib = readLibrary(id);
         if (!lib) {
-          p.cancel(`Library "${id}" is not linked.`);
+          p.cancel(t("pneuma.library.sync.not_linked", { id }));
           process.exit(1);
         }
         const dir = getLibraryDir(id);
@@ -1266,13 +1264,13 @@ Options:
           const fetchProc = Bun.spawnSync(["git", "fetch", "origin", ref], { cwd: dir, stdout: "pipe", stderr: "pipe" });
           if (fetchProc.exitCode !== 0) {
             const err = new TextDecoder().decode(fetchProc.stderr).trim();
-            p.cancel(`git fetch failed: ${err}`);
+            p.cancel(t("pneuma.library.sync.fetch_failed", { message: err }));
             process.exit(1);
           }
           const coProc = Bun.spawnSync(["git", "checkout", `origin/${ref}`, "--force"], { cwd: dir, stdout: "pipe", stderr: "pipe" });
           if (coProc.exitCode !== 0) {
             const err = new TextDecoder().decode(coProc.stderr).trim();
-            p.cancel(`git checkout failed: ${err}`);
+            p.cancel(t("pneuma.library.sync.checkout_failed", { message: err }));
             process.exit(1);
           }
           const shaProc = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: dir, stdout: "pipe", stderr: "pipe" });
@@ -1284,27 +1282,29 @@ Options:
         // Re-detect shape against the (possibly updated) on-disk repo.
         const shape = detectRepoShape(dir, id);
         if (shape.kind !== "library") {
-          p.cancel(`Library "${id}" no longer looks like a library on disk.`);
+          p.cancel(t("pneuma.library.sync.not_library_on_disk", { id }));
           process.exit(1);
         }
         const report = syncLibrary(id, shape, newSha);
         const total = report.library.modes.length;
         const activated = report.library.modes.filter((m) => m.activated).length;
+        const modesWord = total === 1 ? t("pneuma.mode.modes_word_one") : t("pneuma.mode.modes_word_many");
         if (report.noop) {
-          p.log.info(`Library "${id}" already up to date (${total} mode${total === 1 ? "" : "s"}, ${activated} activated).`);
+          p.log.info(t("pneuma.library.sync.up_to_date", { id, total, activated, modesWord }));
         } else {
+          const changes =
+            (report.added.length ? `\n  + ${t("pneuma.mode.add.added_label")}: ${report.added.join(", ")}` : "") +
+            (report.removed.length ? `\n  - ${t("pneuma.mode.add.removed_label")}: ${report.removed.join(", ")}` : "") +
+            (report.updated.length
+              ? `\n  ↻ ${t("pneuma.mode.add.updated_label")}: ${report.updated.map((u) => `${u.name} ${u.from} → ${u.to}`).join(", ")}`
+              : "");
           p.log.success(
-            `Library "${id}" synced (${total} mode${total === 1 ? "" : "s"}, ${activated} activated)` +
-              (report.added.length ? `\n  + added: ${report.added.join(", ")}` : "") +
-              (report.removed.length ? `\n  - removed: ${report.removed.join(", ")}` : "") +
-              (report.updated.length
-                ? `\n  ↻ updated: ${report.updated.map((u) => `${u.name} ${u.from} → ${u.to}`).join(", ")}`
-                : ""),
+            t("pneuma.library.sync.synced", { id, total, activated, modesWord, changes }),
           );
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        p.cancel(`Failed to sync library: ${msg}`);
+        p.cancel(t("pneuma.library.sync.failed", { message: msg }));
         process.exit(1);
       }
       return;
@@ -1313,7 +1313,7 @@ Options:
     if (sub === "publish") {
       const modeArg = rawArgs[2];
       if (!modeArg || modeArg.startsWith("--")) {
-        p.cancel("Usage: pneuma library publish <mode> [--to <library-id>] [--as <new-name>] [--push]");
+        p.cancel(t("pneuma.library.publish.usage"));
         process.exit(1);
       }
       const toLib = readOpt("--to");
@@ -1330,7 +1330,7 @@ Options:
       if (isPathLike) {
         const expanded = modeArg.startsWith("~") ? join(homedir(), modeArg.slice(1)) : resolve(modeArg);
         if (!existsSync(expanded)) {
-          p.cancel(`Mode path not found: ${expanded}`);
+          p.cancel(t("pneuma.library.publish.mode_path_missing", { path: expanded }));
           process.exit(1);
         }
         sourceModeDir = expanded;
@@ -1346,7 +1346,7 @@ Options:
           }
         }
         if (!sourceModeDir) {
-          p.cancel(`Mode "${modeArg}" not found in ~/.pneuma/modes/ or builtin modes/.`);
+          p.cancel(t("pneuma.library.publish.mode_not_found", { mode: modeArg }));
           process.exit(1);
         }
       }
@@ -1356,11 +1356,11 @@ Options:
       if (!libraryId) {
         const libs = listLibraries();
         if (libs.length === 0) {
-          p.cancel("No libraries linked. Run `pneuma library init <name>` or `pneuma library link <source>` first.");
+          p.cancel(t("pneuma.library.publish.no_libraries"));
           process.exit(1);
         }
         if (libs.length > 1) {
-          p.cancel(`Multiple libraries linked — pass --to <library-id>. Available: ${libs.map((l) => l.id).join(", ")}`);
+          p.cancel(t("pneuma.library.publish.multiple_libraries", { ids: libs.map((l) => l.id).join(", ") }));
           process.exit(1);
         }
         libraryId = libs[0].id;
@@ -1373,13 +1373,13 @@ Options:
           ...(asName ? { name: asName } : {}),
           push,
         });
-        p.log.success(`Published ${modeArg} to ${libraryId} at ${result.destDir}`);
+        p.log.success(t("pneuma.library.publish.success", { mode: modeArg, library: libraryId, dir: result.destDir }));
         if (push && result.pushed) {
-          p.log.success(`Pushed`);
+          p.log.success(t("pneuma.library.publish.pushed"));
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        p.cancel(`Failed to publish: ${msg}`);
+        p.cancel(t("pneuma.library.publish.failed", { message: msg }));
         process.exit(1);
       }
       return;
@@ -1388,12 +1388,12 @@ Options:
     if (sub === "push") {
       const id = rawArgs[2];
       if (!id) {
-        p.cancel("Usage: pneuma library push <id>");
+        p.cancel(t("pneuma.library.push.usage"));
         process.exit(1);
       }
       try {
         pushLibrary(id);
-        p.log.success(`Pushed library "${id}"`);
+        p.log.success(t("pneuma.library.push.success", { id }));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         p.cancel(msg);
@@ -1405,30 +1405,30 @@ Options:
     if (sub === "unlink") {
       const id = rawArgs[2];
       if (!id) {
-        p.cancel("Usage: pneuma library unlink <id> [--force]");
+        p.cancel(t("pneuma.library.unlink.usage"));
         process.exit(1);
       }
       const force = hasFlag("--force");
       if (!force) {
         const confirmed = await p.confirm({
-          message: `Unlink library "${id}"? This will delete its on-disk clone.`,
+          message: t("pneuma.library.unlink.confirm", { id }),
           initialValue: false,
         });
         if (p.isCancel(confirmed) || !confirmed) {
-          p.cancel("Cancelled.");
+          p.cancel(t("common.cancelled"));
           process.exit(0);
         }
       }
       try {
         const removed = unlinkLibrary(id);
         if (removed) {
-          p.log.success(`Library "${id}" removed`);
+          p.log.success(t("pneuma.library.unlink.removed", { id }));
         } else {
-          p.log.info(`Library "${id}" not linked.`);
+          p.log.info(t("pneuma.library.unlink.not_linked", { id }));
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        p.cancel(`Failed to unlink: ${msg}`);
+        p.cancel(t("pneuma.library.unlink.failed", { message: msg }));
         process.exit(1);
       }
       return;
@@ -1438,15 +1438,15 @@ Options:
       const id = rawArgs[2];
       const modeName = rawArgs[3];
       if (!id || !modeName) {
-        p.cancel(`Usage: pneuma library ${sub} <id> <mode>`);
+        p.cancel(t("pneuma.library.activate.usage", { action: sub }));
         process.exit(1);
       }
       try {
         setModeActivated(id, modeName, sub === "activate");
         p.log.success(
           sub === "activate"
-            ? `Mode "${modeName}" activated in ${id}`
-            : `Mode "${modeName}" deactivated in ${id}`,
+            ? t("pneuma.library.activate.activated", { mode: modeName, library: id })
+            : t("pneuma.library.activate.deactivated", { mode: modeName, library: id }),
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -1456,7 +1456,7 @@ Options:
       return;
     }
 
-    p.cancel(`Unknown library subcommand: ${sub ?? "(none)"}\n${usage}`);
+    p.cancel(t("pneuma.library.unknown_subcommand", { sub: sub ?? t("pneuma.library.subcommand_none"), usage }));
     process.exit(1);
   }
 
@@ -1467,7 +1467,7 @@ Options:
     if (rawArgs[1] === "add") {
       const source = rawArgs[2];
       if (!source) {
-        p.cancel("Usage: pneuma plugin add <path|github:user/repo|url>");
+        p.cancel(t("pneuma.plugin.add.usage"));
         process.exit(1);
       }
 
@@ -1483,7 +1483,7 @@ Options:
           const [repoPath, ref] = rest.split("#");
           const [user, repo] = repoPath.split("/");
           if (!user || !repo) {
-            p.cancel('Invalid GitHub specifier. Expected: github:user/repo or github:user/repo#branch');
+            p.cancel(t("pneuma.plugin.add.invalid_github"));
             process.exit(1);
           }
           pluginName = `${user}-${repo}`;
@@ -1492,11 +1492,11 @@ Options:
           const branch = ref || "main";
 
           if (existsSync(targetDir)) {
-            p.log.info(`Updating existing plugin "${pluginName}"...`);
+            p.log.info(t("pneuma.plugin.add.updating_existing", { name: pluginName }));
             const proc = Bun.spawnSync(["git", "-C", targetDir, "pull", "origin", branch]);
             if (proc.exitCode !== 0) throw new Error(`git pull failed: ${new TextDecoder().decode(proc.stderr)}`);
           } else {
-            p.log.info(`Cloning ${repoUrl}...`);
+            p.log.info(t("pneuma.plugin.add.cloning", { url: repoUrl }));
             const proc = Bun.spawnSync(["git", "clone", "--depth", "1", "--branch", branch, repoUrl, targetDir]);
             if (proc.exitCode !== 0) throw new Error(`git clone failed: ${new TextDecoder().decode(proc.stderr)}`);
           }
@@ -1507,7 +1507,7 @@ Options:
           targetDir = join(pluginsDir, pluginName);
           mkdirSync(targetDir, { recursive: true });
 
-          p.log.info(`Downloading ${source}...`);
+          p.log.info(t("pneuma.plugin.add.downloading", { url: source }));
           const resp = await fetch(source);
           if (!resp.ok) throw new Error(`Download failed: ${resp.status}`);
           const tarPath = join(tmpdir(), `pneuma-plugin-${Date.now()}.tar.gz`);
@@ -1519,7 +1519,7 @@ Options:
           // Local path: copy or symlink
           const srcPath = source.startsWith("~") ? join(homedir(), source.slice(1)) : resolve(source);
           if (!existsSync(srcPath)) {
-            p.cancel(`Path not found: ${srcPath}`);
+            p.cancel(t("pneuma.plugin.add.path_missing", { path: srcPath }));
             process.exit(1);
           }
           pluginName = basename(srcPath);
@@ -1535,7 +1535,7 @@ Options:
 
         // Validate: check for manifest.ts
         if (!existsSync(join(targetDir, "manifest.ts"))) {
-          p.cancel(`Invalid plugin: no manifest.ts found in ${targetDir}`);
+          p.cancel(t("pneuma.plugin.add.invalid_no_manifest", { path: targetDir }));
           rmSync(targetDir, { recursive: true, force: true });
           process.exit(1);
         }
@@ -1553,10 +1553,10 @@ Options:
         const settings = new SettingsManager(join(homedir(), ".pneuma"));
         settings.setEnabled(actualName, true);
 
-        p.log.success(`Plugin "${actualName}" installed to ${targetDir}`);
+        p.log.success(t("pneuma.plugin.add.installed", { name: actualName, path: targetDir }));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        p.cancel(`Failed to add plugin: ${msg}`);
+        p.cancel(t("pneuma.plugin.add.failed", { message: msg }));
         process.exit(1);
       }
       return;
@@ -1588,21 +1588,21 @@ Options:
       const externalPlugins = await scanPlugins(pluginsDir);
 
       if (builtinPlugins.length === 0 && externalPlugins.length === 0) {
-        console.log("[plugin] No plugins found.");
+        console.log(t("pneuma.plugin.list.none"));
       } else {
         if (builtinPlugins.length > 0) {
-          console.log(`\n  Built-in plugins:\n`);
+          console.log(`\n${t("pneuma.plugin.list.builtin_header")}\n`);
           for (const p of builtinPlugins) {
             const entry = allSettings.plugins[p.name];
             const enabled = entry !== undefined ? entry.enabled !== false : true;
-            console.log(`    ${p.name} ${enabled ? "(enabled)" : "(disabled)"} [builtin]`);
+            console.log(`    ${p.name} ${enabled ? t("pneuma.plugin.list.enabled") : t("pneuma.plugin.list.disabled")} ${t("pneuma.plugin.list.builtin_tag")}`);
           }
         }
         if (externalPlugins.length > 0) {
-          console.log(`\n  External plugins:\n`);
+          console.log(`\n${t("pneuma.plugin.list.external_header")}\n`);
           for (const p of externalPlugins) {
             const enabled = allSettings.plugins[p.name]?.enabled ?? false;
-            console.log(`    ${p.name} ${enabled ? "(enabled)" : "(disabled)"} ${p.path}`);
+            console.log(`    ${p.name} ${enabled ? t("pneuma.plugin.list.enabled") : t("pneuma.plugin.list.disabled")} ${p.path}`);
           }
         }
         console.log();
@@ -1613,7 +1613,7 @@ Options:
     if (rawArgs[1] === "remove") {
       const name = rawArgs[2];
       if (!name) {
-        p.cancel("Usage: pneuma plugin remove <name>");
+        p.cancel(t("pneuma.plugin.remove.usage"));
         process.exit(1);
       }
 
@@ -1626,7 +1626,7 @@ Options:
             const mod = await import(join(builtinDir, entry.name, "manifest.ts"));
             const manifest = mod.default ?? mod;
             if (manifest.name === name || entry.name === name) {
-              p.cancel(`"${name}" is a built-in plugin and cannot be removed. You can disable it in Settings.`);
+              p.cancel(t("pneuma.plugin.remove.is_builtin", { name }));
               process.exit(1);
             }
           } catch { /* skip */ }
@@ -1652,7 +1652,7 @@ Options:
       }
 
       if (!targetDir) {
-        p.cancel(`Plugin "${name}" not found in ${pluginsDir}`);
+        p.cancel(t("pneuma.plugin.remove.not_found", { name, dir: pluginsDir }));
         process.exit(1);
       }
 
@@ -1663,11 +1663,11 @@ Options:
       const settings = new SettingsManager(join(homedir(), ".pneuma"));
       settings.setEnabled(manifestName, false);
 
-      p.log.success(`Plugin "${manifestName}" removed.`);
+      p.log.success(t("pneuma.plugin.remove.removed", { name: manifestName }));
       return;
     }
 
-    p.cancel("Usage: pneuma plugin <add|list|remove>");
+    p.cancel(t("pneuma.plugin.usage"));
     process.exit(1);
   }
 
@@ -1712,7 +1712,7 @@ Options:
     let browserPort = actualPort;
     if (isDev) {
       const VITE_PORT = 17996;
-      p.log.step(`Starting Vite dev server on port ${VITE_PORT}...`);
+      p.log.step(t("pneuma.vite_starting", { port: VITE_PORT }));
       const viteResult = await startViteDev({
         projectRoot: PROJECT_ROOT,
         port: VITE_PORT,
@@ -1739,7 +1739,7 @@ Options:
         }
       } catch { }
     }
-    p.log.success(`Marketplace → ${url}`);
+    p.log.success(t("pneuma.marketplace_ready", { url }));
 
     // Auto-start use-mode app sessions.
     //
@@ -1798,7 +1798,7 @@ Options:
           }
         };
         if (child.stdout) readStream(child.stdout);
-        p.log.info(`Auto-starting app: ${rec.sessionName || rec.displayName} (${rec.workspace})`);
+        p.log.info(t("pneuma.auto_starting_app", { name: rec.sessionName || rec.displayName, workspace: rec.workspace }));
       }
     }
 
@@ -1811,14 +1811,14 @@ Options:
     resolved = await resolveModeSource(mode, PROJECT_ROOT);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    p.cancel(`Failed to resolve mode "${mode}": ${msg}`);
+    p.cancel(t("pneuma.resolve_failed", { mode, message: msg }));
     process.exit(1);
   }
 
   // For external modes, register them in the mode-loader before loading
   if (resolved.type !== "builtin") {
     registerExternalMode(resolved.name, resolved.path);
-    p.log.info(`External mode "${resolved.name}" loaded from ${resolved.path}`);
+    p.log.info(t("pneuma.external_mode_loaded", { name: resolved.name, path: resolved.path }));
   }
 
   // Load mode manifest (no React deps — backend safe)
@@ -1829,7 +1829,7 @@ Options:
     manifest = await loadModeManifest(modeName);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    p.cancel(`Failed to load mode "${modeName}": ${msg}`);
+    p.cancel(t("pneuma.load_failed", { mode: modeName, message: msg }));
     process.exit(1);
   }
 
@@ -1840,8 +1840,11 @@ Options:
   if (manifest.supportedBackends && manifest.supportedBackends.length > 0) {
     if (!manifest.supportedBackends.includes(backendType)) {
       p.cancel(
-        `Mode "${modeName}" only supports backends: ${manifest.supportedBackends.join(", ")}. ` +
-        `Selected backend "${backendType}" is not compatible.`
+        t("pneuma.mode_unsupported_backend", {
+          mode: modeName,
+          backends: manifest.supportedBackends.join(", "),
+          backend: backendType,
+        }),
       );
       process.exit(1);
     }
@@ -1850,22 +1853,22 @@ Options:
   if (!existsSync(workspace)) {
     if (noPrompt) {
       mkdirSync(workspace, { recursive: true });
-      p.log.success(`Created workspace: ${workspace}`);
+      p.log.success(t("pneuma.workspace_created", { workspace }));
     } else {
       const shouldCreate = await p.confirm({
-        message: `Workspace does not exist: ${workspace}\n  Create it?`,
+        message: t("pneuma.workspace_create_prompt", { workspace }),
       });
       if (p.isCancel(shouldCreate) || !shouldCreate) {
-        p.cancel("Cancelled.");
+        p.cancel(t("common.cancelled"));
         process.exit(0);
       }
       mkdirSync(workspace, { recursive: true });
-      p.log.success(`Created workspace: ${workspace}`);
+      p.log.success(t("pneuma.workspace_created", { workspace }));
     }
   }
 
-  p.log.info(`Mode: ${manifest.displayName} (${modeName})`);
-  p.log.info(`Workspace: ${workspace}`);
+  p.log.info(t("pneuma.mode_info", { displayName: resolveLocalized(manifest.displayName), name: modeName }));
+  p.log.info(t("pneuma.workspace_info", { workspace }));
 
   // Resolve startup context — decides quick (legacy 2.x, state under
   // <workspace>/.pneuma/) vs project (new, state under
@@ -1880,7 +1883,7 @@ Options:
   const sessionDir = startup.paths.sessionDir;
   if (startup.kind === "project") {
     mkdirSync(sessionDir, { recursive: true });
-    p.log.info(`Project session: ${startup.sessionId}`);
+    p.log.info(t("pneuma.project_session_info", { sessionId: startup.sessionId }));
   }
 
   // For project sessions, the *server's* working directory — what the file
@@ -1915,20 +1918,59 @@ Options:
     pneumaEnv.PNEUMA_PROJECT_ROOT = startup.paths.projectRoot;
   }
 
+  // User preferences — the locale + theme the user chose in Pneuma's
+  // language picker and theme toggle. Surfaced as env so skills / scripts /
+  // tool calls inside the agent's session can read them without having to
+  // re-derive from settings.json. `PNEUMA_USER_LOCALE` is BCP-47 (e.g.
+  // "zh-CN" / "ja"); `PNEUMA_USER_THEME` is one of "system" | "light" |
+  // "dark". Both are omitted when the user hasn't set a preference, so
+  // skills can fall back to the agent's own defaults instead of being
+  // forced into a "default-for-default" branch.
+  const { getUserLocale } = await import("../core/locale.js");
+  const { getUserTheme } = await import("../core/user-theme.js");
+  const userLocale = getUserLocale();
+  const userTheme = getUserTheme();
+  if (userLocale) pneumaEnv.PNEUMA_USER_LOCALE = userLocale;
+  if (userTheme) pneumaEnv.PNEUMA_USER_THEME = userTheme;
+
+  // Wrap a mode's manifest-provided greeting with the user's locale so
+  // the agent's first reply lands in one language only. Without this
+  // hint the agent reads only the `<system-info session="new">` prompt
+  // and tends to default to a bilingual greeting (English + the user's
+  // language), which lands in chat as two adjacent bubbles. The env
+  // tag dispatched separately also carries `user_locale`, but the
+  // greeting reaches the model BEFORE the env tag, so this needs to
+  // travel with the greeting itself. The hint is folded INTO the
+  // greeting's existing `<system-info>` envelope (rather than appended
+  // as a separate tag) so the model treats it as one instruction and
+  // emits a single greeting turn — a separate trailing instruction
+  // tended to produce two assistant bubbles ("Acknowledged" + reply).
+  const localizeGreeting = (greeting: string): string => {
+    if (!userLocale) return greeting;
+    const tagMatch = greeting.match(/^<system-info\b([^>]*)>/);
+    if (tagMatch) {
+      return greeting.replace(
+        tagMatch[0],
+        `<system-info${tagMatch[1]} user-locale="${userLocale}">`,
+      );
+    }
+    return `<system-info user-locale="${userLocale}"></system-info>\n${greeting}`;
+  };
+
   // 0.5 Resolve init params (interactive on first run, then cached)
   let resolvedParams: Record<string, number | string> = {};
   if (manifest.init?.params && manifest.init.params.length > 0) {
     const cached = loadConfig(stateDir);
     if (cached) {
       resolvedParams = cached;
-      p.log.step("Loaded init params from .pneuma/config.json");
+      p.log.step(t("pneuma.loaded_init_params"));
     } else if (noPrompt) {
       // No-prompt mode (launched from marketplace) — use defaults
       for (const param of manifest.init!.params!) {
         resolvedParams[param.name] = param.defaultValue;
       }
       saveConfig(stateDir, resolvedParams);
-      p.log.step("Using default init params (no-prompt mode)");
+      p.log.step(t("pneuma.default_init_params"));
     } else {
       // Derive smart defaults from workspace directory name
       const wsBasename = basename(workspace);
@@ -1942,7 +1984,7 @@ Options:
       }
       resolvedParams = await promptInitParams(manifest, defaultOverrides);
       saveConfig(stateDir, resolvedParams);
-      p.log.step("Saved init params to .pneuma/config.json");
+      p.log.step(t("pneuma.saved_init_params"));
     }
     // Compute derived params (e.g. imageGenEnabled from API keys,
     // pageWidthMm/pageHeightMm from paper size). Persist the enriched
@@ -1970,10 +2012,10 @@ Options:
       // Auto-replace when launched from marketplace
     } else {
       const shouldReplace = await p.confirm({
-        message: "Skill already exists. Replace with latest?",
+        message: t("pneuma.skill_replace_prompt"),
       });
       if (p.isCancel(shouldReplace)) {
-        p.cancel("Cancelled.");
+        p.cancel(t("common.cancelled"));
         process.exit(0);
       }
       if (!shouldReplace) {
@@ -1994,15 +2036,15 @@ Options:
         }
       }
       if (missing.length > 0) {
-        p.log.error("Skill dependencies incomplete:");
+        p.log.error(t("pneuma.skill_deps_incomplete"));
         for (const m of missing) p.log.warn(`  ${m}`);
-        p.log.info("Skill files must be bundled in the mode package before running.");
-        p.cancel("Fix the mode package and try again.");
+        p.log.info(t("pneuma.skill_deps_bundled_hint"));
+        p.cancel(t("pneuma.skill_deps_fix_hint"));
         process.exit(1);
       }
     }
 
-    p.log.step("Installing skill and preparing environment...");
+    p.log.step(t("pneuma.installing_skill"));
     installSkill({
       workspace,
       sessionDir,
@@ -2014,7 +2056,7 @@ Options:
       viewerApi: manifest.viewerApi,
       backendType,
       proxyConfig: manifest.proxy,
-      displayName: manifest.displayName,
+      displayName: resolveLocalized(manifest.displayName, "en"),
     });
     // Record installed skill version for update detection
     const skillVersionPath = join(stateDir, "skill-version.json");
@@ -2114,7 +2156,7 @@ Options:
               copyFileSync(fileSrc, fileDst);
             }
           }
-          p.log.step(`Seeded workspace with ${dst}`);
+          p.log.step(t("pneuma.seeded_workspace", { path: dst }));
         } else {
           const dstPath = join(workspace, dst);
           mkdirSync(dirname(dstPath), { recursive: true });
@@ -2127,13 +2169,13 @@ Options:
           } else {
             copyFileSync(srcPath, dstPath);
           }
-          p.log.step(`Seeded workspace with ${dst}`);
+          p.log.step(t("pneuma.seeded_workspace", { path: dst }));
         }
       }
 
       // Auto-install deps if package.json was seeded
       if (existsSync(join(workspace, "package.json"))) {
-        p.log.step("Installing dependencies...");
+        p.log.step(t("pneuma.installing_deps"));
         const proc = Bun.spawn(["bun", "install"], {
           cwd: workspace,
           stdout: "pipe",
@@ -2191,9 +2233,9 @@ Options:
 
   // 2. Detect dev vs production mode (distDir, isDev computed earlier for port)
   if (isDev) {
-    p.log.info("Development mode (serving via Vite)");
+    p.log.info(t("pneuma.dev_mode"));
   } else {
-    p.log.info("Production mode (serving built assets)");
+    p.log.info(t("pneuma.prod_mode"));
   }
 
   // 2.5 Pre-compile external mode viewer for production serving
@@ -2203,7 +2245,7 @@ Options:
     if (existsSync(existingBuild)) {
       // Use pre-built bundle from publish (third-party deps already inlined)
       modeBundleDir = join(resolved.path, ".build");
-      p.log.step("Using pre-built mode viewer bundle");
+      p.log.step(t("pneuma.using_prebuilt_viewer"));
     } else {
       // Build from source (local development, unpublished modes)
       const buildDir = join(resolved.path, ".build");
@@ -2211,7 +2253,7 @@ Options:
       const manifestEntry = join(resolved.path, "manifest.ts");
       const entrypoints = [modeEntry, manifestEntry].filter((e) => existsSync(e));
       if (entrypoints.length > 0) {
-        p.log.step("Compiling mode viewer for production...");
+        p.log.step(t("pneuma.compiling_viewer"));
         // Resolve symlinks (macOS /tmp → /private/tmp) so importer paths match
         const realModePath = realpathSync(resolved.path);
         const result = await Bun.build({
@@ -2251,9 +2293,9 @@ Options:
         });
         if (result.success) {
           modeBundleDir = buildDir;
-          p.log.step("Mode viewer compiled successfully");
+          p.log.step(t("pneuma.viewer_compiled"));
         } else {
-          p.log.warn("Mode viewer compilation failed — viewer may not load");
+          p.log.warn(t("pneuma.viewer_compile_failed"));
           for (const log of result.logs) {
             p.log.warn(`  ${log.message}`);
           }
@@ -2264,14 +2306,14 @@ Options:
 
   // 2.8 Handle --replay-source: export from existing workspace, set replayPackage
   if (replaySource && !replayPackage) {
-    p.log.step(`Exporting replay data from: ${replaySource}`);
+    p.log.step(t("pneuma.exporting_replay_source", { source: replaySource }));
     const { exportHistory } = await import("../server/history-export.js");
     try {
       const result = await exportHistory(replaySource, { title: `Replay of ${modeName}` });
       replayPackage = result.outputPath;
-      p.log.info(`Exported replay package: ${replayPackage}`);
+      p.log.info(t("pneuma.exported_replay_package", { path: replayPackage }));
     } catch (err: any) {
-      p.log.warn(`Failed to export replay from source: ${err.message}. Continuing without replay.`);
+      p.log.warn(t("pneuma.export_replay_failed", { message: err.message }));
     }
   }
 
@@ -2338,6 +2380,15 @@ Options:
    * marker would mislead it about its starting state) — callers gate via
    * the `resuming` flag.
    */
+  /**
+   * Dispatch the session-start `<pneuma:env>` tag. The tag is now always
+   * queued as **pending context** rather than delivered as a standalone
+   * user turn — `enqueueEnvContext` lands it in messageHistory + broadcasts
+   * the banner to browsers, but the agent doesn't see it until the user
+   * actually types something (at which point the tag is folded in as a
+   * one-shot prefix). This avoids the redundant "welcome back" reply that
+   * came from agents treating the env tag as a question.
+   */
   const dispatchEnvTag = (targetSessionId: string) => {
     if (envTagDispatched) return;
     const tag = buildEnvTag({
@@ -2348,11 +2399,12 @@ Options:
       fromSessionId,
       fromMode,
       fromDisplayName,
+      userLocale: userLocale ?? undefined,
     });
     if (!tag) return;
     envTagDispatched = true;
-    wsBridge.sendUserMessage(targetSessionId, tag);
-    console.log(`[pneuma] Dispatched env tag: ${tag}`);
+    wsBridge.enqueueEnvContext(targetSessionId, tag);
+    console.log(`[pneuma] Queued env context: ${tag}`);
   };
 
   if (replayPackage) {
@@ -2390,7 +2442,7 @@ Options:
         saveConfig(stateDir, resolvedParams);
       }
 
-      p.log.step("Continue Work: installing skill...");
+      p.log.step(t("pneuma.continue_work_installing"));
       installSkill({
         workspace,
         sessionDir,
@@ -2402,7 +2454,7 @@ Options:
         viewerApi: manifest.viewerApi,
         backendType,
         proxyConfig: manifest.proxy,
-        displayName: manifest.displayName,
+        displayName: resolveLocalized(manifest.displayName, "en"),
       });
 
       // Record installed skill version
@@ -2461,7 +2513,7 @@ Options:
       await recordSession({
         startup,
         mode: modeName,
-        displayName: manifest.displayName,
+        displayName: resolveLocalized(manifest.displayName, "en"),
         workspace,
         backendType,
         sessionName: sessionName || undefined,
@@ -2480,17 +2532,19 @@ Options:
 
       // Send greeting for continued session
       if (manifest.agent?.greeting) {
-        wsBridge.injectGreeting(sessionId, manifest.agent.greeting);
+        wsBridge.injectGreeting(sessionId, localizeGreeting(manifest.agent.greeting));
       }
 
-      // Replay → Continue Work counts as a fresh agent start; dispatch
-      // the env tag here too so the new agent knows the session lineage.
+      // Replay → Continue Work counts as a fresh agent start. The env
+      // tag is queued as pending context; it lands as a chat banner
+      // immediately but only reaches the agent once the user actually
+      // types something.
       dispatchEnvTag(sessionId);
 
-      p.log.success("Continue Work: agent launched, session active");
+      p.log.success(t("pneuma.continue_work_launched"));
     });
 
-    p.log.info(`Replay mode: ${replayPackage}`);
+    p.log.info(t("pneuma.replay_mode", { path: replayPackage }));
   } else {
     // Normal mode — launch agent backend (selected at startup, fixed for the session lifetime)
     const existing = loadSession(stateDir);
@@ -2582,7 +2636,7 @@ Options:
       await recordSession({
         startup,
         mode: modeName,
-        displayName: manifest.displayName,
+        displayName: resolveLocalized(manifest.displayName, "en"),
         workspace,
         backendType: sessionBackendType,
         sessionName: sessionName || undefined,
@@ -2604,7 +2658,7 @@ Options:
 
       // Register launch callback for viewing → edit switching
       onEditingLaunch!(async () => {
-        p.log.step("Switching to edit mode: installing skill and launching agent...");
+        p.log.step(t("pneuma.switching_to_edit"));
         installSkill({
           workspace,
           sessionDir,
@@ -2616,7 +2670,7 @@ Options:
           viewerApi: manifest.viewerApi,
           backendType: sessionBackendType,
           proxyConfig: manifest.proxy,
-          displayName: manifest.displayName,
+          displayName: resolveLocalized(manifest.displayName, "en"),
         });
         const skillVersionPath = join(stateDir, "skill-version.json");
         writeFileSync(skillVersionPath, JSON.stringify({ mode: modeName, version: manifest.version }));
@@ -2646,15 +2700,15 @@ Options:
 
         // Register kill callback for edit → viewing switching
         onEditingKill!(async () => {
-          p.log.step("Switching to viewing mode: stopping agent...");
+          p.log.step(t("pneuma.switching_to_viewing"));
           backend!.kill(sessionId);
           backend = null;
         });
 
-        p.log.success("Edit mode: agent launched");
+        p.log.success(t("pneuma.edit_mode_launched"));
       });
 
-      p.log.info("Viewing mode: dashboard only, no agent");
+      p.log.info(t("pneuma.viewing_dashboard_only"));
     } else {
       // ── Edit mode: full agent launch ──────────────────────────────────
       backend = createBackend(sessionBackendType, actualPort);
@@ -2692,7 +2746,7 @@ Options:
 
       if (existing?.agentSessionId) {
         resuming = true;
-        p.log.info(`Resuming session: ${existing.agentSessionId}`);
+        p.log.info(t("pneuma.resuming_session", { id: existing.agentSessionId }));
       }
 
       // Persist session info. Project sessions: `sessionId` is the canonical
@@ -2716,20 +2770,20 @@ Options:
       await recordSession({
         startup,
         mode: modeName,
-        displayName: manifest.displayName,
+        displayName: resolveLocalized(manifest.displayName, "en"),
         workspace,
         backendType: sessionBackendType,
         sessionName: sessionName || undefined,
         editing: true,
       });
 
-      p.log.info(`Agent session: ${session.sessionId}`);
+      p.log.info(t("pneuma.agent_session", { id: session.sessionId }));
       wsBridge.getOrCreateSession(session.sessionId, sessionBackendType);
       attachBridgeBackend(sessionBackendType, backend, session.sessionId, wsBridge);
 
       // Auto-greeting for fresh sessions (driven by manifest)
       if (!resuming && manifest.agent?.greeting) {
-        wsBridge.injectGreeting(session.sessionId, manifest.agent.greeting);
+        wsBridge.injectGreeting(session.sessionId, localizeGreeting(manifest.agent.greeting));
         console.log("[pneuma] Sent auto-greeting for fresh session");
       }
 
@@ -2749,6 +2803,8 @@ Options:
       // confirmed a handoff, opened fresh) is the signal, not the agent's
       // resume state. The dispatch helper is internally idempotent so
       // re-entering this block via the edit-toggle path won't double-fire.
+      // The tag is queued as pending context (banner shows, agent sees
+      // it only when the user actually sends a message).
       dispatchEnvTag(session.sessionId);
 
       // History persistence
@@ -2761,13 +2817,13 @@ Options:
 
       // Register kill callback for edit → viewing switching
       onEditingKill!(async () => {
-        p.log.step("Switching to viewing mode: stopping agent...");
+        p.log.step(t("pneuma.switching_to_viewing"));
         backend!.kill(session.sessionId);
         backend = null;
 
         // Register launch callback for subsequent viewing → edit switch
         onEditingLaunch!(async () => {
-          p.log.step("Switching to edit mode: installing skill and launching agent...");
+          p.log.step(t("pneuma.switching_to_edit"));
           installSkill({
             workspace,
             sessionDir,
@@ -2779,7 +2835,7 @@ Options:
             viewerApi: manifest.viewerApi,
             backendType: sessionBackendType,
             proxyConfig: manifest.proxy,
-            displayName: manifest.displayName,
+            displayName: resolveLocalized(manifest.displayName, "en"),
           });
 
           backend = createBackend(sessionBackendType, actualPort);
@@ -2800,12 +2856,12 @@ Options:
 
           // Re-register kill callback for next edit → viewing switch
           onEditingKill!(async () => {
-            p.log.step("Switching to viewing mode: stopping agent...");
+            p.log.step(t("pneuma.switching_to_viewing"));
             backend!.kill(sessionId);
             backend = null;
           });
 
-          p.log.success("Edit mode: agent launched");
+          p.log.success(t("pneuma.edit_mode_launched"));
         });
       });
     }
@@ -2841,7 +2897,7 @@ Options:
     // Dev mode: start Vite dev server
     // PNEUMA_VITE_PORT allows play instances to use a dedicated Vite port
     const VITE_PORT = parseInt(process.env.PNEUMA_VITE_PORT || "17996", 10);
-    p.log.step(`Starting Vite dev server on port ${VITE_PORT}...`);
+    p.log.step(t("pneuma.vite_starting", { port: VITE_PORT }));
 
     // Pass config to Vite via env vars
     const viteEnv: Record<string, string> = {
@@ -2887,7 +2943,7 @@ Options:
       id: runningId,
       kind: startup.kind,
       mode: modeName,
-      displayName: manifest.displayName,
+      displayName: resolveLocalized(manifest.displayName, "en"),
       workspace: startup.kind === "project" ? startup.paths.projectRoot! : workspace,
       ...(startup.kind === "project"
         ? { projectRoot: startup.paths.projectRoot!, sessionId: startup.sessionId }
@@ -2909,7 +2965,7 @@ Options:
   console.log(`[pneuma] ready ${browserUrl}`);
 
   if (!noOpen) {
-    p.log.success(`Ready → ${browserUrl}`);
+    p.log.success(t("pneuma.ready", { url: browserUrl }));
     try {
       if (process.platform === "win32") {
         Bun.spawn(["cmd", "/c", "start", "", browserUrl], { stdout: "ignore", stderr: "ignore" });
@@ -2918,7 +2974,7 @@ Options:
         Bun.spawn([opener, browserUrl], { stdout: "ignore", stderr: "ignore" });
       }
     } catch {
-      p.log.warn(`Could not open browser. Visit: ${browserUrl}`);
+      p.log.warn(t("pneuma.open_browser_failed", { url: browserUrl }));
     }
   }
 
@@ -2945,7 +3001,7 @@ Options:
     viteProc?.kill();
     if (backend) await backend.killAll();
     server.stop(true);
-    p.outro("Goodbye!");
+    p.outro(t("common.goodbye"));
     process.exit(0);
   };
   process.on("SIGTERM", shutdown);
@@ -2953,6 +3009,6 @@ Options:
 }
 
 main().catch((err) => {
-  p.cancel(`Fatal error: ${err instanceof Error ? err.message : String(err)}`);
+  p.cancel(t("common.fatal_error", { message: err instanceof Error ? err.message : String(err) }));
   process.exit(1);
 });

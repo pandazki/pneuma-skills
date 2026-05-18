@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
 import ChatPanel from "./ChatPanel.js";
 
@@ -10,6 +11,7 @@ import ChatPanel from "./ChatPanel.js";
  * Auto-expands when permissions are pending.
  */
 export default function AgentBubble() {
+  const { t } = useTranslation("agent-bubble");
   const [isExpanded, setIsExpanded] = useState(false);
   const permSize = useStore((s) => s.pendingPermissions.size);
   const sessionStatus = useStore((s) => s.sessionStatus);
@@ -33,7 +35,7 @@ export default function AgentBubble() {
   if (isExpanded) {
     return (
       <div
-        className="fixed bottom-6 right-6 w-[420px] h-[620px] z-50
+        className="floating-chat-card fixed bottom-6 right-6 w-[420px] h-[620px] z-50
                     border border-cc-primary/20 rounded-2xl overflow-hidden
                     shadow-[0_0_40px_rgba(249,115,22,0.15)] ring-1 ring-white/5
                     before:absolute before:inset-0 before:bg-cc-surface/80 before:backdrop-blur-2xl before:-z-10
@@ -45,10 +47,10 @@ export default function AgentBubble() {
             <StatusDot isConnected={isConnected} isWorking={isWorking} />
             <span className="text-xs text-cc-muted font-body">
               {!isConnected
-                ? "Disconnected"
+                ? t("disconnected")
                 : isWorking
-                  ? "Working…"
-                  : "Ready"}
+                  ? t("working")
+                  : t("ready")}
             </span>
           </div>
           <button

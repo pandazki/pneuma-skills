@@ -19,6 +19,7 @@
  * `ToolIcon` style used elsewhere in the chat chrome.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import { getApiBase } from "../utils/api.js";
 
@@ -105,6 +106,7 @@ const btnBase =
   "inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-cc-border/60 text-[11px] text-cc-muted hover:text-cc-fg hover:bg-cc-hover/40 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default";
 
 export function ToolFileActions({ path }: { path: string }) {
+  const { t } = useTranslation("tool-file-actions");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // null = not yet loaded; [] = loaded but none detected.
@@ -178,25 +180,25 @@ export function ToolFileActions({ path }: { path: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menuOpen, editors]);
 
-  const run = async (label: string, fn: () => Promise<boolean>) => {
+  const run = async (errKey: string, fn: () => Promise<boolean>) => {
     setErr(null);
     setBusy(true);
     try {
       const ok = await fn();
-      if (!ok) setErr(`Couldn't ${label.toLowerCase()}.`);
+      if (!ok) setErr(t(errKey));
     } finally {
       setBusy(false);
     }
   };
 
-  const openDefault = () => void run("open the file", () => postSystem("/api/system/open", { path }));
+  const openDefault = () => void run("error_open", () => postSystem("/api/system/open", { path }));
 
-  const reveal = () => void run("reveal the file", () => postSystem("/api/system/reveal", { path }));
+  const reveal = () => void run("error_reveal", () => postSystem("/api/system/reveal", { path }));
 
   const openInEditor = (editorId: string) => {
     rememberEditor(editorId);
     setMenuOpen(false);
-    void run("open in editor", () => postSystem("/api/system/open-in-editor", { editorId, path }));
+    void run("error_open_in_editor", () => postSystem("/api/system/open-in-editor", { editorId, path }));
   };
 
   const loadEditors = async () => {
@@ -235,9 +237,9 @@ export function ToolFileActions({ path }: { path: string }) {
 
   return (
     <div ref={rootRef} className="mt-2 flex flex-wrap items-center gap-1.5">
-      <button type="button" className={btnBase} disabled={busy} onClick={openDefault} title="Open in the default app">
+      <button type="button" className={btnBase} disabled={busy} onClick={openDefault} title={t("open_default_tooltip")}>
         <OpenIcon />
-        Open
+        {t("open")}
       </button>
 
       <div ref={anchorRef} className="relative inline-flex">
@@ -246,18 +248,18 @@ export function ToolFileActions({ path }: { path: string }) {
           className={`${btnBase} rounded-r-none`}
           disabled={busy}
           onClick={onEditorMainClick}
-          title="Open in a code editor"
+          title={t("editor_main_tooltip")}
         >
           <EditorIcon />
-          Editor
+          {t("editor")}
         </button>
         <button
           type="button"
           className={`${btnBase} rounded-l-none -ml-px px-1 ${menuOpen ? "bg-cc-hover/40 text-cc-fg" : ""}`}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
-          aria-label="Choose editor"
-          title="Choose editor"
+          aria-label={t("choose_editor")}
+          title={t("choose_editor")}
           onClick={toggleMenu}
         >
           <ChevronIcon />
@@ -271,9 +273,9 @@ export function ToolFileActions({ path }: { path: string }) {
                 className="min-w-[180px] max-h-[60vh] overflow-y-auto rounded-lg border border-cc-border bg-cc-surface shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6)] py-1 z-[100]"
               >
                 {editors === null ? (
-                  <div className="px-3 py-1.5 text-[11px] text-cc-muted/70">Loading…</div>
+                  <div className="px-3 py-1.5 text-[11px] text-cc-muted/70">{t("loading")}</div>
                 ) : editors.length === 0 ? (
-                  <div className="px-3 py-1.5 text-[11px] text-cc-muted/70">No code editor detected</div>
+                  <div className="px-3 py-1.5 text-[11px] text-cc-muted/70">{t("no_editor_detected")}</div>
                 ) : (
                   editors.map((e) => (
                     <button
@@ -293,9 +295,9 @@ export function ToolFileActions({ path }: { path: string }) {
           : null}
       </div>
 
-      <button type="button" className={btnBase} disabled={busy} onClick={reveal} title="Reveal in Finder / Explorer">
+      <button type="button" className={btnBase} disabled={busy} onClick={reveal} title={t("reveal_tooltip")}>
         <RevealIcon />
-        Reveal
+        {t("reveal")}
       </button>
 
       {err ? <span className="text-[11px] text-cc-error/90 ml-0.5">{err}</span> : null}

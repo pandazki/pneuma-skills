@@ -1,0 +1,10 @@
+{
+  "step": "第 {{n}} 步",
+  "previous_turn": "上一轮",
+  "next_turn": "下一轮",
+  "continue_starting": "启动中…",
+  "continue_retry": "重试（{{error}}）",
+  "continue_work": "继续工作",
+  "continue_tooltip": "切回常规编辑模式，从这里继续",
+  "continue_failed": "继续失败"
+}

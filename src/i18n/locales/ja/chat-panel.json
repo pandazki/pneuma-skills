@@ -1,0 +1,14 @@
+{
+  "scheduled_task": "スケジュールタスク",
+  "status": {
+    "disconnected": "切断済み",
+    "cli_disconnected": "CLI 切断",
+    "running": "実行中",
+    "compacting": "圧縮中",
+    "idle": "アイドル"
+  },
+  "reconnect": "再接続",
+  "no_model": "モデルなし",
+  "empty_send_message": "メッセージを送信して編集を開始",
+  "empty_connecting": "Claude に接続中…"
+}

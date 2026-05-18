@@ -1,0 +1,14 @@
+{
+  "open": "열기",
+  "open_default_tooltip": "기본 앱으로 열기",
+  "editor": "에디터",
+  "editor_main_tooltip": "코드 에디터에서 열기",
+  "choose_editor": "에디터 선택",
+  "reveal": "위치 표시",
+  "reveal_tooltip": "Finder / 탐색기에서 표시",
+  "loading": "로딩 중...",
+  "no_editor_detected": "코드 에디터가 감지되지 않았습니다",
+  "error_open": "파일을 열지 못했습니다.",
+  "error_reveal": "파일 위치를 표시하지 못했습니다.",
+  "error_open_in_editor": "에디터에서 열지 못했습니다."
+}

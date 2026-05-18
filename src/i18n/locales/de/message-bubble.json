@@ -1,0 +1,60 @@
+{
+  "system": {
+    "output_label": "Ausgabe"
+  },
+  "selection": {
+    "in_file": "in {{file}}",
+    "types": {
+      "paragraph": "Absatz",
+      "list": "Liste",
+      "code": "Codeblock",
+      "blockquote": "Zitat",
+      "image": "Bild",
+      "table": "Tabelle",
+      "text_range": "ausgewählter Text",
+      "section": "Abschnitt",
+      "link": "Link",
+      "container": "Container",
+      "interactive": "interaktiv"
+    }
+  },
+  "annotations": {
+    "count_one": "{{count}} Anmerkung",
+    "count_other": "{{count}} Anmerkungen"
+  },
+  "ask_user": {
+    "waiting": "Warten auf Frage…",
+    "qa_label": "F&A",
+    "fallback_title": "Frage",
+    "other_option": "Andere…",
+    "answer_placeholder": "Antwort eingeben…",
+    "enter_hint": "Eingabetaste zum Senden drücken",
+    "submit": "Antworten senden"
+  },
+  "thinking": {
+    "label": "Argumentation",
+    "encrypted": "von Anthropic verborgen (adaptives Denken)",
+    "char_count": "{{count}} Zeichen",
+    "no_text": "Kein Denktext erfasst."
+  },
+  "tool_result": {
+    "header": {
+      "output": "Ausgabe",
+      "error": "Fehler",
+      "result": "Ergebnis"
+    },
+    "show_tail": "Ende anzeigen",
+    "hide": "Ausblenden",
+    "show_full_with_remaining": "Vollständig anzeigen (+{{count}} Zeilen)",
+    "show_full": "Vollständig anzeigen"
+  },
+  "context_usage": {
+    "title": "Kontextnutzung",
+    "tokens_summary": "{{used}} / {{total}} Tokens ({{percent}} %)"
+  },
+  "debug": {
+    "payload_label": "Payload",
+    "payload_tooltip": "Debug: CLI-Payload anzeigen",
+    "image_alt": "Debug-Bild {{index}}"
+  }
+}

@@ -1,22 +1,50 @@
 {
-  "tagline": "Build personal dashboards with draggable tile grids",
+  "tagline": {
+    "en": "Build personal dashboards with draggable tile grids",
+    "zh-CN": "用可拖拽的磁贴网格搭建个人仪表盘",
+    "ja": "ドラッグ可能なタイルグリッドで個人ダッシュボードを構築"
+  },
   "hero": "hero.png",
   "highlights": [
     {
-      "title": "Drag & Drop Grid",
-      "description": "Arrange tiles on a snapping grid canvas. Move by dragging, resize from edges — the board adapts instantly.",
+      "title": {
+        "en": "Drag & Drop Grid",
+        "zh-CN": "拖拽网格",
+        "ja": "ドラッグ&ドロップグリッド"
+      },
+      "description": {
+        "en": "Arrange tiles on a snapping grid canvas. Move by dragging, resize from edges — the board adapts instantly.",
+        "zh-CN": "在带吸附的网格画布上摆放磁贴，拖动可移动、拉边可调尺寸 —— 看板会瞬间适配。",
+        "ja": "スナップするグリッドキャンバス上でタイルを配置。ドラッグで移動、エッジからリサイズ —— ボードは即座にレイアウトを調整する。"
+      },
       "media": "drag-drop-grid.png",
       "mediaType": "image"
     },
     {
-      "title": "Smart Resize",
-      "description": "Tiles declare their size breakpoints. When resized beyond them, the agent gets a screenshot and optimizes the layout automatically.",
+      "title": {
+        "en": "Smart Resize",
+        "zh-CN": "智能尺寸调整",
+        "ja": "スマートリサイズ"
+      },
+      "description": {
+        "en": "Tiles declare their size breakpoints. When resized beyond them, the agent gets a screenshot and optimizes the layout automatically.",
+        "zh-CN": "每块磁贴都声明自己的尺寸断点，越界后代理会拿到截图，自动优化布局。",
+        "ja": "タイルは自身のサイズブレークポイントを宣言する。範囲を越えてリサイズされると、エージェントはスクリーンショットを受け取り、レイアウトを自動で最適化する。"
+      },
       "media": "smart-resize.png",
       "mediaType": "image"
     },
     {
-      "title": "Live Data Tiles",
-      "description": "10 built-in tiles with real-time APIs, interactive state, and SVG data viz — from crypto sparklines to habit trackers.",
+      "title": {
+        "en": "Live Data Tiles",
+        "zh-CN": "实时数据磁贴",
+        "ja": "ライブデータタイル"
+      },
+      "description": {
+        "en": "10 built-in tiles with real-time APIs, interactive state, and SVG data viz — from crypto sparklines to habit trackers.",
+        "zh-CN": "内置 10 款磁贴，接入实时 API、保留交互状态、配 SVG 数据可视化 —— 从加密货币迷你图到习惯追踪器一应俱全。",
+        "ja": "リアルタイム API、インタラクティブな状態、SVG データビジュアライゼーションを備えた 10 種類の組み込みタイル —— 暗号通貨のスパークラインから習慣トラッカーまで。"
+      },
       "media": "live-data-tiles.png",
       "mediaType": "image"
     }

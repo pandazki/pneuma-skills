@@ -1,0 +1,7 @@
+{
+  "title": "设置",
+  "language": {
+    "title": "语言",
+    "description": "选择 Pneuma 的界面语言，切换后会立即应用到整个应用和命令行。"
+  }
+}

@@ -1,4 +1,5 @@
 import { useState, useMemo, type ComponentProps } from "react";
+import { useTranslation } from "react-i18next";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage, ContentBlock, SelectionContext, Annotation, PermissionRequest } from "../types.js";
@@ -21,6 +22,7 @@ function parseViewerLocators(text: string): { cleanText: string; locators: Viewe
 }
 
 function LocatorCardGroup({ locators }: { locators: ViewerLocator[] }) {
+  const { t } = useTranslation("message-bubble");
   const setNavigateRequest = useStore((s) => s.setNavigateRequest);
   const debugMode = useStore((s) => s.debugMode);
   const [debugOpen, setDebugOpen] = useState(false);
@@ -47,10 +49,10 @@ function LocatorCardGroup({ locators }: { locators: ViewerLocator[] }) {
             <svg viewBox="0 0 16 16" fill="none" className={`w-3 h-3 transition-transform ${debugOpen ? "rotate-90" : ""}`}>
               <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <span>payload</span>
+            <span>{t("debug.payload_label")}</span>
           </button>
           {debugOpen && (
-            <pre className="mt-1 text-[10px] font-mono-code bg-black/30 text-cc-code-fg rounded-md px-2.5 py-2 overflow-x-auto whitespace-pre-wrap max-h-40 overflow-y-auto">
+            <pre className="mt-1 text-[10px] font-mono-code bg-cc-code-bg text-cc-code-fg rounded-md px-2.5 py-2 overflow-x-auto whitespace-pre-wrap max-h-40 overflow-y-auto">
               {locators.map((loc) => `${loc.label}: ${JSON.stringify(loc.data)}`).join("\n")}
             </pre>
           )}
@@ -76,6 +78,7 @@ export default function MessageBubble({
    */
   globalToolUseById?: Map<string, ToolUseInfo>;
 }) {
+  const { t } = useTranslation("message-bubble");
   if (message.role === "system") {
     if (message.isCollapsible) {
       // /context output — render as a rich visualization card (open by default)
@@ -95,7 +98,7 @@ export default function MessageBubble({
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 transition-transform group-open:rotate-90 shrink-0">
               <path d="M6 4l4 4-4 4" />
             </svg>
-            <span className="font-medium text-cc-fg/70">Output</span>
+            <span className="font-medium text-cc-fg/70">{t("system.output_label")}</span>
             <span className="truncate text-cc-muted/60">{preview}</span>
           </summary>
           <div className="px-4 pb-3 max-h-60 overflow-y-auto">
@@ -197,6 +200,7 @@ export default function MessageBubble({
 // ─── Selection Card ─────────────────────────────────────────────────────────
 
 function SelectionCard({ sel, interactive }: { sel: SelectionContext; interactive?: boolean }) {
+  const { t } = useTranslation("message-bubble");
   const setSelection = useStore((s) => s.setSelection);
   const setPreviewMode = useStore((s) => s.setPreviewMode);
 
@@ -205,21 +209,17 @@ function SelectionCard({ sel, interactive }: { sel: SelectionContext; interactiv
   if (sel.selector) {
     typeLabel = sel.selector;
   } else {
-    const typeLabels: Record<string, string> = {
-      heading: `h${sel.level || 1}`,
-      paragraph: "paragraph",
-      list: "list",
-      code: "code block",
-      blockquote: "blockquote",
-      image: "image",
-      table: "table",
-      "text-range": "selected text",
-      section: "section",
-      link: "link",
-      container: "container",
-      interactive: "interactive",
-    };
-    typeLabel = typeLabels[sel.type] || sel.type;
+    // `heading` keeps its `h{level}` form regardless of locale — it's a
+    // semantic tag, not chrome. The other types map through the namespace's
+    // `selection.types.*` table; missing keys fall through to the raw type
+    // string (matches old `typeLabels[type] || type` behaviour).
+    if (sel.type === "heading") {
+      typeLabel = `h${sel.level || 1}`;
+    } else {
+      const typeKey = sel.type === "text-range" ? "text_range" : sel.type;
+      const translated = t(`selection.types.${typeKey}`, { defaultValue: "" });
+      typeLabel = translated || sel.type;
+    }
   }
   // The text excerpt may be absent — e.g. an element with no text, or a card
   // restored from history (selector-based selections don't persist their
@@ -251,7 +251,7 @@ function SelectionCard({ sel, interactive }: { sel: SelectionContext; interactiv
         <div className="min-w-0">
           <div className="text-cc-primary font-medium">
             {typeLabel}
-            <span className="text-cc-muted font-normal ml-1.5">in {sel.file}</span>
+            <span className="text-cc-muted font-normal ml-1.5">{t("selection.in_file", { file: sel.file })}</span>
           </div>
           {preview !== null && (
             <div className="text-cc-muted mt-0.5 break-words leading-snug">"{preview}"</div>
@@ -265,6 +265,7 @@ function SelectionCard({ sel, interactive }: { sel: SelectionContext; interactiv
 // ─── Annotations Card ────────────────────────────────────────────────────
 
 function AnnotationsCard({ annotations }: { annotations: Annotation[] }) {
+  const { t } = useTranslation("message-bubble");
   return (
     <div className="px-3 pt-2.5 pb-1.5 border-b border-cc-border/40 bg-cc-primary/5">
       <div className="flex items-center gap-2 text-xs mb-1.5">
@@ -273,7 +274,7 @@ function AnnotationsCard({ annotations }: { annotations: Annotation[] }) {
           <path d="M12.5 2.5l1 1" strokeLinecap="round" />
         </svg>
         <span className="text-cc-primary font-medium">
-          {annotations.length} annotation{annotations.length !== 1 ? "s" : ""}
+          {t("annotations.count", { count: annotations.length })}
         </span>
       </div>
       <div className="space-y-1">
@@ -491,6 +492,7 @@ function AssistantAvatar() {
 // ─── InlineAskUserQuestion ─────────────────────────────────────────────────
 
 function InlineAskUserQuestion({ toolUseId, input }: { toolUseId: string; input: Record<string, unknown> }) {
+  const { t } = useTranslation("message-bubble");
   const perm = useStore((s) => {
     for (const p of s.pendingPermissions.values()) {
       if (p.tool_use_id === toolUseId) return p;
@@ -510,12 +512,13 @@ function InlineAskUserQuestion({ toolUseId, input }: { toolUseId: string; input:
   // Brief loading state (tool_use block arrived but permission_request not yet)
   return (
     <div className="text-xs text-cc-muted italic py-1">
-      Waiting for question...
+      {t("ask_user.waiting")}
     </div>
   );
 }
 
 function AnsweredQuestionSummary({ pairs }: { pairs: { question: string; answer: string }[] }) {
+  const { t } = useTranslation("message-bubble");
   const summaryText = pairs.map((p) => p.answer).filter(Boolean).join(", ");
   return (
     <details className="rounded-lg border border-cc-border bg-cc-card group">
@@ -523,7 +526,7 @@ function AnsweredQuestionSummary({ pairs }: { pairs: { question: string; answer:
         <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 transition-transform group-open:rotate-90 shrink-0 text-cc-muted">
           <path d="M6 4l4 4-4 4" />
         </svg>
-        <span className="text-cc-primary font-medium shrink-0">Q&A</span>
+        <span className="text-cc-primary font-medium shrink-0">{t("ask_user.qa_label")}</span>
         <span className="text-cc-fg truncate">{summaryText}</span>
       </summary>
       <div className="px-3 pb-2.5 border-t border-cc-border/50 pt-2 space-y-2.5">
@@ -542,6 +545,7 @@ function AnsweredQuestionSummary({ pairs }: { pairs: { question: string; answer:
 }
 
 function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
+  const { t } = useTranslation("message-bubble");
   const questions: Record<string, unknown>[] = Array.isArray(perm.input.questions) ? perm.input.questions : [];
   const [selections, setSelections] = useState<Record<string, string>>({});
   const [customText, setCustomText] = useState<Record<string, string>>({});
@@ -596,7 +600,7 @@ function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
     const question = typeof perm.input.question === "string" ? perm.input.question : "";
     return (
       <div className="rounded-lg border border-cc-primary/20 bg-cc-card p-3">
-        <div className="text-sm font-medium text-cc-primary mb-1">Question</div>
+        <div className="text-sm font-medium text-cc-primary mb-1">{t("ask_user.fallback_title")}</div>
         {question && <div className="text-xs text-cc-fg">{question}</div>}
       </div>
     );
@@ -670,7 +674,7 @@ function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
                     }`}>
                       {isCustom && <span className="w-2 h-2 rounded-full bg-cc-primary" />}
                     </span>
-                    <span className="text-xs font-medium text-cc-muted">Other...</span>
+                    <span className="text-xs font-medium text-cc-muted">{t("ask_user.other_option")}</span>
                   </div>
                 </button>
 
@@ -681,12 +685,12 @@ function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
                       value={customText[key] || ""}
                       onChange={(e) => handleCustomChange(i, e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleCustomSubmit(i); }}
-                      placeholder="Type your answer..."
+                      placeholder={t("ask_user.answer_placeholder")}
                       className="w-full px-2.5 py-1.5 text-xs bg-cc-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
                       autoFocus
                     />
                     {questions.length <= 1 && (
-                      <p className="mt-1 text-[10px] text-cc-muted">Press Enter to submit</p>
+                      <p className="mt-1 text-[10px] text-cc-muted">{t("ask_user.enter_hint")}</p>
                     )}
                   </div>
                 )}
@@ -703,7 +707,7 @@ function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
           disabled={submitted}
           className="px-4 py-1.5 text-xs font-medium bg-cc-primary hover:bg-cc-primary-hover text-white rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
         >
-          Submit answers
+          {t("ask_user.submit")}
         </button>
       )}
     </div>
@@ -900,6 +904,9 @@ function ToolResultBlock({
   metadata?: string;
   toolName?: string;
 }) {
+  const { t } = useTranslation("message-bubble");
+  // `toolName === "Bash"` is a comparison against the agent's tool identifier
+  // — keep the literal English here, do NOT translate.
   const isBash = toolName === "Bash";
   // 6 lines preview for every tool. Bash used to default to 20-line tail
   // because long-running commands' tail is usually the interesting bit, but
@@ -915,13 +922,16 @@ function ToolResultBlock({
     ? lines.slice(-previewLimit).join("\n")
     : lines.slice(0, previewLimit).join("\n");
   const renderedText = showFull || !hasOverflow ? text : previewText;
-  const headerLabel = metadata ?? (isError ? "Error" : isBash ? "Output" : "Result");
+  // `metadata` is a backend-supplied status string (e.g. lifted from kimi-cli's
+  // <system> wrapper) — already locale-agnostic / agent-provided; surface it
+  // verbatim. Only the fallback chrome is translated.
+  const headerLabel = metadata ?? (isError ? t("tool_result.header.error") : isBash ? t("tool_result.header.output") : t("tool_result.header.result"));
   const remaining = hasOverflow && !showFull ? lines.length - previewLimit : 0;
   const toggleLabel = showFull
-    ? (isBash ? "Show tail" : "Hide")
+    ? (isBash ? t("tool_result.show_tail") : t("tool_result.hide"))
     : remaining > 0
-      ? `Show full (+${remaining} lines)`
-      : "Show full";
+      ? t("tool_result.show_full_with_remaining", { count: remaining })
+      : t("tool_result.show_full");
 
   return (
     <div
@@ -956,6 +966,7 @@ function ToolResultBlock({
 // ─── ThinkingBlock ─────────────────────────────────────────────────────────
 
 function ThinkingBlock({ text, hasSignature = false }: { text: string; hasSignature?: boolean }) {
+  const { t } = useTranslation("message-bubble");
   const normalized = text.trim();
   const preview = normalized.replace(/\s+/g, " ").slice(0, 90);
   // Adaptive thinking (Claude Code 2.1.119+) emits `thinking: ""` with a
@@ -988,12 +999,12 @@ function ThinkingBlock({ text, hasSignature = false }: { text: string; hasSignat
             <path d="M5.3 3.8A3.5 3.5 0 004.5 6c0 1.3.7 2.1 1.4 2.8.6.6 1.1 1.1 1.1 1.7V11" strokeLinecap="round" />
           </svg>
         </span>
-        <span className="font-medium text-cc-fg">Reasoning</span>
+        <span className="font-medium text-cc-fg">{t("thinking.label")}</span>
         {isEncryptedOnly ? (
-          <span className="text-cc-muted/60 italic">hidden by Anthropic (adaptive thinking)</span>
+          <span className="text-cc-muted/60 italic">{t("thinking.encrypted")}</span>
         ) : (
           <>
-            <span className="text-cc-muted/60">{text.length} chars</span>
+            <span className="text-cc-muted/60">{t("thinking.char_count", { count: text.length })}</span>
             {!open && preview && (
               <span className="text-cc-muted truncate max-w-[55%]">{preview}</span>
             )}
@@ -1018,7 +1029,7 @@ function ThinkingBlock({ text, hasSignature = false }: { text: string; hasSignat
                   ),
                 }}
               >
-                {normalized || "No thinking text captured."}
+                {normalized || t("thinking.no_text")}
               </Markdown>
             </div>
           </div>
@@ -1158,6 +1169,7 @@ function parseContextOutput(content: string): ContextUsageData | null {
 }
 
 function ContextUsageCard({ content }: { content: string }) {
+  const { t } = useTranslation("message-bubble");
   const data = useMemo(() => parseContextOutput(content), [content]);
 
   if (!data) {
@@ -1178,16 +1190,16 @@ function ContextUsageCard({ content }: { content: string }) {
   return (
     <div className="rounded-lg border border-cc-border bg-cc-card overflow-hidden">
       <div className="px-4 pt-3 pb-2">
-        <div className="text-xs font-semibold text-cc-fg mb-0.5">Context Usage</div>
+        <div className="text-xs font-semibold text-cc-fg mb-0.5">{t("context_usage.title")}</div>
         <div className="text-xs text-cc-muted">
           {data.model && <span>{data.model} &middot; </span>}
-          {data.usedTokens} / {data.totalTokens} tokens ({data.overallPercent}%)
+          {t("context_usage.tokens_summary", { used: data.usedTokens, total: data.totalTokens, percent: data.overallPercent })}
         </div>
       </div>
 
       {coloredCategories.length > 0 && (
         <div className="px-4 pb-2">
-          <div className="flex h-2 rounded-full overflow-hidden bg-neutral-800">
+          <div className="flex h-2 rounded-full overflow-hidden bg-cc-user-bubble">
             {coloredCategories.map((cat, i) =>
               cat.percent > 0 ? (
                 <div
@@ -1208,9 +1220,9 @@ function ContextUsageCard({ content }: { content: string }) {
             <div key={i} className="flex items-center gap-2 text-xs">
               <span
                 className={`w-2 h-2 shrink-0 ${cat.type === "free"
-                  ? "rounded-full border border-neutral-500"
+                  ? "rounded-full border border-cc-muted"
                   : cat.type === "compacted"
-                    ? "rounded-sm border border-neutral-500"
+                    ? "rounded-sm border border-cc-muted"
                     : "rounded-full"
                   }`}
                 style={cat.type !== "free" && cat.type !== "compacted" ? { backgroundColor: cat.color } : undefined}
@@ -1231,22 +1243,23 @@ function ContextUsageCard({ content }: { content: string }) {
 // ─── Debug Payload ──────────────────────────────────────────────────────────
 
 function DebugPayloadButton({ payload }: { payload: NonNullable<ChatMessage["debugPayload"]> }) {
+  const { t } = useTranslation("message-bubble");
   const [open, setOpen] = useState(false);
   return (
     <div className="border-t border-cc-border/30">
       <button
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1 px-2 py-1 text-[10px] text-cc-muted hover:text-cc-fg transition-colors cursor-pointer w-full"
-        title="Debug: view CLI payload"
+        title={t("debug.payload_tooltip")}
       >
         <svg viewBox="0 0 16 16" fill="currentColor" className={`w-3 h-3 transition-transform ${open ? "rotate-90" : ""}`}>
           <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
         </svg>
-        <span>payload</span>
+        <span>{t("debug.payload_label")}</span>
       </button>
       {open && (
         <div className="px-2.5 pb-2.5 space-y-2">
-          <pre className="text-[10px] font-mono-code bg-black/30 text-cc-code-fg rounded-md px-2.5 py-2 overflow-x-auto whitespace-pre-wrap max-h-60 overflow-y-auto">
+          <pre className="text-[10px] font-mono-code bg-cc-code-bg text-cc-code-fg rounded-md px-2.5 py-2 overflow-x-auto whitespace-pre-wrap max-h-60 overflow-y-auto">
             {payload.enrichedContent}
           </pre>
           {payload.images && payload.images.length > 0 && (
@@ -1255,7 +1268,7 @@ function DebugPayloadButton({ payload }: { payload: NonNullable<ChatMessage["deb
                 <img
                   key={i}
                   src={`data:${img.media_type};base64,${img.data}`}
-                  alt={`Debug image ${i + 1}`}
+                  alt={t("debug.image_alt", { index: i + 1 })}
                   className="max-w-[200px] max-h-[120px] rounded-md border border-cc-border object-contain bg-white"
                 />
               ))}

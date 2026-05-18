@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
 import DiffViewer from "./DiffViewer.js";
@@ -15,13 +16,14 @@ function statusBadge(status: string) {
     D: "bg-red-700 text-red-100",
   };
   return (
-    <span className={`text-[10px] font-bold px-1 rounded ${colors[status] || "bg-neutral-700 text-neutral-300"}`}>
+    <span className={`text-[10px] font-bold px-1 rounded ${colors[status] || "bg-cc-user-bubble text-cc-fg/80"}`}>
       {status}
     </span>
   );
 }
 
 export default function DiffPanel() {
+  const { t } = useTranslation("diff-panel");
   const changedFilesTick = useStore((s) => s.changedFilesTick);
   const diffBase = useStore((s) => s.diffBase);
   const setDiffBase = useStore((s) => s.setDiffBase);
@@ -67,29 +69,29 @@ export default function DiffPanel() {
   return (
     <div className="flex h-full">
       {/* File list sidebar */}
-      <div className="w-56 shrink-0 border-r border-neutral-800 flex flex-col">
-        <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800">
-          <span className="text-xs font-medium text-neutral-400">
-            Changed Files ({files.length})
+      <div className="w-56 shrink-0 border-r border-cc-border flex flex-col">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-cc-border">
+          <span className="text-xs font-medium text-cc-muted">
+            {t("changed_files", { count: files.length })}
           </span>
           <button
             onClick={() => setDiffBase(diffBase === "last-commit" ? "default-branch" : "last-commit")}
-            className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 hover:text-neutral-200"
-            title={`Diff base: ${diffBase}`}
+            className="text-[10px] px-1.5 py-0.5 rounded bg-cc-user-bubble text-cc-muted hover:text-cc-fg"
+            title={t("diff_base_tooltip", { base: diffBase })}
           >
-            {diffBase === "last-commit" ? "HEAD" : "branch"}
+            {diffBase === "last-commit" ? t("head") : t("branch")}
           </button>
         </div>
         <div className="flex-1 overflow-auto">
           {files.length === 0 ? (
-            <div className="px-3 py-8 text-center text-neutral-600 text-xs">No changes</div>
+            <div className="px-3 py-8 text-center text-cc-muted/60 text-xs">{t("no_changes")}</div>
           ) : (
             files.map((f) => (
               <button
                 key={f.path}
                 onClick={() => setSelectedFile(f.path)}
-                className={`w-full text-left px-3 py-1.5 flex items-center gap-2 text-xs hover:bg-neutral-800/50 ${
-                  selectedFile === f.path ? "bg-neutral-800 text-neutral-100" : "text-neutral-400"
+                className={`w-full text-left px-3 py-1.5 flex items-center gap-2 text-xs hover:bg-cc-hover ${
+                  selectedFile === f.path ? "bg-cc-active text-cc-fg" : "text-cc-muted"
                 }`}
               >
                 {statusBadge(f.status)}
@@ -103,12 +105,12 @@ export default function DiffPanel() {
       {/* Diff content */}
       <div className="flex-1 min-w-0">
         {loading ? (
-          <div className="flex items-center justify-center h-full text-neutral-600 text-sm">Loading...</div>
+          <div className="flex items-center justify-center h-full text-cc-muted/60 text-sm">{t("loading")}</div>
         ) : selectedFile ? (
           <DiffViewer diff={diff} />
         ) : (
-          <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
-            Select a file to view diff
+          <div className="flex items-center justify-center h-full text-cc-muted/60 text-sm">
+            {t("select_a_file")}
           </div>
         )}
       </div>

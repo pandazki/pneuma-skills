@@ -1,0 +1,10 @@
+{
+  "step": "Paso {{n}}",
+  "previous_turn": "Turno anterior",
+  "next_turn": "Turno siguiente",
+  "continue_starting": "Iniciando...",
+  "continue_retry": "Reintentar ({{error}})",
+  "continue_work": "Continuar trabajo",
+  "continue_tooltip": "Cambiar al modo de edición normal y continuar el trabajo",
+  "continue_failed": "Error al continuar"
+}

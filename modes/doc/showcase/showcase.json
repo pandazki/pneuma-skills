@@ -1,22 +1,50 @@
 {
-  "tagline": "Markdown documents with live preview",
+  "tagline": {
+    "en": "Markdown documents with live preview",
+    "zh-CN": "带实时预览的 Markdown 文档",
+    "ja": "ライブプレビュー付きの Markdown ドキュメント"
+  },
   "hero": "hero.png",
   "highlights": [
     {
-      "title": "Live Split View",
-      "description": "Left panel renders your markdown in real-time — headings, code blocks, tables, and images appear as the agent writes.",
+      "title": {
+        "en": "Live Split View",
+        "zh-CN": "实时分屏视图",
+        "ja": "ライブ分割ビュー"
+      },
+      "description": {
+        "en": "Left panel renders your markdown in real-time — headings, code blocks, tables, and images appear as the agent writes.",
+        "zh-CN": "左侧面板实时渲染 Markdown —— 标题、代码块、表格、图片随代理写入即刻出现。",
+        "ja": "左パネルが Markdown をリアルタイムにレンダリング —— 見出し、コードブロック、テーブル、画像がエージェントの書き込みと同時に立ち上がる。"
+      },
       "media": "live-preview.png",
       "mediaType": "image"
     },
     {
-      "title": "Click to Select",
-      "description": "Click any paragraph, heading, or code block to tell the agent exactly what you mean by 'this section' or 'here'.",
+      "title": {
+        "en": "Click to Select",
+        "zh-CN": "点选即指明",
+        "ja": "クリックで選択"
+      },
+      "description": {
+        "en": "Click any paragraph, heading, or code block to tell the agent exactly what you mean by 'this section' or 'here'.",
+        "zh-CN": "点击任意段落、标题或代码块，让代理准确理解你说的「这一段」或「这里」。",
+        "ja": "任意の段落・見出し・コードブロックをクリックするだけで、「ここ」「この章」の指示がエージェントに正確に伝わる。"
+      },
       "media": "select-mode.png",
       "mediaType": "image"
     },
     {
-      "title": "Inline Editing",
-      "description": "Switch to Edit mode for a full markdown editor with formatting toolbar — bold, headings, code, lists, links — all auto-saved.",
+      "title": {
+        "en": "Inline Editing",
+        "zh-CN": "原位编辑",
+        "ja": "インライン編集"
+      },
+      "description": {
+        "en": "Switch to Edit mode for a full markdown editor with formatting toolbar — bold, headings, code, lists, links — all auto-saved.",
+        "zh-CN": "切到编辑模式即可拥有完整的 Markdown 编辑器与排版工具栏 —— 加粗、标题、代码、列表、链接 —— 全部自动保存。",
+        "ja": "編集モードに切り替えれば、書式ツールバー付きのフル Markdown エディタが使える —— 太字、見出し、コード、リスト、リンク —— すべて自動保存。"
+      },
       "media": "edit-mode.png",
       "mediaType": "image"
     }

@@ -1,0 +1,10 @@
+{
+  "just_now": "刚刚",
+  "minutes_ago": "{{count}} 分钟前",
+  "hours_ago": "{{count}} 小时前",
+  "days_ago": "{{count}} 天前",
+  "months_ago": "{{count}} 个月前",
+  "seconds_short": "{{count}} 秒",
+  "minutes_short": "{{count}} 分",
+  "hours_minutes_short": "{{hours}} 小时 {{minutes}} 分"
+}

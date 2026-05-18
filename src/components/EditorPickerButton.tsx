@@ -20,11 +20,50 @@
  * non-functional control.
  */
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getApiBase } from "../utils/api.js";
 
 interface DetectedEditor {
   id: string;
   displayName: string;
+}
+
+/**
+ * Editor icon with graceful fallback. Tries `/api/system/editors/:id/icon`
+ * (real `.app` icon, served via `sips` extraction); on load failure
+ * (cache miss + `plutil` unavailable, brand-new editor not yet cached,
+ * non-macOS), swaps to a generic code-bracket SVG so we never render a
+ * broken-image placeholder.
+ */
+function EditorIcon({ id, className }: { id: string; className: string }) {
+  const apiBase = getApiBase();
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={className}
+        aria-hidden
+      >
+        <polyline points="16 18 22 12 16 6" />
+        <polyline points="8 6 2 12 8 18" />
+      </svg>
+    );
+  }
+  return (
+    <img
+      src={`${apiBase}/api/system/editors/${encodeURIComponent(id)}/icon`}
+      alt=""
+      className={className}
+      draggable={false}
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 interface EditorPickerButtonProps {
@@ -48,6 +87,7 @@ export default function EditorPickerButton({
   targetPath,
   menuPosition = "above",
 }: EditorPickerButtonProps) {
+  const { t } = useTranslation("editor-picker");
   const apiBase = getApiBase();
   const [editors, setEditors] = useState<DetectedEditor[]>([]);
   const [defaultEditorId, setDefaultEditorId] = useState<string | null>(() => {
@@ -139,23 +179,18 @@ export default function EditorPickerButton({
         }}
         aria-label={
           defaultEditor
-            ? `Open in ${defaultEditor.displayName}`
-            : "Open in editor"
+            ? t("open_in_named", { name: defaultEditor.displayName })
+            : t("open_in_editor")
         }
         title={
           defaultEditor
-            ? `Open in ${defaultEditor.displayName}`
-            : "Open in editor"
+            ? t("open_in_named", { name: defaultEditor.displayName })
+            : t("open_in_editor")
         }
         className="flex items-center justify-center w-8 h-8 rounded-l-md rounded-r-none text-cc-muted hover:text-cc-fg hover:bg-cc-bg/40 transition-colors cursor-pointer"
       >
         {defaultEditor ? (
-          <img
-            src={`${apiBase}/api/system/editors/${encodeURIComponent(defaultEditor.id)}/icon`}
-            alt=""
-            className="w-5 h-5 object-contain"
-            draggable={false}
-          />
+          <EditorIcon id={defaultEditor.id} className="w-5 h-5 object-contain text-cc-muted" />
         ) : (
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -178,8 +213,8 @@ export default function EditorPickerButton({
         onClick={() => setMenuOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        aria-label="Choose editor"
-        title="Choose editor"
+        aria-label={t("choose_editor")}
+        title={t("choose_editor")}
         className={`flex items-center justify-center w-5 h-8 rounded-r-md rounded-l-none text-cc-muted hover:text-cc-fg transition-colors cursor-pointer -ml-px ${
           menuOpen ? "bg-cc-bg/60 text-cc-fg" : "hover:bg-cc-bg/40"
         }`}
@@ -200,7 +235,7 @@ export default function EditorPickerButton({
           className={`${menuClass} min-w-[200px] rounded-lg border border-cc-border bg-cc-surface shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6)] py-1 [animation:overlayFadeIn_140ms_cubic-bezier(0.16,1,0.3,1)] z-10`}
         >
           <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-cc-muted/60">
-            Open in
+            {t("open_in_header")}
           </div>
           {editors.map((e) => {
             const isDefault = e.id === defaultEditorId;
@@ -212,15 +247,10 @@ export default function EditorPickerButton({
                 onClick={() => void openInEditor(e.id)}
                 className="w-full text-left px-3 py-1.5 text-xs text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer flex items-center gap-2"
               >
-                <img
-                  src={`${apiBase}/api/system/editors/${encodeURIComponent(e.id)}/icon`}
-                  alt=""
-                  className="w-4 h-4 object-contain shrink-0"
-                  draggable={false}
-                />
+                <EditorIcon id={e.id} className="w-4 h-4 object-contain shrink-0 text-cc-muted" />
                 <span className="flex-1 truncate">{e.displayName}</span>
                 {isDefault ? (
-                  <span className="text-cc-primary text-[10px]" aria-label="default">
+                  <span className="text-cc-primary text-[10px]" aria-label={t("default_aria")}>
                     ★
                   </span>
                 ) : null}

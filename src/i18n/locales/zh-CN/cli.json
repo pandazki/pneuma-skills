@@ -1,0 +1,233 @@
+{
+  "common": {
+    "cancelled": "已取消。",
+    "goodbye": "再见！",
+    "fatal_error": "致命错误：{{message}}"
+  },
+  "pneuma": {
+    "intro": "pneuma-skills v{{version}}",
+    "version_label": "pneuma-skills v{{version}}",
+    "help": "pneuma-skills [mode] [options]\n\nModes:\n  (无参数)                     打开启动器（模式画廊）\n  webcraft                     用 Impeccable.style 做网页设计\n  slide                        HTML 演示文稿\n  doc                          Markdown 实时预览\n  draw                         Excalidraw 画布\n  illustrate                   AI 插画工坊\n  mode-maker                   用 AI 创建自定义模式\n  evolve                       启动演化智能体\n  /path/to/mode                从本地目录加载\n  github:user/repo             从 GitHub 加载\n  https://...tar.gz            从 URL 加载\n\nOptions:\n  --workspace <path>           工作区目录（默认：当前目录）\n  --port <number>              首选服务器端口\n  --backend <type>             智能体后端（{{backendList}}；默认：{{defaultBackend}}）\n  --no-open                    不自动打开浏览器\n  --no-prompt                  非交互模式\n  --skip-skill                 跳过技能安装\n  --debug                      启用调试模式\n  --dev                        强制开发模式（Vite）\n  --help, -h                   显示本帮助\n  --version, -v                显示版本号",
+    "bun_not_running": "未在 Bun 下运行。Pneuma 需要 Bun >= {{min}}",
+    "bun_too_old": "检测到 Bun {{current}}，但需要 >= {{min}}。终端相关功能可能无法使用，运行 `bun upgrade` 升级。",
+    "update": {
+      "available": "有可用更新：{{current}} → {{latest}}",
+      "prompt": "升级到最新版本？",
+      "updating": "正在升级到 pneuma-skills@{{version}}…"
+    },
+    "backend_unavailable": "{{label}} 是必需的，但当前不可用。\n{{reason}}",
+    "backend_unavailable_no_detail": "（未提供详情）",
+    "workspace_create_prompt": "工作区不存在：{{workspace}}\n  现在创建吗？",
+    "workspace_created": "已创建工作区：{{workspace}}",
+    "mode_info": "模式：{{displayName}}（{{name}}）",
+    "workspace_info": "工作区：{{workspace}}",
+    "project_session_info": "项目会话：{{sessionId}}",
+    "external_mode_loaded": "外部模式「{{name}}」已从 {{path}} 加载",
+    "resolve_failed": "无法解析模式「{{mode}}」：{{message}}",
+    "load_failed": "加载模式「{{mode}}」失败：{{message}}",
+    "mode_unsupported_backend": "模式「{{mode}}」仅支持后端：{{backends}}。当前选择的「{{backend}}」不兼容。",
+    "backend_mismatch": "工作区已绑定到后端「{{backend}}」。请用 --backend {{backend}} 启动，或删除 .pneuma/session.json 重新开始。",
+    "configuring_params": "正在配置模式参数…",
+    "loaded_init_params": "已从 .pneuma/config.json 读取初始化参数",
+    "default_init_params": "使用默认初始化参数（非交互模式）",
+    "saved_init_params": "初始化参数已保存到 .pneuma/config.json",
+    "installing_skill": "正在安装技能并准备环境…",
+    "skill_replace_prompt": "技能已存在，是否替换为最新版本？",
+    "skill_deps_incomplete": "技能依赖不完整：",
+    "skill_deps_bundled_hint": "运行前必须将技能文件一并打包进模式包。",
+    "skill_deps_fix_hint": "请修复模式包后重试。",
+    "dev_mode": "开发模式（由 Vite 提供服务）",
+    "prod_mode": "生产模式（提供已构建的资源）",
+    "compiling_viewer": "正在为生产环境编译模式视图…",
+    "using_prebuilt_viewer": "使用预构建的模式视图包",
+    "viewer_compiled": "模式视图编译完成",
+    "viewer_compile_failed": "模式视图编译失败 —— 视图可能无法加载",
+    "seeded_workspace": "已向工作区注入种子文件：{{path}}",
+    "installing_deps": "正在安装依赖…",
+    "vite_starting": "正在端口 {{port}} 启动 Vite 开发服务器…",
+    "marketplace_ready": "模式画廊 → {{url}}",
+    "ready": "就绪 → {{url}}",
+    "open_browser_failed": "无法自动打开浏览器，请访问：{{url}}",
+    "auto_starting_app": "自动启动应用：{{name}}（{{workspace}}）",
+    "replay_mode": "回放模式：{{path}}",
+    "continue_work_installing": "继续工作：正在安装技能…",
+    "continue_work_launched": "继续工作：智能体已启动，会话已激活",
+    "exporting_replay_source": "正在从以下位置导出回放数据：{{source}}",
+    "exported_replay_package": "回放包已导出：{{path}}",
+    "export_replay_failed": "从源导出回放失败：{{message}}。将跳过回放继续。",
+    "viewing_dashboard_only": "查看模式：仅展示面板，不启动智能体",
+    "resuming_session": "正在恢复会话：{{id}}",
+    "agent_session": "智能体会话：{{id}}",
+    "switching_to_edit": "切换到编辑模式：正在安装技能并启动智能体…",
+    "switching_to_viewing": "切换到查看模式：正在停止智能体…",
+    "edit_mode_launched": "编辑模式：智能体已启动",
+    "project": {
+      "usage_add": "用法：pneuma project add <path>",
+      "path_missing": "路径不存在：{{path}}",
+      "no_pneuma_data": "{{path}} 下未发现 Pneuma 数据。请在启动器中用「创建项目」对话框从头建一个。",
+      "registered_existing": "[project] 已登记现有项目「{{name}}」，位于 {{path}}",
+      "registered_synthesized": "[project] 已合成清单并登记「{{name}}」，位于 {{path}}"
+    },
+    "evolve": {
+      "no_proposals": "未找到演化提案。",
+      "proposal_count": "共 {{count}} 个提案：",
+      "no_proposals_error": "未找到提案。请先运行 `pneuma evolve`。",
+      "proposal_already_handled": "提案 {{id}} 当前状态已是 {{status}}。",
+      "apply_prompt": "应用此提案？",
+      "applied": "已应用 {{count}} 个文件。如需回滚，使用 `pneuma evolve rollback`。",
+      "apply_failed": "应用失败：{{message}}",
+      "no_applied_to_rollback": "没有已应用的提案可以回滚。",
+      "rollback_prompt": "回滚提案 {{id}}？",
+      "rolled_back": "已回滚 {{count}} 个文件。",
+      "rollback_failed": "回滚失败：{{message}}",
+      "no_mode_specified": "未指定模式，也没有找到 .pneuma/session.json。\n用法：pneuma evolve --mode <mode> --workspace <path>",
+      "default_recent_mode": "未指定 --mode；默认沿用最近一个项目会话的模式：{{mode}}",
+      "default_doc_mode": "未指定 --mode，也未发现项目会话；默认用 'doc' 完成技能初始化。",
+      "unsupported_backend": "演化模式仅支持后端：{{backends}}。当前选择的「{{backend}}」不兼容。",
+      "evolving": "正在演化 {{displayName}} 模式的技能…",
+      "project_root": "项目根目录：{{path}}"
+    },
+    "mode": {
+      "add": {
+        "usage": "用法：pneuma mode add <url|github:user/repo>",
+        "is_builtin": "「{{name}}」是内置模式，无需添加。",
+        "added": "模式「{{name}}」已添加到 {{path}}",
+        "failed": "添加模式失败：{{message}}",
+        "library_up_to_date": "合集「{{name}}」已是最新（共 {{total}} {{modesWord}}，{{activated}} 个已启用）。",
+        "library_synced": "合集「{{name}}」已同步到 {{dir}}\n  共 {{total}} {{modesWord}}（{{activated}} 个已启用）{{changes}}",
+        "library_linked": "合集「{{name}}」已链接到 {{dir}}\n  共 {{total}} {{modesWord}}（{{activated}} 个已启用）：{{modeNames}}",
+        "added_label": "新增",
+        "removed_label": "移除",
+        "updated_label": "更新"
+      },
+      "list": {
+        "none": "[mode] 未发现已发布的模式。",
+        "header": "[mode] 共 {{count}} 个已发布的模式：\n",
+        "updated_at": "更新时间：{{date}}"
+      },
+      "modes_word_one": "个模式",
+      "modes_word_many": "个模式"
+    },
+    "library": {
+      "usage": "用法：\n  pneuma library init <name> [--display \"...\"] [--description \"...\"] [--github user/repo] [--private]\n  pneuma library link <source>\n  pneuma library list\n  pneuma library sync <id>\n  pneuma library publish <mode> [--to <library-id>] [--as <new-name>] [--push]\n  pneuma library push <id>\n  pneuma library unlink <id> [--force]\n  pneuma library activate <id> <mode>\n  pneuma library deactivate <id> <mode>",
+      "unknown_subcommand": "未知的 library 子命令：{{sub}}\n{{usage}}",
+      "subcommand_none": "（无）",
+      "init": {
+        "usage": "用法：pneuma library init <name> [--display \"...\"] [--description \"...\"] [--github user/repo] [--private]",
+        "initialized": "合集「{{name}}」已初始化到 {{dir}}",
+        "pushed": "已推送到 {{url}}",
+        "github_failed": "创建 GitHub 仓库失败：{{message}}",
+        "failed": "初始化合集失败：{{message}}"
+      },
+      "link": {
+        "usage": "用法：pneuma library link <source>",
+        "is_single_mode": "该仓库是单模式而非合集，请改用 `pneuma mode add`。",
+        "failed": "链接合集失败：{{message}}"
+      },
+      "list": {
+        "none": "尚未链接任何合集。试试 `pneuma library link github:user/repo`。"
+      },
+      "sync": {
+        "usage": "用法：pneuma library sync <id>",
+        "not_linked": "合集「{{id}}」未链接。",
+        "fetch_failed": "git fetch 失败：{{message}}",
+        "checkout_failed": "git checkout 失败：{{message}}",
+        "not_library_on_disk": "磁盘上的「{{id}}」已不再是合集结构。",
+        "up_to_date": "合集「{{id}}」已是最新（共 {{total}} {{modesWord}}，{{activated}} 个已启用）。",
+        "synced": "合集「{{id}}」已同步（共 {{total}} {{modesWord}}，{{activated}} 个已启用）{{changes}}",
+        "failed": "同步合集失败：{{message}}"
+      },
+      "publish": {
+        "usage": "用法：pneuma library publish <mode> [--to <library-id>] [--as <new-name>] [--push]",
+        "mode_path_missing": "未找到模式路径：{{path}}",
+        "mode_not_found": "在 ~/.pneuma/modes/ 和内置 modes/ 中都没找到模式「{{mode}}」。",
+        "no_libraries": "尚未链接任何合集。请先运行 `pneuma library init <name>` 或 `pneuma library link <source>`。",
+        "multiple_libraries": "已链接多个合集，请通过 --to <library-id> 指定一个。可用：{{ids}}",
+        "success": "已将 {{mode}} 发布到 {{library}}，位置：{{dir}}",
+        "pushed": "已推送",
+        "failed": "发布失败：{{message}}"
+      },
+      "push": {
+        "usage": "用法：pneuma library push <id>",
+        "success": "合集「{{id}}」已推送"
+      },
+      "unlink": {
+        "usage": "用法：pneuma library unlink <id> [--force]",
+        "confirm": "取消链接合集「{{id}}」？这会删除其磁盘上的克隆。",
+        "removed": "合集「{{id}}」已移除",
+        "not_linked": "合集「{{id}}」未链接。",
+        "failed": "取消链接失败：{{message}}"
+      },
+      "activate": {
+        "usage": "用法：pneuma library {{action}} <id> <mode>",
+        "activated": "模式「{{mode}}」已在 {{library}} 中启用",
+        "deactivated": "模式「{{mode}}」已在 {{library}} 中停用"
+      }
+    },
+    "plugin": {
+      "usage": "用法：pneuma plugin <add|list|remove>",
+      "add": {
+        "usage": "用法：pneuma plugin add <path|github:user/repo|url>",
+        "invalid_github": "无效的 GitHub 标识。期望格式：github:user/repo 或 github:user/repo#branch",
+        "updating_existing": "正在更新已有插件「{{name}}」…",
+        "cloning": "正在克隆 {{url}}…",
+        "downloading": "正在下载 {{url}}…",
+        "path_missing": "路径不存在：{{path}}",
+        "invalid_no_manifest": "无效插件：{{path}} 中未找到 manifest.ts",
+        "installed": "插件「{{name}}」已安装到 {{path}}",
+        "failed": "添加插件失败：{{message}}"
+      },
+      "list": {
+        "none": "[plugin] 未发现插件。",
+        "builtin_header": "  内置插件：",
+        "external_header": "  外部插件：",
+        "enabled": "（已启用）",
+        "disabled": "（已停用）",
+        "builtin_tag": "[内置]"
+      },
+      "remove": {
+        "usage": "用法：pneuma plugin remove <name>",
+        "is_builtin": "「{{name}}」是内置插件，无法移除。你可以在设置中停用它。",
+        "not_found": "在 {{dir}} 中未找到插件「{{name}}」",
+        "removed": "插件「{{name}}」已移除。"
+      }
+    },
+    "history": {
+      "exported": "已导出 {{messages}} 条消息、{{checkpoints}} 个检查点",
+      "output": "输出：{{path}}",
+      "open_usage": "用法：pneuma history open <path-or-url>",
+      "replay_ready": "回放包已就绪：{{path}}",
+      "replay_hint": "在运行中的会话内回放：",
+      "replay_post_example": "  POST /api/replay/load with {\"path\": \"{{path}}\"}"
+    }
+  },
+  "handoff": {
+    "usage": "用法：pneuma handoff --json '<json>' | --stdin\n\n向当前活动的 Pneuma 会话发起一次结构化接力。服务器会向用户展示接力卡片；\n用户确认后，目标会话会带着该负载启动。读取的 JSON 包含以下字段：\n\n  target_mode       string   必填  模式名（如 \"webcraft\"）\n  target_session    string   可选  既有会话 id，\"auto\"，或省略\n  intent            string   必填  一句话 —— 目标会话要做什么\n  summary           string   可选  这边已完成内容的简要总结\n  suggested_files   string[] 可选  项目相对路径，按顺序\n  key_decisions     string[] 可选  传递给目标的已敲定决策\n  open_questions    string[] 可选  待目标解决的问题\n\n环境变量：\n  PNEUMA_SERVER_URL   POST 的目标地址\n  PNEUMA_SESSION_ID   源会话 id（自动注入）\n",
+    "missing_args": "error: 请传入 --json '<json>' 或 --stdin",
+    "missing_session_id": "error: 未设置 PNEUMA_SESSION_ID 环境变量（必须在会话内运行）",
+    "missing_server_url": "error: 未设置 PNEUMA_SERVER_URL 环境变量（必须在会话内运行）",
+    "empty_payload": "error: JSON 负载为空",
+    "invalid_json": "error: 无效的 JSON —— {{message}}",
+    "validation_error": "error: {{message}}",
+    "fetch_failed": "error: 无法连接到 Pneuma 服务器 {{url}}：{{message}}",
+    "server_error": "error: {{message}}",
+    "submitted": "接力已提交，等待用户确认。{{idSuffix}}",
+    "submitted_id": "（id {{id}}）"
+  },
+  "session": {
+    "refine": {
+      "usage": "用法：pneuma session refine --json '<json>' | --stdin\n\n精修当前活动会话的界面元数据，让启动器和 ProjectPanel 中的会话条目反映出\n它真正在做的事，而不是基于模式的默认值 + 第一条 `<pneuma:env>` 合成消息。\n\nJSON 负载字段（至少需要一个）：\n\n  displayName   string   ≤40 字 —— 会话的简短标题\n  description   string   ≤280 字 —— 一两句话总结\n\n当对话已经积累出足够内容、可以写出有意义的总结时，或用户明确要求重命名时，\n智能体会调用此命令。\n\n环境变量：\n  PNEUMA_SERVER_URL   POST 的目标地址\n  PNEUMA_SESSION_ID   当前会话 id（自动注入）\n",
+      "missing_args": "error: 请传入 --json '<json>' 或 --stdin",
+      "missing_session_id": "error: 未设置 PNEUMA_SESSION_ID 环境变量（必须在会话内运行）",
+      "missing_server_url": "error: 未设置 PNEUMA_SERVER_URL 环境变量（必须在会话内运行）",
+      "empty_payload": "error: JSON 负载为空",
+      "invalid_json": "error: 无效的 JSON —— {{message}}",
+      "validation_error": "error: {{message}}",
+      "fetch_failed": "error: 无法连接到 Pneuma 服务器 {{url}}：{{message}}",
+      "server_error": "error: {{message}}",
+      "success": "会话元数据已精修。{{titleSuffix}}{{descSuffix}}",
+      "success_title": " title=\"{{title}}\"",
+      "success_desc": " description=\"{{description}}\""
+    }
+  }
+}

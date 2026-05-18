@@ -1,0 +1,60 @@
+{
+  "system": {
+    "output_label": "输出"
+  },
+  "selection": {
+    "in_file": "于 {{file}}",
+    "types": {
+      "paragraph": "段落",
+      "list": "列表",
+      "code": "代码块",
+      "blockquote": "引用",
+      "image": "图片",
+      "table": "表格",
+      "text_range": "选中文本",
+      "section": "章节",
+      "link": "链接",
+      "container": "容器",
+      "interactive": "交互元素"
+    }
+  },
+  "annotations": {
+    "count_one": "{{count}} 条标注",
+    "count_other": "{{count}} 条标注"
+  },
+  "ask_user": {
+    "waiting": "等待提问…",
+    "qa_label": "问答",
+    "fallback_title": "问题",
+    "other_option": "其他…",
+    "answer_placeholder": "输入你的回答…",
+    "enter_hint": "按 Enter 提交",
+    "submit": "提交回答"
+  },
+  "thinking": {
+    "label": "推理",
+    "encrypted": "Anthropic 已隐藏（自适应思考）",
+    "char_count": "{{count}} 字",
+    "no_text": "未捕获到推理内容。"
+  },
+  "tool_result": {
+    "header": {
+      "output": "输出",
+      "error": "错误",
+      "result": "结果"
+    },
+    "show_tail": "看末尾",
+    "hide": "收起",
+    "show_full_with_remaining": "展开完整内容（还有 {{count}} 行）",
+    "show_full": "展开完整内容"
+  },
+  "context_usage": {
+    "title": "上下文用量",
+    "tokens_summary": "{{used}} / {{total}} tokens（{{percent}}%）"
+  },
+  "debug": {
+    "payload_label": "原始载荷",
+    "payload_tooltip": "调试：查看 CLI 载荷",
+    "image_alt": "调试图像 {{index}}"
+  }
+}

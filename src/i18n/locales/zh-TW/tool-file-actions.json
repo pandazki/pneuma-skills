@@ -1,0 +1,14 @@
+{
+  "open": "開啟",
+  "open_default_tooltip": "以預設應用程式開啟",
+  "editor": "編輯器",
+  "editor_main_tooltip": "在程式碼編輯器中開啟",
+  "choose_editor": "選擇編輯器",
+  "reveal": "顯示",
+  "reveal_tooltip": "在 Finder / 檔案總管中顯示",
+  "loading": "載入中…",
+  "no_editor_detected": "未偵測到程式碼編輯器",
+  "error_open": "無法開啟此檔案。",
+  "error_reveal": "無法顯示此檔案。",
+  "error_open_in_editor": "無法在編輯器中開啟。"
+}

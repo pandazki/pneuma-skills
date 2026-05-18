@@ -1,0 +1,15 @@
+{
+  "status": {
+    "completed": "completed",
+    "failed": "failed",
+    "stopped": "stopped"
+  },
+  "kill": "Kill",
+  "pid": "PID {{pid}}",
+  "background_jobs": "Background Jobs ({{count}})",
+  "dev_servers": "Dev Servers ({{count}})",
+  "scan": "Scan",
+  "scanning_short": "Scanning...",
+  "scanning_long": "Scanning for dev servers...",
+  "no_dev_servers": "No dev servers found"
+}

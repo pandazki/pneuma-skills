@@ -1,0 +1,38 @@
+{
+  "selection_types": {
+    "heading": "h{{level}}",
+    "paragraph": "단락",
+    "list": "목록",
+    "code": "코드 블록",
+    "blockquote": "인용문",
+    "image": "이미지",
+    "table": "표",
+    "text_range": "텍스트",
+    "section": "섹션",
+    "link": "링크",
+    "container": "컨테이너",
+    "interactive": "인터랙티브"
+  },
+  "annotations_label": "주석 ({{count}})",
+  "clear_all": "모두 지우기",
+  "add_comment_placeholder": "코멘트 추가...",
+  "remove_annotation": "주석 제거",
+  "clear_selection": "선택 해제",
+  "queue_label_notification": "뷰어",
+  "queue_label_user": "대기 중",
+  "remove_from_queue": "대기열에서 제거",
+  "remove_attachment": "제거",
+  "attach_file": "파일 첨부",
+  "file_button": "파일",
+  "stop": "정지",
+  "send": "전송",
+  "queue": "대기열",
+  "placeholder": {
+    "waiting": "CLI 연결을 기다리는 중...",
+    "busy": "다음 메시지를 입력하여 대기열에 추가하세요...",
+    "annotations": "메모 추가 (선택 사항)...",
+    "selection": "Claude에게 변경할 내용을 알려 주세요...",
+    "annotate_mode": "주석을 달 요소를 클릭한 뒤 전송하세요...",
+    "default": "메시지 보내기... (파일을 끌어다 놓거나, 이미지를 붙여넣거나, /를 입력해 명령어 실행)"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "open": "Abrir",
+  "open_default_tooltip": "Abrir con la app predeterminada",
+  "editor": "Editor",
+  "editor_main_tooltip": "Abrir en un editor de código",
+  "choose_editor": "Elegir editor",
+  "reveal": "Mostrar",
+  "reveal_tooltip": "Mostrar en Finder / Explorador",
+  "loading": "Cargando…",
+  "no_editor_detected": "No se detectó ningún editor de código",
+  "error_open": "No se pudo abrir el archivo.",
+  "error_reveal": "No se pudo mostrar el archivo.",
+  "error_open_in_editor": "No se pudo abrir en el editor."
+}

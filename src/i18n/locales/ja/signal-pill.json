@@ -1,0 +1,18 @@
+{
+  "opened_in_project": "{{project}} で新しい {{mode}} セッションを開きました",
+  "opened": "新しい {{mode}} セッションを開きました",
+  "switched_from": "{{from}}{{fromMode}} からここに切り替えました",
+  "handed_off": "{{fromMode}} から引き継ぎました",
+  "env_unknown": "環境シグナル:{{reason}}",
+  "request_handoff": "{{target}} へのハンドオフを要求",
+  "request_handoff_with_intent": "{{target}} へのハンドオフを要求——{{intent}}",
+  "handoff_cancelled": "ハンドオフをキャンセルしました",
+  "handoff_cancelled_with_reason": "ハンドオフをキャンセルしました——{{reason}}",
+  "default_signal": "Pneuma シグナル:{{kind}}",
+  "another_session": "別のセッション",
+  "another_mode": "別のモード",
+  "session_word": "セッション",
+  "tooltip_debug": "Pneuma シグナル(デバッグは常時オン)",
+  "tooltip_hide": "生のタグを隠す",
+  "tooltip_show": "生のタグを表示"
+}

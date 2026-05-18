@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
 
@@ -32,6 +33,7 @@ function formatDuration(ms: number): string {
 }
 
 function ProcessRow({ proc, onKill }: { proc: ProcessItem; onKill: () => void }) {
+  const { t } = useTranslation("process-panel");
   const [elapsed, setElapsed] = useState(Date.now() - proc.startedAt);
 
   useEffect(() => {
@@ -44,26 +46,32 @@ function ProcessRow({ proc, onKill }: { proc: ProcessItem; onKill: () => void })
     running: "text-amber-400",
     completed: "text-green-400",
     failed: "text-red-400",
-    stopped: "text-neutral-500",
+    stopped: "text-cc-muted",
   };
 
+  const statusLabel =
+    proc.status === "completed" ? t("status.completed")
+    : proc.status === "failed" ? t("status.failed")
+    : proc.status === "stopped" ? t("status.stopped")
+    : proc.status;
+
   return (
-    <div className="flex items-center gap-2 px-3 py-2 hover:bg-neutral-800/30 text-xs">
+    <div className="flex items-center gap-2 px-3 py-2 hover:bg-cc-hover text-xs">
       <span className={`w-2 h-2 rounded-full shrink-0 ${
         proc.status === "running" ? "bg-amber-400 animate-pulse" :
         proc.status === "completed" ? "bg-green-400" :
-        proc.status === "failed" ? "bg-red-400" : "bg-neutral-600"
+        proc.status === "failed" ? "bg-red-400" : "bg-cc-muted/60"
       }`} />
       <div className="flex-1 min-w-0">
-        <div className="text-neutral-200 truncate">{proc.description || proc.command}</div>
-        <div className="text-neutral-500 truncate font-mono">{proc.command}</div>
+        <div className="text-cc-fg truncate">{proc.description || proc.command}</div>
+        <div className="text-cc-muted truncate font-mono">{proc.command}</div>
       </div>
-      <span className={`shrink-0 ${statusColors[proc.status] || "text-neutral-500"}`}>
-        {proc.status === "running" ? formatDuration(elapsed) : proc.status}
+      <span className={`shrink-0 ${statusColors[proc.status] || "text-cc-muted"}`}>
+        {proc.status === "running" ? formatDuration(elapsed) : statusLabel}
       </span>
       {proc.status === "running" && (
         <button onClick={onKill} className="shrink-0 text-red-400 hover:text-red-300 px-1">
-          Kill
+          {t("kill")}
         </button>
       )}
     </div>
@@ -71,13 +79,14 @@ function ProcessRow({ proc, onKill }: { proc: ProcessItem; onKill: () => void })
 }
 
 function SystemProcessRow({ proc, onKill }: { proc: SystemProcess; onKill: () => void }) {
+  const { t } = useTranslation("process-panel");
   return (
-    <div className="flex items-center gap-2 px-3 py-2 hover:bg-neutral-800/30 text-xs">
+    <div className="flex items-center gap-2 px-3 py-2 hover:bg-cc-hover text-xs">
       <span className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
       <div className="flex-1 min-w-0">
-        <div className="text-neutral-200 truncate">{proc.command}</div>
-        <div className="text-neutral-500 truncate font-mono">{proc.fullCommand}</div>
-        {proc.cwd && <div className="text-neutral-600 truncate">{proc.cwd}</div>}
+        <div className="text-cc-fg truncate">{proc.command}</div>
+        <div className="text-cc-muted truncate font-mono">{proc.fullCommand}</div>
+        {proc.cwd && <div className="text-cc-muted/60 truncate">{proc.cwd}</div>}
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {proc.ports.map((p) => (
@@ -91,9 +100,9 @@ function SystemProcessRow({ proc, onKill }: { proc: SystemProcess; onKill: () =>
             :{p}
           </a>
         ))}
-        <span className="text-neutral-600">PID {proc.pid}</span>
+        <span className="text-cc-muted/60">{t("pid", { pid: proc.pid })}</span>
         <button onClick={onKill} className="text-red-400 hover:text-red-300 px-1">
-          Kill
+          {t("kill")}
         </button>
       </div>
     </div>
@@ -101,6 +110,7 @@ function SystemProcessRow({ proc, onKill }: { proc: SystemProcess; onKill: () =>
 }
 
 export default function ProcessPanel() {
+  const { t } = useTranslation("process-panel");
   const processes = useStore((s) => s.sessionProcesses);
   const [systemProcs, setSystemProcs] = useState<SystemProcess[]>([]);
   const [scanning, setScanning] = useState(false);
@@ -144,9 +154,9 @@ export default function ProcessPanel() {
     <div className="flex flex-col h-full overflow-auto">
       {/* Background Jobs (Bash with run_in_background) — only shown when non-empty */}
       {processes.length > 0 && (
-        <div className="border-b border-neutral-800">
-          <div className="px-3 py-2 text-xs font-medium text-neutral-400">
-            Background Jobs ({processes.length})
+        <div className="border-b border-cc-border">
+          <div className="px-3 py-2 text-xs font-medium text-cc-muted">
+            {t("background_jobs", { count: processes.length })}
           </div>
           {running.map((p) => (
             <ProcessRow key={p.taskId} proc={p} onKill={() => killProcess(p.taskId)} />
@@ -160,20 +170,20 @@ export default function ProcessPanel() {
       {/* Dev Servers */}
       <div>
         <div className="flex items-center justify-between px-3 py-2">
-          <span className="text-xs font-medium text-neutral-400">
-            Dev Servers ({systemProcs.length})
+          <span className="text-xs font-medium text-cc-muted">
+            {t("dev_servers", { count: systemProcs.length })}
           </span>
           <button
             onClick={scanSystemProcesses}
             disabled={scanning}
-            className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 hover:text-neutral-200"
+            className="text-[10px] px-1.5 py-0.5 rounded bg-cc-user-bubble text-cc-muted hover:text-cc-fg"
           >
-            {scanning ? "Scanning..." : "Scan"}
+            {scanning ? t("scanning_short") : t("scan")}
           </button>
         </div>
         {systemProcs.length === 0 ? (
-          <div className="px-3 py-6 text-center text-neutral-600 text-xs">
-            {scanning ? "Scanning for dev servers..." : "No dev servers found"}
+          <div className="px-3 py-6 text-center text-cc-muted/60 text-xs">
+            {scanning ? t("scanning_long") : t("no_dev_servers")}
           </div>
         ) : (
           systemProcs.map((p) => (

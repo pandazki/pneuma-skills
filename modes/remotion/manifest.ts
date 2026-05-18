@@ -8,8 +8,24 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 const remotionManifest: ModeManifest = {
   name: "remotion",
   version: "0.1.0",
-  displayName: "Remotion",
-  description: "Programmatic video creation with React — live preview with custom Player",
+  displayName: {
+    en: "Remotion",
+    "zh-CN": "Remotion",
+    "zh-TW": "Remotion",
+    ja: "Remotion",
+    ko: "Remotion",
+    es: "Remotion",
+    de: "Remotion",
+  },
+  description: {
+    en: "Programmatic video creation with React — live preview with custom Player",
+    "zh-CN": "用 React 编程式创作视频 —— 配备自定义 Player 的实时预览",
+    "zh-TW": "用 React 程式化創作影片 —— 配備自訂 Player 的即時預覽",
+    ja: "React でプログラマブルに動画を制作 —— カスタム Player によるライブプレビュー",
+    ko: "React로 프로그래밍 방식의 영상 제작 —— 커스텀 Player를 통한 실시간 미리보기",
+    es: "Creación programática de video con React —— vista previa en vivo con un Player personalizado",
+    de: "Programmatische Videoerstellung mit React —— Live-Vorschau mit benutzerdefiniertem Player",
+  },
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/><line x1="12" y1="3" x2="12" y2="21" opacity="0.3"/></svg>`,
   supportedBackends: ["claude-code"],
   inspiredBy: {

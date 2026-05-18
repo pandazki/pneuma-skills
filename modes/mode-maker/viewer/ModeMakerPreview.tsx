@@ -758,7 +758,7 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
                     Stop
                   </button>
                 </div>
-                <div className="text-[11px] text-zinc-500">Port {playState.port} &middot; PID {playState.pid}</div>
+                <div className="text-[11px] text-cc-muted">Port {playState.port} &middot; PID {playState.pid}</div>
               </div>
             ) : (
               <button
@@ -779,10 +779,10 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
                 <div className="text-xs text-emerald-400 bg-emerald-900/20 border border-emerald-800/30 rounded p-2.5">
                   Published v{publishResult.version}
                 </div>
-                <div className="flex items-center gap-1.5 bg-zinc-900/50 rounded p-2">
-                  <code className="text-[11px] text-zinc-300 truncate flex-1">{publishResult.runCommand}</code>
+                <div className="flex items-center gap-1.5 bg-cc-bg/50 rounded p-2">
+                  <code className="text-[11px] text-cc-fg/80 truncate flex-1">{publishResult.runCommand}</code>
                   <button
-                    className="text-xs text-zinc-400 hover:text-zinc-200 shrink-0 transition-colors"
+                    className="text-xs text-cc-muted hover:text-cc-fg shrink-0 transition-colors"
                     onClick={() => copyUrl(publishResult.runCommand)}
                   >
                     {copiedUrl ? "Copied" : "Copy"}
@@ -830,9 +830,9 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
       </div>
 
       {/* ── Reset footer ── */}
-      <div className="pt-2 border-t border-zinc-800">
+      <div className="pt-2 border-t border-cc-border">
         <button
-          className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
+          className="text-xs text-cc-muted hover:text-red-400 transition-colors"
           onClick={() => setShowResetConfirm(true)}
         >
           Reset to Seed Templates
@@ -976,15 +976,15 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
         onClose={() => setShowResetConfirm(false)}
         title="Reset Workspace?"
       >
-        <p className="text-sm text-zinc-300 mb-2">
+        <p className="text-sm text-cc-fg/80 mb-2">
           All files will be deleted and replaced with seed templates.
         </p>
-        <p className="text-xs text-zinc-500 mb-4">
+        <p className="text-xs text-cc-muted mb-4">
           <code>.pneuma/</code> <code>.claude/</code> <code>.git/</code> directories are preserved.
         </p>
         <div className="flex justify-end gap-2">
           <button
-            className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+            className="px-3 py-1.5 text-xs text-cc-muted hover:text-cc-fg transition-colors"
             onClick={() => setShowResetConfirm(false)}
           >
             Cancel
@@ -1056,7 +1056,7 @@ function findViewerEntryFile(files: ViewerFileContent[]): string | null {
   return null;
 }
 
-function PreviewTab({ files }: { files: ViewerFileContent[] }) {
+function PreviewTab({ files, theme }: { files: ViewerFileContent[]; theme: "light" | "dark" }) {
   const [dynViewer, setDynViewer] = useState<{ C: ComponentType<ViewerPreviewProps> } | null>(null);
   const [loadError, setLoadError] = useState("");
   const [importVersion, setImportVersion] = useState(0);
@@ -1138,12 +1138,12 @@ function PreviewTab({ files }: { files: ViewerFileContent[] }) {
   if (!viewerEntry) {
     const hasViewerFiles = files.some((f) => classifyFile(f.path) === "viewer");
     return (
-      <div className="flex flex-col items-center justify-center h-full text-zinc-500 gap-3 p-8">
+      <div className="flex flex-col items-center justify-center h-full text-cc-muted gap-3 p-8">
         <div className="text-4xl opacity-50">&#9654;&#65039;</div>
         <p className="text-center text-sm">
           {hasViewerFiles
-            ? <>Could not find viewer import in <code className="text-zinc-400">pneuma-mode.ts</code>. Ensure it imports from <code className="text-zinc-400">./viewer/...</code></>
-            : <>Create a viewer component in <code className="text-zinc-400">viewer/</code> and import it in <code className="text-zinc-400">pneuma-mode.ts</code></>
+            ? <>Could not find viewer import in <code className="text-cc-fg/80">pneuma-mode.ts</code>. Ensure it imports from <code className="text-cc-fg/80">./viewer/...</code></>
+            : <>Create a viewer component in <code className="text-cc-fg/80">viewer/</code> and import it in <code className="text-cc-fg/80">pneuma-mode.ts</code></>
           }
         </p>
       </div>
@@ -1162,15 +1162,15 @@ function PreviewTab({ files }: { files: ViewerFileContent[] }) {
           </div>
         </div>
         {viewerFile && (
-          <div className="flex-1 overflow-auto border-t border-zinc-700">
-            <div className="px-3 py-1.5 text-xs text-zinc-500 bg-zinc-800/50 border-b border-zinc-700">
+          <div className="flex-1 overflow-auto border-t border-cc-border">
+            <div className="px-3 py-1.5 text-xs text-cc-muted bg-cc-card/50 border-b border-cc-border">
               {viewerEntry} (source)
             </div>
             <CodeMirror
               value={viewerFile.content}
               readOnly
               editable={false}
-              theme="dark"
+              theme={theme}
               extensions={[javascript({ typescript: true, jsx: true })]}
               basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: false }}
               className="h-full text-sm"
@@ -1184,7 +1184,7 @@ function PreviewTab({ files }: { files: ViewerFileContent[] }) {
   // Loading state
   if (!dynViewer) {
     return (
-      <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
+      <div className="flex items-center justify-center h-full text-cc-muted text-sm">
         Loading viewer...
       </div>
     );
@@ -1201,6 +1201,8 @@ function PreviewTab({ files }: { files: ViewerFileContent[] }) {
         onSelect={() => { }}
         mode="view"
         imageVersion={0}
+        theme={theme}
+        locale="en"
       />
     </ViewerErrorBoundary>
   );
@@ -1213,10 +1215,10 @@ function SkillTab({ files }: { files: ViewerFileContent[] }) {
 
   if (!skillFile) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-zinc-500 gap-3 p-8">
+      <div className="flex flex-col items-center justify-center h-full text-cc-muted gap-3 p-8">
         <div className="text-4xl opacity-50">&#128220;</div>
         <p className="text-center text-sm">
-          No skill file yet. Create <code className="text-zinc-400">skill/SKILL.md</code> to
+          No skill file yet. Create <code className="text-cc-fg/80">skill/SKILL.md</code> to
           define the Agent's domain knowledge for this mode.
         </p>
       </div>
@@ -1255,9 +1257,10 @@ function groupFiles(files: ViewerFileContent[]): FileGroup[] {
     .map(([dir, files]) => ({ dir, files: files.sort((a, b) => a.name.localeCompare(b.name)) }));
 }
 
-function FilesTab({ files, onSelectFile }: {
+function FilesTab({ files, onSelectFile, theme }: {
   files: ViewerFileContent[];
   onSelectFile: (path: string) => void;
+  theme: "light" | "dark";
 }) {
   const [selectedFile, setSelectedFile] = useState<string>("");
   const groups = useMemo(() => groupFiles(files), [files]);
@@ -1280,19 +1283,19 @@ function FilesTab({ files, onSelectFile }: {
   return (
     <div className="flex h-full">
       {/* File tree */}
-      <div className="w-52 shrink-0 border-r border-zinc-700 overflow-auto">
+      <div className="w-52 shrink-0 border-r border-cc-border overflow-auto">
         <div className="p-2 space-y-3">
           {groups.map((group) => (
             <div key={group.dir}>
-              <div className="text-xs text-zinc-500 font-medium px-2 py-1">
+              <div className="text-xs text-cc-muted font-medium px-2 py-1">
                 {group.dir === "." ? "root" : group.dir}/
               </div>
               {group.files.map((f) => (
                 <button
                   key={f.path}
                   className={`w-full text-left text-xs px-2 py-1 rounded truncate transition-colors ${f.path === selectedFile
-                    ? "bg-zinc-600 text-zinc-100"
-                    : "text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-300"
+                    ? "bg-cc-card text-cc-fg"
+                    : "text-cc-muted hover:bg-cc-hover hover:text-cc-fg"
                     }`}
                   onClick={() => handleSelect(f.path)}
                   title={f.path}
@@ -1312,13 +1315,13 @@ function FilesTab({ files, onSelectFile }: {
             value={activeFile.content}
             readOnly
             editable={false}
-            theme="dark"
+            theme={theme}
             extensions={[getLanguageExtension(lang)].flat()}
             basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: false }}
             className="h-full text-sm"
           />
         ) : (
-          <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
+          <div className="flex items-center justify-center h-full text-cc-muted text-sm">
             Select a file to preview
           </div>
         )}
@@ -1333,6 +1336,7 @@ export default function ModeMakerPreview({
   sources,
   onSelect,
   onActiveFileChange,
+  theme,
 }: ViewerPreviewProps) {
   const filesSource = sources.files as Source<ViewerFileContent[]>;
   const { value: filesValue } = useSource(filesSource);
@@ -1384,13 +1388,13 @@ export default function ModeMakerPreview({
             <OverviewTab files={files} parsed={parsed} onSelectFile={handleSelectFile} onTabChange={setActiveTab} />
           </div>
         )}
-        {activeTab === "preview" && <PreviewTab files={files} />}
+        {activeTab === "preview" && <PreviewTab files={files} theme={theme} />}
         {activeTab === "skill" && (
           <div className="h-full overflow-auto">
             <SkillTab files={files} />
           </div>
         )}
-        {activeTab === "files" && <FilesTab files={files} onSelectFile={handleSelectFile} />}
+        {activeTab === "files" && <FilesTab files={files} onSelectFile={handleSelectFile} theme={theme} />}
       </div>
     </div>
   );

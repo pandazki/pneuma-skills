@@ -1,0 +1,14 @@
+{
+  "scheduled_task": "Geplante Aufgabe",
+  "status": {
+    "disconnected": "Verbindung getrennt",
+    "cli_disconnected": "CLI getrennt",
+    "running": "Läuft",
+    "compacting": "Wird komprimiert",
+    "idle": "Inaktiv"
+  },
+  "reconnect": "Neu verbinden",
+  "no_model": "kein Modell",
+  "empty_send_message": "Nachricht senden, um mit der Bearbeitung zu beginnen",
+  "empty_connecting": "Verbindung zu Claude wird hergestellt…"
+}

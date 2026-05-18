@@ -315,9 +315,11 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
   const modesDir = join(projectRoot, "modes");
 
   // GET /api/mode-maker/modes — list builtin + local modes available for forking
-  app.get("/api/mode-maker/modes", (c) => {
+  app.get("/api/mode-maker/modes", async (c) => {
     interface ModeEntry { name: string; displayName?: string; description?: string; icon?: string; version?: string; source: "builtin" | "local"; path?: string; fileCount: number }
     const modes: ModeEntry[] = [];
+    const { normalizeLocale, getUserLocale, detectSystemLocale } = await import("../core/locale.js");
+    const locale = normalizeLocale(c.req.query("locale")) || getUserLocale() || detectSystemLocale();
 
     // Scan builtin modes
     try {
@@ -327,7 +329,7 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
         const manifestPath = join(modesDir, entry.name, "manifest.ts");
         if (!existsSync(manifestPath)) continue;
         const content = readFileSync(manifestPath, "utf-8");
-        const parsed = parseManifestTs(content);
+        const parsed = parseManifestTs(content, locale);
         const files = listFilesRecursive(join(modesDir, entry.name));
         modes.push({
           name: entry.name,
@@ -353,7 +355,7 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
           const manifestFile = ["manifest.ts", "manifest.js"].find((f) => existsSync(join(entryPath, f)));
           if (!manifestFile) continue;
           const content = readFileSync(join(entryPath, manifestFile), "utf-8");
-          const parsed = parseManifestTs(content);
+          const parsed = parseManifestTs(content, locale);
           const files = listFilesRecursive(entryPath);
           modes.push({
             name: parsed.name || entry.name,

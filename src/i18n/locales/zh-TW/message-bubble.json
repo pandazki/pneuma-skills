@@ -1,0 +1,60 @@
+{
+  "system": {
+    "output_label": "輸出"
+  },
+  "selection": {
+    "in_file": "於 {{file}}",
+    "types": {
+      "paragraph": "段落",
+      "list": "清單",
+      "code": "程式碼區塊",
+      "blockquote": "引用",
+      "image": "圖片",
+      "table": "表格",
+      "text_range": "選取的文字",
+      "section": "區段",
+      "link": "連結",
+      "container": "容器",
+      "interactive": "互動元素"
+    }
+  },
+  "annotations": {
+    "count_one": "{{count}} 則註釋",
+    "count_other": "{{count}} 則註釋"
+  },
+  "ask_user": {
+    "waiting": "等待問題中…",
+    "qa_label": "問與答",
+    "fallback_title": "問題",
+    "other_option": "其他…",
+    "answer_placeholder": "輸入你的答案…",
+    "enter_hint": "按 Enter 送出",
+    "submit": "送出回答"
+  },
+  "thinking": {
+    "label": "推理",
+    "encrypted": "已由 Anthropic 隱藏（自適應推理）",
+    "char_count": "{{count}} 個字元",
+    "no_text": "未擷取到推理文字。"
+  },
+  "tool_result": {
+    "header": {
+      "output": "輸出",
+      "error": "錯誤",
+      "result": "結果"
+    },
+    "show_tail": "顯示結尾",
+    "hide": "收合",
+    "show_full_with_remaining": "顯示完整內容（再 +{{count}} 行）",
+    "show_full": "顯示完整內容"
+  },
+  "context_usage": {
+    "title": "上下文用量",
+    "tokens_summary": "{{used}} / {{total}} tokens（{{percent}}%）"
+  },
+  "debug": {
+    "payload_label": "payload",
+    "payload_tooltip": "Debug：檢視 CLI payload",
+    "image_alt": "除錯圖片 {{index}}"
+  }
+}

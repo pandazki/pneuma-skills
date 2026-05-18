@@ -1,22 +1,50 @@
 {
-  "tagline": "Learn from your sessions, evolve your skills",
+  "tagline": {
+    "en": "Learn from your sessions, evolve your skills",
+    "zh-CN": "从过往会话中学习，让技能持续演进",
+    "ja": "セッションから学び、スキルを進化させる"
+  },
   "hero": "hero.png",
   "highlights": [
     {
-      "title": "Session Analysis",
-      "description": "The evolution agent scans your Claude Code conversation history — across sessions and projects — to find recurring preferences and corrections.",
+      "title": {
+        "en": "Session Analysis",
+        "zh-CN": "会话分析",
+        "ja": "セッション分析"
+      },
+      "description": {
+        "en": "The evolution agent scans your Claude Code conversation history — across sessions and projects — to find recurring preferences and corrections.",
+        "zh-CN": "演进代理会扫描你跨会话、跨项目的 Claude Code 对话历史，找出反复出现的偏好与修正。",
+        "ja": "進化エージェントが Claude Code の会話履歴をセッション・プロジェクト横断でスキャンし、繰り返し現れる嗜好と修正を見つける。"
+      },
       "media": "analysis.png",
       "mediaType": "image"
     },
     {
-      "title": "Evidence-Based Proposals",
-      "description": "Every proposed change cites your actual words as evidence. Review diffs, expand quotes, and decide what fits before anything changes.",
+      "title": {
+        "en": "Evidence-Based Proposals",
+        "zh-CN": "基于证据的提案",
+        "ja": "エビデンスベースの提案"
+      },
+      "description": {
+        "en": "Every proposed change cites your actual words as evidence. Review diffs, expand quotes, and decide what fits before anything changes.",
+        "zh-CN": "每项改动都以你真实说过的话作为证据。可查看 diff、展开引用，先决定哪些合适再让变更落地。",
+        "ja": "あらゆる変更提案はあなた自身の発言を根拠として示す。差分を確認し、引用を展開し、適切かどうか判断してから反映できる。"
+      },
       "media": "proposal.png",
       "mediaType": "image"
     },
     {
-      "title": "Apply or Rollback",
-      "description": "Apply changes to your skill files with full backup. Not happy? One-click rollback restores everything. Or fork into a custom evolved mode.",
+      "title": {
+        "en": "Apply or Rollback",
+        "zh-CN": "应用或回滚",
+        "ja": "適用かロールバック"
+      },
+      "description": {
+        "en": "Apply changes to your skill files with full backup. Not happy? One-click rollback restores everything. Or fork into a custom evolved mode.",
+        "zh-CN": "将变更应用到技能文件，并自动完整备份。不满意？一键回滚即可全部还原，或叉出一个自定义的演进模式。",
+        "ja": "完全なバックアップ付きでスキルファイルに変更を適用。気に入らなければワンクリックで全復元、もしくはカスタムの進化モードとしてフォークも可能。"
+      },
       "media": "rollback.png",
       "mediaType": "image"
     }

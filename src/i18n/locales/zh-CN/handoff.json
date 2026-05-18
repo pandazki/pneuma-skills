@@ -1,0 +1,19 @@
+{
+  "dialog_aria": "待确认的接力",
+  "ready": "接力已就绪",
+  "files": "相关文件",
+  "decisions_locked": "已敲定的关键决策",
+  "open_questions": "待解决的问题",
+  "cancel_reason_placeholder": "原因？（可选）",
+  "back": "返回",
+  "cancel_handoff": "取消接力",
+  "cancelling": "取消中…",
+  "cancel": "取消",
+  "confirm_switch": "确认切换",
+  "switching": "切换中…",
+  "confirm_failed_code": "确认失败（{{code}}）",
+  "cancel_failed_code": "取消失败（{{code}}）",
+  "confirm_failed": "确认失败",
+  "cancel_failed": "取消失败",
+  "no_launch_url": "服务器未返回启动 URL"
+}

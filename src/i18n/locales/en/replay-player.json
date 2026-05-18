@@ -1,0 +1,10 @@
+{
+  "step": "Step {{n}}",
+  "previous_turn": "Previous turn",
+  "next_turn": "Next turn",
+  "continue_starting": "Starting...",
+  "continue_retry": "Retry ({{error}})",
+  "continue_work": "Continue Work",
+  "continue_tooltip": "Switch to normal editing mode and continue working",
+  "continue_failed": "Continue failed"
+}

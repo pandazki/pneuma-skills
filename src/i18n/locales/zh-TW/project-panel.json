@@ -1,0 +1,77 @@
+{
+  "dialog_label": "專案面板",
+  "sections": {
+    "recent_sessions": "最近的工作階段",
+    "start_in_any_mode": "選一個模式開始",
+    "agent": "智慧體",
+    "parameters": "參數"
+  },
+  "loading": {
+    "sessions": "載入工作階段中…",
+    "modes": "載入模式中…",
+    "parameters": "載入參數中…"
+  },
+  "empty": {
+    "no_sessions_title": "尚無工作階段",
+    "no_sessions_hint": "從右側挑一個模式，開始第一個工作階段。"
+  },
+  "session": {
+    "default_title": "{{mode}} 工作階段",
+    "starting": "正在啟動工作階段…",
+    "mode_chip_aria": "{{mode}} 模式",
+    "delete_tooltip": "刪除工作階段"
+  },
+  "favorite_aria": "收藏",
+  "mode_count_suffix": "· {{count}}",
+  "show_all": "顯示全部 {{count}} 個模式 →",
+  "show_less": "收合 ↑",
+  "actions": {
+    "delete": "刪除",
+    "cancel": "取消",
+    "confirm": "確認",
+    "delete_permanently": "永久刪除",
+    "archiving": "封存中…",
+    "deleting": "刪除中…",
+    "open_in_finder_aria": "在 Finder 中開啟專案資料夾",
+    "open_in_finder_tooltip": "在 Finder 中開啟專案資料夾",
+    "rediscover": "重新探索",
+    "rediscover_aria": "重新探索專案",
+    "rediscover_tooltip": "重新探索專案 — 針對目前的專案狀態重新執行初識流程，更新總覽、封面與任務建議",
+    "evolve": "演化專案",
+    "evolve_aria": "演化專案上下文",
+    "evolve_tooltip": "演化專案上下文 — 從本專案的工作階段中萃取出總覽與共享偏好",
+    "more_aria": "更多操作",
+    "more_tooltip": "更多操作",
+    "archive_project": "封存專案",
+    "delete_project_permanently": "永久刪除專案"
+  },
+  "confirm": {
+    "archive_question": "要封存這個專案嗎？",
+    "delete_question": "要永久刪除這個專案嗎？工作階段與 .pneuma 資料會被清除 — 其他檔案會保留。"
+  },
+  "error": {
+    "delete_failed": "刪除失敗",
+    "delete_failed_status": "刪除失敗（{{status}}）",
+    "launch_failed": "啟動失敗",
+    "launch_failed_status": "啟動失敗（{{status}}）",
+    "prepare_failed": "準備啟動失敗",
+    "archive_failed": "封存失敗",
+    "archive_failed_status": "封存失敗（{{status}}）",
+    "delete_action_failed": "刪除失敗",
+    "delete_action_failed_status": "刪除失敗（{{status}}）",
+    "tell_session_what_to_do": "告訴新工作階段要做什麼"
+  },
+  "launch_sheet": {
+    "close": "關閉",
+    "backend_unavailable": "無法使用",
+    "backend_soon": "即將推出",
+    "backend_na": "不適用",
+    "smart_handoff_label": "從目前工作階段智慧接力",
+    "smart_handoff_desc": "目前的智慧體會寫下一份帶有相關上下文的接力檔；你在對話中確認切換即可。",
+    "intent_label": "新工作階段要做什麼？",
+    "intent_placeholder": "把這份設計做成一份投影片",
+    "cancel": "取消",
+    "confirm": "確認",
+    "launching": "啟動中…"
+  }
+}

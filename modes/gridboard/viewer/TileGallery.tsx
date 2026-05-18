@@ -70,8 +70,8 @@ const panelStyle = (isOpen: boolean): CSSProperties => ({
   width: 280,
   minWidth: 280,
   height: "100%",
-  background: "rgba(24, 24, 27, 0.97)",
-  borderLeft: "1px solid #27272a",
+  background: "var(--color-cc-surface, rgba(24, 24, 27, 0.97))",
+  borderLeft: "1px solid var(--color-cc-border, #27272a)",
   display: "flex",
   flexDirection: "column",
   overflow: "hidden",
@@ -85,7 +85,7 @@ const headerStyle: CSSProperties = {
   alignItems: "center",
   justifyContent: "space-between",
   padding: "12px 14px",
-  borderBottom: "1px solid #27272a",
+  borderBottom: "1px solid var(--color-cc-border, #27272a)",
   flexShrink: 0,
 };
 
@@ -93,7 +93,7 @@ const titleStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 8,
-  color: "#fafafa",
+  color: "var(--color-cc-fg, #fafafa)",
   fontSize: 13,
   fontWeight: 600,
   letterSpacing: "0.01em",
@@ -103,7 +103,7 @@ const closeBtnStyle: CSSProperties = {
   background: "none",
   border: "none",
   cursor: "pointer",
-  color: "#71717a",
+  color: "var(--color-cc-muted, #71717a)",
   padding: 4,
   borderRadius: 4,
   display: "flex",
@@ -128,7 +128,7 @@ const createBtnStyle: CSSProperties = {
   gap: 6,
   width: "100%",
   padding: "8px 12px",
-  background: "#f97316",
+  background: "var(--color-cc-primary, #f97316)",
   border: "none",
   borderRadius: 6,
   color: "#fff",
@@ -141,7 +141,7 @@ const createBtnStyle: CSSProperties = {
 };
 
 const sectionLabelStyle: CSSProperties = {
-  color: "#52525b",
+  color: "var(--color-cc-muted, #52525b)",
   fontSize: 10,
   fontWeight: 700,
   letterSpacing: "0.08em",
@@ -156,7 +156,7 @@ const emptyStateStyle: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   gap: 8,
-  color: "#52525b",
+  color: "var(--color-cc-muted, #52525b)",
   fontSize: 12,
   textAlign: "center",
   padding: "32px 16px",
@@ -171,8 +171,8 @@ interface TileCardProps {
 
 function TileCard({ tile, onAdd }: TileCardProps) {
   const cardStyle: CSSProperties = {
-    background: "#27272a",
-    border: "1px solid #3f3f46",
+    background: "var(--color-cc-user-bubble, #27272a)",
+    border: "1px solid var(--color-cc-border, #3f3f46)",
     borderRadius: 8,
     padding: 12,
     display: "flex",
@@ -189,7 +189,7 @@ function TileCard({ tile, onAdd }: TileCardProps) {
   };
 
   const labelStyle: CSSProperties = {
-    color: "#fafafa",
+    color: "var(--color-cc-fg, #fafafa)",
     fontSize: 13,
     fontWeight: 600,
     flex: 1,
@@ -208,8 +208,8 @@ function TileCard({ tile, onAdd }: TileCardProps) {
   const disabledBadgeStyle: CSSProperties = {
     fontSize: 10,
     fontWeight: 600,
-    color: "#a1a1aa",
-    background: "#3f3f46",
+    color: "var(--color-cc-muted, #a1a1aa)",
+    background: "var(--color-cc-border, #3f3f46)",
     borderRadius: 4,
     padding: "2px 6px",
     letterSpacing: "0.05em",
@@ -219,15 +219,15 @@ function TileCard({ tile, onAdd }: TileCardProps) {
   const sizeBadgeStyle: CSSProperties = {
     fontSize: 10,
     fontWeight: 500,
-    color: "#71717a",
-    background: "#1c1c1f",
+    color: "var(--color-cc-muted, #71717a)",
+    background: "var(--color-cc-bg, #1c1c1f)",
     borderRadius: 4,
     padding: "2px 6px",
-    border: "1px solid #3f3f46",
+    border: "1px solid var(--color-cc-border, #3f3f46)",
   };
 
   const descStyle: CSSProperties = {
-    color: "#a1a1aa",
+    color: "var(--color-cc-muted, #a1a1aa)",
     fontSize: 11,
     lineHeight: 1.5,
   };
@@ -239,9 +239,9 @@ function TileCard({ tile, onAdd }: TileCardProps) {
     gap: 4,
     padding: "5px 10px",
     background: "transparent",
-    border: "1px solid #f97316",
+    border: "1px solid var(--color-cc-primary, #f97316)",
     borderRadius: 5,
-    color: "#f97316",
+    color: "var(--color-cc-primary, #f97316)",
     fontSize: 11,
     fontWeight: 600,
     cursor: "pointer",
@@ -259,7 +259,7 @@ function TileCard({ tile, onAdd }: TileCardProps) {
       {RenderFn && (
         <div style={{
           width: "100%", height: 80, borderRadius: 6, overflow: "hidden",
-          background: "#18181b", border: "1px solid #27272a",
+          background: "var(--color-cc-bg, #18181b)", border: "1px solid var(--color-cc-border, #27272a)",
           pointerEvents: "none", position: "relative",
         }}>
           <MiniPreviewBoundary>
@@ -291,12 +291,12 @@ function TileCard({ tile, onAdd }: TileCardProps) {
         style={addBtnStyle}
         onClick={() => onAdd(tile.tileId)}
         onMouseEnter={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.background = "#f97316";
+          (e.currentTarget as HTMLButtonElement).style.background = "var(--color-cc-primary, #f97316)";
           (e.currentTarget as HTMLButtonElement).style.color = "#fff";
         }}
         onMouseLeave={(e) => {
           (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-          (e.currentTarget as HTMLButtonElement).style.color = "#f97316";
+          (e.currentTarget as HTMLButtonElement).style.color = "var(--color-cc-primary, #f97316)";
         }}
       >
         <PlusIcon />
@@ -344,10 +344,10 @@ export function TileGallery({ isOpen, onClose, tiles, onAddTile, onCreateTile }:
           onClick={onClose}
           aria-label="Close gallery"
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.color = "#fafafa";
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--color-cc-fg, #fafafa)";
           }}
           onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.color = "#71717a";
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--color-cc-muted, #71717a)";
           }}
         >
           <CloseIcon />
@@ -362,10 +362,10 @@ export function TileGallery({ isOpen, onClose, tiles, onAddTile, onCreateTile }:
             style={createBtnStyle}
             onClick={() => setShowCreateInput(true)}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "#ea6c0a";
+              (e.currentTarget as HTMLButtonElement).style.background = "var(--color-cc-primary-hover, #ea6c0a)";
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "#f97316";
+              (e.currentTarget as HTMLButtonElement).style.background = "var(--color-cc-primary, #f97316)";
             }}
           >
             <PlusIcon />
@@ -374,7 +374,7 @@ export function TileGallery({ isOpen, onClose, tiles, onAddTile, onCreateTile }:
         ) : (
           <div style={{
             display: "flex", flexDirection: "column", gap: 6,
-            background: "#27272a", border: "1px solid #f97316", borderRadius: 8, padding: 10,
+            background: "var(--color-cc-user-bubble, #27272a)", border: "1px solid var(--color-cc-primary, #f97316)", borderRadius: 8, padding: 10,
           }}>
             <textarea
               ref={inputRef}
@@ -387,8 +387,8 @@ export function TileGallery({ isOpen, onClose, tiles, onAddTile, onCreateTile }:
               placeholder="Describe the tile you want..."
               rows={2}
               style={{
-                width: "100%", resize: "none", background: "#18181b", color: "#fafafa",
-                border: "1px solid #3f3f46", borderRadius: 6, padding: "8px 10px",
+                width: "100%", resize: "none", background: "var(--color-cc-bg, #18181b)", color: "var(--color-cc-fg, #fafafa)",
+                border: "1px solid var(--color-cc-border, #3f3f46)", borderRadius: 6, padding: "8px 10px",
                 fontSize: 12, lineHeight: 1.5, fontFamily: "inherit", outline: "none",
               }}
             />
@@ -396,8 +396,8 @@ export function TileGallery({ isOpen, onClose, tiles, onAddTile, onCreateTile }:
               <button
                 onClick={() => { setShowCreateInput(false); setCreateText(""); }}
                 style={{
-                  padding: "5px 10px", background: "transparent", border: "1px solid #3f3f46",
-                  borderRadius: 5, color: "#71717a", fontSize: 11, fontWeight: 500, cursor: "pointer",
+                  padding: "5px 10px", background: "transparent", border: "1px solid var(--color-cc-border, #3f3f46)",
+                  borderRadius: 5, color: "var(--color-cc-muted, #71717a)", fontSize: 11, fontWeight: 500, cursor: "pointer",
                 }}
               >
                 Cancel
@@ -406,7 +406,7 @@ export function TileGallery({ isOpen, onClose, tiles, onAddTile, onCreateTile }:
                 onClick={handleSubmitCreate}
                 disabled={!createText.trim()}
                 style={{
-                  padding: "5px 10px", background: createText.trim() ? "#f97316" : "#3f3f46",
+                  padding: "5px 10px", background: createText.trim() ? "var(--color-cc-primary, #f97316)" : "var(--color-cc-border, #3f3f46)",
                   border: "none", borderRadius: 5, color: "#fff", fontSize: 11,
                   fontWeight: 600, cursor: createText.trim() ? "pointer" : "default",
                   transition: "background 0.15s",
@@ -423,7 +423,7 @@ export function TileGallery({ isOpen, onClose, tiles, onAddTile, onCreateTile }:
           <div style={emptyStateStyle}>
             <LayoutGridIcon />
             <span>No tiles available.</span>
-            <span style={{ color: "#71717a" }}>Create one to get started!</span>
+            <span style={{ color: "var(--color-cc-muted, #71717a)" }}>Create one to get started!</span>
           </div>
         )}
 
@@ -464,7 +464,7 @@ class MiniPreviewBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#52525b", fontSize: 10 }}>
+        <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--color-cc-muted, #52525b)", fontSize: 10 }}>
           Preview unavailable
         </div>
       );

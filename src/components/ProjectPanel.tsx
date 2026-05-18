@@ -23,6 +23,7 @@
  * gets a subtle background tint + ring-1, never a side stripe.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
 import { basename, escapeXml, shortenPath } from "../utils/string.js";
@@ -100,6 +101,7 @@ interface ProjectPanelProps {
 }
 
 export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps) {
+  const { t } = useTranslation("project-panel");
   const apiBase = getApiBase();
   const activeSessionId = useStore((s) => s.session?.session_id ?? null);
   const ctx = useStore((s) => s.projectContext);
@@ -291,7 +293,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
       );
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setLaunchError(data.error ?? `Delete failed (${res.status})`);
+        setLaunchError(data.error ?? t("error.delete_failed_status", { status: res.status }));
         return;
       }
       // Drop the session locally so the row disappears immediately. The
@@ -300,7 +302,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
       setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
       setConfirmDeleteId(null);
     } catch (err) {
-      setLaunchError(err instanceof Error ? err.message : "Delete failed");
+      setLaunchError(err instanceof Error ? err.message : t("error.delete_failed"));
     } finally {
       setDeleting(false);
     }
@@ -374,10 +376,10 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
         window.location.href = data.url;
         return;
       }
-      setLaunchError(data.error ?? `Launch failed (${res.status})`);
+      setLaunchError(data.error ?? t("error.launch_failed_status", { status: res.status }));
     } catch (err) {
       console.error("[ProjectPanel] launch failed", err);
-      setLaunchError(err instanceof Error ? err.message : "Launch failed");
+      setLaunchError(err instanceof Error ? err.message : t("error.launch_failed"));
     } finally {
       setLaunching(false);
       setLaunchingId(null);
@@ -612,7 +614,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
         }
       } catch (err) {
         if (!cancelled) {
-          setSheetError(err instanceof Error ? err.message : "Failed to prepare launch");
+          setSheetError(err instanceof Error ? err.message : t("error.prepare_failed"));
         }
       } finally {
         if (!cancelled) setSheetPreparing(false);
@@ -634,7 +636,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     if (smartHandoff && canHandoff) {
       const flat = handoffIntent.replace(/\s+/g, " ").trim();
       if (!flat) {
-        setSheetError("Tell the new session what to do");
+        setSheetError(t("error.tell_session_what_to_do"));
         return;
       }
       const tag = `<pneuma:request-handoff target="${escapeXml(launchTarget.name)}" target_session="auto" intent="${escapeXml(flat)}" />`;
@@ -673,6 +675,10 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
       pendingAction === "archive" ? "/archive" : ""
     }`;
     const method = pendingAction === "archive" ? "POST" : "DELETE";
+    const failedStatusKey =
+      pendingAction === "archive" ? "error.archive_failed_status" : "error.delete_action_failed_status";
+    const failedKey =
+      pendingAction === "archive" ? "error.archive_failed" : "error.delete_action_failed";
     try {
       const res = await fetch(url, { method });
       if (res.ok) {
@@ -683,10 +689,10 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
         return;
       }
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      setActionError(data.error ?? `${verbDone} failed (${res.status})`);
+      setActionError(data.error ?? t(failedStatusKey, { status: res.status }));
     } catch (err) {
       console.error(`[ProjectPanel] ${verbDone.toLowerCase()} failed`, err);
-      setActionError(err instanceof Error ? err.message : `${verbDone} failed`);
+      setActionError(err instanceof Error ? err.message : t(failedKey));
     } finally {
       setActionRunning(false);
     }
@@ -698,7 +704,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   return (
     <div
       role="dialog"
-      aria-label="Project panel"
+      aria-label={t("dialog_label")}
       ref={wrapperRef}
       style={{ transform: wrapperShift ? `translateX(-${wrapperShift}px)` : undefined }}
       className="absolute top-full left-0 mt-2 z-[100] flex items-start gap-3 transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]"
@@ -734,9 +740,9 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
       <div className="grid grid-cols-[3fr_2fr] gap-px bg-cc-border/50 border-t border-cc-border/50">
         {/* LEFT — Sessions */}
         <div className="bg-cc-surface p-5 min-h-[200px]">
-          <h3 className={sectionHeading}>Recent sessions</h3>
+          <h3 className={sectionHeading}>{t("sections.recent_sessions")}</h3>
           {loading ? (
-            <div className="text-cc-muted/60 text-sm">Loading sessions…</div>
+            <div className="text-cc-muted/60 text-sm">{t("loading.sessions")}</div>
           ) : sortedSessions.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
               <div className="w-10 h-10 rounded-full bg-cc-primary/10 text-cc-primary/70 flex items-center justify-center mb-3">
@@ -744,9 +750,9 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                   <path d="M5 12h14M13 6l6 6-6 6" />
                 </svg>
               </div>
-              <p className="text-sm text-cc-fg/80 mb-1">No sessions yet</p>
+              <p className="text-sm text-cc-fg/80 mb-1">{t("empty.no_sessions_title")}</p>
               <p className="text-xs text-cc-muted/60 max-w-[220px] leading-relaxed">
-                Pick a mode on the right to start your first session.
+                {t("empty.no_sessions_hint")}
               </p>
             </div>
           ) : (
@@ -758,7 +764,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                 // Title fallback — never the 8-char hex as primary text.
                 const title = hasName
                   ? s.displayName!
-                  : `${modeDisplayName(s.mode)} session`;
+                  : t("session.default_title", { mode: modeDisplayName(s.mode) });
                 const modeMeta = modeByName.get(s.mode);
                 const fullThumbUrl = s.thumbnailUrl ? `${apiBase}${s.thumbnailUrl}` : undefined;
                 const inConfirm = confirmDeleteId === s.sessionId;
@@ -823,7 +829,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                           <span
                             className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-[3px] bg-cc-primary/8 text-cc-primary/70"
                             title={modeMeta?.displayName ?? s.mode}
-                            aria-label={`${modeMeta?.displayName ?? s.mode} mode`}
+                            aria-label={t("session.mode_chip_aria", { mode: modeMeta?.displayName ?? s.mode })}
                           >
                             <ModeIcon
                               svg={modeMeta?.icon}
@@ -834,7 +840,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                         {launchingId === s.sessionId ? (
                           <span className="text-xs text-cc-primary leading-snug inline-flex items-center gap-1.5">
                             <span className="w-3 h-3 border-[1.5px] border-cc-primary/30 border-t-cc-primary rounded-full animate-spin shrink-0" />
-                            Starting session…
+                            {t("session.starting")}
                           </span>
                         ) : (s.description ?? s.preview) ? (
                           <span
@@ -869,7 +875,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                               onClick={() => void deleteSession(s.sessionId)}
                               className="text-[10px] font-medium text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded transition-colors cursor-pointer disabled:opacity-50"
                             >
-                              Delete
+                              {t("actions.delete")}
                             </button>
                             <span className="w-px h-3 bg-cc-border/40" aria-hidden />
                             <button
@@ -877,14 +883,14 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                               onClick={() => setConfirmDeleteId(null)}
                               className="text-[10px] text-cc-muted hover:text-cc-fg px-1 py-0.5 rounded transition-colors cursor-pointer"
                             >
-                              Cancel
+                              {t("actions.cancel")}
                             </button>
                           </div>
                         ) : (
                           <button
                             type="button"
                             onClick={() => setConfirmDeleteId(s.sessionId)}
-                            title="Delete session"
+                            title={t("session.delete_tooltip")}
                             className="p-1.5 rounded-md text-cc-muted/40 hover:text-red-400 hover:bg-red-400/10 transition-colors cursor-pointer"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -915,9 +921,9 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
 
         {/* RIGHT — Mode picker → swaps to launch sheet when a tile is picked. */}
         <div className="bg-cc-surface p-5">
-              <h3 className={sectionHeading}>Start in any mode</h3>
+              <h3 className={sectionHeading}>{t("sections.start_in_any_mode")}</h3>
               {modes.length === 0 ? (
-                <div className="text-cc-muted/60 text-sm">Loading modes…</div>
+                <div className="text-cc-muted/60 text-sm">{t("loading.modes")}</div>
               ) : (
                 <div
                   className={
@@ -961,7 +967,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                               // for a corner anchor.
                               <span
                                 className="w-3 h-3 text-cc-primary/70 shrink-0"
-                                aria-label="Favorite"
+                                aria-label={t("favorite_aria")}
                               >
                                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                                   <path d="M12 17.27l5.18 3.73-1.64-6.81L21 9.74l-7.19-.61L12 2 10.19 9.13 3 9.74l5.46 4.45L6.82 21z" />
@@ -989,7 +995,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                       onClick={() => setShowAllModes(true)}
                       className="mt-3 w-full text-xs text-cc-muted hover:text-cc-primary transition-colors py-1.5 cursor-pointer"
                     >
-                      Show all {orderedModes.length} modes →
+                      {t("show_all", { count: orderedModes.length })}
                     </button>
                   ) : null}
                   {showAllModes && hiddenCount === 0 && orderedModes.length > DEFAULT_VISIBLE_MODE_COUNT ? (
@@ -998,7 +1004,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                       onClick={() => setShowAllModes(false)}
                       className="mt-3 w-full text-xs text-cc-muted hover:text-cc-primary transition-colors py-1.5 cursor-pointer"
                     >
-                      Show less ↑
+                      {t("show_less")}
                     </button>
                   ) : null}
                 </div>
@@ -1017,8 +1023,8 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
             <div className="flex items-center gap-3 [animation:overlayFadeIn_140ms_cubic-bezier(0.16,1,0.3,1)]">
               <span className="text-xs text-cc-muted">
                 {pendingAction === "archive"
-                  ? "Archive this project?"
-                  : "Permanently delete this project? Sessions and .pneuma data will be wiped — your other files stay."}
+                  ? t("confirm.archive_question")
+                  : t("confirm.delete_question")}
               </span>
               <button
                 type="button"
@@ -1028,7 +1034,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                 }}
                 className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
               >
-                Cancel
+                {t("actions.cancel")}
               </button>
               <button
                 type="button"
@@ -1042,11 +1048,11 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
               >
                 {actionRunning
                   ? pendingAction === "archive"
-                    ? "Archiving…"
-                    : "Deleting…"
+                    ? t("actions.archiving")
+                    : t("actions.deleting")
                   : pendingAction === "archive"
-                    ? "Confirm"
-                    : "Delete permanently"}
+                    ? t("actions.confirm")
+                    : t("actions.delete_permanently")}
               </button>
             </div>
           ) : (
@@ -1057,8 +1063,8 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
               <button
                 type="button"
                 onClick={() => void revealInFinder()}
-                aria-label="Open project folder in Finder"
-                title="Open project folder in Finder"
+                aria-label={t("actions.open_in_finder_aria")}
+                title={t("actions.open_in_finder_tooltip")}
                 className="flex items-center justify-center w-8 h-8 rounded-md text-cc-muted hover:text-cc-fg hover:bg-cc-bg/40 transition-colors cursor-pointer"
               >
                 <svg
@@ -1094,8 +1100,8 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                 type="button"
                 disabled={launching}
                 onClick={() => void launch("project-onboard")}
-                aria-label="Re-discover project"
-                title="Re-discover project — re-run onboarding against the current project state to refresh the atlas, cover, and task suggestions"
+                aria-label={t("actions.rediscover_aria")}
+                title={t("actions.rediscover_tooltip")}
                 className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md text-cc-muted hover:text-cc-primary hover:bg-cc-primary-muted transition-colors disabled:opacity-50 cursor-pointer"
               >
                 <svg
@@ -1114,7 +1120,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                 </svg>
                 <span className="grid grid-cols-[0fr] group-hover:grid-cols-[1fr] transition-[grid-template-columns] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
                   <span className="overflow-hidden whitespace-nowrap text-xs opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
-                    Re-discover
+                    {t("actions.rediscover")}
                   </span>
                 </span>
               </button>
@@ -1129,8 +1135,8 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                 type="button"
                 disabled={launching}
                 onClick={() => void launch("project-evolve")}
-                aria-label="Evolve project context"
-                title="Evolve project context — seed the atlas and shared preferences from this project's sessions"
+                aria-label={t("actions.evolve_aria")}
+                title={t("actions.evolve_tooltip")}
                 className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md text-cc-muted hover:text-cc-primary hover:bg-cc-primary-muted transition-colors disabled:opacity-50 cursor-pointer"
               >
                 <svg
@@ -1152,7 +1158,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                 </svg>
                 <span className="grid grid-cols-[0fr] group-hover:grid-cols-[1fr] transition-[grid-template-columns] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
                   <span className="overflow-hidden whitespace-nowrap text-xs opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
-                    Evolve project
+                    {t("actions.evolve")}
                   </span>
                 </span>
               </button>
@@ -1167,8 +1173,8 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                   onClick={() => setMoreMenuOpen((v) => !v)}
                   aria-haspopup="menu"
                   aria-expanded={moreMenuOpen}
-                  aria-label="More actions"
-                  title="More actions"
+                  aria-label={t("actions.more_aria")}
+                  title={t("actions.more_tooltip")}
                   className={`flex items-center justify-center w-8 h-8 rounded-md text-cc-muted hover:text-cc-fg transition-colors cursor-pointer ${
                     moreMenuOpen ? "bg-cc-bg/60 text-cc-fg" : "hover:bg-cc-bg/40"
                   }`}
@@ -1200,7 +1206,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                       }}
                       className="w-full text-left px-3 py-1.5 text-xs text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
                     >
-                      Archive project
+                      {t("actions.archive_project")}
                     </button>
                     <div className="my-1 border-t border-cc-border/40" aria-hidden />
                     <button
@@ -1213,7 +1219,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                       }}
                       className="w-full text-left px-3 py-1.5 text-xs text-cc-error/80 hover:text-cc-error hover:bg-cc-hover transition-colors cursor-pointer"
                     >
-                      Delete project permanently
+                      {t("actions.delete_project_permanently")}
                     </button>
                   </div>
                 ) : null}
@@ -1273,7 +1279,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                   setSmartHandoff(false);
                   setHandoffIntent("");
                 }}
-                title="Close"
+                title={t("launch_sheet.close")}
                 className="shrink-0 text-cc-muted/60 hover:text-cc-fg transition-colors p-1 cursor-pointer rounded"
               >
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -1285,7 +1291,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
             {backendOptions.length > 1 ? (
               <div className="flex flex-col gap-2">
                 <p className="text-[11px] uppercase tracking-wider text-cc-muted/60 font-medium">
-                  Agent
+                  {t("sections.agent")}
                 </p>
                 <div className="flex gap-2 flex-wrap">
                   {backendOptions.map((backend) => {
@@ -1296,7 +1302,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                         key={backend.type}
                         type="button"
                         disabled={unavailable}
-                        title={unavailable ? (backend.reason || "Not available") : backend.label}
+                        title={unavailable ? (backend.reason || t("launch_sheet.backend_unavailable")) : backend.label}
                         onClick={() => setSelectedBackendType(backend.type)}
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors ${
                           active && !unavailable
@@ -1310,7 +1316,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                         <span className="font-medium">{backend.label}</span>
                         {unavailable ? (
                           <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/10 text-red-400 uppercase tracking-wide leading-none">
-                            {!backend.implemented ? "Soon" : "N/A"}
+                            {!backend.implemented ? t("launch_sheet.backend_soon") : t("launch_sheet.backend_na")}
                           </span>
                         ) : null}
                       </button>
@@ -1321,11 +1327,11 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
             ) : null}
 
             {sheetPreparing ? (
-              <div className="text-xs text-cc-muted/70">Loading parameters…</div>
+              <div className="text-xs text-cc-muted/70">{t("loading.parameters")}</div>
             ) : sheetParams.length > 0 ? (
               <div className="flex flex-col gap-2 pt-1">
                 <p className="text-[11px] uppercase tracking-wider text-cc-muted/60 font-medium">
-                  Parameters
+                  {t("sections.parameters")}
                 </p>
                 <InitParamForm
                   params={sheetParams}
@@ -1349,17 +1355,16 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                     className="mt-0.5 accent-cc-primary cursor-pointer"
                   />
                   <span className="flex flex-col gap-0.5">
-                    <span>Smart handoff from current session</span>
+                    <span>{t("launch_sheet.smart_handoff_label")}</span>
                     <span className="text-[11px] text-cc-muted/70 leading-snug">
-                      The current agent writes a handoff file with relevant context;
-                      you confirm the switch in chat.
+                      {t("launch_sheet.smart_handoff_desc")}
                     </span>
                   </span>
                 </label>
                 {smartHandoff ? (
                   <div className="flex flex-col gap-1.5 pl-6 [animation:overlayFadeIn_140ms_cubic-bezier(0.16,1,0.3,1)]">
                     <label className="text-xs text-cc-muted/80">
-                      What should the new session do?
+                      {t("launch_sheet.intent_label")}
                     </label>
                     <textarea
                       value={handoffIntent}
@@ -1368,7 +1373,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                         if (sheetError) setSheetError(null);
                       }}
                       rows={2}
-                      placeholder="Take this design and turn it into a slide deck"
+                      placeholder={t("launch_sheet.intent_placeholder")}
                       className="bg-cc-input-bg border border-cc-border rounded-lg p-3 text-sm text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50 resize-none"
                     />
                   </div>
@@ -1393,7 +1398,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                 }}
                 className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
               >
-                Cancel
+                {t("launch_sheet.cancel")}
               </button>
               <button
                 type="button"
@@ -1401,7 +1406,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                 onClick={confirmLaunch}
                 className="bg-cc-primary text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-cc-primary/90 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {launching ? "Launching…" : "Confirm"}
+                {launching ? t("launch_sheet.launching") : t("launch_sheet.confirm")}
               </button>
             </div>
           </div>

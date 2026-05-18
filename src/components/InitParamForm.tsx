@@ -22,6 +22,7 @@
  * (so it can read them on submit) and re-renders on every onChange.
  */
 import { useRef } from "react";
+import { useTranslation } from "react-i18next";
 import type { InitParam } from "../../core/types/mode-manifest.js";
 
 /**
@@ -49,6 +50,7 @@ export function InitParamForm({
   onChange,
   disabled = false,
 }: InitParamFormProps) {
+  const { t } = useTranslation("init-param");
   // Keep a "user has touched displayName" flag so modeName → displayName
   // auto-population stops as soon as the user edits displayName directly.
   // Using a ref (not state) matches the original Launcher behaviour and
@@ -69,7 +71,7 @@ export function InitParamForm({
               {param.label}
               {param.autoFilled && (
                 <span className="text-cc-success/70 text-xs ml-2">
-                  from global keys
+                  {t("from_global_keys")}
                 </span>
               )}
               {param.description && !param.autoFilled && (
@@ -90,7 +92,7 @@ export function InitParamForm({
                   disabled={disabled}
                   className="text-xs text-cc-muted hover:text-cc-fg transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Clear
+                  {t("clear")}
                 </button>
               </div>
             ) : param.type === "select" && Array.isArray(param.options) ? (

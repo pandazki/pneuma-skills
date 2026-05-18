@@ -1,0 +1,18 @@
+{
+  "opened_in_project": "在 {{project}} 中新开了一个 {{mode}} 会话",
+  "opened": "新开了一个 {{mode}} 会话",
+  "switched_from": "从 {{from}}{{fromMode}} 切换过来",
+  "handed_off": "从 {{fromMode}} 接力而来",
+  "env_unknown": "环境信号：{{reason}}",
+  "request_handoff": "请求接力到 {{target}}",
+  "request_handoff_with_intent": "请求接力到 {{target}} —— {{intent}}",
+  "handoff_cancelled": "接力已取消",
+  "handoff_cancelled_with_reason": "接力已取消 —— {{reason}}",
+  "default_signal": "Pneuma 信号：{{kind}}",
+  "another_session": "另一个会话",
+  "another_mode": "另一个模式",
+  "session_word": "会话",
+  "tooltip_debug": "Pneuma 信号（调试常驻显示）",
+  "tooltip_hide": "隐藏原始标签",
+  "tooltip_show": "显示原始标签"
+}

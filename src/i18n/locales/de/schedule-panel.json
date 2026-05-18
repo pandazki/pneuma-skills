@@ -1,0 +1,14 @@
+{
+  "recurring": "wiederkehrend",
+  "one_shot": "einmalig",
+  "durable": "dauerhaft",
+  "cancel_job_tooltip": "Diese geplante Aufgabe abbrechen",
+  "cancel": "Abbrechen",
+  "scheduled_jobs": "Geplante Aufgaben ({{count}})",
+  "refresh": "Aktualisieren",
+  "backend_specific_title": "Backend-spezifische Funktion",
+  "backend_specific_body": "Geplante Aufgaben hängen derzeit von den Cron-Tools von Claude Code ab und sind für das aktive Backend nicht verfügbar.",
+  "upgrade_required": "Claude-Code-Aktualisierung erforderlich",
+  "upgrade_body": "Geplante Aufgaben erfordern Claude Code {{minVersion}}+. Aktuelle Version: {{currentVersion}}. Zum Aktualisieren <1>claude update</1> ausführen.",
+  "empty_hint": "Keine geplanten Aufgaben. Mit <1>/loop</1> im Chat wiederkehrende Aufgaben erstellen."
+}

@@ -4,8 +4,15 @@ import * as ReactDOM from "react-dom";
 import { createRoot, hydrateRoot } from "react-dom/client";
 import * as JsxRuntime from "react/jsx-runtime";
 import "./index.css";
+import { syncLocaleFromServer } from "./i18n/index.js";
+import { getApiBase } from "./utils/api.js";
 import App from "./App.js";
 import { useStore } from "./store.js";
+
+// Fire-and-forget: apply user-saved locale once the server responds.
+// Initial render uses navigator-detected locale, which avoids blank-frame
+// blocking on slow API. The first locale change after mount re-renders.
+void syncLocaleFromServer(getApiBase());
 
 // Expose React for external mode viewer bundles (loaded via importmap in production).
 // The /vendor/react-dom.js shim reads __PNEUMA_REACT_DOM__ and re-exports named

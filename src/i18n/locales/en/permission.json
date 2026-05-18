@@ -1,0 +1,5 @@
+{
+  "permission_request": "Permission Request: {{tool}}",
+  "allow": "Allow",
+  "deny": "Deny"
+}

@@ -1,0 +1,10 @@
+{
+  "just_now": "gerade eben",
+  "minutes_ago": "vor {{count}} Min.",
+  "hours_ago": "vor {{count}} Std.",
+  "days_ago": "vor {{count}} T.",
+  "months_ago": "vor {{count}} Mon.",
+  "seconds_short": "{{count}} s",
+  "minutes_short": "{{count}} Min.",
+  "hours_minutes_short": "{{hours}} Std. {{minutes}} Min."
+}

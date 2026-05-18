@@ -19,6 +19,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { installSkill } from "../skill-installer.js";
+import { resolveLocalized } from "../../core/types/mode-manifest.js";
 
 import webcraftManifest from "../../modes/webcraft/manifest.js";
 
@@ -63,8 +64,10 @@ describe("mode loading", () => {
   it("manifest exports a valid ModeManifest shape", () => {
     expect(typeof webcraftManifest.name).toBe("string");
     expect(typeof webcraftManifest.version).toBe("string");
-    expect(typeof webcraftManifest.displayName).toBe("string");
-    expect(typeof webcraftManifest.description).toBe("string");
+    // displayName / description are LocalizedString — either a plain string
+    // or a per-locale map. resolveLocalized() handles both.
+    expect(resolveLocalized(webcraftManifest.displayName)).toBeTruthy();
+    expect(resolveLocalized(webcraftManifest.description)).toBeTruthy();
     expect(webcraftManifest.skill).toBeDefined();
     expect(webcraftManifest.viewer).toBeDefined();
     expect(webcraftManifest.viewerApi).toBeDefined();
@@ -79,8 +82,8 @@ describe("manifest validation", () => {
   it("has all required top-level fields", () => {
     expect(webcraftManifest.name).toBe("webcraft");
     expect(webcraftManifest.version).toBe("1.4.1");
-    expect(webcraftManifest.displayName).toBe("WebCraft");
-    expect(webcraftManifest.description).toContain("Impeccable");
+    expect(resolveLocalized(webcraftManifest.displayName)).toBe("WebCraft");
+    expect(resolveLocalized(webcraftManifest.description)).toContain("Impeccable");
     expect(webcraftManifest.icon).toContain("<svg");
   });
 

@@ -1,0 +1,18 @@
+{
+  "session": "세션",
+  "model": "모델",
+  "backend": "백엔드",
+  "version": "버전",
+  "working_dir": "작업 디렉터리",
+  "cost": "비용",
+  "turns": "턴",
+  "lines": "줄",
+  "tasks": "작업",
+  "no_tasks": "아직 작업이 없습니다",
+  "blocked": "차단됨",
+  "mcp_servers": "MCP 서버",
+  "tools": "도구 ({{count}})",
+  "more_tools": "+{{count}}개 더...",
+  "git": "Git",
+  "no_active_session": "활성 세션 없음"
+}

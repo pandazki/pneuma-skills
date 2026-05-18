@@ -1,0 +1,306 @@
+{
+  "backends": {
+    "claude_code": {
+      "label": "Claude Code",
+      "description": "Anthropic Claude Code CLI über stdio-stream-json-Transport."
+    },
+    "codex": {
+      "label": "Codex",
+      "description": "OpenAI Codex CLI über app-server-Transport."
+    },
+    "kimi": {
+      "label": "Kimi",
+      "description": "Moonshot AI Kimi Code CLI über stdio-stream-json-Transport."
+    }
+  },
+  "header": {
+    "settings_tooltip": "Einstellungen"
+  },
+  "inspired_by_tooltip": "Inspiriert von {{name}}",
+  "inspired_by_prefix": "inspiriert von",
+  "theme_tooltip": "Design: {{preference}}",
+  "confirm_button": {
+    "cancel": "Abbrechen"
+  },
+  "featured": {
+    "launch": "Starten",
+    "explore_all": "Alle Modi entdecken"
+  },
+  "session_card": {
+    "stop": "Stoppen",
+    "replay": "Wiedergabe",
+    "remove": "Entfernen",
+    "rename": "Umbenennen",
+    "launching": "Wird gestartet…",
+    "skill_update": "Aktualisierung verfügbar",
+    "skip": "Überspringen",
+    "update": "Aktualisieren",
+    "view_changelog": "Vollständiges Änderungsprotokoll ansehen →"
+  },
+  "compact_session": {
+    "rename": "Umbenennen",
+    "replay": "Wiedergabe",
+    "remove": "Entfernen",
+    "launching": "Wird gestartet…",
+    "whats_new": "Neuigkeiten",
+    "whats_new_in": "Neu in v{{version}}",
+    "skip": "Überspringen",
+    "update": "Aktualisieren",
+    "view_changelog": "Vollständiges Änderungsprotokoll ansehen →"
+  },
+  "all_sessions": {
+    "title": "Alle Sitzungen",
+    "search_placeholder": "Sitzungen suchen…",
+    "count_filtered": "{{filtered}} / {{total}} Sitzungen",
+    "count_total": "{{count}} Sitzungen",
+    "running": "Läuft",
+    "recent": "Zuletzt",
+    "no_match": "Keine passenden Sitzungen.",
+    "no_sessions": "Noch keine Sitzungen."
+  },
+  "quick_start_tile": {
+    "favorite_aria": "Favorit",
+    "from_library": "Aus Bibliothek: {{name}}"
+  },
+  "mode_maker_hero": {
+    "title": "Mode Maker",
+    "description": "Eigene Pneuma-Modi bauen, testen und veröffentlichen — oder einen vorhandenen forken und anpassen.",
+    "cta": "Erstellen"
+  },
+  "gallery": {
+    "title": "Modus-Galerie",
+    "search_placeholder": "Suchen…",
+    "clear_search": "Suche leeren",
+    "group_builtin": "Integriert",
+    "group_local": "Lokal",
+    "group_published": "Veröffentlicht",
+    "group_libraries": "Bibliotheken",
+    "add_from_url": "Aus URL hinzufügen",
+    "add_from_url_tooltip": "Modus aus einer URL oder github:user/repo installieren",
+    "add_library": "Bibliothek hinzufügen",
+    "add_library_tooltip": "GitHub-Repo mit einem oder mehreren Pneuma-Modi verknüpfen",
+    "no_local_modes_hint": "Noch keine lokalen Modi — eine .tar.gz-URL oder <code>github:user/repo</code> oben einfügen.",
+    "no_libraries_hint": "Noch keine Bibliotheken verknüpft — eine <code>github:user/repo</code> oben einfügen, um eine Mehrfach-Modus-Sammlung zu installieren.",
+    "no_modes_match": "Keine Modi entsprechen Ihrer Suche."
+  },
+  "library_group": {
+    "sync": "Synchronisieren",
+    "syncing": "Wird synchronisiert…",
+    "sync_tooltip": "Von Quelle aktualisieren",
+    "publish": "Veröffentlichen",
+    "publish_tooltip": "Einen lokalen Modus in diese Bibliothek kopieren",
+    "confirm": "Bestätigen",
+    "cancel": "Abbrechen",
+    "unlink": "Trennen",
+    "unlink_tooltip": "Diese Bibliothek entfernen",
+    "synced_at": "synchronisiert {{when}}",
+    "sync_failed": "Synchronisierung fehlgeschlagen",
+    "unlink_failed": "Trennen fehlgeschlagen",
+    "toggle_failed": "Umschalten fehlgeschlagen",
+    "all_inactive": "Alle Modi in dieser Bibliothek sind inaktiv. Aktivieren Sie unten einen, um ihn zu starten.",
+    "library_empty": "Diese Bibliothek ist leer. Veröffentlichen Sie einen Modus aus einer lokalen Installation in sie.",
+    "inactive_one": "{{count}} inaktiver Modus",
+    "inactive_other": "{{count}} inaktive Modi",
+    "activate": "Aktivieren"
+  },
+  "gallery_card": {
+    "unpin_tooltip": "Aus Schnellstart lösen",
+    "pin_tooltip": "An Schnellstart anheften",
+    "unpin_aria": "Aus Favoriten entfernen",
+    "pin_aria": "Zu Favoriten hinzufügen",
+    "evolve_tooltip": "Skill weiterentwickeln",
+    "edit_tooltip": "In Mode Maker bearbeiten",
+    "delete": "Löschen",
+    "launch": "Starten",
+    "from_library": "Aus {{name}}",
+    "synced_at": "synchronisiert {{when}}"
+  },
+  "launch_dialog": {
+    "workspace_label": "Arbeitsbereichspfad",
+    "browse_tooltip": "Verzeichnisse durchsuchen",
+    "select_workspace_title": "Arbeitsbereich auswählen",
+    "session_name_label": "Sitzungsname",
+    "loading_config": "Konfiguration wird geladen…",
+    "agent_label": "Agent",
+    "agent_unavailable": "Nicht verfügbar",
+    "agent_soon": "Bald",
+    "agent_na": "N/V",
+    "existing_session_hint": "Vorhandener Arbeitsbereich — {{backend}}-Sitzung wird fortgesetzt",
+    "parameters": "Parameter",
+    "parameters_readonly": "(schreibgeschützt)",
+    "prepare_failed": "Vorbereitung des Starts fehlgeschlagen",
+    "launch_failed": "Start fehlgeschlagen",
+    "cancel": "Abbrechen",
+    "launch": "Starten",
+    "launching": "Wird gestartet…"
+  },
+  "settings_panel": {
+    "title": "Einstellungen"
+  },
+  "backends_section": {
+    "title": "Backends",
+    "ready": "Bereit",
+    "not_found": "Nicht gefunden"
+  },
+  "api_keys": {
+    "title": "API-Schlüssel",
+    "add": "+ Hinzufügen",
+    "description": "Schlüssel werden lokal auf Ihrem Rechner gespeichert (verschlüsselt). Wenn ein Projekt einen passenden Schlüsselnamen benötigt, wird er automatisch importiert.",
+    "empty": "Noch keine Schlüssel konfiguriert.",
+    "remove": "Entfernen",
+    "name_placeholder": "Schlüsselname (z. B. OPENROUTER_API_KEY)",
+    "value_placeholder": "Wert",
+    "save": "Speichern",
+    "cancel": "Abbrechen"
+  },
+  "cloud_storage": {
+    "title": "Cloud-Speicher",
+    "edit": "Bearbeiten",
+    "description": "Cloudflare R2-Speicher für Teilen und Snapshots. Sie verwalten Ihren eigenen Bucket — Ihre Daten bleiben unter Ihrer Kontrolle.",
+    "connected": "Verbunden",
+    "bucket": "Bucket: {{name}}",
+    "url": "URL: {{url}}",
+    "setup_hint": "Erstellen Sie unter <span>dash.cloudflare.com</span> einen Cloudflare-R2-Bucket mit öffentlichem Zugriff und geben Sie unten die Zugangsdaten ein.",
+    "account_id": "Account-ID",
+    "access_key_id": "Access Key ID",
+    "secret_access_key": "Secret Access Key",
+    "bucket_name": "Bucket-Name",
+    "public_url": "Öffentliche URL (z. B. https://pub-xxx.r2.dev)",
+    "save": "Speichern",
+    "saving": "Wird gespeichert…",
+    "cancel": "Abbrechen"
+  },
+  "plugin_card": {
+    "builtin_label": "(Integriert)",
+    "cli_connected": "CLI verbunden",
+    "token_connected": "Token verbunden",
+    "connected_as": " als {{user}}",
+    "not_connected": "Nicht verbunden — CLI installieren oder unten Token konfigurieren",
+    "select_placeholder": "Auswählen…",
+    "save": "Speichern",
+    "saving": "Wird gespeichert…"
+  },
+  "plugins": {
+    "title": "Plugins",
+    "description": "Installierte Plugins verwalten. Plugins aktivieren oder deaktivieren und ihre Einstellungen konfigurieren."
+  },
+  "copy_snippet": {
+    "copy": "Kopieren",
+    "copied": "Kopiert"
+  },
+  "github": {
+    "title": "GitHub",
+    "description": "Erforderlich zum Erstellen, Synchronisieren und Veröffentlichen von Modus-Bibliotheken auf GitHub.",
+    "checking": "gh-Status wird geprüft…",
+    "not_installed": "GitHub CLI nicht installiert",
+    "installed_not_signed_in": "Installiert{{version}} · Nicht angemeldet",
+    "signed_in_as": "Angemeldet als <bold>@{{username}}</bold>",
+    "version_suffix": " · gh {{version}}"
+  },
+  "add_library_dialog": {
+    "title": "Modus-Bibliothek hinzufügen",
+    "description": "Ein Mehrfach-Modus-GitHub-Repo verknüpfen oder lokal eine neue Bibliothek anlegen und optional veröffentlichen.",
+    "tab_link": "Vorhandene verknüpfen",
+    "tab_create": "Neu erstellen",
+    "linked_single": "Einzel-Modus-Repo verknüpft. Es erscheint unter Lokale Modi.",
+    "linked_library": "Bibliothek verknüpft. Modi unten in der Karte aktivieren.",
+    "open_on_github": "Auf GitHub öffnen →",
+    "specifier_label": "Bezeichner",
+    "specifier_placeholder": "github:user/repo  oder  https://.../repo.tar.gz",
+    "specifier_hint": "Ein Repo mit einer <code>pneuma.library.json</code> im Stammverzeichnis (oder N Modus-Verzeichnissen) wird als Mehrfach-Modus-Bibliothek installiert; ansonsten wird auf eine Einzel-Modus-Installation zurückgegriffen.",
+    "name_label": "Bibliotheksname (Slug)",
+    "name_placeholder": "my-modes",
+    "display_name_label": "Anzeigename (optional)",
+    "display_name_placeholder": "Meine Modi",
+    "description_label": "Beschreibung (optional)",
+    "description_placeholder": "Eine Sammlung von Pneuma-Modi für…",
+    "create_on_github": "Auf GitHub erstellen (benötigt <code>gh</code>-Authentifizierung)",
+    "repo_name_label": "Repo-Name",
+    "visibility_label": "Sichtbarkeit",
+    "visibility_private": "privat",
+    "visibility_public": "öffentlich",
+    "link_failed": "Verknüpfen fehlgeschlagen",
+    "create_failed": "Erstellen fehlgeschlagen",
+    "close": "Schließen",
+    "cancel": "Abbrechen",
+    "link": "Verknüpfen",
+    "create": "Erstellen",
+    "working": "…"
+  },
+  "publish_dialog": {
+    "title": "In {{library}} veröffentlichen",
+    "description": "Einen installierten lokalen Modus in diese Bibliothek kopieren und für den Commit vorbereiten.",
+    "published": "Veröffentlicht.",
+    "pushed": " Per Push auf GitHub übertragen.",
+    "not_pushed": " (Nicht übertragen.)",
+    "source_mode_label": "Quell-Modus",
+    "no_eligible_modes": "Keine geeigneten lokalen Modi. Zuerst einen Modus installieren (oder mit Mode Maker erstellen).",
+    "pick_a_mode": "— Modus auswählen —",
+    "mode_option": "{{displayName}} ({{name}})",
+    "name_override_label": "Name überschreiben (optional)",
+    "name_override_placeholder": "(Quellnamen verwenden)",
+    "push_after_commit": "Nach dem Commit per Push auf GitHub übertragen",
+    "publish_failed": "Veröffentlichen fehlgeschlagen",
+    "close": "Schließen",
+    "cancel": "Abbrechen",
+    "publish": "Veröffentlichen",
+    "working": "…"
+  },
+  "import_dialog": {
+    "title_mode": "Modus hinzufügen",
+    "title_session": "Sitzung importieren",
+    "description_mode": "Einen Modus aus einer URL (.tar.gz) oder github:user/repo installieren. Installierte Modi erscheinen unter Lokal.",
+    "description_session": "Eine Teilen-URL einfügen oder ein lokales Archiv (.tar.gz) auswählen.",
+    "tab_session": "Sitzung",
+    "tab_mode": "Modus",
+    "url_placeholder_session": "https://…",
+    "url_placeholder_mode": "https://.../mode.tar.gz  oder  github:user/repo",
+    "or": "oder",
+    "local_file": "Lokale Datei",
+    "workspace_label": "Arbeitsbereichsverzeichnis (optional)",
+    "workspace_placeholder": "~/pneuma-projects/my-project",
+    "install_hint": "Herunterladen + Entpacken nach <code>~/.pneuma/modes/</code>.",
+    "cancel": "Abbrechen",
+    "import": "Importieren",
+    "install": "Installieren",
+    "importing": "Wird importiert…",
+    "installing": "Wird installiert…",
+    "import_failed": "Import fehlgeschlagen",
+    "install_failed": "Installation fehlgeschlagen",
+    "imported_success": "Erfolgreich importiert!",
+    "installed_success": "\"{{name}}\" ({{version}}) installiert.",
+    "process_share_hint": "Dieser Share enthält den Erstellungsprozess mit Chatverlauf und Checkpoints.",
+    "close": "Schließen",
+    "continue_working": "Weiterarbeiten",
+    "replay": "Wiedergabe",
+    "open": "Öffnen",
+    "launch": "Starten",
+    "try_again": "Erneut versuchen"
+  },
+  "main": {
+    "settings_tooltip": "Einstellungen",
+    "my_apps": "Meine Apps",
+    "my_apps_running": "Läuft",
+    "recent_projects": "Zuletzt geöffnete Projekte",
+    "hide_archived": "Archivierte ausblenden",
+    "show_archived": "Archiviert ({{count}})",
+    "create_project": "+ Projekt erstellen",
+    "no_projects": "Noch keine Projekte.",
+    "all_projects_count": "Alle Projekte ({{count}})",
+    "archived_count": "Archiviert ({{count}})",
+    "continue_title": "Fortsetzen",
+    "import": "Importieren",
+    "all_sessions_count": "Alle Sitzungen ({{count}})",
+    "create_new": "Neu erstellen",
+    "create_new_subtitle": "Neuen Arbeitsbereich starten",
+    "all_modes_count": "Alle Modi ({{count}})",
+    "mode_maker_title": "Mode Maker",
+    "edit_prefix": "Bearbeiten: {{name}}",
+    "evolve_prefix": "Weiterentwickeln: {{name}}"
+  },
+  "backend_unavailable": {
+    "unknown": "Unbekanntes Backend \"{{type}}\"",
+    "coming_soon": "Bald verfügbar",
+    "not_available": "Nicht verfügbar"
+  }
+}

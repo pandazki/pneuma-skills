@@ -82,7 +82,7 @@ export default function DiffViewer({ diff }: { diff: string }) {
 
   if (!diff.trim()) {
     return (
-      <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
+      <div className="flex items-center justify-center h-full text-cc-muted/60 text-sm">
         No changes
       </div>
     );
@@ -90,7 +90,7 @@ export default function DiffViewer({ diff }: { diff: string }) {
 
   if (diff.includes("Binary files") && diff.includes("differ")) {
     return (
-      <div className="flex items-center justify-center h-full text-neutral-500 text-sm">
+      <div className="flex items-center justify-center h-full text-cc-muted text-sm">
         Binary file — diff not available
       </div>
     );
@@ -101,7 +101,7 @@ export default function DiffViewer({ diff }: { diff: string }) {
       {lines.map((line, i) => {
         if (line.type === "hunk-header") {
           return (
-            <div key={i} className="px-3 py-1 bg-blue-900/20 text-blue-400 border-y border-neutral-800 select-none">
+            <div key={i} className="px-3 py-1 bg-blue-900/20 text-blue-400 border-y border-cc-border select-none">
               {line.content}
             </div>
           );
@@ -117,17 +117,17 @@ export default function DiffViewer({ diff }: { diff: string }) {
             ? "text-green-300"
             : line.type === "del"
               ? "text-red-300"
-              : "text-neutral-400";
+              : "text-cc-fg/80";
 
         return (
           <div key={i} className={`flex ${bg} hover:brightness-125`}>
-            <span className="w-12 shrink-0 text-right pr-2 text-neutral-600 select-none border-r border-neutral-800">
+            <span className="w-12 shrink-0 text-right pr-2 text-cc-muted/60 select-none border-r border-cc-border">
               {line.oldNum ?? ""}
             </span>
-            <span className="w-12 shrink-0 text-right pr-2 text-neutral-600 select-none border-r border-neutral-800">
+            <span className="w-12 shrink-0 text-right pr-2 text-cc-muted/60 select-none border-r border-cc-border">
               {line.newNum ?? ""}
             </span>
-            <span className="w-5 shrink-0 text-center select-none text-neutral-600">
+            <span className="w-5 shrink-0 text-center select-none text-cc-muted/60">
               {line.type === "add" ? "+" : line.type === "del" ? "-" : " "}
             </span>
             <span className={`flex-1 pr-4 whitespace-pre ${textColor}`}>

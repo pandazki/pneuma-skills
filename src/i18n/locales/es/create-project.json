@@ -1,0 +1,30 @@
+{
+  "title": "Crear proyecto",
+  "root_label": "Ruta raíz del proyecto (debe existir o poder crearse)",
+  "root_placeholder": "/Users/x/Code/mi-proyecto",
+  "browse_directories": "Explorar directorios",
+  "select_project_root": "Seleccionar raíz del proyecto",
+  "display_name_label": "Nombre visible",
+  "display_name_placeholder_fallback": "Mi proyecto",
+  "description_label": "Descripción (opcional)",
+  "import": {
+    "header": "Inicializar desde sesiones existentes",
+    "optional_suffix": "(opcional)",
+    "selected_count": "{{count}} seleccionadas",
+    "empty": "No hay sesiones rápidas para importar."
+  },
+  "actions": {
+    "cancel": "Cancelar",
+    "creating": "Creando…",
+    "create_and_discover": "Crear y descubrir",
+    "more_options": "Más opciones de creación",
+    "create_without_discovery": "Crear sin descubrimiento",
+    "create_without_discovery_desc": "Omite la introducción automática; configura las sesiones manualmente."
+  },
+  "defaults": {
+    "untitled": "Sin título"
+  },
+  "error": {
+    "create_failed": "falló la creación ({{status}})"
+  }
+}

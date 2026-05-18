@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, lazy, Suspense } from "react";
+import { useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
 import ContentSetSelector from "./ContentSetSelector.js";
@@ -12,6 +13,7 @@ const desktop = (window as any).pneumaDesktop as {
 } | undefined;
 
 function EditingToggle() {
+  const { t } = useTranslation("topbar");
   const editingSupported = useStore((s) => s.editingSupported);
   const editing = useStore((s) => s.editing);
   const setEditing = useStore((s) => s.setEditing);
@@ -55,7 +57,7 @@ function EditingToggle() {
         <button
           onClick={() => setShowSettings((v) => !v)}
           className="w-6 h-6 rounded-md flex items-center justify-center text-cc-muted/50 hover:text-cc-primary hover:bg-cc-primary/10 transition-colors cursor-pointer"
-          title="App settings"
+          title={t("settings_tooltip")}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3" />
@@ -68,7 +70,7 @@ function EditingToggle() {
           onClick={() => switchTo(!editing)}
           disabled={switching}
           className="h-6 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-medium text-cc-muted/60 hover:text-cc-primary hover:bg-cc-primary/10 transition-colors cursor-pointer disabled:opacity-50"
-          title={editing ? "Switch to viewing" : "Switch to editing"}
+          title={editing ? t("switch_to_viewing") : t("switch_to_editing")}
         >
           {switching ? (
             <div className="w-3 h-3 border-[1.5px] border-cc-primary/30 border-t-cc-primary rounded-full animate-spin" />
@@ -82,7 +84,7 @@ function EditingToggle() {
               <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
             </svg>
           )}
-          {editing ? "View" : "Edit"}
+          {editing ? t("view_button_view") : t("view_button_edit")}
         </button>
         {showSettings && (
           <Suspense fallback={null}>
@@ -95,6 +97,7 @@ function EditingToggle() {
 }
 
 function ShareDropdown() {
+  const { t } = useTranslation("topbar");
   const [open, setOpen] = useState(false);
   const [r2Status, setR2Status] = useState<{ configured: boolean; publicUrl: string | null } | null>(null);
   const [shareStatus, setShareStatus] = useState<"idle" | "sharing" | "done" | "error">("idle");
@@ -129,14 +132,14 @@ function ShareDropdown() {
       const resp = await fetch(`${getApiBase()}/api/share/${type}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: `Shared ${type}` }),
+        body: JSON.stringify({ title: t(`share.${type}`) }),
       });
       const data = await resp.json();
       if (data.error) throw new Error(data.error);
       setShareUrl(data.url);
       setShareStatus("done");
     } catch (err: any) {
-      setShareError(err.message || "Share failed");
+      setShareError(err.message || t("share.share_failed"));
       setShareStatus("error");
     }
   };
@@ -154,7 +157,7 @@ function ShareDropdown() {
       setShareUrl(data.outputPath);
       setShareStatus("done");
     } catch (err: any) {
-      setShareError(err.message || "Export failed");
+      setShareError(err.message || t("share.export_failed"));
       setShareStatus("error");
     }
   };
@@ -173,7 +176,7 @@ function ShareDropdown() {
     <div className="relative shrink-0" ref={dropdownRef}>
       <button
         onClick={() => { setOpen(!open); if (!open) reset(); }}
-        title="Share"
+        title={t("share.tooltip")}
         className="flex items-center justify-center w-7 h-7 rounded text-cc-muted hover:text-cc-primary hover:bg-cc-hover transition-colors cursor-pointer"
       >
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
@@ -187,7 +190,7 @@ function ShareDropdown() {
       {open && (
         <div className="absolute right-0 top-full mt-1 w-72 rounded-lg border border-cc-border bg-cc-surface shadow-xl z-[100] overflow-hidden">
           <div className="px-3 py-2 border-b border-cc-border">
-            <div className="text-xs font-semibold text-cc-fg">Share</div>
+            <div className="text-xs font-semibold text-cc-fg">{t("share.title")}</div>
           </div>
 
           {shareStatus === "idle" && (
@@ -198,35 +201,35 @@ function ShareDropdown() {
                     onClick={() => handleShare("result")}
                     className="w-full px-3 py-2.5 text-left rounded hover:bg-cc-hover transition-colors group"
                   >
-                    <div className="text-xs font-medium text-cc-fg group-hover:text-cc-primary">Share Result</div>
-                    <div className="text-[10px] text-cc-muted mt-0.5">Upload current files (no history)</div>
+                    <div className="text-xs font-medium text-cc-fg group-hover:text-cc-primary">{t("share.result")}</div>
+                    <div className="text-[10px] text-cc-muted mt-0.5">{t("share.result_desc")}</div>
                   </button>
                   <button
                     onClick={() => handleShare("process")}
                     className="w-full px-3 py-2.5 text-left rounded hover:bg-cc-hover transition-colors group"
                   >
-                    <div className="text-xs font-medium text-cc-fg group-hover:text-cc-primary">Share Process</div>
-                    <div className="text-[10px] text-cc-muted mt-0.5">Upload with chat history & checkpoints</div>
+                    <div className="text-xs font-medium text-cc-fg group-hover:text-cc-primary">{t("share.process")}</div>
+                    <div className="text-[10px] text-cc-muted mt-0.5">{t("share.process_desc")}</div>
                   </button>
                   <div className="border-t border-cc-border my-1" />
                   <button
                     onClick={handleExportLocal}
                     className="w-full px-3 py-2 text-left rounded hover:bg-cc-hover transition-colors"
                   >
-                    <div className="text-xs text-cc-muted">Export to local file</div>
+                    <div className="text-xs text-cc-muted">{t("share.export_local")}</div>
                   </button>
                 </>
               ) : (
                 <div className="px-3 py-3 space-y-2">
-                  <div className="text-xs text-cc-muted">Cloud sharing requires R2 storage configuration.</div>
-                  <div className="text-[10px] text-cc-muted/60">Configure R2 credentials in the Launcher settings to enable cloud sharing.</div>
+                  <div className="text-xs text-cc-muted">{t("share.r2_required")}</div>
+                  <div className="text-[10px] text-cc-muted/60">{t("share.r2_hint")}</div>
                   <div className="border-t border-cc-border my-2" />
                   <button
                     onClick={handleExportLocal}
                     className="w-full px-3 py-2 text-left rounded hover:bg-cc-hover transition-colors"
                   >
-                    <div className="text-xs text-cc-fg">Export to local file</div>
-                    <div className="text-[10px] text-cc-muted mt-0.5">Save as .tar.gz without cloud upload</div>
+                    <div className="text-xs text-cc-fg">{t("share.export_local")}</div>
+                    <div className="text-[10px] text-cc-muted mt-0.5">{t("share.export_local_desc")}</div>
                   </button>
                 </div>
               )}
@@ -235,13 +238,13 @@ function ShareDropdown() {
 
           {shareStatus === "sharing" && (
             <div className="px-3 py-4 text-center">
-              <div className="text-xs text-cc-muted animate-pulse">Sharing...</div>
+              <div className="text-xs text-cc-muted animate-pulse">{t("share.sharing")}</div>
             </div>
           )}
 
           {shareStatus === "done" && shareUrl && (
             <div className="p-3 space-y-2">
-              <div className="text-xs text-cc-primary font-medium">Shared successfully!</div>
+              <div className="text-xs text-cc-primary font-medium">{t("share.success")}</div>
               <div className="flex items-center gap-1">
                 <input
                   readOnly
@@ -253,20 +256,20 @@ function ShareDropdown() {
                   onClick={copyUrl}
                   className="px-2 py-1 text-[10px] rounded border border-cc-border hover:border-cc-primary hover:text-cc-primary text-cc-muted transition-colors"
                 >
-                  Copy
+                  {t("share.copy")}
                 </button>
               </div>
               <button onClick={reset} className="text-[10px] text-cc-muted/50 hover:text-cc-fg">
-                Share again
+                {t("share.again")}
               </button>
             </div>
           )}
 
           {shareStatus === "error" && (
             <div className="p-3 space-y-2">
-              <div className="text-xs text-red-400">{shareError || "Share failed"}</div>
+              <div className="text-xs text-red-400">{shareError || t("share.share_failed")}</div>
               <button onClick={reset} className="text-[10px] text-cc-muted/50 hover:text-cc-fg">
-                Try again
+                {t("share.try_again")}
               </button>
             </div>
           )}
@@ -278,17 +281,18 @@ function ShareDropdown() {
 
 type Tab = "chat" | "editor" | "diff" | "terminal" | "processes" | "context" | "schedules";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "chat", label: "Chat" },
-  { id: "editor", label: "Editor" },
-  { id: "diff", label: "Diffs" },
-  { id: "terminal", label: "Terminal" },
-  { id: "processes", label: "Processes" },
-  { id: "context", label: "Context" },
-  { id: "schedules", label: "Schedules" },
+const TABS: { id: Tab; labelKey: string }[] = [
+  { id: "chat", labelKey: "tabs.chat" },
+  { id: "editor", labelKey: "tabs.editor" },
+  { id: "diff", labelKey: "tabs.diff" },
+  { id: "terminal", labelKey: "tabs.terminal" },
+  { id: "processes", labelKey: "tabs.processes" },
+  { id: "context", labelKey: "tabs.context" },
+  { id: "schedules", labelKey: "tabs.schedules" },
 ];
 
 export default function TopBar() {
+  const { t } = useTranslation("topbar");
   const activeTab = useStore((s) => s.activeTab);
   const setActiveTab = useStore((s) => s.setActiveTab);
   const gitAvailable = useStore((s) => s.gitAvailable);
@@ -385,7 +389,7 @@ export default function TopBar() {
     >
       {/* Left: logo + selectors */}
       <div
-        className="flex items-center gap-3 bg-cc-surface/50 border border-white/5 backdrop-blur-md px-4 py-1.5 rounded-full shadow-sm min-w-0 shrink-0"
+        className="flex items-center gap-3 bg-cc-surface/70 border border-cc-border/60 backdrop-blur-md px-4 py-1.5 rounded-full shadow-sm min-w-0 shrink-0"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
         <div className="flex items-center gap-1.5">
@@ -431,7 +435,7 @@ export default function TopBar() {
               {createEmpty && !replayMode && (
                 <button
                   onClick={handleCreateEmpty}
-                  title="New empty content"
+                  title={t("new_empty_content")}
                   className="flex items-center justify-center w-5 h-5 rounded text-cc-muted
                     hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
                 >
@@ -448,7 +452,7 @@ export default function TopBar() {
       {/* Center: tabs (hidden in empty shell — no session = no panels) */}
       {hasModeViewer && (
         <div
-          className="flex items-center gap-1 mx-auto bg-cc-bg/80 border border-cc-border/50 rounded-full p-1 shadow-inner"
+          className="flex items-center gap-1 mx-auto bg-cc-surface/70 border border-cc-border/60 backdrop-blur-md rounded-full p-1 shadow-sm"
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >
           {visibleTabs.map((tab) => {
@@ -460,7 +464,7 @@ export default function TopBar() {
               <button
                 key={tab.id}
                 onClick={() => !disabled && setActiveTab(tab.id)}
-                title={disabledByReplay ? "Not available in replay mode" : disabledByGit ? "Diffs require a git repository. Run `git init` in the workspace." : undefined}
+                title={disabledByReplay ? t("disabled_replay") : disabledByGit ? t("disabled_git") : undefined}
                 className={`relative px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${disabled
                   ? "text-cc-muted/30 cursor-not-allowed"
                   : activeTab === tab.id
@@ -468,7 +472,7 @@ export default function TopBar() {
                     : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
                   }`}
               >
-                {tab.label}
+                {t(tab.labelKey)}
                 {badge > 0 && (
                   <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-cc-primary text-cc-bg text-[10px] font-bold leading-none">
                     {badge}
@@ -491,7 +495,7 @@ export default function TopBar() {
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
                 <path d="M4 2l10 6-10 6V2z"/>
               </svg>
-              Replay
+              {t("replay_badge")}
             </span>
             {replayMetadata?.title && (
               <span className="text-cc-muted/60 text-xs truncate max-w-[200px]">{replayMetadata.title}</span>

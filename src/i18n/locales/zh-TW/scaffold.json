@@ -1,0 +1,8 @@
+{
+  "title": "初始化工作區",
+  "warning": "這會清除既有的檔案並建立新的檔案，此動作無法復原。",
+  "files_to_clear": "將清除的檔案：",
+  "files_to_create": "將建立的檔案（{{count}}）：",
+  "cancel": "取消",
+  "initialize": "初始化"
+}

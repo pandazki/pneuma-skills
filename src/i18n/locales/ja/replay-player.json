@@ -1,0 +1,10 @@
+{
+  "step": "ステップ {{n}}",
+  "previous_turn": "前のターン",
+  "next_turn": "次のターン",
+  "continue_starting": "起動中…",
+  "continue_retry": "再試行 ({{error}})",
+  "continue_work": "作業を続ける",
+  "continue_tooltip": "通常の編集モードに切り替えて作業を続ける",
+  "continue_failed": "続行に失敗"
+}

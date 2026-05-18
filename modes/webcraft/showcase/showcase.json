@@ -1,22 +1,50 @@
 {
-  "tagline": "Web design powered by Impeccable.style intelligence",
+  "tagline": {
+    "en": "Web design powered by Impeccable.style intelligence",
+    "zh-CN": "由 Impeccable.style 智能加持的网页设计",
+    "ja": "Impeccable.style のインテリジェンスが支えるウェブデザイン"
+  },
   "hero": "hero.png",
   "highlights": [
     {
-      "title": "17 Design Commands",
-      "description": "Audit, critique, polish, animate, colorize, distill — a full design toolkit built into the agent. Each command follows Impeccable.style principles.",
+      "title": {
+        "en": "17 Design Commands",
+        "zh-CN": "17 条设计命令",
+        "ja": "17 個のデザインコマンド"
+      },
+      "description": {
+        "en": "Audit, critique, polish, animate, colorize, distill — a full design toolkit built into the agent. Each command follows Impeccable.style principles.",
+        "zh-CN": "审计、点评、打磨、动效、上色、提炼 —— 完整的设计工具箱内建于代理之中，每条命令都遵循 Impeccable.style 原则。",
+        "ja": "監査、批評、研磨、アニメート、カラライズ、抽出 —— あらゆるデザインツールがエージェントに組み込まれており、各コマンドは Impeccable.style の原則に従う。"
+      },
       "media": "design-commands.png",
       "mediaType": "image"
     },
     {
-      "title": "Anti-Slop Detection",
-      "description": "Automatic checks for AI-generated design clich\u00e9s — gradient text, glassmorphism, neon-on-dark, identical card grids. Your interfaces look human-made.",
+      "title": {
+        "en": "Anti-Slop Detection",
+        "zh-CN": "反 AI 套路检测",
+        "ja": "アンチスロップ検出"
+      },
+      "description": {
+        "en": "Automatic checks for AI-generated design clichés — gradient text, glassmorphism, neon-on-dark, identical card grids. Your interfaces look human-made.",
+        "zh-CN": "自动检测 AI 生成的设计套路 —— 渐变文字、玻璃拟态、暗底霓虹、千篇一律的卡片网格 —— 让界面看起来出自人手。",
+        "ja": "AI が生成しがちなデザインクリシェを自動でチェック —— グラデーションテキスト、グラスモーフィズム、ダーク背景のネオン、同型カードグリッド —— インターフェースが人の手によるものに見えるよう導く。"
+      },
       "media": "anti-slop.png",
       "mediaType": "image"
     },
     {
-      "title": "Responsive & Adaptive",
-      "description": "Mobile-first fluid design with container queries. Live preview updates as you edit — see changes on every breakpoint instantly.",
+      "title": {
+        "en": "Responsive & Adaptive",
+        "zh-CN": "响应式与自适应",
+        "ja": "レスポンシブ&アダプティブ"
+      },
+      "description": {
+        "en": "Mobile-first fluid design with container queries. Live preview updates as you edit — see changes on every breakpoint instantly.",
+        "zh-CN": "采用容器查询的移动优先流体设计。预览随编辑实时更新 —— 每个断点的变化都能即刻看到。",
+        "ja": "コンテナクエリを活用したモバイルファーストの流体デザイン。編集と同時にライブプレビューが更新され、あらゆるブレークポイントの変化を即座に確認できる。"
+      },
       "media": "responsive.png",
       "mediaType": "image"
     }

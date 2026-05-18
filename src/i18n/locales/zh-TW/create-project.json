@@ -1,0 +1,30 @@
+{
+  "title": "建立專案",
+  "root_label": "專案根路徑（必須已存在或可建立）",
+  "root_placeholder": "/Users/x/Code/my-project",
+  "browse_directories": "瀏覽目錄",
+  "select_project_root": "選擇專案根目錄",
+  "display_name_label": "顯示名稱",
+  "display_name_placeholder_fallback": "我的專案",
+  "description_label": "描述（選填）",
+  "import": {
+    "header": "從現有工作階段初始化",
+    "optional_suffix": "（選填）",
+    "selected_count": "已選 {{count}} 個",
+    "empty": "沒有可匯入的快速工作階段。"
+  },
+  "actions": {
+    "cancel": "取消",
+    "creating": "建立中…",
+    "create_and_discover": "建立並探索",
+    "more_options": "更多建立選項",
+    "create_without_discovery": "建立但不探索",
+    "create_without_discovery_desc": "略過自動初識；之後再手動設定工作階段。"
+  },
+  "defaults": {
+    "untitled": "未命名"
+  },
+  "error": {
+    "create_failed": "建立失敗（{{status}}）"
+  }
+}

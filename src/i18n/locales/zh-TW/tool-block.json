@@ -1,0 +1,22 @@
+{
+  "labels": {
+    "Bash": "終端",
+    "Read": "讀取檔案",
+    "Write": "寫入檔案",
+    "Edit": "編輯檔案",
+    "Glob": "尋找檔案",
+    "Grep": "搜尋內容",
+    "WebSearch": "網路搜尋",
+    "WebFetch": "網頁擷取",
+    "Task": "子智慧體",
+    "TodoWrite": "任務",
+    "NotebookEdit": "筆記本",
+    "SendMessage": "訊息"
+  },
+  "tasks_count_one": "{{count}} 項任務",
+  "tasks_count_other": "{{count}} 項任務",
+  "replace_all": "全部取代",
+  "in_path": "於：",
+  "path": "路徑：",
+  "glob_label": "glob："
+}

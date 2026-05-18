@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { getApiBase } from "../utils/api.js";
 import CodeMirror from "@uiw/react-codemirror";
 import { EditorView } from "@codemirror/view";
@@ -188,6 +189,7 @@ function FileTreeItem({
 }
 
 export default function EditorPanel() {
+  const { t } = useTranslation("editor-panel");
   const changedFilesTick = useStore((s) => s.changedFilesTick);
   // Session-scoped working dir for the open-in-IDE affordance — equals the
   // project session dir for project sessions, the workspace for quick. Project
@@ -293,7 +295,7 @@ export default function EditorPanel() {
       {/* File tree sidebar */}
       <div className="w-52 shrink-0 border-r border-cc-border flex flex-col">
         <div className="pl-3 pr-1 py-1 border-b border-cc-border flex items-center gap-2">
-          <span className="text-xs font-medium text-cc-muted flex-1">Files</span>
+          <span className="text-xs font-medium text-cc-muted flex-1">{t("files")}</span>
           {sessionWorkspace ? (
             <EditorPickerButton targetPath={sessionWorkspace} menuPosition="below" />
           ) : null}
@@ -328,7 +330,7 @@ export default function EditorPanel() {
                 <circle cx="12" cy="12" r="9" />
                 <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
               </svg>
-              <span className="flex-1 truncate">Session</span>
+              <span className="flex-1 truncate">{t("session")}</span>
             </button>
           ) : null}
           {tree.map((node) => (
@@ -371,7 +373,7 @@ export default function EditorPanel() {
                         : "bg-cc-surface text-cc-muted/50"
                     }`}
                   >
-                    {saving ? "Saving..." : "Save"}
+                    {saving ? t("saving") : t("save")}
                   </button>
                 </div>
               </div>
@@ -396,7 +398,7 @@ export default function EditorPanel() {
           <SessionAtlas />
         ) : (
           <div className="flex items-center justify-center h-full text-cc-muted/50 text-sm">
-            Select a file to edit
+            {t("select_a_file")}
           </div>
         )}
       </div>

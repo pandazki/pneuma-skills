@@ -1,0 +1,22 @@
+{
+  "labels": {
+    "Bash": "Terminal",
+    "Read": "Leer archivo",
+    "Write": "Escribir archivo",
+    "Edit": "Editar archivo",
+    "Glob": "Buscar archivos",
+    "Grep": "Buscar contenido",
+    "WebSearch": "Búsqueda web",
+    "WebFetch": "Obtener web",
+    "Task": "Subagente",
+    "TodoWrite": "Tareas",
+    "NotebookEdit": "Notebook",
+    "SendMessage": "Mensaje"
+  },
+  "tasks_count_one": "{{count}} tarea",
+  "tasks_count_other": "{{count}} tareas",
+  "replace_all": "reemplazar todo",
+  "in_path": "en: ",
+  "path": "ruta: ",
+  "glob_label": "glob: "
+}

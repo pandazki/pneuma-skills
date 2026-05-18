@@ -46,8 +46,17 @@
   --color-cc-primary-muted: rgba(249, 115, 22, 0.15);
 }
 
-/* ── Launcher light theme ── */
-.launcher-light {
+/* ── Light theme token overrides ──
+ *
+ * Scope-agnostic: applied wherever the cc-* token surface needs to flip
+ * to light. Mounted by the launcher root AND the session shell (App.tsx
+ * → TopBar + ChatPanel + viewer chrome) so the user's single theme choice
+ * propagates everywhere the design system reaches.
+ *
+ * Launcher-specific child rules (`.launcher-card` shadows, light texture,
+ * vignette) stay scoped under `.launcher-light` further down — those
+ * decorations only make sense inside the launcher composition. */
+.cc-theme-light {
   --color-cc-bg: oklch(97.5% 0.008 60);
   /* warm off-white, not pure white */
   --color-cc-surface: #ece9e4;
@@ -95,6 +104,66 @@
     0 2px 6px rgba(120, 100, 80, 0.1),
     0 12px 32px rgba(120, 100, 80, 0.08);
   border-color: rgba(120, 100, 80, 0.15);
+}
+
+/* Session shell — light-mode refinement.
+ *
+ * The dark default leans into atmospherics: two pulsing radial blobs
+ * (orange + purple at /10) bleed behind a glass card with an orange-glow
+ * shadow. On a warm off-white bg those blobs read as splotchy color
+ * spills and the orange glow disappears, so the card sits flush against
+ * the page with no elevation.
+ *
+ * Light mode hides the mesh, removes the glass `::before`, neutralizes
+ * the ring, and replaces the orange glow with a three-stop elevation
+ * stack (close shadow + mid + ambient) warm-tinted to match the surface
+ * — the same shadow vocabulary `.launcher-card-elevated` uses. */
+.cc-theme-light .session-shell-mesh {
+  display: none;
+}
+
+.cc-theme-light .session-shell-card {
+  /* Three-layer drop with warm undertone — lifts the card cleanly off
+   * the off-white surface without spilling color into the gutter. */
+  box-shadow:
+    0 1px 2px rgba(120, 100, 80, 0.06),
+    0 4px 12px rgba(120, 100, 80, 0.08),
+    0 24px 48px rgba(120, 100, 80, 0.08);
+  border-color: rgba(120, 100, 80, 0.14);
+  /* Neutralize Tailwind ring contribution (ring-white/5 is invisible on
+   * light bg anyway, but the ring class still emits a 0-color shadow
+   * layer that compounds with our stack). */
+  --tw-ring-shadow: 0 0 #0000;
+}
+
+/* Drop the glass `::before` — `cc-surface/40` on a flat off-white bg
+ * just paints a slightly darker rectangle, the opposite of glassiness. */
+.cc-theme-light .session-shell-card::before {
+  display: none;
+}
+
+/* Inner glass cards (ChatInput, AgentBubble floating panel) share the
+ * same dark-mode vocabulary as the session shell: cc-primary/20 border,
+ * black 0/0.6 drop shadow OR orange 0/0.15 glow, ring-white/5, glass
+ * ::before. All four read as costume jewelry on a warm cream surface.
+ *
+ * Light mode hands them a two-stop warm-tinted shadow — less depth than
+ * the outer shell since these sit INSIDE it — plus the same border
+ * neutralization. ::before is dropped; the underlying bg-cc-surface/70
+ * already gives a subtle background lift that does the job glassiness
+ * was failing to do in light. */
+.cc-theme-light .chat-input-card,
+.cc-theme-light .floating-chat-card {
+  border-color: rgba(120, 100, 80, 0.14);
+  box-shadow:
+    0 1px 2px rgba(120, 100, 80, 0.05),
+    0 6px 18px rgba(120, 100, 80, 0.07);
+  --tw-ring-shadow: 0 0 #0000;
+}
+
+.cc-theme-light .chat-input-card::before,
+.cc-theme-light .floating-chat-card::before {
+  display: none;
 }
 
 /* Session card thumbnail vignette */
@@ -220,17 +289,18 @@ img {
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* Light mode scrollbars */
-.launcher-light,
-.launcher-light * {
+/* Light mode scrollbars — apply wherever the light token surface mounts
+   (launcher root, session shell). */
+.cc-theme-light,
+.cc-theme-light * {
   scrollbar-color: oklch(70% 0.01 55 / 0.2) transparent;
 }
 
-.launcher-light ::-webkit-scrollbar-thumb {
+.cc-theme-light ::-webkit-scrollbar-thumb {
   background: oklch(70% 0.01 55 / 0.2);
 }
 
-.launcher-light ::-webkit-scrollbar-thumb:hover {
+.cc-theme-light ::-webkit-scrollbar-thumb:hover {
   background: oklch(60% 0.01 55 / 0.3);
 }
 

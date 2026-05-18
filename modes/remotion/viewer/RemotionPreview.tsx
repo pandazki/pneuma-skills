@@ -54,11 +54,11 @@ class PlayerErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySta
     if (this.state.error) {
       return this.props.fallback ?? (
         <div className="flex items-center justify-center h-full p-8 text-center"
-          style={{ color: "var(--cc-text-secondary)" }}>
+          style={{ color: "var(--color-cc-muted, #a1a1aa)" }}>
           <div>
             <div className="text-red-400 text-sm font-medium mb-2">Runtime Error</div>
             <pre className="text-xs text-left max-w-lg overflow-auto p-3 rounded"
-              style={{ background: "var(--cc-bg-tertiary)" }}>
+              style={{ background: "var(--color-cc-user-bubble, #27272a)" }}>
               {this.state.error.message}
             </pre>
           </div>
@@ -109,7 +109,7 @@ function PlayerCanvas({
 
   return (
     <div ref={containerRef} className="flex-1 flex items-center justify-center overflow-hidden min-h-0"
-      style={{ background: "#000" }}>
+      style={{ background: "var(--color-cc-bg, #09090b)" }}>
       <div style={{
         width: comp.width,
         height: comp.height,
@@ -442,17 +442,17 @@ export default function RemotionPreview({
   // Error state
   if (errors.length > 0) {
     return (
-      <div className="flex flex-col h-full" style={{ background: "var(--cc-bg, #09090b)" }}>
+      <div className="flex flex-col h-full" style={{ background: "var(--color-cc-bg, #09090b)" }}>
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="max-w-lg w-full">
             <div className="text-red-400 text-sm font-medium mb-3">Compilation Error</div>
             {errors.map((err, i) => (
               <div key={i} className="mb-2">
-                <div className="text-xs font-mono mb-1" style={{ color: "var(--cc-text-secondary)" }}>
+                <div className="text-xs font-mono mb-1" style={{ color: "var(--color-cc-muted, #a1a1aa)" }}>
                   {err.file}{err.line ? `:${err.line}` : ""}
                 </div>
                 <pre className="text-xs p-3 rounded overflow-auto"
-                  style={{ background: "var(--cc-bg-tertiary)", color: "var(--cc-text)" }}>
+                  style={{ background: "var(--color-cc-user-bubble, #27272a)", color: "var(--color-cc-fg)" }}>
                   {err.message}
                 </pre>
               </div>
@@ -466,12 +466,12 @@ export default function RemotionPreview({
   // Empty state
   if (compositions.length === 0) {
     return (
-      <div className="flex flex-col h-full items-center justify-center" style={{ background: "var(--cc-bg, #09090b)", color: "var(--cc-text-secondary)" }}>
+      <div className="flex flex-col h-full items-center justify-center" style={{ background: "var(--color-cc-bg, #09090b)", color: "var(--color-cc-muted, #a1a1aa)" }}>
         <div className="text-center max-w-md">
-          <div className="text-lg font-medium mb-2" style={{ color: "var(--cc-text)" }}>No Compositions</div>
+          <div className="text-lg font-medium mb-2" style={{ color: "var(--color-cc-fg)" }}>No Compositions</div>
           <p className="text-sm">
-            Define compositions in <code className="px-1 py-0.5 rounded" style={{ background: "var(--cc-bg-tertiary)" }}>src/Root.tsx</code> using{" "}
-            <code className="px-1 py-0.5 rounded" style={{ background: "var(--cc-bg-tertiary)" }}>&lt;Composition&gt;</code> to see a preview.
+            Define compositions in <code className="px-1 py-0.5 rounded" style={{ background: "var(--color-cc-user-bubble, #27272a)" }}>src/Root.tsx</code> using{" "}
+            <code className="px-1 py-0.5 rounded" style={{ background: "var(--color-cc-user-bubble, #27272a)" }}>&lt;Composition&gt;</code> to see a preview.
           </p>
         </div>
       </div>
@@ -480,18 +480,18 @@ export default function RemotionPreview({
 
   if (!activeComp || !ActiveComponent) {
     return (
-      <div className="flex h-full items-center justify-center" style={{ background: "var(--cc-bg, #09090b)", color: "var(--cc-text-secondary)" }}>
+      <div className="flex h-full items-center justify-center" style={{ background: "var(--color-cc-bg, #09090b)", color: "var(--color-cc-muted, #a1a1aa)" }}>
         Loading...
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full" style={{ background: "var(--cc-bg, #09090b)" }}>
+    <div className="flex flex-col h-full" style={{ background: "var(--color-cc-bg, #09090b)" }}>
       {/* Info bar — resolution + duration + export (composition switching is in TopBar) */}
       <div className="flex items-center justify-between px-3 h-7 shrink-0"
-        style={{ background: "#000" }}>
-        <span className="text-[10px] font-mono" style={{ color: "var(--cc-text-tertiary, #52525b)" }}>
+        style={{ background: "var(--color-cc-bg, #09090b)" }}>
+        <span className="text-[10px] font-mono" style={{ color: "var(--color-cc-muted, #52525b)" }}>
           {activeComp.width}×{activeComp.height} · {activeComp.fps}fps · {(activeComp.durationInFrames / activeComp.fps).toFixed(1)}s
         </span>
         <button
@@ -501,9 +501,9 @@ export default function RemotionPreview({
             window.open(`${base}/export/remotion${compId ? `?composition=${encodeURIComponent(compId)}` : ""}`, "_blank");
           }}
           className="flex items-center gap-1 px-2 h-5 rounded text-[10px] font-medium transition-colors cursor-pointer"
-          style={{ color: "var(--cc-text-tertiary, #52525b)", background: "transparent" }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--cc-text, #fafafa)"; e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--cc-text-tertiary, #52525b)"; e.currentTarget.style.background = "transparent"; }}
+          style={{ color: "var(--color-cc-muted, #52525b)", background: "transparent" }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--color-cc-fg, #fafafa)"; e.currentTarget.style.background = "var(--color-cc-hover, rgba(255,255,255,0.08))"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-cc-muted, #52525b)"; e.currentTarget.style.background = "transparent"; }}
           title="Export video — open export page"
         >
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">

@@ -1,0 +1,14 @@
+{
+  "recurring": "recurring",
+  "one_shot": "one-shot",
+  "durable": "durable",
+  "cancel_job_tooltip": "Cancel this scheduled job",
+  "cancel": "Cancel",
+  "scheduled_jobs": "Scheduled Jobs ({{count}})",
+  "refresh": "Refresh",
+  "backend_specific_title": "Backend-specific feature",
+  "backend_specific_body": "Scheduled tasks currently depend on Claude Code cron tools and are unavailable for the active backend.",
+  "upgrade_required": "Claude Code upgrade required",
+  "upgrade_body": "Scheduled tasks require Claude Code {{minVersion}}+. Current version: {{currentVersion}}. Run <1>claude update</1> to upgrade.",
+  "empty_hint": "No scheduled jobs. Use <1>/loop</1> in the chat to create recurring tasks."
+}

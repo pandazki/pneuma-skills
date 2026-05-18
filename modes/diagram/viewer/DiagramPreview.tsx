@@ -865,9 +865,9 @@ export default function DiagramPreview({
                   top: hoveredBounds.y - svgBoundsRef.current.y - 3,
                   width: hoveredBounds.w + 6,
                   height: hoveredBounds.h + 6,
-                  border: `1.5px solid ${isDark ? "rgba(249, 115, 22, 0.35)" : "rgba(249, 115, 22, 0.3)"}`,
+                  border: "1.5px solid rgba(249, 115, 22, 0.35)",
                   borderRadius: 6,
-                  background: isDark ? "rgba(249, 115, 22, 0.06)" : "rgba(249, 115, 22, 0.04)",
+                  background: "rgba(249, 115, 22, 0.06)",
                   transition: "all 0.15s ease-out",
                 }}
               />
@@ -901,33 +901,33 @@ export default function DiagramPreview({
             onPointerDown={e => e.stopPropagation()}
             style={{
               background: isDark ? "rgba(24,24,27,0.85)" : "rgba(255,255,255,0.9)",
-              borderColor: isDark ? "rgba(63,63,70,0.5)" : "rgba(212,212,216,0.8)",
+              borderColor: "var(--color-cc-border)",
               backdropFilter: "blur(8px)",
             }}
           >
             <button
               onClick={() => setZoom(z => Math.max(0.1, z * 0.8))}
               className="w-7 h-7 flex items-center justify-center rounded text-sm cursor-pointer transition-colors"
-              style={{ color: isDark ? "#a1a1aa" : "#52525b" }}
+              style={{ color: "var(--color-cc-muted)" }}
               title="Zoom out"
             >-</button>
             <span
               className="text-[11px] min-w-[36px] text-center select-none cursor-pointer"
-              style={{ color: isDark ? "#71717a" : "#a1a1aa" }}
+              style={{ color: "var(--color-cc-muted)" }}
               onClick={fitToCenter}
               title="Reset zoom"
             >{Math.round(zoom * 100)}%</span>
             <button
               onClick={() => setZoom(z => Math.min(8, z * 1.25))}
               className="w-7 h-7 flex items-center justify-center rounded text-sm cursor-pointer transition-colors"
-              style={{ color: isDark ? "#a1a1aa" : "#52525b" }}
+              style={{ color: "var(--color-cc-muted)" }}
               title="Zoom in"
             >+</button>
-            <div className="w-px h-4 mx-0.5" style={{ background: isDark ? "rgba(63,63,70,0.5)" : "rgba(212,212,216,0.8)" }} />
+            <div className="w-px h-4 mx-0.5" style={{ background: "var(--color-cc-border)" }} />
             <button
               onClick={fitToCenter}
               className="w-7 h-7 flex items-center justify-center rounded cursor-pointer transition-colors"
-              style={{ color: isDark ? "#a1a1aa" : "#52525b" }}
+              style={{ color: "var(--color-cc-muted)" }}
               title="Fit to screen"
             >
               <FitIcon />
@@ -1148,11 +1148,11 @@ function AnnotationPopover({
   return (
     <div
       style={style}
-      className="bg-neutral-800 border border-neutral-600 rounded-lg shadow-xl p-3 text-sm"
+      className="bg-cc-card border border-cc-border rounded-lg shadow-xl p-3 text-sm"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center gap-2 mb-2 min-w-0">
-        <span className="text-neutral-300 truncate text-xs">{label || "Element"}</span>
+        <span className="text-cc-muted truncate text-xs">{label || "Element"}</span>
       </div>
       <input
         ref={inputRef}
@@ -1161,18 +1161,18 @@ function AnnotationPopover({
         onChange={(e) => setComment(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Add comment (optional)..."
-        className="w-full bg-neutral-900 border border-neutral-600 rounded px-2 py-1.5 text-sm text-white placeholder-neutral-500 outline-none focus:border-blue-500"
+        className="w-full bg-cc-bg border border-cc-border rounded px-2 py-1.5 text-sm text-cc-fg placeholder-cc-muted outline-none focus:border-cc-primary"
       />
       <div className="flex justify-end gap-2 mt-2">
         <button
           onClick={onCancel}
-          className="px-2.5 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+          className="px-2.5 py-1 text-xs text-cc-muted hover:text-cc-fg rounded hover:bg-cc-hover transition-colors"
         >
           Cancel
         </button>
         <button
           onClick={() => onConfirm(comment)}
-          className="px-2.5 py-1 text-xs text-white bg-blue-600 hover:bg-blue-500 rounded transition-colors"
+          className="px-2.5 py-1 text-xs text-cc-fg bg-cc-primary hover:bg-cc-primary-hover rounded transition-colors"
         >
           Add
         </button>

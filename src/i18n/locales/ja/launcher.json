@@ -1,0 +1,306 @@
+{
+  "backends": {
+    "claude_code": {
+      "label": "Claude Code",
+      "description": "Anthropic Claude Code CLI、stdio stream-json トランスポート経由。"
+    },
+    "codex": {
+      "label": "Codex",
+      "description": "OpenAI Codex CLI、app-server トランスポート経由。"
+    },
+    "kimi": {
+      "label": "Kimi",
+      "description": "Moonshot AI Kimi Code CLI、stdio stream-json トランスポート経由。"
+    }
+  },
+  "header": {
+    "settings_tooltip": "設定"
+  },
+  "inspired_by_tooltip": "{{name}} に着想を得て",
+  "inspired_by_prefix": "着想元",
+  "theme_tooltip": "テーマ: {{preference}}",
+  "confirm_button": {
+    "cancel": "キャンセル"
+  },
+  "featured": {
+    "launch": "起動",
+    "explore_all": "すべてのモードを見る"
+  },
+  "session_card": {
+    "stop": "停止",
+    "replay": "再生",
+    "remove": "削除",
+    "rename": "名前を変更",
+    "launching": "起動中…",
+    "skill_update": "更新があります",
+    "skip": "スキップ",
+    "update": "更新",
+    "view_changelog": "変更履歴全文を見る →"
+  },
+  "compact_session": {
+    "rename": "名前を変更",
+    "replay": "再生",
+    "remove": "削除",
+    "launching": "起動中…",
+    "whats_new": "更新内容",
+    "whats_new_in": "v{{version}} の更新内容",
+    "skip": "スキップ",
+    "update": "更新",
+    "view_changelog": "変更履歴全文を見る →"
+  },
+  "all_sessions": {
+    "title": "すべてのセッション",
+    "search_placeholder": "セッションを検索…",
+    "count_filtered": "{{filtered}} / {{total}} セッション",
+    "count_total": "{{count}} セッション",
+    "running": "実行中",
+    "recent": "最近",
+    "no_match": "一致するセッションはありません。",
+    "no_sessions": "セッションはまだありません。"
+  },
+  "quick_start_tile": {
+    "favorite_aria": "お気に入り",
+    "from_library": "ライブラリ: {{name}}"
+  },
+  "mode_maker_hero": {
+    "title": "Mode Maker",
+    "description": "自分だけの Pneuma モードを作成、テスト、公開しよう —— あるいは既存のモードをフォークして自分のものに。",
+    "cta": "作成"
+  },
+  "gallery": {
+    "title": "モードギャラリー",
+    "search_placeholder": "検索…",
+    "clear_search": "検索をクリア",
+    "group_builtin": "ビルトイン",
+    "group_local": "ローカル",
+    "group_published": "公開済み",
+    "group_libraries": "ライブラリ",
+    "add_from_url": "URL から追加",
+    "add_from_url_tooltip": "URL または github:user/repo からモードをインストール",
+    "add_library": "ライブラリを追加",
+    "add_library_tooltip": "1 つ以上の Pneuma モードを含む GitHub リポジトリをリンク",
+    "no_local_modes_hint": "ローカルモードはまだありません —— 上に .tar.gz URL または <code>github:user/repo</code> を貼り付けてください。",
+    "no_libraries_hint": "ライブラリはまだリンクされていません —— 上に <code>github:user/repo</code> を貼り付けてマルチモードコレクションをインストールしてください。",
+    "no_modes_match": "検索に一致するモードはありません。"
+  },
+  "library_group": {
+    "sync": "同期",
+    "syncing": "同期中…",
+    "sync_tooltip": "ソースから更新",
+    "publish": "公開",
+    "publish_tooltip": "ローカルモードをこのライブラリにコピー",
+    "confirm": "確認",
+    "cancel": "キャンセル",
+    "unlink": "リンク解除",
+    "unlink_tooltip": "このライブラリを削除",
+    "synced_at": "同期: {{when}}",
+    "sync_failed": "同期に失敗しました",
+    "unlink_failed": "リンク解除に失敗しました",
+    "toggle_failed": "切り替えに失敗しました",
+    "all_inactive": "このライブラリのモードはすべて無効です。下で 1 つ有効化して起動してください。",
+    "library_empty": "このライブラリは空です。ローカルインストールからモードを公開してください。",
+    "inactive_one": "無効なモード {{count}} 個",
+    "inactive_other": "無効なモード {{count}} 個",
+    "activate": "有効化"
+  },
+  "gallery_card": {
+    "unpin_tooltip": "クイックスタートから外す",
+    "pin_tooltip": "クイックスタートに固定",
+    "unpin_aria": "お気に入りから外す",
+    "pin_aria": "お気に入りに追加",
+    "evolve_tooltip": "スキルを進化",
+    "edit_tooltip": "Mode Maker で編集",
+    "delete": "削除",
+    "launch": "起動",
+    "from_library": "{{name}} から",
+    "synced_at": "同期: {{when}}"
+  },
+  "launch_dialog": {
+    "workspace_label": "ワークスペースのパス",
+    "browse_tooltip": "ディレクトリを参照",
+    "select_workspace_title": "ワークスペースを選択",
+    "session_name_label": "セッション名",
+    "loading_config": "構成を読み込み中…",
+    "agent_label": "エージェント",
+    "agent_unavailable": "利用不可",
+    "agent_soon": "近日公開",
+    "agent_na": "利用不可",
+    "existing_session_hint": "既存のワークスペース —— {{backend}} セッションを再開します",
+    "parameters": "パラメータ",
+    "parameters_readonly": "(読み取り専用)",
+    "prepare_failed": "起動の準備に失敗しました",
+    "launch_failed": "起動に失敗しました",
+    "cancel": "キャンセル",
+    "launch": "起動",
+    "launching": "起動中…"
+  },
+  "settings_panel": {
+    "title": "設定"
+  },
+  "backends_section": {
+    "title": "バックエンド",
+    "ready": "準備完了",
+    "not_found": "見つかりません"
+  },
+  "api_keys": {
+    "title": "API キー",
+    "add": "+ 追加",
+    "description": "キーはローカルのマシンに暗号化して保存されます。プロジェクトが一致する名前のキーを必要とすると、自動的にインポートされます。",
+    "empty": "キーはまだ設定されていません。",
+    "remove": "削除",
+    "name_placeholder": "キー名(例: OPENROUTER_API_KEY)",
+    "value_placeholder": "値",
+    "save": "保存",
+    "cancel": "キャンセル"
+  },
+  "cloud_storage": {
+    "title": "クラウドストレージ",
+    "edit": "編集",
+    "description": "共有とスナップショット用の Cloudflare R2 ストレージ。自分のバケットを管理 —— データは常にあなたの管理下にあります。",
+    "connected": "接続済み",
+    "bucket": "バケット: {{name}}",
+    "url": "URL: {{url}}",
+    "setup_hint": "<span>dash.cloudflare.com</span> でパブリックアクセス可能な Cloudflare R2 バケットを作成し、下に認証情報を入力してください。",
+    "account_id": "Account ID",
+    "access_key_id": "Access Key ID",
+    "secret_access_key": "Secret Access Key",
+    "bucket_name": "バケット名",
+    "public_url": "公開 URL(例: https://pub-xxx.r2.dev)",
+    "save": "保存",
+    "saving": "保存中…",
+    "cancel": "キャンセル"
+  },
+  "plugin_card": {
+    "builtin_label": "(ビルトイン)",
+    "cli_connected": "CLI 接続済み",
+    "token_connected": "Token 接続済み",
+    "connected_as": "({{user}} として)",
+    "not_connected": "未接続 —— CLI をインストールするか、下で token を設定してください",
+    "select_placeholder": "選択…",
+    "save": "保存",
+    "saving": "保存中…"
+  },
+  "plugins": {
+    "title": "プラグイン",
+    "description": "インストール済みのプラグインを管理します。プラグインを有効・無効にして、設定を調整します。"
+  },
+  "copy_snippet": {
+    "copy": "コピー",
+    "copied": "コピーしました"
+  },
+  "github": {
+    "title": "GitHub",
+    "description": "GitHub 上でモードライブラリの作成・同期・公開を行うために必要です。",
+    "checking": "gh の状態を確認中…",
+    "not_installed": "GitHub CLI がインストールされていません",
+    "installed_not_signed_in": "インストール済み{{version}} · 未サインイン",
+    "signed_in_as": "<bold>@{{username}}</bold> としてサインイン中",
+    "version_suffix": " · gh {{version}}"
+  },
+  "add_library_dialog": {
+    "title": "モードライブラリを追加",
+    "description": "マルチモード GitHub リポジトリをリンク、またはローカルで新しいライブラリを作成し、必要に応じて公開します。",
+    "tab_link": "既存をリンク",
+    "tab_create": "新規作成",
+    "linked_single": "単一モードリポジトリをリンクしました。「ローカルモード」に表示されます。",
+    "linked_library": "ライブラリをリンクしました。下のカードでモードを有効化してください。",
+    "open_on_github": "GitHub で開く →",
+    "specifier_label": "指定子",
+    "specifier_placeholder": "github:user/repo  または  https://.../repo.tar.gz",
+    "specifier_hint": "ルートに <code>pneuma.library.json</code>(または N 個のモードディレクトリ)があるリポジトリはマルチモードライブラリとしてインストールされます。それ以外は単一モードインストールにフォールバックします。",
+    "name_label": "ライブラリ名(slug)",
+    "name_placeholder": "my-modes",
+    "display_name_label": "表示名(任意)",
+    "display_name_placeholder": "My Modes",
+    "description_label": "説明(任意)",
+    "description_placeholder": "…のための Pneuma モードコレクション",
+    "create_on_github": "GitHub 上で作成(<code>gh</code> 認証が必要)",
+    "repo_name_label": "リポジトリ名",
+    "visibility_label": "可視性",
+    "visibility_private": "private",
+    "visibility_public": "public",
+    "link_failed": "リンクに失敗しました",
+    "create_failed": "作成に失敗しました",
+    "close": "閉じる",
+    "cancel": "キャンセル",
+    "link": "リンク",
+    "create": "作成",
+    "working": "…"
+  },
+  "publish_dialog": {
+    "title": "{{library}} に公開",
+    "description": "インストール済みのローカルモードをこのライブラリにコピーし、コミット用にステージします。",
+    "published": "公開しました。",
+    "pushed": " GitHub にプッシュしました。",
+    "not_pushed": "(プッシュなし。)",
+    "source_mode_label": "ソースモード",
+    "no_eligible_modes": "対象となるローカルモードがありません。まずモードをインストール(または Mode Maker で作成)してください。",
+    "pick_a_mode": "— モードを選択 —",
+    "mode_option": "{{displayName}}({{name}})",
+    "name_override_label": "名前の上書き(任意)",
+    "name_override_placeholder": "(ソース名を使用)",
+    "push_after_commit": "コミット後に GitHub へプッシュ",
+    "publish_failed": "公開に失敗しました",
+    "close": "閉じる",
+    "cancel": "キャンセル",
+    "publish": "公開",
+    "working": "…"
+  },
+  "import_dialog": {
+    "title_mode": "モードを追加",
+    "title_session": "セッションをインポート",
+    "description_mode": "URL(.tar.gz)または github:user/repo からモードをインストールします。インストールされたモードは「ローカル」に表示されます。",
+    "description_session": "共有 URL を貼り付けるか、ローカルアーカイブ(.tar.gz)を選択してください。",
+    "tab_session": "セッション",
+    "tab_mode": "モード",
+    "url_placeholder_session": "https://…",
+    "url_placeholder_mode": "https://.../mode.tar.gz  または  github:user/repo",
+    "or": "または",
+    "local_file": "ローカルファイル",
+    "workspace_label": "ワークスペースディレクトリ(任意)",
+    "workspace_placeholder": "~/pneuma-projects/my-project",
+    "install_hint": "<code>~/.pneuma/modes/</code> にダウンロードして展開します。",
+    "cancel": "キャンセル",
+    "import": "インポート",
+    "install": "インストール",
+    "importing": "インポート中…",
+    "installing": "インストール中…",
+    "import_failed": "インポートに失敗しました",
+    "install_failed": "インストールに失敗しました",
+    "imported_success": "インポートに成功しました!",
+    "installed_success": "「{{name}}」({{version}})をインストールしました。",
+    "process_share_hint": "この共有には、チャット履歴とチェックポイントを含む作成プロセスが含まれます。",
+    "close": "閉じる",
+    "continue_working": "作業を続ける",
+    "replay": "再生",
+    "open": "開く",
+    "launch": "起動",
+    "try_again": "再試行"
+  },
+  "main": {
+    "settings_tooltip": "設定",
+    "my_apps": "マイアプリ",
+    "my_apps_running": "実行中",
+    "recent_projects": "最近のプロジェクト",
+    "hide_archived": "アーカイブを隠す",
+    "show_archived": "アーカイブ ({{count}})",
+    "create_project": "+ プロジェクトを作成",
+    "no_projects": "プロジェクトはまだありません。",
+    "all_projects_count": "すべてのプロジェクト ({{count}})",
+    "archived_count": "アーカイブ ({{count}})",
+    "continue_title": "続ける",
+    "import": "インポート",
+    "all_sessions_count": "すべてのセッション ({{count}})",
+    "create_new": "新規作成",
+    "create_new_subtitle": "新しいワークスペースを始める",
+    "all_modes_count": "すべてのモード ({{count}})",
+    "mode_maker_title": "Mode Maker",
+    "edit_prefix": "編集: {{name}}",
+    "evolve_prefix": "進化: {{name}}"
+  },
+  "backend_unavailable": {
+    "unknown": "未知のバックエンド「{{type}}」",
+    "coming_soon": "近日公開",
+    "not_available": "利用不可"
+  }
+}

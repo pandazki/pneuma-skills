@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useStore } from "../store.js";
 import { getToolLabel } from "./ToolBlock.js";
 
@@ -10,15 +12,17 @@ function formatElapsed(ms: number): string {
   return `${m}m ${rem}s`;
 }
 
-function getPhaseLabel(phase: string, toolName?: string): string {
-  if (phase === "thinking") return "Thinking";
-  if (phase === "responding") return "Writing";
-  if (phase === "tool" && toolName) return getToolLabel(toolName);
-  if (phase === "tool") return "Running tool";
-  return "Working";
+function getPhaseLabel(phase: string, toolName: string | undefined, t: TFunction, tTool: TFunction): string {
+  if (phase === "thinking") return t("thinking");
+  if (phase === "responding") return t("writing");
+  if (phase === "tool" && toolName) return getToolLabel(toolName, tTool);
+  if (phase === "tool") return t("running_tool");
+  return t("working");
 }
 
 export default function ActivityIndicator() {
+  const { t } = useTranslation("activity-indicator");
+  const { t: tTool } = useTranslation("tool-block");
   const activity = useStore((s) => s.activity);
   const [elapsed, setElapsed] = useState(0);
 
@@ -36,7 +40,7 @@ export default function ActivityIndicator() {
 
   if (!activity) return null;
 
-  const label = getPhaseLabel(activity.phase, activity.toolName);
+  const label = getPhaseLabel(activity.phase, activity.toolName, t, tTool);
 
   return (
     <div className="flex items-center gap-2.5 px-3 py-2 animate-[fadeSlideIn_0.15s_ease-out]">

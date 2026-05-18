@@ -1,0 +1,18 @@
+{
+  "session": "セッション",
+  "model": "モデル",
+  "backend": "バックエンド",
+  "version": "バージョン",
+  "working_dir": "作業ディレクトリ",
+  "cost": "コスト",
+  "turns": "ターン",
+  "lines": "行数",
+  "tasks": "タスク",
+  "no_tasks": "タスクはまだありません",
+  "blocked": "ブロック中",
+  "mcp_servers": "MCP サーバー",
+  "tools": "ツール ({{count}})",
+  "more_tools": "他 {{count}} 件…",
+  "git": "Git",
+  "no_active_session": "アクティブなセッションがありません"
+}

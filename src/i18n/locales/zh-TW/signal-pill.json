@@ -1,0 +1,18 @@
+{
+  "opened_in_project": "已在 {{project}} 中開啟一個新的 {{mode}} 工作階段",
+  "opened": "已開啟一個新的 {{mode}} 工作階段",
+  "switched_from": "從 {{from}}{{fromMode}} 切換而來",
+  "handed_off": "由 {{fromMode}} 接力過來",
+  "env_unknown": "環境訊號：{{reason}}",
+  "request_handoff": "正在請求接力到 {{target}}",
+  "request_handoff_with_intent": "正在請求接力到 {{target}} — {{intent}}",
+  "handoff_cancelled": "接力已取消",
+  "handoff_cancelled_with_reason": "接力已取消 — {{reason}}",
+  "default_signal": "Pneuma 訊號：{{kind}}",
+  "another_session": "另一個工作階段",
+  "another_mode": "另一個模式",
+  "session_word": "工作階段",
+  "tooltip_debug": "Pneuma 訊號（除錯模式恆開）",
+  "tooltip_hide": "隱藏原始標籤",
+  "tooltip_show": "顯示原始標籤"
+}

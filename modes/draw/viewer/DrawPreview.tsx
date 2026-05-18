@@ -655,7 +655,7 @@ export default function DrawPreview({
           onSetPreviewMode={setPreviewMode}
           readonly={readonly}
         />
-        <div className="flex items-center justify-center flex-1 text-neutral-500">
+        <div className="flex items-center justify-center flex-1 text-cc-muted">
           Loading Excalidraw...
         </div>
       </div>
@@ -672,7 +672,7 @@ export default function DrawPreview({
           onSetPreviewMode={setPreviewMode}
           readonly={readonly}
         />
-        <div className="flex items-center justify-center flex-1 text-neutral-500">
+        <div className="flex items-center justify-center flex-1 text-cc-muted">
           No .excalidraw files in workspace
         </div>
       </div>
@@ -759,7 +759,7 @@ function DrawToolbar({
     <div className="flex items-center justify-between gap-1.5 px-3 py-1.5 border-b border-cc-border bg-cc-card/50 shrink-0">
       <div className="flex items-center gap-2">
         {filePath && (
-          <span className={`text-xs font-mono ${isDark ? "text-neutral-500" : "text-neutral-400"}`}>
+          <span className="text-xs font-mono text-cc-muted">
             {filePath}
           </span>
         )}
@@ -892,11 +892,11 @@ function AnnotationPopover({
   return (
     <div
       style={style}
-      className="bg-neutral-800 border border-neutral-600 rounded-lg shadow-xl p-3 text-sm"
+      className="bg-cc-card border border-cc-border rounded-lg shadow-xl p-3 text-sm"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center gap-2 mb-2 min-w-0">
-        <span className="text-neutral-300 truncate text-xs">{label || "Element"}</span>
+        <span className="text-cc-fg truncate text-xs">{label || "Element"}</span>
       </div>
       <input
         ref={inputRef}
@@ -905,12 +905,12 @@ function AnnotationPopover({
         onChange={(e) => setComment(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Add comment (optional)..."
-        className="w-full bg-neutral-900 border border-neutral-600 rounded px-2 py-1.5 text-sm text-white placeholder-neutral-500 outline-none focus:border-blue-500"
+        className="w-full bg-cc-bg border border-cc-border rounded px-2 py-1.5 text-sm text-cc-fg placeholder-cc-muted outline-none focus:border-cc-primary"
       />
       <div className="flex justify-end gap-2 mt-2">
         <button
           onClick={onCancel}
-          className="px-2.5 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+          className="px-2.5 py-1 text-xs text-cc-muted hover:text-cc-fg rounded hover:bg-cc-hover transition-colors"
         >
           Cancel
         </button>

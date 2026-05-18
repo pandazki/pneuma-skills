@@ -59,6 +59,28 @@ export interface Session {
   /** Queued viewer notifications to send when CLI becomes idle. */
   pendingNotifications: Array<{ type: string; message: string; severity: "info" | "warning"; images?: { media_type: string; data: string }[] }>;
   messageHistory: BrowserIncomingMessage[];
+  /**
+   * `<pneuma:env>` tags accumulate here until the user actually types
+   * something. Then the next outbound `handleUserMessage` prepends them to
+   * the CLI-bound content (one-shot context injection) and clears this
+   * buffer. The tags are also kept in `messageHistory` for chat-banner
+   * rendering, but they never reach the agent as standalone user turns —
+   * that's what produced redundant "welcome back" replies before.
+   */
+  pendingEnvContext: string[];
+  /**
+   * True while we're waiting for the user to answer an `AskUserQuestion`
+   * picker. Claude Code 2.x auto-denies the AskUserQuestion tool inside
+   * the CLI's SDK (returns an `is_error` tool_result before the user has
+   * any chance to click), so the model immediately receives a "denied"
+   * signal and emits a reactionary assistant message ("Since you didn't
+   * answer..."). We suppress that reactionary turn — both the assistant
+   * envelope and its streaming partials — until the user submits an
+   * answer and the `<pneuma:askq-answer>` follow-up reaches the model.
+   * The model's *next* reply (responding to the real answer) flows
+   * normally.
+   */
+  suppressingPostAskq: boolean;
   pendingMessages: string[];
   nextEventSeq: number;
   eventBuffer: BufferedBrowserEvent[];

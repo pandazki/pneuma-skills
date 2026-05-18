@@ -1,0 +1,18 @@
+{
+  "opened_in_project": "Se abrió una sesión nueva de {{mode}} en {{project}}",
+  "opened": "Se abrió una sesión nueva de {{mode}}",
+  "switched_from": "Cambiado aquí desde {{from}}{{fromMode}}",
+  "handed_off": "Transferida desde {{fromMode}}",
+  "env_unknown": "Señal de entorno: {{reason}}",
+  "request_handoff": "Solicitando transferencia a {{target}}",
+  "request_handoff_with_intent": "Solicitando transferencia a {{target}} — {{intent}}",
+  "handoff_cancelled": "Transferencia cancelada",
+  "handoff_cancelled_with_reason": "Transferencia cancelada — {{reason}}",
+  "default_signal": "Señal de Pneuma: {{kind}}",
+  "another_session": "otra sesión",
+  "another_mode": "otro modo",
+  "session_word": "sesión",
+  "tooltip_debug": "Señal de Pneuma (depuración siempre activa)",
+  "tooltip_hide": "Ocultar etiqueta cruda",
+  "tooltip_show": "Mostrar etiqueta cruda"
+}

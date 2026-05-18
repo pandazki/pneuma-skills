@@ -1,0 +1,14 @@
+{
+  "recurring": "週期性",
+  "one_shot": "單次",
+  "durable": "持久",
+  "cancel_job_tooltip": "取消這個排程任務",
+  "cancel": "取消",
+  "scheduled_jobs": "排程任務（{{count}}）",
+  "refresh": "重新整理",
+  "backend_specific_title": "此功能限特定後端",
+  "backend_specific_body": "排程目前依賴 Claude Code 的 cron 工具，目前的後端尚未支援。",
+  "upgrade_required": "需要升級 Claude Code",
+  "upgrade_body": "排程需要 Claude Code {{minVersion}} 以上的版本。目前版本：{{currentVersion}}。執行 <1>claude update</1> 進行升級。",
+  "empty_hint": "尚無排程任務。在對話中使用 <1>/loop</1> 來建立週期性任務。"
+}

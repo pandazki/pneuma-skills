@@ -1,0 +1,14 @@
+{
+  "scheduled_task": "Tarea programada",
+  "status": {
+    "disconnected": "Desconectado",
+    "cli_disconnected": "CLI desconectado",
+    "running": "En ejecución",
+    "compacting": "Compactando",
+    "idle": "Inactivo"
+  },
+  "reconnect": "Reconectar",
+  "no_model": "sin modelo",
+  "empty_send_message": "Envía un mensaje para empezar a editar",
+  "empty_connecting": "Conectando con Claude..."
+}

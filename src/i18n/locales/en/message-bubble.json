@@ -1,0 +1,60 @@
+{
+  "system": {
+    "output_label": "Output"
+  },
+  "selection": {
+    "in_file": "in {{file}}",
+    "types": {
+      "paragraph": "paragraph",
+      "list": "list",
+      "code": "code block",
+      "blockquote": "blockquote",
+      "image": "image",
+      "table": "table",
+      "text_range": "selected text",
+      "section": "section",
+      "link": "link",
+      "container": "container",
+      "interactive": "interactive"
+    }
+  },
+  "annotations": {
+    "count_one": "{{count}} annotation",
+    "count_other": "{{count}} annotations"
+  },
+  "ask_user": {
+    "waiting": "Waiting for question…",
+    "qa_label": "Q&A",
+    "fallback_title": "Question",
+    "other_option": "Other…",
+    "answer_placeholder": "Type your answer…",
+    "enter_hint": "Press Enter to submit",
+    "submit": "Submit answers"
+  },
+  "thinking": {
+    "label": "Reasoning",
+    "encrypted": "hidden by Anthropic (adaptive thinking)",
+    "char_count": "{{count}} chars",
+    "no_text": "No thinking text captured."
+  },
+  "tool_result": {
+    "header": {
+      "output": "Output",
+      "error": "Error",
+      "result": "Result"
+    },
+    "show_tail": "Show tail",
+    "hide": "Hide",
+    "show_full_with_remaining": "Show full (+{{count}} lines)",
+    "show_full": "Show full"
+  },
+  "context_usage": {
+    "title": "Context Usage",
+    "tokens_summary": "{{used}} / {{total}} tokens ({{percent}}%)"
+  },
+  "debug": {
+    "payload_label": "payload",
+    "payload_tooltip": "Debug: view CLI payload",
+    "image_alt": "Debug image {{index}}"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "open": "Open",
+  "open_default_tooltip": "Open in the default app",
+  "editor": "Editor",
+  "editor_main_tooltip": "Open in a code editor",
+  "choose_editor": "Choose editor",
+  "reveal": "Reveal",
+  "reveal_tooltip": "Reveal in Finder / Explorer",
+  "loading": "Loading…",
+  "no_editor_detected": "No code editor detected",
+  "error_open": "Couldn't open the file.",
+  "error_reveal": "Couldn't reveal the file.",
+  "error_open_in_editor": "Couldn't open in editor."
+}

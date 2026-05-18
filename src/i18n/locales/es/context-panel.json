@@ -1,0 +1,18 @@
+{
+  "session": "Sesión",
+  "model": "Modelo",
+  "backend": "Motor",
+  "version": "Versión",
+  "working_dir": "Directorio de trabajo",
+  "cost": "Costo",
+  "turns": "Turnos",
+  "lines": "Líneas",
+  "tasks": "Tareas",
+  "no_tasks": "Aún no hay tareas",
+  "blocked": "bloqueada",
+  "mcp_servers": "Servidores MCP",
+  "tools": "Herramientas ({{count}})",
+  "more_tools": "+{{count}} más...",
+  "git": "Git",
+  "no_active_session": "Sin sesión activa"
+}

@@ -29,9 +29,24 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 const projectOnboardManifest: ModeManifest = {
   name: "project-onboard",
   version: "1.0.0",
-  displayName: "Project Onboarding",
-  description:
-    "Mine a fresh project for existing material — README, logos, palette, configs — and propose project metadata + atlas + two tailored next-step tasks.",
+  displayName: {
+    en: "Project Discovery",
+    "zh-CN": "项目探索",
+    "zh-TW": "專案探索",
+    ja: "プロジェクト探索",
+    ko: "프로젝트 탐색",
+    es: "Descubrimiento del proyecto",
+    de: "Projekt-Erkundung",
+  },
+  description: {
+    en: "Mine a fresh project for existing material — README, logos, palette, configs — and propose project metadata + atlas + two tailored next-step tasks.",
+    "zh-CN": "为全新项目挖掘已有素材 —— README、Logo、配色、配置 —— 提出项目元数据、项目图谱与两项贴合实际的下一步任务。",
+    "zh-TW": "為全新專案挖掘已有素材 —— README、Logo、配色、設定 —— 提出專案元資料、專案總覽與兩項貼合實際的下一步任務。",
+    ja: "新規プロジェクトから既存素材（README、ロゴ、パレット、設定）を発掘し、プロジェクトメタデータ・アトラスと、ぴったりな次の 2 つのタスクを提案。",
+    ko: "새 프로젝트에서 기존 자료(README, 로고, 팔레트, 설정)를 발굴하고, 프로젝트 메타데이터·아틀라스와 상황에 맞는 다음 단계 작업 두 가지를 제안합니다.",
+    es: "Extrae el material existente de un proyecto nuevo —— README, logotipos, paleta, configuraciones —— y propone metadatos del proyecto, atlas y dos siguientes tareas a medida.",
+    de: "Vorhandenes Material aus einem neuen Projekt erschließen —— README, Logos, Palette, Konfigurationen —— und Projekt-Metadaten, Atlas sowie zwei passgenaue nächste Aufgaben vorschlagen.",
+  },
   // Internal mode — auto-launched on fresh project open or via the
   // ProjectPanel's "Re-discover" affordance, never picked from the
   // launcher's user-pickable mode grid.
@@ -60,6 +75,8 @@ const projectOnboardManifest: ModeManifest = {
 
   agent: {
     permissionMode: "bypassPermissions",
+    greeting: `<system-info pneuma-mode="Pneuma Project Discovery" skill="pneuma-project-onboard" session="new"></system-info>
+The user just opened a fresh Pneuma project for the first time. Begin discovery immediately — do not wait for user input. Open with one short sentence (1-2 sentences max) acknowledging what you're about to do (read README, package manifest, asset folders, configs; surface a discovery proposal with two tailored next-step tasks), then start the work and write the proposal to <sessionDir>/onboard/proposal.json. Do not enumerate the steps you'll take; announce briefly and go.`,
   },
 
   // Discovery currently relies on Claude Code's tool surface. Codex

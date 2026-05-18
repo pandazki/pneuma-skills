@@ -1,0 +1,9 @@
+{
+  "changed_files": "Changed Files ({{count}})",
+  "diff_base_tooltip": "Diff base: {{base}}",
+  "head": "HEAD",
+  "branch": "branch",
+  "no_changes": "No changes",
+  "loading": "Loading...",
+  "select_a_file": "Select a file to view diff"
+}

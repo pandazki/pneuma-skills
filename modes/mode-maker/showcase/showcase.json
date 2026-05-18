@@ -1,22 +1,50 @@
 {
-  "tagline": "Build, test, and publish Pneuma modes",
+  "tagline": {
+    "en": "Build, test, and publish Pneuma modes",
+    "zh-CN": "构建、测试并发布 Pneuma 模式",
+    "ja": "Pneuma モードの構築・テスト・公開"
+  },
   "hero": "hero.png",
   "highlights": [
     {
-      "title": "Overview Dashboard",
-      "description": "See your mode's completeness at a glance — manifest, viewer, skill, seed — with expandable cards showing each component's details.",
+      "title": {
+        "en": "Overview Dashboard",
+        "zh-CN": "总览仪表盘",
+        "ja": "オーバービュー・ダッシュボード"
+      },
+      "description": {
+        "en": "See your mode's completeness at a glance — manifest, viewer, skill, seed — with expandable cards showing each component's details.",
+        "zh-CN": "一眼看清模式完整度 —— manifest、viewer、skill、seed —— 各组件细节通过可展开卡片呈现。",
+        "ja": "モードの完成度がひと目で分かる —— manifest、viewer、skill、seed —— 各コンポーネントの詳細は展開できるカードで確認できる。"
+      },
       "media": "fork.png",
       "mediaType": "image"
     },
     {
-      "title": "Fork & Play",
-      "description": "Import any builtin mode as a starting point. Hit Play to launch a test instance in a temp workspace — instant feedback without leaving the editor.",
+      "title": {
+        "en": "Fork & Play",
+        "zh-CN": "Fork 即试玩",
+        "ja": "フォーク&プレイ"
+      },
+      "description": {
+        "en": "Import any builtin mode as a starting point. Hit Play to launch a test instance in a temp workspace — instant feedback without leaving the editor.",
+        "zh-CN": "任意内置模式都能作为起点导入。点 Play 即可在临时工作区里启动一个测试实例 —— 无需离开编辑器就能即时反馈。",
+        "ja": "任意のビルトインモードを出発点としてインポート可能。Play を押せばテンポラリのワークスペースでテストインスタンスが起動 —— エディタを離れずに即座にフィードバックが得られる。"
+      },
       "media": "play-test.png",
       "mediaType": "image"
     },
     {
-      "title": "One-Click Publish",
-      "description": "Package your mode and upload to the Pneuma registry. Share with a single command — version conflicts detected automatically.",
+      "title": {
+        "en": "One-Click Publish",
+        "zh-CN": "一键发布",
+        "ja": "ワンクリック公開"
+      },
+      "description": {
+        "en": "Package your mode and upload to the Pneuma registry. Share with a single command — version conflicts detected automatically.",
+        "zh-CN": "打包模式并上传到 Pneuma 注册中心。一条命令即可分享 —— 版本冲突会被自动识别。",
+        "ja": "モードをパッケージ化して Pneuma レジストリへアップロード。コマンド一つで共有でき、バージョン競合も自動で検知される。"
+      },
       "media": "publish.png",
       "mediaType": "image"
     }

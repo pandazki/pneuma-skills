@@ -21,9 +21,34 @@ export class SettingsManager {
     }
   }
 
+  /**
+   * Read the full settings JSON, including top-level fields that this
+   * manager doesn't own (e.g. `locale` written by `core/locale.ts`).
+   * Returns an empty object when the file is missing or malformed so
+   * callers can safely merge into the result.
+   */
+  private readRaw(): Record<string, unknown> {
+    try {
+      const raw = readFileSync(this.settingsPath, "utf-8");
+      const parsed = JSON.parse(raw);
+      return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Merge plugin settings into the existing settings.json. Top-level
+   * fields owned by other writers (`locale`, future preferences) are
+   * preserved — previously `save()` clobbered them with a `{ plugins }`-
+   * only payload, silently dropping the user's saved language preference
+   * the next time any plugin config was edited.
+   */
   private save(settings: PluginSettings): void {
     mkdirSync(this.baseDir, { recursive: true });
-    writeFileSync(this.settingsPath, JSON.stringify(settings, null, 2));
+    const existing = this.readRaw();
+    const merged = { ...existing, plugins: settings.plugins };
+    writeFileSync(this.settingsPath, JSON.stringify(merged, null, 2));
   }
 
   getPluginConfig(name: string): Record<string, unknown> {

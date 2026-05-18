@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { FormSlotDeclaration, FormField } from "../../core/types/plugin.js";
 
 interface FormSlotRendererProps {
@@ -11,6 +12,7 @@ function renderField(
   field: FormField,
   value: unknown,
   onFieldChange: (name: string, value: unknown) => void,
+  selectPlaceholder: string,
 ) {
   const baseInputClass =
     "w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder-cc-muted/40 outline-none focus:border-cc-primary/50 transition-colors";
@@ -46,7 +48,7 @@ function renderField(
           onChange={(e) => onFieldChange(field.name, e.target.value)}
           className={baseInputClass}
         >
-          <option value="">{field.placeholder || "Select..."}</option>
+          <option value="">{field.placeholder || selectPlaceholder}</option>
           {field.options?.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
@@ -74,6 +76,7 @@ function renderField(
 }
 
 export function FormSlotRenderer({ declaration, values, onChange }: FormSlotRendererProps) {
+  const { t } = useTranslation("common");
   const [localValues, setLocalValues] = useState<Record<string, unknown>>(values ?? {});
 
   const handleFieldChange = useCallback(
@@ -95,7 +98,7 @@ export function FormSlotRenderer({ declaration, values, onChange }: FormSlotRend
               {field.required && <span className="text-cc-primary ml-0.5">*</span>}
             </label>
           )}
-          {renderField(field, localValues[field.name], handleFieldChange)}
+          {renderField(field, localValues[field.name], handleFieldChange, t("select_placeholder"))}
           {field.description && (
             <p className="text-[10px] text-cc-muted/50">{field.description}</p>
           )}

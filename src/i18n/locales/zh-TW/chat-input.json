@@ -1,0 +1,38 @@
+{
+  "selection_types": {
+    "heading": "h{{level}}",
+    "paragraph": "段落",
+    "list": "清單",
+    "code": "程式碼區塊",
+    "blockquote": "引用",
+    "image": "圖片",
+    "table": "表格",
+    "text_range": "文字",
+    "section": "區段",
+    "link": "連結",
+    "container": "容器",
+    "interactive": "互動元素"
+  },
+  "annotations_label": "註釋（{{count}}）",
+  "clear_all": "全部清除",
+  "add_comment_placeholder": "新增註解…",
+  "remove_annotation": "移除註釋",
+  "clear_selection": "清除選取",
+  "queue_label_notification": "視圖",
+  "queue_label_user": "已排入佇列",
+  "remove_from_queue": "從佇列移除",
+  "remove_attachment": "移除",
+  "attach_file": "附加檔案",
+  "file_button": "檔案",
+  "stop": "停止",
+  "send": "送出",
+  "queue": "排入佇列",
+  "placeholder": {
+    "waiting": "等待 CLI 連線中…",
+    "busy": "輸入以排入下一則訊息…",
+    "annotations": "新增備註（選填）…",
+    "selection": "告訴 Claude 要修改什麼…",
+    "annotate_mode": "點選元素以標註，再送出…",
+    "default": "傳送訊息…（可拖放檔案、貼上圖片、輸入 / 呼叫指令）"
+  }
+}

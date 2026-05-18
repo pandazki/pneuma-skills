@@ -1,0 +1,14 @@
+{
+  "recurring": "循环",
+  "one_shot": "一次性",
+  "durable": "持久化",
+  "cancel_job_tooltip": "取消此定时任务",
+  "cancel": "取消",
+  "scheduled_jobs": "定时任务（{{count}}）",
+  "refresh": "刷新",
+  "backend_specific_title": "后端相关功能",
+  "backend_specific_body": "定时任务目前依赖 Claude Code 的 cron 工具，当前后端暂不支持。",
+  "upgrade_required": "需要升级 Claude Code",
+  "upgrade_body": "定时任务需要 Claude Code {{minVersion}} 及以上。当前版本：{{currentVersion}}。运行 <1>claude update</1> 升级。",
+  "empty_hint": "暂无定时任务。在对话中输入 <1>/loop</1> 即可创建循环任务。"
+}

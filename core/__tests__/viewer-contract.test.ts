@@ -108,6 +108,8 @@ describe("ViewerPreviewProps shape", () => {
       mode: "view",
       contentVersion: 0,
       imageVersion: 0,
+      theme: "dark",
+      locale: "en",
     };
 
     expect(props.sources).toEqual({});
@@ -121,6 +123,20 @@ describe("ViewerPreviewProps shape", () => {
   test("mode has three valid values", () => {
     const modes: ViewerPreviewProps["mode"][] = ["view", "edit", "select"];
     expect(modes).toHaveLength(3);
+  });
+
+  test("theme is resolved (never 'system') and locale is a string", () => {
+    // The runtime collapses the user's "system" preference into a concrete
+    // light/dark before invoking the viewer — the contract enforces the
+    // narrowed type so viewers don't ship a forgotten `else` branch.
+    const themes: ViewerPreviewProps["theme"][] = ["light", "dark"];
+    expect(themes).toHaveLength(2);
+
+    // Locale is the lowercased primary language ("en", "ja", "zh"). The
+    // BCP-47 region form lives in useSystemPreferences().locales for
+    // viewers that need it.
+    const example: ViewerPreviewProps["locale"] = "zh";
+    expect(typeof example).toBe("string");
   });
 });
 
@@ -344,6 +360,8 @@ describe("Backward compatibility", () => {
       onSelect: () => {},
       mode: "view",
       imageVersion: 0,
+      theme: "dark",
+      locale: "en",
       // New optional fields
       workspaceItems: [{ path: "test.md", label: "Test" }],
       actionRequest: { requestId: "r1", actionId: "test" },

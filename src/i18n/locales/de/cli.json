@@ -1,0 +1,233 @@
+{
+  "common": {
+    "cancelled": "Abgebrochen.",
+    "goodbye": "Auf Wiedersehen!",
+    "fatal_error": "Schwerer Fehler: {{message}}"
+  },
+  "pneuma": {
+    "intro": "pneuma-skills v{{version}}",
+    "version_label": "pneuma-skills v{{version}}",
+    "help": "pneuma-skills [mode] [options]\n\nModi:\n  (kein Argument)              Launcher öffnen (Marktplatz-UI)\n  webcraft                     Webdesign mit Impeccable.style\n  slide                        HTML-Präsentationen\n  doc                          Markdown mit Live-Vorschau\n  draw                         Excalidraw-Canvas\n  illustrate                   KI-Illustrationsstudio\n  mode-maker                   Eigene Modi mit KI erstellen\n  evolve                       Evolution-Agent starten\n  /path/to/mode                Aus lokalem Verzeichnis laden\n  github:user/repo             Aus GitHub laden\n  https://...tar.gz            Aus URL laden\n\nOptionen:\n  --workspace <path>           Ziel-Arbeitsbereich (Standard: cwd)\n  --port <number>              Bevorzugter Server-Port\n  --backend <type>             Agent-Backend ({{backendList}}; Standard: {{defaultBackend}})\n  --no-open                    Browser nicht automatisch öffnen\n  --no-prompt                  Nicht-interaktiver Modus\n  --skip-skill                 Skill-Installation überspringen\n  --debug                      Debug-Modus aktivieren\n  --dev                        Dev-Modus erzwingen (Vite)\n  --help, -h                   Diese Hilfe anzeigen\n  --version, -v                Version anzeigen",
+    "bun_not_running": "Läuft nicht unter Bun. Pneuma benötigt Bun >= {{min}}",
+    "bun_too_old": "Bun {{current}} erkannt, aber >= {{min}} ist erforderlich. Terminal-Funktionen funktionieren möglicherweise nicht. Zum Aktualisieren `bun upgrade` ausführen.",
+    "update": {
+      "available": "Aktualisierung verfügbar: {{current}} → {{latest}}",
+      "prompt": "Auf neueste Version aktualisieren?",
+      "updating": "Wird auf pneuma-skills@{{version}} aktualisiert…"
+    },
+    "backend_unavailable": "{{label}} wird benötigt, ist aber nicht verfügbar.\n{{reason}}",
+    "backend_unavailable_no_detail": "(keine Details verfügbar)",
+    "workspace_create_prompt": "Arbeitsbereich existiert nicht: {{workspace}}\n  Erstellen?",
+    "workspace_created": "Arbeitsbereich erstellt: {{workspace}}",
+    "mode_info": "Modus: {{displayName}} ({{name}})",
+    "workspace_info": "Arbeitsbereich: {{workspace}}",
+    "project_session_info": "Projekt-Sitzung: {{sessionId}}",
+    "external_mode_loaded": "Externer Modus \"{{name}}\" aus {{path}} geladen",
+    "resolve_failed": "Modus \"{{mode}}\" konnte nicht aufgelöst werden: {{message}}",
+    "load_failed": "Modus \"{{mode}}\" konnte nicht geladen werden: {{message}}",
+    "mode_unsupported_backend": "Modus \"{{mode}}\" unterstützt nur die Backends: {{backends}}. Gewähltes Backend \"{{backend}}\" ist nicht kompatibel.",
+    "backend_mismatch": "Arbeitsbereich ist bereits an Backend \"{{backend}}\" gebunden. Mit --backend {{backend}} starten oder .pneuma/session.json entfernen, um neu zu beginnen.",
+    "configuring_params": "Modus-Parameter werden konfiguriert…",
+    "loaded_init_params": "Init-Parameter aus .pneuma/config.json geladen",
+    "default_init_params": "Standard-Init-Parameter werden verwendet (No-Prompt-Modus)",
+    "saved_init_params": "Init-Parameter in .pneuma/config.json gespeichert",
+    "installing_skill": "Skill wird installiert und Umgebung vorbereitet…",
+    "skill_replace_prompt": "Skill existiert bereits. Mit neuester Version ersetzen?",
+    "skill_deps_incomplete": "Skill-Abhängigkeiten unvollständig:",
+    "skill_deps_bundled_hint": "Skill-Dateien müssen vor dem Start im Modus-Paket gebündelt sein.",
+    "skill_deps_fix_hint": "Modus-Paket korrigieren und erneut versuchen.",
+    "dev_mode": "Entwicklungsmodus (über Vite ausgeliefert)",
+    "prod_mode": "Produktionsmodus (gebaute Assets werden ausgeliefert)",
+    "compiling_viewer": "Modus-Ansicht für Produktion wird kompiliert…",
+    "using_prebuilt_viewer": "Vorgefertigtes Modus-Ansicht-Bundle wird verwendet",
+    "viewer_compiled": "Modus-Ansicht erfolgreich kompiliert",
+    "viewer_compile_failed": "Kompilierung der Modus-Ansicht fehlgeschlagen — Ansicht lädt möglicherweise nicht",
+    "seeded_workspace": "Arbeitsbereich mit {{path}} initialisiert",
+    "installing_deps": "Abhängigkeiten werden installiert…",
+    "vite_starting": "Vite-Dev-Server wird auf Port {{port}} gestartet…",
+    "marketplace_ready": "Marktplatz → {{url}}",
+    "ready": "Bereit → {{url}}",
+    "open_browser_failed": "Browser konnte nicht geöffnet werden. Aufrufen: {{url}}",
+    "auto_starting_app": "App wird automatisch gestartet: {{name}} ({{workspace}})",
+    "replay_mode": "Wiedergabemodus: {{path}}",
+    "continue_work_installing": "Weiterarbeiten: Skill wird installiert…",
+    "continue_work_launched": "Weiterarbeiten: Agent gestartet, Sitzung aktiv",
+    "exporting_replay_source": "Wiedergabedaten werden exportiert aus: {{source}}",
+    "exported_replay_package": "Wiedergabe-Paket exportiert: {{path}}",
+    "export_replay_failed": "Wiedergabe-Export aus Quelle fehlgeschlagen: {{message}}. Wird ohne Wiedergabe fortgesetzt.",
+    "viewing_dashboard_only": "Anzeigemodus: nur Dashboard, kein Agent",
+    "resuming_session": "Sitzung wird fortgesetzt: {{id}}",
+    "agent_session": "Agent-Sitzung: {{id}}",
+    "switching_to_edit": "Wechsel in Bearbeitungsmodus: Skill wird installiert und Agent gestartet…",
+    "switching_to_viewing": "Wechsel in Anzeigemodus: Agent wird gestoppt…",
+    "edit_mode_launched": "Bearbeitungsmodus: Agent gestartet",
+    "project": {
+      "usage_add": "Verwendung: pneuma project add <path>",
+      "path_missing": "Pfad existiert nicht: {{path}}",
+      "no_pneuma_data": "Keine Pneuma-Daten unter {{path}} gefunden. Verwenden Sie den \"Projekt erstellen\"-Dialog im Launcher für eine Neueinrichtung.",
+      "registered_existing": "[project] Vorhandenes Projekt \"{{name}}\" unter {{path}} registriert",
+      "registered_synthesized": "[project] Manifest synthetisiert + \"{{name}}\" unter {{path}} registriert"
+    },
+    "evolve": {
+      "no_proposals": "Keine Weiterentwicklungs-Vorschläge gefunden.",
+      "proposal_count": "{{count}} Vorschlag/Vorschläge:",
+      "no_proposals_error": "Keine Vorschläge gefunden. Zuerst `pneuma evolve` ausführen.",
+      "proposal_already_handled": "Vorschlag {{id}} ist bereits {{status}}.",
+      "apply_prompt": "Diesen Vorschlag anwenden?",
+      "applied": "{{count}} Datei(en) angewendet. Mit `pneuma evolve rollback` rückgängig machen.",
+      "apply_failed": "Anwenden fehlgeschlagen: {{message}}",
+      "no_applied_to_rollback": "Keine angewendeten Vorschläge zum Zurücksetzen.",
+      "rollback_prompt": "Vorschlag {{id}} zurücksetzen?",
+      "rolled_back": "{{count}} Datei(en) zurückgesetzt.",
+      "rollback_failed": "Zurücksetzen fehlgeschlagen: {{message}}",
+      "no_mode_specified": "Kein Modus angegeben und keine .pneuma/session.json gefunden.\nVerwendung: pneuma evolve --mode <mode> --workspace <path>",
+      "default_recent_mode": "Kein --mode angegeben; Standard ist der jüngste Projekt-Sitzungsmodus: {{mode}}",
+      "default_doc_mode": "Kein --mode angegeben und keine Projekt-Sitzungen gefunden; Standard ist 'doc' für den Skill-Bootstrap.",
+      "unsupported_backend": "Der Evolve-Modus unterstützt nur die Backends: {{backends}}. Gewähltes Backend \"{{backend}}\" ist nicht kompatibel.",
+      "evolving": "Skill für Modus {{displayName}} wird weiterentwickelt…",
+      "project_root": "Projekt-Stamm: {{path}}"
+    },
+    "mode": {
+      "add": {
+        "usage": "Verwendung: pneuma mode add <url|github:user/repo>",
+        "is_builtin": "\"{{name}}\" ist ein integrierter Modus — Hinzufügen nicht nötig.",
+        "added": "Modus \"{{name}}\" hinzugefügt unter {{path}}",
+        "failed": "Modus konnte nicht hinzugefügt werden: {{message}}",
+        "library_up_to_date": "Bibliothek \"{{name}}\" ist bereits aktuell ({{total}} {{modesWord}}, {{activated}} aktiviert).",
+        "library_synced": "Bibliothek \"{{name}}\" unter {{dir}} synchronisiert\n  {{total}} {{modesWord}} ({{activated}} aktiviert){{changes}}",
+        "library_linked": "Bibliothek \"{{name}}\" unter {{dir}} verknüpft\n  {{total}} {{modesWord}} ({{activated}} aktiviert): {{modeNames}}",
+        "added_label": "hinzugefügt",
+        "removed_label": "entfernt",
+        "updated_label": "aktualisiert"
+      },
+      "list": {
+        "none": "[mode] Keine veröffentlichten Modi gefunden.",
+        "header": "[mode] {{count}} veröffentlichte(r) Modus/Modi:\n",
+        "updated_at": "Aktualisiert: {{date}}"
+      },
+      "modes_word_one": "Modus",
+      "modes_word_many": "Modi"
+    },
+    "library": {
+      "usage": "Verwendung:\n  pneuma library init <name> [--display \"…\"] [--description \"…\"] [--github user/repo] [--private]\n  pneuma library link <source>\n  pneuma library list\n  pneuma library sync <id>\n  pneuma library publish <mode> [--to <library-id>] [--as <new-name>] [--push]\n  pneuma library push <id>\n  pneuma library unlink <id> [--force]\n  pneuma library activate <id> <mode>\n  pneuma library deactivate <id> <mode>",
+      "unknown_subcommand": "Unbekannter library-Unterbefehl: {{sub}}\n{{usage}}",
+      "subcommand_none": "(keiner)",
+      "init": {
+        "usage": "Verwendung: pneuma library init <name> [--display \"…\"] [--description \"…\"] [--github user/repo] [--private]",
+        "initialized": "Bibliothek \"{{name}}\" unter {{dir}} initialisiert",
+        "pushed": "Push nach {{url}}",
+        "github_failed": "Erstellen des GitHub-Repos fehlgeschlagen: {{message}}",
+        "failed": "Bibliothek konnte nicht initialisiert werden: {{message}}"
+      },
+      "link": {
+        "usage": "Verwendung: pneuma library link <source>",
+        "is_single_mode": "Dieses Repo ist ein einzelner Modus, keine Bibliothek — stattdessen `pneuma mode add` verwenden.",
+        "failed": "Bibliothek konnte nicht verknüpft werden: {{message}}"
+      },
+      "list": {
+        "none": "Keine Bibliotheken verknüpft. `pneuma library link github:user/repo` versuchen."
+      },
+      "sync": {
+        "usage": "Verwendung: pneuma library sync <id>",
+        "not_linked": "Bibliothek \"{{id}}\" ist nicht verknüpft.",
+        "fetch_failed": "git fetch fehlgeschlagen: {{message}}",
+        "checkout_failed": "git checkout fehlgeschlagen: {{message}}",
+        "not_library_on_disk": "Bibliothek \"{{id}}\" sieht auf der Festplatte nicht mehr wie eine Bibliothek aus.",
+        "up_to_date": "Bibliothek \"{{id}}\" ist bereits aktuell ({{total}} {{modesWord}}, {{activated}} aktiviert).",
+        "synced": "Bibliothek \"{{id}}\" synchronisiert ({{total}} {{modesWord}}, {{activated}} aktiviert){{changes}}",
+        "failed": "Synchronisierung der Bibliothek fehlgeschlagen: {{message}}"
+      },
+      "publish": {
+        "usage": "Verwendung: pneuma library publish <mode> [--to <library-id>] [--as <new-name>] [--push]",
+        "mode_path_missing": "Modus-Pfad nicht gefunden: {{path}}",
+        "mode_not_found": "Modus \"{{mode}}\" weder in ~/.pneuma/modes/ noch in integrierten modes/ gefunden.",
+        "no_libraries": "Keine Bibliotheken verknüpft. Zuerst `pneuma library init <name>` oder `pneuma library link <source>` ausführen.",
+        "multiple_libraries": "Mehrere Bibliotheken verknüpft — --to <library-id> übergeben. Verfügbar: {{ids}}",
+        "success": "{{mode}} in {{library}} unter {{dir}} veröffentlicht",
+        "pushed": "Per Push übertragen",
+        "failed": "Veröffentlichung fehlgeschlagen: {{message}}"
+      },
+      "push": {
+        "usage": "Verwendung: pneuma library push <id>",
+        "success": "Bibliothek \"{{id}}\" per Push übertragen"
+      },
+      "unlink": {
+        "usage": "Verwendung: pneuma library unlink <id> [--force]",
+        "confirm": "Bibliothek \"{{id}}\" trennen? Dabei wird der lokale Klon gelöscht.",
+        "removed": "Bibliothek \"{{id}}\" entfernt",
+        "not_linked": "Bibliothek \"{{id}}\" nicht verknüpft.",
+        "failed": "Trennen fehlgeschlagen: {{message}}"
+      },
+      "activate": {
+        "usage": "Verwendung: pneuma library {{action}} <id> <mode>",
+        "activated": "Modus \"{{mode}}\" in {{library}} aktiviert",
+        "deactivated": "Modus \"{{mode}}\" in {{library}} deaktiviert"
+      }
+    },
+    "plugin": {
+      "usage": "Verwendung: pneuma plugin <add|list|remove>",
+      "add": {
+        "usage": "Verwendung: pneuma plugin add <path|github:user/repo|url>",
+        "invalid_github": "Ungültiger GitHub-Bezeichner. Erwartet: github:user/repo oder github:user/repo#branch",
+        "updating_existing": "Vorhandenes Plugin \"{{name}}\" wird aktualisiert…",
+        "cloning": "{{url}} wird geklont…",
+        "downloading": "{{url}} wird heruntergeladen…",
+        "path_missing": "Pfad nicht gefunden: {{path}}",
+        "invalid_no_manifest": "Ungültiges Plugin: keine manifest.ts in {{path}} gefunden",
+        "installed": "Plugin \"{{name}}\" nach {{path}} installiert",
+        "failed": "Plugin konnte nicht hinzugefügt werden: {{message}}"
+      },
+      "list": {
+        "none": "[plugin] Keine Plugins gefunden.",
+        "builtin_header": "  Integrierte Plugins:",
+        "external_header": "  Externe Plugins:",
+        "enabled": "(aktiviert)",
+        "disabled": "(deaktiviert)",
+        "builtin_tag": "[integriert]"
+      },
+      "remove": {
+        "usage": "Verwendung: pneuma plugin remove <name>",
+        "is_builtin": "\"{{name}}\" ist ein integriertes Plugin und kann nicht entfernt werden. Es kann in den Einstellungen deaktiviert werden.",
+        "not_found": "Plugin \"{{name}}\" nicht in {{dir}} gefunden",
+        "removed": "Plugin \"{{name}}\" entfernt."
+      }
+    },
+    "history": {
+      "exported": "{{messages}} Nachrichten, {{checkpoints}} Checkpoints exportiert",
+      "output": "Ausgabe: {{path}}",
+      "open_usage": "Verwendung: pneuma history open <path-or-url>",
+      "replay_ready": "Wiedergabe-Paket bereit: {{path}}",
+      "replay_hint": "Zur Wiedergabe in einer laufenden Sitzung:",
+      "replay_post_example": "  POST /api/replay/load mit {\"path\": \"{{path}}\"}"
+    }
+  },
+  "handoff": {
+    "usage": "Verwendung: pneuma handoff --json '<json>' | --stdin\n\nEine strukturierte Übergabe an die aktive Pneuma-Sitzung senden. Der Server zeigt dem\nNutzer eine HandoffCard; nach Bestätigung wird die Ziel-Sitzung mit vorab geladenem\nPayload gestartet. Liest JSON mit folgenden Feldern:\n\n  target_mode       string   erforderlich  Modus-Name (z. B. \"webcraft\")\n  target_session    string   optional      Vorhandene Sitzungs-ID, \"auto\", oder weglassen\n  intent            string   erforderlich  Ein Satz — was das Ziel tut\n  summary           string   optional      Wenige Sätze zum hier Erreichten\n  suggested_files   string[] optional      Projekt-relative Pfade, geordnet\n  key_decisions     string[] optional      Festgelegte Entscheidungen für das Ziel\n  open_questions    string[] optional      Vom Ziel zu klärende Punkte\n\nUmgebungsvariablen:\n  PNEUMA_SERVER_URL   Adresse für den POST\n  PNEUMA_SESSION_ID   Quell-Sitzungs-ID (automatisch eingefügt)\n",
+    "missing_args": "Fehler: --json '<json>' oder --stdin übergeben",
+    "missing_session_id": "Fehler: Umgebungsvariable PNEUMA_SESSION_ID nicht gesetzt (muss in einer Sitzung laufen)",
+    "missing_server_url": "Fehler: Umgebungsvariable PNEUMA_SERVER_URL nicht gesetzt (muss in einer Sitzung laufen)",
+    "empty_payload": "Fehler: leeres JSON-Payload",
+    "invalid_json": "Fehler: ungültiges JSON — {{message}}",
+    "validation_error": "Fehler: {{message}}",
+    "fetch_failed": "Fehler: Pneuma-Server unter {{url}} nicht erreichbar: {{message}}",
+    "server_error": "Fehler: {{message}}",
+    "submitted": "Übergabe gesendet; warten auf Nutzerbestätigung.{{idSuffix}}",
+    "submitted_id": " (ID {{id}})"
+  },
+  "session": {
+    "refine": {
+      "usage": "Verwendung: pneuma session refine --json '<json>' | --stdin\n\nDie UI-Metadaten der aktiven Pneuma-Sitzung so umschreiben, dass die Zeilen\nim Launcher und im ProjectPanel widerspiegeln, worum es in der Sitzung\ntatsächlich geht — statt des Modus-basierten Standardtitels und der ersten\nsynthetischen `<pneuma:env>`-Nachricht.\n\nFelder des JSON-Payloads (mindestens eines erforderlich):\n\n  displayName   string   ≤40 Zeichen — kurzer Titel der Sitzung\n  description   string   ≤280 Zeichen — ein oder zwei Sätze\n\nDer Agent nutzt dies, wenn die Konversation genug Substanz für eine\naussagekräftige Zusammenfassung hat, oder wenn der Nutzer ausdrücklich um\neine neue Betitelung bittet.\n\nUmgebungsvariablen:\n  PNEUMA_SERVER_URL   Adresse für den POST\n  PNEUMA_SESSION_ID   aktive Sitzungs-ID (automatisch eingefügt)\n",
+      "missing_args": "Fehler: --json '<json>' oder --stdin übergeben",
+      "missing_session_id": "Fehler: Umgebungsvariable PNEUMA_SESSION_ID nicht gesetzt (muss in einer Sitzung laufen)",
+      "missing_server_url": "Fehler: Umgebungsvariable PNEUMA_SERVER_URL nicht gesetzt (muss in einer Sitzung laufen)",
+      "empty_payload": "Fehler: leeres JSON-Payload",
+      "invalid_json": "Fehler: ungültiges JSON — {{message}}",
+      "validation_error": "Fehler: {{message}}",
+      "fetch_failed": "Fehler: Pneuma-Server unter {{url}} nicht erreichbar: {{message}}",
+      "server_error": "Fehler: {{message}}",
+      "success": "Sitzungs-Metadaten verfeinert.{{titleSuffix}}{{descSuffix}}",
+      "success_title": " Titel=\"{{title}}\"",
+      "success_desc": " Beschreibung=\"{{description}}\""
+    }
+  }
+}

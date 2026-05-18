@@ -1,0 +1,14 @@
+{
+  "scheduled_task": "排程任務",
+  "status": {
+    "disconnected": "已斷線",
+    "cli_disconnected": "CLI 已斷線",
+    "running": "執行中",
+    "compacting": "壓縮中",
+    "idle": "閒置"
+  },
+  "reconnect": "重新連線",
+  "no_model": "未選擇模型",
+  "empty_send_message": "傳送一則訊息開始編輯",
+  "empty_connecting": "正在連線到 Claude…"
+}

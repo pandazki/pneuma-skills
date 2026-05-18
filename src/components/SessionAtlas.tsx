@@ -20,6 +20,7 @@
  * the project) deliberately does NOT live here — it belongs on the
  * Project chip / panel. This view is per-session.
  */
+import { Trans, useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
 
 interface MetaRowProps {
@@ -66,6 +67,7 @@ function StatCard({
 }
 
 export default function SessionAtlas() {
+  const { t, i18n } = useTranslation("session-atlas");
   const session = useStore((s) => s.session);
   const modeManifest = useStore((s) => s.modeManifest);
   const projectContext = useStore((s) => s.projectContext);
@@ -73,13 +75,17 @@ export default function SessionAtlas() {
   if (!session) {
     return (
       <div className="flex items-center justify-center h-full text-cc-muted/40 text-sm">
-        Session info loading…
+        {t("loading")}
       </div>
     );
   }
 
-  const modeLabel =
-    modeManifest?.displayName ?? session.cwd.split("/").pop() ?? "Session";
+  const modeLabel = (() => {
+    const dn = modeManifest?.displayName;
+    if (!dn) return session.cwd.split("/").pop() ?? t("fallback_session");
+    if (typeof dn === "string") return dn;
+    return dn[i18n.language] ?? dn.en ?? session.cwd.split("/").pop() ?? t("fallback_session");
+  })();
   const sessionShort = session.session_id.slice(0, 8);
   const cost =
     session.total_cost_usd > 0 ? `$${session.total_cost_usd.toFixed(4)}` : "—";
@@ -105,29 +111,27 @@ export default function SessionAtlas() {
         {/* Header — mode + identity */}
         <header className="flex flex-col gap-2">
           <div className="text-[11px] uppercase tracking-wider text-cc-muted/60 font-medium">
-            Session
+            {t("section_session")}
           </div>
           <h2 className="font-display text-2xl text-cc-fg leading-tight">
             {modeLabel}
           </h2>
           <p className="text-sm text-cc-muted/70 leading-relaxed">
-            What you're looking at is everything Pneuma keeps for this session — the
-            things that aren't in the file tree because editing them as raw JSON
-            would be more friction than help. They live under{" "}
-            <span className="font-mono-code text-cc-muted">
-              .pneuma/sessions/{sessionShort}…/
-            </span>{" "}
-            on disk.
+            <Trans
+              i18nKey="intro_html"
+              ns="session-atlas"
+              values={{ sessionShort }}
+              components={{ 1: <span className="font-mono-code text-cc-muted" /> }}
+            />
           </p>
           {projectContext?.projectRoot ? (
             <p className="text-xs text-cc-muted/60">
-              Part of project{" "}
-              <span className="text-cc-fg/80">
-                {projectContext.projectName ??
-                  projectContext.projectRoot.split("/").pop()}
-              </span>
-              . Project-level info (cover, sibling sessions, project preferences) is on
-              the Project chip in the top-left.
+              <Trans
+                i18nKey="part_of_project"
+                ns="session-atlas"
+                values={{ name: projectContext.projectName ?? projectContext.projectRoot.split("/").pop() ?? "" }}
+                components={{ 1: <span className="text-cc-fg/80" /> }}
+              />
             </p>
           ) : null}
         </header>
@@ -135,13 +139,13 @@ export default function SessionAtlas() {
         {/* Activity stats */}
         <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard
-            label="Turns"
+            label={t("stat_turns")}
             value={session.num_turns}
-            hint="agent ↔ user round-trips"
+            hint={t("stat_turns_hint")}
           />
-          <StatCard label="Cost" value={cost} hint="this session" />
-          <StatCard label="Context" value={ctx} hint="of the model's window" />
-          <StatCard label="Lines" value={lines} hint="net file edits" />
+          <StatCard label={t("stat_cost")} value={cost} hint={t("stat_cost_hint")} />
+          <StatCard label={t("stat_context")} value={ctx} hint={t("stat_context_hint")} />
+          <StatCard label={t("stat_lines")} value={lines} hint={t("stat_lines_hint")} />
         </section>
 
         {/* Session metadata — labeled, mono for ids/paths. Future: each
@@ -149,20 +153,20 @@ export default function SessionAtlas() {
             (display name, model picker, etc.). */}
         <section className="flex flex-col gap-3">
           <h3 className="text-[11px] uppercase tracking-wider text-cc-muted/60 font-medium flex items-center justify-between">
-            <span>Identity</span>
+            <span>{t("identity")}</span>
             <span className="text-cc-muted/40 normal-case tracking-normal text-[10px]">
-              read-only · controlled edit forms coming
+              {t("identity_readonly_hint")}
             </span>
           </h3>
           <div className="flex flex-col gap-2 px-4 py-4 rounded-lg border border-cc-border/40 bg-cc-bg/20">
-            <MetaRow label="Mode" value={modeLabel} />
-            <MetaRow label="Backend" value={session.backend_type} mono />
-            <MetaRow label="Model" value={session.model || "—"} mono />
-            <MetaRow label="Session id" value={session.session_id} mono />
-            <MetaRow label="Working dir" value={cwdShort} mono />
-            {session.pid ? <MetaRow label="PID" value={session.pid} mono /> : null}
+            <MetaRow label={t("row_mode")} value={modeLabel} />
+            <MetaRow label={t("row_backend")} value={session.backend_type} mono />
+            <MetaRow label={t("row_model")} value={session.model || "—"} mono />
+            <MetaRow label={t("row_session_id")} value={session.session_id} mono />
+            <MetaRow label={t("row_working_dir")} value={cwdShort} mono />
+            {session.pid ? <MetaRow label={t("row_pid")} value={session.pid} mono /> : null}
             <MetaRow
-              label="Agent version"
+              label={t("row_agent_version")}
               value={session.agent_version || session.claude_code_version || "—"}
               mono
             />
@@ -176,7 +180,7 @@ export default function SessionAtlas() {
         {session.skills && session.skills.length > 0 ? (
           <section className="flex flex-col gap-3">
             <h3 className="text-[11px] uppercase tracking-wider text-cc-muted/60 font-medium">
-              Skills installed
+              {t("skills_installed")}
             </h3>
             <div className="flex flex-wrap gap-1.5">
               {session.skills.map((skill) => (
@@ -196,7 +200,7 @@ export default function SessionAtlas() {
         {session.mcp_servers && session.mcp_servers.length > 0 ? (
           <section className="flex flex-col gap-3">
             <h3 className="text-[11px] uppercase tracking-wider text-cc-muted/60 font-medium">
-              MCP servers
+              {t("mcp_servers")}
             </h3>
             <div className="flex flex-col gap-1.5">
               {session.mcp_servers.map((s) => (
@@ -228,20 +232,21 @@ export default function SessionAtlas() {
             go?" mystery without dumping every internal name on screen. */}
         <section className="flex flex-col gap-2">
           <h3 className="text-[11px] uppercase tracking-wider text-cc-muted/60 font-medium">
-            Hidden from the file tree
+            {t("hidden_section")}
           </h3>
           <p className="text-sm text-cc-muted/70 leading-relaxed">
-            The file tree intentionally drops Pneuma's bookkeeping —{" "}
-            <span className="font-mono-code text-cc-muted">session.json</span>,{" "}
-            <span className="font-mono-code text-cc-muted">history.json</span>,{" "}
-            <span className="font-mono-code text-cc-muted">CLAUDE.md</span>,{" "}
-            <span className="font-mono-code text-cc-muted">shadow.git/</span>,{" "}
-            <span className="font-mono-code text-cc-muted">checkpoints.jsonl</span>,
-            and the installed{" "}
-            <span className="font-mono-code text-cc-muted">.claude/skills/</span>.
-            They're managed by the agent and runtime; raw JSON edits would usually
-            break something. The cards above show what they contain. As parts of
-            them grow stable schemas, each will get its own controlled edit form.
+            <Trans
+              i18nKey="hidden_body"
+              ns="session-atlas"
+              components={{
+                1: <span className="font-mono-code text-cc-muted" />,
+                2: <span className="font-mono-code text-cc-muted" />,
+                3: <span className="font-mono-code text-cc-muted" />,
+                4: <span className="font-mono-code text-cc-muted" />,
+                5: <span className="font-mono-code text-cc-muted" />,
+                6: <span className="font-mono-code text-cc-muted" />,
+              }}
+            />
           </p>
         </section>
       </div>

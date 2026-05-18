@@ -1,0 +1,8 @@
+{
+  "title": "Initialize Workspace",
+  "warning": "This will clear existing files and create new ones. This action cannot be undone.",
+  "files_to_clear": "Files to clear:",
+  "files_to_create": "Files to create ({{count}}):",
+  "cancel": "Cancel",
+  "initialize": "Initialize"
+}

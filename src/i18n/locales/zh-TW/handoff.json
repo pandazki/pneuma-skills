@@ -1,0 +1,19 @@
+{
+  "dialog_aria": "待處理的接力檢視",
+  "ready": "接力就緒",
+  "files": "檔案",
+  "decisions_locked": "已敲定的決策",
+  "open_questions": "待解決的問題",
+  "cancel_reason_placeholder": "原因？（選填）",
+  "back": "返回",
+  "cancel_handoff": "取消接力",
+  "cancelling": "取消中…",
+  "cancel": "取消",
+  "confirm_switch": "確認切換",
+  "switching": "切換中…",
+  "confirm_failed_code": "確認失敗（{{code}}）",
+  "cancel_failed_code": "取消失敗（{{code}}）",
+  "confirm_failed": "確認失敗",
+  "cancel_failed": "取消失敗",
+  "no_launch_url": "伺服器未回傳啟動網址"
+}

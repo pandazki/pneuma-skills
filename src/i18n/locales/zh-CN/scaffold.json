@@ -1,0 +1,8 @@
+{
+  "title": "初始化工作区",
+  "warning": "此操作会清空现有文件并写入新文件，无法撤销。",
+  "files_to_clear": "将被清空的文件：",
+  "files_to_create": "将创建的文件（{{count}}）：",
+  "cancel": "取消",
+  "initialize": "初始化"
+}

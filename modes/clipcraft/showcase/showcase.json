@@ -1,22 +1,50 @@
 {
-  "tagline": "AI video production with anchored frames and provenance",
+  "tagline": {
+    "en": "AI video production with anchored frames and provenance",
+    "zh-CN": "锚定首末帧、可溯来源的 AI 视频制作",
+    "ja": "アンカーフレームと来歴を伴う AI 動画制作"
+  },
   "hero": "hero.png",
   "highlights": [
     {
-      "title": "Anchored First-Last Frames",
-      "description": "Pin the start and end of every shot to the same image its neighbors share — cuts become invisible. The seed ships a 19-second self-intro that's anchored end-to-end.",
+      "title": {
+        "en": "Anchored First-Last Frames",
+        "zh-CN": "锚定首末帧",
+        "ja": "アンカー首末フレーム"
+      },
+      "description": {
+        "en": "Pin the start and end of every shot to the same image its neighbors share — cuts become invisible. The seed ships a 19-second self-intro that's anchored end-to-end.",
+        "zh-CN": "把每个镜头的首末帧固定到相邻镜头共用的同一张图，剪辑点几乎察觉不到。Seed 自带一段 19 秒、首尾全程锚定的自我介绍样片。",
+        "ja": "各ショットの先頭と末尾を、隣接ショットと共有する同じ画像に固定 —— カットがほぼ見えなくなる。シードには端から端まで锚定された 19 秒のセルフ紹介サンプルを同梱。"
+      },
       "media": "first-last-frame.png",
       "mediaType": "image"
     },
     {
-      "title": "3D Timeline & Dive-In",
-      "description": "Multi-track editor with an exploded 3D overview at any playhead position. Click a layer to dive into the shot's prompt, refs, and variants in context.",
+      "title": {
+        "en": "3D Timeline & Dive-In",
+        "zh-CN": "3D 时间线与深入视图",
+        "ja": "3D タイムラインとダイブイン"
+      },
+      "description": {
+        "en": "Multi-track editor with an exploded 3D overview at any playhead position. Click a layer to dive into the shot's prompt, refs, and variants in context.",
+        "zh-CN": "多轨道编辑器配 3D 爆炸式总览，可在任意播放点查看全貌。点击图层即可深入查看该镜头的提示词、参考与变体。",
+        "ja": "再生位置で全体を見渡せるエクスプロード型 3D オーバービュー付きのマルチトラック編集。レイヤーをクリックすればそのショットのプロンプト・参考・バリアントへその場で潜り込める。"
+      },
       "media": "3d-timeline.png",
       "mediaType": "image"
     },
     {
-      "title": "Variants With Lineage",
-      "description": "Every clip carries its full provenance graph — switch between takes, see what derived from what, and ask the agent for another shot off any node.",
+      "title": {
+        "en": "Variants With Lineage",
+        "zh-CN": "带谱系的变体",
+        "ja": "系譜付きバリアント"
+      },
+      "description": {
+        "en": "Every clip carries its full provenance graph — switch between takes, see what derived from what, and ask the agent for another shot off any node.",
+        "zh-CN": "每段素材都附带完整的来源图谱 —— 在不同 take 之间切换，看清派生关系，并可在任意节点上请代理再生成一条。",
+        "ja": "あらゆるクリップは完全な来歴グラフを持つ —— テイクを切り替え、派生関係を辿り、任意のノードからエージェントに別バージョンを依頼できる。"
+      },
       "media": "variant-provenance.png",
       "mediaType": "image"
     }

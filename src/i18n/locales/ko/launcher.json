@@ -1,0 +1,306 @@
+{
+  "backends": {
+    "claude_code": {
+      "label": "Claude Code",
+      "description": "stdio stream-json 전송을 사용하는 Anthropic Claude Code CLI입니다."
+    },
+    "codex": {
+      "label": "Codex",
+      "description": "app-server 전송을 사용하는 OpenAI Codex CLI입니다."
+    },
+    "kimi": {
+      "label": "Kimi",
+      "description": "stdio stream-json 전송을 사용하는 Moonshot AI Kimi Code CLI입니다."
+    }
+  },
+  "header": {
+    "settings_tooltip": "설정"
+  },
+  "inspired_by_tooltip": "{{name}}에서 영감을 받음",
+  "inspired_by_prefix": "영감:",
+  "theme_tooltip": "테마: {{preference}}",
+  "confirm_button": {
+    "cancel": "취소"
+  },
+  "featured": {
+    "launch": "실행",
+    "explore_all": "모든 모드 둘러보기"
+  },
+  "session_card": {
+    "stop": "정지",
+    "replay": "리플레이",
+    "remove": "제거",
+    "rename": "이름 변경",
+    "launching": "실행 중...",
+    "skill_update": "업데이트 가능",
+    "skip": "건너뛰기",
+    "update": "업데이트",
+    "view_changelog": "전체 변경 로그 보기 →"
+  },
+  "compact_session": {
+    "rename": "이름 변경",
+    "replay": "리플레이",
+    "remove": "제거",
+    "launching": "실행 중...",
+    "whats_new": "새로운 기능",
+    "whats_new_in": "v{{version}}의 새로운 기능",
+    "skip": "건너뛰기",
+    "update": "업데이트",
+    "view_changelog": "전체 변경 로그 보기 →"
+  },
+  "all_sessions": {
+    "title": "전체 세션",
+    "search_placeholder": "세션 검색...",
+    "count_filtered": "{{filtered}} / {{total}} 세션",
+    "count_total": "{{count}} 세션",
+    "running": "실행 중",
+    "recent": "최근",
+    "no_match": "일치하는 세션이 없습니다.",
+    "no_sessions": "아직 세션이 없습니다."
+  },
+  "quick_start_tile": {
+    "favorite_aria": "즐겨찾기",
+    "from_library": "라이브러리 출처: {{name}}"
+  },
+  "mode_maker_hero": {
+    "title": "Mode Maker",
+    "description": "직접 Pneuma 모드를 만들고, 테스트하고, 게시하세요 — 기존 모드를 포크해 나만의 것으로 만들 수도 있습니다.",
+    "cta": "만들기"
+  },
+  "gallery": {
+    "title": "모드 갤러리",
+    "search_placeholder": "검색...",
+    "clear_search": "검색 지우기",
+    "group_builtin": "내장",
+    "group_local": "로컬",
+    "group_published": "게시됨",
+    "group_libraries": "라이브러리",
+    "add_from_url": "URL에서 추가",
+    "add_from_url_tooltip": "URL 또는 github:user/repo에서 모드 설치",
+    "add_library": "라이브러리 추가",
+    "add_library_tooltip": "하나 이상의 Pneuma 모드를 포함하는 GitHub 저장소 연결",
+    "no_local_modes_hint": "아직 로컬 모드가 없습니다 — 위에 .tar.gz URL이나 <code>github:user/repo</code>를 붙여 넣으세요.",
+    "no_libraries_hint": "아직 연결된 라이브러리가 없습니다 — 위에 <code>github:user/repo</code>를 붙여 넣어 멀티 모드 컬렉션을 설치하세요.",
+    "no_modes_match": "검색과 일치하는 모드가 없습니다."
+  },
+  "library_group": {
+    "sync": "동기화",
+    "syncing": "동기화 중...",
+    "sync_tooltip": "원본에서 새로고침",
+    "publish": "게시",
+    "publish_tooltip": "로컬 모드를 이 라이브러리에 복사",
+    "confirm": "확인",
+    "cancel": "취소",
+    "unlink": "연결 해제",
+    "unlink_tooltip": "이 라이브러리 제거",
+    "synced_at": "{{when}} 동기화됨",
+    "sync_failed": "동기화 실패",
+    "unlink_failed": "연결 해제 실패",
+    "toggle_failed": "전환 실패",
+    "all_inactive": "이 라이브러리의 모든 모드가 비활성 상태입니다. 아래에서 하나를 활성화하여 실행하세요.",
+    "library_empty": "이 라이브러리는 비어 있습니다. 로컬 설치본에서 모드를 게시해 넣으세요.",
+    "inactive_one": "비활성 모드 {{count}}개",
+    "inactive_other": "비활성 모드 {{count}}개",
+    "activate": "활성화"
+  },
+  "gallery_card": {
+    "unpin_tooltip": "빠른 시작에서 고정 해제",
+    "pin_tooltip": "빠른 시작에 고정",
+    "unpin_aria": "즐겨찾기에서 고정 해제",
+    "pin_aria": "즐겨찾기에 고정",
+    "evolve_tooltip": "스킬 진화",
+    "edit_tooltip": "Mode Maker에서 편집",
+    "delete": "삭제",
+    "launch": "실행",
+    "from_library": "{{name}} 출처",
+    "synced_at": "{{when}} 동기화됨"
+  },
+  "launch_dialog": {
+    "workspace_label": "워크스페이스 경로",
+    "browse_tooltip": "디렉터리 찾아보기",
+    "select_workspace_title": "워크스페이스 선택",
+    "session_name_label": "세션 이름",
+    "loading_config": "구성 로딩 중...",
+    "agent_label": "에이전트",
+    "agent_unavailable": "사용 불가",
+    "agent_soon": "곧 제공",
+    "agent_na": "해당 없음",
+    "existing_session_hint": "기존 워크스페이스입니다 — {{backend}} 세션을 이어서 시작합니다",
+    "parameters": "매개변수",
+    "parameters_readonly": "(읽기 전용)",
+    "prepare_failed": "실행 준비에 실패했습니다",
+    "launch_failed": "실행 실패",
+    "cancel": "취소",
+    "launch": "실행",
+    "launching": "실행 중..."
+  },
+  "settings_panel": {
+    "title": "설정"
+  },
+  "backends_section": {
+    "title": "백엔드",
+    "ready": "준비됨",
+    "not_found": "찾을 수 없음"
+  },
+  "api_keys": {
+    "title": "API 키",
+    "add": "+ 추가",
+    "description": "키는 사용자의 컴퓨터에 로컬로 저장(암호화)됩니다. 프로젝트에서 동일한 이름의 키가 필요하면 자동으로 가져옵니다.",
+    "empty": "아직 구성된 키가 없습니다.",
+    "remove": "제거",
+    "name_placeholder": "키 이름 (예: OPENROUTER_API_KEY)",
+    "value_placeholder": "값",
+    "save": "저장",
+    "cancel": "취소"
+  },
+  "cloud_storage": {
+    "title": "클라우드 스토리지",
+    "edit": "편집",
+    "description": "공유 및 스냅샷용 Cloudflare R2 스토리지입니다. 버킷은 직접 관리하며, 데이터는 사용자의 통제 하에 유지됩니다.",
+    "connected": "연결됨",
+    "bucket": "버킷: {{name}}",
+    "url": "URL: {{url}}",
+    "setup_hint": "<span>dash.cloudflare.com</span>에서 공개 액세스가 가능한 Cloudflare R2 버킷을 만든 뒤 아래에 자격 증명을 입력하세요.",
+    "account_id": "계정 ID",
+    "access_key_id": "Access Key ID",
+    "secret_access_key": "Secret Access Key",
+    "bucket_name": "버킷 이름",
+    "public_url": "공개 URL (예: https://pub-xxx.r2.dev)",
+    "save": "저장",
+    "saving": "저장 중...",
+    "cancel": "취소"
+  },
+  "plugin_card": {
+    "builtin_label": "(내장)",
+    "cli_connected": "CLI 연결됨",
+    "token_connected": "토큰 연결됨",
+    "connected_as": " ({{user}}로 로그인)",
+    "not_connected": "연결되지 않음 — 아래에서 CLI를 설치하거나 토큰을 구성하세요",
+    "select_placeholder": "선택...",
+    "save": "저장",
+    "saving": "저장 중..."
+  },
+  "plugins": {
+    "title": "플러그인",
+    "description": "설치된 플러그인을 관리합니다. 플러그인을 활성화/비활성화하고 설정을 구성하세요."
+  },
+  "copy_snippet": {
+    "copy": "복사",
+    "copied": "복사됨"
+  },
+  "github": {
+    "title": "GitHub",
+    "description": "GitHub에서 모드 라이브러리를 만들고, 동기화하고, 게시하려면 필요합니다.",
+    "checking": "gh 상태 확인 중...",
+    "not_installed": "GitHub CLI가 설치되지 않았습니다",
+    "installed_not_signed_in": "설치됨{{version}} · 로그인되지 않음",
+    "signed_in_as": "<bold>@{{username}}</bold>(으)로 로그인됨",
+    "version_suffix": " · gh {{version}}"
+  },
+  "add_library_dialog": {
+    "title": "모드 라이브러리 추가",
+    "description": "멀티 모드 GitHub 저장소를 연결하거나, 로컬에서 새 라이브러리를 스캐폴딩하고 선택적으로 게시하세요.",
+    "tab_link": "기존 연결",
+    "tab_create": "새로 만들기",
+    "linked_single": "단일 모드 저장소가 연결되었습니다. 로컬 모드 아래에 표시됩니다.",
+    "linked_library": "라이브러리가 연결되었습니다. 아래 카드에서 모드를 활성화하세요.",
+    "open_on_github": "GitHub에서 열기 →",
+    "specifier_label": "지정자",
+    "specifier_placeholder": "github:user/repo 또는 https://.../repo.tar.gz",
+    "specifier_hint": "루트에 <code>pneuma.library.json</code>이 있거나 N개의 모드 디렉터리가 있는 저장소는 멀티 모드 라이브러리로 설치됩니다. 그 외에는 단일 모드 설치로 폴백됩니다.",
+    "name_label": "라이브러리 이름 (슬러그)",
+    "name_placeholder": "my-modes",
+    "display_name_label": "표시 이름 (선택 사항)",
+    "display_name_placeholder": "My Modes",
+    "description_label": "설명 (선택 사항)",
+    "description_placeholder": "다음 용도의 Pneuma 모드 컬렉션...",
+    "create_on_github": "GitHub에 생성 (<code>gh</code> 인증 필요)",
+    "repo_name_label": "저장소 이름",
+    "visibility_label": "공개 범위",
+    "visibility_private": "비공개",
+    "visibility_public": "공개",
+    "link_failed": "연결 실패",
+    "create_failed": "생성 실패",
+    "close": "닫기",
+    "cancel": "취소",
+    "link": "연결",
+    "create": "만들기",
+    "working": "..."
+  },
+  "publish_dialog": {
+    "title": "{{library}}에 게시",
+    "description": "설치된 로컬 모드를 이 라이브러리로 복사하고 커밋을 위해 스테이징합니다.",
+    "published": "게시되었습니다.",
+    "pushed": " GitHub에 푸시되었습니다.",
+    "not_pushed": " (푸시되지 않음.)",
+    "source_mode_label": "원본 모드",
+    "no_eligible_modes": "사용 가능한 로컬 모드가 없습니다. 먼저 모드를 설치하거나 Mode Maker로 만드세요.",
+    "pick_a_mode": "— 모드 선택 —",
+    "mode_option": "{{displayName}} ({{name}})",
+    "name_override_label": "이름 덮어쓰기 (선택 사항)",
+    "name_override_placeholder": "(원본 이름 사용)",
+    "push_after_commit": "커밋 후 GitHub에 푸시",
+    "publish_failed": "게시 실패",
+    "close": "닫기",
+    "cancel": "취소",
+    "publish": "게시",
+    "working": "..."
+  },
+  "import_dialog": {
+    "title_mode": "모드 추가",
+    "title_session": "세션 가져오기",
+    "description_mode": "URL(.tar.gz) 또는 github:user/repo에서 모드를 설치합니다. 설치된 모드는 로컬에 표시됩니다.",
+    "description_session": "공유 URL을 붙여 넣거나 로컬 아카이브(.tar.gz)를 선택하세요.",
+    "tab_session": "세션",
+    "tab_mode": "모드",
+    "url_placeholder_session": "https://...",
+    "url_placeholder_mode": "https://.../mode.tar.gz 또는 github:user/repo",
+    "or": "또는",
+    "local_file": "로컬 파일",
+    "workspace_label": "워크스페이스 디렉터리 (선택 사항)",
+    "workspace_placeholder": "~/pneuma-projects/my-project",
+    "install_hint": "<code>~/.pneuma/modes/</code>에 다운로드 후 압축을 풉니다.",
+    "cancel": "취소",
+    "import": "가져오기",
+    "install": "설치",
+    "importing": "가져오는 중...",
+    "installing": "설치 중...",
+    "import_failed": "가져오기 실패",
+    "install_failed": "설치 실패",
+    "imported_success": "가져오기에 성공했습니다!",
+    "installed_success": "\"{{name}}\" ({{version}})이(가) 설치되었습니다.",
+    "process_share_hint": "이 공유에는 대화 이력과 체크포인트가 포함된 제작 과정이 들어 있습니다.",
+    "close": "닫기",
+    "continue_working": "작업 계속하기",
+    "replay": "리플레이",
+    "open": "열기",
+    "launch": "실행",
+    "try_again": "다시 시도"
+  },
+  "main": {
+    "settings_tooltip": "설정",
+    "my_apps": "내 앱",
+    "my_apps_running": "실행 중",
+    "recent_projects": "최근 프로젝트",
+    "hide_archived": "보관함 숨기기",
+    "show_archived": "보관함 ({{count}})",
+    "create_project": "+ 프로젝트 만들기",
+    "no_projects": "아직 프로젝트가 없습니다.",
+    "all_projects_count": "전체 프로젝트 ({{count}})",
+    "archived_count": "보관함 ({{count}})",
+    "continue_title": "이어서",
+    "import": "가져오기",
+    "all_sessions_count": "전체 세션 ({{count}})",
+    "create_new": "새로 만들기",
+    "create_new_subtitle": "새 워크스페이스로 시작",
+    "all_modes_count": "전체 모드 ({{count}})",
+    "mode_maker_title": "Mode Maker",
+    "edit_prefix": "편집: {{name}}",
+    "evolve_prefix": "진화: {{name}}"
+  },
+  "backend_unavailable": {
+    "unknown": "알 수 없는 백엔드 \"{{type}}\"",
+    "coming_soon": "곧 제공",
+    "not_available": "사용 불가"
+  }
+}

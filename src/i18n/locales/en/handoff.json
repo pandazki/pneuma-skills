@@ -1,0 +1,19 @@
+{
+  "dialog_aria": "Pending handoff review",
+  "ready": "Handoff ready",
+  "files": "Files",
+  "decisions_locked": "Decisions locked in",
+  "open_questions": "Open questions",
+  "cancel_reason_placeholder": "Why? (optional)",
+  "back": "Back",
+  "cancel_handoff": "Cancel handoff",
+  "cancelling": "Cancelling…",
+  "cancel": "Cancel",
+  "confirm_switch": "Confirm switch",
+  "switching": "Switching…",
+  "confirm_failed_code": "Confirm failed ({{code}})",
+  "cancel_failed_code": "Cancel failed ({{code}})",
+  "confirm_failed": "Confirm failed",
+  "cancel_failed": "Cancel failed",
+  "no_launch_url": "Server did not return a launch URL"
+}

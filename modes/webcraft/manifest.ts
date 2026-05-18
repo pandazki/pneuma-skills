@@ -9,8 +9,24 @@ import { loadSite, saveSite } from "./domain.js";
 const webcraftManifest: ModeManifest = {
   name: "webcraft",
   version: "1.4.1",
-  displayName: "WebCraft",
-  description: "Web design powered by Impeccable.style — 22 AI design commands, responsive preview, and export",
+  displayName: {
+    en: "WebCraft",
+    "zh-CN": "WebCraft",
+    "zh-TW": "WebCraft",
+    ja: "WebCraft",
+    ko: "WebCraft",
+    es: "WebCraft",
+    de: "WebCraft",
+  },
+  description: {
+    en: "Web design powered by Impeccable.style — 22 AI design commands, responsive preview, and export",
+    "zh-CN": "由 Impeccable.style 加持的网页设计 —— 22 条 AI 设计命令、响应式预览与导出",
+    "zh-TW": "由 Impeccable.style 加持的網頁設計 —— 22 條 AI 設計命令、響應式預覽與匯出",
+    ja: "Impeccable.style が支えるウェブデザイン —— 22 個の AI デザインコマンド、レスポンシブプレビューとエクスポート",
+    ko: "Impeccable.style 기반의 웹 디자인 —— 22개의 AI 디자인 명령, 반응형 미리보기와 내보내기",
+    es: "Diseño web impulsado por Impeccable.style —— 22 comandos de diseño con IA, vista previa responsiva y exportación",
+    de: "Webdesign mit Impeccable.style —— 22 KI-Designbefehle, responsive Vorschau und Export",
+  },
   changelog: {
     "1.4.1": [
       "Tracked Impeccable.style upstream pin moved to skill-v3.1.1 (Windows CLI fix release — no skill content delta)",

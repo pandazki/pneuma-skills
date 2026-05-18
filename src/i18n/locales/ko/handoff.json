@@ -1,0 +1,19 @@
+{
+  "dialog_aria": "대기 중인 핸드오프 검토",
+  "ready": "핸드오프 준비됨",
+  "files": "파일",
+  "decisions_locked": "확정된 결정 사항",
+  "open_questions": "미해결 질문",
+  "cancel_reason_placeholder": "이유? (선택 사항)",
+  "back": "뒤로",
+  "cancel_handoff": "핸드오프 취소",
+  "cancelling": "취소 중...",
+  "cancel": "취소",
+  "confirm_switch": "전환 확인",
+  "switching": "전환 중...",
+  "confirm_failed_code": "확인 실패 ({{code}})",
+  "cancel_failed_code": "취소 실패 ({{code}})",
+  "confirm_failed": "확인 실패",
+  "cancel_failed": "취소 실패",
+  "no_launch_url": "서버가 실행 URL을 반환하지 않았습니다"
+}

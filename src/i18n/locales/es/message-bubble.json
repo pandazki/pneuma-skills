@@ -1,0 +1,60 @@
+{
+  "system": {
+    "output_label": "Salida"
+  },
+  "selection": {
+    "in_file": "en {{file}}",
+    "types": {
+      "paragraph": "párrafo",
+      "list": "lista",
+      "code": "bloque de código",
+      "blockquote": "cita",
+      "image": "imagen",
+      "table": "tabla",
+      "text_range": "texto seleccionado",
+      "section": "sección",
+      "link": "enlace",
+      "container": "contenedor",
+      "interactive": "interactivo"
+    }
+  },
+  "annotations": {
+    "count_one": "{{count}} anotación",
+    "count_other": "{{count}} anotaciones"
+  },
+  "ask_user": {
+    "waiting": "Esperando la pregunta…",
+    "qa_label": "P y R",
+    "fallback_title": "Pregunta",
+    "other_option": "Otra…",
+    "answer_placeholder": "Escribe tu respuesta…",
+    "enter_hint": "Pulsa Enter para enviar",
+    "submit": "Enviar respuestas"
+  },
+  "thinking": {
+    "label": "Razonamiento",
+    "encrypted": "oculto por Anthropic (razonamiento adaptativo)",
+    "char_count": "{{count}} caracteres",
+    "no_text": "No se capturó texto de razonamiento."
+  },
+  "tool_result": {
+    "header": {
+      "output": "Salida",
+      "error": "Error",
+      "result": "Resultado"
+    },
+    "show_tail": "Mostrar final",
+    "hide": "Ocultar",
+    "show_full_with_remaining": "Mostrar todo (+{{count}} líneas)",
+    "show_full": "Mostrar todo"
+  },
+  "context_usage": {
+    "title": "Uso del contexto",
+    "tokens_summary": "{{used}} / {{total}} tokens ({{percent}} %)"
+  },
+  "debug": {
+    "payload_label": "carga",
+    "payload_tooltip": "Depuración: ver la carga del CLI",
+    "image_alt": "Imagen de depuración {{index}}"
+  }
+}

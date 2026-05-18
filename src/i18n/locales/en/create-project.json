@@ -1,0 +1,30 @@
+{
+  "title": "Create Project",
+  "root_label": "Project root path (must already exist or be createable)",
+  "root_placeholder": "/Users/x/Code/my-project",
+  "browse_directories": "Browse directories",
+  "select_project_root": "Select Project Root",
+  "display_name_label": "Display name",
+  "display_name_placeholder_fallback": "My Project",
+  "description_label": "Description (optional)",
+  "import": {
+    "header": "Initialize from existing sessions",
+    "optional_suffix": "(optional)",
+    "selected_count": "{{count}} selected",
+    "empty": "No quick sessions to import."
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "creating": "Creating…",
+    "create_and_discover": "Create & discover",
+    "more_options": "More create options",
+    "create_without_discovery": "Create without discovery",
+    "create_without_discovery_desc": "Skip the auto-introduction; set up sessions manually."
+  },
+  "defaults": {
+    "untitled": "Untitled"
+  },
+  "error": {
+    "create_failed": "create failed ({{status}})"
+  }
+}

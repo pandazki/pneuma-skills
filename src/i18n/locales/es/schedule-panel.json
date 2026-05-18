@@ -1,0 +1,14 @@
+{
+  "recurring": "recurrente",
+  "one_shot": "única",
+  "durable": "duradera",
+  "cancel_job_tooltip": "Cancelar esta tarea programada",
+  "cancel": "Cancelar",
+  "scheduled_jobs": "Tareas programadas ({{count}})",
+  "refresh": "Actualizar",
+  "backend_specific_title": "Función específica del motor",
+  "backend_specific_body": "Las tareas programadas dependen actualmente de las herramientas cron de Claude Code y no están disponibles para el motor activo.",
+  "upgrade_required": "Se requiere actualizar Claude Code",
+  "upgrade_body": "Las tareas programadas requieren Claude Code {{minVersion}} o superior. Versión actual: {{currentVersion}}. Ejecuta <1>claude update</1> para actualizar.",
+  "empty_hint": "No hay tareas programadas. Usa <1>/loop</1> en el chat para crear tareas recurrentes."
+}

@@ -251,8 +251,8 @@ function PageNavigator({
   return (
     <div
       style={{
-        borderTop: "1px solid rgba(255,255,255,0.08)",
-        background: "rgba(0,0,0,0.3)",
+        borderTop: "1px solid var(--color-cc-border)",
+        background: "var(--color-cc-surface)",
         display: "flex",
         overflowX: "auto",
         padding: "0 8px",
@@ -269,7 +269,7 @@ function PageNavigator({
           style={{
             padding: "6px 14px",
             fontSize: "12px",
-            color: page.file === activePage ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.5)",
+            color: page.file === activePage ? "color-mix(in srgb, var(--color-cc-fg) 90%, transparent)" : "color-mix(in srgb, var(--color-cc-fg) 50%, transparent)",
             background: "none",
             border: "none",
             borderBottomWidth: "2px",
@@ -293,11 +293,11 @@ function PageNavigator({
           top: hoverPos.y - 160,
           width: 240,
           height: 150,
-          background: "#1a1a1a",
-          border: "1px solid rgba(255,255,255,0.15)",
+          background: "var(--color-cc-surface)",
+          border: "1px solid var(--color-cc-border)",
           borderRadius: "6px",
           overflow: "hidden",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
           zIndex: 9999,
           pointerEvents: "none",
         }}>
@@ -341,8 +341,8 @@ function KamiThumbStrip({
     <div
       style={{
         width: 64,
-        borderRight: "1px solid rgba(255,255,255,0.08)",
-        background: "rgba(0,0,0,0.2)",
+        borderRight: "1px solid var(--color-cc-border)",
+        background: "var(--color-cc-hover)",
         padding: "12px 0",
         display: "flex",
         flexDirection: "column",
@@ -362,10 +362,10 @@ function KamiThumbStrip({
             style={{
               width: 40,
               height: 56,
-              border: active ? "1.5px solid #1B365D" : "1px solid rgba(245,244,237,0.20)",
+              border: active ? "1.5px solid #1B365D" : "1px solid color-mix(in srgb, var(--color-cc-fg) 20%, transparent)",
               borderRadius: 4,
-              background: active ? "rgba(27,54,93,0.22)" : "rgba(245,244,237,0.05)",
-              color: active ? "#f5f4ed" : "rgba(245,244,237,0.55)",
+              background: active ? "rgba(27,54,93,0.22)" : "color-mix(in srgb, var(--color-cc-fg) 5%, transparent)",
+              color: active ? "var(--color-cc-fg)" : "color-mix(in srgb, var(--color-cc-fg) 55%, transparent)",
               cursor: "pointer",
               fontSize: 13,
               fontFamily: "Newsreader, Georgia, serif",
@@ -377,14 +377,14 @@ function KamiThumbStrip({
             }}
             onMouseEnter={(e) => {
               if (!active) {
-                e.currentTarget.style.color = "rgba(245,244,237,0.9)";
-                e.currentTarget.style.background = "rgba(245,244,237,0.12)";
+                e.currentTarget.style.color = "color-mix(in srgb, var(--color-cc-fg) 90%, transparent)";
+                e.currentTarget.style.background = "color-mix(in srgb, var(--color-cc-fg) 12%, transparent)";
               }
             }}
             onMouseLeave={(e) => {
               if (!active) {
-                e.currentTarget.style.color = "rgba(245,244,237,0.55)";
-                e.currentTarget.style.background = "rgba(245,244,237,0.05)";
+                e.currentTarget.style.color = "color-mix(in srgb, var(--color-cc-fg) 55%, transparent)";
+                e.currentTarget.style.background = "color-mix(in srgb, var(--color-cc-fg) 5%, transparent)";
               }
             }}
           >
@@ -559,8 +559,8 @@ function BookNav({
     height: 44,
     borderRadius: "50%",
     border: "1px solid rgba(20,20,19,0.15)",
-    background: "rgba(245,244,237,0.92)",
-    color: disabled ? "rgba(20,20,19,0.25)" : "#1B365D",
+    background: "color-mix(in srgb, var(--color-cc-fg) 92%, transparent)",
+    color: disabled ? "color-mix(in srgb, var(--color-cc-bg) 25%, transparent)" : "#1B365D",
     cursor: disabled ? "default" : "pointer",
     display: "flex",
     alignItems: "center",
@@ -737,8 +737,8 @@ function ViewportToolbar({
     <div
       style={{
         padding: "4px 12px",
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
-        background: "rgba(0,0,0,0.2)",
+        borderBottom: "1px solid var(--color-cc-border)",
+        background: "var(--color-cc-hover)",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
@@ -753,7 +753,7 @@ function ViewportToolbar({
             display: "flex",
             alignItems: "center",
             gap: "1px",
-            background: "rgba(0,0,0,0.3)",
+            background: "var(--color-cc-surface)",
             borderRadius: "6px",
             padding: "2px",
           }}
@@ -774,7 +774,7 @@ function ViewportToolbar({
                 fontSize: "11px",
                 transition: "all 0.15s",
                 background: kamiViewMode === m.value ? "rgba(27,54,93,0.30)" : "transparent",
-                color: kamiViewMode === m.value ? "#f5f4ed" : "rgba(245,244,237,0.65)",
+                color: kamiViewMode === m.value ? "var(--color-cc-fg)" : "color-mix(in srgb, var(--color-cc-fg) 65%, transparent)",
               }}
               title={m.title}
             >
@@ -796,14 +796,14 @@ function ViewportToolbar({
             cursor: "pointer",
             fontSize: "11px",
             background: showGuides ? "rgba(27,54,93,0.22)" : "transparent",
-            color: showGuides ? "#f5f4ed" : "rgba(245,244,237,0.65)",
+            color: showGuides ? "var(--color-cc-fg)" : "color-mix(in srgb, var(--color-cc-fg) 65%, transparent)",
           }}
         >
           <GuidesIcon active={showGuides} />
           <span>Guides</span>
         </button>
         {showDimensions && (
-          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", marginLeft: "4px" }}>
+          <span style={{ fontSize: "10px", color: "color-mix(in srgb, var(--color-cc-fg) 40%, transparent)", marginLeft: "4px" }}>
             {currentPreset.label}
           </span>
         )}
@@ -811,7 +811,7 @@ function ViewportToolbar({
       {/* Legacy viewport preset row — hidden in kami since there's only one preset,
           but retained for future multi-preset use. */}
       <div style={{ display: "none", alignItems: "center", gap: "4px" }}>
-        <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", marginRight: "4px" }}>
+        <span style={{ fontSize: "11px", color: "color-mix(in srgb, var(--color-cc-fg) 40%, transparent)", marginRight: "4px" }}>
           Viewport:
         </span>
         {presets.map((preset) => (
@@ -824,7 +824,7 @@ function ViewportToolbar({
               borderRadius: "4px",
               padding: "3px 8px",
               cursor: "pointer",
-              color: preset.id === activePreset ? "#f5f4ed" : "rgba(245,244,237,0.65)",
+              color: preset.id === activePreset ? "var(--color-cc-fg)" : "color-mix(in srgb, var(--color-cc-fg) 65%, transparent)",
               fontSize: "11px",
               display: "flex",
               alignItems: "center",
@@ -834,13 +834,13 @@ function ViewportToolbar({
             title={preset.width > 0 ? `${preset.label} (${preset.width}x${preset.height})` : preset.label}
             onMouseEnter={(e) => {
               if (preset.id !== activePreset) {
-                e.currentTarget.style.color = "rgba(245,244,237,0.85)";
-                e.currentTarget.style.background = "rgba(245,244,237,0.06)";
+                e.currentTarget.style.color = "color-mix(in srgb, var(--color-cc-fg) 85%, transparent)";
+                e.currentTarget.style.background = "color-mix(in srgb, var(--color-cc-fg) 6%, transparent)";
               }
             }}
             onMouseLeave={(e) => {
               if (preset.id !== activePreset) {
-                e.currentTarget.style.color = "rgba(245,244,237,0.65)";
+                e.currentTarget.style.color = "color-mix(in srgb, var(--color-cc-fg) 65%, transparent)";
                 e.currentTarget.style.background = "none";
               }
             }}
@@ -850,7 +850,7 @@ function ViewportToolbar({
           </button>
         ))}
         {showDimensions && (
-          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", marginLeft: "8px" }}>
+          <span style={{ fontSize: "10px", color: "color-mix(in srgb, var(--color-cc-fg) 30%, transparent)", marginLeft: "8px" }}>
             {currentPreset.width} x {currentPreset.height}
           </span>
         )}
@@ -862,7 +862,7 @@ function ViewportToolbar({
           display: "flex",
           alignItems: "center",
           gap: "1px",
-          background: "rgba(0,0,0,0.3)",
+          background: "var(--color-cc-surface)",
           borderRadius: "6px",
           padding: "2px",
         }}
@@ -882,17 +882,17 @@ function ViewportToolbar({
               fontSize: "11px",
               transition: "all 0.15s",
               background: previewMode === m.value ? "rgba(27,54,93,0.20)" : "transparent",
-              color: previewMode === m.value ? "#f5f4ed" : "rgba(245,244,237,0.65)",
+              color: previewMode === m.value ? "var(--color-cc-fg)" : "color-mix(in srgb, var(--color-cc-fg) 65%, transparent)",
             }}
             title={m.title}
             onMouseEnter={(e) => {
               if (previewMode !== m.value) {
-                e.currentTarget.style.color = "rgba(255,255,255,0.8)";
+                e.currentTarget.style.color = "color-mix(in srgb, var(--color-cc-fg) 80%, transparent)";
               }
             }}
             onMouseLeave={(e) => {
               if (previewMode !== m.value) {
-                e.currentTarget.style.color = "rgba(255,255,255,0.5)";
+                e.currentTarget.style.color = "color-mix(in srgb, var(--color-cc-fg) 50%, transparent)";
               }
             }}
           >
@@ -915,14 +915,14 @@ function ViewportToolbar({
             fontFamily: "Newsreader, Georgia, serif",
             fontSize: 11,
             letterSpacing: 0.2,
-            color: "rgba(255,255,255,0.40)",
+            color: "color-mix(in srgb, var(--color-cc-fg) 40%, transparent)",
             textDecoration: "none",
             padding: "3px 6px",
             borderRadius: 4,
             transition: "color 0.15s",
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.75)")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.40)")}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "color-mix(in srgb, var(--color-cc-fg) 75%, transparent)")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "color-mix(in srgb, var(--color-cc-fg) 40%, transparent)")}
           title="Design language adapted from tw93/kami (MIT). Click to open the source repository."
         >
           Design adapted from tw93/kami <span aria-hidden="true">↗</span>
@@ -941,14 +941,14 @@ function ViewportToolbar({
             fontSize: "11px",
             transition: "all 0.15s",
             background: "transparent",
-            color: "rgba(255,255,255,0.5)",
+            color: "color-mix(in srgb, var(--color-cc-fg) 50%, transparent)",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.color = "rgba(255,255,255,0.8)";
-            e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+            e.currentTarget.style.color = "color-mix(in srgb, var(--color-cc-fg) 80%, transparent)";
+            e.currentTarget.style.background = "color-mix(in srgb, var(--color-cc-fg) 6%, transparent)";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.color = "rgba(255,255,255,0.5)";
+            e.currentTarget.style.color = "color-mix(in srgb, var(--color-cc-fg) 50%, transparent)";
             e.currentTarget.style.background = "transparent";
           }}
         >
@@ -1946,6 +1946,7 @@ body::after {
           style={{
             flex: 1,
             position: "relative",
+            /* paper letterbox — intentionally fixed-light, see CLAUDE.md kami constraint */
             background: "#d9d6ca",
             overflow: kamiViewMode === "scroll" ? "auto" : "hidden",
             display: "flex",

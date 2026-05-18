@@ -1,0 +1,8 @@
+{
+  "title": "워크스페이스 초기화",
+  "warning": "기존 파일이 모두 삭제되고 새 파일이 생성됩니다. 이 작업은 되돌릴 수 없습니다.",
+  "files_to_clear": "삭제할 파일:",
+  "files_to_create": "생성할 파일 ({{count}}):",
+  "cancel": "취소",
+  "initialize": "초기화"
+}

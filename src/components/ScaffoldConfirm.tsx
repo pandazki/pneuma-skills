@@ -4,6 +4,7 @@
  * Shows what will be cleared (glob patterns) and what files will be created,
  * with a destructive-action warning. Used by all mode viewers.
  */
+import { useTranslation } from "react-i18next";
 
 interface ScaffoldConfirmProps {
   clearPatterns: string[];
@@ -18,6 +19,7 @@ export default function ScaffoldConfirm({
   onConfirm,
   onCancel,
 }: ScaffoldConfirmProps) {
+  const { t } = useTranslation("scaffold");
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="bg-cc-card border border-cc-border rounded-lg shadow-xl max-w-md w-full mx-4 overflow-hidden">
@@ -27,10 +29,10 @@ export default function ScaffoldConfirm({
             <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 shrink-0">
               <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
             </svg>
-            <h3 className="text-sm font-semibold text-cc-fg">Initialize Workspace</h3>
+            <h3 className="text-sm font-semibold text-cc-fg">{t("title")}</h3>
           </div>
           <p className="text-xs text-cc-muted">
-            This will clear existing files and create new ones. This action cannot be undone.
+            {t("warning")}
           </p>
         </div>
 
@@ -39,7 +41,7 @@ export default function ScaffoldConfirm({
           {/* Clear patterns */}
           {clearPatterns.length > 0 && (
             <div>
-              <div className="text-[11px] font-medium text-red-400 mb-1">Files to clear:</div>
+              <div className="text-[11px] font-medium text-red-400 mb-1">{t("files_to_clear")}</div>
               <div className="bg-cc-bg/60 rounded p-2 text-xs font-mono text-cc-muted space-y-0.5 max-h-24 overflow-y-auto">
                 {clearPatterns.map((p) => (
                   <div key={p}>{p}</div>
@@ -52,7 +54,7 @@ export default function ScaffoldConfirm({
           {files.length > 0 && (
             <div>
               <div className="text-[11px] font-medium text-green-400 mb-1">
-                Files to create ({files.length}):
+                {t("files_to_create", { count: files.length })}
               </div>
               <div className="bg-cc-bg/60 rounded p-2 text-xs font-mono text-cc-muted space-y-0.5 max-h-32 overflow-y-auto">
                 {files.map((f) => (
@@ -69,13 +71,13 @@ export default function ScaffoldConfirm({
             onClick={onCancel}
             className="px-3 py-1.5 text-xs text-cc-muted hover:text-cc-fg bg-cc-bg hover:bg-cc-hover rounded transition-colors cursor-pointer"
           >
-            Cancel
+            {t("cancel")}
           </button>
           <button
             onClick={onConfirm}
             className="px-3 py-1.5 text-xs text-white bg-amber-600 hover:bg-amber-500 rounded transition-colors cursor-pointer"
           >
-            Initialize
+            {t("initialize")}
           </button>
         </div>
       </div>

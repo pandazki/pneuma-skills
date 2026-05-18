@@ -1,0 +1,77 @@
+{
+  "dialog_label": "プロジェクトパネル",
+  "sections": {
+    "recent_sessions": "最近のセッション",
+    "start_in_any_mode": "モードを選んで開始",
+    "agent": "エージェント",
+    "parameters": "パラメータ"
+  },
+  "loading": {
+    "sessions": "セッションを読み込み中…",
+    "modes": "モードを読み込み中…",
+    "parameters": "パラメータを読み込み中…"
+  },
+  "empty": {
+    "no_sessions_title": "まだセッションがありません",
+    "no_sessions_hint": "右側からモードを選んで最初のセッションを開始してください。"
+  },
+  "session": {
+    "default_title": "{{mode}} セッション",
+    "starting": "セッションを起動中…",
+    "mode_chip_aria": "{{mode}} モード",
+    "delete_tooltip": "セッションを削除"
+  },
+  "favorite_aria": "お気に入り",
+  "mode_count_suffix": "· {{count}}",
+  "show_all": "全 {{count}} 件のモードを表示 →",
+  "show_less": "閉じる ↑",
+  "actions": {
+    "delete": "削除",
+    "cancel": "キャンセル",
+    "confirm": "確認",
+    "delete_permanently": "完全に削除",
+    "archiving": "アーカイブ中…",
+    "deleting": "削除中…",
+    "open_in_finder_aria": "Finder でプロジェクトフォルダを開く",
+    "open_in_finder_tooltip": "Finder でプロジェクトフォルダを開く",
+    "rediscover": "再ディスカバリー",
+    "rediscover_aria": "プロジェクトを再ディスカバリー",
+    "rediscover_tooltip": "プロジェクトを再ディスカバリー — 現在の状態に対してオンボーディングを再実行し、アトラス・カバー・タスク提案を更新します",
+    "evolve": "プロジェクトを進化",
+    "evolve_aria": "プロジェクトコンテキストを進化",
+    "evolve_tooltip": "プロジェクトコンテキストを進化 — 本プロジェクトのセッションからアトラスと共有設定を抽出します",
+    "more_aria": "その他の操作",
+    "more_tooltip": "その他の操作",
+    "archive_project": "プロジェクトをアーカイブ",
+    "delete_project_permanently": "プロジェクトを完全に削除"
+  },
+  "confirm": {
+    "archive_question": "このプロジェクトをアーカイブしますか？",
+    "delete_question": "このプロジェクトを完全に削除しますか？セッションと .pneuma データは消去されますが、その他のファイルは残ります。"
+  },
+  "error": {
+    "delete_failed": "削除に失敗しました",
+    "delete_failed_status": "削除に失敗しました ({{status}})",
+    "launch_failed": "起動に失敗しました",
+    "launch_failed_status": "起動に失敗しました ({{status}})",
+    "prepare_failed": "起動の準備に失敗しました",
+    "archive_failed": "アーカイブに失敗しました",
+    "archive_failed_status": "アーカイブに失敗しました ({{status}})",
+    "delete_action_failed": "削除に失敗しました",
+    "delete_action_failed_status": "削除に失敗しました ({{status}})",
+    "tell_session_what_to_do": "新しいセッションに何をさせるか入力してください"
+  },
+  "launch_sheet": {
+    "close": "閉じる",
+    "backend_unavailable": "利用できません",
+    "backend_soon": "近日",
+    "backend_na": "N/A",
+    "smart_handoff_label": "現在のセッションからスマートハンドオフ",
+    "smart_handoff_desc": "現在のエージェントが関連コンテキストを含むハンドオフファイルを書き出し、チャットで切り替えを確認します。",
+    "intent_label": "新しいセッションに何をさせますか？",
+    "intent_placeholder": "このデザインをスライドデッキにしてください",
+    "cancel": "キャンセル",
+    "confirm": "確認",
+    "launching": "起動中…"
+  }
+}

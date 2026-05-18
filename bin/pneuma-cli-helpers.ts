@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { getDefaultBackendType } from "../backends/index.js";
 import type { AgentBackendType } from "../core/types/agent-backend.js";
+import { t } from "./i18n.js";
 
 export interface PersistedSession {
   sessionId: string;
@@ -199,9 +200,7 @@ export function resolveWorkspaceBackendType(
   if (existingSession.backendType !== requestedBackendType) {
     return {
       backendType: existingSession.backendType,
-      mismatchMessage:
-        `Workspace is already bound to backend "${existingSession.backendType}". ` +
-        `Launch with --backend ${existingSession.backendType} or remove .pneuma/session.json to start fresh.`,
+      mismatchMessage: t("pneuma.backend_mismatch", { backend: existingSession.backendType }),
     };
   }
 

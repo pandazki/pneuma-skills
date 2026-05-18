@@ -1,0 +1,30 @@
+{
+  "title": "Projekt erstellen",
+  "root_label": "Projekt-Stammpfad (muss bereits existieren oder erstellbar sein)",
+  "root_placeholder": "/Users/x/Code/my-project",
+  "browse_directories": "Verzeichnisse durchsuchen",
+  "select_project_root": "Projekt-Stammverzeichnis auswählen",
+  "display_name_label": "Anzeigename",
+  "display_name_placeholder_fallback": "Mein Projekt",
+  "description_label": "Beschreibung (optional)",
+  "import": {
+    "header": "Aus vorhandenen Sitzungen initialisieren",
+    "optional_suffix": "(optional)",
+    "selected_count": "{{count}} ausgewählt",
+    "empty": "Keine Schnellsitzungen zum Importieren."
+  },
+  "actions": {
+    "cancel": "Abbrechen",
+    "creating": "Wird erstellt…",
+    "create_and_discover": "Erstellen & erkunden",
+    "more_options": "Weitere Optionen",
+    "create_without_discovery": "Ohne Erkundung erstellen",
+    "create_without_discovery_desc": "Auto-Einführung überspringen; Sitzungen manuell einrichten."
+  },
+  "defaults": {
+    "untitled": "Unbenannt"
+  },
+  "error": {
+    "create_failed": "Erstellen fehlgeschlagen ({{status}})"
+  }
+}

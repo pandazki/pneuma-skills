@@ -19,6 +19,8 @@
  *   - <pneuma:handoff-cancelled reason="..." />
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useStore } from "../store/index.js";
 
 interface ParsedPneumaTag {
@@ -61,42 +63,47 @@ function decodeXmlEntities(s: string): string {
  * stays one short sentence — the marker is informational chrome, not a
  * notification body.
  */
-function summarize(tag: ParsedPneumaTag): string {
+function summarize(tag: ParsedPneumaTag, t: TFunction): string {
   const a = tag.attrs;
   if (tag.kind === "env") {
     const project = a.project;
-    const mode = a.mode;
+    const mode = a.mode ?? t("session_word");
     if (a.reason === "opened") {
       return project
-        ? `Opened a fresh ${mode ?? "session"} session in ${project}`
-        : `Opened a fresh ${mode ?? "session"} session`;
+        ? t("opened_in_project", { mode, project })
+        : t("opened", { mode });
     }
     if (a.reason === "switched") {
-      const from = a.from_display_name || a.from_session?.slice(0, 8) || "another session";
+      const from = a.from_display_name || a.from_session?.slice(0, 8) || t("another_session");
       const fromMode = a.from_mode ? ` (${a.from_mode})` : "";
-      return `Switched here from ${from}${fromMode}`;
+      return t("switched_from", { from, fromMode });
     }
     if (a.reason === "handed-off") {
-      const fromMode = a.from_mode ?? "another mode";
-      return `Handed off from ${fromMode}`;
+      const fromMode = a.from_mode ?? t("another_mode");
+      return t("handed_off", { fromMode });
     }
-    return `Environment signal: ${a.reason ?? "unknown"}`;
+    return t("env_unknown", { reason: a.reason ?? "unknown" });
   }
   if (tag.kind === "request-handoff") {
-    const target = a.target ?? "another mode";
-    return `Requesting handoff to ${target}${a.intent ? ` — ${a.intent}` : ""}`;
+    const target = a.target ?? t("another_mode");
+    return a.intent
+      ? t("request_handoff_with_intent", { target, intent: a.intent })
+      : t("request_handoff", { target });
   }
   if (tag.kind === "handoff-cancelled") {
-    return a.reason ? `Handoff cancelled — ${a.reason}` : "Handoff cancelled";
+    return a.reason
+      ? t("handoff_cancelled_with_reason", { reason: a.reason })
+      : t("handoff_cancelled");
   }
-  return `Pneuma signal: ${tag.kind}`;
+  return t("default_signal", { kind: tag.kind });
 }
 
 export function PneumaSignalPill({ tag }: { tag: ParsedPneumaTag }) {
+  const { t } = useTranslation("signal-pill");
   const debug = useStore((s) => s.debugMode);
   const [expanded, setExpanded] = useState(false);
   const showRaw = debug || expanded;
-  const label = summarize(tag);
+  const label = summarize(tag, t);
   return (
     <div className="py-1">
       <div className="flex items-center gap-3">
@@ -104,7 +111,7 @@ export function PneumaSignalPill({ tag }: { tag: ParsedPneumaTag }) {
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          title={debug ? "Pneuma signal (debug always on)" : expanded ? "Hide raw tag" : "Show raw tag"}
+          title={debug ? t("tooltip_debug") : expanded ? t("tooltip_hide") : t("tooltip_show")}
           className="text-[11px] text-cc-muted/80 italic shrink-0 px-1 hover:text-cc-fg transition-colors cursor-pointer inline-flex items-center gap-1.5"
         >
           <span aria-hidden className="w-1.5 h-1.5 rounded-full bg-cc-primary/60" />
