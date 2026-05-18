@@ -1676,8 +1676,11 @@ function ModeGallery({
         {[
           { label: "Built-in", items: builtin, alwaysShow: false },
           // Local always renders its header when an install action exists, so users can
-          // still reach "Add from URL" before they've installed anything.
-          { label: "Local", items: local, alwaysShow: !!onAddFromUrl },
+          // still reach "Add from URL" before they've installed anything. During an
+          // active search we step out of the way: the "暂无本地模式" empty state is
+          // about "no modes installed yet", not "nothing matched" — leaving it on
+          // looks like a stray local item that matches every query.
+          { label: "Local", items: local, alwaysShow: !!onAddFromUrl && !search },
           { label: "Published", items: published, alwaysShow: false },
         ]
           .filter((g) => g.items.length > 0 || g.alwaysShow)
@@ -1741,7 +1744,7 @@ function ModeGallery({
             Libraries → Published) flows from most-trusted/most-yours to
             most-public. Empty state still shows the section header + "+ Add
             library" so first-time users have a discoverable entry point. */}
-        {(libraries.length > 0 || onAddLibrary) && (
+        {(libraries.length > 0 || onAddLibrary) && !(search && libraryModes.length === 0) && (
           <div className="mb-12">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xs font-medium text-cc-muted/60 uppercase tracking-widest">Libraries</h2>
@@ -1765,10 +1768,12 @@ function ModeGallery({
                 {libraries.map((lib) => {
                   const activeModes = modesByLibrary.get(lib.id) ?? [];
                   const inactiveCount = lib.modes.length - lib.modes.filter((m) => m.activated).length;
-                  // When the gallery is filtered by search, hide libraries
-                  // whose modes don't match — but always show empty libraries
-                  // (0 modes) so the user can still see + manage them.
-                  if (search && activeModes.length === 0 && lib.modes.length > 0) return null;
+                  // When the gallery is filtered by search, hide libraries with
+                  // no matching activated modes. Empty libraries normally render
+                  // here so users can still see + manage them, but during an
+                  // active search they're just noise — the management surface
+                  // is reachable again the moment the query clears.
+                  if (search && activeModes.length === 0) return null;
                   return (
                     <LibraryGalleryGroup
                       key={lib.id}
@@ -1802,7 +1807,7 @@ function ModeGallery({
           </div>
         )}
 
-        {filtered.length === 0 && libraries.length === 0 && (
+        {search && filtered.length === 0 && (
           <p className="text-center text-cc-muted/60 py-20">No modes match your search.</p>
         )}
       </div>
