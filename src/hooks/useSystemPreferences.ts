@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { getApiBase } from "../utils/api.js";
 
 export interface SystemPreferences {
@@ -74,8 +74,6 @@ export function useSystemPreferences(): SystemPreferences {
   const [base, setBase] = useState<Omit<SystemPreferences, "ready">>(detectFromBrowser);
   const [overrides, setOverrides] = useState<UserOverrides | null>(null);
   const [ready, setReady] = useState(false);
-  // Avoid duplicate fetches when the hook re-mounts in StrictMode dev.
-  const fetchedRef = useRef(false);
 
   // Platform signals (system colour-scheme + navigator.language).
   useEffect(() => {
@@ -114,10 +112,12 @@ export function useSystemPreferences(): SystemPreferences {
       }
     };
 
-    if (!fetchedRef.current) {
-      fetchedRef.current = true;
-      void refresh();
-    }
+    // Refetch on every mount. StrictMode's mount-cleanup-mount cycle in dev
+    // sets `cancelled = true` on the first run before the fetch resolves, so
+    // a one-shot ref guard would deadlock the hook (first run cancelled, second
+    // run gated out by the ref → `ready` never flips, the picker never fires).
+    // The cleanup below is what serialises overlapping refreshes.
+    void refresh();
 
     const onChange = () => { void refresh(); };
     window.addEventListener("pneuma:locale-changed", onChange);
