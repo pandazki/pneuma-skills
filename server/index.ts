@@ -676,6 +676,25 @@ export async function startServer(options: ServerOptions) {
       registryCache.clear();
       return c.json({ ok: true, locale: normalized });
     });
+
+    // User theme. Mirrors the locale routes — value is one of "system" |
+    // "light" | "dark". Persisted at the top level of settings.json so
+    // session viewers can read it for default content set selection
+    // (e.g. slide's en-dark / zh-light seed picker).
+    target.get("/api/user-theme", async (c) => {
+      const { getUserTheme } = await import("../core/user-theme.js");
+      return c.json({ theme: getUserTheme() });
+    });
+    target.post("/api/user-theme", async (c) => {
+      const body = await c.req.json<{ theme?: string | null }>();
+      const { setUserTheme, normalizeTheme } = await import("../core/user-theme.js");
+      const normalized = body.theme === null ? null : normalizeTheme(body.theme);
+      if (body.theme && !normalized) {
+        return c.json({ error: `Unsupported theme: ${body.theme}` }, 400);
+      }
+      setUserTheme(normalized);
+      return c.json({ ok: true, theme: normalized });
+    });
   };
 
   // ── Launcher Mode (lightweight — no workspace, no agent, no watcher) ────

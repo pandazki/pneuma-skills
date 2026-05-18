@@ -36,7 +36,14 @@ export const createWorkspaceSlice: StateCreator<AppState, [], [], WorkspaceSlice
       if (activeContentSet && !contentSets.some((v) => v.prefix === activeContentSet)) {
         activeContentSet = null;
       }
-      if (!activeContentSet && contentSets.length > 0) {
+      // Trait-bearing content sets (those exposing a locale or theme) want a
+      // preference-aware choice — App.tsx waits for the user's saved Pneuma
+      // locale + theme before calling `selectBestContentSet`. Picking the
+      // alphabetical first here would race that effect, lock in "en-dark"
+      // before "zh-CN + dark" arrives, and the `!activeContentSet` guard
+      // upstream would prevent the revision.
+      const hasTraits = contentSets.some((cs) => !!cs.traits?.locale || !!cs.traits?.theme);
+      if (!activeContentSet && contentSets.length > 0 && !hasTraits) {
         activeContentSet = contentSets[0].prefix;
       }
 
@@ -86,7 +93,8 @@ export const createWorkspaceSlice: StateCreator<AppState, [], [], WorkspaceSlice
       if (activeContentSet && !contentSets.some((v) => v.prefix === activeContentSet)) {
         activeContentSet = null;
       }
-      if (!activeContentSet && contentSets.length > 0) {
+      const hasTraits = contentSets.some((cs) => !!cs.traits?.locale || !!cs.traits?.theme);
+      if (!activeContentSet && contentSets.length > 0 && !hasTraits) {
         activeContentSet = contentSets[0].prefix;
       }
 

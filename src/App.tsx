@@ -383,11 +383,17 @@ export default function App() {
     }
   }, [topBarNav, workspaceItemsForAutoSelect, activeFileForAutoSelect]);
 
-  // Content set auto-selection based on system preferences
+  // Content set auto-selection based on system preferences. We wait for
+  // `systemPrefs.ready` so the Pneuma-saved locale/theme overrides land
+  // before the picker runs — otherwise the synchronous browser defaults
+  // grab the slot, `activeContentSet` becomes truthy, and the
+  // `!activeContentSet` guard locks us out of revising once the overrides
+  // arrive.
   const contentSets = useStore((s) => s.contentSets);
   const activeContentSet = useStore((s) => s.activeContentSet);
   const systemPrefs = useSystemPreferences();
   useEffect(() => {
+    if (!systemPrefs.ready) return;
     if (contentSets.length > 1 && !activeContentSet) {
       const best = selectBestContentSet(contentSets, systemPrefs);
       if (best) useStore.getState().setActiveContentSet(best.prefix);

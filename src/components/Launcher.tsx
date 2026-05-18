@@ -202,6 +202,9 @@ function InspiredByTag({ name, url, className = "" }: { name: string; url: strin
 }
 
 function getInitialTheme(): Theme {
+  // localStorage acts as an instant-render fallback so the UI doesn't flash
+  // the wrong theme while the GET /api/user-theme round-trip is in flight.
+  // The server response (when it arrives) reconciles + writes back here.
   try {
     const saved = localStorage.getItem("pneuma-launcher-theme");
     if (saved === "light" || saved === "dark" || saved === "system") return saved;
@@ -210,10 +213,33 @@ function getInitialTheme(): Theme {
 }
 
 function useTheme() {
-  const [preference, setPreference] = useState<Theme>(getInitialTheme);
+  const [preference, setPreferenceState] = useState<Theme>(getInitialTheme);
   const [resolved, setResolved] = useState<"light" | "dark">(
     () => preference === "system" ? getSystemTheme() : preference,
   );
+  const lastBroadcastRef = useRef<Theme>(preference);
+
+  // Pull the server-saved theme on mount; reconcile the localStorage-driven
+  // initial render with the canonical value so mode/session viewers (which
+  // read settings.json directly) and the launcher always agree.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${getApiBase()}/api/user-theme`)
+      .then((r) => r.json())
+      .then((data: { theme: string | null }) => {
+        if (cancelled) return;
+        const remote = data.theme === "light" || data.theme === "dark" || data.theme === "system"
+          ? (data.theme as Theme)
+          : null;
+        if (remote && remote !== preference) {
+          lastBroadcastRef.current = remote;
+          setPreferenceState(remote);
+        }
+      })
+      .catch(() => { /* server unreachable — keep localStorage value */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const next = preference === "system" ? getSystemTheme() : preference;
@@ -230,13 +256,45 @@ function useTheme() {
     return () => mq.removeEventListener("change", handler);
   }, [preference]);
 
+  // Cross-tab + cross-component sync: another window / component changed the
+  // theme, pick it up without a page refresh.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ theme?: Theme }>).detail;
+      if (!detail?.theme) return;
+      if (detail.theme === lastBroadcastRef.current) return;
+      lastBroadcastRef.current = detail.theme;
+      setPreferenceState(detail.theme);
+    };
+    window.addEventListener("pneuma:theme-changed", handler);
+    return () => window.removeEventListener("pneuma:theme-changed", handler);
+  }, []);
+
+  const setPreference = useCallback((next: Theme | ((prev: Theme) => Theme)) => {
+    setPreferenceState((prev) => {
+      const resolved = typeof next === "function" ? next(prev) : next;
+      if (resolved === prev) return prev;
+      lastBroadcastRef.current = resolved;
+      // Fire-and-forget: persist to settings.json and notify peer listeners.
+      // Failure is non-fatal — localStorage already retains the value, so the
+      // launcher keeps working; the server just lags one tick behind.
+      void fetch(`${getApiBase()}/api/user-theme`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme: resolved }),
+      }).catch(() => { /* offline-safe */ });
+      window.dispatchEvent(new CustomEvent("pneuma:theme-changed", { detail: { theme: resolved } }));
+      return resolved;
+    });
+  }, []);
+
   const cycle = useCallback(() => {
     setPreference((prev) => {
       if (prev === "system") return "light";
       if (prev === "light") return "dark";
       return "system";
     });
-  }, []);
+  }, [setPreference]);
 
   return { preference, resolved, cycle };
 }
