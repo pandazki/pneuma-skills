@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.8.0
+**Version:** 3.9.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`
 
@@ -223,7 +223,7 @@ Multi-mode GitHub repo. One `pneuma mode add` clones the whole repo into `~/.pne
 | Path | Purpose |
 |------|---------|
 | `~/.pneuma/libraries/<id>/` | Cloned repo (or scaffolded). `<id>` defaults to `<user>-<repo>` |
-| `~/.pneuma/libraries/<id>/.library.json` | Consume-side sidecar: `{ version, id, name, source, sha, lastSync, modes: [{ name, path, manifestVersion, activated, installedVersion }] }`. Atomic tmp-then-rename writes |
+| `~/.pneuma/libraries/<id>/.library.json` | Consume-side sidecar: `{ version, id, name, source, sha, lastSync, pneumaVersion?, modes: [{ name, path, manifestVersion, pneumaVersion?, activated, installedVersion }] }`. Atomic tmp-then-rename writes |
 | `<repo-root>/pneuma.library.json` | Optional author-side index. Absent → resolver auto-scans subdirs |
 
 **Resolver behavior** (`core/mode-resolver.ts`):
@@ -236,6 +236,16 @@ Multi-mode GitHub repo. One `pneuma mode add` clones the whole repo into `~/.pne
 **Author side** (`core/library-publish.ts`): `initLocalLibrary` (scaffold + git init + commit), `publishModeToLibrary` (cp -r + upsert index + sync sidecar + commit), `pushLibrary`. `--github` on `library init` calls `core/github-cli.ts::createRepo` (`gh repo create --source --push`). No PAT fallback in v1; Settings → GitHub card surfaces install + sign-in hints when `gh` missing/unauth.
 
 **Mode Gallery surface:** Libraries group between Local and Published. Each library: identity strip (display name, source URL chip, last-synced ts) + inline Sync / + Publish / Unlink, then `GalleryModeCard` per activated mode, then collapsible "N inactive modes" footer. Library-activated modes also appear in Quick Start via `/api/registry` `local[]` (with `librarySource: { id, name, displayName? }` tag).
+
+### Pneuma version compatibility (3.9.0)
+
+External mode authors declare `pneumaVersion` (semver range, e.g. `"^3.8.0"`) in `manifest.ts`. Library authors can stamp the same field in `pneuma.library.json` as a fallback. The launcher pre-computes compat (`core/version-compat.ts::checkCompat`) for every local entry and renders:
+
+- **`major-drift`** → `GalleryModeCard` dims + red "Incompatible" chip + destructive launch button (confirm-before-launch); `QuickStartTile` dims + bottom-right red dot + confirm-on-click
+- **`minor-drift`** → amber "Minor drift" chip on the card (non-blocking)
+- **`match`** / **`unknown`** (no declaration) → render unchanged; the check is opt-in
+
+`/api/registry` carries `runtimeVersion` + per-entry `compat: { level, declared, runtime, reason? }`. Builtins never receive a compat field (they ship with the runtime). Resolution precedence: per-mode `pneumaVersion` > sidecar cache > library-level fallback. See `docs/design/pneuma-library-upgrade.md` for the planned `pneuma library upgrade` CLI that will consume these declarations.
 
 ### Favorites (3.7.0)
 

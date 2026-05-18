@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.9.0] - 2026-05-19
+
+### Added — Pneuma version compatibility
+
+External mode authors can now declare which Pneuma runtime range they target, and the launcher surfaces incompatibility up-front so users see why a stale mode shouldn't be launched.
+
+- **`pneumaVersion` field on `ModeManifest`** (optional, semver range — e.g. `"^3.8.0"`, `">=3.7.0 <4.0.0"`, `"*"`). Same field on `LibraryManifest` as a library-wide fallback, propagated through `InstalledLibrary` / `InstalledLibraryMode` sidecar caches so the launcher renders without re-parsing every manifest. Resolution precedence: per-mode > sidecar cache > library-level fallback.
+- **`core/version-compat.ts` utility** — `checkCompat(declared, runtime) → { level, declared, runtime, reason? }`. Levels: `match` / `minor-drift` / `major-drift` / `unknown`. Lean implementation, no `semver` npm dependency; handles exact / caret / tilde / `>=` `<` / compound / wildcard / pre-release. 19 tests in `core/__tests__/version-compat.test.ts`.
+- **`/api/registry` response** carries top-level `runtimeVersion` plus optional per-entry `compat` + `pneumaVersion`. Builtins never receive a compat field — they ship with the runtime by construction.
+- **Launcher incompatibility UI** — `GalleryModeCard` dims to 60% opacity, prepends a red "Incompatible" chip next to the display name, and switches the launch button to a destructive red variant with a confirm-before-launch prompt (major drift). `QuickStartTile` dims and gains a small bottom-right red dot with the same confirm-on-click guard. Modes that don't declare `pneumaVersion` render exactly as before — the check is opt-in by design.
+
+### Design notes
+
+- **`pneuma library upgrade` (sketch)** — `docs/design/pneuma-library-upgrade.md` captures the planned CLI that will consume these declarations to walk library authors through major-version migrations. Two strategies (guided manual / agent-driven with the `create-mode` skill), per-version migration doc format, sidecar bookkeeping, rollout phases. Not implemented in this release.
+
+### Companion: `pneuma-mode-gallery`
+
+- The new [`pneuma-mode-gallery`](https://github.com/pandazki/pneuma-mode-gallery) library ships a `create-mode` skill that scaffolds new Pneuma modes (three archetype templates, `bin/dev.ts` with version-compat probe + seedFiles preflight) and stamps `pneumaVersion` on every template manifest — so consumers of the gallery automatically declare runtime targeting from day one.
+
 ## [3.8.0] - 2026-05-18
 
 ### Added — full-stack i18n + theme propagation
