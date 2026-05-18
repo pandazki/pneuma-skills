@@ -1918,6 +1918,21 @@ async function main() {
     pneumaEnv.PNEUMA_PROJECT_ROOT = startup.paths.projectRoot;
   }
 
+  // User preferences — the locale + theme the user chose in Pneuma's
+  // language picker and theme toggle. Surfaced as env so skills / scripts /
+  // tool calls inside the agent's session can read them without having to
+  // re-derive from settings.json. `PNEUMA_USER_LOCALE` is BCP-47 (e.g.
+  // "zh-CN" / "ja"); `PNEUMA_USER_THEME` is one of "system" | "light" |
+  // "dark". Both are omitted when the user hasn't set a preference, so
+  // skills can fall back to the agent's own defaults instead of being
+  // forced into a "default-for-default" branch.
+  const { getUserLocale } = await import("../core/locale.js");
+  const { getUserTheme } = await import("../core/user-theme.js");
+  const userLocale = getUserLocale();
+  const userTheme = getUserTheme();
+  if (userLocale) pneumaEnv.PNEUMA_USER_LOCALE = userLocale;
+  if (userTheme) pneumaEnv.PNEUMA_USER_THEME = userTheme;
+
   // 0.5 Resolve init params (interactive on first run, then cached)
   let resolvedParams: Record<string, number | string> = {};
   if (manifest.init?.params && manifest.init.params.length > 0) {
@@ -2351,6 +2366,7 @@ async function main() {
       fromSessionId,
       fromMode,
       fromDisplayName,
+      userLocale: userLocale ?? undefined,
     });
     if (!tag) return;
     envTagDispatched = true;

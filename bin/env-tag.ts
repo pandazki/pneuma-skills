@@ -52,6 +52,15 @@ export interface EnvTagInput {
   fromSessionId?: string;
   fromMode?: string;
   fromDisplayName?: string;
+  /**
+   * User's UI language preference (BCP-47 like "zh-CN", "ja", "en"). When
+   * the user has explicitly picked a language in Pneuma's Language menu,
+   * surface it to the agent so it can default replies, file names, and
+   * generated copy to that language without the user having to repeat it
+   * every turn. Omitted when no preference is set — the agent should keep
+   * its own defaults rather than guess.
+   */
+  userLocale?: string;
 }
 
 /**
@@ -90,6 +99,13 @@ export function buildEnvTag(input: EnvTagInput): string | null {
     push("project", input.projectName);
     push("mode", input.mode);
   }
+
+  // User locale is appended regardless of `reason` — the agent's response
+  // language is orthogonal to whether the session was opened, switched, or
+  // handed off. Theme is intentionally left out: it's surfaced via
+  // `PNEUMA_USER_THEME` for skills that want to act on it, but doesn't
+  // belong in the agent's first-turn context.
+  push("user_locale", input.userLocale);
 
   return `<pneuma:env ${parts.join(" ")} />`;
 }
