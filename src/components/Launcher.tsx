@@ -339,7 +339,7 @@ function ConfirmButton({
         <div className="w-px h-3 bg-cc-border/30" />
         <button
           onClick={handleCancel}
-          className="px-1.5 py-0.5 text-[10px] text-cc-muted hover:text-cc-fg rounded transition-colors cursor-pointer"
+          className="px-1.5 py-0.5 text-[10px] text-cc-muted hover:text-cc-fg rounded transition-colors cursor-pointer whitespace-nowrap"
         >
           {t("confirm_button.cancel")}
         </button>
