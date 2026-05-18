@@ -3303,13 +3303,27 @@ function CopySnippet({ text }: { text: string }) {
   );
 }
 
-function LanguageSection() {
+/**
+ * Single-character locale tokens used as the trigger glyph + dropdown
+ * marker. Picked to read as a representative letter of each script:
+ * Latin uppercase A for English, the most common Han character for
+ * Simplified Chinese, the first hiragana for Japanese. Together they
+ * form a small typographic triad — typography-as-iconography, no
+ * generic globe SVG.
+ */
+const LOCALE_GLYPHS: Record<Locale, string> = {
+  en: "A",
+  "zh-CN": "中",
+  ja: "あ",
+};
+
+function LanguagePopover() {
   const { t, i18n: i18nInstance } = useTranslation("settings");
+  const [open, setOpen] = useState(false);
   const [current, setCurrent] = useState<Locale>(currentLocale());
-  const [saving, setSaving] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setCurrent(currentLocale());
     const handler = (lng: string) => {
       const normalized = SUPPORTED_LOCALES.includes(lng as Locale) ? (lng as Locale) : DEFAULT_LOCALE;
       setCurrent(normalized);
@@ -3320,36 +3334,72 @@ function LanguageSection() {
     };
   }, [i18nInstance]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   const handleSelect = async (locale: Locale) => {
-    if (locale === current || saving) return;
-    setSaving(true);
+    setOpen(false);
+    if (locale === current) return;
     await persistLocale(locale, getApiBase());
-    setSaving(false);
   };
 
   return (
-    <div className="space-y-3">
-      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">{t("language.title")}</h3>
-      <p className="text-[10px] text-cc-muted/60 leading-relaxed">{t("language.description")}</p>
-      <div className="grid grid-cols-3 gap-2">
-        {SUPPORTED_LOCALES.map((locale) => {
-          const selected = current === locale;
-          return (
-            <button
-              key={locale}
-              onClick={() => handleSelect(locale)}
-              disabled={saving}
-              className={`px-3 py-2 rounded-md text-[11px] transition-colors cursor-pointer ${
-                selected
-                  ? "bg-cc-primary/15 border border-cc-primary/40 text-cc-fg"
-                  : "bg-cc-surface/40 border border-cc-border/60 text-cc-muted hover:text-cc-fg hover:border-cc-border"
-              }`}
-            >
-              {LOCALE_LABELS[locale]}
-            </button>
-          );
-        })}
-      </div>
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={t("language.title")}
+        title={t("language.title")}
+        className="p-2 text-cc-muted/70 hover:text-cc-fg transition-colors cursor-pointer"
+      >
+        <span className="font-logo block w-4 text-center text-[16px] leading-none font-medium">
+          {LOCALE_GLYPHS[current]}
+        </span>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full mt-2 z-50 min-w-[148px] rounded-lg border border-cc-border/60 bg-cc-surface/95 backdrop-blur-md shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6)] py-1 overflow-hidden"
+          style={{ animation: "overlayFadeIn 160ms cubic-bezier(0.16, 1, 0.3, 1)" }}
+        >
+          {SUPPORTED_LOCALES.map((locale) => {
+            const active = locale === current;
+            return (
+              <button
+                key={locale}
+                type="button"
+                role="menuitem"
+                onClick={() => handleSelect(locale)}
+                className={`w-full flex items-center gap-3 px-3 py-2 text-left text-xs transition-colors cursor-pointer ${
+                  active
+                    ? "text-cc-primary bg-cc-primary/8"
+                    : "text-cc-fg/80 hover:bg-cc-hover hover:text-cc-fg"
+                }`}
+              >
+                <span className="font-logo w-4 text-center text-[15px] leading-none shrink-0">
+                  {LOCALE_GLYPHS[locale]}
+                </span>
+                <span>{LOCALE_LABELS[locale]}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -3871,7 +3921,6 @@ function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }
 
         {/* Sections */}
         <div className="p-6 space-y-8">
-          <LanguageSection />
           <BackendsSection />
           <ApiKeysSection />
           <CloudStorageSection />
@@ -4720,6 +4769,8 @@ export default function Launcher() {
         </div>
         <div className="flex items-center" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
           <div className={`flex items-center gap-1 transition-transform duration-300 ease-out ${hasOverlay ? "" : "translate-x-5"}`}>
+            <LanguagePopover />
+            <ThemeToggle preference={themePref} onClick={cycleTheme} />
             <button
               onClick={() => setShowSettings(true)}
               className="p-2 text-cc-muted/70 hover:text-cc-fg transition-colors cursor-pointer"
@@ -4730,7 +4781,6 @@ export default function Launcher() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             </button>
-            <ThemeToggle preference={themePref} onClick={cycleTheme} />
             <a
               href="https://github.com/pandazki/pneuma-skills"
               target="_blank"
