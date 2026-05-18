@@ -1,9 +1,9 @@
 {
-  "changed_files": "变更文件 ({{count}})",
-  "diff_base_tooltip": "差异基线:{{base}}",
+  "changed_files": "变更文件（{{count}}）",
+  "diff_base_tooltip": "对比基线：{{base}}",
   "head": "HEAD",
   "branch": "分支",
-  "no_changes": "无变更",
+  "no_changes": "暂无变更",
   "loading": "加载中…",
-  "select_a_file": "选择文件以查看差异"
+  "select_a_file": "选择文件查看差异"
 }

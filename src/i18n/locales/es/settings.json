@@ -1,0 +1,7 @@
+{
+  "title": "Ajustes",
+  "language": {
+    "title": "Idioma",
+    "description": "Elige el idioma de la interfaz de Pneuma. El cambio se aplica al instante en toda la app y el CLI."
+  }
+}

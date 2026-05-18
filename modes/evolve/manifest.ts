@@ -13,12 +13,20 @@ const evolveManifest: ModeManifest = {
   displayName: {
     en: "Skill Evolution",
     "zh-CN": "技能演进",
+    "zh-TW": "技能演化",
     ja: "スキル進化",
+    ko: "스킬 진화",
+    es: "Evolución de habilidad",
+    de: "Skill-Weiterentwicklung",
   },
   description: {
     en: "Analyze usage patterns and evolve mode skills with AI assistance",
     "zh-CN": "在 AI 协助下分析使用模式，让模式技能持续演进",
+    "zh-TW": "在 AI 協助下分析使用模式，讓模式技能持續演化",
     ja: "利用パターンを分析し、AI の支援でモードのスキルを進化させる",
+    ko: "사용 패턴을 분석하고 AI 지원으로 모드 스킬을 진화시킵니다",
+    es: "Analiza patrones de uso y evoluciona las habilidades de modo con asistencia de IA",
+    de: "Nutzungsmuster analysieren und Modus-Skills mit KI-Unterstützung weiterentwickeln",
   },
   // Internal mode — surfaced through specific UI affordances (the chip's
   // Evolve button, `pneuma evolve <mode>` CLI), not the launcher's

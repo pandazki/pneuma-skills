@@ -1,0 +1,10 @@
+{
+  "step": "단계 {{n}}",
+  "previous_turn": "이전 턴",
+  "next_turn": "다음 턴",
+  "continue_starting": "시작 중...",
+  "continue_retry": "다시 시도 ({{error}})",
+  "continue_work": "작업 계속하기",
+  "continue_tooltip": "일반 편집 모드로 전환해 작업을 계속합니다",
+  "continue_failed": "계속하기 실패"
+}

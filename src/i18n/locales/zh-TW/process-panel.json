@@ -1,0 +1,15 @@
+{
+  "status": {
+    "completed": "已完成",
+    "failed": "已失敗",
+    "stopped": "已停止"
+  },
+  "kill": "終止",
+  "pid": "PID {{pid}}",
+  "background_jobs": "背景工作（{{count}}）",
+  "dev_servers": "開發伺服器（{{count}}）",
+  "scan": "掃描",
+  "scanning_short": "掃描中…",
+  "scanning_long": "正在掃描開發伺服器…",
+  "no_dev_servers": "找不到開發伺服器"
+}

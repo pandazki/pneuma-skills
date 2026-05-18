@@ -34,12 +34,20 @@ const kamiManifest: ModeManifest = {
   displayName: {
     en: "Kami",
     "zh-CN": "Kami",
+    "zh-TW": "Kami",
     ja: "Kami",
+    ko: "Kami",
+    es: "Kami",
+    de: "Kami",
   },
   description: {
     en: "Paper-canvas web design with warm parchment aesthetic — design language adapted from tw93/kami (MIT)",
     "zh-CN": "纸张画布式网页设计，带温润羊皮纸质感 —— 设计语言取自 tw93/kami（MIT 许可）",
+    "zh-TW": "紙張畫布式網頁設計，帶溫潤羊皮紙質感 —— 設計語言取自 tw93/kami（MIT 授權）",
     ja: "温かみのある羊皮紙の質感を持つ紙キャンバス型ウェブデザイン —— デザイン言語は tw93/kami（MIT）から取り入れ",
+    ko: "따스한 양피지 질감을 지닌 종이 캔버스형 웹 디자인 —— 디자인 언어는 tw93/kami(MIT)에서 차용",
+    es: "Diseño web sobre lienzo de papel con estética cálida de pergamino —— lenguaje de diseño adaptado de tw93/kami (MIT)",
+    de: "Webdesign auf Papier-Leinwand mit warmer Pergament-Ästhetik —— Designsprache übernommen von tw93/kami (MIT)",
   },
   changelog: {
     "1.3.0": [

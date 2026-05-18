@@ -17,12 +17,20 @@ const clipcraftManifest: ModeManifest = {
   displayName: {
     en: "ClipCraft",
     "zh-CN": "ClipCraft",
+    "zh-TW": "ClipCraft",
     ja: "ClipCraft",
+    ko: "ClipCraft",
+    es: "ClipCraft",
+    de: "ClipCraft",
   },
   description: {
     en: "AI video production — production bibles, storyboard paths (A/B/C), direction notation, sketch→anchor→clip iteration, provenance lineage",
     "zh-CN": "AI 视频制作 —— 制作宝典、分镜路径（A/B/C）、导演记号、草图→锚点→成片迭代、来源谱系",
+    "zh-TW": "AI 影片製作 —— 製作寶典、分鏡路徑（A／B／C）、導演記號、草圖→錨點→成片迭代、來源譜系",
     ja: "AI 動画制作 —— プロダクションバイブル、絵コンテ経路（A/B/C）、演出記法、ラフ→アンカー→本編の反復、来歴トレース",
+    ko: "AI 영상 제작 —— 프로덕션 바이블, 스토리보드 경로(A/B/C), 디렉션 표기법, 스케치→앵커→클립 반복, 출처 계보",
+    es: "Producción de video con IA —— biblias de producción, rutas de storyboard (A/B/C), notación de dirección, iteración boceto→ancla→clip, linaje de procedencia",
+    de: "KI-Videoproduktion —— Produktions-Bibeln, Storyboard-Pfade (A/B/C), Regie-Notation, Iteration Skizze→Anker→Clip, Herkunftslinie",
   },
 
   supportedBackends: ["claude-code", "codex"],

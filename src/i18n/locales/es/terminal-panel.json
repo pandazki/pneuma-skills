@@ -1,0 +1,6 @@
+{
+  "terminal": "Terminal",
+  "kill": "Terminar",
+  "new": "Nuevo",
+  "process_exited": "[Proceso finalizado con código {{code}}]"
+}

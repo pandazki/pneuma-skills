@@ -1,0 +1,306 @@
+{
+  "backends": {
+    "claude_code": {
+      "label": "Claude Code",
+      "description": "Anthropic Claude Code CLI，透過 stdio stream-json 傳輸。"
+    },
+    "codex": {
+      "label": "Codex",
+      "description": "OpenAI Codex CLI，透過 app-server 傳輸。"
+    },
+    "kimi": {
+      "label": "Kimi",
+      "description": "Moonshot AI Kimi Code CLI，透過 stdio stream-json 傳輸。"
+    }
+  },
+  "header": {
+    "settings_tooltip": "設定"
+  },
+  "inspired_by_tooltip": "靈感來自 {{name}}",
+  "inspired_by_prefix": "靈感來自",
+  "theme_tooltip": "主題：{{preference}}",
+  "confirm_button": {
+    "cancel": "取消"
+  },
+  "featured": {
+    "launch": "啟動",
+    "explore_all": "瀏覽所有模式"
+  },
+  "session_card": {
+    "stop": "停止",
+    "replay": "重播",
+    "remove": "移除",
+    "rename": "重新命名",
+    "launching": "啟動中…",
+    "skill_update": "有可用更新",
+    "skip": "略過",
+    "update": "更新",
+    "view_changelog": "查看完整更新日誌 →"
+  },
+  "compact_session": {
+    "rename": "重新命名",
+    "replay": "重播",
+    "remove": "移除",
+    "launching": "啟動中…",
+    "whats_new": "更新內容",
+    "whats_new_in": "v{{version}} 更新內容",
+    "skip": "略過",
+    "update": "更新",
+    "view_changelog": "查看完整更新日誌 →"
+  },
+  "all_sessions": {
+    "title": "所有工作階段",
+    "search_placeholder": "搜尋工作階段…",
+    "count_filtered": "{{filtered}} / {{total}} 個工作階段",
+    "count_total": "{{count}} 個工作階段",
+    "running": "執行中",
+    "recent": "最近",
+    "no_match": "沒有符合的工作階段。",
+    "no_sessions": "尚無工作階段。"
+  },
+  "quick_start_tile": {
+    "favorite_aria": "收藏",
+    "from_library": "來自模式合集：{{name}}"
+  },
+  "mode_maker_hero": {
+    "title": "Mode Maker",
+    "description": "打造、測試並發布你自己的 Pneuma 模式 — 或派生一個現有模式讓它成為你的。",
+    "cta": "建立"
+  },
+  "gallery": {
+    "title": "模式畫廊",
+    "search_placeholder": "搜尋…",
+    "clear_search": "清除搜尋",
+    "group_builtin": "內建",
+    "group_local": "本地",
+    "group_published": "已發布",
+    "group_libraries": "模式合集",
+    "add_from_url": "從 URL 新增",
+    "add_from_url_tooltip": "從 URL 或 github:user/repo 安裝模式",
+    "add_library": "新增模式合集",
+    "add_library_tooltip": "連結一個包含一個或多個 Pneuma 模式的 GitHub 儲存庫",
+    "no_local_modes_hint": "尚無本地模式 — 在上方貼上 .tar.gz URL 或 <code>github:user/repo</code>。",
+    "no_libraries_hint": "尚未連結任何模式合集 — 在上方貼上 <code>github:user/repo</code> 以安裝一個多模式合集。",
+    "no_modes_match": "沒有符合的模式。"
+  },
+  "library_group": {
+    "sync": "同步",
+    "syncing": "同步中…",
+    "sync_tooltip": "從來源重新整理",
+    "publish": "發布",
+    "publish_tooltip": "將一個本地模式複製到此合集",
+    "confirm": "確認",
+    "cancel": "取消",
+    "unlink": "解除連結",
+    "unlink_tooltip": "移除此模式合集",
+    "synced_at": "已於 {{when}} 同步",
+    "sync_failed": "同步失敗",
+    "unlink_failed": "解除連結失敗",
+    "toggle_failed": "切換失敗",
+    "all_inactive": "此合集中的所有模式皆未啟用。在下方啟用其中一個再啟動。",
+    "library_empty": "此合集目前是空的。從本地安裝中發布一個模式進來。",
+    "inactive_one": "{{count}} 個未啟用的模式",
+    "inactive_other": "{{count}} 個未啟用的模式",
+    "activate": "啟用"
+  },
+  "gallery_card": {
+    "unpin_tooltip": "從快速開始取消釘選",
+    "pin_tooltip": "釘選到快速開始",
+    "unpin_aria": "從收藏中移除",
+    "pin_aria": "加入收藏",
+    "evolve_tooltip": "演化技能",
+    "edit_tooltip": "在 Mode Maker 中編輯",
+    "delete": "刪除",
+    "launch": "啟動",
+    "from_library": "來自 {{name}}",
+    "synced_at": "已於 {{when}} 同步"
+  },
+  "launch_dialog": {
+    "workspace_label": "工作區路徑",
+    "browse_tooltip": "瀏覽目錄",
+    "select_workspace_title": "選擇工作區",
+    "session_name_label": "工作階段名稱",
+    "loading_config": "正在載入設定…",
+    "agent_label": "智慧體",
+    "agent_unavailable": "無法使用",
+    "agent_soon": "即將推出",
+    "agent_na": "不適用",
+    "existing_session_hint": "已有工作區 — 將繼續 {{backend}} 工作階段",
+    "parameters": "參數",
+    "parameters_readonly": "（唯讀）",
+    "prepare_failed": "準備啟動失敗",
+    "launch_failed": "啟動失敗",
+    "cancel": "取消",
+    "launch": "啟動",
+    "launching": "啟動中…"
+  },
+  "settings_panel": {
+    "title": "設定"
+  },
+  "backends_section": {
+    "title": "後端",
+    "ready": "就緒",
+    "not_found": "找不到"
+  },
+  "api_keys": {
+    "title": "API 金鑰",
+    "add": "+ 新增",
+    "description": "金鑰會加密保存在你本機的電腦上。當某個專案需要對應名稱的金鑰時，會自動匯入。",
+    "empty": "尚未設定任何金鑰。",
+    "remove": "移除",
+    "name_placeholder": "金鑰名稱（例如 OPENROUTER_API_KEY）",
+    "value_placeholder": "值",
+    "save": "儲存",
+    "cancel": "取消"
+  },
+  "cloud_storage": {
+    "title": "雲端儲存",
+    "edit": "編輯",
+    "description": "用於分享與快照的 Cloudflare R2 儲存。你管理自己的儲存桶 — 資料始終由你掌握。",
+    "connected": "已連線",
+    "bucket": "儲存桶：{{name}}",
+    "url": "URL：{{url}}",
+    "setup_hint": "在 <span>dash.cloudflare.com</span> 建立一個可公開存取的 Cloudflare R2 儲存桶，再於下方輸入憑證。",
+    "account_id": "帳號 ID",
+    "access_key_id": "Access Key ID",
+    "secret_access_key": "Secret Access Key",
+    "bucket_name": "儲存桶名稱",
+    "public_url": "公開 URL（例如 https://pub-xxx.r2.dev）",
+    "save": "儲存",
+    "saving": "儲存中…",
+    "cancel": "取消"
+  },
+  "plugin_card": {
+    "builtin_label": "（內建）",
+    "cli_connected": "CLI 已連線",
+    "token_connected": "Token 已連線",
+    "connected_as": "，身分為 {{user}}",
+    "not_connected": "未連線 — 請安裝 CLI 或在下方設定 token",
+    "select_placeholder": "選擇…",
+    "save": "儲存",
+    "saving": "儲存中…"
+  },
+  "plugins": {
+    "title": "外掛",
+    "description": "管理已安裝的外掛。啟用或停用外掛，並設定其選項。"
+  },
+  "copy_snippet": {
+    "copy": "複製",
+    "copied": "已複製"
+  },
+  "github": {
+    "title": "GitHub",
+    "description": "在 GitHub 上建立、同步和發布模式合集時需要。",
+    "checking": "正在檢查 gh 狀態…",
+    "not_installed": "尚未安裝 GitHub CLI",
+    "installed_not_signed_in": "已安裝{{version}} · 尚未登入",
+    "signed_in_as": "已登入為 <bold>@{{username}}</bold>",
+    "version_suffix": " · gh {{version}}"
+  },
+  "add_library_dialog": {
+    "title": "新增模式合集",
+    "description": "連結一個多模式 GitHub 儲存庫，或在本地建立一個新合集並可選擇是否發布。",
+    "tab_link": "連結既有",
+    "tab_create": "建立新合集",
+    "linked_single": "已連結單模式儲存庫。它會出現在「本地」分組中。",
+    "linked_library": "模式合集已連結。在下方卡片中啟用模式。",
+    "open_on_github": "在 GitHub 中開啟 →",
+    "specifier_label": "識別字串",
+    "specifier_placeholder": "github:user/repo  或  https://.../repo.tar.gz",
+    "specifier_hint": "根目錄含 <code>pneuma.library.json</code>（或 N 個模式目錄）的儲存庫會以多模式合集形式安裝；否則退回為單模式安裝。",
+    "name_label": "合集名稱（slug）",
+    "name_placeholder": "my-modes",
+    "display_name_label": "顯示名稱（選填）",
+    "display_name_placeholder": "My Modes",
+    "description_label": "描述（選填）",
+    "description_placeholder": "一組用於…的 Pneuma 模式",
+    "create_on_github": "在 GitHub 上建立（需要 <code>gh</code> 授權）",
+    "repo_name_label": "儲存庫名稱",
+    "visibility_label": "可見性",
+    "visibility_private": "private",
+    "visibility_public": "public",
+    "link_failed": "連結失敗",
+    "create_failed": "建立失敗",
+    "close": "關閉",
+    "cancel": "取消",
+    "link": "連結",
+    "create": "建立",
+    "working": "…"
+  },
+  "publish_dialog": {
+    "title": "發布到 {{library}}",
+    "description": "將一個已安裝的本地模式複製到此合集中，並暫存以供提交。",
+    "published": "已發布。",
+    "pushed": " 已推送到 GitHub。",
+    "not_pushed": "（未推送。）",
+    "source_mode_label": "來源模式",
+    "no_eligible_modes": "沒有符合條件的本地模式。請先安裝一個模式（或用 Mode Maker 建立一個）。",
+    "pick_a_mode": "— 選擇一個模式 —",
+    "mode_option": "{{displayName}}（{{name}}）",
+    "name_override_label": "覆寫名稱（選填）",
+    "name_override_placeholder": "（使用來源名稱）",
+    "push_after_commit": "提交後推送到 GitHub",
+    "publish_failed": "發布失敗",
+    "close": "關閉",
+    "cancel": "取消",
+    "publish": "發布",
+    "working": "…"
+  },
+  "import_dialog": {
+    "title_mode": "新增模式",
+    "title_session": "匯入工作階段",
+    "description_mode": "從 URL（.tar.gz）或 github:user/repo 安裝模式。已安裝的模式會出現在「本地」分組中。",
+    "description_session": "貼上分享 URL，或選擇本機壓縮檔（.tar.gz）。",
+    "tab_session": "工作階段",
+    "tab_mode": "模式",
+    "url_placeholder_session": "https://…",
+    "url_placeholder_mode": "https://.../mode.tar.gz  或  github:user/repo",
+    "or": "或",
+    "local_file": "本機檔案",
+    "workspace_label": "工作區目錄（選填）",
+    "workspace_placeholder": "~/pneuma-projects/my-project",
+    "install_hint": "下載並解壓縮到 <code>~/.pneuma/modes/</code>。",
+    "cancel": "取消",
+    "import": "匯入",
+    "install": "安裝",
+    "importing": "匯入中…",
+    "installing": "安裝中…",
+    "import_failed": "匯入失敗",
+    "install_failed": "安裝失敗",
+    "imported_success": "已成功匯入！",
+    "installed_success": "已安裝「{{name}}」（{{version}}）。",
+    "process_share_hint": "這份分享包含建立過程的對話歷史與檢查點。",
+    "close": "關閉",
+    "continue_working": "繼續工作",
+    "replay": "重播",
+    "open": "開啟",
+    "launch": "啟動",
+    "try_again": "重試"
+  },
+  "main": {
+    "settings_tooltip": "設定",
+    "my_apps": "我的應用程式",
+    "my_apps_running": "執行中",
+    "recent_projects": "最近的專案",
+    "hide_archived": "隱藏封存",
+    "show_archived": "已封存（{{count}}）",
+    "create_project": "+ 建立專案",
+    "no_projects": "尚無專案。",
+    "all_projects_count": "所有專案（{{count}}）",
+    "archived_count": "已封存（{{count}}）",
+    "continue_title": "繼續",
+    "import": "匯入",
+    "all_sessions_count": "所有工作階段（{{count}}）",
+    "create_new": "新建",
+    "create_new_subtitle": "開啟一個全新工作區",
+    "all_modes_count": "所有模式（{{count}}）",
+    "mode_maker_title": "Mode Maker",
+    "edit_prefix": "編輯：{{name}}",
+    "evolve_prefix": "演化：{{name}}"
+  },
+  "backend_unavailable": {
+    "unknown": "未知的後端「{{type}}」",
+    "coming_soon": "即將推出",
+    "not_available": "無法使用"
+  }
+}

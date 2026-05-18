@@ -1,0 +1,60 @@
+{
+  "system": {
+    "output_label": "출력"
+  },
+  "selection": {
+    "in_file": "{{file}} 안",
+    "types": {
+      "paragraph": "단락",
+      "list": "목록",
+      "code": "코드 블록",
+      "blockquote": "인용문",
+      "image": "이미지",
+      "table": "표",
+      "text_range": "선택한 텍스트",
+      "section": "섹션",
+      "link": "링크",
+      "container": "컨테이너",
+      "interactive": "인터랙티브"
+    }
+  },
+  "annotations": {
+    "count_one": "주석 {{count}}개",
+    "count_other": "주석 {{count}}개"
+  },
+  "ask_user": {
+    "waiting": "질문을 기다리는 중...",
+    "qa_label": "Q&A",
+    "fallback_title": "질문",
+    "other_option": "기타...",
+    "answer_placeholder": "답변을 입력하세요...",
+    "enter_hint": "Enter를 눌러 제출하세요",
+    "submit": "답변 제출"
+  },
+  "thinking": {
+    "label": "추론",
+    "encrypted": "Anthropic에 의해 숨김 (적응형 사고)",
+    "char_count": "{{count}}자",
+    "no_text": "기록된 사고 내용이 없습니다."
+  },
+  "tool_result": {
+    "header": {
+      "output": "출력",
+      "error": "오류",
+      "result": "결과"
+    },
+    "show_tail": "끝부분 보기",
+    "hide": "숨기기",
+    "show_full_with_remaining": "전체 보기 (+{{count}}줄)",
+    "show_full": "전체 보기"
+  },
+  "context_usage": {
+    "title": "컨텍스트 사용량",
+    "tokens_summary": "{{used}} / {{total}} 토큰 ({{percent}}%)"
+  },
+  "debug": {
+    "payload_label": "페이로드",
+    "payload_tooltip": "디버그: CLI 페이로드 보기",
+    "image_alt": "디버그 이미지 {{index}}"
+  }
+}

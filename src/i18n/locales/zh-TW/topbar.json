@@ -1,0 +1,39 @@
+{
+  "settings_tooltip": "應用程式設定",
+  "view_button_view": "檢視",
+  "view_button_edit": "編輯",
+  "switch_to_viewing": "切換到檢視模式",
+  "switch_to_editing": "切換到編輯模式",
+  "new_empty_content": "建立空白內容",
+  "share": {
+    "title": "分享",
+    "tooltip": "分享",
+    "result": "分享成果",
+    "result_desc": "上傳目前的檔案（不含歷史記錄）",
+    "process": "分享過程",
+    "process_desc": "連同對話歷史與檢查點一起上傳",
+    "export_local": "匯出為本機檔案",
+    "export_local_desc": "另存為 .tar.gz，不上傳雲端",
+    "r2_required": "雲端分享需要 R2 儲存設定。",
+    "r2_hint": "在啟動器設定中設定 R2 憑證，以啟用雲端分享。",
+    "sharing": "分享中…",
+    "success": "已成功分享！",
+    "copy": "複製",
+    "again": "再次分享",
+    "share_failed": "分享失敗",
+    "export_failed": "匯出失敗",
+    "try_again": "重試"
+  },
+  "tabs": {
+    "chat": "對話",
+    "editor": "編輯器",
+    "diff": "差異",
+    "terminal": "終端",
+    "processes": "處理程序",
+    "context": "上下文",
+    "schedules": "排程"
+  },
+  "disabled_replay": "重播模式中無法使用",
+  "disabled_git": "差異功能需要 git 儲存庫。請在工作區中執行 `git init`。",
+  "replay_badge": "重播"
+}

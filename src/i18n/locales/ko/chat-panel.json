@@ -1,0 +1,14 @@
+{
+  "scheduled_task": "예약된 작업",
+  "status": {
+    "disconnected": "연결 끊김",
+    "cli_disconnected": "CLI 연결 끊김",
+    "running": "실행 중",
+    "compacting": "압축 중",
+    "idle": "대기 중"
+  },
+  "reconnect": "재연결",
+  "no_model": "모델 없음",
+  "empty_send_message": "메시지를 보내 편집을 시작하세요",
+  "empty_connecting": "Claude에 연결하는 중..."
+}

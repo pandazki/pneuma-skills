@@ -3266,14 +3266,20 @@ function CopySnippet({ text }: { text: string }) {
  * Single-character locale tokens used as the trigger glyph + dropdown
  * marker. Picked to read as a representative letter of each script:
  * Latin uppercase A for English, the most common Han character for
- * Simplified Chinese, the first hiragana for Japanese. Together they
- * form a small typographic triad — typography-as-iconography, no
- * generic globe SVG.
+ * Simplified Chinese, the orthography-defining 繁 for Traditional,
+ * the first hiragana for Japanese, hangul ㄱ for Korean, lowercase ñ
+ * (with diacritic) for Spanish, and ß (Eszett) for German. Together
+ * they form a typographic constellation — typography-as-iconography,
+ * no generic globe SVG.
  */
 const LOCALE_GLYPHS: Record<Locale, string> = {
   en: "A",
   "zh-CN": "中",
+  "zh-TW": "繁",
   ja: "あ",
+  ko: "ㄱ",
+  es: "ñ",
+  de: "ß",
 };
 
 function LanguagePopover() {

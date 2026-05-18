@@ -1,0 +1,8 @@
+{
+  "title": "Inicializar espacio de trabajo",
+  "warning": "Esto borrará los archivos existentes y creará otros nuevos. Esta acción no se puede deshacer.",
+  "files_to_clear": "Archivos que se borrarán:",
+  "files_to_create": "Archivos que se crearán ({{count}}):",
+  "cancel": "Cancelar",
+  "initialize": "Inicializar"
+}

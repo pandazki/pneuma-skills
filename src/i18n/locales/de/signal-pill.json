@@ -1,0 +1,18 @@
+{
+  "opened_in_project": "Neue {{mode}}-Sitzung in {{project}} geöffnet",
+  "opened": "Neue {{mode}}-Sitzung geöffnet",
+  "switched_from": "Hierher gewechselt von {{from}}{{fromMode}}",
+  "handed_off": "Übergeben von {{fromMode}}",
+  "env_unknown": "Umgebungssignal: {{reason}}",
+  "request_handoff": "Übergabe an {{target}} angefragt",
+  "request_handoff_with_intent": "Übergabe an {{target}} angefragt — {{intent}}",
+  "handoff_cancelled": "Übergabe abgebrochen",
+  "handoff_cancelled_with_reason": "Übergabe abgebrochen — {{reason}}",
+  "default_signal": "Pneuma-Signal: {{kind}}",
+  "another_session": "einer anderen Sitzung",
+  "another_mode": "einem anderen Modus",
+  "session_word": "Sitzung",
+  "tooltip_debug": "Pneuma-Signal (Debug immer an)",
+  "tooltip_hide": "Roh-Tag ausblenden",
+  "tooltip_show": "Roh-Tag anzeigen"
+}

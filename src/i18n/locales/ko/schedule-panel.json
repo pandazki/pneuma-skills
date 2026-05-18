@@ -1,0 +1,14 @@
+{
+  "recurring": "반복",
+  "one_shot": "1회성",
+  "durable": "영속",
+  "cancel_job_tooltip": "이 예약 작업 취소",
+  "cancel": "취소",
+  "scheduled_jobs": "예약된 작업 ({{count}})",
+  "refresh": "새로고침",
+  "backend_specific_title": "백엔드 전용 기능",
+  "backend_specific_body": "예약된 작업은 현재 Claude Code의 cron 도구에 의존하며 활성 백엔드에서는 사용할 수 없습니다.",
+  "upgrade_required": "Claude Code 업그레이드 필요",
+  "upgrade_body": "예약된 작업에는 Claude Code {{minVersion}} 이상이 필요합니다. 현재 버전: {{currentVersion}}. 업그레이드하려면 <1>claude update</1>를 실행하세요.",
+  "empty_hint": "예약된 작업이 없습니다. 대화에서 <1>/loop</1>를 사용해 반복 작업을 만드세요."
+}

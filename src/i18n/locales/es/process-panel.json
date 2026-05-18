@@ -1,0 +1,15 @@
+{
+  "status": {
+    "completed": "completado",
+    "failed": "fallido",
+    "stopped": "detenido"
+  },
+  "kill": "Terminar",
+  "pid": "PID {{pid}}",
+  "background_jobs": "Trabajos en segundo plano ({{count}})",
+  "dev_servers": "Servidores de desarrollo ({{count}})",
+  "scan": "Escanear",
+  "scanning_short": "Escaneando...",
+  "scanning_long": "Buscando servidores de desarrollo...",
+  "no_dev_servers": "No se encontraron servidores de desarrollo"
+}

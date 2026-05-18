@@ -1,0 +1,10 @@
+{
+  "step": "Schritt {{n}}",
+  "previous_turn": "Vorherige Runde",
+  "next_turn": "Nächste Runde",
+  "continue_starting": "Wird gestartet…",
+  "continue_retry": "Wiederholen ({{error}})",
+  "continue_work": "Weiterarbeiten",
+  "continue_tooltip": "In den normalen Bearbeitungsmodus wechseln und weiterarbeiten",
+  "continue_failed": "Fortsetzen fehlgeschlagen"
+}

@@ -1,0 +1,77 @@
+{
+  "dialog_label": "프로젝트 패널",
+  "sections": {
+    "recent_sessions": "최근 세션",
+    "start_in_any_mode": "원하는 모드로 시작",
+    "agent": "에이전트",
+    "parameters": "매개변수"
+  },
+  "loading": {
+    "sessions": "세션 로딩 중...",
+    "modes": "모드 로딩 중...",
+    "parameters": "매개변수 로딩 중..."
+  },
+  "empty": {
+    "no_sessions_title": "아직 세션이 없습니다",
+    "no_sessions_hint": "오른쪽에서 모드를 선택해 첫 세션을 시작하세요."
+  },
+  "session": {
+    "default_title": "{{mode}} 세션",
+    "starting": "세션 시작 중...",
+    "mode_chip_aria": "{{mode}} 모드",
+    "delete_tooltip": "세션 삭제"
+  },
+  "favorite_aria": "즐겨찾기",
+  "mode_count_suffix": "· {{count}}",
+  "show_all": "전체 {{count}}개 모드 보기 →",
+  "show_less": "줄이기 ↑",
+  "actions": {
+    "delete": "삭제",
+    "cancel": "취소",
+    "confirm": "확인",
+    "delete_permanently": "영구 삭제",
+    "archiving": "보관 중...",
+    "deleting": "삭제 중...",
+    "open_in_finder_aria": "Finder에서 프로젝트 폴더 열기",
+    "open_in_finder_tooltip": "Finder에서 프로젝트 폴더 열기",
+    "rediscover": "다시 디스커버리",
+    "rediscover_aria": "프로젝트 다시 디스커버리",
+    "rediscover_tooltip": "프로젝트 다시 디스커버리 — 현재 프로젝트 상태에 맞춰 온보딩을 다시 실행해 아틀라스, 커버, 작업 제안을 갱신합니다",
+    "evolve": "프로젝트 진화",
+    "evolve_aria": "프로젝트 컨텍스트 진화",
+    "evolve_tooltip": "프로젝트 컨텍스트 진화 — 이 프로젝트의 세션들로부터 아틀라스와 공유 환경설정을 시드합니다",
+    "more_aria": "추가 작업",
+    "more_tooltip": "추가 작업",
+    "archive_project": "프로젝트 보관",
+    "delete_project_permanently": "프로젝트 영구 삭제"
+  },
+  "confirm": {
+    "archive_question": "이 프로젝트를 보관할까요?",
+    "delete_question": "이 프로젝트를 영구 삭제할까요? 세션과 .pneuma 데이터는 삭제되지만 다른 파일은 그대로 유지됩니다."
+  },
+  "error": {
+    "delete_failed": "삭제 실패",
+    "delete_failed_status": "삭제 실패 ({{status}})",
+    "launch_failed": "실행 실패",
+    "launch_failed_status": "실행 실패 ({{status}})",
+    "prepare_failed": "실행 준비에 실패했습니다",
+    "archive_failed": "보관 실패",
+    "archive_failed_status": "보관 실패 ({{status}})",
+    "delete_action_failed": "삭제 실패",
+    "delete_action_failed_status": "삭제 실패 ({{status}})",
+    "tell_session_what_to_do": "새 세션이 할 일을 알려 주세요"
+  },
+  "launch_sheet": {
+    "close": "닫기",
+    "backend_unavailable": "사용 불가",
+    "backend_soon": "곧 제공",
+    "backend_na": "해당 없음",
+    "smart_handoff_label": "현재 세션에서 스마트 핸드오프",
+    "smart_handoff_desc": "현재 에이전트가 관련 컨텍스트를 담은 핸드오프 파일을 작성하고, 대화에서 전환을 확인하면 됩니다.",
+    "intent_label": "새 세션이 무엇을 해야 할까요?",
+    "intent_placeholder": "이 디자인을 슬라이드 덱으로 만들어 주세요",
+    "cancel": "취소",
+    "confirm": "확인",
+    "launching": "실행 중..."
+  }
+}

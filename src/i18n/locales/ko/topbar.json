@@ -1,0 +1,39 @@
+{
+  "settings_tooltip": "앱 설정",
+  "view_button_view": "보기",
+  "view_button_edit": "편집",
+  "switch_to_viewing": "보기 모드로 전환",
+  "switch_to_editing": "편집 모드로 전환",
+  "new_empty_content": "새 빈 콘텐츠",
+  "share": {
+    "title": "공유",
+    "tooltip": "공유",
+    "result": "결과 공유",
+    "result_desc": "현재 파일 업로드 (이력 없음)",
+    "process": "과정 공유",
+    "process_desc": "대화 이력 및 체크포인트 포함 업로드",
+    "export_local": "로컬 파일로 내보내기",
+    "export_local_desc": "클라우드 업로드 없이 .tar.gz로 저장",
+    "r2_required": "클라우드 공유를 사용하려면 R2 스토리지 설정이 필요합니다.",
+    "r2_hint": "런처 설정에서 R2 자격 증명을 구성하면 클라우드 공유가 활성화됩니다.",
+    "sharing": "공유 중...",
+    "success": "공유에 성공했습니다!",
+    "copy": "복사",
+    "again": "다시 공유",
+    "share_failed": "공유 실패",
+    "export_failed": "내보내기 실패",
+    "try_again": "다시 시도"
+  },
+  "tabs": {
+    "chat": "대화",
+    "editor": "에디터",
+    "diff": "차이",
+    "terminal": "터미널",
+    "processes": "프로세스",
+    "context": "컨텍스트",
+    "schedules": "스케줄"
+  },
+  "disabled_replay": "리플레이 모드에서는 사용할 수 없습니다",
+  "disabled_git": "차이를 보려면 git 저장소가 필요합니다. 워크스페이스에서 `git init`을 실행하세요.",
+  "replay_badge": "리플레이"
+}

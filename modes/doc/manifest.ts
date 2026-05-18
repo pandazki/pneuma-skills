@@ -11,12 +11,20 @@ const docManifest: ModeManifest = {
   displayName: {
     en: "Document",
     "zh-CN": "文档",
+    "zh-TW": "文件",
     ja: "ドキュメント",
+    ko: "문서",
+    es: "Documento",
+    de: "Dokument",
   },
   description: {
     en: "Markdown documents with live preview — the simplest mode, a minimal example of the Pneuma mode system",
     "zh-CN": "带实时预览的 Markdown 文档 —— 最简单的模式，也是 Pneuma 模式系统的最小示例",
+    "zh-TW": "支援即時預覽的 Markdown 文件 —— 最簡單的模式，也是 Pneuma 模式系統的最小範例",
     ja: "ライブプレビュー付きの Markdown ドキュメント —— 最もシンプルなモード、Pneuma モードシステムの最小例",
+    ko: "실시간 미리보기를 제공하는 Markdown 문서 —— 가장 단순한 모드이자 Pneuma 모드 시스템의 최소 예시",
+    es: "Documentos Markdown con vista previa en vivo —— el modo más simple, un ejemplo mínimo del sistema de modos de Pneuma",
+    de: "Markdown-Dokumente mit Live-Vorschau —— der einfachste Modus, ein minimales Beispiel für das Pneuma-Modussystem",
   },
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>`,
 

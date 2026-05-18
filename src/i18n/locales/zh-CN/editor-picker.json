@@ -2,6 +2,6 @@
   "open_in_named": "在 {{name}} 中打开",
   "open_in_editor": "在编辑器中打开",
   "choose_editor": "选择编辑器",
-  "open_in_header": "在以下应用打开",
+  "open_in_header": "打开方式",
   "default_aria": "默认"
 }

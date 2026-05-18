@@ -8,7 +8,7 @@
     "idle": "空闲"
   },
   "reconnect": "重新连接",
-  "no_model": "无模型",
-  "empty_send_message": "发送消息以开始编辑",
-  "empty_connecting": "正在连接到 Claude…"
+  "no_model": "未选择模型",
+  "empty_send_message": "发送一条消息开始编辑",
+  "empty_connecting": "正在连接 Claude…"
 }

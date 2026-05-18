@@ -1,0 +1,38 @@
+{
+  "selection_types": {
+    "heading": "h{{level}}",
+    "paragraph": "Absatz",
+    "list": "Liste",
+    "code": "Codeblock",
+    "blockquote": "Zitat",
+    "image": "Bild",
+    "table": "Tabelle",
+    "text_range": "Text",
+    "section": "Abschnitt",
+    "link": "Link",
+    "container": "Container",
+    "interactive": "Interaktiv"
+  },
+  "annotations_label": "Anmerkungen ({{count}})",
+  "clear_all": "Alle löschen",
+  "add_comment_placeholder": "Kommentar hinzufügen…",
+  "remove_annotation": "Anmerkung entfernen",
+  "clear_selection": "Auswahl aufheben",
+  "queue_label_notification": "Ansicht",
+  "queue_label_user": "in Warteschlange",
+  "remove_from_queue": "Aus Warteschlange entfernen",
+  "remove_attachment": "Entfernen",
+  "attach_file": "Datei anhängen",
+  "file_button": "Datei",
+  "stop": "Stoppen",
+  "send": "Senden",
+  "queue": "Warteschlange",
+  "placeholder": {
+    "waiting": "Warten auf CLI-Verbindung…",
+    "busy": "Tippen, um nächste Nachricht in die Warteschlange zu stellen…",
+    "annotations": "Notizen hinzufügen (optional)…",
+    "selection": "Claude sagen, was geändert werden soll…",
+    "annotate_mode": "Elemente zum Annotieren anklicken, dann senden…",
+    "default": "Nachricht senden… (Dateien ablegen, Bilder einfügen, / für Befehle tippen)"
+  }
+}

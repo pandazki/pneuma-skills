@@ -1,0 +1,18 @@
+{
+  "session": "工作階段",
+  "model": "模型",
+  "backend": "後端",
+  "version": "版本",
+  "working_dir": "工作目錄",
+  "cost": "費用",
+  "turns": "回合",
+  "lines": "行數",
+  "tasks": "任務",
+  "no_tasks": "尚無任務",
+  "blocked": "已封鎖",
+  "mcp_servers": "MCP 伺服器",
+  "tools": "工具（{{count}}）",
+  "more_tools": "另有 {{count}} 個…",
+  "git": "Git",
+  "no_active_session": "沒有作用中的工作階段"
+}

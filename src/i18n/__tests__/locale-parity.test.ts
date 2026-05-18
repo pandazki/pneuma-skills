@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const LOCALES_DIR = join(dirname(__filename), "..", "locales");
-const LOCALES = ["en", "zh-CN", "ja"] as const;
+const LOCALES = ["en", "zh-CN", "zh-TW", "ja", "ko", "es", "de"] as const;
 
 function flattenKeys(obj: unknown, prefix = ""): string[] {
   if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {

@@ -11,8 +11,8 @@
   "no_tasks": "暂无任务",
   "blocked": "已阻塞",
   "mcp_servers": "MCP 服务器",
-  "tools": "工具 ({{count}})",
-  "more_tools": "还有 {{count}} 个…",
+  "tools": "工具（{{count}}）",
+  "more_tools": "还有 {{count}} 项…",
   "git": "Git",
-  "no_active_session": "无活动会话"
+  "no_active_session": "暂无活动会话"
 }

@@ -13,12 +13,12 @@
     "container": "容器",
     "interactive": "交互元素"
   },
-  "annotations_label": "标注 ({{count}})",
+  "annotations_label": "标注（{{count}}）",
   "clear_all": "全部清除",
   "add_comment_placeholder": "添加备注…",
   "remove_annotation": "删除标注",
   "clear_selection": "清除选区",
-  "queue_label_notification": "viewer",
+  "queue_label_notification": "视图",
   "queue_label_user": "排队中",
   "remove_from_queue": "从队列移除",
   "remove_attachment": "移除",
@@ -29,10 +29,10 @@
   "queue": "加入队列",
   "placeholder": {
     "waiting": "等待 CLI 连接…",
-    "busy": "输入以排队下一条消息…",
-    "annotations": "添加备注(可选)…",
-    "selection": "告诉 Claude 要改什么…",
-    "annotate_mode": "点击元素以标注,然后发送…",
-    "default": "发送消息…(拖入文件、粘贴图片、输入 / 触发命令)"
+    "busy": "继续输入，下一条会自动排队…",
+    "annotations": "添加备注（可选）…",
+    "selection": "告诉 Claude 想改什么…",
+    "annotate_mode": "点击元素逐个标注，标完后发送…",
+    "default": "输入消息…（拖入文件、粘贴图片，或输入 / 触发命令）"
   }
 }

@@ -1,0 +1,30 @@
+{
+  "title": "프로젝트 만들기",
+  "root_label": "프로젝트 루트 경로 (이미 존재하거나 생성할 수 있어야 합니다)",
+  "root_placeholder": "/Users/x/Code/my-project",
+  "browse_directories": "디렉터리 찾아보기",
+  "select_project_root": "프로젝트 루트 선택",
+  "display_name_label": "표시 이름",
+  "display_name_placeholder_fallback": "내 프로젝트",
+  "description_label": "설명 (선택 사항)",
+  "import": {
+    "header": "기존 세션에서 초기화",
+    "optional_suffix": "(선택 사항)",
+    "selected_count": "{{count}}개 선택됨",
+    "empty": "가져올 빠른 세션이 없습니다."
+  },
+  "actions": {
+    "cancel": "취소",
+    "creating": "생성 중...",
+    "create_and_discover": "만들고 디스커버리 실행",
+    "more_options": "추가 생성 옵션",
+    "create_without_discovery": "디스커버리 없이 만들기",
+    "create_without_discovery_desc": "자동 소개를 건너뛰고 세션을 수동으로 설정합니다."
+  },
+  "defaults": {
+    "untitled": "제목 없음"
+  },
+  "error": {
+    "create_failed": "생성 실패 ({{status}})"
+  }
+}

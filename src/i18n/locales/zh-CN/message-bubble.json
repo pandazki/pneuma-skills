@@ -19,11 +19,11 @@
     }
   },
   "annotations": {
-    "count_one": "{{count}} 条批注",
-    "count_other": "{{count}} 条批注"
+    "count_one": "{{count}} 条标注",
+    "count_other": "{{count}} 条标注"
   },
   "ask_user": {
-    "waiting": "等待提问中…",
+    "waiting": "等待提问…",
     "qa_label": "问答",
     "fallback_title": "问题",
     "other_option": "其他…",
@@ -33,8 +33,8 @@
   },
   "thinking": {
     "label": "推理",
-    "encrypted": "Anthropic 已隐藏内容（自适应思考）",
-    "char_count": "{{count}} 字符",
+    "encrypted": "Anthropic 已隐藏（自适应思考）",
+    "char_count": "{{count}} 字",
     "no_text": "未捕获到推理内容。"
   },
   "tool_result": {
@@ -43,13 +43,13 @@
       "error": "错误",
       "result": "结果"
     },
-    "show_tail": "显示末尾",
-    "hide": "隐藏",
-    "show_full_with_remaining": "显示完整内容（再 {{count}} 行）",
-    "show_full": "显示完整内容"
+    "show_tail": "看末尾",
+    "hide": "收起",
+    "show_full_with_remaining": "展开完整内容（还有 {{count}} 行）",
+    "show_full": "展开完整内容"
   },
   "context_usage": {
-    "title": "上下文使用",
+    "title": "上下文用量",
     "tokens_summary": "{{used}} / {{total}} tokens（{{percent}}%）"
   },
   "debug": {

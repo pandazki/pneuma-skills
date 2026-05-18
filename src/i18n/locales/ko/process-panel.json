@@ -1,0 +1,15 @@
+{
+  "status": {
+    "completed": "완료됨",
+    "failed": "실패",
+    "stopped": "중지됨"
+  },
+  "kill": "종료",
+  "pid": "PID {{pid}}",
+  "background_jobs": "백그라운드 작업 ({{count}})",
+  "dev_servers": "개발 서버 ({{count}})",
+  "scan": "스캔",
+  "scanning_short": "스캔 중...",
+  "scanning_long": "개발 서버 스캔 중...",
+  "no_dev_servers": "개발 서버를 찾지 못했습니다"
+}

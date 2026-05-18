@@ -2,13 +2,13 @@ import i18next from "i18next";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveLocale, type Locale } from "../core/locale.js";
+import { resolveLocale, SUPPORTED_LOCALES, type Locale } from "../core/locale.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = dirname(dirname(__filename));
 const LOCALES_DIR = join(REPO_ROOT, "src", "i18n", "locales");
 
-const SUPPORTED: Locale[] = ["en", "zh-CN", "ja"];
+const SUPPORTED: readonly Locale[] = SUPPORTED_LOCALES;
 
 function loadNamespace(locale: Locale, ns: string): Record<string, unknown> {
   const filePath = join(LOCALES_DIR, locale, `${ns}.json`);

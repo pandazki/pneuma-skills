@@ -1,0 +1,77 @@
+{
+  "dialog_label": "Projektbereich",
+  "sections": {
+    "recent_sessions": "Zuletzt geöffnete Sitzungen",
+    "start_in_any_mode": "In einem Modus starten",
+    "agent": "Agent",
+    "parameters": "Parameter"
+  },
+  "loading": {
+    "sessions": "Sitzungen werden geladen…",
+    "modes": "Modi werden geladen…",
+    "parameters": "Parameter werden geladen…"
+  },
+  "empty": {
+    "no_sessions_title": "Noch keine Sitzungen",
+    "no_sessions_hint": "Modus rechts wählen, um die erste Sitzung zu starten."
+  },
+  "session": {
+    "default_title": "{{mode}}-Sitzung",
+    "starting": "Sitzung wird gestartet…",
+    "mode_chip_aria": "Modus {{mode}}",
+    "delete_tooltip": "Sitzung löschen"
+  },
+  "favorite_aria": "Favorit",
+  "mode_count_suffix": "· {{count}}",
+  "show_all": "Alle {{count}} Modi anzeigen →",
+  "show_less": "Weniger anzeigen ↑",
+  "actions": {
+    "delete": "Löschen",
+    "cancel": "Abbrechen",
+    "confirm": "Bestätigen",
+    "delete_permanently": "Endgültig löschen",
+    "archiving": "Wird archiviert…",
+    "deleting": "Wird gelöscht…",
+    "open_in_finder_aria": "Projektordner im Finder öffnen",
+    "open_in_finder_tooltip": "Projektordner im Finder öffnen",
+    "rediscover": "Neu erkunden",
+    "rediscover_aria": "Projekt neu erkunden",
+    "rediscover_tooltip": "Projekt neu erkunden — Einrichtung erneut gegen den aktuellen Projektzustand ausführen, um Atlas, Cover und Aufgabenvorschläge zu aktualisieren",
+    "evolve": "Projekt weiterentwickeln",
+    "evolve_aria": "Projektkontext weiterentwickeln",
+    "evolve_tooltip": "Projektkontext weiterentwickeln — Atlas und geteilte Einstellungen aus den Sitzungen dieses Projekts ableiten",
+    "more_aria": "Weitere Aktionen",
+    "more_tooltip": "Weitere Aktionen",
+    "archive_project": "Projekt archivieren",
+    "delete_project_permanently": "Projekt endgültig löschen"
+  },
+  "confirm": {
+    "archive_question": "Dieses Projekt archivieren?",
+    "delete_question": "Dieses Projekt endgültig löschen? Sitzungen und .pneuma-Daten werden gelöscht — Ihre anderen Dateien bleiben erhalten."
+  },
+  "error": {
+    "delete_failed": "Löschen fehlgeschlagen",
+    "delete_failed_status": "Löschen fehlgeschlagen ({{status}})",
+    "launch_failed": "Start fehlgeschlagen",
+    "launch_failed_status": "Start fehlgeschlagen ({{status}})",
+    "prepare_failed": "Vorbereitung des Starts fehlgeschlagen",
+    "archive_failed": "Archivieren fehlgeschlagen",
+    "archive_failed_status": "Archivieren fehlgeschlagen ({{status}})",
+    "delete_action_failed": "Löschen fehlgeschlagen",
+    "delete_action_failed_status": "Löschen fehlgeschlagen ({{status}})",
+    "tell_session_what_to_do": "Sagen Sie der neuen Sitzung, was sie tun soll"
+  },
+  "launch_sheet": {
+    "close": "Schließen",
+    "backend_unavailable": "Nicht verfügbar",
+    "backend_soon": "Bald",
+    "backend_na": "N/V",
+    "smart_handoff_label": "Smarte Übergabe von der aktuellen Sitzung",
+    "smart_handoff_desc": "Der aktuelle Agent schreibt eine Übergabedatei mit relevantem Kontext; den Wechsel bestätigen Sie im Chat.",
+    "intent_label": "Was soll die neue Sitzung tun?",
+    "intent_placeholder": "Dieses Design in eine Foliensammlung umwandeln",
+    "cancel": "Abbrechen",
+    "confirm": "Bestätigen",
+    "launching": "Wird gestartet…"
+  }
+}

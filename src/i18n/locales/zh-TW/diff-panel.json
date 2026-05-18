@@ -1,0 +1,9 @@
+{
+  "changed_files": "已變更的檔案（{{count}}）",
+  "diff_base_tooltip": "差異基準：{{base}}",
+  "head": "HEAD",
+  "branch": "分支",
+  "no_changes": "沒有變更",
+  "loading": "載入中…",
+  "select_a_file": "選擇一個檔案以查看差異"
+}

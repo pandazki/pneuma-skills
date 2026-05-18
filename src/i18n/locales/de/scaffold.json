@@ -1,0 +1,8 @@
+{
+  "title": "Arbeitsbereich initialisieren",
+  "warning": "Dies löscht vorhandene Dateien und legt neue an. Diese Aktion kann nicht rückgängig gemacht werden.",
+  "files_to_clear": "Zu löschende Dateien:",
+  "files_to_create": "Zu erstellende Dateien ({{count}}):",
+  "cancel": "Abbrechen",
+  "initialize": "Initialisieren"
+}

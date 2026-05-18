@@ -1,0 +1,22 @@
+{
+  "labels": {
+    "Bash": "터미널",
+    "Read": "파일 읽기",
+    "Write": "파일 쓰기",
+    "Edit": "파일 편집",
+    "Glob": "파일 찾기",
+    "Grep": "내용 검색",
+    "WebSearch": "웹 검색",
+    "WebFetch": "웹 가져오기",
+    "Task": "서브에이전트",
+    "TodoWrite": "작업",
+    "NotebookEdit": "노트북",
+    "SendMessage": "메시지"
+  },
+  "tasks_count_one": "작업 {{count}}개",
+  "tasks_count_other": "작업 {{count}}개",
+  "replace_all": "모두 바꾸기",
+  "in_path": "위치: ",
+  "path": "경로: ",
+  "glob_label": "glob: "
+}

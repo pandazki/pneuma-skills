@@ -1,0 +1,10 @@
+{
+  "just_now": "방금 전",
+  "minutes_ago": "{{count}}분 전",
+  "hours_ago": "{{count}}시간 전",
+  "days_ago": "{{count}}일 전",
+  "months_ago": "{{count}}개월 전",
+  "seconds_short": "{{count}}초",
+  "minutes_short": "{{count}}분",
+  "hours_minutes_short": "{{hours}}시간 {{minutes}}분"
+}

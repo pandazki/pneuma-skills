@@ -1,0 +1,19 @@
+{
+  "dialog_aria": "Ausstehende Übergabe prüfen",
+  "ready": "Übergabe bereit",
+  "files": "Dateien",
+  "decisions_locked": "Festgelegte Entscheidungen",
+  "open_questions": "Offene Fragen",
+  "cancel_reason_placeholder": "Warum? (optional)",
+  "back": "Zurück",
+  "cancel_handoff": "Übergabe abbrechen",
+  "cancelling": "Wird abgebrochen…",
+  "cancel": "Abbrechen",
+  "confirm_switch": "Wechsel bestätigen",
+  "switching": "Wird gewechselt…",
+  "confirm_failed_code": "Bestätigung fehlgeschlagen ({{code}})",
+  "cancel_failed_code": "Abbruch fehlgeschlagen ({{code}})",
+  "confirm_failed": "Bestätigung fehlgeschlagen",
+  "cancel_failed": "Abbruch fehlgeschlagen",
+  "no_launch_url": "Server hat keine Start-URL zurückgegeben"
+}

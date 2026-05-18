@@ -12,12 +12,20 @@ const illustrateManifest: ModeManifest = {
   displayName: {
     en: "Illustrate",
     "zh-CN": "插画工坊",
+    "zh-TW": "插畫工坊",
     ja: "イラスト",
+    ko: "일러스트",
+    es: "Ilustración",
+    de: "Illustration",
   },
   description: {
     en: "AI illustration studio — describe what you see, generate and curate visual assets in a row-based canvas with content sets",
     "zh-CN": "AI 插画工坊 —— 用语言描述画面，在按行组织的画布与内容集中生成并整理视觉素材",
+    "zh-TW": "AI 插畫工坊 —— 用語言描述畫面，在按列組織的畫布與內容集中生成並整理視覺素材",
     ja: "AI イラストスタジオ —— 見たい絵を言葉で伝え、行ベースのキャンバスとコンテンツセットで素材を生成・キュレーション",
+    ko: "AI 일러스트 스튜디오 —— 보고 싶은 그림을 말로 설명하고, 행 기반 캔버스와 콘텐츠 세트에서 시각 자산을 생성하고 큐레이션",
+    es: "Estudio de ilustración con IA —— describe lo que ves, genera y curaduría de recursos visuales en un lienzo por filas con conjuntos de contenido",
+    de: "KI-Illustrationsstudio —— beschreibe, was du siehst, erstelle und kuratiere visuelle Assets auf einer zeilenbasierten Leinwand mit Inhaltssets",
   },
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42"/></svg>`,
 

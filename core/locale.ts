@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
-export const SUPPORTED_LOCALES = ["en", "zh-CN", "ja"] as const;
+export const SUPPORTED_LOCALES = ["en", "zh-CN", "zh-TW", "ja", "ko", "es", "de"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "en";
 
@@ -14,11 +14,22 @@ const LOCALE_ALIASES: Record<string, Locale> = {
   "zh-cn": "zh-CN",
   "zh-hans": "zh-CN",
   "zh-sg": "zh-CN",
-  "zh-tw": "zh-CN",
-  "zh-hk": "zh-CN",
-  "zh-hant": "zh-CN",
+  "zh-tw": "zh-TW",
+  "zh-hk": "zh-TW",
+  "zh-hant": "zh-TW",
   "ja": "ja",
   "ja-jp": "ja",
+  "ko": "ko",
+  "ko-kr": "ko",
+  "es": "es",
+  "es-es": "es",
+  "es-mx": "es",
+  "es-ar": "es",
+  "es-419": "es",
+  "de": "de",
+  "de-de": "de",
+  "de-at": "de",
+  "de-ch": "de",
 };
 
 export function normalizeLocale(raw: string | undefined | null): Locale | null {

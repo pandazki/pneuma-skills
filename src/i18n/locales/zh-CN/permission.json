@@ -1,5 +1,5 @@
 {
-  "permission_request": "权限请求:{{tool}}",
+  "permission_request": "权限请求：{{tool}}",
   "allow": "允许",
   "deny": "拒绝"
 }

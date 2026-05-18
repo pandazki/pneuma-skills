@@ -1,6 +1,6 @@
 {
-  "no_description": "无描述",
-  "resume_tooltip": "恢复最近的会话",
+  "no_description": "暂无描述",
+  "resume_tooltip": "恢复最近一次会话",
   "archived": "已归档",
   "restore": "恢复"
 }

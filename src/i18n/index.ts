@@ -3,7 +3,11 @@ import { initReactI18next } from "react-i18next";
 
 const enModules = import.meta.glob("./locales/en/*.json", { eager: true, import: "default" }) as Record<string, Record<string, unknown>>;
 const zhCNModules = import.meta.glob("./locales/zh-CN/*.json", { eager: true, import: "default" }) as Record<string, Record<string, unknown>>;
+const zhTWModules = import.meta.glob("./locales/zh-TW/*.json", { eager: true, import: "default" }) as Record<string, Record<string, unknown>>;
 const jaModules = import.meta.glob("./locales/ja/*.json", { eager: true, import: "default" }) as Record<string, Record<string, unknown>>;
+const koModules = import.meta.glob("./locales/ko/*.json", { eager: true, import: "default" }) as Record<string, Record<string, unknown>>;
+const esModules = import.meta.glob("./locales/es/*.json", { eager: true, import: "default" }) as Record<string, Record<string, unknown>>;
+const deModules = import.meta.glob("./locales/de/*.json", { eager: true, import: "default" }) as Record<string, Record<string, unknown>>;
 
 function buildResources(modules: Record<string, Record<string, unknown>>): Record<string, Record<string, unknown>> {
   const out: Record<string, Record<string, unknown>> = {};
@@ -17,16 +21,24 @@ function buildResources(modules: Record<string, Record<string, unknown>>): Recor
 
 const enResources = buildResources(enModules);
 const zhCNResources = buildResources(zhCNModules);
+const zhTWResources = buildResources(zhTWModules);
 const jaResources = buildResources(jaModules);
+const koResources = buildResources(koModules);
+const esResources = buildResources(esModules);
+const deResources = buildResources(deModules);
 
-export const SUPPORTED_LOCALES = ["en", "zh-CN", "ja"] as const;
+export const SUPPORTED_LOCALES = ["en", "zh-CN", "zh-TW", "ja", "ko", "es", "de"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "en";
 
 export const LOCALE_LABELS: Record<Locale, string> = {
   en: "English",
   "zh-CN": "简体中文",
+  "zh-TW": "繁體中文",
   ja: "日本語",
+  ko: "한국어",
+  es: "Español",
+  de: "Deutsch",
 };
 
 const LOCALE_ALIASES: Record<string, Locale> = {
@@ -37,11 +49,22 @@ const LOCALE_ALIASES: Record<string, Locale> = {
   "zh-cn": "zh-CN",
   "zh-hans": "zh-CN",
   "zh-sg": "zh-CN",
-  "zh-tw": "zh-CN",
-  "zh-hk": "zh-CN",
-  "zh-hant": "zh-CN",
+  "zh-tw": "zh-TW",
+  "zh-hk": "zh-TW",
+  "zh-hant": "zh-TW",
   ja: "ja",
   "ja-jp": "ja",
+  ko: "ko",
+  "ko-kr": "ko",
+  es: "es",
+  "es-es": "es",
+  "es-mx": "es",
+  "es-ar": "es",
+  "es-419": "es",
+  de: "de",
+  "de-de": "de",
+  "de-at": "de",
+  "de-ch": "de",
 };
 
 export function normalizeLocale(raw: string | undefined | null): Locale | null {
@@ -66,7 +89,11 @@ function detectBrowserLocale(): Locale {
 const NAMESPACES = Array.from(new Set([
   ...Object.keys(enResources),
   ...Object.keys(zhCNResources),
+  ...Object.keys(zhTWResources),
   ...Object.keys(jaResources),
+  ...Object.keys(koResources),
+  ...Object.keys(esResources),
+  ...Object.keys(deResources),
 ]));
 
 i18n
@@ -75,7 +102,11 @@ i18n
     resources: {
       en: enResources,
       "zh-CN": zhCNResources,
+      "zh-TW": zhTWResources,
       ja: jaResources,
+      ko: koResources,
+      es: esResources,
+      de: deResources,
     },
     ns: NAMESPACES,
     defaultNS: "common",

@@ -1,0 +1,19 @@
+{
+  "dialog_aria": "Revisión de transferencia pendiente",
+  "ready": "Transferencia lista",
+  "files": "Archivos",
+  "decisions_locked": "Decisiones confirmadas",
+  "open_questions": "Preguntas pendientes",
+  "cancel_reason_placeholder": "¿Por qué? (opcional)",
+  "back": "Atrás",
+  "cancel_handoff": "Cancelar transferencia",
+  "cancelling": "Cancelando…",
+  "cancel": "Cancelar",
+  "confirm_switch": "Confirmar cambio",
+  "switching": "Cambiando…",
+  "confirm_failed_code": "Error al confirmar ({{code}})",
+  "cancel_failed_code": "Error al cancelar ({{code}})",
+  "confirm_failed": "Error al confirmar",
+  "cancel_failed": "Error al cancelar",
+  "no_launch_url": "El servidor no devolvió una URL de inicio"
+}

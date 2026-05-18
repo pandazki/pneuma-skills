@@ -32,12 +32,20 @@ const projectOnboardManifest: ModeManifest = {
   displayName: {
     en: "Project Onboarding",
     "zh-CN": "项目入门",
+    "zh-TW": "專案初識",
     ja: "プロジェクト入門",
+    ko: "프로젝트 온보딩",
+    es: "Iniciación del proyecto",
+    de: "Projekt-Einrichtung",
   },
   description: {
     en: "Mine a fresh project for existing material — README, logos, palette, configs — and propose project metadata + atlas + two tailored next-step tasks.",
     "zh-CN": "为全新项目挖掘已有素材 —— README、Logo、配色、配置 —— 提出项目元数据、项目图谱与两项贴合实际的下一步任务。",
+    "zh-TW": "為全新專案挖掘已有素材 —— README、Logo、配色、設定 —— 提出專案元資料、專案總覽與兩項貼合實際的下一步任務。",
     ja: "新規プロジェクトから既存素材（README、ロゴ、パレット、設定）を発掘し、プロジェクトメタデータ・アトラスと、ぴったりな次の 2 つのタスクを提案。",
+    ko: "새 프로젝트에서 기존 자료(README, 로고, 팔레트, 설정)를 발굴하고, 프로젝트 메타데이터·아틀라스와 상황에 맞는 다음 단계 작업 두 가지를 제안합니다.",
+    es: "Extrae el material existente de un proyecto nuevo —— README, logotipos, paleta, configuraciones —— y propone metadatos del proyecto, atlas y dos siguientes tareas a medida.",
+    de: "Vorhandenes Material aus einem neuen Projekt erschließen —— README, Logos, Palette, Konfigurationen —— und Projekt-Metadaten, Atlas sowie zwei passgenaue nächste Aufgaben vorschlagen.",
   },
   // Internal mode — auto-launched on fresh project open or via the
   // ProjectPanel's "Re-discover" affordance, never picked from the

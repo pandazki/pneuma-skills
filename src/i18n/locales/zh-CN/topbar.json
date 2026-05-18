@@ -11,15 +11,15 @@
     "result": "分享结果",
     "result_desc": "上传当前文件（不含历史）",
     "process": "分享过程",
-    "process_desc": "上传聊天历史与检查点",
+    "process_desc": "连同对话历史与检查点一起上传",
     "export_local": "导出到本地文件",
     "export_local_desc": "保存为 .tar.gz，不上传到云端",
     "r2_required": "云端分享需要先配置 R2 存储。",
-    "r2_hint": "在启动器设置中配置 R2 凭据以启用云端分享。",
+    "r2_hint": "在启动器设置中填好 R2 凭据即可启用云端分享。",
     "sharing": "分享中…",
     "success": "分享成功！",
     "copy": "复制",
-    "again": "再次分享",
+    "again": "再分享一次",
     "share_failed": "分享失败",
     "export_failed": "导出失败",
     "try_again": "重试"
@@ -34,6 +34,6 @@
     "schedules": "定时任务"
   },
   "disabled_replay": "回放模式下不可用",
-  "disabled_git": "差异查看需要 Git 仓库。请先在工作区运行 `git init`。",
+  "disabled_git": "差异查看需要 Git 仓库，请先在工作区运行 `git init`。",
   "replay_badge": "回放"
 }

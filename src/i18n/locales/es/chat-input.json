@@ -1,0 +1,38 @@
+{
+  "selection_types": {
+    "heading": "h{{level}}",
+    "paragraph": "párrafo",
+    "list": "lista",
+    "code": "bloque de código",
+    "blockquote": "cita",
+    "image": "imagen",
+    "table": "tabla",
+    "text_range": "texto",
+    "section": "sección",
+    "link": "enlace",
+    "container": "contenedor",
+    "interactive": "interactivo"
+  },
+  "annotations_label": "Anotaciones ({{count}})",
+  "clear_all": "Limpiar todo",
+  "add_comment_placeholder": "Añadir comentario...",
+  "remove_annotation": "Eliminar anotación",
+  "clear_selection": "Limpiar selección",
+  "queue_label_notification": "visor",
+  "queue_label_user": "en cola",
+  "remove_from_queue": "Quitar de la cola",
+  "remove_attachment": "Eliminar",
+  "attach_file": "Adjuntar archivo",
+  "file_button": "Archivo",
+  "stop": "Detener",
+  "send": "Enviar",
+  "queue": "Encolar",
+  "placeholder": {
+    "waiting": "Esperando la conexión del CLI...",
+    "busy": "Escribe para encolar el siguiente mensaje...",
+    "annotations": "Añade notas (opcional)...",
+    "selection": "Dile a Claude qué cambiar...",
+    "annotate_mode": "Haz clic en los elementos para anotar y luego envía...",
+    "default": "Envía un mensaje... (arrastra archivos, pega imágenes, escribe / para comandos)"
+  }
+}

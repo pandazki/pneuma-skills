@@ -12,12 +12,20 @@ const slideManifest: ModeManifest = {
   displayName: {
     en: "Slide",
     "zh-CN": "幻灯片",
+    "zh-TW": "投影片",
     ja: "スライド",
+    ko: "슬라이드",
+    es: "Diapositivas",
+    de: "Folien",
   },
   description: {
     en: "HTML presentations with content sets, drag-reorder, presenter mode, and PDF/image export",
     "zh-CN": "支持内容集、拖拽重排、演讲者模式与 PDF / 图片导出的 HTML 演示文稿",
+    "zh-TW": "支援內容集、拖曳重排、簡報者模式與 PDF／圖片匯出的 HTML 投影片",
     ja: "コンテンツセット、ドラッグ並べ替え、発表者モード、PDF・画像エクスポートに対応した HTML プレゼンテーション",
+    ko: "콘텐츠 세트, 드래그 재정렬, 발표자 모드, PDF/이미지 내보내기를 지원하는 HTML 프레젠테이션",
+    es: "Presentaciones HTML con conjuntos de contenido, reordenamiento por arrastre, modo presentador y exportación a PDF/imagen",
+    de: "HTML-Präsentationen mit Inhaltssets, Neuordnung per Drag-and-Drop, Präsentationsmodus und PDF-/Bildexport",
   },
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605"/></svg>`,
 

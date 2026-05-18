@@ -30,7 +30,11 @@ export type LocalizedString = string | LocalizedStringMap;
 export interface LocalizedStringMap {
   en: string;
   "zh-CN"?: string;
+  "zh-TW"?: string;
   ja?: string;
+  ko?: string;
+  es?: string;
+  de?: string;
   /** Allow forward-compatible additional locales without a type-check failure. */
   [locale: string]: string | undefined;
 }

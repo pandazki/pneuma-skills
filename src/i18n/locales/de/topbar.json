@@ -1,0 +1,39 @@
+{
+  "settings_tooltip": "App-Einstellungen",
+  "view_button_view": "Anzeigen",
+  "view_button_edit": "Bearbeiten",
+  "switch_to_viewing": "Zur Anzeige wechseln",
+  "switch_to_editing": "Zur Bearbeitung wechseln",
+  "new_empty_content": "Neuer leerer Inhalt",
+  "share": {
+    "title": "Teilen",
+    "tooltip": "Teilen",
+    "result": "Ergebnis teilen",
+    "result_desc": "Aktuelle Dateien hochladen (ohne Verlauf)",
+    "process": "Prozess teilen",
+    "process_desc": "Mit Chatverlauf & Checkpoints hochladen",
+    "export_local": "In lokale Datei exportieren",
+    "export_local_desc": "Als .tar.gz speichern, ohne Cloud-Upload",
+    "r2_required": "Cloud-Teilen erfordert R2-Speicherkonfiguration.",
+    "r2_hint": "Konfigurieren Sie R2-Zugangsdaten in den Launcher-Einstellungen, um Cloud-Teilen zu aktivieren.",
+    "sharing": "Wird geteilt…",
+    "success": "Erfolgreich geteilt!",
+    "copy": "Kopieren",
+    "again": "Erneut teilen",
+    "share_failed": "Teilen fehlgeschlagen",
+    "export_failed": "Export fehlgeschlagen",
+    "try_again": "Erneut versuchen"
+  },
+  "tabs": {
+    "chat": "Chat",
+    "editor": "Editor",
+    "diff": "Unterschiede",
+    "terminal": "Terminal",
+    "processes": "Prozesse",
+    "context": "Kontext",
+    "schedules": "Zeitpläne"
+  },
+  "disabled_replay": "Im Wiedergabemodus nicht verfügbar",
+  "disabled_git": "Unterschiede erfordern ein Git-Repository. `git init` im Arbeitsbereich ausführen.",
+  "replay_badge": "Wiedergabe"
+}

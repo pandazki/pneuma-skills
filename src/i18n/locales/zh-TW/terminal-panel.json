@@ -1,0 +1,6 @@
+{
+  "terminal": "終端",
+  "kill": "終止",
+  "new": "新增",
+  "process_exited": "[處理程序已結束，結束代碼 {{code}}]"
+}

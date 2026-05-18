@@ -1,13 +1,13 @@
 {
   "status": {
     "completed": "已完成",
-    "failed": "失败",
+    "failed": "已失败",
     "stopped": "已停止"
   },
   "kill": "终止",
   "pid": "PID {{pid}}",
-  "background_jobs": "后台任务 ({{count}})",
-  "dev_servers": "开发服务器 ({{count}})",
+  "background_jobs": "后台任务（{{count}}）",
+  "dev_servers": "开发服务器（{{count}}）",
   "scan": "扫描",
   "scanning_short": "扫描中…",
   "scanning_long": "正在扫描开发服务器…",

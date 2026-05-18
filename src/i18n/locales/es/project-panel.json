@@ -1,0 +1,77 @@
+{
+  "dialog_label": "Panel del proyecto",
+  "sections": {
+    "recent_sessions": "Sesiones recientes",
+    "start_in_any_mode": "Iniciar en cualquier modo",
+    "agent": "Agente",
+    "parameters": "Parámetros"
+  },
+  "loading": {
+    "sessions": "Cargando sesiones…",
+    "modes": "Cargando modos…",
+    "parameters": "Cargando parámetros…"
+  },
+  "empty": {
+    "no_sessions_title": "Aún no hay sesiones",
+    "no_sessions_hint": "Elige un modo a la derecha para iniciar tu primera sesión."
+  },
+  "session": {
+    "default_title": "Sesión de {{mode}}",
+    "starting": "Iniciando sesión…",
+    "mode_chip_aria": "Modo {{mode}}",
+    "delete_tooltip": "Eliminar sesión"
+  },
+  "favorite_aria": "Favorito",
+  "mode_count_suffix": "· {{count}}",
+  "show_all": "Mostrar los {{count}} modos →",
+  "show_less": "Mostrar menos ↑",
+  "actions": {
+    "delete": "Eliminar",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "delete_permanently": "Eliminar definitivamente",
+    "archiving": "Archivando…",
+    "deleting": "Eliminando…",
+    "open_in_finder_aria": "Abrir la carpeta del proyecto en Finder",
+    "open_in_finder_tooltip": "Abrir la carpeta del proyecto en Finder",
+    "rediscover": "Redescubrir",
+    "rediscover_aria": "Redescubrir el proyecto",
+    "rediscover_tooltip": "Redescubrir el proyecto — vuelve a ejecutar la iniciación con el estado actual para actualizar el atlas, la portada y las sugerencias de tareas",
+    "evolve": "Evolucionar el proyecto",
+    "evolve_aria": "Evolucionar el contexto del proyecto",
+    "evolve_tooltip": "Evolucionar el contexto del proyecto — siembra el atlas y las preferencias compartidas a partir de las sesiones de este proyecto",
+    "more_aria": "Más acciones",
+    "more_tooltip": "Más acciones",
+    "archive_project": "Archivar proyecto",
+    "delete_project_permanently": "Eliminar el proyecto definitivamente"
+  },
+  "confirm": {
+    "archive_question": "¿Archivar este proyecto?",
+    "delete_question": "¿Eliminar definitivamente este proyecto? Las sesiones y los datos de .pneuma se borrarán — el resto de tus archivos se conservan."
+  },
+  "error": {
+    "delete_failed": "Error al eliminar",
+    "delete_failed_status": "Error al eliminar ({{status}})",
+    "launch_failed": "Error al iniciar",
+    "launch_failed_status": "Error al iniciar ({{status}})",
+    "prepare_failed": "No se pudo preparar el inicio",
+    "archive_failed": "Error al archivar",
+    "archive_failed_status": "Error al archivar ({{status}})",
+    "delete_action_failed": "Error al eliminar",
+    "delete_action_failed_status": "Error al eliminar ({{status}})",
+    "tell_session_what_to_do": "Dile a la nueva sesión qué hacer"
+  },
+  "launch_sheet": {
+    "close": "Cerrar",
+    "backend_unavailable": "No disponible",
+    "backend_soon": "Pronto",
+    "backend_na": "N/D",
+    "smart_handoff_label": "Transferencia inteligente desde la sesión actual",
+    "smart_handoff_desc": "El agente actual escribe un archivo de transferencia con el contexto relevante; tú confirmas el cambio en el chat.",
+    "intent_label": "¿Qué debería hacer la nueva sesión?",
+    "intent_placeholder": "Toma este diseño y conviértelo en una presentación de diapositivas",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "launching": "Iniciando…"
+  }
+}

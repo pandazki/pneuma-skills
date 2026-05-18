@@ -1,0 +1,6 @@
+{
+  "terminal": "터미널",
+  "kill": "종료",
+  "new": "새로 만들기",
+  "process_exited": "[프로세스가 코드 {{code}}로 종료됨]"
+}
