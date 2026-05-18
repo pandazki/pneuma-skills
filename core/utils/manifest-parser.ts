@@ -8,6 +8,12 @@
 export interface ParsedManifest {
   name?: string;
   version?: string;
+  /**
+   * Declared Pneuma runtime range (semver), if the manifest sets one.
+   * Used by the launcher to mark incompatible modes. See
+   * `core/version-compat.ts` for matching semantics.
+   */
+  pneumaVersion?: string;
   displayName?: string;
   description?: string;
   icon?: string;
@@ -159,6 +165,7 @@ export function parseManifestTs(content: string, locale: string = "en"): ParsedM
   return {
     name: extractString(content, "name"),
     version: extractString(content, "version"),
+    pneumaVersion: extractString(content, "pneumaVersion"),
     displayName: extractLocalizedString(content, "displayName", locale),
     description: extractLocalizedString(content, "description", locale),
     icon: extractBacktickString(content, "icon") || extractString(content, "icon"),

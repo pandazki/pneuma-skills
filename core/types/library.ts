@@ -48,6 +48,14 @@ export interface LibraryManifest {
   description?: string;
   /** Optional author handle (display only). */
   author?: string;
+  /**
+   * Pneuma runtime version range targeted by the library as a whole
+   * (semver range, e.g. `"^3.8.0"`). Acts as fallback when a mode in the
+   * library doesn't declare its own `pneumaVersion`. Optional — when
+   * absent and no per-mode value either, the launcher treats compat as
+   * "unknown" (renders the mode normally, no warning).
+   */
+  pneumaVersion?: string;
   /** Explicit list of modes to ship. Absence falls back to auto-scan. */
   modes?: LibraryModeEntry[];
 }
@@ -86,6 +94,14 @@ export interface InstalledLibraryMode {
    */
   manifestVersion: string;
   /**
+   * Pneuma runtime range declared in the mode's `manifest.ts.pneumaVersion`,
+   * observed on last sync. Cached here so the launcher can render compat
+   * state without re-parsing every manifest. Falls back to the parent
+   * library's `pneumaVersion` (also cached on the InstalledLibrary).
+   * Undefined when neither was declared.
+   */
+  pneumaVersion?: string;
+  /**
    * Whether this mode is visible in the launcher / loadable via
    * `pneuma <name>`. Deactivated modes remain on disk so re-activation
    * is a zero-cost local flip.
@@ -114,6 +130,11 @@ export interface InstalledLibrary {
   description?: string;
   /** Optional author handle (mirrors `LibraryManifest.author`). */
   author?: string;
+  /**
+   * Library-level Pneuma runtime range (mirrors `LibraryManifest.pneumaVersion`).
+   * Used as fallback when a contained mode doesn't declare its own.
+   */
+  pneumaVersion?: string;
   /** Where this library was linked from. */
   source: LibrarySource;
   /**

@@ -91,6 +91,19 @@ interface PublishedMode {
   icon?: string;
 }
 
+/**
+ * Pneuma runtime compat status for a mode entry — surfaced by the server
+ * (`/api/registry`) so the UI can mark incompatible modes without
+ * re-running version math. Shape mirrors `core/version-compat.ts`'s
+ * `CompatResult`.
+ */
+interface ModeCompat {
+  level: "match" | "minor-drift" | "major-drift" | "unknown";
+  declared: string | null;
+  runtime: string;
+  reason?: string;
+}
+
 interface LocalMode {
   name: string;
   displayName: string;
@@ -102,6 +115,10 @@ interface LocalMode {
   librarySource?: { id: string; name: string; displayName?: string };
   /** True when the library's manifestVersion is ahead of installedVersion. */
   updateAvailable?: boolean;
+  /** Declared semver range the mode targets, e.g. `"^3.8.0"`. */
+  pneumaVersion?: string;
+  /** Pre-computed compat against the running runtime. Omitted when unknown. */
+  compat?: ModeCompat;
 }
 
 interface RecentSession {
@@ -161,6 +178,10 @@ type AnyMode = {
   inspiredBy?: BuiltinMode["inspiredBy"];
   /** Propagated from LocalMode for library-sourced modes (chip on tiles). */
   librarySource?: { id: string; name: string; displayName?: string };
+  /** Propagated from LocalMode — declared semver range the mode targets. */
+  pneumaVersion?: string;
+  /** Propagated from LocalMode — pre-computed compat (omitted when unknown). */
+  compat?: ModeCompat;
 };
 
 // ── Theme ────────────────────────────────────────────────────────────────
@@ -1390,6 +1411,7 @@ function QuickStartTile({
   isModeMaker,
   librarySource,
   isFavorite,
+  compat,
   onClick,
 }: {
   name: string;
@@ -1401,18 +1423,44 @@ function QuickStartTile({
   librarySource?: { id: string; name: string; displayName?: string };
   /** When true, a small filled star sits in the top-left to mark this tile as pinned. */
   isFavorite?: boolean;
+  /**
+   * Runtime compat status. When level is "major-drift" the tile dims, gains
+   * a red dot, and the launch confirms before proceeding. Other levels are
+   * not visualized at this scale — they'd dominate the small surface; the
+   * Gallery card carries the full chip + tooltip.
+   */
+  compat?: ModeCompat;
   onClick: () => void;
 }) {
   const { t } = useTranslation("launcher");
+  const incompat = compat?.level === "major-drift";
+  const handleClick = () => {
+    if (incompat) {
+      const msg = compat?.reason ?? "Incompatible with the running pneuma-skills version";
+      if (!confirm(`${msg}\n\nLaunch anyway?`)) return;
+    }
+    onClick();
+  };
   return (
     <button
-      onClick={onClick}
+      onClick={handleClick}
+      title={incompat ? (compat?.reason ?? undefined) : undefined}
       className={`group relative flex flex-col items-center gap-3 p-5 rounded-xl transition-all duration-200 cursor-pointer ${
         isModeMaker
           ? "bg-cc-primary/5 border border-cc-primary/15 hover:border-cc-primary/30 hover:bg-cc-primary/8"
           : "bg-cc-surface/30 hover:bg-cc-surface/60 border border-transparent hover:border-cc-border/30"
-      }`}
+      } ${incompat ? "opacity-60" : ""}`}
     >
+      {incompat && (
+        // Incompatible runtime — small red dot in the bottom-right. The
+        // full reason lives in the button's title attr (set above) and in
+        // the GalleryModeCard's CompatBadge; the dot is just an at-a-glance
+        // "don't bother launching this" marker.
+        <span
+          className="absolute bottom-2 right-2 w-2 h-2 rounded-full bg-red-500/80 ring-1 ring-red-500/30"
+          aria-label="Incompatible with the running pneuma-skills version"
+        />
+      )}
       {isFavorite && (
         // Favorite marker — sits top-left so it pairs with the library
         // link glyph (top-right) without colliding. Filled orange star
@@ -2020,6 +2068,44 @@ function LibraryGalleryGroup({
   );
 }
 
+/**
+ * Small badge surfaced next to a mode's display name when its declared
+ * `pneumaVersion` doesn't match the running runtime. Two intensities:
+ *
+ *   - "major-drift" → red, "Incompatible" — the launcher dims the card and
+ *     blocks the launch button when this fires.
+ *   - "minor-drift" → amber, "Minor drift" — non-blocking, FYI only.
+ *
+ * Returns null for "match", "unknown", or missing compat info, so callers
+ * can drop it inline without conditional wrappers.
+ */
+function CompatBadge({ compat }: { compat?: ModeCompat }) {
+  if (!compat || compat.level === "match" || compat.level === "unknown") return null;
+  const isMajor = compat.level === "major-drift";
+  const label = isMajor ? "Incompatible" : "Minor drift";
+  const tooltip =
+    compat.reason ??
+    `Targets ${compat.declared ?? "(unknown)"} — running ${compat.runtime}`;
+  return (
+    <span
+      title={tooltip}
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+        isMajor
+          ? "bg-red-500/15 text-red-400 border border-red-500/30"
+          : "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+      }`}
+    >
+      {isMajor && (
+        <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <rect x="5" y="11" width="14" height="10" rx="2" />
+          <path d="M7 11V7a5 5 0 0110 0v4" />
+        </svg>
+      )}
+      {label}
+    </span>
+  );
+}
+
 function GalleryModeCard({
   mode,
   expanded,
@@ -2121,13 +2207,16 @@ function GalleryModeCard({
       )}
       {/* Header row — always visible */}
       <div
-        className="relative z-[2] flex items-center gap-4 px-5 py-4 cursor-pointer"
+        className={`relative z-[2] flex items-center gap-4 px-5 py-4 cursor-pointer ${
+          mode.compat?.level === "major-drift" ? "opacity-60" : ""
+        }`}
         onClick={onToggle}
       >
         <ModeIcon svg={mode.icon} className="w-8 h-8 text-cc-primary shrink-0" />
         <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-2">
+          <div className="flex items-baseline gap-2 flex-wrap">
             <h3 className="text-base font-medium text-cc-fg">{mode.displayName}</h3>
+            <CompatBadge compat={mode.compat} />
             {mode.showcase?.tagline && (
               <span className="text-xs text-cc-muted/60 hidden sm:inline">{mode.showcase.tagline}</span>
             )}
@@ -2207,12 +2296,31 @@ function GalleryModeCard({
               stopPropagation
             />
           )}
-          <button
-            onClick={(e) => { e.stopPropagation(); onLaunch(); }}
-            className="px-3.5 py-1.5 text-xs font-medium rounded-md bg-cc-primary/10 text-cc-primary hover:bg-cc-primary hover:text-white transition-colors cursor-pointer"
-          >
-            {t("gallery_card.launch")}
-          </button>
+          {(() => {
+            const incompat = mode.compat?.level === "major-drift";
+            const launchTitle = incompat
+              ? (mode.compat?.reason ?? "Incompatible with the running pneuma-skills version")
+              : undefined;
+            return (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (incompat) {
+                    if (!confirm(`${launchTitle}\n\nLaunch anyway?`)) return;
+                  }
+                  onLaunch();
+                }}
+                title={launchTitle}
+                className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                  incompat
+                    ? "bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                    : "bg-cc-primary/10 text-cc-primary hover:bg-cc-primary hover:text-white"
+                }`}
+              >
+                {t("gallery_card.launch")}
+              </button>
+            );
+          })()}
           <svg
             className={`w-4 h-4 text-cc-muted/40 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
             fill="none"
@@ -5093,6 +5201,7 @@ export default function Launcher() {
                   description={mode.description}
                   icon={mode.icon}
                   librarySource={mode.librarySource}
+                  compat={mode.compat}
                   isFavorite={isFavorite(favoriteKey(mode))}
                   onClick={() => setLaunchTarget({
                     specifier: mode.specifier,
