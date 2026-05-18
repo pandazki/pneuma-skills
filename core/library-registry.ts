@@ -77,6 +77,12 @@ export interface ResolvedRepoMode {
   relPath: string;
   /** Version read from the mode's manifest.ts. */
   manifestVersion: string;
+  /**
+   * Pneuma runtime range read from the mode's `manifest.ts.pneumaVersion`.
+   * Undefined when the mode doesn't declare one — the caller may fall
+   * back to the library's library-level `pneumaVersion`.
+   */
+  pneumaVersion?: string;
 }
 
 /**
@@ -166,6 +172,7 @@ function parseLibraryManifest(
   if (typeof obj.displayName === "string") manifest.displayName = obj.displayName;
   if (typeof obj.description === "string") manifest.description = obj.description;
   if (typeof obj.author === "string") manifest.author = obj.author;
+  if (typeof obj.pneumaVersion === "string") manifest.pneumaVersion = obj.pneumaVersion;
   if (Array.isArray(obj.modes)) {
     manifest.modes = obj.modes.map((entry, i) => {
       if (!entry || typeof entry !== "object") {
@@ -210,10 +217,12 @@ function resolveExplicitEntries(
       );
     }
     const name = entry.name ?? basename(safe);
+    const versions = readManifestVersions(safe);
     out.push({
       name,
       relPath: entry.path,
-      manifestVersion: readManifestVersion(safe),
+      manifestVersion: versions.version,
+      ...(versions.pneumaVersion ? { pneumaVersion: versions.pneumaVersion } : {}),
     });
   }
   return out;
@@ -232,10 +241,12 @@ function autoScanModes(repoDir: string): ResolvedRepoMode[] {
     if (ent.name.startsWith(".")) continue; // skip .git, etc.
     const sub = join(repoDir, ent.name);
     if (!hasManifest(sub)) continue;
+    const versions = readManifestVersions(sub);
     out.push({
       name: ent.name,
       relPath: ent.name,
-      manifestVersion: readManifestVersion(sub),
+      manifestVersion: versions.version,
+      ...(versions.pneumaVersion ? { pneumaVersion: versions.pneumaVersion } : {}),
     });
   }
   // Stable ordering for deterministic UI / sidecar.
@@ -244,24 +255,35 @@ function autoScanModes(repoDir: string): ResolvedRepoMode[] {
 }
 
 /**
- * Pull the manifest's `version` field out without evaluating TS.
- * Mirrors the regex extraction in `core/utils/manifest-parser.ts` but
- * scoped to just the version — we don't need the rest here.
- * Falls back to "0.0.0" when missing or unreadable.
+ * Pull the manifest's `version` + `pneumaVersion` fields out without
+ * evaluating TS. Mirrors the regex extraction in `core/utils/manifest-parser.ts`
+ * but scoped to the two fields we cache on `ResolvedRepoMode`.
+ *
+ * Falls back to "0.0.0" for the mode version when missing/unreadable.
+ * pneumaVersion is genuinely optional and returns null when absent.
  */
-function readManifestVersion(modeDir: string): string {
+function readManifestVersions(modeDir: string): { version: string; pneumaVersion: string | null } {
   for (const fname of ["manifest.ts", "manifest.js"]) {
     const full = join(modeDir, fname);
     if (!existsSync(full)) continue;
     try {
       const src = readFileSync(full, "utf-8");
-      const match = src.match(/version\s*:\s*["'`]([^"'`]+)["'`]/);
-      if (match) return match[1];
+      const vMatch = src.match(/version\s*:\s*["'`]([^"'`]+)["'`]/);
+      const pvMatch = src.match(/pneumaVersion\s*:\s*["'`]([^"'`]+)["'`]/);
+      return {
+        version: vMatch ? vMatch[1] : "0.0.0",
+        pneumaVersion: pvMatch ? pvMatch[1] : null,
+      };
     } catch {
       // fall through
     }
   }
-  return "0.0.0";
+  return { version: "0.0.0", pneumaVersion: null };
+}
+
+/** Backwards-compat alias — keep the focused helper but defer to the new one. */
+function readManifestVersion(modeDir: string): string {
+  return readManifestVersions(modeDir).version;
 }
 
 function safeSubpath(root: string, rel: string): string | null {
@@ -386,6 +408,7 @@ export function linkLibrary(
     name: m.name,
     path: m.relPath,
     manifestVersion: m.manifestVersion,
+    ...(m.pneumaVersion ? { pneumaVersion: m.pneumaVersion } : {}),
     activated: true,
     installedVersion: m.manifestVersion,
   }));
@@ -397,6 +420,7 @@ export function linkLibrary(
     ...(shape.manifest.displayName ? { displayName: shape.manifest.displayName } : {}),
     ...(shape.manifest.description ? { description: shape.manifest.description } : {}),
     ...(shape.manifest.author ? { author: shape.manifest.author } : {}),
+    ...(shape.manifest.pneumaVersion ? { pneumaVersion: shape.manifest.pneumaVersion } : {}),
     source,
     sha,
     lastSync: Date.now(),
@@ -459,6 +483,7 @@ export function syncLibrary(
         name: m.name,
         path: m.relPath,
         manifestVersion: m.manifestVersion,
+        ...(m.pneumaVersion ? { pneumaVersion: m.pneumaVersion } : {}),
         activated: true,
         installedVersion: m.manifestVersion,
       });
@@ -475,6 +500,7 @@ export function syncLibrary(
       name: m.name,
       path: m.relPath,
       manifestVersion: m.manifestVersion,
+      ...(m.pneumaVersion ? { pneumaVersion: m.pneumaVersion } : {}),
       activated: prior.activated,
       installedVersion: prior.installedVersion,
     });
@@ -505,6 +531,9 @@ export function syncLibrary(
     ...(shape.manifest.author !== undefined
       ? { author: shape.manifest.author }
       : { author: prev.author }),
+    ...(shape.manifest.pneumaVersion !== undefined
+      ? { pneumaVersion: shape.manifest.pneumaVersion }
+      : { pneumaVersion: prev.pneumaVersion }),
     sha: newSha,
     lastSync: Date.now(),
     modes,

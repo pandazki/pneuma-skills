@@ -382,6 +382,16 @@ export interface ModeManifest {
   /** Supported agent backends. When omitted, all implemented backends are allowed. */
   supportedBackends?: string[];
 
+  /**
+   * Pneuma runtime version range this mode supports (semver range, e.g.
+   * `"^3.8.0"`, `">=3.7.0 <4.0.0"`). The launcher compares against the
+   * running pneuma-skills version to mark incompatible modes in the
+   * gallery. Omit when authoring against a single in-tree runtime; declare
+   * it for any external/library-distributed mode so consumers can see
+   * compatibility status without launching.
+   */
+  pneumaVersion?: string;
+
   /** Attribution — credit the project or person that inspired this mode (optional) */
   inspiredBy?: {
     /** Display name (e.g. "troyhua/claude-code-remotion") */

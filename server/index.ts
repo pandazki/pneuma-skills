@@ -388,7 +388,24 @@ export async function startServer(options: ServerOptions) {
   const REGISTRY_URL = "https://pneuma-storage.vibecoding.icu";
   const REGISTRY_TTL_MS = 60_000;
 
+  /**
+   * Compat status for a mode entry — surfaced to the launcher so the UI
+   * can mark incompatible modes (greyed card, lock badge, tooltip). The
+   * shape matches `core/version-compat.ts`'s `CompatResult` so consumers
+   * can re-use that module's helpers without re-deriving.
+   */
+  interface RegistryCompat {
+    level: "match" | "minor-drift" | "major-drift" | "unknown";
+    /** The declared range as written in the mode's `manifest.ts.pneumaVersion`. */
+    declared: string | null;
+    /** The running pneuma-skills version. Same value for every entry. */
+    runtime: string;
+    reason?: string;
+  }
+
   interface RegistryResponse {
+    /** Pneuma runtime version this server is running. Convenient for UI display. */
+    runtimeVersion: string;
     builtins: Array<{
       name: string;
       displayName: string;
@@ -420,6 +437,22 @@ export async function startServer(options: ServerOptions) {
       librarySource?: { id: string; name: string; displayName?: string };
       /** True when the library's recorded `manifestVersion` is ahead of `installedVersion` */
       updateAvailable?: boolean;
+      /**
+       * Declared `pneumaVersion` range on the mode (or falling back to the
+       * parent library's `pneumaVersion`). Cached for the UI tooltip — the
+       * launcher doesn't have to re-read the manifest just to render the
+       * "Targets ^X.Y.0" line.
+       */
+      pneumaVersion?: string;
+      /**
+       * Pre-computed compat result against the running runtime. UI uses
+       * `compat.level` to pick the rendering variant (incompatible/grey
+       * for "major-drift", warning chip for "minor-drift", normal for
+       * "match", normal for "unknown" — never punish modes that didn't
+       * declare a range, only ones whose declaration disagrees with the
+       * runtime).
+       */
+      compat?: RegistryCompat;
     }>;
   }
 
@@ -463,7 +496,15 @@ export async function startServer(options: ServerOptions) {
 
   const buildRegistry = async (locale: string): Promise<RegistryResponse> => {
     const { parseManifestTs } = await import("../core/utils/manifest-parser.js");
+    const { checkCompat } = await import("../core/version-compat.js");
     const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
+
+    // Runtime version — read once per build (small, cached upstream).
+    let runtimeVersion = "0.0.0";
+    try {
+      const pkg = JSON.parse(readFileSync(join(projectRoot, "package.json"), "utf-8"));
+      if (typeof pkg.version === "string") runtimeVersion = pkg.version;
+    } catch { /* leave as 0.0.0; UI will fall back to "unknown" compat */ }
 
     // The launcher's user-pickable mode grid is driven from this curated
     // order. Modes that exist on disk but should never be offered as a
@@ -530,6 +571,7 @@ export async function startServer(options: ServerOptions) {
             // onboarding-style helper triggered by another mode) without
             // showing up in the launcher's Local Modes grid.
             if (parsed.hidden === true) continue;
+            const compat = checkCompat(parsed.pneumaVersion ?? null, runtimeVersion);
             local.push({
               name: parsed.name || entry,
               displayName: parsed.displayName || entry,
@@ -537,6 +579,8 @@ export async function startServer(options: ServerOptions) {
               icon: parsed.icon,
               version: parsed.version || "local",
               path: entryPath,
+              ...(parsed.pneumaVersion ? { pneumaVersion: parsed.pneumaVersion } : {}),
+              ...(compat.level !== "unknown" ? { compat } : {}),
             });
           } catch { }
         }
@@ -564,6 +608,11 @@ export async function startServer(options: ServerOptions) {
             if (manifestPath) parsed = parseManifestTs(readFileSync(manifestPath, "utf-8"), locale);
           } catch { /* tolerate parse failures, fall back to sidecar fields */ }
           if (parsed.hidden === true) continue;
+          // Per-mode pneumaVersion takes precedence; fall back to the
+          // library-level declaration so a single library-wide stamp can
+          // cover every mode that doesn't override.
+          const declaredCompat = parsed.pneumaVersion ?? m.pneumaVersion ?? lib.pneumaVersion ?? null;
+          const compat = checkCompat(declaredCompat, runtimeVersion);
           local.push({
             name: parsed.name || m.name,
             displayName: parsed.displayName || m.name,
@@ -579,12 +628,14 @@ export async function startServer(options: ServerOptions) {
             ...(m.installedVersion && m.installedVersion !== m.manifestVersion
               ? { updateAvailable: true }
               : {}),
+            ...(declaredCompat ? { pneumaVersion: declaredCompat } : {}),
+            ...(compat.level !== "unknown" ? { compat } : {}),
           });
         }
       }
     } catch { /* library subsystem failure should not break the registry */ }
 
-    return { builtins, published, local };
+    return { runtimeVersion, builtins, published, local };
   };
 
   /**
