@@ -17,6 +17,7 @@ import { DirBrowser } from "./DirBrowser.js";
 import { ProjectCard, type ProjectCardEntry } from "./ProjectCard.js";
 import { ModeIcon } from "./ModeIcon.js";
 import { useFavorites, sortFavoritesFirst, favoriteKey } from "../hooks/useFavorites.js";
+import { useAppTheme, type ThemePreference as Theme } from "../hooks/useAppTheme.js";
 import { InitParamForm, type InitParamWithAutoFill } from "./InitParamForm.js";
 import { useAnimatedMount } from "../utils/useAnimatedMount.js";
 import { timeAgo, runningDuration } from "../utils/timeAgo.js";
@@ -163,12 +164,9 @@ type AnyMode = {
 };
 
 // ── Theme ────────────────────────────────────────────────────────────────
-
-type Theme = "light" | "dark" | "system";
-
-function getSystemTheme(): "light" | "dark" {
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-}
+// Lives in src/hooks/useAppTheme.ts so the session shell (App.tsx) and any
+// future surface (Replay player, EmptyShell) shares one source of truth.
+// (Import at top of file.)
 
 // ── InspiredByTag ─────────────────────────────────────────────────────────
 
@@ -201,103 +199,6 @@ function InspiredByTag({ name, url, className = "" }: { name: string; url: strin
   );
 }
 
-function getInitialTheme(): Theme {
-  // localStorage acts as an instant-render fallback so the UI doesn't flash
-  // the wrong theme while the GET /api/user-theme round-trip is in flight.
-  // The server response (when it arrives) reconciles + writes back here.
-  try {
-    const saved = localStorage.getItem("pneuma-launcher-theme");
-    if (saved === "light" || saved === "dark" || saved === "system") return saved;
-  } catch { }
-  return "system";
-}
-
-function useTheme() {
-  const [preference, setPreferenceState] = useState<Theme>(getInitialTheme);
-  const [resolved, setResolved] = useState<"light" | "dark">(
-    () => preference === "system" ? getSystemTheme() : preference,
-  );
-  const lastBroadcastRef = useRef<Theme>(preference);
-
-  // Pull the server-saved theme on mount; reconcile the localStorage-driven
-  // initial render with the canonical value so mode/session viewers (which
-  // read settings.json directly) and the launcher always agree.
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`${getApiBase()}/api/user-theme`)
-      .then((r) => r.json())
-      .then((data: { theme: string | null }) => {
-        if (cancelled) return;
-        const remote = data.theme === "light" || data.theme === "dark" || data.theme === "system"
-          ? (data.theme as Theme)
-          : null;
-        if (remote && remote !== preference) {
-          lastBroadcastRef.current = remote;
-          setPreferenceState(remote);
-        }
-      })
-      .catch(() => { /* server unreachable — keep localStorage value */ });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const next = preference === "system" ? getSystemTheme() : preference;
-    setResolved(next);
-    try { localStorage.setItem("pneuma-launcher-theme", preference); } catch { }
-  }, [preference]);
-
-  // Listen for system changes
-  useEffect(() => {
-    if (preference !== "system") return;
-    const mq = window.matchMedia("(prefers-color-scheme: light)");
-    const handler = () => setResolved(getSystemTheme());
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, [preference]);
-
-  // Cross-tab + cross-component sync: another window / component changed the
-  // theme, pick it up without a page refresh.
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ theme?: Theme }>).detail;
-      if (!detail?.theme) return;
-      if (detail.theme === lastBroadcastRef.current) return;
-      lastBroadcastRef.current = detail.theme;
-      setPreferenceState(detail.theme);
-    };
-    window.addEventListener("pneuma:theme-changed", handler);
-    return () => window.removeEventListener("pneuma:theme-changed", handler);
-  }, []);
-
-  const setPreference = useCallback((next: Theme | ((prev: Theme) => Theme)) => {
-    setPreferenceState((prev) => {
-      const resolved = typeof next === "function" ? next(prev) : next;
-      if (resolved === prev) return prev;
-      lastBroadcastRef.current = resolved;
-      // Fire-and-forget: persist to settings.json and notify peer listeners.
-      // Failure is non-fatal — localStorage already retains the value, so the
-      // launcher keeps working; the server just lags one tick behind.
-      void fetch(`${getApiBase()}/api/user-theme`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theme: resolved }),
-      }).catch(() => { /* offline-safe */ });
-      window.dispatchEvent(new CustomEvent("pneuma:theme-changed", { detail: { theme: resolved } }));
-      return resolved;
-    });
-  }, []);
-
-  const cycle = useCallback(() => {
-    setPreference((prev) => {
-      if (prev === "system") return "light";
-      if (prev === "light") return "dark";
-      return "system";
-    });
-  }, [setPreference]);
-
-  return { preference, resolved, cycle };
-}
 
 function ThemeToggle({ preference, onClick }: { preference: Theme; onClick: () => void }) {
   const { t } = useTranslation("launcher");
@@ -1374,7 +1275,7 @@ function AllSessions({
   headerHeight?: number;
 }) {
   const { t } = useTranslation("launcher");
-  const isLight = className?.includes("launcher-light") ?? false;
+  const isLight = className?.includes("cc-theme-light") ?? false;
   const [search, setSearch] = useState("");
   const query = search.toLowerCase().trim();
   const filtered = query
@@ -1673,7 +1574,7 @@ function ModeGallery({
   const [search, setSearch] = useState("");
   const [expandedMode, setExpandedMode] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
-  const isLight = className?.includes("launcher-light") ?? false;
+  const isLight = className?.includes("cc-theme-light") ?? false;
 
   const filtered = search
     ? modes.filter(
@@ -2484,7 +2385,7 @@ function LaunchDialog({
     backendType: BackendType;
     config: Record<string, string | number>;
   } | null>(null);
-  const { resolved: dialogTheme } = useTheme();
+  const { resolved: dialogTheme } = useAppTheme();
   const isLight = dialogTheme === "light";
 
   const checkWorkspace = useCallback(async (path: string) => {
@@ -4284,7 +4185,7 @@ function ImportDialog({
 
 export default function Launcher() {
   const { t } = useTranslation("launcher");
-  const { preference: themePref, resolved: theme, cycle: cycleTheme } = useTheme();
+  const { preference: themePref, resolved: theme, cycle: cycleTheme } = useAppTheme();
   const isLight = theme === "light";
   const [backendOptions, setBackendOptions] = useState<BackendOption[]>(FALLBACK_BACKENDS);
   const [defaultBackendType, setDefaultBackendType] = useState<BackendType>("codex");
@@ -4787,7 +4688,7 @@ export default function Launcher() {
   const hasContinueItems = continueItems.length > 0;
 
   return (
-    <div className={`min-h-screen bg-cc-bg text-cc-fg font-body relative ${isLight ? "launcher-light" : ""}`}>
+    <div className={`min-h-screen bg-cc-bg text-cc-fg font-body relative ${isLight ? "cc-theme-light launcher-light" : ""}`}>
       {/* Light mode texture overlay */}
       {isLight && <div className="fixed inset-0 pointer-events-none launcher-light-texture" />}
       {/* Subtle warm ambient */}
@@ -5262,7 +5163,7 @@ export default function Launcher() {
             setImportInitialUrl("");
             setShowImportDialog(true);
           }}
-          className={isLight ? "launcher-light" : ""}
+          className={isLight ? "cc-theme-light launcher-light" : ""}
           closing={galleryAnim.closing}
           headerHeight={headerH}
         />
@@ -5283,7 +5184,7 @@ export default function Launcher() {
           onReplay={(session) => handleReplaySession(session)}
           onRename={(id, name) => renameSession(id, name)}
           getBackendUnavailableReason={getBackendUnavailableReason}
-          className={isLight ? "launcher-light" : ""}
+          className={isLight ? "cc-theme-light launcher-light" : ""}
           closing={allSessionsAnim.closing}
           headerHeight={headerH}
         />

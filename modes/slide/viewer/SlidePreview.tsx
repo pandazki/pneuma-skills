@@ -457,14 +457,14 @@ function AnnotationPopover({
   return (
     <div
       style={style}
-      className="bg-neutral-800 border border-neutral-600 rounded-lg shadow-xl p-3 text-sm"
+      className="bg-cc-card border border-cc-border rounded-lg shadow-xl p-3 text-sm"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center gap-2 mb-2 min-w-0">
         {thumbnail && (
-          <img src={thumbnail} alt="" className="w-8 h-8 rounded border border-neutral-600 shrink-0 object-contain bg-white" />
+          <img src={thumbnail} alt="" className="w-8 h-8 rounded border border-cc-border shrink-0 object-contain bg-white" />
         )}
-        <span className="text-neutral-300 truncate text-xs">{label || "Element"}</span>
+        <span className="text-cc-fg truncate text-xs">{label || "Element"}</span>
       </div>
       <input
         ref={inputRef}
@@ -473,12 +473,12 @@ function AnnotationPopover({
         onChange={(e) => setComment(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Add comment (optional)..."
-        className="w-full bg-neutral-900 border border-neutral-600 rounded px-2 py-1.5 text-sm text-white placeholder-neutral-500 outline-none focus:border-blue-500"
+        className="w-full bg-cc-bg border border-cc-border rounded px-2 py-1.5 text-sm text-cc-fg placeholder-cc-muted outline-none focus:border-cc-primary"
       />
       <div className="flex justify-end gap-2 mt-2">
         <button
           onClick={onCancel}
-          className="px-2.5 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+          className="px-2.5 py-1 text-xs text-cc-muted hover:text-cc-fg rounded hover:bg-cc-hover transition-colors"
         >
           Cancel
         </button>
@@ -1461,7 +1461,7 @@ export default function SlidePreview({
           showInspirationPool={showInspirationPool}
           onToggleInspirationPool={() => setShowInspirationPool((v) => !v)}
         />
-        <div className="flex items-center justify-center flex-1 text-neutral-500">
+        <div className="flex items-center justify-center flex-1 text-cc-muted">
           {!manifest
             ? "No manifest.json found in workspace"
             : "No slides in manifest.json"}
@@ -1485,13 +1485,13 @@ export default function SlidePreview({
   ) : null;
 
   const viewerEl = (
-    <div ref={viewerContainerRef} className="flex-1 flex items-center justify-center bg-neutral-900 min-w-0 min-h-0 overflow-auto">
+    <div ref={viewerContainerRef} className="flex-1 flex items-center justify-center bg-cc-bg min-w-0 min-h-0 overflow-auto">
       <div
         className="shrink-0 relative"
         style={{ width: scaledW, height: scaledH }}
       >
         <div
-          className="relative bg-black rounded-lg overflow-hidden shadow-2xl origin-top-left"
+          className="relative bg-cc-bg rounded-lg overflow-hidden shadow-2xl origin-top-left"
           style={{
             width: VIRTUAL_W,
             height: VIRTUAL_H,
@@ -1573,7 +1573,7 @@ export default function SlidePreview({
           showInspirationPool={showInspirationPool}
           onToggleInspirationPool={() => setShowInspirationPool((v) => !v)}
         />
-        <div className="flex-1 overflow-auto bg-neutral-900 p-4">
+        <div className="flex-1 overflow-auto bg-cc-bg p-4">
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
             {slides.map((slide, i) => (
               <button
@@ -1605,7 +1605,7 @@ export default function SlidePreview({
   // Fullscreen: only the slide, no UI chrome
   if (isFullscreen) {
     return (
-      <div ref={fullscreenRef} className="flex flex-col h-full bg-black">
+      <div ref={fullscreenRef} className="flex flex-col h-full bg-cc-bg">
         <div className="flex-1 flex items-center justify-center">
           <iframe
             srcDoc={boundBuildSrcdoc(currentSlide ? findSlideContent(files, currentSlide.file, activeContentSet) : "", themeCSS)}
@@ -1615,7 +1615,7 @@ export default function SlidePreview({
           />
         </div>
         {/* Minimal slide counter overlay */}
-        <div className="absolute bottom-4 right-4 text-white/40 text-sm font-mono pointer-events-none">
+        <div className="absolute bottom-4 right-4 text-cc-muted text-sm font-mono pointer-events-none">
           {activeSlideIndex + 1} / {slideCount}
         </div>
       </div>
@@ -1865,8 +1865,8 @@ const SortableSlideItem = forwardRef<
       onClick={handleDeleteClick}
       className={`absolute top-1 right-1 w-5 h-5 rounded flex items-center justify-center z-10 cursor-pointer transition-all ${
         deleteArmed
-          ? "bg-red-500/90 text-white opacity-100 scale-110"
-          : "bg-black/50 text-cc-muted hover:text-cc-fg opacity-0 group-hover:opacity-100"
+          ? "bg-red-500/90 text-cc-fg opacity-100 scale-110"
+          : "bg-cc-bg/50 text-cc-muted hover:text-cc-fg opacity-0 group-hover:opacity-100"
       }`}
       title={deleteArmed ? "Click again to confirm" : "Delete slide"}
     >

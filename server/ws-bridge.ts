@@ -216,6 +216,37 @@ export class WsBridge {
   }
 
   /**
+   * Register a `<pneuma:env>` (or any other system signal) tag as
+   * **pending context** rather than a standalone user turn. The tag:
+   *   - lands in `messageHistory` so reload reconstructs the banner
+   *   - broadcasts to browsers so the banner renders live
+   *   - is buffered on the session, and gets prepended to the CLI-bound
+   *     content of the *next* real user message (then discarded)
+   *
+   * This is the right model for env-tag semantics: the agent never sees
+   * the tag as a question (no spurious "welcome back" reply), but
+   * when the user does send something, the agent has the context it
+   * needs to reason about session lineage / locale / handoff. The chat
+   * UI gets a visual cue for the human.
+   */
+  enqueueEnvContext(sessionId: string, tag: string): void {
+    const session = this.getOrCreateSession(sessionId);
+    const ts = Date.now();
+    session.pendingEnvContext.push(tag);
+    session.messageHistory.push({
+      type: "user_message",
+      content: tag,
+      timestamp: ts,
+      id: `env-${ts}-${this.userMsgCounter++}`,
+    });
+    this.broadcastToBrowsers(session, {
+      type: "user_message",
+      content: tag,
+      timestamp: ts,
+    });
+  }
+
+  /**
    * Push a message to every connected browser across all sessions. Used by
    * system-wide notifications (e.g. `libraries_updated`) where the launcher
    * UI has no specific session affinity. Quiet no-op when nothing is
@@ -278,6 +309,8 @@ export class WsBridge {
         cliIdle: true,
         pendingNotifications: [],
         messageHistory: [],
+        pendingEnvContext: [],
+        suppressingPostAskq: false,
         pendingMessages: [],
         nextEventSeq: 1,
         eventBuffer: [],
@@ -395,6 +428,7 @@ export class WsBridge {
       this.broadcastToBrowsers(session, { type: "permission_cancelled", request_id: reqId });
     }
     session.pendingPermissions.clear();
+    session.suppressingPostAskq = false;
   }
 
   /**
@@ -748,6 +782,18 @@ export class WsBridge {
   }
 
   private handleAssistantMessage(session: Session, msg: CLIAssistantMessage) {
+    // Drop the model's reactionary turn that follows the SDK's auto-deny
+    // of an AskUserQuestion tool_use. The picker is still on screen
+    // waiting for the user to actually click an option; meanwhile the
+    // model has seen an `is_error` tool_result and is busy emitting
+    // "since you didn't answer..." filler. That bubble is noise.
+    // `suppressingPostAskq` gets set after the assistant message that
+    // CONTAINED the AskUserQuestion broadcasts normally; we drop only
+    // the next one(s) before the user submits.
+    if (session.suppressingPostAskq) {
+      return;
+    }
+
     // Compatibility shim for Claude Code 2.x: the CLI no longer sends a
     // `can_use_tool` permission request for AskUserQuestion in any
     // permission mode. Instead it auto-denies the tool with an
@@ -758,6 +804,7 @@ export class WsBridge {
     // user submits an answer, send it back as a plain user message rather
     // than a tool_result (the auto-deny already won the tool_use_id race).
     // The agent reads the natural-language follow-up message and continues.
+    let containedAskq = false;
     const content = (msg.message as { content?: unknown }).content;
     if (Array.isArray(content)) {
       for (const block of content) {
@@ -782,6 +829,7 @@ export class WsBridge {
           type: "permission_request",
           request: perm,
         });
+        containedAskq = true;
       }
     }
     if (Array.isArray(msg.message?.content)) {
@@ -830,6 +878,15 @@ export class WsBridge {
       session.messageHistory.push(browserMsg);
     }
     this.broadcastToBrowsers(session, browserMsg);
+    // The message that just delivered an AskUserQuestion to the user
+    // opens the suppression window — any model output that arrives next
+    // (before the user clicks an answer) is the SDK-auto-deny reaction
+    // and gets dropped on the floor. The window closes when the picker
+    // is resolved or cancelled (see handlePermissionResponse,
+    // detachCLITransport, the CLI `permission_cancelled` path).
+    if (containedAskq) {
+      session.suppressingPostAskq = true;
+    }
   }
 
   private static assistantTextContent(content: unknown): string {
@@ -919,6 +976,12 @@ export class WsBridge {
   }
 
   private handleStreamEvent(session: Session, msg: CLIStreamEventMessage) {
+    // Same window as handleAssistantMessage — drop streaming partials of
+    // the reactionary turn that follows the AskUserQuestion auto-deny.
+    // Otherwise the browser's `streaming` state accumulates the
+    // "since you didn't answer..." text and shows it as a ghost bubble
+    // with a blinking cursor next to the still-pending picker.
+    if (session.suppressingPostAskq) return;
     this.broadcastToBrowsers(session, {
       type: "stream_event",
       event: msg.event,
@@ -1035,7 +1098,14 @@ export class WsBridge {
 
   private handleControlCancelRequest(session: Session, msg: CLIControlCancelRequestMessage) {
     // CLI cancelled a pending permission request — remove from pending and notify browser
+    const pending = session.pendingPermissions.get(msg.request_id);
     session.pendingPermissions.delete(msg.request_id);
+    // If the cancelled perm was the AskUserQuestion we were waiting on,
+    // close the suppression window. There's no follow-up coming, so the
+    // model's next output (whatever it is) should reach the user.
+    if (pending?.tool_name === "AskUserQuestion") {
+      session.suppressingPostAskq = false;
+    }
     this.broadcastToBrowsers(session, {
       type: "permission_cancelled",
       request_id: msg.request_id,
@@ -1325,6 +1395,19 @@ export class WsBridge {
       ...(historyFiles.length ? { files: historyFiles } : {}),
     });
 
+    // Drain any pending `<pneuma:env>` context that was queued while the user
+    // wasn't typing. Those tags were already recorded in messageHistory + shown
+    // as chat banners, but they intentionally never went to the agent as their
+    // own user turns (that produced spurious "welcome back" replies). Now that
+    // a real user message is heading to the CLI, fold them in as a one-shot
+    // prefix so the agent gets the session-lineage / locale / handoff context
+    // it needs to reason about the user's actual question.
+    let envPrefix = "";
+    if (session.pendingEnvContext.length > 0) {
+      envPrefix = session.pendingEnvContext.join("\n") + "\n";
+      session.pendingEnvContext = [];
+    }
+
     // Build content for the CLI: if images are present, use a content block
     // array; otherwise a plain string.
     let content: string | unknown[];
@@ -1341,15 +1424,15 @@ export class WsBridge {
         }
       }
 
-      let textContent = msg.content;
+      let textContent = envPrefix + msg.content;
       textContent = this.buildUploadNotification(savedImagePaths, savedFiles, largeImagePaths) + textContent;
 
       blocks.push({ type: "text", text: textContent });
       content = blocks.length > 1 ? blocks : textContent;
     } else if (savedFiles.length > 0) {
-      content = this.buildUploadNotification(savedImagePaths, savedFiles) + msg.content;
+      content = envPrefix + this.buildUploadNotification(savedImagePaths, savedFiles) + msg.content;
     } else {
-      content = msg.content;
+      content = envPrefix + msg.content;
     }
 
     session.cliIdle = false;

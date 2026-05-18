@@ -861,6 +861,14 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       if (chatMessages.length > 0) {
         store.setMessages(chatMessages);
       }
+      // `message_history` is the canonical post-replay state. Any
+      // `streaming` text accumulated before this arrived (e.g. from a
+      // stale stream_event replay path, or a reconnect mid-turn) is
+      // either already represented in the final assistant message or
+      // will be re-emitted by a fresh stream_event sequence. Clearing
+      // here avoids a ghost streaming bubble from leaking past replay.
+      store.setStreaming(null);
+      streamingPhase = null;
       break;
     }
 

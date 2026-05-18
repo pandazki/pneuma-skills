@@ -247,6 +247,33 @@ export interface ViewerPreviewProps {
    *  false: editing UI hidden/locked, content-internal interactions preserved.
    *  Distinct from `readonly` which disables ALL interactions (replay). */
   editing?: boolean;
+  /**
+   * Resolved color-scheme preference for this user's Pneuma surface.
+   *
+   * `"system"` is collapsed by the runtime — viewers always see a concrete
+   * `"light"` | `"dark"`. Reactive: when the user flips the theme toggle
+   * in the launcher, this prop changes and the viewer re-renders. Use it
+   * to swap viewer-internal chrome (toolbar surfaces, axis labels, paper
+   * texture) so the runtime shell and the content viewer agree visually.
+   *
+   * Distinct from `ContentSetTraits.theme` — that lives in the FILE
+   * workspace (e.g. picking `zh-dark/` vs `en-light/` directory), this is
+   * the USER's surface preference. Both can coexist: a user reading a
+   * `zh-dark` deck may still have the surrounding chrome in light mode.
+   */
+  theme: "light" | "dark";
+  /**
+   * Resolved locale code (lowercase, language-only — `"en"`, `"ja"`,
+   * `"zh"`). Comes from `~/.pneuma/settings.json` if the user picked one
+   * explicitly, else from `navigator.language`. Reactive.
+   *
+   * Viewers can use this to localize their own UI (tooltip text, axis
+   * labels, menu items) when the runtime's i18n catalogs don't cover
+   * viewer-internal strings. The full BCP-47 form and the fallback
+   * chain live in `useSystemPreferences()` — viewers that need region
+   * granularity should reach for that hook directly.
+   */
+  locale: string;
 }
 
 /** UI contract for the content viewer */

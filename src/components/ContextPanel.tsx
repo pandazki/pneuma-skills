@@ -143,7 +143,7 @@ function statusColor(status: string): string {
     case "connecting": return "bg-amber-400";
     case "error":
     case "disconnected": return "bg-red-400";
-    default: return "bg-neutral-500";
+    default: return "bg-cc-muted";
   }
 }
 

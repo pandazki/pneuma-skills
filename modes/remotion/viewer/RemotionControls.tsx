@@ -141,7 +141,7 @@ export default function RemotionControls({
 
         {/* Playhead */}
         <div className="absolute top-1/2 -translate-y-1/2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-          style={{ left: `calc(${progress * 100}% - 5px)`, width: 10, height: 10, background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.4)", zIndex: 3 }}
+          style={{ left: `calc(${progress * 100}% - 5px)`, width: 10, height: 10, background: "var(--color-cc-fg, #fafafa)", boxShadow: "0 1px 3px rgba(0,0,0,.4)", zIndex: 3 }}
         />
       </div>
 

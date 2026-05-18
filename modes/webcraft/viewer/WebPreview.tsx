@@ -238,7 +238,7 @@ function ImpeccableAttribution({ collapsed }: { collapsed: boolean }) {
 
   const footerStyle: CSSProperties = {
     padding: collapsed ? "8px 4px" : "8px 12px",
-    borderTop: "1px solid rgba(255,255,255,0.08)",
+    borderTop: "1px solid var(--color-cc-border)",
     display: "flex",
     alignItems: "center",
     justifyContent: collapsed ? "center" : "flex-start",
@@ -248,7 +248,7 @@ function ImpeccableAttribution({ collapsed }: { collapsed: boolean }) {
 
   const linkStyle: CSSProperties = {
     fontSize: "10px",
-    color: "rgba(255,255,255,0.35)",
+    color: "var(--color-cc-muted)",
     textDecoration: "none",
     transition: "color 0.15s",
     lineHeight: 1.3,
@@ -259,12 +259,12 @@ function ImpeccableAttribution({ collapsed }: { collapsed: boolean }) {
 
   const helpBtnStyle: CSSProperties = {
     background: "none",
-    border: "1px solid rgba(255,255,255,0.15)",
+    border: "1px solid var(--color-cc-border)",
     borderRadius: "50%",
     width: "15px",
     height: "15px",
     fontSize: "9px",
-    color: "rgba(255,255,255,0.35)",
+    color: "var(--color-cc-muted)",
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
@@ -282,13 +282,13 @@ function ImpeccableAttribution({ collapsed }: { collapsed: boolean }) {
     marginBottom: "6px",
     width: "260px",
     padding: "10px 12px",
-    background: "#141414",
-    border: "1px solid rgba(255,255,255,0.12)",
+    background: "var(--color-cc-surface)",
+    border: "1px solid var(--color-cc-border)",
     borderRadius: "6px",
     fontSize: "11px",
     lineHeight: 1.55,
-    color: "rgba(255,255,255,0.7)",
-    boxShadow: "0 8px 30px rgba(0,0,0,0.7)",
+    color: "var(--color-cc-fg)",
+    boxShadow: "0 8px 30px rgba(0,0,0,0.4)",
     zIndex: 9999,
   };
 
@@ -300,8 +300,8 @@ function ImpeccableAttribution({ collapsed }: { collapsed: boolean }) {
         rel="noopener noreferrer"
         style={linkStyle}
         title="impeccable.style"
-        onMouseEnter={(e) => { e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(255,255,255,0.35)"; }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--color-cc-fg)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-cc-muted)"; }}
       >
         {collapsed ? (
           <span style={{ fontSize: "12px" }}>{"*"}</span>
@@ -314,12 +314,12 @@ function ImpeccableAttribution({ collapsed }: { collapsed: boolean }) {
         onClick={() => setShowTooltip(!showTooltip)}
         onBlur={() => setShowTooltip(false)}
         onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = "rgba(255,255,255,0.3)";
-          e.currentTarget.style.color = "rgba(255,255,255,0.6)";
+          e.currentTarget.style.borderColor = "var(--color-cc-fg)";
+          e.currentTarget.style.color = "var(--color-cc-fg)";
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)";
-          e.currentTarget.style.color = "rgba(255,255,255,0.35)";
+          e.currentTarget.style.borderColor = "var(--color-cc-border)";
+          e.currentTarget.style.color = "var(--color-cc-muted)";
         }}
         title="About design intelligence"
       >
@@ -327,7 +327,7 @@ function ImpeccableAttribution({ collapsed }: { collapsed: boolean }) {
       </button>
       {showTooltip && (
         <div style={tooltipStyle}>
-          <div style={{ fontWeight: 600, marginBottom: "6px", color: "rgba(255,255,255,0.85)" }}>
+          <div style={{ fontWeight: 600, marginBottom: "6px", color: "var(--color-cc-fg)" }}>
             Powered by Impeccable
           </div>
           <p style={{ margin: "0 0 8px" }}>
@@ -336,13 +336,13 @@ function ImpeccableAttribution({ collapsed }: { collapsed: boolean }) {
               href="https://impeccable.style"
               target="_blank"
               rel="noopener noreferrer"
-              style={{ color: "#f97316", textDecoration: "none" }}
+              style={{ color: "var(--color-cc-primary)", textDecoration: "none" }}
             >
               impeccable.style
             </a>
             {" "}by Paul Bakaus.
           </p>
-          <p style={{ margin: 0, color: "rgba(255,255,255,0.5)", fontSize: "10px" }}>
+          <p style={{ margin: 0, color: "var(--color-cc-muted)", fontSize: "10px" }}>
             Pneuma integrates Impeccable's skill content directly into the mode
             rather than installing it as a standalone skill. This allows the
             design commands to work with the live preview viewer architecture
@@ -471,8 +471,8 @@ function PageNavigator({
   return (
     <div
       style={{
-        borderTop: "1px solid rgba(255,255,255,0.08)",
-        background: "rgba(0,0,0,0.3)",
+        borderTop: "1px solid var(--color-cc-border)",
+        background: "var(--color-cc-surface)",
         display: "flex",
         overflowX: "auto",
         padding: "0 8px",
@@ -489,12 +489,12 @@ function PageNavigator({
           style={{
             padding: "6px 14px",
             fontSize: "12px",
-            color: page.file === activePage ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.5)",
+            color: page.file === activePage ? "var(--color-cc-fg)" : "var(--color-cc-muted)",
             background: "none",
             border: "none",
             borderBottomWidth: "2px",
             borderBottomStyle: "solid",
-            borderBottomColor: page.file === activePage ? "#f97316" : "transparent",
+            borderBottomColor: page.file === activePage ? "var(--color-cc-primary)" : "transparent",
             cursor: "pointer",
             whiteSpace: "nowrap",
             transition: "color 0.15s",
@@ -513,11 +513,11 @@ function PageNavigator({
           top: hoverPos.y - 160,
           width: 240,
           height: 150,
-          background: "#1a1a1a",
-          border: "1px solid rgba(255,255,255,0.15)",
+          background: "var(--color-cc-surface)",
+          border: "1px solid var(--color-cc-border)",
           borderRadius: "6px",
           overflow: "hidden",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
           zIndex: 9999,
           pointerEvents: "none",
         }}>
@@ -621,8 +621,8 @@ function ViewportToolbar({
     <div
       style={{
         padding: "4px 12px",
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
-        background: "rgba(0,0,0,0.2)",
+        borderBottom: "1px solid var(--color-cc-border)",
+        background: "var(--color-cc-surface)",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
@@ -632,7 +632,7 @@ function ViewportToolbar({
     >
       {/* Left: Viewport presets */}
       <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-        <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", marginRight: "4px" }}>
+        <span style={{ fontSize: "11px", color: "var(--color-cc-muted)", marginRight: "4px" }}>
           Viewport:
         </span>
         {VIEWPORT_PRESETS.map((preset) => (
@@ -645,7 +645,7 @@ function ViewportToolbar({
               borderRadius: "4px",
               padding: "3px 8px",
               cursor: "pointer",
-              color: preset.id === activePreset ? "#f97316" : "rgba(255,255,255,0.5)",
+              color: preset.id === activePreset ? "var(--color-cc-primary)" : "var(--color-cc-muted)",
               fontSize: "11px",
               display: "flex",
               alignItems: "center",
@@ -655,13 +655,13 @@ function ViewportToolbar({
             title={preset.width > 0 ? `${preset.label} (${preset.width}x${preset.height})` : preset.label}
             onMouseEnter={(e) => {
               if (preset.id !== activePreset) {
-                e.currentTarget.style.color = "rgba(255,255,255,0.8)";
-                e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+                e.currentTarget.style.color = "var(--color-cc-fg)";
+                e.currentTarget.style.background = "var(--color-cc-hover)";
               }
             }}
             onMouseLeave={(e) => {
               if (preset.id !== activePreset) {
-                e.currentTarget.style.color = "rgba(255,255,255,0.5)";
+                e.currentTarget.style.color = "var(--color-cc-muted)";
                 e.currentTarget.style.background = "none";
               }
             }}
@@ -671,7 +671,7 @@ function ViewportToolbar({
           </button>
         ))}
         {showDimensions && (
-          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", marginLeft: "8px" }}>
+          <span style={{ fontSize: "10px", color: "var(--color-cc-muted)", marginLeft: "8px" }}>
             {currentPreset.width} x {currentPreset.height}
           </span>
         )}
@@ -683,7 +683,7 @@ function ViewportToolbar({
           display: "flex",
           alignItems: "center",
           gap: "1px",
-          background: "rgba(0,0,0,0.3)",
+          background: "var(--color-cc-surface)",
           borderRadius: "6px",
           padding: "2px",
         }}
@@ -703,17 +703,17 @@ function ViewportToolbar({
               fontSize: "11px",
               transition: "all 0.15s",
               background: previewMode === m.value ? "rgba(249,115,22,0.2)" : "transparent",
-              color: previewMode === m.value ? "#f97316" : "rgba(255,255,255,0.5)",
+              color: previewMode === m.value ? "var(--color-cc-primary)" : "var(--color-cc-muted)",
             }}
             title={m.title}
             onMouseEnter={(e) => {
               if (previewMode !== m.value) {
-                e.currentTarget.style.color = "rgba(255,255,255,0.8)";
+                e.currentTarget.style.color = "var(--color-cc-fg)";
               }
             }}
             onMouseLeave={(e) => {
               if (previewMode !== m.value) {
-                e.currentTarget.style.color = "rgba(255,255,255,0.5)";
+                e.currentTarget.style.color = "var(--color-cc-muted)";
               }
             }}
           >
@@ -738,14 +738,14 @@ function ViewportToolbar({
           fontSize: "11px",
           transition: "all 0.15s",
           background: "transparent",
-          color: "rgba(255,255,255,0.5)",
+          color: "var(--color-cc-muted)",
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.color = "rgba(255,255,255,0.8)";
-          e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+          e.currentTarget.style.color = "var(--color-cc-fg)";
+          e.currentTarget.style.background = "var(--color-cc-hover)";
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.color = "rgba(255,255,255,0.5)";
+          e.currentTarget.style.color = "var(--color-cc-muted)";
           e.currentTarget.style.background = "transparent";
         }}
       >
@@ -792,14 +792,14 @@ function AnnotationPopover({
   return (
     <div
       style={style}
-      className="bg-neutral-800 border border-neutral-600 rounded-lg shadow-xl p-3 text-sm"
+      className="bg-cc-card border border-cc-border rounded-lg shadow-xl p-3 text-sm"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center gap-2 mb-2 min-w-0">
         {thumbnail && (
-          <img src={thumbnail} alt="" className="w-8 h-8 rounded border border-neutral-600 shrink-0 object-contain bg-white" />
+          <img src={thumbnail} alt="" className="w-8 h-8 rounded border border-cc-border shrink-0 object-contain bg-white" />
         )}
-        <span className="text-neutral-300 truncate text-xs">{label || "Element"}</span>
+        <span className="text-cc-fg truncate text-xs">{label || "Element"}</span>
       </div>
       <input
         ref={inputRef}
@@ -808,18 +808,18 @@ function AnnotationPopover({
         onChange={(e) => setComment(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Add comment (optional)..."
-        className="w-full bg-neutral-900 border border-neutral-600 rounded px-2 py-1.5 text-sm text-white placeholder-neutral-500 outline-none focus:border-blue-500"
+        className="w-full bg-cc-bg border border-cc-border rounded px-2 py-1.5 text-sm text-cc-fg placeholder-cc-muted outline-none focus:border-cc-primary"
       />
       <div className="flex justify-end gap-2 mt-2">
         <button
           onClick={onCancel}
-          className="px-2.5 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+          className="px-2.5 py-1 text-xs text-cc-muted hover:text-cc-fg rounded hover:bg-cc-hover transition-colors"
         >
           Cancel
         </button>
         <button
           onClick={() => onConfirm(comment)}
-          className="px-2.5 py-1 text-xs text-white bg-blue-600 hover:bg-blue-500 rounded transition-colors"
+          className="px-2.5 py-1 text-xs text-white bg-cc-primary hover:bg-cc-primary-hover rounded transition-colors"
         >
           Add
         </button>
@@ -1300,8 +1300,8 @@ export default function WebPreview({
           width: commandBarCollapsed ? "36px" : "180px",
           minWidth: commandBarCollapsed ? "36px" : "180px",
           height: "100%",
-          borderRight: "1px solid rgba(255,255,255,0.08)",
-          background: "rgba(0,0,0,0.3)",
+          borderRight: "1px solid var(--color-cc-border)",
+          background: "var(--color-cc-surface)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -1312,7 +1312,7 @@ export default function WebPreview({
         <div
           style={{
             padding: commandBarCollapsed ? "8px 6px" : "8px 12px",
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
+            borderBottom: "1px solid var(--color-cc-border)",
             display: "flex",
             alignItems: "center",
             justifyContent: commandBarCollapsed ? "center" : "space-between",
@@ -1324,7 +1324,7 @@ export default function WebPreview({
               style={{
                 fontSize: "11px",
                 fontWeight: 600,
-                color: "rgba(255,255,255,0.5)",
+                color: "var(--color-cc-muted)",
                 textTransform: "uppercase",
                 letterSpacing: "0.05em",
               }}
@@ -1337,7 +1337,7 @@ export default function WebPreview({
             style={{
               background: "none",
               border: "none",
-              color: "rgba(255,255,255,0.4)",
+              color: "var(--color-cc-muted)",
               cursor: "pointer",
               padding: "2px",
               fontSize: "12px",
@@ -1371,8 +1371,8 @@ export default function WebPreview({
                   cursor: "pointer",
                   color:
                     expandedCategory === category.name
-                      ? "rgba(255,255,255,0.9)"
-                      : "rgba(255,255,255,0.5)",
+                      ? "var(--color-cc-fg)"
+                      : "var(--color-cc-muted)",
                   fontSize: "12px",
                   fontWeight: 500,
                   transition: "color 0.15s",
@@ -1412,18 +1412,18 @@ export default function WebPreview({
                         justifyContent: commandBarCollapsed ? "center" : "flex-start",
                         gap: "6px",
                         cursor: "pointer",
-                        color: "rgba(255,255,255,0.65)",
+                        color: "var(--color-cc-fg)",
                         fontSize: "12px",
                         transition: "background 0.1s, color 0.1s",
                       }}
                       title={`${cmd.label}: ${cmd.description}`}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-                        e.currentTarget.style.color = "rgba(255,255,255,0.9)";
+                        e.currentTarget.style.background = "var(--color-cc-hover)";
+                        e.currentTarget.style.color = "var(--color-cc-fg)";
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.background = "none";
-                        e.currentTarget.style.color = "rgba(255,255,255,0.65)";
+                        e.currentTarget.style.color = "var(--color-cc-fg)";
                       }}
                     >
                       <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "16px" }}>
@@ -1464,7 +1464,7 @@ export default function WebPreview({
           style={{
             flex: 1,
             position: "relative",
-            background: viewport === "full" ? "#ffffff" : "#1a1a1a",
+            background: viewport === "full" ? "#ffffff" : "var(--color-cc-surface)",
             overflow: "hidden",
             display: "flex",
             alignItems: "center",
@@ -1482,7 +1482,7 @@ export default function WebPreview({
                   transformOrigin: "center center",
                   borderRadius: "8px",
                   overflow: "hidden",
-                  boxShadow: "0 4px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1)",
+                  boxShadow: "0 4px 24px rgba(0,0,0,0.3), 0 0 0 1px var(--color-cc-border)",
                   flexShrink: 0,
                 }}
               >
@@ -1524,9 +1524,9 @@ export default function WebPreview({
                 justifyContent: "center",
                 height: "100%",
                 width: "100%",
-                color: "rgba(0,0,0,0.4)",
+                color: "var(--color-cc-muted)",
                 fontSize: "14px",
-                background: "#fafafa",
+                background: "var(--color-cc-bg)",
               }}
             >
               <div style={{ textAlign: "center" }}>

@@ -31,7 +31,16 @@ export function shouldBufferForReplay(
     && msg.type !== "message_history"
     && msg.type !== "event_replay"
     && msg.type !== "permission_request"
-    && msg.type !== "permission_cancelled";
+    && msg.type !== "permission_cancelled"
+    // Streaming text deltas are pure animation — once the final `assistant`
+    // event lands in messageHistory the user sees the completed text. We
+    // already exclude `assistant` itself from event_replay (it's in
+    // message_history). If we keep the upstream `stream_event` partials
+    // buffered too, an initial connect replays them and accumulates the
+    // browser's `streaming` state — but the matching terminator (assistant /
+    // result) is filtered out, so the streaming bubble never clears.
+    // Symptom: ghost duplicate of the last reply with a blinking cursor.
+    && msg.type !== "stream_event";
 }
 
 export function isHistoryBackedEvent(msg: ReplayableBrowserIncomingMessage): boolean {

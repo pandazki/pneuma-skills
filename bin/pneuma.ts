@@ -1933,6 +1933,30 @@ async function main() {
   if (userLocale) pneumaEnv.PNEUMA_USER_LOCALE = userLocale;
   if (userTheme) pneumaEnv.PNEUMA_USER_THEME = userTheme;
 
+  // Wrap a mode's manifest-provided greeting with the user's locale so
+  // the agent's first reply lands in one language only. Without this
+  // hint the agent reads only the `<system-info session="new">` prompt
+  // and tends to default to a bilingual greeting (English + the user's
+  // language), which lands in chat as two adjacent bubbles. The env
+  // tag dispatched separately also carries `user_locale`, but the
+  // greeting reaches the model BEFORE the env tag, so this needs to
+  // travel with the greeting itself. The hint is folded INTO the
+  // greeting's existing `<system-info>` envelope (rather than appended
+  // as a separate tag) so the model treats it as one instruction and
+  // emits a single greeting turn — a separate trailing instruction
+  // tended to produce two assistant bubbles ("Acknowledged" + reply).
+  const localizeGreeting = (greeting: string): string => {
+    if (!userLocale) return greeting;
+    const tagMatch = greeting.match(/^<system-info\b([^>]*)>/);
+    if (tagMatch) {
+      return greeting.replace(
+        tagMatch[0],
+        `<system-info${tagMatch[1]} user-locale="${userLocale}">`,
+      );
+    }
+    return `<system-info user-locale="${userLocale}"></system-info>\n${greeting}`;
+  };
+
   // 0.5 Resolve init params (interactive on first run, then cached)
   let resolvedParams: Record<string, number | string> = {};
   if (manifest.init?.params && manifest.init.params.length > 0) {
@@ -2356,6 +2380,15 @@ async function main() {
    * marker would mislead it about its starting state) — callers gate via
    * the `resuming` flag.
    */
+  /**
+   * Dispatch the session-start `<pneuma:env>` tag. The tag is now always
+   * queued as **pending context** rather than delivered as a standalone
+   * user turn — `enqueueEnvContext` lands it in messageHistory + broadcasts
+   * the banner to browsers, but the agent doesn't see it until the user
+   * actually types something (at which point the tag is folded in as a
+   * one-shot prefix). This avoids the redundant "welcome back" reply that
+   * came from agents treating the env tag as a question.
+   */
   const dispatchEnvTag = (targetSessionId: string) => {
     if (envTagDispatched) return;
     const tag = buildEnvTag({
@@ -2370,8 +2403,8 @@ async function main() {
     });
     if (!tag) return;
     envTagDispatched = true;
-    wsBridge.sendUserMessage(targetSessionId, tag);
-    console.log(`[pneuma] Dispatched env tag: ${tag}`);
+    wsBridge.enqueueEnvContext(targetSessionId, tag);
+    console.log(`[pneuma] Queued env context: ${tag}`);
   };
 
   if (replayPackage) {
@@ -2499,11 +2532,13 @@ async function main() {
 
       // Send greeting for continued session
       if (manifest.agent?.greeting) {
-        wsBridge.injectGreeting(sessionId, manifest.agent.greeting);
+        wsBridge.injectGreeting(sessionId, localizeGreeting(manifest.agent.greeting));
       }
 
-      // Replay → Continue Work counts as a fresh agent start; dispatch
-      // the env tag here too so the new agent knows the session lineage.
+      // Replay → Continue Work counts as a fresh agent start. The env
+      // tag is queued as pending context; it lands as a chat banner
+      // immediately but only reaches the agent once the user actually
+      // types something.
       dispatchEnvTag(sessionId);
 
       p.log.success(t("pneuma.continue_work_launched"));
@@ -2748,7 +2783,7 @@ async function main() {
 
       // Auto-greeting for fresh sessions (driven by manifest)
       if (!resuming && manifest.agent?.greeting) {
-        wsBridge.injectGreeting(session.sessionId, manifest.agent.greeting);
+        wsBridge.injectGreeting(session.sessionId, localizeGreeting(manifest.agent.greeting));
         console.log("[pneuma] Sent auto-greeting for fresh session");
       }
 
@@ -2768,6 +2803,8 @@ async function main() {
       // confirmed a handoff, opened fresh) is the signal, not the agent's
       // resume state. The dispatch helper is internally idempotent so
       // re-entering this block via the edit-toggle path won't double-fire.
+      // The tag is queued as pending context (banner shows, agent sees
+      // it only when the user actually sends a message).
       dispatchEnvTag(session.sessionId);
 
       // History persistence

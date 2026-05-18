@@ -143,6 +143,39 @@ export default function ChatPanel() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const globalToolUseById = useMemo(() => buildGlobalToolUseMap(messages), [messages]);
 
+  // Collapse a trailing run of same-reason `<pneuma:env>` banners.
+  // Each fresh session spawn re-enqueues an `<pneuma:env reason="opened">`,
+  // so a user who toggles editing on/off or reloads ends up with a stack
+  // of identical "opened" pills at the bottom of the chat. Only the last
+  // one in any consecutive same-reason run is informative — the rest are
+  // noise. Detect collapsible runs and hand the renderer a `hiddenIds` set.
+  const hiddenMessageIds = useMemo(() => {
+    const hidden = new Set<string>();
+    const parseReason = (content: string): string | null => {
+      const m = content.trim().match(/^<pneuma:env\b[^>]*\breason="([^"]*)"[^>]*\/>$/i);
+      return m ? m[1] : null;
+    };
+    for (let i = 0; i < messages.length; i++) {
+      if (messages[i].role !== "user") continue;
+      const reason = parseReason(messages[i].content || "");
+      if (!reason) continue;
+      // Walk forward — if any later message in the chat is also a
+      // user-side env tag with the same reason, the earlier one is
+      // superseded. Other message types between them don't matter:
+      // an assistant reply doesn't "consume" a banner since the banner
+      // is purely visual chrome.
+      for (let j = i + 1; j < messages.length; j++) {
+        if (messages[j].role !== "user") continue;
+        const laterReason = parseReason(messages[j].content || "");
+        if (laterReason === reason) {
+          hidden.add(messages[i].id);
+          break;
+        }
+      }
+    }
+    return hidden;
+  }, [messages]);
+
   // Auto-scroll to bottom when new messages arrive or streaming/activity updates
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -163,14 +196,17 @@ export default function ChatPanel() {
             {cliConnected ? t("empty_send_message") : t("empty_connecting")}
           </div>
         )}
-        {messages.map((msg, i) => (
-          <React.Fragment key={msg.id}>
-            {msg.cronTriggered && (i === 0 || !messages[i - 1].cronTriggered || messages[i - 1].content?.trim()) && (
-              <CronTriggerBubble prompt={msg.cronTriggered} />
-            )}
-            <MessageBubble message={msg} globalToolUseById={globalToolUseById} />
-          </React.Fragment>
-        ))}
+        {messages.map((msg, i) => {
+          if (hiddenMessageIds.has(msg.id)) return null;
+          return (
+            <React.Fragment key={msg.id}>
+              {msg.cronTriggered && (i === 0 || !messages[i - 1].cronTriggered || messages[i - 1].content?.trim()) && (
+                <CronTriggerBubble prompt={msg.cronTriggered} />
+              )}
+              <MessageBubble message={msg} globalToolUseById={globalToolUseById} />
+            </React.Fragment>
+          );
+        })}
         {streaming ? <StreamingText /> : activity ? <ActivityIndicator /> : null}
         <div ref={bottomRef} className="h-4" />
       </div>

@@ -300,7 +300,7 @@ export default function ChatInput() {
   const hasAnnotations = annotations.length > 0;
 
   return (
-    <div className="p-3 bg-cc-surface/70 backdrop-blur-2xl border border-cc-primary/20 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.6)] ring-1 ring-white/5">
+    <div className="chat-input-card p-3 bg-cc-surface/70 backdrop-blur-2xl border border-cc-primary/20 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.6)] ring-1 ring-white/5">
       {/* Annotations list (annotate mode) */}
       {hasAnnotations && (
         <div className="mb-2 rounded-lg border border-cc-border bg-cc-card/50 overflow-hidden">

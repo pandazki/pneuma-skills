@@ -52,7 +52,7 @@ function LocatorCardGroup({ locators }: { locators: ViewerLocator[] }) {
             <span>{t("debug.payload_label")}</span>
           </button>
           {debugOpen && (
-            <pre className="mt-1 text-[10px] font-mono-code bg-black/30 text-cc-code-fg rounded-md px-2.5 py-2 overflow-x-auto whitespace-pre-wrap max-h-40 overflow-y-auto">
+            <pre className="mt-1 text-[10px] font-mono-code bg-cc-code-bg text-cc-code-fg rounded-md px-2.5 py-2 overflow-x-auto whitespace-pre-wrap max-h-40 overflow-y-auto">
               {locators.map((loc) => `${loc.label}: ${JSON.stringify(loc.data)}`).join("\n")}
             </pre>
           )}
@@ -1199,7 +1199,7 @@ function ContextUsageCard({ content }: { content: string }) {
 
       {coloredCategories.length > 0 && (
         <div className="px-4 pb-2">
-          <div className="flex h-2 rounded-full overflow-hidden bg-neutral-800">
+          <div className="flex h-2 rounded-full overflow-hidden bg-cc-user-bubble">
             {coloredCategories.map((cat, i) =>
               cat.percent > 0 ? (
                 <div
@@ -1220,9 +1220,9 @@ function ContextUsageCard({ content }: { content: string }) {
             <div key={i} className="flex items-center gap-2 text-xs">
               <span
                 className={`w-2 h-2 shrink-0 ${cat.type === "free"
-                  ? "rounded-full border border-neutral-500"
+                  ? "rounded-full border border-cc-muted"
                   : cat.type === "compacted"
-                    ? "rounded-sm border border-neutral-500"
+                    ? "rounded-sm border border-cc-muted"
                     : "rounded-full"
                   }`}
                 style={cat.type !== "free" && cat.type !== "compacted" ? { backgroundColor: cat.color } : undefined}
@@ -1259,7 +1259,7 @@ function DebugPayloadButton({ payload }: { payload: NonNullable<ChatMessage["deb
       </button>
       {open && (
         <div className="px-2.5 pb-2.5 space-y-2">
-          <pre className="text-[10px] font-mono-code bg-black/30 text-cc-code-fg rounded-md px-2.5 py-2 overflow-x-auto whitespace-pre-wrap max-h-60 overflow-y-auto">
+          <pre className="text-[10px] font-mono-code bg-cc-code-bg text-cc-code-fg rounded-md px-2.5 py-2 overflow-x-auto whitespace-pre-wrap max-h-60 overflow-y-auto">
             {payload.enrichedContent}
           </pre>
           {payload.images && payload.images.length > 0 && (

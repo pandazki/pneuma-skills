@@ -178,8 +178,8 @@ function WelcomeBand({ welcome, projectRoot }: { welcome: WelcomeMoment; project
 
   return (
     <section className="flex flex-col items-center text-center gap-5 pb-2">
-      <div className="text-[11px] uppercase tracking-[0.2em] text-orange-400/80">A small welcome</div>
-      <div className="relative w-full max-w-md aspect-square rounded-3xl overflow-hidden bg-zinc-900 border border-zinc-800/60 shadow-[0_24px_64px_-24px_rgba(0,0,0,0.6)]">
+      <div className="text-[11px] uppercase tracking-[0.2em] text-cc-primary/80">A small welcome</div>
+      <div className="relative w-full max-w-md aspect-square rounded-3xl overflow-hidden bg-cc-surface border border-cc-border shadow-[0_24px_64px_-24px_rgba(0,0,0,0.35)]">
         {url && !errored ? (
           <img
             src={url}
@@ -189,13 +189,13 @@ function WelcomeBand({ welcome, projectRoot }: { welcome: WelcomeMoment; project
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-5xl font-light text-zinc-600 select-none">·</span>
+            <span className="text-5xl font-light text-cc-muted/50 select-none">·</span>
           </div>
         )}
         {/* Subtle warm glow at the bottom edge to anchor the image to the surrounding zinc */}
         <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-orange-500/10 to-transparent pointer-events-none" />
       </div>
-      <p className="text-base text-zinc-200 leading-relaxed max-w-lg italic">
+      <p className="text-base text-cc-fg leading-relaxed max-w-lg italic">
         {welcome.message}
       </p>
     </section>
@@ -219,8 +219,8 @@ function CoverPreview({ source, projectRoot }: { source: string | null; projectR
 
   if (!source || !url || errored) {
     return (
-      <div className="w-32 h-32 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-center">
-        <span className="text-3xl font-light text-zinc-600 select-none">·</span>
+      <div className="w-32 h-32 rounded-2xl bg-cc-card border border-cc-border flex items-center justify-center">
+        <span className="text-3xl font-light text-cc-muted/50 select-none">·</span>
       </div>
     );
   }
@@ -228,7 +228,7 @@ function CoverPreview({ source, projectRoot }: { source: string | null; projectR
     <img
       src={url}
       alt="Project cover preview"
-      className="w-32 h-32 rounded-2xl object-cover border border-zinc-800/80 bg-zinc-900/60"
+      className="w-32 h-32 rounded-2xl object-cover border border-cc-border bg-cc-card"
       onError={() => setErrored(true)}
     />
   );
@@ -236,18 +236,18 @@ function CoverPreview({ source, projectRoot }: { source: string | null; projectR
 
 function AnchorCard({ anchor }: { anchor: ProposalAnchor }) {
   return (
-    <div className="rounded-xl border border-zinc-800/70 bg-zinc-950/40 p-4">
-      <div className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5">{anchor.label}</div>
-      <div className="text-sm text-zinc-200 leading-relaxed">{anchor.value}</div>
-      <div className="text-[11px] text-zinc-600 mt-2 font-mono truncate">{anchor.source}</div>
+    <div className="rounded-xl border border-cc-border bg-cc-card/60 p-4">
+      <div className="text-[11px] uppercase tracking-wider text-cc-muted mb-1.5">{anchor.label}</div>
+      <div className="text-sm text-cc-fg leading-relaxed">{anchor.value}</div>
+      <div className="text-[11px] text-cc-muted/50 mt-2 font-mono truncate">{anchor.source}</div>
     </div>
   );
 }
 
 function OpenQuestion({ q }: { q: string }) {
   return (
-    <div className="flex items-start gap-2 text-sm text-zinc-300 leading-relaxed">
-      <span className="text-orange-400 shrink-0 mt-0.5" aria-hidden>?</span>
+    <div className="flex items-start gap-2 text-sm text-cc-fg/80 leading-relaxed">
+      <span className="text-cc-primary shrink-0 mt-0.5" aria-hidden>?</span>
       <span>{q}</span>
     </div>
   );
@@ -255,22 +255,22 @@ function OpenQuestion({ q }: { q: string }) {
 
 function ApiKeyHint({ hints, onSkip }: { hints: ApiKeyHints; onSkip: () => void }) {
   return (
-    <div className="rounded-xl border border-orange-500/20 bg-orange-500/[0.04] p-4 flex items-start gap-3">
-      <div className="text-orange-400 mt-0.5" aria-hidden>
+    <div className="rounded-xl border border-cc-primary/25 bg-cc-primary/[0.04] p-4 flex items-start gap-3">
+      <div className="text-cc-primary mt-0.5" aria-hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
           <path d="M9.663 17h4.673M12 3v1M5.05 5.05l.707.707M2 13h1M21 13h-1M18.95 5.05l-.707.707M12 7a5 5 0 015 5c0 1.5-.5 2.5-1.5 3.5L14 17h-4l-1.5-1.5C7.5 14.5 7 13.5 7 12a5 5 0 015-5z"/>
         </svg>
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-sm text-zinc-200">{hints.rationale}</div>
-        <div className="text-xs text-zinc-500 mt-1.5">
-          Missing: <span className="font-mono text-zinc-400">{hints.missingButRecommended.join(", ")}</span>
+        <div className="text-sm text-cc-fg">{hints.rationale}</div>
+        <div className="text-xs text-cc-muted mt-1.5">
+          Missing: <span className="font-mono text-cc-muted">{hints.missingButRecommended.join(", ")}</span>
         </div>
       </div>
       <button
         type="button"
         onClick={onSkip}
-        className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-1 -my-1"
+        className="text-xs text-cc-muted hover:text-cc-fg/80 transition-colors px-2 py-1 -my-1"
       >
         Skip
       </button>
@@ -288,25 +288,25 @@ function TaskCard({
   disabled: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-800/70 bg-zinc-950/30 p-6 flex flex-col gap-4 transition-colors hover:border-orange-500/30 hover:bg-zinc-950/50">
+    <div className="rounded-2xl border border-cc-border bg-cc-card/50 p-6 flex flex-col gap-4 transition-colors hover:border-cc-primary/30 hover:bg-cc-card/70">
       <div>
-        <div className="text-[11px] uppercase tracking-wider text-zinc-500 mb-2 flex items-center gap-2">
+        <div className="text-[11px] uppercase tracking-wider text-cc-muted mb-2 flex items-center gap-2">
           <span>{task.targetMode}</span>
           {task.timeEstimate ? (
             <>
-              <span className="text-zinc-700">·</span>
+              <span className="text-cc-muted/40">·</span>
               <span>{task.timeEstimate}</span>
             </>
           ) : null}
         </div>
-        <h3 className="text-lg font-medium text-zinc-100 leading-snug">{task.title}</h3>
+        <h3 className="text-lg font-medium text-cc-fg leading-snug">{task.title}</h3>
       </div>
-      <p className="text-sm text-zinc-400 leading-relaxed flex-1">{task.rationale}</p>
+      <p className="text-sm text-cc-muted leading-relaxed flex-1">{task.rationale}</p>
       <button
         type="button"
         onClick={() => onStart(task)}
         disabled={disabled}
-        className="self-start text-sm text-orange-400 hover:text-orange-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+        className="self-start text-sm text-cc-primary hover:text-cc-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
       >
         <span>Start this task</span>
         <span aria-hidden>→</span>
@@ -393,7 +393,7 @@ export default function OnboardPreview(_props: ViewerPreviewProps) {
     !keyHintDismissed;
 
   return (
-    <div className="h-full overflow-auto bg-zinc-950 text-zinc-200">
+    <div className="h-full overflow-auto bg-cc-bg text-cc-fg">
       <div className="max-w-4xl mx-auto px-8 py-12 flex flex-col gap-10">
 
         {/* Welcome band — only present when the agent decided to draw a
@@ -407,11 +407,11 @@ export default function OnboardPreview(_props: ViewerPreviewProps) {
         <section className="flex items-center gap-6">
           <CoverPreview source={proposal.project.coverSource} projectRoot={projectRoot} />
           <div className="flex-1 min-w-0">
-            <div className="text-[11px] uppercase tracking-wider text-zinc-500 mb-2">Project</div>
-            <h1 className="text-3xl font-medium text-zinc-100 leading-tight mb-2">
+            <div className="text-[11px] uppercase tracking-wider text-cc-muted mb-2">Project</div>
+            <h1 className="text-3xl font-medium text-cc-fg leading-tight mb-2">
               {proposal.project.displayName}
             </h1>
-            <p className="text-base text-zinc-400 leading-relaxed">
+            <p className="text-base text-cc-muted leading-relaxed">
               {proposal.project.description}
             </p>
           </div>
@@ -420,7 +420,7 @@ export default function OnboardPreview(_props: ViewerPreviewProps) {
         {/* Anchors */}
         {proposal.anchors.length > 0 ? (
           <section>
-            <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-4">What we found</h2>
+            <h2 className="text-xs uppercase tracking-wider text-cc-muted mb-4">What we found</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {proposal.anchors.map((a, i) => (
                 <AnchorCard key={i} anchor={a} />
@@ -431,8 +431,8 @@ export default function OnboardPreview(_props: ViewerPreviewProps) {
 
         {/* Open questions */}
         {proposal.openQuestions && proposal.openQuestions.length > 0 ? (
-          <section className="rounded-xl border border-zinc-800/60 bg-zinc-950/40 p-4 flex flex-col gap-2">
-            <div className="text-xs uppercase tracking-wider text-zinc-500 mb-1">Open questions</div>
+          <section className="rounded-xl border border-cc-border bg-cc-card/60 p-4 flex flex-col gap-2">
+            <div className="text-xs uppercase tracking-wider text-cc-muted mb-1">Open questions</div>
             {proposal.openQuestions.map((q, i) => (
               <OpenQuestion key={i} q={q} />
             ))}
@@ -449,7 +449,7 @@ export default function OnboardPreview(_props: ViewerPreviewProps) {
 
         {/* Two task cards */}
         <section>
-          <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-4">What's next</h2>
+          <h2 className="text-xs uppercase tracking-wider text-cc-muted mb-4">What's next</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {proposal.tasks.map((t, i) => (
               <TaskCard
@@ -463,17 +463,17 @@ export default function OnboardPreview(_props: ViewerPreviewProps) {
         </section>
 
         {/* Footer controls */}
-        <footer className="flex flex-col gap-3 pt-6 border-t border-zinc-900/80">
+        <footer className="flex flex-col gap-3 pt-6 border-t border-cc-border">
           <div className="flex items-center justify-between gap-4">
             <button
               type="button"
               onClick={() => void onApply(null)}
               disabled={applying !== null}
-              className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="text-sm text-cc-muted hover:text-cc-fg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Apply only — don't start a task yet
             </button>
-            <div className="text-xs text-zinc-600 text-right">
+            <div className="text-xs text-cc-muted/50 text-right">
               {applying ? (
                 <span>Applying {applying === "apply-only" ? "metadata" : `"${applying}"`}…</span>
               ) : (
@@ -594,10 +594,10 @@ function CarouselLoading({ lastError }: { lastError: string | null }) {
           animation: pneuma-discover-ping 1.6s cubic-bezier(0.16, 1, 0.3, 1) infinite;
         }
       `}</style>
-      <div className="h-full overflow-auto bg-zinc-950 text-zinc-200 flex items-center justify-center">
+      <div className="h-full overflow-auto bg-cc-bg text-cc-fg flex items-center justify-center">
         <div className="w-full max-w-5xl px-8 py-8 flex flex-col items-center gap-6">
           {/* Carousel frame — 16:9 to match the illustrations' native ratio */}
-          <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-zinc-900 border border-zinc-800/60 shadow-[0_24px_64px_-24px_rgba(0,0,0,0.6)]">
+          <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-cc-surface border border-cc-border shadow-[0_24px_64px_-24px_rgba(0,0,0,0.35)]">
             {/* Bottom layer: the current active image — always fully shown */}
             <img
               key={`active-${activeIndex}`}
@@ -634,7 +634,7 @@ function CarouselLoading({ lastError }: { lastError: string | null }) {
               with two outgoing concentric rings, staggered so the
               motion never rests. Reads as active "scanning" rather
               than the generic single-dot pulse. */}
-          <div className="flex items-center gap-3 text-sm text-zinc-400">
+          <div className="flex items-center gap-3 text-sm text-cc-muted">
             <span className="relative inline-flex w-3 h-3 items-center justify-center" aria-hidden>
               <span className="absolute inset-0 rounded-full bg-orange-500 pneuma-discover-ring" />
               <span className="absolute inset-0 rounded-full bg-orange-500 pneuma-discover-ring [animation-delay:0.8s]" />
@@ -654,7 +654,7 @@ function CarouselLoading({ lastError }: { lastError: string | null }) {
                 className={`h-1 rounded-full transition-all duration-300 cursor-pointer ${
                   i === activeIndex
                     ? "w-8 bg-orange-500"
-                    : "w-2 bg-zinc-700 hover:bg-zinc-500"
+                    : "w-2 bg-cc-border hover:bg-cc-muted"
                 }`}
               />
             ))}

@@ -109,7 +109,7 @@ function PlayerCanvas({
 
   return (
     <div ref={containerRef} className="flex-1 flex items-center justify-center overflow-hidden min-h-0"
-      style={{ background: "#000" }}>
+      style={{ background: "var(--color-cc-bg, #09090b)" }}>
       <div style={{
         width: comp.width,
         height: comp.height,
@@ -490,7 +490,7 @@ export default function RemotionPreview({
     <div className="flex flex-col h-full" style={{ background: "var(--cc-bg, #09090b)" }}>
       {/* Info bar — resolution + duration + export (composition switching is in TopBar) */}
       <div className="flex items-center justify-between px-3 h-7 shrink-0"
-        style={{ background: "#000" }}>
+        style={{ background: "var(--color-cc-bg, #09090b)" }}>
         <span className="text-[10px] font-mono" style={{ color: "var(--cc-text-tertiary, #52525b)" }}>
           {activeComp.width}×{activeComp.height} · {activeComp.fps}fps · {(activeComp.durationInFrames / activeComp.fps).toFixed(1)}s
         </span>
@@ -502,7 +502,7 @@ export default function RemotionPreview({
           }}
           className="flex items-center gap-1 px-2 h-5 rounded text-[10px] font-medium transition-colors cursor-pointer"
           style={{ color: "var(--cc-text-tertiary, #52525b)", background: "transparent" }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--cc-text, #fafafa)"; e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--cc-text, #fafafa)"; e.currentTarget.style.background = "var(--color-cc-hover, rgba(255,255,255,0.08))"; }}
           onMouseLeave={(e) => { e.currentTarget.style.color = "var(--cc-text-tertiary, #52525b)"; e.currentTarget.style.background = "transparent"; }}
           title="Export video — open export page"
         >

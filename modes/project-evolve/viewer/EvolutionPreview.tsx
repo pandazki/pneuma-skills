@@ -64,7 +64,7 @@ const STATUS_STYLES: Record<string, string> = {
   pending: "bg-orange-500/20 text-orange-400 border-orange-500/30",
   applied: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
   forked: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-  rolled_back: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
+  rolled_back: "bg-cc-muted/20 text-cc-muted border-cc-muted/30",
   discarded: "bg-red-500/20 text-red-400 border-red-500/30",
 };
 
@@ -139,7 +139,7 @@ const ACTION_STYLES: Record<string, string> = {
 const CONFIDENCE_STYLES: Record<string, string> = {
   high: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
   medium: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  low: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+  low: "bg-cc-muted/15 text-cc-muted border-cc-muted/30",
 };
 
 function ChangeCard({ change }: { change: ProposalChange }) {

@@ -74,10 +74,10 @@ export default function ModelSwitcher() {
   if (!canSwitchModel) {
     return (
       <div
-        className="flex items-center gap-1.5 px-2 py-1 text-xs text-neutral-500 bg-neutral-800 rounded"
+        className="flex items-center gap-1.5 px-2 py-1 text-xs text-cc-muted bg-cc-user-bubble rounded"
         title={model || t("unavailable_tooltip")}
       >
-        <span className="w-4 h-4 rounded bg-neutral-800 flex items-center justify-center text-[10px] font-bold text-neutral-400">
+        <span className="w-4 h-4 rounded bg-cc-fg/10 flex items-center justify-center text-[10px] font-bold text-cc-muted">
           {current.icon}
         </span>
         <span>{current.label}</span>
@@ -89,10 +89,10 @@ export default function ModelSwitcher() {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 px-2 py-1 text-xs text-neutral-400 hover:text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded transition-colors"
+        className="flex items-center gap-1.5 px-2 py-1 text-xs text-cc-fg/70 hover:text-cc-fg bg-cc-user-bubble hover:bg-cc-active rounded transition-colors cursor-pointer"
         title={model || models[0]?.id || ""}
       >
-        <span className="w-4 h-4 rounded bg-neutral-700 flex items-center justify-center text-[10px] font-bold text-neutral-300">
+        <span className="w-4 h-4 rounded bg-cc-fg/10 flex items-center justify-center text-[10px] font-bold text-cc-fg/80">
           {current.icon}
         </span>
         <span>{current.label}</span>
@@ -102,7 +102,7 @@ export default function ModelSwitcher() {
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 mb-1 bg-neutral-800 border border-neutral-700 rounded-md shadow-lg overflow-hidden z-50 max-h-64 overflow-y-auto">
+        <div className="absolute bottom-full left-0 mb-1 bg-cc-surface border border-cc-border rounded-md shadow-lg overflow-hidden z-50 max-h-64 overflow-y-auto">
           {models.map((m) => {
             const active = model === m.id || (model && model.toLowerCase().includes(m.label.toLowerCase()));
             return (
@@ -112,13 +112,13 @@ export default function ModelSwitcher() {
                   sendSetModel(m.id);
                   setOpen(false);
                 }}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left whitespace-nowrap transition-colors ${
+                className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left whitespace-nowrap transition-colors cursor-pointer ${
                   active
-                    ? "bg-neutral-700 text-neutral-100"
-                    : "text-neutral-400 hover:bg-neutral-750 hover:text-neutral-200"
+                    ? "bg-cc-active text-cc-fg"
+                    : "text-cc-fg/70 hover:bg-cc-hover hover:text-cc-fg"
                 }`}
               >
-                <span className="w-5 h-4 rounded bg-neutral-600 flex items-center justify-center text-[9px] font-bold text-neutral-200 shrink-0">
+                <span className="w-5 h-4 rounded bg-cc-fg/10 flex items-center justify-center text-[9px] font-bold text-cc-fg shrink-0">
                   {m.icon}
                 </span>
                 <span>{m.label}</span>

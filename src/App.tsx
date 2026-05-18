@@ -15,6 +15,7 @@ import { connect } from "./ws.js";
 import { loadReplay } from "./replay-engine.js";
 import { loadMode, registerExternalMode } from "../core/mode-loader.js";
 import { useSystemPreferences } from "./hooks/useSystemPreferences.js";
+import { useAppTheme } from "./hooks/useAppTheme.js";
 import { selectBestContentSet } from "../core/utils/content-set-matcher.js";
 import { ReplayPlayer } from "./components/ReplayPlayer";
 import type { ViewerPreviewProps } from "../core/types/viewer-contract.js";
@@ -132,8 +133,12 @@ function useSourceInstances(): {
   return state;
 }
 
-/** Build the ViewerPreviewProps from store state. */
-function useViewerProps(): ViewerPreviewProps {
+/** Build the ViewerPreviewProps from store state.
+ *
+ * Caller passes `prefs` (the same `useSystemPreferences()` value the
+ * session shell already reads for content-set auto-selection) so we don't
+ * mount a second `/api/user-locale + /api/user-theme` fetch. */
+function useViewerProps(prefs: { theme: "light" | "dark"; locale: string }): ViewerPreviewProps {
   const { sources, channel: fileChannel } = useSourceInstances();
   const selection = useStore((s) => s.selection);
   const setSelection = useStore((s) => s.setSelection);
@@ -213,6 +218,8 @@ function useViewerProps(): ViewerPreviewProps {
     onNavigateComplete: () => setNavigateRequest(null),
     commands: useStore((s) => s.modeCommands),
     readonly: replayMode,
+    theme: prefs.theme,
+    locale: prefs.locale,
   };
 }
 
@@ -400,10 +407,15 @@ export default function App() {
     }
   }, [contentSets, systemPrefs]); // activeContentSet intentionally excluded
 
-  const viewerProps = useViewerProps();
+  const viewerProps = useViewerProps(systemPrefs);
   const layout = useStore((s) => s.layout);
   const replayMode = useStore((s) => s.replayMode);
   const editing = useStore((s) => s.editing);
+  // Session shell theming — the launcher's choice (saved in
+  // ~/.pneuma/settings.json) propagates here via `pneuma:theme-changed`.
+  // The session root flips `.cc-theme-light` to swap the cc-* token surface.
+  const { resolved: appTheme } = useAppTheme();
+  const themeClass = appTheme === "light" ? "cc-theme-light" : "";
 
   // Thumbnail capture — snapshot the preview panel periodically
   const previewRef = useRef<HTMLDivElement>(null);
@@ -416,7 +428,7 @@ export default function App() {
 
   if (layout === "app" && !editing) {
     return (
-      <div className="h-screen w-screen bg-cc-bg text-cc-fg relative overflow-hidden">
+      <div className={`h-screen w-screen bg-cc-bg text-cc-fg relative overflow-hidden ${themeClass}`}>
         <div ref={previewRef} className="h-full w-full">
           {PreviewComponent ? (
             <PreviewComponent
@@ -444,12 +456,12 @@ export default function App() {
   // ── Editor layout: split panel (2.x default) ──────────────────────────
 
   return (
-    <div className="flex flex-col h-screen bg-cc-bg text-cc-fg relative overflow-hidden p-4 sm:p-6 md:p-8">
-      {/* Immersive mesh gradient background element */}
-      <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[50%] bg-cc-primary/10 blur-[120px] rounded-full pointer-events-none animate-[pulse-dot_8s_ease-in-out_infinite]" />
-      <div className="absolute top-[20%] right-[-10%] w-[50%] h-[60%] bg-purple-500/10 blur-[100px] rounded-full pointer-events-none animate-[pulse-dot_10s_ease-in-out_infinite_reverse]" />
+    <div className={`flex flex-col h-screen bg-cc-bg text-cc-fg relative overflow-hidden p-4 sm:p-6 md:p-8 ${themeClass}`}>
+      {/* Immersive mesh gradient — dark-mode atmospherics; hidden in light. */}
+      <div className="session-shell-mesh absolute top-[-10%] left-[-10%] w-[60%] h-[50%] bg-cc-primary/10 blur-[120px] rounded-full pointer-events-none animate-[pulse-dot_8s_ease-in-out_infinite]" />
+      <div className="session-shell-mesh absolute top-[20%] right-[-10%] w-[50%] h-[60%] bg-purple-500/10 blur-[100px] rounded-full pointer-events-none animate-[pulse-dot_10s_ease-in-out_infinite_reverse]" />
 
-      <div className="relative z-10 flex flex-col flex-1 border border-cc-primary/20 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(249,115,22,0.15)] ring-1 ring-white/5 before:absolute before:inset-0 before:bg-cc-surface/40 before:backdrop-blur-3xl before:-z-10">
+      <div className="session-shell-card relative z-10 flex flex-col flex-1 border border-cc-primary/20 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(249,115,22,0.15)] ring-1 ring-white/5 before:absolute before:inset-0 before:bg-cc-surface/40 before:backdrop-blur-3xl before:-z-10">
         <TopBar />
         <Group orientation="horizontal" className="flex-1 min-h-0">
           <Panel defaultSize={65} minSize={30}>

@@ -2,6 +2,47 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.8.0] - 2026-05-18
+
+### Added — full-stack i18n + theme propagation
+
+The chat is now multilingual end-to-end and every mode can dress for the user's chosen colour scheme.
+
+#### UI / CLI / metadata i18n (en / zh-CN / ja)
+
+- **Browser**: react-i18next over per-component namespaces, ~940 keys across 36 JSON files per locale. Locale picker promoted from Settings panel into the launcher header (`A / 中 / あ` typographic glyphs, no SVG globe), order Language → Theme → Settings → GitHub. Locale-parity tests assert identical key trees across en/zh-CN/ja (36 tests).
+- **CLI**: `bin/i18n.ts` mirrors the browser stack with `fs.readFileSync` (no Vite at runtime). Every user-facing CLI log line now flows through `t(…)`.
+- **Mode metadata**: `LocalizedString = string | { en, "zh-CN", ja }` added to `ModeManifest.displayName`/`description` and showcase highlights. `resolveLocalized(value, locale)` is the canonical reader; `core/utils/manifest-parser.ts::findTopLevelField` anchors via line-start + 2-space indent to stop nested `params[].description` from leaking into top-level extraction.
+- **Persistence**: `~/.pneuma/settings.json` keeps a top-level `locale` field next to `theme`. `SettingsManager.save()` merges so plugin writes can't clobber it.
+- **Server**: `/api/registry` carries a per-locale SWR cache. `/api/user-locale` / `/api/user-theme` mounted on launcher + every per-session server.
+
+#### Workspace theme protocol
+
+- **Hoisted `useTheme` → `src/hooks/useAppTheme.ts`** so the session shell (`App.tsx`, `EmptyShell.tsx`) shares one source of truth with the launcher. The `.launcher-light` design-token override is split into scope-agnostic `.cc-theme-light` (mounted by all session containers) + launcher-specific child rules.
+- **Session shell light refinement**: dark-mode atmospherics (orange + purple mesh blobs, orange glow shadow, `cc-surface/40` glass `::before`) suppressed under `.cc-theme-light`. Replaced with a three-stop warm-tinted elevation stack and a neutral hairline border — matches the `launcher-card-elevated` vocabulary. Same treatment for `ChatInput` and `AgentBubble`'s floating panel.
+- **`ViewerPreviewProps` gained `theme: "light" | "dark"` + `locale: string`** required fields. `useViewerProps` threads them from `useSystemPreferences` (the single Pneuma-overrides + browser-defaults merger). Viewers can opt in to re-skin / localize their own chrome.
+- **Per-mode light support**: every builtin viewer audited and swapped. `illustrate`'s 1600-LOC `COLORS` constant became a theme-aware `getColors(theme)` helper threaded as props (and through React-Flow node `data` for the canvas tiles). `webcraft`'s 50+ inline `rgba`/`hex` literals swapped to `var(--color-cc-*)` references (iframe user content untouched). `kami`'s parchment letterbox (`#d9d6ca`) intentionally stays fixed — that's the product identity, not chrome. Plus the smaller swaps in `slide` / `doc` / `draw` / `diagram` / `remotion` / `gridboard` / `mode-maker` / `evolve` / `project-evolve` / `project-onboard`. `clipcraft` skipped — refactor pending separately.
+- **Mode-maker CodeMirror theme** now follows the user's resolved theme via `theme={theme}` instead of the hard-coded `"dark"`.
+- **Right-panel chrome polish** for light mode: `ModelSwitcher` dropdown, `ProcessPanel` scan button, `SchedulePanel` refresh, `DiffPanel` / `DiffViewer` / `SlashMenu` / `MessageBubble` token-bar / `ContextPanel` status dots — all swapped from `neutral-*` to `cc-*`. Terminal canvas + xterm chrome intentionally stay dark.
+
+#### Agent-side propagation
+
+- **`PNEUMA_USER_LOCALE` / `PNEUMA_USER_THEME` env vars** injected into every spawned agent process for skill / script / tool-call programmatic access.
+- **`<pneuma:env user_locale="…">` attribute** carried on the first-turn env tag — agent's response language locks to the user's preference without the user having to repeat it.
+- **Greeting is now single-language.** Each mode's manifest greeting gets folded with a `user-locale` attribute inside its existing `<system-info>` envelope (not appended as a separate tag — separate tags produce two assistant bubbles). The agent emits exactly one greeting matching the user's locale.
+
+### Fixed — chat-stream rough edges
+
+- **Ghost duplicate of the last reply with a blinking cursor on initial connect.** Server's replay buffer kept `stream_event` partials but the matching terminator `assistant`/`result` events were filtered out by `isHistoryBackedEvent` (already in `message_history`). Browser's `streaming` state replayed those partials and never got a terminator. `stream_event` removed from `shouldBufferForReplay`; browser also clears `streaming` defensively on every `message_history` arrival.
+- **Redundant "welcome back" bubble next to fresh greeting.** `<pneuma:env>` tags are no longer delivered to the agent as standalone user turns. New `enqueueEnvContext()` records the tag in `messageHistory` (so the chat banner persists) and broadcasts it (so it renders live), but the agent doesn't see it until the user actually types — the next `handleUserMessage` prepends the queued tags as a one-shot prefix and clears the buffer. Consecutive same-reason banners collapse to the last in `ChatPanel` (the launcher / edit-toggle / reload paths each re-enqueue an "opened" tag; only the latest is informative).
+- **"User ignored the question" reaction with the AskUserQuestion picker still on screen.** Claude Code 2.x's SDK auto-denies the `AskUserQuestion` tool internally (returns an `is_error` `tool_result` before the user can click); the model reads the denial and emits a reactionary assistant turn. We now flag `Session.suppressingPostAskq = true` after delivering an assistant message that *contained* the AskUserQuestion, and drop the *next* assistant turn + its `stream_event` partials. The flag clears when the user submits a real answer (resolving the synthetic permission) or when the CLI / browser cancels — the agent's response to the actual answer flows through normally.
+- **Cancel button collapsed to a vertical CJK column** in `ConfirmButton` — flex `min-width: auto` defaults to the intrinsic minimum on CJK glyphs. `whitespace-nowrap` fixes it.
+
+### Misc
+
+- `useSystemPreferences` stops using a `useRef` to dedupe its fetch — that ref dead-locked inside StrictMode's mount → cleanup → mount cycle (first run set the ref + got cancelled, second run gated out, `ready` stuck false). The `cancelled` flag inside the effect closure is the proper guard.
+- `pneuma-session` skill installed globally for every session — teaches `pneuma session refine` for late-binding display name + description.
+
 ## [3.7.2] - 2026-05-17
 
 ### Fixed

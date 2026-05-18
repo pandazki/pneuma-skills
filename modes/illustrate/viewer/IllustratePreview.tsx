@@ -78,7 +78,7 @@ interface ToastMessage {
   text: string;
 }
 
-// ── Dark theme overrides for React Flow controls/minimap ─────────────────────
+// ── Theme overrides for React Flow controls/minimap ──────────────────────────
 
 const RF_DARK_OVERRIDES = `
 .react-flow {
@@ -105,6 +105,31 @@ const RF_DARK_OVERRIDES = `
 }
 `;
 
+const RF_LIGHT_OVERRIDES = `
+.react-flow {
+  --xy-controls-button-background-color-default: #ece9e4;
+  --xy-controls-button-background-color-hover-default: #d8d4cc;
+  --xy-controls-button-color-default: oklch(48% 0.02 55);
+  --xy-controls-button-color-hover-default: oklch(15% 0.01 55);
+  --xy-controls-button-border-color-default: rgba(140, 120, 100, 0.2);
+  --xy-controls-box-shadow-default: 0 2px 8px rgba(80,60,40,0.12);
+  --xy-minimap-background-color-default: rgba(255,255,255,0.7);
+  --xy-minimap-mask-background-color-default: rgba(255,255,255,0.6);
+  --xy-minimap-mask-stroke-color-default: rgba(140,120,100,0.2);
+  --xy-minimap-node-background-color-default: #ea580c;
+  --xy-minimap-node-stroke-color-default: transparent;
+  --xy-background-color-default: oklch(97.5% 0.008 60);
+  --xy-background-pattern-dots-color-default: rgba(80,60,40,0.12);
+  --xy-node-background-color-default: transparent;
+  --xy-node-border-default: none;
+  --xy-node-boxshadow-hover-default: none;
+  --xy-node-boxshadow-selected-default: none;
+}
+.react-flow__controls-button svg {
+  fill: currentColor !important;
+}
+`;
+
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const NODE_HEIGHT = 260;
@@ -112,19 +137,71 @@ const ROW_GAP = 100;
 const ROW_LABEL_HEIGHT = 40;
 const ITEM_GAP = 24;
 
-const COLORS = {
-  bg: "#0a0a0c",
-  surface: "rgba(24, 24, 27, 0.9)",
-  surfaceSolid: "#18181b",
-  border: "rgba(63, 63, 70, 0.5)",
-  text: "#fafafa",
-  textMuted: "#a1a1aa",
-  textDim: "#71717a",
-  primary: "#f97316",
-  primaryDim: "rgba(249, 115, 22, 0.15)",
-  selectRing: "#3b82f6",
-  annotateRing: "#a855f7",
+type ThemeColors = {
+  bg: string;
+  surface: string;
+  surfaceSolid: string;
+  surfaceSolidAlt: string;
+  border: string;
+  text: string;
+  textMuted: string;
+  textDim: string;
+  primary: string;
+  primaryDim: string;
+  selectRing: string;
+  annotateRing: string;
+  cardShadowHover: string;
+  cardShadowIdle: string;
+  popoverShadow: string;
+  detailBg: string;
+  toastShadow: string;
+  sliderShadow: string;
 };
+
+function getColors(theme: "light" | "dark"): ThemeColors {
+  if (theme === "light") {
+    return {
+      bg: "oklch(97.5% 0.008 60)",
+      surface: "rgba(236, 233, 228, 0.9)",
+      surfaceSolid: "#ece9e4",
+      surfaceSolidAlt: "#dcd8d1",
+      border: "rgba(140, 120, 100, 0.2)",
+      text: "oklch(15% 0.01 55)",
+      textMuted: "oklch(48% 0.02 55)",
+      textDim: "oklch(60% 0.015 55)",
+      primary: "#ea580c",
+      primaryDim: "rgba(234, 88, 12, 0.15)",
+      selectRing: "#3b82f6",
+      annotateRing: "#a855f7",
+      cardShadowHover: "0 4px 20px rgba(80,60,40,0.18)",
+      cardShadowIdle: "0 2px 12px rgba(80,60,40,0.10)",
+      popoverShadow: "0 8px 32px rgba(80,60,40,0.18)",
+      detailBg: "rgba(255,255,255,0.85)",
+      toastShadow: "0 4px 16px rgba(80,60,40,0.15)",
+      sliderShadow: "-4px 0 24px rgba(80,60,40,0.15)",
+    };
+  }
+  return {
+    bg: "#0a0a0c",
+    surface: "rgba(24, 24, 27, 0.9)",
+    surfaceSolid: "#18181b",
+    surfaceSolidAlt: "#1c1c20",
+    border: "rgba(63, 63, 70, 0.5)",
+    text: "#fafafa",
+    textMuted: "#a1a1aa",
+    textDim: "#71717a",
+    primary: "#f97316",
+    primaryDim: "rgba(249, 115, 22, 0.15)",
+    selectRing: "#3b82f6",
+    annotateRing: "#a855f7",
+    cardShadowHover: "0 4px 20px rgba(0,0,0,0.5)",
+    cardShadowIdle: "0 2px 12px rgba(0,0,0,0.3)",
+    popoverShadow: "0 8px 32px rgba(0,0,0,0.5)",
+    detailBg: "rgba(0,0,0,0.88)",
+    toastShadow: "0 4px 16px rgba(0,0,0,0.4)",
+    sliderShadow: "-4px 0 24px rgba(0,0,0,0.3)",
+  };
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -149,6 +226,7 @@ function manifestToNodes(
   imageVersion: number,
   annotatedFiles: Set<string>,
   mode: string,
+  colors: ThemeColors,
 ): Node<ImageNodeData>[] {
   const nodes: Node<ImageNodeData>[] = [];
   let cursorY = 0;
@@ -168,6 +246,7 @@ function manifestToNodes(
         isAnnotated: false,
         mode,
         itemCount: row.items.length,
+        colors,
       },
       selectable: false,
       draggable: false,
@@ -192,6 +271,7 @@ function manifestToNodes(
           imageVersion,
           isAnnotated: annotatedFiles.has(item.file),
           mode,
+          colors,
         },
         style: { width: w, height: NODE_HEIGHT },
       });
@@ -211,16 +291,17 @@ let toastCounter = 0;
 
 const RowLabelNode = memo(({ data }: NodeProps<Node<ImageNodeData>>) => {
   const count = (data as any).itemCount ?? 0;
+  const colors = ((data as any).colors as ThemeColors) ?? getColors("dark");
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 10,
       pointerEvents: "none", whiteSpace: "nowrap", height: ROW_LABEL_HEIGHT,
       paddingBottom: 4,
     }}>
-      <span style={{ color: COLORS.textMuted, fontSize: 14, fontWeight: 500 }}>
+      <span style={{ color: colors.textMuted, fontSize: 14, fontWeight: 500 }}>
         {data.rowLabel}
       </span>
-      <span style={{ color: COLORS.textDim, fontSize: 12 }}>
+      <span style={{ color: colors.textDim, fontSize: 12 }}>
         {count} {count === 1 ? "image" : "images"}
       </span>
     </div>
@@ -245,27 +326,28 @@ const ImageCardNode = memo(({ data, selected }: NodeProps<Node<ImageNodeData>>) 
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
   const { item, contentSet, imageVersion, isAnnotated, mode } = data;
+  const colors = ((data as any).colors as ThemeColors) ?? getColors("dark");
   const isGenerating = item.status === "generating";
 
   // Reset error state when image version changes (new image generated)
   useEffect(() => { setErrored(false); setLoaded(false); }, [imageVersion]);
 
-  const ringColor = mode === "annotate" ? COLORS.annotateRing : mode === "select" ? COLORS.selectRing : COLORS.primary;
+  const ringColor = mode === "annotate" ? colors.annotateRing : mode === "select" ? colors.selectRing : colors.primary;
 
   return (
     <div
       style={{
         width: "100%", height: "100%", borderRadius: 8, overflow: "hidden",
         position: "relative", cursor: isGenerating ? "default" : mode === "view" ? "grab" : "crosshair",
-        outline: selected ? `2px solid ${ringColor}` : isGenerating ? `1px dashed ${COLORS.primary}55` : "none",
+        outline: selected ? `2px solid ${ringColor}` : isGenerating ? `1px dashed ${colors.primary}55` : "none",
         outlineOffset: 3,
         boxShadow: selected
-          ? `0 0 0 1px ${ringColor}40, 0 8px 32px ${COLORS.bg}`
+          ? `0 0 0 1px ${ringColor}40, 0 8px 32px ${colors.bg}`
           : hovered && !isGenerating
-            ? `0 4px 20px rgba(0,0,0,0.5)`
-            : `0 2px 12px rgba(0,0,0,0.3)`,
+            ? colors.cardShadowHover
+            : colors.cardShadowIdle,
         transition: "box-shadow 0.15s, outline 0.1s",
-        background: COLORS.surfaceSolid,
+        background: colors.surfaceSolid,
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -277,16 +359,16 @@ const ImageCardNode = memo(({ data, selected }: NodeProps<Node<ImageNodeData>>) 
         <div style={{
           position: "absolute", inset: 0, display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center", gap: 10,
-          background: `linear-gradient(135deg, ${COLORS.surfaceSolid} 0%, #1c1c20 50%, ${COLORS.surfaceSolid} 100%)`,
+          background: `linear-gradient(135deg, ${colors.surfaceSolid} 0%, ${colors.surfaceSolidAlt} 50%, ${colors.surfaceSolid} 100%)`,
           backgroundSize: "200% 100%",
           animation: "illustrate-shimmer 2.5s ease-in-out infinite",
         }}>
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={COLORS.primary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: "illustrate-pulse 2s ease-in-out infinite" }}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={colors.primary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: "illustrate-pulse 2s ease-in-out infinite" }}>
             <path d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42" />
           </svg>
-          <div style={{ color: COLORS.textMuted, fontSize: 12, fontWeight: 500 }}>Generating…</div>
+          <div style={{ color: colors.textMuted, fontSize: 12, fontWeight: 500 }}>Generating…</div>
           <div style={{
-            color: COLORS.textDim, fontSize: 11, maxWidth: "80%", textAlign: "center",
+            color: colors.textDim, fontSize: 11, maxWidth: "80%", textAlign: "center",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>
             {item.title}
@@ -299,20 +381,20 @@ const ImageCardNode = memo(({ data, selected }: NodeProps<Node<ImageNodeData>>) 
             <div style={{
               position: "absolute", inset: 0, display: "flex", flexDirection: "column",
               alignItems: "center", justifyContent: "center", gap: 6,
-              background: `linear-gradient(135deg, ${COLORS.surfaceSolid} 0%, #27272a 100%)`,
+              background: `linear-gradient(135deg, ${colors.surfaceSolid} 0%, ${colors.surfaceSolidAlt} 100%)`,
             }}>
               {errored ? (
                 <>
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={COLORS.textDim} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={colors.textDim} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                     <circle cx="8.5" cy="8.5" r="1.5" />
                     <polyline points="21 15 16 10 5 21" />
                   </svg>
-                  <div style={{ color: COLORS.textDim, fontSize: 11 }}>Not yet generated</div>
-                  <div style={{ color: COLORS.textDim, fontSize: 10, maxWidth: "80%", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</div>
+                  <div style={{ color: colors.textDim, fontSize: 11 }}>Not yet generated</div>
+                  <div style={{ color: colors.textDim, fontSize: 10, maxWidth: "80%", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</div>
                 </>
               ) : (
-                <div style={{ color: COLORS.textDim, fontSize: 12 }}>Loading…</div>
+                <div style={{ color: colors.textDim, fontSize: 12 }}>Loading…</div>
               )}
             </div>
           )}
@@ -339,14 +421,14 @@ const ImageCardNode = memo(({ data, selected }: NodeProps<Node<ImageNodeData>>) 
               padding: 10, pointerEvents: "none",
             }}>
               <div style={{
-                color: COLORS.text, fontSize: 13, fontWeight: 500,
+                color: "#fafafa", fontSize: 13, fontWeight: 500,
                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 textShadow: "0 1px 3px rgba(0,0,0,0.8)",
               }}>
                 {item.title}
               </div>
               {item.aspectRatio && (
-                <div style={{ color: COLORS.textDim, fontSize: 11, marginTop: 2 }}>
+                <div style={{ color: "#71717a", fontSize: 11, marginTop: 2 }}>
                   {item.aspectRatio}
                 </div>
               )}
@@ -371,7 +453,7 @@ const ImageCardNode = memo(({ data, selected }: NodeProps<Node<ImageNodeData>>) 
         <div style={{
           position: "absolute", top: -6, right: -6,
           width: 18, height: 18, borderRadius: "50%",
-          background: COLORS.annotateRing, display: "flex", alignItems: "center", justifyContent: "center",
+          background: colors.annotateRing, display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 10, color: "#fff", fontWeight: 700,
           boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
         }}>
@@ -392,10 +474,11 @@ const nodeTypes: NodeTypes = {
 // ── Image Detail Overlay ─────────────────────────────────────────────────────
 
 function ImageDetail({
-  item, contentSet, imageVersion, onClose, onCopyPrompt, onDownload,
+  item, contentSet, imageVersion, onClose, onCopyPrompt, onDownload, colors,
 }: {
   item: ManifestItem; contentSet: string | null; imageVersion: number;
   onClose: () => void; onCopyPrompt: () => void; onDownload: () => void;
+  colors: ThemeColors;
 }) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -415,15 +498,15 @@ function ImageDetail({
 
   return (
     <div
-      style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.88)", backdropFilter: "blur(8px)", display: "flex", flexDirection: "column" }}
+      style={{ position: "fixed", inset: 0, zIndex: 50, background: colors.detailBg, backdropFilter: "blur(8px)", display: "flex", flexDirection: "column" }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       {/* Top bar */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", borderBottom: `1px solid ${COLORS.border}`, background: COLORS.surface, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", borderBottom: `1px solid ${colors.border}`, background: colors.surface, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-          <span style={{ color: COLORS.text, fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
-          {item.style && <span style={{ color: COLORS.textDim, fontSize: 11, padding: "1px 6px", background: COLORS.primaryDim, borderRadius: 4 }}>{item.style}</span>}
-          {item.aspectRatio && <span style={{ color: COLORS.textDim, fontSize: 11 }}>{item.aspectRatio}</span>}
+          <span style={{ color: colors.text, fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+          {item.style && <span style={{ color: colors.textDim, fontSize: 11, padding: "1px 6px", background: colors.primaryDim, borderRadius: 4 }}>{item.style}</span>}
+          {item.aspectRatio && <span style={{ color: colors.textDim, fontSize: 11 }}>{item.aspectRatio}</span>}
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
           {[
@@ -433,7 +516,7 @@ function ImageDetail({
             { label: "Download", onClick: onDownload },
             { label: "Close", onClick: onClose },
           ].map((btn) => (
-            <button key={btn.label} onClick={btn.onClick} style={{ background: btn.active ? COLORS.primaryDim : "transparent", color: btn.active ? COLORS.primary : COLORS.textMuted, border: `1px solid ${btn.active ? COLORS.primary : "transparent"}`, borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}>{btn.label}</button>
+            <button key={btn.label} onClick={btn.onClick} style={{ background: btn.active ? colors.primaryDim : "transparent", color: btn.active ? colors.primary : colors.textMuted, border: `1px solid ${btn.active ? colors.primary : "transparent"}`, borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}>{btn.label}</button>
           ))}
         </div>
       </div>
@@ -453,7 +536,7 @@ function ImageDetail({
 
       {/* Info panel */}
       {showInfo && (
-        <div style={{ position: "absolute", right: 16, top: 60, width: 320, maxHeight: "calc(100vh - 100px)", overflow: "auto", background: COLORS.surfaceSolid, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 16, zIndex: 60, boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
+        <div style={{ position: "absolute", right: 16, top: 60, width: 320, maxHeight: "calc(100vh - 100px)", overflow: "auto", background: colors.surfaceSolid, border: `1px solid ${colors.border}`, borderRadius: 10, padding: 16, zIndex: 60, boxShadow: colors.popoverShadow }}>
           {[
             { l: "Title", v: item.title },
             { l: "Prompt", v: item.prompt, mono: true },
@@ -465,8 +548,8 @@ function ImageDetail({
             { l: "File", v: item.file, mono: true },
           ].filter((r) => r.v).map((r) => (
             <div key={r.l} style={{ marginBottom: 10 }}>
-              <div style={{ color: COLORS.textDim, fontSize: 11, marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.5px" }}>{r.l}</div>
-              <div style={{ color: COLORS.text, fontSize: 13, fontFamily: r.mono ? "monospace" : "inherit", wordBreak: "break-word", lineHeight: 1.4 }}>{r.v}</div>
+              <div style={{ color: colors.textDim, fontSize: 11, marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.5px" }}>{r.l}</div>
+              <div style={{ color: colors.text, fontSize: 13, fontFamily: r.mono ? "monospace" : "inherit", wordBreak: "break-word", lineHeight: 1.4 }}>{r.v}</div>
             </div>
           ))}
         </div>
@@ -478,10 +561,11 @@ function ImageDetail({
 // ── Annotation Popover ───────────────────────────────────────────────────────
 
 function AnnotationPopover({
-  style, label, onConfirm, onCancel,
+  style, label, onConfirm, onCancel, colors,
 }: {
   style: React.CSSProperties; label?: string;
   onConfirm: (comment: string) => void; onCancel: () => void;
+  colors: ThemeColors;
 }) {
   const [comment, setComment] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -489,10 +573,10 @@ function AnnotationPopover({
 
   return (
     <div
-      style={{ position: "fixed", ...style, zIndex: 100, background: COLORS.surfaceSolid, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 12, minWidth: 260, maxWidth: 340, boxShadow: "0 8px 32px rgba(0,0,0,0.5)", backdropFilter: "blur(12px)" }}
+      style={{ position: "fixed", ...style, zIndex: 100, background: colors.surfaceSolid, border: `1px solid ${colors.border}`, borderRadius: 10, padding: 12, minWidth: 260, maxWidth: 340, boxShadow: colors.popoverShadow, backdropFilter: "blur(12px)" }}
       onClick={(e) => e.stopPropagation()}
     >
-      {label && <div style={{ color: COLORS.textMuted, fontSize: 12, marginBottom: 6 }}>{label}</div>}
+      {label && <div style={{ color: colors.textMuted, fontSize: 12, marginBottom: 6 }}>{label}</div>}
       <textarea
         ref={inputRef} value={comment} onChange={(e) => setComment(e.target.value)}
         onKeyDown={(e) => {
@@ -500,11 +584,11 @@ function AnnotationPopover({
           else if (e.key === "Escape") { e.preventDefault(); onCancel(); }
         }}
         placeholder="Add feedback… (Enter to confirm)" rows={2}
-        style={{ width: "100%", background: COLORS.bg, color: COLORS.text, border: `1px solid ${COLORS.border}`, borderRadius: 6, padding: "6px 8px", fontSize: 13, resize: "none", outline: "none", fontFamily: "inherit" }}
+        style={{ width: "100%", background: colors.bg, color: colors.text, border: `1px solid ${colors.border}`, borderRadius: 6, padding: "6px 8px", fontSize: 13, resize: "none", outline: "none", fontFamily: "inherit" }}
       />
       <div style={{ display: "flex", gap: 6, marginTop: 8, justifyContent: "flex-end" }}>
-        <button onClick={onCancel} style={{ background: "transparent", color: COLORS.textMuted, border: `1px solid ${COLORS.border}`, borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer" }}>Cancel</button>
-        <button onClick={() => comment.trim() && onConfirm(comment.trim())} style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer", opacity: comment.trim() ? 1 : 0.5 }}>Add</button>
+        <button onClick={onCancel} style={{ background: "transparent", color: colors.textMuted, border: `1px solid ${colors.border}`, borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer" }}>Cancel</button>
+        <button onClick={() => comment.trim() && onConfirm(comment.trim())} style={{ background: colors.primary, color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer", opacity: comment.trim() ? 1 : 0.5 }}>Add</button>
       </div>
     </div>
   );
@@ -512,12 +596,12 @@ function AnnotationPopover({
 
 // ── Toast ────────────────────────────────────────────────────────────────────
 
-function ToastContainer({ toasts }: { toasts: ToastMessage[] }) {
+function ToastContainer({ toasts, colors }: { toasts: ToastMessage[]; colors: ThemeColors }) {
   if (!toasts.length) return null;
   return (
     <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 200, display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
       {toasts.map((t) => (
-        <div key={t.id} style={{ background: COLORS.surfaceSolid, color: COLORS.text, padding: "8px 16px", borderRadius: 8, fontSize: 13, border: `1px solid ${COLORS.border}`, boxShadow: "0 4px 16px rgba(0,0,0,0.4)" }}>{t.text}</div>
+        <div key={t.id} style={{ background: colors.surfaceSolid, color: colors.text, padding: "8px 16px", borderRadius: 8, fontSize: 13, border: `1px solid ${colors.border}`, boxShadow: colors.toastShadow }}>{t.text}</div>
       ))}
     </div>
   );
@@ -561,6 +645,7 @@ function CanvasToolbar({
   rowCount,
   selectionCount,
   readonly,
+  colors,
 }: {
   previewMode: string;
   onSetPreviewMode: (mode: PreviewMode) => void;
@@ -568,6 +653,7 @@ function CanvasToolbar({
   rowCount: number;
   selectionCount?: number;
   readonly?: boolean;
+  colors: ThemeColors;
 }) {
   const modes: { value: PreviewMode; label: string; icon: React.ReactNode }[] = [
     { value: "view", label: "View", icon: <EyeIcon /> },
@@ -578,19 +664,19 @@ function CanvasToolbar({
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
-      padding: "4px 12px", borderBottom: `1px solid ${COLORS.border}`,
-      background: `${COLORS.surfaceSolid}cc`, backdropFilter: "blur(8px)",
+      padding: "4px 12px", borderBottom: `1px solid ${colors.border}`,
+      background: `${colors.surfaceSolid}cc`, backdropFilter: "blur(8px)",
       flexShrink: 0, minHeight: 36, zIndex: 10,
     }}>
       {/* Left: info */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ color: COLORS.textDim, fontSize: 11 }}>
+        <span style={{ color: colors.textDim, fontSize: 11 }}>
           {rowCount} {rowCount === 1 ? "row" : "rows"} · {imageCount} {imageCount === 1 ? "image" : "images"}
         </span>
         {selectionCount != null && selectionCount > 0 && (
           <span style={{
             fontSize: 11, padding: "1px 8px", borderRadius: 10,
-            background: `${COLORS.selectRing}25`, color: COLORS.selectRing,
+            background: `${colors.selectRing}25`, color: colors.selectRing,
             fontWeight: 500,
           }}>
             {selectionCount} selected
@@ -599,7 +685,7 @@ function CanvasToolbar({
       </div>
 
       {/* Right: mode toggle — hidden in readonly (replay) mode */}
-      {!readonly && <div style={{ display: "flex", alignItems: "center", gap: 2, background: `${COLORS.bg}99`, borderRadius: 6, padding: 2 }}>
+      {!readonly && <div style={{ display: "flex", alignItems: "center", gap: 2, background: `${colors.bg}99`, borderRadius: 6, padding: 2 }}>
         {modes.map((m) => {
           const isActive = previewMode === m.value;
           return (
@@ -609,8 +695,8 @@ function CanvasToolbar({
               style={{
                 display: "flex", alignItems: "center", gap: 4,
                 padding: "4px 8px", borderRadius: 4, border: "none",
-                background: isActive ? `${COLORS.primary}33` : "transparent",
-                color: isActive ? COLORS.primary : COLORS.textMuted,
+                background: isActive ? `${colors.primary}33` : "transparent",
+                color: isActive ? colors.primary : colors.textMuted,
                 fontSize: 12, cursor: "pointer", transition: "all 0.15s",
               }}
               title={
@@ -618,8 +704,8 @@ function CanvasToolbar({
                   : m.value === "select" ? "Click to select images for Claude"
                     : "Click images to add feedback annotations"
               }
-              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = COLORS.text; }}
-              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = COLORS.textMuted; }}
+              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = colors.text; }}
+              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = colors.textMuted; }}
             >
               {m.icon}
               <span>{m.label}</span>
@@ -867,7 +953,7 @@ const SIDEBAR_WIDTH = 280;
 
 function SidebarSlider({
   selectedImage, visible, contentSet, imageVersion,
-  onClose, onCopyPrompt, onDownload, onViewDetail,
+  onClose, onCopyPrompt, onDownload, onViewDetail, colors,
 }: {
   selectedImage: SelectedImageInfo | null;
   visible: boolean;
@@ -877,6 +963,7 @@ function SidebarSlider({
   onCopyPrompt: (item: ManifestItem) => void;
   onDownload: (item: ManifestItem) => void;
   onViewDetail: (item: ManifestItem) => void;
+  colors: ThemeColors;
 }) {
   // Keep the last valid info around during the close animation
   const [displayInfo, setDisplayInfo] = useState<SelectedImageInfo | null>(null);
@@ -906,7 +993,7 @@ function SidebarSlider({
         width: SIDEBAR_WIDTH, zIndex: 20,
         transform: isOpen ? "translateX(0)" : `translateX(${SIDEBAR_WIDTH}px)`,
         transition: "transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)",
-        boxShadow: isOpen ? "-4px 0 24px rgba(0,0,0,0.3)" : "none",
+        boxShadow: isOpen ? colors.sliderShadow : "none",
       }}
       onTransitionEnd={handleTransitionEnd}
     >
@@ -919,6 +1006,7 @@ function SidebarSlider({
           onCopyPrompt={() => onCopyPrompt(displayInfo.item)}
           onDownload={() => onDownload(displayInfo.item)}
           onViewDetail={() => onViewDetail(displayInfo.item)}
+          colors={colors}
         />
       )}
     </div>
@@ -929,7 +1017,7 @@ function SidebarSlider({
 
 function ImageSidebar({
   info, contentSet, imageVersion,
-  onClose, onCopyPrompt, onDownload, onViewDetail,
+  onClose, onCopyPrompt, onDownload, onViewDetail, colors,
 }: {
   info: SelectedImageInfo;
   contentSet: string | null;
@@ -938,27 +1026,28 @@ function ImageSidebar({
   onCopyPrompt: () => void;
   onDownload: () => void;
   onViewDetail: () => void;
+  colors: ThemeColors;
 }) {
   const { item, rowLabel, rowIndex, rowCount, itemIndex, itemCount } = info;
 
   return (
     <div style={{
-      width: "100%", height: "100%", background: COLORS.surfaceSolid,
-      borderLeft: `1px solid ${COLORS.border}`, display: "flex", flexDirection: "column",
+      width: "100%", height: "100%", background: colors.surfaceSolid,
+      borderLeft: `1px solid ${colors.border}`, display: "flex", flexDirection: "column",
       overflow: "hidden",
     }}>
       {/* Header */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "8px 12px", borderBottom: `1px solid ${COLORS.border}`,
+        padding: "8px 12px", borderBottom: `1px solid ${colors.border}`,
         flexShrink: 0,
       }}>
-        <span style={{ color: COLORS.text, fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+        <span style={{ color: colors.text, fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
           {item.title}
         </span>
         <button
           onClick={onClose}
-          style={{ background: "none", border: "none", color: COLORS.textDim, cursor: "pointer", padding: 4, fontSize: 16, lineHeight: 1 }}
+          style={{ background: "none", border: "none", color: colors.textDim, cursor: "pointer", padding: 4, fontSize: 16, lineHeight: 1 }}
           title="Close sidebar"
         >
           ×
@@ -969,8 +1058,8 @@ function ImageSidebar({
       <div style={{ flex: 1, overflow: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         {/* Thumbnail */}
         <div style={{
-          borderRadius: 8, overflow: "hidden", background: COLORS.bg,
-          border: `1px solid ${COLORS.border}`, cursor: "pointer",
+          borderRadius: 8, overflow: "hidden", background: colors.bg,
+          border: `1px solid ${colors.border}`, cursor: "pointer",
         }} onClick={onViewDetail} title="Click to view full size">
           <img
             src={getImageUrl(item.file, contentSet, imageVersion)}
@@ -983,20 +1072,20 @@ function ImageSidebar({
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <span style={{
             fontSize: 11, padding: "2px 8px", borderRadius: 4,
-            background: `${COLORS.primary}20`, color: COLORS.primary,
+            background: `${colors.primary}20`, color: colors.primary,
           }}>
             Row {rowIndex + 1}/{rowCount}
           </span>
           <span style={{
             fontSize: 11, padding: "2px 8px", borderRadius: 4,
-            background: `${COLORS.border}`, color: COLORS.textMuted,
+            background: `${colors.border}`, color: colors.textMuted,
           }}>
             Image {itemIndex + 1}/{itemCount}
           </span>
           {item.aspectRatio && (
             <span style={{
               fontSize: 11, padding: "2px 8px", borderRadius: 4,
-              background: `${COLORS.border}`, color: COLORS.textMuted,
+              background: `${colors.border}`, color: colors.textMuted,
             }}>
               {item.aspectRatio}
             </span>
@@ -1005,26 +1094,26 @@ function ImageSidebar({
 
         {/* Row */}
         <div>
-          <div style={{ color: COLORS.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Row</div>
-          <div style={{ color: COLORS.textMuted, fontSize: 12 }}>{rowLabel}</div>
+          <div style={{ color: colors.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Row</div>
+          <div style={{ color: colors.textMuted, fontSize: 12 }}>{rowLabel}</div>
         </div>
 
         {/* Prompt */}
         <div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
-            <span style={{ color: COLORS.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>Prompt</span>
+            <span style={{ color: colors.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>Prompt</span>
             <button
               onClick={onCopyPrompt}
-              style={{ background: "none", border: "none", color: COLORS.textDim, cursor: "pointer", fontSize: 10, padding: 0 }}
+              style={{ background: "none", border: "none", color: colors.textDim, cursor: "pointer", fontSize: 10, padding: 0 }}
               title="Copy prompt"
             >
               Copy
             </button>
           </div>
           <div style={{
-            color: COLORS.text, fontSize: 12, lineHeight: 1.5,
-            background: COLORS.bg, borderRadius: 6, padding: "8px 10px",
-            border: `1px solid ${COLORS.border}`, wordBreak: "break-word",
+            color: colors.text, fontSize: 12, lineHeight: 1.5,
+            background: colors.bg, borderRadius: 6, padding: "8px 10px",
+            border: `1px solid ${colors.border}`, wordBreak: "break-word",
           }}>
             {item.prompt}
           </div>
@@ -1033,21 +1122,21 @@ function ImageSidebar({
         {/* Style */}
         {item.style && (
           <div>
-            <div style={{ color: COLORS.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Style</div>
-            <div style={{ color: COLORS.textMuted, fontSize: 12 }}>{item.style}</div>
+            <div style={{ color: colors.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Style</div>
+            <div style={{ color: colors.textMuted, fontSize: 12 }}>{item.style}</div>
           </div>
         )}
 
         {/* Tags */}
         {item.tags && item.tags.length > 0 && (
           <div>
-            <div style={{ color: COLORS.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Tags</div>
+            <div style={{ color: colors.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Tags</div>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
               {item.tags.map((tag) => (
                 <span key={tag} style={{
                   fontSize: 11, padding: "1px 6px", borderRadius: 4,
-                  background: COLORS.bg, border: `1px solid ${COLORS.border}`,
-                  color: COLORS.textMuted,
+                  background: colors.bg, border: `1px solid ${colors.border}`,
+                  color: colors.textMuted,
                 }}>
                   {tag}
                 </span>
@@ -1059,22 +1148,22 @@ function ImageSidebar({
         {/* Resolution */}
         {item.resolution && (
           <div>
-            <div style={{ color: COLORS.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Resolution</div>
-            <div style={{ color: COLORS.textMuted, fontSize: 12 }}>{item.resolution}</div>
+            <div style={{ color: colors.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Resolution</div>
+            <div style={{ color: colors.textMuted, fontSize: 12 }}>{item.resolution}</div>
           </div>
         )}
 
         {/* File */}
         <div>
-          <div style={{ color: COLORS.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>File</div>
-          <div style={{ color: COLORS.textDim, fontSize: 11, fontFamily: "monospace", wordBreak: "break-all" }}>{item.file}</div>
+          <div style={{ color: colors.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>File</div>
+          <div style={{ color: colors.textDim, fontSize: 11, fontFamily: "monospace", wordBreak: "break-all" }}>{item.file}</div>
         </div>
 
         {/* Created */}
         {item.createdAt && (
           <div>
-            <div style={{ color: COLORS.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Created</div>
-            <div style={{ color: COLORS.textMuted, fontSize: 12 }}>{new Date(item.createdAt).toLocaleString()}</div>
+            <div style={{ color: colors.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Created</div>
+            <div style={{ color: colors.textMuted, fontSize: 12 }}>{new Date(item.createdAt).toLocaleString()}</div>
           </div>
         )}
       </div>
@@ -1082,13 +1171,13 @@ function ImageSidebar({
       {/* Bottom actions */}
       <div style={{
         display: "flex", gap: 6, padding: "8px 12px",
-        borderTop: `1px solid ${COLORS.border}`, flexShrink: 0,
+        borderTop: `1px solid ${colors.border}`, flexShrink: 0,
       }}>
         <button
           onClick={onViewDetail}
           style={{
-            flex: 1, padding: "6px 0", borderRadius: 6, border: `1px solid ${COLORS.border}`,
-            background: "transparent", color: COLORS.textMuted, fontSize: 12, cursor: "pointer",
+            flex: 1, padding: "6px 0", borderRadius: 6, border: `1px solid ${colors.border}`,
+            background: "transparent", color: colors.textMuted, fontSize: 12, cursor: "pointer",
           }}
         >
           Full View
@@ -1097,7 +1186,7 @@ function ImageSidebar({
           onClick={onDownload}
           style={{
             flex: 1, padding: "6px 0", borderRadius: 6, border: "none",
-            background: COLORS.primary, color: "#fff", fontSize: 12, cursor: "pointer",
+            background: colors.primary, color: "#fff", fontSize: 12, cursor: "pointer",
           }}
         >
           Download
@@ -1109,13 +1198,13 @@ function ImageSidebar({
 
 // ── Empty State ──────────────────────────────────────────────────────────────
 
-function EmptyCanvas() {
+function EmptyCanvas({ colors }: { colors: ThemeColors }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: COLORS.textDim, gap: 12, padding: 40, textAlign: "center" }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: colors.textDim, gap: 12, padding: 40, textAlign: "center" }}>
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}>
         <path d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42" />
       </svg>
-      <div style={{ fontSize: 16, fontWeight: 500, color: COLORS.textMuted }}>Empty Canvas</div>
+      <div style={{ fontSize: 16, fontWeight: 500, color: colors.textMuted }}>Empty Canvas</div>
       <div style={{ fontSize: 13, maxWidth: 360, lineHeight: 1.5 }}>
         Describe what you'd like to create — logos, illustrations, icons, or any visual asset.
         Each generation will appear as a row on this infinite canvas.
@@ -1130,12 +1219,13 @@ function CanvasInner(props: ViewerPreviewProps) {
   const {
     sources, selection, onSelect: rawOnSelect, mode: rawPreviewMode, imageVersion,
     actionRequest, onActionResult, onActiveFileChange, onNotifyAgent: rawOnNotifyAgent,
-    navigateRequest, onNavigateComplete, readonly,
+    navigateRequest, onNavigateComplete, readonly, theme,
   } = props;
   // Readonly mode: force view, suppress selection and agent notifications
   const previewMode = readonly ? "view" : rawPreviewMode;
   const onSelect = readonly ? (() => {}) : rawOnSelect;
   const onNotifyAgent = readonly ? undefined : rawOnNotifyAgent;
+  const colors = useMemo(() => getColors(theme), [theme]);
 
   const annotations = useStore((s) => s.annotations);
   const addAnnotation = useStore((s) => s.addAnnotation);
@@ -1176,8 +1266,8 @@ function CanvasInner(props: ViewerPreviewProps) {
   // Convert manifest → React Flow nodes
   const computedNodes = useMemo(() => {
     if (!manifest) return [];
-    return manifestToNodes(manifest, activeContentSet, imageVersion, annotatedFiles, previewMode);
-  }, [manifest, activeContentSet, imageVersion, annotatedFiles, previewMode]);
+    return manifestToNodes(manifest, activeContentSet, imageVersion, annotatedFiles, previewMode, colors);
+  }, [manifest, activeContentSet, imageVersion, annotatedFiles, previewMode, colors]);
 
   // Sync computed nodes to React Flow state, applying multi-select
   useEffect(() => {
@@ -1478,21 +1568,24 @@ function CanvasInner(props: ViewerPreviewProps) {
 
   if (!manifest) {
     return (
-      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: COLORS.bg }}>
-        <CanvasToolbar previewMode={previewMode} onSetPreviewMode={setPreviewMode} imageCount={0} rowCount={0} readonly={readonly} />
-        <EmptyCanvas />
+      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: colors.bg }}>
+        <CanvasToolbar previewMode={previewMode} onSetPreviewMode={setPreviewMode} imageCount={0} rowCount={0} readonly={readonly} colors={colors} />
+        <EmptyCanvas colors={colors} />
       </div>
     );
   }
 
   if (manifest.rows.length === 0) {
     return (
-      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: COLORS.bg }}>
-        <CanvasToolbar previewMode={previewMode} onSetPreviewMode={setPreviewMode} imageCount={0} rowCount={0} readonly={readonly} />
-        <EmptyCanvas />
+      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: colors.bg }}>
+        <CanvasToolbar previewMode={previewMode} onSetPreviewMode={setPreviewMode} imageCount={0} rowCount={0} readonly={readonly} colors={colors} />
+        <EmptyCanvas colors={colors} />
       </div>
     );
   }
+
+  const rfOverrides = theme === "light" ? RF_LIGHT_OVERRIDES : RF_DARK_OVERRIDES;
+  const backgroundDotColor = theme === "light" ? "rgba(80,60,40,0.12)" : "rgba(255,255,255,0.05)";
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative", display: "flex", flexDirection: "column" }}>
@@ -1503,8 +1596,9 @@ function CanvasInner(props: ViewerPreviewProps) {
         rowCount={manifest.rows.length}
         selectionCount={previewMode === "select" ? selectedFiles.size : undefined}
         readonly={readonly}
+        colors={colors}
       />
-      <style dangerouslySetInnerHTML={{ __html: RF_DARK_OVERRIDES }} />
+      <style dangerouslySetInnerHTML={{ __html: rfOverrides }} />
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
         {/* Canvas */}
         <div style={{ flex: 1, position: "relative" }}>
@@ -1526,12 +1620,12 @@ function CanvasInner(props: ViewerPreviewProps) {
             zoomOnScroll
             selectionOnDrag={false}
             proOptions={{ hideAttribution: true }}
-            style={{ background: COLORS.bg }}
+            style={{ background: colors.bg }}
           >
-            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="rgba(255,255,255,0.05)" />
+            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color={backgroundDotColor} />
             <Controls showInteractive={false} />
             <MiniMap
-              nodeColor={(n) => n.type === "imageCard" ? COLORS.primary : "transparent"}
+              nodeColor={(n) => n.type === "imageCard" ? colors.primary : "transparent"}
               pannable
               zoomable
             />
@@ -1559,6 +1653,7 @@ function CanvasInner(props: ViewerPreviewProps) {
           onCopyPrompt={(item) => copyPrompt(item)}
           onDownload={(item) => downloadImage(item)}
           onViewDetail={(item) => setDetailItem(item)}
+          colors={colors}
         />
       </div>
 
@@ -1569,6 +1664,7 @@ function CanvasInner(props: ViewerPreviewProps) {
           label={pendingAnnotation.item.title}
           onConfirm={confirmAnnotation}
           onCancel={() => setPendingAnnotation(null)}
+          colors={colors}
         />
       )}
 
@@ -1579,10 +1675,11 @@ function CanvasInner(props: ViewerPreviewProps) {
           onClose={() => setDetailItem(null)}
           onCopyPrompt={() => copyPrompt(detailItem)}
           onDownload={() => downloadImage(detailItem)}
+          colors={colors}
         />
       )}
 
-      <ToastContainer toasts={toasts} />
+      <ToastContainer toasts={toasts} colors={colors} />
     </div>
   );
 }

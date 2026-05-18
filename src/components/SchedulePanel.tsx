@@ -6,19 +6,19 @@ import { sendUserMessage } from "../ws.js";
 function JobRow({ job, onDelete }: { job: CronJob; onDelete: () => void }) {
   const { t } = useTranslation("schedule-panel");
   return (
-    <div className="flex items-start gap-3 px-3 py-3 hover:bg-neutral-800/30 group">
+    <div className="flex items-start gap-3 px-3 py-3 hover:bg-cc-hover group">
       <div className="flex-1 min-w-0">
-        <div className="text-neutral-200 text-xs leading-relaxed break-words">
+        <div className="text-cc-fg text-xs leading-relaxed break-words">
           {job.prompt}
         </div>
         <div className="flex items-center gap-2 mt-1.5">
-          <span className="text-[10px] font-mono text-neutral-500">{job.humanSchedule || job.cron}</span>
+          <span className="text-[10px] font-mono text-cc-muted">{job.humanSchedule || job.cron}</span>
           {job.recurring ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-400 font-medium">
               {t("recurring")}
             </span>
           ) : (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-700/50 text-neutral-400 font-medium">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-cc-user-bubble/50 text-cc-muted font-medium">
               {t("one_shot")}
             </span>
           )}
@@ -78,15 +78,15 @@ export default function SchedulePanel() {
   return (
     <div className="flex flex-col h-full overflow-auto">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800">
-        <span className="text-xs font-medium text-neutral-400">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-cc-border">
+        <span className="text-xs font-medium text-cc-muted">
           {t("scheduled_jobs", { count: cronJobs.length })}
         </span>
         <button
           onClick={handleRefresh}
           disabled={turnInProgress || needsUpgrade || !scheduleAvailable}
-          className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400
-            hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="text-[10px] px-1.5 py-0.5 rounded bg-cc-user-bubble text-cc-muted
+            hover:text-cc-fg disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {t("refresh")}
         </button>
@@ -94,11 +94,11 @@ export default function SchedulePanel() {
 
       {/* Version warning */}
       {!scheduleAvailable && (
-        <div className="mx-3 mt-3 px-3 py-2.5 rounded-lg bg-neutral-800/40 border border-neutral-700/80">
-          <div className="text-xs font-medium text-neutral-300 mb-1">
+        <div className="mx-3 mt-3 px-3 py-2.5 rounded-lg bg-cc-card border border-cc-border">
+          <div className="text-xs font-medium text-cc-fg/90 mb-1">
             {t("backend_specific_title")}
           </div>
-          <div className="text-[11px] text-neutral-400 leading-relaxed">
+          <div className="text-[11px] text-cc-muted leading-relaxed">
             {t("backend_specific_body")}
           </div>
         </div>
@@ -112,12 +112,12 @@ export default function SchedulePanel() {
             </svg>
             {t("upgrade_required")}
           </div>
-          <div className="text-[11px] text-neutral-400 leading-relaxed">
+          <div className="text-[11px] text-cc-muted leading-relaxed">
             <Trans
               i18nKey="upgrade_body"
               ns="schedule-panel"
               values={{ minVersion: MIN_CC_VERSION, currentVersion: agentVersion }}
-              components={{ 1: <span className="font-mono text-neutral-300" /> }}
+              components={{ 1: <span className="font-mono text-cc-fg/90" /> }}
             />
           </div>
         </div>
@@ -126,17 +126,17 @@ export default function SchedulePanel() {
       {/* Job list */}
       {cronJobs.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-neutral-800/60 flex items-center justify-center">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5 text-neutral-500">
+          <div className="w-10 h-10 rounded-full bg-cc-card flex items-center justify-center">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5 text-cc-muted">
               <circle cx="12" cy="12" r="10" />
               <path d="M12 6v6l4 2" />
             </svg>
           </div>
-          <div className="text-neutral-500 text-xs leading-relaxed max-w-[220px]">
+          <div className="text-cc-muted text-xs leading-relaxed max-w-[220px]">
             <Trans
               i18nKey="empty_hint"
               ns="schedule-panel"
-              components={{ 1: <span className="font-mono text-neutral-400" /> }}
+              components={{ 1: <span className="font-mono text-cc-muted" /> }}
             />
           </div>
         </div>

@@ -668,9 +668,7 @@ export default function DocPreview({
       />
       {previewMode === "edit" ? (
         <div
-          className={`flex-1 overflow-y-auto transition-colors duration-200 ${
-            isDark ? "bg-[#1a1a18]" : "bg-white"
-          }`}
+          className="flex-1 overflow-y-auto transition-colors duration-200 bg-cc-bg"
         >
           {activeFiles.map((file) => (
             <MarkdownEditor
@@ -687,14 +685,12 @@ export default function DocPreview({
           ref={containerRef}
           onClick={handleClick}
           onMouseUp={handleMouseUp}
-          className={`flex-1 overflow-y-auto p-6 transition-colors duration-200 relative ${
-            isDark ? "bg-[#1a1a18] text-[#e8e6df]" : "bg-white text-[#1f1f1e]"
-          } ${isSelectMode ? "select-mode" : ""}`}
+          className={`flex-1 overflow-y-auto p-6 transition-colors duration-200 relative bg-cc-bg text-cc-fg ${isSelectMode ? "select-mode" : ""}`}
         >
           {activeFiles.map((file) => (
             <div key={file.path} className="mb-8" data-file={file.path}>
               {!activeFile && files.length > 1 && (
-                <div className={`text-xs mb-2 font-mono ${isDark ? "text-neutral-500" : "text-neutral-400"}`}>
+                <div className="text-xs mb-2 font-mono text-cc-muted">
                   {file.path}
                 </div>
               )}
@@ -859,17 +855,15 @@ function MarkdownEditor({
 
   return (
     <div className="border-b border-cc-border/30 last:border-b-0">
-      <div className={`flex items-center justify-between px-4 py-1.5 ${isDark ? "bg-cc-card/50" : "bg-neutral-50"}`}>
-        <span className={`text-xs font-mono ${isDark ? "text-neutral-500" : "text-neutral-400"}`}>
+      <div className="flex items-center justify-between px-4 py-1.5 bg-cc-card/50">
+        <span className="text-xs font-mono text-cc-muted">
           {file.path}
         </span>
         <span className={`text-[10px] ${saving ? "text-cc-warning" : "text-cc-muted/50"}`}>
           {saving ? "saving..." : "auto-save"}
         </span>
       </div>
-      <div className={`flex items-center gap-0.5 px-3 py-1 border-b ${
-        isDark ? "border-cc-border/30 bg-cc-card/30" : "border-neutral-200 bg-neutral-50/50"
-      }`}>
+      <div className="flex items-center gap-0.5 px-3 py-1 border-b border-cc-border/30 bg-cc-card/30">
         <EditorButton title="Bold (⌘B)" onClick={() => insertMarkdown("**", "**")}>
           <BoldIcon />
         </EditorButton>
@@ -922,11 +916,7 @@ function MarkdownEditor({
         defaultValue={file.content}
         onInput={handleInput}
         spellCheck={false}
-        className={`w-full min-h-[300px] p-4 text-sm font-mono-code resize-y focus:outline-none ${
-          isDark
-            ? "bg-[#1a1a18] text-[#e8e6df] caret-cc-primary"
-            : "bg-white text-[#1f1f1e] caret-blue-500"
-        }`}
+        className="w-full min-h-[300px] p-4 text-sm font-mono-code resize-y focus:outline-none bg-cc-bg text-cc-fg caret-cc-primary"
         style={{ height: `${Math.max(300, lineCount * 22 + 40)}px` }}
       />
     </div>
@@ -948,7 +938,7 @@ function EditorButton({ title, onClick, children }: { title: string; onClick: ()
 }
 
 function ToolbarDivider({ isDark }: { isDark: boolean }) {
-  return <div className={`w-px h-4 mx-0.5 ${isDark ? "bg-cc-border" : "bg-neutral-300"}`} />;
+  return <div className="w-px h-4 mx-0.5 bg-cc-border" />;
 }
 
 // ── Toolbar ──────────────────────────────────────────────────────────────────
@@ -1207,11 +1197,11 @@ function AnnotationPopover({
   return (
     <div
       style={style}
-      className="bg-neutral-800 border border-neutral-600 rounded-lg shadow-xl p-3 text-sm"
+      className="bg-cc-card border border-cc-border rounded-lg shadow-xl p-3 text-sm"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center gap-2 mb-2 min-w-0">
-        <span className="text-neutral-300 truncate text-xs">{label || "Element"}</span>
+        <span className="text-cc-fg truncate text-xs">{label || "Element"}</span>
       </div>
       <input
         ref={inputRef}
@@ -1220,12 +1210,12 @@ function AnnotationPopover({
         onChange={(e) => setComment(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Add comment (optional)..."
-        className="w-full bg-neutral-900 border border-neutral-600 rounded px-2 py-1.5 text-sm text-white placeholder-neutral-500 outline-none focus:border-blue-500"
+        className="w-full bg-cc-bg border border-cc-border rounded px-2 py-1.5 text-sm text-cc-fg placeholder-cc-muted outline-none focus:border-cc-primary"
       />
       <div className="flex justify-end gap-2 mt-2">
         <button
           onClick={onCancel}
-          className="px-2.5 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+          className="px-2.5 py-1 text-xs text-cc-muted hover:text-cc-fg rounded hover:bg-cc-hover transition-colors"
         >
           Cancel
         </button>

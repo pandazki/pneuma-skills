@@ -116,6 +116,9 @@ export function handlePermissionResponse(
   // plain user message; the agent reads it as a natural-language follow-up
   // after seeing the auto-deny.
   if (msg.request_id.startsWith("synthetic:") && pending) {
+    // Picker resolved — close the post-auto-deny suppression window so
+    // the model's reply to the follow-up answer flows through normally.
+    session.suppressingPostAskq = false;
     const ndjson = buildAskUserQuestionFollowupMessage(session, pending, msg);
     sendToCLI(session, ndjson);
     return;
