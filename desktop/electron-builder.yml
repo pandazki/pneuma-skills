@@ -76,6 +76,13 @@ extraResources:
   # so the directory must sit at pneuma/vendor next to bin/, server/, etc.
   - from: "../vendor"
     to: "pneuma/vendor"
+  # Slash-command + future agent-command templates. `core/agent-command-installer.ts`
+  # resolves `../templates/agent-commands/handoff-pneuma.md` relative to its own
+  # location, so the dir must sit at pneuma/templates next to core/. Without
+  # this the launcher's /api/agent-commands/:backend/install endpoint throws
+  # ENOENT and the first-run banner's Install click silently fails.
+  - from: "../templates"
+    to: "pneuma/templates"
   # Runtime node_modules for the Bun server (production deps only)
   # Built by: node scripts/prepare-deps.mjs
   - from: "pneuma-node-modules"

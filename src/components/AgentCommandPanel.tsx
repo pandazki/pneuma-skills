@@ -64,8 +64,9 @@ interface UseAgentCommands {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
-  install: (backend: AgentCommandBackend, force?: boolean) => Promise<void>;
-  uninstall: (backend: AgentCommandBackend, force?: boolean) => Promise<void>;
+  /** Resolves true on success, false on failure — banner uses this to skip dismissing the prompt on a server error. */
+  install: (backend: AgentCommandBackend, force?: boolean) => Promise<boolean>;
+  uninstall: (backend: AgentCommandBackend, force?: boolean) => Promise<boolean>;
   dismissPrompt: () => Promise<void>;
   setAutoUpdate: (enabled: boolean) => Promise<void>;
 }
@@ -107,7 +108,7 @@ function useAgentCommands(): UseAgentCommands {
       const data = (await res.json()) as { state?: Partial<AgentCommandsState>; error?: string } & Record<string, unknown>;
       if (!res.ok) {
         setError(data.error || `install failed (HTTP ${res.status})`);
-        return;
+        return false;
       }
       // Server echoes the refreshed state — apply directly to avoid a round-trip.
       if (data.state && state) {
@@ -116,6 +117,7 @@ function useAgentCommands(): UseAgentCommands {
         await refresh();
       }
       setError(null);
+      return true;
     },
     [refresh, state],
   );
@@ -130,13 +132,15 @@ function useAgentCommands(): UseAgentCommands {
       const data = (await res.json()) as { state?: Partial<AgentCommandsState>; error?: string };
       if (!res.ok) {
         setError(data.error || `uninstall failed (HTTP ${res.status})`);
-        return;
+        return false;
       }
       if (data.state && state) {
         setState({ ...state, ...data.state } as AgentCommandsState);
       } else {
         await refresh();
       }
+      setError(null);
+      return true;
       setError(null);
     },
     [refresh, state],
@@ -189,7 +193,7 @@ function useCliStatus(): { status: CliStatus | null; refresh: () => Promise<void
 // ── Banner (first-run) ─────────────────────────────────────────────────────
 
 export function AgentCommandBanner({ className }: { className?: string }) {
-  const { state, install, dismissPrompt } = useAgentCommands();
+  const { state, error, install, dismissPrompt } = useAgentCommands();
   const [selected, setSelected] = useState<Record<AgentCommandBackend, boolean>>({
     "claude-code": true,
     codex: true,
@@ -210,10 +214,18 @@ export function AgentCommandBanner({ className }: { className?: string }) {
   const handleInstall = async () => {
     setBusy(true);
     try {
+      // Track per-backend success so we can keep the banner up if any
+      // backend failed — otherwise a server error (e.g. missing template
+      // file in a broken bundle) would silently dismiss the prompt and
+      // leave the user with no way to retry from the UI.
+      let allOk = true;
       for (const backend of Object.keys(selected) as AgentCommandBackend[]) {
-        if (selected[backend]) await install(backend);
+        if (selected[backend]) {
+          const ok = await install(backend);
+          if (!ok) allOk = false;
+        }
       }
-      await dismissPrompt();
+      if (allOk) await dismissPrompt();
     } finally {
       setBusy(false);
     }
@@ -255,6 +267,12 @@ export function AgentCommandBanner({ className }: { className?: string }) {
               </label>
             ))}
           </div>
+
+          {error && (
+            <div className="mb-3 px-3 py-2 rounded-lg border border-red-500/40 bg-red-500/5 text-xs text-red-400">
+              {error}
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <button

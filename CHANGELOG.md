@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.10.2] - 2026-05-19
+
+### Fixed — first-run "Install" banner silently failed on the Electron desktop build
+
+- **`templates/` directory was missing from the desktop bundle.** `core/agent-command-installer.ts::loadBundledTemplate` resolves `../templates/agent-commands/handoff-pneuma.md` relative to its own location. The launcher's per-session and bundled-pneuma file tree (`/Applications/Pneuma Skills.app/Contents/Resources/pneuma/`) carries `bin/`, `core/`, `server/`, etc. but `desktop/electron-builder.yml`'s `extraResources` list never copied `templates/`. Result: every `POST /api/agent-commands/:backend/install` from inside the Electron app threw `ENOENT` and returned 500. Added the missing copy clause; the npm package was never affected (it bundles the whole repo).
+
+- **`<AgentCommandBanner />` dismissed the prompt even when install failed.** The banner's `handleInstall` called `dismissPrompt()` unconditionally after iterating backends. Combined with the bundle bug above, one click left users in a stuck state — `promptDismissed: true`, `installed: {}`, no banner, no way to retry without manually editing `~/.pneuma/agent-commands.json`. The hook now returns a per-call success boolean and the banner only dismisses when every selected backend installed cleanly; failures render a red inline error and keep the banner up so retry is one click away.
+
 ## [3.10.1] - 2026-05-19
 
 ### Fixed — `pneuma://handoff` / `pneuma handoff-from-external` opened a black window
