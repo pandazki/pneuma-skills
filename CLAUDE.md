@@ -471,8 +471,9 @@ CI (`release.yml`) handles tagging, GitHub Release, and npm publish on push to `
 
 ### Version Bump Checklist (same commit)
 1. `package.json` — `"version"`
-2. `CLAUDE.md` — `**Version:**` line
-3. `CHANGELOG.md` — new section
+2. `desktop/package.json` — `"version"`, **must equal** `package.json`'s value. `electron-updater` reads this when comparing the running app to the latest release; pre-3.10.0 it drifted (desktop sat at 2.x while npm advanced), so users on those builds never saw the update prompt. From 3.10.3 onward the two are unified — bumping only one is a bug.
+3. `CLAUDE.md` — `**Version:**` line
+4. `CHANGELOG.md` — new section
 
 Then `git push origin main` (no `--tags`). CI creates tag, release, publishes.
 
