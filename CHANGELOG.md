@@ -2,15 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
-## [3.10.8] - 2026-05-19
+## [3.10.9] - 2026-05-19
 
-### Fixed — `/handoff-pneuma` opened two windows; the Electron one was black
+### Fixed — Quick-session handoff actually reached the agent (path mismatch)
 
-- **Two windows.** `runHandoffFromExternal` spawned `pneuma <mode>` without `--no-open`, so the spawned child popped a system-browser tab pointing at the session URL while the Electron URL-scheme handler simultaneously opened a mode window for the same URL. Every consumer of this CLI (Electron + terminal CLI) already surfaces the URL on its own — the child's default browser-open behaviour was always redundant. Now spawned with `--no-open`.
+Even after 3.10.5 dropped the "project-only" guards on `readInboundHandoff` and the handoff-section injection, the spawned Quick session still booted with a fresh `<pneuma:env reason="opened">` and no acknowledgement of the inbound. Filesystem trace explains why:
 
-- **Black Electron window.** Electron's `handleHandoffUrl` immediately called `createModeWindow(url)` after `runHandoffFromExternal` returned, but the spawned bun child hadn't bound its port yet. The window's first `loadURL` landed on `chrome-error://chromewebdata` (connection refused); once the server came up, Chromium refused the cross-origin redirect from `chrome-error://` to `http://localhost:<port>` and the window stayed black. Console showed `Unsafe attempt to load URL ... from frame with URL chrome-error://chromewebdata`.
+- `runHandoffFromExternal` was writing the inbound at `<workspace>/.pneuma/.pneuma/inbound-handoff.json` (double `.pneuma/`)
+- `readInboundHandoff(sessionDir)` was reading from `<workspace>/.pneuma/inbound-handoff.json` (single `.pneuma/`)
 
-  Fix: `runHandoffFromExternal` now polls `http://127.0.0.1:<port>/` after spawn, returning only once any HTTP response comes back (up to ~12s — Bun cold-start is 1–4s on typical hardware). JSON output gains a `ready: true|false` field; non-JSON mode says "Pneuma ready in" vs "Pneuma starting in". Electron's mode window now gets a definitely-bound URL, so the first `loadURL` succeeds and chrome-error doesn't intermediate.
+Root cause: I assumed `sessionDir` for Quick was `<workspace>/.pneuma`, which would have made the double-nest mirror Project's layout. It isn't. `resolveSessionPaths` (and the no-op `workspace = sessionDir` reassignment at `bin/pneuma.ts:1961`) make Quick's `sessionDir == workspace` — i.e. the workspace root itself. So `<sessionDir>/.pneuma/` *is* the right and only `.pneuma/`; the second one I was creating was orphaned, and the file never got read.
+
+Fixed by collapsing the CLI's Quick path to `<cwd>/.pneuma/inbound-handoff.json` (matching what the reader actually expects). Added a regression test that writes the inbound via `runHandoffFromExternal` and reads it back via `readInboundHandoff` for both Quick + Project, asserting the payload survives. The skill-installer then injects the `<!-- pneuma:handoff -->` block into the Quick session's CLAUDE.md (which lives at `<workspace>/CLAUDE.md`, not under `.pneuma/`), and the agent's first turn finally sees the intent.
+
+### Also bundled (3.10.8, never shipped — cancelled mid-CI for this fix)
+
+- `pneuma <mode>` spawned by `runHandoffFromExternal` now passes `--no-open` so the user doesn't get two windows (the spawned child's stray browser tab on top of our Electron mode window).
+- CLI polls `http://127.0.0.1:<port>/` after spawn for up to ~12 s before returning the URL, so Electron's `createModeWindow` doesn't load on a not-yet-bound port and end up on a permanently-black `chrome-error://chromewebdata` frame.
 
 ## [3.10.7] - 2026-05-19
 

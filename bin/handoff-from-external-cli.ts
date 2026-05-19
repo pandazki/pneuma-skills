@@ -324,20 +324,30 @@ export async function runHandoffFromExternal(
     }
   }
 
-  // 4. Mint session id + compute sessionDir.
+  // 4. Mint session id + compute sessionDir matching what the launcher
+  //    boot path uses for each session kind (see `bin/pneuma.ts` ≈ line
+  //    1944 where `sessionDir = startup.paths.sessionDir` is resolved):
+  //      - Project: `<projectRoot>/.pneuma/sessions/<id>/`
+  //      - Quick:   `<workspace>/`  (i.e. workspace itself — NOT
+  //                                  `<workspace>/.pneuma`. See the
+  //                                  no-op assignment `workspace = sessionDir`
+  //                                  at line 1961.)
   const sessionId = randomUUID();
   const sessionDir = wantProject
     ? join(cwd, ".pneuma", "sessions", sessionId)
-    : join(cwd, ".pneuma");
+    : cwd;
 
-  // 5. Stage inbound-handoff.json. Path matches what `readInboundHandoff`
+  // 5. Stage inbound-handoff.json at the exact path `readInboundHandoff`
   //    expects: `<sessionDir>/.pneuma/inbound-handoff.json`.
   //
   //    Project: `<cwd>/.pneuma/sessions/<id>/.pneuma/inbound-handoff.json`
-  //    Quick:   `<cwd>/.pneuma/.pneuma/inbound-handoff.json`  ← double-nest is
-  //    intentional (mirrors the project layout so the same skill-installer
-  //    code path picks it up; a future tidy-up can collapse to a single
-  //    `.pneuma/`).
+  //    Quick:   `<cwd>/.pneuma/inbound-handoff.json`
+  //
+  //    Pre-3.10.9 this path was double-nested (`<cwd>/.pneuma/.pneuma/…`)
+  //    for Quick because we mistakenly thought `sessionDir` for Quick
+  //    was `<workspace>/.pneuma`. The mismatch caused `readInboundHandoff`
+  //    to return null and the spawned Quick session saw a fresh
+  //    `<pneuma:env reason="opened">` instead of the staged handoff.
   const inboundFile = join(sessionDir, ".pneuma", "inbound-handoff.json");
   const payload = buildPayload({
     mode: parsed.mode,

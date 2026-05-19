@@ -155,7 +155,7 @@ describe("runHandoffFromExternal — dry-run staging", () => {
     expect(inbound.target_session).toBe(result.sessionId);
   });
 
-  test("--quick: no project.json, inbound under workspace .pneuma", async () => {
+  test("--quick: no project.json, inbound at <workspace>/.pneuma/ (single nest)", async () => {
     const cap = makeIo();
     const code = await runHandoffFromExternal(
       [
@@ -169,7 +169,53 @@ describe("runHandoffFromExternal — dry-run staging", () => {
     expect(existsSync(join(tmpCwd, ".pneuma", "project.json"))).toBe(false);
     const result = JSON.parse(cap.stdout.join("\n"));
     expect(result.project).toBe(false);
-    expect(result.inboundFile).toBe(join(tmpCwd, ".pneuma", ".pneuma", "inbound-handoff.json"));
+    // Single nest — must match what readInboundHandoff(<sessionDir>) expects
+    // for Quick mode, which is `<workspace>/.pneuma/inbound-handoff.json`
+    // (Quick's sessionDir == workspace, see `resolveSessionPaths`).
+    expect(result.inboundFile).toBe(join(tmpCwd, ".pneuma", "inbound-handoff.json"));
+  });
+
+  test("inbound path round-trips through readInboundHandoff for both kinds (regression for 3.10.8 double-nest bug)", async () => {
+    const { readInboundHandoff } = await import("../../server/skill-installer.js");
+
+    // --- Quick ---
+    const quickCwd = mkdtempSync(join(tmpdir(), "pneuma-quick-rt-"));
+    try {
+      const cap = makeIo();
+      const code = await runHandoffFromExternal(
+        ["--intent", "ping", "--mode", "webcraft", "--cwd", quickCwd, "--quick", "--dry-run", "--json"],
+        { projectRoot: PROJECT_ROOT },
+        cap.io,
+      );
+      expect(code).toBe(0);
+      // For Quick: `sessionDir == workspace` (see `bin/pneuma.ts` line 1944
+      // `const sessionDir = startup.paths.sessionDir;` + comment at 1959).
+      // readInboundHandoff(sessionDir) → reads `<workspace>/.pneuma/inbound-handoff.json`.
+      const inbound = readInboundHandoff(quickCwd);
+      expect(inbound).not.toBeNull();
+      expect(inbound?.intent).toBe("ping");
+    } finally {
+      rmSync(quickCwd, { recursive: true, force: true });
+    }
+
+    // --- Project ---
+    const projCwd = mkdtempSync(join(tmpdir(), "pneuma-proj-rt-"));
+    try {
+      const cap = makeIo();
+      const code = await runHandoffFromExternal(
+        ["--intent", "pong", "--mode", "webcraft", "--cwd", projCwd, "--init-project", "--dry-run", "--json"],
+        { projectRoot: PROJECT_ROOT },
+        cap.io,
+      );
+      expect(code).toBe(0);
+      const result = JSON.parse(cap.stdout.join("\n"));
+      const sessionDir = join(projCwd, ".pneuma", "sessions", result.sessionId);
+      const inbound = readInboundHandoff(sessionDir);
+      expect(inbound).not.toBeNull();
+      expect(inbound?.intent).toBe("pong");
+    } finally {
+      rmSync(projCwd, { recursive: true, force: true });
+    }
   });
 
   test("re-init on an existing project does not clobber existing manifest", async () => {
