@@ -314,7 +314,12 @@ export async function runHandoffFromExternal(
     cmd.push("--workspace", cwd);
   }
 
-  const url = `http://localhost:${port}`;
+  // The session frontend keys off `?session=<id>&mode=<mode>` — without
+  // those params the launcher mounts in a no-session state and renders
+  // nothing (black screen). Mirrors the URL builder in the normal
+  // `pneuma <mode>` boot path (`bin/pneuma.ts`'s `browserUrl`).
+  const url =
+    `http://localhost:${port}?session=${sessionId}&mode=${encodeURIComponent(parsed.mode)}`;
   if (parsed.dryRun) {
     if (parsed.json) {
       io.stdout(

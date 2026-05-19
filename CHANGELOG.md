@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.10.1] - 2026-05-19
+
+### Fixed — `pneuma://handoff` / `pneuma handoff-from-external` opened a black window
+
+- **Missing session + mode query params in the spawned-session URL.** `runHandoffFromExternal` was returning a bare `http://localhost:<port>` after spawning the per-session pneuma server. The session backend bound and rendered correctly (project.json, history.json, viewer-state.json all written; the agent even produced first-turn output in `gazette/index.html`), but the frontend mounts only when it sees `?session=<id>&mode=<name>` in the URL — without those params the launcher renders an empty state, which the Electron mode window surfaced as a fully black window.
+
+  Fixed by mirroring the URL builder in the regular `pneuma <mode>` boot path: the CLI and `/api/handoffs/external` now return `http://localhost:<port>?session=<sessionId>&mode=<mode>`. The Electron `pneuma://handoff` handler picks up the corrected URL via `createModeWindow`, so no Electron-side change was needed.
+
 ## [3.10.0] - 2026-05-19
 
 ### Added — `/handoff-pneuma` slash command for external code agents
