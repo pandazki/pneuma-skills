@@ -806,13 +806,62 @@ async function main() {
     return;
   }
 
+  const rawArgs = process.argv.slice(2);
+
+  // Machine-readable subcommands run BEFORE `p.intro` so their stdout
+  // contains nothing but the payload (JSON or status lines) — agents
+  // shell-out + `JSON.parse` the result, and a clack banner on stdout
+  // would break that. These commands also skip the network update probe
+  // because they're meant to be fast and scriptable.
+  if (rawArgs[0] === "agent-command") {
+    const { runAgentCommandCli } = await import("./agent-command-cli.js");
+    const exitCode = await runAgentCommandCli(
+      rawArgs.slice(1),
+      { pneumaVersion: pkg.version as string },
+      {
+        stdout: (line) => console.log(line),
+        stderr: (line) => console.error(line),
+      },
+    );
+    process.exit(exitCode);
+  }
+  if (rawArgs[0] === "handoff-from-external") {
+    const { runHandoffFromExternal } = await import("./handoff-from-external-cli.js");
+    const exitCode = await runHandoffFromExternal(
+      rawArgs.slice(1),
+      { projectRoot: PROJECT_ROOT },
+      {
+        stdout: (line) => console.log(line),
+        stderr: (line) => console.error(line),
+      },
+    );
+    process.exit(exitCode);
+  }
+  if (rawArgs[0] === "mode" && rawArgs[1] === "list" && rawArgs.includes("--local")) {
+    const asJson = rawArgs.includes("--json");
+    const { enumerateLocalModes } = await import("../core/local-modes.js");
+    const entries = enumerateLocalModes({ projectRoot: PROJECT_ROOT });
+    if (asJson) {
+      console.log(JSON.stringify(entries, null, 2));
+    } else if (entries.length === 0) {
+      console.log(t("pneuma.mode.list.none"));
+    } else {
+      console.log(t("pneuma.mode.list.header", { count: entries.length }));
+      for (const e of entries) {
+        const tag = e.source === "library" && e.library
+          ? ` [${e.source}: ${e.library.name}]`
+          : ` [${e.source}]`;
+        console.log(`  ${e.displayName} (${e.name})${tag}`);
+        if (e.description) console.log(`    ${e.description}`);
+      }
+    }
+    return;
+  }
+
   p.intro(t("pneuma.intro", { version: pkg.version }));
 
   checkBunVersion();
   await checkForUpdate(pkg.version);
-
-  // History subcommand — export / open
-  const rawArgs = process.argv.slice(2);
 
   // Handoff subcommand — single-shot, runs entirely without spinning up the
   // local server; it just POSTs to the Pneuma server identified by
@@ -1023,6 +1072,9 @@ async function main() {
       return;
     }
     if (rawArgs[1] === "list") {
+      // `--local` is handled in the pre-intro dispatch above. The remote
+      // R2 listing stays on the legacy code path so existing humans-only
+      // usage prints unchanged.
       const { getCredentials, listModes } = await import("../snapshot/r2.js");
       const creds = await getCredentials();
       const modes = await listModes(creds);

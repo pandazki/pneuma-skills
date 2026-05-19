@@ -62,6 +62,15 @@ pneuma snapshot push|pull                        # R2 workspace snapshot
 pneuma history export [--output FILE]            # Session as .tar.gz
 pneuma history share [--title NAME]              # Export + upload to R2
 pneuma history open <path-or-url>                # Prepare replay package
+
+# Agent command distribution (3.10.0)
+pneuma agent-command status [--backend claude-code|codex|all] [--json]
+pneuma agent-command install [--backend claude-code|codex|all] [--force] [--json]
+pneuma agent-command uninstall [--backend claude-code|codex|all] [--force] [--json]
+pneuma agent-command update [--backend claude-code|codex|all] [--json]
+pneuma mode list --local [--json]                # builtins + ~/.pneuma/modes + activated library modes
+pneuma handoff-from-external --intent <text> --mode <name> [--cwd <path>] \
+    [--init-project|--quick] [--source-agent claude-code|codex] [--json] [--dry-run]
 ```
 
 ### CLI Flags
@@ -122,6 +131,7 @@ pneuma-skills/
 │   ├── index.ts               # Hono server + launcher endpoints + WS routing
 │   ├── routes/                # Export routes, deploy UI
 │   ├── library-routes.ts      # /api/libraries/* + /api/github/status (launcher-scope)
+│   ├── agent-command-routes.ts # /api/agent-commands/* + /api/handoffs/external + /api/cli/* (launcher-scope)
 │   ├── ws-bridge*.ts          # WS bridge to browsers (JSON); per-backend BridgeBackends in ws-bridge-{kimi,codex}.ts
 │   ├── ws-bridge-backend.ts   # BridgeBackend interface (attach / routeBrowserMessage / injectUserMessage / disconnect)
 │   ├── skill-installer.ts     # Skill copy + template engine + instructions injection
@@ -376,13 +386,59 @@ Source agent invokes `pneuma handoff --json '{...}'` (CLI wired via `PNEUMA_SERV
 
 See `docs/design/2026-04-27-pneuma-projects-design.md` for full design and `docs/reference/viewer-agent-protocol.md` for env-var + frontmatter tables.
 
+## Agent Command Distribution (3.10.0)
+
+`/handoff-pneuma` is a user-level slash command Pneuma ships into other code agents (Claude Code, Codex) so they can hand work off to Pneuma without the user ever opening the launcher. The agent in CC/Codex runs `/handoff-pneuma "make a finance dashboard"`, picks a mode, and Pneuma spins up a session in the current shell directory with the intent already staged.
+
+### Install paths
+
+| Backend | File installed | Slash invocation |
+|---|---|---|
+| Claude Code | `~/.claude/commands/handoff-pneuma.md` | `/handoff-pneuma <intent>` |
+| Codex | `~/.codex/prompts/handoff-pneuma.md` | `/handoff-pneuma <intent>` (Codex CLI ≥ slash-commands era) |
+
+Source template: `templates/agent-commands/handoff-pneuma.md`. The marker comment `<!-- pneuma:agent-command version="X" backend="..." -->` (under the YAML frontmatter — line 1 stays as `---` so frontmatter parsers don't break) identifies files we own; absence of the marker is treated as user-authored and never overwritten without `--force`. Per-install state in `~/.pneuma/agent-commands.json` (`{ version, promptDismissed, autoUpdate, installed: { [backend]: { version, path, installedAt } } }`).
+
+### Two paths from agent → Pneuma
+
+The slash template makes the agent try in order:
+
+1. **CLI path** — `command -v pneuma` succeeds → `pneuma handoff-from-external --intent ... --mode ... [--init-project] --source-agent {{sourceAgent}}`. The CLI validates the mode, optionally writes `<cwd>/.pneuma/project.json`, mints a session id, stages `inbound-handoff.json` under `<sessionDir>/.pneuma/`, picks a free port via `node:net listen 0`, spawns `pneuma <mode> --no-prompt --project <cwd> --session-id <id> --port <p>` detached, and prints the URL.
+2. **URL-scheme path** — CLI missing, macOS desktop app installed → agent emits `open "pneuma://handoff?intent=...&mode=...&cwd=...&init-project=0|1&source-agent=..."`. Electron's `handlePneumaUrl` (`desktop/src/main/index.ts`) handles the `handoff` case: it POSTs the same body to `<launcherUrl>/api/handoffs/external` and opens a new mode window pointing at the spawned session.
+
+Both paths terminate in the same launcher Bun route, which wraps `runHandoffFromExternal` (`bin/handoff-from-external-cli.ts`) — single source of truth for staging + spawn.
+
+### Inbound payload
+
+Same schema as Smart Handoff (`InboundHandoffPayload` in `server/skill-installer.ts`). External handoffs set `source_session_id = "external:<sourceAgent>"`, `source_mode = "external"`. The skill installer reads the file into the `<!-- pneuma:handoff:start/end -->` block; the target agent reads + `rm`s on its first turn.
+
+### Lifecycle
+
+- **First-launch prompt**: `<AgentCommandBanner />` in the launcher renders when `promptDismissed=false && installed is empty`. Per-backend checkboxes + Install/Skip.
+- **Settings**: `<AgentCommandSettings />` (reached from `AppSettings` popover → "Manage agent commands…") — per-backend status, install/update/uninstall, auto-update toggle, CLI presence + one-click symlink to `~/.local/bin/pneuma-skills` (with shell-rc hint when that dir isn't on PATH).
+- **Auto-update**: `bootstrapAgentCommandAutoUpdate` runs on launcher boot. Silently re-stamps installed files whose `fileVersion !== currentPneumaVersion` (when `autoUpdate: true`, the default). Skips conflict (= non-marker file at the same path).
+
+### Routes (launcher-scope)
+
+`server/agent-command-routes.ts`:
+- `GET /api/agent-commands` — full status JSON
+- `POST /api/agent-commands/:backend/(install|uninstall)` — body `{ force?: boolean }`; returns refreshed state
+- `POST /api/agent-commands/dismiss-prompt`, `POST /api/agent-commands/auto-update` — flag toggles
+- `POST /api/handoffs/external` — body `{ intent, mode, cwd?, initProject?, sourceAgent?, displayName?, dryRun? }`; returns `{ ok, url, sessionId, inboundFile, pid, ... }`
+- `GET /api/cli/status` — `pneuma` on PATH? bundled entry? default symlink state? shell-rc hint?
+- `POST /api/cli/symlink` — create symlink at `~/.local/bin/pneuma-skills` (or supplied `target`), pointing at `PNEUMA_CLI_ENTRY` / `process.argv[1]`
+
+### URL scheme (Electron)
+
+Already-existing `pneuma://` scheme (`app.setAsDefaultProtocolClient('pneuma')`). Cases: `open`, `import`, `mode`, plus new `handoff`. Cold-start path: `open-url` fires before `app.whenReady()` → queue into `pendingPneumaUrl` → process after launcher Bun spawns. Cross-platform: Windows/Linux receive the URL as an `argv` entry on `second-instance`; we match `pneuma://` prefix.
+
 ## Launcher
 
 Starts when no mode arg given (`bun run dev` / `pneuma`). Marketplace UI: Recent Sessions, Recent Projects, Built-in Modes, Local Modes, Published Modes, Backend Picker. See `server/index.ts` launcher block and `src/components/Launcher.tsx`.
 
 ## Server Routes
 
-Defined in `server/index.ts` (main), `server/routes/export.ts`, `server/evolution-routes.ts`, `server/mode-maker-routes.ts`, `server/library-routes.ts` (launcher-scope). WebSocket: `/ws/browser/:sessionId` (JSON), `/ws/cli/:sessionId` (NDJSON), `/ws/terminal/:terminalId` (binary). Codex uses stdio, not WebSocket.
+Defined in `server/index.ts` (main), `server/routes/export.ts`, `server/evolution-routes.ts`, `server/mode-maker-routes.ts`, `server/library-routes.ts` + `server/agent-command-routes.ts` (launcher-scope). WebSocket: `/ws/browser/:sessionId` (JSON), `/ws/cli/:sessionId` (NDJSON), `/ws/terminal/:terminalId` (binary). Codex uses stdio, not WebSocket.
 
 Key endpoints:
 - `GET /api/file?path=<abs>` — workspace-contained file reads (chat image previews)
@@ -391,6 +447,9 @@ Key endpoints:
 - `GET/POST /api/favorites` — pinned-modes list
 - `GET /api/github/status` — `{ installed, authenticated, username?, version?, hint? }` from `gh` probe (Launcher Settings → GitHub card)
 - `/api/libraries/*` (launcher-only): `GET`, `link`, `init`, `:id/sync`, `:id/mode/:name/(activate|deactivate|accept-update)`, `:id/publish`, `:id/push`, `DELETE :id`. Broadcasts `libraries_updated` over WS on every mutation; invalidates `/api/registry` SWR cache so library-activated modes appear in Quick Start without lag
+- `/api/agent-commands/*` (launcher-only): `GET`, `:backend/install`, `:backend/uninstall`, `dismiss-prompt`, `auto-update`. Manages `/handoff-pneuma` installation. See **Agent Command Distribution** above
+- `POST /api/handoffs/external` (launcher-only): server-side wrapper around `runHandoffFromExternal` — used by Electron's `pneuma://handoff` URL scheme handler so desktop users don't need the CLI on PATH
+- `/api/cli/*` (launcher-only): `GET status` (detect pneuma on PATH + bundled entry), `POST symlink` (create `~/.local/bin/pneuma-skills` → bundled CLI). Driven by `PNEUMA_CLI_ENTRY` env var when set by the Electron host
 
 Native desktop APIs (`/api/native/*`) only in Electron: Server → WS `native_request` → Browser → Electron IPC → result → WS `native_result` → Server. Web returns `{ available: false }`.
 
@@ -419,6 +478,10 @@ Then `git push origin main` (no `--tags`). CI creates tag, release, publishes.
 
 ## Known Gotchas
 
+- **`pneuma handoff-from-external` detached spawn**: Always pass `--no-prompt` to the child. With `stdio: "ignore"` and `detached: true`, the child has no stdin; mode `init.params` prompts (e.g. webcraft's fal.ai key) would block forever. `--no-prompt` makes the launcher use defaults silently.
+- **Machine-readable CLI subcommands bypass `p.intro()`**: `agent-command`, `mode list --local`, and `handoff-from-external` are dispatched in `bin/pneuma.ts:main()` BEFORE the clack `p.intro(...)` banner runs. Otherwise the banner pollutes stdout and breaks `JSON.parse` on the agent side. Any future subcommand whose stdout the agent parses must do the same.
+- **Agent-command marker placement**: The `<!-- pneuma:agent-command version="..." backend="..." -->` marker sits BELOW the YAML frontmatter (`---`), not at line 1. Both Claude Code and Codex require frontmatter to start on line 1; a line-1 HTML comment breaks `description` / `argument-hint` parsing. The installer scans the full file (not just line 1) for the marker.
+- **Bun's `os.homedir()` is process-start-cached**: Setting `process.env.HOME` after boot does NOT change what `homedir()` returns. Modules whose tests need a tmp home (`core/agent-command-installer.ts`) read `process.env.HOME ?? process.env.USERPROFILE ?? homedir()` instead. The `library-registry.ts::getLibrariesDir` uses `homedir()` directly — accept that local-mode tests may pick up real `~/.pneuma/libraries/` entries.
 - **chokidar glob**: Watch directory path, filter in callback. Don't use `watch("**/*.md", { cwd })`.
 - **react-resizable-panels v4.6**: `Group` not `PanelGroup`, `Separator` not `PanelResizeHandle`, `orientation` not `direction`.
 - **Vite WS proxy + Bun.serve**: Browser WS connects directly to backend port, bypassing Vite.

@@ -15,6 +15,7 @@ import Galaxy from "./reactbits/Galaxy";
 import { CreateProjectDialog } from "./CreateProjectDialog.js";
 import { DirBrowser } from "./DirBrowser.js";
 import { ProjectCard, type ProjectCardEntry } from "./ProjectCard.js";
+import { AgentCommandBanner } from "./AgentCommandPanel.js";
 import { ModeIcon } from "./ModeIcon.js";
 import { useFavorites, sortFavoritesFirst, favoriteKey } from "../hooks/useFavorites.js";
 import { useAppTheme, type ThemePreference as Theme } from "../hooks/useAppTheme.js";
@@ -4901,6 +4902,10 @@ export default function Launcher() {
               onExplore={() => setShowGallery(true)}
             />
           )}
+
+          {/* First-run prompt for /handoff-pneuma slash command. Self-hides
+              when dismissed or any backend already has it installed. */}
+          <AgentCommandBanner />
 
           {/* My Apps — app-layout sessions in use mode */}
           {appSessions.length > 0 && (

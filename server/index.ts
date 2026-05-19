@@ -33,6 +33,10 @@ import type { ProxyRoute } from "../core/types/mode-manifest.js";
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
 import { mountHandoffRoutes } from "./handoff-routes.js";
 import { registerLibraryRoutes } from "./library-routes.js";
+import {
+  registerAgentCommandRoutes,
+  bootstrapAutoUpdate as bootstrapAgentCommandAutoUpdate,
+} from "./agent-command-routes.js";
 import { mountNativeRoutes } from "./native-bridge.js";
 import { mountProjectsRoutes } from "./projects-routes.js";
 import {
@@ -1687,6 +1691,24 @@ export async function startServer(options: ServerOptions) {
     // Mount `/api/libraries/*` + `/api/github/status` — launcher-scope only
     // (libraries are a launcher-wide concern; per-session servers don't
     // register these). Broadcasts `libraries_updated` on every mutation.
+    // Agent command + external-handoff + CLI helpers — launcher-scope.
+    // Mounted before library routes (no dependency) so the launcher
+    // first-run banner can show on the same tick as the rest of the UI.
+    {
+      const pkgPath = join(resolve(dirname(import.meta.path), ".."), "package.json");
+      const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
+      let pneumaVersion = "0.0.0";
+      try {
+        pneumaVersion = JSON.parse(readFileSync(pkgPath, "utf-8")).version ?? "0.0.0";
+      } catch {
+        // dev tree with no package.json: keep the placeholder; status route still works
+      }
+      registerAgentCommandRoutes(app, { pneumaVersion, projectRoot });
+      // Silent: re-stamp installed slash commands to match the running
+      // pneuma version. Soft-fails — never blocks launcher boot.
+      bootstrapAgentCommandAutoUpdate({ pneumaVersion, projectRoot });
+    }
+
     registerLibraryRoutes(app, wsBridge, {
       projectRoot:
         options.projectRoot || resolve(dirname(import.meta.path), ".."),

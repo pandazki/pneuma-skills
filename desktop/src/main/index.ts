@@ -97,11 +97,102 @@ function handlePneumaUrl(url: string) {
         }
         break;
       }
+      case 'handoff': {
+        // pneuma://handoff?intent=...&mode=...&cwd=...&init-project=<0|1>&source-agent=...
+        // The /handoff-pneuma slash command emits this when the user
+        // has no `pneuma` CLI on PATH but does have the desktop app.
+        const params = parsed.searchParams;
+        const intent = params.get('intent');
+        const mode = params.get('mode');
+        if (!intent || !mode) {
+          showLauncher();
+          break;
+        }
+        const initProjectRaw = params.get('init-project') ?? params.get('init_project');
+        const initProject = initProjectRaw !== '0' && initProjectRaw !== 'false';
+        const body: Record<string, unknown> = { intent, mode, initProject };
+        const cwd = params.get('cwd');
+        if (cwd) body.cwd = cwd;
+        const sourceAgent = params.get('source-agent') ?? params.get('source_agent');
+        if (sourceAgent) body.sourceAgent = sourceAgent;
+        const displayName = params.get('display-name') ?? params.get('display_name');
+        if (displayName) body.displayName = displayName;
+        void handleHandoffUrl(body);
+        break;
+      }
       default:
         showLauncher();
     }
   } catch {
     showLauncher();
+  }
+}
+
+/**
+ * POST to the launcher's `/api/handoffs/external` route and open the
+ * resulting Pneuma session as a Mode window. Errors surface as a native
+ * dialog so the user (whose terminal-level slash command just emitted a
+ * URL) isn't left wondering what happened.
+ */
+async function handleHandoffUrl(body: Record<string, unknown>) {
+  // The launcher process is normally up by the time a URL arrives, but a
+  // cold-launch via pneuma:// fires the event before `spawnLauncherProcess`
+  // resolves. Poll for up to ~6s before giving up.
+  let launcherUrl = getLauncherUrl();
+  if (!launcherUrl) {
+    for (let i = 0; i < 30 && !launcherUrl; i++) {
+      await new Promise((r) => setTimeout(r, 200));
+      launcherUrl = getLauncherUrl();
+    }
+  }
+  if (!launcherUrl) {
+    await dialog.showMessageBox({
+      type: 'error',
+      title: 'Pneuma launcher not ready',
+      message: 'The Pneuma launcher process did not finish starting in time.',
+      detail: 'Try again from your agent in a moment.',
+      buttons: ['OK'],
+    });
+    return;
+  }
+
+  try {
+    const res = await net.fetch(`${launcherUrl}/api/handoffs/external`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errBody = (await res.json().catch(() => ({}))) as { error?: string };
+      await dialog.showMessageBox({
+        type: 'error',
+        title: 'Pneuma handoff failed',
+        message: errBody.error ?? `Server returned ${res.status}`,
+        buttons: ['OK'],
+      });
+      return;
+    }
+    const result = (await res.json()) as { url?: string };
+    if (!result.url) {
+      await dialog.showMessageBox({
+        type: 'error',
+        title: 'Pneuma handoff returned no URL',
+        message: 'The server accepted the handoff but did not return a session URL.',
+        buttons: ['OK'],
+      });
+      return;
+    }
+    if (process.platform === 'darwin') {
+      await app.dock?.show();
+    }
+    createModeWindow(result.url);
+  } catch (err) {
+    await dialog.showMessageBox({
+      type: 'error',
+      title: 'Pneuma handoff failed',
+      message: err instanceof Error ? err.message : String(err),
+      buttons: ['OK'],
+    });
   }
 }
 
