@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.10.0] - 2026-05-19
+
+### Added — `/handoff-pneuma` slash command for external code agents
+
+Drop into a Pneuma session from Claude Code, Codex, or the desktop app without ever opening the launcher manually. The agent in your terminal runs `/handoff-pneuma "make a finance dashboard"`, picks a mode, and Pneuma spins up the right session in the current directory with the intent already staged via the existing Smart Handoff `inbound-handoff.json` plumbing.
+
+- **`pneuma://handoff` URL scheme — primary path for desktop users.** The Pneuma Skills desktop app is already registered as the `pneuma://` URL handler (since the import/mode schemes). New `handoff` case in `desktop/src/main/index.ts::handlePneumaUrl` parses `intent`, `mode`, `cwd`, `init-project`, `source-agent`, POSTs the same body to the launcher's `/api/handoffs/external`, then opens a new mode window on the spawned session. No CLI install required — `open "pneuma://handoff?..."` is all the agent needs. Cold-start path (URL arrives before `app.whenReady`) covered via `pendingPneumaUrl`; Windows/Linux receive it through `second-instance`.
+
+- **`pneuma handoff-from-external` CLI — for terminal-only / SSH / CI workflows.** `pneuma handoff-from-external --intent "..." --mode <name> [--init-project|--quick] [--cwd <path>] [--source-agent claude-code|codex]` validates the mode, optionally writes `<cwd>/.pneuma/project.json`, mints a session id, stages `inbound-handoff.json` under `<sessionDir>/.pneuma/`, picks a free port via `node:net listen 0`, and spawns `pneuma <mode> --no-prompt --project <cwd> --session-id <id> --port <p>` detached. Prints the URL on its last stdout line.
+
+- **`pneuma agent-command` CLI** — `status|install|uninstall|update`, scriptable JSON output, per-backend or `--backend all`. Refuses to overwrite a user-authored file at the same path without `--force`. Auto-update re-stamps installed files on launcher boot.
+
+- **`pneuma mode list --local [--json]`** — local-launchable modes (builtins + `~/.pneuma/modes/` + activated library modes) the slash command uses to drive its mode picker. Filters hidden modes. Distinct from the existing R2-published listing.
+
+- **Launcher first-run banner** — `<AgentCommandBanner />` mounts on the launcher when neither backend has the command installed and the user hasn't dismissed the prompt. Per-backend checkboxes; one click installs both.
+
+- **Settings → Manage agent commands** — full panel reachable from the `AppSettings` popover. Per-backend status (installed / out-of-date / conflict), install/uninstall/update, auto-update toggle, **one-click symlink to `~/.local/bin/pneuma-skills`** for desktop users who never ran `bun add -g pneuma-skills`, plus a shell-rc snippet (fish/zsh/bash detected from `$SHELL`) when that dir isn't on PATH.
+
+### Install paths
+
+- Claude Code: `~/.claude/commands/handoff-pneuma.md` → `/handoff-pneuma`
+- Codex: `~/.codex/prompts/handoff-pneuma.md` → `/handoff-pneuma`
+
+Source template: `templates/agent-commands/handoff-pneuma.md`. Carries a `<!-- pneuma:agent-command version="X" backend="..." -->` marker *below* the YAML frontmatter (line 1 stays as `---` so frontmatter parsers don't break). Absence of the marker = user-authored = never overwritten without `--force`. Registry at `~/.pneuma/agent-commands.json`.
+
+### Internals worth knowing
+
+- Machine-readable subcommands (`agent-command`, `mode list --local`, `handoff-from-external`) dispatch *before* `p.intro()` in `bin/pneuma.ts::main()`, so stdout is parseable JSON for the agent.
+- Bun's `os.homedir()` is process-start-cached. `core/agent-command-installer.ts` reads `process.env.HOME ?? USERPROFILE ?? homedir()` so tests can override.
+- Spawn uses `--no-prompt` — detached children can't read stdin, so clack's optional `init.params` prompts (webcraft's fal.ai key, etc.) would block forever. Defaults are silently applied; user can configure inside the running session.
+
+### Tests
+
+38 new tests across `core/__tests__/agent-command-installer.test.ts`, `core/__tests__/local-modes.test.ts`, `bin/__tests__/agent-command-cli.test.ts`, `bin/__tests__/handoff-from-external-cli.test.ts`.
+
 ## [3.9.1] - 2026-05-19
 
 ### Fixed — Electron client hangs on non-English locales (regression from 3.8.0)
