@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { getApiBase } from "../utils/api.js";
-import { AgentCommandSettings } from "./AgentCommandPanel.js";
 
 interface AppSettingsData {
   windowWidth?: number;
@@ -17,7 +16,6 @@ export default function AppSettings({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation("app-settings");
   const [settings, setSettings] = useState<AppSettingsData>({});
   const [saving, setSaving] = useState(false);
-  const [showAgentCommands, setShowAgentCommands] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   // Load current settings
@@ -28,17 +26,14 @@ export default function AppSettings({ onClose }: { onClose: () => void }) {
       .catch(() => {});
   }, []);
 
-  // Close on click outside — but not while the agent-commands modal is up.
-  // That modal sits outside `ref` and owns its own outside-click handler;
-  // letting the popover close too would dismiss both surfaces at once.
+  // Close on click outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (showAgentCommands) return;
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [onClose, showAgentCommands]);
+  }, [onClose]);
 
   // Load manifest defaults from URL params as placeholders
   const params = new URLSearchParams(location.search);
@@ -124,83 +119,6 @@ export default function AppSettings({ onClose }: { onClose: () => void }) {
       </div>
 
       {saving && <div style={{ fontSize: 10, color: "#52525b" }}>{t("saving")}</div>}
-
-      <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "4px 0" }} />
-
-      <button
-        type="button"
-        onClick={() => setShowAgentCommands(true)}
-        style={{
-          background: "transparent",
-          border: "none",
-          padding: "6px 0",
-          color: "#a1a1aa",
-          fontSize: 12,
-          textAlign: "left",
-          cursor: "pointer",
-        }}
-      >
-        Manage agent commands…
-      </button>
-
-      {showAgentCommands && (
-        <AgentCommandSettingsModal onClose={() => setShowAgentCommands(false)} />
-      )}
-    </div>
-  );
-}
-
-/**
- * Centered modal for the full agent-commands settings panel. Lives next to
- * AppSettings because both are reachable from the same launcher gear, but
- * it deserves its own dedicated surface (350px+ rather than 220px) to
- * render backend paths without truncating.
- */
-function AgentCommandSettingsModal({ onClose }: { onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const escHandler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("mousedown", handler);
-    document.addEventListener("keydown", escHandler);
-    return () => {
-      document.removeEventListener("mousedown", handler);
-      document.removeEventListener("keydown", escHandler);
-    };
-  }, [onClose]);
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.55)",
-        zIndex: 20000,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-      }}
-    >
-      <div
-        ref={ref}
-        style={{
-          width: 480,
-          maxWidth: "100%",
-          maxHeight: "85vh",
-          overflowY: "auto",
-          padding: 20,
-          borderRadius: 14,
-          background: "rgba(24,24,27,0.98)",
-          border: "1px solid rgba(255,255,255,0.1)",
-          boxShadow: "0 16px 48px rgba(0,0,0,0.6)",
-        }}
-      >
-        <AgentCommandSettings />
-      </div>
     </div>
   );
 }

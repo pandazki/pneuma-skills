@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.10.7] - 2026-05-19
+
+### Changed — Backends settings card now owns the whole per-backend lifecycle
+
+Reworked the launcher Settings → BACKENDS section so each backend card carries every knob that applies to it, instead of spreading the controls across multiple sections.
+
+Each card now shows:
+- **Status + enable/disable toggle** (new) — flipping the orange switch hides the backend from session-creation pickers but keeps it visible in Settings, so the user can re-enable later without re-detection. Persisted via `POST /api/backends/:type/disabled` → `~/.pneuma/settings.json` `backends` key.
+- **`/handoff-pneuma` install row** — install / reinstall / update / uninstall buttons rendered inline for backends that support the slash command (Claude Code, Codex). Kimi just shows status + the toggle; no slash-command row.
+
+Underneath the cards, a shared two-column strip carries the global controls:
+- **Auto-update on launch** — toggle for the silent re-stamp pass on launcher boot.
+- **pneuma CLI on PATH** — detection status + one-click symlink to `~/.local/bin/pneuma-skills`, with shell-rc hint when the dir isn't on PATH yet.
+
+The standalone "Manage agent commands…" link in the small `AppSettings` popover is gone — it duplicated the BACKENDS surface for the same backends. Old `BackendOption` callers automatically pick up the new `disabled` field; session-creation pickers filter `disabled: true` entries out unless they're the backend an existing-session resume is bound to.
+
+### Added — `POST /api/backends/:type/disabled` route + `core/backend-prefs.ts`
+
+Persists per-user backend disable flags as `{ backends: { [type]: { disabled: boolean } } }` under `~/.pneuma/settings.json`. Standalone from `SettingsManager` (which is plugin-focused) so the schema can grow per-backend without touching plugin code.
+
 ## [3.10.5] - 2026-05-19
 
 ### Fixed — `/handoff-pneuma` carries conversation context now, and works for Quick sessions

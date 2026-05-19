@@ -767,14 +767,46 @@ export async function startServer(options: ServerOptions) {
 
     mountRegistryRoute(app);
 
-    app.get("/api/backends", (c) => {
+    app.get("/api/backends", async (c) => {
       const descriptors = getBackendDescriptors();
       const availability = detectBackendAvailability();
+      const { getBackendPrefs } = await import("../core/backend-prefs.js");
+      const prefs = getBackendPrefs();
       const backends = descriptors.map((desc) => {
         const avail = availability.find((a) => a.type === desc.type);
-        return { ...desc, available: avail?.available ?? false, reason: avail?.reason };
+        return {
+          ...desc,
+          available: avail?.available ?? false,
+          reason: avail?.reason,
+          // Per-user disable flag. Persistent; defaults to enabled (false).
+          // Session-creation pickers should treat `disabled: true` as "hide";
+          // the launcher Settings panel still surfaces it so the user can
+          // re-enable.
+          disabled: prefs[desc.type]?.disabled === true,
+        };
       });
       return c.json({ backends, defaultBackendType: getDefaultBackendType() });
+    });
+
+    // Toggle the per-user disable flag for a backend. Used by the launcher
+    // Settings panel — see `BackendsSection` in `Launcher.tsx`. Disabling
+    // a backend doesn't kill running sessions, only hides it from future
+    // session-creation pickers.
+    app.post("/api/backends/:type/disabled", async (c) => {
+      const type = c.req.param("type");
+      const body = await c.req.json<{ disabled?: boolean }>().catch(() => ({} as { disabled?: boolean }));
+      if (typeof body.disabled !== "boolean") {
+        return c.json({ error: "disabled must be a boolean" }, 400);
+      }
+      // Sanity-check the backend type against the registry so a typo can't
+      // pollute settings.json with bogus keys that nothing else reads.
+      const known = getBackendDescriptors().some((d) => d.type === type);
+      if (!known) {
+        return c.json({ error: `unknown backend type "${type}"` }, 400);
+      }
+      const { setBackendDisabled } = await import("../core/backend-prefs.js");
+      const next = setBackendDisabled(type, body.disabled);
+      return c.json({ ok: true, disabled: next[type]?.disabled === true, prefs: next });
     });
 
     // Install a mode from a remote source (url tar.gz or github:user/repo).

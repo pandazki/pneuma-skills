@@ -15,7 +15,7 @@ import Galaxy from "./reactbits/Galaxy";
 import { CreateProjectDialog } from "./CreateProjectDialog.js";
 import { DirBrowser } from "./DirBrowser.js";
 import { ProjectCard, type ProjectCardEntry } from "./ProjectCard.js";
-import { AgentCommandBanner } from "./AgentCommandPanel.js";
+import { AgentCommandBanner, AgentCommandHooks } from "./AgentCommandPanel.js";
 import { ModeIcon } from "./ModeIcon.js";
 import { useFavorites, sortFavoritesFirst, favoriteKey } from "../hooks/useFavorites.js";
 import { useAppTheme, type ThemePreference as Theme } from "../hooks/useAppTheme.js";
@@ -35,6 +35,8 @@ export interface BackendOption {
   implemented: boolean;
   available?: boolean;
   reason?: string;
+  /** User explicitly disabled this backend from session-creation pickers (per-user pref). */
+  disabled?: boolean;
 }
 
 export const FALLBACK_BACKENDS: BackendOption[] = [
@@ -2670,11 +2672,21 @@ function LaunchDialog({
         <p className="text-sm text-cc-muted mb-4">{t("launch_dialog.loading_config")}</p>
       )}
 
-      {backendOptions.length > 1 && (
+      {(() => {
+        // Filter out user-disabled backends so they don't clutter the
+        // picker. Exception: if the existing session was created with a
+        // now-disabled backend, keep it visible (and selected) so resume
+        // works.
+        const visibleBackends = backendOptions.filter((b) => {
+          if (b.disabled !== true) return true;
+          return existingSession?.backendType === b.type;
+        });
+        if (visibleBackends.length <= 1) return null;
+        return (
         <div className="mb-4">
           <label className="block text-xs text-cc-muted/60 mb-2">{t("launch_dialog.agent_label")}</label>
           <div className="flex gap-2">
-            {backendOptions.map((backend) => {
+            {visibleBackends.map((backend) => {
               const active = (existingSession?.backendType || selectedBackendType) === backend.type;
               const unavailable = !backend.implemented || backend.available === false;
               const disabled = !!existingSession || unavailable;
@@ -2705,7 +2717,8 @@ function LaunchDialog({
             })}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {existingSession && (
         <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-cc-primary/5 border border-cc-primary/15">
@@ -2881,31 +2894,260 @@ function LaunchDialog({
 function BackendsSection() {
   const { t } = useTranslation("launcher");
   const [backends, setBackends] = useState<any[]>([]);
+  const [togglingType, setTogglingType] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     fetch(`${getApiBase()}/api/backends`)
       .then((r) => r.json())
       .then((data) => setBackends(data.backends || []))
       .catch(() => {});
   }, []);
 
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const toggleDisabled = useCallback(async (type: string, disabled: boolean) => {
+    setTogglingType(type);
+    try {
+      await fetch(`${getApiBase()}/api/backends/${encodeURIComponent(type)}/disabled`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ disabled }),
+      });
+      refresh();
+    } catch { /* ignore — refresh on next mount */ }
+    finally {
+      setTogglingType(null);
+    }
+  }, [refresh]);
+
   return (
     <div className="space-y-3">
       <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">{t("backends_section.title")}</h3>
       <div className="space-y-2">
         {backends.map((b: any) => (
-          <div key={b.type} className="flex items-center justify-between p-3 rounded-lg border border-cc-border bg-cc-surface/30">
-            <div>
-              <div className="text-sm text-cc-fg">{b.label}</div>
-              <div className="text-[10px] text-cc-muted mt-0.5">{b.description}</div>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className={`w-2 h-2 rounded-full ${b.available ? "bg-cc-success" : "bg-cc-muted/30"}`} />
-              <span className="text-[10px] text-cc-muted">{b.available ? t("backends_section.ready") : t("backends_section.not_found")}</span>
-            </div>
-          </div>
+          <BackendCard
+            key={b.type}
+            backend={b}
+            t={t}
+            toggling={togglingType === b.type}
+            onToggleDisabled={(disabled) => toggleDisabled(b.type, disabled)}
+          />
         ))}
       </div>
+      <AgentCommandSharedControls />
+    </div>
+  );
+}
+
+/**
+ * Per-backend card. Replaces the simple status row with a richer surface
+ * that combines:
+ *   - Availability indicator (CLI on PATH or not) — the original status.
+ *   - User enable/disable toggle — hides the backend from session-creation
+ *     pickers without uninstalling anything. Persisted via `/api/backends/
+ *     :type/disabled` → `~/.pneuma/settings.json` `backends` key.
+ *   - `/handoff-pneuma` install row — only for backends that support the
+ *     slash command (claude-code, codex). Pulls state from the shared
+ *     `useAgentCommands()` hook so the banner + this card see the same
+ *     source of truth.
+ *
+ * Kimi (and any future backend without a slash-command installer) just
+ * shows the status + enable toggle.
+ */
+function BackendCard({
+  backend: b,
+  t,
+  toggling,
+  onToggleDisabled,
+}: {
+  backend: any;
+  t: (k: string) => string;
+  toggling: boolean;
+  onToggleDisabled: (disabled: boolean) => void;
+}) {
+  const hasSlashCommand = b.type === "claude-code" || b.type === "codex";
+  const enabled = !b.disabled;
+
+  return (
+    <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-0.5">
+            <div className="text-sm text-cc-fg">{b.label}</div>
+            <div className="flex items-center gap-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${b.available ? "bg-cc-success" : "bg-cc-muted/30"}`} />
+              <span className="text-[10px] text-cc-muted">{b.available ? t("backends_section.ready") : t("backends_section.not_found")}</span>
+            </div>
+            {!enabled && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-cc-muted/15 text-cc-muted uppercase tracking-wide leading-none">
+                hidden
+              </span>
+            )}
+          </div>
+          <div className="text-[10px] text-cc-muted leading-relaxed">{b.description}</div>
+        </div>
+
+        {/* Enable / disable toggle */}
+        <button
+          type="button"
+          disabled={toggling}
+          onClick={() => onToggleDisabled(enabled)}
+          title={enabled ? "Hide this backend from session-creation pickers" : "Show this backend in session-creation pickers"}
+          className="shrink-0 mt-1 cursor-pointer disabled:cursor-wait"
+          style={{
+            width: 32, height: 18, borderRadius: 9, border: "none",
+            background: enabled ? "#f97316" : "rgba(255,255,255,0.12)",
+            position: "relative", transition: "background 0.2s",
+          }}
+        >
+          <span style={{
+            width: 14, height: 14, borderRadius: 7,
+            background: "#fff", position: "absolute", top: 2,
+            left: enabled ? 16 : 2,
+            transition: "left 0.2s",
+            display: "block",
+          }} />
+        </button>
+      </div>
+
+      {hasSlashCommand && (
+        <div className="mt-3 pt-3 border-t border-cc-border/60">
+          <SlashCommandRow backendType={b.type as "claude-code" | "codex"} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One row per slash-command-capable backend. Renders the install state +
+ * inline Reinstall / Update / Uninstall buttons. Pulls state from the
+ * shared `useAgentCommands` hook in `AgentCommandPanel.tsx`.
+ */
+function SlashCommandRow({ backendType }: { backendType: "claude-code" | "codex" }) {
+  const { useAgentCommandsForCard } = AgentCommandHooks;
+  const { item, busy, install, uninstall, version } = useAgentCommandsForCard(backendType);
+  if (!item) {
+    return <div className="text-[10px] text-cc-muted">/handoff-pneuma — loading…</div>;
+  }
+  const installLabel = item.installed ? (item.upToDate ? "Reinstall" : "Update") : "Install";
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 mb-0.5">
+          <code className="text-xs text-cc-fg/90 font-mono">/handoff-pneuma</code>
+          <span
+            className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+              item.installed
+                ? item.upToDate
+                  ? "bg-cc-success/15 text-cc-success"
+                  : "bg-cc-warning/15 text-cc-warning"
+                : item.conflict
+                  ? "bg-cc-error/15 text-cc-error"
+                  : "bg-cc-muted/15 text-cc-muted"
+            }`}
+          >
+            {item.installed
+              ? item.upToDate
+                ? `installed ${item.fileVersion}`
+                : `update — ${item.fileVersion} → ${version}`
+              : item.conflict
+                ? "conflict"
+                : "not installed"}
+          </span>
+        </div>
+        <div className="text-[10px] text-cc-muted font-mono truncate">{item.path}</div>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() => install(item.conflict)}
+          className="px-2.5 py-1 rounded-md bg-cc-primary text-white text-[11px] font-medium hover:brightness-110 disabled:opacity-40 cursor-pointer transition-all"
+        >
+          {busy === "install" ? "…" : item.conflict ? "Force install" : installLabel}
+        </button>
+        {item.installed && (
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => uninstall()}
+            className="px-2.5 py-1 rounded-md border border-cc-border text-[11px] text-cc-muted hover:text-cc-fg hover:bg-cc-surface cursor-pointer transition-all disabled:opacity-40"
+          >
+            {busy === "uninstall" ? "…" : "Uninstall"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shared bottom controls for the slash-command system: auto-update toggle
+ * and CLI symlink helper. Rendered once below all backend cards because
+ * they apply globally, not per-backend.
+ */
+function AgentCommandSharedControls() {
+  const { useSharedAgentCommandControls } = AgentCommandHooks;
+  const { state, cliStatus, autoUpdate, setAutoUpdate, symlink, symlinkResult } = useSharedAgentCommandControls();
+  if (!state) return null;
+  return (
+    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+      {/* Auto-update toggle */}
+      <label className="flex items-center justify-between gap-2 p-3 rounded-lg border border-cc-border bg-cc-surface/30 cursor-pointer">
+        <div className="min-w-0">
+          <div className="text-xs text-cc-fg">Auto-update slash commands</div>
+          <div className="text-[10px] text-cc-muted mt-0.5">Re-stamp installed files on pneuma version change.</div>
+        </div>
+        <input
+          type="checkbox"
+          checked={autoUpdate}
+          onChange={(e) => void setAutoUpdate(e.target.checked)}
+          className="accent-cc-primary shrink-0"
+        />
+      </label>
+
+      {/* CLI status + symlink */}
+      {cliStatus && (
+        <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="text-xs text-cc-fg">pneuma CLI on PATH</div>
+            <span
+              className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                cliStatus.detectedOnPath ? "bg-cc-success/15 text-cc-success" : "bg-cc-muted/15 text-cc-muted"
+              }`}
+            >
+              {cliStatus.detectedOnPath ? "detected" : "missing"}
+            </span>
+          </div>
+          {cliStatus.detectedOnPath ? (
+            <div className="text-[10px] text-cc-muted font-mono truncate">
+              {cliStatus.pathBinary}
+              {cliStatus.pathBinaryVersion ? ` — ${cliStatus.pathBinaryVersion}` : ""}
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => void symlink()}
+                className="px-2.5 py-1 rounded-md bg-cc-primary text-white text-[11px] font-medium hover:brightness-110 cursor-pointer transition-all"
+              >
+                Symlink to {cliStatus.defaultSymlinkPath.replace(/^.*?\.local/, "~/.local")}
+              </button>
+              {symlinkResult && (
+                <div className={`text-[10px] mt-1.5 ${symlinkResult.ok ? "text-cc-success" : "text-cc-error"}`}>
+                  {symlinkResult.ok ? "Done. Open a new shell to pick up PATH." : symlinkResult.message ?? "Symlink failed."}
+                </div>
+              )}
+              {!cliStatus.pathContainsDefault && cliStatus.shellRcHint && (
+                <pre className="text-[10px] text-cc-muted bg-cc-bg p-1.5 mt-1.5 rounded border border-cc-border overflow-x-auto">
+{cliStatus.shellRcHint}
+                </pre>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

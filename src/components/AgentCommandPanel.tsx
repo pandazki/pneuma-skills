@@ -166,6 +166,67 @@ function useAgentCommands(): UseAgentCommands {
   return { state, loading, error, refresh, install, uninstall, dismissPrompt, setAutoUpdate: setAutoUpdateFn };
 }
 
+/**
+ * Per-backend card view of the agent-command state, plus inline install/
+ * uninstall callbacks. Used by `BackendCard` in Launcher.tsx so each
+ * backend card can manage its own slash command without re-implementing
+ * the API plumbing.
+ */
+function useAgentCommandsForCard(backendType: AgentCommandBackend) {
+  const { state, install, uninstall } = useAgentCommands();
+  const [busy, setBusy] = useState<"install" | "uninstall" | null>(null);
+  const item = state?.items.find((i) => i.backend === backendType);
+  const wrappedInstall = useCallback(
+    async (force?: boolean) => {
+      setBusy("install");
+      try { await install(backendType, force); } finally { setBusy(null); }
+    },
+    [backendType, install],
+  );
+  const wrappedUninstall = useCallback(
+    async () => {
+      setBusy("uninstall");
+      try { await uninstall(backendType); } finally { setBusy(null); }
+    },
+    [backendType, uninstall],
+  );
+  return {
+    item,
+    busy,
+    install: wrappedInstall,
+    uninstall: wrappedUninstall,
+    version: state?.pneumaVersion ?? "",
+  };
+}
+
+/**
+ * Global controls shared across all backend cards — auto-update toggle
+ * and CLI symlink. Lives outside any single backend card because they
+ * apply to the whole slash-command subsystem.
+ */
+function useSharedAgentCommandControls() {
+  const { state, setAutoUpdate } = useAgentCommands();
+  const { status: cliStatus, symlink: rawSymlink } = useCliStatus();
+  const [symlinkResult, setSymlinkResult] = useState<{ ok: boolean; message?: string } | null>(null);
+  const symlink = useCallback(async () => {
+    setSymlinkResult(null);
+    const r = await rawSymlink();
+    setSymlinkResult(r);
+    return r;
+  }, [rawSymlink]);
+  return {
+    state,
+    cliStatus,
+    autoUpdate: state?.autoUpdate ?? true,
+    setAutoUpdate,
+    symlink,
+    symlinkResult,
+  };
+}
+
+/** Bundled export so Launcher.tsx can import via a single `AgentCommandHooks.useX(...)` namespace. */
+export const AgentCommandHooks = { useAgentCommandsForCard, useSharedAgentCommandControls };
+
 function useCliStatus(): { status: CliStatus | null; refresh: () => Promise<void>; symlink: () => Promise<{ ok: boolean; message?: string }> } {
   const [status, setStatus] = useState<CliStatus | null>(null);
   const refresh = useCallback(async () => {
@@ -326,23 +387,21 @@ export function AgentCommandSettings() {
   };
 
   return (
-    <div className="flex flex-col gap-6 text-sm">
-      <header>
-        <h3 className="text-base font-semibold text-cc-fg mb-1">Agent Commands</h3>
-        <p className="text-xs text-cc-fg/60 leading-relaxed">
-          Manage the <span className="font-mono">/handoff-pneuma</span> slash command in your code
-          agent's user-level commands directory. Pneuma {state.pneumaVersion}.
-        </p>
-      </header>
+    <div className="space-y-3">
+      <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">Agent Commands</h3>
+      <p className="text-[10px] text-cc-muted/60 leading-relaxed">
+        Manage the <span className="font-mono text-cc-fg/80">/handoff-pneuma</span> slash command in
+        Claude Code and Codex user-level prompt directories. Pneuma {state.pneumaVersion}.
+      </p>
 
       {error && (
-        <div className="px-3 py-2 rounded-lg border border-red-500/40 bg-red-500/5 text-xs text-red-400">
+        <div className="px-3 py-2 rounded-lg border border-red-500/40 bg-red-500/5 text-[11px] text-red-400">
           {error}
         </div>
       )}
 
       {/* Per-backend rows */}
-      <div className="flex flex-col gap-2">
+      <div className="space-y-2">
         {state.items.map((item) => {
           const installBusy = busy === `install-${item.backend}`;
           const uninstallBusy = busy === `uninstall-${item.backend}`;
@@ -354,41 +413,39 @@ export function AgentCommandSettings() {
           return (
             <div
               key={item.backend}
-              className="flex flex-col gap-2 rounded-xl border border-cc-border bg-cc-surface/40 p-3"
+              className="p-3 rounded-lg border border-cc-border bg-cc-surface/30"
             >
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center justify-between gap-3 mb-2">
                 <div className="min-w-0">
-                  <div className="font-medium text-cc-fg">{item.label}</div>
-                  <div className="text-xs text-cc-fg/60 font-mono truncate">{item.path}</div>
+                  <div className="text-sm text-cc-fg">{item.label}</div>
+                  <div className="text-[10px] text-cc-muted mt-0.5 font-mono truncate">{item.path}</div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span
-                    className={`px-2 py-0.5 rounded text-[11px] font-medium ${
-                      item.installed
-                        ? item.upToDate
-                          ? "bg-emerald-500/15 text-emerald-400"
-                          : "bg-amber-500/15 text-amber-400"
-                        : item.conflict
-                          ? "bg-red-500/15 text-red-400"
-                          : "bg-cc-fg/10 text-cc-fg/50"
-                    }`}
-                  >
-                    {item.installed
+                <span
+                  className={`shrink-0 px-2 py-0.5 rounded text-[10px] font-medium ${
+                    item.installed
                       ? item.upToDate
-                        ? `installed ${item.fileVersion}`
-                        : `update available — ${item.fileVersion} → ${state.pneumaVersion}`
+                        ? "bg-cc-success/15 text-cc-success"
+                        : "bg-cc-warning/15 text-cc-warning"
                       : item.conflict
-                        ? "conflict"
-                        : "not installed"}
-                  </span>
-                </div>
+                        ? "bg-cc-error/15 text-cc-error"
+                        : "bg-cc-muted/15 text-cc-muted"
+                  }`}
+                >
+                  {item.installed
+                    ? item.upToDate
+                      ? `installed ${item.fileVersion}`
+                      : `update — ${item.fileVersion} → ${state.pneumaVersion}`
+                    : item.conflict
+                      ? "conflict"
+                      : "not installed"}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   disabled={installBusy || uninstallBusy}
                   onClick={() => run(`install-${item.backend}`, () => install(item.backend, item.conflict))}
-                  className="px-3 py-1 rounded-lg bg-cc-primary text-cc-bg text-xs font-medium hover:bg-cc-primary/90 disabled:opacity-40"
+                  className="px-3 py-1 rounded-md bg-cc-primary text-white text-[11px] font-medium hover:brightness-110 disabled:opacity-40 cursor-pointer transition-all"
                 >
                   {installBusy ? "…" : item.conflict ? "Force install" : installLabel}
                 </button>
@@ -397,7 +454,7 @@ export function AgentCommandSettings() {
                     type="button"
                     disabled={installBusy || uninstallBusy}
                     onClick={() => run(`uninstall-${item.backend}`, () => uninstall(item.backend))}
-                    className="px-3 py-1 rounded-lg border border-cc-border text-xs text-cc-fg/80 hover:bg-cc-surface disabled:opacity-40"
+                    className="px-3 py-1 rounded-md border border-cc-border text-[11px] text-cc-muted hover:text-cc-fg hover:bg-cc-surface cursor-pointer transition-all disabled:opacity-40"
                   >
                     {uninstallBusy ? "…" : "Uninstall"}
                   </button>
@@ -409,40 +466,40 @@ export function AgentCommandSettings() {
       </div>
 
       {/* Auto-update toggle */}
-      <label className="flex items-center justify-between gap-3 rounded-xl border border-cc-border bg-cc-surface/40 px-3 py-2">
-        <div>
-          <div className="text-cc-fg">Auto-update on launch</div>
-          <div className="text-xs text-cc-fg/60">Re-stamp installed commands when pneuma's version changes.</div>
+      <label className="flex items-center justify-between gap-3 p-3 rounded-lg border border-cc-border bg-cc-surface/30 cursor-pointer">
+        <div className="min-w-0">
+          <div className="text-sm text-cc-fg">Auto-update on launch</div>
+          <div className="text-[10px] text-cc-muted mt-0.5">Re-stamp installed commands when pneuma's version changes.</div>
         </div>
         <input
           type="checkbox"
           checked={state.autoUpdate}
           onChange={(e) => void setAutoUpdate(e.target.checked)}
-          className="accent-cc-primary scale-125"
+          className="accent-cc-primary shrink-0"
         />
       </label>
 
-      {/* CLI status + symlink (task #12) */}
+      {/* CLI status + symlink */}
       {cliStatus && (
-        <section className="rounded-xl border border-cc-border bg-cc-surface/40 p-3">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <div className="font-medium text-cc-fg">pneuma CLI on PATH</div>
-              <div className="text-xs text-cc-fg/60 font-mono truncate">
+        <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div className="min-w-0">
+              <div className="text-sm text-cc-fg">pneuma CLI on PATH</div>
+              <div className="text-[10px] text-cc-muted mt-0.5 font-mono truncate">
                 {cliStatus.pathBinary ?? "(not detected)"}
                 {cliStatus.pathBinaryVersion ? ` — ${cliStatus.pathBinaryVersion}` : ""}
               </div>
             </div>
             <span
-              className={`px-2 py-0.5 rounded text-[11px] font-medium ${
-                cliStatus.detectedOnPath ? "bg-emerald-500/15 text-emerald-400" : "bg-cc-fg/10 text-cc-fg/50"
+              className={`shrink-0 px-2 py-0.5 rounded text-[10px] font-medium ${
+                cliStatus.detectedOnPath ? "bg-cc-success/15 text-cc-success" : "bg-cc-muted/15 text-cc-muted"
               }`}
             >
               {cliStatus.detectedOnPath ? "detected" : "missing"}
             </span>
           </div>
           {!cliStatus.detectedOnPath && (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 mt-2">
               <button
                 type="button"
                 onClick={async () => {
@@ -450,25 +507,25 @@ export function AgentCommandSettings() {
                   const r = await symlink();
                   setSymlinkResult(r);
                 }}
-                className="self-start px-3 py-1 rounded-lg bg-cc-primary text-cc-bg text-xs font-medium hover:bg-cc-primary/90"
+                className="self-start px-3 py-1 rounded-md bg-cc-primary text-white text-[11px] font-medium hover:brightness-110 cursor-pointer transition-all"
               >
                 Symlink CLI to {cliStatus.defaultSymlinkPath}
               </button>
               {symlinkResult && (
-                <div className={`text-xs ${symlinkResult.ok ? "text-emerald-400" : "text-red-400"}`}>
+                <div className={`text-[11px] ${symlinkResult.ok ? "text-cc-success" : "text-cc-error"}`}>
                   {symlinkResult.ok
-                    ? `Done. Run the next command in a new shell.`
+                    ? `Done. Open a new shell to pick up the new PATH entry.`
                     : symlinkResult.message ?? "Symlink failed."}
                 </div>
               )}
               {!cliStatus.pathContainsDefault && cliStatus.shellRcHint && (
-                <pre className="text-[11px] text-cc-fg/60 bg-cc-bg p-2 rounded border border-cc-border overflow-x-auto">
+                <pre className="text-[10px] text-cc-muted bg-cc-bg p-2 rounded border border-cc-border overflow-x-auto">
 {cliStatus.shellRcHint}
                 </pre>
               )}
             </div>
           )}
-        </section>
+        </div>
       )}
     </div>
   );
