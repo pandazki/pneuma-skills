@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.10.4] - 2026-05-19
+
+### Fixed — `/handoff-pneuma` install failed inside `/Applications/Pneuma Skills.app/` (spaces in path)
+
+- **`loadBundledTemplate` left URL escapes in the resolved file path.** The function used `new URL(import.meta.url).pathname` to find its own directory and join `../templates/agent-commands/handoff-pneuma.md`. That `pathname` keeps URL escapes (e.g. `%20` for spaces), and `readFileSync` does not decode them — so on any install path containing a space (the default macOS app bundle `/Applications/Pneuma Skills.app/...` qualifies), the install endpoint threw `ENOENT: no such file or directory, open '/Applications/Pneuma%20Skills.app/...'` and the launcher's first-run banner surfaced that as a red inline error. Switched to `fileURLToPath(import.meta.url)` (the standard cross-platform decoder) so the resolved path matches what's actually on disk.
+
+  No dev test or CI tmp path contained a space, which is why this slipped 3.10.0–3.10.3. Added a regression test that copies the package skeleton into a tmp dir whose name intentionally contains a space, dynamic-imports the copied installer, and asserts `loadBundledTemplate()` returns the template body.
+
 ## [3.10.3] - 2026-05-19
 
 ### Changed — desktop binary version unified with npm package version

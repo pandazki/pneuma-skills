@@ -35,6 +35,7 @@ function getHome(): string {
   return process.env.HOME ?? process.env.USERPROFILE ?? homedir();
 }
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   existsSync,
   mkdirSync,
@@ -491,9 +492,17 @@ export function runAutoUpdate(
  * async-aware UI exists.
  */
 export function loadBundledTemplate(): string {
-  // dirname(import.meta.path) → `<pkg>/core/`; template lives in
-  // `<pkg>/templates/agent-commands/handoff-pneuma.md`.
-  const here = dirname(new URL(import.meta.url).pathname);
+  // `<pkg>/core/` → template lives at `<pkg>/templates/agent-commands/handoff-pneuma.md`.
+  //
+  // Use `fileURLToPath` rather than `new URL(...).pathname` — the latter
+  // keeps URL escapes (e.g. spaces stay encoded as `%20`), which silently
+  // breaks installs from any `.app` whose install path contains a space
+  // (the default `/Applications/Pneuma Skills.app/`). `readFileSync` does
+  // not decode URL escapes, so the path resolves to a non-existent file
+  // and the install endpoint returns 500 with an ENOENT message that
+  // shows the literal `%20` — the giveaway.
+  //
+  const here = dirname(fileURLToPath(import.meta.url));
   const path = join(here, "..", "templates", "agent-commands", "handoff-pneuma.md");
   return readFileSync(path, "utf-8");
 }

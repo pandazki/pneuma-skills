@@ -22,6 +22,7 @@ import {
   parseHeader,
   renderTemplate,
   getBackendDescriptor,
+  loadBundledTemplate,
   type AgentCommandBackend,
 } from "../agent-command-installer.js";
 
@@ -208,6 +209,41 @@ describe("getAllStatus", () => {
     for (const s of all) {
       expect(s.installed).toBe(false);
       expect(s.upToDate).toBeUndefined();
+    }
+  });
+});
+
+describe("loadBundledTemplate", () => {
+  test("resolves the shipped template from a path with no spaces", () => {
+    // Sanity check against the actual file shipped in this repo.
+    const text = loadBundledTemplate();
+    expect(text).toContain("pneuma:agent-command");
+    expect(text).toContain("{{pneumaVersion}}");
+  });
+
+  test("resolves the template when the package path contains a space (regression for /Applications/Pneuma Skills.app/)", async () => {
+    // Reproduce the production bug: copy the package skeleton into a
+    // tmp dir whose path contains a space, dynamic-import the installer
+    // from there, and confirm `loadBundledTemplate` reads the template.
+    //
+    // Without the `fileURLToPath` fix this throws ENOENT — the file
+    // path resolves to `…/Pneuma%20Skills/templates/…` (literal `%20`)
+    // because `new URL(...).pathname` keeps URL escapes.
+    const { cpSync } = require("node:fs") as typeof import("node:fs");
+    const { pathToFileURL } = require("node:url") as typeof import("node:url");
+    const repoRoot = join(import.meta.dir, "..", "..");
+    const tmpRoot = mkdtempSync(join(tmpdir(), "pneuma fake bundle-")); // intentional space
+    try {
+      mkdirSync(join(tmpRoot, "core"), { recursive: true });
+      cpSync(join(repoRoot, "core", "agent-command-installer.ts"), join(tmpRoot, "core", "agent-command-installer.ts"));
+      cpSync(join(repoRoot, "templates"), join(tmpRoot, "templates"), { recursive: true });
+
+      const copiedUrl = pathToFileURL(join(tmpRoot, "core", "agent-command-installer.ts")).href;
+      const mod = await import(copiedUrl);
+      const text = (mod.loadBundledTemplate as () => string)();
+      expect(text).toContain("pneuma:agent-command");
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true });
     }
   });
 });
