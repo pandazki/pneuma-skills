@@ -155,7 +155,22 @@ export async function spawnLauncherProcess(): Promise<void> {
       // Wait for the final "Marketplace → <url>" signal which means
       // both backend AND Vite dev server (if dev mode) are ready.
       // This is the URL the user should actually see.
-      const marketplaceMatch = text.match(/Marketplace\s+→\s+(https?:\/\/\S+)/);
+      //
+      // The launcher emits BOTH a localized human line (e.g.
+      // `模式画廊 → http://...` for zh-CN) and a stable English marker line
+      // `Marketplace → http://...` (since pneuma-skills 3.9.1). The English
+      // marker is matched here so the wrapper survives any future i18n
+      // additions without coordinated changes.
+      //
+      // The localized-line fallback below covers the small 3.8.0–3.9.0
+      // window when the launcher emitted ONLY the localized form. Defense
+      // in depth — a packaged wrapper that hasn't been rebuilt for years
+      // should still survive an i18n drift in the launcher.
+      const marketplaceMatch =
+        text.match(/Marketplace\s+→\s+(https?:\/\/\S+)/) ||
+        // Localized variants from 3.8.0+ — any line ending in `→ <url>`
+        // counts. Launcher only emits `→ url` for the ready signal.
+        text.match(/→\s+(https?:\/\/\S+)/);
       if (marketplaceMatch) {
         resolved = true;
         launcherUrl = marketplaceMatch[1].replace("0.0.0.0", "localhost");

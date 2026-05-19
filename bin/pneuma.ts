@@ -1740,6 +1740,16 @@ async function main() {
       } catch { }
     }
     p.log.success(t("pneuma.marketplace_ready", { url }));
+    // Backward-compat marker line — DO NOT LOCALIZE. The Electron desktop
+    // wrapper (`desktop/src/main/bun-process.ts`) scans stdout for the
+    // English literal `Marketplace → <url>` to know the launcher is ready
+    // (~30s timeout otherwise). Locales other than en/fr/it would silently
+    // hang it (3.8.0 i18n shipped the localized variant only — surfaced as
+    // "Electron client hangs on loading" for zh/ja/ko/de users on 3.9.0).
+    // Keep this print until every shipped desktop wrapper version is past
+    // the 2026-05 cutoff; even then a stable machine-readable marker is
+    // cheap insurance against future i18n drift.
+    console.log(`Marketplace → ${url}`);
 
     // Auto-start use-mode app sessions.
     //

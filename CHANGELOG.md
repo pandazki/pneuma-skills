@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.9.1] - 2026-05-19
+
+### Fixed — Electron client hangs on non-English locales (regression from 3.8.0)
+
+- **Backward-compat launcher ready marker.** The 3.8.0 i18n PR localized the launcher's "Marketplace ready" stdout line (e.g. `模式画廊 → http://...` for zh-CN, `マーケットプレイス → ...` for ja), but the Electron desktop wrapper's `bun-process.ts` was matching the English literal `Marketplace → <url>` to know the launcher had booted. Non-English users saw the window stuck on "loading" for 30 seconds and then timeout.
+
+  Hotfix: the launcher now also prints a stable English marker line `Marketplace → <url>` *immediately after* the localized line. Every shipped desktop wrapper version's regex matches it — no coordinated wrapper upgrade required, and the i18n behavior for the human-facing line is preserved.
+
+- **Desktop wrapper regex hardened (defense in depth).** `desktop/src/main/bun-process.ts` now falls back to a locale-agnostic `→\s+(https?:\/\/\S+)` pattern after the English match fails. Future i18n additions to the launcher's startup output won't re-break the desktop client. Doesn't help users *currently* stuck on a pre-3.9.1 wrapper (auto-updater can't run if the app can't start), but matters for any future cold install of an older wrapper or out-of-band rebuilds.
+
+### Workaround for users currently stuck on 3.9.0
+
+Until your desktop client auto-updates to 3.9.1, the immediate unstick is one line:
+
+```bash
+# macOS / Linux
+sed -i '' 's/"locale": "zh-CN"/"locale": "en"/' ~/.pneuma/settings.json   # macOS
+# (Linux uses `sed -i` without the empty string after -i)
+```
+
+After editing, open the desktop app — the launcher boots in English. From there, the auto-updater picks up 3.9.1, restarts, and you can switch the locale back from Settings.
+
 ## [3.9.0] - 2026-05-19
 
 ### Added — Pneuma version compatibility
