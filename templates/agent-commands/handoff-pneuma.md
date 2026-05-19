@@ -95,13 +95,40 @@ The slash command's argument is `$ARGUMENTS`.
 
 5. **Run the handoff. Pick the right launcher based on what's installed.**
 
-   First, detect whether the `pneuma` CLI is on PATH:
+   First, detect what's installed. Run both checks — the second matters
+   when the first comes back `nocli`:
 
    ```bash
+   # 1. Is the pneuma CLI on PATH?
    command -v pneuma >/dev/null 2>&1 && echo cli || echo nocli
+
+   # 2. Is the Pneuma desktop app installed? (macOS only — the only OS
+   #    that ships an Electron build today). The bundle is literally
+   #    "Pneuma Skills.app" (with the space) — `mdfind -name Pneuma.app`
+   #    won't find it. Check the install path AND the URL-scheme
+   #    registration; both should resolve before you commit to Path B.
+   if [ "$(uname)" = "Darwin" ] && [ -d "/Applications/Pneuma Skills.app" ]; then
+     echo desktop
+   else
+     echo nodesktop
+   fi
    ```
 
-   ### Path A — CLI is available (works everywhere, preferred when present)
+   Pick the first path that matches, in order:
+   - `desktop` → **Path B** (URL scheme — opens a native Pneuma window,
+     the best UX when available; preferred even when the CLI is also
+     installed)
+   - `nodesktop` + `cli` → **Path A** (terminal-only environments,
+     remote SSH boxes, Linux servers, CI)
+   - `nodesktop` + `nocli` → **Path C**
+
+   Do not silently fall back from one path to the next if it appears to
+   fail. If `open pneuma://…` errors out, or `pneuma handoff-from-external`
+   errors out, do not switch to the other path — surface the error to
+   the user. Mixing paths is how you get two windows or two staged
+   handoffs.
+
+   ### Path A — CLI (fallback when no desktop app, works everywhere)
 
    ```bash
    pneuma handoff-from-external \
@@ -120,7 +147,7 @@ The slash command's argument is `$ARGUMENTS`.
    baked in), spawn `pneuma <mode>` in the background, open a browser
    tab, and print the session URL on its last stdout line.
 
-   ### Path B — No CLI, but the Pneuma desktop app is installed (macOS preferred)
+   ### Path B — Pneuma desktop app (preferred — native window + tray, macOS only)
 
    The desktop app registers itself as a handler for the `pneuma://` URL
    scheme. Emit a deep link and `open` it:
@@ -145,11 +172,12 @@ The slash command's argument is `$ARGUMENTS`.
 
    Tell the user (verbatim) one of these is required, with the install hints:
 
-   - Recommended for terminal users: `bun add -g pneuma-skills`
+   - **Recommended on macOS**: download the desktop app at
+     https://github.com/pandazki/pneuma-skills/releases — registers the
+     `pneuma://` URL scheme automatically, opens sessions in a native
+     window.
+   - **For terminal-only / Linux / CI**: `bun add -g pneuma-skills`
      (requires [Bun](https://bun.sh/) ≥ 1.3.5).
-   - Recommended for desktop users: download the desktop app at
-     https://github.com/pandazki/pneuma-skills/releases — it registers the
-     `pneuma://` URL scheme automatically.
 
    Do not attempt to install anything yourself.
 

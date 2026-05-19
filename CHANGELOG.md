@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.10.11] - 2026-05-19
+
+### Changed — `/handoff-pneuma` slash command prefers the desktop app over the CLI
+
+Two related template fixes:
+
+- **Detection block.** The template documented Path A (CLI), Path B (URL scheme via desktop app), and Path C (neither) but only spelled out the *CLI* detection command. For Path B it just said "the Pneuma desktop app is installed" and left the source agent to figure out the check itself. Predictably, agents tried `mdfind -name "Pneuma.app"` — which returns nothing because the actual bundle is `Pneuma Skills.app` (with a space). Conclusion "no desktop app", silent fall-through to Path A, "command not found: pneuma", confused user. Template now ships both checks side-by-side: `[ "$(uname)" = "Darwin" ] && [ -d "/Applications/Pneuma Skills.app" ]` for the desktop side (bundle path is more reliable than `mdfind` / `lsregister`).
+
+- **Path priority flipped to desktop-first.** Previous order was "CLI if present, else desktop, else neither". When both are installed (common in dev) the agent picked the CLI, which spawns a detached process + browser tab; users with the desktop app installed would much rather get a native Pneuma window. New order: desktop → CLI → neither. The agent only falls back to the CLI when there's no desktop app (Linux, CI, SSH'd terminals).
+
+Also added a "don't silently fall back if a path errors — surface it" guardrail so a one-off `open` failure doesn't fork into two staged handoffs across both paths.
+
 ## [3.10.10] - 2026-05-19
 
 ### Fixed — handoff `<pneuma:env reason="handed-off">` actually woke the agent
