@@ -368,12 +368,21 @@ export async function runHandoffFromExternal(
   //    detached child blocks forever on stdin it can't read because we
   //    closed it with `stdio: "ignore"`. The agent can still configure
   //    keys inside the running session.
+  //
+  //    `--no-open` suppresses the child's default "open system browser
+  //    to the session URL" behaviour. Every consumer of this CLI already
+  //    has its own way to surface the URL — the Electron URL-scheme
+  //    handler opens a mode window (`createModeWindow`), and the
+  //    terminal CLI prints it for the user/agent to relay. Without
+  //    `--no-open`, the user sees TWO windows: ours + a stray Chrome
+  //    tab the child popped on its own.
   const cmd: string[] = [
     process.argv[0]!,
     process.argv[1]!,
     parsed.mode,
     "--port", String(port),
     "--no-prompt",
+    "--no-open",
   ];
   if (wantProject) {
     cmd.push("--project", cwd, "--session-id", sessionId);
@@ -422,6 +431,23 @@ export async function runHandoffFromExternal(
     return 1;
   }
 
+  // 8. Wait for the spawned server to bind before returning the URL.
+  //    Otherwise the Electron URL-scheme handler immediately calls
+  //    `createModeWindow(url)` while the bun child is still booting, the
+  //    window's first `loadURL` lands on a connection-refused frame
+  //    (`chrome-error://chromewebdata`), and Chromium then refuses the
+  //    cross-origin redirect to `http://localhost` once the server *does*
+  //    come up — you get a permanently-black window.
+  //
+  //    Poll up to ~12s (cold-start of a Bun process loading the launcher
+  //    JS is ~1–4s on a fast Mac; the cap mostly covers slow disks /
+  //    cold caches). Returning the URL early on timeout still works for
+  //    CLI users (the URL was always going to print regardless); the
+  //    Electron window will just retry the load on its own once it
+  //    receives the eventual `did-fail-load`. Surface readiness in the
+  //    JSON envelope so callers can adapt if they care.
+  const ready = await waitForBind(port, 60, 200);
+
   if (parsed.json) {
     io.stdout(
       JSON.stringify(
@@ -434,17 +460,39 @@ export async function runHandoffFromExternal(
           inboundFile,
           url,
           pid,
+          ready,
         },
         null,
         2,
       ),
     );
   } else {
-    io.stdout(`Pneuma starting in ${cwd}`);
+    io.stdout(`Pneuma ${ready ? "ready in" : "starting in"} ${cwd}`);
     io.stdout(`  mode:    ${modeEntry.displayName} (${parsed.mode})`);
     io.stdout(`  session: ${sessionId}`);
     io.stdout(`  project: ${wantProject ? "yes" : "no"}`);
     io.stdout(url);
   }
   return 0;
+}
+
+/**
+ * Poll `http://127.0.0.1:<port>/` until it returns any HTTP response or
+ * we run out of attempts. We don't care about the status code — even a
+ * 404 means the server is alive and routing.
+ */
+async function waitForBind(port: number, maxAttempts: number, intervalMs: number): Promise<boolean> {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 500);
+      const res = await fetch(`http://127.0.0.1:${port}/`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (res.status > 0) return true;
+    } catch {
+      // ECONNREFUSED / abort / other — server not up yet, keep polling.
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return false;
 }

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.10.8] - 2026-05-19
+
+### Fixed — `/handoff-pneuma` opened two windows; the Electron one was black
+
+- **Two windows.** `runHandoffFromExternal` spawned `pneuma <mode>` without `--no-open`, so the spawned child popped a system-browser tab pointing at the session URL while the Electron URL-scheme handler simultaneously opened a mode window for the same URL. Every consumer of this CLI (Electron + terminal CLI) already surfaces the URL on its own — the child's default browser-open behaviour was always redundant. Now spawned with `--no-open`.
+
+- **Black Electron window.** Electron's `handleHandoffUrl` immediately called `createModeWindow(url)` after `runHandoffFromExternal` returned, but the spawned bun child hadn't bound its port yet. The window's first `loadURL` landed on `chrome-error://chromewebdata` (connection refused); once the server came up, Chromium refused the cross-origin redirect from `chrome-error://` to `http://localhost:<port>` and the window stayed black. Console showed `Unsafe attempt to load URL ... from frame with URL chrome-error://chromewebdata`.
+
+  Fix: `runHandoffFromExternal` now polls `http://127.0.0.1:<port>/` after spawn, returning only once any HTTP response comes back (up to ~12s — Bun cold-start is 1–4s on typical hardware). JSON output gains a `ready: true|false` field; non-JSON mode says "Pneuma ready in" vs "Pneuma starting in". Electron's mode window now gets a definitely-bound URL, so the first `loadURL` succeeds and chrome-error doesn't intermediate.
+
 ## [3.10.7] - 2026-05-19
 
 ### Changed — Backends settings card now owns the whole per-backend lifecycle
