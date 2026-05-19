@@ -98,9 +98,15 @@ function handlePneumaUrl(url: string) {
         break;
       }
       case 'handoff': {
-        // pneuma://handoff?intent=...&mode=...&cwd=...&init-project=<0|1>&source-agent=...
-        // The /handoff-pneuma slash command emits this when the user
-        // has no `pneuma` CLI on PATH but does have the desktop app.
+        // pneuma://handoff?intent=...&mode=...&cwd=...&init-project=<0|1>
+        //                 &source-agent=...&summary=...&files=a,b,c
+        //                 &source-transcript=...
+        //
+        // The /handoff-pneuma slash command emits this when the user has
+        // no `pneuma` CLI on PATH but does have the desktop app. The
+        // optional context fields (summary/files/source-transcript) are
+        // critical for non-trivial intents like "做个工作汇报" where the
+        // target needs to know what just happened in the source agent.
         const params = parsed.searchParams;
         const intent = params.get('intent');
         const mode = params.get('mode');
@@ -117,6 +123,15 @@ function handlePneumaUrl(url: string) {
         if (sourceAgent) body.sourceAgent = sourceAgent;
         const displayName = params.get('display-name') ?? params.get('display_name');
         if (displayName) body.displayName = displayName;
+        const summary = params.get('summary');
+        if (summary) body.summary = summary;
+        const filesParam = params.get('files');
+        if (filesParam) {
+          const files = filesParam.split(',').map((s) => s.trim()).filter(Boolean);
+          if (files.length > 0) body.suggestedFiles = files;
+        }
+        const sourceTranscript = params.get('source-transcript') ?? params.get('source_transcript');
+        if (sourceTranscript) body.sourceTranscript = sourceTranscript;
         void handleHandoffUrl(body);
         break;
       }

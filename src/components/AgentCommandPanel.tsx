@@ -316,7 +316,7 @@ export function AgentCommandSettings() {
     return <div className="text-sm text-cc-fg/60">Loading…</div>;
   }
 
-  const run = async (key: string, fn: () => Promise<void>) => {
+  const run = async (key: string, fn: () => Promise<unknown>) => {
     setBusy(key);
     try {
       await fn();

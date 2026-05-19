@@ -151,6 +151,11 @@ export function registerAgentCommandRoutes(app: Hono, deps: AgentCommandRoutesDe
       initProject?: boolean;
       sourceAgent?: string;
       displayName?: string;
+      summary?: string;
+      suggestedFiles?: string[];
+      keyDecisions?: string[];
+      openQuestions?: string[];
+      sourceTranscript?: string;
       dryRun?: boolean;
     }>().catch(() => ({} as any));
 
@@ -171,6 +176,23 @@ export function registerAgentCommandRoutes(app: Hono, deps: AgentCommandRoutesDe
     else cliArgs.push("--init-project");
     if (body.sourceAgent) cliArgs.push("--source-agent", body.sourceAgent);
     if (body.displayName) cliArgs.push("--display-name", body.displayName);
+    if (body.summary) cliArgs.push("--summary", body.summary);
+    if (Array.isArray(body.suggestedFiles)) {
+      for (const f of body.suggestedFiles) {
+        if (typeof f === "string" && f.length > 0) cliArgs.push("--file", f);
+      }
+    }
+    if (Array.isArray(body.keyDecisions)) {
+      for (const d of body.keyDecisions) {
+        if (typeof d === "string" && d.length > 0) cliArgs.push("--decision", d);
+      }
+    }
+    if (Array.isArray(body.openQuestions)) {
+      for (const q of body.openQuestions) {
+        if (typeof q === "string" && q.length > 0) cliArgs.push("--open-question", q);
+      }
+    }
+    if (body.sourceTranscript) cliArgs.push("--source-transcript", body.sourceTranscript);
     if (body.dryRun) cliArgs.push("--dry-run");
 
     // Capture stdout/stderr — runHandoffFromExternal emits a single JSON

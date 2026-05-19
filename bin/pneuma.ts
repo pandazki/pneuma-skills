@@ -2130,15 +2130,20 @@ async function main() {
   // `switched_in` history event and to drive the `<pneuma:env reason="handed-off" />`
   // dispatch on the agent's first turn. Read once here so the file's existence
   // is the single source of truth for the handoff path.
+  //
+  // Originally project-only (intra-pneuma Smart Handoff was a cross-mode
+  // transition inside a project). External handoff (`pneuma://handoff` URL
+  // scheme + `pneuma handoff-from-external`) introduced in 3.10.0 stages
+  // inbound payloads for Quick sessions too — same path shape, just with
+  // `sessionDir = <workspace>/.pneuma` instead of `<projectRoot>/.pneuma/
+  // sessions/<id>`. The kind guard would silently swallow them.
   let inboundHandoff: InboundHandoffPayload | null = null;
   // The path is computed even when no inbound exists (so the env tag
   // builder receives a stable absolute path to surface as `inbound_path`).
   // `readInboundHandoff` returns null when the file doesn't exist; the
   // env-tag dispatcher only emits the attribute when an inbound is present.
   const inboundHandoffPath = join(sessionDir, ".pneuma", "inbound-handoff.json");
-  if (startup.kind === "project" && startup.paths.projectRoot) {
-    inboundHandoff = readInboundHandoff(sessionDir);
-  }
+  inboundHandoff = readInboundHandoff(sessionDir);
   if (inboundHandoff && inboundHandoff.handoff_id) {
     try {
       const historyPath = join(stateDir, "history.json");

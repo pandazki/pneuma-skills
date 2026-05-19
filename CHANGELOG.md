@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.10.5] - 2026-05-19
+
+### Fixed — `/handoff-pneuma` carries conversation context now, and works for Quick sessions
+
+Two problems compounded into a target agent that had no idea what to do with a non-trivial intent like "做个工作汇报":
+
+- **Quick sessions silently dropped the inbound payload.** `runHandoffFromExternal` correctly wrote `inbound-handoff.json` for both Quick and Project sessions, but the launcher boot path (`bin/pneuma.ts`) had a `startup.kind === "project"` guard around `readInboundHandoff` — and `installSkill` had a parallel `projectRoot && sessionId` guard around the handoff section injection. Both were legacy from intra-pneuma Smart Handoff (where the source was always a project session); external handoffs from CC/Codex are valid regardless of target shape. Dropped both guards. Quick sessions now surface the inbound payload exactly like project sessions do.
+
+- **Slash template didn't tell the agent to bridge conversation context.** The CLI / URL scheme only carried `intent` (the literal slash argument) — for "build a counter webpage" that's enough, but for "做个工作汇报" the target needed to know what was just done. Extended the template with a new "Step 4: Bridge the conversation context" that instructs the source agent to compose a 2-4 sentence `SUMMARY`, list `FILES` worth reading first, and (Claude Code only) find the source transcript at `~/.claude/projects/<encoded-cwd>/<sid>.jsonl` so the target can read the verbatim exchange when the summary isn't enough.
+
+### Added — `--summary`, `--file`/`--files`, `--decision`, `--open-question`, `--source-transcript` flags
+
+- `pneuma handoff-from-external` now accepts the full context payload (the schema already had these fields for intra-pneuma handoffs; the external CLI just didn't expose them).
+- `POST /api/handoffs/external` accepts the same fields as JSON body keys (`summary`, `suggestedFiles`, `keyDecisions`, `openQuestions`, `sourceTranscript`).
+- `pneuma://handoff` URL scheme accepts them as query params (`?summary=…&files=a,b,c&source-transcript=…`); the Electron handler in `desktop/src/main/index.ts` parses them through.
+- `InboundHandoffPayload` gains an optional `source_transcript` field; `buildHandoffSection` renders it in the agent's first-turn prompt with explicit guidance to read it when the summary is insufficient.
+
 ## [3.10.4] - 2026-05-19
 
 ### Fixed — `/handoff-pneuma` install failed inside `/Applications/Pneuma Skills.app/` (spaces in path)

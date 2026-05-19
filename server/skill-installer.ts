@@ -310,6 +310,15 @@ export interface InboundHandoffPayload {
   suggested_files?: string[];
   key_decisions?: string[];
   open_questions?: string[];
+  /**
+   * Absolute path to the source agent's transcript (e.g. Claude Code's
+   * `~/.claude/projects/<encoded-cwd>/<sid>.jsonl`). When present the target
+   * agent can read the source's conversation directly for context the
+   * `summary` field can't fit. Used by external handoffs (the URL scheme
+   * + `pneuma handoff-from-external` CLI introduced in 3.10.0); intra-pneuma
+   * handoffs leave this undefined.
+   */
+  source_transcript?: string;
   proposed_at?: number;
 }
 
@@ -375,6 +384,12 @@ export function buildHandoffSection(payload: InboundHandoffPayload | null): stri
   if (payload.open_questions?.length) {
     lines.push("**Open questions**:");
     for (const q of payload.open_questions) lines.push(`- ${q}`);
+    lines.push("");
+  }
+  if (payload.source_transcript) {
+    lines.push(
+      `**Source transcript**: \`${payload.source_transcript}\` — read this when the summary above is insufficient for the intent. It's the literal conversation the source agent had with the user before triggering this handoff.`,
+    );
     lines.push("");
   }
   lines.push(
@@ -1376,20 +1391,18 @@ export function installSkill(options: InstallSkillOptions): void {
     content = injectProjectAtlasSection(content, null);
   }
 
-  // 2f. Inject/update handoff section (project sessions only).
-  //     The v2 tool-call protocol writes a structured payload to
-  //     `<sessionDir>/.pneuma/inbound-handoff.json` BEFORE the target spawns;
-  //     this block surfaces it to the agent on first run. The agent reads
-  //     the file (path quoted in the block) and rms it after consuming.
-  //     Quick sessions and project sessions without an inbound payload pass
-  //     null to strip any stale block.
-  if (projectRoot && sessionId) {
-    const inbound = readInboundHandoff(installTarget);
-    content = injectHandoffSection(content, buildHandoffSection(inbound));
-  } else {
-    // Idempotency: strip any stale block left from a previous install.
-    content = injectHandoffSection(content, null);
-  }
+  // 2f. Inject/update handoff section.
+  //     A structured payload is written to `<sessionDir>/.pneuma/inbound-handoff.json`
+  //     BEFORE the target spawns by one of:
+  //       - intra-pneuma Smart Handoff (`/api/handoffs/:id/confirm`) — project sessions only
+  //       - external handoff (`pneuma handoff-from-external` + `pneuma://handoff` URL scheme,
+  //         3.10.0+) — works for both quick and project sessions
+  //     This block surfaces the payload to the agent on first run. The agent
+  //     reads the file (path quoted in the block) and rms it after consuming.
+  //     No inbound file → strip any stale block from a prior install for
+  //     idempotency.
+  const inbound = readInboundHandoff(installTarget);
+  content = injectHandoffSection(content, buildHandoffSection(inbound));
 
   // Write instructions file
   mkdirSync(dirname(primaryInstructionsPath), { recursive: true });

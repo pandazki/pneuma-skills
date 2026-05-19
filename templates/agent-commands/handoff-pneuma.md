@@ -57,10 +57,43 @@ The slash command's argument is `$ARGUMENTS`.
    > work — persistent preferences, multiple sessions can share it), or just
    > spin up a one-off session in the current directory?"
 
-   - Project → pass `--init-project` in step 4.
+   - Project → pass `--init-project` in step 5.
    - Quick → omit `--init-project`.
 
-4. **Run the handoff. Pick the right launcher based on what's installed.**
+4. **Bridge the conversation context.** This is the step that matters most.
+
+   The target Pneuma session sees `INTENT` as a literal string. If the
+   user said something like "做个工作汇报" / "write up what we just did",
+   that intent is meaningless without the conversation that preceded it —
+   the target agent would have to guess from filesystem state alone. Don't
+   make it guess.
+
+   Prepare three things based on your current conversation:
+
+   - **SUMMARY** — 2-4 sentences capturing what's been built/discussed in
+     this session, what state things are in now, and why the user wants to
+     hand off. Be specific about deliverables, decisions, and outstanding
+     issues. Avoid filler like "the user asked me to…".
+   - **FILES** — comma-separated list of absolute paths the target should
+     read first to understand the work-in-progress. Limit to ~5 files; only
+     include what's actually relevant to `INTENT`.
+   - **SOURCE_TRANSCRIPT** — *(Claude Code only)* path to the JSONL file
+     for this very conversation, so the target can read the verbatim
+     exchange when the summary isn't enough. Claude Code stores transcripts
+     at `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`, where
+     `<encoded-cwd>` is the workspace path with `/` → `-`. The most
+     recently-modified `.jsonl` in that directory is this session. Find it:
+
+     ```bash
+     ENC_CWD=$(pwd | sed 's|/|-|g')
+     SOURCE_TRANSCRIPT=$(ls -t ~/.claude/projects/${ENC_CWD}/*.jsonl 2>/dev/null | head -1)
+     ```
+
+     If you can't determine the path, leave `SOURCE_TRANSCRIPT` empty —
+     don't fabricate one. For Codex / other agents that lack a known
+     transcript path convention, also leave it empty.
+
+5. **Run the handoff. Pick the right launcher based on what's installed.**
 
    First, detect whether the `pneuma` CLI is on PATH:
 
@@ -75,13 +108,17 @@ The slash command's argument is `$ARGUMENTS`.
      --intent "$INTENT" \
      --mode "$MODE" \
      [--init-project] \
-     --source-agent {{sourceAgent}}
+     --source-agent {{sourceAgent}} \
+     --summary "$SUMMARY" \
+     [--files "$FILES"] \
+     [--source-transcript "$SOURCE_TRANSCRIPT"]
    ```
 
    Run from the user's **current shell directory** — do NOT `cd` first.
-   The CLI will validate the mode, stage `inbound-handoff.json`, spawn
-   `pneuma <mode>` in the background, open a browser tab, and print the
-   session URL on its last stdout line.
+   The CLI will validate the mode, stage `inbound-handoff.json` (with
+   `intent`, `summary`, `suggested_files`, and `source_transcript`
+   baked in), spawn `pneuma <mode>` in the background, open a browser
+   tab, and print the session URL on its last stdout line.
 
    ### Path B — No CLI, but the Pneuma desktop app is installed (macOS preferred)
 
@@ -89,15 +126,18 @@ The slash command's argument is `$ARGUMENTS`.
    scheme. Emit a deep link and `open` it:
 
    ```bash
-   # bash/zsh/fish — URL-encode each value (use the shell's URL encoder
-   # of choice; below shows python3 as a portable fallback).
-   ENC_INTENT=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$INTENT")
-   ENC_CWD=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$(pwd)")
-   open "pneuma://handoff?intent=$ENC_INTENT&mode=$MODE&cwd=$ENC_CWD&init-project=$INIT_PROJECT&source-agent={{sourceAgent}}"
+   # URL-encode each value. Python3 is the portable fallback.
+   enc() { python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$1"; }
+   URL="pneuma://handoff?intent=$(enc "$INTENT")&mode=$MODE&cwd=$(enc "$(pwd)")&init-project=$INIT_PROJECT&source-agent={{sourceAgent}}"
+   [ -n "$SUMMARY" ]            && URL="$URL&summary=$(enc "$SUMMARY")"
+   [ -n "$FILES" ]              && URL="$URL&files=$(enc "$FILES")"
+   [ -n "$SOURCE_TRANSCRIPT" ]  && URL="$URL&source-transcript=$(enc "$SOURCE_TRANSCRIPT")"
+   open "$URL"
    ```
 
    Where `$INIT_PROJECT` is `1` for project init, `0` for quick. The
-   desktop app will pick up the URL, stage the handoff, and open a new
+   desktop app will pick up the URL, stage the handoff (including the
+   summary + suggested files + transcript pointer), and open a new
    session window. No browser URL gets printed in this path — the app's
    own window IS the result.
 
@@ -113,10 +153,11 @@ The slash command's argument is `$ARGUMENTS`.
 
    Do not attempt to install anything yourself.
 
-5. **Report the URL back to the user (Path A only).** Repeat the URL
-   verbatim. The new Pneuma agent already has their intent staged — they
-   should continue the conversation in that window. For Path B, just
-   confirm "Pneuma opened a new session window for `$INTENT`".
+6. **Report the URL back to the user (Path A only).** Repeat the URL
+   verbatim. The new Pneuma agent already has the intent, summary,
+   suggested files, and source transcript pointer staged — they should
+   continue the conversation in that window. For Path B, just confirm
+   "Pneuma opened a new session window for `$INTENT`".
 
 ## Notes
 

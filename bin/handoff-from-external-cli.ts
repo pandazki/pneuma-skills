@@ -64,6 +64,24 @@ export interface ParsedHandoffArgs {
   sourceAgent?: string;
   displayName?: string;
   port?: number;
+  /**
+   * 2-4 sentence summary of the source agent's current conversation —
+   * what's been built, what state things are in, why this handoff. Without
+   * it the target sees only `intent` and has to guess at context.
+   */
+  summary?: string;
+  /** Files the target should read first. Repeatable `--file <path>` or comma-separated `--files a,b,c`. */
+  suggestedFiles?: string[];
+  /** Constraints / decisions already made the target shouldn't re-litigate. Comma-separated. */
+  keyDecisions?: string[];
+  /** Open questions the target should resolve. Comma-separated. */
+  openQuestions?: string[];
+  /**
+   * Path to the source agent's transcript (e.g. CC's
+   * `~/.claude/projects/<encoded-cwd>/<sid>.jsonl`). The target can read
+   * this to dig into details the summary glosses over.
+   */
+  sourceTranscript?: string;
   json: boolean;
   help: boolean;
   /** Stop short of actually spawning (CI / dry-run). */
@@ -80,15 +98,26 @@ Required:
   --mode <name>        Mode identifier — see \`pneuma mode list --local --json\`.
 
 Options:
-  --cwd <path>         Workspace directory (default: current dir).
-  --init-project       Initialize <cwd> as a Pneuma Project (default).
-  --quick              Skip project init — one-off session in <cwd>.
-  --source-agent <id>  Tag for telemetry (e.g. claude-code, codex).
-  --display-name <s>   Override the project displayName when initialising.
-  --port <n>           Force a specific server port (default: auto).
-  --json               Emit the result as JSON instead of human text.
-  --dry-run            Stage files but skip spawning the pneuma server.
-  --help, -h           Show this help.
+  --cwd <path>            Workspace directory (default: current dir).
+  --init-project          Initialize <cwd> as a Pneuma Project (default).
+  --quick                 Skip project init — one-off session in <cwd>.
+  --source-agent <id>     Tag for telemetry (e.g. claude-code, codex).
+  --display-name <s>      Override the project displayName when initialising.
+  --port <n>              Force a specific server port (default: auto).
+
+  Context (helps the target agent understand WHY this handoff happened):
+  --summary <text>        2-4 sentence summary of the source conversation so far.
+  --file <path>           File the target should read first. Repeatable.
+  --files <a,b,c>         Comma-separated alternative to multiple --file flags.
+  --decision <text>       A decision already made the target shouldn't re-litigate. Repeatable.
+  --open-question <text>  An open question the target should resolve. Repeatable.
+  --source-transcript <p> Path to the source agent's transcript file (e.g. CC's
+                          ~/.claude/projects/<encoded-cwd>/<sid>.jsonl) for the
+                          target to read on first turn when summary is insufficient.
+
+  --json                  Emit the result as JSON instead of human text.
+  --dry-run               Stage files but skip spawning the pneuma server.
+  --help, -h              Show this help.
 `;
 
 // ── Arg parsing ────────────────────────────────────────────────────────────
@@ -110,6 +139,24 @@ export function parseHandoffFromExternalArgs(args: string[]): ParsedHandoffArgs 
     else if (a === "--port" && i + 1 < args.length) {
       const n = parseInt(args[++i] ?? "", 10);
       if (Number.isFinite(n) && n > 0) out.port = n;
+    }
+    else if (a === "--summary" && i + 1 < args.length) out.summary = args[++i];
+    else if (a === "--source-transcript" && i + 1 < args.length) out.sourceTranscript = args[++i];
+    else if (a === "--file" && i + 1 < args.length) {
+      const v = args[++i];
+      if (v) { out.suggestedFiles = [...(out.suggestedFiles ?? []), v]; }
+    }
+    else if (a === "--files" && i + 1 < args.length) {
+      const list = (args[++i] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+      if (list.length) out.suggestedFiles = [...(out.suggestedFiles ?? []), ...list];
+    }
+    else if (a === "--decision" && i + 1 < args.length) {
+      const v = args[++i];
+      if (v) { out.keyDecisions = [...(out.keyDecisions ?? []), v]; }
+    }
+    else if (a === "--open-question" && i + 1 < args.length) {
+      const v = args[++i];
+      if (v) { out.openQuestions = [...(out.openQuestions ?? []), v]; }
     }
   }
   return out;
@@ -165,6 +212,11 @@ interface HandoffPayload {
   target_session: string;
   intent: string;
   summary?: string;
+  suggested_files?: string[];
+  key_decisions?: string[];
+  open_questions?: string[];
+  /** Path to the source agent's transcript file, when known. */
+  source_transcript?: string;
   proposed_at: number;
 }
 
@@ -174,6 +226,11 @@ function buildPayload(opts: {
   sourceAgent?: string;
   sessionId: string;
   cwd: string;
+  summary?: string;
+  suggestedFiles?: string[];
+  keyDecisions?: string[];
+  openQuestions?: string[];
+  sourceTranscript?: string;
 }): HandoffPayload {
   const sourceAgent = opts.sourceAgent ?? "external";
   return {
@@ -184,6 +241,11 @@ function buildPayload(opts: {
     target_mode: opts.mode,
     target_session: opts.sessionId,
     intent: opts.intent,
+    ...(opts.summary ? { summary: opts.summary } : {}),
+    ...(opts.suggestedFiles && opts.suggestedFiles.length > 0 ? { suggested_files: opts.suggestedFiles } : {}),
+    ...(opts.keyDecisions && opts.keyDecisions.length > 0 ? { key_decisions: opts.keyDecisions } : {}),
+    ...(opts.openQuestions && opts.openQuestions.length > 0 ? { open_questions: opts.openQuestions } : {}),
+    ...(opts.sourceTranscript ? { source_transcript: opts.sourceTranscript } : {}),
     proposed_at: Date.now(),
   };
 }
@@ -283,6 +345,11 @@ export async function runHandoffFromExternal(
     ...(parsed.sourceAgent ? { sourceAgent: parsed.sourceAgent } : {}),
     sessionId,
     cwd,
+    ...(parsed.summary ? { summary: parsed.summary } : {}),
+    ...(parsed.suggestedFiles && parsed.suggestedFiles.length > 0 ? { suggestedFiles: parsed.suggestedFiles } : {}),
+    ...(parsed.keyDecisions && parsed.keyDecisions.length > 0 ? { keyDecisions: parsed.keyDecisions } : {}),
+    ...(parsed.openQuestions && parsed.openQuestions.length > 0 ? { openQuestions: parsed.openQuestions } : {}),
+    ...(parsed.sourceTranscript ? { sourceTranscript: parsed.sourceTranscript } : {}),
   });
   try {
     atomicWriteJson(inboundFile, payload);
