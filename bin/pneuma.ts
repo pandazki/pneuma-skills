@@ -2470,8 +2470,18 @@ async function main() {
     });
     if (!tag) return;
     envTagDispatched = true;
-    wsBridge.enqueueEnvContext(targetSessionId, tag);
-    console.log(`[pneuma] Queued env context: ${tag}`);
+    // Handoff scenarios (intra-pneuma Smart Handoff with `fromSessionId`,
+    // or external handoff with `inboundHandoff` written by
+    // `pneuma handoff-from-external`) need immediate dispatch — the
+    // source has already supplied context, the user has already
+    // approved, and waiting for them to type "do it" before the target
+    // agent moves is a deadlock. On Claude Code it's worse: the CLI
+    // subprocess sits on empty stdin and never fires `system.init`,
+    // so the model picker stays "no model" until the user nudges it.
+    // `opened` and `resumed` keep the original pending-context semantics.
+    const isHandoff = !!inboundHandoff || (fromSessionId !== undefined && fromSessionId.trim().length > 0);
+    wsBridge.enqueueEnvContext(targetSessionId, tag, { immediate: isHandoff });
+    console.log(`[pneuma] ${isHandoff ? "Dispatched" : "Queued"} env context: ${tag}`);
   };
 
   if (replayPackage) {

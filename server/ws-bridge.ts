@@ -216,20 +216,45 @@ export class WsBridge {
   }
 
   /**
-   * Register a `<pneuma:env>` (or any other system signal) tag as
-   * **pending context** rather than a standalone user turn. The tag:
+   * Register a `<pneuma:env>` (or any other system signal) tag.
+   *
+   * Two modes:
+   *
+   * **Default (pending)** — the tag:
    *   - lands in `messageHistory` so reload reconstructs the banner
    *   - broadcasts to browsers so the banner renders live
    *   - is buffered on the session, and gets prepended to the CLI-bound
    *     content of the *next* real user message (then discarded)
    *
-   * This is the right model for env-tag semantics: the agent never sees
-   * the tag as a question (no spurious "welcome back" reply), but
-   * when the user does send something, the agent has the context it
-   * needs to reason about session lineage / locale / handoff. The chat
-   * UI gets a visual cue for the human.
+   *   Right for `reason="opened"` / `reason="resumed"`: the user hasn't
+   *   asked for anything yet, so the agent stays idle. When the user
+   *   does type, the prepended env tag gives the agent the session-
+   *   lineage / locale context it needs to reason about that input.
+   *
+   * **Immediate (`opts.immediate = true`)** — same history + broadcast
+   * but the tag is ALSO delivered to the CLI right now via the same path
+   * a real user message would take. The agent processes it immediately
+   * and starts work without waiting for further user input.
+   *
+   *   Right for `reason="handed-off"` / `reason="switched"`: the source
+   *   agent already supplied intent / summary / files / transcript via
+   *   `inbound-handoff.json` + the `pneuma:handoff` CLAUDE.md block.
+   *   The user already approved this handoff (or invoked it from a
+   *   slash command). Waiting for them to type "do it" before the
+   *   target agent moves is a deadlock — and worse, on Claude Code
+   *   it leaves the CLI subprocess sitting on stdin with no input,
+   *   so `system.init` never fires and the model picker shows
+   *   "no model" indefinitely.
    */
-  enqueueEnvContext(sessionId: string, tag: string): void {
+  enqueueEnvContext(sessionId: string, tag: string, opts?: { immediate?: boolean }): void {
+    if (opts?.immediate) {
+      // Active dispatch — `sendUserMessage` handles history push,
+      // CLI delivery (via the same `handleUserMessage` path browser
+      // messages use), and the broadcast in one shot. Skip the
+      // pending queue entirely.
+      this.sendUserMessage(sessionId, tag);
+      return;
+    }
     const session = this.getOrCreateSession(sessionId);
     const ts = Date.now();
     session.pendingEnvContext.push(tag);

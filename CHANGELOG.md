@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.10.10] - 2026-05-19
+
+### Fixed — handoff `<pneuma:env reason="handed-off">` actually woke the agent
+
+Final root cause of the "spawned Pneuma stays Idle / no model until you type something" issue. Wasn't a timing race — it was a semantic mismatch in `WsBridge.enqueueEnvContext`.
+
+The dispatch path was:
+
+1. `dispatchEnvTag` built `<pneuma:env reason="handed-off" inbound_path="..." />`
+2. `wsBridge.enqueueEnvContext` recorded the tag in `messageHistory`, broadcast it to browsers as a timeline banner, and **queued it as pending context** — to be prepended to the next real user message, not dispatched on its own.
+
+That pending-context model is correct for `reason="opened"` / `reason="resumed"` (you don't want the agent firing a spurious "welcome back" reply at a user who hasn't even asked anything yet). But for handoff it's a deadlock: the source agent has already supplied intent / summary / files / transcript via `inbound-handoff.json` + the `pneuma:handoff` CLAUDE.md block; the target should start work immediately. Worse, on Claude Code the CLI subprocess uses `--print --input-format stream-json`, which never emits `system.init` until it receives at least one stdin event — so the model picker in the chat header stayed at "no model" indefinitely until the user typed something, at which point the queued env + new message hit the CLI together.
+
+Fix: `enqueueEnvContext` gains an `{ immediate?: boolean }` option. When `true`, the tag goes through `sendUserMessage` (same path browser-originated messages take) — recorded once, broadcast once, delivered to the CLI. `dispatchEnvTag` in `bin/pneuma.ts` sets `immediate: true` when an inbound handoff payload OR a `fromSessionId` is present (i.e. either external handoff or intra-pneuma Smart Handoff). `opened` and `resumed` keep the pending-queue semantics — nothing changes for non-handoff spawns.
+
+After this, the spawned session boots, the `handed-off` env tag flows straight to the CLI, `system.init` fires, the model picker resolves, and the agent's first reply acknowledges the handoff and starts the work. No user nudge required.
+
 ## [3.10.9] - 2026-05-19
 
 ### Fixed — Quick-session handoff actually reached the agent (path mismatch)
