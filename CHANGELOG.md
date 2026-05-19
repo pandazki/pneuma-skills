@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.10.3] - 2026-05-19
+
+### Changed — desktop binary version unified with npm package version
+
+- **`desktop/package.json` jumps 2.20.2 → 3.10.3.** From this release the Electron desktop binary, the npm `pneuma-skills` package, and the `**Version:**` line in `CLAUDE.md` all carry the same number. Bumping only one is now a release-process bug — CLAUDE.md's "Version Bump Checklist" was updated in 95365a8 to make this explicit.
+
+  Why this matters: between 3.9.0 and 3.10.2 only the npm `package.json` got bumped each release; `desktop/package.json` sat at 2.19.1 from May 2024 through 3.10.0. `electron-updater` reads `desktop/package.json`'s version when comparing the running app to the latest release — so on every 3.9.x release the auto-update prompt never fired and users had to manually re-download. Fixed silently in 3.10.0 by bumping both, now unified here so the version field on the auto-updater dialog matches the GitHub Release tag and the changelog.
+
+  Existing 2.20.2 users will see "v3.10.3 available" in the auto-updater dialog — that's a normal forward semver bump, no special handling needed on the user side.
+
 ## [3.10.2] - 2026-05-19
 
 ### Fixed — first-run "Install" banner silently failed on the Electron desktop build
