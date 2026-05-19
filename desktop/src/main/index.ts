@@ -132,6 +132,8 @@ function handlePneumaUrl(url: string) {
         }
         const sourceTranscript = params.get('source-transcript') ?? params.get('source_transcript');
         if (sourceTranscript) body.sourceTranscript = sourceTranscript;
+        const language = params.get('language');
+        if (language) body.language = language;
         void handleHandoffUrl(body);
         break;
       }

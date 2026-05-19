@@ -319,6 +319,15 @@ export interface InboundHandoffPayload {
    * handoffs leave this undefined.
    */
   source_transcript?: string;
+  /**
+   * BCP47-ish language code of the source conversation (`zh-CN`, `en`,
+   * `ja`, …). Distinct from `user_locale` in the env tag, which tracks
+   * Pneuma's UI locale: a user with English UI conversing in 中文 wants
+   * the target agent to reply in 中文 — this field carries that signal
+   * across the handoff. Optional; when absent the target picks a
+   * language from its other inputs.
+   */
+  language?: string;
   proposed_at?: number;
 }
 
@@ -389,6 +398,12 @@ export function buildHandoffSection(payload: InboundHandoffPayload | null): stri
   if (payload.source_transcript) {
     lines.push(
       `**Source transcript**: \`${payload.source_transcript}\` — read this when the summary above is insufficient for the intent. It's the literal conversation the source agent had with the user before triggering this handoff.`,
+    );
+    lines.push("");
+  }
+  if (payload.language) {
+    lines.push(
+      `**Reply language**: \`${payload.language}\` — the source conversation was in this language. Use the same language for all chat replies AND for any user-visible copy you generate (page text, slide content, doc body, etc.) unless the user explicitly switches. This overrides Pneuma's UI locale.`,
     );
     lines.push("");
   }

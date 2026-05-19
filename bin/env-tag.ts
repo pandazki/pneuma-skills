@@ -87,6 +87,13 @@ export function buildEnvTag(input: EnvTagInput): string | null {
     push("from_mode", input.inbound.source_mode);
     push("from_display_name", input.inbound.source_display_name);
     push("inbound_path", input.inboundPath);
+    // Source-conversation language (when the handoff carries one). Distinct
+    // from `user_locale` below: that's Pneuma's UI setting, this is the
+    // language the user was speaking with the source agent. The handoff
+    // section in CLAUDE.md tells the target agent to reply in this
+    // language; surfacing the same hint inline in the env tag means agents
+    // that don't bother with CLAUDE.md still see it.
+    push("language", input.inbound.language);
   } else if (input.fromSessionId && input.fromSessionId.trim().length > 0) {
     push("reason", "switched");
     push("project", input.projectName);

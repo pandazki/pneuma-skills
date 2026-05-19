@@ -82,6 +82,15 @@ export interface ParsedHandoffArgs {
    * this to dig into details the summary glosses over.
    */
   sourceTranscript?: string;
+  /**
+   * BCP47-ish language code of the **source conversation** (e.g. `zh-CN`,
+   * `en`, `ja`). Distinct from the user's Pneuma UI locale (`user_locale`
+   * in env tags): a Chinese-speaking user with an English-UI install
+   * conversing with CC in 中文 wants the target agent to reply in 中文,
+   * not English. When unset, the target agent picks based on whatever
+   * other signals it has (UI locale, the user's first message style).
+   */
+  language?: string;
   json: boolean;
   help: boolean;
   /** Stop short of actually spawning (CI / dry-run). */
@@ -114,6 +123,9 @@ Options:
   --source-transcript <p> Path to the source agent's transcript file (e.g. CC's
                           ~/.claude/projects/<encoded-cwd>/<sid>.jsonl) for the
                           target to read on first turn when summary is insufficient.
+  --language <code>       BCP47 code (e.g. zh-CN, en, ja) for the source
+                          conversation. Target agent uses this to reply in
+                          the user's language regardless of Pneuma's UI locale.
 
   --json                  Emit the result as JSON instead of human text.
   --dry-run               Stage files but skip spawning the pneuma server.
@@ -142,6 +154,7 @@ export function parseHandoffFromExternalArgs(args: string[]): ParsedHandoffArgs 
     }
     else if (a === "--summary" && i + 1 < args.length) out.summary = args[++i];
     else if (a === "--source-transcript" && i + 1 < args.length) out.sourceTranscript = args[++i];
+    else if (a === "--language" && i + 1 < args.length) out.language = args[++i];
     else if (a === "--file" && i + 1 < args.length) {
       const v = args[++i];
       if (v) { out.suggestedFiles = [...(out.suggestedFiles ?? []), v]; }
@@ -217,6 +230,8 @@ interface HandoffPayload {
   open_questions?: string[];
   /** Path to the source agent's transcript file, when known. */
   source_transcript?: string;
+  /** Source-conversation language code. See `ParsedHandoffArgs.language`. */
+  language?: string;
   proposed_at: number;
 }
 
@@ -231,6 +246,7 @@ function buildPayload(opts: {
   keyDecisions?: string[];
   openQuestions?: string[];
   sourceTranscript?: string;
+  language?: string;
 }): HandoffPayload {
   const sourceAgent = opts.sourceAgent ?? "external";
   return {
@@ -246,6 +262,7 @@ function buildPayload(opts: {
     ...(opts.keyDecisions && opts.keyDecisions.length > 0 ? { key_decisions: opts.keyDecisions } : {}),
     ...(opts.openQuestions && opts.openQuestions.length > 0 ? { open_questions: opts.openQuestions } : {}),
     ...(opts.sourceTranscript ? { source_transcript: opts.sourceTranscript } : {}),
+    ...(opts.language ? { language: opts.language } : {}),
     proposed_at: Date.now(),
   };
 }
@@ -360,6 +377,7 @@ export async function runHandoffFromExternal(
     ...(parsed.keyDecisions && parsed.keyDecisions.length > 0 ? { keyDecisions: parsed.keyDecisions } : {}),
     ...(parsed.openQuestions && parsed.openQuestions.length > 0 ? { openQuestions: parsed.openQuestions } : {}),
     ...(parsed.sourceTranscript ? { sourceTranscript: parsed.sourceTranscript } : {}),
+    ...(parsed.language ? { language: parsed.language } : {}),
   });
   try {
     atomicWriteJson(inboundFile, payload);

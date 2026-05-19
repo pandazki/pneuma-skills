@@ -92,6 +92,15 @@ The slash command's argument is `$ARGUMENTS`.
      If you can't determine the path, leave `SOURCE_TRANSCRIPT` empty —
      don't fabricate one. For Codex / other agents that lack a known
      transcript path convention, also leave it empty.
+   - **LANGUAGE** — BCP47 code for the language you and the user have
+     been conversing in (e.g. `zh-CN`, `en`, `ja`). The target Pneuma
+     agent will reply in this language AND use it for any user-visible
+     copy it generates (page text, slide content, doc body, …). Without
+     this, the target falls back to Pneuma's UI locale — which is often
+     `en` even for users speaking 中文/日本語/etc. with you, producing
+     jarring language mismatches. Detect from the recent turns; if
+     genuinely mixed, pick the dominant language or briefly ask
+     ("Which language should Pneuma reply in?").
 
 5. **Run the handoff. Pick the right launcher based on what's installed.**
 
@@ -138,7 +147,8 @@ The slash command's argument is `$ARGUMENTS`.
      --source-agent {{sourceAgent}} \
      --summary "$SUMMARY" \
      [--files "$FILES"] \
-     [--source-transcript "$SOURCE_TRANSCRIPT"]
+     [--source-transcript "$SOURCE_TRANSCRIPT"] \
+     [--language "$LANGUAGE"]
    ```
 
    Run from the user's **current shell directory** — do NOT `cd` first.
@@ -159,6 +169,7 @@ The slash command's argument is `$ARGUMENTS`.
    [ -n "$SUMMARY" ]            && URL="$URL&summary=$(enc "$SUMMARY")"
    [ -n "$FILES" ]              && URL="$URL&files=$(enc "$FILES")"
    [ -n "$SOURCE_TRANSCRIPT" ]  && URL="$URL&source-transcript=$(enc "$SOURCE_TRANSCRIPT")"
+   [ -n "$LANGUAGE" ]           && URL="$URL&language=$(enc "$LANGUAGE")"
    open "$URL"
    ```
 

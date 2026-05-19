@@ -156,6 +156,7 @@ export function registerAgentCommandRoutes(app: Hono, deps: AgentCommandRoutesDe
       keyDecisions?: string[];
       openQuestions?: string[];
       sourceTranscript?: string;
+      language?: string;
       dryRun?: boolean;
     }>().catch(() => ({} as any));
 
@@ -193,6 +194,7 @@ export function registerAgentCommandRoutes(app: Hono, deps: AgentCommandRoutesDe
       }
     }
     if (body.sourceTranscript) cliArgs.push("--source-transcript", body.sourceTranscript);
+    if (body.language) cliArgs.push("--language", body.language);
     if (body.dryRun) cliArgs.push("--dry-run");
 
     // Capture stdout/stderr — runHandoffFromExternal emits a single JSON

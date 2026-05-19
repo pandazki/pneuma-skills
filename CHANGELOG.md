@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.10.12] - 2026-05-20
+
+### Added — handoff carries the source-conversation language
+
+`<pneuma:env reason="handed-off">` already emitted `user_locale="..."`, but that's Pneuma's UI locale — a global setting. A user whose Pneuma is in English but who's been talking with Claude Code in 中文 would see the spawned Pneuma agent reply in English regardless of the conversation context. Annoying and unstable: language sometimes "right", sometimes not, depending on what the target agent decided to weigh.
+
+New `--language <BCP47>` flag threads through every layer end-to-end:
+
+- `pneuma handoff-from-external --language zh-CN …` (CLI)
+- `pneuma://handoff?…&language=zh-CN` (URL scheme — Electron parses + forwards)
+- `POST /api/handoffs/external` body field `language`
+- `InboundHandoffPayload.language` → CLAUDE.md handoff section renders **Reply language**: zh-CN with explicit instruction to use it for chat replies AND user-visible content (page text / slide body / etc.)
+- `<pneuma:env reason="handed-off" … language="zh-CN" />` so agents that skip CLAUDE.md still see it
+
+The `/handoff-pneuma` slash template gains a fourth context step (LANGUAGE) alongside SUMMARY / FILES / SOURCE_TRANSCRIPT. The source agent auto-detects from its own conversation and only asks the user as a tie-breaker. Distinct from `user_locale` — both attributes ride along on the env tag now; downstream readers can pick whichever matches their scope.
+
+When unset, behaviour is unchanged — target agent picks based on UI locale and the user's first message style, same as today.
+
 ## [3.10.11] - 2026-05-19
 
 ### Changed — `/handoff-pneuma` slash command prefers the desktop app over the CLI
