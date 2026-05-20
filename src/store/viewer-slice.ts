@@ -66,30 +66,33 @@ export const createViewerSlice: StateCreator<AppState, [], [], ViewerSlice> = (s
       set({ navigateRequest: null });
       return;
     }
-    const { data } = navigateRequest;
-    if (data.contentSet) {
-      const targetSet = data.contentSet as string;
+    // `contentSet` is a framework-level coordinate the runtime resolves here
+    // (switching the active content set) before handing the rest of the
+    // address to the mode viewer. Every other key is mode-defined and opaque.
+    const { address } = navigateRequest;
+    if (address.contentSet) {
+      const targetSet = address.contentSet as string;
       const state = get();
       const needsSwitch = state.activeContentSet !== targetSet;
       if (needsSwitch && state.contentSets.some((cs) => cs.prefix === targetSet)) {
         state.setActiveContentSet(targetSet);
       }
-      const { contentSet: _, ...rest } = data;
+      const { contentSet: _, ...rest } = address;
       if (typeof rest.file === "string" && rest.file.startsWith(targetSet + "/")) {
         rest.file = rest.file.slice(targetSet.length + 1);
       }
       if (Object.keys(rest).length > 0) {
         if (needsSwitch) {
           setTimeout(() => {
-            set({ navigateRequest: { label: navigateRequest.label, data: rest } });
+            set({ navigateRequest: { label: navigateRequest.label, address: rest } });
           }, 50);
         } else {
-          set({ navigateRequest: { label: navigateRequest.label, data: rest } });
+          set({ navigateRequest: { label: navigateRequest.label, address: rest } });
         }
       }
     } else {
       const state = get();
-      const filePath = typeof data.file === "string" ? data.file : null;
+      const filePath = typeof address.file === "string" ? address.file : null;
       if (filePath && state.contentSets.length > 0) {
         const matchedCS = state.contentSets.find((cs) => filePath.startsWith(cs.prefix + "/"));
         if (matchedCS) {
@@ -97,13 +100,13 @@ export const createViewerSlice: StateCreator<AppState, [], [], ViewerSlice> = (s
           if (needsSwitch) {
             state.setActiveContentSet(matchedCS.prefix);
           }
-          const stripped = { ...data, file: filePath.slice(matchedCS.prefix.length + 1) };
+          const stripped = { ...address, file: filePath.slice(matchedCS.prefix.length + 1) };
           if (needsSwitch) {
             setTimeout(() => {
-              set({ navigateRequest: { label: navigateRequest.label, data: stripped } });
+              set({ navigateRequest: { label: navigateRequest.label, address: stripped } });
             }, 50);
           } else {
-            set({ navigateRequest: { label: navigateRequest.label, data: stripped } });
+            set({ navigateRequest: { label: navigateRequest.label, address: stripped } });
           }
           return;
         }

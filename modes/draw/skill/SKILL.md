@@ -30,12 +30,23 @@ Each user turn arrives wrapped with a `<viewer-context>` block describing the cu
 
 Read it before you edit. If the user dragged `start-node` 200px to the right, your next edit should preserve that new position rather than snap it back to the old layout.
 
+### ViewerAddress — naming an object in the canvas
+
+A **ViewerAddress** is the one JSON object that names "which object in the viewer" — shared by locator cards, the `capture` action, navigation, and selection reports. Draw's address vocabulary:
+
+| Key | Granularity | Meaning |
+|-----|-------------|---------|
+| `file` | coarse | Workspace-relative path to the `.excalidraw` canvas file. |
+| `elementId` | fine | Id of a single Excalidraw element (shape / arrow / text). Omit → the whole canvas. |
+
+Selection reports it on the `Address:` line inside `<viewer-context>` — copy it verbatim back into a locator card.
+
 ### Locator cards
 
-After creating or substantially updating a diagram, embed a `<viewer-locator>` card so the user can jump to it with one click. The `data` attribute is a JSON object; the only key draw understands is `file` (workspace-relative path to the `.excalidraw` file).
+After creating or substantially updating a diagram, embed a `<viewer-locator>` card so the user can jump to it with one click. The `address` attribute is a ViewerAddress JSON object.
 
 ```html
-<viewer-locator data='{"file":"architecture.excalidraw"}'>Architecture diagram</viewer-locator>
+<viewer-locator address='{"file":"architecture.excalidraw"}'>Architecture diagram</viewer-locator>
 ```
 
 For multi-file work (e.g. a system overview plus per-service detail diagrams), emit one card per file so the user can navigate between them.

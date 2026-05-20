@@ -205,6 +205,12 @@ const illustrateMode: ModeDefinition = {
           contentLines.forEach((cl) => lines.push(`  - ${cl}`));
         }
 
+        // The ViewerAddress — a machine handle the agent can feed back into
+        // the `capture` action or a `<viewer-locator>` card.
+        if (selection.address) {
+          lines.push(`Address: ${JSON.stringify(selection.address)}`);
+        }
+
         return `<viewer-context ${attrs.join(" ")}>\n${lines.join("\n")}\n</viewer-context>`;
       }
 
@@ -233,6 +239,11 @@ const illustrateMode: ModeDefinition = {
         }
 
         if (lines.length === 0) return "";
+        // The ViewerAddress — a machine handle the agent can feed back into
+        // the `capture` action or a `<viewer-locator>` card.
+        if (selection.address) {
+          lines.push(`Address: ${JSON.stringify(selection.address)}`);
+        }
         return `<viewer-context ${attrs.join(" ")}>\n${lines.join("\n")}\n</viewer-context>`;
       }
 

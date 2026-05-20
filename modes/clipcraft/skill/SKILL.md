@@ -64,23 +64,41 @@ chips in chat. Use short concrete labels — "新的 VO 开场",
 "panda clip on Main", "3.5s — punchline beat" — not generic ones
 like "see asset".
 
-Five `data` shapes for clipcraft:
+#### ViewerAddress — naming an object in the preview
+
+A `<viewer-locator>` carries an **address** — a small JSON object that
+names one referent inside the viewer. clipcraft's address vocabulary
+is timeline-oriented; every key below is **coarse** (each one stands
+alone and drives navigate-then-flash — clipcraft has no element-level
+fine handle):
+
+| Key | Coarse/fine | Names |
+|---|---|---|
+| `clipId` | coarse | a clip on a track — selects it + seeks the playhead to its start |
+| `previewFrameId` | coarse | a planning sketch / anchor frame — selects its asset + seeks to its anchor time |
+| `assetId` | coarse | an entry in the asset library — scrolls + flashes the tile/row |
+| `trackId` | coarse | a track header — scrolls + flashes it |
+| `time` | coarse | a moment on the timeline — seeks the playhead only |
+
+Supply exactly one key per address. `clipId` / `previewFrameId` /
+`assetId` / `trackId` are stable ids (survive move / re-pace), so
+locator references stay valid; `time` is a raw second.
 
 ```html
 <!-- assetId — scrolls the asset library to the asset and flashes it. -->
-<viewer-locator data='{"assetId":"asset-vo-tagline"}'>新的 VO 开场</viewer-locator>
+<viewer-locator address='{"assetId":"asset-vo-tagline"}'>新的 VO 开场</viewer-locator>
 
 <!-- clipId — selects the clip on the timeline AND seeks the playhead
      to its startTime, so the user lands on the frame you mean. -->
-<viewer-locator data='{"clipId":"clip-shot1-spark"}'>panda clip on Main</viewer-locator>
+<viewer-locator address='{"clipId":"clip-shot1-spark"}'>panda clip on Main</viewer-locator>
 
 <!-- time — seeks the playhead only (no selection change). Use for
      pure "go look at this beat" pointers. -->
-<viewer-locator data='{"time":3.5}'>3.5s — punchline beat</viewer-locator>
+<viewer-locator address='{"time":3.5}'>3.5s — punchline beat</viewer-locator>
 
 <!-- trackId — scrolls and flashes a track header. Use when the
      change is track-level (mute/solo, reordered, new track). -->
-<viewer-locator data='{"trackId":"track-narration"}'>narration track</viewer-locator>
+<viewer-locator address='{"trackId":"track-narration"}'>narration track</viewer-locator>
 
 <!-- previewFrameId — selects the referenced image asset, seeks the
      playhead to the preview frame's anchor time, and flashes the
@@ -89,7 +107,7 @@ Five `data` shapes for clipcraft:
      for the opening; here's panel 4"). The preview frame's id is
      stable across move/rebind, so locator references survive
      re-pacing. -->
-<viewer-locator data='{"previewFrameId":"pf-04"}'>panel 4 — opening sketch</viewer-locator>
+<viewer-locator address='{"previewFrameId":"pf-04"}'>panel 4 — opening sketch</viewer-locator>
 ```
 
 ### Viewer commands (user → agent)

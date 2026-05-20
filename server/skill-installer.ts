@@ -793,8 +793,8 @@ function pickScene(raw: string | undefined): string | null {
  *
  * Why pure-router: empirically, inlining concrete syntax samples or actions
  * tables in CLAUDE.md created two problems. (1) Abstract placeholders (e.g.
- * `<viewer-locator label="..." data='{...}' />`) lost to training-data priors
- * and the agent invented other card-tag syntaxes. (2) Concrete inline samples
+ * `<viewer-locator label="..." address='{...}' />`) lost to training-data
+ * priors and the agent invented other card-tag syntaxes. (2) Concrete inline samples
  * created dual-source drift with the SKILL.md reference. Treating CLAUDE.md
  * as a router and the SKILL.md as the single canonical source resolves both.
  *
@@ -822,12 +822,14 @@ export function generateViewerApiSection(
     "",
     "- `<viewer-context>` — may prefix user messages with the active file, viewport, and selection.",
     "- `<user-actions>` — recent UI interactions the user took since your last turn.",
-    "- `<viewer-locator>` cards — embed in your replies to give the user one-click navigation back to results.",
+    "- `<viewer-locator>` cards — embed in your replies to give the user one-click navigation to a viewer address.",
     "- `POST $PNEUMA_API/api/viewer/action` — drive the viewer (navigate, fit, scaffold, …).",
-    "- `POST $PNEUMA_API/api/viewer/action` with `{\"actionId\":\"capture\"}` (optional `params.selector` for a region) — screenshot the live viewer to a PNG and get its file path back; `Read` that path to see exactly what the user sees. Use this to verify your own work; do NOT open an external browser, which renders files without the viewer's rules and shows something the user never sees.",
+    "- `POST $PNEUMA_API/api/viewer/action` with `{\"actionId\":\"capture\"}` (optional `params.address` — a ViewerAddress — to target one object) — screenshot the live viewer to a PNG and get its file path back; `Read` that path to see exactly what the user sees. Use this to verify your own work; do NOT open an external browser, which renders files without the viewer's rules and shows something the user never sees.",
     "- `$PNEUMA_API/api/native/*` — desktop APIs (clipboard, shell, notifications, …) when running inside Pneuma App; discover via `GET /api/native`.",
     "",
-    `Concrete shapes — locator card schema with this mode's \`data\` keys, action IDs and params, scaffold params, content-set conventions, native module list — live in ${skillRef} under its viewer-protocol section. Read it before your first call.`,
+    "A **ViewerAddress** is this mode's noun for \"which object in the viewer\" — one shape that `<viewer-locator>` cards, the `capture` action, and `<viewer-context>` selections all share, so you can point, screenshot, and re-target the same object.",
+    "",
+    `Concrete shapes — this mode's ViewerAddress vocabulary, the locator card tag, action IDs and params, scaffold params, content-set conventions, native module list — live in ${skillRef} under its viewer-protocol section. Read it before your first call.`,
   ].join("\n");
 }
 

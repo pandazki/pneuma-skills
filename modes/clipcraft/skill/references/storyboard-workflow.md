@@ -331,10 +331,10 @@ Placing 8 sketches is 8 undo steps, not one. Warn the user before satellite oper
 When you've placed sketches or anchors, emit one locator card per *distinct thing you want the user to verify*. Don't emit one per frame — emit one per "look at this beat":
 
 ```html
-<viewer-locator data='{"previewFrameId":"pf-04"}'>panel 4 — opening close-up</viewer-locator>
+<viewer-locator address='{"previewFrameId":"pf-04"}'>panel 4 — opening close-up</viewer-locator>
 ```
 
-Click flashes the strip thumbnail and selects the asset. Use sparingly. (See SKILL.md "Locator cards" section for the full list of data shapes.)
+Click flashes the strip thumbnail and selects the asset. Use sparingly. (See SKILL.md "Locator cards" section for the full ViewerAddress vocabulary.)
 
 ## Pitfalls
 

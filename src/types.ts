@@ -5,6 +5,7 @@ import type {
   BrowserIncomingMessage,
   BrowserOutgoingMessage,
 } from "../server/session-types.js";
+import type { ViewerAddress } from "../core/types/viewer-contract.js";
 
 export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage };
 
@@ -23,6 +24,9 @@ export interface SelectionContext {
   classes?: string;
   /** Unique CSS selector path (e.g. "section.hero > div.card:nth-child(2)") */
   selector?: string;
+  /** Mode-defined machine handle for the selected object (see ViewerAddress) —
+   *  round-trippable into the `capture` action or a `<viewer-locator>` card. */
+  address?: ViewerAddress;
   /** SVG data URL thumbnail of the selected element */
   thumbnail?: string;
   /** Human-readable element name (e.g. 'button "Submit"', 'h2 "Our Solution"') */

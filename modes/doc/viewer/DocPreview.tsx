@@ -244,12 +244,15 @@ export default function DocPreview({
     }
   }, [files]);
 
-  // ── Locator navigation from chat cards ──────────────────────────────────
+  // ── Locator / address navigation from chat cards ────────────────────────
+  // Consumes a ViewerAddress: `file` names the target document. `heading` /
+  // `lineRange` are fine handles carried by the address but not navigated to
+  // here (doc navigation resolves only to the file level).
   useEffect(() => {
     if (!navigateRequest) return;
-    const { data } = navigateRequest;
-    if (data.file) {
-      onActiveFileChange?.(data.file as string);
+    const { address } = navigateRequest;
+    if (address.file) {
+      onActiveFileChange?.(address.file as string);
     }
     onNavigateComplete?.();
   }, [navigateRequest]);
@@ -553,9 +556,23 @@ export default function DocPreview({
       const nearbyText = buildNearbyText(target);
       const tag = target.tagName.toLowerCase();
 
+      // ViewerAddress — the round-trippable handle for this object.
+      // Coarse: the document file; fine: the source line range, plus the
+      // heading text when the selected element is itself a heading.
+      const lineStart = target.dataset.lineStart ? Number(target.dataset.lineStart) : undefined;
+      const lineEnd = target.dataset.lineEnd ? Number(target.dataset.lineEnd) : undefined;
+      const heading = type === "heading" ? content : undefined;
+      const address: ViewerSelectionContext["address"] = {
+        file,
+        ...(heading ? { heading } : {}),
+        ...(lineStart !== undefined && lineEnd !== undefined
+          ? { lineRange: [lineStart, lineEnd] }
+          : {}),
+      };
+
       const sel: ViewerSelectionContext = {
         file, type, content, level,
-        selector, label, nearbyText, tag,
+        selector, label, nearbyText, tag, address,
       };
 
       if (selectedElRef.current) {
@@ -595,7 +612,14 @@ export default function DocPreview({
       selectedElRef.current = null;
     }
 
-    onSelect({ file, type: "text-range", content: text.slice(0, 300) });
+    // ViewerAddress — coarse only: a text-range selection has no stable
+    // element-level handle, so the address names just the document file.
+    onSelect({
+      file,
+      type: "text-range",
+      content: text.slice(0, 300),
+      address: { file },
+    });
   }, [isSelectMode, onSelect]);
 
   // Confirm pending annotation with comment

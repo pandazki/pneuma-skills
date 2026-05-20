@@ -61,6 +61,9 @@ const modeMakerMode: ModeDefinition = {
 
       if (selection && selection.type !== "viewing" && selection.content) {
         lines.push(`Selected: ${selection.type} "${selection.content}"`);
+        if (selection.address) {
+          lines.push(`  Address: ${JSON.stringify(selection.address)}`);
+        }
       }
 
       return `<viewer-context ${attrs.join(" ")}>\n${lines.join("\n")}\n</viewer-context>`;

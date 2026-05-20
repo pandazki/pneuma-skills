@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.11.0] - 2026-05-20
+
+### Added — `ViewerAddress`: one contract for "which object in the viewer"
+
+The agent and the viewer ask each other "which object?" constantly — but it was answered five different ways: a `ViewerLocator`'s location data, a `navigate-to` action's params, the `capture` action's selector, a selection's `selector`/`file`, the current `<viewer-context>` position. Five payload shapes for one concept. The agent had to learn a different addressing vocabulary per feature, and the shapes didn't interoperate — you couldn't take the address of a thing the user selected and feed it back to `capture` or a locator card.
+
+`ViewerAddress` promotes object-addressing to a first-class protocol noun: one mode-defined, framework-opaque shape that **every** agent↔viewer verb consumes or produces:
+
+- a `<viewer-locator>` card points the user at an address,
+- the `capture` action screenshots one,
+- navigation moves the viewer to one,
+- a selection reports the one the user picked — now surfaced as a machine-readable `Address:` line in `<viewer-context>`.
+
+Because the same shape is produced and consumed, the select → view → point round-trip is finally expressible: the user clicks an element, the agent receives its address, and feeds it straight back into `capture` or a locator. The contract fixes the *slot*; each mode owns the *vocabulary and granularity* — slide addresses a slide, webcraft a page-plus-DOM-region, doc a heading or line range, diagram a node id. The agent learns one invariant interaction pattern instead of N feature-specific ones.
+
+### Changed — address-driven `capture`, and the contract rename
+
+- The `capture` viewer action now takes a `ViewerAddress` (`params.address`) instead of a bare `params.selector`. Capturing an address that names a non-active object **navigates the viewer there first, then screenshots** (navigate-then-shoot) — composed from the existing `navigateRequest` channel, with no new per-mode plumbing.
+- `ViewerLocator.data` → `ViewerLocator.address`; `ViewerSelectionContext` gains an `address` machine handle alongside its existing descriptors. The `<viewer-locator>` chat tag's canonical attribute is now `address='{…}'`; the legacy `data='{…}'` is still parsed, so locator cards in resumed sessions keep rendering.
+- All eleven content modes — webcraft, slide, kami, doc, draw, diagram, illustrate, remotion, gridboard, clipcraft, mode-maker — migrated to declare and consume their own address vocabulary. Each mode's skill documents its address keys (a coarse "where" plus an optional fine "within").
+
 ## [3.10.13] - 2026-05-20
 
 ### Added — `capture` viewer action: visual self-QA without an external browser

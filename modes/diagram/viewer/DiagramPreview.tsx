@@ -163,12 +163,13 @@ export default function DiagramPreview({
   }, [drawioData?.filePath]);
 
   // ── Navigate request ────────────────────────────────────────────────────
-
+  // Consumes a ViewerAddress: `file` names the target diagram; `nodeId` is the
+  // fine handle for a single node (resolved by selection, not navigate).
   useEffect(() => {
     if (!navigateRequest) return;
-    const { data } = navigateRequest;
-    if (data.file) {
-      onActiveFileChange?.(data.file as string);
+    const { address } = navigateRequest;
+    if (address.file) {
+      onActiveFileChange?.(address.file as string);
     }
     onNavigateComplete?.();
   }, [navigateRequest]);
@@ -648,6 +649,12 @@ export default function DiagramPreview({
         content,
         file: filePath,
         label,
+        // ViewerAddress — the round-trippable handle for this object.
+        // Coarse: the diagram file; fine: the draw.io cell id of the node.
+        address: {
+          file: filePath,
+          nodeId: cell.id,
+        },
       });
     }
   }, [previewMode, zoom, pan, onSelect]);

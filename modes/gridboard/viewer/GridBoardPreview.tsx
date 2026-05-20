@@ -425,6 +425,9 @@ export default function GridBoardPreview({
           type: "tile",
           content: tileId,
           file: tile.component,
+          // ViewerAddress — the round-trippable handle for this object.
+          // `tileId` names the selected tile on the board.
+          address: { tileId },
         });
       }
     },
@@ -819,17 +822,19 @@ export default function GridBoardPreview({
     }
   }, [actionRequest, fileChannel]);
 
-  // ── Navigate Request (Locator Cards) ──────────────────────────────────
+  // ── Navigate / address Request (Locator Cards) ────────────────────────
+  // Consumes a ViewerAddress: `tileId` names a tile on the board; omit it to
+  // address the whole board. `action` is a mode-specific verb key.
   useEffect(() => {
     if (!navigateRequest) return;
-    const { data } = navigateRequest;
-    if (data.tileId) {
-      const tileId = data.tileId as string;
+    const { address } = navigateRequest;
+    if (address.tileId) {
+      const tileId = address.tileId as string;
       if (boardConfig.tiles[tileId]) {
         setSelectedTileId(tileId);
         scrollTileIntoView(tileId);
       }
-    } else if (data.action === "open-gallery") {
+    } else if (address.action === "open-gallery") {
       setGalleryOpen(true);
     }
     onNavigateComplete?.();

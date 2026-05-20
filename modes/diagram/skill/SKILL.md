@@ -25,20 +25,25 @@ Before you respond, scan the latest user turn for two viewer-emitted blocks:
 
 If the user says "this box" or "that arrow" without further context, it almost always refers to the selected element from `<viewer-context>` — `Read` that file and locate the cell by `id` before editing.
 
+### ViewerAddress — naming an object in the diagram
+
+A **ViewerAddress** is the one JSON object that names "which object in the viewer" — shared by locator cards, the `capture` action, navigation, and selection reports. Diagram's address vocabulary:
+
+| Key | Granularity | Meaning |
+|-----|-------------|---------|
+| `file` | coarse | Workspace-relative path to the `.drawio` file. |
+| `nodeId` | fine | draw.io cell id of a single node / connector. Omit → the whole diagram. |
+
+Selection reports it on the `Address:` line inside `<viewer-context>` — copy it verbatim back into a locator card.
+
 ### Locator cards
 
-After creating or substantially updating a diagram, embed a locator card so the user can jump to it from the chat. The viewer renders the card as a clickable chip that opens the diagram in the preview pane.
-
-Diagram locator `data` keys:
-
-| Key | Required | Meaning |
-|-----|----------|---------|
-| `file` | yes | Workspace-relative path to a `.drawio` file |
+After creating or substantially updating a diagram, embed a locator card so the user can jump to it from the chat. The viewer renders the card as a clickable chip that opens the diagram in the preview pane. The `address` attribute is a ViewerAddress JSON object.
 
 Real example:
 
 ```html
-<viewer-locator label="Open architecture.drawio" data='{"file":"architecture.drawio"}' />
+<viewer-locator label="Open architecture.drawio" address='{"file":"architecture.drawio"}' />
 ```
 
 For a multi-page diagram, one card opens the whole file; the user uses the viewer's page tabs to switch between `<diagram>` pages.

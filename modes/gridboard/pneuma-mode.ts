@@ -109,6 +109,12 @@ const gridboardMode: ModeDefinition = {
             `Component: ${componentPath}`,
           ];
 
+          // The ViewerAddress — a machine handle the agent can feed straight
+          // into the `capture` action or a `<viewer-locator>` card.
+          if (selection.address) {
+            lines.push(`  Address: ${JSON.stringify(selection.address)}`);
+          }
+
           return `<viewer-context ${attrs.join(" ")}>\n${lines.join("\n")}\n</viewer-context>`;
         }
       }

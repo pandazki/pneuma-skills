@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.10.13
+**Version:** 3.11.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`
 
@@ -165,6 +165,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 |----------|------|---------|
 | **ModeManifest** | `core/types/mode-manifest.ts` | Skill, viewer config, agent prefs, init params, evolution |
 | **ViewerContract** | `core/types/viewer-contract.ts` | Preview component, context extraction, workspace model |
+| **ViewerAddress** | `core/types/viewer-contract.ts` | Mode-defined, framework-opaque object referent — one noun shared by `<viewer-locator>` / `capture` / navigate / selection. Each mode owns its address vocabulary (coarse "where" + optional fine "within"); documented in the mode's SKILL.md |
 | **AgentBackend** | `core/types/agent-backend.ts` | Launch/resume/kill/capabilities (process-lifecycle layer) |
 | **BridgeBackend** | `server/ws-bridge-backend.ts` | Per-backend bridge handler; non-Claude backends (codex, kimi-cli) implement so central WsBridge stays backend-agnostic |
 | **BackendModule** | `core/types/agent-backend.ts` | Self-describing per-backend manifest: identity, capabilities, install conventions (skillsDir / instructionsFile / displayLabel), install hint, default models, lifecycle factories. Each backend ships its own `manifest.ts`; `backends/index.ts` is a pure registry. Optional `toolFileRef(name, input)` → normalized file ref for chat previews/actions. |

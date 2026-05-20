@@ -38,8 +38,11 @@ acting:
   workspace path, e.g. `kaku-portfolio/page-3.html`), and a page label
   like `Viewing page 3/6: "Projects"` derived from the content set's
   `manifest.json`. When the user clicks an element in the page, you also
-  get `Selected: <selector>`, `Element: <accessible name>`, `Tag: <h2>`,
-  `Classes: ...`, `Context: <nearby text>`, and `Accessibility: ...`. In
+  get `Selected: <selector>`, an `Address:` line (a machine-readable
+  [ViewerAddress](#vieweraddress--naming-an-object-in-the-preview) you
+  can paste straight into a `capture` call or a `<viewer-locator>` card),
+  `Element: <accessible name>`, `Tag: <h2>`, `Classes: ...`,
+  `Context: <nearby text>`, and `Accessibility: ...`. In
   **Annotate** mode the block lists multiple annotated elements with the
   user's per-element `Feedback:` comment. Resolve deictic phrases like
   "this heading", "tighten this section", "the figure here" against
@@ -51,6 +54,7 @@ acting:
   <viewer-context mode="kami" file="kaku-portfolio/page-3.html" content-set="kaku-portfolio">
   Viewing page 3/6: "Projects"
   Selected: h2.section-title
+    Address: {"contentSet":"kaku-portfolio","page":"page-3.html","selector":"h2.section-title"}
     Element: Projects
     Tag: <h2>
     Classes: section-title
@@ -79,23 +83,35 @@ acting:
 If neither block is present, the user has nothing specifically selected;
 default to the most recently edited file or ask.
 
+### ViewerAddress — naming an object in the preview
+
+Kami has **one** vocabulary for "which object in the viewer". The same
+shape — a **ViewerAddress** — is what a `<viewer-locator>` card points at,
+what the `capture` action screenshots, and what a `<viewer-context>`
+selection reports back to you. Learn it once; it works across all three.
+
+| Key | Half | Meaning |
+|---|---|---|
+| `contentSet` | coarse | Top-level directory acting as a switchable paper (e.g. `kaku-portfolio`, `pneuma-one-pager`). |
+| `page` | coarse | HTML page path inside the content set (e.g. `index.html`, `page-3.html`). Alias `file` is accepted. |
+| `selector` | fine | A CSS selector resolved inside the rendered page (e.g. `figure`, `h2.section-title`). |
+
+Use only the keys you need: `{"page":"page-3.html"}` names a whole page;
+`{"page":"page-3.html","selector":"figure"}` names one region of it. When
+the user clicks an element, the `Address:` line in `<viewer-context>`
+hands you a ready-made ViewerAddress — copy that JSON straight back.
+
 ### Locator cards
 
 After creating or editing pages, embed `<viewer-locator>` cards in your
-reply so the user can jump straight to the result. The card's `data`
-attribute is JSON; for kami the navigable key is the HTML page path
-inside the active content set:
-
-| Key | Meaning |
-|---|---|
-| `page` | HTML page path inside the active content set (e.g. `index.html`, `page-3.html`). Alias `file` is accepted. |
-
-Real examples:
+reply so the user can jump straight to the result. The card's `address`
+attribute is a ViewerAddress — locators navigate the user to a **page**,
+so use the coarse keys (`page`):
 
 ```html
-<viewer-locator label="Open the cover" data='{"page":"index.html"}' />
-<viewer-locator label="Jump to the Projects page" data='{"page":"page-3.html"}' />
-<viewer-locator label="See the rewritten Methods page" data='{"file":"methods.html"}' />
+<viewer-locator label="Open the cover" address='{"page":"index.html"}' />
+<viewer-locator label="Jump to the Projects page" address='{"page":"page-3.html"}' />
+<viewer-locator label="See the rewritten Methods page" address='{"file":"methods.html"}' />
 ```
 
 One card per landmark you want the user to verify. Switching content
@@ -146,17 +162,23 @@ it returns a PNG screenshot of the live viewer, exactly what the user
 sees:
 
 ```bash
-# Full viewer
+# Full viewer — omit params for a whole-sheet shot
 curl -s -X POST "$PNEUMA_API/api/viewer/action" \
   -H 'Content-Type: application/json' \
   -d '{"actionId":"capture"}'
 
-# A specific region, by CSS selector resolved inside the rendered page
+# A specific region — pass a ViewerAddress; `selector` resolves inside the rendered page
 curl -s -X POST "$PNEUMA_API/api/viewer/action" \
   -H 'Content-Type: application/json' \
-  -d '{"actionId":"capture","params":{"selector":"figure"}}'
+  -d '{"actionId":"capture","params":{"address":{"selector":"figure"}}}'
+
+# A region on another page — coarse `page` navigates first, then `selector` resolves
+curl -s -X POST "$PNEUMA_API/api/viewer/action" \
+  -H 'Content-Type: application/json' \
+  -d '{"actionId":"capture","params":{"address":{"page":"page-3.html","selector":"figure"}}}'
 ```
 
+`params.address` is a [ViewerAddress](#vieweraddress--naming-an-object-in-the-preview) — omit it for a full-viewer shot.
 On success the response is
 `{"success":true,"data":{"path":"<absolute .png path>","width":<n>,"height":<n>}}`.
 Use your `Read` tool on that `path` to view the screenshot inline, then

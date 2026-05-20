@@ -84,6 +84,11 @@ const diagramMode: ModeDefinition = {
             ? `Selected: ${selection.label}`
             : `Selected: ${selection.content}`,
         );
+        // The ViewerAddress — a machine handle the agent can feed straight
+        // into the `capture` action or a `<viewer-locator>` card.
+        if (selection.address) {
+          lines.push(`  Address: ${JSON.stringify(selection.address)}`);
+        }
         if (selection.thumbnail) {
           lines.push("[selection screenshot attached]");
         }

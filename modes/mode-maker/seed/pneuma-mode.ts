@@ -54,6 +54,9 @@ const mode: ModeDefinition = {
 
       if (selection && selection.type !== "viewing") {
         lines.push(`Selected: ${selection.type} "${selection.content}"`);
+        if (selection.address) {
+          lines.push(`  Address: ${JSON.stringify(selection.address)}`);
+        }
       }
 
       return `<viewer-context ${attrs.join(" ")}>\n${lines.join("\n")}\n</viewer-context>`;

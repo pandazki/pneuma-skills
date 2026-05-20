@@ -27,9 +27,20 @@ The runtime injects a `<viewer-context>` block into your turn whenever the user 
 
 **Always reconcile `<viewer-context>` and `<user-actions>` before continuing.** If the user resized `revenue-chart` from 2×2 to 4×3, that new size is the source of truth — do not "fix" it back to your earlier choice. Update `board.json` and the tile's internal breakpoints to match.
 
+### ViewerAddress — naming an object on the board
+
+A **ViewerAddress** is the one JSON shape that names "which object on the board": it is what a `<viewer-locator>` card points at and what a `<viewer-context>` selection reports back to you. GridBoard's vocabulary:
+
+| Key | Granularity | Meaning |
+|---|---|---|
+| `tileId` | coarse | The id of a tile on the board (`revenue-chart`). Omit it to address the whole board. |
+| `action` | — | A mode-specific verb key for non-tile destinations — currently only `"open-gallery"`. |
+
+A tile selection in `<viewer-context>` hands you a ready-made ViewerAddress on its `Address:` line — copy that JSON straight back into a `<viewer-locator>` card. Tile ids are stable across edits, so a `{ tileId }` address stays valid.
+
 ### Locator cards
 
-After creating or editing tiles, embed `<viewer-locator>` cards in chat so the user can jump straight to the result with one click. The card's `data` attribute is a JSON object the viewer interprets:
+After creating or editing tiles, embed `<viewer-locator>` cards in chat so the user can jump straight to the result with one click. The card's `address` attribute is a ViewerAddress the viewer interprets:
 
 - `{"tileId":"<id>"}` — focuses and highlights the tile on the board (uses the `navigate-to` action under the hood)
 - `{"action":"open-gallery"}` — opens the tile-type gallery for browsing available templates
@@ -38,10 +49,10 @@ Real examples:
 
 ```html
 <!-- Jump to a specific tile you just edited -->
-<viewer-locator label="Open revenue chart tile" data='{"tileId":"revenue-chart"}' />
+<viewer-locator label="Open revenue chart tile" address='{"tileId":"revenue-chart"}' />
 
 <!-- Open the gallery so the user can browse what else is available -->
-<viewer-locator label="Open the gallery" data='{"action":"open-gallery"}' />
+<viewer-locator label="Open the gallery" address='{"action":"open-gallery"}' />
 ```
 
 Emit a locator card whenever you change something the user benefits from looking at — a new tile, a redesigned tier, a fresh gallery entry. One card per concrete destination; do not spam.

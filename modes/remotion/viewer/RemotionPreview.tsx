@@ -240,23 +240,25 @@ export default function RemotionPreview({
     prevCompositionsLenRef.current = compositions.length;
   }, [compositions, errors]);
 
-  // ── Locator navigation from chat cards ────────────────────────────────
+  // ── Locator / address navigation from chat cards ──────────────────────
+  // Consumes a ViewerAddress: `file` names a composition; `inFrame`/`outFrame`
+  // set a loop range.
 
   useEffect(() => {
     if (!navigateRequest) return;
-    const { data } = navigateRequest;
-    // data.file holds the composition ID
-    if (data.file && typeof data.file === "string") {
-      const found = compositions.find((c) => c.id === data.file);
+    const { address } = navigateRequest;
+    // address.file holds the composition ID
+    if (address.file && typeof address.file === "string") {
+      const found = compositions.find((c) => c.id === address.file);
       if (found) {
         onActiveFileChange?.(found.id);
       }
     }
-    // data.inFrame / data.outFrame set a loop range and auto-play
-    if (typeof data.inFrame === "number" || typeof data.outFrame === "number") {
-      const newIn = typeof data.inFrame === "number" ? data.inFrame : null;
+    // address.inFrame / address.outFrame set a loop range and auto-play
+    if (typeof address.inFrame === "number" || typeof address.outFrame === "number") {
+      const newIn = typeof address.inFrame === "number" ? address.inFrame : null;
       const maxFrame = (activeComp?.durationInFrames ?? 1) - 1;
-      const newOut = typeof data.outFrame === "number" ? Math.min(data.outFrame, maxFrame) : null;
+      const newOut = typeof address.outFrame === "number" ? Math.min(address.outFrame, maxFrame) : null;
       setInFrame(newIn);
       setOutFrame(newOut);
       setLoop(true);

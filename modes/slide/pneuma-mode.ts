@@ -215,6 +215,11 @@ const slideMode: ModeDefinition = {
             : selection.type;
           lines.push(`Selected: ${desc} "${selection.content}"`);
         }
+        // The ViewerAddress — a machine handle the agent can feed straight
+        // into the `capture` action or a `<viewer-locator>` card.
+        if (selection.address) {
+          lines.push(`  Address: ${JSON.stringify(selection.address)}`);
+        }
         // Rich identification from iframe selection
         if (selection.label) {
           lines.push(`  Element: ${selection.label}`);

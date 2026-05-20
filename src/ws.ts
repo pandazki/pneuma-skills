@@ -1124,6 +1124,7 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
         tag: selection.tag,
         classes: selection.classes,
         selector: selection.selector,
+        address: selection.address,
         thumbnail: selection.thumbnail,
         label: selection.label,
         nearbyText: selection.nearbyText,

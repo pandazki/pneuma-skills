@@ -16,6 +16,8 @@ import type {
   ViewerPreviewProps,
   ViewerSelectionContext,
   ViewerFileContent,
+  ViewerAddress,
+  ViewerLocator,
   FileWorkspaceModel,
   WorkspaceItem,
   ViewerActionDescriptor,
@@ -390,5 +392,42 @@ describe("Backward compatibility", () => {
       captureViewport: async () => ({ data: "base64data", media_type: "image/png" }),
     });
     expect(typeof viewer.captureViewport).toBe("function");
+  });
+});
+
+// ── ViewerAddress — unified object addressing ───────────────────────────────
+
+describe("ViewerAddress", () => {
+  test("is an opaque, mode-defined record", () => {
+    // Coarse-only address (slide names just a slide).
+    const coarse: ViewerAddress = { slide: 3 };
+    // Coarse + fine address (webcraft names a page and a DOM region).
+    const fine: ViewerAddress = { contentSet: "pneuma", page: "index.html", selector: "section.pricing" };
+    expect(coarse.slide).toBe(3);
+    expect(fine.selector).toBe("section.pricing");
+  });
+
+  test("ViewerLocator carries a label and an address", () => {
+    const locator: ViewerLocator = {
+      label: "Pricing section",
+      address: { page: "index.html", anchor: "#pricing" },
+    };
+    expect(locator.label).toBe("Pricing section");
+    expect(locator.address.anchor).toBe("#pricing");
+  });
+
+  test("a selection produces an address the verbs can re-consume", () => {
+    // The round-trip: a selection reports an `address`; that same shape feeds
+    // straight into a ViewerLocator or the `capture` action.
+    const selection: ViewerSelectionContext = {
+      type: "section",
+      content: "Pricing",
+      file: "index.html",
+      selector: "section.pricing",
+      address: { page: "index.html", selector: "section.pricing" },
+    };
+    expect(selection.address).toBeDefined();
+    const pointBack: ViewerLocator = { label: "Back to selection", address: selection.address! };
+    expect(pointBack.address).toEqual(selection.address!);
   });
 });

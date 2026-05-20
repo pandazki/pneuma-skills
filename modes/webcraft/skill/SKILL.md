@@ -22,27 +22,38 @@ The webcraft viewer is the user's window into the workspace. It renders an ifram
 
 Each user message arrives wrapped with two channels you should read before acting:
 
-- `<viewer-context>` — the live state of the preview at send time. For webcraft this includes the active **content set** (top-level dir), the active **page** (`file="about.html"`), the **viewport** size of the responsive preview, and — when the user clicked an element in the iframe — a CSS-selector-style **Selected** path plus a human-readable element description (tag, classes, accessible name). Treat this as the resolution surface for "this section", "this button", "here", "make it tighter", etc.
+- `<viewer-context>` — the live state of the preview at send time. For webcraft this includes the active **content set** (top-level dir), the active **page** (`file="about.html"`), the **viewport** size of the responsive preview, and — when the user clicked an element in the iframe — a CSS-selector-style **Selected** path, a human-readable element description (tag, classes, accessible name), and an **`Address:`** line: a machine-readable [ViewerAddress](#vieweraddress--naming-an-object-in-the-preview) you can paste straight into a `capture` call or a `<viewer-locator>` card. Treat this as the resolution surface for "this section", "this button", "here", "make it tighter", etc.
 - `<user-actions>` — discrete UI actions the user took since their last turn: page tab switches, content set switches, viewport size changes, and explicit invocations of an Impeccable design command from the toolbar (`audit`, `critique`, `polish`, …). Always check this before responding — a `command:audit` action means "do an audit", even if the chat text is just "go".
 
 Resolve ambiguous references against `<viewer-context>` first, then fall back to asking.
 
+### ViewerAddress — naming an object in the preview
+
+Webcraft has **one** vocabulary for "which object in the viewer". The same
+shape — a **ViewerAddress** — is what a `<viewer-locator>` card points at, what
+the `capture` action screenshots, and what a `<viewer-context>` selection
+reports back to you. Learn it once; it works across all three.
+
+| Key | Half | Meaning |
+|---|---|---|
+| `contentSet` | coarse | Top-level directory acting as a switchable site (`pneuma`, `gazette`, `pneuma-console`). |
+| `page` | coarse | HTML page filename inside the content set (`about.html`, `pricing/index.html`). |
+| `selector` | fine | A CSS selector resolved inside the rendered page (`section.pricing`, `#hero .cta`). |
+| `anchor` | fine | A page anchor — shorthand for an `#id` selector. |
+
+Use only the keys you need: `{"page":"about.html"}` names a whole page;
+`{"page":"about.html","selector":"section.pricing"}` names one region of it.
+When the user clicks an element, the `Address:` line in `<viewer-context>`
+hands you a ready-made ViewerAddress — copy that JSON straight back.
+
 ### Locator cards
 
-After creating or editing pages, embed `<viewer-locator>` cards in your reply so the user can jump straight to the result. The card's `data` attribute is JSON keyed by webcraft-specific fields:
-
-| Key | Meaning |
-|---|---|
-| `page` | HTML page filename inside the active content set (e.g. `about.html`, `pricing/index.html`). |
-| `contentSet` | Top-level directory name acting as a switchable site (e.g. `pneuma`, `gazette`, `pneuma-console`). |
-| `contentSet` + `page` | Switch the set and open that page in one click. |
-
-Real examples:
+After creating or editing pages, embed `<viewer-locator>` cards in your reply so the user can jump straight to the result. The card's `address` attribute is a ViewerAddress — locators navigate the user to a **page**, so use the coarse keys (`contentSet`, `page`):
 
 ```html
-<viewer-locator label="Open about.html" data='{"page":"about.html"}' />
-<viewer-locator label="Switch to pneuma-console" data='{"contentSet":"pneuma-console"}' />
-<viewer-locator label="Switch to gazette / contact" data='{"contentSet":"gazette","page":"contact.html"}' />
+<viewer-locator label="Open about.html" address='{"page":"about.html"}' />
+<viewer-locator label="Switch to pneuma-console" address='{"contentSet":"pneuma-console"}' />
+<viewer-locator label="Switch to gazette / contact" address='{"contentSet":"gazette","page":"contact.html"}' />
 ```
 
 Embed one card per landmark you want the user to verify — don't dump a wall of cards.
@@ -84,13 +95,18 @@ curl -s -X POST "$PNEUMA_API/api/viewer/action" \
   -H 'Content-Type: application/json' \
   -d '{"actionId":"capture"}'
 
-# A specific region, by CSS selector resolved inside the rendered page
+# One region — pass a ViewerAddress; `selector` resolves inside the rendered page
 curl -s -X POST "$PNEUMA_API/api/viewer/action" \
   -H 'Content-Type: application/json' \
-  -d '{"actionId":"capture","params":{"selector":"section.hero"}}'
+  -d '{"actionId":"capture","params":{"address":{"selector":"section.hero"}}}'
+
+# A region on another page — capture navigates there first, then shoots
+curl -s -X POST "$PNEUMA_API/api/viewer/action" \
+  -H 'Content-Type: application/json' \
+  -d '{"actionId":"capture","params":{"address":{"page":"pricing.html","selector":"section.plans"}}}'
 ```
 
-On success the response is `{"success":true,"data":{"path":"<absolute .png path>","width":<n>,"height":<n>}}`. Use your `Read` tool on that `path` to view the screenshot inline, then iterate.
+`params.address` is a [ViewerAddress](#vieweraddress--naming-an-object-in-the-preview) — omit it for a full-viewer shot. On success the response is `{"success":true,"data":{"path":"<absolute .png path>","width":<n>,"height":<n>}}`. Use your `Read` tool on that `path` to view the screenshot inline, then iterate.
 
 ### Content sets
 

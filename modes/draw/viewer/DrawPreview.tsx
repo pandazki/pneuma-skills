@@ -278,12 +278,14 @@ export default function DrawPreview({
     }
   }, [activeFilePath]);
 
-  // ── Locator navigation from chat cards ──────────────────────────────────
+  // ── Locator / address navigation from chat cards ────────────────────────
+  // Consumes a ViewerAddress: `file` names the target canvas; `elementId` is
+  // the fine handle for a single element (resolved by selection, not navigate).
   useEffect(() => {
     if (!navigateRequest) return;
-    const { data } = navigateRequest;
-    if (data.file) {
-      onActiveFileChange?.(data.file as string);
+    const { address } = navigateRequest;
+    if (address.file) {
+      onActiveFileChange?.(address.file as string);
     }
     onNavigateComplete?.();
   }, [navigateRequest]);
@@ -511,6 +513,13 @@ export default function DrawPreview({
           content,
           file: currentFilePathRef.current,
           label,
+          // ViewerAddress — the round-trippable handle for this object.
+          // Coarse: the canvas file; fine: the element id, only when a single
+          // element is selected (a group has no single element handle).
+          address: {
+            file: currentFilePathRef.current,
+            ...(selectedElements.length === 1 ? { elementId: selectedElements[0].id } : {}),
+          },
           thumbnail,
         });
       });

@@ -43,8 +43,19 @@ What it tells you:
 - `file="..."` — which file the user is currently focused on in the dashboard. If they ask "fix this" or "rename this", they almost always mean this file.
 - `Status: N/5 components` — completeness checklist. Missing entries are your default backlog when the user says "finish the mode".
 - `Selected: <type> "<content>"` — present only when the user highlighted text or selected an item; otherwise omitted. Treat `viewing` (no selection) as "they're just looking, don't assume scope".
+- `Address: {...}` — present alongside a `Selected:` line. A machine-readable [ViewerAddress](#vieweraddress--naming-an-object-in-the-package) — the round-trippable handle for the selected object.
 
 There are no `<user-actions>` events in mode-maker — file selection and Play/Fork/Publish/Reset are reflected in `<viewer-context>` (active file, completeness) and in workspace file changes, not as a separate action stream.
+
+### ViewerAddress — naming an object in the package
+
+Mode-maker addresses objects at **file granularity** — a mode package is a set of files, and the agent edits files directly, so there is nothing finer to point at. The `Address:` line in `<viewer-context>` carries this shape.
+
+| Key | Half | Meaning |
+|---|---|---|
+| `file` | coarse | A package file path relative to the workspace root (`viewer/Preview.tsx`, `manifest.ts`). |
+
+Mode-maker has no fine (element-level) keys — there is no `selector` / `anchor`, because the viewer's dashboard never reports an element-level selection.
 
 ### Locator cards
 

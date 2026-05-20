@@ -49,32 +49,56 @@ Each user message arrives with two read-only blocks the viewer injects on the us
   ```
   Use these to anchor edits ("the heading you clicked"), to confirm reorders the user already performed (manifest.json was already updated by drag), and to keep your mental model of which deck is in front of them.
 
+### ViewerAddress — naming an object in the preview
+
+Slide Mode has **one** vocabulary for "which object in the viewer". The same
+shape — a **ViewerAddress** — is what a `<viewer-locator>` card points at, what
+the `capture` action screenshots, what `navigate-to` jumps to, and what a
+`<viewer-context>` selection reports back to you. Learn it once; it works
+across all of them.
+
+| Key | Half | Meaning |
+|---|---|---|
+| `contentSet` | coarse | Top-level directory acting as a switchable deck (`en-dark`, `quarterly-review`). |
+| `slide` | coarse | 1-indexed slide number within the active deck. |
+| `file` | coarse | Slide HTML filename (`slides/slide-03.html`) — names the slide by path. |
+| `selector` | fine | A CSS selector resolved inside the rendered slide (`.title`, `section.intro`). |
+
+Slide navigation is per-slide: `slide` and `file` are two ways to name the
+same coarse target — prefer `slide` for natural references ("slide 3"), `file`
+when you've just touched that exact path. A within-slide element selection
+adds `selector` as the fine half. Use only the keys you need:
+`{"slide":3}` names a whole slide; `{"file":"slides/slide-03.html","selector":".title"}`
+names one element of it. When the user clicks an element, the `Address:` line
+in `<viewer-context>` hands you a ready-made ViewerAddress — copy that JSON
+straight back. (The `navigate-to` action's `params` is a coarse slide address.)
+
 ### Locator cards
 
-After creating or editing slides, embed `<viewer-locator>` cards inline so the user can jump to them in one click. The card carries a JSON `data` payload the viewer interprets. Always emit fully-formed cards with real values — never placeholders.
+After creating or editing slides, embed `<viewer-locator>` cards inline so the user can jump to them in one click. The card's `address` attribute is a ViewerAddress — locators navigate the user to a **slide**, so use the coarse keys (`contentSet`, `slide`, `file`). Always emit fully-formed cards with real values — never placeholders.
 
 - **By file** (just edited that path):
   ```xml
-  <viewer-locator label="Open slide 3" data='{"file":"slides/slide-03.html"}' />
+  <viewer-locator label="Open slide 3" address='{"file":"slides/slide-03.html"}' />
   ```
-- **By index** (1-indexed within the active set; use for short references like "slide 3"):
+- **By slide number** (1-indexed within the active set; use for short references like "slide 3"):
   ```xml
-  <viewer-locator label="Slide 3" data='{"index":3}' />
+  <viewer-locator label="Slide 3" address='{"slide":3}' />
   ```
 - **Switch content set** (lands on the set's first slide; use whenever the action lives in a different deck than the user is currently viewing):
   ```xml
-  <viewer-locator label="Open the dark deck" data='{"contentSet":"en-dark"}' />
+  <viewer-locator label="Open the dark deck" address='{"contentSet":"en-dark"}' />
   ```
-- **Switch content set + slide by index**:
+- **Switch content set + slide by number**:
   ```xml
-  <viewer-locator label="Dark deck, slide 1" data='{"contentSet":"en-dark","index":1}' />
+  <viewer-locator label="Dark deck, slide 1" address='{"contentSet":"en-dark","slide":1}' />
   ```
 - **Switch content set + specific file**:
   ```xml
-  <viewer-locator label="Quarterly review cover" data='{"contentSet":"quarterly-review","file":"slides/slide-01.html"}' />
+  <viewer-locator label="Quarterly review cover" address='{"contentSet":"quarterly-review","file":"slides/slide-01.html"}' />
   ```
 
-Rule of thumb: prefer `index` for natural references, `file` when you've just touched that exact path, and always include `contentSet` when crossing decks.
+Rule of thumb: prefer `slide` for natural references, `file` when you've just touched that exact path, and always include `contentSet` when crossing decks.
 
 ### Viewer actions
 
@@ -113,13 +137,18 @@ curl -s -X POST "$PNEUMA_API/api/viewer/action" \
   -H 'Content-Type: application/json' \
   -d '{"actionId":"capture"}'
 
-# A specific region, by CSS selector resolved inside the rendered page
+# A specific region — pass a ViewerAddress; `selector` resolves inside the rendered slide
 curl -s -X POST "$PNEUMA_API/api/viewer/action" \
   -H 'Content-Type: application/json' \
-  -d '{"actionId":"capture","params":{"selector":".slide"}}'
+  -d '{"actionId":"capture","params":{"address":{"selector":".slide"}}}'
+
+# A region on a non-active slide — the coarse `slide`/`file` key navigates first
+curl -s -X POST "$PNEUMA_API/api/viewer/action" \
+  -H 'Content-Type: application/json' \
+  -d '{"actionId":"capture","params":{"address":{"slide":3,"selector":".title"}}}'
 ```
 
-On success the response is `{"success":true,"data":{"path":"<absolute .png path>","width":<n>,"height":<n>}}`. Use your `Read` tool on that `path` to view the screenshot inline. The screenshot is native-resolution and shows exactly what export and print produce.
+`params.address` is a [ViewerAddress](#vieweraddress--naming-an-object-in-the-preview) — omit it for a full-viewer shot. On success the response is `{"success":true,"data":{"path":"<absolute .png path>","width":<n>,"height":<n>}}`. Use your `Read` tool on that `path` to view the screenshot inline. The screenshot is native-resolution and shows exactly what export and print produce.
 
 `capture` is for *visual* judgement — appearance, hierarchy, color, spacing. It does NOT reveal overflow: the slide canvas is `overflow: hidden`, so content past the edge is clipped and simply absent from the picture. For overflow, use the `checkContentFit` action (see "Viewer actions" above and "Layout Verification" below).
 

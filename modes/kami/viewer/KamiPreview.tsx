@@ -1719,6 +1719,14 @@ body::after {
             tag: sel.tag,
             classes: sel.classes,
             selector: sel.selector,
+            // ViewerAddress — the round-trippable handle for this object.
+            // Coarse: content set + page; fine: the CSS selector. The agent
+            // can feed this straight into `capture` or a `<viewer-locator>`.
+            address: {
+              ...(activeContentSet ? { contentSet: activeContentSet } : {}),
+              page: currentFile,
+              ...(sel.selector ? { selector: sel.selector } : {}),
+            },
             thumbnail: sel.thumbnail,
             label: sel.label,
             nearbyText: sel.nearbyText,
@@ -1729,7 +1737,7 @@ body::after {
     }
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [currentFile, onSelect, handleTextEdit, previewMode]);
+  }, [currentFile, onSelect, handleTextEdit, previewMode, activeContentSet]);
 
   // Confirm pending annotation with comment
   const confirmAnnotation = useCallback(
@@ -1791,12 +1799,14 @@ body::after {
     [onActiveFileChange, onSelect],
   );
 
-  // ── Locator navigation from chat cards ──────────────────────────────────────
+  // ── Locator / address navigation from chat cards & the capture action ───────
+  // Consumes a ViewerAddress: `page` (or legacy `file`) names the target page;
+  // `contentSet` is already resolved upstream by the store's setNavigateRequest.
   useEffect(() => {
     if (!navigateRequest) return;
-    const { data } = navigateRequest;
-    if (data.page || data.file) {
-      const target = (data.page || data.file) as string;
+    const { address } = navigateRequest;
+    if (address.page || address.file) {
+      const target = (address.page || address.file) as string;
       if (htmlFiles.includes(target)) {
         handlePageChange(target);
       }

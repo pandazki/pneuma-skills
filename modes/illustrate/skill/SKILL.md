@@ -60,22 +60,41 @@ User-driven gestures arrive as `<user-actions>` entries inside the next user mes
 
 A highlighter entry means a region crop is already saved as a temp file — pass that path as `--annotation` to `edit_image.mjs` (see the edit workflow below).
 
+### ViewerAddress — naming an object on the canvas
+
+Illustrate has **one** vocabulary for "which object in the viewer". The same
+shape — a **ViewerAddress** — is what a `<viewer-locator>` card points at and
+what a `<viewer-context>` selection reports back to you.
+
+| Key | Half | Meaning |
+|---|---|---|
+| `contentSet` | coarse | Top-level directory acting as a switchable project (`logo-designs`, `marketing-assets`). |
+| `file` | coarse | An image file inside the content set (`images/hero.png`). |
+| `rowId` | coarse | A row of images (`row-1710000000000`). |
+| `files` | fine | A list of image files — emitted only for a multi-image selection. |
+
+Use only the keys you need: `{"file":"images/hero.png"}` names one image;
+`{"contentSet":"marketing-assets","file":"images/hero.png"}` switches the set
+and selects that image. When the user selects on the canvas, the `Address:`
+line in `<viewer-context>` hands you a ready-made ViewerAddress — copy that
+JSON straight back.
+
 ### Locator cards
 
-Embed `<viewer-locator data='{...}'></viewer-locator>` in chat so the user can jump to a result with one click. The `data` payload accepts these keys, alone or combined:
+Embed `<viewer-locator address='{...}'></viewer-locator>` in chat so the user can jump to a result with one click. The `address` payload is a ViewerAddress — use these keys, alone or combined:
 
 ```html
 <!-- Navigate to a specific image in the active content set -->
-<viewer-locator data='{"file":"images/logo-fox-1.png"}'></viewer-locator>
+<viewer-locator address='{"file":"images/logo-fox-1.png"}'></viewer-locator>
 
 <!-- Focus a whole row (e.g. after a batch generation) -->
-<viewer-locator data='{"rowId":"row-1710000000000"}'></viewer-locator>
+<viewer-locator address='{"rowId":"row-1710000000000"}'></viewer-locator>
 
 <!-- Switch the active content set -->
-<viewer-locator data='{"contentSet":"marketing-assets"}'></viewer-locator>
+<viewer-locator address='{"contentSet":"marketing-assets"}'></viewer-locator>
 
 <!-- Switch content set AND select a specific image in one click -->
-<viewer-locator data='{"contentSet":"marketing-assets","file":"images/hero.png"}'></viewer-locator>
+<viewer-locator address='{"contentSet":"marketing-assets","file":"images/hero.png"}'></viewer-locator>
 ```
 
 Drop a locator after every generation, edit, and variation so the canvas and the conversation stay synced.

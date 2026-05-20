@@ -33,25 +33,38 @@ Example context:
 <viewer-context>
 [Context: file "README.md"]
 [User selected: heading (level 2) "Installation"]
+  Address: {"file":"README.md","heading":"Installation","lineRange":[40,72]}
 </viewer-context>
 ```
 
-When you see the above and the user says "tighten this section up", they mean the `## Installation` heading and the prose underneath it in `README.md`. Edit that file directly — don't ask which one.
+When you see the above and the user says "tighten this section up", they mean the `## Installation` heading and the prose underneath it in `README.md`. Edit that file directly — don't ask which one. The `Address:` line is a machine-readable ViewerAddress — copy it straight into a `<viewer-locator>` card to point back at the same object.
 
 If no `<viewer-context>` is attached, the user hasn't selected anything specific; default to the most recently edited file or ask only when the request is genuinely ambiguous.
 
+### ViewerAddress — naming an object in the document
+
+A **ViewerAddress** is the one JSON shape that names "which object in the document": it is what a `<viewer-locator>` card points at and what a `<viewer-context>` selection reports back to you. Doc's vocabulary:
+
+| Key | Granularity | Meaning |
+|---|---|---|
+| `file` | coarse | The document path relative to the workspace root (`notes.md`, `docs/README.md`). |
+| `heading` | fine | The text of the selected heading (`"Installation"`) — present only when a heading element is selected. |
+| `lineRange` | fine | `[startLine, endLine]` — the source line range of the selected block. |
+
+A selection in `<viewer-context>` hands you a ready-made ViewerAddress on its `Address:` line — copy that JSON straight back. Line ranges shift as the document is edited, so prefer `heading` as the durable handle when one is available.
+
 ### Locator cards
 
-After creating or editing a document, post a `<viewer-locator>` card at the end of your reply so the user can jump straight to the result. The `data` payload uses one key: `file`, the path relative to the workspace root.
+After creating or editing a document, post a `<viewer-locator>` card at the end of your reply so the user can jump straight to the result. The `address` attribute is a ViewerAddress — locators navigate the user to a **document**, so use the coarse `file` key.
 
 Examples:
 
 ```
-<viewer-locator label="Open notes.md" data='{"file":"notes.md"}' />
+<viewer-locator label="Open notes.md" address='{"file":"notes.md"}' />
 ```
 
 ```
-<viewer-locator label="See the rewritten Installation section" data='{"file":"README.md"}' />
+<viewer-locator label="See the rewritten Installation section" address='{"file":"README.md"}' />
 ```
 
 One card per file you touched is plenty. Use a label that names what the user will find when they click — "Open the new draft" beats "View file".

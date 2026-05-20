@@ -18,6 +18,29 @@ export interface ViewerFileContent {
   content: string;
 }
 
+// ── Viewer Address (the one noun for "which object in the viewer") ──────────
+
+/**
+ * ViewerAddress — a mode-defined, serializable referent for an object inside
+ * the viewer: a page, a slide, a DOM region, a diagram node, a heading.
+ *
+ * Opaque to the framework — only the owning mode's viewer interprets it. The
+ * protocol fixes that this slot EXISTS and which verbs consume/produce it;
+ * each mode owns the keys and the granularity of its address vocabulary.
+ *
+ * Convention (documented per mode in its SKILL.md, not enforced here): an
+ * address pairs a coarse "where" — `page` / `slide` / `file` / `contentSet` —
+ * with an optional fine "within" — `anchor` / `selector` / `nodeId` /
+ * `lineRange`. A mode that needs only the coarse half simply omits the rest.
+ *
+ * One noun, every verb: a `ViewerLocator` points the user at an address, the
+ * `capture` action screenshots one, navigation moves the viewer to one, and a
+ * selection reports the one the user picked — so select → view → point
+ * round-trips without per-feature glue. Mirrors the `fileRef` precedent
+ * (`BackendModule.toolFileRef`): a cross-cutting, normalized reference type.
+ */
+export type ViewerAddress = Record<string, unknown>;
+
 /** Selection context (kept in sync with SelectionContext in src/types.ts) */
 export interface ViewerSelectionContext {
   type: string;
@@ -30,6 +53,15 @@ export interface ViewerSelectionContext {
   classes?: string;
   /** Unique CSS selector path (e.g. "section.hero > div.card:nth-child(2)") */
   selector?: string;
+  /**
+   * Mode-defined machine handle for the selected object — the round-trippable
+   * referent (see ViewerAddress). The agent can feed this straight into the
+   * `capture` action or a `<viewer-locator>` card to re-target the exact same
+   * object. The sibling descriptor fields (`selector`, `tag`, `label`,
+   * `nearbyText`, `accessibility`, `thumbnail`) stay as human- and
+   * agent-readable context; `address` is the part meant for machine routing.
+   */
+  address?: ViewerAddress;
   /** SVG data URL thumbnail of the selected element (null if capture failed or element too large) */
   thumbnail?: string;
   /** Human-readable element name (e.g. 'button "Submit"', 'h2 "Our Solution"') */
@@ -110,7 +142,8 @@ export interface FileWorkspaceModel {
 
 /** Viewer action parameter descriptor */
 export interface ViewerActionParam {
-  type: "string" | "number" | "boolean";
+  /** `"object"` — a structured value such as a ViewerAddress passed as JSON. */
+  type: "string" | "number" | "boolean" | "object";
   description: string;
   required?: boolean;
 }
@@ -177,12 +210,12 @@ export interface ViewerNotification {
 // ── Viewer Locator (navigable link cards in agent messages) ────────────────
 
 /** Viewer locator — clickable navigation cards embedded in agent messages.
- *  Clicking navigates the viewer to the target position (frontend-only, no server roundtrip). */
+ *  Clicking navigates the viewer to the target address (frontend-only, no server roundtrip). */
 export interface ViewerLocator {
   /** Card display text */
   label: string;
-  /** Mode-specific location data */
-  data: Record<string, unknown>;
+  /** Mode-defined target address — the owning viewer resolves it. See ViewerAddress. */
+  address: ViewerAddress;
 }
 
 // ── Preview Props & Contract ───────────────────────────────────────────────

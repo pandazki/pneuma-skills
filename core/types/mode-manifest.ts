@@ -226,7 +226,7 @@ export interface ViewerApiConfig {
     label: string;
     category: "file" | "navigate" | "ui" | "custom";
     agentInvocable: boolean;
-    params?: Record<string, { type: "string" | "number" | "boolean"; description: string; required?: boolean }>;
+    params?: Record<string, { type: "string" | "number" | "boolean" | "object"; description: string; required?: boolean }>;
     description?: string;
   }>;
   /** User → Agent commands — commands triggerable from the viewer UI, sent to the agent when clicked */

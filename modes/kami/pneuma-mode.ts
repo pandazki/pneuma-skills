@@ -230,6 +230,11 @@ const kamiMode: ModeDefinition = {
             : selection.type;
           lines.push(`Selected: ${desc} "${selection.content}"`);
         }
+        // The ViewerAddress — a machine handle the agent can feed straight
+        // into the `capture` action or a `<viewer-locator>` card.
+        if (selection.address) {
+          lines.push(`  Address: ${JSON.stringify(selection.address)}`);
+        }
         if (selection.label) lines.push(`  Element: ${selection.label}`);
         if (selection.tag) lines.push(`  Tag: <${selection.tag}>`);
         if (selection.classes) lines.push(`  Classes: ${selection.classes}`);

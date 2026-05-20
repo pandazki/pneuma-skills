@@ -19,9 +19,25 @@ User messages may include a `<viewer-context mode="remotion">` block carrying:
 
 The same block also surfaces `<user-actions>` — recent things the user did in the Player: seeks, composition switches, in/out point set/clear, playback rate changes. Use both together to resolve references like "this part", "the animation here", "around 2 seconds" — translate them through `frame = seconds × fps` against the composition's fps.
 
+### ViewerAddress — naming an object in the player
+
+Remotion has **one** vocabulary for "which object in the viewer". The same
+shape — a **ViewerAddress** — is what a `<viewer-locator>` card points at and
+what the `Address:` line of a `<viewer-context>` reports back to you.
+
+| Key | Half | Meaning |
+|---|---|---|
+| `file` | coarse | Composition ID from `Root.tsx`. |
+| `frame` | fine | A specific frame within the composition (reported in `<viewer-context>`). |
+| `inFrame` / `outFrame` | fine | A loop range — when both are set the Player loops over that span. |
+
+When the user is watching a composition, the `Address:` line in
+`<viewer-context>` hands you a ready-made `{file, frame}` ViewerAddress — copy
+that JSON straight back into a `<viewer-locator>` card.
+
 ### Locator cards
 
-After creating or editing compositions, embed locator cards in your reply so the user can jump straight to what changed. The `data` keys for remotion are:
+After creating or editing compositions, embed locator cards in your reply so the user can jump straight to what changed. The `address` attribute is a ViewerAddress:
 
 - `file` — composition ID from `Root.tsx` (required).
 - `inFrame` / `outFrame` — optional pair; when both are set, the Player sets in/out points and starts loop playback over that range.
@@ -29,13 +45,13 @@ After creating or editing compositions, embed locator cards in your reply so the
 Open a composition:
 
 ```
-<viewer-locator label="Open MyComposition" data='{"file":"MyComposition"}' />
+<viewer-locator label="Open MyComposition" address='{"file":"MyComposition"}' />
 ```
 
 Loop a specific range (example: a hero shot from 3s to 5s at 30fps → frames 90-150):
 
 ```
-<viewer-locator label="Loop hero shot" data='{"file":"MyComposition","inFrame":90,"outFrame":150}' />
+<viewer-locator label="Loop hero shot" address='{"file":"MyComposition","inFrame":90,"outFrame":150}' />
 ```
 
 Reach for the loop variant whenever you modified timing in a specific section, added a new scene, or changed a transition — it lets the user see exactly what changed without scrubbing.

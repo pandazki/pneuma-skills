@@ -24,6 +24,7 @@ export type {
   ViewerPreviewProps,
   ViewerFileContent,
   ViewerSelectionContext,
+  ViewerAddress,
   WorkspaceItem,
   FileWorkspaceModel,
   ContentSetTraits,

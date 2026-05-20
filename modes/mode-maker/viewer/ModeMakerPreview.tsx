@@ -1358,6 +1358,9 @@ export default function ModeMakerPreview({
       type: "file",
       content: path,
       file: path,
+      // ViewerAddress — mode-maker addresses objects at file granularity;
+      // `file` is the coarse key. No element-level selection, so no fine keys.
+      address: { file: path },
     });
   }, [onSelect, onActiveFileChange]);
 

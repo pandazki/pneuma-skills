@@ -1367,6 +1367,8 @@ function CanvasInner(props: ViewerPreviewProps) {
           const sel: ViewerSelectionContext = {
             type: "image", content: data.item.title, file,
             label: `${data.item.title} (row: "${data.rowLabel}")`,
+            // ViewerAddress — `file` names this image; `rowId` its row.
+            address: { file, rowId: data.rowId },
           };
           onSelect(sel);
           onActiveFileChange?.(file);
@@ -1390,6 +1392,8 @@ function CanvasInner(props: ViewerPreviewProps) {
             content,
             file: data.item.file,
             label: `${next.size} images selected`,
+            // ViewerAddress — `files` names every image in this multi-selection.
+            address: { files: selectedItems.map((si) => si.file) },
           };
           onSelect(sel);
           onActiveFileChange?.(data.item.file);
@@ -1428,6 +1432,8 @@ function CanvasInner(props: ViewerPreviewProps) {
       type: "image", content: data.item.title, file: data.item.file,
       label: `${data.item.title} (row: "${data.rowLabel}")`,
       thumbnail: regionDataUrl,
+      // ViewerAddress — `file` names this image; `rowId` its row.
+      address: { file: data.item.file, rowId: data.rowId },
     };
     onSelect(sel);
     onActiveFileChange?.(data.item.file);
@@ -1522,20 +1528,21 @@ function CanvasInner(props: ViewerPreviewProps) {
     }
   }, [actionRequest]);
 
-  // ── Locator navigation from chat cards ──────────────────────────────────
+  // ── Locator / address navigation from chat cards ────────────────────────
+  // Consumes a ViewerAddress: `file` names an image, `rowId` names a row.
   useEffect(() => {
     if (!navigateRequest) return;
-    const { data } = navigateRequest;
-    if (data.file) {
-      const node = computedNodes.find((n) => n.id === data.file);
+    const { address } = navigateRequest;
+    if (address.file) {
+      const node = computedNodes.find((n) => n.id === address.file);
       if (node) {
         const w = (node.style?.width as number) || NODE_HEIGHT;
         const h = (node.style?.height as number) || NODE_HEIGHT;
         setCenter(node.position.x + w / 2, node.position.y + h / 2, { zoom: 1, duration: 400 });
-        onActiveFileChange?.(data.file as string);
+        onActiveFileChange?.(address.file as string);
       }
-    } else if (data.rowId) {
-      const rowNodes = computedNodes.filter((n) => n.data.rowId === data.rowId && n.type === "imageCard");
+    } else if (address.rowId) {
+      const rowNodes = computedNodes.filter((n) => n.data.rowId === address.rowId && n.type === "imageCard");
       if (rowNodes.length > 0) {
         // requestAnimationFrame ensures React Flow's internal store is synced before fitView
         requestAnimationFrame(() => {

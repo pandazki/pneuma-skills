@@ -298,6 +298,14 @@ export default function SlideIframePool({
           tag: sel.tag,
           classes: sel.classes,
           selector: sel.selector,
+          // ViewerAddress — the round-trippable handle for this object.
+          // Coarse: content set + slide file; fine: the CSS selector. The
+          // agent can feed this straight into `capture` or a `<viewer-locator>`.
+          address: {
+            ...(activeContentSet ? { contentSet: activeContentSet } : {}),
+            ...(currentSlide?.file ? { file: currentSlide.file } : {}),
+            ...(sel.selector ? { selector: sel.selector } : {}),
+          },
           thumbnail: sel.thumbnail,
           label: sel.label,
           nearbyText: sel.nearbyText,

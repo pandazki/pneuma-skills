@@ -1010,15 +1010,17 @@ export default function SlidePreview({
     }
   }, [actionRequest]);
 
-  // ── Locator navigation from chat cards ──────────────────────────────────
+  // ── Locator / address navigation from chat cards & the capture action ───────
+  // Consumes a ViewerAddress: `file` names the target slide HTML, `slide` is a
+  // 1-based slide number; `contentSet` is resolved upstream by the store.
   useEffect(() => {
     if (!navigateRequest) return;
-    const { data } = navigateRequest;
-    if (data.file) {
-      const index = slides.findIndex((s) => s.file === data.file);
+    const { address } = navigateRequest;
+    if (address.file) {
+      const index = slides.findIndex((s) => s.file === address.file);
       if (index !== -1) setActiveSlideIndex(index);
-    } else if (typeof data.index === "number") {
-      const idx = (data.index as number) - 1; // 1-based to 0-based
+    } else if (typeof address.slide === "number") {
+      const idx = (address.slide as number) - 1; // 1-based to 0-based
       if (idx >= 0 && idx < slides.length) setActiveSlideIndex(idx);
     }
     onNavigateComplete?.();
@@ -1355,6 +1357,12 @@ export default function SlidePreview({
           type: "region",
           content: "",
           file: currentSlide.file,
+          // ViewerAddress — coarse handle for the slide this region is on
+          // (a region has no stable selector, so the address stays slide-level).
+          address: {
+            ...(activeContentSet ? { contentSet: activeContentSet } : {}),
+            file: currentSlide.file,
+          },
           thumbnail: pngDataUrl,
           label: "Highlighted region",
         });

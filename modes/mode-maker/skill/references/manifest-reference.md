@@ -115,9 +115,12 @@ const manifest: ModeManifest = {
       },
       clearPatterns: ["**/*.html"],
     },
-    locatorDescription: `...`,  // description injected into CLAUDE.md telling the agent
-                                // how to author <viewer-locator> tags for this mode
   },
+  // Note: how the agent authors <viewer-locator> tags is documented in the
+  // mode's SKILL.md, not in the manifest. A locator is a `ViewerLocator`
+  // (`core/types/viewer-contract.ts`) = `{ label, address: ViewerAddress }`;
+  // its `address` field — a mode-defined `ViewerAddress` — names the target
+  // object. The wire tag is `<viewer-locator label="..." address='{...}' />`.
 
   // ── Reverse proxy for viewer fetches (optional) ────────────────────
   proxy: {

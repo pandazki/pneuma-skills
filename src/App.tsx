@@ -192,6 +192,7 @@ function useViewerProps(prefs: { theme: "light" | "dark"; locale: string }): Vie
         tag: sel.tag,
         classes: sel.classes,
         selector: sel.selector,
+        address: sel.address,
         thumbnail: sel.thumbnail,
         label: sel.label,
         nearbyText: sel.nearbyText,

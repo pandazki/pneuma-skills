@@ -11,12 +11,15 @@ import type { ViewerLocator } from "../../core/types/viewer-contract.js";
 
 // ─── Viewer Locator parsing ────────────────────────────────────────────────
 
-const LOCATOR_RE = /<viewer-locator\s+label="([^"]+)"\s+data='([^']+)'\s*\/>/g;
+// The canonical attribute is `address='{...}'`; `data='{...}'` is accepted too
+// so locator cards in resumed sessions (history written before the
+// ViewerAddress contract) keep rendering.
+const LOCATOR_RE = /<viewer-locator\s+label="([^"]+)"\s+(?:address|data)='([^']+)'\s*\/>/g;
 
 function parseViewerLocators(text: string): { cleanText: string; locators: ViewerLocator[] } {
   const locators: ViewerLocator[] = [];
   for (const match of text.matchAll(LOCATOR_RE)) {
-    try { locators.push({ label: match[1], data: JSON.parse(match[2]) }); } catch { /* skip malformed */ }
+    try { locators.push({ label: match[1], address: JSON.parse(match[2]) }); } catch { /* skip malformed */ }
   }
   return { cleanText: text.replace(LOCATOR_RE, "").trim(), locators };
 }
@@ -53,7 +56,7 @@ function LocatorCardGroup({ locators }: { locators: ViewerLocator[] }) {
           </button>
           {debugOpen && (
             <pre className="mt-1 text-[10px] font-mono-code bg-cc-code-bg text-cc-code-fg rounded-md px-2.5 py-2 overflow-x-auto whitespace-pre-wrap max-h-40 overflow-y-auto">
-              {locators.map((loc) => `${loc.label}: ${JSON.stringify(loc.data)}`).join("\n")}
+              {locators.map((loc) => `${loc.label}: ${JSON.stringify(loc.address)}`).join("\n")}
             </pre>
           )}
         </div>

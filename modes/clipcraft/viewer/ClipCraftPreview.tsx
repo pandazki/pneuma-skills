@@ -262,15 +262,17 @@ function SyncedBody({
           ? exportVideo
           : draftExport;
 
-  // ── Locator navigation ──────────────────────────────────────────────
+  // ── Locator / address navigation ────────────────────────────────────
   //
   // Agent-emitted <viewer-locator> cards arrive as `navigateRequest`.
-  // Data shapes (documented in the pneuma-clipcraft skill's viewer-protocol section):
-  //   { clipId }   — select the clip + seek playhead to clip.startTime,
-  //                  then scroll/flash the DOM element.
-  //   { assetId }  — scroll/flash the asset tile or row.
-  //   { time }     — seek only (no selection, no scroll).
-  //   { trackId }  — scroll/flash the track label.
+  // The locator carries a ViewerAddress — clipcraft's coarse vocabulary
+  // (documented in the pneuma-clipcraft skill's viewer-protocol section):
+  //   { clipId }         — select the clip + seek playhead to clip.startTime,
+  //                        then scroll/flash the DOM element.
+  //   { previewFrameId } — select the frame's asset + seek, then scroll/flash.
+  //   { assetId }        — scroll/flash the asset tile or row.
+  //   { time }           — seek only (no selection, no scroll).
+  //   { trackId }        — scroll/flash the track label.
   //
   // DOM highlight uses the Web Animations API so no global CSS is needed;
   // the scroll happens via scrollIntoView on the element matching the
@@ -292,10 +294,10 @@ function SyncedBody({
 
   useEffect(() => {
     if (!navigateRequest) return;
-    const { data } = navigateRequest;
+    const { address } = navigateRequest;
 
-    if (typeof data.previewFrameId === "string") {
-      const previewFrameId = data.previewFrameId;
+    if (typeof address.previewFrameId === "string") {
+      const previewFrameId = address.previewFrameId;
       let pf: { time: number; assetId: string } | null = null;
       if (composition) {
         for (const track of composition.tracks) {
@@ -316,8 +318,8 @@ function SyncedBody({
       requestAnimationFrame(() =>
         flashElement(`[data-preview-frame-id="${CSS.escape(previewFrameId)}"]`),
       );
-    } else if (typeof data.clipId === "string") {
-      const clipId = data.clipId;
+    } else if (typeof address.clipId === "string") {
+      const clipId = address.clipId;
       let clipStart: number | null = null;
       if (composition) {
         for (const track of composition.tracks) {
@@ -337,15 +339,15 @@ function SyncedBody({
       requestAnimationFrame(() =>
         flashElement(`[data-clip-id="${CSS.escape(clipId)}"]`),
       );
-    } else if (typeof data.assetId === "string") {
-      const assetId = data.assetId;
+    } else if (typeof address.assetId === "string") {
+      const assetId = address.assetId;
       requestAnimationFrame(() =>
         flashElement(`[data-asset-id="${CSS.escape(assetId)}"]`),
       );
-    } else if (typeof data.time === "number") {
-      playback.seek(Math.max(0, data.time));
-    } else if (typeof data.trackId === "string") {
-      const trackId = data.trackId;
+    } else if (typeof address.time === "number") {
+      playback.seek(Math.max(0, address.time));
+    } else if (typeof address.trackId === "string") {
+      const trackId = address.trackId;
       requestAnimationFrame(() =>
         flashElement(`[data-track-id="${CSS.escape(trackId)}"]`),
       );

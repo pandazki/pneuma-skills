@@ -541,12 +541,12 @@ timeline, and every time point you built around is worth a
 `<viewer-locator>` card in your response. The card is the user's
 one-click handle into the specific thing you did — without it they
 have to scan the asset panel or scrub the timeline to find your
-work. Data shapes and examples live in the CLAUDE.md Viewer API
-section (injected at session start from the mode's
-`locatorDescription`). Rule of thumb: one card per distinct change,
-short label, concrete data shape. Don't emit a locator for the
-entire project — emit one for the clip that now sits at 06:00, or
-for the new hero image you just generated.
+work. The ViewerAddress vocabulary (the `address` key shapes) and
+examples live in the SKILL.md "Locator cards" section. Rule of
+thumb: one card per distinct change, short label, one concrete
+address key. Don't emit a locator for the entire project — emit one
+for the clip that now sits at 06:00, or for the new hero image you
+just generated.
 
 ### Reacting to a "missing" asset in context
 

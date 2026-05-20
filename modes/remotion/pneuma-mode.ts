@@ -107,6 +107,9 @@ const remotionMode: ModeDefinition = {
         const timeStr = `${(currentFrame / fps).toFixed(1)}s`;
         const durationStr = `${(totalFrames / fps).toFixed(1)}s`;
         lines.push(`Viewing: ${compId} (${status} at ${timeStr} / ${durationStr}, frame ${currentFrame}/${totalFrames})`);
+        // The ViewerAddress — a machine handle the agent can feed back into a
+        // `<viewer-locator>` card to re-target this composition at this frame.
+        lines.push(`Address: ${JSON.stringify({ file: compId, frame: currentFrame })}`);
       } else if (compositions.length > 0) {
         lines.push(`Compositions: ${compositions.map((c) => c.id).join(", ")}`);
       }
