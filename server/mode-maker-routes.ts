@@ -6,7 +6,7 @@
  */
 
 import type { Hono } from "hono";
-import { existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync, statSync, unlinkSync, rmdirSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync, statSync, unlinkSync, rmdirSync, type Dirent } from "node:fs";
 import { join, dirname, basename, resolve } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -30,7 +30,7 @@ const PLAY_VITE_PORT = 18996;
 /** Recursively list files in a directory, skipping protected dirs. Returns relative paths. */
 function listFilesRecursive(dir: string, base: string = ""): string[] {
   const results: string[] = [];
-  let entries: ReturnType<typeof readdirSync>;
+  let entries: Dirent<string>[];
   try {
     entries = readdirSync(dir, { withFileTypes: true });
   } catch {
@@ -53,7 +53,7 @@ function clearWorkspace(workspace: string): number {
   let count = 0;
 
   function walk(dir: string) {
-    let entries: ReturnType<typeof readdirSync>;
+    let entries: Dirent<string>[];
     try {
       entries = readdirSync(dir, { withFileTypes: true });
     } catch {
@@ -152,7 +152,7 @@ function copyDirRecursive(
   const resolvedSrc = resolve(src);
 
   function walk(srcDir: string, dstDir: string, relBase: string) {
-    let entries: ReturnType<typeof readdirSync>;
+    let entries: Dirent<string>[];
     try {
       entries = readdirSync(srcDir, { withFileTypes: true });
     } catch {
