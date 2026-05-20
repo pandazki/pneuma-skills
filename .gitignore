@@ -13,6 +13,9 @@ web/.deploy.env
 # Superpowers
 .superpowers/
 
+# Antigravity CLI local state
+.antigravitycli/
+
 # Git worktrees
 .worktrees/
 .claude/worktrees/
