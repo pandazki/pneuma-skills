@@ -125,6 +125,44 @@ Discover what's actually wired up at runtime with
 `GET $PNEUMA_API/api/native` — web-only sessions report `available: false`
 for unsupported modules.
 
+### Verifying your work
+
+The user is already watching a live preview of every edit you make — you
+do not need to prove the page renders.
+
+**Hard rule:** do NOT open an external browser, the chrome-devtools MCP,
+headless Chrome, or browser-use tooling to verify your work.
+
+**Why:** those tools render the raw HTML *outside* the kami viewer. Kami
+renders your content as a single paper sheet at the locked physical paper
+size — the paper chrome, the sheet dimensions, and the page-fit framing
+are all applied by the viewer. Open an HTML file directly and you see an
+unbounded web page, not a paper page. What an external browser shows is
+not what the user sees. The Pneuma viewer is the only faithful render.
+
+When you genuinely need to *see* the rendered result for a "quality
+check → improve" loop, use the framework-level `capture` viewer action —
+it returns a PNG screenshot of the live viewer, exactly what the user
+sees:
+
+```bash
+# Full viewer
+curl -s -X POST "$PNEUMA_API/api/viewer/action" \
+  -H 'Content-Type: application/json' \
+  -d '{"actionId":"capture"}'
+
+# A specific region, by CSS selector resolved inside the rendered page
+curl -s -X POST "$PNEUMA_API/api/viewer/action" \
+  -H 'Content-Type: application/json' \
+  -d '{"actionId":"capture","params":{"selector":"figure"}}'
+```
+
+On success the response is
+`{"success":true,"data":{"path":"<absolute .png path>","width":<n>,"height":<n>}}`.
+Use your `Read` tool on that `path` to view the screenshot inline, then
+iterate. For fit issues, `.pneuma/kami-fit.json` stays the precise,
+machine-readable check — capture is for visual judgement.
+
 ## Core rules
 
 - Edit HTML/CSS/JS files directly — the user sees updates live.

@@ -109,6 +109,21 @@ The user just opened the workspace. You are ready to assist with presentation cr
         params: { file: { type: "string", description: "Slide file path", required: true } },
         description: "Navigate to a specific slide",
       },
+      {
+        id: "checkContentFit",
+        label: "Check Content Fit",
+        category: "custom",
+        agentInvocable: true,
+        params: {
+          slides: {
+            type: "string",
+            description: "JSON array of 1-indexed slide numbers to check (e.g. \"[2,5]\"); omit to check the whole deck",
+            required: false,
+          },
+        },
+        description:
+          "Measure each slide's content against the fixed canvas and report overflow. The canvas is overflow:hidden, so clipped content is invisible in a screenshot — this is the authoritative overflow check.",
+      },
     ],
     scaffold: {
       description: "Initialize workspace with slide scaffolding from a structure spec. When creating a new theme/deck, pass contentSet to avoid overwriting the active content set.",

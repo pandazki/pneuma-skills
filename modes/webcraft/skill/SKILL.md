@@ -68,6 +68,30 @@ curl -X POST "$PNEUMA_API/api/viewer/action" \
 
 The 22 Impeccable design commands (`teach`, `document`, `shape`, `craft`, `audit`, `critique`, `polish`, …) are NOT viewer actions — they're toolbar commands the user invokes, surfaced to you via `<user-actions>` (see "Reading what the user sees" above and the "Impeccable Commands" section below).
 
+### Verifying your work
+
+The user is already watching a live iframe preview of every edit you make — you do not need to prove the page renders.
+
+**Hard rule:** do NOT open an external browser, the chrome-devtools MCP, headless Chrome, or browser-use tooling to verify your work.
+
+**Why:** those tools render the raw files *outside* the webcraft viewer. Webcraft pages live inside **content sets** — asset paths, `manifest.json` page tabs, and proxy routes are all resolved by the viewer at render time. Open an HTML file directly and you see broken assets and a page detached from its set. What an external browser shows is not what the user sees. The Pneuma viewer is the only faithful render.
+
+When you genuinely need to *see* the rendered result for a "quality check → improve" loop, use the framework-level `capture` viewer action — it returns a PNG screenshot of the live viewer, exactly what the user sees:
+
+```bash
+# Full viewer
+curl -s -X POST "$PNEUMA_API/api/viewer/action" \
+  -H 'Content-Type: application/json' \
+  -d '{"actionId":"capture"}'
+
+# A specific region, by CSS selector resolved inside the rendered page
+curl -s -X POST "$PNEUMA_API/api/viewer/action" \
+  -H 'Content-Type: application/json' \
+  -d '{"actionId":"capture","params":{"selector":"section.hero"}}'
+```
+
+On success the response is `{"success":true,"data":{"path":"<absolute .png path>","width":<n>,"height":<n>}}`. Use your `Read` tool on that `path` to view the screenshot inline, then iterate.
+
 ### Content sets
 
 The webcraft workspace is organized around **content sets** — each top-level directory (e.g. `pneuma/`, `gazette/`, `pneuma-console/`) is a self-contained, switchable site. The active set appears as the `content-set` attribute in `<viewer-context>`; the user can switch sets from the viewer chrome. Per-set features (page tabs, theming, export, deploy) all key off this.

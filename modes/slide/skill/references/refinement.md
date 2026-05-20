@@ -33,7 +33,7 @@ Fix the details that separate good from great. Only do this after the deck is co
 - [ ] **Icon consistency**: All icons from the same family, same size, same stroke weight
 - [ ] **Image treatment**: Consistent border-radius, shadow, and sizing for images across slides
 - [ ] **Capitalization**: Consistent across all headings, labels, and bullets
-- [ ] **Content fit**: Re-verify no slide overflows (mental height calculation or layout_check.js)
+- [ ] **Content fit**: Re-verify no slide overflows (mental height calculation, then the `checkContentFit` viewer action)
 
 **Optical adjustments**:
 - Text aligned to padding may look indented due to letterform whitespace — adjust visually if needed

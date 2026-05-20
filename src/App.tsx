@@ -24,6 +24,7 @@ import { SourceRegistry } from "../core/source-registry.js";
 import { BUILT_IN_PROVIDERS } from "../core/sources/index.js";
 import { BrowserFileChannel } from "./runtime/file-channel.js";
 import { useThumbnailCapture } from "./hooks/useThumbnailCapture.js";
+import { useCaptureAction } from "./hooks/useCaptureAction.js";
 import { normalizeViewerState } from "./utils/viewer-state.js";
 
 const EditorPanel = lazy(() => import("./components/EditorPanel.js"));
@@ -203,7 +204,9 @@ function useViewerProps(prefs: { theme: "light" | "dark"; locale: string }): Vie
     onActiveFileChange: setActiveFile,
     onViewportChange: setViewportRange,
     workspaceItems,
-    actionRequest,
+    // `capture` is a framework-level action handled by useCaptureAction —
+    // mask it from the mode viewer so the two don't both answer the request.
+    actionRequest: actionRequest?.actionId === "capture" ? null : actionRequest,
     onActionResult: (requestId, result) => {
       import("./ws.js").then(({ sendViewerActionResponse }) => {
         sendViewerActionResponse(requestId, result);
@@ -422,6 +425,10 @@ export default function App() {
   const imageTick = useStore((s) => s.imageTick);
   const fileCount = useStore((s) => s.files.length);
   useThumbnailCapture(previewRef, !!PreviewComponent, imageTick + fileCount, captureViewport);
+
+  // Framework-level `capture` viewer action — screenshots the live viewer to
+  // a PNG the agent can Read, so it can self-QA without an external browser.
+  useCaptureAction(previewRef, captureViewport);
 
   // ── App layout (use mode only): Viewer fullscreen, no editor chrome ─────
   //    Edit mode falls through to the editor layout below for full editing experience.

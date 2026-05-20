@@ -112,6 +112,8 @@ Agent 请求 Viewer 执行 UI 操作 — 导航到特定位置、缩放到特定
 - `ViewerActionResult` — Viewer 返回的执行结果（success, message, data）
 - `ViewerLocator` + `navigateRequest` — 轻量定位（Agent 在消息中嵌入定位卡片，用户点击后 Viewer 导航）
 
+**框架级内建 action：`capture`。** 每个 mode 的 viewer 都自带 `capture` action，无需在 manifest 里声明。Agent 通过它请求一张实时渲染的 PNG 截图——可选传 `selector` 参数只截某个区域；runtime 把截图写入磁盘，返回一个文件路径，Agent 用 Read 工具直接查看。这让视觉自查（"渲染对不对、有没有溢出"）留在 Pneuma viewer 内部完成，而不是另起一个外部浏览器——外部浏览器渲染的是脱离 viewer 渲染规则的原始文件，看到的不是用户看到的画面。
+
 ---
 
 ### ⑥ Viewer → Agent: Context & Notification（上下文增强与通知）

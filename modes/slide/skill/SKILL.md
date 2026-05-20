@@ -87,7 +87,41 @@ The viewer exposes agent-invocable actions via `POST $PNEUMA_API/api/viewer/acti
     -d '{"actionId":"navigate-to","params":{"file":"slides/slide-03.html"}}'
   ```
 
+- **`checkContentFit`** — measure slides against the fixed canvas and report overflow. Each slide is `overflow: hidden`, so overflowing content is silently clipped — a screenshot cannot reveal it, which is why this measurement check exists. Pass `slides` (a JSON array of 1-indexed numbers) to check specific slides, or omit it to check the whole deck.
+  ```bash
+  curl -s -X POST "$PNEUMA_API/api/viewer/action" \
+    -H 'Content-Type: application/json' \
+    -d '{"actionId":"checkContentFit"}'
+  ```
+  Returns `{"success":true,"data":{"allFit":<bool>,"results":[{"slide":<n>,"file":"...","fits":<bool>,"issues":["..."]}]}}`. The viewer also runs this automatically after edits and notifies you whenever a slide newly overflows.
+
 The `scaffold` action (below) is a separate viewer capability with its own confirmation flow.
+
+### Verifying your work
+
+The user is already watching a live preview of every edit you make — you do not need to prove the slide renders.
+
+**Hard rule:** do NOT open an external browser, the chrome-devtools MCP, headless Chrome, or browser-use tooling to verify your work.
+
+**Why:** those tools render the raw files *outside* the slide viewer. Each slide is an HTML *fragment* — no `<html>`, `<head>`, or `<body>` tags — and `theme.css` is injected by the viewer at render time. Open a slide file directly in a browser and you see an unstyled fragment. What an external browser shows is not what the user sees. The Pneuma viewer is the only faithful render.
+
+When you genuinely need to *see* the rendered result for a "quality check → improve" loop, use the framework-level `capture` viewer action — it returns a PNG screenshot of the live viewer, exactly what the user sees:
+
+```bash
+# Full viewer
+curl -s -X POST "$PNEUMA_API/api/viewer/action" \
+  -H 'Content-Type: application/json' \
+  -d '{"actionId":"capture"}'
+
+# A specific region, by CSS selector resolved inside the rendered page
+curl -s -X POST "$PNEUMA_API/api/viewer/action" \
+  -H 'Content-Type: application/json' \
+  -d '{"actionId":"capture","params":{"selector":".slide"}}'
+```
+
+On success the response is `{"success":true,"data":{"path":"<absolute .png path>","width":<n>,"height":<n>}}`. Use your `Read` tool on that `path` to view the screenshot inline. The screenshot is native-resolution and shows exactly what export and print produce.
+
+`capture` is for *visual* judgement — appearance, hierarchy, color, spacing. It does NOT reveal overflow: the slide canvas is `overflow: hidden`, so content past the edge is clipped and simply absent from the picture. For overflow, use the `checkContentFit` action (see "Viewer actions" above and "Layout Verification" below).
 
 ### Content sets
 
@@ -537,20 +571,21 @@ If you suspect overflow, mentally calculate total height:
 
 ---
 
-## Layout Check (Advanced)
+## Layout Verification
 
-If you have access to the **chrome-devtools MCP**, you can validate slide layout by running the overflow detection script:
+Overflow is the #1 quality issue — slides are fixed-viewport, so anything beyond {{slideWidth}}×{{slideHeight}}px is clipped and invisible. **A screenshot cannot catch this**: the canvas is `overflow: hidden`, so clipped content is simply absent from the picture — the slide looks fine, just with content silently missing. Overflow has to be *measured*, not eyeballed.
 
-1. Open the export page (`/export/slides`) in the browser
-2. Use `evaluate_script` to run the content of `{SKILL_PATH}/layout_check.js`
-3. If `overflow: true`, fix the slide and re-check
-4. Attempt layout fixes **at most once** per slide — if issues persist, report to the user
+1. **Mental height calculation first.** Sum the vertical elements (headers + content + gaps + padding) and compare against {{slideHeight}}px using the Height Calculation Rules and the Self-Check for Overflow above. This is the cheap pre-check — it catches most problems for free.
+2. **Measure with `checkContentFit`.** When a slide is dense or you've reworked its layout, call the `checkContentFit` viewer action — it measures every element's geometry against the {{slideWidth}}×{{slideHeight}}px canvas and reports exactly what overflows and by how much:
+   ```bash
+   curl -s -X POST "$PNEUMA_API/api/viewer/action" \
+     -H 'Content-Type: application/json' \
+     -d '{"actionId":"checkContentFit"}'
+   ```
+   Inspect `data.results` for any slide with `fits: false` and read its `issues`. (The viewer also runs this automatically after edits and notifies you when a slide newly overflows — so you often hear about overflow without asking.)
+3. **Fix and re-measure.** If a slide overflows, fix it (trim content, reduce sizes, or split into two slides) and call `checkContentFit` again. Attempt layout fixes **at most once** per slide — if issues persist, report to the user.
 
-The script checks:
-- Whether content elements overflow the viewport boundaries
-- Whether child elements overflow their parent containers
-
-**Without chrome-devtools MCP**: Use the mental height calculation method from the Quality Checklist section.
+For *visual* QA — does the slide look good, is the hierarchy right, are the colors balanced — use the `capture` action (see "Verifying your work"). Keep the two distinct: `capture` judges appearance, `checkContentFit` catches overflow.
 
 ---
 
@@ -562,4 +597,3 @@ For detailed guidance, read these files from the skill directory on demand:
 - `{SKILL_PATH}/references/refinement.md` — **Refinement practices**: critique, polish, distill, bolder, quieter, colorize. Read when the user wants to improve a completed deck.
 - `{SKILL_PATH}/references/design-outline.md` — Full template for creating design outlines. Read during Phase 1.
 - `{SKILL_PATH}/references/layout-patterns.md` — Common layout patterns with height calculations and examples. Read when dealing with overflow or complex layouts.
-- `{SKILL_PATH}/layout_check.js` — Overflow detection script for browser-based validation.

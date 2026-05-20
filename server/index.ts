@@ -2247,6 +2247,36 @@ export async function startServer(options: ServerOptions) {
     }
   });
 
+  // Save an agent-requested viewer capture (the `capture` viewer action).
+  // The viewer renders itself to a PNG and POSTs the base64 here; we persist
+  // it under the session's captures/ dir and hand back an absolute path the
+  // agent can Read. This keeps visual self-QA inside Pneuma instead of the
+  // agent spawning an external browser.
+  app.post("/api/session/capture", async (c) => {
+    try {
+      const body = await c.req.json();
+      const { data } = body; // base64 PNG data
+      if (!data) return c.json({ ok: false, message: "Missing data" }, 400);
+      const capturesDir = join(stateDirForSession, "captures");
+      if (!existsSync(capturesDir)) mkdirSync(capturesDir, { recursive: true });
+      // Prune — keep only the most recent captures so the dir can't grow
+      // unbounded across a long session.
+      try {
+        const existing = readdirSync(capturesDir)
+          .filter((f) => f.startsWith("capture-") && f.endsWith(".png"))
+          .sort();
+        for (const stale of existing.slice(0, Math.max(0, existing.length - 19))) {
+          try { unlinkSync(join(capturesDir, stale)); } catch { /* best effort */ }
+        }
+      } catch { /* best effort */ }
+      const capturePath = join(capturesDir, `capture-${Date.now()}.png`);
+      writeFileSync(capturePath, Buffer.from(data, "base64"));
+      return c.json({ ok: true, path: capturePath });
+    } catch (err) {
+      return c.json({ ok: false, message: "Failed to save capture" }, 500);
+    }
+  });
+
   // ── Editing state switching (app layout only) ──────────────────────────
   app.post("/api/session/editing", async (c) => {
     const body = await c.req.json().catch(() => ({}));

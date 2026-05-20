@@ -824,6 +824,7 @@ export function generateViewerApiSection(
     "- `<user-actions>` — recent UI interactions the user took since your last turn.",
     "- `<viewer-locator>` cards — embed in your replies to give the user one-click navigation back to results.",
     "- `POST $PNEUMA_API/api/viewer/action` — drive the viewer (navigate, fit, scaffold, …).",
+    "- `POST $PNEUMA_API/api/viewer/action` with `{\"actionId\":\"capture\"}` (optional `params.selector` for a region) — screenshot the live viewer to a PNG and get its file path back; `Read` that path to see exactly what the user sees. Use this to verify your own work; do NOT open an external browser, which renders files without the viewer's rules and shows something the user never sees.",
     "- `$PNEUMA_API/api/native/*` — desktop APIs (clipboard, shell, notifications, …) when running inside Pneuma App; discover via `GET /api/native`.",
     "",
     `Concrete shapes — locator card schema with this mode's \`data\` keys, action IDs and params, scaffold params, content-set conventions, native module list — live in ${skillRef} under its viewer-protocol section. Read it before your first call.`,

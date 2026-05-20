@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.10.13] - 2026-05-20
+
+### Added — `capture` viewer action: visual self-QA without an external browser
+
+After finishing web work, coding agents reflexively spawn an external browser (or the chrome-devtools MCP) to "verify" the result. Two problems: it's redundant — the user is already watching the live Pneuma viewer — and it's misleading. Web-based modes apply rendering rules the raw files don't carry on their own: slide renders HTML *fragments* with a viewer-injected `theme.css`, kami renders a locked-size paper sheet, webcraft resolves content-set asset/proxy paths. Open a file directly in a browser and you see something the user never will.
+
+New framework-level `capture` viewer action closes the QA loop inside Pneuma:
+
+- `POST $PNEUMA_API/api/viewer/action {"actionId":"capture"}` screenshots the live viewer; `params.selector` captures a region. The runtime renders the viewer to a PNG, persists it under `<sessionDir>/.pneuma/captures/`, and returns the file path — the agent `Read`s it to see exactly what the user sees.
+- Environment-adaptive with fallback: Electron `capturePage` (real window screenshot) → same-origin iframe snapshot via `snapdom` → viewer `captureViewport()` → DOM. Full-page captures first scroll-prime the iframe so `IntersectionObserver` entrance reveals fire (defeating CSS `scroll-behavior: smooth`) — a long page is no longer blank below the fold.
+- Surfaced to every mode through the viewer-API instructions block; the `webcraft` / `kami` / `slide` skills gain a "Verifying your work" section that bans external-browser verification and points at `capture`.
+
+Slide overflow keeps a separate, measurement-based check. A slide canvas is `overflow: hidden`, so a screenshot *cannot* reveal clipped content — it shows a clean slide with content silently missing. Slide already measured overflow geometrically (`checkContentFit`, via `postMessage` to its sandboxed iframes), but the action was undeclared and the skill still pointed at the chrome-devtools MCP. `checkContentFit` is now a declared agent-invocable action; slide's "Layout Verification" guidance uses it for overflow QA and reserves `capture` for visual judgement. The obsolete `layout_check.js` script is removed.
+
 ## [3.10.12] - 2026-05-20
 
 ### Added — handoff carries the source-conversation language
