@@ -18,6 +18,7 @@ import { detectClaude, getClaudeInstallInstructions } from "./claude-detector.js
 import { registerIpcHandlers } from "./ipc-handlers.js";
 import { initLogger } from "./logger.js";
 import { showLogWindow, revealLogFile } from "./log-window.js";
+import { initBackgroundSessions, startBackgroundSession, revealBackgroundSession } from "./background-sessions.js";
 
 // ── App name (fixes "Electron" in macOS menu bar) ────────────────────────────
 app.setName("Pneuma Skills");
@@ -134,7 +135,12 @@ function handlePneumaUrl(url: string) {
         if (sourceTranscript) body.sourceTranscript = sourceTranscript;
         const language = params.get('language');
         if (language) body.language = language;
-        void handleHandoffUrl(body);
+        // Background mode is the default — only an explicit 0/false opts out.
+        // This is a desktop-side concern, so it rides the second argument
+        // rather than the request body sent to the launcher.
+        const backgroundRaw = params.get('background');
+        const background = backgroundRaw !== '0' && backgroundRaw !== 'false';
+        void handleHandoffUrl(body, { background });
         break;
       }
       default:
@@ -146,12 +152,32 @@ function handlePneumaUrl(url: string) {
 }
 
 /**
- * POST to the launcher's `/api/handoffs/external` route and open the
- * resulting Pneuma session as a Mode window. Errors surface as a native
- * dialog so the user (whose terminal-level slash command just emitted a
- * URL) isn't left wondering what happened.
+ * True for a `pneuma://handoff` URL that should run in background mode
+ * (the default). Used on cold start to suppress the splash + launcher window
+ * so a handoff-triggered launch is invisible until the session finishes.
  */
-async function handleHandoffUrl(body: Record<string, unknown>) {
+function isBackgroundHandoffUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname !== "handoff") return false;
+    const bg = parsed.searchParams.get("background");
+    return bg !== "0" && bg !== "false";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * POST to the launcher's `/api/handoffs/external` route and surface the
+ * resulting Pneuma session. In background mode (the default) the session
+ * runs in a hidden window — invisible until it completes, then a
+ * notification invites the user to open it. With `background: false` the
+ * session opens immediately as a foreground Mode window. Errors surface as
+ * a native dialog so the user (whose terminal-level slash command just
+ * emitted a URL) isn't left wondering what happened.
+ */
+async function handleHandoffUrl(body: Record<string, unknown>, opts?: { background?: boolean }) {
+  const background = opts?.background !== false;
   // The launcher process is normally up by the time a URL arrives, but a
   // cold-launch via pneuma:// fires the event before `spawnLauncherProcess`
   // resolves. Poll for up to ~6s before giving up.
@@ -199,10 +225,18 @@ async function handleHandoffUrl(body: Record<string, unknown>) {
       });
       return;
     }
-    if (process.platform === 'darwin') {
-      await app.dock?.show();
+    if (background) {
+      // Background mode: run the session in a hidden window. The user sees
+      // nothing until it finishes — then a notification invites them to open it.
+      startBackgroundSession({
+        url: result.url,
+        mode: String(body.mode ?? ""),
+        intent: typeof body.intent === "string" ? body.intent : undefined,
+      });
+    } else {
+      if (process.platform === "darwin") await app.dock?.show();
+      createModeWindow(result.url);
     }
-    createModeWindow(result.url);
   } catch (err) {
     await dialog.showMessageBox({
       type: 'error',
@@ -320,6 +354,10 @@ function showSetupWizard() {
 }
 
 app.whenReady().then(async () => {
+  // A pending background-handoff cold start must stay invisible: no splash,
+  // no launcher window, no dock icon — only the hidden background session.
+  const bgColdStart = pendingPneumaUrl ? isBackgroundHandoffUrl(pendingPneumaUrl) : false;
+
   // macOS application menu (replaces "Electron" in menu bar)
   if (process.platform === "darwin") {
     Menu.setApplicationMenu(
@@ -408,20 +446,26 @@ app.whenReady().then(async () => {
   }
 
   registerIpcHandlers();
+  initBackgroundSessions();
 
   if (process.platform === "darwin") {
-    await app.dock?.show();
+    // A background-handoff cold start must not pop a dock icon.
+    if (bgColdStart) {
+      app.dock?.hide();
+    } else {
+      await app.dock?.show();
+    }
   }
 
-  // Show splash screen while loading
-  const splash = createSplashWindow();
+  // Show splash screen while loading (skipped for a background cold start)
+  const splash = bgColdStart ? null : createSplashWindow();
 
   // Start the launcher Bun process first
   try {
     await spawnLauncherProcess();
   } catch (err) {
     console.error("Failed to start launcher process:", err);
-    splash.destroy();
+    splash?.destroy();
     app.quit();
     return;
   }
@@ -466,19 +510,21 @@ app.whenReady().then(async () => {
       }
     },
     onCheckUpdates: () => checkForUpdatesManual(),
+    onRevealBackgroundSession: revealBackgroundSession,
     onQuit: () => app.quit(),
   });
 
   // Show the real window BEFORE destroying splash to avoid
-  // window-all-closed → dock.hide() race condition
+  // window-all-closed → dock.hide() race condition. A background cold start
+  // opens no launcher window — the session runs hidden until it completes.
   if (!claude.found) {
     showSetupWizard();
-  } else {
+  } else if (!bgColdStart) {
     showLauncher();
   }
 
-  // Destroy splash after the new window exists
-  splash.destroy();
+  // Destroy splash after the new window exists (no-op when suppressed)
+  splash?.destroy();
 
   // Process any URL that arrived before app was ready (macOS cold launch)
   if (pendingPneumaUrl) {

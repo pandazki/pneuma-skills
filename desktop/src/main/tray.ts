@@ -5,14 +5,33 @@ import { showLogWindow } from "./log-window.js";
 
 let tray: Tray | null = null;
 
+export interface BackgroundSessionView {
+  /** Stable id used to reveal this session (see onRevealBackgroundSession). */
+  id: string;
+  /** Human label, e.g. "webcraft · make a finance dashboard". */
+  label: string;
+  status: "running" | "done";
+}
+
 interface TrayCallbacks {
   onShowLauncher: () => void;
   onFocusSession: (pid: number, url?: string) => void;
   onCheckUpdates: () => void;
   onQuit: () => void;
+  onRevealBackgroundSession: (id: string) => void;
 }
 
 let callbacks: TrayCallbacks;
+
+let bgSessions: BackgroundSessionView[] = [];
+
+// Animated "working" indicator for the tray title. A static glyph doesn't
+// read as activity — a cycling braille spinner makes a background session
+// visibly in-progress. The timer runs only while ≥1 session is working.
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SPINNER_INTERVAL_MS = 90;
+let spinnerTimer: NodeJS.Timeout | null = null;
+let spinnerFrame = 0;
 
 export function createTray(cbs: TrayCallbacks) {
   callbacks = cbs;
@@ -79,6 +98,21 @@ async function fetchRunningSessions(): Promise<
 async function buildTrayMenu(): Promise<Electron.Menu> {
   const sessions = await fetchRunningSessions();
 
+  const backgroundItems: Electron.MenuItemConstructorOptions[] =
+    bgSessions.length > 0
+      ? [
+          { type: "separator" },
+          { label: "Background Sessions", enabled: false },
+          ...bgSessions.map((s) => ({
+            label:
+              s.status === "running"
+                ? `${s.label} — working…`
+                : `${s.label} — ready`,
+            click: () => callbacks.onRevealBackgroundSession(s.id),
+          })),
+        ]
+      : [];
+
   const sessionItems: Electron.MenuItemConstructorOptions[] =
     sessions.length > 0
       ? [
@@ -96,6 +130,7 @@ async function buildTrayMenu(): Promise<Electron.Menu> {
       label: "Open Launcher",
       click: () => callbacks.onShowLauncher(),
     },
+    ...backgroundItems,
     ...sessionItems,
     { type: "separator" },
     {
@@ -116,6 +151,63 @@ async function buildTrayMenu(): Promise<Electron.Menu> {
 
 export function updateTrayMenu() {
   // No-op — menu is built on demand when clicked
+}
+
+export function setBackgroundSessions(sessions: BackgroundSessionView[]): void {
+  bgSessions = sessions;
+  renderTrayStatus();
+}
+
+/**
+ * Reflects background-session activity onto the tray title + tooltip. While
+ * any session is working the title runs an animated spinner; otherwise it
+ * shows a static ✓ (ready to view) or clears. Only invoked by
+ * setBackgroundSessions — the raw setTrayTitle/setTrayTooltip remain
+ * available for the auto-updater's download-progress display.
+ */
+function renderTrayStatus(): void {
+  if (!tray) return;
+  const running = bgSessions.filter((s) => s.status === "running").length;
+  const done = bgSessions.filter((s) => s.status === "done").length;
+
+  if (running > 0) {
+    tray.setToolTip(
+      `Pneuma Skills — ${running} session${running > 1 ? "s" : ""} working…`,
+    );
+    startSpinner();
+  } else {
+    stopSpinner();
+    if (done > 0) {
+      tray.setTitle("✓");
+      tray.setToolTip(
+        `Pneuma Skills — ${done} session${done > 1 ? "s" : ""} ready to view`,
+      );
+    } else {
+      tray.setTitle("");
+      tray.setToolTip("Pneuma Skills");
+    }
+  }
+}
+
+/** Begin animating the tray title; no-op if the spinner is already running. */
+function startSpinner(): void {
+  if (spinnerTimer) return;
+  // Paint the first frame at once so there's no blank gap before the first tick.
+  if (tray) tray.setTitle(SPINNER_FRAMES[spinnerFrame]);
+  spinnerTimer = setInterval(() => {
+    if (!tray) return;
+    spinnerFrame = (spinnerFrame + 1) % SPINNER_FRAMES.length;
+    tray.setTitle(SPINNER_FRAMES[spinnerFrame]);
+  }, SPINNER_INTERVAL_MS);
+}
+
+/** Stop the title animation and reset to the first frame. */
+function stopSpinner(): void {
+  if (spinnerTimer) {
+    clearInterval(spinnerTimer);
+    spinnerTimer = null;
+  }
+  spinnerFrame = 0;
 }
 
 export function setTrayTitle(title: string) {

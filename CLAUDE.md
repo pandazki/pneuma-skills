@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.11.0
+**Version:** 3.12.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`
 
@@ -432,6 +432,19 @@ Same schema as Smart Handoff (`InboundHandoffPayload` in `server/skill-installer
 ### URL scheme (Electron)
 
 Already-existing `pneuma://` scheme (`app.setAsDefaultProtocolClient('pneuma')`). Cases: `open`, `import`, `mode`, plus new `handoff`. Cold-start path: `open-url` fires before `app.whenReady()` → queue into `pendingPneumaUrl` → process after launcher Bun spawns. Cross-platform: Windows/Linux receive the URL as an `argv` entry on `second-instance`; we match `pneuma://` prefix.
+
+### Background Mode (3.12.0)
+
+Desktop-only. A `pneuma://handoff` deep link runs its session in a **hidden Electron window by default** — `BrowserWindow({ show: false, webPreferences: { backgroundThrottling: false } })`, fully WebSocket-connected and rendering. The user sees nothing until the work is done; a handoff from Claude Code / Codex becomes fire-and-forget. No server changes — the session runs identically; only the desktop's presentation differs.
+
+- **Status relay** — the hidden window's renderer (`useBackgroundStatusReporter`) pushes turn status over the one-way IPC channel `pneuma:session-status` (`"running" | "idle"`) via `pneumaDesktop.reportSessionStatus`. `background-sessions.ts` correlates each report to a session by `webContents.id`. No polling, no status endpoint.
+- **Cold start** — when the pending `pneuma://handoff` is background (the default), `app.whenReady()` skips the splash, the launcher window, and the dock icon (`app.dock.hide()`) — the launch is invisible.
+- **Tray** — `tray.ts::setBackgroundSessions` runs an animated braille spinner in the title while a session works + a tooltip count, and a "Background Sessions" menu section; clicking an entry reveals that window.
+- **Completion** — first `running → idle` after ≥1 turn **auto-reveals** the window (`revealModeWindow`) — the finished result, instantly, since it rendered hidden all along — and fires a system `Notification` as a secondary cue. A revealed session becomes a normal window and is dropped from background tracking.
+- **Resilience** — a 60s watchdog reveals the window if the session never reports `running`; `did-fail-load` retries `loadURL` (the session server may still be binding its port post-spawn); a renderer crash reveals the window. A broken background session can never strand the user.
+- **Escape hatch** — `pneuma://handoff?…&background=0` opens a normal foreground window (the pre-3.12.0 behavior).
+
+Files: `desktop/src/main/background-sessions.ts` (manager + IPC + watchdog + notification), `window-manager.ts` (`createModeWindow(url, { background })` / `revealModeWindow`), `tray.ts` (`setBackgroundSessions`), `preload/index.ts` (`reportSessionStatus`), `src/hooks/useBackgroundStatusReporter.ts` (renderer relay).
 
 ## Launcher
 

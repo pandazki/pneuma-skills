@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.12.0] - 2026-05-20
+
+### Added — Background Mode: external handoffs run invisibly until they're done
+
+`/handoff-pneuma` from Claude Code or Codex spun up a Pneuma session and immediately threw a full window at the user — mid-task, unasked. But a handoff is often fire-and-forget: "make me a finance dashboard" doesn't need supervision, it needs a result. The window was an interruption, not a help.
+
+Background mode makes that the default for desktop-received `pneuma://handoff` deep links. The session runs in a hidden Electron window — fully WebSocket-connected and rendering, just `show: false`. On a cold start there's no splash, no launcher window, no dock icon: the handoff is invisible. The only signal is an animated tray spinner while the agent works. When the agent backend goes idle, the window auto-reveals — the finished result, instantly, because it was rendering hidden all along. A system notification fires alongside as a secondary cue.
+
+- The hidden window's renderer relays turn status to the main process over a new `pneuma:session-status` IPC channel — no server changes, no polling. The window is created with `backgroundThrottling: false` so an offscreen renderer keeps processing WebSocket messages.
+- The tray gains a status glyph + tooltip and a "Background Sessions" section — every running/ready background session is one click from the foreground even if the notification is missed.
+- Resilience: a watchdog reveals the window if the session never starts, `loadURL` retries cover the session server still binding its port right after spawn, and a renderer crash surfaces the window — a broken background session can never strand the user.
+- Escape hatch: `pneuma://handoff?…&background=0` opens a normal foreground window as before.
+
 ## [3.11.0] - 2026-05-20
 
 ### Added — `ViewerAddress`: one contract for "which object in the viewer"

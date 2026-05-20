@@ -77,7 +77,7 @@ let lastOpenTime = 0;
 
 export function createModeWindow(
   url: string,
-  options?: { pid?: number; title?: string }
+  options?: { pid?: number; title?: string; background?: boolean }
 ): BrowserWindow {
   // Debounce: ignore same URL within 2s
   const now = Date.now();
@@ -112,8 +112,18 @@ export function createModeWindow(
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: false,
+      // A hidden (background) renderer must keep processing WebSocket
+      // messages and timers; Electron otherwise throttles offscreen pages.
+      ...(options?.background ? { backgroundThrottling: false } : {}),
     },
   });
+
+  // Background windows stay hidden — keep them out of the taskbar and tag
+  // them so callers (and `revealModeWindow`) can tell the two apart.
+  if (options?.background) {
+    win.setSkipTaskbar(true);
+    (win as any).__background = true;
+  }
 
   // Store PID and URL references
   if (options?.pid) {
@@ -129,10 +139,13 @@ export function createModeWindow(
   // and may end up reparented to init). On close we kill all of them.
   const visitedUrls = new Set<string>([url]);
 
-  win.once("ready-to-show", () => {
-    win.maximize();
-    win.show();
-  });
+  // Background windows must stay hidden until explicitly revealed.
+  if (!options?.background) {
+    win.once("ready-to-show", () => {
+      win.maximize();
+      win.show();
+    });
+  }
 
   win.loadURL(url);
 
@@ -185,6 +198,21 @@ export function createModeWindow(
   });
 
   return win;
+}
+
+/**
+ * Promote a hidden (background) mode window to a normal visible window:
+ * show, maximize, focus, and re-enable the taskbar entry. Idempotent —
+ * safe to call on an already-visible window.
+ */
+export function revealModeWindow(win: BrowserWindow): void {
+  if (win.isDestroyed()) return;
+  (win as any).__background = false;
+  win.setSkipTaskbar(false);
+  if (win.isMinimized()) win.restore();
+  if (!win.isVisible()) win.show();
+  win.maximize();
+  win.focus();
 }
 
 /**

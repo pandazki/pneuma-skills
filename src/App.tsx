@@ -25,6 +25,7 @@ import { BUILT_IN_PROVIDERS } from "../core/sources/index.js";
 import { BrowserFileChannel } from "./runtime/file-channel.js";
 import { useThumbnailCapture } from "./hooks/useThumbnailCapture.js";
 import { useCaptureAction } from "./hooks/useCaptureAction.js";
+import { useBackgroundStatusReporter } from "./hooks/useBackgroundStatusReporter.js";
 import { normalizeViewerState } from "./utils/viewer-state.js";
 
 const EditorPanel = lazy(() => import("./components/EditorPanel.js"));
@@ -244,6 +245,12 @@ export default function App() {
     const params = new URLSearchParams(location.search);
     return params.has("project") && !params.has("session") && !params.has("mode");
   });
+
+  // Background mode — relay turn status to Electron main (no-ops on web).
+  // Placed before the early returns below so its hook order stays stable
+  // across launcher / empty-shell / session renders.
+  useBackgroundStatusReporter();
+
   if (isEmptyShell && projectParam) {
     return (
       <Suspense fallback={<LazyFallback />}>

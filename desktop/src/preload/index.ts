@@ -15,6 +15,10 @@ contextBridge.exposeInMainWorld("pneumaDesktop", {
   invoke: (capability: string, method: string, ...args: unknown[]) =>
     ipcRenderer.invoke("pneuma:native", capability, method, ...args),
   capabilities: () => ipcRenderer.invoke("pneuma:native:capabilities"),
+  // Background mode — a session running in a hidden window relays its turn
+  // status to main so the tray can show progress + fire a completion notice.
+  reportSessionStatus: (status: "running" | "idle") =>
+    ipcRenderer.send("pneuma:session-status", status),
 });
 
 // ── Log bridge ───────────────────────────────────────────────────────────────
