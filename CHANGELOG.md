@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.12.1] - 2026-05-21
+
+### Improved — `/handoff-pneuma` skips the redundant Project/Quick question
+
+When the `/handoff-pneuma` slash command ran in a directory that was *already* a Pneuma Project, it still asked whether to initialize the folder as a Project or start a quick session — a question with only one correct answer. Worse, picking "Quick" there would scatter loose session state into an existing project root.
+
+- **Project detection** — the slash-command template now probes `<cwd>/.pneuma/project.json` before asking. An already-initialized project skips the question and always runs as a project session; only genuinely un-initialized folders still get the prompt. An explicit `--quick` in a project root is overridden, since sessions inside a project must be project sessions.
+
+Installed `/handoff-pneuma` files auto-update to this template on the next launcher boot after a desktop-app update — no manual reinstall needed.
+
 ## [3.12.0] - 2026-05-20
 
 ### Added — Background Mode: external handoffs run invisibly until they're done

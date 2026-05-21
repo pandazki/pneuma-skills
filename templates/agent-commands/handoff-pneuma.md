@@ -50,8 +50,28 @@ The slash command's argument is `$ARGUMENTS`.
    one-line description — and ask which fits. You may propose a best guess
    based on `INTENT` and confirm. Map the pick back to the `name` field.
 
-3. **Resolve project init.** If neither `--project` nor `--quick` was given,
-   ask the user:
+3. **Resolve project init.**
+
+   First, **detect whether the current directory is already a Pneuma
+   Project** — it is iff `<cwd>/.pneuma/project.json` exists:
+
+   ```bash
+   [ -f "$(pwd)/.pneuma/project.json" ] && echo project || echo notproject
+   ```
+
+   - `project` → the folder is **already** a Pneuma Project. Do NOT ask —
+     the answer is settled. Treat as Project: pass `--init-project` in
+     step 5. (`pneuma handoff-from-external` no-ops the init when
+     `project.json` already exists, so this is safe and correct. A quick
+     session here would be wrong — it scatters loose session state into a
+     project root.) This holds even if `--quick` was in `$ARGUMENTS`:
+     once a directory is a project, sessions in it must be project
+     sessions — tell the user you're running as a project session
+     because the folder already is one.
+   - `notproject` → continue to the question below.
+
+   If the folder is **not** already a project and neither `--project` nor
+   `--quick` was given, ask the user:
 
    > "Initialize this folder as a Pneuma Project (recommended for ongoing
    > work — persistent preferences, multiple sessions can share it), or just
@@ -59,6 +79,9 @@ The slash command's argument is `$ARGUMENTS`.
 
    - Project → pass `--init-project` in step 5.
    - Quick → omit `--init-project`.
+
+   An explicit `--project` / `--quick` for a `notproject` folder skips the
+   question and is honored as-is.
 
 4. **Bridge the conversation context.** This is the step that matters most.
 
