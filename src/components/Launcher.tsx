@@ -154,6 +154,22 @@ interface ProjectListEntry {
   coverImageUrl?: string;
 }
 
+/** Map a launcher project-list entry to the shape `ProjectCard` consumes. */
+function toProjectCardEntry(p: ProjectListEntry): ProjectCardEntry {
+  return {
+    id: p.id,
+    root: p.root,
+    name: p.name,
+    displayName: p.displayName,
+    description: p.description,
+    lastAccessed: p.lastAccessed,
+    createdAt: p.createdAt,
+    sessionCount: p.sessionCount ?? 0,
+    modeBreakdown: p.modeBreakdown ?? [],
+    coverImageUrl: p.coverImageUrl,
+  };
+}
+
 interface ChildProcess {
   pid: number;
   specifier: string;
@@ -1398,6 +1414,88 @@ function AllSessions({
 
         {filtered.length === 0 && (
           <p className="text-center text-cc-muted/60 py-20">{query ? t("all_sessions.no_match") : t("all_sessions.no_sessions")}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── AllProjects (full-screen overlay) ────────────────────────────────────
+
+function AllProjects({
+  projects,
+  homeDir,
+  onClose,
+  onQuickResume,
+  className,
+  closing,
+  headerHeight = 0,
+}: {
+  projects: ProjectCardEntry[];
+  homeDir: string;
+  onClose: () => void;
+  onQuickResume: (project: ProjectCardEntry) => void;
+  className?: string;
+  closing?: boolean;
+  headerHeight?: number;
+}) {
+  void onClose; // closing is driven by the launcher header's X / Escape
+  const { t } = useTranslation("launcher");
+  const [search, setSearch] = useState("");
+  const query = search.toLowerCase().trim();
+  const filtered = query
+    ? projects.filter(
+        (p) =>
+          p.displayName.toLowerCase().includes(query) ||
+          p.name.toLowerCase().includes(query) ||
+          p.root.toLowerCase().includes(query) ||
+          (p.description ?? "").toLowerCase().includes(query),
+      )
+    : projects;
+  return (
+    <div
+      className={`fixed left-0 right-0 bottom-0 z-50 bg-cc-bg overflow-y-auto font-body ${className || ""}`}
+      style={{
+        top: headerHeight,
+        animation: `${closing ? "overlayFadeOut" : "overlayFadeIn"} 0.2s ease-out${closing ? " forwards" : ""}`,
+      }}
+    >
+      <div className="sticky top-0 z-10 bg-cc-bg/80 backdrop-blur-sm border-b border-cc-border/30">
+        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center gap-4">
+          <h1 className="font-display text-lg text-cc-fg">{t("all_projects.title")}</h1>
+          <div className="flex-1 max-w-xs ml-4">
+            <div className="relative">
+              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-cc-muted/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              <input
+                type="text"
+                placeholder={t("all_projects.search_placeholder")}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-sm bg-cc-input-bg border border-cc-border/50 rounded-lg text-cc-fg placeholder:text-cc-muted/40 focus:outline-none focus:border-cc-primary/50"
+              />
+            </div>
+          </div>
+          <span className="text-xs text-cc-muted/50 ml-auto">{query ? t("all_projects.count_filtered", { filtered: filtered.length, total: projects.length }) : t("all_projects.count_total", { count: filtered.length })}</span>
+        </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto px-6 py-8">
+        {filtered.length > 0 ? (
+          <div className="grid grid-cols-1 gap-2">
+            {filtered.map((p) => (
+              <ProjectCard
+                key={p.id}
+                project={p}
+                variant="compact"
+                homeDir={homeDir}
+                onQuickResume={onQuickResume}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="text-center text-cc-muted/60 py-20">{query ? t("all_projects.no_match") : t("all_projects.no_projects")}</p>
         )}
       </div>
     </div>
@@ -4565,6 +4663,7 @@ export default function Launcher() {
   const [loading, setLoading] = useState(true);
   const [showGallery, setShowGallery] = useState(false);
   const [showAllSessions, setShowAllSessions] = useState(false);
+  const [showAllProjects, setShowAllProjects] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -4613,11 +4712,12 @@ export default function Launcher() {
 
   const galleryAnim = useAnimatedMount(showGallery);
   const allSessionsAnim = useAnimatedMount(showAllSessions);
+  const allProjectsAnim = useAnimatedMount(showAllProjects);
   const launchAnim = useAnimatedMount(launchTarget !== null);
   const lastLaunchTarget = useRef(launchTarget);
   if (launchTarget) lastLaunchTarget.current = launchTarget;
 
-  const hasOverlay = showGallery || showAllSessions || launchTarget !== null;
+  const hasOverlay = showGallery || showAllSessions || showAllProjects || launchTarget !== null;
 
   // Lock body scroll when any overlay is open
   useEffect(() => {
@@ -4635,11 +4735,12 @@ export default function Launcher() {
         if (launchTarget) setLaunchTarget(null);
         else if (showGallery) setShowGallery(false);
         else if (showAllSessions) setShowAllSessions(false);
+        else if (showAllProjects) setShowAllProjects(false);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [hasOverlay, launchTarget, showGallery, showAllSessions]);
+  }, [hasOverlay, launchTarget, showGallery, showAllSessions, showAllProjects]);
 
   const refreshModes = useCallback(() => {
     const locale = currentLocale();
@@ -5109,7 +5210,7 @@ export default function Launcher() {
             </a>
           </div>
           <button
-            onClick={() => { setShowGallery(false); setShowAllSessions(false); setLaunchTarget(null); }}
+            onClick={() => { setShowGallery(false); setShowAllSessions(false); setShowAllProjects(false); setLaunchTarget(null); }}
             className={`p-2 text-cc-muted/50 hover:text-cc-fg transition-all duration-300 ease-out cursor-pointer ${
               hasOverlay ? "opacity-100 translate-x-0 scale-100" : "opacity-0 translate-x-3 scale-75 pointer-events-none"
             }`}
@@ -5192,32 +5293,21 @@ export default function Launcher() {
             </section>
           )}
 
-          {/* Recent Projects — two-tier: featured (≤3 recent) + compact older list */}
+          {/* Recent Projects — featured cards (top 3) + compact rows (≤5);
+              overflow past 8 lives behind the "All Projects" overlay.
+              Mirrors the Continue section's card + row + overlay shape. */}
           {(() => {
-            const FEATURED_DAYS = 14;
             const FEATURED_MAX = 3;
-            const featuredCutoff = Date.now() - FEATURED_DAYS * 24 * 60 * 60 * 1000;
+            const COMPACT_MAX = 5;
             // Sort newest first, then split into featured + rest.
             const sorted = [...projects].sort(
               (a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0)
             );
-            const featured = sorted
-              .filter((p) => (p.lastAccessed ?? 0) >= featuredCutoff)
-              .slice(0, FEATURED_MAX);
-            const featuredIds = new Set(featured.map((p) => p.id));
-            const rest = sorted.filter((p) => !featuredIds.has(p.id));
-            const toCardEntry = (p: ProjectListEntry): ProjectCardEntry => ({
-              id: p.id,
-              root: p.root,
-              name: p.name,
-              displayName: p.displayName,
-              description: p.description,
-              lastAccessed: p.lastAccessed,
-              createdAt: p.createdAt,
-              sessionCount: p.sessionCount ?? 0,
-              modeBreakdown: p.modeBreakdown ?? [],
-              coverImageUrl: p.coverImageUrl,
-            });
+            const featured = sorted.slice(0, FEATURED_MAX);
+            const rest = sorted.slice(FEATURED_MAX);
+            const compactVisible = rest.slice(0, COMPACT_MAX);
+            // More than 3 + 5 visible → surface the "All Projects" overlay.
+            const hasOverflow = rest.length > COMPACT_MAX;
             return (
               <section
                 className="mb-10 pt-8 border-t border-cc-border"
@@ -5244,6 +5334,17 @@ export default function Launcher() {
                         {showArchived ? t("main.hide_archived") : t("main.show_archived", { count: archivedProjects.length })}
                       </button>
                     )}
+                    {/* All Projects overlay trigger — only when the compact
+                        tier overflows (more than 3 + 5 projects). */}
+                    {hasOverflow && (
+                      <button
+                        type="button"
+                        className="text-xs text-cc-muted/50 hover:text-cc-fg transition-colors cursor-pointer"
+                        onClick={() => setShowAllProjects(true)}
+                      >
+                        {t("main.all_projects_count", { count: projects.length })}
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="text-xs text-cc-primary hover:opacity-80 transition-opacity cursor-pointer"
@@ -5262,7 +5363,7 @@ export default function Launcher() {
                         {featured.map((p) => (
                           <ProjectCard
                             key={p.id}
-                            project={toCardEntry(p)}
+                            project={toProjectCardEntry(p)}
                             variant="featured"
                             homeDir={homeDir}
                             onQuickResume={quickResumeProject}
@@ -5270,24 +5371,17 @@ export default function Launcher() {
                         ))}
                       </div>
                     )}
-                    {rest.length > 0 && (
-                      <div>
-                        {featured.length > 0 && (
-                          <h3 className="text-xs uppercase tracking-wider text-cc-muted/50 mb-3">
-                            {t("main.all_projects_count", { count: rest.length })}
-                          </h3>
-                        )}
-                        <div className="grid grid-cols-1 gap-2">
-                          {rest.map((p) => (
-                            <ProjectCard
-                              key={p.id}
-                              project={toCardEntry(p)}
-                              variant="compact"
-                              homeDir={homeDir}
-                              onQuickResume={quickResumeProject}
-                            />
-                          ))}
-                        </div>
+                    {compactVisible.length > 0 && (
+                      <div className="grid grid-cols-1 gap-2">
+                        {compactVisible.map((p) => (
+                          <ProjectCard
+                            key={p.id}
+                            project={toProjectCardEntry(p)}
+                            variant="compact"
+                            homeDir={homeDir}
+                            onQuickResume={quickResumeProject}
+                          />
+                        ))}
                       </div>
                     )}
                   </>
@@ -5304,7 +5398,7 @@ export default function Launcher() {
                       {archivedProjects.map((p) => (
                         <ProjectCard
                           key={p.id}
-                          project={toCardEntry(p)}
+                          project={toProjectCardEntry(p)}
                           variant="compact"
                           homeDir={homeDir}
                           archivedProject
@@ -5548,6 +5642,21 @@ export default function Launcher() {
           getBackendUnavailableReason={getBackendUnavailableReason}
           className={isLight ? "cc-theme-light launcher-light" : ""}
           closing={allSessionsAnim.closing}
+          headerHeight={headerH}
+        />
+      )}
+
+      {/* All Projects overlay */}
+      {allProjectsAnim.mounted && (
+        <AllProjects
+          projects={[...projects]
+            .sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0))
+            .map(toProjectCardEntry)}
+          homeDir={homeDir}
+          onClose={() => setShowAllProjects(false)}
+          onQuickResume={quickResumeProject}
+          className={isLight ? "cc-theme-light launcher-light" : ""}
+          closing={allProjectsAnim.closing}
           headerHeight={headerH}
         />
       )}

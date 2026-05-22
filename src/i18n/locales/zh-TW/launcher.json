@@ -48,6 +48,14 @@
     "update": "更新",
     "view_changelog": "查看完整更新日誌 →"
   },
+  "all_projects": {
+    "title": "所有專案",
+    "search_placeholder": "搜尋專案…",
+    "count_filtered": "{{filtered}} / {{total}} 個專案",
+    "count_total": "{{count}} 個專案",
+    "no_match": "沒有符合的專案。",
+    "no_projects": "尚無專案。"
+  },
   "all_sessions": {
     "title": "所有工作階段",
     "search_placeholder": "搜尋工作階段…",

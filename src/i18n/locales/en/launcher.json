@@ -48,6 +48,14 @@
     "update": "Update",
     "view_changelog": "View full changelog →"
   },
+  "all_projects": {
+    "title": "All Projects",
+    "search_placeholder": "Search projects…",
+    "count_filtered": "{{filtered}} / {{total}} projects",
+    "count_total": "{{count}} projects",
+    "no_match": "No matching projects.",
+    "no_projects": "No projects yet."
+  },
   "all_sessions": {
     "title": "All Sessions",
     "search_placeholder": "Search sessions…",

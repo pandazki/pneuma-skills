@@ -48,6 +48,14 @@
     "update": "更新",
     "view_changelog": "查看完整更新日志 →"
   },
+  "all_projects": {
+    "title": "全部项目",
+    "search_placeholder": "搜索项目…",
+    "count_filtered": "{{filtered}} / {{total}} 个项目",
+    "count_total": "共 {{count}} 个项目",
+    "no_match": "没有匹配的项目。",
+    "no_projects": "暂无项目。"
+  },
   "all_sessions": {
     "title": "全部会话",
     "search_placeholder": "搜索会话…",

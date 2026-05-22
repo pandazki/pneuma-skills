@@ -48,6 +48,14 @@
     "update": "업데이트",
     "view_changelog": "전체 변경 로그 보기 →"
   },
+  "all_projects": {
+    "title": "전체 프로젝트",
+    "search_placeholder": "프로젝트 검색...",
+    "count_filtered": "{{filtered}} / {{total}} 프로젝트",
+    "count_total": "{{count}} 프로젝트",
+    "no_match": "일치하는 프로젝트가 없습니다.",
+    "no_projects": "아직 프로젝트가 없습니다."
+  },
   "all_sessions": {
     "title": "전체 세션",
     "search_placeholder": "세션 검색...",

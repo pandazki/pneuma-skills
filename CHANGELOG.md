@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.12.2] - 2026-05-22
+
+### Improved — Recent Projects mirrors Recent Sessions
+
+The launcher's Recent Projects section showed every project inline — three featured cards followed by an unbounded list of compact rows. With enough projects that list ran on indefinitely, pushing everything below it off-screen.
+
+It now follows the same three-tier shape as the Continue (sessions) section:
+
+- **Top 3 as cards, next 5 as compact rows** — the section no longer grows unbounded with the project count.
+- **All Projects overlay** — once there are more than eight projects, an "All Projects" button in the section header opens a full-screen, searchable list of every project, mirroring the existing "All Sessions" overlay.
+- The redundant "All Projects" sub-heading between the cards and rows is gone, and the top-3 cards are now simply the three most recent (the previous 14-day "featured" cutoff is dropped).
+
 ## [3.12.1] - 2026-05-21
 
 ### Improved — `/handoff-pneuma` skips the redundant Project/Quick question

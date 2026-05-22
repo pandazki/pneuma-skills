@@ -48,6 +48,14 @@
     "update": "更新",
     "view_changelog": "変更履歴全文を見る →"
   },
+  "all_projects": {
+    "title": "すべてのプロジェクト",
+    "search_placeholder": "プロジェクトを検索…",
+    "count_filtered": "{{filtered}} / {{total}} プロジェクト",
+    "count_total": "{{count}} プロジェクト",
+    "no_match": "一致するプロジェクトはありません。",
+    "no_projects": "プロジェクトはまだありません。"
+  },
   "all_sessions": {
     "title": "すべてのセッション",
     "search_placeholder": "セッションを検索…",

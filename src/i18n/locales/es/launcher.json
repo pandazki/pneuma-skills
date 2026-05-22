@@ -48,6 +48,14 @@
     "update": "Actualizar",
     "view_changelog": "Ver el changelog completo →"
   },
+  "all_projects": {
+    "title": "Todos los proyectos",
+    "search_placeholder": "Buscar proyectos…",
+    "count_filtered": "{{filtered}} / {{total}} proyectos",
+    "count_total": "{{count}} proyectos",
+    "no_match": "No hay proyectos que coincidan.",
+    "no_projects": "Aún no hay proyectos."
+  },
   "all_sessions": {
     "title": "Todas las sesiones",
     "search_placeholder": "Buscar sesiones…",

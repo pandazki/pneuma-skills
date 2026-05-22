@@ -48,6 +48,14 @@
     "update": "Aktualisieren",
     "view_changelog": "Vollständiges Änderungsprotokoll ansehen →"
   },
+  "all_projects": {
+    "title": "Alle Projekte",
+    "search_placeholder": "Projekte suchen…",
+    "count_filtered": "{{filtered}} / {{total}} Projekte",
+    "count_total": "{{count}} Projekte",
+    "no_match": "Keine passenden Projekte.",
+    "no_projects": "Noch keine Projekte."
+  },
   "all_sessions": {
     "title": "Alle Sitzungen",
     "search_placeholder": "Sitzungen suchen…",
