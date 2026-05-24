@@ -76,6 +76,7 @@
 | **illustrate** | AI 插画工坊 —— 在分行的画布上生成、整理视觉素材，配合内容集 |
 | **remotion** | 基于 [Remotion](https://www.remotion.dev) 的代码驱动视频合成 —— 实时预览、逐帧精准动画、WebCodecs 路线导出 MP4/WebM |
 | **gridboard** | 交互式仪表盘 —— 固定画布上的可拖拽磁贴网格，通过 `defineTile()` 协议定义 React 磁贴，浏览器端 JIT 编译 |
+| **cosmos** | 把任何内容——代码、小说、研究、商业流程——投影成一张结构化的星图：让内在脉络以可交互图谱的方式显形。schema 与 dashboard 技术借鉴自 [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything)（MIT） |
 | **mode-maker** | 用 AI 做自定义 mode —— fork、Play 试跑、发布 |
 | **evolve** | Evolution Agent —— 分析历史、提出技能改进、apply / 回滚 |
 

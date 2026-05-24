@@ -1,0 +1,63 @@
+{
+  "tagline": {
+    "en": "Project anything as a structured cosmos",
+    "zh-CN": "把万物投影成一张结构化星图",
+    "zh-TW": "把萬物投影成一張結構化星圖",
+    "ja": "あらゆるものを構造的な宇宙図に投影",
+    "ko": "무엇이든 구조화된 코스모스로 투영"
+  },
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": {
+        "en": "Project Anything",
+        "zh-CN": "投影万物",
+        "ja": "あらゆるものを投影",
+        "ko": "무엇이든 투영"
+      },
+      "description": {
+        "en": "A short mystery scene, a codebase, a research paper — same viewer, same protocol, different vocabulary. The agent picks the right node-types and edge verbs per domain.",
+        "zh-CN": "一段悬疑小说、一份代码库、一篇研究论文——同一个 viewer、同一套协议、不同的词表。Agent 按内容领域挑合适的节点类型和边的动词。",
+        "ja": "短編ミステリー、コードベース、研究論文——同じビューア、同じプロトコル、異なる語彙。エージェントが内容ドメインに応じてノードタイプとエッジの動詞を選ぶ。",
+        "ko": "짧은 미스터리 장면, 코드베이스, 연구 논문 — 같은 뷰어, 같은 프로토콜, 다른 어휘. 에이전트가 콘텐츠 도메인에 맞는 노드 유형과 엣지 동사를 고른다."
+      },
+      "media": "project-anything.png",
+      "mediaType": "image",
+      "_image_brief": "Triptych. Three side-by-side mini-mockups in dark Ethereal-Tech style, each captioned. Panel 1: tiny snippet of source code (TypeScript visible) → arrow → graph with nodes labeled 'file', 'function', 'class'. Panel 2: a paragraph of prose (mystery scene-y) → arrow → graph with nodes labeled 'character', 'clue', 'event'. Panel 3: a research paper abstract → arrow → graph with nodes labeled 'claim', 'evidence', 'method'. All three graphs share the same visual treatment — the message is 'one viewer, many domains'."
+    },
+    {
+      "title": {
+        "en": "Focus a Layer",
+        "zh-CN": "聚焦一层",
+        "ja": "レイヤーにフォーカス",
+        "ko": "레이어 포커스"
+      },
+      "description": {
+        "en": "Ask the agent to focus a single layer — only the clues, only the API surface, only the characters — and the rest dims so you can study one slice cleanly.",
+        "zh-CN": "让 agent 聚焦某一层——只看线索、只看 API、只看人物——其余暗下来，让你干净地审视一个切片。",
+        "ja": "エージェントに特定のレイヤーへフォーカスさせる——手がかりだけ、APIだけ、登場人物だけ——他は暗くなり、ひとつの切片を綺麗に検討できる。",
+        "ko": "에이전트에게 특정 레이어에 집중하도록 요청하라 — 단서만, API만, 인물만 — 나머지는 흐려져서 한 단면을 깔끔하게 살필 수 있다."
+      },
+      "media": "focus-layer.png",
+      "mediaType": "image",
+      "_image_brief": "Full-bleed cosmos viewer (Ethereal-Tech dark) showing a graph where only one layer (say 'clues', in amber #fbbf24) is rendered fully opaque; nodes in other layers (character/event/object) are dimmed to ~20% opacity. Sidebar visible on the right with the 'Clues' layer pill highlighted in amber. Edges between non-focused nodes are also dimmed; edges into clues stay visible. Optional small agent message bubble: 'Focusing on the clues layer — these are what argue against the forgery thesis.'"
+    },
+    {
+      "title": {
+        "en": "Guided Tour",
+        "zh-CN": "导览模式",
+        "ja": "ガイドツアー",
+        "ko": "가이드 투어"
+      },
+      "description": {
+        "en": "Click 'Generate a tour' and the agent stops trying to show you everything — it walks you through 5–8 anchor nodes in the order they teach the work's shape.",
+        "zh-CN": "点 \"生成导览\"，agent 不再一股脑给你看全部——它按 5-8 个能教你看懂作品脉络的锚点节点，一步步带着你走。",
+        "ja": "「ツアーを生成」をクリックすると、エージェントはすべてを見せようとせず、作品の輪郭を学ばせる5〜8の錨節点を順番に案内する。",
+        "ko": "'투어 생성'을 클릭하면 에이전트가 모든 것을 보여주려 하지 않고, 작품의 윤곽을 가르치는 5–8개의 앵커 노드를 순서대로 안내한다."
+      },
+      "media": "guided-tour.png",
+      "mediaType": "image",
+      "_image_brief": "Cosmos viewer with one node highlighted (the current tour step, in Pneuma orange #f97316), other nodes visible but lower-contrast. Bottom-center has a small step indicator '3 / 6' and a quoted narrative text below the graph: 'Who is Reuben? Tobias's uncle; captain of the Halcyon; vanished off Marblehead in 1849.' Two ghost arrows show the path from step 2 → 3. Subtle tour breadcrumb chips above the graph showing visited nodes."
+    }
+  ]
+}

@@ -131,6 +131,13 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/clipcraft/pneuma-mode.js").then((m) => m.default),
   },
+  cosmos: {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/cosmos/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/cosmos/pneuma-mode.js").then((m) => m.default),
+  },
 };
 
 /** External mode registry — registered by the CLI at startup via registerExternalMode */

@@ -76,6 +76,7 @@ When humans and code agents co-create content, they need more than a chat window
 | **illustrate** | AI illustration studio — generate and curate visual assets on a row-based canvas with content sets |
 | **remotion** | Code-driven video composition on [Remotion](https://www.remotion.dev) — live preview, frame-perfect animation, MP4/WebM export via WebCodecs |
 | **gridboard** | Interactive dashboards — draggable tile grid on a fixed canvas, JIT-compiled React tiles via `defineTile()`, agent-driven redesign on resize |
+| **cosmos** | Project any content — code, prose, research, business — into a structured cosmos: an interactive graph that lays its inner shape bare. Schema and dashboard tech borrow from [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything) (MIT) |
 | **mode-maker** | Create custom modes with AI — fork, play-test, publish |
 | **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback |
 
