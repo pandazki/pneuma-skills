@@ -64,20 +64,22 @@
 
 ## 内置 Modes
 
-| Mode | 它做什么 | 版本 |
-|------|------|------|
-| **webcraft** | 实时网页开发，搭载 [Impeccable](https://impeccable.style) 的 AI 设计能力 —— 22 条设计指令、品牌/产品双声调、响应式预览、导出 | **2.37.0** |
-| **clipcraft** | 基于 [@pneuma-craft](https://github.com/pandazki/pneuma-craft) 的 AIGC 视频流水线 —— 资产、Track/Clip 组合、来源 DAG、Scene 划分；Canvas 预览 + 3D 时间线 + 单 clip 钻入面板；图像/视频/TTS/BGM 生成脚本一应俱全 | **2.38.0** |
-| **kami** | 纸张画布排版 —— 锁纸张尺寸（A4/A5/A3/Letter/Legal × 横/竖）、Scroll/Focus/Book 三种视图、留白纪律反馈、PDF/PNG/HTML 导出。设计语言改编自 [tw93/kami](https://github.com/tw93/kami) | 2.31.0 |
-| **slide** | HTML 幻灯片 —— 多内容集、拖拽排序、演讲者模式、PDF/图片导出。Skill 设计参考了 [frontend-slides](https://github.com/zarazhangrui/frontend-slides) | 2.18.0 |
-| **doc** | 带实时预览的 Markdown —— 最简洁的 mode，也是 mode 系统的最小示例 | 2.29.0 |
-| **draw** | 在 [Excalidraw](https://excalidraw.com) 画布上做图与可视化思考 | 2.29.0 |
-| **diagram** | 专业级 [draw.io](https://www.drawio.com) 图 —— 流程图、架构、UML、ER，支持流式渲染与手绘风格 | **2.27.0** |
-| **illustrate** | AI 插画工坊 —— 在分行的画布上生成、整理视觉素材，配合内容集 | 2.29.0 |
-| **remotion** | 基于 [Remotion](https://www.remotion.dev) 的代码驱动视频合成 —— 实时预览、逐帧精准动画、WebCodecs 路线导出 MP4/WebM | 2.29.0 |
-| **gridboard** | 交互式仪表盘 —— 固定画布上的可拖拽磁贴网格，通过 `defineTile()` 协议定义 React 磁贴，浏览器端 JIT 编译 | 2.29.0 |
-| **mode-maker** | 用 AI 做自定义 mode —— fork、Play 试跑、发布 | 2.35.0 |
-| **evolve** | Evolution Agent —— 分析历史、提出技能改进、apply / 回滚 | 2.25.0 |
+| Mode | 它做什么 |
+|------|------|
+| **webcraft** | 实时网页开发，搭载 [Impeccable](https://impeccable.style) 的 AI 设计能力 —— 22 条设计指令、品牌/产品双声调、响应式预览、导出 |
+| **clipcraft** | 基于 [@pneuma-craft](https://github.com/pandazki/pneuma-craft) 的 AIGC 视频流水线 —— 资产、Track/Clip 组合、来源 DAG、Scene 划分；Canvas 预览 + 3D 时间线 + 单 clip 钻入面板；图像/视频/TTS/BGM 生成脚本一应俱全 |
+| **kami** | 纸张画布排版 —— 锁纸张尺寸（A4/A5/A3/Letter/Legal × 横/竖）、Scroll/Focus/Book 三种视图、留白纪律反馈、PDF/PNG/HTML 导出。设计语言改编自 [tw93/kami](https://github.com/tw93/kami) |
+| **slide** | HTML 幻灯片 —— 多内容集、拖拽排序、演讲者模式、PDF/图片导出。Skill 设计参考了 [frontend-slides](https://github.com/zarazhangrui/frontend-slides) |
+| **doc** | 带实时预览的 Markdown —— 最简洁的 mode，也是 mode 系统的最小示例 |
+| **draw** | 在 [Excalidraw](https://excalidraw.com) 画布上做图与可视化思考 |
+| **diagram** | 专业级 [draw.io](https://www.drawio.com) 图 —— 流程图、架构、UML、ER，支持流式渲染与手绘风格 |
+| **illustrate** | AI 插画工坊 —— 在分行的画布上生成、整理视觉素材，配合内容集 |
+| **remotion** | 基于 [Remotion](https://www.remotion.dev) 的代码驱动视频合成 —— 实时预览、逐帧精准动画、WebCodecs 路线导出 MP4/WebM |
+| **gridboard** | 交互式仪表盘 —— 固定画布上的可拖拽磁贴网格，通过 `defineTile()` 协议定义 React 磁贴，浏览器端 JIT 编译 |
+| **mode-maker** | 用 AI 做自定义 mode —— fork、Play 试跑、发布 |
+| **evolve** | Evolution Agent —— 分析历史、提出技能改进、apply / 回滚 |
+
+> 每个 mode 独立版本号 —— 在 launcher 和 mode 市场处呈现，不在 README 里重复以避免与代码漂移。
 
 ## 第一次进项目时，Pneuma 会带着你走一遍
 
@@ -185,7 +187,7 @@ Subcommands:
   history export [--out]   把当前会话导出为可分享的 .tar.gz
   history share [--title]  导出 + 上传 R2，返回链接
   history open <path|url>  下载 / 准备一个 replay 包
-  sessions rebuild         从磁盘恢复 "Continue" 列表
+  project add <path>       把已有项目登记进 session registry
   snapshot push / pull     上传 / 下载工作区快照
 ```
 

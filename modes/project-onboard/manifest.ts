@@ -20,7 +20,7 @@
  * apply lands the writes + optionally emits a Smart Handoff to spawn
  * the chosen task in its target mode.
  *
- * See `docs/design/2026-04-30-project-onboard.md` for the full design
+ * See `docs/archive/proposals/2026-04-30-project-onboard.md` for the full design
  * and acceptance criteria.
  */
 

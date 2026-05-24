@@ -120,7 +120,7 @@ export class SourceRegistry {
           `\n` +
           `Full design rationale:\n` +
           `  docs/reference/viewer-agent-protocol.md (see "Sources" section)\n` +
-          `  docs/superpowers/plans/2026-04-13-source-abstraction.md\n`,
+          `  docs/archive/proposals/superpowers-plans/2026-04-13-source-abstraction.md\n`,
       );
     }
     return manifest.sources;

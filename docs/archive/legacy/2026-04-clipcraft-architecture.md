@@ -1,6 +1,6 @@
 # ClipCraft Architecture
 
-> **Frame:** ClipCraft is a reference implementation of the [Pneuma Viewer–Agent Protocol](../../docs/reference/viewer-agent-protocol.md) on top of a structured domain model. It takes the protocol's file-centric design and shows that it scales up to a state-machine-backed editor without inventing a new runtime — by consuming the runtime's `Source<T>` abstraction for the one piece classic file-centric modes don't need: a viewer that also writes.
+> **Frame:** ClipCraft is a reference implementation of the [Pneuma Viewer–Agent Protocol](../../reference/viewer-agent-protocol.md) on top of a structured domain model. It takes the protocol's file-centric design and shows that it scales up to a state-machine-backed editor without inventing a new runtime — by consuming the runtime's `Source<T>` abstraction for the one piece classic file-centric modes don't need: a viewer that also writes.
 >
 > **Status (2026-04-13):** Plans 1 + 2 + 3a + 3b + 3c landed, then the bidirectional sync layer was migrated off mode-local code onto the upstream `Source<T>` abstraction (commits `5319436`, `7582009`, `42bca41`, `06204f6`). Persistence is done end-to-end. No playback, no timeline UI, no interactive user dispatch yet. Plan 4 adds playback.
 
@@ -329,13 +329,13 @@ bun run tsc --noEmit                 # typecheck
 ## Reading order for new contributors
 
 1. **This doc** — top-level mental model
-2. **`../../docs/reference/viewer-agent-protocol.md`** — the protocol ClipCraft implements
-3. **`../../core/types/source.ts`** — the `Source<T>` contract that powers the seventh direction
-4. **`../../core/sources/json-file.ts`** — the provider ClipCraft's manifest declares
-5. **`../../src/hooks/useSource.ts`** — the React binding the viewer consumes
+2. **`../../reference/viewer-agent-protocol.md`** — the protocol ClipCraft implements
+3. **`../../../core/types/source.ts`** — the `Source<T>` contract that powers the seventh direction
+4. **`../../../core/sources/json-file.ts`** — the provider ClipCraft's manifest declares
+5. **`../../../src/hooks/useSource.ts`** — the React binding the viewer consumes
 6. **`persistence.ts`** (skim) — the domain mapping in code
 7. **`viewer/ClipCraftPreview.tsx`** — how the viewer wires hydration + autosave on top of `useSource`
-8. **`../../docs/migration/2.29-source-abstraction.md`** and **`../../docs/superpowers/plans/clipcraft-source-migration.md`** — the migration that turned three refs into one source
-9. **`../../docs/superpowers/plans/2026-04-12-clipcraft-craft-bootstrap.md`** through `plan3c` — the incremental history, if you want to understand *why* a specific decision was made
+8. **`../../migration/2.29-source-abstraction.md`** and **`../proposals/superpowers-plans/clipcraft-source-migration.md`** — the migration that turned three refs into one source
+9. **`../proposals/superpowers-plans/2026-04-12-clipcraft-craft-bootstrap.md`** through `plan3c` — the incremental history, if you want to understand *why* a specific decision was made
 
 Each plan document is self-contained and references the commits it produced.

@@ -64,20 +64,22 @@ When humans and code agents co-create content, they need more than a chat window
 
 ## Built-in Modes
 
-| Mode | What it does | Version |
-|------|-------------|---------|
-| **webcraft** | Live web development with [Impeccable](https://impeccable.style) AI design intelligence — 22 design commands, brand vs product register, responsive preview, export | **2.37.0** |
-| **clipcraft** | AI-orchestrated video production on [@pneuma-craft](https://github.com/pandazki/pneuma-craft) — assets, composition with tracks/clips, provenance DAG, scenes; canvas preview + 3D timeline + dive panels; image / video / TTS / BGM generation scripts | **2.38.0** |
-| **kami** | Paper-canvas typesetting — locked paper size (A4/A5/A3/Letter/Legal × portrait/landscape), Scroll / Focus / Book views, fit-discipline feedback loop, PDF / PNG / HTML export. Design language adapted from [tw93/kami](https://github.com/tw93/kami) | 2.31.0 |
-| **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export. Skill design guidelines informed by [frontend-slides](https://github.com/zarazhangrui/frontend-slides) | 2.18.0 |
-| **doc** | Markdown documents with live preview — the simplest mode, a minimal example of the mode system | 2.29.0 |
-| **draw** | Diagrams and visual thinking on an [Excalidraw](https://excalidraw.com) canvas | 2.29.0 |
-| **diagram** | Professional [draw.io](https://www.drawio.com) diagrams — flowcharts, architecture, UML, ER, with streaming render and sketch style | **2.27.0** |
-| **illustrate** | AI illustration studio — generate and curate visual assets on a row-based canvas with content sets | 2.29.0 |
-| **remotion** | Code-driven video composition on [Remotion](https://www.remotion.dev) — live preview, frame-perfect animation, MP4/WebM export via WebCodecs | 2.29.0 |
-| **gridboard** | Interactive dashboards — draggable tile grid on a fixed canvas, JIT-compiled React tiles via `defineTile()`, agent-driven redesign on resize | 2.29.0 |
-| **mode-maker** | Create custom modes with AI — fork, play-test, publish | 2.35.0 |
-| **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback | 2.25.0 |
+| Mode | What it does |
+|------|-------------|
+| **webcraft** | Live web development with [Impeccable](https://impeccable.style) AI design intelligence — 22 design commands, brand vs product register, responsive preview, export |
+| **clipcraft** | AI-orchestrated video production on [@pneuma-craft](https://github.com/pandazki/pneuma-craft) — assets, composition with tracks/clips, provenance DAG, scenes; canvas preview + 3D timeline + dive panels; image / video / TTS / BGM generation scripts |
+| **kami** | Paper-canvas typesetting — locked paper size (A4/A5/A3/Letter/Legal × portrait/landscape), Scroll / Focus / Book views, fit-discipline feedback loop, PDF / PNG / HTML export. Design language adapted from [tw93/kami](https://github.com/tw93/kami) |
+| **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export. Skill design guidelines informed by [frontend-slides](https://github.com/zarazhangrui/frontend-slides) |
+| **doc** | Markdown documents with live preview — the simplest mode, a minimal example of the mode system |
+| **draw** | Diagrams and visual thinking on an [Excalidraw](https://excalidraw.com) canvas |
+| **diagram** | Professional [draw.io](https://www.drawio.com) diagrams — flowcharts, architecture, UML, ER, with streaming render and sketch style |
+| **illustrate** | AI illustration studio — generate and curate visual assets on a row-based canvas with content sets |
+| **remotion** | Code-driven video composition on [Remotion](https://www.remotion.dev) — live preview, frame-perfect animation, MP4/WebM export via WebCodecs |
+| **gridboard** | Interactive dashboards — draggable tile grid on a fixed canvas, JIT-compiled React tiles via `defineTile()`, agent-driven redesign on resize |
+| **mode-maker** | Create custom modes with AI — fork, play-test, publish |
+| **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback |
+
+> Each mode versions independently. Per-mode versions surface in the launcher and on the mode marketplace — they're not duplicated here to avoid drift.
 
 ## First Run — Pneuma Walks You Through It
 
@@ -192,7 +194,7 @@ Subcommands:
   history export [--out]   Export this session as a shareable .tar.gz
   history share [--title]  Export + upload to R2, return a link
   history open <path|url>  Download / prepare a replay package
-  sessions rebuild         Restore "Continue" entries from disk
+  project add <path>       Register an existing project into the session registry
   snapshot push / pull     Upload / download workspace snapshot
 ```
 

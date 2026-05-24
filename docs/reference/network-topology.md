@@ -1,263 +1,89 @@
-# Network Topology & Port Reference
+# Network Topology
 
-> Last updated: 2026-03-12 (Codex transport clarification)
+> 一个 mode 启动后，Pneuma 在用户机器上到底跑了几个进程、它们怎么互相说话——这篇只回答这个问题。其他通信契约（六个方向、消息形态）见 [`viewer-agent-protocol.md`](./viewer-agent-protocol.md)。
 
-## Port Allocation
+## 端口
 
-| Port | Component | When | Purpose |
-|------|-----------|------|---------|
-| **17996** | Vite dev server | Dev mode | Frontend HMR, proxies `/api` `/content` to backend |
-| **17007** | Hono backend | Dev mode | REST API, WebSocket, file watcher |
-| **17996** | Hono backend | Prod mode | Everything (API + static frontend) |
-| **18997** | Play child backend | Mode-maker Play | Isolated backend for test instance |
-| **18996** | Play child Vite | Mode-maker Play | Isolated frontend for test instance |
+| 端口 | 组件 | 何时 | 说明 |
+|------|------|------|------|
+| **17996** | Vite dev server / 生产 Hono | dev / prod | 浏览器入口；prod 模式同进程也服 API 与 WS |
+| **17007** | Hono backend | dev mode | dev 模式下与 Vite 拆开的 REST + WebSocket + 文件监听 |
+| auto | 子进程 backend / Vite | launcher 派生 / Mode-Maker Play | 依次递增直到空闲；通过 stdout 回传给父进程 |
 
-All servers bind to `0.0.0.0` to avoid IPv4/IPv6 dual-stack port collision on macOS.
+所有 server 都 bind 到 `0.0.0.0`——这是为了规避 macOS 上 IPv4/IPv6 dual-stack 抢占同一端口的隐性碰撞，**不**是为了对局域网公开。
 
-## Scenario Matrix
+## Dev vs Prod 的拓扑差
 
-| Scenario | Command | Backend Port | Vite Port | Browser URL | CLI WS |
-|----------|---------|:----------:|:---------:|-------------|--------|
-| **Dev Normal** | `bun run dev doc` | 17007 | 17996 | `localhost:17996` | `ws://localhost:17007/ws/cli/:id` |
-| **Prod Normal** | `pneuma doc` | 17996 | — | `localhost:17996` | `ws://localhost:17996/ws/cli/:id` |
-| **Dev Launcher** | `bun run dev` | 17007 | 17996 | `localhost:17996` | — (no agent) |
-| **Prod Launcher** | `pneuma` | 17996 | — | `localhost:17996` | — (no agent) |
-| **Launcher → Child** | (spawned) | auto | auto | auto | backend-specific |
-| **Play (mode-maker)** | (spawned) | 18997 | 18996 | `localhost:18996` | `ws://localhost:18997/ws/cli/:id` |
-| **Custom port** | `--port 9000` | 9000 | 17996* | `localhost:17996` | `ws://localhost:9000/ws/cli/:id` |
+Pneuma 通过 `dist/index.html` 是否存在判断模式：有 dist 就走单进程 prod，否则走 dev 双进程（`--dev` 强制 dev）。
 
-\* Vite port is independent of `--port`; override with `PNEUMA_VITE_PORT` env var.
-
-## Dev Mode vs Production Mode
-
-Detection logic (`bin/pneuma.ts`):
+**Dev — 两个进程，浏览器同时跟它们俩说话：**
 
 ```
-isDev = forceDev (--dev flag) || !existsSync(dist/index.html)
+Browser
+   │ http://localhost:17996   ──→  Vite (:17996)
+   │                                 ├─ /api/*    →proxy→  Hono (:17007)
+   │                                 └─ /content/* →proxy→  ↑
+   │                                 
+   └─ ws://localhost:17007/ws/browser/:id ──→  Hono (:17007)
+                                                  │
+                                            Agent backend
+                                       (Claude/Kimi: stdio NDJSON,
+                                        Codex: stdio JSON-RPC)
 ```
 
-### Dev Mode — two processes
+**关键：浏览器 WebSocket 不走 Vite proxy，直连 Hono。** Vite 的 WS proxy 与 `Bun.serve` 不可靠；从一开始就让它们脱钩省下大量诡异 bug。
+
+**Prod — 单进程，所有协议同源：**
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│ Browser                                                         │
-│                                                                 │
-│  http://localhost:17996  ───→  Vite Dev Server (:17996)         │
-│                                  │                              │
-│                                  ├─ /api/*    ──proxy──→        │
-│                                  ├─ /content/* ─proxy──→        │
-│                                  │                 │            │
-│  ws://localhost:17007/ws/browser/:id ──────────────┤            │
-│                                                    │            │
-│                                          Hono Backend (:17007)  │
-│                                                    │            │
-│                          ws://localhost:17007/ws/cli/:id         │
-│                                                    │            │
-│                                          Agent Backend            │
-│                                          (Claude: WS, Codex: stdio)│
-└─────────────────────────────────────────────────────────────────┘
+Browser
+   │ http://localhost:17996   ──→  Hono (:17996)
+                                     ├─ Static (dist/)
+                                     ├─ /api/* + /content/*
+                                     └─ /ws/*
+                                            │
+                                      Agent backend (stdio)
 ```
 
-Key points:
-- Vite proxies REST (`/api/*`, `/content/*`) to backend
-- WebSocket **bypasses** Vite proxy — browser connects directly to `:17007`
-- Vite env var `VITE_API_PORT` tells frontend which backend port to use
-- Codex backend uses stdio (JSON-RPC), not WebSocket — managed by `CodexAdapter` + `ws-bridge-codex.ts`
+## Scenario 矩阵
 
-### Production Mode — single process
+| 场景 | 命令 | Backend | Vite | 浏览器入口 |
+|------|------|:-----:|:-----:|------|
+| Dev 模式 | `bun run dev <mode>` | 17007 | 17996 | `:17996` |
+| Prod 模式 | `pneuma <mode>` | 17996 | — | `:17996` |
+| Dev launcher | `bun run dev` | 17007 | 17996 | `:17996` |
+| Prod launcher | `pneuma` | 17996 | — | `:17996` |
+| Launcher 派生子进程 | （由 launcher 发起） | auto | auto | auto |
+| Mode-Maker Play | （由 mode-maker 发起） | 18997 | 18996 | `:18996` |
+| 自定端口 | `--port 9000` | 9000 | 17996 | `:17996` |
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ Browser                                                         │
-│                                                                 │
-│  http://localhost:17996  ───→  Hono Backend (:17996)            │
-│                                  │                              │
-│                                  ├─ Static files from dist/     │
-│                                  ├─ /api/*                      │
-│                                  ├─ /content/*                  │
-│                                  ├─ /ws/browser/:id             │
-│                                  └─ /ws/cli/:id                 │
-│                                          │                      │
-│                                    Agent Backend                │
-│                              (Claude: WS, Codex: stdio)        │
-└─────────────────────────────────────────────────────────────────┘
-```
+> `--port` 只控 backend；Vite 端口独立（`PNEUMA_VITE_PORT` 可覆盖）。
 
-Key points:
-- Single port serves everything
-- Frontend served as static files from `dist/`
-- All WebSocket routes on same port
+## WebSocket 路由
 
-## Launcher Mode
+| 路径 | 协议 | 客户端 | 用途 |
+|------|------|------|------|
+| `/ws/browser/:sessionId` | JSON | 浏览器 UI | 用户消息、权限审批、viewer action |
+| `/ws/cli/:sessionId` | NDJSON | 历史 Claude CLI 路径 | 已被各 backend 的 stdio bridge 取代，保留供 legacy 调用 |
+| `/ws/terminal/:terminalId` | binary | xterm.js | PTY I/O |
 
-Launcher starts when no mode argument is given. It serves the marketplace UI.
+三个 backend 现都跑 stdio——Claude/Kimi 是 stdio NDJSON，Codex 是 stdio JSON-RPC，浏览器 ↔ backend 的桥接走 `BridgeBackend` 实现（`ws-bridge-{codex,kimi}.ts` 等）。Browser session state 携带 `backend_type` / `agent_capabilities` / `agent_version`，前端按这些 feature-gate，不依赖具体 transport。
 
-### Launcher → Child Process
+## 派生进程
 
-When user clicks "Launch" in the marketplace, the launcher spawns a child `pneuma` process:
+**Launcher → 子 session：** 用户在 launcher 点 Launch，POST `/api/launch` resolve mode + backend，spawn `bun pneuma.ts <mode> --port <auto> --backend <type> --no-open --no-prompt [--dev] [--debug]`，等子进程 stdout 打出 `[pneuma] ready http://...`，把 URL 回给浏览器跳转。`--dev` / `--debug` 父进程继承。
 
-```
-Launcher (:17996 / :17007)
-    │
-    POST /api/launch
-    │
-    ├─ Resolve mode
-    ├─ Resolve backendType
-    ├─ Spawn: bun pneuma.ts <mode> --workspace <path> --port <auto> --backend <type> --no-open --no-prompt [--dev] [--debug]
-    │
-    ├─ Wait for child stdout: [pneuma] ready http://localhost:<port>?...
-    │
-    └─ Return URL to browser → redirect
-```
+**Mode-Maker Play：** 在 mode-maker 里点 Play，spawn 一个隔离环境（backend `:18997`、Vite `:18996`，临时 workspace `/tmp/pneuma-play-*`）测试当前 mode。端口在 `server/mode-maker-routes.ts` 固定，避开常规递增段。
 
-The child process gets:
-- `--port`: chosen by launcher (the launcher server's actual port, allowing auto-increment)
-- `--backend`: launcher-selected backend, persisted for the workspace session
-- `--dev`: inherited if parent is in dev mode
-- `--debug`: inherited if parent has `--debug`
-- `--no-open --no-prompt`: non-interactive
+**端口自递增：** 请求的 port 被占时，server 顺序往上试至空闲；Vite 同理（`strictPort: false`）。实际绑定值经 stdout 回传给上游。
 
-## Mode-Maker Play Instance
+## 起点文件
 
-When the developer clicks "Play" in mode-maker, a subprocess tests the mode in an isolated environment:
-
-```
-Parent Mode-Maker                      Play Child Instance
-─────────────────                      ────────────────────
-
-Backend (:17007)                       Backend (:18997)
-Vite    (:17996)                       Vite    (:18996)
-                                         │
-POST /api/mode-maker/play                │
-    │                                    │
-    spawn: pneuma.ts <workspace>         │
-      --workspace /tmp/pneuma-play-xxx   │
-      --port 18997                       │
-      --no-open --no-prompt --dev        │
-                                         │
-    env: PNEUMA_VITE_PORT=18996          │
-    env: CLAUDECODE=""                   │
-                                         │
-    stdout → [pneuma] ready URL ────→  returned to frontend
-                                         │
-                                       Browser opens :18996
-```
-
-Ports 18996/18997 are hardcoded constants in `server/mode-maker-routes.ts`.
-
-## WebSocket Routes
-
-| Path | Protocol | Client | Purpose |
-|------|----------|--------|---------|
-| `/ws/browser/:sessionId` | JSON | Browser UI | User messages, permissions, viewer actions |
-| `/ws/cli/:sessionId` | NDJSON (Claude) | Claude Code CLI | Tool use, streaming, agent events |
-| *(stdio, no WS)* | JSON-RPC (Codex) | Codex app-server | Managed by CodexAdapter, not WS-routed |
-| `/ws/terminal/:terminalId` | Binary | Terminal UI | PTY I/O (xterm.js) |
-
-Browser WebSocket URL construction (`src/ws.ts`):
-
-```typescript
-// Dev: connect directly to backend (bypass Vite)
-const host = import.meta.env.DEV
-  ? `${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`
-  : location.host;  // Prod: same origin
-```
-
-CLI WebSocket URL construction (`backends/claude-code/cli-launcher.ts`):
-
-```typescript
-const sdkUrl = `ws://localhost:${this.port}/ws/cli/${sessionId}`;
-// Passed as: claude --sdk-url <sdkUrl>
-```
-
-Codex transport (`backends/codex/codex-adapter.ts`):
-
-```typescript
-// Codex uses stdio JSON-RPC, not WebSocket
-// codex --app-server spawns a child process
-// CodexAdapter communicates via stdin/stdout JSON-RPC
-// ws-bridge-codex.ts bridges browser WS ↔ CodexAdapter events
-```
-
-The runtime session layer is backend-neutral. Browser session state carries `backend_type`, `agent_capabilities`, and `agent_version` so frontend feature gating does not depend on transport details.
-
-## Environment Variable Flow
-
-```
-bin/pneuma.ts
-    │
-    ├─ actualPort = startServer(port: effectiveApiPort)
-    │
-    ├─ Vite env:
-    │   ├─ VITE_API_PORT = actualPort        → import.meta.env.VITE_API_PORT (frontend)
-    │   ├─ PNEUMA_EXTERNAL_MODE_PATH = ...   → vite.config.ts (external mode resolve)
-    │   ├─ PNEUMA_EXTERNAL_MODE_NAME = ...   → vite.config.ts
-    │   └─ VITE_MODE_MAKER_WORKSPACE = ...   → vite.config.ts (mode-maker only)
-    │
-    └─ Agent env:
-        ├─ PNEUMA_API = http://localhost:${actualPort}
-        ├─ CLAUDECODE = "" (explicitly cleared)
-        └─ (mode-specific envMapping values)
-```
-
-For Play subprocess, additionally:
-```
-PNEUMA_VITE_PORT = 18996   → bin/pneuma.ts reads for Vite --port
-```
-
-## Port Auto-Increment
-
-When a requested port is occupied, the server retries up to 10 times:
-
-```typescript
-// server/index.ts
-for (let attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
-  try {
-    server = Bun.serve({ port: serverPort, hostname: "0.0.0.0", ... });
-    break;
-  } catch (err) {
-    if (err?.code === "EADDRINUSE") serverPort++;
-    else throw err;
-  }
-}
-```
-
-The actual bound port is returned as `actualPort` and used for all downstream configuration.
-
-Vite also has `strictPort: false` — if 17996 is occupied, it picks the next available port. The actual Vite port is parsed from stdout (`Local: http://localhost:<port>/`).
-
-## Debug Mode (`--debug`)
-
-The `--debug` flag:
-- Adds `&debug=1` to the browser URL query parameter
-- Frontend reads this to enable `debugMode` in the Zustand store
-- Enables verbose logging in server/client code
-- **Does not change any port assignments**
-- Inherited by launcher-spawned child processes
-
-## Vite Proxy Configuration
-
-```typescript
-// vite.config.ts
-proxy: {
-  "/api":     → http://localhost:${VITE_API_PORT || "17007"}
-  "/content": → http://localhost:${VITE_API_PORT || "17007"}
-}
-```
-
-Note: WebSocket is **not** proxied through Vite — the browser connects directly to the backend port. This is by design because Vite's WS proxy doesn't work reliably with Bun.serve.
-
-## Source Files
-
-| Topic | File | Key lines |
-|-------|------|-----------|
-| Port defaults, dev detection | `bin/pneuma.ts` | `effectiveApiPort`, `isDev`, `VITE_PORT` |
-| Server startup, auto-increment | `server/index.ts` | `startServer()`, `MAX_PORT_ATTEMPTS` |
-| Vite config, proxy, resolve | `vite.config.ts` | `server.proxy`, `pneumaWorkspaceResolve` |
-| Frontend port resolution | `src/ws.ts` | `getWsUrl()` |
-| Frontend API base | `src/App.tsx` | `getApiBase()` |
-| CLI WebSocket URL | `backends/claude-code/cli-launcher.ts` | `sdkUrl` |
-| Codex stdio transport | `backends/codex/codex-adapter.ts` | `JsonRpcTransport` |
-| Codex WS bridge | `server/ws-bridge-codex.ts` | Browser ↔ CodexAdapter |
-| Play ports | `server/mode-maker-routes.ts` | `PLAY_PORT`, `PLAY_VITE_PORT` |
-| Launcher child spawn | `server/index.ts` | `POST /api/launch` |
+| 关注点 | 文件 |
+|---|---|
+| 端口选取 / dev 检测 / Vite env | `bin/pneuma.ts` |
+| Server 启动 + 自递增 | `server/index.ts` |
+| Vite proxy | `vite.config.ts` |
+| 浏览器 WS URL 推导 | `src/ws.ts` |
+| Backend stdio 与 WS 桥接 | `backends/{claude-code,codex,kimi-cli}/`、`server/ws-bridge*.ts` |
+| Play 子进程 | `server/mode-maker-routes.ts` |

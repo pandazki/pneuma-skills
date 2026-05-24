@@ -577,7 +577,7 @@ MVP 只有约 8 个参数，手写代码量 < 100 行，引入框架反而增加
 
 ## 7. Amendment 2026-04-27 (3.0 Project Layer)
 
-3.0 在启动流程中加入 **project 检测分支**。详见 [3.0 Project Layer 设计](../design/2026-04-27-pneuma-projects-design.md)。
+3.0 在启动流程中加入 **project 检测分支**。详见 [3.0 Project Layer 设计](../archive/proposals/2026-04-27-pneuma-projects-design.md)。
 
 ### 7.1 启动逻辑分支
 

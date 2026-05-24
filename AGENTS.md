@@ -2,20 +2,15 @@
 
 ## Project Overview
 
-Pneuma Skills is co-creation infrastructure for humans and code agents. The underlying bet: **coding agents already do the actual work against a directory of files; the system's job is to make human observation and optional participation intuitive**. Agents edit files directly through their native tools (Read/Edit/Write) — files remain the canonical collaboration surface and are not abstracted away. Viewers are live **players** for agent output, rendering the work in domain terms (a deck, a board, a project) so humans can watch what's happening, make direct decisions in the UI when needed, and reach for structured command suggestions when deeper guidance helps. Four pillars for isomorphic collaboration: a **visual environment** (live players for agent work with optional human participation), **skills** (domain knowledge + seed templates + session persistence), **continuous learning** (evolution agent for cross-session preference extraction and skill augmentation), and **distribution** (mode marketplace, publishing, sharing). The runtime supports multiple agent backends (Claude Code, Codex) selected at startup.
+Pneuma Skills is co-creation infrastructure for humans and code agents. Agents edit files directly (Read/Edit/Write); files remain the canonical collaboration surface. Viewers are live **players** for agent output, rendering work in domain terms (a deck, a board, a project) so humans can watch, intervene in the UI, or hand structured guidance back. Four pillars: a **visual environment** (live players with optional participation), **skills** (domain knowledge + seed templates + session persistence), **continuous learning** (evolution agent for cross-session preference extraction), and **distribution** (mode marketplace, publishing, sharing). Multiple agent backends (Claude Code, Codex, Kimi CLI) selected at startup.
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.2.1
+**Version:** 3.12.2
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`
 
-> Modes can declare `hidden: true` in their manifest to disappear from
-> user-pickable lists (launcher grids, ProjectPanel mode-tile picker).
-> Internal modes (`evolve`, `project-evolve`, `project-onboard`) are
-> hidden — they're triggered by specific UI affordances (Evolve /
-> Re-discover buttons) or programmatically (auto-trigger), never by a
-> "what mode would you like to start?" choice.
+> Modes can set `hidden: true` to disappear from user-pickable lists (launcher grids, ProjectPanel mode-tile picker). Internal modes (`evolve`, `project-evolve`, `project-onboard`) are hidden — triggered by specific UI affordances or programmatically, never by a "what mode to start?" choice.
 
 ## Tech Stack
 
@@ -30,7 +25,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 | Diagramming | draw.io viewer-static.min.js (CDN) + rough.js 4.6 |
 | Video | remotion 4.0 + @remotion/player + @remotion/web-renderer + @babel/standalone |
 | Desktop | Electron 41 + electron-builder + electron-updater |
-| Agent | Claude Code CLI via stdio stream-json (`-p --input-format stream-json --output-format stream-json`); Codex CLI via `app-server` stdio JSON-RPC (`node:child_process`); Moonshot Kimi CLI via stdio stream-json (`kimi --print --input-format stream-json --output-format stream-json -y`) |
+| Agent | Claude Code CLI stdio stream-json; Codex CLI `app-server` stdio JSON-RPC; Moonshot Kimi CLI stdio stream-json (`kimi --print … -y`) — all via `node:child_process` |
 
 ## CLI Commands
 
@@ -38,35 +33,44 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. The unde
 # Development
 bun run dev              # Launcher UI (no mode arg)
 bun run dev doc          # Doc Mode (cwd as workspace)
-bun run dev slide        # Slide Mode
 bun run dev doc --workspace ~/notes --port 17996 --backend claude-code --no-open --debug
 bun run build            # Vite production build
 bun test                 # All tests (bun:test)
 
 # Skill evolution
-pneuma evolve <mode>     # Launch evolution agent for a mode's skill
+pneuma evolve <mode>
 
 # Mode management
-pneuma mode add <url>    # Install remote mode to ~/.pneuma/modes/
-pneuma mode list         # List published modes on R2
-pneuma mode publish      # Publish current workspace as mode
+pneuma mode add <url>        # Install remote mode (single → ~/.pneuma/modes/; library → ~/.pneuma/libraries/)
+pneuma mode list             # List published modes on R2
+pneuma mode publish          # Publish workspace as mode
 
-# Session registry
-pneuma sessions rebuild  # Scan ~/pneuma-projects/ and restore missing Continue entries
+# Mode libraries (multi-mode GitHub repos)
+pneuma library init <name> [--github user/repo] [--private]
+pneuma library link <github:user/repo>           # Alias for `mode add`
+pneuma library list
+pneuma library sync <id>                         # Pull latest (git fetch + checkout)
+pneuma library publish <mode> [--to id] [--as name] [--push]
+pneuma library push <id>                         # `git push origin HEAD`
+pneuma library activate|deactivate <id> <mode>
+pneuma library unlink <id>                       # Remove library + clone
 
-# Plugin management
-pneuma plugin add <source>   # Install plugin from path/github/URL to ~/.pneuma/plugins/
-pneuma plugin list           # List builtin + external plugins with enabled status
-pneuma plugin remove <name>  # Remove an external plugin
+# Project recovery / plugins / snapshot / history
+pneuma project add <path>                        # Register existing project into ~/.pneuma/sessions.json
+pneuma plugin add|list|remove <source>           # Install to ~/.pneuma/plugins/
+pneuma snapshot push|pull                        # R2 workspace snapshot
+pneuma history export [--output FILE]            # Session as .tar.gz
+pneuma history share [--title NAME]              # Export + upload to R2
+pneuma history open <path-or-url>                # Prepare replay package
 
-# Snapshot
-pneuma snapshot push     # Upload workspace to R2
-pneuma snapshot pull     # Download workspace from R2
-
-# History sharing & replay
-pneuma history export [--output FILE]  # Export session as shareable .tar.gz
-pneuma history share [--title NAME]    # Export + upload to R2, return link
-pneuma history open <path-or-url>      # Download/prepare replay package
+# Agent command distribution (3.10.0)
+pneuma agent-command status [--backend claude-code|codex|all] [--json]
+pneuma agent-command install [--backend claude-code|codex|all] [--force] [--json]
+pneuma agent-command uninstall [--backend claude-code|codex|all] [--force] [--json]
+pneuma agent-command update [--backend claude-code|codex|all] [--json]
+pneuma mode list --local [--json]                # builtins + ~/.pneuma/modes + activated library modes
+pneuma handoff-from-external --intent <text> --mode <name> [--cwd <path>] \
+    [--init-project|--quick] [--source-agent claude-code|codex] [--json] [--dry-run]
 ```
 
 ### CLI Flags
@@ -75,26 +79,25 @@ pneuma history open <path-or-url>      # Download/prepare replay package
 |------|-------------|
 | `--workspace <path>` | Workspace directory (default: cwd) |
 | `--port <n>` | Server port (default: auto) |
-| `--backend <type>` | Select backend at startup (`claude-code` or `codex`; session stays fixed to it) |
+| `--backend <type>` | Startup backend selection (`claude-code` / `codex` / `kimi-cli`; locked for session) |
 | `--no-open` | Don't open browser |
-| `--no-prompt` | Non-interactive mode (launcher uses this) |
-| `--skip-skill` | Skip skill installation (session resume without update) |
+| `--no-prompt` | Non-interactive (used by launcher) |
+| `--skip-skill` | Skip skill installation (session resume) |
 | `--debug` | Enable debug mode |
 | `--dev` | Force dev mode (Vite) |
-| `--replay <path>` | Load a replay package on startup (enters replay mode) |
-| `--replay-source <path>` | Source workspace for existing session replay (exports + replays) |
-| `--session-name <name>` | Custom session display name (default: `{mode}-{timeTag}`) |
-| `--viewing` | Start in viewing mode (`editing: false` — skip skill install + agent spawn) |
-| `--project <path>` | Run as a session inside the project at `<path>` (state lives under `<path>/.pneuma/sessions/{id}/`) |
-| `--session-id <id>` | Resume the project session with this id (must be combined with `--project`) |
+| `--replay <path>` | Load replay package on startup (replay mode) |
+| `--replay-source <path>` | Source workspace for existing-session replay |
+| `--session-name <name>` | Custom display name (default: `{mode}-{timeTag}`) |
+| `--viewing` | Viewing mode (`editing: false` — skip skill install + agent spawn) |
+| `--project <path>` | Run as session inside the project at `<path>` |
+| `--session-id <id>` | Resume project session (requires `--project`) |
 
 ## Ports
 
-- **17996** — default Vite dev server / production server
-- **17007** — default Hono backend in dev mode
-- Dev: browser → Vite, WebSocket → backend directly (`Vite` WS proxy is bypassed)
-- Launcher child sessions auto-increment both ports when the defaults are occupied
-- Both servers bind `hostname: "0.0.0.0"` to avoid IPv4/IPv6 dual-stack port collision
+- **17996** — Vite dev server / production server
+- **17007** — Hono backend in dev mode
+- Dev: 浏览器走 Vite，WebSocket 直连 backend，绕开 Vite WS proxy
+- Launcher 派生子进程时端口自动递增；详细拓扑见 `docs/reference/network-topology.md`
 
 ## Project Structure
 
@@ -102,55 +105,44 @@ pneuma history open <path-or-url>      # Download/prepare replay package
 pneuma-skills/
 ├── bin/                       # CLI entry — mode resolution, agent launch, session registry
 ├── core/
-│   ├── types/                 # Contract types (ModeManifest, ViewerContract, AgentBackend, SharedHistory, PluginManifest)
-│   ├── mode-loader.ts         # Mode discovery & loading (builtin + external)
-│   ├── mode-resolver.ts       # Source resolution (builtin/local/github/url → disk path)
-│   ├── plugin-registry.ts     # Plugin discovery, filtering, loading, activation, route mounting
-│   ├── hook-bus.ts            # Waterfall event bus for plugin hooks (soft error)
-│   ├── settings-manager.ts    # Plugin settings persistence (~/.pneuma/settings.json)
-│   └── utils/manifest-parser.ts  # Regex-based manifest.ts metadata extraction
-├── plugins/                   # Builtin plugins (same lifecycle as third-party)
-│   ├── vercel/                # Vercel deploy plugin (routes + hooks + manifest)
-│   └── cf-pages/              # Cloudflare Pages deploy plugin
-├── modes/{webcraft,doc,slide,draw,diagram,illustrate,remotion,gridboard,kami,clipcraft,mode-maker,evolve}/
-├── modes/_shared/skills/      # Global skills installed for all modes (e.g. pneuma-preferences)
-├── modes/_shared/scripts/     # Shared script sources (generate_image.mjs, edit_image.mjs) — opted into per-mode via SkillConfig.sharedScripts, copied into each mode's installed skill dir at install time
+│   ├── types/                 # Contracts (ModeManifest, ViewerContract, AgentBackend, SharedHistory, PluginManifest, LibraryManifest)
+│   ├── mode-loader.ts         # Mode discovery & loading
+│   ├── mode-resolver.ts       # Source resolution (builtin/local/github/url → disk); single-vs-library detection at install
+│   ├── library-registry.ts    # ~/.pneuma/libraries/<id>/ CRUD (consume side)
+│   ├── library-publish.ts     # Author side: initLocalLibrary, publishModeToLibrary, pushLibrary
+│   ├── plugin-registry.ts     # Plugin discovery, lifecycle, route mounting
+│   ├── hook-bus.ts            # Waterfall hook event bus (soft error)
+│   └── settings-manager.ts    # Plugin settings persistence
+├── plugins/                   # Builtin plugins (vercel/, cf-pages/)
+├── modes/{webcraft,doc,slide,draw,diagram,illustrate,remotion,gridboard,kami,clipcraft,mode-maker,evolve,…}/
+├── modes/_shared/skills/      # Global skills for all modes (e.g. pneuma-preferences)
+├── modes/_shared/scripts/     # Shared scripts opted in via SkillConfig.sharedScripts, copied per-mode at install
 ├── backends/
-│   ├── index.ts               # Pure registry over per-backend manifests; exports getInstallConventions(backendType?) + getBackendModule + descriptor / capability / availability helpers
-│   ├── __tests__/
-│   │   └── lifecycle-harness.ts   # Shared 6-scenario lifecycle harness reused by every backend
-│   ├── claude-code/           # Claude backend — node:child_process with -p --input-format/--output-format stream-json
-│   │   ├── manifest.ts        # BackendModule (identity, capabilities, install layout, default models, factories)
-│   │   ├── README.md          # Protocol shape, capabilities, install layout, gotchas, references
-│   │   └── __tests__/lifecycle.test.ts  # Shared harness wired against this backend
-│   ├── codex/                 # Codex backend — stdio JSON-RPC via node:child_process
-│   │   ├── manifest.ts
-│   │   ├── README.md
-│   │   └── __tests__/lifecycle.test.ts
-│   └── kimi-cli/              # Kimi CLI backend — stdio stream-json (--print) via node:child_process
-│       ├── manifest.ts
-│       ├── README.md
-│       └── __tests__/lifecycle.test.ts
-├── server/                    # Hono server, WS bridges, skill installer, file watcher, etc.
-│   ├── index.ts               # Main server + launcher endpoints + WS routing
+│   ├── index.ts               # Pure registry over per-backend manifests
+│   ├── __tests__/lifecycle-harness.ts   # Shared 6-scenario harness reused by every backend
+│   ├── claude-code/{manifest.ts,README.md,…}    # stdio stream-json
+│   ├── codex/{manifest.ts,README.md,…}          # stdio JSON-RPC
+│   └── kimi-cli/{manifest.ts,README.md,…}       # stdio stream-json (--print)
+├── server/
+│   ├── index.ts               # Hono server + launcher endpoints + WS routing
 │   ├── routes/                # Export routes, deploy UI
-│   ├── ws-bridge*.ts          # WS bridge to browsers (JSON), with per-backend BridgeBackend handlers in ws-bridge-{kimi,codex}.ts
-│   ├── ws-bridge-backend.ts   # BridgeBackend lifecycle interface (attach / routeBrowserMessage / injectUserMessage / disconnect)
-│   ├── skill-installer.ts     # Skill copy + template engine + instructions injection (resolves layout via getInstallConventions(backendType))
-│   └── shadow-git.ts          # Shadow git init, checkpoint capture, bundle export
+│   ├── library-routes.ts      # /api/libraries/* (launcher-scope)
+│   ├── agent-command-routes.ts # /api/agent-commands/* + /api/handoffs/external + /api/cli/* (launcher-scope)
+│   ├── ws-bridge*.ts          # WS bridge to browsers (JSON); per-backend BridgeBackends in ws-bridge-{kimi,codex}.ts
+│   ├── ws-bridge-backend.ts   # BridgeBackend interface
+│   ├── skill-installer.ts     # Skill copy + template engine + instructions injection
+│   └── shadow-git.ts          # Shadow git, per-turn checkpoint capture, bundle export
 ├── src/                       # React frontend (Vite)
 │   ├── App.tsx                # Root layout, dynamic viewer loading
-│   ├── store/                 # Zustand store (9 protocol-aligned slices, including plugin-slice)
+│   ├── store/                 # Zustand store (9 protocol-aligned slices)
+│   ├── hooks/                 # Reusable hooks (useFavorites, useThumbnailCapture, …)
 │   ├── ws.ts                  # WebSocket client
 │   └── components/            # Chat, permissions, launcher, replay, context panels
-├── desktop/                   # Electron desktop client (main process, preload, build scripts)
-├── web/                       # Landing page (static site, CF Pages deployment)
-├── snapshot/                  # R2 push/pull for workspace snapshots + mode publishing
-└── docs/                      # Supplementary docs (design/, reference/, adr/, archive/)
+├── desktop/                   # Electron client
+├── web/                       # Landing page (CF Pages)
+├── snapshot/                  # R2 push/pull
+└── docs/                      # Supplementary docs (reference/, adr/, archive/, …) — see docs/README.md
 ```
-
-> **Documentation hierarchy:** `README.md` / `CLAUDE.md` / `AGENTS.md` are the source of truth.
-> `docs/` contains supplementary material — see `docs/README.md` for the reading guide.
 
 ## Architecture
 
@@ -163,269 +155,291 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 
 ### Core Contracts
 
-| Contract | File | Purpose |
-|----------|------|---------|
-| **ModeManifest** | `core/types/mode-manifest.ts` | Skill, viewer config, agent preferences, init params, evolution |
-| **ViewerContract** | `core/types/viewer-contract.ts` | Preview component, context extraction, workspace model |
-| **AgentBackend** | `core/types/agent-backend.ts` | Launch, resume, kill, capabilities (process-lifecycle layer) |
-| **BridgeBackend** | `server/ws-bridge-backend.ts` | Per-backend bridge handler — attach / routeBrowserMessage / injectUserMessage / disconnect; non-Claude backends (codex, kimi-cli) implement this so the central WsBridge stays backend-agnostic |
-| **BackendModule** | `core/types/agent-backend.ts` | Self-describing per-backend manifest — identity, capabilities, install conventions (skillsDir / instructionsFile / displayLabel), install hint, default models, and lifecycle factories. Each backend ships its own `manifest.ts` exporting a `BackendModule`; `backends/index.ts` is a pure registry over them. Subsumes the former `BackendInstallHandler` registry |
-| **EvolutionConfig** | `core/types/mode-manifest.ts` | Evolution directive, tools (part of ModeManifest) |
-| **SharedHistoryPackage** | `core/types/shared-history.ts` | Exported session bundle: messages, checkpoints, metadata, summary |
-| **PluginManifest** | `core/types/plugin.ts` | Plugin capabilities: hooks, slots, routes, settings |
+每一个契约都有：定义文件（design）→ 实例化点 → 消费端。这张表是 design → implementation 的目录；语义与 action space 完整展开在 `docs/reference/viewer-agent-protocol.md`，磁盘状态全景见 `docs/reference/controlled-state-surface.md`。
+
+| Contract | Defined in | Instantiated | Consumed by |
+|----------|------------|--------------|-------------|
+| **ModeManifest** + `ViewerApiConfig` / `SkillConfig` / `InitConfig` / `ProxyRoute` | `core/types/mode-manifest.ts` | Each mode's `modes/<name>/manifest.ts` (no React imports — read by both backend and frontend) | `core/mode-loader.ts::loadModeManifest()` → `server/skill-installer.ts` (skills + instructions assembly) + `core/source-registry.ts` (sources) + `server/index.ts` (proxy routes) |
+| **ModeDefinition** = `{ manifest, viewer }` | `core/types/mode-definition.ts` | Each mode's `modes/<name>/pneuma-mode.ts` default export — binds manifest + ViewerContract | Frontend `core/mode-loader.ts` dynamic-imports it; the React tree mounts `viewer.PreviewComponent`. Split from `manifest.ts` so the latter can be loaded by the Bun backend (which has no React). |
+| **ViewerContract** + `ViewerPreviewProps` | `core/types/viewer-contract.ts` | Each mode's `modes/<name>/viewer/<Name>Preview.tsx` (referenced from `pneuma-mode.ts`) | `core/mode-loader.ts` dynamic import → `src/App.tsx` mounts `PreviewComponent` with props injected from `src/store/` |
+| **ModeShowcase** | `core/types/mode-manifest.ts` (declared); actual content in `modes/<name>/showcase/showcase.json` (sibling file, not inline in manifest) | Each mode's `showcase/showcase.json` + `hero.png` + 3-4 `highlight-*.png` | `server/index.ts` serves via `GET /api/modes/:name/showcase/*`; launcher gallery cards consume |
+| **ViewerAddress** | `core/types/viewer-contract.ts` | Each mode's SKILL.md defines its vocabulary (`{slide}` / `{page,anchor,selector}` / …) | Viewer selection produces (⑥); `<viewer-locator>` + `capture` + `navigateRequest` consume (⑤) |
+| **ViewerActionDescriptor** + `ViewerActionRequest` / `Result` | `core/types/viewer-contract.ts` | Mode `manifest.viewerApi.actions[]` | `server/skill-installer.ts` injects into `<!-- pneuma:viewer-api:* -->`; `server/ws-bridge-viewer.ts` dispatches; `src/store/viewer-slice.ts` 派发 to viewer; `src/hooks/useCaptureAction.ts` is the built-in `capture` implementation |
+| **ViewerCommandDescriptor** | `core/types/viewer-contract.ts` | Mode `manifest.viewerApi.commands[]` | Runtime injects into `props.commands`; viewer renders command menu; click → `onNotifyAgent` → `server/ws-bridge.ts` |
+| **ViewerSelectionContext** + `extractContext()` | `core/types/viewer-contract.ts` | Each viewer implements `extractContext` | `server/ws-bridge.ts` prefixes every `user_message` with `<viewer-context>` block |
+| **ViewerNotification** | `core/types/viewer-contract.ts` | Viewer calls `props.onNotifyAgent()` | `server/ws-bridge.ts` buffers; flushes as system message on agent idle |
+| **ViewerLocator** | `core/types/viewer-contract.ts` | Agent emits `<viewer-locator>` chat tag | `src/components/chat/*` renders card; click triggers `navigateRequest` |
+| **Source\<T\>** + `SourceEvent<T>` + `SourceProvider` + `SourceContext` + `FileChannel` + `FileChangeEvent` + `SourceDescriptor` | `core/types/source.ts` | `core/source-registry.ts` picks provider by `kind` from `manifest.sources` | Built-in providers in `core/sources/{file-glob,json-file,aggregate-file,memory}.ts` (all extend `core/sources/base.ts` which enforces the four invariants); viewer subscribes via `src/hooks/useSource.ts` |
+| **AgentBackend** + `AgentCapabilities` + `AgentSessionInfo` + `AgentLaunchOptions` | `core/types/agent-backend.ts` | Each backend's `manifest.ts::createBackend(port)` | `bin/pneuma.ts` boots one per session; `server/ws-bridge*.ts` drives lifecycle |
+| **AgentProtocolAdapter** | `core/types/agent-backend.ts` | `backends/codex/codex-adapter.ts` + `backends/kimi-cli/kimi-adapter.ts` (Claude is near-passthrough NDJSON) | `server/ws-bridge-{codex,kimi}.ts` |
+| **BackendModule** | `core/types/agent-backend.ts` | One per backend: `backends/{claude-code,codex,kimi-cli}/manifest.ts` | `backends/index.ts` is a pure registry — no `if (type === ...)` outside this file |
+| **BridgeBackend** | `server/ws-bridge-backend.ts` | `BackendModule.createBridgeBackend()` per non-Claude backend | `server/ws-bridge.ts` central bridge dispatches; Claude legacy NDJSON path returns `null` here |
+| **ToolFileRef** | `backends/tool-file-ref.ts` | `BackendModule.toolFileRef(toolName, input)` | `server/file-ref.ts::stampFileRefs` decorates `tool_use` blocks; front-end `FilePreview` + `ToolFileActions` (open / editor / reveal via `/api/system/*`) consume |
+| **EvolutionConfig** | `core/types/mode-manifest.ts` | Mode `manifest.evolution` | `server/evolution-routes.ts` + Evolution mode |
+| **SharedHistoryPackage** | `core/types/shared-history.ts` | `pneuma history export/share` produces | `pneuma history open` + replay flow consumes |
+| **PluginManifest** | `core/types/plugin.ts` | Each plugin's `manifest.ts` (`plugins/<name>/`) | `core/plugin-registry.ts` (discovery + lifecycle), `core/hook-bus.ts` (waterfall events), `core/settings-manager.ts` (settings) |
+| **ProjectManifest** | `core/types/project-manifest.ts` | `<projectRoot>/.pneuma/project.json` | `core/project-loader.ts::detectWorkspaceKind()`; `server/handoff-routes.ts`; ProjectPanel / EmptyShell on front-end |
 
 ### Plugin System
 
-Extensible plugin architecture for deploy workflows, metadata injection, and future domains.
+为 deploy workflow、metadata 注入、未来扩展提供的开放架构。
 
-**Core components:** `PluginRegistry` (discovery + lifecycle), `HookBus` (waterfall events), `SettingsManager` (config persistence)
-
-**Plugin sources:** builtin (`plugins/`), external (`~/.pneuma/plugins/`), installed via `pneuma plugin add`
-
-**Four layers (all opt-in):**
-- **Hooks** — `deploy:before/after`, `session:start/end`, `export:before/after` — modify payloads in waterfall
-- **Slots** — `deploy:pre-publish`, `deploy:provider` — UI injection (declarative form or custom component)
-- **Routes** — Hono sub-apps mounted at `/api/plugins/{name}/*`
-- **Settings** — Schema-driven config, auto-rendered in Launcher, persisted to `~/.pneuma/settings.json`
-
-**Lifecycle:** discover → filter (enabled/disabled) → resolve (mode/scope) → load → activate → mount routes
-
-**Soft error:** Plugin failures (load, hook, render, route) are caught and logged — never break the main flow.
-
-**Deploy flow:** Frontend → `POST /api/deploy` → `deploy:before` hooks → provider plugin route → `deploy:after` hooks → result
+- **核心：** `PluginRegistry`（discovery + lifecycle）、`HookBus`（waterfall events）、`SettingsManager`（config 持久化）
+- **来源：** builtin（`plugins/`）、external（`~/.pneuma/plugins/`，`pneuma plugin add`）
+- **四类扩展点（全部 opt-in）：**
+  - **Hooks**：`deploy:before/after`、`session:start/end`、`export:before/after` —— waterfall payload 突变
+  - **Slots**：`deploy:pre-publish`、`deploy:provider` —— UI 注入
+  - **Routes**：Hono sub-app 挂到 `/api/plugins/{name}/*`
+  - **Settings**：schema-driven，自动渲染，持久化到 `~/.pneuma/settings.json`
+- **Soft error**：plugin 任何环节失败都被捕获 + 日志，主流程不挂
 
 ### Communication
 
-- Browser WS `/ws/browser/:sessionId` (JSON) ↔ Server ↔ backend (both Claude and Codex use stdio; the `/ws/cli/:sessionId` endpoint is retained for legacy compatibility but no current backend connects to it)
-- File changes: chokidar → WS push to browser
-- Claude: `claude --print --output-format stream-json --input-format stream-json --include-partial-messages --include-hook-events --verbose --permission-mode bypassPermissions [--resume <id>]` via `node:child_process`; the launcher hands its stdin/stdout pipes to `WsBridge.attachCLITransport` / `feedCLIMessage` so the existing `routeCLIMessage` pipeline keeps working unchanged
-- Codex: `codex app-server` via `node:child_process` stdio; `CodexAdapter` translates protocol via `ws-bridge-codex.ts`
-- Browser session init carries normalized `backend_type`, `agent_capabilities`, `agent_version` for UI feature gating
+- **浏览器 ↔ Server**：`/ws/browser/:sessionId`（JSON）
+- **Server ↔ Backend**：所有后端跑 stdio（Claude/Kimi 是 stdio NDJSON，Codex 是 stdio JSON-RPC）；浏览器 ↔ backend 桥接走 `BridgeBackend` 实现
+- **文件变化**：chokidar → WS push 到浏览器，事件携 `origin: "self" | "external"`（服务端 `pendingSelfWrites` 在源头标记）
+- **Session init**：携 `backend_type` / `agent_capabilities` / `agent_version`，前端据此 feature-gate
+- **`tool_use` 带 `fileRef`**：服务端 `stampFileRefs`（`server/file-ref.ts`）通过 `BackendModule.toolFileRef` 归一化为 `{ path, kind }`；Chat 渲染 `FilePreview` + `ToolFileActions`（open/editor/reveal via `/api/system/*`），零 tool-name 知识
+
+`/ws/cli/:sessionId` 是历史 Claude WS transport，保留供 legacy 调用——现役所有 backend 都跑 stdio。
 
 ## Mode Lifecycle
 
-1. **Resolve** — `mode-resolver.ts` maps specifier (builtin/local/github/url) to disk path with `manifest.ts`
-2. **Load manifest** — `loadModeManifest()` → ModeManifest (skill, viewer, agent config, init params)
-3. **Session** — load or create `<sessionDir>/session.json` (sessionId, agentSessionId, backendType). For quick sessions `sessionDir = workspace`; for project sessions `sessionDir = <project>/.pneuma/sessions/<sessionId>/`.
-4. **Skill install** — `skill-installer.ts` copies `modes/<mode>/skill/` to workspace (Claude: `.claude/skills/` + `CLAUDE.md`; Codex: `.agents/skills/` + `AGENTS.md`), applies `{{key}}` / `{{viewerCapabilities}}` templates
+1. **Resolve** — 把 specifier（builtin / local / github / url）映射到含 `manifest.ts` 的磁盘路径（`core/mode-resolver.ts`）
+2. **Load manifest** — `loadModeManifest()` → ModeManifest
+3. **Session** — load 或 create `<sessionDir>/session.json`；quick session `sessionDir = workspace`，project session `sessionDir = <project>/.pneuma/sessions/<id>/`
+4. **Skill install** — 把 `modes/<mode>/skill/` 复制到 backend-appropriate 目录，应用 `{{key}}` / `{{viewerCapabilities}}` 模板，拼装 marker blocks 写到指令文件
 5. **Server start** — Hono HTTP + WebSocket + backend transport bridge
-6. **Backend selection** — startup-only, workspace-locked; cannot switch mid-session
-7. **Agent launch** — Claude: `claude --print --output-format stream-json --input-format stream-json …` (stdio); Codex: `codex app-server` (stdio)
-8. **Frontend** — `mode-loader.ts` dynamically imports viewer; external modes use `registerExternalMode()` → `Bun.build()` → import map
-9. **Preview loop** — Agent edits → chokidar → WS → browser → viewer render; User selects → `<viewer-context>` → agent
+6. **Backend selection** — startup-only、workspace-locked
+7. **Agent launch** — stdio per backend
+8. **Frontend** — `mode-loader.ts` 动态 import；外部 mode 走 `registerExternalMode()` → `Bun.build()` → import map
+9. **Preview loop** — Agent 编辑 → chokidar → WS → 浏览器 → viewer 渲染；用户选择 → `<viewer-context>` → agent
 
-No mode arg → Launcher mode (marketplace UI, recent sessions, spawn child processes via `/api/launch`).
+无 mode 参数 → Launcher（marketplace UI、Recent Sessions，子进程通过 `/api/launch` 派生）。
 
 ## Mode System
 
-### Mode Sources
+### Mode Sources（`core/mode-resolver.ts` 解析）
 
-Modes can come from four sources, resolved by `core/mode-resolver.ts`:
+| 类型 | Specifier | 落盘路径 |
+|------|-----------|---------|
+| **builtin** | `webcraft`、`doc`、`slide` … | `modes/<name>/` |
+| **local** | `/abs/path`、`./rel` | as-is |
+| **github 单 mode** | `github:user/repo`，根目录有 `manifest.ts` | `~/.pneuma/modes/<user>-<repo>/` |
+| **github library** | `github:user/repo`，根目录有 `pneuma.library.json` 或 N 个子目录每个含 `manifest.ts` | `~/.pneuma/libraries/<user>-<repo>/` |
+| **url** | `https://….tar.gz` | `~/.pneuma/modes/<name>/`（或 libraries 若包是 library） |
 
-| Type | Specifier | Resolved Path |
-|------|-----------|---------------|
-| **builtin** | `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `mode-maker`, `evolve` | `modes/<name>/` |
-| **local** | `/abs/path`, `./rel` | As-is |
-| **github** | `github:user/repo` | `~/.pneuma/modes/<user>-<repo>/` |
-| **url** | `https://...tar.gz` | `~/.pneuma/modes/<name>/` |
+一个 mode 包必含 `manifest.ts` 导出 `ModeManifest`。Library 检测发生在 **clone/extract 后**——不像 library 的 repo 走单 mode 路径，二者字节一致。
 
-A mode package must contain `manifest.ts` exporting a `ModeManifest`.
+### Mode Libraries
 
-### Local Mode Management
+多 mode GitHub repo。`pneuma mode add` 把整个 repo clone 到 `~/.pneuma/libraries/<id>/`；每个 mode 独立 activate、独立版本追踪，在 Mode Gallery 与 Quick Start 分别露出。
 
-- External modes are stored in `~/.pneuma/modes/`
-- `pneuma mode add <url>` downloads and extracts to this directory
-- Launcher scans this directory and displays "Local Modes" section
-- Modes can be deleted from the launcher UI (inline confirm, not popup)
-- `parseManifestTs()` in `core/utils/manifest-parser.ts` extracts metadata via regex without TS evaluation
+- `<id>` 默认为 `<user>-<repo>`
+- `~/.pneuma/libraries/<id>/.library.json` 是消费侧 sidecar，保存版本、activation、installedVersion
+- `<repo-root>/pneuma.library.json` 是可选作者侧 index；缺失时 resolver 自动扫描子目录
+
+入口 API（`core/library-registry.ts`）：`linkLibrary` / `syncLibrary`（reconcile 而非自动接受更新）/ `setModeActivated` / `acceptModeUpdate` / `unlinkLibrary` / `getLibraryModePath`。作者侧（`core/library-publish.ts`）：`initLocalLibrary` / `publishModeToLibrary` / `pushLibrary`；`--github` on `library init` 委托 `core/github-cli.ts::createRepo`。
+
+**Mode Gallery 呈现：** Libraries 排在 Local 与 Published 之间，每个 library 一条 identity 行（display name、source chip、last-synced）+ inline Sync / Publish / Unlink，然后展开 activated modes + 折叠 "N inactive modes"。Library-activated modes 在 Quick Start 通过 `/api/registry` `local[]` 出现，标记 `librarySource: { id, name, displayName? }`。
+
+### Pneuma version 兼容（3.9.0）
+
+外部 mode 作者在 `manifest.ts` 声明 `pneumaVersion`（semver range，例 `"^3.8.0"`）。Launcher 通过 `core/version-compat.ts::checkCompat` 预算每个 local 条目的兼容情况：
+
+- **major-drift** → Gallery card 暗化 + 红 "Incompatible" chip + 二次确认；QuickStartTile 同样降级
+- **minor-drift** → 琥珀色 chip（非阻塞）
+- **match** / **unknown**（未声明）→ 原样渲染；机制 opt-in
+
+`/api/registry` 上每个条目带 `compat: { level, declared, runtime, reason? }`；builtins 永不带 compat。解析优先级：per-mode `pneumaVersion` > sidecar cache > library-level fallback。
+
+### Favorites（3.7.0）
+
+`~/.pneuma/favorites.json`——所有 picker 把 favorites 排到最前。`src/hooks/useFavorites.ts` 提供 `useFavorites()`、`sortFavoritesFirst(...)`。原子写，optimistic toggle 带 write-sequence guard。
+
+### Local Modes
+
+`~/.pneuma/modes/` 下的外部 mode 通过 `pneuma mode add <url>` 安装；Launcher 扫描并展示在 "Local Modes" 下。`core/utils/manifest-parser.ts::parseManifestTs()` 用正则抽 metadata，不需 TS 求值。
+
+## Sessions, Projects, State
+
+完整的"Pneuma 在磁盘上管了什么"图谱见 [`docs/reference/controlled-state-surface.md`](docs/reference/controlled-state-surface.md)。下面只列契约层关键点。
 
 ### Session Registry
 
-Global session history for the launcher "Recent Sessions" / "Recent Projects" surface:
+`~/.pneuma/sessions.json`（single source of truth；不自动扫盘）。Schema 3.0：`{ projects: ProjectRegistryEntry[], sessions: SessionRegistryEntry[] }`。每条 session 有 `kind: "quick" | "project"`。Legacy 2.x 数组格式读时自动升级。每次 launch / project create upsert；cap 50 + 50。Project 若掉出 registry，恢复路径有两条：(a) Create Project on same path → Open-or-Create 探测 `<root>/.pneuma/project.json`；(b) `pneuma project add <path>`。3.4.0 起去除了 `~/pneuma-projects/` 自动扫描——**registry 显式优于隐式恢复**。
 
-- **File:** `~/.pneuma/sessions.json`
-- **Schema (3.0):** `{ projects: ProjectRegistryEntry[], sessions: SessionRegistryEntry[] }`
-- Each session entry carries `kind: "quick" | "project"`. Quick sessions store `workspace`; project sessions also store `projectRoot` and `sessionId`.
-- Legacy 2.x array format (`SessionRegistryEntry[]`) is auto-upgraded on read; the first write persists the new shape.
-- Upserted on every mode launch and project create, capped at 50 sessions / 50 projects.
-- Launcher shows recent projects + recent sessions with one-click resume.
+### Running-Session Registry（3.5.1）
+
+`~/.pneuma/running/`——pid-file，一进程一份（`bin/running-registry.ts`）。每个进程启动时写入、退出时清掉；读者裁掉死 PID / gone workspace。系统级"哪些 session 还活着"的真相，与 launcher 的 `childProcesses` map（只知道它自己派生的）正交——`/api/running` 读这个，所以 project 切换内部 mode 后 Continue surface 仍能反映当前 mode。
 
 ### User Preferences
 
-Persistent user preference files managed by the agent. Two scopes, both with the same schema:
+Agent 维护的持久偏好。两个 scope 同一 schema：
 
-- **Personal (cross-project):** `~/.pneuma/preferences/`
-- **Project-scoped (3.0):** `<projectRoot>/.pneuma/preferences/` — orthogonal to personal; only loaded for sessions inside that project.
-- **Files:** `profile.md` (cross-mode), `mode-{name}.md` (per-mode).
-- **Format:** Agent-managed Markdown with two system markers:
-  - `<!-- pneuma-critical:start/end -->` — Hard constraints, extracted and injected into instructions file at startup.
-  - `<!-- changelog:start/end -->` — Update log for incremental refresh.
-- **Injection:** Personal critical → `<!-- pneuma:preferences:start/end -->` block. Project critical → `<!-- pneuma:project:start/end -->` block (alongside the project manifest summary).
-- **Skill:** `pneuma-preferences` installed as global dependency for all modes; `pneuma-project` is additionally installed for project sessions.
-- **Source:** `modes/_shared/skills/pneuma-preferences/`, `modes/_shared/skills/pneuma-project/`.
+- **个人**：`~/.pneuma/preferences/`（跨项目）
+- **项目**：`<projectRoot>/.pneuma/preferences/`（仅项目内 session）
+- **文件**：`profile.md`（跨 mode）+ `mode-{name}.md`（per-mode）
+- **Marker**：`<!-- pneuma-critical:start/end -->`（hard constraint）+ `<!-- changelog:start/end -->`（更新日志）
+- **注入**：个人 critical → `<!-- pneuma:preferences:start/end -->`；项目 critical → `<!-- pneuma:project:start/end -->`
+- **Skill**：`pneuma-preferences`（所有 mode 全局）；`pneuma-project`（额外用于项目 session）；源在 `modes/_shared/skills/`
 
-### Per-Session Persistence + Project Layer
-
-Session state lives in `<stateDir>/`. The location depends on whether the session belongs to a project:
-
-- **Quick session** — `stateDir = <workspace>/.pneuma/` (legacy 2.x layout, unchanged).
-- **Project session** — `stateDir = <projectRoot>/.pneuma/sessions/<sessionId>/`. The state files sit flat in this directory (no nested `.pneuma/`); `.claude/skills/` and `CLAUDE.md` also live here so the agent's CWD = `stateDir`.
+### Per-Session State
 
 | File | Purpose |
 |------|---------|
-| `session.json` | sessionId, agentSessionId, mode, backendType, createdAt |
-| `history.json` | Message history (auto-saved every 5s) |
-| `config.json` | Init params (e.g. slideWidth, API keys) |
-| `skill-version.json` | `{ mode, version }` — installed skill version for update detection |
-| `skill-dismissed.json` | `{ version }` — dismissed skill update version |
-| `shadow.git/` | Bare git repo for workspace change tracking (per-turn checkpoints) |
-| `checkpoints.jsonl` | Checkpoint index: `{ turn, ts, hash }` per line |
-| `replay-checkout/` | Temp extraction dir for checkpoint files during replay |
-| `resumed-context.xml` | Injected context when continuing from replay |
-| `evolution/` | Evolution proposals, backups, and CLAUDE.md snapshots |
-| `deploy.json` | Deploy bindings keyed by contentSet: `{ vercel: { _default: {...} }, cfPages: { _default: {...} } }` |
+| `session.json` | sessionId、agentSessionId、mode、backendType、createdAt；可选 `displayName`/`description`/`refinedAt` |
+| `history.json` | 消息历史（5 秒自动保存） |
+| `config.json` | Init 参数 |
+| `skill-version.json` | `{ mode, version }`——已装 skill 版本（用于更新检测） |
+| `skill-dismissed.json` | `{ version }`——用户 dismiss 的更新 |
+| `shadow.git/` | bare git，跟踪 workspace 每轮变化 |
+| `checkpoints.jsonl` | 每行 `{ turn, ts, hash }` |
+| `evolution/` | Evolution 提案、备份、CLAUDE.md 快照 |
+| `deploy.json` | Deploy 绑定，按 contentSet 索引 |
 
-**Project layer (3.0)** — `<projectRoot>/.pneuma/`:
+### Session-meta refine（3.6.0）
 
-| Path | Purpose |
-|------|---------|
-| `project.json` | `ProjectManifest`: `{ version, name, displayName, description?, createdAt, founderSessionId?, onboardedAt? }` |
-| `preferences/` | Project-scoped preferences (`profile.md`, `mode-{name}.md`) |
-| `sessions/<id>/.pneuma/inbound-handoff.json` | Inbound handoff payload, written by `/api/handoffs/:id/confirm` before the target session spawns; target agent reads and `rm`s on first turn |
-| `sessions/<sessionId>/` | One subdir per session; contents are the per-session table above |
+每个 session 在 Recent Sessions 有一行；默认是 `"<Mode> session"` + 首条用户消息预览。`pneuma session refine --json '{...}'` 让 agent 在内容沉淀后重写 displayName + description；`pneuma-session` skill 教它 topic 维度而非 work-done 维度的措辞、并用 Task subagent 做异步非阻塞 refine。Route `POST /api/session/refine` 原子重写 session.json、同步 registry、广播 `session_meta_updated`。
 
 ### Skill Installation & Update Detection
 
-On startup, skills are copied to the backend-appropriate directory under `<sessionDir>` (= workspace for quick sessions, `<project>/.pneuma/sessions/<id>/` for project sessions). The mapping lives in each backend's `manifest.ts` (`installConventions` field on the exported `BackendModule`); `server/skill-installer.ts` resolves it via `getInstallConventions(backendType)` from `backends/index.ts`:
-- Claude Code: `<sessionDir>/.claude/skills/<installName>/` + `CLAUDE.md`
-- Codex: `<sessionDir>/.agents/skills/<installName>/` + `AGENTS.md`
-- Kimi CLI: `<sessionDir>/.kimi/skills/<installName>/` + `AGENTS.md` (kimi explicitly reads `AGENTS.md` and `.kimi/AGENTS.md` per `kimi_cli/soul/agent.py:88-132`; it does NOT read `CLAUDE.md`)
+Skills 复制到 backend-appropriate 目录。每个 backend 的 `manifest.ts` 直接暴露 `skillsDir` 与 `instructionsFile` 字段（属于 `BackendModule` 顶层）；server 端通过 `backends/index.ts::getInstallConventions(backendType)` 取到该 backend 的 `BackendModule` 实例，再读这两个字段：
 
-Template params (`{{key}}`, `{{viewerCapabilities}}`) are applied. The instructions file is assembled from these marker blocks:
-- `<!-- pneuma:start -->` / `<!-- pneuma:end -->` — Mode skill prompt (mode description, architecture, core rules)
-- `<!-- pneuma:viewer-api:start -->` / `<!-- pneuma:viewer-api:end -->` — Viewer API (context, actions, scaffold, locator cards, native desktop APIs)
-- `<!-- pneuma:preferences:start -->` / `<!-- pneuma:preferences:end -->` — Personal preferences critical constraints (extracted from `~/.pneuma/preferences/`)
-- `<!-- pneuma:project:start -->` / `<!-- pneuma:project:end -->` — *project sessions only*; project manifest summary + project-scoped preferences critical constraints
-- `<!-- pneuma:project-atlas:start -->` / `<!-- pneuma:project-atlas:end -->` — *project sessions only*; **pointer** (file path + mtime + size) to `<projectRoot>/.pneuma/project-atlas.md` (project briefing maintained by the `project-evolve` mode). Only emitted when the atlas file exists. Pointer-not-inline keeps the prompt lean; the `pneuma-project` skill instructs the agent to Read the file at session start.
-- `<!-- pneuma:handoff:start -->` / `<!-- pneuma:handoff:end -->` — *project sessions only*; pending handoff messages targeted at this session (path + intent + suggested files; agent reads then `rm`s the file)
+- Claude：`.claude/skills/<installName>/` + `CLAUDE.md`
+- Codex：`.agents/skills/<installName>/` + `AGENTS.md`
+- Kimi：`.kimi/skills/<installName>/` + `AGENTS.md`（Kimi 也读 `AGENTS.md` + `.kimi/AGENTS.md`，不读 `CLAUDE.md`）
 
-Two additional optional blocks are injected by other subsystems:
-- `<!-- pneuma:evolved:start -->` / `<!-- pneuma:evolved:end -->` — Learned preferences summary (inside the `pneuma:start/end` block, written by the evolution system)
-- `<!-- pneuma:resumed:start -->` / `<!-- pneuma:resumed:end -->` — Resume / replay context
-
-After install, the mode version is written to `skill-version.json`. On session resume:
-1. Launcher checks installed version vs current mode version
-2. If different and not dismissed → inline "Skill update: X → Y" prompt with Update/Skip
-3. Skip records the dismissed version; same version won't prompt again
-4. `--skip-skill` flag skips skill installation entirely (used for dismissed updates)
+模板变量 `{{key}}` / `{{viewerCapabilities}}` 替换后，指令文件由一组**命名 marker block** 拼装（`<!-- pneuma:start/end -->` 主体 + `<!-- pneuma:viewer-api:* -->` + `<!-- pneuma:preferences:* -->` + `<!-- pneuma:project:* -->`（项目 only）+ `<!-- pneuma:project-atlas:* -->`（项目 only，pointer 而非 inline）+ `<!-- pneuma:handoff:* -->`（项目 only）+ `<!-- pneuma:evolved:* -->`（Evolution 写入）+ `<!-- pneuma:resumed:* -->`（replay 续档））。Mode 版本写到 `skill-version.json`，resume 时与 manifest 比对，不同且未 dismiss 即 inline 提示 "Skill update: X → Y"。
 
 ## Project Lifecycle (3.0)
 
-A project is a user directory marked by `<root>/.pneuma/project.json`. Inside a project you can run multiple sessions in different modes (or the same mode multiple times). All sessions share `<root>/.pneuma/preferences/` and coordinate through Smart Handoff (the `pneuma handoff` CLI tool the agent invokes after a `<pneuma:request-handoff>` chat tag).
-
-### Project Structure
-
-```
-<project>/
-├── .pneuma/
-│   ├── project.json                 # ProjectManifest: name, displayName, description, createdAt
-│   ├── preferences/                 # Project-scoped preferences (orthogonal to personal)
-│   │   ├── profile.md
-│   │   └── mode-{name}.md
-│   │                                # (handoffs flow through `pneuma handoff` + an in-memory proposal map; see Cross-Mode Handoff Protocol below)
-│   └── sessions/                    # Per-session state
-│       └── <sessionId>/             # session.json, history.json, .claude/, CLAUDE.md, etc.
-└── <user content>                   # deliverables — agent writes here
-```
+Project 是用户目录，由 `<root>/.pneuma/project.json` 标记。多个 session 在不同 mode 下共享 `<root>/.pneuma/preferences/`，通过 Smart Handoff 协作。
 
 ### Detection
 
-On startup, `core/project-loader.detectWorkspaceKind(workspace)` returns `"project"` iff `<workspace>/.pneuma/project.json` exists. Otherwise the run is a quick session (legacy 2.x layout). `--project <path>` forces project mode and selects/creates a session id under `sessions/`.
+`core/project-loader.detectWorkspaceKind(workspace)` 看 `<workspace>/.pneuma/project.json` 是否存在；否则当 quick session。`--project <path>` 强制 project mode 并指定/创建 session id。
 
-### Fresh-project onboarding (`project-onboard`)
+### Fresh-project onboarding（`project-onboard`）
 
-When a user opens a project URL (`?project=<root>`) that has *no* sessions and no `onboardedAt` stamp on the manifest, `EmptyShell` auto-launches the hidden `project-onboard` mode. The agent mines the directory (README, package manifest, visual assets) and writes a single `proposal.json` to `<sessionDir>/onboard/`; the Discovery Report viewer renders it (hero + anchors + open questions + two task cards) and `POST /api/projects/onboard/apply` lands the writes — `project.json` (with `onboardedAt` stamped), `project-atlas.md`, and `cover.{png,jpg,jpeg,webp,svg}` (extension preserved from the agent-surfaced source). When the user clicks a task card the apply route also mints a target session, stages `inbound-handoff.json`, and spawns the target mode in one round-trip. The auto-trigger gate is one-shot per project; users with already-onboarded projects can re-run via the **Re-discover** affordance in `ProjectPanel`.
+用户打开 project URL（`?project=<root>`）若 sessions 为空且无 `onboardedAt`，`EmptyShell` 自动拉起隐藏的 `project-onboard`。Agent 挖掘目录（README、package manifest、视觉资产）后写一份 `proposal.json` 到 `<sessionDir>/onboard/`，Discovery Report viewer 渲染 hero + anchors + open questions + 两个 task card。`POST /api/projects/onboard/apply` 落盘 `project.json`（含 `onboardedAt`）、`project-atlas.md`、`cover.{png,jpg,jpeg,webp,svg}`。点击 task card 同步 mint target session、stage `inbound-handoff.json`、spawn target mode。Auto-trigger 一项目一次；`ProjectPanel` 的 **Re-discover** 可重跑。
 
 ### Environment Variables
 
-Every session injects:
-
-- `PNEUMA_SESSION_DIR` — the agent's CWD; where `.claude/skills/`, `CLAUDE.md`, and state files live
-- `PNEUMA_HOME_ROOT` — user-facing root (project root for project sessions, workspace for quick)
-- `PNEUMA_SESSION_ID` — session UUID
-
-Project sessions also inject:
-
-- `PNEUMA_PROJECT_ROOT` — absolute path to the project root
+每个 session 注入：`PNEUMA_SESSION_DIR`（agent CWD；`.claude/skills/`、`CLAUDE.md`、state 文件都在这）、`PNEUMA_HOME_ROOT`（project session 为 project root，quick 为 workspace）、`PNEUMA_SESSION_ID`。项目 session 额外注入 `PNEUMA_PROJECT_ROOT`。
 
 ### Cross-Mode Handoff Protocol
 
-The source agent invokes `pneuma handoff --json '{...}'` (a CLI tool wired up via the `PNEUMA_SERVER_URL` env var). The CLI POSTs the structured payload to `/api/handoffs/emit`; the server stores it in an in-memory `Map<handoff_id, HandoffProposal>` (30-min TTL) and broadcasts `handoff_proposed` over WS to the source session's browser. The HandoffCard renders the structured payload (intent, summary, files, decisions, open questions). On user confirm: server writes `<targetSessionDir>/.pneuma/inbound-handoff.json` atomically, kills source backend (best-effort), records `switched_out` / `switched_in` events, then spawns the target. The target's skill installer reads `inbound-handoff.json` into the CLAUDE.md `pneuma:handoff` block; the target agent reads + `rm`s the file on first turn. On user cancel: server dispatches `<pneuma:handoff-cancelled reason="..." />` as a synthetic user message back to the source agent so the conversation continues. See `server/handoff-routes.ts` and `docs/design/2026-04-28-handoff-tool-call.md`.
+源 agent 调 `pneuma handoff --json '{...}'`（CLI 经 `PNEUMA_SERVER_URL` POST 到 `/api/handoffs/emit`）；server 把 proposal 存进内存 `Map<handoff_id, HandoffProposal>`（30-min TTL），通过 WS 广播 `handoff_proposed` 到源浏览器。HandoffCard 渲染 intent / summary / files / decisions / open questions。
 
-See `docs/design/2026-04-27-pneuma-projects-design.md` for the full design and `docs/reference/viewer-agent-protocol.md` for the env-var + frontmatter reference tables.
+- **Confirm**：server 原子写 `<targetSessionDir>/.pneuma/inbound-handoff.json`、best-effort kill 源 backend、记录 `switched_out` / `switched_in` 事件、spawn target。Target 的 skill installer 把 inbound JSON 装到 `pneuma:handoff` block；target agent 第一轮读完并 `rm`。
+- **Cancel**：server 派一条 `<pneuma:handoff-cancelled reason="..." />` synthetic user message 回源 agent。
+
+完整设计见 [`docs/archive/proposals/2026-04-28-handoff-tool-call.md`](docs/archive/proposals/2026-04-28-handoff-tool-call.md)；项目层全貌见 [`docs/archive/proposals/2026-04-27-pneuma-projects-design.md`](docs/archive/proposals/2026-04-27-pneuma-projects-design.md)。
+
+## Agent Command Distribution (3.10.0)
+
+`/handoff-pneuma` 是 Pneuma 安装到其他 code agent（Claude Code、Codex）里的 user-level slash command——让 agent 在 CC/Codex 内输入 `/handoff-pneuma "make a finance dashboard"` 就能把工作交给 Pneuma，用户全程不打开 launcher。
+
+**安装位置：** Claude Code `~/.claude/commands/handoff-pneuma.md`；Codex `~/.codex/prompts/handoff-pneuma.md`。源模板 `templates/agent-commands/handoff-pneuma.md`。Marker 注释 `<!-- pneuma:agent-command version="X" backend="..." -->` 在 YAML frontmatter 下方（line 1 必须留给 `---`，否则 frontmatter parser 挂掉）标识我们拥有这文件；无 marker 视为用户手写、`--force` 之前不覆盖。Per-install state 在 `~/.pneuma/agent-commands.json`。
+
+**两条路径：**
+1. **CLI 路径** —— `command -v pneuma` 成功 → `pneuma handoff-from-external --intent ... --mode ...`。CLI 验 mode、按需写 `<cwd>/.pneuma/project.json`、mint session id、stage inbound handoff、挑空闲端口、`spawn pneuma <mode> --no-prompt --project <cwd> --session-id <id> --port <p>` detached、打印 URL。
+2. **URL 协议路径** —— CLI 缺失但 macOS 桌面应用在 → agent 发 `open "pneuma://handoff?intent=...&mode=...&cwd=..."`。Electron 在 `desktop/src/main/index.ts::handlePneumaUrl` 处理 `handoff` case：POST 到 `<launcherUrl>/api/handoffs/external`，再开新 mode window。
+
+两条路径最终都汇到 launcher 的同一个 Bun route，包装 `runHandoffFromExternal`（`bin/handoff-from-external-cli.ts`）—— stage + spawn 的 single source of truth。
+
+**Inbound payload** schema 与 Smart Handoff 同（`InboundHandoffPayload`）。External handoff 设 `source_session_id = "external:<sourceAgent>"`、`source_mode = "external"`。Skill installer 把它注入 `pneuma:handoff` block；target agent 第一轮 read + rm。
+
+**生命周期 UI：** Launcher boot 时 `bootstrapAgentCommandAutoUpdate` 静默 re-stamp 已装的过时文件（除非用户关 autoUpdate）。First-launch banner `<AgentCommandBanner />` 在 `promptDismissed=false && installed=empty` 时显示。设置面板 `<AgentCommandSettings />` 管理 install/update/uninstall + CLI symlink。
+
+### Background Mode (3.12.0)
+
+桌面专属。`pneuma://handoff` 默认在**隐藏 Electron 窗口** 里运行 session——`BrowserWindow({ show: false, webPreferences: { backgroundThrottling: false } })`，WS 全程连通、正常渲染，用户看不见任何东西直到完成。从 CC / Codex 来的 handoff 因此变成 fire-and-forget。
+
+**完成自动揭示：** 渲染端 `useBackgroundStatusReporter` 通过 IPC `pneuma:session-status` push `running` / `idle`；`background-sessions.ts` 按 `webContents.id` 关联到 session。首个 `running → idle`（≥1 turn 后）触发 `revealModeWindow`，并发系统 Notification 作辅助提示。
+
+**容错：** 60s watchdog——session 不上报 `running` 则强制 reveal；`did-fail-load` 重试 `loadURL`（session server 启动后绑端口可能晚于 navigate）；renderer crash 也 reveal。坏掉的 background session 永远不会让用户卡死。**逃生口：** `&background=0` 强制前台。
+
+服务端无任何变化——只是桌面端表现层差异。
 
 ## Launcher
 
-The launcher starts when no mode arg is given (`bun run dev` / `pneuma`). It serves a marketplace UI with sections: Recent Sessions, Recent Projects, Built-in Modes, Local Modes, Published Modes, and Backend Picker. See `server/index.ts` launcher block and `src/components/Launcher.tsx` for endpoints and UI.
+无 mode 参数时启动（`bun run dev` / `pneuma`）。Marketplace UI：Recent Sessions、Recent Projects、Built-in Modes、Local Modes、Published Modes、Backend Picker。入口在 `server/index.ts` launcher block 与 `src/components/Launcher.tsx`。
 
 ## Server Routes
 
-Server routes are defined in `server/index.ts` (main), `server/routes/export.ts` (export), `server/evolution-routes.ts` (evolution), `server/mode-maker-routes.ts` (mode maker). WebSocket paths: `/ws/browser/:sessionId` (JSON), `/ws/cli/:sessionId` (NDJSON), `/ws/terminal/:terminalId` (binary). Codex uses stdio JSON-RPC, not WebSocket.
+主路由在 `server/index.ts`；export 在 `server/routes/export.ts`；mode-specific 在 `server/{evolution,mode-maker}-routes.ts`；launcher-scope 路由在 `server/{library,agent-command}-routes.ts`。
 
-Native desktop APIs (`/api/native/*`) are available only in Electron. Architecture: Server → WS `native_request` → Browser → Electron IPC → result → WS `native_result` → Server. Web environments return `{ available: false }`.
+WebSocket：`/ws/browser/:sessionId`（JSON）、`/ws/cli/:sessionId`（NDJSON，legacy 兼容）、`/ws/terminal/:terminalId`（binary）。三个 backend 都跑 stdio，不直接走 WS。
+
+Key endpoints：
+
+- `GET /api/file?path=<abs>` — workspace-contained file reads（chat 图片预览）
+- `GET /api/running` — 系统级所有 running sessions（每条带 current mode + optional `thumbnailUrl`）
+- `POST /api/session/thumbnail` — base64 PNG → `<stateDir>/thumbnail.png`
+- `GET/POST /api/favorites` — pinned-modes
+- `GET /api/github/status` — `{ installed, authenticated, username?, version?, hint? }` from `gh` probe
+- `/api/libraries/*`（launcher-only）—— CRUD library + 广播 `libraries_updated`，使 library-activated mode 在 Quick Start 即时生效
+- `/api/agent-commands/*` + `/api/handoffs/external` + `/api/cli/*`（launcher-only）—— 见 Agent Command Distribution
+- 原生桌面 API（`/api/native/*`）只在 Electron 可用：Server → WS `native_request` → Browser → Electron IPC → result → WS `native_result`。Web 返回 `{ available: false }`。
 
 ## Coding Conventions
 
 - **TypeScript strict**, ESNext modules, bundler resolution
 - **Bun APIs** over Node.js (Bun.spawn, Bun.file, etc.)
-- **Contract-first**: changes to contracts → update `core/types/` + `core/__tests__/`
+- **Contract-first**: contract changes → update `core/types/` + `core/__tests__/`
 - **No hardcoded mode knowledge** in server/CLI — driven by ModeManifest
-- **Backend selected at startup only** — do not add runtime backend switching to the session UI
+- **Backend selected at startup only** — no runtime backend switching in session UI
 - **Zustand** sliced store (`src/store/`), mode viewers in `modes/<mode>/viewer/`
 - **Design tokens**: "Ethereal Tech" theme via `cc-*` CSS custom properties (deep zinc bg `#09090b`, neon orange primary `#f97316`, glassmorphism surfaces with `backdrop-blur`)
-- **English only** in source code — all comments, JSDoc, variable names, commit messages, and documentation in `core/`, `server/`, `src/`, `backends/`, `bin/`. Chinese is allowed only in mode seed templates (e.g. `zh-light/`, `zh-dark/`), showcase content, and `docs/` archive
-- **Visual verification for frontend changes**: After modifying viewer components, CSS, or any UI-facing code, use `chrome-devtools-mcp` to take a screenshot of the running dev server and verify the rendered result before reporting completion. Do not rely solely on reading code to judge visual correctness.
+- **English only** in source code — comments, JSDoc, identifiers, commit messages, docs in `core/`, `server/`, `src/`, `backends/`, `bin/`. Chinese allowed only in mode seed templates (`zh-light/`, `zh-dark/`), showcase content, `docs/` archive
+- **Visual verification for frontend changes**: After modifying viewer components, CSS, or any UI-facing code, use `chrome-devtools-mcp` to screenshot the running dev server and verify before reporting completion. Do not judge visual correctness by reading code alone
 
 ## Release Process
 
-CI (`release.yml`) handles tagging, GitHub Release, and npm publish on push to `main`.
+CI (`release.yml`) handles tagging, GitHub Release, and npm publish on push to `main`. **Do NOT manually create or push git tags.**
 
-**Do NOT manually create or push git tags.**
-
-### Version Bump Checklist
-
-Update in the same commit:
+### Version Bump Checklist (same commit)
 1. `package.json` — `"version"`
-2. `CLAUDE.md` — `**Version:**` line
-3. `CHANGELOG.md` — new version section
+2. `desktop/package.json` — `"version"`, **must equal** `package.json` 的值。`electron-updater` 用它比较运行中的桌面应用与最新 release；3.10.0 之前 desktop 滞后导致用户从未看到升级提示。3.10.3 起两者绑定，**只 bump 一份就是 bug**。
+3. `CLAUDE.md` — `**Version:**` 行
+4. `AGENTS.md` —— 必须与 `CLAUDE.md` byte-identical。`cp CLAUDE.md AGENTS.md` 即可。Codex 与 Kimi 各自读自己 filename 的指令文件，但我们不让两份内容分叉——runtime 对所有 backend 是同一份。
+5. `CHANGELOG.md` — new section
 
-Then `git push origin main` (no `--tags`). CI creates tag, release, and publishes.
+然后 `git push origin main`（不带 `--tags`）。CI 建 tag、发 release、publish。
 
 ## Known Gotchas
 
-- **chokidar glob**: Watch directory path, filter in callback. Don't use `watch("**/*.md", { cwd })`.
-- **react-resizable-panels v4.6**: `Group` not `PanelGroup`, `Separator` not `PanelResizeHandle`, `orientation` not `direction`.
-- **Vite WS proxy + Bun.serve**: Browser WS connects directly to backend port, bypassing Vite.
-- **Stale `dist/`**: If `dist/index.html` exists, the server falls back to production mode. Delete `dist/` or pass `--dev` explicitly. Launcher-spawned children auto-inherit `--dev`.
-- **Bun.serve dual-stack**: Must set `hostname: "0.0.0.0"` to avoid IPv6/IPv4 port collision on macOS.
-- **Backend persistence**: `backendType` in `.pneuma/session.json` and `~/.pneuma/sessions.json` is part of resume identity.
-- **Empty assistant messages**: `MessageBubble` returns null when content is empty (tool_use-only messages).
-- **modelUsage cumulative**: Use delta (current - previous) for per-turn cost.
-- **`backdrop-filter` containing block**: Creates a containing block for fixed-positioned children, causing coordinate offset in Excalidraw. Avoid or account for it.
-- **`@zumer/snapdom`**: Capture iframes must be `display: none` during snapdom calls — visible iframes cause foreignObject text reflow. See `useSlideThumbnails.ts` and `export.ts`.
-- **GridBoard JSX tag limitation**: Tile compiler (Babel + eval) cannot resolve locally-defined components as JSX tags. Use `{renderMyComponent(...)}` function calls instead.
-- **Shadow-git checkpoint queue**: All checkpoint operations are serialized via Promise chain to prevent `index.lock` conflicts. Do not parallelize.
-- **Claude Code backend**: see `backends/claude-code/README.md` for NDJSON termination, `CLAUDECODE` env requirement, and `system.init`-after-first-prompt behavior.
-- **Codex backend**: see `backends/codex/README.md` for protocol details, `node:child_process` rationale, adapter quirks, and the codex-cli 0.128+ approval-policy variant.
-- **Kimi-cli backend**: see `backends/kimi-cli/README.md` for pre-allocated UUID, synthesised envelopes, `<system>` markers, and k2.6 model bugs.
-- **Replay gotchas**: (1) When `--replay` is passed, agent launch is deferred until `/api/replay/continue`; server holds a `replayContinueCallback`. (2) Each checkout cleans `.pneuma/replay-checkout/` before extracting for checkpoint-accurate state; Continue Work extracts final checkpoint to workspace root. (3) File navigation must run AFTER checkpoint loads (not during `displayMessage`), because content sets aren't computed until `setFiles` completes.
-- **Proxy gotchas**: (1) `proxy.json` changes are hot-reloaded via chokidar, no restart needed. (2) Default allowed method is GET only — POST/PUT/PATCH require explicit `"methods"` in config. (3) Bun's `fetch()` auto-decompresses gzip/br; proxy strips `content-encoding` to prevent double-decompression.
-- **Editing/readonly distinction**: `editing` is a session boolean (`true` = creating, `false` = consuming). Modes opt in via `editing: { supported: true }` in manifest. When `editing: false`, no agent runs; switching to `true` triggers skill install + agent spawn; switching back kills the agent. `readonly` (replay) disables ALL interactions, while `editing: false` only hides Pneuma editing UI — content-internal interactions (clicks, links) remain functional.
-- **Windows compatibility**: Cross-platform support in `path-resolver.ts` (`where` vs `which`, PATH from `LOCALAPPDATA`/`APPDATA`), `terminal-manager.ts` (`COMSPEC`/`cmd.exe`), `system-bridge.ts` (`cmd /c start`), `server/index.ts` (`NUL`, `taskkill`). Path comparison is case-insensitive on win32.
-- **Native bridge timeout**: Routes through browser WS — if no browser tab is connected, native calls timeout after 10s.
-- **Diagram viewer**: See `modes/diagram/viewer/DiagramPreview.tsx` header comments for architecture and gotchas (native events, SVG pointer-events, sketch injection, rough.js load order).
-- **Handoff confirm cannot kill its own session**: when a project session's HandoffCard is clicked Confirm, `killActiveSession(sourceSessionId)` runs in the source session's own server — but the source process was spawned by the launcher (or directly), not by itself. The source backend keeps running until the user closes the tab. The `switched_out` history event is still recorded; the target launches normally.
-- **Project session state pollution if `--project` is dropped**: subcommands that don't parse `--project` would write state into the project root, conflicting with the project layer. All built-in subcommands (including `evolve`) now respect `--project`; external mode authors must mirror this when authoring custom CLI entry points.
-- **Empty shell renders without `modeViewer`**: the `?project=<root>` URL (no `session`, no `mode`) lands on `EmptyShell` which mounts `TopBar` *without* a session. `TopBar` gates the tabs row, share dropdown, and editing toggle on `!!modeViewer`; the left chip strip stays. Any new TopBar feature must guard for `modeViewer` being null in this state. `ProjectChip` lives in the strip and reads `projectContext` (which `EmptyShell` populates from `/api/projects/:id/sessions`); the chip's auto-open is computed inside the chip via URL inspection (no prop threading from `TopBar`).
-- **TopBar drag region in launcher-reused windows**: `TopBar` is wrapped with `WebkitAppRegion: "drag"` and its three pill sub-containers (left chip strip, center tabs, right share/edit) are `WebkitAppRegion: "no-drag"`. This is required because the launcher's `window.location.href` flow (`Launcher.tsx:3210/3326/4003`, `ProjectPanel.tsx:290`, `EmptyShell` auto-onboard) reuses the launcher `BrowserWindow` for sessions — the window keeps `titleBarStyle: "hiddenInset"` + `trafficLightPosition: { y: 18 }`, and on macOS Sequoia the OS-managed drag inset extends to ~y=56 to fit the lowered traffic lights, eating clicks on the upper edge of TopBar pills. Any new clickable element added directly under the TopBar root must carry `no-drag` (or sit inside one of the existing `no-drag` sub-containers); pure spacers can stay at the inherited `drag` so the bar still moves the window. No-op in non-hiddenInset windows.
-- **Project session id vs backend id**: for project sessions, `<projectRoot>/.pneuma/sessions/<id>/session.json`'s top-level `sessionId` is the *project session* id (= directory name = what the URL carries as `--session-id`). The backend's protocol id is stored separately in `agentSessionId`. `scanProjectSessions` falls back to the directory name if `sessionId` is missing/empty (defensive against pre-fix sessions). Reopening a project session uses the project session id; routing CLI ↔ backend uses `agentSessionId`. **Never** let the backend id leak into the registry / panel — it'll resolve to a non-existent directory.
+- **`pneuma handoff-from-external` detached spawn**：必须给子进程传 `--no-prompt`。`stdio: "ignore"` + `detached: true` 下子进程没有 stdin；任何 `init.params` prompt（例 webcraft 的 fal.ai key）都会永久阻塞。
+- **Machine-readable CLI subcommands bypass `p.intro()`**：`agent-command`、`mode list --local`、`handoff-from-external` 在 `bin/pneuma.ts:main()` 里**先于** clack `p.intro(...)` banner dispatch；否则 banner 污染 stdout 让 agent 侧 `JSON.parse` 挂掉。未来任何 stdout 被 agent 消费的子命令都得照办。
+- **Agent-command marker placement**：`<!-- pneuma:agent-command version="..." backend="..." -->` marker 放在 YAML frontmatter（`---`）**下方**，不是 line 1。Claude Code 与 Codex 都要求 frontmatter 从 line 1 起；line-1 HTML 注释会让 `description` / `argument-hint` 解析挂掉。Installer 全文扫，不只 line 1。
+- **Bun `os.homedir()` 启动时缓存**：boot 后改 `process.env.HOME` 不会改 `homedir()` 返回值。测试需要 tmp home 的模块（`core/agent-command-installer.ts`）改读 `process.env.HOME ?? process.env.USERPROFILE ?? homedir()`。
+- **chokidar glob**：watch 目录路径，回调里 filter。**不要** `watch("**/*.md", { cwd })`。
+- **react-resizable-panels v4.6**：`Group` 不是 `PanelGroup`，`Separator` 不是 `PanelResizeHandle`，`orientation` 不是 `direction`。
+- **Vite WS proxy + Bun.serve**：浏览器 WS 直连 backend 端口，绕开 Vite。
+- **Stale `dist/`**：若 `dist/index.html` 存在，server 退回 production 模式。要么删 `dist/`，要么传 `--dev`。Launcher 派生子进程自动继承 `--dev`。
+- **Bun.serve dual-stack**：必须 `hostname: "0.0.0.0"`，否则 macOS IPv6/IPv4 端口碰撞。
+- **Backend persistence**：`backendType` 在 `.pneuma/session.json` 和 `~/.pneuma/sessions.json` 都是 resume identity 的一部分。
+- **Empty assistant messages**：`MessageBubble` 在 content 为空时返回 null（纯 tool_use 消息）。
+- **modelUsage cumulative**：用 delta（current - previous）算 per-turn cost。
+- **`backdrop-filter` containing block**：会为 fixed-position 子元素创建 containing block，在 Excalidraw 里造成坐标偏移。避开或显式处理。
+- **`@zumer/snapdom`**：调用期间 capture iframe 必须 `display: none`——可见 iframe 会导致 foreignObject 文本 reflow。见 `useSlideThumbnails.ts` 和 `export.ts`。
+- **Session thumbnail capture**（`src/hooks/useThumbnailCapture.ts`）：优先级 viewer `captureViewport()` → Electron `pneumaDesktop.capturePage(rect)`（唯一能看到 iframe 内容的路径，例如 webcraft / mode-maker Play）→ snapdom（仅 browser dev；不含 iframe 内容）。等有限 CSS 动画 settle；mount + file change 后用渐进 timer；near-uniform 帧丢弃。空 Electron capture 不用 snapdom 补——后者把 iframe 渲染成白矩形，比 mode-icon fallback 更糟。
+- **GridBoard JSX tag limitation**：tile compiler（Babel + eval）不能把本地定义的 component 当 JSX tag 解析。用 `{renderMyComponent(...)}` 函数调用。
+- **Shadow-git checkpoint queue**：所有 checkpoint 操作通过 Promise chain 串行化，防 `index.lock` 冲突。**不要并行**。
+- **Backend 后端 README**：Claude `backends/claude-code/README.md`、Codex `backends/codex/README.md`、Kimi `backends/kimi-cli/README.md` —— 协议细节、生命周期 quirks、版本兼容分支都在各自 README 里。
+- **Replay**：(1) `--replay` 推迟 agent 启动到 `/api/replay/continue`，server 持 `replayContinueCallback`。(2) 每次 checkout 前清 `.pneuma/replay-checkout/`；Continue Work 把终点 checkpoint 解压到 workspace root。(3) 文件 navigation 必须在 checkpoint 加载**之后**（不能在 `displayMessage` 期间），因为 content sets 要等 `setFiles` 完成。
+- **Proxy**：(1) `proxy.json` 通过 chokidar 热加载。(2) 默认只放行 GET——POST/PUT/PATCH 要求显式 `"methods"`。(3) Bun `fetch()` 自动解压 gzip/br；proxy 必须剥 `content-encoding` 防双重解压。
+- **Editing/readonly distinction**：`editing` 是 session 布尔（`true`=创作，`false`=消费）。Mode 通过 `editing: { supported: true }` opt-in。`false` 时不跑 agent；切到 `true` 触发 skill install + agent spawn；切回又 kill。`readonly`（replay）禁用一切交互；`editing: false` 只隐藏 Pneuma 编辑 UI，内容内部交互仍工作。
+- **Windows 兼容**：跨平台支持散在 `path-resolver.ts`（`where` vs `which`，PATH 从 `LOCALAPPDATA`/`APPDATA`）、`terminal-manager.ts`（`COMSPEC`/`cmd.exe`）、`system-bridge.ts`（`cmd /c start`）、`server/index.ts`（`NUL`、`taskkill`）。win32 路径比较不区分大小写。
+- **Native bridge timeout**：经浏览器 WS 路由——若无浏览器 tab 连接，native call 10s 超时。
+- **Diagram viewer**：见 `modes/diagram/viewer/DiagramPreview.tsx` 头部注释（native events、SVG pointer-events、sketch injection、rough.js 加载顺序）。
+- **Handoff confirm 不能 kill 自己 session**：`killActiveSession(sourceSessionId)` 跑在源 session 自己的 server 里，但源进程是 launcher 直接派生而非自己派生——源 backend 继续跑。`switched_out` 仍记，target 正常起。3.5.3 缓解：桌面 mode-window 追踪所有它导航到过的 URL，关闭时按端口对照 `/api/running` 批量 teardown；`/api/processes/children/:pid/kill` 阶梯式 SIGTERM→SIGKILL 防卡死。
+- **Project session 状态污染 if `--project` 丢失**：subcommand 不解析 `--project` 会把状态写进 project root 与项目层冲突。所有内置 subcommand（含 `evolve`）都尊重 `--project`；外部 mode 作者必须照办。
+- **Empty shell 没有 `modeViewer`**：`?project=<root>`（无 `session`、无 `mode`）→ `EmptyShell` mount `TopBar` 但无 session。`TopBar` 把 tabs row、share dropdown、editing toggle gate 在 `!!modeViewer`；左侧 chip strip 不受影响。任何新 TopBar feature 都要防 `modeViewer` 为 null。`ProjectChip` 从 `EmptyShell` 经 `/api/projects/:id/sessions` 拿到的 `projectContext` 读。
+- **TopBar drag region in launcher-reused windows**：`TopBar` 是 `WebkitAppRegion: "drag"`；三个 pill 子容器（左 chip strip、中 tabs、右 share/edit）是 `no-drag`。这是因为 launcher 的 `window.location.href` 流复用 launcher `BrowserWindow` 给 session 用——窗口仍是 `titleBarStyle: "hiddenInset"` + `trafficLightPosition: { y: 18 }`，macOS Sequoia 的系统级 drag inset 扩到 ~y=56 吃掉 TopBar pill 上沿点击。任何新加在 TopBar 根下的可点元素都要带 `no-drag`（或落在已有 `no-drag` 子容器里）。
+- **Project session id vs backend id**：`<projectRoot>/.pneuma/sessions/<id>/session.json` 顶层 `sessionId` 是**项目 session id**（= 目录名 = URL `--session-id`）。Backend 协议 id 存在 `agentSessionId`。`scanProjectSessions` 在 `sessionId` 缺失时回退到目录名（防御 pre-fix sessions）。重开 session 用项目 session id；CLI ↔ backend 路由用 `agentSessionId`。**绝不让 backend id 泄漏到 registry / panel** 否则解析到不存在的目录。
+- **Launcher 没 agent session，WS 广播到不了**（3.7.0）：`WsBridge.broadcastAll` 按 per-session 浏览器 socket 遍历；launcher main page 在任何 session 存在之前就 mount。Library-routes（及未来任何 launcher-scope mutation）必须在本地 dispatch `pneuma:libraries-updated` DOM event；launcher 的 window-event listener fanout 到 `refreshLibraries()` + `refreshModes()`。真实 session 内的 sibling tab 仍走 WS——两条路径汇到同一事件名。
+- **`line-clamp` 需要 `display: -webkit-box`**，Tailwind `block` 在源码顺序中会覆盖（3.7.0）：`block` 配 `line-clamp-N` 会静默失效。`QuickStartTile` 因 Guizang Ppt 的超长描述发现这点。删掉 `block`；line-clamp 自带 display 规则。
+- **React key collision for same-named modes**（3.7.0）：一个 builtin（`slide`）evolve 出 `slide-evolved-*` 通常仍 `name: "slide"`。用 `mode.name` 当 React key 会在 `builtins[]` + `local[]` 里冲突，per-tile 状态只渲染到一个 tile。任何 builtin + local 混排的列表把 key 组合成 `${source}::${path || name}`。

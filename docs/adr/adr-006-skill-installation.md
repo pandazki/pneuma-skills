@@ -366,7 +366,7 @@ npm install @pneuma/skill-slide
 
 ## 7. Amendment 2026-04-27 (3.0 Project Layer)
 
-3.0 引入 [Project 层](../design/2026-04-27-pneuma-projects-design.md) 后，本 ADR 的 skill 安装机制扩展如下。本 ADR 的核心决策（复制而非链接、版本检测、marker 注入）均沿用，下面只列**变化**。
+3.0 引入 [Project 层](../archive/proposals/2026-04-27-pneuma-projects-design.md) 后，本 ADR 的 skill 安装机制扩展如下。本 ADR 的核心决策（复制而非链接、版本检测、marker 注入）均沿用，下面只列**变化**。
 
 ### 7.1 安装目标路径参数化
 

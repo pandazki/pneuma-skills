@@ -8,7 +8,7 @@
 
 **Tech Stack:** Bun ≥ 1.3.5, TypeScript strict, Hono 4.7, React 19, Zustand 5, chokidar 5, bun:test. No new dependencies.
 
-**Spec:** [`docs/design/2026-04-27-pneuma-projects-design.md`](../../design/2026-04-27-pneuma-projects-design.md)
+**Spec:** [`docs/design/2026-04-27-pneuma-projects-design.md`](../2026-04-27-pneuma-projects-design.md)
 
 ---
 

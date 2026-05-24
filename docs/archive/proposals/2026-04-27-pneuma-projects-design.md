@@ -4,9 +4,9 @@
 > **状态**: Draft
 > **决策者**: Pandazki
 > **关联**:
-> - 与 [`pneuma-3.0-design.md`](./pneuma-3.0-design.md) 平行——一个是"layout 维度"（mode 升级为微应用），一个是"organization 维度"（session 之上加 project）
-> - Supersedes (in part): [ADR-008](../adr/adr-008-session-management.md) 的"单 session 模型"决策
-> - Extends: [ADR-006](../adr/adr-006-skill-installation.md), [ADR-014](../adr/adr-014-user-preference-analysis.md), [ADR-010](../adr/adr-010-cli-entry-startup.md)
+> - 与 [`pneuma-3.0-design.md`](./2026-03-12-pneuma-3.0-design.md) 平行——一个是"layout 维度"（mode 升级为微应用），一个是"organization 维度"（session 之上加 project）
+> - Supersedes (in part): [ADR-008](../../adr/adr-008-session-management.md) 的"单 session 模型"决策
+> - Extends: [ADR-006](../../adr/adr-006-skill-installation.md), [ADR-014](../../adr/adr-014-user-preference-analysis.md), [ADR-010](../../adr/adr-010-cli-entry-startup.md)
 
 ---
 

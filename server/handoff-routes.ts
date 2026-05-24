@@ -13,7 +13,7 @@
  * that's driving its session — that's how the WS broadcast lands in the
  * source's browser.
  *
- * See `docs/design/2026-04-28-handoff-tool-call.md` for the full design.
+ * See `docs/archive/proposals/2026-04-28-handoff-tool-call.md` for the full design.
  */
 
 import type { Hono } from "hono";

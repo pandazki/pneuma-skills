@@ -1,6 +1,6 @@
 # History 分享与重放 — 实现设计
 
-> **关联 ADR**: [ADR-013](../adr/adr-013-history-sharing-replay.md)
+> **关联 ADR**: [ADR-013](../../adr/adr-013-history-sharing-replay.md)
 > **状态**: Draft
 > **日期**: 2026-03-20
 

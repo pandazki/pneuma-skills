@@ -278,7 +278,7 @@ Skill-installer 在 session 启动时：
 
 ## 7. Amendment 2026-04-27 (3.0 Project-Level Preferences)
 
-3.0 引入 [Project 层](../design/2026-04-27-pneuma-projects-design.md) 后，**用户偏好成为正交的两层**：
+3.0 引入 [Project 层](../archive/proposals/2026-04-27-pneuma-projects-design.md) 后，**用户偏好成为正交的两层**：
 
 | 层 | 存储位置 | 作用域 | 注入位置 |
 |----|----------|--------|----------|
