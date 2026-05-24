@@ -1,0 +1,54 @@
+# NOTICE
+
+This mode borrows content from an upstream project. This file pins what we
+took, what we adapted, what we dropped, and tracks the upstream version so
+future updates can be diff-merged.
+
+> If you're only inspired by upstream architecture / aesthetic / workflow,
+> without copying actual content, you don't need this file. Use
+> `manifest.inspiredBy` instead — it's the non-binding attribution slot.
+
+## Upstream
+
+- **Name**: TODO Project / Tool name
+- **URL**: TODO https://...
+- **License**: TODO Apache 2.0 / MIT / BSD-3-Clause / ...
+- **Version pinned**: TODO upstream version or commit hash (the version we read when we adapted)
+- **Synced at**: TODO YYYY-MM-DD
+
+## What we borrowed
+
+Files in this mode that contain content originating upstream — direct
+transcription, command tables, design tokens, font subsets.
+
+| Pneuma file | Upstream source | Note |
+|---|---|---|
+| `skill/references/TODO.md` | `TODO upstream path` | TODO direct copy with credit / adapted with X→Y mapping |
+| `seed/TODO/...` | `TODO upstream demo` | TODO note |
+
+## What we adapted
+
+Concepts and structures that we kept the *meaning* of but mapped to Pneuma's
+runtime. Naming these explicitly helps future syncs land cleanly.
+
+- TODO: upstream's `<thing>` → pneuma's `<our equivalent>` (e.g. CLI verb-arg
+  routing → toolbar command + agent dispatch)
+- TODO: upstream's `<thing>` → pneuma's `<our equivalent>`
+
+## What we dropped
+
+Things we deliberately did not adopt, with reasoning. So a future
+maintainer doesn't accidentally pull them back in.
+
+- TODO: upstream's `<feature>` — not adopted because <reason>
+- TODO: upstream's `<feature>` — not adopted because <reason>
+
+## License excerpts
+
+<!-- TODO: paste the upstream license text or the portion required by it.
+For Apache 2.0 you typically include the NOTICE file's NOTICE section
+verbatim, plus a pointer to LICENSE for the full Apache text. -->
+
+```
+TODO: upstream LICENSE excerpt
+```

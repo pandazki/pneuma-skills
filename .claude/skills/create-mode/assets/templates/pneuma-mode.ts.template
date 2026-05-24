@@ -1,0 +1,102 @@
+// modes/<name>/pneuma-mode.ts
+//
+// ModeDefinition binding for the frontend. The frontend mode-loader
+// dynamically imports this; backend / skill-installer reads `manifest.ts`
+// directly. Don't import React from manifest.ts.
+
+import type { ModeDefinition } from "../../core/types/mode-definition.js";
+import type {
+  ViewerFileContent,
+  ViewerSelectionContext,
+  WorkspaceItem,
+  ContentSet,
+} from "../../core/types/viewer-contract.js";
+
+import manifest from "./manifest.js";
+import { ModePreview } from "./viewer/ModePreview.js";  // TODO: rename to your actual file
+
+// import { load } from "./domain.js";  // Uncomment if using aggregate-file Source
+// import { createDirectoryContentSetResolver } from "../../core/utils/content-set-resolver.js";  // If multi content-set
+
+const mode: ModeDefinition = {
+  manifest,
+
+  viewer: {
+    PreviewComponent: ModePreview,
+    updateStrategy: "incremental",  // Almost always "incremental"; rarely "full-reload"
+
+    // ── extractContext ──────────────────────────────────────────────────
+    // Translate the user's current selection into a `<viewer-context>`
+    // block that prefixes their next chat message. The agent uses this
+    // to resolve "this button", "here", etc.
+    extractContext(
+      selection: ViewerSelectionContext | null,
+      files: ViewerFileContent[],
+    ): string {
+      if (!selection) return "";
+
+      const lines: (string | null)[] = [
+        `Mode: ${manifest.name}`,
+        // The Address line is the machine-routable handle. The agent will
+        // copy this verbatim into `capture` or `<viewer-locator>` cards,
+        // so it must be present whenever there's a real selection.
+        selection.address
+          ? `Address: ${JSON.stringify(selection.address)}`
+          : null,
+        selection.file ? `File: ${selection.file}` : null,
+        selection.label ? `Label: ${selection.label}` : null,
+        selection.nearbyText ? `Context: ${selection.nearbyText}` : null,
+        selection.selector ? `Selector: ${selection.selector}` : null,
+      ];
+
+      return lines.filter(Boolean).join("\n");
+    },
+
+    // ── Workspace model ─────────────────────────────────────────────────
+    // Reuse manifest.viewerApi.workspace as the source of truth; only the
+    // resolveItems / createEmpty / resolveContentSets are implemented here
+    // because they're functions, not data.
+    workspace: {
+      type: manifest.viewerApi!.workspace!.type,
+      multiFile: manifest.viewerApi!.workspace!.multiFile,
+      ordered: manifest.viewerApi!.workspace!.ordered,
+      hasActiveFile: manifest.viewerApi!.workspace!.hasActiveFile,
+      manifestFile: manifest.viewerApi!.workspace!.manifestFile,
+
+      // TODO: implement based on your workspace.type
+      // "all"      — return one item per matching file
+      // "manifest" — parse the manifest file, return its declared items in order
+      // "single"   — return one item for the main file
+      resolveItems(files: ViewerFileContent[]): WorkspaceItem[] {
+        // Example for "manifest" type:
+        //   const m = files.find(f => f.path.endsWith("manifest.json"));
+        //   if (!m) return [];
+        //   const parsed = JSON.parse(m.content);
+        //   return parsed.items.map((it, i) => ({
+        //     path: it.file,
+        //     label: it.title ?? `Item ${i + 1}`,
+        //     index: i,
+        //   }));
+        return [];
+      },
+
+      // Uncomment if mode supports multiple content sets (e.g. en-light/, zh-dark/)
+      // resolveContentSets: createDirectoryContentSetResolver(),
+
+      // Used when the user clicks "new" on an empty content set. Return
+      // the files to write; framework writes them via /api/workspace/scaffold.
+      // Return null if your mode doesn't support empty-state creation.
+      createEmpty(files: ViewerFileContent[]) {
+        return null;
+      },
+    },
+
+    // ── Actions ────────────────────────────────────────────────────────
+    // Reuse manifest.viewerApi.actions directly — manifest is the single
+    // source of truth. The PreviewComponent listens for `props.actionRequest`
+    // and calls `props.onActionResult` after handling.
+    actions: manifest.viewerApi?.actions,
+  },
+};
+
+export default mode;

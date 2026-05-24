@@ -1,0 +1,52 @@
+{
+  "tagline": {
+    "en": "TODO short evocative tagline (5-10 words, no period)",
+    "zh-CN": "TODO 中文短句标语",
+    "ja": "TODO 日本語のキャッチコピー"
+  },
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": {
+        "en": "TODO Feature Name",
+        "zh-CN": "TODO 功能名称",
+        "ja": "TODO 機能名"
+      },
+      "description": {
+        "en": "TODO 1-2 sentences. Concrete benefit, not a generic 'easy X' claim. Also doubles as the image generation brief — describe what visual idea this highlight conveys.",
+        "zh-CN": "TODO 一两句话。具体收益，不是空话。",
+        "ja": "TODO 1〜2文。具体的に。"
+      },
+      "media": "todo-feature-1.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "TODO Second Feature",
+        "zh-CN": "TODO 第二个功能",
+        "ja": "TODO 二つ目の機能"
+      },
+      "description": {
+        "en": "TODO benefit + image brief.",
+        "zh-CN": "TODO 收益 + 配图概念。",
+        "ja": "TODO 利点 + 画像コンセプト。"
+      },
+      "media": "todo-feature-2.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "TODO Third Feature",
+        "zh-CN": "TODO 第三个功能",
+        "ja": "TODO 三つ目の機能"
+      },
+      "description": {
+        "en": "TODO benefit + image brief.",
+        "zh-CN": "TODO 收益 + 配图概念。",
+        "ja": "TODO 利点 + 画像コンセプト。"
+      },
+      "media": "todo-feature-3.png",
+      "mediaType": "image"
+    }
+  ]
+}

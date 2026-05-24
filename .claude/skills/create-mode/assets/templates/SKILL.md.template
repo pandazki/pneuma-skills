@@ -1,0 +1,109 @@
+# <!-- TODO: Mode displayName -->
+
+<!-- pneuma:start -->
+
+## Scene
+
+<!-- TODO: 2-3 sentences. "Who you are in this mode, what's in front of you,
+what the user is trying to do, how the viewer + agent split work."
+
+Concrete and immersive — see references/skill-md-patterns.md::Scene for examples.
+Don't write a marketing pitch. -->
+
+## Viewer contract
+
+The viewer is a live player for the work you produce in `<TODO: workspace
+relative path / pattern>`. Files you edit appear immediately in the user's
+preview. The user can interact with the viewer to give you grounded
+context.
+
+### What the user can select
+
+<!-- TODO: 1-2 sentences naming what the user can click / select inside
+the viewer (e.g. "a slide, or a DOM element inside a slide"). Mention that
+the `<viewer-context>` block in their next message will carry an `Address:`
+line — the machine-routable handle for re-targeting that exact object. -->
+
+### ViewerAddress vocabulary
+
+The `ViewerAddress` for this mode looks like this:
+
+| Key | Kind | Meaning |
+|---|---|---|
+| `contentSet` | framework-reserved | Active content set prefix; passed through automatically when present |
+| `TODO_COARSE_KEY` | coarse | <!-- TODO: meaning, e.g. "Slide index (0-based) within the active content set" --> |
+| `TODO_FINE_KEY` | fine (optional) | <!-- TODO: meaning, e.g. "CSS selector inside the slide's iframe" --> |
+
+When the user has a selection, the `<viewer-context>` block before their
+message contains a JSON-serialized address. Copy it verbatim into:
+
+- `<viewer-locator label="…" address='{…}' />` — to give the user a clickable
+  card that re-navigates to that object.
+- The `capture` action's `params.address` — to screenshot that object for
+  visual self-check.
+
+### Actions you can invoke
+
+<!-- TODO: list each action from manifest.viewerApi.actions with a
+"when to use" hint. Don't list `capture` — it's framework-built-in. -->
+
+- **`navigate-to`** — Move the viewer to a specific TODO_NOUN by address.
+  Use after editing so the user can review the result.
+
+## Core rules
+
+<!-- TODO: hard constraints. Things that, if violated, break the mode.
+Use cause + effect prose, not ALL-CAPS MUSTs. See references/skill-md-patterns.md::Core rules.
+
+Examples:
+- "Every <object> lives in `<prefix>/<file>` — file naming determines
+  ordering."
+- "The manifest file lists items in render order; reordering happens by
+  editing the manifest, not by moving files."
+- "<external library>'s renderer rejects <pattern>; use <alternative>
+  instead." -->
+
+## Workflow
+
+When the user asks for a new <TODO_NOUN>:
+
+1. **Read the relevant context.** <!-- TODO: which files / state to read first -->
+2. **Plan briefly** in chat, especially if it's a substantial change.
+3. **Edit the files.** Use Edit / Write — the viewer picks up changes
+   automatically.
+4. **Verify visually.** Invoke `capture` against the address of the object
+   you just made, then read the screenshot. If something looks off, fix
+   before saying you're done.
+5. **Point the user at it.** Drop a `<viewer-locator label="…" address='{…}' />`
+   card in your response so they can jump to it.
+
+When the user reports something wrong:
+
+1. **Read the affected file** before reasoning.
+2. **Diagnose** — what's actually rendering vs what they expect? Use
+   `capture` to see what they see.
+3. **Fix narrowly.** Don't restructure unrelated code.
+4. **Re-verify** with `capture` before claiming done.
+
+## Commands
+
+<!-- TODO: if manifest.viewerApi.commands has entries, document each one's
+trigger + expected response. If no commands, delete this section. -->
+
+<!-- pneuma:end -->
+
+## References
+
+Read when you need depth on the topic. Loaded into context only when you
+go open the file — keep this main SKILL.md lean.
+
+<!-- TODO: list per-topic references files for your mode. Common topics:
+
+| Topic | File |
+|---|---|
+| Typography & layout | `references/typography.md` |
+| Color palettes | `references/palette.md` |
+| Component patterns | `references/components.md` |
+| Export formats | `references/export.md` |
+
+Delete this comment after filling. -->

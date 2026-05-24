@@ -1,0 +1,122 @@
+// modes/<name>/domain.ts
+//
+// Only needed when manifest.sources uses an `aggregate-file` provider.
+// The provider calls `load` to read N files into a typed domain object,
+// and `save` to compute the file writes/deletes that persist a changed
+// domain back to disk.
+//
+// Both functions are PURE — no fs, no fetch, no side effects. The provider
+// owns IO.
+//
+// See references/domain-and-sources.md::domain.ts for the rationale.
+
+import type { ViewerFileContent } from "../../core/types/viewer-contract.js";
+
+// ── Domain types ──────────────────────────────────────────────────────────
+//
+// Express your domain as a noun, not as storage. Viewer subscribes to T,
+// not to file paths.
+
+export interface TodoDomainObject {
+  // TODO: replace with your mode's domain shape. Examples:
+  //
+  // Multi-content-set aggregate:
+  //   byContentSet: Record<string, TodoContentSet>;
+  //
+  // Single aggregate:
+  //   title: string;
+  //   items: TodoItem[];
+  TODO_FIELD: unknown;
+}
+
+// ── load ────────────────────────────────────────────────────────────────
+//
+// files → T | null
+//
+// Called by the aggregate-file provider on initial load and after any file
+// change inside the watched glob. Pure function: no IO, no async side
+// effects. Returns null when the directory has no valid domain yet
+// (e.g. empty workspace, missing manifest).
+
+export function load(files: ViewerFileContent[]): TodoDomainObject | null {
+  // TODO:
+  //
+  // 1. Group files by content set (if applicable). Pneuma has a convention:
+  //    top-level directories are content sets. Filter files by prefix.
+  //
+  // 2. For each content set:
+  //    - Find the manifest file (e.g. `<prefix>/manifest.json`).
+  //    - Parse it. Resolve item references → actual file content.
+  //    - Build the domain sub-object.
+  //
+  // 3. Return null if nothing valid was found.
+  //
+  // Example skeleton:
+  //
+  //   const byContentSet: Record<string, TodoContentSet> = {};
+  //   const groupedByPrefix = groupFilesByContentSetPrefix(files);
+  //   for (const [prefix, files] of Object.entries(groupedByPrefix)) {
+  //     const manifest = files.find(f => f.path === `${prefix}/manifest.json`);
+  //     if (!manifest) continue;
+  //     const parsed = JSON.parse(manifest.content);
+  //     byContentSet[prefix] = resolveContentSet(parsed, files);
+  //   }
+  //   if (Object.keys(byContentSet).length === 0) return null;
+  //   return { byContentSet };
+
+  return null;
+}
+
+// ── save ────────────────────────────────────────────────────────────────
+//
+// (next, current) → { writes, deletes }
+//
+// Called when viewer commits a domain change via Source.write(next). The
+// aggregate-file provider takes the returned diff and routes it through
+// FileChannel.write / .delete (which the runtime tags origin: "self").
+//
+// Compute the MINIMAL diff — don't rewrite every file on every change.
+//
+// If your mode is read-only (viewer never calls Source.write — agent writes
+// directly via Edit/Write tools), stub this as:
+//   return { writes: [], deletes: [] };
+
+export function save(
+  next: TodoDomainObject,
+  current: TodoDomainObject | null,
+): { writes: { path: string; content: string }[]; deletes: string[] } {
+  const writes: { path: string; content: string }[] = [];
+  const deletes: string[] = [];
+
+  // TODO:
+  //
+  // Compute the diff between `next` and `current`:
+  //
+  // 1. For each content set in next:
+  //    - If absent in current → write all its files
+  //    - If different from current → write the changed files
+  //
+  // 2. For each content set in current but not next → delete its files
+  //
+  // 3. Inside a content set:
+  //    - Manifest changes → rewrite the manifest file
+  //    - Item added → write item file
+  //    - Item content changed → rewrite item file
+  //    - Item removed → push path to deletes
+  //
+  // Example:
+  //
+  //   if (!current) {
+  //     for (const [prefix, cs] of Object.entries(next.byContentSet)) {
+  //       writes.push({ path: `${prefix}/manifest.json`, content: serializeManifest(cs) });
+  //       for (const item of cs.items) {
+  //         writes.push({ path: `${prefix}/${item.file}`, content: item.html });
+  //       }
+  //     }
+  //     return { writes, deletes };
+  //   }
+  //
+  //   // Otherwise, fine-grained diff per content set...
+
+  return { writes, deletes };
+}

@@ -20,8 +20,10 @@ web/.deploy.env
 .worktrees/
 .claude/worktrees/
 
-# Claude Code local state (only .claude/commands/ is tracked)
-.claude/skills/
+# Claude Code local state (only .claude/commands/ + select project-level
+# skills under .claude/skills/ are tracked — exemptions below)
+.claude/skills/*
+!.claude/skills/create-mode/
 .claude/e2e-*.png
 .claude/*.lock
 .claude/settings.local.json
