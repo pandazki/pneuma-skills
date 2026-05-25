@@ -1,0 +1,185 @@
+{
+  "header": {
+    "in_drill": "In drill: <strong>{{title}}</strong>",
+    "exit_drill_tooltip": "Exit subgraph — back to main cosmos",
+    "stats_nodes": "{{count}} node",
+    "stats_nodes_plural": "{{count}} nodes",
+    "stats_edges": "{{count}} edge",
+    "stats_edges_plural": "{{count}} edges",
+    "stats_layers": "{{count}} layer",
+    "stats_layers_plural": "{{count}} layers",
+    "stats_perspectives": "{{count}} perspective",
+    "stats_perspectives_plural": "{{count}} perspectives",
+    "stats_drills": "{{count}} drill",
+    "stats_drills_plural": "{{count}} drills",
+    "stats_pending": "({{count}} pending)"
+  },
+  "tabs": {
+    "info": "INFO",
+    "files": "FILES",
+    "tour": "TOUR",
+    "drills": "DRILLS"
+  },
+  "view_controls": {
+    "level": "Level",
+    "level_project": "Project",
+    "level_detail": "Detail",
+    "density": "Density",
+    "density_overview": "Overview",
+    "density_learn": "Learn",
+    "density_deep": "Deep",
+    "layers": "Layers",
+    "all_layers": "All layers"
+  },
+  "search": {
+    "placeholder": "Search nodes by name, summary, or tags…",
+    "fuzzy": "Fuzzy",
+    "semantic": "Semantic",
+    "semantic_tooltip": "Semantic search arrives in a later version — needs an embedding model.",
+    "no_results": "No matching nodes",
+    "matched_in": {
+      "name": "name",
+      "summary": "summary",
+      "tag": "tag",
+      "type": "type"
+    }
+  },
+  "categories": {
+    "label": "Categories",
+    "show_tooltip": "Show {{kind}} nodes",
+    "hide_tooltip": "Hide {{kind}} nodes",
+    "code": "CODE",
+    "config": "CONFIG",
+    "docs": "DOCS",
+    "infra": "INFRA",
+    "data": "DATA",
+    "domain": "DOMAIN",
+    "knowledge": "KNOWLEDGE",
+    "other": "OTHER"
+  },
+  "info": {
+    "empty": "Click a node or layer to inspect it here. Open the TOUR tab for perspective tours.",
+    "layer_focus_title": "Layer focus",
+    "layer_focus_nodes": "Nodes in this layer ({{count}})",
+    "sources_label": "Sources",
+    "stack_label": "Stack",
+    "outbound": "Outbound · {{count}}",
+    "inbound": "Inbound · {{count}}",
+    "tags_label": "Tags",
+    "project_overview_eyebrow": "Project",
+    "project_open_root_label": "Open project root",
+    "project_open_root_hint": "Opens the source folder in your preferred editor. Subsequent source-chip clicks will activate in the same window.",
+    "project_no_root_hint": "Click any node to see its sources. This cosmos has no on-disk root declared — sources may point to web URLs, transcripts, or scattered files.",
+    "project_quick_links": "Quick links",
+    "project_open_tour": "Take the project tour →",
+    "project_open_perspectives": "Browse perspectives →",
+    "project_open_drills": "Open drills →"
+  },
+  "files": {
+    "empty": "No file references in this cosmos yet.",
+    "orphans_header": "Unlayered"
+  },
+  "tour": {
+    "empty": "This cosmos has no curated tours yet. Ask the agent to add one — either a Project Tour (one canonical reading path) or Perspectives (variant walks framed by a design lens).",
+    "perspective_gone": "Perspective no longer exists.",
+    "perspective_gone_action": "End tour",
+    "step_badge": "Step {{current}} / {{total}}",
+    "end_tour": "END TOUR",
+    "prev": "← Prev",
+    "next": "Next →",
+    "finish": "Finish",
+    "header_eyebrow": "Project Tour",
+    "header_perspective_eyebrow": "Perspective · {{lens}}",
+    "overall_title": "Project Tour",
+    "overall_subtitle_one": "{{count}} step · the canonical reading path through this cosmos",
+    "overall_subtitle_other": "{{count}} steps · the canonical reading path through this cosmos",
+    "overall_start": "Start Project Tour",
+    "perspectives_title": "Perspectives",
+    "perspectives_subtitle_one": "{{count}} variant tour · walk the same cosmos through a specific design lens. Each one is grounded in the nodes it visits.",
+    "perspectives_subtitle_other": "{{count}} variant tours · walk the same cosmos through a specific design lens. Each one is grounded in the nodes it visits.",
+    "perspective_steps_one": "{{count}} step",
+    "perspective_steps_other": "{{count}} steps"
+  },
+  "drills": {
+    "title": "Drills",
+    "subtitle": "Your drill-down history. Click any entry to navigate the canvas into its subgraph.",
+    "empty": "No drills yet. Select one or more nodes on the canvas (shift+click to pick multiple), then click <strong>Drill into N nodes →</strong>. The agent will generate a focused subgraph for your question.",
+    "status_ready": "READY",
+    "status_drilling": "DRILLING",
+    "status_failed": "FAILED",
+    "anchors": "anchors:",
+    "nested": "nested · parent drill",
+    "node_count_one": "{{count}} node",
+    "node_count_other": "{{count}} nodes",
+    "enter_tooltip": "Enter this drill's subgraph"
+  },
+  "drill_modal": {
+    "eyebrow": "Drill request",
+    "eyebrow_nested": "Drill request · nested",
+    "title_one": "Drill into {{count}} node",
+    "title_other": "Drill into {{count}} nodes",
+    "prompt_label": "Prompt",
+    "hint": "The agent will generate a focused subgraph for these anchors and send back a locator when ready.",
+    "cancel": "Cancel",
+    "submit": "Send Drill →",
+    "default_prompt_one": "Please drill deeper into this node: {{anchors}}. Return a focused subgraph.",
+    "default_prompt_other": "Please drill deeper into the relationship between these nodes: {{anchors}}. Return a focused subgraph.",
+    "summary": "Drill into {{count}} node"
+  },
+  "canvas": {
+    "drill_cta_one": "Drill into {{count}} node →",
+    "drill_cta_other": "Drill into {{count}} nodes →",
+    "drill_cta_tooltip": "Open the drill prompt editor",
+    "drilling_badge": "drilling…",
+    "reset_layout_tooltip": "Reset layout (R)",
+    "reset_layout_label": "Reset layout"
+  },
+  "node_card": {
+    "click_to_explore": "Click to explore →",
+    "node_count_one": "{{count}} node",
+    "node_count_other": "{{count}} nodes"
+  },
+  "help_modal": {
+    "title": "Keyboard shortcuts",
+    "shortcut_help": "Toggle this help modal",
+    "shortcut_reset": "Reset layout (re-apply Dagre + fit view)",
+    "shortcut_fit": "Fit canvas to viewport",
+    "shortcut_density_overview": "Density: Overview (labels only)",
+    "shortcut_density_learn": "Density: Learn (labels + summaries)",
+    "shortcut_density_deep": "Density: Deep (labels + summaries + tags)",
+    "shortcut_level": "Toggle Project ↔ Detail navigation level",
+    "shortcut_tour_tab": "Open perspective tours — variant walks framed by a design lens",
+    "shortcut_tour_tab_key": "TOUR tab",
+    "shortcut_escape": "Close modal • end tour • clear selection",
+    "tooltip": "Keyboard shortcuts (?)"
+  },
+  "onboarding": {
+    "eyebrow": "Cosmos · Get started · {{current}} / {{total}}",
+    "step1_title": "Welcome to Cosmos",
+    "step1_body": "Cosmos projects any content into a structured graph — code, prose, research, business workflows. This first screen is a *bootstrap*: pneuma-skills projecting itself.",
+    "step2_title": "Project ↔ Detail",
+    "step2_body": "Two navigation levels share the same canvas. Project shows one card per layer; click a card to drop into Detail, which renders every node inside that layer. Toggle with P or the LEVEL switch in the sidebar.",
+    "step3_title": "INFO · FILES · TOUR",
+    "step3_body": "The right panel has three tabs. INFO shows whatever you've selected. FILES lists every node grouped by layer. TOUR walks a curated reading path with Prev / Next stepping — a great first visit if you're new.",
+    "step4_title": "Search & filter",
+    "step4_body": "Top strip has fuzzy search (any name, summary, tag — top hits live-update) and per-category chips (CODE, DOCS, …) to dim what you don't want to see right now.",
+    "step5_title": "Perspective tours",
+    "step5_body": "When a cosmos has agent-discovered design lenses, the TOUR tab grows extra entries below the main Project Tour. Each one is a variant walk — same cosmos, but you're reading it through a specific question: 'where does the system maintain a feedback loop?', 'where do v0.2 and v0.3 abstractions collide?'. Pick one to see its through-line.",
+    "dont_show_again": "DON'T SHOW AGAIN",
+    "back": "Back",
+    "next": "Next",
+    "get_started": "Get started"
+  },
+  "empty_state": {
+    "title": "No cosmos yet",
+    "body": "Drop content into the workspace — code, prose, research, anything — and ask the agent to project it. The cosmos will appear here."
+  },
+  "source_kind": {
+    "file": "FILE",
+    "url": "URL",
+    "passage": "PASS",
+    "image": "IMG",
+    "audio": "AUD",
+    "video": "VID"
+  }
+}

@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.13.0] - 2026-05-25
+
+### Added — Cosmos mode: structured projection for any content
+
+A new built-in mode that turns any content the user drops into the workspace — a codebase, a short story, a research paper, a business workflow — into an interactive knowledge graph (a *cosmos*). The agent reads the content, picks a domain vocabulary, writes `cosmos.json`, and the viewer renders it live. The first session opens a bootstrap: pneuma-skills projecting itself (56 nodes / 66 edges / 6 layers / 7-step tour / 6 perspective tours).
+
+- **Open schema, any domain** — `node.type` and `edge.type` are open strings the agent picks per content. A code domain might use `file` / `function` / `class` + `imports` / `calls`; a fiction domain uses `character` / `event` / `clue` + `discovers` / `vanished_near`. `references/node-type-vocabularies.md` catalogs starting vocabularies for code, fiction, research, business, mixed.
+- **Two-level navigation** — Project (one card per layer with aggregate complexity + node counts) ↔ Detail (concrete nodes). Three persona densities (overview / learn / deep-dive). Layer focus filter, category chips (CODE / CONFIG / DOCS / …), fuzzy search across name / summary / tags / type.
+- **Selection focus mode** — clicking a node lights up its first-degree neighbors, dims everything else, and animates touching edges with directional flow.
+- **Source references** — every node carries `sources[]` with six kinds (`file` / `url` / `passage` / `image` / `audio` / `video`). The INFO panel renders kind-tinted chips that open via the OS or a chosen editor (Cursor / VS Code / Sublime — auto-detected). For codebase cosmoses, set `project.sourceRoot` to enable an "Open project root in editor" affordance that lights up the project overview card.
+- **Perspective tours** — variant walks through the same cosmos framed by design lenses (`orthogonality`, `cybernetic-loop`, `tension`, `convergence`, `self-similarity`, `paradigm-shift`, …). Each perspective has a thesis + ordered `steps[]`, where every step has its own multi-node `focus` (the canvas lights up the cluster together) and its own narrative beat.
+- **User-driven drill-down** — shift+click multi-select on the canvas, click the floating Drill CTA, edit the prompt in a modal, send. Anchor nodes pulse while the agent generates; new subgraph lands in the DRILLS sidebar tab; the agent's locator card swaps the canvas into a focused subgraph view with a breadcrumb back to parent. Recursive — drill inside a drill via `parentSubgraphId`.
+- **Bilingual seed** — locale-aware `{{_locale}}` token in `init.seedFiles` (framework-level). Ships `seed/en/` and `seed/zh-CN/` with full prose translation (56 nodes, 7 tour steps, 6 × 3-4 perspective step narratives, README). Other locales fall back to `en/`; adding a new locale means dropping a sibling directory — no framework change.
+- **Full viewer i18n** — new `cosmos` namespace with 110+ keys in `en` + `zh-CN`. Every chrome surface (tabs, view controls, modals, empty states, source chips, tour stepper, drill modal, onboarding, help) goes through `useTranslation("cosmos")`. The default drill prompt is locale-aware too.
+- **Schema with auto-migration** — `normalizeCosmos()` reads older files transparently: legacy `cosmos.tao[]` → `cosmos.perspectives[]`, entry `type` → `lens`, flat `manifestsIn[]` → synthesized `steps[]`, single `node.source: string` → `sources[0]` as file or url ref. Old files keep rendering; new files should write the new shape.
+- **Inspired by [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything)** (MIT) — schema shape and dashboard tech-stack borrow from upstream; core mechanics (sources / perspectives / drill-down / locale-aware seed) are Pneuma-native. See `modes/cosmos/NOTICE.md`.
+
+### Improved — `create-mode` skill closes the silent-registration trap
+
+A new mode has to be registered in **three** separate files for the runtime to surface it correctly — `core/mode-loader.ts` (frontend dynamic import), `server/index.ts builtinNames` (launcher gallery), and `CLAUDE.md` + `AGENTS.md` + `README.md` (docs). Missing the second one is the exact failure that bit Cosmos during this release: `bun run dev cosmos` worked, but the launcher gallery showed nothing. `create-mode`'s Step 3 is now an explicit three-part checklist with code snippets per file, and Step 5's sanity check probes `/api/registry` to verify registration *before* declaring the mode done. The skill also adds the "Launcher surface: public vs hidden + featured-eligible" question to the design brief template.
+
+### Improved — Launcher gallery surfaces every builtin mode
+
+`server/index.ts builtinNames` adds `"cosmos"` — the launcher's `/api/registry` route reads from this hardcoded array (separate from the frontend's `core/mode-loader.ts builtinModes`), and missing entries fail silently. The dual registration is documented in `create-mode` going forward.
+
 ## [3.12.2] - 2026-05-22
 
 ### Improved — Recent Projects mirrors Recent Sessions
