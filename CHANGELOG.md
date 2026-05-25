@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.13.2] - 2026-05-26
+
+### Fixed — Region `capture` no longer returns a backgroundless screenshot
+
+Calling the `capture` viewer action with a CSS selector on a themed webcraft / kami page (parchment, dark, anything other than default white) brought back a PNG of the element painted onto transparency — the agent then saw the capture as "broken" and could not visually QA the section against the rest of the page.
+
+- **Electron-first for region captures that fit the viewport.** When the desktop app is available and the scrolled-into-view target fits inside the iframe's visible area, the runtime now takes a real OS-level screenshot of the rectangle (which trivially picks up every inherited paint — body bg, paper grain, sibling overlays). snapdom remains the fallback path for taller-than-viewport targets, since only it can stitch the full content height.
+- **snapdom captures now carry the inherited background.** Walking the ancestor chain (target → body → html) for the first opaque `backgroundColor`, applying it as an inline style on the target before snapshot and passing it as snapdom's `backgroundColor` option. Sub-element captures on parchment pages now match what the user sees in the viewer.
+
 ## [3.13.1] - 2026-05-26
 
 ### Fixed — Slide `contentFitCheck` stops false-positive flapping on italic serif headings

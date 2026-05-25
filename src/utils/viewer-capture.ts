@@ -71,14 +71,66 @@ function pngDimensions(dataUrl: string): Promise<{ width: number; height: number
 
 const stripDataPrefix = (d: string) => (d.startsWith("data:") ? d.slice(d.indexOf(",") + 1) : d);
 
-async function snapdomToPng(el: Element): Promise<string | null> {
+async function snapdomToPng(el: Element, bg?: string | null): Promise<string | null> {
+  // When capturing a sub-element, snapdom paints the element's own box but
+  // not the inherited body/html background — the resulting PNG comes back
+  // transparent against any non-white themed page (parchment, dark, etc.),
+  // which the agent then sees as a "broken" capture. Apply the effective
+  // background as an inline style on the target before the snapshot so the
+  // captured tile carries the page's color through; also pass `backgroundColor`
+  // to snapdom for belt-and-suspenders.
+  const htmlEl = el as HTMLElement;
+  const hasInlineStyle = !!htmlEl.style;
+  let prevBg: string | null = null;
+  if (bg && hasInlineStyle) {
+    prevBg = htmlEl.style.backgroundColor;
+    htmlEl.style.backgroundColor = bg;
+  }
   try {
-    const result = await snapdom(el as HTMLElement, { embedFonts: true });
+    const result = await snapdom(el as HTMLElement, {
+      embedFonts: true,
+      ...(bg ? { backgroundColor: bg } : {}),
+    });
     const png = await result.toPng();
     return png.src || null;
   } catch {
     return null;
+  } finally {
+    if (bg && hasInlineStyle) {
+      htmlEl.style.backgroundColor = prevBg ?? "";
+    }
   }
+}
+
+/**
+ * Walk an element's ancestor chain to find the first opaque backgroundColor.
+ * Falls back to `<body>`, then `<html>`, then `null` when nothing is set.
+ * Used to keep sub-element captures from coming back transparent against a
+ * themed page background.
+ */
+function effectiveBackgroundColor(el: Element): string | null {
+  const doc = el.ownerDocument;
+  const win = doc?.defaultView;
+  if (!doc || !win) return null;
+  const opaque = (c: string | null | undefined): c is string => {
+    if (!c) return false;
+    if (c === "transparent" || c === "rgba(0, 0, 0, 0)") return false;
+    return true;
+  };
+  let node: Element | null = el;
+  while (node && node !== doc.documentElement) {
+    const cs = win.getComputedStyle(node);
+    if (opaque(cs.backgroundColor)) return cs.backgroundColor;
+    node = node.parentElement;
+  }
+  const bodyBg = doc.body && opaque(win.getComputedStyle(doc.body).backgroundColor)
+    ? win.getComputedStyle(doc.body).backgroundColor
+    : null;
+  if (bodyBg) return bodyBg;
+  const htmlBg = opaque(win.getComputedStyle(doc.documentElement).backgroundColor)
+    ? win.getComputedStyle(doc.documentElement).backgroundColor
+    : null;
+  return htmlBg;
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -154,10 +206,29 @@ export async function captureViewer(
       if (!target) return { ok: false, message: `Selector not found in the rendered page: ${selector}` };
       target.scrollIntoView({ behavior: "instant", block: "center", inline: "center" });
       await sleep(450); // let any scroll-triggered reveal settle
-      const png = await snapdomToPng(target);
+      const targetEl = target as HTMLElement;
+      const r = targetEl.getBoundingClientRect();
+      // Electron-first when the target fits the iframe viewport: a real OS
+      // screenshot picks up the inherited page background (parchment, etc.)
+      // that snapdom drops when shooting a sub-element. For targets taller
+      // than the visible iframe, snapdom is the only path that captures the
+      // full content.
+      const iframeWin = iframe?.contentWindow;
+      const fitsViewport =
+        !!iframeWin &&
+        r.width <= iframeWin.innerWidth + 1 &&
+        r.height <= iframeWin.innerHeight + 1;
+      if (capturePage && iframe && fitsViewport) {
+        const fr = iframe.getBoundingClientRect();
+        const shot = await capturePage({ x: fr.left + r.left, y: fr.top + r.top, width: r.width, height: r.height });
+        if (shot) return finalize(shot, "electron-iframe-element");
+      }
+      const bg = effectiveBackgroundColor(targetEl);
+      const png = await snapdomToPng(targetEl, bg);
       if (png) return finalize(png, "snapdom-iframe-element");
       if (capturePage && iframe) {
-        const r = (target as HTMLElement).getBoundingClientRect();
+        // Final fallback — try the OS screenshot even for oversized targets;
+        // captures whatever portion of the element is visible in the iframe.
         const fr = iframe.getBoundingClientRect();
         const shot = await capturePage({ x: fr.left + r.left, y: fr.top + r.top, width: r.width, height: r.height });
         if (shot) return finalize(shot, "electron-iframe-element");
@@ -188,10 +259,18 @@ export async function captureViewer(
     if (!target) return { ok: false, message: `Selector not found: ${selector}` };
     target.scrollIntoView({ block: "center", inline: "center" });
     await sleep(450); // let any scroll-triggered reveal settle
-    const png = await snapdomToPng(target);
+    const targetEl = target as HTMLElement;
+    const r = targetEl.getBoundingClientRect();
+    const fitsViewport =
+      r.width <= window.innerWidth + 1 && r.height <= window.innerHeight + 1;
+    if (capturePage && fitsViewport) {
+      const shot = await capturePage({ x: r.left, y: r.top, width: r.width, height: r.height });
+      if (shot) return finalize(shot, "electron-element");
+    }
+    const bg = effectiveBackgroundColor(targetEl);
+    const png = await snapdomToPng(targetEl, bg);
     if (png) return finalize(png, "snapdom-element");
     if (capturePage) {
-      const r = (target as HTMLElement).getBoundingClientRect();
       const shot = await capturePage({ x: r.left, y: r.top, width: r.width, height: r.height });
       if (shot) return finalize(shot, "electron-element");
     }
