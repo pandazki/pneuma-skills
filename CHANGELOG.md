@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.13.1] - 2026-05-26
+
+### Fixed — Slide `contentFitCheck` stops false-positive flapping on italic serif headings
+
+The slide mode's auto content-fit check kept flagging perfectly fine slides as overflowing and re-notifying the agent each round, prompting an endless loop of "fix the overflow" edits.
+
+- **Per-child `scrollHeight > clientHeight` check removed.** It fired on any element whose font ink protruded slightly past its line-box — exactly what italic Spectral CJK glyphs do (descenders extend 5–10px below the box). `.slide` itself is `overflow: hidden` + `height: 100%`, so a real "content taller than viewport" condition still surfaces via the slide-level check that remains. No more 6px / 10px false alarms on every `<em>` in a serif heading.
+- **Wait for `document.fonts.ready` before measuring.** Web fonts swap in asynchronously; an early measurement reports fallback metrics, a later one reports real metrics, and the verdict flips fit↔overflow round to round. The iframe-side handler now awaits `document.fonts.ready` so the measurement is stable.
+- **Parent-side `prevOverflowRef` preserves prior verdicts for non-responding iframes.** A partial round (an iframe still loading, a message dropped, fonts not yet ready) used to overwrite the previous overflow set wholesale, which made the same overflow re-fire as a "new" one on the next round. The set now starts from the previous state and only updates entries for iframes that actually responded.
+
+### Fixed — `/handoff-pneuma` slash command refuses to run inside a Pneuma session
+
+The slash command is for **external** Claude Code / Codex sessions handing work INTO Pneuma. When a Pneuma-internal agent (e.g. slide mode) invoked it in response to a Smart Handoff `<pneuma:request-handoff>` tag, the command spawned a brand-new external session — leaving the source session alive in "thinking" forever and confusing the user with a second window.
+
+The template now checks `PNEUMA_SESSION_ID` up front. If set, the command bails immediately with a one-line message telling the agent to wait for the Smart Handoff tag and call `$PNEUMA_CLI handoff` instead. The agent ends the turn cleanly; no hanging "思考中" spinner, no duplicate session.
+
+Installed `/handoff-pneuma` files auto-update on the next launcher boot.
+
 ## [3.13.0] - 2026-05-25
 
 ### Added — Cosmos mode: structured projection for any content

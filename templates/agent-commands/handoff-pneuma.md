@@ -13,6 +13,31 @@ collect the minimum information needed, then call
 
 The slash command's argument is `$ARGUMENTS`.
 
+## Stop here if you are already inside a Pneuma session
+
+This slash command is for **external** agents (Claude Code / Codex
+running in the user's normal terminal) that want to hand off TO Pneuma.
+It is **not** the path for one Pneuma session to hand off to another.
+
+If the environment variable `PNEUMA_SESSION_ID` is set (check
+`echo "${PNEUMA_SESSION_ID:-}"`), you are running INSIDE a Pneuma
+session. **Do not proceed with the steps below** — running
+`pneuma handoff-from-external` here spawns a brand-new external session,
+leaves your current session alive in "thinking" forever, and confuses the
+user with a second window.
+
+Instead, in one short reply tell the user:
+
+> I should use Smart Handoff inside Pneuma, not the external
+> `/handoff-pneuma` command. Trigger Smart Handoff from the UI (or just
+> let me wait for the `<pneuma:request-handoff>` tag) and I'll prepare
+> the handoff via `$PNEUMA_CLI handoff`.
+
+Then end the turn. Do not call any bash commands, do not invoke
+`pneuma handoff-from-external`, do not call `pneuma handoff` on your own
+— the source for `<pneuma:request-handoff>` is always the user clicking
+Smart Handoff in the UI.
+
 ## Steps
 
 1. **Parse `$ARGUMENTS`** into these slots:

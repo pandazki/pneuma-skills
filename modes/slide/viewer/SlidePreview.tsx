@@ -178,64 +178,63 @@ function compositeStrokesOnCapture(
 const CHECK_CONTENT_FIT_EXTENSION = `
   window.addEventListener('message', function(e) {
     if (!e.data || e.data.type !== 'pneuma:checkContentFit') return;
+    var requestId = e.data.requestId;
     var vw = e.data.viewportW || window.innerWidth || document.documentElement.clientWidth;
     var vh = e.data.viewportH || window.innerHeight || document.documentElement.clientHeight;
-    var issues = [];
-    var bodyChildren = Array.from(document.body.children);
-    var flowChildren = bodyChildren.filter(function(child) {
-      var pos = window.getComputedStyle(child).position;
-      return pos !== 'absolute' && pos !== 'fixed';
-    });
-    for (var ci = 0; ci < flowChildren.length; ci++) {
-      var el = flowChildren[ci];
-      if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
-      var tag = el.tagName.toLowerCase();
-      var cls = (typeof el.className === 'string' ? el.className : '').trim();
-      var id = cls ? '<' + tag + '.' + cls.split(' ')[0] + '>' : '<' + tag + '>';
-      var rect = el.getBoundingClientRect();
-      if (rect.right > vw + 1 || rect.bottom > vh + 1) {
-        issues.push(id + ' overflows viewport: right=' + Math.round(rect.right) + 'px (max ' + vw + '), bottom=' + Math.round(rect.bottom) + 'px (max ' + vh + ')');
-      }
-      var absHidden = [];
-      for (var ak = 0; ak < el.children.length; ak++) {
-        var absChild = el.children[ak];
-        var absPos = window.getComputedStyle(absChild).position;
-        if (absPos === 'absolute' || absPos === 'fixed') {
-          absHidden.push({ el: absChild, prev: absChild.style.display });
-          absChild.style.display = 'none';
+
+    function runCheck() {
+      var issues = [];
+      var bodyChildren = Array.from(document.body.children);
+      var flowChildren = bodyChildren.filter(function(child) {
+        var pos = window.getComputedStyle(child).position;
+        return pos !== 'absolute' && pos !== 'fixed';
+      });
+      for (var ci = 0; ci < flowChildren.length; ci++) {
+        var el = flowChildren[ci];
+        if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
+        var tag = el.tagName.toLowerCase();
+        var cls = (typeof el.className === 'string' ? el.className : '').trim();
+        var id = cls ? '<' + tag + '.' + cls.split(' ')[0] + '>' : '<' + tag + '>';
+        var rect = el.getBoundingClientRect();
+        if (rect.right > vw + 1 || rect.bottom > vh + 1) {
+          issues.push(id + ' overflows viewport: right=' + Math.round(rect.right) + 'px (max ' + vw + '), bottom=' + Math.round(rect.bottom) + 'px (max ' + vh + ')');
+        }
+        var absHidden = [];
+        for (var ak = 0; ak < el.children.length; ak++) {
+          var absChild = el.children[ak];
+          var absPos = window.getComputedStyle(absChild).position;
+          if (absPos === 'absolute' || absPos === 'fixed') {
+            absHidden.push({ el: absChild, prev: absChild.style.display });
+            absChild.style.display = 'none';
+          }
+        }
+        var overflowH = el.scrollHeight - el.clientHeight;
+        var overflowW = el.scrollWidth - el.clientWidth;
+        for (var ar = 0; ar < absHidden.length; ar++) {
+          absHidden[ar].el.style.display = absHidden[ar].prev;
+        }
+        if (overflowH > 1) {
+          issues.push(id + ' content clipped vertically: scrollHeight=' + el.scrollHeight + 'px, clientHeight=' + el.clientHeight + 'px (overflow by ' + overflowH + 'px)');
+        }
+        if (overflowW > 1) {
+          issues.push(id + ' content clipped horizontally: scrollWidth=' + el.scrollWidth + 'px, clientWidth=' + el.clientWidth + 'px (overflow by ' + overflowW + 'px)');
         }
       }
-      var overflowH = el.scrollHeight - el.clientHeight;
-      var overflowW = el.scrollWidth - el.clientWidth;
-      for (var ar = 0; ar < absHidden.length; ar++) {
-        absHidden[ar].el.style.display = absHidden[ar].prev;
-      }
-      if (overflowH > 1) {
-        issues.push(id + ' content clipped vertically: scrollHeight=' + el.scrollHeight + 'px, clientHeight=' + el.clientHeight + 'px (overflow by ' + overflowH + 'px)');
-      }
-      if (overflowW > 1) {
-        issues.push(id + ' content clipped horizontally: scrollWidth=' + el.scrollWidth + 'px, clientWidth=' + el.clientWidth + 'px (overflow by ' + overflowW + 'px)');
-      }
-      for (var cj = 0; cj < el.children.length; cj++) {
-        var child = el.children[cj];
-        if (child.tagName === 'SCRIPT' || child.tagName === 'STYLE') continue;
-        var childPos = window.getComputedStyle(child).position;
-        if (childPos === 'absolute' || childPos === 'fixed') continue;
-        var childOver = child.scrollHeight - child.clientHeight;
-        if (childOver > 1) {
-          var ctag = child.tagName.toLowerCase();
-          var ccls = (typeof child.className === 'string' ? child.className : '').trim();
-          var cid = ccls ? '<' + ctag + '.' + ccls.split(' ')[0] + '>' : '<' + ctag + '>';
-          issues.push(cid + ' content clipped: scrollHeight=' + child.scrollHeight + 'px, clientHeight=' + child.clientHeight + 'px (overflow by ' + childOver + 'px)');
-        }
-      }
+      window.parent.postMessage({
+        type: 'pneuma:contentFitResult',
+        requestId: requestId,
+        fits: issues.length === 0,
+        issues: issues
+      }, '*');
     }
-    window.parent.postMessage({
-      type: 'pneuma:contentFitResult',
-      requestId: e.data.requestId,
-      fits: issues.length === 0,
-      issues: issues
-    }, '*');
+
+    // Wait for fonts to load before measuring — italic/serif metrics shift
+    // when web fonts swap in, and an early measurement can flap fit↔overflow.
+    if (document.fonts && document.fonts.ready && typeof document.fonts.ready.then === 'function') {
+      document.fonts.ready.then(runCheck);
+    } else {
+      runCheck();
+    }
   });
 `;
 
@@ -1120,18 +1119,22 @@ export default function SlidePreview({
       };
 
       const processAutoFitResults = (res: typeof results) => {
-        const overflowing = new Set<string>();
+        // Start from previous state — iframes that didn't respond this round
+        // (still loading, fonts pending, message dropped) keep their prior
+        // verdict. Without this, a partial round resets `prevOverflowRef`,
+        // and the next round re-fires the same overflow as a "new" one.
+        const overflowing = new Set<string>(prevOverflowRef.current);
         const overflowDetails: string[] = [];
+        const newOverflows: string[] = [];
         for (const r of res) {
-          if (!r.fits) {
+          if (r.fits) {
+            overflowing.delete(r.file);
+          } else {
+            if (!prevOverflowRef.current.has(r.file)) newOverflows.push(r.file);
             overflowing.add(r.file);
             overflowDetails.push(`Slide ${r.slide} (${r.file}): ${r.issues.join("; ")}`);
           }
         }
-
-        // Only notify on state change: new overflow slides that weren't overflowing before
-        const prevOverflow = prevOverflowRef.current;
-        const newOverflows = [...overflowing].filter((f) => !prevOverflow.has(f));
         prevOverflowRef.current = overflowing;
 
         if (newOverflows.length === 0) return;
