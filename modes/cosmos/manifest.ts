@@ -8,7 +8,7 @@
  */
 
 import type { ModeManifest } from "../../core/types/mode-manifest.js";
-import type { Cosmos } from "./types.js";
+import { normalizeCosmos, type Cosmos } from "./types.js";
 
 const cosmosManifest: ModeManifest = {
   name: "cosmos",
@@ -50,8 +50,13 @@ const cosmosManifest: ModeManifest = {
 
   init: {
     contentCheckPattern: "cosmos.json",
+    // Locale-aware seed bundles. The runtime's seed-copy loop
+    // resolves `{{_locale}}` to the user's working language and
+    // falls back to `en/` when no localized bundle exists. To add a
+    // new locale, drop a sibling directory with the same shape:
+    //   modes/cosmos/seed/<locale>/{cosmos.json, README.md}
     seedFiles: {
-      "modes/cosmos/seed/": "",
+      "modes/cosmos/seed/{{_locale}}/": "",
     },
     params: [],
   },
@@ -128,7 +133,7 @@ const cosmosManifest: ModeManifest = {
         id: "regenerate",
         label: "Re-project",
         description:
-          "User indicates the input has changed substantively (replaced input.md, added files) and wants a fresh projection. Re-read the inputs and rewrite cosmos.json.",
+          "User indicates the input has changed substantively (new files in the workspace, replaced source content) and wants a fresh projection. Re-read the inputs and rewrite cosmos.json.",
       },
       {
         id: "onboard",
@@ -144,7 +149,13 @@ const cosmosManifest: ModeManifest = {
       kind: "json-file",
       config: {
         path: "cosmos.json",
-        parse: (raw: string): Cosmos => JSON.parse(raw) as Cosmos,
+        parse: (raw: string): Cosmos =>
+          // Normalize on read so the viewer always sees the current
+          // schema regardless of how old the cosmos.json file is.
+          // See `normalizeCosmos` in modes/cosmos/types.ts for the
+          // legacy-field migration matrix (`tao` → `perspectives`,
+          // entry `type` → `lens`).
+          normalizeCosmos(JSON.parse(raw)),
         serialize: (c: Cosmos): string => JSON.stringify(c, null, 2),
       },
     },

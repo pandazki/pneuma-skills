@@ -2201,8 +2201,26 @@ async function main() {
       // For builtin modes, seed paths are relative to PROJECT_ROOT
       // For external modes, seed paths are relative to the mode package directory
       const seedBase = resolved.type === "builtin" ? PROJECT_ROOT : resolved.path;
+      // Locale-aware seed selection. Modes can write seedFiles paths
+      // like `seed/{{_locale}}/` to ship per-locale seed bundles; this
+      // helper resolves `{{_locale}}` to the user's locale and, if
+      // that path doesn't exist, falls back to "en". Skipping the
+      // entry only if neither the localized nor English variant
+      // resolves. Keeps the substitution **path-only** (does not
+      // mutate file content) so no existing user-defined template
+      // tokens are accidentally affected.
+      const resolveLocaleSrc = (src: string): string | null => {
+        if (!src.includes("{{_locale}}")) return src;
+        const candidate = src.replaceAll("{{_locale}}", userLocale ?? "en");
+        if (existsSync(join(seedBase, candidate))) return candidate;
+        const fallback = src.replaceAll("{{_locale}}", "en");
+        if (existsSync(join(seedBase, fallback))) return fallback;
+        return null;
+      };
       for (const [src, dst] of Object.entries(manifest.init.seedFiles)) {
-        const resolvedSrc = hasParams ? applyTemplateParams(src, resolvedParams) : src;
+        const localeResolved = resolveLocaleSrc(src);
+        if (localeResolved === null) continue;
+        const resolvedSrc = hasParams ? applyTemplateParams(localeResolved, resolvedParams) : localeResolved;
         const srcPath = join(seedBase, resolvedSrc);
         if (!existsSync(srcPath)) continue;
 
@@ -2266,9 +2284,25 @@ async function main() {
   if (!replayPackage && manifest.init && manifest.init.seedFiles) {
     const seedBase = resolved.type === "builtin" ? PROJECT_ROOT : resolved.path;
     const hasParams = Object.keys(resolvedParams).length > 0;
+    // Same `{{_locale}}`-resolution logic as the one-shot seed loop
+    // above. The two loops are intentionally duplicated rather than
+    // factored — the first only fires on empty workspaces, the
+    // second only on underscore-prefixed dirs that re-sync every
+    // launch. Keeping them sibling keeps the (very different)
+    // conditions readable.
+    const resolveLocaleSrc = (src: string): string | null => {
+      if (!src.includes("{{_locale}}")) return src;
+      const candidate = src.replaceAll("{{_locale}}", userLocale ?? "en");
+      if (existsSync(join(seedBase, candidate))) return candidate;
+      const fallback = src.replaceAll("{{_locale}}", "en");
+      if (existsSync(join(seedBase, fallback))) return fallback;
+      return null;
+    };
     for (const [src, dst] of Object.entries(manifest.init.seedFiles)) {
       if (!dst.startsWith("_")) continue;
-      const resolvedSrc = hasParams ? applyTemplateParams(src, resolvedParams) : src;
+      const localeResolved = resolveLocaleSrc(src);
+      if (localeResolved === null) continue;
+      const resolvedSrc = hasParams ? applyTemplateParams(localeResolved, resolvedParams) : localeResolved;
       const srcPath = join(seedBase, resolvedSrc);
       if (!existsSync(srcPath) || !statSync(srcPath).isDirectory()) continue;
       const glob = new Bun.Glob("**/*");

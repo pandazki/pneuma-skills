@@ -1,0 +1,1514 @@
+{
+  "version": "0.1.0",
+  "kind": "codebase",
+  "project": {
+    "name": "Pneuma Skills",
+    "kind": "codebase:co-creation-infrastructure",
+    "description": "供人类与代码 agent 共同创作的基础设施。文件是协作的正典表面，viewer 是 agent 输出的实时播放器，在领域语义里渲染。支持多个 agent 后端、13+ 模式、稳定的四层协议栈。这张星图是这个项目在投影它自己——bootstrap 来自 cosmos 自己的 seed。",
+    "source": "https://github.com/pandazki/pneuma-skills",
+    "analyzedAt": "2026-05-24T23:55:00Z"
+  },
+  "layers": [
+    {
+      "id": "contracts",
+      "label": "契约层",
+      "color": "#fbbf24",
+      "description": "core/types/ 里的类型定义——其他一切都对其编程的协议表面。"
+    },
+    {
+      "id": "runtime",
+      "label": "运行时",
+      "color": "#a78bfa",
+      "description": "服务端机器：装载模式、管理 sources、桥接 agent 后端、组装指令文件、路由 WS 事件。"
+    },
+    {
+      "id": "backends",
+      "label": "后端",
+      "color": "#22d3ee",
+      "description": "每个 agent 一个适配器。启动时选定，会话期内锁定。三个 stdio backend（Claude / Codex / Kimi）共享一个 BackendModule 接口。"
+    },
+    {
+      "id": "modes",
+      "label": "模式",
+      "color": "#f97316",
+      "description": "Mode 包——每个实现 ModeDefinition。协议栈的叶子节点；前 12 个内建，新模式靠 mode-maker 来做。"
+    },
+    {
+      "id": "shell",
+      "label": "外壳",
+      "color": "#fb7185",
+      "description": "前端（src/）——React app 外壳，挂载 viewer、驱动 chat、管 sources subscription、跑 launcher。"
+    },
+    {
+      "id": "reference",
+      "label": "参考",
+      "color": "#86efac",
+      "description": "正典叙述：docs/reference/、CLAUDE.md、以及 create-mode skill。它们是合同的散文形式——读完后协议表面就有了 mental model。"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "ct-mode-manifest",
+      "type": "contract",
+      "name": "ModeManifest",
+      "layerId": "contracts",
+      "summary": "对 mode 的声明式描述——skill / viewer / agent / init / sources / evolution。每个 mode 都对它编程的协议表面。",
+      "category": "code",
+      "complexity": "complex",
+      "tags": [
+        "protocol",
+        "manifest"
+      ],
+      "sources": [
+        {
+          "kind": "file",
+          "path": "core/types/mode-manifest.ts",
+          "range": [
+            1,
+            220
+          ],
+          "label": "contract"
+        },
+        {
+          "kind": "file",
+          "path": "modes/cosmos/manifest.ts",
+          "label": "example: cosmos"
+        },
+        {
+          "kind": "file",
+          "path": "modes/slide/manifest.ts",
+          "label": "example: slide"
+        }
+      ]
+    },
+    {
+      "id": "ct-mode-definition",
+      "type": "contract",
+      "name": "ModeDefinition",
+      "layerId": "contracts",
+      "summary": "把 ModeManifest + ViewerContract 绑在一起；每个 mode 从 pneuma-mode.ts 里 default-export 它。前端 mode-loader 加载这个。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/types/mode-definition.ts",
+      "tags": [
+        "protocol"
+      ]
+    },
+    {
+      "id": "ct-viewer-contract",
+      "type": "contract",
+      "name": "ViewerContract",
+      "layerId": "contracts",
+      "summary": "契约的 viewer 侧：PreviewComponent + extractContext + workspace + actions + captureViewport。",
+      "category": "code",
+      "complexity": "complex",
+      "tags": [
+        "protocol",
+        "viewer"
+      ],
+      "sources": [
+        {
+          "kind": "file",
+          "path": "core/types/viewer-contract.ts",
+          "range": [
+            1,
+            320
+          ],
+          "label": "contract"
+        },
+        {
+          "kind": "file",
+          "path": "modes/cosmos/viewer/CosmosPreview.tsx",
+          "label": "example impl"
+        }
+      ]
+    },
+    {
+      "id": "ct-viewer-preview-props",
+      "type": "contract",
+      "name": "ViewerPreviewProps",
+      "layerId": "contracts",
+      "summary": "运行时注入到每个 mode 的 PreviewComponent 的 props——sources、selection、actionRequest、persona、locale、theme。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/types/viewer-contract.ts",
+      "tags": [
+        "protocol",
+        "viewer"
+      ]
+    },
+    {
+      "id": "ct-viewer-address",
+      "type": "contract",
+      "name": "ViewerAddress",
+      "layerId": "contracts",
+      "summary": "由 mode 定义的一个 noun，select / capture / locator / navigate 都共用它。mode 拥有词汇，框架拥有 slot。Cosmos 的词汇是 `nodeId` / `layerId` / `perspectiveId` / `subgraphId`。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/types/viewer-contract.ts",
+      "tags": [
+        "protocol",
+        "viewer"
+      ]
+    },
+    {
+      "id": "ct-viewer-action-descriptor",
+      "type": "contract",
+      "name": "ViewerActionDescriptor",
+      "layerId": "contracts",
+      "summary": "Agent → Viewer 的 action 声明：id / label / category / agentInvocable / params。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/types/viewer-contract.ts",
+      "tags": [
+        "protocol",
+        "viewer",
+        "actions"
+      ]
+    },
+    {
+      "id": "ct-viewer-command-descriptor",
+      "type": "contract",
+      "name": "ViewerCommandDescriptor",
+      "layerId": "contracts",
+      "summary": "User → Agent 的 command 声明。在 viewer UI 里渲染成按钮。",
+      "category": "code",
+      "complexity": "simple",
+      "source": "core/types/viewer-contract.ts",
+      "tags": [
+        "protocol",
+        "viewer"
+      ]
+    },
+    {
+      "id": "ct-source",
+      "type": "contract",
+      "name": "Source<T>",
+      "layerId": "contracts",
+      "summary": "运行时与 viewer 之间的类型化数据通道。current() / subscribe() / write() / destroy()，四条不变量：单订阅、origin-tagged 事件、自洽写、初始化时 emit 一次。",
+      "category": "code",
+      "complexity": "complex",
+      "tags": [
+        "protocol",
+        "sources"
+      ],
+      "sources": [
+        {
+          "kind": "file",
+          "path": "core/types/source.ts",
+          "label": "contract"
+        },
+        {
+          "kind": "file",
+          "path": "core/sources/base.ts",
+          "label": "shared invariants"
+        },
+        {
+          "kind": "file",
+          "path": "core/sources/json-file.ts",
+          "label": "json-file provider"
+        }
+      ]
+    },
+    {
+      "id": "ct-source-provider",
+      "type": "contract",
+      "name": "SourceProvider",
+      "layerId": "contracts",
+      "summary": "Source 各 kind 的工厂契约。内建：file-glob / json-file / aggregate-file / memory。插件可注册新的。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/types/source.ts",
+      "tags": [
+        "protocol",
+        "sources"
+      ]
+    },
+    {
+      "id": "ct-file-channel",
+      "type": "contract",
+      "name": "FileChannel",
+      "layerId": "contracts",
+      "summary": "文件-backed providers 与服务端 chokidar/WS 管道之间的桥。origin tagging 在这里发生。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/types/source.ts",
+      "tags": [
+        "protocol",
+        "sources"
+      ]
+    },
+    {
+      "id": "ct-agent-backend",
+      "type": "contract",
+      "name": "AgentBackend",
+      "layerId": "contracts",
+      "summary": "每进程的后端生命周期：launch / resume / kill / capabilities。每个 session 一个实例。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/types/agent-backend.ts",
+      "tags": [
+        "protocol",
+        "backends"
+      ]
+    },
+    {
+      "id": "ct-backend-module",
+      "type": "contract",
+      "name": "BackendModule",
+      "layerId": "contracts",
+      "summary": "自描述的每后端 manifest。Identity、capabilities、install 约定（skillsDir / instructionsFile）、生命周期 hooks。三个 stdio backend 共享同一个形状。",
+      "category": "code",
+      "complexity": "complex",
+      "source": "core/types/agent-backend.ts",
+      "tags": [
+        "protocol",
+        "backends"
+      ]
+    },
+    {
+      "id": "ct-plugin-manifest",
+      "type": "contract",
+      "name": "PluginManifest",
+      "layerId": "contracts",
+      "summary": "插件能力：hooks（waterfall 事件）、slots（UI 注入点）、routes（Hono sub-apps）、settings（schema-driven，自动渲染）。",
+      "category": "code",
+      "complexity": "simple",
+      "source": "core/types/plugin.ts",
+      "tags": [
+        "protocol",
+        "plugins"
+      ]
+    },
+    {
+      "id": "rt-mode-loader",
+      "type": "module",
+      "name": "mode-loader",
+      "layerId": "runtime",
+      "summary": "把 mode 名解析成 ModeSource。静态 `builtinModes` 注册表（Bun/Vite 需要字面 import 字符串）+ 外部注册表（local / library / url）。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/mode-loader.ts",
+      "tags": [
+        "entry-point"
+      ]
+    },
+    {
+      "id": "rt-mode-resolver",
+      "type": "module",
+      "name": "mode-resolver",
+      "layerId": "runtime",
+      "summary": "把 specifier——builtin 名、/abs/path、./rel、github:user/repo、或 https://...tar.gz——映射到包含 manifest.ts 的磁盘路径。安装时区分 single mode 与 library。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/mode-resolver.ts",
+      "tags": [
+        "install"
+      ]
+    },
+    {
+      "id": "rt-source-registry",
+      "type": "module",
+      "name": "source-registry",
+      "layerId": "runtime",
+      "summary": "读 manifest.sources，按 kind 挑一个 SourceProvider，按声明的每个 channel 调 provider.create(config, ctx)。Source<T> 实例化在这里发生。",
+      "category": "code",
+      "complexity": "complex",
+      "source": "core/source-registry.ts",
+      "tags": [
+        "sources"
+      ]
+    },
+    {
+      "id": "rt-sources-impl",
+      "type": "module",
+      "name": "core/sources/*",
+      "layerId": "runtime",
+      "summary": "内建 providers：file-glob（多文件 glob）、json-file（单结构化文档）、aggregate-file（多文件聚合走 load/save）、memory（短暂的）。全部继承 BaseSource。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/sources/"
+    },
+    {
+      "id": "rt-skill-installer",
+      "type": "module",
+      "name": "skill-installer",
+      "layerId": "runtime",
+      "summary": "把 skill 文件复制到合适的后端目录；应用 {{key}} 模板；从命名 marker block 拼出指令文件。",
+      "category": "code",
+      "complexity": "complex",
+      "source": "server/skill-installer.ts",
+      "tags": [
+        "install",
+        "markers"
+      ]
+    },
+    {
+      "id": "rt-ws-bridge",
+      "type": "module",
+      "name": "WsBridge (central)",
+      "layerId": "runtime",
+      "summary": "Browser JSON ↔ backend transport。中央 bridge——后端特定行为委托给 BridgeBackend 实现。",
+      "category": "code",
+      "complexity": "complex",
+      "source": "server/ws-bridge.ts",
+      "tags": [
+        "transport"
+      ]
+    },
+    {
+      "id": "rt-ws-bridge-viewer",
+      "type": "module",
+      "name": "ws-bridge-viewer",
+      "layerId": "runtime",
+      "summary": "把 ViewerActionRequest 从 agent → 特定 browser session。在 viewer 上设置 props.actionRequest；回传 props.onActionResult。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "server/ws-bridge-viewer.ts",
+      "tags": [
+        "transport",
+        "actions"
+      ]
+    },
+    {
+      "id": "rt-file-ref",
+      "type": "module",
+      "name": "stampFileRefs",
+      "layerId": "runtime",
+      "summary": "通过 BackendModule.toolFileRef 给 tool_use blocks 装饰归一化的 fileRef。让 chat UI 渲染内联预览、打开、reveal 按钮，且不需要知道 tool 名字。",
+      "category": "code",
+      "complexity": "simple",
+      "source": "server/file-ref.ts",
+      "tags": [
+        "transport"
+      ]
+    },
+    {
+      "id": "rt-handoff-routes",
+      "type": "module",
+      "name": "handoff-routes",
+      "layerId": "runtime",
+      "summary": "project session 之间的跨 mode handoff：emit / confirm / cancel。内存 map 30 分钟 TTL；confirm 时原子写 inbound-handoff.json，spawn target。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "server/handoff-routes.ts",
+      "tags": [
+        "project",
+        "handoff"
+      ]
+    },
+    {
+      "id": "rt-plugin-registry",
+      "type": "module",
+      "name": "plugin-registry",
+      "layerId": "runtime",
+      "summary": "Plugin discovery + 生命周期 + route 挂载。四个扩展点：hooks / slots / routes / settings。Soft-error 策略——任何 plugin 失败被吞掉记日志。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/plugin-registry.ts",
+      "tags": [
+        "plugins"
+      ]
+    },
+    {
+      "id": "rt-project-loader",
+      "type": "module",
+      "name": "project-loader",
+      "layerId": "runtime",
+      "summary": "检测 workspace kind：project（有 .pneuma/project.json） vs quick session。决定 sessionDir 在哪、注入哪些 marker block。",
+      "category": "code",
+      "complexity": "simple",
+      "source": "core/project-loader.ts",
+      "tags": [
+        "project"
+      ]
+    },
+    {
+      "id": "rt-instructions-file",
+      "type": "artifact",
+      "name": "Instructions file (CLAUDE.md / AGENTS.md)",
+      "layerId": "runtime",
+      "summary": "组装好的 agent 指令文件，在 <sessionDir>/CLAUDE.md（Claude）/ AGENTS.md（Codex、Kimi）。由命名 marker block 组成（pneuma:preferences / pneuma:project / pneuma:handoff / pneuma:evolved）。",
+      "category": "docs",
+      "complexity": "simple",
+      "source": "<sessionDir>/CLAUDE.md or AGENTS.md (generated per session)",
+      "tags": [
+        "markers",
+        "assembled",
+        "state"
+      ]
+    },
+    {
+      "id": "be-claude-code",
+      "type": "backend",
+      "name": "Claude Code",
+      "layerId": "backends",
+      "summary": "Anthropic 的编码 agent。Transport: stdio NDJSON (claude --print --input-format stream-json --output-format stream-json)。",
+      "category": "code",
+      "complexity": "complex",
+      "source": "backends/claude-code/"
+    },
+    {
+      "id": "be-codex",
+      "type": "backend",
+      "name": "Codex",
+      "layerId": "backends",
+      "summary": "OpenAI 的编码 agent。Transport: stdio JSON-RPC，经过 codex app-server。codex-adapter.ts 把它翻译到 Pneuma 的标准事件流。",
+      "category": "code",
+      "complexity": "complex",
+      "source": "backends/codex/"
+    },
+    {
+      "id": "be-kimi-cli",
+      "type": "backend",
+      "name": "Kimi CLI",
+      "layerId": "backends",
+      "summary": "Moonshot AI 的编码 agent。Transport: stdio NDJSON，经过 kimi --print。kimi-adapter.ts 合成 Pneuma 协议预期的生命周期 envelope。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "backends/kimi-cli/"
+    },
+    {
+      "id": "mode-webcraft",
+      "type": "mode",
+      "name": "webcraft",
+      "layerId": "modes",
+      "summary": "实时网页开发，配 Impeccable.style 的 AI 设计智能——22 个设计 command、品牌 vs 产品 register、响应式预览。",
+      "category": "code",
+      "complexity": "complex",
+      "source": "modes/webcraft/",
+      "tags": [
+        "borrowed"
+      ]
+    },
+    {
+      "id": "mode-clipcraft",
+      "type": "mode",
+      "name": "clipcraft",
+      "layerId": "modes",
+      "summary": "在 @pneuma-craft 上做 AI orchestrated 视频生产——composition tracks、provenance DAG、canvas 预览 + 3D 时间轴 + 钻入式 panel。",
+      "category": "code",
+      "complexity": "complex",
+      "source": "modes/clipcraft/"
+    },
+    {
+      "id": "mode-kami",
+      "type": "mode",
+      "name": "kami",
+      "layerId": "modes",
+      "summary": "Paper-canvas typesetting——锁定纸张大小，Scroll/Focus/Book 三种视图，fit 纪律反馈。设计语言改编自 tw93/kami (MIT)。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "modes/kami/",
+      "tags": [
+        "borrowed"
+      ]
+    },
+    {
+      "id": "mode-slide",
+      "type": "mode",
+      "name": "slide",
+      "layerId": "modes",
+      "summary": "HTML 演示稿——content sets、拖拽重排、演讲者模式、PDF/图片导出。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "modes/slide/"
+    },
+    {
+      "id": "mode-doc",
+      "type": "mode",
+      "name": "doc",
+      "layerId": "modes",
+      "summary": "Markdown 文档配实时预览——最简单的 mode，模式系统的极简范例。",
+      "category": "code",
+      "complexity": "simple",
+      "source": "modes/doc/"
+    },
+    {
+      "id": "mode-draw",
+      "type": "mode",
+      "name": "draw",
+      "layerId": "modes",
+      "summary": "在 Excalidraw 画布上做图表和视觉思考。",
+      "category": "code",
+      "complexity": "simple",
+      "source": "modes/draw/"
+    },
+    {
+      "id": "mode-diagram",
+      "type": "mode",
+      "name": "diagram",
+      "layerId": "modes",
+      "summary": "专业的 draw.io 图表。Viewer-static 走 CDN 经 ProxyRoute；agent 编辑期间流式 XML merge。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "modes/diagram/"
+    },
+    {
+      "id": "mode-illustrate",
+      "type": "mode",
+      "name": "illustrate",
+      "layerId": "modes",
+      "summary": "AI 插画工作室——在带 content sets 的 row-based canvas 上生成与策展视觉资产。用 @xyflow/react。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "modes/illustrate/"
+    },
+    {
+      "id": "mode-remotion",
+      "type": "mode",
+      "name": "remotion",
+      "layerId": "modes",
+      "summary": "在 Remotion 4.0 上做代码驱动的视频合成——实时预览、帧精确动画、通过 WebCodecs 导出 MP4/WebM。用 @babel/standalone 做 JIT 编译。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "modes/remotion/"
+    },
+    {
+      "id": "mode-gridboard",
+      "type": "mode",
+      "name": "gridboard",
+      "layerId": "modes",
+      "summary": "交互式仪表盘——可拖拽 tile grid、通过 defineTile() 做 JIT 编译的 React tile、缩放时 agent 驱动重设计。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "modes/gridboard/"
+    },
+    {
+      "id": "mode-mode-maker",
+      "type": "mode",
+      "name": "mode-maker",
+      "layerId": "modes",
+      "summary": "用 AI 创建自定义 mode——fork 一个现有 mode、试玩、发布。在 18996/18997 上 spawn 隔离的 Play 子进程。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "modes/mode-maker/"
+    },
+    {
+      "id": "mode-evolve",
+      "type": "mode",
+      "name": "evolve",
+      "layerId": "modes",
+      "summary": "演化 Agent——分析 session 历史，提出 skill 改进，apply/rollback 流。",
+      "category": "code",
+      "complexity": "simple",
+      "source": "modes/evolve/"
+    },
+    {
+      "id": "mode-project-onboard",
+      "type": "mode",
+      "name": "project-onboard",
+      "layerId": "modes",
+      "summary": "隐藏 mode。打开新 project URL 时自动触发：挖 README + package manifest + 资产，写一份 Discovery proposal，让用户 apply。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "modes/project-onboard/",
+      "tags": [
+        "hidden"
+      ]
+    },
+    {
+      "id": "mode-cosmos",
+      "type": "mode",
+      "name": "cosmos (this mode)",
+      "layerId": "modes",
+      "summary": "把任意内容做结构化投影成一张交互式知识图。你正在读 seed 的这个 mode。schema 与 dashboard 技术栈选型借鉴自 Lum1104/Understand-Anything (MIT)；本质 mechanics 是 pneuma 原生的。",
+      "category": "code",
+      "complexity": "moderate",
+      "tags": [
+        "self-reference",
+        "borrowed"
+      ],
+      "sources": [
+        {
+          "kind": "file",
+          "path": "modes/cosmos/manifest.ts"
+        },
+        {
+          "kind": "file",
+          "path": "modes/cosmos/types.ts"
+        },
+        {
+          "kind": "file",
+          "path": "modes/cosmos/viewer/CosmosPreview.tsx",
+          "label": "viewer (~2600 lines)"
+        },
+        {
+          "kind": "file",
+          "path": "modes/cosmos/skill/SKILL.md",
+          "label": "agent instructions"
+        }
+      ]
+    },
+    {
+      "id": "shell-app",
+      "type": "module",
+      "name": "App.tsx",
+      "layerId": "shell",
+      "summary": "根布局。通过 mode-loader 动态 import 某 mode 的 pneuma-mode.ts，挂载 viewer.PreviewComponent 配上运行时注入的 props。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "src/App.tsx"
+    },
+    {
+      "id": "shell-store",
+      "type": "module",
+      "name": "Zustand store",
+      "layerId": "shell",
+      "summary": "前端状态——切成 9 片协议对齐的 slice (chat、viewer、session、plugin、…)。所有 viewer-facing 状态的唯一真相。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "src/store/"
+    },
+    {
+      "id": "shell-ws-client",
+      "type": "module",
+      "name": "WebSocket client",
+      "layerId": "shell",
+      "summary": "连 /ws/browser/:sessionId。Dev 模式绕开 Vite proxy 直连 backend 端口。",
+      "category": "code",
+      "complexity": "simple",
+      "source": "src/ws.ts"
+    },
+    {
+      "id": "shell-use-source",
+      "type": "module",
+      "name": "useSource hook",
+      "layerId": "shell",
+      "summary": "viewers 怎么订阅 props.sources[k]。底层用 useSyncExternalStore；首次渲染走 current()，之后走 subscribe()。",
+      "category": "code",
+      "complexity": "simple",
+      "source": "src/hooks/useSource.ts"
+    },
+    {
+      "id": "shell-use-capture",
+      "type": "module",
+      "name": "useCaptureAction hook",
+      "layerId": "shell",
+      "summary": "实现框架内建的 `capture` action。每个 viewer 都能调；agent 收到一个文件路径，自己 Read 看 viewer 当前的样子。",
+      "category": "code",
+      "complexity": "simple",
+      "source": "src/hooks/useCaptureAction.ts"
+    },
+    {
+      "id": "shell-launcher",
+      "type": "module",
+      "name": "Launcher",
+      "layerId": "shell",
+      "summary": "没传 mode 时显示的 Marketplace UI。分区：Recent Sessions、Recent Projects、Built-in Modes、Local Modes、Published Modes、Backend Picker。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "src/components/Launcher.tsx"
+    },
+    {
+      "id": "shell-chat",
+      "type": "module",
+      "name": "Chat panel",
+      "layerId": "shell",
+      "summary": "渲染流式 assistant 消息、tool blocks（带 FilePreview + ToolFileActions 通过 fileRef）、permission 请求、viewer-locator 卡片。",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "src/components/chat/"
+    },
+    {
+      "id": "shell-empty-shell",
+      "type": "module",
+      "name": "EmptyShell",
+      "layerId": "shell",
+      "summary": "?project=<root> 打开了一个无 session 的 project URL 时挂载它。渲染 ProjectPanel + 在首次访问时自动触发 project-onboard。",
+      "category": "code",
+      "complexity": "simple",
+      "source": "src/components/EmptyShell.tsx",
+      "tags": [
+        "project"
+      ]
+    },
+    {
+      "id": "ref-viewer-agent-protocol",
+      "type": "doc",
+      "name": "viewer-agent-protocol.md",
+      "layerId": "reference",
+      "summary": "协议的正典叙述——三角色、六方向、ViewerAddress、Action 空间、Source<T>。先读这个再看 contracts 表。",
+      "category": "docs",
+      "complexity": "complex",
+      "source": "docs/reference/viewer-agent-protocol.md"
+    },
+    {
+      "id": "ref-controlled-state-surface",
+      "type": "doc",
+      "name": "controlled-state-surface.md",
+      "layerId": "reference",
+      "summary": "Pneuma 磁盘状态的三个同心圆：~/.pneuma/（全局）→ <projectRoot>/.pneuma/（项目）→ <sessionDir>/（per-session）。每个状态文件都有 owner、读者、写者、生命周期。",
+      "category": "docs",
+      "complexity": "moderate",
+      "source": "docs/reference/controlled-state-surface.md"
+    },
+    {
+      "id": "ref-network-topology",
+      "type": "doc",
+      "name": "network-topology.md",
+      "layerId": "reference",
+      "summary": "端口（17996 / 17007 / 18996-7）、dev vs prod topology、WebSocket 路由、launcher → child spawn。",
+      "category": "docs",
+      "complexity": "simple",
+      "source": "docs/reference/network-topology.md"
+    },
+    {
+      "id": "ref-create-mode-skill",
+      "type": "doc",
+      "name": "create-mode skill",
+      "layerId": "reference",
+      "summary": "编写新 mode 的三阶段流程——Discovery interview → Design brief → Implementation。住在 .claude/skills/create-mode/。",
+      "category": "docs",
+      "complexity": "moderate",
+      "tags": [
+        "self-reference"
+      ],
+      "sources": [
+        {
+          "kind": "file",
+          "path": ".claude/skills/create-mode/SKILL.md",
+          "label": "skill body"
+        },
+        {
+          "kind": "file",
+          "path": ".claude/skills/create-mode/references",
+          "label": "references/"
+        }
+      ]
+    },
+    {
+      "id": "ref-claude-md",
+      "type": "doc",
+      "name": "CLAUDE.md",
+      "layerId": "reference",
+      "summary": "项目 agent 指南。Core Contracts 表（defined-in / instantiated / consumed-by）、coding 约定、Known Gotchas（chokidar globs、react-resizable-panels 命名、shadow-git 序列化…）。",
+      "category": "docs",
+      "complexity": "moderate",
+      "source": "CLAUDE.md"
+    },
+    {
+      "id": "ref-3-0-design",
+      "type": "doc",
+      "name": "3.0 design — viewer is the UI",
+      "layerId": "reference",
+      "summary": "3.0 论题：'viewer 就是整个 app 的 UI，不是侧栏'。Source<T> 抽象是 viewer-contract 层的 keystone——多 file viewer vs single-source viewer 的尺寸差异由它消化掉。",
+      "category": "docs",
+      "complexity": "simple",
+      "source": "docs/archive/proposals/2026-03-12-pneuma-3.0-design.md"
+    }
+  ],
+  "edges": [
+    {
+      "source": "ct-mode-definition",
+      "target": "ct-mode-manifest",
+      "type": "composes",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "ModeDefinition = { manifest: ModeManifest, viewer: ViewerContract }."
+    },
+    {
+      "source": "ct-mode-definition",
+      "target": "ct-viewer-contract",
+      "type": "composes",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "ct-viewer-contract",
+      "target": "ct-viewer-preview-props",
+      "type": "uses",
+      "direction": "forward",
+      "weight": 0.9,
+      "description": "PreviewComponent: ComponentType<ViewerPreviewProps>."
+    },
+    {
+      "source": "ct-viewer-preview-props",
+      "target": "ct-source",
+      "type": "uses",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "props.sources is Record<string, Source<unknown>>."
+    },
+    {
+      "source": "ct-viewer-preview-props",
+      "target": "ct-viewer-action-descriptor",
+      "type": "uses",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "props.actionRequest carries one of these."
+    },
+    {
+      "source": "ct-source",
+      "target": "ct-source-provider",
+      "type": "created_by",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "ct-source-provider",
+      "target": "ct-file-channel",
+      "type": "uses",
+      "direction": "forward",
+      "weight": 0.9,
+      "description": "File-backed providers consume FileChannel from SourceContext."
+    },
+    {
+      "source": "ct-viewer-address",
+      "target": "ct-viewer-action-descriptor",
+      "type": "appears_in",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "Action params often carry a ViewerAddress."
+    },
+    {
+      "source": "ct-backend-module",
+      "target": "ct-agent-backend",
+      "type": "factory_for",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "BackendModule.createBackend() returns an AgentBackend."
+    },
+    {
+      "source": "rt-mode-loader",
+      "target": "ct-mode-manifest",
+      "type": "loads",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "rt-mode-loader",
+      "target": "ct-mode-definition",
+      "type": "loads",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "rt-mode-resolver",
+      "target": "rt-mode-loader",
+      "type": "feeds",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "Resolver maps specifier → disk; loader takes the path from here."
+    },
+    {
+      "source": "rt-source-registry",
+      "target": "ct-source-provider",
+      "type": "uses",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "Looks up provider by kind; calls provider.create(config, ctx)."
+    },
+    {
+      "source": "rt-source-registry",
+      "target": "ct-source",
+      "type": "instantiates",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "rt-source-registry",
+      "target": "ct-mode-manifest",
+      "type": "reads",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "Reads manifest.sources to know what channels to set up."
+    },
+    {
+      "source": "rt-sources-impl",
+      "target": "ct-source-provider",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "rt-sources-impl",
+      "target": "ct-source",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "rt-skill-installer",
+      "target": "ct-mode-manifest",
+      "type": "reads",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "Reads manifest.skill / .viewerApi to assemble the agent instructions."
+    },
+    {
+      "source": "rt-skill-installer",
+      "target": "ct-backend-module",
+      "type": "uses",
+      "direction": "forward",
+      "weight": 0.9,
+      "description": "Reads skillsDir + instructionsFile per backend."
+    },
+    {
+      "source": "rt-skill-installer",
+      "target": "rt-instructions-file",
+      "type": "assembles",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "Composes pneuma:start (mode body) + pneuma:viewer-api + pneuma:preferences + pneuma:project (project-only) + pneuma:project-atlas + pneuma:handoff (project-only) + pneuma:evolved + pneuma:resumed marker blocks into the file."
+    },
+    {
+      "source": "rt-handoff-routes",
+      "target": "rt-instructions-file",
+      "type": "feeds_into",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "On confirm, writes inbound-handoff.json that the next session's skill-installer assembles into the pneuma:handoff marker block."
+    },
+    {
+      "source": "rt-ws-bridge",
+      "target": "ct-agent-backend",
+      "type": "drives",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "WS bridge calls launch / kill / send through the AgentBackend instance."
+    },
+    {
+      "source": "rt-ws-bridge",
+      "target": "ct-backend-module",
+      "type": "uses",
+      "direction": "forward",
+      "weight": 0.9,
+      "description": "Asks BackendModule to create the per-backend BridgeBackend."
+    },
+    {
+      "source": "rt-ws-bridge-viewer",
+      "target": "ct-viewer-action-descriptor",
+      "type": "transports",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "Carries ViewerActionRequest/Result envelopes across the websocket."
+    },
+    {
+      "source": "rt-file-ref",
+      "target": "ct-backend-module",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "Calls BackendModule.toolFileRef(name, input) on every tool_use."
+    },
+    {
+      "source": "rt-handoff-routes",
+      "target": "ct-mode-manifest",
+      "type": "spawns",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "On confirm, spawns target mode in a new session."
+    },
+    {
+      "source": "rt-plugin-registry",
+      "target": "ct-plugin-manifest",
+      "type": "loads",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "be-claude-code",
+      "target": "ct-backend-module",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "backends/claude-code/manifest.ts default-exports a BackendModule."
+    },
+    {
+      "source": "be-claude-code",
+      "target": "ct-agent-backend",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "be-codex",
+      "target": "ct-backend-module",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "be-codex",
+      "target": "ct-agent-backend",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "be-kimi-cli",
+      "target": "ct-backend-module",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "be-kimi-cli",
+      "target": "ct-agent-backend",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "mode-cosmos",
+      "target": "ct-mode-manifest",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "mode-cosmos",
+      "target": "ct-mode-definition",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "mode-cosmos",
+      "target": "ct-viewer-contract",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "mode-cosmos",
+      "target": "ct-source",
+      "type": "subscribes_to",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "Subscribes to a json-file Source<Cosmos> on cosmos.json."
+    },
+    {
+      "source": "mode-cosmos",
+      "target": "mode-illustrate",
+      "type": "shares_tech_with",
+      "direction": "bidirectional",
+      "weight": 0.6,
+      "description": "Both viewers use @xyflow/react; cosmos additionally uses @dagrejs/dagre for layout."
+    },
+    {
+      "source": "mode-cosmos",
+      "target": "ref-create-mode-skill",
+      "type": "generated_via",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "This mode was scaffolded by walking the create-mode skill end-to-end."
+    },
+    {
+      "source": "mode-webcraft",
+      "target": "ct-mode-manifest",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "mode-slide",
+      "target": "ct-mode-manifest",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "mode-kami",
+      "target": "ct-mode-manifest",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "mode-mode-maker",
+      "target": "ref-create-mode-skill",
+      "type": "complements",
+      "direction": "forward",
+      "weight": 0.6,
+      "description": "mode-maker is the in-app UI for forking & play-testing; create-mode is the engineer-facing skill for designing from scratch."
+    },
+    {
+      "source": "mode-project-onboard",
+      "target": "rt-project-loader",
+      "type": "triggered_by",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "Auto-launched by EmptyShell when project has no sessions and no onboardedAt stamp."
+    },
+    {
+      "source": "shell-app",
+      "target": "rt-mode-loader",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "shell-app",
+      "target": "ct-mode-definition",
+      "type": "mounts",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "Dynamic-imports a pneuma-mode.ts and mounts viewer.PreviewComponent."
+    },
+    {
+      "source": "shell-use-source",
+      "target": "ct-source",
+      "type": "consumes",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "shell-use-capture",
+      "target": "ct-viewer-action-descriptor",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 0.9,
+      "description": "Implements the framework-built-in `capture` action."
+    },
+    {
+      "source": "shell-ws-client",
+      "target": "rt-ws-bridge",
+      "type": "connects_to",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "shell-store",
+      "target": "ct-viewer-action-descriptor",
+      "type": "dispatches",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "viewer-slice owns actionRequest / onActionResult plumbing."
+    },
+    {
+      "source": "shell-chat",
+      "target": "rt-file-ref",
+      "type": "renders_from",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "FilePreview + ToolFileActions read the fileRef stamped by file-ref.ts."
+    },
+    {
+      "source": "shell-chat",
+      "target": "ct-viewer-address",
+      "type": "renders",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "<viewer-locator> cards carry an address; clicking dispatches navigateRequest."
+    },
+    {
+      "source": "shell-empty-shell",
+      "target": "mode-project-onboard",
+      "type": "spawns",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "Auto-launches project-onboard for fresh projects."
+    },
+    {
+      "source": "shell-launcher",
+      "target": "rt-mode-loader",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "ref-viewer-agent-protocol",
+      "target": "ct-source",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "ref-viewer-agent-protocol",
+      "target": "ct-viewer-contract",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "ref-viewer-agent-protocol",
+      "target": "ct-viewer-address",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "ref-viewer-agent-protocol",
+      "target": "ct-viewer-action-descriptor",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "ref-controlled-state-surface",
+      "target": "rt-skill-installer",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "ref-controlled-state-surface",
+      "target": "rt-instructions-file",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.9,
+      "description": "The marker-block assembly table is the canonical description of how this file is composed."
+    },
+    {
+      "source": "ref-controlled-state-surface",
+      "target": "rt-handoff-routes",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "ref-network-topology",
+      "target": "rt-ws-bridge",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "ref-create-mode-skill",
+      "target": "ct-mode-manifest",
+      "type": "guides_creation_of",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "ref-create-mode-skill",
+      "target": "ct-viewer-contract",
+      "type": "guides_creation_of",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "ref-claude-md",
+      "target": "ct-mode-manifest",
+      "type": "summarizes",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "ref-3-0-design",
+      "target": "ct-source",
+      "type": "originates",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "Source<T> is the viewer-contract-layer infrastructure for the 3.0 'viewer is the UI' thesis."
+    }
+  ],
+  "tour": [
+    {
+      "step": 1,
+      "nodeId": "ct-mode-manifest",
+      "narrative": "从契约开始。`ModeManifest` 是每个 mode 都对它编程的声明式描述——skill / viewer / agent / init / sources / evolution。它是协议栈的最底层；从它出发，一切都可以推导出来。"
+    },
+    {
+      "step": 2,
+      "nodeId": "ct-viewer-contract",
+      "narrative": "现在看 viewer 侧。`ViewerContract` 给 mode 一种方法说『我的 viewer 长这样、它接受这些 actions、它知道怎么从一次 selection 里 extract 上下文』。`ViewerAddress` 是关键 noun——同一个 address 在 select、capture、locator、navigate 之间复用。"
+    },
+    {
+      "step": 3,
+      "nodeId": "ct-source",
+      "narrative": "在 viewer 与运行时之间是 `Source<T>`。它是协议栈的 keystone——一条带 4 条不变量的类型化数据通道（单订阅、origin-tagged 事件、自洽写、init 时 emit 一次）。它消化掉了多-file vs single-source viewer 的尺寸差异，让 viewer 只跟 typed values 打交道。"
+    },
+    {
+      "step": 4,
+      "nodeId": "rt-mode-loader",
+      "narrative": "Agent 侧由 `AgentBackend` + `BackendModule` 抽象。三个 stdio backend（Claude / Codex / Kimi）实现这一对，传输各不相同但暴露同一形状。新加一个 backend 不用动任何 mode。"
+    },
+    {
+      "step": 5,
+      "nodeId": "rt-skill-installer",
+      "narrative": "运行时的中心是 `WsBridge`——browser JSON ↔ backend transport。它把 viewer 注入到 React 树、把 actionRequest 从 agent 推到 viewer、把 onActionResult 反向回传。"
+    },
+    {
+      "step": 6,
+      "nodeId": "mode-cosmos",
+      "narrative": "Mode 包是协议栈的叶子。`cosmos`（你正在用它）是 12 个内建 mode 之一。每个 mode 是 `ModeManifest + ViewerContract` 实现的合约——它能写自己的世界，但通过同一组契约表面这么做。"
+    },
+    {
+      "step": 7,
+      "nodeId": "ref-create-mode-skill",
+      "narrative": "最后回到自指：cosmos 是一个 mode，它能把任意内容投影成一张图——包括把 pneuma-skills 自己投影成你正在看的这张星图。这就是 self-similarity（自相似）。要再继续看？打开 TOUR tab 里的 perspective 导览。"
+    }
+  ],
+  "perspectives": [
+    {
+      "id": "perspective-contracts-as-anchor",
+      "lens": "entropy-gradient",
+      "name": "契约作为低熵锚点；mode 吸收变化",
+      "insight": "core/types/ 保持小，modes/ 增殖——这是有意的梯度。Mode 作者可以 fork 技术栈、rev 版本，但改 ModeManifest 或 ViewerContract 是项目级事件，整团队都感受得到。契约稳住；外围吸收时间。这就是为什么 mode 工作感觉快：地板是结实的。",
+      "steps": [
+        {
+          "focus": [
+            "ct-mode-manifest",
+            "ct-viewer-contract",
+            "ct-source"
+          ],
+          "narrative": "从地板开始。三个小契约——ModeManifest、ViewerContract、Source——描述了整个 mode 协议。这三个里没有任何一个在过去几个月里变过；它们的形状是整个 repo 里每个 mode 都要承载的。"
+        },
+        {
+          "focus": [
+            "mode-webcraft",
+            "mode-clipcraft",
+            "mode-cosmos"
+          ],
+          "narrative": "现在看外围。每个 mode 是一个独立的 package——技术栈不同、viewer 不同、领域不同。它们各自独立 rev 版本。webcraft 能采用新的编译器、clipcraft 能换导出 pipeline、cosmos 能新落地——这些都不会回波。"
+        },
+        {
+          "focus": [
+            "ct-mode-manifest"
+          ],
+          "narrative": "梯度本身就是设计。Mode 作者能跑得快，是因为契约只命名了他们必须遵守的东西，刚好就是那么多。改这一个文件是少见的项目级事件——地板移动——所以它故意保持小。"
+        }
+      ],
+      "evidence": "每个 mode 节点都通过 `implements` 连回 ct-mode-manifest；没有任何 mode 因协议原因互相连接。外围形状变化；中心形状不变。"
+    },
+    {
+      "id": "perspective-files-vs-domain-tension",
+      "lens": "tension",
+      "name": "文件是神圣的，同时 viewer 需要领域类型",
+      "insight": "两股力把每个决定往相反方向拉。Agent 原生说文件——把文件抽掉就破坏了 Pneuma 跟编码 agent 的合约。但 viewer 渲染不了原始字节；它们要 Deck、Studio、Cosmos。Source<T> 坐在两者之间，fileChannel 是 escape hatch（当 domain *是* 文件时）。两股力还在塑造设计——没有任何一方赢。",
+      "steps": [
+        {
+          "focus": [
+            "ct-viewer-contract"
+          ],
+          "narrative": "Force 一：viewer 要 domain types。一个 Deck。一个 Studio。一个 Cosmos。渲染原始字节那不是 viewer——那是十六进制编辑器。每个 ViewerContract 都假定一个 typed T 作为它的订阅。"
+        },
+        {
+          "focus": [
+            "ref-3-0-design"
+          ],
+          "narrative": "Force 二：agent 要文件。Pneuma 跟编码 agent 的合约是文件是真的——Read 读、Edit 编辑，没有代理。把文件抽掉就破坏了让 Pneuma 跟 Claude Code 协作的那一半。"
+        },
+        {
+          "focus": [
+            "ct-source"
+          ],
+          "narrative": "Resolution：Source<T> 坐在中间。Viewer 拿到 typed values；agent 继续编文件；source provider 翻译。这是 tension *被持有* 的地方——不是被解决，是被持有——这样两边都能继续做它们自己。"
+        },
+        {
+          "focus": [
+            "ct-file-channel"
+          ],
+          "narrative": "这里有 escape hatch。fileChannel 之所以存在，是当 domain 本身就是文件的时候（原始 markdown、原始图片）。Source<T> 一个人没把这股 tension 完全解决——fileChannel 是这个明示。两股力今天还在塑造设计。"
+        }
+      ],
+      "evidence": "Source<T> 之所以存在 *正是因为* 这种 tension。fileChannel 作为单独的 escape hatch 存在 *正是因为* Source<T> 没把这股 tension 完全解决。"
+    },
+    {
+      "id": "perspective-origin-tagged-loop",
+      "lens": "cybernetic-loop",
+      "name": "Origin-tagged 事件作为 reconciliation 回路",
+      "insight": "Pneuma 维持的属性是'viewer 本地状态匹配磁盘'，对抗的扰动是'agent 跟 viewer 都在写'。回路通过每个事件上一个显式 origin tag 闭合。",
+      "steps": [
+        {
+          "focus": [
+            "ct-source"
+          ],
+          "narrative": "要维持的属性：viewer 状态匹配磁盘。扰动：两个 writer，agent 跟 viewer，并发编辑同一个文件。没有反馈机制就会有 echo（viewer 重画自己写的）或者 silent drift（agent 编了 viewer 没看到）。"
+        },
+        {
+          "focus": [
+            "ct-file-channel"
+          ],
+          "narrative": "机制：每个 value 事件带一个 origin tag——self、external、initial。Self-writes 不会被静默吸收；它们还是 emit 事件，只是 tag 上了，让 viewer 知道这是 echo。External writes 走 reconcile。Tag 就是 error signal。"
+        },
+        {
+          "focus": [
+            "rt-sources-impl"
+          ],
+          "narrative": "回路实际闭合的地方。core/sources/base.ts 强制四个不变量——每个 provider 都得遵守，否则回路断。Server 上的 pendingSelfWrites 机制是任何控制系统里都会有的那个 perturbation-correction 步：它知道 *它* 写了什么，所以它能在 echo 回来时认出它。"
+        }
+      ],
+      "evidence": "core/sources/base.ts 强制四个让回路工作的不变量。pendingSelfWrites server-side 机制（controlled-state-surface 里有记录）是 perturbation-correction 那一步。"
+    },
+    {
+      "id": "perspective-instructions-as-convergence",
+      "lens": "convergence",
+      "name": "指令文件作为三个状态圈的 convergence",
+      "insight": "全局 preferences、项目元信息、session 级 handoff——三个独立的状态圈、各自由不同的代码路径所有，都在每个 session 组装好的 CLAUDE.md / AGENTS.md 里相遇。",
+      "steps": [
+        {
+          "focus": [
+            "rt-skill-installer"
+          ],
+          "narrative": "组装者。skill-installer 是唯一会 *写* CLAUDE.md / AGENTS.md 的那块代码。每个 session 的指令文件是它的产物。别处不会写这里。"
+        },
+        {
+          "focus": [
+            "rt-handoff-routes",
+            "ref-controlled-state-surface"
+          ],
+          "narrative": "三个 feed。~/.pneuma/preferences/ 持有用户级品味。<project>/.pneuma/project.json 持有项目上下文。inbound-handoff.json 持有当前 handoff。每个都由不同的代码路径在不同的触发下更新——它们彼此不知道。"
+        },
+        {
+          "focus": [
+            "rt-instructions-file"
+          ],
+          "narrative": "Convergence 点。三条 feed 都通过 marker block 漏斗下来——pneuma:preferences、pneuma:project、pneuma:handoff。Marker 合约不可妥协，*正是因为* 这个文件是独立关注点合成一个声音的地方。Free-form append 会让它们撞车；marker 让它们在同一段对话里保留各自的声音。"
+        }
+      ],
+      "evidence": "Marker-block 合约准确命名了被 converged 的关注点（pneuma:preferences、pneuma:project、pneuma:handoff、pneuma:evolved）。每个 block 是一个关注点的声音。"
+    },
+    {
+      "id": "perspective-backend-orthogonality",
+      "lens": "orthogonality",
+      "name": "后端实现与 session 合约相互独立",
+      "insight": "三个 backend ship 三种截然不同的 transport——NDJSON、JSON-RPC、带 envelope 的 NDJSON。从 session 的视角它们等价。这种正交性就是为什么加 Kimi 没动任何 mode。",
+      "steps": [
+        {
+          "focus": [
+            "ct-agent-backend",
+            "ct-backend-module"
+          ],
+          "narrative": "合约表面。AgentBackend + BackendModule 定义了一个 session 能对 *任何* backend 提出的请求——launch、message、end、action-result。这个形状对 transport 啥都不说；那是正交的那个轴。"
+        },
+        {
+          "focus": [
+            "be-claude-code",
+            "be-codex",
+            "be-kimi-cli"
+          ],
+          "narrative": "现在看三个实现。Claude 跑 stdio NDJSON。Codex 跑 stdio JSON-RPC。Kimi 跑 stdio NDJSON 但合成自己的 envelope 形状。三个 transport、三套协议、三种生命周期 quirk——但每个都 re-export 同一个 BackendModule 形状，所以 runtime 可以在它们之间切换而不知道。"
+        },
+        {
+          "focus": [
+            "ct-backend-module"
+          ],
+          "narrative": "证据：加 Kimi 的时候，没有任何 mode 变。webcraft、slide、cosmos——没有任何一个知道 Kimi 存在。正交性是真的，因为穿过这个轴成本是零：一个新 backend 触达每个 mode，一个新 mode 触达每个 backend，矩阵永远不用被手工列举。"
+        }
+      ],
+      "evidence": "BackendModule 在三个截然不同的 backend 上有相同形状的 export。server/ws-bridge-backend.ts 里的 BridgeBackend 抽象捕获了真正 per-backend 的东西。"
+    },
+    {
+      "id": "perspective-cosmos-self-similar",
+      "lens": "self-similarity",
+      "name": "Pneuma 描述 mode；cosmos 是描述 Pneuma 的一个 mode",
+      "insight": "同一个动作——结构化投影——出现在两个尺度上。Pneuma 的契约让 mode 写它们自己的世界；cosmos 用那些契约写一个包含 pneuma 自己的世界。",
+      "steps": [
+        {
+          "focus": [
+            "ct-mode-manifest",
+            "ct-mode-definition"
+          ],
+          "narrative": "Level 一：pneuma 定义了一个协议，让任意 mode 描述自己——manifest declares、ModeDefinition binds、runtime wires。整个项目就是这件事：给 mode 一套自我描述的词汇。"
+        },
+        {
+          "focus": [
+            "mode-cosmos"
+          ],
+          "narrative": "Level 二：cosmos 用那套词汇把任意内容描述成一次结构化投影。它就是另一个 mode——只是它投影的内容可以是任何东西，包括那些让它成为可能的契约。"
+        },
+        {
+          "focus": [
+            "ref-create-mode-skill"
+          ],
+          "narrative": "回路闭合。这张 seed 本身是通过走 create-mode 生成的（看 mode-cosmos → ref-create-mode-skill 的边，`generated_via`）。Cosmos 读了 pneuma 关于怎么造 mode 的 SKILL，然后投影了 pneuma。系统用它自己描述了它自己——这件事之所以 scale，是因为底下的抽象稳到足以承载它。"
+        }
+      ],
+      "evidence": "Seed 是通过走 create-mode 生成的（看 mode-cosmos → ref-create-mode-skill 的边，`generated_via`）。Cosmos 能读它自己的 SKILL.md 并把它应用到它自己——这就是稳定抽象的标志。"
+    }
+  ]
+}
