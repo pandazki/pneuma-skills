@@ -1,0 +1,1514 @@
+{
+  "version": "0.1.0",
+  "kind": "codebase",
+  "project": {
+    "name": "Pneuma Skills",
+    "kind": "codebase:co-creation-infrastructure",
+    "description": "Co-creation infrastructure for humans and code agents. Files are the canonical surface; viewers are live players for agent output rendered in domain terms. Multiple agent backends, 13+ modes, a stable four-layer contract stack. This cosmos is the project projecting itself — bootstrap from cosmos's own seed.",
+    "source": "https://github.com/pandazki/pneuma-skills",
+    "analyzedAt": "2026-05-24T23:55:00Z"
+  },
+  "layers": [
+    {
+      "id": "contracts",
+      "label": "Contracts",
+      "color": "#fbbf24",
+      "description": "Type definitions in core/types/ — the protocol surface every other layer is written against."
+    },
+    {
+      "id": "runtime",
+      "label": "Runtime",
+      "color": "#a78bfa",
+      "description": "Server-side machinery that loads modes, manages sources, bridges to backends, and assembles agent instructions."
+    },
+    {
+      "id": "backends",
+      "label": "Backends",
+      "color": "#22d3ee",
+      "description": "Per-agent adapters. Selected at startup; locked for the session."
+    },
+    {
+      "id": "modes",
+      "label": "Modes",
+      "color": "#f97316",
+      "description": "Mode packages — each implements ModeDefinition. The leaves of the architecture and the user-facing entry points."
+    },
+    {
+      "id": "shell",
+      "label": "Shell",
+      "color": "#fb7185",
+      "description": "Frontend (src/) — the React app shell that mounts viewers, drives chat, dispatches actions."
+    },
+    {
+      "id": "reference",
+      "label": "Reference",
+      "color": "#86efac",
+      "description": "Canonical narratives in docs/reference/, CLAUDE.md, and the create-mode skill. Read these to understand the why."
+    }
+  ],
+  "nodes": [
+    {
+      "id": "ct-mode-manifest",
+      "type": "contract",
+      "name": "ModeManifest",
+      "layerId": "contracts",
+      "summary": "Declarative description of a mode — skill / viewer / agent / init / sources / evolution. The protocol surface every mode implements.",
+      "category": "code",
+      "complexity": "complex",
+      "tags": [
+        "protocol",
+        "manifest"
+      ],
+      "sources": [
+        {
+          "kind": "file",
+          "path": "core/types/mode-manifest.ts",
+          "range": [
+            1,
+            220
+          ],
+          "label": "contract"
+        },
+        {
+          "kind": "file",
+          "path": "modes/cosmos/manifest.ts",
+          "label": "example: cosmos"
+        },
+        {
+          "kind": "file",
+          "path": "modes/slide/manifest.ts",
+          "label": "example: slide"
+        }
+      ]
+    },
+    {
+      "id": "ct-mode-definition",
+      "type": "contract",
+      "name": "ModeDefinition",
+      "layerId": "contracts",
+      "summary": "Binds ModeManifest + ViewerContract; default-exported from each mode's pneuma-mode.ts. The frontend mode-loader imports this.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/types/mode-definition.ts",
+      "tags": [
+        "protocol"
+      ]
+    },
+    {
+      "id": "ct-viewer-contract",
+      "type": "contract",
+      "name": "ViewerContract",
+      "layerId": "contracts",
+      "summary": "Viewer side of the contract: PreviewComponent + extractContext + workspace + actions + captureViewport.",
+      "category": "code",
+      "complexity": "complex",
+      "tags": [
+        "protocol",
+        "viewer"
+      ],
+      "sources": [
+        {
+          "kind": "file",
+          "path": "core/types/viewer-contract.ts",
+          "range": [
+            1,
+            320
+          ],
+          "label": "contract"
+        },
+        {
+          "kind": "file",
+          "path": "modes/cosmos/viewer/CosmosPreview.tsx",
+          "label": "example impl"
+        }
+      ]
+    },
+    {
+      "id": "ct-viewer-preview-props",
+      "type": "contract",
+      "name": "ViewerPreviewProps",
+      "layerId": "contracts",
+      "summary": "Props the runtime injects into each mode's PreviewComponent — sources, selection, actionRequest, persona, locale, theme.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/types/viewer-contract.ts",
+      "tags": [
+        "protocol",
+        "viewer"
+      ]
+    },
+    {
+      "id": "ct-viewer-address",
+      "type": "contract",
+      "name": "ViewerAddress",
+      "layerId": "contracts",
+      "summary": "One mode-defined noun shared by select / capture / locator / navigate. Mode owns the vocabulary; framework owns the slot.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/types/viewer-contract.ts",
+      "tags": [
+        "protocol",
+        "viewer"
+      ]
+    },
+    {
+      "id": "ct-viewer-action-descriptor",
+      "type": "contract",
+      "name": "ViewerActionDescriptor",
+      "layerId": "contracts",
+      "summary": "Agent → Viewer action declaration: id / label / category / agentInvocable / params.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/types/viewer-contract.ts",
+      "tags": [
+        "protocol",
+        "viewer",
+        "actions"
+      ]
+    },
+    {
+      "id": "ct-viewer-command-descriptor",
+      "type": "contract",
+      "name": "ViewerCommandDescriptor",
+      "layerId": "contracts",
+      "summary": "User → Agent command declaration. Surfaces as a button in the viewer UI.",
+      "category": "code",
+      "complexity": "simple",
+      "source": "core/types/viewer-contract.ts",
+      "tags": [
+        "protocol",
+        "viewer"
+      ]
+    },
+    {
+      "id": "ct-source",
+      "type": "contract",
+      "name": "Source<T>",
+      "layerId": "contracts",
+      "summary": "Typed data channel between runtime and viewer. current() / subscribe() / write() / destroy() with four invariants: single writer, change-read-via-subscription, time-locked write Promises, origin-tagged events.",
+      "category": "code",
+      "complexity": "complex",
+      "tags": [
+        "protocol",
+        "sources"
+      ],
+      "sources": [
+        {
+          "kind": "file",
+          "path": "core/types/source.ts",
+          "label": "contract"
+        },
+        {
+          "kind": "file",
+          "path": "core/sources/base.ts",
+          "label": "shared invariants"
+        },
+        {
+          "kind": "file",
+          "path": "core/sources/json-file.ts",
+          "label": "json-file provider"
+        }
+      ]
+    },
+    {
+      "id": "ct-source-provider",
+      "type": "contract",
+      "name": "SourceProvider",
+      "layerId": "contracts",
+      "summary": "Factory contract for Source kinds. Built-ins: file-glob / json-file / aggregate-file / memory. Plugins can register new ones.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/types/source.ts",
+      "tags": [
+        "protocol",
+        "sources"
+      ]
+    },
+    {
+      "id": "ct-file-channel",
+      "type": "contract",
+      "name": "FileChannel",
+      "layerId": "contracts",
+      "summary": "Bridge between file-backed providers and the server's chokidar/WS pipeline. Origin tagging happens here.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/types/source.ts",
+      "tags": [
+        "protocol",
+        "sources"
+      ]
+    },
+    {
+      "id": "ct-agent-backend",
+      "type": "contract",
+      "name": "AgentBackend",
+      "layerId": "contracts",
+      "summary": "Per-process backend lifecycle: launch / resume / kill / capabilities. One instance per session.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/types/agent-backend.ts",
+      "tags": [
+        "protocol",
+        "backends"
+      ]
+    },
+    {
+      "id": "ct-backend-module",
+      "type": "contract",
+      "name": "BackendModule",
+      "layerId": "contracts",
+      "summary": "Self-describing per-backend manifest. Identity, capabilities, install conventions (skillsDir / instructionsFile), lifecycle factories, toolFileRef.",
+      "category": "code",
+      "complexity": "complex",
+      "source": "core/types/agent-backend.ts",
+      "tags": [
+        "protocol",
+        "backends"
+      ]
+    },
+    {
+      "id": "ct-plugin-manifest",
+      "type": "contract",
+      "name": "PluginManifest",
+      "layerId": "contracts",
+      "summary": "Plugin capabilities: hooks (waterfall events), slots (UI injection points), routes (Hono sub-apps), settings (schema-driven config).",
+      "category": "code",
+      "complexity": "simple",
+      "source": "core/types/plugin.ts",
+      "tags": [
+        "protocol",
+        "plugins"
+      ]
+    },
+    {
+      "id": "rt-mode-loader",
+      "type": "module",
+      "name": "mode-loader",
+      "layerId": "runtime",
+      "summary": "Resolves mode name → ModeSource. Static `builtinModes` registry (Bun/Vite needs literal import strings) + external registration via registerExternalMode().",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/mode-loader.ts",
+      "tags": [
+        "entry-point"
+      ]
+    },
+    {
+      "id": "rt-mode-resolver",
+      "type": "module",
+      "name": "mode-resolver",
+      "layerId": "runtime",
+      "summary": "Maps specifier — builtin name, /abs/path, ./rel, github:user/repo, or https://...tar.gz — to a disk path containing manifest.ts.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/mode-resolver.ts",
+      "tags": [
+        "install"
+      ]
+    },
+    {
+      "id": "rt-source-registry",
+      "type": "module",
+      "name": "source-registry",
+      "layerId": "runtime",
+      "summary": "Reads manifest.sources, picks a SourceProvider by kind, calls provider.create(config, ctx) per declared channel. Where Source<T> instances actually come from.",
+      "category": "code",
+      "complexity": "complex",
+      "source": "core/source-registry.ts",
+      "tags": [
+        "sources"
+      ]
+    },
+    {
+      "id": "rt-sources-impl",
+      "type": "module",
+      "name": "core/sources/*",
+      "layerId": "runtime",
+      "summary": "Built-in providers: file-glob (multi-file glob), json-file (single structured doc), aggregate-file (multi-file aggregate via load/save), memory (ephemeral). All extend BaseSource — the four invariants enforced there.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/sources/"
+    },
+    {
+      "id": "rt-skill-installer",
+      "type": "module",
+      "name": "skill-installer",
+      "layerId": "runtime",
+      "summary": "Copies skill files into backend-appropriate dirs; applies {{key}} templates; assembles instruction file from named marker blocks (pneuma:start / viewer-api / preferences / project / project-atlas / handoff / evolved / resumed).",
+      "category": "code",
+      "complexity": "complex",
+      "source": "server/skill-installer.ts",
+      "tags": [
+        "install",
+        "markers"
+      ]
+    },
+    {
+      "id": "rt-ws-bridge",
+      "type": "module",
+      "name": "WsBridge (central)",
+      "layerId": "runtime",
+      "summary": "Browser JSON ↔ backend transport. Central bridge — backend-specific behavior is delegated to BridgeBackend implementations.",
+      "category": "code",
+      "complexity": "complex",
+      "source": "server/ws-bridge.ts",
+      "tags": [
+        "transport"
+      ]
+    },
+    {
+      "id": "rt-ws-bridge-viewer",
+      "type": "module",
+      "name": "ws-bridge-viewer",
+      "layerId": "runtime",
+      "summary": "Routes ViewerActionRequest from agent → specific browser session. Sets props.actionRequest on the viewer; relays props.onActionResult back to the agent.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "server/ws-bridge-viewer.ts",
+      "tags": [
+        "transport",
+        "actions"
+      ]
+    },
+    {
+      "id": "rt-file-ref",
+      "type": "module",
+      "name": "stampFileRefs",
+      "layerId": "runtime",
+      "summary": "Decorates tool_use blocks with normalized fileRef via BackendModule.toolFileRef. Lets the chat UI render inline previews + open actions without backend-specific knowledge.",
+      "category": "code",
+      "complexity": "simple",
+      "source": "server/file-ref.ts",
+      "tags": [
+        "transport"
+      ]
+    },
+    {
+      "id": "rt-handoff-routes",
+      "type": "module",
+      "name": "handoff-routes",
+      "layerId": "runtime",
+      "summary": "Cross-mode handoff between project sessions: emit / confirm / cancel. In-memory map with 30-min TTL; on confirm, atomic write to <targetSessionDir>/.pneuma/inbound-handoff.json.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "server/handoff-routes.ts",
+      "tags": [
+        "project",
+        "handoff"
+      ]
+    },
+    {
+      "id": "rt-plugin-registry",
+      "type": "module",
+      "name": "plugin-registry",
+      "layerId": "runtime",
+      "summary": "Plugin discovery + lifecycle + route mounting. Four extension points: hooks / slots / routes / settings. Soft-error policy — plugin failures never break the main flow.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "core/plugin-registry.ts",
+      "tags": [
+        "plugins"
+      ]
+    },
+    {
+      "id": "rt-project-loader",
+      "type": "module",
+      "name": "project-loader",
+      "layerId": "runtime",
+      "summary": "Detects workspace kind: project (has .pneuma/project.json) vs quick session. Drives where sessionDir lives and which marker blocks are injected.",
+      "category": "code",
+      "complexity": "simple",
+      "source": "core/project-loader.ts",
+      "tags": [
+        "project"
+      ]
+    },
+    {
+      "id": "rt-instructions-file",
+      "type": "artifact",
+      "name": "Instructions file (CLAUDE.md / AGENTS.md)",
+      "layerId": "runtime",
+      "summary": "The assembled agent instructions at <sessionDir>/CLAUDE.md (Claude) / AGENTS.md (Codex, Kimi). Composed from named marker blocks — mode SKILL.md body + viewerApi descriptors + global preferences + project metadata + handoff payload — into the single file the agent reads on every session. The convergence point of all three concentric state circles.",
+      "category": "docs",
+      "complexity": "simple",
+      "source": "<sessionDir>/CLAUDE.md or AGENTS.md (generated per session)",
+      "tags": [
+        "markers",
+        "assembled",
+        "state"
+      ]
+    },
+    {
+      "id": "be-claude-code",
+      "type": "backend",
+      "name": "Claude Code",
+      "layerId": "backends",
+      "summary": "Anthropic's coding agent. Transport: stdio NDJSON (claude --print --input-format stream-json --output-format stream-json). Native streaming; Pneuma's reference backend.",
+      "category": "code",
+      "complexity": "complex",
+      "source": "backends/claude-code/"
+    },
+    {
+      "id": "be-codex",
+      "type": "backend",
+      "name": "Codex",
+      "layerId": "backends",
+      "summary": "OpenAI's coding agent. Transport: stdio JSON-RPC via codex app-server. codex-adapter.ts translates to Pneuma's standard envelopes.",
+      "category": "code",
+      "complexity": "complex",
+      "source": "backends/codex/"
+    },
+    {
+      "id": "be-kimi-cli",
+      "type": "backend",
+      "name": "Kimi CLI",
+      "layerId": "backends",
+      "summary": "Moonshot AI's coding agent. Transport: stdio NDJSON via kimi --print. kimi-adapter.ts synthesizes lifecycle envelopes Pneuma expects.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "backends/kimi-cli/"
+    },
+    {
+      "id": "mode-webcraft",
+      "type": "mode",
+      "name": "webcraft",
+      "layerId": "modes",
+      "summary": "Live web development with Impeccable.style AI design intelligence — 22 design commands, brand vs product register, responsive preview. Borrows from Impeccable (Apache 2.0).",
+      "category": "code",
+      "complexity": "complex",
+      "source": "modes/webcraft/",
+      "tags": [
+        "borrowed"
+      ]
+    },
+    {
+      "id": "mode-clipcraft",
+      "type": "mode",
+      "name": "clipcraft",
+      "layerId": "modes",
+      "summary": "AI-orchestrated video production on @pneuma-craft — composition tracks, provenance DAG, canvas preview + 3D timeline + dive panels.",
+      "category": "code",
+      "complexity": "complex",
+      "source": "modes/clipcraft/"
+    },
+    {
+      "id": "mode-kami",
+      "type": "mode",
+      "name": "kami",
+      "layerId": "modes",
+      "summary": "Paper-canvas typesetting — locked paper size, Scroll/Focus/Book views, fit-discipline feedback. Design language adapted from tw93/kami (MIT).",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "modes/kami/",
+      "tags": [
+        "borrowed"
+      ]
+    },
+    {
+      "id": "mode-slide",
+      "type": "mode",
+      "name": "slide",
+      "layerId": "modes",
+      "summary": "HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "modes/slide/"
+    },
+    {
+      "id": "mode-doc",
+      "type": "mode",
+      "name": "doc",
+      "layerId": "modes",
+      "summary": "Markdown documents with live preview — the simplest mode, a minimal example of the mode system.",
+      "category": "code",
+      "complexity": "simple",
+      "source": "modes/doc/"
+    },
+    {
+      "id": "mode-draw",
+      "type": "mode",
+      "name": "draw",
+      "layerId": "modes",
+      "summary": "Diagrams and visual thinking on an Excalidraw canvas.",
+      "category": "code",
+      "complexity": "simple",
+      "source": "modes/draw/"
+    },
+    {
+      "id": "mode-diagram",
+      "type": "mode",
+      "name": "diagram",
+      "layerId": "modes",
+      "summary": "Professional draw.io diagrams. CDN-loaded viewer-static via ProxyRoute; streaming XML merge during agent edit.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "modes/diagram/"
+    },
+    {
+      "id": "mode-illustrate",
+      "type": "mode",
+      "name": "illustrate",
+      "layerId": "modes",
+      "summary": "AI illustration studio — generate and curate visual assets on a row-based canvas with content sets. Uses @xyflow/react.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "modes/illustrate/"
+    },
+    {
+      "id": "mode-remotion",
+      "type": "mode",
+      "name": "remotion",
+      "layerId": "modes",
+      "summary": "Code-driven video composition on Remotion 4.0 — live preview, frame-perfect animation, MP4/WebM export via WebCodecs. Uses @babel/standalone JIT.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "modes/remotion/"
+    },
+    {
+      "id": "mode-gridboard",
+      "type": "mode",
+      "name": "gridboard",
+      "layerId": "modes",
+      "summary": "Interactive dashboards — draggable tile grid, JIT-compiled React tiles via defineTile(), agent-driven redesign on resize.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "modes/gridboard/"
+    },
+    {
+      "id": "mode-mode-maker",
+      "type": "mode",
+      "name": "mode-maker",
+      "layerId": "modes",
+      "summary": "Create custom modes with AI — fork an existing mode, play-test, publish. Spawns isolated Play subprocess on 18996/18997.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "modes/mode-maker/"
+    },
+    {
+      "id": "mode-evolve",
+      "type": "mode",
+      "name": "evolve",
+      "layerId": "modes",
+      "summary": "Evolution Agent — analyzes session history, proposes skill improvements, apply/rollback flow.",
+      "category": "code",
+      "complexity": "simple",
+      "source": "modes/evolve/"
+    },
+    {
+      "id": "mode-project-onboard",
+      "type": "mode",
+      "name": "project-onboard",
+      "layerId": "modes",
+      "summary": "Hidden mode. Auto-triggered when opening a fresh project URL: mines README + package manifest + assets, writes a Discovery Report.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "modes/project-onboard/",
+      "tags": [
+        "hidden"
+      ]
+    },
+    {
+      "id": "mode-cosmos",
+      "type": "mode",
+      "name": "cosmos (this mode)",
+      "layerId": "modes",
+      "summary": "Structured projection of any content as an interactive knowledge graph. The mode you're reading the seed of. Schema and tech-stack choice borrow from Lum1104/Understand-Anything (MIT). This very cosmos is generated for the pneuma-skills project itself — bootstrap.",
+      "category": "code",
+      "complexity": "moderate",
+      "tags": [
+        "self-reference",
+        "borrowed"
+      ],
+      "sources": [
+        {
+          "kind": "file",
+          "path": "modes/cosmos/manifest.ts"
+        },
+        {
+          "kind": "file",
+          "path": "modes/cosmos/types.ts"
+        },
+        {
+          "kind": "file",
+          "path": "modes/cosmos/viewer/CosmosPreview.tsx",
+          "label": "viewer (~2600 lines)"
+        },
+        {
+          "kind": "file",
+          "path": "modes/cosmos/skill/SKILL.md",
+          "label": "agent instructions"
+        }
+      ]
+    },
+    {
+      "id": "shell-app",
+      "type": "module",
+      "name": "App.tsx",
+      "layerId": "shell",
+      "summary": "Root layout. Dynamically imports a mode's pneuma-mode.ts via mode-loader, mounts viewer.PreviewComponent with runtime-injected props.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "src/App.tsx"
+    },
+    {
+      "id": "shell-store",
+      "type": "module",
+      "name": "Zustand store",
+      "layerId": "shell",
+      "summary": "Frontend state — sliced into 9 protocol-aligned slices (chat, viewer, session, plugin, …). The single source of truth for UI.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "src/store/"
+    },
+    {
+      "id": "shell-ws-client",
+      "type": "module",
+      "name": "WebSocket client",
+      "layerId": "shell",
+      "summary": "Connects to /ws/browser/:sessionId. In dev mode, bypasses the Vite proxy and talks to the backend port directly.",
+      "category": "code",
+      "complexity": "simple",
+      "source": "src/ws.ts"
+    },
+    {
+      "id": "shell-use-source",
+      "type": "module",
+      "name": "useSource hook",
+      "layerId": "shell",
+      "summary": "How viewers subscribe to props.sources[k]. Uses useSyncExternalStore under the hood; current() for first render, subscribe() for updates.",
+      "category": "code",
+      "complexity": "simple",
+      "source": "src/hooks/useSource.ts"
+    },
+    {
+      "id": "shell-use-capture",
+      "type": "module",
+      "name": "useCaptureAction hook",
+      "layerId": "shell",
+      "summary": "Implements the framework-built-in `capture` action. Every viewer can call this; agent receives a file path back, reads the PNG via Read.",
+      "category": "code",
+      "complexity": "simple",
+      "source": "src/hooks/useCaptureAction.ts"
+    },
+    {
+      "id": "shell-launcher",
+      "type": "module",
+      "name": "Launcher",
+      "layerId": "shell",
+      "summary": "Marketplace UI when no mode is given. Sections: Recent Sessions, Recent Projects, Built-in Modes, Local Modes, Published, Backend Picker.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "src/components/Launcher.tsx"
+    },
+    {
+      "id": "shell-chat",
+      "type": "module",
+      "name": "Chat panel",
+      "layerId": "shell",
+      "summary": "Renders streamed assistant messages, tool blocks (with FilePreview + ToolFileActions via fileRef), permission requests, and ViewerLocator cards.",
+      "category": "code",
+      "complexity": "moderate",
+      "source": "src/components/chat/"
+    },
+    {
+      "id": "shell-empty-shell",
+      "type": "module",
+      "name": "EmptyShell",
+      "layerId": "shell",
+      "summary": "Mounted when ?project=<root> opens a project URL with no session. Renders ProjectPanel + can auto-trigger project-onboard.",
+      "category": "code",
+      "complexity": "simple",
+      "source": "src/components/EmptyShell.tsx",
+      "tags": [
+        "project"
+      ]
+    },
+    {
+      "id": "ref-viewer-agent-protocol",
+      "type": "doc",
+      "name": "viewer-agent-protocol.md",
+      "layerId": "reference",
+      "summary": "The canonical narrative for the protocol — three roles, six directions, ViewerAddress, Action space, Source<T>. Read this once and the rest of the code clicks.",
+      "category": "docs",
+      "complexity": "complex",
+      "source": "docs/reference/viewer-agent-protocol.md"
+    },
+    {
+      "id": "ref-controlled-state-surface",
+      "type": "doc",
+      "name": "controlled-state-surface.md",
+      "layerId": "reference",
+      "summary": "Three concentric circles of Pneuma's disk state: ~/.pneuma/ (global) → <projectRoot>/.pneuma/ (project) → <sessionDir>/ (session). The marker-block assembly table lives here.",
+      "category": "docs",
+      "complexity": "moderate",
+      "source": "docs/reference/controlled-state-surface.md"
+    },
+    {
+      "id": "ref-network-topology",
+      "type": "doc",
+      "name": "network-topology.md",
+      "layerId": "reference",
+      "summary": "Ports (17996 / 17007 / 18996-7), dev vs prod topology, WebSocket routes, launcher → child spawn.",
+      "category": "docs",
+      "complexity": "simple",
+      "source": "docs/reference/network-topology.md"
+    },
+    {
+      "id": "ref-create-mode-skill",
+      "type": "doc",
+      "name": "create-mode skill",
+      "layerId": "reference",
+      "summary": "Three-phase journey for authoring a new mode — Discovery interview → Design brief → Implementation. Lives at .claude/skills/create-mode/. This very cosmos was scaffolded through it.",
+      "category": "docs",
+      "complexity": "moderate",
+      "tags": [
+        "self-reference"
+      ],
+      "sources": [
+        {
+          "kind": "file",
+          "path": ".claude/skills/create-mode/SKILL.md",
+          "label": "skill body"
+        },
+        {
+          "kind": "file",
+          "path": ".claude/skills/create-mode/references",
+          "label": "references/"
+        }
+      ]
+    },
+    {
+      "id": "ref-claude-md",
+      "type": "doc",
+      "name": "CLAUDE.md",
+      "layerId": "reference",
+      "summary": "Project agent guide. Core Contracts table (defined-in / instantiated / consumed-by), coding conventions, Known Gotchas (battle-tested signal). Synced byte-identical to AGENTS.md.",
+      "category": "docs",
+      "complexity": "moderate",
+      "source": "CLAUDE.md"
+    },
+    {
+      "id": "ref-3-0-design",
+      "type": "doc",
+      "name": "3.0 design — viewer is the UI",
+      "layerId": "reference",
+      "summary": "The 3.0 thesis: 'viewer is the entire app's UI, not a side panel'. The Source<T> abstraction is the viewer-contract layer infrastructure that makes this possible.",
+      "category": "docs",
+      "complexity": "simple",
+      "source": "docs/archive/proposals/2026-03-12-pneuma-3.0-design.md"
+    }
+  ],
+  "edges": [
+    {
+      "source": "ct-mode-definition",
+      "target": "ct-mode-manifest",
+      "type": "composes",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "ModeDefinition = { manifest: ModeManifest, viewer: ViewerContract }."
+    },
+    {
+      "source": "ct-mode-definition",
+      "target": "ct-viewer-contract",
+      "type": "composes",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "ct-viewer-contract",
+      "target": "ct-viewer-preview-props",
+      "type": "uses",
+      "direction": "forward",
+      "weight": 0.9,
+      "description": "PreviewComponent: ComponentType<ViewerPreviewProps>."
+    },
+    {
+      "source": "ct-viewer-preview-props",
+      "target": "ct-source",
+      "type": "uses",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "props.sources is Record<string, Source<unknown>>."
+    },
+    {
+      "source": "ct-viewer-preview-props",
+      "target": "ct-viewer-action-descriptor",
+      "type": "uses",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "props.actionRequest carries one of these."
+    },
+    {
+      "source": "ct-source",
+      "target": "ct-source-provider",
+      "type": "created_by",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "ct-source-provider",
+      "target": "ct-file-channel",
+      "type": "uses",
+      "direction": "forward",
+      "weight": 0.9,
+      "description": "File-backed providers consume FileChannel from SourceContext."
+    },
+    {
+      "source": "ct-viewer-address",
+      "target": "ct-viewer-action-descriptor",
+      "type": "appears_in",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "Action params often carry a ViewerAddress."
+    },
+    {
+      "source": "ct-backend-module",
+      "target": "ct-agent-backend",
+      "type": "factory_for",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "BackendModule.createBackend() returns an AgentBackend."
+    },
+    {
+      "source": "rt-mode-loader",
+      "target": "ct-mode-manifest",
+      "type": "loads",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "rt-mode-loader",
+      "target": "ct-mode-definition",
+      "type": "loads",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "rt-mode-resolver",
+      "target": "rt-mode-loader",
+      "type": "feeds",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "Resolver maps specifier → disk; loader takes the path from here."
+    },
+    {
+      "source": "rt-source-registry",
+      "target": "ct-source-provider",
+      "type": "uses",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "Looks up provider by kind; calls provider.create(config, ctx)."
+    },
+    {
+      "source": "rt-source-registry",
+      "target": "ct-source",
+      "type": "instantiates",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "rt-source-registry",
+      "target": "ct-mode-manifest",
+      "type": "reads",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "Reads manifest.sources to know what channels to set up."
+    },
+    {
+      "source": "rt-sources-impl",
+      "target": "ct-source-provider",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "rt-sources-impl",
+      "target": "ct-source",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "rt-skill-installer",
+      "target": "ct-mode-manifest",
+      "type": "reads",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "Reads manifest.skill / .viewerApi to assemble the agent instructions."
+    },
+    {
+      "source": "rt-skill-installer",
+      "target": "ct-backend-module",
+      "type": "uses",
+      "direction": "forward",
+      "weight": 0.9,
+      "description": "Reads skillsDir + instructionsFile per backend."
+    },
+    {
+      "source": "rt-skill-installer",
+      "target": "rt-instructions-file",
+      "type": "assembles",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "Composes pneuma:start (mode body) + pneuma:viewer-api + pneuma:preferences + pneuma:project (project-only) + pneuma:project-atlas + pneuma:handoff (project-only) + pneuma:evolved + pneuma:resumed marker blocks into the file."
+    },
+    {
+      "source": "rt-handoff-routes",
+      "target": "rt-instructions-file",
+      "type": "feeds_into",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "On confirm, writes inbound-handoff.json that the next session's skill-installer assembles into the pneuma:handoff marker block."
+    },
+    {
+      "source": "rt-ws-bridge",
+      "target": "ct-agent-backend",
+      "type": "drives",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "WS bridge calls launch / kill / send through the AgentBackend instance."
+    },
+    {
+      "source": "rt-ws-bridge",
+      "target": "ct-backend-module",
+      "type": "uses",
+      "direction": "forward",
+      "weight": 0.9,
+      "description": "Asks BackendModule to create the per-backend BridgeBackend."
+    },
+    {
+      "source": "rt-ws-bridge-viewer",
+      "target": "ct-viewer-action-descriptor",
+      "type": "transports",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "Carries ViewerActionRequest/Result envelopes across the websocket."
+    },
+    {
+      "source": "rt-file-ref",
+      "target": "ct-backend-module",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "Calls BackendModule.toolFileRef(name, input) on every tool_use."
+    },
+    {
+      "source": "rt-handoff-routes",
+      "target": "ct-mode-manifest",
+      "type": "spawns",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "On confirm, spawns target mode in a new session."
+    },
+    {
+      "source": "rt-plugin-registry",
+      "target": "ct-plugin-manifest",
+      "type": "loads",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "be-claude-code",
+      "target": "ct-backend-module",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "backends/claude-code/manifest.ts default-exports a BackendModule."
+    },
+    {
+      "source": "be-claude-code",
+      "target": "ct-agent-backend",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "be-codex",
+      "target": "ct-backend-module",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "be-codex",
+      "target": "ct-agent-backend",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "be-kimi-cli",
+      "target": "ct-backend-module",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "be-kimi-cli",
+      "target": "ct-agent-backend",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "mode-cosmos",
+      "target": "ct-mode-manifest",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "mode-cosmos",
+      "target": "ct-mode-definition",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "mode-cosmos",
+      "target": "ct-viewer-contract",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "mode-cosmos",
+      "target": "ct-source",
+      "type": "subscribes_to",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "Subscribes to a json-file Source<Cosmos> on cosmos.json."
+    },
+    {
+      "source": "mode-cosmos",
+      "target": "mode-illustrate",
+      "type": "shares_tech_with",
+      "direction": "bidirectional",
+      "weight": 0.6,
+      "description": "Both viewers use @xyflow/react; cosmos additionally uses @dagrejs/dagre for layout."
+    },
+    {
+      "source": "mode-cosmos",
+      "target": "ref-create-mode-skill",
+      "type": "generated_via",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "This mode was scaffolded by walking the create-mode skill end-to-end."
+    },
+    {
+      "source": "mode-webcraft",
+      "target": "ct-mode-manifest",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "mode-slide",
+      "target": "ct-mode-manifest",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "mode-kami",
+      "target": "ct-mode-manifest",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "mode-mode-maker",
+      "target": "ref-create-mode-skill",
+      "type": "complements",
+      "direction": "forward",
+      "weight": 0.6,
+      "description": "mode-maker is the in-app UI for forking & play-testing; create-mode is the engineer-facing skill for designing from scratch."
+    },
+    {
+      "source": "mode-project-onboard",
+      "target": "rt-project-loader",
+      "type": "triggered_by",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "Auto-launched by EmptyShell when project has no sessions and no onboardedAt stamp."
+    },
+    {
+      "source": "shell-app",
+      "target": "rt-mode-loader",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "shell-app",
+      "target": "ct-mode-definition",
+      "type": "mounts",
+      "direction": "forward",
+      "weight": 1.0,
+      "description": "Dynamic-imports a pneuma-mode.ts and mounts viewer.PreviewComponent."
+    },
+    {
+      "source": "shell-use-source",
+      "target": "ct-source",
+      "type": "consumes",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "shell-use-capture",
+      "target": "ct-viewer-action-descriptor",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 0.9,
+      "description": "Implements the framework-built-in `capture` action."
+    },
+    {
+      "source": "shell-ws-client",
+      "target": "rt-ws-bridge",
+      "type": "connects_to",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "shell-store",
+      "target": "ct-viewer-action-descriptor",
+      "type": "dispatches",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "viewer-slice owns actionRequest / onActionResult plumbing."
+    },
+    {
+      "source": "shell-chat",
+      "target": "rt-file-ref",
+      "type": "renders_from",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "FilePreview + ToolFileActions read the fileRef stamped by file-ref.ts."
+    },
+    {
+      "source": "shell-chat",
+      "target": "ct-viewer-address",
+      "type": "renders",
+      "direction": "forward",
+      "weight": 0.7,
+      "description": "<viewer-locator> cards carry an address; clicking dispatches navigateRequest."
+    },
+    {
+      "source": "shell-empty-shell",
+      "target": "mode-project-onboard",
+      "type": "spawns",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "Auto-launches project-onboard for fresh projects."
+    },
+    {
+      "source": "shell-launcher",
+      "target": "rt-mode-loader",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "ref-viewer-agent-protocol",
+      "target": "ct-source",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "ref-viewer-agent-protocol",
+      "target": "ct-viewer-contract",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "ref-viewer-agent-protocol",
+      "target": "ct-viewer-address",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "ref-viewer-agent-protocol",
+      "target": "ct-viewer-action-descriptor",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "ref-controlled-state-surface",
+      "target": "rt-skill-installer",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "ref-controlled-state-surface",
+      "target": "rt-instructions-file",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.9,
+      "description": "The marker-block assembly table is the canonical description of how this file is composed."
+    },
+    {
+      "source": "ref-controlled-state-surface",
+      "target": "rt-handoff-routes",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "ref-network-topology",
+      "target": "rt-ws-bridge",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "ref-create-mode-skill",
+      "target": "ct-mode-manifest",
+      "type": "guides_creation_of",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "ref-create-mode-skill",
+      "target": "ct-viewer-contract",
+      "type": "guides_creation_of",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "ref-claude-md",
+      "target": "ct-mode-manifest",
+      "type": "summarizes",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "ref-3-0-design",
+      "target": "ct-source",
+      "type": "originates",
+      "direction": "forward",
+      "weight": 0.8,
+      "description": "Source<T> is the viewer-contract-layer infrastructure for the 3.0 'viewer is the UI' thesis."
+    }
+  ],
+  "tour": [
+    {
+      "step": 1,
+      "nodeId": "ct-mode-manifest",
+      "narrative": "Start at the protocol surface. ModeManifest is what every mode implements — skill / viewer / agent / init / sources / evolution. Open core/types/mode-manifest.ts and you've read 80% of how a mode is shaped."
+    },
+    {
+      "step": 2,
+      "nodeId": "ct-viewer-contract",
+      "narrative": "The viewer half of the contract. PreviewComponent renders; extractContext translates the user's selection into `<viewer-context>` text for the agent; workspace describes file organization; actions are what the agent can call on the viewer."
+    },
+    {
+      "step": 3,
+      "nodeId": "ct-source",
+      "narrative": "Source<T> is the typed data channel between runtime and viewer. Four invariants — single writer, change-read-via-subscription, time-locked Promises, origin-tagged events — make agent edits and viewer writes coexist without race. Viewer never reads files directly; it subscribes to Source<T>."
+    },
+    {
+      "step": 4,
+      "nodeId": "rt-mode-loader",
+      "narrative": "How the runtime turns a name into a mode. mode-loader's `builtinModes` registry is the one place in code where each built-in's name appears (Bun/Vite need literal import strings); external modes register via registerExternalMode()."
+    },
+    {
+      "step": 5,
+      "nodeId": "rt-skill-installer",
+      "narrative": "How agent instructions get assembled. skill-installer copies skill/ into the backend-appropriate dir (.claude/skills/ for Claude, .agents/skills/ for Codex, .kimi/skills/ for Kimi), applies {{key}} templates, then composes a CLAUDE.md / AGENTS.md from named marker blocks."
+    },
+    {
+      "step": 6,
+      "nodeId": "mode-cosmos",
+      "narrative": "And here we are. Cosmos is a mode like any other — implements ModeManifest, exports ModeDefinition, subscribes to a Source<Cosmos>. This very cosmos.json you're exploring was generated by the agent walking the create-mode skill. Bootstrap."
+    },
+    {
+      "step": 7,
+      "nodeId": "ref-create-mode-skill",
+      "narrative": "Want to add a new mode? Start here. The skill walks you through Discovery → Design brief → Implementation in 7-10 questions and produces a working skeleton you can iterate on. Cosmos was its first end-to-end exercise."
+    }
+  ],
+  "perspectives": [
+    {
+      "id": "perspective-contracts-as-anchor",
+      "lens": "entropy-gradient",
+      "name": "Contracts as the low-entropy anchor; modes absorb change",
+      "insight": "core/types/ stays small while modes/ proliferates — a deliberate gradient. The contracts hold; the periphery soaks up time. This is why mode work feels fast: the floor is solid.",
+      "steps": [
+        {
+          "focus": [
+            "ct-mode-manifest",
+            "ct-viewer-contract",
+            "ct-source"
+          ],
+          "narrative": "Start at the floor. Three small contracts — ModeManifest, ViewerContract, Source — describe the entire mode protocol. Nothing in this trio has changed in months; the shapes are load-bearing across every mode in the repo."
+        },
+        {
+          "focus": [
+            "mode-webcraft",
+            "mode-clipcraft",
+            "mode-cosmos"
+          ],
+          "narrative": "Now look at the periphery. Each mode is a separate package — different tech stack, different viewer, different domain. They rev independently. webcraft can adopt a new compiler, clipcraft can replace its export pipeline, cosmos can land brand new — none of it ripples back."
+        },
+        {
+          "focus": [
+            "ct-mode-manifest"
+          ],
+          "narrative": "The gradient itself is the design. Mode authors can move fast because the contract names exactly what they must honor and exactly nothing else. Editing this one file is the rare project-wide event — the floor moving — which is why it stays small on purpose."
+        }
+      ],
+      "evidence": "Every mode node connects back to ct-mode-manifest with `implements`; no mode connects to any other mode for protocol reasons. Periphery shape varies; center shape doesn't."
+    },
+    {
+      "id": "perspective-files-vs-domain-tension",
+      "lens": "tension",
+      "name": "Files are sacred AND viewers need domain types",
+      "insight": "Two forces pull every decision opposite directions. Agents speak files natively; viewers need Deck, Studio, Cosmos. Source<T> is where the two meet — and fileChannel is where they admit they haven't fully merged.",
+      "steps": [
+        {
+          "focus": [
+            "ct-viewer-contract"
+          ],
+          "narrative": "Force one: viewers want domain types. A Deck. A Studio. A Cosmos. Rendering raw bytes isn't a viewer — it's a hex editor. Every ViewerContract in the repo assumes a typed T as its subscription."
+        },
+        {
+          "focus": [
+            "ref-3-0-design"
+          ],
+          "narrative": "Force two: agents want files. Pneuma's contract with coding agents is that the files are real — read with Read, edit with Edit, no proxies. Abstracting files away would break the half of Pneuma that makes it work with Claude Code at all."
+        },
+        {
+          "focus": [
+            "ct-source"
+          ],
+          "narrative": "Resolution: Source<T> sits between. The viewer gets typed values; the agent keeps editing files; the source provider translates. This is where the tension is *held* — not solved, held — so both sides can keep being themselves."
+        },
+        {
+          "focus": [
+            "ct-file-channel"
+          ],
+          "narrative": "And here's the escape hatch. fileChannel exists for the case where domain IS files (raw markdown, raw images). The tension was never fully resolved by Source<T> alone — fileChannel is the explicit admission. Both forces still shape the design today."
+        }
+      ],
+      "evidence": "Source<T> exists *because* of this tension. fileChannel as a separate escape hatch exists *because* the tension isn't resolved by Source<T> alone."
+    },
+    {
+      "id": "perspective-origin-tagged-loop",
+      "lens": "cybernetic-loop",
+      "name": "Origin-tagged events as the reconciliation loop",
+      "insight": "Pneuma holds the property 'viewer's local state matches disk' against the perturbation 'agent and viewer both write'. The loop closes via an explicit origin tag on every event.",
+      "steps": [
+        {
+          "focus": [
+            "ct-source"
+          ],
+          "narrative": "The property to hold: viewer state matches disk. The perturbation: two writers, the agent and the viewer, both editing the same file concurrently. Without a feedback mechanism, you get echoes (viewer redrawing its own writes) or silent drift (agent edits the viewer never sees)."
+        },
+        {
+          "focus": [
+            "ct-file-channel"
+          ],
+          "narrative": "The mechanism: every value event carries an origin tag — self, external, or initial. Self-writes are *not* silently absorbed; they still emit events, but tagged so the viewer knows it was the echo. External writes get reconciled. The tag is the error signal."
+        },
+        {
+          "focus": [
+            "rt-sources-impl"
+          ],
+          "narrative": "Where the loop actually closes. core/sources/base.ts enforces the four invariants — every provider must respect them or the loop breaks. The pendingSelfWrites mechanism on the server is the perturbation-correction step you'd find in any control system: it knows what *it* wrote, so it can recognize the echo when it comes back."
+        }
+      ],
+      "evidence": "core/sources/base.ts enforces the four invariants that make this loop work. The pendingSelfWrites server-side mechanism (controlled-state-surface documents it) is the perturbation-correction step."
+    },
+    {
+      "id": "perspective-instructions-as-convergence",
+      "lens": "convergence",
+      "name": "Instructions file as the convergence of three state circles",
+      "insight": "Global preferences, project metadata, session handoffs — three independent state circles, each owned by different code paths, all meet inside the assembled CLAUDE.md/AGENTS.md per session.",
+      "steps": [
+        {
+          "focus": [
+            "rt-skill-installer"
+          ],
+          "narrative": "The assembler. skill-installer is the one piece of code that *writes* CLAUDE.md/AGENTS.md. Every session's instructions file is its output. Nothing else writes there."
+        },
+        {
+          "focus": [
+            "rt-handoff-routes",
+            "ref-controlled-state-surface"
+          ],
+          "narrative": "The three feeds. ~/.pneuma/preferences/ owns user-level taste. <project>/.pneuma/project.json owns project context. inbound-handoff.json owns the current handoff. Each is updated by a different code path on different triggers — they don't know about each other."
+        },
+        {
+          "focus": [
+            "rt-instructions-file"
+          ],
+          "narrative": "The convergence point. All three feeds funnel through marker blocks — pneuma:preferences, pneuma:project, pneuma:handoff. The marker contract is non-negotiable precisely *because* this file is where independent concerns become one voice. Free-form append would let them collide; markers keep them as separate voices in one conversation."
+        }
+      ],
+      "evidence": "The marker-block contract names exactly the concerns being converged (pneuma:preferences, pneuma:project, pneuma:handoff, pneuma:evolved). Each block is one concern's voice in the conversation."
+    },
+    {
+      "id": "perspective-backend-orthogonality",
+      "lens": "orthogonality",
+      "name": "Backend implementation and session contract vary independently",
+      "insight": "Three backends ship three radically different transports — NDJSON, JSON-RPC, NDJSON-with-envelopes. From the session's perspective they're equivalent. That orthogonality is why adding Kimi didn't touch any mode.",
+      "steps": [
+        {
+          "focus": [
+            "ct-agent-backend",
+            "ct-backend-module"
+          ],
+          "narrative": "The contract surface. AgentBackend + BackendModule define what a session can ask of *any* backend — launch, message, end, action-result. The shape says nothing about transport; that's the orthogonal axis."
+        },
+        {
+          "focus": [
+            "be-claude-code",
+            "be-codex",
+            "be-kimi-cli"
+          ],
+          "narrative": "Now look at the three implementations. Claude runs stdio NDJSON. Codex runs stdio JSON-RPC. Kimi runs stdio NDJSON but synthesizes its own envelope shape. Three transports, three protocols, three lifecycle quirks — but each one re-exports the same BackendModule shape, so the runtime can swap among them without knowing."
+        },
+        {
+          "focus": [
+            "ct-backend-module"
+          ],
+          "narrative": "The proof: when Kimi was added, no mode changed. webcraft, slide, cosmos — none of them know Kimi exists. The orthogonality is real because crossing the axis costs nothing: a new backend reaches every mode, a new mode reaches every backend, and the matrix never has to be enumerated by hand."
+        }
+      ],
+      "evidence": "BackendModule's identical-shape exports across three very different backends. The BridgeBackend abstraction in server/ws-bridge-backend.ts catches what's truly per-backend."
+    },
+    {
+      "id": "perspective-cosmos-self-similar",
+      "lens": "self-similarity",
+      "name": "Pneuma describes modes; cosmos is a mode that describes Pneuma",
+      "insight": "The same act — structured projection — appears at two scales. Pneuma's contracts let modes write their own world; cosmos uses those contracts to write a world that contains pneuma itself.",
+      "steps": [
+        {
+          "focus": [
+            "ct-mode-manifest",
+            "ct-mode-definition"
+          ],
+          "narrative": "Level one: pneuma defines the protocol that lets any mode describe itself — manifest declares, ModeDefinition binds, the runtime wires them in. The whole project is the act of giving modes a vocabulary for self-description."
+        },
+        {
+          "focus": [
+            "mode-cosmos"
+          ],
+          "narrative": "Level two: cosmos uses that vocabulary to describe arbitrary content as a structured projection. It's just one more mode — except the content it projects can be anything, including the contracts that made it possible."
+        },
+        {
+          "focus": [
+            "ref-create-mode-skill"
+          ],
+          "narrative": "Closing the loop. This very seed was generated by walking create-mode (see edge mode-cosmos → ref-create-mode-skill, `generated_via`). Cosmos read pneuma's SKILL on how to build modes, then projected pneuma. The system describes itself using itself — and the act of self-description scales because the abstractions stayed stable enough to support it."
+        }
+      ],
+      "evidence": "The seed is generated by walking create-mode (see edge mode-cosmos → ref-create-mode-skill, `generated_via`). The very fact that cosmos can read its own SKILL.md and apply it to itself is the mark of a stable abstraction."
+    }
+  ]
+}

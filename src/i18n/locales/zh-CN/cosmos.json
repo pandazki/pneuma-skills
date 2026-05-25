@@ -1,0 +1,185 @@
+{
+  "header": {
+    "in_drill": "下探中：<strong>{{title}}</strong>",
+    "exit_drill_tooltip": "退出子图 — 返回主星图",
+    "stats_nodes": "{{count}} 个节点",
+    "stats_nodes_plural": "{{count}} 个节点",
+    "stats_edges": "{{count}} 条边",
+    "stats_edges_plural": "{{count}} 条边",
+    "stats_layers": "{{count}} 个分层",
+    "stats_layers_plural": "{{count}} 个分层",
+    "stats_perspectives": "{{count}} 个视角",
+    "stats_perspectives_plural": "{{count}} 个视角",
+    "stats_drills": "{{count}} 次下探",
+    "stats_drills_plural": "{{count}} 次下探",
+    "stats_pending": "({{count}} 个进行中)"
+  },
+  "tabs": {
+    "info": "信息",
+    "files": "文件",
+    "tour": "导览",
+    "drills": "下探"
+  },
+  "view_controls": {
+    "level": "层级",
+    "level_project": "项目",
+    "level_detail": "详情",
+    "density": "密度",
+    "density_overview": "纵览",
+    "density_learn": "学习",
+    "density_deep": "深入",
+    "layers": "分层",
+    "all_layers": "全部分层"
+  },
+  "search": {
+    "placeholder": "按名称、摘要或标签搜索节点…",
+    "fuzzy": "模糊",
+    "semantic": "语义",
+    "semantic_tooltip": "语义搜索在后续版本支持 — 需要 embedding 模型。",
+    "no_results": "未找到匹配节点",
+    "matched_in": {
+      "name": "名称",
+      "summary": "摘要",
+      "tag": "标签",
+      "type": "类型"
+    }
+  },
+  "categories": {
+    "label": "类别",
+    "show_tooltip": "显示 {{kind}} 节点",
+    "hide_tooltip": "隐藏 {{kind}} 节点",
+    "code": "代码",
+    "config": "配置",
+    "docs": "文档",
+    "infra": "基础设施",
+    "data": "数据",
+    "domain": "领域",
+    "knowledge": "知识",
+    "other": "其他"
+  },
+  "info": {
+    "empty": "点击任意节点或分层在此查看详情。TOUR 选项卡里有视角导览。",
+    "layer_focus_title": "分层聚焦",
+    "layer_focus_nodes": "本层节点（{{count}}）",
+    "sources_label": "信源",
+    "stack_label": "技术栈",
+    "outbound": "出向 · {{count}}",
+    "inbound": "入向 · {{count}}",
+    "tags_label": "标签",
+    "project_overview_eyebrow": "项目",
+    "project_open_root_label": "用编辑器打开项目",
+    "project_open_root_hint": "在你常用的编辑器里打开源码根目录。之后点信源 chip 时，编辑器会在同一个窗口里激活对应文件。",
+    "project_no_root_hint": "点任意节点查看它的信源。这张星图没有声明本地根目录——信源可能指向网页、对话片段或散落在文件系统各处。",
+    "project_quick_links": "快速跳转",
+    "project_open_tour": "走一遍项目导览 →",
+    "project_open_perspectives": "浏览视角导览 →",
+    "project_open_drills": "查看下探记录 →"
+  },
+  "files": {
+    "empty": "该星图暂无文件引用。",
+    "orphans_header": "未分层"
+  },
+  "tour": {
+    "empty": "该星图还没有导览。让 agent 添加 — 总览导览（一条主线路径）或视角导览（按设计透镜组织的变体路径）。",
+    "perspective_gone": "该视角已不存在。",
+    "perspective_gone_action": "结束导览",
+    "step_badge": "第 {{current}} / {{total}} 步",
+    "end_tour": "结束导览",
+    "prev": "← 上一步",
+    "next": "下一步 →",
+    "finish": "完成",
+    "header_eyebrow": "项目导览",
+    "header_perspective_eyebrow": "视角 · {{lens}}",
+    "overall_title": "项目导览",
+    "overall_subtitle_one": "{{count}} 步 · 穿过该星图的主线阅读路径",
+    "overall_subtitle_other": "{{count}} 步 · 穿过该星图的主线阅读路径",
+    "overall_start": "开始项目导览",
+    "perspectives_title": "视角导览",
+    "perspectives_subtitle_one": "{{count}} 个变体导览 · 用一个特定的设计透镜重读这张星图。每个都被它走过的节点支撑。",
+    "perspectives_subtitle_other": "{{count}} 个变体导览 · 用一个特定的设计透镜重读这张星图。每个都被它走过的节点支撑。",
+    "perspective_steps_one": "{{count}} 步",
+    "perspective_steps_other": "{{count}} 步"
+  },
+  "drills": {
+    "title": "下探记录",
+    "subtitle": "你的下探历史。点击任意条目把画布导航进对应的子图。",
+    "empty": "暂无下探记录。在画布上选择一个或多个节点（shift+点击 多选），再点击 <strong>下探 N 个节点 →</strong>，agent 会为你的问题生成一个聚焦的子图。",
+    "status_ready": "完成",
+    "status_drilling": "进行中",
+    "status_failed": "失败",
+    "anchors": "锚点：",
+    "nested": "嵌套 · 来自父级下探",
+    "node_count_one": "{{count}} 个节点",
+    "node_count_other": "{{count}} 个节点",
+    "enter_tooltip": "进入该下探的子图"
+  },
+  "drill_modal": {
+    "eyebrow": "下探请求",
+    "eyebrow_nested": "下探请求 · 嵌套",
+    "title_one": "下探 {{count}} 个节点",
+    "title_other": "下探 {{count}} 个节点",
+    "prompt_label": "提示语",
+    "hint": "agent 会为这些锚点生成一个聚焦的子图，完成后回发 locator 卡片。",
+    "cancel": "取消",
+    "submit": "发送下探 →",
+    "default_prompt_one": "请深入分析 {{anchors}} 这个节点，给出一个聚焦的子图（subgraph）。",
+    "default_prompt_other": "请深入分析 {{anchors}} 这几个节点之间的关系，给出一个聚焦的子图（subgraph）。",
+    "summary": "下探 {{count}} 个节点"
+  },
+  "canvas": {
+    "drill_cta_one": "下探 {{count}} 个节点 →",
+    "drill_cta_other": "下探 {{count}} 个节点 →",
+    "drill_cta_tooltip": "打开下探编辑器",
+    "drilling_badge": "下探中…",
+    "reset_layout_tooltip": "重置布局 (R)",
+    "reset_layout_label": "重置布局"
+  },
+  "node_card": {
+    "click_to_explore": "点击展开 →",
+    "node_count_one": "{{count}} 个节点",
+    "node_count_other": "{{count}} 个节点"
+  },
+  "help_modal": {
+    "title": "键盘快捷键",
+    "shortcut_help": "开关此帮助",
+    "shortcut_reset": "重置布局（重跑 Dagre + fit view）",
+    "shortcut_fit": "适配画布到视口",
+    "shortcut_density_overview": "密度：纵览（只显示名称）",
+    "shortcut_density_learn": "密度：学习（名称 + 摘要）",
+    "shortcut_density_deep": "密度：深入（名称 + 摘要 + 标签）",
+    "shortcut_level": "切换 项目 ↔ 详情 视图层级",
+    "shortcut_tour_tab": "打开视角导览 — 用设计透镜框定的变体路径",
+    "shortcut_tour_tab_key": "TOUR 选项卡",
+    "shortcut_escape": "关闭弹窗 · 结束导览 · 清除选择",
+    "tooltip": "键盘快捷键 (?)"
+  },
+  "onboarding": {
+    "eyebrow": "星图 · 上手指引 · {{current}} / {{total}}",
+    "step1_title": "欢迎来到星图",
+    "step1_body": "Cosmos 把任意内容投影成结构化的图 — 代码、散文、研究、业务流程。这第一屏是个*自举*：pneuma-skills 在投影自己。",
+    "step2_title": "项目 ↔ 详情",
+    "step2_body": "两个视图层级共用同一张画布。项目视图每个分层只显示一张卡片；点卡片进入详情视图，展开该分层内的所有节点。用 P 键或侧栏 LEVEL 切换。",
+    "step3_title": "信息 · 文件 · 导览",
+    "step3_body": "右侧面板有三个选项卡。信息显示你选中的内容。文件按分层列出所有节点。导览带你走一条精挑的阅读路径，前后翻页 — 第一次来很合适。",
+    "step4_title": "搜索与过滤",
+    "step4_body": "顶栏有模糊搜索（名称/摘要/标签实时匹配）和分类标签（代码、文档…）来暂时隐藏你不想看的部分。",
+    "step5_title": "视角导览",
+    "step5_body": "当 agent 在星图里发现设计透镜时，TOUR 选项卡会在主项目导览下方长出额外条目。每一条都是一次变体阅读 — 同一张星图，但你带着一个特定问题在看：『这套系统在哪里维持反馈回路？』、『v0.2 和 v0.3 的抽象在哪里相撞？』。选一条看它的脉络。",
+    "dont_show_again": "不再显示",
+    "back": "返回",
+    "next": "下一步",
+    "get_started": "开始探索"
+  },
+  "empty_state": {
+    "title": "还没有星图",
+    "body": "把内容拖进工作区 — 代码、散文、研究、任意类型 — 让 agent 投影它，星图会在这里出现。"
+  },
+  "source_kind": {
+    "file": "文件",
+    "url": "网页",
+    "passage": "段落",
+    "image": "图像",
+    "audio": "音频",
+    "video": "视频"
+  }
+}

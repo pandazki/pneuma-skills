@@ -116,6 +116,10 @@ Render the brief inline in the conversation (not as a file — the conversation 
 - NOTICE.md required: <yes | no — if yes, upstream name + license + version pinned>
 - inspiredBy: <none | { name, url }>
 
+## Launcher surface
+- visibility: <public (in gallery) | hidden (internal-only, manifest.hidden=true)>
+- featured-eligible: <yes (default; showcase highlights present) | no (no showcase or hidden mode)>
+
 ## Evolution directive
 > <one sentence to the evolve agent>
 
@@ -165,9 +169,79 @@ For each file, fill in templates against the brief. Specifics:
 - **showcase/showcase.json** — from template, with brief's tagline + 3 highlight concept descriptions. *Images are generated in Step 4.*
 - **NOTICE.md** *(if required)* — pin upstream name + URL + license + version + sync date; include the "what we borrowed / what we adapted / what we dropped" mapping table. Template at `assets/templates/NOTICE.md.template`.
 
-### Step 3 — Register the mode
+### Step 3 — Register the mode (three places, all required)
 
-Add the new mode name to `CLAUDE.md`'s `**Builtin Modes:**` line and to the README's "Built-in Modes" table. (If the new mode declares `hidden: true`, skip the README addition.)
+A new builtin mode needs to be registered in **three** separate
+files for the runtime to find it. Skipping any one leaves it in a
+half-installed state — the dev server might run, but the launcher
+won't list it, or imports will fail in the frontend bundle. The
+three files are deliberately separate because they're consumed by
+different processes (backend / frontend / docs).
+
+Before adding code, ask the user whether the mode should appear in
+the launcher gallery at all, or be **hidden** (internal-only, like
+`evolve`, `project-evolve`, `project-onboard`). Hidden modes still
+need the first two registrations below but skip the README +
+gallery treatment.
+
+#### 3a. Frontend dynamic-import registry — `core/mode-loader.ts`
+
+Add an entry to the `builtinModes: Record<string, ModeSource>` map
+so the frontend can dynamic-import the mode's manifest and viewer.
+Without this, the mode 404s when a user opens its URL ("Unknown
+mode: <name>").
+
+```ts
+// core/mode-loader.ts — inside `const builtinModes = { ... }`
+<name>: {
+  loadManifest: () => import("../modes/<name>/manifest.js").then((m) => m.default),
+  loadModeDefinition: () => import("../modes/<name>/pneuma-mode.js").then((m) => m.default),
+},
+```
+
+#### 3b. Launcher gallery registry — `server/index.ts`
+
+Add the mode's name to the `builtinNames` array (search for `const
+builtinNames = [...]`). This array drives `/api/registry`, which
+the launcher's marketplace UI and ProjectPanel's mode-tile grid
+both consume. **Skipping this is the #1 way a freshly-built mode
+silently fails to appear in the launcher gallery** even though
+`bun run dev <name>` works fine.
+
+```ts
+// server/index.ts — search for "const builtinNames"
+const builtinNames = [..., "<name>"];
+```
+
+The launcher filters out modes whose manifest declares
+`hidden: true`, so hidden modes go in the array but get hidden at
+render time. (Authoring choice: include them so the omission-list
+pattern stays out of code.)
+
+#### 3c. Docs — `CLAUDE.md` and `AGENTS.md`
+
+Add the mode name to the `**Builtin Modes:**` line in `CLAUDE.md`,
+then `cp CLAUDE.md AGENTS.md` (they must be byte-identical per the
+release contract). If the mode is **not hidden**, also add a row to
+README's "Built-in Modes" table. Hidden modes don't go in the
+README.
+
+#### Featured vs. hidden — confirm with the user
+
+After the three registrations land, ask the user one more question:
+
+> Should I propose this mode be eligible for the launcher's
+> featured slot? The launcher randomly picks one builtin with
+> showcase highlights to feature on its main page. Saying yes
+> means we'll make sure `manifest.hidden` stays unset (default)
+> and that `showcase.json` has at least one highlight. Saying no
+> means we should set `hidden: true` in the manifest so the mode
+> exists but doesn't surface in the gallery.
+
+Record their answer in the design brief's "Featured" line. Today's
+launcher has no per-mode pin (any showcase-bearing builtin gets a
+random chance); a "always feature this one" affordance would be a
+v0.4 enhancement and shouldn't block mode creation.
 
 ### Step 4 — Generate showcase imagery
 
@@ -179,10 +253,11 @@ Hand off to the existing showcase workflow. Read `.claude/commands/showcase.md` 
 
 Don't claim the mode is ready until you verify these:
 
-1. `modes/<name>/manifest.ts` type-checks against `core/types/mode-manifest.ts` (the TS compiler runs in dev).
+1. `modes/<name>/manifest.ts` type-checks against `core/types/mode-manifest.ts` (`bunx tsc --noEmit` runs clean in `modes/<name>/`).
 2. `bun run dev <name>` starts without error (you may not be able to run this — if not, say so explicitly and ask the user to verify).
-3. The launcher's mode gallery shows the new entry. (Same — say so if you can't run it.)
-4. There are no lingering `TODO:` comments from the template you didn't address.
+3. **The launcher's `/api/registry` includes the new entry.** Test via `curl -s http://localhost:17996/api/registry | jq '.builtins[].name'` (or whatever port the launcher is on). If the name isn't there, you skipped Step 3b (`server/index.ts builtinNames`) — go fix it before continuing.
+4. The launcher's mode gallery shows the new entry (same — say so if you can't run the launcher).
+5. There are no lingering `TODO:` comments from the template you didn't address.
 
 ---
 

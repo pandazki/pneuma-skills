@@ -1,0 +1,100 @@
+/*
+ * Cosmos viewer overrides for @xyflow/react default styles.
+ *
+ * The library's stylesheet (`@xyflow/react/dist/style.css`) ships with a
+ * light-theme `<Controls>` panel — white background, dark icons, light
+ * borders. Against the cosmos's deep-zinc canvas that's an unreadable
+ * white pill in the bottom-left corner. The rules below repaint the
+ * controls + minimap shells in zinc/orange so they sit cleanly on top
+ * of the canvas.
+ */
+
+.react-flow__controls {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.react-flow__controls-button {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #27272a;
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  transition: background 120ms ease;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+.react-flow__controls-button:hover {
+  background: rgba(249, 115, 22, 0.12);
+}
+
+.react-flow__controls-button svg {
+  fill: #d4d4d8;
+  max-width: 14px;
+  max-height: 14px;
+}
+
+.react-flow__controls-button:hover svg {
+  fill: #fb923c;
+}
+
+.react-flow__controls-button:disabled svg {
+  fill: #3f3f46;
+}
+
+/* MiniMap already passes inline styles, but its built-in box-shadow stays
+ * light; flatten it. */
+.react-flow__minimap {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  border-radius: 4px;
+}
+
+/* When a node is in focused-selection mode and the user wants the
+ * selected one to pop, give it a soft orange ring via React Flow's
+ * `selected` class hook. Other selection styling stays inline. */
+.react-flow__node.selected > div {
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.55), 0 6px 18px rgba(249, 115, 22, 0.18);
+}
+
+/* Pending-drill pulse — anchor nodes with an in-flight drill request
+ * get a slow breathing animation so the user sees "the agent is
+ * working on this". 1.6s cycle, very subtle (opacity 0.55 → 1). */
+@keyframes cc-cosmos-pending-pulse {
+  0% {
+    box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.18), 0 0 0 0 rgba(249, 115, 22, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.4), 0 0 0 8px rgba(249, 115, 22, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.18), 0 0 0 0 rgba(249, 115, 22, 0.35);
+  }
+}
+.cc-cosmos-node--pending {
+  animation: cc-cosmos-pending-pulse 1.6s ease-in-out infinite;
+}
+
+/* Inline mini-spinner — a 9px circle with a sweeping orange arc.
+ * Used in the per-node "drilling…" badge and (later) the DRILLS
+ * sidebar tab's pending-row indicator. */
+.cc-cosmos-spinner {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid rgba(249, 115, 22, 0.18);
+  border-top-color: rgba(249, 115, 22, 0.95);
+  border-radius: 50%;
+  animation: cc-cosmos-spinner-rotate 0.85s linear infinite;
+}
+@keyframes cc-cosmos-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}

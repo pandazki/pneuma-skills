@@ -7,10 +7,12 @@ future syncs can be performed against the pinned upstream version.
 ## Upstream
 
 - **Name**: Understand Anything (`Lum1104/Understand-Anything`)
-- **URL**: <https://github.com/Lum1104/Understand-Anything>
-- **License**: MIT
+- **Author**: Yuxiang Lin ([@Lum1104](https://github.com/Lum1104))
+- **Homepage**: <https://understand-anything.com>
+- **Repository**: <https://github.com/Lum1104/Understand-Anything>
+- **License**: MIT (SPDX: `MIT`)
 - **Version pinned**: commit `470cc01dc5f9236a93eb704afdd479cd5db79710`
-- **Synced at**: 2026-05-24
+- **Synced at**: 2026-05-25
 
 ## What we borrowed
 
@@ -68,32 +70,50 @@ future syncs can be performed against the pinned upstream version.
   framework-native) — no separate `compute-batches.mjs` /
   `merge-batch-graphs.py` machinery required.
 
-## License excerpts
+## Compliance posture
 
-The upstream is MIT-licensed. The full license is reproduced from
-the pinned commit:
+MIT only requires that the copyright + license notice be included
+"in all copies or substantial portions of the Software". We did
+not copy any source files verbatim — `modes/cosmos/types.ts` was
+hand-written against upstream's documented schema shape (nodes /
+edges / layers / tour), not a transcription of
+`understand-anything-plugin/packages/core/src/schema.ts`. Strictly
+speaking, the no-substantial-copy posture means MIT attribution
+isn't legally required here at all.
+
+We're reproducing the full notice anyway as a good-faith citation
+of the design's origin, and surface the upstream as `inspiredBy`
+in `manifest.ts` so the launcher gallery card carries a clickable
+"Inspired by Lum1104/Understand-Anything" chip. That mirrors how
+`kami` credits `tw93/kami` and `webcraft` credits
+`pbakaus/impeccable`.
+
+## License — verbatim from upstream LICENSE
+
+The MIT license text below is the exact wording from the upstream
+`LICENSE` file at the pinned commit (verified by re-fetch from
+`raw.githubusercontent.com/Lum1104/Understand-Anything/main/LICENSE`):
 
 ```
 MIT License
 
-Copyright (c) 2025 Lum1104 / Understand-Anything contributors
+Copyright (c) 2026 Yuxiang Lin
 
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
