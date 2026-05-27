@@ -12,7 +12,16 @@ import { normalizeCosmos, type Cosmos } from "./types.js";
 
 const cosmosManifest: ModeManifest = {
   name: "cosmos",
-  version: "0.1.0",
+  version: "0.2.0",
+  changelog: {
+    "0.2.0": [
+      "Right-side NodeDrawer replaces the inline INFO panel — left panel keeps project context",
+      "New EXCERPTS section: image-cards from excerpt.path + quote-cards above the SOURCES strip",
+      "Schema: CosmosSourceRef gains optional locator + excerpt; CosmosEdge can carry sources[]",
+      "SKILL chapter on visual anchoring with per-domain recipes (sips / pdftoppm / ffmpeg)",
+      "Hard rule: excerpt.path files must be real source extracts, never AI-generated illustrations",
+    ],
+  },
 
   displayName: {
     en: "Cosmos",

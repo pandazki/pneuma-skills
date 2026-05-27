@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.14.0] - 2026-05-27
+
+### Added — Cosmos visual anchoring: every node deserves a way home
+
+Cosmos used to render rich relationship graphs whose nodes were impressive in shape but hard to verify — clicking a node opened an inline INFO panel that competed with the left-side context, and the only grounding affordance was a chip-strip of source links. You had to leave the viewer to confirm any claim against its actual source.
+
+- **NodeDrawer replaces the inline INFO surface.** A right-side drawer slides in on selection and out on deselect / `Escape`; the left panel keeps project + layer context untouched, while the drawer owns one-node context. The previous node stays rendered during the close animation so transitions don't blink.
+- **New EXCERPTS section above the SOURCES strip.** Renders `excerpt.path` images as image-cards (real cropped extracts from the source — a PDF page region, a video keyframe, a screenshot of the referenced UI) and `quote` strings as quote-cards. The agent now answers "where did this come from?" visually before the user has to click through.
+- **Schema additions (purely additive).** Every `CosmosSourceRef` gains optional `locator?: string` (open-ended hint — `"p.23"`, `"5:32"`, `"bottom-left"`, `"verse 14"` — for domains the existing typed fields don't cover) and `excerpt?: { path, caption? }`. `CosmosEdge` gains optional `sources?: CosmosSourceRef[]` so the relationship claim itself can be grounded. `normalizeCosmos` untouched — existing cosmoses keep loading byte-identical.
+- **SKILL chapter "Visual anchoring — every node deserves a way home".** Hard rule that `excerpt.path` files MUST be real source extracts, never AI-generated illustrations; per-domain guidance (code / fiction / research / video / image); shell recipes (`sips`, `pdftoppm`, `ffmpeg`) so the agent populates excerpts without leaving the conversation.
+
+### Changed — Cosmos i18n: `passage` source-kind chip reads `PASSAGE`, not `PASS`
+
+The truncated `PASS` chip read as pass/fail in every Latin-script locale. The chip now spells `PASSAGE` across `en` / `de` / `es`; `ja` / `ko` / `zh-CN` / `zh-TW` keep their already-unambiguous translations. New `info.excerpts_label` key added in all seven locales.
+
 ## [3.13.3] - 2026-05-27
 
 ### Fixed — Chat-bar file uploads now reach the agent on Codex + Kimi sessions
