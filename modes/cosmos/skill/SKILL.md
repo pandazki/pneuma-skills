@@ -170,6 +170,11 @@ chip's behaviour depends on `kind`.
 All kinds accept an optional `label` to override the auto-derived
 chip text.
 
+Every kind now also accepts an optional `locator?: string` and
+`excerpt?: { path, caption? }`. See the new *Visual anchoring*
+chapter for what they're for and the shell commands to populate
+them.
+
 ### Per-domain examples
 
 **Codebase node** — typically one or more `file` refs, often with
@@ -235,6 +240,8 @@ appears, with a lifted quote so the user can verify the inference:
   add a range or pick a more specific source.
 - **Order matters.** Put the most authoritative ref first; the
   chip strip preserves order, and the user reads left to right.
+- **Excerpt > chip.** When you can crop a real visual extract from
+  the source, do it — chips are functional, excerpts are persuasive.
 
 ### Legacy schema note
 
@@ -243,6 +250,149 @@ an optional `lineRange: [start, end]`. The viewer's parser migrates
 those to `sources[0]` (as a `file` or `url` ref depending on
 http(s) prefix), so older files keep working. New files should
 write `sources[]` directly and skip the legacy fields.
+
+## Visual anchoring — every node deserves a way home
+
+Users open a cosmos to dive into source. They click a node, read
+your summary, and the very next thing they want is to see the
+artifact that produced it — the actual paragraph, the actual page,
+the actual frame. A node without a visual anchor is a node they
+can't trust. Chips get them there in one click; **excerpts get them
+there in zero**.
+
+So: when the source has a real visual you can lift from it, lift
+it. Crop the PDF page, save the video frame, screenshot the UI
+region. Put the path in `excerpt.path` and the viewer renders it
+inline above the chip strip. The chip remains as the open-the-real-
+thing affordance underneath.
+
+### The excerpt rule — non-negotiable
+
+Every `excerpt.path` MUST be a real extract from the source.
+
+- ✅ Cropped PDF page, figure lifted from a paper, screenshot of a
+  UI region, video frame at a moment, scan of a manuscript page,
+  diagram from the docs.
+- ❌ AI-generated illustrations. Decorative graphics. Stock images.
+  "Conceptual visualisations" of what the node is about.
+
+Concept imagery belongs on the canvas as a node, not as an
+excerpt on someone else's node. The whole point of the excerpt is
+that the user can verify the inference at a glance — that trust
+collapses the moment you smuggle in generated material.
+
+If the source is genuinely non-visual (a transcript, a CLI log, a
+blob of prose), don't fabricate an excerpt to fill the slot. Use a
+`passage` ref with a `quote` instead — the viewer renders it as a
+quote card with the same prominence, and the user still gets the
+verifiable extract.
+
+### Locator everywhere
+
+Every ref kind now accepts `locator?: string`. Open-ended hint
+about *where inside* the artifact this node points. Examples:
+
+- `"p.23"` — PDF page
+- `"5:32"` — moment in audio or video
+- `"figure 3"` / `"§4.2"` — section / figure in a paper
+- `"verse 14"` / `"ch.7 ¶3"` — passage in prose
+- `"slide 7"` — deck
+- `"bottom-left"` / `"nav-header"` — region in an image / UI
+- `"turn 14"` — turn in a transcript
+
+Whatever phrasing lets the user find the spot in five seconds.
+
+(`passage` already has a required `locator` field — same idea,
+already there. The new optional locator covers the other five
+kinds.)
+
+### Shell commands — populate excerpts without leaving the agent
+
+These run on macOS by default; Linux alternatives noted where
+they diverge. Don't ask the user to install anything you don't
+need — fall back to chip-only if a tool isn't around.
+
+- **PDF page → PNG:**
+  `pdftoppm -f N -l N -png -r 150 paper.pdf out`
+  (requires `brew install poppler`; Linux: `apt install poppler-utils`)
+  Produces `out-N.png`. The `-r 150` gives a readable 150-dpi crop.
+  Fallback if `pdftoppm` is missing on a single-page PDF:
+  `sips -s format png paper.pdf --out page.png`.
+- **Image crop:**
+  `sips -c <h> <w> input.png --out cropped.png` (center crop), or
+  `sips --cropToHeightWidth <h> <w> --cropOffset <x> <y> input.png --out cropped.png`
+  for a specific region. Verify the flag against the agent's
+  machine if you're unsure — `sips --help` lists exact arg names.
+  Linux: `convert input.png -crop <w>x<h>+<x>+<y> cropped.png` (ImageMagick).
+- **Video frame at t seconds:**
+  `ffmpeg -ss N -i video.mp4 -frames:v 1 -q:v 2 out.png`
+  (requires `brew install ffmpeg`). Put `-ss` before `-i` for a
+  fast seek.
+- **Web page region:** the agent can't run a headless browser in
+  MVP. If the source is a live URL, fall back to a chip + locator
+  only, or ask the user to paste the screenshot they want as a
+  workspace file and reference its path in `excerpt`.
+
+### Per-domain guidance
+
+- **Research / academic paper** — every claim / evidence / method
+  node gets a PDF page or figure excerpt + `locator` like `"p.N"`
+  or `"figure N"`. Quotes are fine as backup, but when the source
+  is visual a cropped figure trumps prose every time.
+- **Codebase** — primary cite is a `file` ref + range. Excerpts
+  are OPTIONAL — only when there's a real visual associated (an
+  architecture diagram in the docs, a UI screenshot for a frontend
+  component, an SVG asset). **Don't excerpt code as image.** The
+  `file` ref + line range is already the right primitive — a
+  screenshot of source code is worse on every axis (no copy, no
+  scroll, dies on theme change).
+- **Fiction / long-form prose** — `passage` ref with `quote` lifted
+  verbatim (≤80 chars) + `locator` like `"ch.3 ¶12"`. Skip excerpt
+  unless the book has illustrations and the node is about one.
+- **UI / product analysis** — screenshot of the UI region, crop
+  tightly, `locator` naming the area (`"nav-header"`,
+  `"empty-state"`, `"settings: privacy tab"`). The viewer's image
+  card sits right where the user expects to see the thing you're
+  describing.
+- **Video / talk** — frame at the moment in question + `locator`
+  like `"5:32"`. The `video` kind already has an optional `t` —
+  use it alongside `excerpt.path` so the chip click jumps the
+  player to the moment too.
+- **Conversation / transcript** — `passage` ref with `quote` +
+  `locator` like `"turn 14"`. Excerpts only when the conversation
+  includes shared images you want to lift.
+
+### Where excerpts live on disk
+
+Default convention: `.cosmos-assets/<node-id>/` at the workspace
+root. Keeps the cosmos.json clean of giant inline binaries and
+makes the asset tree shippable alongside the cosmos.
+
+Examples: `.cosmos-assets/claim-baseline/p23.png`,
+`.cosmos-assets/c-eliot/manuscript-folio.jpg`. Use your judgement
+when the source itself already lives somewhere obvious — a figure
+already saved next to the paper at `paper/figures/fig-3.png`
+doesn't need to be copied; reference it where it sits.
+
+### Edges with sources
+
+`CosmosEdge.sources?: CosmosSourceRef[]` — same shape nodes use.
+Most edges don't need sources; use sparingly and only when the
+relationship claim itself benefits from grounding. Examples worth
+the citation:
+
+- Codebase: an `imports` edge can cite the import statement's line
+  range — useful when "A imports B" is non-obvious because the
+  import is conditional or aliased.
+- Research: a `supports` edge can cite the section that
+  establishes the support — different from citing the supporting
+  claim's source, which lives on the node.
+- Fiction: a `vanished_near` edge can cite the passage that
+  establishes the disappearance.
+
+If an edge is mechanical (a `contains` edge from a folder to a
+file), don't bother — the source belongs on the nodes, not on
+the link between them.
 
 ## Workflow
 

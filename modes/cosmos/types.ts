@@ -86,27 +86,111 @@ export type CosmosNodeComplexity = "simple" | "moderate" | "complex";
  * caller; a research node might cite the paper PDF and its source
  * dataset URL.
  */
+/**
+ * Open-ended where-inside hint for a source ref. The viewer renders
+ * it as a small chip beside the kind tag so the user knows the spot
+ * in the source at a glance. Examples: "p.23", "5:32", "bottom-left",
+ * "verse 14", "figure 3", "§4.2", "slide 7". Free-form — whatever
+ * lets the user find the location in five seconds.
+ *
+ * Distinct from `passage.locator` (which is required and identifies
+ * the passage itself). Every other ref kind now also accepts this
+ * optional hint to point inside a single artifact (a page in a PDF,
+ * a region in an image, a moment in audio, a frame in video).
+ */
+type CosmosSourceLocator = string;
+
+/**
+ * A real visual extract from the source — a cropped PDF page, a video
+ * frame, a UI screenshot region, a figure lifted from a paper. The
+ * viewer renders it inline as a visual anchor so the user can verify
+ * or read the origin at a glance, then click through to the full
+ * artifact.
+ *
+ * Workspace-relative or absolute path to the image on disk. NOT for
+ * AI-generated illustrations; concept imagery belongs on the canvas
+ * as a node, not here. Conflating excerpts with generated imagery
+ * destroys the trust signal — the whole point is that the user can
+ * see real source material before they commit to opening it.
+ *
+ * Populated by the agent using shell tools (sips, pdftoppm, ffmpeg)
+ * — see the SKILL's *Visual anchoring* chapter for per-domain
+ * recipes and the hard rule against generative imagery.
+ */
+interface CosmosSourceExcerpt {
+  /**
+   * Workspace-relative or absolute path to a real extract from the
+   * source — a cropped PDF page, video frame, UI screenshot, etc.
+   * The viewer renders it inline as a visual anchor. NOT for
+   * AI-generated illustrations; concept imagery belongs on the
+   * canvas as a node, not here.
+   */
+  path: string;
+  /** Optional short caption shown beneath the excerpt thumbnail. */
+  caption?: string;
+}
+
 export type CosmosSourceRef =
   /** A file on disk. Path is absolute or workspace-relative. Optional
    *  range pinpoints a span — currently informational (shown in the
    *  chip tooltip); editor jumping requires an editor-bridge upgrade
    *  that's deferred to a later phase. */
-  | { kind: "file"; path: string; range?: [number, number]; label?: string }
+  | {
+      kind: "file";
+      path: string;
+      range?: [number, number];
+      label?: string;
+      locator?: CosmosSourceLocator;
+      excerpt?: CosmosSourceExcerpt;
+    }
   /** A web URL. Opened with the OS default browser. */
-  | { kind: "url"; url: string; label?: string }
+  | {
+      kind: "url";
+      url: string;
+      label?: string;
+      locator?: CosmosSourceLocator;
+      excerpt?: CosmosSourceExcerpt;
+    }
   /** A passage inside a long-form document — chapter+paragraph in a
    *  novel, section+paragraph in a paper, slide number in a deck.
    *  `file` is the document, `locator` is the agent-defined address
    *  (e.g. "ch.3 ¶12", "§4.2", "slide 7"); `quote` is the lifted
    *  text the reasoning rests on. Opens the underlying file; the
    *  user navigates inside it using the locator (no automatic jump). */
-  | { kind: "passage"; file: string; locator: string; quote?: string; label?: string }
+  | {
+      kind: "passage";
+      file: string;
+      locator: string;
+      quote?: string;
+      label?: string;
+      excerpt?: CosmosSourceExcerpt;
+    }
   /** A bitmap or vector image. */
-  | { kind: "image"; path: string; label?: string }
+  | {
+      kind: "image";
+      path: string;
+      label?: string;
+      locator?: CosmosSourceLocator;
+      excerpt?: CosmosSourceExcerpt;
+    }
   /** An audio file. `t` is an optional timestamp in seconds. */
-  | { kind: "audio"; path: string; t?: number; label?: string }
+  | {
+      kind: "audio";
+      path: string;
+      t?: number;
+      label?: string;
+      locator?: CosmosSourceLocator;
+      excerpt?: CosmosSourceExcerpt;
+    }
   /** A video file. `t` is an optional timestamp in seconds. */
-  | { kind: "video"; path: string; t?: number; label?: string };
+  | {
+      kind: "video";
+      path: string;
+      t?: number;
+      label?: string;
+      locator?: CosmosSourceLocator;
+      excerpt?: CosmosSourceExcerpt;
+    };
 
 /**
  * Optional domain-view metadata. Only relevant when the node represents
@@ -209,6 +293,13 @@ export interface CosmosEdge {
   description?: string;
   /** Optional 0–1 weight for layout / visual emphasis. */
   weight?: number;
+  /** Multi-formed pointers back to source material — same shape nodes
+   *  use. Most edges don't need sources; use sparingly and only when
+   *  the relationship claim itself benefits from grounding (an
+   *  `imports` edge citing the import statement line, a `supports`
+   *  edge citing the section that establishes the support). See
+   *  `CosmosSourceRef` and the SKILL's *Visual anchoring* chapter. */
+  sources?: CosmosSourceRef[];
 }
 
 export interface CosmosLayer {

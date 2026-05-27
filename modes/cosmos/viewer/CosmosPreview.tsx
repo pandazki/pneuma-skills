@@ -1256,6 +1256,378 @@ function Canvas({
 
 type SidebarTab = "info" | "files" | "tour" | "drills";
 
+/** Build the workspace-relative or absolute path → /api/file URL the
+ *  excerpt thumbnail loads from. The server's /api/file route handles
+ *  both — see server/index.ts. We encode the path because excerpts
+ *  may sit under `.cosmos-assets/<id>/...` with characters that need
+ *  escaping. */
+function excerptSrcUrl(path: string): string {
+  return `${getApiBase()}/api/file?path=${encodeURIComponent(path)}`;
+}
+
+/** Open-ended where-inside hint for a ref. For passages the
+ *  required `locator` field is the natural answer; for other kinds
+ *  we read the new optional `locator?: string`. Returns empty when
+ *  no useful hint exists. */
+function sourceRefLocatorText(ref: CosmosSourceRef): string {
+  if (ref.kind === "passage") return ref.locator;
+  return (ref as { locator?: string }).locator ?? "";
+}
+
+/**
+ * EXCERPTS section — renders the visual-anchor view of a node's
+ * sources. Each ref classifies into one of three shapes:
+ *
+ *   - **Image card** — `excerpt.path` is set on any kind. Thumbnail
+ *     loads via `/api/file?path=…`; on the right, kind chip + locator
+ *     chip + caption + auto-derived path label. The whole card is a
+ *     button that delegates to `openSourceRef(ref)` — same behaviour
+ *     as the chip strip below.
+ *   - **Quote card** — `passage` ref with `quote` and no excerpt.
+ *     Large curly quote glyph in the tint color, italicised body,
+ *     file + locator chips, "open source" affordance.
+ *   - **No card** — neither excerpt nor quote present. The ref still
+ *     surfaces in the chip strip below; nothing renders here.
+ *
+ * If no cards qualify, the whole section (header + body) hides.
+ * Excerpts are *real* extracts (cropped PDF pages, video frames, UI
+ * screenshots) — see SKILL's *Visual anchoring* chapter. The viewer
+ * does not enforce this; the discipline is in the SKILL.
+ */
+function ExcerptsSection({ sources }: { sources: CosmosSourceRef[] }) {
+  const { t } = useTranslation("cosmos");
+  const [error, setError] = useState<string | null>(null);
+  const [pendingIdx, setPendingIdx] = useState<number | null>(null);
+  const [imgFailed, setImgFailed] = useState<Record<number, boolean>>({});
+
+  // Classify each ref once; only "image" / "quote" produce cards.
+  type Card =
+    | { kind: "image"; ref: CosmosSourceRef; excerpt: { path: string; caption?: string }; refIdx: number }
+    | { kind: "quote"; ref: Extract<CosmosSourceRef, { kind: "passage" }>; refIdx: number };
+  const cards: Card[] = [];
+  sources.forEach((ref, refIdx) => {
+    const excerpt = (ref as { excerpt?: { path: string; caption?: string } }).excerpt;
+    if (excerpt && typeof excerpt.path === "string" && excerpt.path) {
+      cards.push({ kind: "image", ref, excerpt, refIdx });
+      return;
+    }
+    if (ref.kind === "passage" && ref.quote) {
+      cards.push({ kind: "quote", ref, refIdx });
+    }
+  });
+
+  if (cards.length === 0) return null;
+
+  const handleOpen = async (ref: CosmosSourceRef, idx: number) => {
+    setError(null);
+    setPendingIdx(idx);
+    const res = await openSourceRef(ref);
+    setPendingIdx(null);
+    if (!res.ok) setError(res.message ?? "Failed to open");
+  };
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div
+        style={{
+          fontSize: 9,
+          letterSpacing: 0.4,
+          textTransform: "uppercase",
+          color: "#71717a",
+          marginBottom: 6,
+        }}
+      >
+        {t("info.excerpts_label")}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {cards.map((card, idx) => {
+          const { ref, refIdx } = card;
+          const tint = SOURCE_KIND_TINT[ref.kind];
+          const tag = t(`source_kind.${ref.kind}`);
+          const locator = sourceRefLocatorText(ref);
+          const label = sourceRefLabel(ref);
+          const pending = pendingIdx === idx;
+          const failed = imgFailed[idx] === true;
+
+          if (card.kind === "image") {
+            return (
+              <button
+                key={`${refIdx}-img`}
+                type="button"
+                title={sourceRefTooltip(ref)}
+                onClick={() => void handleOpen(ref, idx)}
+                disabled={pending}
+                style={{
+                  display: "flex",
+                  alignItems: "stretch",
+                  gap: 10,
+                  width: "100%",
+                  padding: 8,
+                  borderRadius: 6,
+                  border: `1px solid ${tint}55`,
+                  background: `${tint}0d`,
+                  color: "#d4d4d8",
+                  cursor: pending ? "default" : "pointer",
+                  opacity: pending ? 0.5 : 1,
+                  textAlign: "left",
+                  transition: "all 120ms ease",
+                }}
+                onMouseEnter={(ev) => {
+                  if (pending) return;
+                  ev.currentTarget.style.background = `${tint}1c`;
+                  ev.currentTarget.style.borderColor = `${tint}aa`;
+                }}
+                onMouseLeave={(ev) => {
+                  if (pending) return;
+                  ev.currentTarget.style.background = `${tint}0d`;
+                  ev.currentTarget.style.borderColor = `${tint}55`;
+                }}
+              >
+                <div
+                  style={{
+                    width: 144,
+                    height: 88,
+                    flexShrink: 0,
+                    borderRadius: 4,
+                    border: `1px solid ${tint}66`,
+                    background: "#0a0a0b",
+                    overflow: "hidden",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {failed ? (
+                    <div style={{ fontSize: 10, color: "#71717a", textAlign: "center", padding: 6 }}>
+                      image unavailable
+                    </div>
+                  ) : (
+                    <img
+                      src={excerptSrcUrl(card.excerpt.path)}
+                      alt={card.excerpt.caption ?? label}
+                      onError={() => setImgFailed((m) => ({ ...m, [idx]: true }))}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        display: "block",
+                      }}
+                    />
+                  )}
+                </div>
+                <div
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                    <span
+                      style={{
+                        fontFamily: "JetBrains Mono, ui-monospace, monospace",
+                        fontSize: 8.5,
+                        letterSpacing: 0.5,
+                        fontWeight: 700,
+                        color: tint,
+                        padding: "1px 4px",
+                        borderRadius: 2,
+                        background: `${tint}1a`,
+                      }}
+                    >
+                      {tag}
+                    </span>
+                    {locator && (
+                      <span
+                        style={{
+                          fontSize: 9,
+                          color: "#a1a1aa",
+                          padding: "1px 5px",
+                          borderRadius: 2,
+                          background: "rgba(255,255,255,0.05)",
+                          border: "1px solid #2a2a2e",
+                        }}
+                      >
+                        {locator}
+                      </span>
+                    )}
+                  </div>
+                  {card.excerpt.caption ? (
+                    <div
+                      style={{
+                        fontSize: 11.5,
+                        color: "#e4e4e7",
+                        lineHeight: 1.4,
+                        overflow: "hidden",
+                        display: "-webkit-box",
+                        WebkitLineClamp: 3,
+                        WebkitBoxOrient: "vertical",
+                      }}
+                    >
+                      {card.excerpt.caption}
+                    </div>
+                  ) : (
+                    // Caption is the card's "what is this" label. When
+                    // missing, fall back to the auto-derived path label
+                    // so the user still has something to read. Showing
+                    // both is just noise — the caption already names it.
+                    <div
+                      style={{
+                        fontSize: 11.5,
+                        color: "#d4d4d8",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {label}
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          }
+
+          // Quote card — passage ref with a lifted quote, no excerpt.
+          const passage = card.ref;
+          return (
+            <button
+              key={`${refIdx}-quote`}
+              type="button"
+              title={sourceRefTooltip(passage)}
+              onClick={() => void handleOpen(passage, idx)}
+              disabled={pending}
+              style={{
+                position: "relative",
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                width: "100%",
+                padding: "12px 14px 10px 36px",
+                borderRadius: 6,
+                border: `1px solid ${tint}55`,
+                background: `${tint}0d`,
+                color: "#d4d4d8",
+                cursor: pending ? "default" : "pointer",
+                opacity: pending ? 0.5 : 1,
+                textAlign: "left",
+                transition: "all 120ms ease",
+              }}
+              onMouseEnter={(ev) => {
+                if (pending) return;
+                ev.currentTarget.style.background = `${tint}1c`;
+                ev.currentTarget.style.borderColor = `${tint}aa`;
+              }}
+              onMouseLeave={(ev) => {
+                if (pending) return;
+                ev.currentTarget.style.background = `${tint}0d`;
+                ev.currentTarget.style.borderColor = `${tint}55`;
+              }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 8,
+                  fontFamily: "Georgia, serif",
+                  fontSize: 32,
+                  lineHeight: 1,
+                  color: tint,
+                  opacity: 0.55,
+                  pointerEvents: "none",
+                }}
+              >
+                &ldquo;
+              </span>
+              <div
+                style={{
+                  fontStyle: "italic",
+                  fontSize: 13,
+                  lineHeight: 1.55,
+                  color: "#e4e4e7",
+                }}
+              >
+                {passage.quote}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                <span
+                  style={{
+                    fontFamily: "JetBrains Mono, ui-monospace, monospace",
+                    fontSize: 8.5,
+                    letterSpacing: 0.5,
+                    fontWeight: 700,
+                    color: tint,
+                    padding: "1px 4px",
+                    borderRadius: 2,
+                    background: `${tint}1a`,
+                  }}
+                >
+                  {tag}
+                </span>
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: "#a1a1aa",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    maxWidth: 220,
+                  }}
+                >
+                  {passage.file}
+                </span>
+                {passage.locator && (
+                  <span
+                    style={{
+                      fontSize: 9,
+                      color: "#a1a1aa",
+                      padding: "1px 5px",
+                      borderRadius: 2,
+                      background: "rgba(255,255,255,0.05)",
+                      border: "1px solid #2a2a2e",
+                    }}
+                  >
+                    {passage.locator}
+                  </span>
+                )}
+                <span
+                  style={{
+                    marginLeft: "auto",
+                    fontSize: 9,
+                    color: "#71717a",
+                    letterSpacing: 0.3,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  open source ›
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      {error && (
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 10,
+            color: "#fb7185",
+            background: "rgba(239,68,68,0.08)",
+            border: "1px solid rgba(239,68,68,0.3)",
+            borderRadius: 3,
+            padding: "4px 8px",
+          }}
+        >
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * SOURCES chip strip — renders every CosmosSourceRef on a node as a
  * click-to-open chip with kind tag, derived label, and on-hover full
@@ -1383,73 +1755,199 @@ function SourcesStrip({ sources }: { sources: CosmosSourceRef[] }) {
   );
 }
 
-interface InfoTabProps {
+/**
+ * NodeDrawer — right-side slide-out panel that owns per-node detail.
+ *
+ * Visibility is bound to `node !== null`. When `node` becomes null the
+ * drawer slides off; the last node is remembered so the body stays
+ * rendered through the closing animation rather than blanking.
+ *
+ * The drawer overlays the canvas right edge (position: absolute) so
+ * the user's spatial map of the graph doesn't reflow when it opens /
+ * closes. The left-side sidebar holds project-/layer-/tour-level
+ * context; the drawer holds the one-node context — separation of
+ * jobs is the whole point of moving node detail out of the tab.
+ */
+interface NodeDrawerProps {
   cosmos: Cosmos;
-  selectedNode: CosmosNode | null;
-  focusedLayer: string | null;
+  node: CosmosNode | null;
   onSelectNode: (n: CosmosNode | null) => void;
+  onClose: () => void;
 }
 
-function InfoTab({ cosmos, selectedNode, focusedLayer, onSelectNode }: InfoTabProps) {
-  const { t } = useTranslation("cosmos");
-  // Selected concrete node → full detail card
-  if (selectedNode) {
-    const layer = cosmos.layers.find((l) => l.id === selectedNode.layerId);
-    const outboundEdges = cosmos.edges.filter((e) => e.source === selectedNode.id);
-    const inboundEdges = cosmos.edges.filter((e) => e.target === selectedNode.id);
-    return (
-      <div style={{ padding: "0 4px 12px", fontSize: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+function NodeDrawer({ cosmos, node, onSelectNode, onClose }: NodeDrawerProps) {
+  // Keep the previously-rendered node around while the panel slides
+  // away, so the user sees a clean exit instead of an empty panel mid-
+  // animation.
+  const [lastNode, setLastNode] = useState<CosmosNode | null>(node);
+  useEffect(() => {
+    if (node) setLastNode(node);
+  }, [node]);
+
+  const open = node !== null;
+  const display = node ?? lastNode;
+
+  // Close on Escape, mirroring the canvas's "click pane to deselect"
+  // affordance for keyboard users.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!display) return null;
+
+  const layer = cosmos.layers.find((l) => l.id === display.layerId);
+  const outboundEdges = cosmos.edges.filter((e) => e.source === display.id);
+  const inboundEdges = cosmos.edges.filter((e) => e.target === display.id);
+
+  return (
+    <aside
+      aria-hidden={!open}
+      style={{
+        position: "absolute",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 360,
+        maxWidth: "92%",
+        background: "rgba(20,20,23,0.92)",
+        borderLeft: "1px solid #27272a",
+        boxShadow: open ? "-18px 0 32px -18px rgba(0,0,0,0.55)" : "none",
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        color: "#d4d4d8",
+        fontFamily: "Inter, sans-serif",
+        fontSize: 12,
+        display: "flex",
+        flexDirection: "column",
+        transform: open ? "translateX(0)" : "translateX(105%)",
+        opacity: open ? 1 : 0,
+        pointerEvents: open ? "auto" : "none",
+        transition:
+          "transform 220ms cubic-bezier(.2,.7,.2,1), opacity 220ms ease, box-shadow 220ms ease",
+        zIndex: 8,
+        minHeight: 0,
+      }}
+    >
+      {/* Header — type chip, complexity, close button */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "12px 14px 10px",
+          borderBottom: "1px solid #27272a",
+          gap: 8,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <div
             style={{
               fontSize: 9,
               letterSpacing: 0.6,
               textTransform: "uppercase",
               color: layer?.color ?? "#71717a",
-              fontWeight: 600,
+              fontWeight: 700,
+              whiteSpace: "nowrap",
             }}
           >
-            {selectedNode.type}
+            {display.type}
           </div>
-          {selectedNode.complexity && (
+          {display.complexity && (
             <div
               style={{
                 fontSize: 9,
                 padding: "2px 7px",
                 borderRadius: 3,
-                background: `${COMPLEXITY_TINT[selectedNode.complexity] ?? "#52525b"}22`,
-                color: COMPLEXITY_TINT[selectedNode.complexity] ?? "#a1a1aa",
+                background: `${COMPLEXITY_TINT[display.complexity] ?? "#52525b"}22`,
+                color: COMPLEXITY_TINT[display.complexity] ?? "#a1a1aa",
               }}
             >
-              {selectedNode.complexity}
+              {display.complexity}
             </div>
           )}
         </div>
-        <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.25, color: "#fff", marginBottom: 8 }}>
-          {selectedNode.name}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          title="Close (Esc)"
+          style={{
+            width: 24,
+            height: 24,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 4,
+            border: "1px solid transparent",
+            background: "transparent",
+            color: "#71717a",
+            fontSize: 14,
+            lineHeight: 1,
+            cursor: "pointer",
+            transition: "background 120ms ease, color 120ms ease, border-color 120ms ease",
+          }}
+          onMouseEnter={(ev) => {
+            ev.currentTarget.style.background = "rgba(255,255,255,0.06)";
+            ev.currentTarget.style.color = "#fafafa";
+            ev.currentTarget.style.borderColor = "#3f3f46";
+          }}
+          onMouseLeave={(ev) => {
+            ev.currentTarget.style.background = "transparent";
+            ev.currentTarget.style.color = "#71717a";
+            ev.currentTarget.style.borderColor = "transparent";
+          }}
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Body (scrollable) */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px 18px", minHeight: 0 }}>
+        <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.25, color: "#fff", marginBottom: 8 }}>
+          {display.name}
         </div>
         {layer && (
-          <div style={{ fontSize: 10, color: "#71717a", marginBottom: 8 }}>
+          <div style={{ fontSize: 10, color: "#71717a", marginBottom: 10 }}>
             <span style={{ color: layer.color ?? "#71717a" }}>●</span> {layer.label}
           </div>
         )}
-        <div style={{ fontSize: 12, color: "#d4d4d8", lineHeight: 1.5, marginBottom: 12 }}>{selectedNode.summary}</div>
-        {selectedNode.sources && selectedNode.sources.length > 0 && (
-          <SourcesStrip sources={selectedNode.sources} />
+        <div style={{ fontSize: 12.5, color: "#e4e4e7", lineHeight: 1.55, marginBottom: 14 }}>
+          {display.summary}
+        </div>
+        {display.sources && display.sources.length > 0 && (
+          <>
+            <ExcerptsSection sources={display.sources} />
+            <SourcesStrip sources={display.sources} />
+          </>
         )}
-        {selectedNode.languageNotes && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 9, letterSpacing: 0.4, textTransform: "uppercase", color: "#71717a", marginBottom: 2 }}>
+        {display.languageNotes && (
+          <div style={{ marginBottom: 12 }}>
+            <div
+              style={{
+                fontSize: 9,
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+                color: "#71717a",
+                marginBottom: 3,
+              }}
+            >
               Stack
             </div>
-            <div style={{ fontSize: 11, color: "#a1a1aa", lineHeight: 1.4 }}>{selectedNode.languageNotes}</div>
+            <div style={{ fontSize: 11, color: "#a1a1aa", lineHeight: 1.5 }}>
+              {display.languageNotes}
+            </div>
           </div>
         )}
-        {selectedNode.tags && selectedNode.tags.length > 0 && (
-          <div style={{ marginBottom: 10, display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {selectedNode.tags.map((t) => (
+        {display.tags && display.tags.length > 0 && (
+          <div style={{ marginBottom: 12, display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {display.tags.map((tag) => (
               <span
-                key={t}
+                key={tag}
                 style={{
                   fontSize: 9,
                   padding: "2px 7px",
@@ -1458,17 +1956,25 @@ function InfoTab({ cosmos, selectedNode, focusedLayer, onSelectNode }: InfoTabPr
                   color: "#a1a1aa",
                 }}
               >
-                {t}
+                {tag}
               </span>
             ))}
           </div>
         )}
         {outboundEdges.length > 0 && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 9, letterSpacing: 0.4, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>
+          <div style={{ marginBottom: 12 }}>
+            <div
+              style={{
+                fontSize: 9,
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+                color: "#71717a",
+                marginBottom: 5,
+              }}
+            >
               Outbound · {outboundEdges.length}
             </div>
-            {outboundEdges.slice(0, 5).map((e, i) => {
+            {outboundEdges.slice(0, 8).map((e, i) => {
               const target = cosmos.nodes.find((n) => n.id === e.target);
               if (!target) return null;
               return (
@@ -1480,32 +1986,43 @@ function InfoTab({ cosmos, selectedNode, focusedLayer, onSelectNode }: InfoTabPr
                     display: "block",
                     width: "100%",
                     textAlign: "left",
-                    padding: "3px 6px",
-                    fontSize: 10,
+                    padding: "4px 8px",
+                    fontSize: 11,
                     color: "#d4d4d8",
                     background: "transparent",
                     border: "none",
                     cursor: "pointer",
-                    borderRadius: 3,
+                    borderRadius: 4,
+                    transition: "background 100ms ease",
                   }}
-                  onMouseEnter={(ev) => (ev.currentTarget.style.background = "rgba(255,255,255,0.04)")}
+                  onMouseEnter={(ev) => (ev.currentTarget.style.background = "rgba(255,255,255,0.05)")}
                   onMouseLeave={(ev) => (ev.currentTarget.style.background = "transparent")}
                 >
                   <span style={{ color: "#71717a" }}>{e.type}</span> → {target.name}
                 </button>
               );
             })}
-            {outboundEdges.length > 5 && (
-              <div style={{ fontSize: 9, color: "#52525b", marginTop: 2 }}>+ {outboundEdges.length - 5} more</div>
+            {outboundEdges.length > 8 && (
+              <div style={{ fontSize: 9, color: "#52525b", marginTop: 2, paddingLeft: 8 }}>
+                + {outboundEdges.length - 8} more
+              </div>
             )}
           </div>
         )}
         {inboundEdges.length > 0 && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 9, letterSpacing: 0.4, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>
+          <div style={{ marginBottom: 12 }}>
+            <div
+              style={{
+                fontSize: 9,
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+                color: "#71717a",
+                marginBottom: 5,
+              }}
+            >
               Inbound · {inboundEdges.length}
             </div>
-            {inboundEdges.slice(0, 5).map((e, i) => {
+            {inboundEdges.slice(0, 8).map((e, i) => {
               const src = cosmos.nodes.find((n) => n.id === e.source);
               if (!src) return null;
               return (
@@ -1517,33 +2034,45 @@ function InfoTab({ cosmos, selectedNode, focusedLayer, onSelectNode }: InfoTabPr
                     display: "block",
                     width: "100%",
                     textAlign: "left",
-                    padding: "3px 6px",
-                    fontSize: 10,
+                    padding: "4px 8px",
+                    fontSize: 11,
                     color: "#d4d4d8",
                     background: "transparent",
                     border: "none",
                     cursor: "pointer",
-                    borderRadius: 3,
+                    borderRadius: 4,
+                    transition: "background 100ms ease",
                   }}
-                  onMouseEnter={(ev) => (ev.currentTarget.style.background = "rgba(255,255,255,0.04)")}
+                  onMouseEnter={(ev) => (ev.currentTarget.style.background = "rgba(255,255,255,0.05)")}
                   onMouseLeave={(ev) => (ev.currentTarget.style.background = "transparent")}
                 >
                   {src.name} <span style={{ color: "#71717a" }}>← {e.type}</span>
                 </button>
               );
             })}
-            {inboundEdges.length > 5 && (
-              <div style={{ fontSize: 9, color: "#52525b", marginTop: 2 }}>+ {inboundEdges.length - 5} more</div>
+            {inboundEdges.length > 8 && (
+              <div style={{ fontSize: 9, color: "#52525b", marginTop: 2, paddingLeft: 8 }}>
+                + {inboundEdges.length - 8} more
+              </div>
             )}
           </div>
         )}
       </div>
-    );
-  }
+    </aside>
+  );
+}
 
-  // (Perspectives no longer render here — they live in the TOUR tab
-  //  as variant walks. The INFO tab handles concrete-node selection
-  //  and layer focus only.)
+interface InfoTabProps {
+  cosmos: Cosmos;
+  focusedLayer: string | null;
+  onSelectNode: (n: CosmosNode | null) => void;
+}
+
+function InfoTab({ cosmos, focusedLayer, onSelectNode }: InfoTabProps) {
+  // Per-node detail moved to the right-side NodeDrawer. This tab keeps
+  // the project-level view (and the focused-layer summary) so the left
+  // panel and the drawer do different jobs and don't compete.
+  // (Perspectives live in the TOUR tab as variant walks.)
 
   // Focused layer (no node) → layer summary card
   if (focusedLayer) {
@@ -2390,7 +2919,6 @@ interface SidebarProps {
   focusedLayer: string | null;
   onFocusLayer: (id: string | null) => void;
   perspectiveCount: number;
-  selectedNode: CosmosNode | null;
   onSelectNode: (n: CosmosNode | null) => void;
   activeTour: ActiveTour | null;
   onStartOverallTour: () => void;
@@ -2412,7 +2940,6 @@ function Sidebar({
   focusedLayer,
   onFocusLayer,
   perspectiveCount,
-  selectedNode,
   onSelectNode,
   activeTour,
   onStartOverallTour,
@@ -2423,11 +2950,9 @@ function Sidebar({
   const { t } = useTranslation("cosmos");
   const [activeTab, setActiveTab] = useState<SidebarTab>("info");
 
-  // When a node gets selected, auto-switch to INFO tab so the user
-  // sees the detail without having to click the tab.
-  useEffect(() => {
-    if (selectedNode) setActiveTab("info");
-  }, [selectedNode]);
+  // Node selection no longer drives this panel — the right-side
+  // NodeDrawer handles per-node detail. The INFO tab stays on project /
+  // layer context so the two panels do different jobs.
   // When any tour (overall or perspective) starts, auto-switch to TOUR.
   useEffect(() => {
     if (activeTour) setActiveTab("tour");
@@ -2446,7 +2971,7 @@ function Sidebar({
         width: 268,
         flexShrink: 0,
         background: "rgba(24,24,27,0.6)",
-        borderLeft: "1px solid #27272a",
+        borderRight: "1px solid #27272a",
         color: "#d4d4d8",
         fontFamily: "Inter, sans-serif",
         fontSize: 12,
@@ -2573,7 +3098,6 @@ function Sidebar({
         {activeTab === "info" && (
           <InfoTab
             cosmos={cosmos}
-            selectedNode={selectedNode}
             focusedLayer={focusedLayer}
             onSelectNode={onSelectNode}
           />
@@ -3925,9 +4449,56 @@ export function CosmosPreview(props: ViewerPreviewProps) {
           </div>
         )}
       </div>
-      {/* Body: canvas + sidebar */}
+      {/* Body: sidebar (left) + canvas + drawer (right, overlays canvas) */}
       <div style={{ display: "flex", flex: 1, minHeight: 0, position: "relative" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <Sidebar
+          cosmos={effectiveCosmos}
+          subgraphs={cosmos.subgraphs ?? []}
+          activeSubgraphId={activeSubgraphId}
+          onEnterSubgraph={(id) => {
+            // Entering a subgraph also resets the in-main session
+            // state that doesn't belong inside it: tours (their
+            // step nodes may not exist), the extra-anchor pile,
+            // primary selection. Force `detail` level — subgraphs
+            // are 10–15 nodes typically; project-overview's layer
+            // aggregation collapses them into mostly-empty cards.
+            setActiveTour(null);
+            handleClearExtraAnchors();
+            setSelectedNodeId(null);
+            setNavigationLevel("detail");
+            setActiveSubgraphId(id);
+          }}
+          onExitSubgraph={() => {
+            setActiveTour(null);
+            handleClearExtraAnchors();
+            setSelectedNodeId(null);
+            setActiveSubgraphId(null);
+          }}
+          navigationLevel={navigationLevel}
+          onNavigationLevel={setNavigationLevel}
+          persona={persona}
+          onPersona={setPersona}
+          focusedLayer={focusedLayer}
+          onFocusLayer={setFocusedLayer}
+          perspectiveCount={perspectiveCount}
+          onSelectNode={(n) => {
+            // Selecting from sidebar — auto-drop into detail so the
+            // node is actually visible on the canvas, then center on it.
+            if (n) {
+              setNavigationLevel("detail");
+              handleSelectNode(n);
+              setTimeout(() => navigateRef.current(n.id), 60);
+            } else {
+              handleSelectNode(null);
+            }
+          }}
+          activeTour={activeTour}
+          onStartOverallTour={handleStartOverallTour}
+          onStartPerspectiveTour={handleStartPerspectiveTour}
+          onEndTour={handleEndTour}
+          onTourStep={handleTourStep}
+        />
+        <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
           <ReactFlowProvider>
             <Canvas
               cosmos={effectiveCosmos}
@@ -3990,40 +4561,10 @@ export function CosmosPreview(props: ViewerPreviewProps) {
             </button>
           )}
         </div>
-        <Sidebar
+        <NodeDrawer
           cosmos={effectiveCosmos}
-          subgraphs={cosmos.subgraphs ?? []}
-          activeSubgraphId={activeSubgraphId}
-          onEnterSubgraph={(id) => {
-            // Entering a subgraph also resets the in-main session
-            // state that doesn't belong inside it: tours (their
-            // step nodes may not exist), the extra-anchor pile,
-            // primary selection. Force `detail` level — subgraphs
-            // are 10–15 nodes typically; project-overview's layer
-            // aggregation collapses them into mostly-empty cards.
-            setActiveTour(null);
-            handleClearExtraAnchors();
-            setSelectedNodeId(null);
-            setNavigationLevel("detail");
-            setActiveSubgraphId(id);
-          }}
-          onExitSubgraph={() => {
-            setActiveTour(null);
-            handleClearExtraAnchors();
-            setSelectedNodeId(null);
-            setActiveSubgraphId(null);
-          }}
-          navigationLevel={navigationLevel}
-          onNavigationLevel={setNavigationLevel}
-          persona={persona}
-          onPersona={setPersona}
-          focusedLayer={focusedLayer}
-          onFocusLayer={setFocusedLayer}
-          perspectiveCount={perspectiveCount}
-          selectedNode={selectedNode}
+          node={selectedNode}
           onSelectNode={(n) => {
-            // Selecting from sidebar — auto-drop into detail so the
-            // node is actually visible on the canvas, then center on it.
             if (n) {
               setNavigationLevel("detail");
               handleSelectNode(n);
@@ -4032,11 +4573,7 @@ export function CosmosPreview(props: ViewerPreviewProps) {
               handleSelectNode(null);
             }
           }}
-          activeTour={activeTour}
-          onStartOverallTour={handleStartOverallTour}
-          onStartPerspectiveTour={handleStartPerspectiveTour}
-          onEndTour={handleEndTour}
-          onTourStep={handleTourStep}
+          onClose={() => handleSelectNode(null)}
         />
       </div>
 
