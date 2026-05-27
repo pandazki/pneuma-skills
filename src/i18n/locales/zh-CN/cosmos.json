@@ -62,6 +62,7 @@
     "layer_focus_title": "分层聚焦",
     "layer_focus_nodes": "本层节点（{{count}}）",
     "sources_label": "信源",
+    "excerpts_label": "摘录",
     "stack_label": "技术栈",
     "outbound": "出向 · {{count}}",
     "inbound": "入向 · {{count}}",

@@ -62,6 +62,7 @@
     "layer_focus_title": "Layer focus",
     "layer_focus_nodes": "Nodes in this layer ({{count}})",
     "sources_label": "Sources",
+    "excerpts_label": "Extractos",
     "stack_label": "Stack",
     "outbound": "Outbound · {{count}}",
     "inbound": "Inbound · {{count}}",
@@ -177,7 +178,7 @@
   "source_kind": {
     "file": "FILE",
     "url": "URL",
-    "passage": "PASS",
+    "passage": "PASSAGE",
     "image": "IMG",
     "audio": "AUD",
     "video": "VID"
