@@ -47,6 +47,35 @@ export interface BridgeBackendDeps {
    * have to grow a `session` parameter.
    */
   getOrCreateSession?: (sessionId: string, backendType: AgentBackendType) => Session;
+  /**
+   * Backend-agnostic ingest for a browser `user_message`: saves uploaded
+   * files + images to `.pneuma/uploads/`, drains any queued
+   * `<pneuma:env>` tags, pushes the chat-history entry with attachment
+   * metadata, and produces the text + inline-image payload the bridge
+   * backend should hand to its adapter.
+   *
+   * Every backend must funnel browser uploads through this method so the
+   * "files saved to disk + agent sees `<uploaded-files>` block" contract
+   * stays uniform across Claude / Codex / Kimi. Backends declare via
+   * `inlineImagesSupported` whether their adapter accepts inline image
+   * content blocks; when `false`, all images are referenced by disk path
+   * in the notification and `inlineImages` comes back empty (kimi-cli is
+   * text-only). When `true`, images within the inline payload budget come
+   * back in `inlineImages`; oversize ones still land on disk and the
+   * notification marks them `large="true"`.
+   */
+  prepareIncomingUserMessage: (
+    session: Session,
+    msg: {
+      content: string;
+      images?: { media_type: string; data: string }[];
+      files?: { name: string; media_type: string; data: string; size: number }[];
+    },
+    opts: { inlineImagesSupported: boolean },
+  ) => {
+    textContent: string;
+    inlineImages: { media_type: string; data: string }[];
+  };
 }
 
 /**

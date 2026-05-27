@@ -83,9 +83,6 @@ const KIMI_UNSUPPORTED_MESSAGE_TYPES = new Set<BrowserOutgoingMessage["type"]>([
 export class KimiBridge implements BridgeBackend {
   readonly backendType = "kimi-cli" as const;
 
-  /** Per-session user-message counter (history id suffix). */
-  private userMsgCounter = 0;
-
   /**
    * Tracks when the current kimi turn started — used for the synthesised
    * `result` envelope's `duration_ms`. `null` between turns; set on the
@@ -216,22 +213,27 @@ export class KimiBridge implements BridgeBackend {
   // ── internals ──────────────────────────────────────────────────────────────
 
   /**
-   * Route a browser-originated user message through the agent: record in
-   * history, flip cliIdle, write to kimi stdin, light up the thinking
-   * indicator. Kimi-cli is text-only today (no inline image/file blocks),
-   * so attachments would require a separate uploads-on-disk + notification
-   * path — out of scope until the backend grows multimodal support.
+   * Route a browser-originated user message through the agent: ingest any
+   * uploaded files / images through the bridge's shared prepare step
+   * (saves to `.pneuma/uploads/`, drains queued env tags, pushes history,
+   * builds the `<uploaded-files>` notification), then flip cliIdle and
+   * write to kimi stdin. Kimi-cli is text-only — `inlineImagesSupported:
+   * false` keeps `inlineImages` empty so all uploads are referenced by
+   * disk path and the agent picks them up with its own Read tool calls.
    */
-  private handleBrowserUserMessage(msg: { type: "user_message"; content: string }): void {
-    const ts = Date.now();
-    this.session.messageHistory.push({
-      type: "user_message",
-      content: msg.content,
-      timestamp: ts,
-      id: `user-${ts}-${this.userMsgCounter++}`,
-    });
+  private handleBrowserUserMessage(msg: {
+    type: "user_message";
+    content: string;
+    images?: { media_type: string; data: string }[];
+    files?: { name: string; media_type: string; data: string; size: number }[];
+  }): void {
+    const { textContent } = this.deps.prepareIncomingUserMessage(
+      this.session,
+      msg,
+      { inlineImagesSupported: false },
+    );
     this.session.cliIdle = false;
-    this.sendToAdapter(msg.content);
+    this.sendToAdapter(textContent);
   }
 
   /**
@@ -272,7 +274,7 @@ export class KimiBridge implements BridgeBackend {
       timestamp: Date.now(),
     };
     if (assistantMsg.type === "assistant" && Array.isArray(assistantMsg.message?.content)) {
-      stampFileRefs(assistantMsg.message.content, "kimi-cli");
+      stampFileRefs(assistantMsg.message.content, "kimi-cli", this.deps.workspace);
     }
     this.session.messageHistory.push(assistantMsg);
     this.deps.broadcastToBrowsers(this.session, assistantMsg);

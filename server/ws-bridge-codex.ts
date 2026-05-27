@@ -22,9 +22,6 @@ import { stampFileRefs } from "./file-ref.js";
 export class CodexBridge implements BridgeBackend {
   readonly backendType = "codex" as const;
 
-  /** Per-session user-message counter — id suffix for history entries. */
-  private userMsgCounter = 0;
-
   constructor(
     private readonly sessionId: string,
     private readonly session: Session,
@@ -123,18 +120,20 @@ export class CodexBridge implements BridgeBackend {
     images?: { media_type: string; data: string }[];
     files?: { name: string; media_type: string; data: string; size: number }[];
   }): void {
-    const ts = Date.now();
-    this.session.messageHistory.push({
-      type: "user_message",
-      content: msg.content,
-      timestamp: ts,
-      id: `user-${ts}-${this.userMsgCounter++}`,
-    });
+    // Funnel uploads + env-context drain + history push through the bridge's
+    // shared ingest path. Codex's adapter packs inline images as data URLs,
+    // so we declare inline support; oversized images still land on disk and
+    // get path-only references in the upload notification.
+    const { textContent, inlineImages } = this.deps.prepareIncomingUserMessage(
+      this.session,
+      msg,
+      { inlineImagesSupported: true },
+    );
     this.session.cliIdle = false;
     this.adapter.sendBrowserMessage({
       type: "user_message",
-      content: msg.content,
-      images: msg.images,
+      content: textContent,
+      images: inlineImages.length > 0 ? inlineImages : undefined,
     });
   }
 
@@ -164,7 +163,7 @@ export class CodexBridge implements BridgeBackend {
     // Track message history for replay.
     if (msg.type === "assistant") {
       if (Array.isArray(msg.message?.content)) {
-        stampFileRefs(msg.message.content, "codex");
+        stampFileRefs(msg.message.content, "codex", this.deps.workspace);
       }
       const assistantMsg = { ...msg, timestamp: msg.timestamp || Date.now() };
       // Replace any prior entry with the same id (codex deltas resolve to a

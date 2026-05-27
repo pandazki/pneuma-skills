@@ -227,6 +227,25 @@ function ToolDetail({ name, input }: { name: string; input: Record<string, unkno
           </div>
         </div>
       );
+    case "WebSearch": {
+      // Codex's webSearch item often arrives without the actual query (the
+      // adapter then emits a tool_use with no `query` key). A raw JSON dump
+      // of `{}` reads as "something's broken" — render a small annotation
+      // instead so the card is self-explanatory.
+      const query = typeof input.query === "string" ? input.query.trim() : "";
+      if (!query) {
+        return (
+          <div className="text-[11px] text-cc-muted/80 italic leading-relaxed">
+            {t("websearch_no_query")}
+          </div>
+        );
+      }
+      return (
+        <pre className="px-2 py-1.5 rounded bg-cc-code-bg text-cc-code-fg text-[12px] font-mono-code overflow-x-auto whitespace-pre-wrap">
+          {query}
+        </pre>
+      );
+    }
     default:
       return (
         <pre className="text-[11px] text-cc-muted font-mono-code whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">

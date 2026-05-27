@@ -1216,9 +1216,15 @@ export class CodexAdapter {
         const toolUseId = item.id;
         if (!this.emittedToolUseIds.has(toolUseId)) {
           this.emittedToolUseIds.add(toolUseId);
-          this.emitToolUse(toolUseId, "WebSearch", {
-            query: item.query || "",
-          });
+          // Codex's webSearch item often arrives without `query` (the model
+          // ran a web search but the protocol suppressed the actual term).
+          // Only include the field when we actually have one — otherwise
+          // the chat would render `{"query":""}` which is just noise.
+          const input: Record<string, unknown> = {};
+          if (typeof item.query === "string" && item.query.length > 0) {
+            input.query = item.query;
+          }
+          this.emitToolUse(toolUseId, "WebSearch", input);
         }
         break;
       }
@@ -1327,10 +1333,21 @@ export class CodexAdapter {
         const toolUseId = item.id;
         if (!this.emittedToolUseIds.has(toolUseId)) {
           this.emittedToolUseIds.add(toolUseId);
-          this.emitToolUse(toolUseId, "WebSearch", { query: item.query || "" });
+          const input: Record<string, unknown> = {};
+          if (typeof item.query === "string" && item.query.length > 0) {
+            input.query = item.query;
+          }
+          this.emitToolUse(toolUseId, "WebSearch", input);
         }
+        // Same protocol-suppression caveat as `handleItemStarted` above:
+        // when Codex hides the actual result, the historical "Search
+        // completed" filler just adds a redundant card per search. Skip
+        // the tool_result emission entirely in that case — the tool_use
+        // card alone marks that the search happened.
         const output = item.output as string | undefined;
-        this.emitToolResult(toolUseId, output || "Search completed", false);
+        if (typeof output === "string" && output.length > 0) {
+          this.emitToolResult(toolUseId, output, false);
+        }
         break;
       }
 
@@ -1407,20 +1424,20 @@ export class CodexAdapter {
     });
   }
 
-  private handleCommandOutputDelta(params: Record<string, unknown>): void {
-    const itemId = params.itemId as string;
-    const delta = params.delta as string;
-    if (!itemId || !delta) return;
-
-    // Emit as tool progress so the UI shows live command output
-    this.emit({
-      type: "stream_event",
-      event: {
-        type: "content_block_delta",
-        delta: { type: "text_delta", text: delta },
-      },
-      parent_tool_use_id: itemId,
-    });
+  private handleCommandOutputDelta(_params: Record<string, unknown>): void {
+    // Earlier we forwarded codex's per-line stdout deltas as
+    // `content_block_delta` text deltas — intending them to render as live
+    // tool output. The frontend's stream handler (`src/ws.ts:444`) does NOT
+    // honor `parent_tool_use_id` on text deltas, though: every delta gets
+    // appended to the assistant's streaming-text buffer and Markdown-rendered.
+    // Shell output (alignment whitespace, underscored tokens, sed columns)
+    // then collapsed into garbled italic fragments leaking into the prose
+    // bubble. The final, complete output already appears in the tool_result
+    // block (a real `<pre>` with `whitespace-pre-wrap`); the in-flight
+    // progress indicator comes from `handleItemUpdated`'s `tool_progress`
+    // emission. Dropping the per-delta forward removes the corruption with
+    // no loss of useful feedback.
+    return;
   }
 
   private handleReasoningDelta(params: Record<string, unknown>): void {

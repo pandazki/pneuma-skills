@@ -25,10 +25,12 @@ This skill is how you fix that. You write a meaningful title + one-sentence summ
 ## The mechanism
 
 ```bash
-pneuma session refine --json '{"displayName": "<≤40 chars>", "description": "<≤280 chars>"}'
+$PNEUMA_CLI session refine --json '{"displayName": "<≤40 chars>", "description": "<≤280 chars>"}'
 ```
 
-The `pneuma` CLI is on PATH inside every session. The command POSTs to the running Pneuma server (via `$PNEUMA_SERVER_URL`), which atomically rewrites `<sessionDir>/session.json`, syncs the global registry at `~/.pneuma/sessions.json`, and broadcasts an event so any open browsers refresh the row without a reload.
+Always call through the `$PNEUMA_CLI` env var, not the literal `pneuma` binary. The env var resolves to the right invocation regardless of how Pneuma was installed (npm-global, dev worktree, desktop bundle); writing the literal `pneuma session refine` only works when the binary happens to be on `PATH`, which it usually isn't inside the agent's sandbox. The Bash tool word-splits unquoted `$PNEUMA_CLI` correctly, so `$PNEUMA_CLI session refine ...` invokes as one command — don't quote it.
+
+The command POSTs to the running Pneuma server (via `$PNEUMA_SERVER_URL`), which atomically rewrites `<sessionDir>/session.json`, syncs the global registry at `~/.pneuma/sessions.json`, and broadcasts an event so any open browsers refresh the row without a reload.
 
 Both fields are optional. Sending just `displayName` rewrites only the title; just `description` rewrites only the summary. Send both when the session has changed enough to warrant a fresh pair. The server validates lengths and rejects empties.
 
@@ -89,7 +91,7 @@ Phrases like:
 - "rename this session based on what we've done"
 - "give this session a real title"
 
-Run `pneuma session refine` **synchronously** (no subagent). The user is asking right now; they're waiting for confirmation. Read the conversation so far, compose `displayName` + `description`, call the CLI, then reply with a one-line acknowledgment showing the new title.
+Run `$PNEUMA_CLI session refine` **synchronously** (no subagent). The user is asking right now; they're waiting for confirmation. Read the conversation so far, compose `displayName` + `description`, call the CLI, then reply with a one-line acknowledgment showing the new title.
 
 ### On your own judgment
 
@@ -117,7 +119,7 @@ When you decide to refine proactively, use a **subagent** so the main turn isn't
    - "Compose displayName (≤40 chars) and description (≤280 chars) describing
       what this session is *about* — the user-facing concern, in the user's
       language. Don't list what was done."
-   - "Run: pneuma session refine --json '<your json>'. Print the result and stop."
+   - "Run: $PNEUMA_CLI session refine --json '<your json>'. Print the result and stop."
 3. The subagent returns; you don't need to mention the refine to the user
    unless the user asks. The row updates silently.
 ```

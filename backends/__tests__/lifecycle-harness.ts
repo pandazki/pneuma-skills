@@ -227,6 +227,8 @@ async function createScenarioContext(
     cliIdle: true,
     pendingNotifications: [],
     messageHistory: [],
+    pendingEnvContext: [],
+    suppressingPostAskq: false,
     pendingMessages: [],
     nextEventSeq: 1,
     eventBuffer: [],
@@ -242,6 +244,20 @@ async function createScenarioContext(
       backend.setAgentSessionId(sessionId, agentSessionId);
     },
     getOrCreateSession: () => session,
+    prepareIncomingUserMessage: (s, msg, opts) => {
+      // Minimal stub mirroring production: push history, pass content
+      // through. File/image upload paths aren't exercised by the lifecycle
+      // harness, so we skip the disk-save side effects.
+      s.messageHistory.push({
+        type: "user_message",
+        content: msg.content,
+        timestamp: Date.now(),
+      });
+      return {
+        textContent: msg.content,
+        inlineImages: opts.inlineImagesSupported && msg.images ? msg.images : [],
+      };
+    },
   };
 
   const bridge = module.createBridgeBackend(deps, backend, sessionId);
@@ -709,6 +725,8 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
         cliIdle: true,
         pendingNotifications: [],
         messageHistory: [],
+        pendingEnvContext: [],
+        suppressingPostAskq: false,
         pendingMessages: [],
         nextEventSeq: 1,
         eventBuffer: [],
@@ -721,6 +739,17 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
         workspace: ctx.workspace,
         onAgentSessionId: (_sid, aid) => resumedBackend.setAgentSessionId(resumedSessionId, aid),
         getOrCreateSession: () => session,
+        prepareIncomingUserMessage: (s, msg, opts) => {
+          s.messageHistory.push({
+            type: "user_message",
+            content: msg.content,
+            timestamp: Date.now(),
+          });
+          return {
+            textContent: msg.content,
+            inlineImages: opts.inlineImagesSupported && msg.images ? msg.images : [],
+          };
+        },
       };
       const resumedBridge = ctx.module.createBridgeBackend(deps, resumedBackend, resumedSessionId);
       if (!resumedBridge) {

@@ -18,5 +18,6 @@
   "replace_all": "alle ersetzen",
   "in_path": "in: ",
   "path": "Pfad: ",
-  "glob_label": "Glob: "
+  "glob_label": "Glob: ",
+  "websearch_no_query": "Codex hat die Suchanfrage für diesen Aufruf nicht offengelegt."
 }

@@ -103,6 +103,8 @@ export class WsBridge {
       },
       getOrCreateSession: (sessionId, backendType) =>
         this.getOrCreateSession(sessionId, backendType),
+      prepareIncomingUserMessage: (session, msg, opts) =>
+        this.prepareIncomingUserMessage(session, msg, opts),
     };
   }
 
@@ -867,7 +869,7 @@ export class WsBridge {
       }
     }
     if (Array.isArray(msg.message?.content)) {
-      stampFileRefs(msg.message.content, "claude-code");
+      stampFileRefs(msg.message.content, "claude-code", this.workspace);
     }
     const browserMsg: BrowserIncomingMessage = {
       type: "assistant",
@@ -1359,17 +1361,29 @@ export class WsBridge {
   // `server/ws-bridge-backend.ts`. The bridge's own `handleUserMessage`
   // below covers the legacy Claude Code path (CLI WebSocket).
 
-  private handleUserMessage(
+  /**
+   * Backend-agnostic ingest for a browser `user_message`. See the JSDoc on
+   * `BridgeBackendDeps.prepareIncomingUserMessage` for the contract; the
+   * deps method is just a thin pass-through to this one so every bridge
+   * backend goes through the same path.
+   */
+  prepareIncomingUserMessage(
     session: Session,
-    msg: { type: "user_message"; content: string; session_id?: string; images?: { media_type: string; data: string }[]; files?: { name: string; media_type: string; data: string; size: number }[] }
-  ) {
-    const ts = Date.now();
+    msg: {
+      content: string;
+      images?: { media_type: string; data: string }[];
+      files?: { name: string; media_type: string; data: string; size: number }[];
+    },
+    opts: { inlineImagesSupported: boolean },
+  ): { textContent: string; inlineImages: { media_type: string; data: string }[] } {
+    const IMAGE_INLINE_LIMIT = 5 * 1024 * 1024; // 5 MB base64 chars ≈ 3.75 MB raw
+    const TEXT_INLINE_LIMIT = 32 * 1024;
 
-    // Save non-image files to disk and collect metadata for both the CLI
-    // upload-notification and the history entry below.
+    // 1. Save non-image files to disk; if small + text-y, inline content
+    //    into the notification body so the agent doesn't need a Read tool
+    //    call for short text uploads.
     const savedFiles: { path: string; name: string; size: number; mediaType: string; inlineContent?: string }[] = [];
     if (this.workspace && msg.files?.length) {
-      const TEXT_INLINE_LIMIT = 32 * 1024; // 32 KB
       for (const file of msg.files) {
         try {
           const filePath = this.saveFileToDisk(file.name, file.media_type, file.data);
@@ -1391,12 +1405,10 @@ export class WsBridge {
       }
     }
 
-    // Pre-pass: save images to disk before pushing history, so the history
-    // entry can carry their saved paths and the chat rehydrates the bubble's
-    // image previews on session reopen. Large images (>5 MB base64) are saved
-    // to disk only — not inlined as content blocks — to avoid exceeding
-    // WebSocket payload limits when forwarding to the CLI.
-    const IMAGE_INLINE_LIMIT = 5 * 1024 * 1024; // 5 MB base64 chars ≈ 3.75 MB raw
+    // 2. Save images to disk. `largeImagePaths` marks the ones the bridge
+    //    backend must not inline — either over the size budget, or the
+    //    backend doesn't accept inline image blocks at all. The agent picks
+    //    them up via the disk path embedded in the upload notification.
     const savedImagePaths: string[] = [];
     const largeImagePaths = new Set<string>();
     if (this.workspace && msg.images?.length) {
@@ -1404,17 +1416,20 @@ export class WsBridge {
         try {
           const savedPath = this.saveImageToDisk(img.media_type, img.data);
           savedImagePaths.push(savedPath);
-          if (img.data.length > IMAGE_INLINE_LIMIT) largeImagePaths.add(savedPath);
+          if (!opts.inlineImagesSupported || img.data.length > IMAGE_INLINE_LIMIT) {
+            largeImagePaths.add(savedPath);
+          }
         } catch (err) {
           console.warn("[ws-bridge] Failed to save uploaded image to disk:", err);
         }
       }
     }
 
-    // Persist the message to history with attachment metadata so a session
-    // reopen restores image previews + file tags in the chat stream. Only the
-    // disk path is stored, not the base64 payload — history.json stays small;
-    // the browser loads the bytes through /api/file?path=<abs> on render.
+    // 3. Persist to history with attachment metadata so a session reopen
+    //    restores image previews + file chips in the chat stream. Only the
+    //    disk path is stored, not the base64 payload — history.json stays
+    //    small; the browser loads bytes through /api/file?path=<abs>.
+    const ts = Date.now();
     const historyImages = msg.images?.length
       ? msg.images.map((img, i) => ({ media_type: img.media_type, path: savedImagePaths[i] }))
           .filter((entry): entry is { media_type: string; path: string } => Boolean(entry.path))
@@ -1429,44 +1444,57 @@ export class WsBridge {
       ...(historyFiles.length ? { files: historyFiles } : {}),
     });
 
-    // Drain any pending `<pneuma:env>` context that was queued while the user
-    // wasn't typing. Those tags were already recorded in messageHistory + shown
-    // as chat banners, but they intentionally never went to the agent as their
-    // own user turns (that produced spurious "welcome back" replies). Now that
-    // a real user message is heading to the CLI, fold them in as a one-shot
-    // prefix so the agent gets the session-lineage / locale / handoff context
-    // it needs to reason about the user's actual question.
+    // 4. Drain any pending `<pneuma:env>` context that was queued while the
+    //    user wasn't typing. Those tags were already recorded in
+    //    messageHistory + shown as chat banners, but they intentionally
+    //    never went to the agent as their own user turns (which produced
+    //    spurious "welcome back" replies). Now that a real user message is
+    //    heading to the agent, fold them in as a one-shot prefix so the
+    //    agent sees session-lineage / locale / handoff context.
     let envPrefix = "";
     if (session.pendingEnvContext.length > 0) {
       envPrefix = session.pendingEnvContext.join("\n") + "\n";
       session.pendingEnvContext = [];
     }
 
-    // Build content for the CLI: if images are present, use a content block
-    // array; otherwise a plain string.
+    // 5. Assemble the text the agent should receive: envPrefix +
+    //    `<uploaded-files>` block + the user's original message.
+    const uploadNotice = this.buildUploadNotification(savedImagePaths, savedFiles, largeImagePaths);
+    const textContent = envPrefix + uploadNotice + msg.content;
+
+    // 6. Compute inline images (small enough + backend-supported). Bridge
+    //    backends decide their own protocol-specific dispatch for these
+    //    (Claude → content blocks, Codex → data URL parts, Kimi → nothing).
+    const inlineImages = opts.inlineImagesSupported && msg.images?.length
+      ? msg.images.filter((img) => img.data.length <= IMAGE_INLINE_LIMIT)
+      : [];
+
+    return { textContent, inlineImages };
+  }
+
+  private handleUserMessage(
+    session: Session,
+    msg: { type: "user_message"; content: string; session_id?: string; images?: { media_type: string; data: string }[]; files?: { name: string; media_type: string; data: string; size: number }[] }
+  ) {
+    const { textContent, inlineImages } = this.prepareIncomingUserMessage(
+      session,
+      msg,
+      { inlineImagesSupported: true },
+    );
+
+    // Inline-eligible images become content blocks; otherwise a plain
+    // string. (A single-text-block array would be equivalent to the
+    // string, so collapse it.)
     let content: string | unknown[];
-    if (msg.images?.length) {
-      const blocks: unknown[] = [];
-      for (const img of msg.images) {
-        // Only inline small images as content blocks; large ones are
-        // referenced by disk path through buildUploadNotification.
-        if (img.data.length <= IMAGE_INLINE_LIMIT) {
-          blocks.push({
-            type: "image",
-            source: { type: "base64", media_type: img.media_type, data: img.data },
-          });
-        }
-      }
-
-      let textContent = envPrefix + msg.content;
-      textContent = this.buildUploadNotification(savedImagePaths, savedFiles, largeImagePaths) + textContent;
-
+    if (inlineImages.length > 0) {
+      const blocks: unknown[] = inlineImages.map((img) => ({
+        type: "image",
+        source: { type: "base64", media_type: img.media_type, data: img.data },
+      }));
       blocks.push({ type: "text", text: textContent });
-      content = blocks.length > 1 ? blocks : textContent;
-    } else if (savedFiles.length > 0) {
-      content = envPrefix + this.buildUploadNotification(savedImagePaths, savedFiles) + msg.content;
+      content = blocks;
     } else {
-      content = envPrefix + msg.content;
+      content = textContent;
     }
 
     session.cliIdle = false;

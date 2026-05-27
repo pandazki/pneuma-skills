@@ -87,7 +87,14 @@ describe("module registry", () => {
     const m = getBackendModule("claude-code");
     const result = m.createBridgeBackend(
       // deps + backend args are unused on the claude-code path
-      { broadcastToBrowsers: () => {}, workspace: "/tmp" },
+      {
+        broadcastToBrowsers: () => {},
+        workspace: "/tmp",
+        prepareIncomingUserMessage: (_s, msg) => ({
+          textContent: msg.content,
+          inlineImages: [],
+        }),
+      },
       m.createBackend(17007),
       "test-session",
     );

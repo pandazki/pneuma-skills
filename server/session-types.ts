@@ -332,6 +332,15 @@ export type ContentBlock =
      * tool results don't carry such metadata simply omit this field.
      */
     metadata?: string;
+    /**
+     * Workspace-scoped file references mined from the result body, stamped
+     * by `stampFileRefs`. Today it picks up image paths the agent's shell
+     * command surfaced in its stdout — e.g. a `curl` POST to a capture
+     * action returns `{"path":"/…/captures/foo.png"}`, and we want a
+     * thumbnail in the chat instead of just the raw JSON. The chat
+     * renders an inline `FilePreview` per ref.
+     */
+    fileRefs?: { path: string; kind: "output" }[];
   }
   | { type: "thinking"; thinking: string; budget_tokens?: number };
 

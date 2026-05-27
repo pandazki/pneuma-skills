@@ -6,6 +6,7 @@ import type { ChatMessage, ContentBlock, SelectionContext, Annotation, Permissio
 import { useStore } from "../store.js";
 import { sendPermissionResponse } from "../ws.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
+import { FilePreview, isInlinePreviewable } from "./FilePreview.js";
 import { parsePneumaTag, PneumaSignalPill } from "./PneumaSignalPill.js";
 import type { ViewerLocator } from "../../core/types/viewer-contract.js";
 
@@ -869,12 +870,14 @@ function ContentBlockRenderer({
     // `backends/kimi-cli/protocol.ts:extractKimiSystemMetadata`); other
     // backends leave it unset.
     const metadata = (block as { metadata?: string }).metadata;
+    const fileRefs = (block as { fileRefs?: { path: string; kind: "output" }[] }).fileRefs;
     return (
       <ToolResultBlock
         text={content}
         isError={isError}
         metadata={metadata}
         toolName={linkedTool?.name}
+        fileRefs={fileRefs}
       />
     );
   }
@@ -901,11 +904,13 @@ function ToolResultBlock({
   isError,
   metadata,
   toolName,
+  fileRefs,
 }: {
   text: string;
   isError: boolean;
   metadata?: string;
   toolName?: string;
+  fileRefs?: { path: string; kind: "output" }[];
 }) {
   const { t } = useTranslation("message-bubble");
   // `toolName === "Bash"` is a comparison against the agent's tool identifier
@@ -961,6 +966,15 @@ function ToolResultBlock({
         >
           {renderedText}
         </pre>
+      )}
+      {fileRefs && fileRefs.length > 0 && (
+        <div className="px-3 pb-2 pt-1 space-y-1 border-t border-cc-border/60">
+          {fileRefs.map((ref) => (
+            isInlinePreviewable(ref.path)
+              ? <FilePreview key={ref.path} path={ref.path} />
+              : null
+          ))}
+        </div>
       )}
     </div>
   );
@@ -1293,7 +1307,13 @@ function DebugPayloadButton({ payload }: { payload: NonNullable<ChatMessage["deb
 // ─── ToolGroupBlock ────────────────────────────────────────────────────────
 
 function ToolGroupBlock({ name, items }: { name: string; items: ToolGroupItem[] }) {
-  const [open, setOpen] = useState(false);
+  // Mirror single-ToolBlock behaviour: when at least one item has an
+  // inline-previewable fileRef (e.g. PNG / JPG reads), default-expand so the
+  // thumbnails are visible without an extra click. Grouped Reads were
+  // collapsed-only before, which hid image previews entirely whenever the
+  // agent read two captures in a row.
+  const hasInlinePreview = items.some((it) => it.fileRef && isInlinePreviewable(it.fileRef.path));
+  const [open, setOpen] = useState(hasInlinePreview);
   const iconType = getToolIcon(name);
   const label = getToolLabel(name);
 
@@ -1321,10 +1341,14 @@ function ToolGroupBlock({ name, items }: { name: string; items: ToolGroupItem[] 
         <div className="border-t border-cc-border px-3 py-1.5">
           {items.map((item, i) => {
             const itemPreview = getPreview(item.name, item.input);
+            const previewable = !!item.fileRef && isInlinePreviewable(item.fileRef.path);
             return (
-              <div key={item.id || i} className="flex items-center gap-2 py-1 text-xs text-cc-muted font-mono-code truncate">
-                <span className="w-1 h-1 rounded-full bg-cc-muted/40 shrink-0" />
-                <span className="truncate">{itemPreview || JSON.stringify(item.input).slice(0, 80)}</span>
+              <div key={item.id || i} className="py-1">
+                <div className="flex items-center gap-2 text-xs text-cc-muted font-mono-code truncate">
+                  <span className="w-1 h-1 rounded-full bg-cc-muted/40 shrink-0" />
+                  <span className="truncate">{itemPreview || JSON.stringify(item.input).slice(0, 80)}</span>
+                </div>
+                {previewable && <FilePreview path={item.fileRef!.path} />}
               </div>
             );
           })}

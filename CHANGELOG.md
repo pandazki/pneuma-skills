@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.13.3] - 2026-05-27
+
+### Fixed — Chat-bar file uploads now reach the agent on Codex + Kimi sessions
+
+Dragging or attaching a file into the chat composer used to be a silent no-op on the Codex and Kimi-cli backends — the file landed on disk in the browser composer, the WebSocket envelope carried `files: [...]`, but the per-backend bridge handlers dropped the field entirely on its way to the adapter. The agent never saw any indication of an upload and the user got no error. Only the legacy Claude Code path did the right thing.
+
+- **`BridgeBackendDeps.prepareIncomingUserMessage` is the new single funnel.** All three backends (Claude / Codex / Kimi) now call into `WsBridge.prepareIncomingUserMessage` for every browser-originated `user_message`: it saves uploaded files + images to `.pneuma/uploads/`, drains any queued `<pneuma:env>` tags, pushes the history entry with attachment metadata, and returns `{ textContent, inlineImages }` for the bridge to dispatch in its protocol-specific shape. The `<uploaded-files>` notification block that prefixes the agent's prompt is now uniform across backends.
+- **Backends declare their multimodal capability instead of duplicating logic.** Claude and Codex pass `inlineImagesSupported: true` (their adapters accept inline image blocks / data URLs); Kimi passes `false`, so its uploads land on disk and the agent picks them up via Read tool calls — with the upload notification marking each image `large="true"` + a Read hint so the agent knows where to look.
+- **Free side-fix: `pendingEnvContext` drains on every backend.** The env-tag queue used to only flush on the legacy Claude path; Codex and Kimi sessions silently never folded session-lineage / locale / handoff tags into the user's first turn. The shared prepare step now drains them uniformly.
+
+### Fixed — `pneuma-session` SKILL.md no longer tells the agent to invoke a non-PATH binary
+
+The shared `pneuma-session` skill (drives "整理一下会话信息" / session-meta refines) used the literal `pneuma session refine ...` in its three code snippets and explicitly claimed "the `pneuma` CLI is on PATH inside every session". In practice the binary is rarely on the agent sandbox's `PATH`; the launcher exports a `$PNEUMA_CLI` env var (resolving to `bun /path/to/pneuma.ts`) precisely for this case — the parallel `pneuma-project` skill already used it.
+
+- All three call sites switched to `$PNEUMA_CLI session refine`, with a short note explaining why and confirming Bash word-splits unquoted `$PNEUMA_CLI` correctly.
+- The misleading "is on PATH" sentence is gone; the skill now matches the established `$PNEUMA_CLI`-first convention.
+
+### Improved — Chat thumbnail previews + Lightbox zoom
+
+Two interaction polish items reported on a webcraft session that batched two `Read` of screenshot PNGs and then opened a tall capture.
+
+- **Grouped `Read` of images now show their thumbnails.** When the chat collapses consecutive `Read` tool_uses into a `Read File N` group, image entries (`.png` / `.jpg` / …) now render their inline `FilePreview` per item — and the group is default-expanded if any item is image-previewable, matching the single-`ToolBlock` behavior. Before, batching two screenshot reads hid both thumbnails behind a path-only list.
+- **`ImageLightbox` supports zoom + pan.** Mouse-wheel zooms cursor-anchored (0.25× – 8×); drag pans when zoomed past fit; double-click toggles 1× ↔ 2×. A floating toolbar in the top-right exposes `−` / current-scale-as-reset / `+` / close. Keyboard shortcuts: `+` / `=` zoom in, `-` zoom out, `0` reset, `Esc` close. Pans that end on the backdrop no longer close the lightbox mid-gesture. Long screenshots that don't fit the viewport are now inspectable at pixel detail instead of being squished to `object-contain` at 100%.
+
+### Fixed — Codex shell-output corruption in the assistant text bubble
+
+Codex's `commandExecution` item streams per-chunk stdout via `outputDelta` events. The adapter was forwarding each chunk as a `content_block_delta` text delta, intending it to render as live in-tool progress. The frontend's stream handler doesn't honor `parent_tool_use_id` on text deltas, though, so every chunk got appended to the assistant's streaming-text buffer and Markdown-parsed. Aligned `sed` columns collapsed to spaceless run-on; underscored fragments (`_e1_`, `_e3_`) rendered as italics in the prose bubble; multi-line outputs lost their newlines entirely.
+
+The adapter no longer forwards `outputDelta` chunks at all. Live progress is still surfaced via the `tool_progress` "Running… Xs" indicator from `item/updated`, and the complete output appears in the tool_result block (a real `<pre>` with `whitespace-pre-wrap`) once the command finishes. No corruption left in the chat stream.
+
+### Improved — Codex `WebSearch` cards no longer render with stub placeholders
+
+Codex's `webSearch` item routinely arrives without a `query` field and without an `output` body — the protocol suppresses the actual search terms / hits. The adapter used to fill the blanks with `query: ""` + a `"Search completed"` tool_result, producing two empty panels per call (one expanded JSON dump of `{"query":""}`, one stub result). A turn with three web searches stacked six near-empty cards in the chat.
+
+- The adapter now omits the `query` field entirely when Codex didn't supply one, and skips the tool_result emission altogether when there's no output body — so each empty search collapses to a single compact "Web Search" / "网页搜索" tile.
+- `ToolBlock` adds a dedicated `WebSearch` detail view: when input has no usable `query`, the expanded panel shows a one-line "Codex didn't expose the search query for this call." in the user's locale, instead of the raw `{"query":""}` JSON dump.
+
+### Added — Image-path thumbnails for tool results
+
+When the agent shells out and the command's stdout contains an absolute path to a workspace-resident image (typical pattern: a `curl` POST to a `capture` viewer action returns `{"path":"/…/captures/foo.png", …}`), the chat now renders an inline thumbnail under the tool result instead of leaving the user to paste the path elsewhere.
+
+- New `tool_result.fileRefs` field on the content-block contract: workspace-scoped image paths mined out of the result body, stamped server-side by `stampFileRefs`.
+- `stampFileRefs` now takes an optional `workspace` argument and, when provided, scans `tool_result.content` text for absolute image paths inside the workspace. Two guards keep the chat honest: paths must live under the session's workspace (so foreign URLs and `/etc/...` mentions don't leak a system-open affordance), and the file must exist on disk (so the agent's hypothetical or stale paths don't render as broken `<img>` placeholders).
+- All three bridges (claude / codex / kimi) thread the workspace through. `ToolResultBlock` renders a `FilePreview` per ref under the body text — same lightbox-enabled preview the `Read` of an image already triggers.
+
 ## [3.13.2] - 2026-05-26
 
 ### Fixed — Region `capture` no longer returns a backgroundless screenshot

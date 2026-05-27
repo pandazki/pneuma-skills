@@ -18,5 +18,6 @@
   "replace_all": "replace all",
   "in_path": "in: ",
   "path": "path: ",
-  "glob_label": "glob: "
+  "glob_label": "glob: ",
+  "websearch_no_query": "Codex didn't expose the search query for this call."
 }
