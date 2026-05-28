@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.15.1] - 2026-05-28
+
+### Fixed — Re-release: gallery feature now actually shipped
+
+`v3.15.0` was tagged off the version-bump commit before the gallery PR squash-merge landed on `main`, so the released npm package + GitHub Release contained the bumped version markers + changelog but **none of the 64 files / 2393 lines** that implement the empty-state gallery, no-seed overlay, ViewerErrorBoundary, seed installer, 21 thumbnails, or the i18n surfaces. CI's "skip if tag exists" check then suppressed the catch-up release when the PR finally landed. This patch republishes off the merge commit so `bunx pneuma-skills@3.15.1` (and the desktop auto-updater) actually carries the feature.
+
+See `[3.15.0]` below for the full feature description.
+
 ## [3.15.0] - 2026-05-28
 
 ### Added — Empty-state gallery: the workspace's first surface is yours to pick
