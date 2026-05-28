@@ -205,6 +205,15 @@ export interface ViewerNotification {
   severity: "info" | "warning";
   /** User-facing short summary (one sentence, for UI display) */
   summary?: string;
+  /**
+   * Notification types to remove from the pending queue before this one is
+   * added. Use this when the underlying condition that prompted an earlier
+   * notification has been resolved — e.g. a successful recompile cancels
+   * a still-queued "compilation-error". If `severity` is "info" and
+   * `replaces` is non-empty, the queue treats this as a pure clear signal
+   * — it removes the listed types and does NOT queue this notification.
+   */
+  replaces?: string[];
 }
 
 // ── Viewer Locator (navigable link cards in agent messages) ────────────────

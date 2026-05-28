@@ -5,7 +5,7 @@
  * Pure compilation logic lives in remotion-compiler.ts (testable in Bun).
  */
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useCallback, useState, useEffect, useRef, useMemo } from "react";
 import * as remotionModules from "remotion";
 import * as jsxRuntime from "react/jsx-runtime";
 import * as Babel from "@babel/standalone";
@@ -41,13 +41,20 @@ export { resolveImportOrder, compileModule, buildModuleMap } from "./remotion-co
 /**
  * React hook: compile workspace files into Remotion compositions.
  * Debounces recompilation on file changes. Caches by content hash.
+ *
+ * Returns the latest result plus `recompile`, an escape hatch that busts
+ * the cache + forces a re-run on the current files. Useful for a user-
+ * facing "Retry" button when the viewer somehow lags the workspace state.
  */
-export function useRemotionCompiler(files: ViewerFileContent[]): CompilationResult {
+export function useRemotionCompiler(files: ViewerFileContent[]): CompilationResult & {
+  recompile: () => void;
+} {
   const [result, setResult] = useState<CompilationResult>({
     compositions: [],
     components: new Map(),
     errors: [],
   });
+  const [recompileTick, setRecompileTick] = useState(0);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const cacheKeyRef = useRef<string>("");
@@ -70,6 +77,9 @@ export function useRemotionCompiler(files: ViewerFileContent[]): CompilationResu
     // Skip compilation when files haven't loaded yet (avoids flash of "Root.tsx not found")
     if (files.length === 0) return;
     if (contentKey === cacheKeyRef.current) return;
+    // recompileTick is read so the effect re-runs when the user requests
+    // a forced recompile (recompile() bumps the tick and clears cacheKey).
+    void recompileTick;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -166,7 +176,12 @@ export function useRemotionCompiler(files: ViewerFileContent[]): CompilationResu
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [contentKey, files]);
+  }, [contentKey, files, recompileTick]);
 
-  return result;
+  const recompile = useCallback(() => {
+    cacheKeyRef.current = "";
+    setRecompileTick((n) => n + 1);
+  }, []);
+
+  return { ...result, recompile };
 }

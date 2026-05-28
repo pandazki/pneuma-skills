@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.15.2] - 2026-05-28
+
+### Fixed — Remotion: stale "Build error" notification survived a recovered recompile
+
+After the agent fixed a broken composition, the Remotion viewer's chat queue kept the prior `compilation-error` notification — visually indistinguishable from "viewer stuck in error state" since the only way to drop it was a hard browser refresh. Two bugs combined:
+
+- **Dedup ref never reset.** `RemotionPreview` tracked the last-seen error key to avoid re-spamming the agent, but the ref was only cleared when a *different* error fired. After a successful recompile, an identical error later in the session would be silently dropped.
+- **Pending queue retained the warning past recovery.** Even after the viewer rendered the Player cleanly, the queued `compilation-error` pending message was waiting to flush as a stale "build broke" system message on the next idle.
+
+### Added — `ViewerNotification.replaces?: string[]` (contract addition, opt-in)
+
+A notification can now declare which prior pending notifications it cancels. When the new notification is `severity: "info"` and `replaces` is non-empty, the chat slice treats it as a pure clear signal — it purges matching pending entries and does NOT enqueue itself. Backwards-compatible: existing viewers that don't set `replaces` are unaffected.
+
+`RemotionPreview` uses this to emit `{ type: "compilation-recovered", severity: "info", replaces: ["compilation-error"] }` whenever errors drop back to zero. Locked in with 4 unit tests in `src/store/__tests__/chat-slice.test.ts`.
+
+### Added — User-facing **Retry** button on the Remotion compile-error panel
+
+`useRemotionCompiler` now returns a `recompile()` callback (bumps an internal tick + clears the content-hash cache) and the error UI exposes it as a small **Retry** button. Escape hatch for the rare case where the viewer ever lags the workspace state — clicking forces a fresh compile against current files instead of requiring a full page refresh.
+
 ## [3.15.1] - 2026-05-28
 
 ### Fixed — Re-release: gallery feature now actually shipped

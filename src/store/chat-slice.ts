@@ -15,7 +15,7 @@ export interface PendingUserPayload {
 /** Unified pending message — user text, viewer notification, or notification with image */
 export type PendingMessage =
   | ({ id: string; kind: "user" } & PendingUserPayload)
-  | { id: string; kind: "notification"; notification: { type: string; message: string; severity: "info" | "warning"; summary?: string }; images?: { media_type: string; data: string }[] };
+  | { id: string; kind: "notification"; notification: { type: string; message: string; severity: "info" | "warning"; summary?: string; replaces?: string[] }; images?: { media_type: string; data: string }[] };
 
 /** Tracks a file being written by the agent in real-time (from input_json_delta streaming) */
 export interface StreamingFileWrite {
@@ -41,7 +41,7 @@ export interface ChatSlice {
   setStreamingFileWrite: (fw: StreamingFileWrite | null) => void;
   setActivity: (activity: Activity | null) => void;
   addPendingMessage: (payload: PendingUserPayload) => void;
-  addPendingNotification: (notification: { type: string; message: string; severity: "info" | "warning"; summary?: string }, images?: { media_type: string; data: string }[]) => string;
+  addPendingNotification: (notification: { type: string; message: string; severity: "info" | "warning"; summary?: string; replaces?: string[] }, images?: { media_type: string; data: string }[]) => string;
   removePendingMessage: (id: string) => void;
   shiftPendingMessage: () => PendingMessage | undefined;
   addPermission: (perm: PermissionRequest) => void;
@@ -121,9 +121,30 @@ export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, 
     })),
   addPendingNotification: (notification, images) => {
     const id = crypto.randomUUID();
-    set((s) => ({
-      pendingMessages: [...s.pendingMessages, { id, kind: "notification", notification, images }],
-    }));
+    set((s) => {
+      // If the notification names types to replace, remove any queued
+      // notifications of those types first. Lets a viewer cancel its own
+      // earlier warnings when the underlying condition has been resolved
+      // (e.g. Remotion clearing a stale "compilation-error" after a
+      // successful recompile).
+      let pending = s.pendingMessages;
+      const replaceTypes = notification.replaces;
+      if (replaceTypes && replaceTypes.length > 0) {
+        const remove = new Set(replaceTypes);
+        pending = pending.filter(
+          (m) => m.kind !== "notification" || !remove.has(m.notification.type),
+        );
+      }
+      // Clear-only signal: info-severity with `replaces` is purely a
+      // cancellation marker — never queue it (and therefore never send
+      // it to the agent on flush).
+      const isClearOnly =
+        notification.severity === "info" && !!replaceTypes && replaceTypes.length > 0;
+      if (isClearOnly) {
+        return { pendingMessages: pending };
+      }
+      return { pendingMessages: [...pending, { id, kind: "notification", notification, images }] };
+    });
     return id;
   },
   removePendingMessage: (id) =>

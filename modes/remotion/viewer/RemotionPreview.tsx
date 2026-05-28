@@ -160,7 +160,7 @@ export default function RemotionPreview({
   const effectiveOnNotifyAgent = readonly ? undefined : onNotifyAgent;
 
   const playerRef = useRef<PlayerRef | null>(null);
-  const { compositions, components, errors } = useRemotionCompiler(files);
+  const { compositions, components, errors, recompile } = useRemotionCompiler(files);
 
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -421,7 +421,23 @@ export default function RemotionPreview({
   const prevErrorKeyRef = useRef<string>("");
 
   useEffect(() => {
-    if (errors.length === 0) return;
+    if (errors.length === 0) {
+      // Recovery: if we previously notified the agent of a compile error,
+      // clear that pending notification so it doesn't flush as a stale
+      // "build broken" message on the next idle, AND reset the dedupe ref
+      // so future errors re-notify (without this, an identical error after
+      // a recovery would be silently dropped).
+      if (prevErrorKeyRef.current !== "") {
+        prevErrorKeyRef.current = "";
+        onNotifyAgentRef.current?.({
+          type: "compilation-recovered",
+          message: "",
+          severity: "info",
+          replaces: ["compilation-error"],
+        });
+      }
+      return;
+    }
     // Deduplicate: only notify once per unique error set
     const errorKey = errors.map((e) => `${e.file}:${e.message}`).join("|");
     if (errorKey === prevErrorKeyRef.current) return;
@@ -447,7 +463,22 @@ export default function RemotionPreview({
       <div className="flex flex-col h-full" style={{ background: "var(--color-cc-bg, #09090b)" }}>
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="max-w-lg w-full">
-            <div className="text-red-400 text-sm font-medium mb-3">Compilation Error</div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-red-400 text-sm font-medium">Compilation Error</div>
+              <button
+                onClick={recompile}
+                className="px-2 h-6 rounded text-[11px] font-medium cursor-pointer transition-colors"
+                style={{
+                  color: "var(--color-cc-muted, #a1a1aa)",
+                  background: "var(--color-cc-user-bubble, #27272a)",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--color-cc-fg, #fafafa)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-cc-muted, #a1a1aa)"; }}
+                title="Re-run compile against the current workspace files"
+              >
+                Retry
+              </button>
+            </div>
             {errors.map((err, i) => (
               <div key={i} className="mb-2">
                 <div className="text-xs font-mono mb-1" style={{ color: "var(--color-cc-muted, #a1a1aa)" }}>
