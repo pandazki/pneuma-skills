@@ -175,6 +175,96 @@ import { Img, staticFile } from "remotion";
 
 Keep one composition per file. Register every new composition in `src/Root.tsx`.
 
+### Canonical skeleton — read before writing anything new
+
+When a Pneuma Remotion session opens fresh (no `src/`), this is the minimum shape that compiles and previews. Use it as the anchor for new projects — adapt the aesthetic, but don't invent a different file layout or skip the registration pattern.
+
+```tsx
+// src/index.ts — only runs in the Remotion CLI; the in-browser preview
+// imports Root.tsx directly and is allowed to be absent here.
+import { registerRoot } from "remotion";
+import { RemotionRoot } from "./Root";
+registerRoot(RemotionRoot);
+```
+
+```tsx
+// src/Root.tsx — the ONE file the viewer parses to discover compositions.
+// Every <Composition id> becomes a tab in the player's composition switcher.
+// durationInFrames must be an integer; compute it from your timing plan
+// (frame = seconds × fps) rather than hard-coding round numbers that don't
+// match the inner Sequence layout.
+import { Composition } from "remotion";
+import { Intro } from "./Intro";
+
+export const RemotionRoot: React.FC = () => (
+  <>
+    <Composition
+      id="Intro"
+      component={Intro}
+      durationInFrames={180}  // 6s at 30fps
+      fps={30}
+      width={1280}
+      height={720}
+    />
+  </>
+);
+```
+
+```tsx
+// src/Intro.tsx — one composition per file. Common idioms in one place:
+// AbsoluteFill for the canvas, Sequence for time segments, useCurrentFrame
+// + interpolate for tweens, spring for organic motion. Tokens hoisted to
+// the top of the file so they're easy to scan and tune.
+import React from "react";
+import {
+  AbsoluteFill,
+  Sequence,
+  useCurrentFrame,
+  useVideoConfig,
+  interpolate,
+  spring,
+  Easing,
+} from "remotion";
+
+// Tokens hoisted so palette + type live near the top of the file.
+const C = { bg: "#f4efe8", fg: "#2d2621", accent: "#b85c3a" };
+const FONT_DISPLAY = "'Fraunces', 'Georgia', serif";
+const expoOut = Easing.out(Easing.exp);
+
+export const Intro: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+
+  // Spring for the title's settle — natural deceleration, not a linear ramp.
+  const titleScale = spring({ frame, fps, config: { damping: 14, stiffness: 110 } });
+  // Interpolate for opacity tweens — easier to read than spring for fades.
+  const titleOpacity = interpolate(frame, [0, 18], [0, 1], { easing: expoOut, extrapolateRight: "clamp" });
+
+  return (
+    <AbsoluteFill style={{ background: C.bg, color: C.fg, fontFamily: FONT_DISPLAY }}>
+      <Sequence from={0} durationInFrames={90}>
+        <h1 style={{ fontSize: 96, opacity: titleOpacity, transform: `scale(${titleScale})` }}>
+          Title
+        </h1>
+      </Sequence>
+      <Sequence from={90} durationInFrames={90}>
+        {/* next beat — body, lower third, asset, etc. */}
+      </Sequence>
+    </AbsoluteFill>
+  );
+};
+```
+
+A few non-negotiables this skeleton encodes — keep them when you build the user's project:
+
+- **`src/Root.tsx` is the ONLY file the viewer scans for `<Composition>`.** Adding a `<Composition>` anywhere else is silently invisible.
+- **`durationInFrames` integer, `fps` integer**, dimensions multiples of 2. Off-by-one durations make the trim/loop UI behave oddly.
+- **One composition per file**, imported into `Root.tsx`. Multi-composition files make the viewer's per-composition active-file tracking ambiguous.
+- **Tokens at the top of each file** (palette, fonts, easings, durations). When the user says "make the accent more saturated", you should be editing one line, not chasing literals.
+- **Static assets in `public/`**, referenced via `staticFile("name.png")`. Imports of binary assets in `src/` don't resolve in the in-browser preview.
+
+When the user picks a gallery seed, you'll find the same shape but with more aesthetic content — read those files for richer motion + typography patterns. When the workspace is empty, this skeleton is the starting point.
+
 ---
 
 ## Design Guidance

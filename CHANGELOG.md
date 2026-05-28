@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.15.6] - 2026-05-28
+
+### Improved — Remotion: canonical skeleton inlined in SKILL.md
+
+Gallery refactor side-effect users surfaced: with `init.seedFiles` no longer auto-copied on session boot (3.15.0), agents lost the implicit best-practice anchor they used to read off the workspace's pre-populated seed. The result felt "random" — agents reinvented the file layout, hard-coded literals where tokens belonged, sometimes scattered `<Composition>` declarations outside `Root.tsx`.
+
+`modes/remotion/skill/SKILL.md` now ships a **Canonical skeleton** section right under the existing Project Structure table — a minimal `index.ts` + `Root.tsx` + `Intro.tsx` triplet inlined as code blocks, plus a five-bullet "non-negotiables" list (only-Root.tsx-is-scanned, integer durationInFrames + fps, one composition per file, tokens at the top, public/ for assets via `staticFile()`). Agents see it on first SKILL.md read regardless of whether the user picks a gallery seed.
+
+Skeleton is intentionally minimal — `AbsoluteFill` + two `Sequence` beats + one `spring` + one `interpolate` — so agents anchor on **idioms**, not on an aesthetic that may not fit the user's project. When the user picks a gallery seed, the same shape is there but with richer motion + typography to read off.
+
+`modes/remotion/manifest.ts::version` 0.1.0 → 0.2.0 so existing Remotion sessions are prompted to reinstall the skill via the in-app update banner.
+
 ## [3.15.5] - 2026-05-28
 
 ### Fixed — Remotion: `inFrame` out-of-bounds on locator clicks crashed the whole viewer
