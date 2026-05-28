@@ -183,19 +183,76 @@ export interface InitParam {
   sensitive?: boolean;
 }
 
+/**
+ * Seed gallery card — rich metadata for a single user-selectable seed,
+ * displayed in the empty-state gallery shown when a session opens with
+ * no agent-authored content.
+ *
+ * Each descriptor's `sourceKey` must match a key in
+ * `InitConfig.seedFiles`. Selecting a card triggers the same locale
+ * resolution + template substitution + copy that the legacy auto-seed
+ * path performed, but limited to that one entry.
+ */
+export interface SeedDescriptor {
+  /** Stable id; used for routing, telemetry, and persisting "last picked" preferences. */
+  id: string;
+  /**
+   * Key (or keys) into `InitConfig.seedFiles`. A single string matches
+   * one `seedFiles` entry. An array applies every listed entry in
+   * order — use this for "compound" seeds whose contents are stored as
+   * multiple sibling entries (e.g. a project.json plus an assets/
+   * dump that mustn't pull in the surrounding seed/ scratch dirs).
+   * The runtime drops a descriptor on load if any of its referenced
+   * keys is missing from `seedFiles`.
+   */
+  sourceKey: string | string[];
+  /** Card title. */
+  displayName: LocalizedString;
+  /** Short blurb shown under the title (1–2 sentences). */
+  description?: LocalizedString;
+  /**
+   * Thumbnail file path relative to `<modeRoot>/seed-gallery/` —
+   * just the filename in the common case (e.g. `en-dark.png`).
+   * Subdirectories under `seed-gallery/` are allowed
+   * (`<theme>/cover.png`) for modes that want to organise variants.
+   * When omitted the gallery falls back to a typographic card.
+   */
+  thumbnail?: string;
+  /** Optional category chips ("dark", "EN", etc.) shown on the card. */
+  tags?: string[];
+}
+
 /** Workspace initialization config — describes initialization behavior for empty workspaces */
 export interface InitConfig {
   /**
-   * Glob pattern to check if the workspace has content.
-   * If at least one non-empty file matches, seed files are skipped.
+   * Glob pattern to check if the workspace has content. Used by both
+   * the legacy auto-seed path (pre-gallery) and the empty-state gallery
+   * trigger: when no file matching this pattern carries non-empty text,
+   * the workspace is considered "empty" and the gallery is shown.
    */
   contentCheckPattern?: string;
   /**
-   * Seed files for an empty workspace.
-   * key: target relative path (relative to workspace)
-   * value: source file relative path (relative to project root)
+   * Seed file mapping.
+   * key: source path relative to the mode package root (or project root for builtins).
+   * value: target path relative to the workspace.
+   *
+   * Since 3.14.0 the auto-copy at session boot was removed; the gallery
+   * triggers individual entries here by name. This field stays the
+   * canonical list of "what files belong to which seed"; `init.seeds`
+   * supplies the user-facing card metadata.
    */
   seedFiles?: Record<string, string>;
+  /**
+   * Seed gallery cards — one per user-selectable seed. Each card's
+   * `sourceKey` points at an entry in `seedFiles`.
+   *
+   * When omitted but `seedFiles` is non-empty, the runtime auto-derives
+   * a minimal descriptor per entry (id = seedFiles key, displayName =
+   * path-derived). Authoring this field explicitly is the way to
+   * surface multiple variants (e.g. slide's en-dark / en-light /
+   * zh-dark / zh-light) as four distinct cards.
+   */
+  seeds?: SeedDescriptor[];
   /**
    * Mode init parameters. Interactively prompted on first launch; results persisted to .pneuma/config.json.
    * Parameter values are injected into skill and seed files via {{name}} template substitution.

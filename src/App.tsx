@@ -27,6 +27,7 @@ import { useThumbnailCapture } from "./hooks/useThumbnailCapture.js";
 import { useCaptureAction } from "./hooks/useCaptureAction.js";
 import { useBackgroundStatusReporter } from "./hooks/useBackgroundStatusReporter.js";
 import { normalizeViewerState } from "./utils/viewer-state.js";
+import { ViewerErrorBoundary } from "./components/ViewerErrorBoundary.js";
 
 const EditorPanel = lazy(() => import("./components/EditorPanel.js"));
 const TerminalPanel = lazy(() => import("./components/TerminalPanel.js"));
@@ -36,6 +37,12 @@ const AppModeToggle = lazy(() => import("./components/AppModeToggle.js"));
 const HandoffCard = lazy(() => import("./components/HandoffCard.js"));
 const EmptyShell = lazy(() =>
   import("./components/EmptyShell.js").then((m) => ({ default: m.EmptyShell })),
+);
+const GalleryEmptyState = lazy(() =>
+  import("./components/GalleryEmptyState.js").then((m) => ({ default: m.GalleryEmptyState })),
+);
+const NoSeedOnboardOverlay = lazy(() =>
+  import("./components/NoSeedOnboardOverlay.js").then((m) => ({ default: m.NoSeedOnboardOverlay })),
 );
 
 function LazyFallback() {
@@ -123,8 +130,20 @@ function useSourceInstances(): {
       signal: new AbortController().signal,
       files: channel,
     };
-    const effective = SourceRegistry.effectiveSources(manifest);
-    const built = registry.instantiateAll(effective, ctx);
+    // Pre-2.29 manifests throw from effectiveSources(). Don't let that
+    // bubble — degrade to empty sources so the viewer still mounts (and
+    // ViewerErrorBoundary downstream can show a friendly message instead
+    // of an uncaught React error landing in the user's console).
+    let built: Record<string, Source<unknown>> = {};
+    try {
+      const effective = SourceRegistry.effectiveSources(manifest);
+      built = registry.instantiateAll(effective, ctx);
+    } catch (err) {
+      console.warn(
+        `[source-registry] Mode "${manifest.name}" sources unavailable — viewer will render with no sources. Cause:`,
+        err,
+      );
+    }
     setState({ sources: built, channel });
     return () => {
       registry.destroyAll(built);
@@ -157,10 +176,15 @@ function useViewerProps(prefs: { theme: "light" | "dark"; locale: string }): Vie
   const setNavigateRequest = useStore((s) => s.setNavigateRequest);
   const contentSets = useStore((s) => s.contentSets);
   const replayMode = useStore((s) => s.replayMode);
+  // Backward-compat snapshot for pre-2.29 viewers (e.g. external modes
+  // that still read `props.files.find(...)`). New viewers consume
+  // `sources` instead — see ViewerPreviewProps docstring.
+  const filesCompat = useStore((s) => s.files);
 
   return {
     sources,
     fileChannel,
+    files: filesCompat,
     activeFile,
     selection: selection
       ? {
@@ -269,6 +293,17 @@ export default function App() {
   const PreviewComponent = useStore((s) => s.modeViewer?.PreviewComponent);
   const captureViewport = useStore((s) => s.modeViewer?.captureViewport);
 
+  // Flipped to true once the initial `/api/files` request resolves (success
+  // OR empty). Gates the gallery's empty-state render so old sessions
+  // resuming with content don't flash gallery during the brief window
+  // between `setModeViewer` and `setFiles`.
+  const [filesFetched, setFilesFetched] = useState(false);
+  // User-driven dismissal of the gallery / no-seed overlay. Persists for
+  // the lifetime of the session. Auto-dismiss-on-content-production is
+  // still handled by `userContentCount` / `hasSeedsDeclared`; this lets
+  // the user close the gallery explicitly even before content arrives.
+  const [galleryDismissedByUser, setGalleryDismissedByUser] = useState(false);
+
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const explicitSession = params.get("session");
@@ -313,10 +348,12 @@ export default function App() {
           await loadReplay(replayPath).catch((err) =>
             console.error("[app] Failed to load replay:", err)
           );
+          setFilesFetched(true);
         } else {
           // Normal mode — load workspace files from disk
           const d = await fetch(`${getApiBase()}/api/files`).then((r) => r.json());
           if (d.files?.length) useStore.getState().setFiles(d.files);
+          setFilesFetched(true);
           // Restore persisted viewer position (content set + active file)
           try {
             const vs = await fetch(`${getApiBase()}/api/viewer-state`).then((r) => r.json());
@@ -412,7 +449,14 @@ export default function App() {
   const systemPrefs = useSystemPreferences();
   useEffect(() => {
     if (!systemPrefs.ready) return;
-    if (contentSets.length > 1 && !activeContentSet) {
+    // Auto-select fires whenever there is at least one content set and
+    // nothing is active. The legacy gate (`> 1`) covered the
+    // multi-variant case (e.g. slide's en-dark vs zh-light) but left
+    // single-variant trait-bearing states orphaned — which now happens
+    // routinely after the gallery copies just one seed into the
+    // workspace. `selectBestContentSet` already returns the lone set
+    // unchanged when there is only one, so widening the gate is safe.
+    if (contentSets.length >= 1 && !activeContentSet) {
       const best = selectBestContentSet(contentSets, systemPrefs);
       if (best) useStore.getState().setActiveContentSet(best.prefix);
     }
@@ -422,6 +466,76 @@ export default function App() {
   const layout = useStore((s) => s.layout);
   const replayMode = useStore((s) => s.replayMode);
   const editing = useStore((s) => s.editing);
+
+  // Gallery decision — show the seed-gallery empty state when the
+  // workspace has no agent-authored content and the mode ships seeds.
+  // The condition is runtime-observed so old sessions with existing
+  // content skip gallery automatically. Suppressed in replay (read-only
+  // historical view) and in non-editing sessions (viewing-only modes
+  // don't author seeds either).
+  //
+  // The store's `files` includes framework-owned state files surfaced by
+  // the file watcher (`.pneuma/session.json`, `.pneuma/history.json`,
+  // the installed skill under `.claude/`) — those are *not* user
+  // content and must be filtered out before the empty check. Filtering
+  // here, not in the watcher, because other call sites (e.g. share
+  // export) want those files included.
+  const filesForGallery = useStore((s) => s.files);
+  const userContentCount = filesForGallery.filter((f) => {
+    const p = f.path;
+    if (p === "CLAUDE.md" || p === "AGENTS.md") return false;
+    if (p.startsWith(".pneuma/") || p.startsWith(".claude/") || p.startsWith(".agents/")) return false;
+    if (p.startsWith(".kimi/")) return false;
+    if (p === ".gitignore") return false;
+    // `_`-prefixed top-level dirs are framework-managed seeds (e.g. kami's
+    // `_shared/` design-system bundle resynced on every boot). They are
+    // not user content — they live in the workspace but the gallery still
+    // counts as "empty" if those are the only files present.
+    if (p.startsWith("_")) return false;
+    return true;
+  }).length;
+  const modeManifestForGallery = useStore((s) => s.modeManifest);
+  // Must mirror `resolveSeedCatalog` on the server (seed-installer.ts):
+  // a mode "has seeds" iff either init.seeds is non-empty, OR the
+  // auto-derive rule finds at least one non-`_`-prefixed, directory-
+  // shaped entry. Single-file seedFiles entries are framework setup,
+  // not user-pickable templates, and don't qualify for the gallery.
+  const hasSeedsDeclared = (() => {
+    const init = modeManifestForGallery?.init;
+    if (!init?.seedFiles) return false;
+    if (init.seeds && init.seeds.length > 0) {
+      // Trust the manifest author — declared seeds always count, even
+      // single-file ones (e.g. doc/README.md). The server filters
+      // dropped sourceKeys; here we just need to know the intent.
+      return init.seeds.some((s) => {
+        const keys = Array.isArray(s.sourceKey) ? s.sourceKey : [s.sourceKey];
+        return keys.every((k) => k in init.seedFiles!);
+      });
+    }
+    return Object.entries(init.seedFiles).some(([src, dst]) => {
+      if (dst.startsWith("_")) return false;
+      return src.endsWith("/") || dst.endsWith("/") || dst === "./" || dst === "";
+    });
+  })();
+  const isEmptyWorkspace =
+    !replayMode
+    && editing !== false
+    && filesFetched
+    && userContentCount === 0;
+  const showGallery = isEmptyWorkspace && hasSeedsDeclared && !galleryDismissedByUser;
+  // Modes with no seeds keep the viewer mounted as the action surface
+  // (invoice-organization, dashboards, anything whose UI *is* the
+  // entry point) and float a dismissable intro sidebar on top.
+  // Replacing the viewer outright hides the workspace the user is
+  // supposed to interact with.
+  const showNoSeedOverlay = isEmptyWorkspace && !hasSeedsDeclared;
+  // Until /api/files has resolved we don't know whether the workspace
+  // is empty. Showing the bare viewer in that window causes pre-2.29
+  // external modes to crash on `props.files.find(...)` (files is
+  // undefined under the new contract). Hold the preview behind a loading
+  // state so the empty/gallery branches get a chance to take over.
+  const previewWaitingForFiles =
+    !replayMode && editing !== false && !filesFetched && !!PreviewComponent;
   // Session shell theming — the launcher's choice (saved in
   // ~/.pneuma/settings.json) propagates here via `pneuma:theme-changed`.
   // The session root flips `.cc-theme-light` to swap the cc-* token surface.
@@ -441,15 +555,32 @@ export default function App() {
   // ── App layout (use mode only): Viewer fullscreen, no editor chrome ─────
   //    Edit mode falls through to the editor layout below for full editing experience.
 
+  const modeNameForError = modeManifestForGallery?.name;
+
   if (layout === "app" && !editing) {
     return (
       <div className={`h-screen w-screen bg-cc-bg text-cc-fg relative overflow-hidden ${themeClass}`}>
-        <div ref={previewRef} className="h-full w-full">
-          {PreviewComponent ? (
-            <PreviewComponent
-              {...viewerProps}
-              editing={false}
-            />
+        <div ref={previewRef} className="h-full w-full relative">
+          {showGallery ? (
+            <Suspense fallback={<LazyFallback />}>
+              <GalleryEmptyState onDismiss={() => setGalleryDismissedByUser(true)} />
+            </Suspense>
+          ) : previewWaitingForFiles ? (
+            <LazyFallback />
+          ) : PreviewComponent ? (
+            <>
+              <ViewerErrorBoundary modeName={modeNameForError}>
+                <PreviewComponent
+                  {...viewerProps}
+                  editing={false}
+                />
+              </ViewerErrorBoundary>
+              {showNoSeedOverlay && (
+                <Suspense fallback={null}>
+                  <NoSeedOnboardOverlay />
+                </Suspense>
+              )}
+            </>
           ) : (
             <LazyFallback />
           )}
@@ -480,9 +611,24 @@ export default function App() {
         <TopBar />
         <Group orientation="horizontal" className="flex-1 min-h-0">
           <Panel defaultSize={65} minSize={30}>
-            <div ref={previewRef} className="h-full w-full">
-              {PreviewComponent ? (
-                <PreviewComponent {...viewerProps} />
+            <div ref={previewRef} className="h-full w-full relative">
+              {showGallery ? (
+                <Suspense fallback={<LazyFallback />}>
+                  <GalleryEmptyState onDismiss={() => setGalleryDismissedByUser(true)} />
+                </Suspense>
+              ) : previewWaitingForFiles ? (
+                <LazyFallback />
+              ) : PreviewComponent ? (
+                <>
+                  <ViewerErrorBoundary modeName={modeNameForError}>
+                    <PreviewComponent {...viewerProps} />
+                  </ViewerErrorBoundary>
+                  {showNoSeedOverlay && (
+                    <Suspense fallback={null}>
+                      <NoSeedOnboardOverlay />
+                    </Suspense>
+                  )}
+                </>
               ) : (
                 <LazyFallback />
               )}

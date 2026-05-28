@@ -69,6 +69,26 @@ The user just opened the workspace. You are ready to assist with document editin
     seedFiles: {
       "modes/doc/seed/README.md": "README.md",
     },
+    seeds: [
+      {
+        id: "readme",
+        sourceKey: "modes/doc/seed/README.md",
+        thumbnail: "readme.png",
+        displayName: {
+          en: "Blank document with prompts",
+          "zh-CN": "带提示的空白文档",
+          "zh-TW": "帶提示的空白文件",
+          ja: "ヒント付きの空のドキュメント",
+          ko: "프롬프트가 있는 빈 문서",
+          es: "Documento en blanco con sugerencias",
+          de: "Leeres Dokument mit Hinweisen",
+        },
+        description: {
+          en: "A markdown skeleton with a few guide prompts inside. Open it, replace the placeholders, watch the preview update live.",
+          "zh-CN": "一份带几条引导提示的 Markdown 骨架。打开它,替换占位文字,预览会随手实时刷新。",
+        },
+      },
+    ],
   },
 
   evolution: {

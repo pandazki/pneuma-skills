@@ -35,5 +35,13 @@
   },
   "disabled_replay": "回放模式下不可用",
   "disabled_git": "差异查看需要 Git 仓库，请先在工作区运行 `git init`。",
-  "replay_badge": "回放"
+  "replay_badge": "回放",
+  "content_set": {
+    "delete_aria": "删除内容集",
+    "delete_confirm": "删除这个内容集?",
+    "delete_action": "删除",
+    "delete_cancel": "取消",
+    "deleting": "删除中…",
+    "delete_failed": "无法删除"
+  }
 }

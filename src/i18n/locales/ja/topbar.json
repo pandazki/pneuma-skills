@@ -35,5 +35,13 @@
   },
   "disabled_replay": "再生モードでは利用できません",
   "disabled_git": "差分には Git リポジトリが必要です。ワークスペースで `git init` を実行してください。",
-  "replay_badge": "再生"
+  "replay_badge": "再生",
+  "content_set": {
+    "delete_aria": "コンテンツセットを削除",
+    "delete_confirm": "このコンテンツセットを削除しますか?",
+    "delete_action": "削除",
+    "delete_cancel": "キャンセル",
+    "deleting": "削除中…",
+    "delete_failed": "削除できませんでした"
+  }
 }

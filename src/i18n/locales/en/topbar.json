@@ -35,5 +35,13 @@
   },
   "disabled_replay": "Not available in replay mode",
   "disabled_git": "Diffs require a git repository. Run `git init` in the workspace.",
-  "replay_badge": "Replay"
+  "replay_badge": "Replay",
+  "content_set": {
+    "delete_aria": "Delete content set",
+    "delete_confirm": "Delete this content set?",
+    "delete_action": "Delete",
+    "delete_cancel": "Cancel",
+    "deleting": "Deleting…",
+    "delete_failed": "Could not delete"
+  }
 }

@@ -416,12 +416,35 @@ export default function TopBar() {
             ) : null}
             <div className="flex items-center gap-2">
               <ModeLabel />
-              {contentSets.length > 1 && (
+              {contentSets.length >= 1 && (
                 <ContentSetSelector
                   items={contentSets.map((cs) => ({ id: cs.prefix, label: cs.label }))}
                   activeId={activeContentSet}
                   onSelect={(id) => useStore.getState().setActiveContentSet(id)}
                   unread={contentSetUnread}
+                  onDelete={async (prefix) => {
+                    const res = await fetch(`${getApiBase()}/api/contentsets/delete`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ prefix }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.ok) {
+                      throw new Error(data.error || "delete failed");
+                    }
+                    // Optimistic: trim the deleted prefix from the store
+                    // immediately so the gallery can re-mount without
+                    // waiting for the chokidar unlink batch. The file
+                    // watcher will follow with origin: "self" updates and
+                    // reconcile any drift.
+                    const state = useStore.getState();
+                    const remaining = state.files.filter((f) => {
+                      const slashIdx = f.path.indexOf("/");
+                      if (slashIdx <= 0) return true;
+                      return f.path.slice(0, slashIdx) !== prefix;
+                    });
+                    state.setFiles(remaining);
+                  }}
                 />
               )}
               {showItemSelector && (

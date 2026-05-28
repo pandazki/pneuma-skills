@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 interface SelectorItem {
   id: string;
@@ -11,16 +12,43 @@ interface ContentSetSelectorProps {
   onSelect: (id: string) => void;
   icon?: "folder" | "file";
   unread?: Set<string>;
+  /**
+   * When provided, each item gets a per-row delete affordance (× icon
+   * revealed on hover, morphs to an inline "Delete? Cancel/Confirm"
+   * prompt on click — same pattern as ProjectPanel's archive flow, no
+   * modal). The handler should run the destructive action and resolve
+   * once the underlying store/disk update has been broadcast. A thrown
+   * error keeps the row in its error state.
+   */
+  onDelete?: (id: string) => Promise<void>;
 }
 
-export default function ContentSetSelector({ items, activeId, onSelect, icon = "folder", unread }: ContentSetSelectorProps) {
+type RowState =
+  | { kind: "idle" }
+  | { kind: "confirming"; id: string }
+  | { kind: "deleting"; id: string }
+  | { kind: "error"; id: string };
+
+export default function ContentSetSelector({
+  items,
+  activeId,
+  onSelect,
+  icon = "folder",
+  unread,
+  onDelete,
+}: ContentSetSelectorProps) {
   const [open, setOpen] = useState(false);
+  const [rowState, setRowState] = useState<RowState>({ kind: "idle" });
   const ref = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation("topbar");
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setRowState({ kind: "idle" });
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -28,6 +56,18 @@ export default function ContentSetSelector({ items, activeId, onSelect, icon = "
 
   const activeLabel = items.find((item) => item.id === activeId)?.label || "Select";
   const hasUnread = unread && unread.size > 0;
+
+  const runDelete = async (id: string) => {
+    if (!onDelete) return;
+    setRowState({ kind: "deleting", id });
+    try {
+      await onDelete(id);
+      setRowState({ kind: "idle" });
+      setOpen(false);
+    } catch {
+      setRowState({ kind: "error", id });
+    }
+  };
 
   return (
     <div ref={ref} className="relative">
@@ -55,23 +95,83 @@ export default function ContentSetSelector({ items, activeId, onSelect, icon = "
 
       {open && (
         <div
-          className="absolute top-full left-0 mt-1 min-w-[180px] z-50
+          className="absolute top-full left-0 mt-1 min-w-[220px] z-50
             bg-cc-surface border border-cc-border rounded-md shadow-lg overflow-hidden"
         >
-          {items.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => { onSelect(item.id); setOpen(false); }}
-              className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2
-                hover:bg-cc-hover transition-colors cursor-pointer
-                ${item.id === activeId ? "bg-cc-primary/15 text-cc-fg" : "text-cc-muted"}`}
-            >
-              <span className="flex-1">{item.label}</span>
-              {unread?.has(item.id) && (
-                <span className="w-1.5 h-1.5 rounded-full bg-cc-primary shrink-0" />
-              )}
-            </button>
-          ))}
+          {items.map((item) => {
+            const isActive = item.id === activeId;
+            const isConfirming = rowState.kind === "confirming" && rowState.id === item.id;
+            const isDeleting = rowState.kind === "deleting" && rowState.id === item.id;
+            const isErrored = rowState.kind === "error" && rowState.id === item.id;
+
+            if (isConfirming || isDeleting || isErrored) {
+              return (
+                <div
+                  key={item.id}
+                  className={`group flex items-center gap-2 px-3 py-2 text-xs
+                    ${isActive ? "bg-cc-primary/15 text-cc-fg" : "text-cc-fg"}`}
+                >
+                  <span className="flex-1 truncate text-cc-muted">
+                    {isErrored
+                      ? t("content_set.delete_failed")
+                      : t("content_set.delete_confirm")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRowState({ kind: "idle" })}
+                    disabled={isDeleting}
+                    className="text-cc-muted hover:text-cc-fg transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {t("content_set.delete_cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void runDelete(item.id)}
+                    disabled={isDeleting}
+                    className="text-cc-error/80 hover:text-cc-error transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {isDeleting ? t("content_set.deleting") : t("content_set.delete_action")}
+                  </button>
+                </div>
+              );
+            }
+
+            return (
+              <div
+                key={item.id}
+                className={`group flex items-center gap-1 hover:bg-cc-hover transition-colors
+                  ${isActive ? "bg-cc-primary/15" : ""}`}
+              >
+                <button
+                  onClick={() => { onSelect(item.id); setOpen(false); }}
+                  className={`flex-1 text-left px-3 py-2 text-xs flex items-center gap-2 cursor-pointer
+                    ${isActive ? "text-cc-fg" : "text-cc-muted"}`}
+                >
+                  <span className="flex-1 truncate">{item.label}</span>
+                  {unread?.has(item.id) && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-cc-primary shrink-0" />
+                  )}
+                </button>
+                {onDelete && (
+                  <button
+                    type="button"
+                    aria-label={t("content_set.delete_aria")}
+                    title={t("content_set.delete_aria")}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setRowState({ kind: "confirming", id: item.id });
+                    }}
+                    className="opacity-0 group-hover:opacity-60 hover:!opacity-100
+                      px-2 py-2 text-cc-muted hover:text-cc-error transition-opacity cursor-pointer"
+                  >
+                    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+                      <path d="M3 3l6 6M9 3l-6 6" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

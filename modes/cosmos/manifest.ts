@@ -67,6 +67,23 @@ const cosmosManifest: ModeManifest = {
     seedFiles: {
       "modes/cosmos/seed/{{_locale}}/": "",
     },
+    seeds: [
+      {
+        id: "default",
+        sourceKey: "modes/cosmos/seed/{{_locale}}/",
+        thumbnail: "default.png",
+        displayName: {
+          en: "Pneuma cosmos",
+          "zh-CN": "Pneuma 星图",
+          "zh-TW": "Pneuma 星圖",
+        },
+        description: {
+          en: "A bootstrap cosmos that projects the Pneuma Skills codebase onto itself — 56 nodes across contracts, runtime, backends, modes, shell, references.",
+          "zh-CN": "Pneuma Skills 项目投影到它自己的一张星图 —— 56 个节点,覆盖契约、运行时、后端、模式、外壳、参考。",
+        },
+        tags: ["Graph"],
+      },
+    ],
     params: [],
   },
 

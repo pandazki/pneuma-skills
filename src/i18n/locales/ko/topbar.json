@@ -35,5 +35,13 @@
   },
   "disabled_replay": "리플레이 모드에서는 사용할 수 없습니다",
   "disabled_git": "차이를 보려면 git 저장소가 필요합니다. 워크스페이스에서 `git init`을 실행하세요.",
-  "replay_badge": "리플레이"
+  "replay_badge": "리플레이",
+  "content_set": {
+    "delete_aria": "콘텐츠 세트 삭제",
+    "delete_confirm": "이 콘텐츠 세트를 삭제할까요?",
+    "delete_action": "삭제",
+    "delete_cancel": "취소",
+    "deleting": "삭제 중…",
+    "delete_failed": "삭제할 수 없습니다"
+  }
 }

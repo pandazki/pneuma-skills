@@ -69,6 +69,23 @@ The user just opened the workspace. You are ready to assist with diagram creatio
     seedFiles: {
       "modes/draw/seed/drawing.excalidraw": "drawing.excalidraw",
     },
+    seeds: [
+      {
+        id: "drawing",
+        sourceKey: "modes/draw/seed/drawing.excalidraw",
+        thumbnail: "drawing.png",
+        displayName: {
+          en: "Pneuma Draw intro",
+          "zh-CN": "Pneuma Draw 入门画布",
+          "zh-TW": "Pneuma Draw 入門畫布",
+        },
+        description: {
+          en: "A starter Excalidraw canvas with prompt examples — describe the diagram you want, then keep iterating in place.",
+          "zh-CN": "一张带提示语的 Excalidraw 起点画布,先口述你想要的图,再原地反复改。",
+        },
+        tags: ["Whiteboard"],
+      },
+    ],
   },
 
   evolution: {

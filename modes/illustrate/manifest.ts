@@ -118,6 +118,53 @@ The user just opened the illustration workspace. You are ready to assist with AI
       "modes/illustrate/seed/feature-cards/": "feature-cards/",
       "modes/illustrate/seed/blog-heroes/": "blog-heroes/",
     },
+    seeds: [
+      {
+        id: "pneuma-brand",
+        sourceKey: "modes/illustrate/seed/pneuma-brand/",
+        thumbnail: "pneuma-brand.png",
+        displayName: {
+          en: "Brand exploration",
+          "zh-CN": "品牌探索",
+          "zh-TW": "品牌探索",
+        },
+        description: {
+          en: "Logo concepts and wordmark explorations for a project's identity. Generate variants, compare, pick a direction.",
+          "zh-CN": "Logo 概念图与文字标的多版本探索。生成、对照、选出方向。",
+        },
+        tags: ["Logo", "Wordmark"],
+      },
+      {
+        id: "feature-cards",
+        sourceKey: "modes/illustrate/seed/feature-cards/",
+        thumbnail: "feature-cards.png",
+        displayName: {
+          en: "Feature illustrations",
+          "zh-CN": "功能插画",
+          "zh-TW": "功能插畫",
+        },
+        description: {
+          en: "A grid of product-pillar illustrations — pair with copy on a landing page or feature section.",
+          "zh-CN": "一整套产品支柱配图,直接拿来贴到 landing page 或功能介绍区块上。",
+        },
+        tags: ["Marketing"],
+      },
+      {
+        id: "blog-heroes",
+        sourceKey: "modes/illustrate/seed/blog-heroes/",
+        thumbnail: "blog-heroes.png",
+        displayName: {
+          en: "Blog hero stack",
+          "zh-CN": "文章封面图组",
+          "zh-TW": "文章封面圖組",
+        },
+        description: {
+          en: "Cinematic blog hero illustrations — the same scene shaped to fit different stories.",
+          "zh-CN": "电影感博客头图组,同一个场景按不同主题展开。",
+        },
+        tags: ["Editorial"],
+      },
+    ],
     params: [
       { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for AI image generation (recommended)", type: "string", defaultValue: "", sensitive: true },
       { name: "falApiKey", label: "fal.ai API Key", description: "alternative image generation backend", type: "string", defaultValue: "", sensitive: true },

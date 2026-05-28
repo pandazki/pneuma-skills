@@ -208,6 +208,53 @@ The user just opened the workspace. You are ready to assist with web design and 
       "modes/webcraft/seed/gazette/":        "gazette/",
       "modes/webcraft/seed/pneuma-console/": "pneuma-console/",
     },
+    seeds: [
+      {
+        id: "pneuma",
+        sourceKey: "modes/webcraft/seed/pneuma/",
+        thumbnail: "pneuma.png",
+        displayName: {
+          en: "Brand landing",
+          "zh-CN": "品牌着陆页",
+          "zh-TW": "品牌著陸頁",
+        },
+        description: {
+          en: "Dark, restrained product landing — hero, four pillars, footer. Built to be re-skinned.",
+          "zh-CN": "暗色克制的产品着陆页 —— hero、四大支柱、footer,留好改皮空间。",
+        },
+        tags: ["Landing", "Dark"],
+      },
+      {
+        id: "gazette",
+        sourceKey: "modes/webcraft/seed/gazette/",
+        thumbnail: "gazette.png",
+        displayName: {
+          en: "Editorial gazette",
+          "zh-CN": "报纸版式",
+          "zh-TW": "報紙版式",
+        },
+        description: {
+          en: "Old-school broadsheet layout — masthead, lead story, side columns. For long-form writing with weight.",
+          "zh-CN": "复古大报版面 —— 报头、头条、专栏。给厚重的长文用。",
+        },
+        tags: ["Editorial"],
+      },
+      {
+        id: "pneuma-console",
+        sourceKey: "modes/webcraft/seed/pneuma-console/",
+        thumbnail: "pneuma-console.png",
+        displayName: {
+          en: "Workspace console",
+          "zh-CN": "工作台控制台",
+          "zh-TW": "工作台控制台",
+        },
+        description: {
+          en: "A working dashboard — sessions table, KPIs, status pills. Bring your own data and adapt.",
+          "zh-CN": "一个能跑通的仪表盘 —— 会话表、关键指标、状态徽章。换上你自己的数据即可。",
+        },
+        tags: ["Dashboard"],
+      },
+    ],
     params: [
       { name: "falApiKey", label: "fal.ai API Key", description: "for AI image generation (default model: gpt-image-2)", type: "string", defaultValue: "", sensitive: true },
       { name: "openrouterApiKey", label: "OpenRouter API Key", description: "optional fallback for Gemini 3 Pro; leave blank to skip", type: "string", defaultValue: "", sensitive: true },
@@ -225,6 +272,11 @@ typography choices (font families, scale preferences), layout patterns (grid vs 
 spacing density), animation preferences (subtle vs dramatic), component architecture
 patterns, and framework/library preferences.
 Augment the skill with personalized design guidance that reflects the user's style.`,
+  },
+
+  inspiredBy: {
+    name: "impeccable.style",
+    url: "https://impeccable.style/",
   },
 };
 

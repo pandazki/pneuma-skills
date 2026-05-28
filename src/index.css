@@ -516,6 +516,21 @@ img {
   100% { --evolve-glow: 100%; }
 }
 
+/* Gallery card mount — staggered fade-up. Children get individual delays
+ * via inline style so each card lands a beat after the previous one. */
+@keyframes gallery-card-fade-in {
+  0%   { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* NoSeedOnboardOverlay — slide-in from the left edge of the viewer
+ * pane. Quick (280ms) so it lands before the user looks for it, with
+ * the smooth-deceleration curve we use elsewhere. */
+@keyframes noseed-overlay-in {
+  0%   { opacity: 0; transform: translateX(-12px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
 @layer utilities {
   .animate-text-gradient-flow {
     background-size: 200% auto;

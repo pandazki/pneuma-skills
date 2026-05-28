@@ -141,6 +141,23 @@ const remotionManifest: ModeManifest = {
     seedFiles: {
       "modes/remotion/seed/default/": "./",
     },
+    seeds: [
+      {
+        id: "default",
+        sourceKey: "modes/remotion/seed/default/",
+        thumbnail: "default.png",
+        displayName: {
+          en: "Title sequence starter",
+          "zh-CN": "标题序列起手",
+          "zh-TW": "標題序列起手",
+        },
+        description: {
+          en: "A Remotion composition with a title sequence at 1280×720, 30fps — edit the React tree and the player updates frame-by-frame.",
+          "zh-CN": "一个 1280×720 / 30fps 的 Remotion 项目,改 React 树面板就会逐帧刷新。",
+        },
+        tags: ["Video"],
+      },
+    ],
     params: [
       { name: "compositionWidth", label: "Composition width", description: "pixels", type: "number", defaultValue: 1280 },
       { name: "compositionHeight", label: "Composition height", description: "pixels", type: "number", defaultValue: 720 },

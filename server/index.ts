@@ -29,8 +29,9 @@ import { PluginRegistry } from "../core/plugin-registry.js";
 import { SettingsManager } from "../core/settings-manager.js";
 import { HookBus } from "../core/hook-bus.js";
 import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./proxy-middleware.js";
-import type { ProxyRoute } from "../core/types/mode-manifest.js";
+import { resolveLocalized, type ModeManifest, type ProxyRoute } from "../core/types/mode-manifest.js";
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
+import { copySeedEntry, resolveSeedCatalog, runPostSeedInstall } from "./seed-installer.js";
 import { mountHandoffRoutes } from "./handoff-routes.js";
 import { registerLibraryRoutes } from "./library-routes.js";
 import {
@@ -66,6 +67,29 @@ export interface ServerOptions {
   modeBundleDir?: string; // Pre-compiled mode bundle directory (production external modes)
   projectRoot?: string; // Pneuma project root (for mode-maker routes to access builtin modes)
   modeName?: string; // Current mode name (for conditional route registration)
+  /**
+   * Full manifest of the running mode. Read by per-session routes that
+   * need declarative data (e.g. the empty-state gallery's seed catalog
+   * and mode intro). Optional so launcher mode (no mode loaded) and
+   * minimal tests can still call `startServer`.
+   */
+  modeManifest?: ModeManifest;
+  /**
+   * Mode package directory — `<PROJECT_ROOT>/modes/<name>` for builtins,
+   * the external mode's root for non-builtins. Used to locate per-mode
+   * assets (showcase art, seed-gallery thumbnails). Distinct from
+   * `seedBase` below: builtin manifests' `init.seedFiles` keys still
+   * carry the `modes/<name>/` prefix, so seed copy roots one level up.
+   */
+  modeSourceDir?: string;
+  /**
+   * Filesystem root for resolving `init.seedFiles` source keys —
+   * `PROJECT_ROOT` for builtins (whose keys are like
+   * `"modes/slide/seed/..."`), the mode package directory for
+   * externals. A future cleanup can collapse this into `modeSourceDir`
+   * once all builtin manifests use mode-relative seed paths.
+   */
+  seedBase?: string;
   layout?: "editor" | "app"; // Layout mode from manifest (default: "editor")
   window?: { width: number; height: number }; // Window size preference (app layout + Electron)
   launcherMode?: boolean; // Lightweight launcher server (no workspace, no agent, no watcher)
@@ -2877,6 +2901,231 @@ export async function startServer(options: ServerOptions) {
     }
     return c.json({ external: false });
   });
+
+  // ── Seed Gallery (empty-state) ──────────────────────────────────────
+  // GET /api/seeds/list — returns mode intro + seed cards for the gallery.
+  // POST /api/seeds/apply — copies one seed entry into the workspace.
+  // GET /api/mode/seed-gallery/* — serves thumbnail assets bundled with the mode.
+  // POST /api/contentsets/delete — removes a content-set subdirectory.
+  //
+  // Mounted only when a mode is loaded (per-session, not launcher). The
+  // launcher's mode-card showcase route is a separate path; gallery
+  // thumbnails for a running mode resolve relative to the session's
+  // `modeSourceDir` and do not need a `:name` URL parameter.
+  if (options.modeManifest && options.modeSourceDir && options.seedBase) {
+    const sessionManifest = options.modeManifest;
+    const sessionModeSourceDir = options.modeSourceDir;
+    const sessionSeedBase = options.seedBase;
+
+    app.get("/api/seeds/list", async (c) => {
+      const { getUserLocale } = await import("../core/locale.js");
+      const locale = c.req.query("locale") ?? getUserLocale() ?? "en";
+      const init = sessionManifest.init;
+      const seeds = resolveSeedCatalog(init?.seedFiles, init?.seeds).map((seed) => ({
+        id: seed.id,
+        sourceKey: seed.sourceKey,
+        displayName: resolveLocalized(seed.displayName, locale),
+        description: seed.description ? resolveLocalized(seed.description, locale) : undefined,
+        thumbnailUrl: seed.thumbnail ? `/api/mode/seed-gallery/${encodeURI(seed.thumbnail)}` : undefined,
+        tags: seed.tags,
+      }));
+      return c.json({
+        modeName: sessionManifest.name,
+        modeIntro: {
+          displayName: resolveLocalized(sessionManifest.displayName, locale),
+          description: resolveLocalized(sessionManifest.description, locale),
+          tagline: sessionManifest.showcase?.tagline
+            ? resolveLocalized(sessionManifest.showcase.tagline, locale)
+            : undefined,
+          heroUrl: sessionManifest.showcase?.hero
+            ? `/api/modes/${sessionManifest.name}/showcase/${encodeURI(sessionManifest.showcase.hero)}`
+            : undefined,
+          icon: sessionManifest.icon,
+        },
+        seeds,
+      });
+    });
+
+    app.post("/api/seeds/apply", async (c) => {
+      try {
+        const body = await c.req.json<{ sourceKey?: string | string[] }>();
+        const sourceKeys = Array.isArray(body.sourceKey)
+          ? body.sourceKey
+          : body.sourceKey
+            ? [body.sourceKey]
+            : [];
+        if (sourceKeys.length === 0) {
+          return c.json({ ok: false, error: "sourceKey is required" }, 400);
+        }
+        const seedFiles = sessionManifest.init?.seedFiles;
+        if (!seedFiles) {
+          return c.json({ ok: false, error: "mode has no seedFiles" }, 400);
+        }
+        for (const k of sourceKeys) {
+          if (!(k in seedFiles)) {
+            return c.json({ ok: false, error: `unknown seed: ${k}` }, 404);
+          }
+          if (seedFiles[k].startsWith("_")) {
+            return c.json({ ok: false, error: `framework-managed seed cannot be user-applied: ${k}` }, 400);
+          }
+        }
+
+        const { getUserLocale } = await import("../core/locale.js");
+        const locale = getUserLocale() ?? "en";
+        const writtenFiles: string[] = [];
+        let seededRootPackageJson = false;
+        for (const src of sourceKeys) {
+          const dst = seedFiles[src];
+          const result = copySeedEntry({
+            workspace,
+            seedBase: sessionSeedBase,
+            src,
+            dst,
+            params: options.initParams ?? {},
+            locale,
+          });
+          if (!result) {
+            return c.json({ ok: false, error: `seed source not found on disk: ${src}` }, 404);
+          }
+          writtenFiles.push(...result.files);
+          if (result.seededRootPackageJson) seededRootPackageJson = true;
+        }
+
+        // Tag the writes as self-originated so chokidar echoes are
+        // labelled "self" rather than "external". The 5s TTL is plenty
+        // for file events to arrive after a single seed copy.
+        for (const rel of writtenFiles) {
+          try {
+            const content = readFileSync(join(workspace, rel), "utf-8");
+            registerSelfWrite(rel, content);
+          } catch {
+            // Binary files (matched by BINARY_EXT_RE in seed-installer)
+            // are copied byte-for-byte; the chokidar echo won't carry a
+            // text payload to match anyway. Skip silently.
+          }
+        }
+
+        if (seededRootPackageJson) {
+          await runPostSeedInstall(workspace).catch((err) => {
+            console.warn(`[seeds] post-install failed: ${err instanceof Error ? err.message : err}`);
+          });
+        }
+        return c.json({ ok: true, files: writtenFiles, seededPackageJson: seededRootPackageJson });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "unknown error";
+        return c.json({ ok: false, error: message }, 500);
+      }
+    });
+
+    app.post("/api/contentsets/delete", async (c) => {
+      try {
+        const body = await c.req.json<{ prefix?: string }>();
+        const prefix = body.prefix;
+        if (!prefix) return c.json({ ok: false, error: "prefix is required" }, 400);
+        // Guardrails: no traversal, no absolute, no leading dot/underscore
+        // (the `_`-prefixed dirs are framework-managed seeds).
+        if (
+          prefix.includes("..") ||
+          prefix.startsWith("/") ||
+          prefix.startsWith(".") ||
+          prefix.startsWith("_") ||
+          prefix.includes("\0")
+        ) {
+          return c.json({ ok: false, error: `invalid prefix: ${prefix}` }, 400);
+        }
+        const target = resolve(join(workspace, prefix));
+        const workspaceResolved = resolve(workspace);
+        if (target === workspaceResolved || !target.startsWith(workspaceResolved + sep)) {
+          return c.json({ ok: false, error: "prefix escapes workspace" }, 403);
+        }
+        if (!existsSync(target)) return c.json({ ok: false, error: "prefix does not exist" }, 404);
+        if (!statSync(target).isDirectory()) {
+          return c.json({ ok: false, error: "prefix is not a directory" }, 400);
+        }
+
+        // Register pending self-deletes for every file we're about to
+        // unlink so the chokidar unlink echoes are tagged "self".
+        const glob = new Bun.Glob("**/*");
+        const deleted: string[] = [];
+        for (const rel of glob.scanSync({ cwd: target, absolute: false })) {
+          const filePath = join(target, rel);
+          try {
+            if (statSync(filePath).isFile()) {
+              const workspaceRel = join(prefix, rel);
+              registerSelfDelete(workspaceRel);
+              deleted.push(workspaceRel);
+            }
+          } catch {
+            // Ignore individual stat failures; rmSync below cleans up.
+          }
+        }
+
+        const { rmSync } = await import("node:fs");
+        rmSync(target, { recursive: true, force: true });
+        return c.json({ ok: true, deleted });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "unknown error";
+        return c.json({ ok: false, error: message }, 500);
+      }
+    });
+
+    // Serve showcase assets for the current mode. The launcher mounts an
+    // equivalent route under `/api/modes/:name/showcase/*` for cross-mode
+    // marketing; per-session sessions need only the current mode's
+    // showcase (hero image, highlights) so the gallery's left-half intro
+    // can render. Path containment is checked against the mode's
+    // showcase dir.
+    const showcaseRoot = resolve(join(sessionModeSourceDir, "showcase"));
+    app.get(`/api/modes/${sessionManifest.name}/showcase/*`, async (c) => {
+      const assetPath = c.req.path.split("/showcase/").slice(1).join("/showcase/");
+      if (!assetPath) return c.json({ error: "Invalid path" }, 400);
+      const fullPath = resolve(join(showcaseRoot, assetPath));
+      if (!pathStartsWith(fullPath, showcaseRoot + sep)) {
+        return c.json({ error: "Invalid path" }, 400);
+      }
+      if (!existsSync(fullPath)) return c.notFound();
+      const ext = assetPath.split(".").pop()?.toLowerCase();
+      const contentTypes: Record<string, string> = {
+        png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+        webp: "image/webp", svg: "image/svg+xml", mp4: "video/mp4", webm: "video/webm",
+      };
+      const contentType = contentTypes[ext || ""] || "application/octet-stream";
+      try {
+        return new Response(Bun.file(fullPath), {
+          headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=3600" },
+        });
+      } catch {
+        return c.notFound();
+      }
+    });
+
+    // Serve seed-gallery thumbnails bundled with the current mode. The
+    // thumbnail path comes verbatim from the manifest's `seeds[].thumbnail`
+    // field, resolved against `modeSourceDir`. Containment-checked.
+    const seedGalleryRoot = resolve(join(sessionModeSourceDir, "seed-gallery"));
+    app.get("/api/mode/seed-gallery/*", async (c) => {
+      const assetPath = c.req.path.split("/seed-gallery/").slice(1).join("/seed-gallery/");
+      if (!assetPath) return c.json({ error: "Invalid path" }, 400);
+      const fullPath = resolve(join(seedGalleryRoot, assetPath));
+      if (!pathStartsWith(fullPath, seedGalleryRoot + sep)) {
+        return c.json({ error: "Invalid path" }, 400);
+      }
+      if (!existsSync(fullPath)) return c.notFound();
+      const ext = assetPath.split(".").pop()?.toLowerCase();
+      const contentTypes: Record<string, string> = {
+        png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+        webp: "image/webp", svg: "image/svg+xml", mp4: "video/mp4", webm: "video/webm",
+      };
+      const contentType = contentTypes[ext || ""] || "application/octet-stream";
+      try {
+        return new Response(Bun.file(fullPath), {
+          headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=3600" },
+        });
+      } catch {
+        return c.notFound();
+      }
+    });
+  }
 
   // ── Viewer State Persistence ─────────────────────────────────────────
   const viewerStatePath = workspace ? join(stateDirForSession, "viewer-state.json") : null;

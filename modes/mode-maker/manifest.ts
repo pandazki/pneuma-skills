@@ -93,6 +93,33 @@ The user just opened the workspace. You are ready to assist with mode package de
       "modes/mode-maker/seed/skill/SKILL.md": "skill/SKILL.md",
       "modes/mode-maker/seed/package.json": "package.json",
     },
+    seeds: [
+      {
+        id: "scaffold",
+        // Compound — a mode package needs every file present together
+        // (manifest, mode binding, viewer component, skill, package.json).
+        // Picking any single file in isolation would leave the workspace
+        // in a broken half-mode state.
+        sourceKey: [
+          "modes/mode-maker/seed/manifest.ts",
+          "modes/mode-maker/seed/pneuma-mode.ts",
+          "modes/mode-maker/seed/viewer/Preview.tsx",
+          "modes/mode-maker/seed/skill/SKILL.md",
+          "modes/mode-maker/seed/package.json",
+        ],
+        thumbnail: "scaffold.png",
+        displayName: {
+          en: "New mode scaffold",
+          "zh-CN": "新模式脚手架",
+          "zh-TW": "新模式腳手架",
+        },
+        description: {
+          en: "A blank mode package — manifest, viewer, skill, and package.json wired together. Rename, fill in the blanks, hit Play.",
+          "zh-CN": "一个空白模式包 —— manifest、viewer、skill、package.json 已经接好。改个名、填空、点 Play。",
+        },
+        tags: ["Scaffold"],
+      },
+    ],
   },
 };
 
