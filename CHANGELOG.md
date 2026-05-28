@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.15.5] - 2026-05-28
+
+### Fixed — Remotion: `inFrame` out-of-bounds on locator clicks crashed the whole viewer
+
+A locator card emitted by the agent with an `inFrame` larger than the active composition's `durationInFrames - 1` threw Remotion's `inFrame must be less than (durationInFrames - 1), but is N` runtime error. Symptom: the entire preview pane flipped to a red runtime-error panel even though the composition rendered fine before the click. Common trigger: agents emit locator addresses with absolute timeline frames (frame 1740 of a 159s video) while the active composition is a short chapter card (~600 frames). Pre-existing since 3.11.0 — the `outFrame` bound was clamped but `inFrame` was passed raw.
+
+`RemotionPreview` now clamps **both** bounds to `[0, durationInFrames - 1]` at the navigateRequest handler AND at the `Player` props edge — defense in depth so out-of-range values from any source (chat card, future viewer-action) can't crash the viewer.
+
 ## [3.15.4] - 2026-05-28
 
 ### Fixed — Remotion no longer renders a red "Compilation Error" before the first composition exists

@@ -126,8 +126,16 @@ function PlayerCanvas({
             fps={comp.fps}
             playbackRate={playbackRate}
             loop={loop}
-            inFrame={inFrame ?? undefined}
-            outFrame={outFrame !== null ? Math.min(outFrame, comp.durationInFrames - 1) : undefined}
+            inFrame={
+              inFrame !== null
+                ? Math.max(0, Math.min(inFrame, comp.durationInFrames - 1))
+                : undefined
+            }
+            outFrame={
+              outFrame !== null
+                ? Math.max(0, Math.min(outFrame, comp.durationInFrames - 1))
+                : undefined
+            }
             controls={false}
             acknowledgeRemotionLicense
             style={{ width: comp.width, height: comp.height }}
@@ -256,9 +264,16 @@ export default function RemotionPreview({
     }
     // address.inFrame / address.outFrame set a loop range and auto-play
     if (typeof address.inFrame === "number" || typeof address.outFrame === "number") {
-      const newIn = typeof address.inFrame === "number" ? address.inFrame : null;
+      // Clamp both bounds to the ACTIVE composition's duration. Agents
+      // routinely emit locator cards with absolute timeline frames (e.g.
+      // frame 1740 of a 159s video), but the active composition might be
+      // a 600-frame chapter card. Without the clamp, Player throws
+      // `inFrame must be less than (durationInFrames - 1)` and the whole
+      // viewer turns into a red runtime-error panel.
       const maxFrame = (activeComp?.durationInFrames ?? 1) - 1;
-      const newOut = typeof address.outFrame === "number" ? Math.min(address.outFrame, maxFrame) : null;
+      const clamp = (v: number) => Math.max(0, Math.min(v, maxFrame));
+      const newIn = typeof address.inFrame === "number" ? clamp(address.inFrame) : null;
+      const newOut = typeof address.outFrame === "number" ? clamp(address.outFrame) : null;
       setInFrame(newIn);
       setOutFrame(newOut);
       setLoop(true);
