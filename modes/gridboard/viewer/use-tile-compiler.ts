@@ -46,7 +46,7 @@ export function useTileCompiler(files: ViewerFileContent[]): TileCompilationResu
     errors: [],
   });
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const cacheKeyRef = useRef<string>("");
 
   // Compute content hash from tile TSX files for cache invalidation

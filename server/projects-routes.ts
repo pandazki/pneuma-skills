@@ -8,7 +8,7 @@ import {
   type Dirent,
 } from "node:fs";
 import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
-import { extname, isAbsolute, join, resolve } from "node:path";
+import { extname, isAbsolute, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   loadProjectManifest,
@@ -502,7 +502,7 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     if (!manifest) return c.json({ error: "project not found" }, 404);
     const projectRootResolved = resolve(id);
     const abs = resolve(projectRootResolved, rel);
-    if (!abs.startsWith(projectRootResolved + "/") && abs !== projectRootResolved) {
+    if (!abs.startsWith(projectRootResolved + sep) && abs !== projectRootResolved) {
       return c.json({ error: "path escapes project root" }, 403);
     }
     if (!existsSync(abs)) return c.json({ error: "not found" }, 404);
@@ -562,7 +562,7 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     if (!manifest) return c.json({ error: "project not found" }, 404);
     const sessionsRoot = resolve(join(id, ".pneuma", "sessions"));
     const sessionDir = resolve(join(sessionsRoot, sessionId));
-    if (!sessionDir.startsWith(sessionsRoot + "/")) {
+    if (!sessionDir.startsWith(sessionsRoot + sep)) {
       return c.json({ error: "invalid session id" }, 400);
     }
 

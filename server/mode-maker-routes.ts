@@ -694,7 +694,7 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
   // POST /api/mode-maker/publish — publish mode package to R2
   app.post("/api/mode-maker/publish", async (c) => {
     try {
-      const body = await c.req.json<{ force?: boolean }>().catch(() => ({}));
+      const body = await c.req.json<{ force?: boolean }>().catch(() => ({}) as { force?: boolean });
 
       // 1. Validate manifest
       let manifest: ReturnType<typeof readAndValidateManifest>;

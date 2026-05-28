@@ -51,12 +51,25 @@ export interface ResolvedMode {
 }
 
 /** Known builtin mode names */
+// Keep in sync with the builtin registry in core/mode-loader.ts. A plain name
+// not in this set still resolves as builtin via the fallthrough in
+// parseModeSpecifier, so a stale entry here is not load-breaking — but it must
+// stay complete to remain a trustworthy catalog and to survive any future
+// tightening of that fallthrough.
 const BUILTIN_MODES = new Set([
   "doc",
   "slide",
   "draw",
-  "mode-maker",
+  "diagram",
   "illustrate",
+  "remotion",
+  "gridboard",
+  "kami",
+  "clipcraft",
+  "cosmos",
+  "webcraft",
+  "mode-maker",
+  "evolve",
   "project-evolve",
   "project-onboard",
 ]);

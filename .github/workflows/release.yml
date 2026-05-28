@@ -57,6 +57,12 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Typecheck
+        # Gate on `tsc --noEmit`: build (vite/esbuild) and test (bun) both strip
+        # types without checking them, so this is the only step that enforces
+        # the strict contract layer. Runs before tests to fail fast on type drift.
+        run: bun run typecheck
+
       - name: Run tests
         # --timeout caps any single test at 60s so a wedged test fails the
         # step instead of stalling it; the job-level timeout-minutes above is

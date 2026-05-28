@@ -24,7 +24,7 @@ describe("HookBus", () => {
 
   test("handler can modify payload (waterfall)", async () => {
     bus.on("deploy:before", "test-plugin", async (ctx) => {
-      return { ...ctx.payload, injected: true };
+      return { ...(ctx.payload as Record<string, unknown>), injected: true };
     });
 
     const result = await bus.emit(
@@ -41,12 +41,12 @@ describe("HookBus", () => {
 
     bus.on("deploy:before", "plugin-a", async (ctx) => {
       order.push("a");
-      return { ...ctx.payload, a: true };
+      return { ...(ctx.payload as Record<string, unknown>), a: true };
     });
 
     bus.on("deploy:before", "plugin-b", async (ctx) => {
       order.push("b");
-      return { ...ctx.payload, b: true };
+      return { ...(ctx.payload as Record<string, unknown>), b: true };
     });
 
     const result = await bus.emit(
@@ -79,7 +79,7 @@ describe("HookBus", () => {
     });
 
     bus.on("deploy:before", "good-plugin", async (ctx) => {
-      return { ...ctx.payload, good: true };
+      return { ...(ctx.payload as Record<string, unknown>), good: true };
     });
 
     const result = await bus.emit(
@@ -96,7 +96,7 @@ describe("HookBus", () => {
 
   test("off removes a handler", async () => {
     bus.on("deploy:before", "removable", async (ctx) => {
-      return { ...ctx.payload, removed: false };
+      return { ...(ctx.payload as Record<string, unknown>), removed: false };
     });
 
     bus.off("deploy:before", "removable");
@@ -109,7 +109,7 @@ describe("HookBus", () => {
     bus.setPluginConfig("my-plugin", { token: "abc" });
 
     bus.on("deploy:before", "my-plugin", async (ctx) => {
-      return { ...ctx.payload, token: ctx.settings.token };
+      return { ...(ctx.payload as Record<string, unknown>), token: ctx.settings.token };
     });
 
     const result = await bus.emit("deploy:before", {} as Record<string, unknown>, mockSession);

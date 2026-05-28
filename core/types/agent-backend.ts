@@ -120,10 +120,15 @@ export interface AgentCapabilities {
  */
 
 /**
- * AgentProtocolAdapter — message protocol adapter
+ * AgentProtocolAdapter — message protocol adapter.
  *
- * Translates between the Agent's raw message format and the ws-bridge runtime format.
- * Claude Code currently uses near-passthrough NDJSON; other backends adapt through their own adapters.
+ * @deprecated RESERVED / UNUSED. No production code implements or consumes this
+ * interface. The real per-backend protocol seam is `BridgeBackend`
+ * (`server/ws-bridge-backend.ts`), instantiated via
+ * `BackendModule.createBridgeBackend()`; the Codex/Kimi `*-adapter.ts` classes
+ * implement that, NOT this. Kept only as a documented sketch of a future
+ * `parseIncoming`/`encodeOutgoing` AST extraction. Do not wire new backends to
+ * it — use `BridgeBackend` instead.
  */
 export interface AgentProtocolAdapter {
   /** Parse raw data from the Agent into structured messages (null = skip this message) */

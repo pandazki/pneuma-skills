@@ -1233,7 +1233,7 @@ function CanvasInner(props: ViewerPreviewProps) {
   const setPreviewMode = useStore((s) => s.setPreviewMode);
   const { fitView, setCenter } = useReactFlow();
 
-  const [rfNodes, setRfNodes, onNodesChange] = useNodesState([]);
+  const [rfNodes, setRfNodes, onNodesChange] = useNodesState<Node<ImageNodeData>>([]);
   const [detailItem, setDetailItem] = useState<ManifestItem | null>(null);
   const [selectedImage, setSelectedImage] = useState<SelectedImageInfo | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);

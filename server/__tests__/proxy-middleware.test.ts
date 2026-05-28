@@ -27,7 +27,7 @@ beforeAll(() => {
       return new Response("Not Found", { status: 404 });
     },
   });
-  upstreamPort = upstreamServer.port;
+  upstreamPort = upstreamServer.port ?? 0;
 });
 
 afterAll(() => {

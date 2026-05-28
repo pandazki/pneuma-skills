@@ -46,8 +46,11 @@ export interface HandoffProposal {
  * tests can pass an in-memory mock.
  */
 export interface HandoffWsBridgeLike {
-  broadcastToSession: (sessionId: string, msg: { type: string } & Record<string, unknown>) => void;
-  sendUserMessage: (sessionId: string, content: string) => void;
+  // Method syntax (not arrow properties) so parameter bivariance lets the concrete
+  // WsBridge — whose methods take the narrower BrowserIncomingMessage — satisfy this
+  // loose surface, while tests can still pass a structural in-memory mock.
+  broadcastToSession(sessionId: string, msg: { type: string } & Record<string, unknown>): void;
+  sendUserMessage(sessionId: string, content: string): void;
 }
 
 export interface HandoffRoutesOptions {

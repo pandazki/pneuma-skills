@@ -251,12 +251,10 @@ describe("POST /api/projects/:id/archive + /restore (Phase 4)", () => {
     expect(await archiveRes.json()).toEqual({ archived: true });
 
     // Default listing now hides it
-    const afterArchive = await testApp.request("/api/projects").then((r) => r.json());
+    const afterArchive = await (await testApp.request("/api/projects")).json();
     expect(afterArchive.projects).toHaveLength(0);
     // ?archived=true reveals it
-    const archivedOnly = await testApp
-      .request("/api/projects?archived=true")
-      .then((r) => r.json());
+    const archivedOnly = await (await testApp.request("/api/projects?archived=true")).json();
     expect(archivedOnly.projects).toHaveLength(1);
     expect(archivedOnly.projects[0].id).toBe(root);
 
@@ -268,13 +266,11 @@ describe("POST /api/projects/:id/archive + /restore (Phase 4)", () => {
     expect(await restoreRes.json()).toEqual({ archived: false });
 
     // Default listing has it back
-    const afterRestore = await testApp.request("/api/projects").then((r) => r.json());
+    const afterRestore = await (await testApp.request("/api/projects")).json();
     expect(afterRestore.projects).toHaveLength(1);
     expect(afterRestore.projects[0].id).toBe(root);
     // ?archived=true is empty again
-    const archivedEmpty = await testApp
-      .request("/api/projects?archived=true")
-      .then((r) => r.json());
+    const archivedEmpty = await (await testApp.request("/api/projects?archived=true")).json();
     expect(archivedEmpty.projects).toHaveLength(0);
   });
 

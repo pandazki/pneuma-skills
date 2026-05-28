@@ -75,7 +75,7 @@ export interface ViewerSelectionContext {
   /** Annotations (annotate mode) — multiple selected elements with user feedback */
   annotations?: {
     slideFile: string;
-    element: { type: string; content: string; selector?: string; label?: string; tag?: string; classes?: string; nearbyText?: string; accessibility?: string };
+    element: { type: string; content: string; selector?: string; label?: string; tag?: string; classes?: string; nearbyText?: string; accessibility?: string; thumbnail?: string };
     comment: string;
   }[];
 }

@@ -87,7 +87,7 @@ export function normalizePersistedSession(data: Record<string, unknown>): Persis
   if (!normalized.backendType) {
     normalized.backendType = LEGACY_BACKFILL_BACKEND;
   }
-  return normalized as PersistedSession;
+  return normalized as unknown as PersistedSession;
 }
 
 export function normalizeSessionRecord(data: Record<string, unknown>): SessionRecord {

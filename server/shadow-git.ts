@@ -114,7 +114,7 @@ async function captureCheckpointInner(workspace: string, turnIndex: number): Pro
   const diffExit = await diffProc.exited;
 
   const untrackedProc = shadowGit(workspace, ["ls-files", "--others", "--exclude-standard"], { stdout: "pipe" });
-  const untracked = (await new Response(untrackedProc.stdout).text()).trim();
+  const untracked = (await new Response(untrackedProc.stdout as ReadableStream<Uint8Array>).text()).trim();
 
   if (diffExit === 0 && !untracked) return;
 
@@ -122,7 +122,7 @@ async function captureCheckpointInner(workspace: string, turnIndex: number): Pro
   await shadowGit(workspace, ["commit", "-m", `turn-${turnIndex}`]).exited;
 
   const hashProc = shadowGit(workspace, ["rev-parse", "--short", "HEAD"], { stdout: "pipe" });
-  let hash = (await new Response(hashProc.stdout).text()).trim();
+  let hash = (await new Response(hashProc.stdout as ReadableStream<Uint8Array>).text()).trim();
 
   // Fallback: read hash directly from git ref file if spawn stdout was empty
   if (!hash) {

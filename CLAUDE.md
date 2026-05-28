@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.15.7
+**Version:** 3.15.8
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`
 
@@ -134,7 +134,7 @@ pneuma-skills/
 │   └── shadow-git.ts          # Shadow git, per-turn checkpoint capture, bundle export
 ├── src/                       # React frontend (Vite)
 │   ├── App.tsx                # Root layout, dynamic viewer loading
-│   ├── store/                 # Zustand store (9 protocol-aligned slices)
+│   ├── store/                 # Zustand store (10 protocol-aligned slices)
 │   ├── hooks/                 # Reusable hooks (useFavorites, useThumbnailCapture, …)
 │   ├── ws.ts                  # WebSocket client
 │   └── components/            # Chat, permissions, launcher, replay, context panels
@@ -171,7 +171,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 | **ViewerLocator** | `core/types/viewer-contract.ts` | Agent emits `<viewer-locator>` chat tag | `src/components/chat/*` renders card; click triggers `navigateRequest` |
 | **Source\<T\>** + `SourceEvent<T>` + `SourceProvider` + `SourceContext` + `FileChannel` + `FileChangeEvent` + `SourceDescriptor` | `core/types/source.ts` | `core/source-registry.ts` picks provider by `kind` from `manifest.sources` | Built-in providers in `core/sources/{file-glob,json-file,aggregate-file,memory}.ts` (all extend `core/sources/base.ts` which enforces the four invariants); viewer subscribes via `src/hooks/useSource.ts` |
 | **AgentBackend** + `AgentCapabilities` + `AgentSessionInfo` + `AgentLaunchOptions` | `core/types/agent-backend.ts` | Each backend's `manifest.ts::createBackend(port)` | `bin/pneuma.ts` boots one per session; `server/ws-bridge*.ts` drives lifecycle |
-| **AgentProtocolAdapter** | `core/types/agent-backend.ts` | `backends/codex/codex-adapter.ts` + `backends/kimi-cli/kimi-adapter.ts` (Claude is near-passthrough NDJSON) | `server/ws-bridge-{codex,kimi}.ts` |
+| **AgentProtocolAdapter** _(reserved/unused — see `BridgeBackend` row for the real seam)_ | `core/types/agent-backend.ts` | — (no production implementor) | — (no production consumer) |
 | **BackendModule** | `core/types/agent-backend.ts` | One per backend: `backends/{claude-code,codex,kimi-cli}/manifest.ts` | `backends/index.ts` is a pure registry — no `if (type === ...)` outside this file |
 | **BridgeBackend** | `server/ws-bridge-backend.ts` | `BackendModule.createBridgeBackend()` per non-Claude backend | `server/ws-bridge.ts` central bridge dispatches; Claude legacy NDJSON path returns `null` here |
 | **ToolFileRef** | `backends/tool-file-ref.ts` | `BackendModule.toolFileRef(toolName, input)` | `server/file-ref.ts::stampFileRefs` decorates `tool_use` blocks; front-end `FilePreview` + `ToolFileActions` (open / editor / reveal via `/api/system/*`) consume |
@@ -267,7 +267,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 
 ### Session Registry
 
-`~/.pneuma/sessions.json`（single source of truth；不自动扫盘）。Schema 3.0：`{ projects: ProjectRegistryEntry[], sessions: SessionRegistryEntry[] }`。每条 session 有 `kind: "quick" | "project"`。Legacy 2.x 数组格式读时自动升级。每次 launch / project create upsert；cap 50 + 50。Project 若掉出 registry，恢复路径有两条：(a) Create Project on same path → Open-or-Create 探测 `<root>/.pneuma/project.json`；(b) `pneuma project add <path>`。3.4.0 起去除了 `~/pneuma-projects/` 自动扫描——**registry 显式优于隐式恢复**。
+`~/.pneuma/sessions.json`（single source of truth；不自动扫盘）。Schema 3.0：`{ projects: ProjectRegistryEntry[], sessions: SessionRegistryEntry[] }`。每条 session 有 `kind: "quick" | "project"`。Legacy 2.x 数组格式读时自动升级。每次 launch / project create upsert；sessions 与 projects 各 cap 200（`upsertSession` / `upsertProject` 默认 `cap = 200`，prepend 后 slice）。Project 若掉出 registry，恢复路径有两条：(a) Create Project on same path → Open-or-Create 探测 `<root>/.pneuma/project.json`；(b) `pneuma project add <path>`。3.4.0 起去除了 `~/pneuma-projects/` 自动扫描——**registry 显式优于隐式恢复**。
 
 ### Running-Session Registry（3.5.1）
 

@@ -36,6 +36,7 @@ function getHome(): string {
 }
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomBytes } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -246,7 +247,9 @@ export function readState(): AgentCommandsState {
 export function writeState(state: AgentCommandsState): void {
   const path = registryPath();
   mkdirSync(dirname(path), { recursive: true });
-  const tmp = `${path}.tmp`;
+  // pid+random tmp suffix so concurrent launcher boots / install + autoUpdate
+  // can't rename a half-written file into place (matches library-registry).
+  const tmp = `${path}.tmp.${process.pid}.${randomBytes(4).toString("hex")}`;
   writeFileSync(tmp, JSON.stringify(state, null, 2), "utf-8");
   renameSync(tmp, path);
 }
@@ -351,7 +354,7 @@ export function install(params: InstallParams): InstallResult {
   try {
     mkdirSync(descriptor.dir, { recursive: true });
     const rendered = renderTemplate(template, { pneumaVersion, backendType: backend });
-    const tmp = `${descriptor.file}.tmp`;
+    const tmp = `${descriptor.file}.tmp.${process.pid}.${randomBytes(4).toString("hex")}`;
     writeFileSync(tmp, rendered, "utf-8");
     renameSync(tmp, descriptor.file);
   } catch (err) {

@@ -215,14 +215,15 @@ export function registerExternalMode(name: string, absPath: string): void {
         type: "external",
         name,
         path: absPath,
-        manifestLoader: () =>
-          import(/* @vite-ignore */ `/mode-assets/manifest.js`).then(
-            (m) => m.default,
-          ),
-        definitionLoader: () =>
-          import(/* @vite-ignore */ `/mode-assets/pneuma-mode.js`).then(
-            (m) => m.default,
-          ),
+        manifestLoader: () => {
+          // Runtime virtual module served by the dev/prod server; not resolvable by tsc.
+          const virtual = "/mode-assets/manifest.js";
+          return import(/* @vite-ignore */ virtual).then((m) => m.default);
+        },
+        definitionLoader: () => {
+          const virtual = "/mode-assets/pneuma-mode.js";
+          return import(/* @vite-ignore */ virtual).then((m) => m.default);
+        },
       };
     }
   } else {

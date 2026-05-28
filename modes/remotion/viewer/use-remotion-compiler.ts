@@ -56,7 +56,7 @@ export function useRemotionCompiler(files: ViewerFileContent[]): CompilationResu
   });
   const [recompileTick, setRecompileTick] = useState(0);
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const cacheKeyRef = useRef<string>("");
 
   // Compute content hash for cache invalidation (includes image paths to bust cache on asset changes)

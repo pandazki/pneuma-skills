@@ -2913,7 +2913,7 @@ async function main() {
     startFileWatcher(workspace, manifest.viewer, (files) => {
       if (isManualRefresh) {
         // Queue the update — viewer can flush via POST /api/refresh
-        queueContentUpdate(files);
+        queueContentUpdate?.(files);
       } else {
         wsBridge.broadcastToSession(sessionId, {
           type: "content_update",

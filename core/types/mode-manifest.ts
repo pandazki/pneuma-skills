@@ -276,6 +276,8 @@ export interface ViewerApiConfig {
     manifestFile?: string;
     /** If true, the workspace supports multiple content sets (e.g. locale/theme directories) */
     supportsContentSets?: boolean;
+    /** If true, workspace items appear in TopBar when no content sets exist (mirrors FileWorkspaceModel.topBarNavigation) */
+    topBarNavigation?: boolean;
   };
   /** Agent → Viewer actions — operations the agent can request the viewer to perform (navigation, zoom, etc.) */
   actions?: Array<{

@@ -13,6 +13,7 @@ import {
   pickArchived,
   archiveProject,
   restoreProject,
+  type SessionsFile,
 } from "../sessions-registry.js";
 
 let dir: string;
@@ -111,7 +112,7 @@ describe("sessions registry migration", () => {
 
   test("upsertSession prepends and respects cap", async () => {
     const file = join(dir, "sessions.json");
-    let data = { projects: [], sessions: [] };
+    let data: SessionsFile = { projects: [], sessions: [] };
     for (let i = 0; i < 5; i++) {
       data = upsertSession(data, {
         id: `/ws${i}::doc`,
@@ -147,7 +148,7 @@ describe("sessions registry migration", () => {
   });
 
   test("upsertSession updates existing entry in place", async () => {
-    let data = {
+    let data: SessionsFile = {
       projects: [],
       sessions: [
         {
@@ -178,7 +179,7 @@ describe("sessions registry migration", () => {
   });
 
   test("upsertProject prepends", async () => {
-    let data = { projects: [], sessions: [] };
+    let data: SessionsFile = { projects: [], sessions: [] };
     data = upsertProject(data, {
       id: "/proj1",
       name: "p1",
@@ -200,7 +201,7 @@ describe("sessions registry migration", () => {
   });
 
   test("upsertProject updates existing entry", async () => {
-    let data = {
+    let data: SessionsFile = {
       projects: [
         {
           id: "/proj",

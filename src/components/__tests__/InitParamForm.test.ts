@@ -48,7 +48,7 @@ describe("InitParamForm", () => {
     // spread produces the merge ProjectPanel + Launcher both rely on for
     // their submit-time read of `values`.
     const before: Record<string, string | number> = { a: "1", b: 2 };
-    const after = { ...before, b: 99 };
+    const after: Record<string, string | number> = { ...before, b: 99 };
     expect(after).toEqual({ a: "1", b: 99 });
   });
 });

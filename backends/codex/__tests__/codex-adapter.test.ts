@@ -75,10 +75,6 @@ function createMockTransport(): ICodexTransport & {
       return true;
     },
 
-    get _notificationHandler_actual() {
-      return notificationHandler;
-    },
-
     simulateNotification(method: string, params: Record<string, unknown>): void {
       notificationHandler?.(method, params);
     },
@@ -155,7 +151,7 @@ describe("CodexAdapter", () => {
     await waitForInit();
 
     expect(reportedMeta).toBeDefined();
-    expect(reportedMeta?.cliSessionId).toBe("thr_test");
+    expect((reportedMeta as { cliSessionId?: string } | null)?.cliSessionId).toBe("thr_test");
   });
 
   test("sends user message as turn/start with typed input", async () => {

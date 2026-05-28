@@ -5,7 +5,7 @@
  * Uses JIT compilation (Babel) to compile user TSX in real-time.
  */
 
-import { useCallback, useEffect, useRef, useState, type ErrorInfo, Component, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ErrorInfo, Component, type ReactNode, type ComponentType } from "react";
 import { Player, type PlayerRef } from "@remotion/player";
 import type {
   ViewerPreviewProps,
@@ -179,7 +179,9 @@ export default function RemotionPreview({
 
   // Active composition driven by framework's activeFile (composition ID from TopBar)
   const activeComp = compositions.find((c) => c.id === activeFile) || compositions[0];
-  const ActiveComponent = activeComp ? components.get(activeComp.componentName) : null;
+  const ActiveComponent = activeComp
+    ? (components.get(activeComp.componentName) as ComponentType<Record<string, unknown>> | undefined)
+    : null;
 
   // Report active composition back to framework
   useEffect(() => {

@@ -66,6 +66,8 @@ export interface ICodexTransport {
   respond(id: number, result: unknown): Promise<void>;
   onNotification(handler: (method: string, params: Record<string, unknown>) => void): void;
   onRequest(handler: (method: string, id: number, params: Record<string, unknown>) => void): void;
+  /** Register a handler fired once when the underlying transport closes (process/stream death). */
+  onClose?(handler: () => void): void;
   isConnected(): boolean;
 }
 
@@ -88,6 +90,8 @@ export class StdioTransport implements ICodexTransport {
   private pendingTimers = new Map<number, ReturnType<typeof setTimeout>>();
   private notificationHandler: ((method: string, params: Record<string, unknown>) => void) | null = null;
   private requestHandler: ((method: string, id: number, params: Record<string, unknown>) => void) | null = null;
+  /** Handler fired once when the transport closes (stdout end/error). */
+  private closeHandler: (() => void) | null = null;
   /** Node.js Writable stream for stdin. */
   private nodeStdin: import("node:stream").Writable | null = null;
   /** Fallback WritableStream writer for non-Node stdin (tests). */
@@ -130,7 +134,7 @@ export class StdioTransport implements ICodexTransport {
     transport.pendingTimers = new Map();
     transport.notificationHandler = null;
     transport.requestHandler = null;
-    transport.stdinSink = null;
+    transport.closeHandler = null;
     transport.writer = null;
     transport.nodeStdin = stdin;
     transport.connected = true;
@@ -169,6 +173,9 @@ export class StdioTransport implements ICodexTransport {
       reject(new Error("Transport closed"));
     }
     this.pending.clear();
+    const handler = this.closeHandler;
+    this.closeHandler = null;
+    handler?.();
   }
 
   /** Read from a web ReadableStream (used by tests; production uses readNodeStdout). */
@@ -278,6 +285,14 @@ export class StdioTransport implements ICodexTransport {
     this.requestHandler = handler;
   }
 
+  onClose(handler: () => void): void {
+    if (!this.connected) {
+      handler();
+      return;
+    }
+    this.closeHandler = handler;
+  }
+
   isConnected(): boolean {
     return this.connected;
   }
@@ -377,6 +392,14 @@ export class CodexAdapter {
 
     if (this.isTransport(transportOrProc)) {
       this.transport = transportOrProc;
+      // Production path: the transport (StdioTransport.fromNodeStreams) owns process
+      // lifetime. Wire its close signal to disconnectCb so process/stream death
+      // propagates to CodexBridge (cli_disconnected) and the launcher (state=exited),
+      // mirroring the Subprocess branch below and the Kimi adapter.
+      this.transport.onClose?.(() => {
+        this.connected = false;
+        this.disconnectCb?.();
+      });
     } else {
       const proc = transportOrProc;
       const stdout = proc.stdout;
@@ -1401,8 +1424,9 @@ export class CodexAdapter {
         this.emit({
           type: "tool_progress",
           tool_use_id: item.id,
-          progress: `Running... (${Math.round(elapsed / 1000)}s)`,
-        } as BrowserIncomingMessage);
+          tool_name: "Bash",
+          elapsed_time_seconds: Math.round(elapsed / 1000),
+        });
       }
     }
   }

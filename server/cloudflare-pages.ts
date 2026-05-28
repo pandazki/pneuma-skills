@@ -193,7 +193,7 @@ async function deployViaApi(req: CfDeployRequest, config: CfPagesConfig): Promis
   form.append("manifest", JSON.stringify(manifest));
   form.append("branch", "main");
   for (const [hash, content] of fileBlobs) {
-    form.append(hash, new Blob([content]), hash);
+    form.append(hash, new Blob([content as BlobPart]), hash);
   }
 
   const resp = await fetch(`${baseUrl}/${name}/deployments`, {

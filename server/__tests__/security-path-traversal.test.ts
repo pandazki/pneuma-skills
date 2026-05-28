@@ -49,7 +49,7 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
-  server?.stop?.();
+  (server as { server?: { stop?: () => void } } | undefined)?.server?.stop?.();
   rmSync(TEST_WORKSPACE, { recursive: true, force: true });
   rmSync(SECRET_DIR, { recursive: true, force: true });
   // Restore original sessions registry
@@ -130,7 +130,7 @@ describe("C3: Process kill endpoint safety", () => {
   });
 
   afterAll(() => {
-    c3Server?.stop?.();
+    (c3Server as { server?: { stop?: () => void } } | undefined)?.server?.stop?.();
   });
 
   function c3api(path: string, init?: RequestInit) {

@@ -294,11 +294,13 @@ export function upsertSession(
  *
  * @param data — current SessionsFile
  * @param entry — project entry to upsert (replaces existing with same id, or prepends)
+ * @param cap — max number of project entries to keep (default 200)
  * @returns new SessionsFile with upserted project
  */
 export function upsertProject(
   data: SessionsFile,
-  entry: ProjectRegistryEntry
+  entry: ProjectRegistryEntry,
+  cap = 200
 ): SessionsFile {
   const existing = data.projects.find((p) => p.id === entry.id);
   const filtered = data.projects.filter((p) => p.id !== entry.id);
@@ -312,7 +314,7 @@ export function upsertProject(
     delete merged.archived;
   }
   filtered.unshift(merged);
-  return { projects: filtered, sessions: data.sessions };
+  return { projects: filtered.slice(0, cap), sessions: data.sessions };
 }
 
 /**

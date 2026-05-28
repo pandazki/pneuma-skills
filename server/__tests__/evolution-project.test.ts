@@ -63,7 +63,7 @@ function makeManifest(): ModeManifest {
       watchPatterns: ["**/*.html"],
       workspace: { type: "all" },
     },
-  } as ModeManifest;
+  } as unknown as ModeManifest;
 }
 
 describe("buildEvolutionPrompt project scope", () => {

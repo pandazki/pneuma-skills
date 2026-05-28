@@ -20,8 +20,11 @@ export function normalizeViewerState(
   let contentSet = state.contentSet ?? null;
   let file = state.file ?? null;
 
-  const matchedSet = file
-    ? contentSets.find((cs) => file === cs.prefix || file.startsWith(cs.prefix + "/"))
+  // const snapshot so TS narrows it to non-null inside the find() closure
+  // (the mutable `file` let is reassigned below and cannot be narrowed there).
+  const fileForMatch = file;
+  const matchedSet = fileForMatch
+    ? contentSets.find((cs) => fileForMatch === cs.prefix || fileForMatch.startsWith(cs.prefix + "/"))
     : undefined;
 
   if (matchedSet) {

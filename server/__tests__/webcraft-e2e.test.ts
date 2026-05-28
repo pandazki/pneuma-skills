@@ -95,8 +95,8 @@ describe("manifest validation", () => {
   });
 
   it("agent config has permissionMode and greeting", () => {
-    expect(webcraftManifest.agent.permissionMode).toBe("bypassPermissions");
-    expect(webcraftManifest.agent.greeting).toContain("Impeccable");
+    expect(webcraftManifest.agent?.permissionMode).toBe("bypassPermissions");
+    expect(webcraftManifest.agent?.greeting).toContain("Impeccable");
   });
 
   it("init config has contentCheckPattern and seed files", () => {

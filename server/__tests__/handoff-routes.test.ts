@@ -161,7 +161,7 @@ describe("POST /api/handoffs/emit", () => {
     expect(bridge.broadcasts).toHaveLength(1);
     expect(bridge.broadcasts[0].sessionId).toBe("src-1");
     expect(bridge.broadcasts[0].msg.type).toBe("handoff_proposed");
-    expect((bridge.broadcasts[0].msg as { handoff_id: string }).handoff_id).toBe(body.handoff_id);
+    expect((bridge.broadcasts[0].msg as unknown as { handoff_id: string }).handoff_id).toBe(body.handoff_id);
   });
 
   test("rejects missing target_mode", async () => {

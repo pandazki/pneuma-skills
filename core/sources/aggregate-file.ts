@@ -1,4 +1,5 @@
 import { BaseSource } from "./base.js";
+import { compileGlobList } from "./glob.js";
 import type {
   FileChannel,
   FileChangeEvent,
@@ -144,39 +145,3 @@ export class AggregateFileSource<T> extends BaseSource<T> {
   }
 }
 
-// Shared with file-glob — kept inline here to avoid cross-module imports
-// in this leaf file. If a third provider needs it, lift to sources/glob.ts.
-function compileGlobList(patterns: string[]): (path: string) => boolean {
-  if (patterns.length === 0) return () => false;
-  const regexes = patterns.map(compileGlob);
-  return (path: string) => regexes.some((r) => r.test(path));
-}
-
-function compileGlob(pattern: string): RegExp {
-  let p = pattern.replace(/^\.\//, "");
-  let rx = "";
-  let i = 0;
-  while (i < p.length) {
-    const ch = p[i];
-    if (ch === "*") {
-      if (p[i + 1] === "*") {
-        rx += ".*";
-        i += 2;
-        if (p[i] === "/") i++;
-      } else {
-        rx += "[^/]*";
-        i++;
-      }
-    } else if (ch === "?") {
-      rx += "[^/]";
-      i++;
-    } else if ("\\^$.|+()[]{}".includes(ch)) {
-      rx += "\\" + ch;
-      i++;
-    } else {
-      rx += ch;
-      i++;
-    }
-  }
-  return new RegExp("^" + rx + "$");
-}

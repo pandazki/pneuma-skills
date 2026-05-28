@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.15.8] - 2026-05-29
+
+### Added — TypeScript typecheck gate in CI
+
+`tsc --noEmit` is now a `bun run typecheck` script and a CI step in `release.yml` (before tests). Build (vite/esbuild) and test (bun) both strip types without checking them, so this is the only step that enforces the strict contract layer. The repo previously carried 62 type errors across 30 files — all now resolved (production code + test files), with two ambient declarations added (`@babel/standalone`, the untyped `storyboard.mjs`).
+
+### Fixed — Codex backend never propagated process death on the production path
+
+The Codex adapter only wired `disconnectCb` in the test (`Subprocess`) branch; the production `StdioTransport.fromNodeStreams` path left it unwired, so on a clean Codex process exit the browser never received `cli_disconnected` and pending permission prompts were not cancelled. Added `onClose` to the transport and wired it in the production branch, mirroring the Kimi adapter. Also fixed a latent `tool_progress` shape mismatch (the adapter emitted `{ progress }` while the frontend reads `{ tool_name, elapsed_time_seconds }`).
+
+### Fixed — Windows path containment, project-registry growth, atomic-write races
+
+- `projects-routes.ts` containment checks used a hardcoded `/`; now use `path.sep` so project file-preview and session-delete work on Windows (matches the `/api/file` route).
+- `upsertProject` now caps the registry at 200 (mirrors `upsertSession`); projects were previously unbounded.
+- `agent-command-installer` atomic writes now use a `pid+random` tmp suffix (matches `library-registry`) so concurrent launcher boots can't rename a half-written file into place.
+
+### Changed — Contract-layer cleanup
+
+- The vestigial `AgentProtocolAdapter` interface is marked `@deprecated`/reserved with a pointer to the real `BridgeBackend` seam; the misleading "Core Contracts" table row is corrected.
+- The duplicated glob matcher in `file-glob.ts` / `aggregate-file.ts` is lifted to a shared `core/sources/glob.ts`.
+- `mode-resolver`'s `BUILTIN_MODES` set completed (7 → 15) to match the registry.
+- Doc accuracy: session/project registry caps (`200`, not `50 + 50`) and store slice count (`10`, not `9`).
+
 ## [3.15.7] - 2026-05-28
 
 ### Fixed — Cosmos source chips: relative paths now resolve against the source root, not the session dir
