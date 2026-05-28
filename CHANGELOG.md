@@ -2,7 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
-## [3.14.0] - 2026-05-27
+## [3.15.0] - 2026-05-28
+
+### Added — Empty-state gallery: the workspace's first surface is yours to pick
+
+Before this release Pneuma auto-copied a mode's seed content the moment a session opened against an empty workspace — and then the agent often misread "tell me about Q3" as "rewrite this sample deck". Every mode that wanted a clean starting point either swallowed that footgun or shipped without seeds at all. This release replaces the auto-copy with a gallery the user actively picks from, plus a dismissable onboard sidebar for modes whose UI _is_ the entry point.
+
+- **Gallery as the viewer's empty state.** When a session opens with no agent-authored content and the mode declares user-pickable seeds, the preview pane renders `GalleryEmptyState` — an editorial split with mode intro on the left and thumbnail cards on the right. Each card is one `init.seeds[]` descriptor (id + sourceKey + displayName + description + thumbnail). Click → server copies just that one seed → file watcher pushes the new files → gallery unmounts naturally. No auto-copy on session boot.
+- **No-seed onboard overlay.** Modes whose `seedFiles` only carry framework setup (e.g. `invoice-organization`'s `profile.json`) keep the viewer mounted as the action surface — `NoSeedOnboardOverlay` slides in from the left with mode identity and a "describe what you want →" prompt that the user can dismiss with a × or a bottom link. Interactive modes no longer need to fake a gallery.
+- **Explicit dismiss alongside auto-dismiss.** The "或直接开始对话 →" subtitle on the gallery is now a real button — clicking it sets a session-local `galleryDismissedByUser` flag. Auto-dismiss-on-content still fires when files arrive, so the gallery clears naturally after either a seed pick or an agent file write; the new button covers the case where the user just wants the chat without picking anything.
+- **Content-set delete with inline confirm.** `ContentSetSelector` now exposes a per-row × that morphs into "Delete? Cancel / Confirm" in place — same pattern as `ProjectPanel`'s archive flow, no modal. Backed by `POST /api/contentsets/delete` with workspace-containment checks.
+- **`ViewerErrorBoundary` wraps the viewer.** Crashes inside any mode's `PreviewComponent` now surface as a friendly fallback (with a migration hint when the trace mentions `props.files.find`) instead of taking down the chat panel and TopBar. The session stays usable; the user can pick another mode.
+- **Backwards-compat `files` snapshot.** `ViewerPreviewProps.files` is back as a `@deprecated` field populated from the store — pre-2.29 external modes that read `props.files.find(...)` work without their author migrating. JSDoc points at the 2.29 migration guide.
+- **21 thumbnails across 12 builtins.** Slide × 4 (EN/ZH × Dark/Light deck covers), illustrate × 3 (composed from real generated assets via ImageMagick montage), webcraft × 3 (landing / Gazette editorial / dashboard), kami × 3 (cropped to first A4 page), one each for cosmos / clipcraft / diagram / draw / gridboard / mode-maker / remotion / doc. Stored under `modes/<name>/seed-gallery/`, served via `GET /api/mode/seed-gallery/*`.
+
+### Added — Server endpoints + seed installer helper
+
+- **`GET /api/seeds/list`** — returns the catalog of user-pickable seeds for the current mode plus a `modeIntro` (display name, description, tagline, hero URL, icon) for the gallery's left pane.
+- **`POST /api/seeds/apply`** — body `{ sourceKey: string | string[] }`. Copies one or many `init.seedFiles` entries into the workspace, tags writes as self-originated, and runs `bun install` when a root `package.json` is among them. Compound `sourceKey` arrays make multi-file bundles (e.g. clipcraft's demo) feel like one card.
+- **`POST /api/contentsets/delete`** — body `{ prefix: string }`. Removes a content-set subdir under the workspace with traversal + `_`-prefix guards.
+- **`GET /api/mode/seed-gallery/*`** — serves thumbnail assets bundled with the current mode (path-containment checked).
+- **`server/seed-installer.ts`** — reusable `copySeedEntry` + `resolveSeedCatalog` helpers extracted from the deleted `bin/pneuma.ts` auto-copy block. Auto-derive falls back to **directory-shaped** entries only — single-file seedFiles are framework setup, not user-pickable templates.
+
+### Added — Defaults + ordering
+
+- **Cosmos joins the default favorites.** `core/favorites.ts::DEFAULT_FAVORITES` now seeds `builtin::cosmos` alongside webcraft / slide / diagram / illustrate / remotion / kami for first-launch users.
+- **"全部模式" overlay sorts favorites first.** `Launcher.tsx` runs `sortFavoritesFirst` over the full `allModes` array before `ModeGallery` splits by source, so favorited modes lead each group (Built-in / Local / Libraries / Published) — stable sort preserves the within-group ordering.
+
+### Improved — Mode attribution chips
+
+`inspiredBy` added to **kami** (`tw93/kami`) and **webcraft** (`impeccable.style`); they now surface a "灵感来自" chip next to the title in launcher cards alongside cosmos (`Lum1104/Understand-Anything`) and remotion (`troyhua/claude-code-remotion`).
+
+### Fixed — `updateFiles` honours chokidar unlink events
+
+`workspace-slice.ts::updateFiles` was adding files with empty content on chokidar unlinks instead of removing them. Deleting a content set briefly worked via the optimistic store trim, then ghost files snuck back in via the file-watcher echo and `resolveContentSets` re-surfaced the empty prefix. The reducer now drops entries with `deleted: true`; `ws.ts`'s `content_update` handler passes the flag through.
+
+### Fixed — Pre-2.29 manifests no longer throw uncaught from `useSourceInstances`
+
+`SourceRegistry.effectiveSources(manifest)` was throwing inside a `useEffect`, surfacing as an uncaught error in DevTools. The hook now `try`/`catch`s — pre-2.29 manifests log a single warning and degrade to empty sources so the `ViewerErrorBoundary` can take over from there.
+
+### Fixed — Single-content-set workspaces auto-select properly
+
+App.tsx's content-set selection effect gated on `contentSets.length > 1`, leaving freshly applied trait-bearing seeds (slide's `en-dark`, kami's `pneuma-one-pager`) with `activeContentSet === null`. Gate widened to `>= 1`; `selectBestContentSet` already returned the lone set unchanged in that case.
+
+
 
 ### Added — Cosmos visual anchoring: every node deserves a way home
 

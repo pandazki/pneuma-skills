@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.14.0
+**Version:** 3.15.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`
 
@@ -159,7 +159,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 
 | Contract | Defined in | Instantiated | Consumed by |
 |----------|------------|--------------|-------------|
-| **ModeManifest** + `ViewerApiConfig` / `SkillConfig` / `InitConfig` / `ProxyRoute` | `core/types/mode-manifest.ts` | Each mode's `modes/<name>/manifest.ts` (no React imports — read by both backend and frontend) | `core/mode-loader.ts::loadModeManifest()` → `server/skill-installer.ts` (skills + instructions assembly) + `core/source-registry.ts` (sources) + `server/index.ts` (proxy routes) |
+| **ModeManifest** + `ViewerApiConfig` / `SkillConfig` / `InitConfig` / `SeedDescriptor` / `ProxyRoute` | `core/types/mode-manifest.ts` | Each mode's `modes/<name>/manifest.ts` (no React imports — read by both backend and frontend) | `core/mode-loader.ts::loadModeManifest()` → `server/skill-installer.ts` (skills + instructions assembly) + `core/source-registry.ts` (sources) + `server/index.ts` (proxy routes) + `server/seed-installer.ts::resolveSeedCatalog` (gallery cards from `init.seeds[]`, auto-derive from directory-shaped `seedFiles` when absent) |
 | **ModeDefinition** = `{ manifest, viewer }` | `core/types/mode-definition.ts` | Each mode's `modes/<name>/pneuma-mode.ts` default export — binds manifest + ViewerContract | Frontend `core/mode-loader.ts` dynamic-imports it; the React tree mounts `viewer.PreviewComponent`. Split from `manifest.ts` so the latter can be loaded by the Bun backend (which has no React). |
 | **ViewerContract** + `ViewerPreviewProps` | `core/types/viewer-contract.ts` | Each mode's `modes/<name>/viewer/<Name>Preview.tsx` (referenced from `pneuma-mode.ts`) | `core/mode-loader.ts` dynamic import → `src/App.tsx` mounts `PreviewComponent` with props injected from `src/store/` |
 | **ModeShowcase** | `core/types/mode-manifest.ts` (declared); actual content in `modes/<name>/showcase/showcase.json` (sibling file, not inline in manifest) | Each mode's `showcase/showcase.json` + `hero.png` + 3-4 `highlight-*.png` | `server/index.ts` serves via `GET /api/modes/:name/showcase/*`; launcher gallery cards consume |
@@ -382,6 +382,8 @@ Key endpoints：
 - `GET /api/github/status` — `{ installed, authenticated, username?, version?, hint? }` from `gh` probe
 - `/api/libraries/*`（launcher-only）—— CRUD library + 广播 `libraries_updated`，使 library-activated mode 在 Quick Start 即时生效
 - `/api/agent-commands/*` + `/api/handoffs/external` + `/api/cli/*`（launcher-only）—— 见 Agent Command Distribution
+- `GET /api/seeds/list` + `POST /api/seeds/apply` + `GET /api/mode/seed-gallery/*` —— per-session gallery endpoints (seed catalog, copy one or many entries from `init.seedFiles`, serve thumbnail assets). `apply` body accepts `sourceKey: string | string[]` so a single card can copy a multi-file bundle. Copy logic in `server/seed-installer.ts::copySeedEntry`.
+- `POST /api/contentsets/delete` —— removes a top-level content-set subdir under the workspace with traversal + `_`-prefix guards.
 - 原生桌面 API（`/api/native/*`）只在 Electron 可用：Server → WS `native_request` → Browser → Electron IPC → result → WS `native_result`。Web 返回 `{ available: false }`。
 
 ## Coding Conventions
@@ -411,6 +413,9 @@ CI (`release.yml`) handles tagging, GitHub Release, and npm publish on push to `
 
 ## Known Gotchas
 
+- **Seed gallery auto-derive is directory-only**（3.15.0）：when a mode's `init.seeds[]` is absent, `resolveSeedCatalog` surfaces only `seedFiles` entries that are directory-shaped (src/dst ends with `/`, or dst is `./`/`""`). Single-file entries (e.g. invoice-organization's `profile.json`) are treated as framework setup and dropped — they would otherwise show up as meaningless gallery cards. Modes that genuinely want a single-file template MUST declare it explicitly via `init.seeds[]`. The frontend's `hasSeedsDeclared` check in `App.tsx` mirrors this rule; keep the two in sync.
+- **Gallery dismissal sources** (3.15.0): the empty-state gallery clears on either (a) `userContentCount > 0` (auto-dismiss when agent / seed-apply produces real content — the filter excludes `.pneuma/.claude/.agents/.kimi/_*` and `CLAUDE.md`/`AGENTS.md`/`.gitignore`), or (b) `galleryDismissedByUser = true` set by the explicit "或直接开始对话 →" button. There is intentionally no click-outside-to-close — TopBar clicks, chat focus, etc. must NOT dismiss.
+- **`ViewerPreviewProps.files` is a deprecated compat shim** (3.15.0): the new contract is `sources` + `fileChannel`; `files: ViewerFileContent[]` is still populated by `useViewerProps` so pre-2.29 external modes don't crash on `props.files.find(...)`. Do not use it in new viewers — `useSource(sources.files)` is the supported path. Will be removed in a future major.
 - **`pneuma handoff-from-external` detached spawn**：必须给子进程传 `--no-prompt`。`stdio: "ignore"` + `detached: true` 下子进程没有 stdin；任何 `init.params` prompt（例 webcraft 的 fal.ai key）都会永久阻塞。
 - **Machine-readable CLI subcommands bypass `p.intro()`**：`agent-command`、`mode list --local`、`handoff-from-external` 在 `bin/pneuma.ts:main()` 里**先于** clack `p.intro(...)` banner dispatch；否则 banner 污染 stdout 让 agent 侧 `JSON.parse` 挂掉。未来任何 stdout 被 agent 消费的子命令都得照办。
 - **Agent-command marker placement**：`<!-- pneuma:agent-command version="..." backend="..." -->` marker 放在 YAML frontmatter（`---`）**下方**，不是 line 1。Claude Code 与 Codex 都要求 frontmatter 从 line 1 起；line-1 HTML 注释会让 `description` / `argument-hint` 解析挂掉。Installer 全文扫，不只 line 1。
