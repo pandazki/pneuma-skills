@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.15.4] - 2026-05-28
+
+### Fixed — Remotion no longer renders a red "Compilation Error" before the first composition exists
+
+The gallery refactor in 3.15.0 (no more auto-copying the seed on session boot) left a UX hole for Remotion: any session that opened without a `src/Root.tsx` — fresh sessions before the user picks a seed, Smart Handoff target sessions where the agent hasn't written scaffolding yet, recovered sessions whose workspace files were lost — rendered an angry red **Compilation Error** panel reading `Root.tsx not found` / `No <Composition> declarations found in Root.tsx`. It made every Remotion handoff look broken on first paint, and it spammed the chat pending queue with `compilation-error` notifications on every recompile pass against the empty workspace.
+
+`useRemotionCompiler` now classifies "no `src/Root.tsx`" and "Root.tsx exists but has zero `<Composition>` declarations" as pre-setup states rather than build errors — `errors[]` stays empty, the viewer falls through to the existing "No Compositions" empty state (which already explains what's needed: *Define compositions in `src/Root.tsx` using `<Composition>` to see a preview*), and no `compilation-error` notification gets queued. Real syntax / import / runtime errors still surface as the red Compilation Error panel with the Retry button shipped in 3.15.2.
+
 ## [3.15.3] - 2026-05-28
 
 ### Fixed — ProjectPanel session delete: 404 ghost rows + clipped error message

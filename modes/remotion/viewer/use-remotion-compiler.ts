@@ -106,22 +106,28 @@ export function useRemotionCompiler(files: ViewerFileContent[]): CompilationResu
           (f) => f.path === "src/Root.tsx" || f.path.endsWith("/src/Root.tsx"),
         );
         if (!rootFile) {
-          setResult({
-            compositions: [],
-            components: new Map(),
-            errors: [{ file: "src/Root.tsx", message: "Root.tsx not found" }],
-          });
+          // Treat "no Root.tsx yet" as a pre-setup state, NOT a compile
+          // error. Showing a red Compilation Error panel here is wrong:
+          // the gallery refactor (3.15.0) made fresh-session workspaces
+          // empty until a seed is picked OR the agent writes scaffolding
+          // (notably during Smart Handoff into Remotion), and that
+          // transient window should render the friendly "No Compositions"
+          // empty state — not look like the agent broke something. Also
+          // emitting an error here would queue a `compilation-error`
+          // notification on every recompile pass, spamming the agent
+          // until the file appears.
+          setResult({ compositions: [], components: new Map(), errors: [] });
           return;
         }
 
         // Parse compositions metadata
         const compositions = parseCompositions(rootFile.content);
         if (compositions.length === 0) {
-          setResult({
-            compositions: [],
-            components: new Map(),
-            errors: [{ file: rootFile.path, message: "No <Composition> declarations found in Root.tsx" }],
-          });
+          // Same reasoning as the missing-Root.tsx branch above: the
+          // agent has created the file but hasn't declared any
+          // compositions yet. That's a "still being set up" state, not
+          // a build break. Fall through to the empty-state UI.
+          setResult({ compositions: [], components: new Map(), errors: [] });
           return;
         }
 
