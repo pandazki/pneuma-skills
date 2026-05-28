@@ -12,8 +12,13 @@ import { normalizeCosmos, type Cosmos } from "./types.js";
 
 const cosmosManifest: ModeManifest = {
   name: "cosmos",
-  version: "0.2.0",
+  version: "0.3.0",
   changelog: {
+    "0.3.0": [
+      "Source-chip clicks now resolve relative paths against project.sourceRoot or the project root",
+      "SKILL: relative path + missing sourceRoot pitfall called out as a non-negotiable",
+      "Common case (project session, agent forgot sourceRoot) silently rescued via projectContext",
+    ],
     "0.2.0": [
       "Right-side NodeDrawer replaces the inline INFO panel — left panel keeps project context",
       "New EXCERPTS section: image-cards from excerpt.path + quote-cards above the SOURCES strip",

@@ -138,16 +138,28 @@ Nodes, perspective tours, and drill subgraphs are the atomic addressable units. 
   had", a `passage` ref pinpointing where in that transcript the
   inference rests beats no ref at all.
 
-- **Set `project.sourceRoot` when the cosmos has an on-disk root.**
+- **Set `project.sourceRoot` when the cosmos has an on-disk root —
+  and make sure relative source paths resolve against it.**
   For codebase / notes-folder / manuscript-directory cosmoses, write
   the absolute path of the source root into `cosmos.project.sourceRoot`.
-  The viewer's INFO tab uses this to render an "Open project root in
-  editor" affordance — the user clicks once and the whole project
-  opens in their editor; from that point, clicking any `file`
-  source-chip on a node activates the file inside the open editor
-  window (Cursor / VS Code behaviour). Leave undefined when the
-  cosmos has no single on-disk root (URLs, transcripts, scattered
-  files).
+  Two reasons it matters:
+
+  1. The viewer's INFO tab renders an "Open project root in editor"
+     affordance — one click opens the whole project; subsequent file
+     source-chip clicks activate the file inside the open editor
+     window (Cursor / VS Code behaviour).
+  2. **Relative `path` / `file` values on `CosmosSourceRef` resolve
+     against `sourceRoot`, NOT against the session directory.** The
+     session lives at `<projectRoot>/.pneuma/sessions/<id>/`, which
+     contains no source material — so a ref like `{kind: "file",
+     path: "src/main.ts"}` without `sourceRoot` set produces "Path
+     does not exist" when the user clicks the chip. Set `sourceRoot`,
+     OR write absolute paths. Don't write bare relative paths and
+     hope the viewer guesses.
+
+  Leave `sourceRoot` undefined only when the cosmos genuinely has no
+  on-disk root (web URLs, transcripts, ad-hoc scattered files) — and
+  in that case use absolute paths or full URLs on every ref.
 
 ## Source references
 

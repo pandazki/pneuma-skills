@@ -38,6 +38,7 @@ import dagre from "@dagrejs/dagre";
 import type { ViewerPreviewProps } from "../../../core/types/viewer-contract.js";
 import type { Source } from "../../../core/types/source.js";
 import { useSource } from "../../../src/hooks/useSource.js";
+import { useStore } from "../../../src/store.js";
 import { getApiBase } from "../../../src/utils/api.js";
 import EditorPickerButton from "../../../src/components/EditorPickerButton.js";
 import type {
@@ -173,12 +174,52 @@ function sourceRefTooltip(ref: CosmosSourceRef): string {
   }
 }
 
+/** Resolve a path from a CosmosSourceRef against the right root.
+ *
+ * The viewer's server resolves relative paths against the session's
+ * workspace (= `<projectRoot>/.pneuma/sessions/<id>/`) — but cosmos
+ * source refs are meant to point at the *source material*, which
+ * almost never lives inside the session dir. Without resolving up
+ * front, an agent that writes `file: "index.html"` meaning "index.html
+ * at the project root" lands the server at `<sessionDir>/index.html`
+ * and the user sees a "Path does not exist" chip.
+ *
+ * Resolution order:
+ *   1. Absolute path → pass through.
+ *   2. `cosmos.project.sourceRoot` set → resolve against it.
+ *   3. Falling through (project sessions) → resolve against the
+ *      project root from `projectContext`. This makes the common
+ *      case "agent forgot to set sourceRoot in a project session"
+ *      just work instead of surfacing a confusing OS error.
+ *   4. No root available → return the path unchanged and let the
+ *      server's session-relative resolution take its chances.
+ */
+function resolveSourcePath(
+  raw: string,
+  sourceRoot: string | undefined,
+  projectRoot: string | undefined,
+): string {
+  if (!raw) return raw;
+  if (raw.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(raw)) return raw; // absolute (unix or windows)
+  const root = sourceRoot || projectRoot;
+  if (!root) return raw;
+  return `${root.replace(/\/+$/, "")}/${raw.replace(/^\.?\/+/, "")}`;
+}
+
 /** Dispatch the right /api/system/* endpoint for the ref's kind.
  *  Web fallback: when no native bridge is available the server's
  *  open* endpoints still respond (with `{ available: false }` on
  *  web), so we just log and surface to the caller via the boolean
- *  return — InfoTab can show a tiny error chip. */
-async function openSourceRef(ref: CosmosSourceRef): Promise<{ ok: boolean; message?: string }> {
+ *  return — InfoTab can show a tiny error chip.
+ *
+ *  `sourceRoot` is `cosmos.project.sourceRoot`; `projectRoot` is the
+ *  project session's root (from store.projectContext). Either can
+ *  rescue an agent-authored relative path — see resolveSourcePath. */
+async function openSourceRef(
+  ref: CosmosSourceRef,
+  sourceRoot: string | undefined,
+  projectRoot: string | undefined,
+): Promise<{ ok: boolean; message?: string }> {
   const base = getApiBase();
   const headers = { "Content-Type": "application/json" };
   try {
@@ -193,16 +234,18 @@ async function openSourceRef(ref: CosmosSourceRef): Promise<{ ok: boolean; messa
       // Passages live inside files — open the file for now and let
       // the user navigate to the locator manually. Editor-bridge
       // upgrade to jump to a line/locator is deferred.
+      const path = resolveSourcePath(ref.file, sourceRoot, projectRoot);
       res = await fetch(`${base}/api/system/open`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ path: ref.file }),
+        body: JSON.stringify({ path }),
       });
     } else {
+      const path = resolveSourcePath(ref.path, sourceRoot, projectRoot);
       res = await fetch(`${base}/api/system/open`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ path: ref.path }),
+        body: JSON.stringify({ path }),
       });
     }
     if (!res.ok) {
@@ -1294,7 +1337,15 @@ function sourceRefLocatorText(ref: CosmosSourceRef): string {
  * screenshots) — see SKILL's *Visual anchoring* chapter. The viewer
  * does not enforce this; the discipline is in the SKILL.
  */
-function ExcerptsSection({ sources }: { sources: CosmosSourceRef[] }) {
+function ExcerptsSection({
+  sources,
+  sourceRoot,
+  projectRoot,
+}: {
+  sources: CosmosSourceRef[];
+  sourceRoot: string | undefined;
+  projectRoot: string | undefined;
+}) {
   const { t } = useTranslation("cosmos");
   const [error, setError] = useState<string | null>(null);
   const [pendingIdx, setPendingIdx] = useState<number | null>(null);
@@ -1321,7 +1372,7 @@ function ExcerptsSection({ sources }: { sources: CosmosSourceRef[] }) {
   const handleOpen = async (ref: CosmosSourceRef, idx: number) => {
     setError(null);
     setPendingIdx(idx);
-    const res = await openSourceRef(ref);
+    const res = await openSourceRef(ref, sourceRoot, projectRoot);
     setPendingIdx(null);
     if (!res.ok) setError(res.message ?? "Failed to open");
   };
@@ -1639,14 +1690,22 @@ function ExcerptsSection({ sources }: { sources: CosmosSourceRef[] }) {
  * self-contained so it can be reused (e.g., if drill-down phases
  * add per-subgraph node panels later).
  */
-function SourcesStrip({ sources }: { sources: CosmosSourceRef[] }) {
+function SourcesStrip({
+  sources,
+  sourceRoot,
+  projectRoot,
+}: {
+  sources: CosmosSourceRef[];
+  sourceRoot: string | undefined;
+  projectRoot: string | undefined;
+}) {
   const { t } = useTranslation("cosmos");
   const [error, setError] = useState<string | null>(null);
   const [pendingIdx, setPendingIdx] = useState<number | null>(null);
   const handleOpen = async (ref: CosmosSourceRef, idx: number) => {
     setError(null);
     setPendingIdx(idx);
-    const res = await openSourceRef(ref);
+    const res = await openSourceRef(ref, sourceRoot, projectRoot);
     setPendingIdx(null);
     if (!res.ok) setError(res.message ?? "Failed to open");
   };
@@ -1776,6 +1835,14 @@ interface NodeDrawerProps {
 }
 
 function NodeDrawer({ cosmos, node, onSelectNode, onClose }: NodeDrawerProps) {
+  // Resolved source-path roots for the source-card click handlers (see
+  // resolveSourcePath / openSourceRef). `sourceRoot` is the agent-declared
+  // cosmos.project.sourceRoot; `projectRoot` is the auto-detected fallback
+  // for project sessions where the agent forgot to set sourceRoot but the
+  // sources still live under the project tree.
+  const sourceRoot = cosmos.project.sourceRoot ?? undefined;
+  const projectRoot = useStore((s) => s.projectContext?.projectRoot ?? undefined);
+
   // Keep the previously-rendered node around while the panel slides
   // away, so the user sees a clean exit instead of an empty panel mid-
   // animation.
@@ -1921,8 +1988,8 @@ function NodeDrawer({ cosmos, node, onSelectNode, onClose }: NodeDrawerProps) {
         </div>
         {display.sources && display.sources.length > 0 && (
           <>
-            <ExcerptsSection sources={display.sources} />
-            <SourcesStrip sources={display.sources} />
+            <ExcerptsSection sources={display.sources} sourceRoot={sourceRoot} projectRoot={projectRoot} />
+            <SourcesStrip sources={display.sources} sourceRoot={sourceRoot} projectRoot={projectRoot} />
           </>
         )}
         {display.languageNotes && (

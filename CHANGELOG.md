@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.15.7] - 2026-05-28
+
+### Fixed — Cosmos source chips: relative paths now resolve against the source root, not the session dir
+
+A cosmos source card pointing at `index.html L1140-1152` showed a red "Path does not exist" chip even though `index.html` was right there at the project root. Cause: the viewer was POSTing the raw ref path to `/api/system/open`, where the server resolves relative inputs against the agent's workspace (= `<projectRoot>/.pneuma/sessions/<id>/`) — and source material almost never lives inside the session dir.
+
+`openSourceRef` now resolves relative paths client-side, in this order:
+1. **Absolute path** → pass through.
+2. **`cosmos.project.sourceRoot` set** (agent following the contract) → prepend it.
+3. **Project session fallback** — `projectContext.projectRoot` from the store (sourced from the session's `PNEUMA_PROJECT_ROOT`). Lets the common "agent forgot to set sourceRoot in a project session, but sources live under the project root" case just work, instead of looking broken.
+4. None of the above → send the raw path; server's session-relative resolution still runs, just for niche cases with no root at all.
+
+Cosmos SKILL.md now spells the contract out — `cosmos.project.sourceRoot` is the source-resolution anchor (not just the "Open in editor" affordance), and bare relative paths without sourceRoot are an error.
+
+`modes/cosmos/manifest.ts::version` 0.2.0 → 0.3.0 so existing cosmos sessions are prompted to reinstall the skill via the in-app update banner.
+
 ## [3.15.6] - 2026-05-28
 
 ### Improved — Remotion: canonical skeleton inlined in SKILL.md
