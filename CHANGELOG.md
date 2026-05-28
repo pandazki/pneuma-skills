@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.15.3] - 2026-05-28
+
+### Fixed — ProjectPanel session delete: 404 ghost rows + clipped error message
+
+Two failure modes converged on the same user-visible symptom: clicking **删除** in a project's Recent Sessions row "did nothing."
+
+- **404 was refused instead of resolved.** When the SWR projects-cache returned a row whose underlying session was already gone from disk *and* from `~/.pneuma/sessions.json` (another window deleted it, an out-of-band `rm -rf`, a registry compaction), the DELETE returned `404 session not found` — and the panel refused to drop the row, holding the user in a confirm state that couldn't progress. Now treated as success: the row goes away so the panel converges with disk reality.
+- **Error text rendered below the scroll fold.** Genuine delete failures wrote to the panel-bottom `launchError` slot, which is easy to miss when the sessions list is long enough to push the error past the panel's `max-h-[80vh]` overflow. Errors now surface inline next to the confirm row that triggered them, with a `title` tooltip for the full message. Cancel clears it.
+- **Console logs on failure.** Both `res.status !== ok` and fetch-throw paths now log to `console.error` with the sessionId so users with devtools open can self-diagnose.
+
 ## [3.15.2] - 2026-05-28
 
 ### Fixed — Remotion: stale "Build error" notification survived a recovered recompile

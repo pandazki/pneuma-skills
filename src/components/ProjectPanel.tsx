@@ -260,6 +260,10 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Per-row delete failure — surfaced inline next to the row that
+  // triggered it, not in the panel-bottom `launchError` slot where it
+  // gets clipped under a long sessions list.
+  const [deleteError, setDeleteError] = useState<{ sessionId: string; message: string } | null>(null);
 
   // Launch sheet — when set, the right pane swaps from the mode-tile grid
   // to a sheet that fetches the mode's init params, optionally reveals a
@@ -286,14 +290,29 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     if (deleting) return;
     setDeleting(true);
     setLaunchError(null);
+    setDeleteError(null);
     try {
       const res = await fetch(
         `${apiBase}/api/projects/${encodeURIComponent(projectRoot)}/sessions/${encodeURIComponent(sessionId)}`,
         { method: "DELETE" },
       );
-      if (!res.ok) {
+      // 404 "session not found" means the disk + registry already have no
+      // trace of this session — exactly the state the user is asking for.
+      // The row only exists because the projects-cache SWR snapshot was
+      // taken before something removed it (e.g. another window deleted it,
+      // a session dir was rm-rf'd out-of-band, a registry compaction
+      // dropped the entry). Treat it as success: drop the row locally so
+      // the panel converges with disk reality, instead of refusing the
+      // delete and looking unresponsive.
+      const okOrGone = res.ok || res.status === 404;
+      if (!okOrGone) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setLaunchError(data.error ?? t("error.delete_failed_status", { status: res.status }));
+        const msg = data.error ?? t("error.delete_failed_status", { status: res.status });
+        console.error("[ProjectPanel] delete failed", { sessionId, status: res.status, msg });
+        // Inline the failure next to the row that triggered it — the
+        // panel-bottom `launchError` is easy to miss when the sessions
+        // list is long enough to scroll the error out of the viewport.
+        setDeleteError({ sessionId, message: msg });
         return;
       }
       // Drop the session locally so the row disappears immediately. The
@@ -302,7 +321,9 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
       setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
       setConfirmDeleteId(null);
     } catch (err) {
-      setLaunchError(err instanceof Error ? err.message : t("error.delete_failed"));
+      const msg = err instanceof Error ? err.message : t("error.delete_failed");
+      console.error("[ProjectPanel] delete threw", { sessionId, err });
+      setDeleteError({ sessionId, message: msg });
     } finally {
       setDeleting(false);
     }
@@ -868,7 +889,17 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                         }`}
                       >
                         {inConfirm ? (
-                          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-cc-bg/60 border border-cc-border/40">
+                          <div className="flex items-center gap-1">
+                            {deleteError && deleteError.sessionId === s.sessionId ? (
+                              <span
+                                className="text-[10px] text-red-400/90 px-1.5 py-0.5 max-w-[180px] truncate"
+                                role="alert"
+                                title={deleteError.message}
+                              >
+                                {deleteError.message}
+                              </span>
+                            ) : null}
+                            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-cc-bg/60 border border-cc-border/40">
                             <button
                               type="button"
                               disabled={deleting}
@@ -880,11 +911,12 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                             <span className="w-px h-3 bg-cc-border/40" aria-hidden />
                             <button
                               type="button"
-                              onClick={() => setConfirmDeleteId(null)}
+                              onClick={() => { setConfirmDeleteId(null); setDeleteError(null); }}
                               className="text-[10px] text-cc-muted hover:text-cc-fg px-1 py-0.5 rounded transition-colors cursor-pointer"
                             >
                               {t("actions.cancel")}
                             </button>
+                            </div>
                           </div>
                         ) : (
                           <button
