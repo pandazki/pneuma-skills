@@ -35,5 +35,13 @@
   },
   "disabled_replay": "重播模式中無法使用",
   "disabled_git": "差異功能需要 git 儲存庫。請在工作區中執行 `git init`。",
-  "replay_badge": "重播"
+  "replay_badge": "重播",
+  "content_set": {
+    "delete_aria": "刪除內容集",
+    "delete_confirm": "刪除這個內容集?",
+    "delete_action": "刪除",
+    "delete_cancel": "取消",
+    "deleting": "刪除中…",
+    "delete_failed": "無法刪除"
+  }
 }

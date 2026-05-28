@@ -122,6 +122,45 @@ The user just opened the workspace. You are ready to assist with AI-orchestrated
       "modes/clipcraft/seed/assets/bgm/pneuma-ambient.mp3": "assets/bgm/pneuma-ambient.mp3",
       "modes/clipcraft/seed/assets/brand/pneuma-logo.png": "assets/brand/pneuma-logo.png",
     },
+    seeds: [
+      {
+        id: "pneuma-demo",
+        thumbnail: "pneuma-demo.png",
+        // Compound seed — applying this card loads the project.json plus
+        // every asset (images, clips, audio, BGM, brand) so the demo
+        // video is playable on first frame. Listed individually rather
+        // than as a directory because clipcraft's seed/ also contains
+        // candidate variants and a README the user is not meant to
+        // pull into a fresh workspace.
+        sourceKey: [
+          "modes/clipcraft/seed/project.json",
+          "modes/clipcraft/seed/assets/images/shot1-start.png",
+          "modes/clipcraft/seed/assets/images/shot2-start.png",
+          "modes/clipcraft/seed/assets/images/shot2-end.png",
+          "modes/clipcraft/seed/assets/images/shot3-end.png",
+          "modes/clipcraft/seed/assets/clips/shot1-spark.mp4",
+          "modes/clipcraft/seed/assets/clips/shot2-convergence.mp4",
+          "modes/clipcraft/seed/assets/clips/shot3-resolution.mp4",
+          "modes/clipcraft/seed/assets/audio/vo-tagline.mp3",
+          "modes/clipcraft/seed/assets/bgm/pneuma-ambient.mp3",
+          "modes/clipcraft/seed/assets/brand/pneuma-logo.png",
+        ],
+        displayName: {
+          en: "Pneuma launch teaser",
+          "zh-CN": "Pneuma 发布短片",
+          "zh-TW": "Pneuma 發佈短片",
+          ja: "Pneuma ローンチ予告",
+          ko: "Pneuma 런치 티저",
+          es: "Tráiler de lanzamiento de Pneuma",
+          de: "Pneuma-Launch-Teaser",
+        },
+        description: {
+          en: "A three-shot Pneuma teaser — images, clips, voice-over and ambient BGM. Playable as soon as it lands; tear it apart from there.",
+          "zh-CN": "三镜头 Pneuma 预告片素材包,包含图、片段、配音和环境 BGM,加载完即可播,改起来也方便。",
+        },
+        tags: ["Demo", "Video"],
+      },
+    ],
     params: [
       {
         name: "openrouterApiKey",

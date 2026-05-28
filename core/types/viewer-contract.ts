@@ -240,6 +240,18 @@ export interface ViewerPreviewProps {
    * should use a `json-file` source in their manifest instead.
    */
   fileChannel: FileChannel;
+  /**
+   * @deprecated Backward-compat snapshot of the current workspace
+   * files, kept around for viewers authored against the pre-2.29
+   * `ViewerPreviewProps` contract. The current contract reads files
+   * through `sources` + `useSource(...)` so viewers get typed,
+   * origin-tagged events instead of an opaque array — see
+   * docs/migration/2.29-source-abstraction.md for the migration
+   * guide. New viewers should NOT use this field. It exists only so
+   * existing external modes don't crash; it will be removed in a
+   * future major version.
+   */
+  files?: ViewerFileContent[];
   /** Currently selected element */
   selection: ViewerSelectionContext | null;
   /** Selection callback */

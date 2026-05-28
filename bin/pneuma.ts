@@ -2183,93 +2183,20 @@ async function main() {
     }
   }
 
-  // 1.5 Seed default content if workspace has no meaningful files (skip for replay)
-  if (!replayPackage && manifest.init && manifest.init.contentCheckPattern) {
-    const checkPattern = manifest.init.contentCheckPattern;
-    const contentFiles = Array.from(
-      new Bun.Glob(checkPattern).scanSync({ cwd: workspace, absolute: false })
-    ).filter((f) => f !== "CLAUDE.md" && !f.startsWith(".claude/"));
-
-    const hasContent = contentFiles.some((f) => {
-      try {
-        return readFileSync(join(workspace, f), "utf-8").trim().length > 0;
-      } catch { return false; }
-    });
-
-    if (!hasContent && manifest.init.seedFiles) {
-      const hasParams = Object.keys(resolvedParams).length > 0;
-      // For builtin modes, seed paths are relative to PROJECT_ROOT
-      // For external modes, seed paths are relative to the mode package directory
-      const seedBase = resolved.type === "builtin" ? PROJECT_ROOT : resolved.path;
-      // Locale-aware seed selection. Modes can write seedFiles paths
-      // like `seed/{{_locale}}/` to ship per-locale seed bundles; this
-      // helper resolves `{{_locale}}` to the user's locale and, if
-      // that path doesn't exist, falls back to "en". Skipping the
-      // entry only if neither the localized nor English variant
-      // resolves. Keeps the substitution **path-only** (does not
-      // mutate file content) so no existing user-defined template
-      // tokens are accidentally affected.
-      const resolveLocaleSrc = (src: string): string | null => {
-        if (!src.includes("{{_locale}}")) return src;
-        const candidate = src.replaceAll("{{_locale}}", userLocale ?? "en");
-        if (existsSync(join(seedBase, candidate))) return candidate;
-        const fallback = src.replaceAll("{{_locale}}", "en");
-        if (existsSync(join(seedBase, fallback))) return fallback;
-        return null;
-      };
-      for (const [src, dst] of Object.entries(manifest.init.seedFiles)) {
-        const localeResolved = resolveLocaleSrc(src);
-        if (localeResolved === null) continue;
-        const resolvedSrc = hasParams ? applyTemplateParams(localeResolved, resolvedParams) : localeResolved;
-        const srcPath = join(seedBase, resolvedSrc);
-        if (!existsSync(srcPath)) continue;
-
-        // Directory-based seeding: if source ends with /, copy all files recursively
-        if (resolvedSrc.endsWith("/") && statSync(srcPath).isDirectory()) {
-          const glob = new Bun.Glob("**/*");
-          for (const relFile of glob.scanSync({ cwd: srcPath, absolute: false })) {
-            const fileSrc = join(srcPath, relFile);
-            if (statSync(fileSrc).isDirectory()) continue;
-            const fileDst = join(workspace, dst, relFile);
-            mkdirSync(dirname(fileDst), { recursive: true });
-            const isBinary = /\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|mp[34]|wav|ogg|zip|gz|tar|pdf)$/i.test(relFile);
-            if (hasParams && !isBinary) {
-              let content = readFileSync(fileSrc, "utf-8");
-              content = applyTemplateParams(content, resolvedParams);
-              writeFileSync(fileDst, content, "utf-8");
-            } else {
-              copyFileSync(fileSrc, fileDst);
-            }
-          }
-          p.log.step(t("pneuma.seeded_workspace", { path: dst }));
-        } else {
-          const dstPath = join(workspace, dst);
-          mkdirSync(dirname(dstPath), { recursive: true });
-          const isBinary = /\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|mp[34]|wav|ogg|zip|gz|tar|pdf)$/i.test(resolvedSrc);
-          if (hasParams && !isBinary) {
-            // Read, apply template params, then write
-            let content = readFileSync(srcPath, "utf-8");
-            content = applyTemplateParams(content, resolvedParams);
-            writeFileSync(dstPath, content, "utf-8");
-          } else {
-            copyFileSync(srcPath, dstPath);
-          }
-          p.log.step(t("pneuma.seeded_workspace", { path: dst }));
-        }
-      }
-
-      // Auto-install deps if package.json was seeded
-      if (existsSync(join(workspace, "package.json"))) {
-        p.log.step(t("pneuma.installing_deps"));
-        const proc = Bun.spawn(["bun", "install"], {
-          cwd: workspace,
-          stdout: "pipe",
-          stderr: "pipe",
-        });
-        await proc.exited;
-      }
-    }
-  }
+  // 1.5 Auto-seed for empty workspaces was removed in 3.14.0 in favour of
+  // the empty-state gallery. The frontend now detects "no content"
+  // (contentSets empty + no workspace files matching the mode's
+  // `init.contentCheckPattern`) and renders gallery cards backed by
+  // `init.seeds`; clicking a card calls POST /api/seeds/apply which
+  // invokes the same locale-resolution + template-substitution + copy
+  // logic that lived here previously (now in `server/seed-installer.ts`).
+  //
+  // Old sessions are unaffected — they already have populated workspaces,
+  // so the runtime-observed "is empty?" check returns false and the
+  // gallery does not show. The resync loop below still runs for
+  // `_`-prefixed framework-managed assets (e.g. kami's `_shared/`),
+  // because those are mode-controlled design-system bundles, not user
+  // content the gallery should mediate.
 
   // Resync mode-managed seed directories on every boot.
   //
@@ -2441,6 +2368,9 @@ async function main() {
     ...(modeBundleDir ? { modeBundleDir } : {}),
     projectRoot: PROJECT_ROOT,
     modeName,
+    modeManifest: manifest,
+    modeSourceDir: resolved.type === "builtin" ? join(PROJECT_ROOT, "modes", resolved.name) : resolved.path,
+    seedBase: resolved.type === "builtin" ? PROJECT_ROOT : resolved.path,
     layout: manifest.layout,
     window: manifest.window,
     editing: initialEditing,

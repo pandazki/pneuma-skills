@@ -13,7 +13,7 @@ export interface WorkspaceSlice {
   workspaceItems: WorkspaceItem[];
 
   setFiles: (files: FileContent[]) => void;
-  updateFiles: (updates: Array<FileContent & { origin?: "self" | "external" }>) => void;
+  updateFiles: (updates: Array<FileContent & { origin?: "self" | "external"; deleted?: boolean }>) => void;
   setActiveContentSet: (prefix: string | null) => void;
 }
 
@@ -80,6 +80,16 @@ export const createWorkspaceSlice: StateCreator<AppState, [], [], WorkspaceSlice
     set((s) => {
       const fileMap = new Map(s.files.map((f) => [f.path, f]));
       for (const u of updates) {
+        if (u.deleted) {
+          // Honour chokidar unlink events — drop the file from the store.
+          // Without this an unlink arrives as a content="" entry and any
+          // resolver that keys off path-presence (content set directory
+          // grouping, workspace item enumeration, etc.) treats the ghost
+          // file as still existing and re-surfaces empty content sets
+          // after a directory delete.
+          fileMap.delete(u.path);
+          continue;
+        }
         fileMap.set(u.path, u);
       }
       const files = Array.from(fileMap.values());

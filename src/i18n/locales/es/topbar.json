@@ -35,5 +35,13 @@
   },
   "disabled_replay": "No disponible en modo reproducción",
   "disabled_git": "Las diferencias requieren un repositorio git. Ejecuta `git init` en el espacio de trabajo.",
-  "replay_badge": "Reproducción"
+  "replay_badge": "Reproducción",
+  "content_set": {
+    "delete_aria": "Eliminar conjunto de contenido",
+    "delete_confirm": "¿Eliminar este conjunto de contenido?",
+    "delete_action": "Eliminar",
+    "delete_cancel": "Cancelar",
+    "deleting": "Eliminando…",
+    "delete_failed": "No se pudo eliminar"
+  }
 }

@@ -52,6 +52,7 @@ export const DEFAULT_FAVORITES: readonly string[] = [
   "builtin::illustrate",
   "builtin::remotion",
   "builtin::kami",
+  "builtin::cosmos",
 ];
 
 /**

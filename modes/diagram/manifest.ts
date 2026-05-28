@@ -66,6 +66,23 @@ const diagramManifest: ModeManifest = {
     seedFiles: {
       "modes/diagram/seed/diagram.drawio": "pneuma-overview.drawio",
     },
+    seeds: [
+      {
+        id: "pneuma-overview",
+        sourceKey: "modes/diagram/seed/diagram.drawio",
+        thumbnail: "pneuma-overview.png",
+        displayName: {
+          en: "Pneuma architecture overview",
+          "zh-CN": "Pneuma 架构总览",
+          "zh-TW": "Pneuma 架構總覽",
+        },
+        description: {
+          en: "Multi-page draw.io tour — architecture, lifecycle, communication. A real diagram you can drill into.",
+          "zh-CN": "多页 draw.io 图表 —— 架构、生命周期、通信。一个可以钻进去看的真实示例。",
+        },
+        tags: ["Architecture"],
+      },
+    ],
   },
 
   evolution: {

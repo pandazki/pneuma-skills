@@ -164,6 +164,23 @@ The user just opened the workspace. You are ready to assist with dashboard creat
     seedFiles: {
       "modes/gridboard/seed/default/": "./",
     },
+    seeds: [
+      {
+        id: "default",
+        sourceKey: "modes/gridboard/seed/default/",
+        thumbnail: "default.png",
+        displayName: {
+          en: "Starter dashboard",
+          "zh-CN": "入门面板",
+          "zh-TW": "入門面板",
+        },
+        description: {
+          en: "An 8×8 grid with a welcome tile and a weather card — start dragging tiles around or ask the agent for more.",
+          "zh-CN": "8×8 网格上一张欢迎卡 + 一块天气磁贴。可以直接拖拽,或让 agent 继续塞磁贴。",
+        },
+        tags: ["Dashboard"],
+      },
+    ],
     params: [
       { name: "boardWidth", label: "Board width", description: "pixels", type: "number", defaultValue: 800 },
       { name: "boardHeight", label: "Board height", description: "pixels", type: "number", defaultValue: 800 },

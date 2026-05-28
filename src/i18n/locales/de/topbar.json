@@ -35,5 +35,13 @@
   },
   "disabled_replay": "Im Wiedergabemodus nicht verfügbar",
   "disabled_git": "Unterschiede erfordern ein Git-Repository. `git init` im Arbeitsbereich ausführen.",
-  "replay_badge": "Wiedergabe"
+  "replay_badge": "Wiedergabe",
+  "content_set": {
+    "delete_aria": "Inhaltsset löschen",
+    "delete_confirm": "Dieses Inhaltsset löschen?",
+    "delete_action": "Löschen",
+    "delete_cancel": "Abbrechen",
+    "deleting": "Wird gelöscht…",
+    "delete_failed": "Konnte nicht gelöscht werden"
+  }
 }

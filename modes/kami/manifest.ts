@@ -162,6 +162,53 @@ const kamiManifest: ModeManifest = {
       "modes/kami/seed/kaku-portfolio/":     "kaku-portfolio/",
       "modes/kami/seed/nvda-equity-report/": "nvda-equity-report/",
     },
+    seeds: [
+      {
+        id: "pneuma-one-pager",
+        sourceKey: "modes/kami/seed/pneuma-one-pager/",
+        thumbnail: "pneuma-one-pager.png",
+        displayName: {
+          en: "Product one-pager",
+          "zh-CN": "产品单页",
+          "zh-TW": "產品單頁",
+        },
+        description: {
+          en: "A single A4 fit-to-page brief — header, pillars, principles, build status. Ready to print or hand off.",
+          "zh-CN": "单页 A4 简报 —— 头部、支柱、原则、构建状态。直接打印或传阅。",
+        },
+        tags: ["A4", "Brief"],
+      },
+      {
+        id: "kaku-portfolio",
+        sourceKey: "modes/kami/seed/kaku-portfolio/",
+        thumbnail: "kaku-portfolio.png",
+        displayName: {
+          en: "Selected works portfolio",
+          "zh-CN": "作品集",
+          "zh-TW": "作品集",
+        },
+        description: {
+          en: "A multi-page narrative portfolio — generous whitespace, refined type. Pace the story across spreads.",
+          "zh-CN": "多页叙事作品集 —— 大量留白、精细排版,跨页讲故事。",
+        },
+        tags: ["Portfolio"],
+      },
+      {
+        id: "nvda-equity-report",
+        sourceKey: "modes/kami/seed/nvda-equity-report/",
+        thumbnail: "nvda-equity-report.png",
+        displayName: {
+          en: "Equity research note",
+          "zh-CN": "个股研报",
+          "zh-TW": "個股研報",
+        },
+        description: {
+          en: "A two-sheet research format with inline charts and financial tables. Swap in your own ticker.",
+          "zh-CN": "两页研报,带内嵌图表与财务表格。换上你的标的就能用。",
+        },
+        tags: ["Research", "Finance"],
+      },
+    ],
     params: [
       { name: "paperSize",   label: "Paper size",  type: "select", options: ["A4", "A5", "A3", "Letter", "Legal"], defaultValue: "A4" },
       { name: "orientation", label: "Orientation", type: "select", options: ["Portrait", "Landscape"],             defaultValue: "Portrait" },
@@ -194,6 +241,11 @@ Focus on: content density (dense one-pager vs breathable long-doc), bilingual to
 kami's defaults or stick close to them.
 Augment the skill with personalized typesetting guidance that respects kami's
 aesthetic constraints.`,
+  },
+
+  inspiredBy: {
+    name: "tw93/kami",
+    url: "https://github.com/tw93/kami",
   },
 };
 

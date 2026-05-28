@@ -1,0 +1,31 @@
+{
+  "intro": {
+    "eyebrow": "Pneuma {{mode}}",
+    "howTitle": "如何开始",
+    "step1": "选一个起点 —— Pneuma 会把它复制到你的工作区,在它的基础上展开。",
+    "step2": "也可以直接说出你想做什么。Pneuma 写文件,面板实时呈现结果。",
+    "step3": "随时修改。Pneuma 始终在看着工作区,顺着你的方向走。"
+  },
+  "cards": {
+    "heading": "选一个起点",
+    "subheading": "{{count}} 个现成模板,点击其一加载到工作区。",
+    "subheading_one": "{{count}} 个现成模板,点击加载到工作区。",
+    "subheading_other": "{{count}} 个现成模板,点击其一加载到工作区。",
+    "empty": "这个模式还没有附带模板。直接描述你想要的,Pneuma 会从零开始构建。",
+    "skipHint": "或直接开始对话 →",
+    "preparing": "正在准备工作区…",
+    "loadError": "无法加载模板列表。"
+  },
+  "card": {
+    "openLabel": "使用这个模板",
+    "applyError": "加载失败,再试一次?"
+  },
+  "noSeed": {
+    "body": "这个模式没有附带模板。在右侧聊天框里说出你想要的,Pneuma 会从零开始搭建 —— 背后的工作区已经准备好。",
+    "hint": "去聊天框开个头"
+  },
+  "onboard": {
+    "close": "关闭",
+    "dismiss": "关闭引导,直接进入工作区"
+  }
+}

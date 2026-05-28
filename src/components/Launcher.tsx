@@ -5131,6 +5131,15 @@ export default function Launcher() {
     return sortFavoritesFirst(modes, favorites, favoriteKey);
   }, [allModes, favorites]);
 
+  // All-modes overlay — favorites surface first within each source
+  // group. `sortFavoritesFirst` is stable, so the per-source split
+  // inside `ModeGallery` (`filtered.filter((m) => m.source === "...")`)
+  // preserves the favorites-first ordering.
+  const allModesSortedByFavorites = React.useMemo(
+    () => sortFavoritesFirst(allModes, favorites, favoriteKey),
+    [allModes, favorites],
+  );
+
   const handleGalleryLaunch = (mode: AnyMode) => {
     setShowGallery(false);
     setLaunchTarget({
@@ -5579,7 +5588,7 @@ export default function Launcher() {
       {/* Gallery overlay */}
       {galleryAnim.mounted && (
         <ModeGallery
-          modes={allModes}
+          modes={allModesSortedByFavorites}
           libraries={libraries}
           onClose={() => setShowGallery(false)}
           onLaunch={handleGalleryLaunch}

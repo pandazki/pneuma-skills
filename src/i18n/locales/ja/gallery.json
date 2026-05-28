@@ -1,0 +1,31 @@
+{
+  "intro": {
+    "eyebrow": "Pneuma {{mode}}",
+    "howTitle": "How to start",
+    "step1": "Pick a starting point — Pneuma copies it into your workspace so you can riff from there.",
+    "step2": "Or describe what you want to make. Pneuma writes the files; the panel shows the result as it goes.",
+    "step3": "Edit anytime. Pneuma watches the workspace and follows your lead."
+  },
+  "cards": {
+    "heading": "Pick a starting point",
+    "subheading": "{{count}} ready-made templates. Click one to load it into your workspace.",
+    "subheading_one": "One ready-made template. Click to load it into your workspace.",
+    "subheading_other": "{{count}} ready-made templates. Click one to load it into your workspace.",
+    "empty": "This mode doesn't ship templates yet. Start by describing what you want — Pneuma will build it from scratch.",
+    "skipHint": "or just start chatting →",
+    "preparing": "Preparing workspace…",
+    "loadError": "Could not load templates."
+  },
+  "card": {
+    "openLabel": "Use this template",
+    "applyError": "Couldn't load. Try again?"
+  },
+  "noSeed": {
+    "body": "This mode doesn't ship templates. Describe what you want in the chat on the right and Pneuma will build it from scratch — the viewer behind is your live workspace.",
+    "hint": "Start in the chat"
+  },
+  "onboard": {
+    "close": "Close",
+    "dismiss": "Close — show the viewer"
+  }
+}

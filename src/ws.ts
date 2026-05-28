@@ -726,7 +726,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       // During replay mode, ignore file watcher updates — files come from checkpoints
       if (store.replayMode) break;
       const IMAGE_RE = /\.(png|jpe?g|gif|webp|svg)$/i;
-      type Incoming = { path: string; content: string; origin?: "self" | "external" };
+      type Incoming = { path: string; content: string; origin?: "self" | "external"; deleted?: boolean };
       const contentFiles = (data.files as Incoming[])
         .filter((f) => !IMAGE_RE.test(f.path))
         .map((f) => ({ ...f, origin: f.origin ?? "external" }));
