@@ -200,6 +200,73 @@ export function createModeWindow(
   return win;
 }
 
+// ── Tear-off Chat Window ───────────────────────────────────────────────────
+
+// A standalone window showing only the agent conversation (`?surface=chat`) for
+// the SAME session as the main window — so the user can drag the chat to
+// another screen. Unlike createModeWindow it is small, never maximizes, and
+// NEVER kills the session on close: the conversation belongs to the main
+// window; this is just a second live view of it.
+const chatWindows = new Map<string, BrowserWindow>();
+
+export function createChatWindow(url: string, owner?: Electron.WebContents): BrowserWindow {
+  const existing = chatWindows.get(url);
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore();
+    existing.focus();
+    return existing;
+  }
+
+  const win = new BrowserWindow({
+    width: 460,
+    height: 760,
+    minWidth: 360,
+    minHeight: 420,
+    backgroundColor: "#09090b",
+    show: false,
+    title: "Pneuma — Chat",
+    webPreferences: {
+      preload: PRELOAD_PATH,
+      contextIsolation: true,
+      nodeIntegration: false,
+      spellcheck: false,
+    },
+  });
+
+  chatWindows.set(url, win);
+  win.once("ready-to-show", () => win.show());
+  win.loadURL(url);
+
+  // External links → system browser (same policy as mode windows).
+  win.webContents.on("will-navigate", (event, navUrl) => {
+    if (!navUrl.startsWith("http://localhost:") && !navUrl.startsWith("http://127.0.0.1:")) {
+      event.preventDefault();
+      shell.openExternal(navUrl);
+    }
+  });
+
+  win.on("closed", () => {
+    chatWindows.delete(url);
+    // Tell the main window the conversation should return to its sidebar.
+    if (owner && !owner.isDestroyed()) {
+      owner.send("pneuma:chat-window-closed", url);
+    }
+  });
+
+  return win;
+}
+
+/** Raise the torn-off chat window to the front (reopening it if it's gone). */
+export function focusChatWindow(url: string, owner?: Electron.WebContents): void {
+  const win = chatWindows.get(url);
+  if (win && !win.isDestroyed()) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+    return;
+  }
+  createChatWindow(url, owner);
+}
+
 /**
  * Promote a hidden (background) mode window to a normal visible window:
  * show, maximize, focus, and re-enable the taskbar entry. Idempotent —

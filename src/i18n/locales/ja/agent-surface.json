@@ -1,0 +1,10 @@
+{
+  "dock": "サイドに固定",
+  "float": "フローティング",
+  "collapse": "折りたたむ",
+  "expand": "チャットを開く",
+  "tear_off": "新しいウィンドウで開く",
+  "working": "処理中…",
+  "ready": "準備完了",
+  "disconnected": "切断されました"
+}

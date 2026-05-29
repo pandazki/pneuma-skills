@@ -1,5 +1,5 @@
 import { ipcMain, app, shell, dialog, BrowserWindow } from "electron";
-import { closeModeWindowByUrl } from "./window-manager.js";
+import { closeModeWindowByUrl, createChatWindow, focusChatWindow } from "./window-manager.js";
 import { handleNativeInvoke, listCapabilities } from "./native-bridge.js";
 import { logEntry, tail, getCurrentLogFile, type LogLevel } from "./logger.js";
 import { showLogWindow, revealLogFile } from "./log-window.js";
@@ -19,6 +19,20 @@ export function registerIpcHandlers() {
 
   ipcMain.handle("pneuma:close-mode-window", (_event, url: string) => {
     closeModeWindowByUrl(url);
+  });
+
+  // Tear off the agent conversation into its own small window (same session,
+  // ?surface=chat). Never kills the session — the main window owns it. The
+  // opener is remembered so it can be told to restore its sidebar on close.
+  ipcMain.handle("pneuma:open-chat-window", (event, url: string) => {
+    createChatWindow(url, event.sender);
+    return { ok: true };
+  });
+
+  // Raise the already-torn-off chat window to the front.
+  ipcMain.handle("pneuma:focus-chat-window", (event, url: string) => {
+    focusChatWindow(url, event.sender);
+    return { ok: true };
   });
 
   ipcMain.handle("pneuma:set-editing", (_event, editing: boolean, opts?: { width?: number; height?: number; resizable?: boolean }) => {

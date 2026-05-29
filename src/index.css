@@ -544,3 +544,30 @@ img {
     background-size: 32px 32px;
   }
 }
+
+/* ── Agent Surface morph ──────────────────────────────────────────────────
+   The conversation is one never-unmounting ChatPanel inside a single fixed
+   host that morphs between forms (docked rail ↔ floating panel ↔ collapsed).
+   Transitions are enabled only while a form change is animating, so dragging
+   the floating panel or resizing the docked rail tracks the pointer instantly
+   (no easing lag). ease-out-quart; transform/opacity for the collapse, box for
+   the dock↔float morph. */
+.agent-surface-host {
+  transition: none;
+  will-change: left, top, width, height, transform, opacity;
+}
+.agent-surface-host[data-animating="true"] {
+  transition:
+    left 0.32s cubic-bezier(0.25, 1, 0.5, 1),
+    top 0.32s cubic-bezier(0.25, 1, 0.5, 1),
+    width 0.32s cubic-bezier(0.25, 1, 0.5, 1),
+    height 0.32s cubic-bezier(0.25, 1, 0.5, 1),
+    transform 0.32s cubic-bezier(0.25, 1, 0.5, 1),
+    opacity 0.22s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-surface-host[data-animating="true"] {
+    transition-duration: 0.01ms;
+  }
+}

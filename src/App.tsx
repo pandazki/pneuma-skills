@@ -3,13 +3,12 @@ import { useTranslation } from "react-i18next";
 import { getApiBase } from "./utils/api.js";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import TopBar from "./components/TopBar.js";
+import ToolDock from "./components/ToolDock.js";
+import AgentSurfaceLayer from "./components/AgentSurfaceLayer.js";
 import ChatPanel from "./components/ChatPanel.js";
-import DiffPanel from "./components/DiffPanel.js";
-import ProcessPanel from "./components/ProcessPanel.js";
-import ContextPanel from "./components/ContextPanel.js";
-import SchedulePanel from "./components/SchedulePanel.js";
 
 import { useStore, nextId } from "./store.js";
+import { loadSurfacePrefs } from "./store/agent-surface-persistence.js";
 import type { SelectionType } from "./types.js";
 import { connect } from "./ws.js";
 import { loadReplay } from "./replay-engine.js";
@@ -29,10 +28,7 @@ import { useBackgroundStatusReporter } from "./hooks/useBackgroundStatusReporter
 import { normalizeViewerState } from "./utils/viewer-state.js";
 import { ViewerErrorBoundary } from "./components/ViewerErrorBoundary.js";
 
-const EditorPanel = lazy(() => import("./components/EditorPanel.js"));
-const TerminalPanel = lazy(() => import("./components/TerminalPanel.js"));
 const Launcher = lazy(() => import("./components/Launcher.js"));
-const AgentBubble = lazy(() => import("./components/AgentBubble.js"));
 const AppModeToggle = lazy(() => import("./components/AppModeToggle.js"));
 const HandoffCard = lazy(() => import("./components/HandoffCard.js"));
 const EmptyShell = lazy(() =>
@@ -50,38 +46,6 @@ function LazyFallback() {
   return (
     <div className="flex items-center justify-center h-full text-cc-muted text-sm">
       {t("loading")}
-    </div>
-  );
-}
-
-function RightPanel() {
-  const activeTab = useStore((s) => s.activeTab);
-  const [terminalMounted, setTerminalMounted] = useState(false);
-
-  useEffect(() => {
-    if (activeTab === "terminal") setTerminalMounted(true);
-  }, [activeTab]);
-
-  return (
-    <div className="flex flex-col h-full">
-      {activeTab === "chat" && <ChatPanel />}
-      {activeTab === "editor" && (
-        <Suspense fallback={<LazyFallback />}>
-          <EditorPanel />
-        </Suspense>
-      )}
-      {activeTab === "diff" && <DiffPanel />}
-      {/* Terminal stays mounted once visited to preserve PTY connection */}
-      {terminalMounted && (
-        <Suspense fallback={activeTab === "terminal" ? <LazyFallback /> : null}>
-          <div className={activeTab === "terminal" ? "flex flex-col h-full" : "hidden"}>
-            <TerminalPanel />
-          </div>
-        </Suspense>
-      )}
-      {activeTab === "processes" && <ProcessPanel />}
-      {activeTab === "context" && <ContextPanel />}
-      {activeTab === "schedules" && <SchedulePanel />}
     </div>
   );
 }
@@ -260,6 +224,10 @@ export default function App() {
     return params.has("launcher") || (!params.has("session") && !params.has("mode"));
   });
   const [projectParam] = useState(() => new URLSearchParams(location.search).get("project"));
+  // Tear-off chat window — `?surface=chat` renders ONLY the conversation,
+  // full-window, for the same session (desktop "open in new window"). Same
+  // sessionId → same WS → same live conversation as the main window.
+  const [isChatWindow] = useState(() => new URLSearchParams(location.search).get("surface") === "chat");
   // Empty shell — `?project=<root>` with no session/mode. Renders the editor
   // chrome + TopBar without spawning an agent. ProjectChip (Phase 2) will
   // mount inside the surviving TopBar to expose the project's sessions.
@@ -462,10 +430,36 @@ export default function App() {
     }
   }, [contentSets, systemPrefs]); // activeContentSet intentionally excluded
 
+  // Agent Surface initial form — resolve the user's saved layout habit
+  // (per-mode → global), else derive from the manifest's layout hint
+  // (app → collapsed bubble, editor → docked rail). Runs once per mode load.
+  // Keyed on the manifest, not /api/config, so it doesn't race the layout
+  // fetch; the manifest already carries `layout`.
+  const modeNameForSurface = useStore((s) => s.modeManifest?.name);
+  const surfaceInitedRef = useRef(false);
+  useEffect(() => {
+    if (surfaceInitedRef.current || !modeNameForSurface) return;
+    surfaceInitedRef.current = true;
+    const store = useStore.getState();
+    const prefs = loadSurfacePrefs(modeNameForSurface);
+    if (prefs?.form) {
+      store.setSurfaceForm(prefs.form);
+    } else {
+      store.setSurfaceForm(store.modeManifest?.layout === "app" ? "collapsed" : "docked");
+    }
+    if (prefs?.floatRect) store.setFloatRect(prefs.floatRect);
+    if (prefs?.lastExpandedForm) {
+      useStore.setState({ lastExpandedForm: prefs.lastExpandedForm });
+    }
+  }, [modeNameForSurface]);
+
   const viewerProps = useViewerProps(systemPrefs);
   const layout = useStore((s) => s.layout);
   const replayMode = useStore((s) => s.replayMode);
   const editing = useStore((s) => s.editing);
+  const activeTab = useStore((s) => s.activeTab);
+  const surfaceForm = useStore((s) => s.surfaceForm);
+  const tornOff = useStore((s) => s.tornOff);
 
   // Gallery decision — show the seed-gallery empty state when the
   // workspace has no agent-authored content and the mode ships seeds.
@@ -557,6 +551,15 @@ export default function App() {
 
   const modeNameForError = modeManifestForGallery?.name;
 
+  // Tear-off chat window — full-window conversation, no viewer/shell chrome.
+  if (isChatWindow) {
+    return (
+      <div className={`h-screen w-screen bg-cc-bg text-cc-fg ${themeClass}`}>
+        <ChatPanel />
+      </div>
+    );
+  }
+
   if (layout === "app" && !editing) {
     return (
       <div className={`h-screen w-screen bg-cc-bg text-cc-fg relative overflow-hidden ${themeClass}`}>
@@ -610,7 +613,18 @@ export default function App() {
       <div className="session-shell-card relative z-10 flex flex-col flex-1 border border-cc-primary/20 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(249,115,22,0.15)] ring-1 ring-white/5 before:absolute before:inset-0 before:bg-cc-surface/40 before:backdrop-blur-3xl before:-z-10">
         <TopBar />
         <Group orientation="horizontal" className="flex-1 min-h-0">
-          <Panel defaultSize={65} minSize={30}>
+          {/* Left tool dock — only present when a tool tab is open. Chat is
+              NOT here; it lives in the Agent Surface (docked rail / floating /
+              bubble), rendered by AgentSurfaceLayer at the session root. */}
+          {activeTab && (
+            <>
+              <Panel key="tool-dock" id="tool-dock" defaultSize={28} minSize={18}>
+                <ToolDock />
+              </Panel>
+              <Separator className="w-[1px] bg-cc-border/40 hover:w-1 hover:bg-cc-primary/40 transition-all duration-300 cursor-col-resize z-10" />
+            </>
+          )}
+          <Panel key="viewer" id="viewer" defaultSize={68} minSize={30}>
             <div ref={previewRef} className="h-full w-full relative">
               {showGallery ? (
                 <Suspense fallback={<LazyFallback />}>
@@ -634,13 +648,22 @@ export default function App() {
               )}
             </div>
           </Panel>
-          <Separator className="w-[1px] bg-cc-border/40 hover:w-1 hover:bg-cc-primary/40 transition-all duration-300 cursor-col-resize z-10" />
-          <Panel defaultSize={35} minSize={20}>
-            <RightPanel />
-          </Panel>
+          {/* Docked agent rail — a reserved, resizable slot the Agent Surface
+              host snaps over. Floating / collapsed forms vacate the slot so the
+              viewer goes full-bleed. The slot is empty; the morphing card is
+              AgentSurfaceLayer, rendered once at the session root below. */}
+          {surfaceForm === "docked" && !tornOff && (
+            <>
+              <Separator className="w-[1px] bg-cc-border/40 hover:w-1 hover:bg-cc-primary/40 transition-all duration-300 cursor-col-resize z-10" />
+              <Panel key="agent" id="agent" defaultSize={32} minSize={20}>
+                <div id="agent-dock-slot" className="h-full w-full" />
+              </Panel>
+            </>
+          )}
         </Group>
         {replayMode && <ReplayPlayer />}
       </div>
+      <AgentSurfaceLayer />
       <Suspense fallback={null}>
         <HandoffCard />
       </Suspense>

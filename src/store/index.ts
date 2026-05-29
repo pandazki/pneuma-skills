@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { getApiBase } from "../utils/api.js";
 import type { AppState } from "./types.js";
 import { createUiSlice } from "./ui-slice.js";
+import { createAgentSurfaceSlice } from "./agent-surface-slice.js";
+import { saveSurfacePrefs } from "./agent-surface-persistence.js";
 import { createSessionSlice } from "./session-slice.js";
 import { createAgentDataSlice } from "./agent-data-slice.js";
 import { createChatSlice } from "./chat-slice.js";
@@ -15,6 +17,7 @@ import { normalizeViewerState } from "../utils/viewer-state.js";
 
 export const useStore = create<AppState>()((...a) => ({
   ...createUiSlice(...a),
+  ...createAgentSurfaceSlice(...a),
   ...createSessionSlice(...a),
   ...createAgentDataSlice(...a),
   ...createChatSlice(...a),
@@ -116,6 +119,30 @@ useStore.subscribe(
   (state, prevState) => {
     if (state.activeContentSet !== prevState.activeContentSet || state.activeFile !== prevState.activeFile) {
       saveViewerState();
+    }
+  },
+);
+
+// ── Agent Surface preference persistence (debounced) ───────────────────────
+// Persists the layout habit (form + floating rect) per-mode + global. Dragging
+// the floating panel mutates floatRect on every pointermove, so debounce.
+let _surfaceSaveTimer: ReturnType<typeof setTimeout> | null = null;
+function saveSurface() {
+  if (_surfaceSaveTimer) clearTimeout(_surfaceSaveTimer);
+  _surfaceSaveTimer = setTimeout(() => {
+    const { surfaceForm, floatRect, lastExpandedForm, modeManifest } = useStore.getState();
+    saveSurfacePrefs(modeManifest?.name, { form: surfaceForm, floatRect, lastExpandedForm });
+  }, 300);
+}
+
+useStore.subscribe(
+  (state, prevState) => {
+    if (
+      state.surfaceForm !== prevState.surfaceForm ||
+      state.floatRect !== prevState.floatRect ||
+      state.lastExpandedForm !== prevState.lastExpandedForm
+    ) {
+      saveSurface();
     }
   },
 );

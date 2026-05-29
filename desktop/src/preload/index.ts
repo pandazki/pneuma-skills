@@ -8,6 +8,17 @@ contextBridge.exposeInMainWorld("pneumaDesktop", {
   showOpenDialog: (options: { title?: string; defaultPath?: string; buttonLabel?: string }) =>
     ipcRenderer.invoke("pneuma:show-open-dialog", options),
   closeModeWindow: (url: string) => ipcRenderer.invoke("pneuma:close-mode-window", url),
+  // Tear the agent conversation off into its own window (same session).
+  openChatWindow: (url: string) => ipcRenderer.invoke("pneuma:open-chat-window", url),
+  // Raise the torn-off chat window to the front.
+  focusChatWindow: (url: string) => ipcRenderer.invoke("pneuma:focus-chat-window", url),
+  // Notified when the torn-off chat window closes so the main window can
+  // restore the conversation to its sidebar. Returns an unsubscribe fn.
+  onChatWindowClosed: (cb: (url: string) => void) => {
+    const handler = (_: unknown, url: string) => cb(url);
+    ipcRenderer.on("pneuma:chat-window-closed", handler);
+    return () => ipcRenderer.off("pneuma:chat-window-closed", handler);
+  },
   capturePage: (rect?: { x: number; y: number; width: number; height: number }) =>
     ipcRenderer.invoke("pneuma:capture-page", rect) as Promise<string | null>,
   setEditing: (editing: boolean, opts?: { width?: number; height?: number; resizable?: boolean }) =>
