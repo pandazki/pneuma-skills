@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.16.0] - 2026-05-29
+
+### Added — Agent Surface: relocatable, session-scoped chat
+
+The agent conversation is no longer nailed to the right split-panel or to a manifest-locked layout. It becomes a relocatable **Agent Surface** — the same `ChatPanel` instance presented in one of three forms, with silky morphs between them:
+
+- **Docked** — the familiar right rail (default for editor-layout modes).
+- **Floating** — a draggable / resizable glass panel over the viewer; drag the header, resize the corner, release near a screen edge to snap.
+- **Collapsed** — a bubble in the corner; the viewer goes full-bleed.
+- **Tear-off (desktop)** — pop the conversation into its own OS window you can drag to another screen.
+
+Form switches morph via CSS box transitions (ease-out-quart, gated off during drag/resize so the pointer never lags) and the `ChatPanel` never unmounts — scroll position, streaming, and the WS connection survive every relocation. The chosen form + floating rect persist as a per-mode habit (global fallback) in `localStorage`; the conversation itself stays session-owned (the agent session *is* the runtime session — never lifted to app/launcher scope).
+
+Chat is also split out of the right-panel tab bar: the dev/inspection tools (editor, diff, terminal, processes, context, schedules) become a deselectable left dock, and chat owns the right as its relocatable home. App-layout modes (e.g. gridboard) route through the editor layout and default to the collapsed bubble.
+
+Desktop tear-off lifecycle: the floating surface gains an "open in new window" control; while torn off, the main window shows a placeholder bubble that focuses the child window (no duplicate chat), and closing the child window re-docks the conversation to the sidebar.
+
+New: `agent-surface-slice` + `agent-surface-persistence`, `AgentSurfaceLayer` / `AgentSurfaceControls` / `AgentBubble` / `ToolDock` components, `agent-surface` i18n namespace (7 locales), and desktop `openChatWindow` / `focusChatWindow` / `onChatWindowClosed` IPC.
+
 ## [3.15.8] - 2026-05-29
 
 ### Added — TypeScript typecheck gate in CI
