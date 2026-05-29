@@ -50,6 +50,27 @@ export default function AgentSurfaceControls({ form }: { form: SurfaceForm }) {
   const { t } = useTranslation("agent-surface");
   const setSurfaceForm = useStore((s) => s.setSurfaceForm);
   const collapseSurface = useStore((s) => s.collapseSurface);
+  const tearOffSurface = useStore((s) => s.tearOffSurface);
+
+  // Tear-off is desktop-only and meaningless inside the torn-off window itself.
+  const openChatWindow =
+    typeof window !== "undefined"
+      ? (window as { pneumaDesktop?: { openChatWindow?: (url: string) => void } }).pneumaDesktop?.openChatWindow
+      : undefined;
+  const inChatWindow =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("surface") === "chat";
+  const canTearOff = !!openChatWindow && !inChatWindow;
+
+  const tearOff = () => {
+    if (!openChatWindow) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("surface", "chat");
+    openChatWindow(url.toString());
+    // Enter the torn-off state: this window hides its surface and shows a
+    // placeholder bubble that focuses the child window (no second chat).
+    tearOffSurface();
+  };
 
   return (
     <div className="flex items-center gap-0.5">
@@ -68,6 +89,16 @@ export default function AgentSurfaceControls({ form }: { form: SurfaceForm }) {
           <path d="M6 6.5h.01M9 6.5h.01" />
         </svg>
       </ControlButton>
+      {canTearOff && (
+        <ControlButton label={t("tear_off")} onClick={tearOff}>
+          {/* external-link — pop the conversation into its own window */}
+          <svg {...iconProps}>
+            <path d="M15 3h6v6" />
+            <path d="M10 14 21 3" />
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6" />
+          </svg>
+        </ControlButton>
+      )}
       <ControlButton label={t("collapse")} onClick={collapseSurface}>
         {/* chevron-down — collapse to the bubble */}
         <svg {...iconProps}>

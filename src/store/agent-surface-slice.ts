@@ -30,11 +30,22 @@ export interface AgentSurfaceSlice {
   floatRect: FloatRect;
   /** Form to restore to when expanding from the collapsed bubble. */
   lastExpandedForm: "docked" | "floating";
+  /**
+   * Desktop only: the conversation has been torn off into its own OS window.
+   * While true the in-window surface hides itself (so the chat isn't shown
+   * twice) and shows a placeholder bubble that focuses the torn-off window.
+   * Transient — never persisted (it tracks live window state, not a habit).
+   */
+  tornOff: boolean;
 
   setSurfaceForm: (form: SurfaceForm) => void;
   setFloatRect: (rect: Partial<FloatRect>) => void;
   collapseSurface: () => void;
   expandSurface: () => void;
+  /** Enter the torn-off state (the child window is being/has been opened). */
+  tearOffSurface: () => void;
+  /** Child window closed → bring the conversation back to the docked rail. */
+  restoreFromTearOff: () => void;
 }
 
 const FLOAT_W = 440;
@@ -58,6 +69,7 @@ export const createAgentSurfaceSlice: StateCreator<AppState, [], [], AgentSurfac
   surfaceForm: "docked",
   floatRect: defaultFloatRect(),
   lastExpandedForm: "docked",
+  tornOff: false,
 
   setSurfaceForm: (form) =>
     set(
@@ -71,4 +83,9 @@ export const createAgentSurfaceSlice: StateCreator<AppState, [], [], AgentSurfac
   collapseSurface: () => set({ surfaceForm: "collapsed" }),
 
   expandSurface: () => set((s) => ({ surfaceForm: s.lastExpandedForm })),
+
+  tearOffSurface: () => set({ tornOff: true }),
+
+  // The conversation returns to the docked sidebar when its window closes.
+  restoreFromTearOff: () => set({ tornOff: false, surfaceForm: "docked", lastExpandedForm: "docked" }),
 });

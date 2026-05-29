@@ -37,6 +37,8 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 export default function AgentSurfaceLayer() {
   const form = useStore((s) => s.surfaceForm);
   const floatRect = useStore((s) => s.floatRect);
+  const tornOff = useStore((s) => s.tornOff);
+  const restoreFromTearOff = useStore((s) => s.restoreFromTearOff);
 
   const [dockRect, setDockRect] = useState<Box | null>(null);
   const [interacting, setInteracting] = useState(false);
@@ -46,7 +48,7 @@ export default function AgentSurfaceLayer() {
   // Track the docked rail geometry. Editor layout reserves a real slot; app
   // layout has none, so fall back to a right-edge overlay rail.
   useEffect(() => {
-    if (form !== "docked") {
+    if (form !== "docked" || tornOff) {
       setDockRect(null);
       return;
     }
@@ -84,22 +86,30 @@ export default function AgentSurfaceLayer() {
       window.removeEventListener("resize", measure);
       cancelAnimationFrame(raf);
     };
-  }, [form]);
+  }, [form, tornOff]);
 
-  // Resolve the host box. Collapsed keeps the last expanded box so it scales in
-  // place toward the corner rather than jumping.
+  // Desktop: when the torn-off chat window closes, bring the conversation home.
+  useEffect(() => {
+    const desktop = (window as { pneumaDesktop?: { onChatWindowClosed?: (cb: (url: string) => void) => () => void } }).pneumaDesktop;
+    if (!desktop?.onChatWindowClosed) return;
+    return desktop.onChatWindowClosed(() => restoreFromTearOff());
+  }, [restoreFromTearOff]);
+
+  // Resolve the host box. The host is hidden (scaled + faded toward the corner)
+  // both when collapsed and when torn off; it keeps its last box so it scales
+  // in place rather than jumping.
   const boxRef = useRef<Box>(floatRect);
-  const collapsed = form === "collapsed";
   const docked = form === "docked";
+  const hidden = form === "collapsed" || tornOff;
   let box: Box;
-  if (docked && dockRect) box = dockRect;
-  else if (collapsed) box = boxRef.current;
+  if (docked && dockRect && !tornOff) box = dockRect;
+  else if (hidden) box = boxRef.current;
   else box = floatRect;
-  if (!collapsed) boxRef.current = box;
+  if (!hidden) boxRef.current = box;
 
   // Hide for the first frame after docking until the slot is measured, so the
   // card doesn't flash at the floating position.
-  const awaitingDock = docked && !dockRect;
+  const awaitingDock = docked && !dockRect && !tornOff;
   const animating = !interacting && !slotResizing;
 
   const startDrag = useCallback((e: React.PointerEvent) => {
@@ -156,6 +166,19 @@ export default function AgentSurfaceLayer() {
     document.addEventListener("pointerup", onUp);
   }, []);
 
+  // Placeholder bubble action while torn off: raise the child window. If the
+  // bridge is somehow gone, fall back to pulling the conversation back home.
+  const focusTornOff = useCallback(() => {
+    const desktop = (window as { pneumaDesktop?: { focusChatWindow?: (url: string) => void } }).pneumaDesktop;
+    if (!desktop?.focusChatWindow) {
+      restoreFromTearOff();
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set("surface", "chat");
+    desktop.focusChatWindow(url.toString());
+  }, [restoreFromTearOff]);
+
   return (
     <>
       <div
@@ -164,16 +187,16 @@ export default function AgentSurfaceLayer() {
                    shadow-[0_0_40px_rgba(249,115,22,0.15)]
                    before:absolute before:inset-0 before:bg-cc-surface/80 before:backdrop-blur-2xl before:-z-10"
         data-animating={animating}
-        aria-hidden={collapsed}
+        aria-hidden={hidden}
         style={{
           left: box.x,
           top: box.y,
           width: box.w,
           height: box.h,
-          opacity: collapsed || awaitingDock ? 0 : 1,
-          transform: collapsed ? "scale(0.86)" : "scale(1)",
+          opacity: hidden || awaitingDock ? 0 : 1,
+          transform: hidden ? "scale(0.86)" : "scale(1)",
           transformOrigin: "bottom right",
-          pointerEvents: collapsed || awaitingDock ? "none" : "auto",
+          pointerEvents: hidden || awaitingDock ? "none" : "auto",
         }}
       >
         {/* Header — drag handle (floating only) + form controls */}
@@ -218,7 +241,11 @@ export default function AgentSurfaceLayer() {
         )}
       </div>
 
-      {collapsed && <AgentBubble />}
+      {tornOff ? (
+        <AgentBubble tornOff onActivate={focusTornOff} />
+      ) : form === "collapsed" ? (
+        <AgentBubble />
+      ) : null}
     </>
   );
 }

@@ -5,6 +5,7 @@ import { Panel, Group, Separator } from "react-resizable-panels";
 import TopBar from "./components/TopBar.js";
 import ToolDock from "./components/ToolDock.js";
 import AgentSurfaceLayer from "./components/AgentSurfaceLayer.js";
+import ChatPanel from "./components/ChatPanel.js";
 
 import { useStore, nextId } from "./store.js";
 import { loadSurfacePrefs } from "./store/agent-surface-persistence.js";
@@ -223,6 +224,10 @@ export default function App() {
     return params.has("launcher") || (!params.has("session") && !params.has("mode"));
   });
   const [projectParam] = useState(() => new URLSearchParams(location.search).get("project"));
+  // Tear-off chat window — `?surface=chat` renders ONLY the conversation,
+  // full-window, for the same session (desktop "open in new window"). Same
+  // sessionId → same WS → same live conversation as the main window.
+  const [isChatWindow] = useState(() => new URLSearchParams(location.search).get("surface") === "chat");
   // Empty shell — `?project=<root>` with no session/mode. Renders the editor
   // chrome + TopBar without spawning an agent. ProjectChip (Phase 2) will
   // mount inside the surviving TopBar to expose the project's sessions.
@@ -454,6 +459,7 @@ export default function App() {
   const editing = useStore((s) => s.editing);
   const activeTab = useStore((s) => s.activeTab);
   const surfaceForm = useStore((s) => s.surfaceForm);
+  const tornOff = useStore((s) => s.tornOff);
 
   // Gallery decision — show the seed-gallery empty state when the
   // workspace has no agent-authored content and the mode ships seeds.
@@ -544,6 +550,15 @@ export default function App() {
   //    Edit mode falls through to the editor layout below for full editing experience.
 
   const modeNameForError = modeManifestForGallery?.name;
+
+  // Tear-off chat window — full-window conversation, no viewer/shell chrome.
+  if (isChatWindow) {
+    return (
+      <div className={`h-screen w-screen bg-cc-bg text-cc-fg ${themeClass}`}>
+        <ChatPanel />
+      </div>
+    );
+  }
 
   if (layout === "app" && !editing) {
     return (
@@ -637,7 +652,7 @@ export default function App() {
               host snaps over. Floating / collapsed forms vacate the slot so the
               viewer goes full-bleed. The slot is empty; the morphing card is
               AgentSurfaceLayer, rendered once at the session root below. */}
-          {surfaceForm === "docked" && (
+          {surfaceForm === "docked" && !tornOff && (
             <>
               <Separator className="w-[1px] bg-cc-border/40 hover:w-1 hover:bg-cc-primary/40 transition-all duration-300 cursor-col-resize z-10" />
               <Panel key="agent" id="agent" defaultSize={32} minSize={20}>
