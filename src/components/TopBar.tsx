@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
+import type { ToolTab } from "../store/ui-slice.js";
 import { getApiBase } from "../utils/api.js";
 import ContentSetSelector from "./ContentSetSelector.js";
 import ModeLabel from "./ModeLabel.js";
@@ -279,10 +280,9 @@ function ShareDropdown() {
   );
 }
 
-type Tab = "chat" | "editor" | "diff" | "terminal" | "processes" | "context" | "schedules";
-
-const TABS: { id: Tab; labelKey: string }[] = [
-  { id: "chat", labelKey: "tabs.chat" },
+// Chat is no longer a tab — it is the relocatable Agent Surface. These are
+// the dev/inspection tools only; clicking the active one again closes it.
+const TABS: { id: ToolTab; labelKey: string }[] = [
   { id: "editor", labelKey: "tabs.editor" },
   { id: "diff", labelKey: "tabs.diff" },
   { id: "terminal", labelKey: "tabs.terminal" },
@@ -326,14 +326,16 @@ export default function TopBar() {
 
   useEffect(() => {
     if (!scheduleAvailable && activeTab === "schedules") {
-      setActiveTab("chat");
+      setActiveTab(null);
     }
   }, [activeTab, scheduleAvailable, setActiveTab]);
 
-  // Auto-switch to Chat when entering replay mode
+  // Replay is a read-only historical view — close any open tool so the
+  // replayed viewer + chat take the stage. Chat is always present now (the
+  // Agent Surface), so there is nothing to switch *to*, only tools to close.
   useEffect(() => {
-    if (replayMode && activeTab !== "chat") {
-      setActiveTab("chat");
+    if (replayMode && activeTab !== null) {
+      setActiveTab(null);
     }
   }, [replayMode, activeTab, setActiveTab]);
 
@@ -479,14 +481,14 @@ export default function TopBar() {
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >
           {visibleTabs.map((tab) => {
-            const disabledByReplay = replayMode && tab.id !== "chat";
+            const disabledByReplay = replayMode;
             const disabledByGit = tab.id === "diff" && gitAvailable === false;
             const disabled = disabledByReplay || disabledByGit;
             const badge = tab.id === "schedules" && cronJobCount > 0 ? cronJobCount : 0;
             return (
               <button
                 key={tab.id}
-                onClick={() => !disabled && setActiveTab(tab.id)}
+                onClick={() => !disabled && setActiveTab(activeTab === tab.id ? null : tab.id)}
                 title={disabledByReplay ? t("disabled_replay") : disabledByGit ? t("disabled_git") : undefined}
                 className={`relative px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${disabled
                   ? "text-cc-muted/30 cursor-not-allowed"
