@@ -4,7 +4,7 @@ import { getApiBase } from "./utils/api.js";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import TopBar from "./components/TopBar.js";
 import ToolDock from "./components/ToolDock.js";
-import AgentSurface from "./components/AgentSurface.js";
+import AgentSurfaceLayer from "./components/AgentSurfaceLayer.js";
 
 import { useStore, nextId } from "./store.js";
 import { loadSurfacePrefs } from "./store/agent-surface-persistence.js";
@@ -29,8 +29,6 @@ import { ViewerErrorBoundary } from "./components/ViewerErrorBoundary.js";
 
 const Launcher = lazy(() => import("./components/Launcher.js"));
 const AppModeToggle = lazy(() => import("./components/AppModeToggle.js"));
-const AgentFloating = lazy(() => import("./components/AgentFloating.js"));
-const AgentBubble = lazy(() => import("./components/AgentBubble.js"));
 const HandoffCard = lazy(() => import("./components/HandoffCard.js"));
 const EmptyShell = lazy(() =>
   import("./components/EmptyShell.js").then((m) => ({ default: m.EmptyShell })),
@@ -601,7 +599,8 @@ export default function App() {
         <TopBar />
         <Group orientation="horizontal" className="flex-1 min-h-0">
           {/* Left tool dock — only present when a tool tab is open. Chat is
-              NOT here; it lives in the AgentSurface rail on the right. */}
+              NOT here; it lives in the Agent Surface (docked rail / floating /
+              bubble), rendered by AgentSurfaceLayer at the session root. */}
           {activeTab && (
             <>
               <Panel key="tool-dock" id="tool-dock" defaultSize={28} minSize={18}>
@@ -634,30 +633,22 @@ export default function App() {
               )}
             </div>
           </Panel>
-          {/* Docked agent rail — present only when the surface is docked.
-              Floating / collapsed forms render as overlays below so the
-              viewer goes full-bleed when the conversation steps back. */}
+          {/* Docked agent rail — a reserved, resizable slot the Agent Surface
+              host snaps over. Floating / collapsed forms vacate the slot so the
+              viewer goes full-bleed. The slot is empty; the morphing card is
+              AgentSurfaceLayer, rendered once at the session root below. */}
           {surfaceForm === "docked" && (
             <>
               <Separator className="w-[1px] bg-cc-border/40 hover:w-1 hover:bg-cc-primary/40 transition-all duration-300 cursor-col-resize z-10" />
               <Panel key="agent" id="agent" defaultSize={32} minSize={20}>
-                <AgentSurface />
+                <div id="agent-dock-slot" className="h-full w-full" />
               </Panel>
             </>
           )}
         </Group>
         {replayMode && <ReplayPlayer />}
       </div>
-      {surfaceForm === "floating" && (
-        <Suspense fallback={null}>
-          <AgentFloating />
-        </Suspense>
-      )}
-      {surfaceForm === "collapsed" && (
-        <Suspense fallback={null}>
-          <AgentBubble />
-        </Suspense>
-      )}
+      <AgentSurfaceLayer />
       <Suspense fallback={null}>
         <HandoffCard />
       </Suspense>
