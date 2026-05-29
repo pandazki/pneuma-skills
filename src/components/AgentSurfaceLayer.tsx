@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "../store.js";
 import ChatPanel from "./ChatPanel.js";
 import AgentSurfaceControls from "./AgentSurfaceControls.js";
@@ -87,6 +87,29 @@ export default function AgentSurfaceLayer() {
       cancelAnimationFrame(raf);
     };
   }, [form, tornOff]);
+
+  // Keep the floating card inside the viewport. Runs the instant the surface
+  // enters the floating form (so a stale floatRect from before a window resize
+  // can't drop the card off-screen — clamp against the CURRENT viewport at
+  // click time) and again whenever the window resizes while floating.
+  // useLayoutEffect so the clamp lands before paint — the morph then animates
+  // straight to a visible position.
+  useLayoutEffect(() => {
+    if (form !== "floating") return;
+    const clampIntoView = () => {
+      const r = useStore.getState().floatRect;
+      const w = Math.min(r.w, window.innerWidth - 2 * MARGIN);
+      const h = Math.min(r.h, window.innerHeight - 2 * MARGIN);
+      const x = clamp(r.x, MARGIN, Math.max(MARGIN, window.innerWidth - w - MARGIN));
+      const y = clamp(r.y, MARGIN, Math.max(MARGIN, window.innerHeight - h - MARGIN));
+      if (x !== r.x || y !== r.y || w !== r.w || h !== r.h) {
+        useStore.getState().setFloatRect({ x, y, w, h });
+      }
+    };
+    clampIntoView();
+    window.addEventListener("resize", clampIntoView);
+    return () => window.removeEventListener("resize", clampIntoView);
+  }, [form]);
 
   // Desktop: when the torn-off chat window closes, bring the conversation home.
   useEffect(() => {
