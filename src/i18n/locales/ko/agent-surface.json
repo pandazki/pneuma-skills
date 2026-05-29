@@ -1,0 +1,10 @@
+{
+  "dock": "사이드에 고정",
+  "float": "플로팅",
+  "collapse": "접기",
+  "expand": "채팅 열기",
+  "tear_off": "새 창에서 열기",
+  "working": "작업 중…",
+  "ready": "준비됨",
+  "disconnected": "연결 끊김"
+}

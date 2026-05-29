@@ -7,6 +7,7 @@ import ToolDock from "./components/ToolDock.js";
 import AgentSurface from "./components/AgentSurface.js";
 
 import { useStore, nextId } from "./store.js";
+import { loadSurfacePrefs } from "./store/agent-surface-persistence.js";
 import type { SelectionType } from "./types.js";
 import { connect } from "./ws.js";
 import { loadReplay } from "./replay-engine.js";
@@ -28,6 +29,8 @@ import { ViewerErrorBoundary } from "./components/ViewerErrorBoundary.js";
 
 const Launcher = lazy(() => import("./components/Launcher.js"));
 const AppModeToggle = lazy(() => import("./components/AppModeToggle.js"));
+const AgentFloating = lazy(() => import("./components/AgentFloating.js"));
+const AgentBubble = lazy(() => import("./components/AgentBubble.js"));
 const HandoffCard = lazy(() => import("./components/HandoffCard.js"));
 const EmptyShell = lazy(() =>
   import("./components/EmptyShell.js").then((m) => ({ default: m.EmptyShell })),
@@ -424,11 +427,35 @@ export default function App() {
     }
   }, [contentSets, systemPrefs]); // activeContentSet intentionally excluded
 
+  // Agent Surface initial form — resolve the user's saved layout habit
+  // (per-mode → global), else derive from the manifest's layout hint
+  // (app → collapsed bubble, editor → docked rail). Runs once per mode load.
+  // Keyed on the manifest, not /api/config, so it doesn't race the layout
+  // fetch; the manifest already carries `layout`.
+  const modeNameForSurface = useStore((s) => s.modeManifest?.name);
+  const surfaceInitedRef = useRef(false);
+  useEffect(() => {
+    if (surfaceInitedRef.current || !modeNameForSurface) return;
+    surfaceInitedRef.current = true;
+    const store = useStore.getState();
+    const prefs = loadSurfacePrefs(modeNameForSurface);
+    if (prefs?.form) {
+      store.setSurfaceForm(prefs.form);
+    } else {
+      store.setSurfaceForm(store.modeManifest?.layout === "app" ? "collapsed" : "docked");
+    }
+    if (prefs?.floatRect) store.setFloatRect(prefs.floatRect);
+    if (prefs?.lastExpandedForm) {
+      useStore.setState({ lastExpandedForm: prefs.lastExpandedForm });
+    }
+  }, [modeNameForSurface]);
+
   const viewerProps = useViewerProps(systemPrefs);
   const layout = useStore((s) => s.layout);
   const replayMode = useStore((s) => s.replayMode);
   const editing = useStore((s) => s.editing);
   const activeTab = useStore((s) => s.activeTab);
+  const surfaceForm = useStore((s) => s.surfaceForm);
 
   // Gallery decision — show the seed-gallery empty state when the
   // workspace has no agent-authored content and the mode ships seeds.
@@ -607,13 +634,30 @@ export default function App() {
               )}
             </div>
           </Panel>
-          <Separator className="w-[1px] bg-cc-border/40 hover:w-1 hover:bg-cc-primary/40 transition-all duration-300 cursor-col-resize z-10" />
-          <Panel key="agent" id="agent" defaultSize={32} minSize={20}>
-            <AgentSurface />
-          </Panel>
+          {/* Docked agent rail — present only when the surface is docked.
+              Floating / collapsed forms render as overlays below so the
+              viewer goes full-bleed when the conversation steps back. */}
+          {surfaceForm === "docked" && (
+            <>
+              <Separator className="w-[1px] bg-cc-border/40 hover:w-1 hover:bg-cc-primary/40 transition-all duration-300 cursor-col-resize z-10" />
+              <Panel key="agent" id="agent" defaultSize={32} minSize={20}>
+                <AgentSurface />
+              </Panel>
+            </>
+          )}
         </Group>
         {replayMode && <ReplayPlayer />}
       </div>
+      {surfaceForm === "floating" && (
+        <Suspense fallback={null}>
+          <AgentFloating />
+        </Suspense>
+      )}
+      {surfaceForm === "collapsed" && (
+        <Suspense fallback={null}>
+          <AgentBubble />
+        </Suspense>
+      )}
       <Suspense fallback={null}>
         <HandoffCard />
       </Suspense>

@@ -38,6 +38,7 @@ export type { ProcessItem } from "../components/ProcessPanel.js";
 
 // Slice interfaces — imported by each slice and combined into AppState
 export type { UiSlice } from "./ui-slice.js";
+export type { AgentSurfaceSlice } from "./agent-surface-slice.js";
 export type { SessionSlice } from "./session-slice.js";
 export type { AgentDataSlice } from "./agent-data-slice.js";
 export type { ChatSlice } from "./chat-slice.js";
@@ -49,6 +50,7 @@ export type { PluginSlice } from "./plugin-slice.js";
 export type { ProjectSlice } from "./project-slice.js";
 
 import type { UiSlice } from "./ui-slice.js";
+import type { AgentSurfaceSlice } from "./agent-surface-slice.js";
 import type { SessionSlice } from "./session-slice.js";
 import type { AgentDataSlice } from "./agent-data-slice.js";
 import type { ChatSlice } from "./chat-slice.js";
@@ -59,4 +61,4 @@ import type { ReplaySlice } from "./replay-slice.js";
 import type { PluginSlice } from "./plugin-slice.js";
 import type { ProjectSlice } from "./project-slice.js";
 
-export type AppState = UiSlice & SessionSlice & AgentDataSlice & ChatSlice & ModeSlice & ViewerSlice & WorkspaceSlice & ReplaySlice & PluginSlice & ProjectSlice;
+export type AppState = UiSlice & AgentSurfaceSlice & SessionSlice & AgentDataSlice & ChatSlice & ModeSlice & ViewerSlice & WorkspaceSlice & ReplaySlice & PluginSlice & ProjectSlice;
