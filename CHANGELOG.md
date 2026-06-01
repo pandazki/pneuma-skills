@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.16.1] - 2026-06-02
+
+### Fixed
+
+- **Same-mode Smart Handoff** — handing off from a session to a fresh session of the *same* mode (e.g. webcraft → webcraft) is now allowed. The mode picker always showed the current mode's tile, but selecting it silently dropped the "从当前会话智能接力" toggle; the `canHandoff` guard no longer excludes the current mode.
+- **Black SVG charts in screenshots / exports** — area and line charts (and any SVG using `fill="url(#gradient)"` or `var()` fills) rasterized as solid black in WebCraft's "Screenshot PNG" export, the slide Image-mode export, slide thumbnails, slide region capture, and the agent's `capture` action. Cause: the outer-window snapdom couldn't resolve paint servers, CSS variables, or `@font-face` that live inside a same-origin iframe, so fills collapsed to SVG's default black. All affected paths now run snapdom *inside* the iframe (the approach kami's PDF/PNG export already used), via a new shared `snapdomFor()` helper.
+
 ## [3.16.0] - 2026-05-29
 
 ### Added — Agent Surface: relocatable, session-scoped chat

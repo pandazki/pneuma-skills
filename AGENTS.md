@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.16.0
+**Version:** 3.16.1
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`
 
@@ -430,6 +430,7 @@ CI (`release.yml`) handles tagging, GitHub Release, and npm publish on push to `
 - **modelUsage cumulative**：用 delta（current - previous）算 per-turn cost。
 - **`backdrop-filter` containing block**：会为 fixed-position 子元素创建 containing block，在 Excalidraw 里造成坐标偏移。避开或显式处理。
 - **`@zumer/snapdom`**：调用期间 capture iframe 必须 `display: none`——可见 iframe 会导致 foreignObject 文本 reflow。见 `useSlideThumbnails.ts` 和 `export.ts`。
+- **snapdom 必须在目标元素自己的 window 里跑**（3.16.1）：用外层 window 的 snapdom 去栅格化 *同源 iframe 内部* 的元素时，iframe 自己文档里的 CSS 变量、`@font-face`、SVG 画笔服务器（`fill="url(#grad)"`）都解析不到——渐变/`var()` 填充塌回 SVG 默认黑、webfont 回退。修法是把 snapdom 注入 iframe 内运行（`src/utils/iframe-snapdom.ts::snapdomFor()` 封装：往同源 iframe 注 `/vendor/snapdom.js` 再取 `iframe.contentWindow.snapdom`，主文档元素或无法注入时回退外层）。kami `capturePages` 是先例；`export.ts` 的 webcraft Screenshot PNG / slide Image-mode 因是服务端拼的脚本字符串、用等价内联写法。捕获主文档元素的（GridBoard、`useThumbnailCapture`）外层 snapdom 本就正确，不要改。
 - **Session thumbnail capture**（`src/hooks/useThumbnailCapture.ts`）：优先级 viewer `captureViewport()` → Electron `pneumaDesktop.capturePage(rect)`（唯一能看到 iframe 内容的路径，例如 webcraft / mode-maker Play）→ snapdom（仅 browser dev；不含 iframe 内容）。等有限 CSS 动画 settle；mount + file change 后用渐进 timer；near-uniform 帧丢弃。空 Electron capture 不用 snapdom 补——后者把 iframe 渲染成白矩形，比 mode-icon fallback 更糟。
 - **GridBoard JSX tag limitation**：tile compiler（Babel + eval）不能把本地定义的 component 当 JSX tag 解析。用 `{renderMyComponent(...)}` 函数调用。
 - **Shadow-git checkpoint queue**：所有 checkpoint 操作通过 Promise chain 串行化，防 `index.lock` 冲突。**不要并行**。
