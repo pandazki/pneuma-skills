@@ -649,8 +649,9 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   // Smart Handoff is only meaningful when there's a current agent to hand
   // off FROM — that means a project session AND a connected backend AND a
   // loaded mode. Empty shell (no `session_id`) suppresses the toggle.
-  const canHandoff =
-    !!ctx && !!activeSessionId && !!sessionMode && launchTarget?.name !== sessionMode;
+  // Same-mode handoff is valid (e.g. webcraft → a fresh webcraft session),
+  // so we intentionally do NOT exclude `launchTarget.name === sessionMode`.
+  const canHandoff = !!ctx && !!activeSessionId && !!sessionMode;
 
   const confirmLaunch = () => {
     if (!launchTarget) return;

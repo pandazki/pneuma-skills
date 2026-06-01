@@ -18,7 +18,7 @@
  *     browser-dev capture degrades to a clear error.
  */
 
-import { snapdom } from "@zumer/snapdom";
+import { snapdomFor } from "./iframe-snapdom.js";
 
 export interface CaptureSuccess {
   ok: true;
@@ -87,6 +87,10 @@ async function snapdomToPng(el: Element, bg?: string | null): Promise<string | n
     htmlEl.style.backgroundColor = bg;
   }
   try {
+    // Run snapdom in the element's own window — for an element inside a
+    // same-origin iframe (webcraft, kami) this resolves the iframe's CSS vars
+    // and SVG paint servers, which the outer snapdom renders black.
+    const snapdom = await snapdomFor(el);
     const result = await snapdom(el as HTMLElement, {
       embedFonts: true,
       ...(bg ? { backgroundColor: bg } : {}),

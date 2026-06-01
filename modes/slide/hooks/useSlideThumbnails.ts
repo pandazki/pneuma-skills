@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect, useRef } from "react";
-import { snapdom } from "@zumer/snapdom";
+import { snapdomFor } from "../../../src/utils/iframe-snapdom.js";
 import type { ViewerFileContent } from "../../../core/types/viewer-contract.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -250,6 +250,9 @@ export async function captureSlideToSvg(
   // when the source element is not in layout (avoids foreignObject text reflow).
   // See: https://github.com/zumerlab/snapdom/issues/351
   iframe.style.display = "none";
+  // Run snapdom inside the capture iframe so it resolves the slide's CSS vars
+  // and SVG paint servers — the outer snapdom renders gradient/var() fills black.
+  const snapdom = await snapdomFor(iframeDoc.body);
   const result = await snapdom(iframeDoc.body, { embedFonts: true });
   iframe.style.display = "";
   const png = await result.toPng();

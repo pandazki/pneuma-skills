@@ -750,9 +750,21 @@ async function convertToImages(){
           var target=(doc&&doc.body)||null;
           if(!target)throw new Error('Slide document unavailable');
           try{if(doc.fonts&&doc.fonts.ready)await Promise.race([doc.fonts.ready,new Promise(function(r){setTimeout(r,3000)})]);}catch(e){}
+          // Inject snapdom INTO the iframe so it resolves the iframe's own
+          // CSS variables, @font-face, and SVG paint servers (fill="url(#grad)").
+          // The outer-window snapdom can't resolve a paint server defined in the
+          // inner document, so gradient/var() fills collapse to black. Falls
+          // back to the outer snapdom if injection fails (e.g. inline export).
+          if(!frame.contentWindow.snapdom){
+            var ss=doc.createElement('script');ss.src='/vendor/snapdom.js';doc.head.appendChild(ss);
+            await new Promise(function(res){
+              var t2=0;var tm=setInterval(function(){t2++;if(frame.contentWindow.snapdom){clearInterval(tm);res();}else if(t2>50){clearInterval(tm);res();}},100);
+            });
+          }
+          var slideSnapdom=frame.contentWindow.snapdom||window.snapdom||snapdom;
           var prevDisplay=frame.style.display;
           frame.style.display='none';
-          var result=await snapdom(target,{embedFonts:true});
+          var result=await slideSnapdom(target,{embedFonts:true});
           frame.style.display=prevDisplay;
           var png=await result.toPng();
           img.src=cropToSlideSize(png,${W},${H});
@@ -1599,7 +1611,33 @@ async function captureScreenshot(){
         var fullH=doc.documentElement.scrollHeight;
         frame.style.height=fullH+'px';
         await new Promise(function(r){setTimeout(r,200)});
-        var result=await snapdom(doc.body,{embedFonts:true});
+        // Force-load every font face so snapdom embeds them — unused Latin
+        // faces stay "unloaded" on a CJK page otherwise and fall back.
+        try{
+          if(doc.fonts){
+            await Promise.all(Array.from(doc.fonts).map(function(f){return f.load().catch(function(){})}));
+            if(doc.fonts.ready)await doc.fonts.ready;
+          }
+        }catch(e){}
+        // Inject snapdom INTO the iframe and run it there, so it resolves the
+        // iframe's own computed styles, CSS variables, @font-face, and SVG
+        // paint servers (fill="url(#grad)"). Running the outer-window snapdom
+        // against the inner document fails to resolve those — SVG gradient /
+        // var() fills collapse to the SVG default (black), which turned charts
+        // black in the captured PNG. Same fix as kami's capturePages().
+        if(!frame.contentWindow.snapdom){
+          var s=doc.createElement('script');s.src='/vendor/snapdom.js';doc.head.appendChild(s);
+          await new Promise(function(res){
+            var tries=0;
+            var timer=setInterval(function(){
+              tries++;
+              if(frame.contentWindow.snapdom){clearInterval(timer);res();}
+              else if(tries>50){clearInterval(timer);res();}
+            },100);
+          });
+        }
+        var localSnapdom=frame.contentWindow.snapdom||window.snapdom||snapdom;
+        var result=await localSnapdom(doc.body,{embedFonts:true});
         var png=await result.toPng();
         var img=await new Promise(function(resolve,reject){
           var im=new Image();im.onload=function(){resolve(im)};im.onerror=reject;im.src=png.src;

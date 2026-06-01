@@ -5,7 +5,7 @@
  * via canvas drawImage with source coordinates.
  */
 
-import { snapdom } from "@zumer/snapdom";
+import { snapdomFor } from "../../../src/utils/iframe-snapdom.js";
 import {
   getOrCreateCaptureIframe,
   loadIframe,
@@ -73,7 +73,10 @@ export async function captureSlideRegion(
   const iframeDoc = iframe.contentDocument;
   if (!iframeDoc) throw new Error("Cannot access capture iframe document");
 
-  // Use snapdom to capture the full slide
+  // Use snapdom to capture the full slide — run it inside the capture iframe so
+  // it resolves the slide's CSS vars and SVG paint servers (outer snapdom would
+  // render gradient/var() fills black).
+  const snapdom = await snapdomFor(iframeDoc.body);
   const result = await snapdom(iframeDoc.body, { embedFonts: true });
   const fullPng = await result.toPng();
 
