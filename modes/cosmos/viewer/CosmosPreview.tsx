@@ -40,7 +40,9 @@ import type { Source } from "../../../core/types/source.js";
 import { useSource } from "../../../src/hooks/useSource.js";
 import { useStore } from "../../../src/store.js";
 import { getApiBase } from "../../../src/utils/api.js";
-import EditorPickerButton from "../../../src/components/EditorPickerButton.js";
+import EditorPickerButton, {
+  DEFAULT_EDITOR_LS_KEY,
+} from "../../../src/components/EditorPickerButton.js";
 import type {
   Cosmos,
   CosmosEdge,
@@ -216,6 +218,59 @@ function resolveSourcePath(
  *  `sourceRoot` is `cosmos.project.sourceRoot`; `projectRoot` is the
  *  project session's root (from store.projectContext). Either can
  *  rescue an agent-authored relative path — see resolveSourcePath. */
+/**
+ * Resolve which code editor to open files in. Prefers the user's saved
+ * default (shared with EditorPickerButton via DEFAULT_EDITOR_LS_KEY), and
+ * falls back to the first detected editor so files land in a code editor
+ * rather than the OS default handler (which sends e.g. .swift / .h / .c
+ * files to Xcode). Returns null when no editor is detected — caller then
+ * falls back to `/api/system/open`. */
+async function resolvePreferredEditorId(base: string): Promise<string | null> {
+  let stored: string | null = null;
+  try {
+    stored =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem(DEFAULT_EDITOR_LS_KEY)
+        : null;
+  } catch {
+    stored = null;
+  }
+  try {
+    const res = await fetch(`${base}/api/system/editors`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { editors?: { id: string }[] };
+    const ids = (data.editors ?? []).map((e) => e.id);
+    if (ids.length === 0) return null;
+    if (stored && ids.includes(stored)) return stored;
+    return ids[0];
+  } catch {
+    return null;
+  }
+}
+
+/** Try to open a workspace file in the preferred code editor; returns
+ *  true on success. Caller falls back to the OS open handler on false. */
+async function tryOpenInEditor(
+  base: string,
+  headers: Record<string, string>,
+  path: string,
+): Promise<boolean> {
+  const editorId = await resolvePreferredEditorId(base);
+  if (!editorId) return false;
+  try {
+    const res = await fetch(`${base}/api/system/open-in-editor`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ editorId, path }),
+    });
+    if (!res.ok) return false;
+    const data = (await res.json().catch(() => ({}))) as { success?: boolean };
+    return data.success !== false;
+  } catch {
+    return false;
+  }
+}
+
 async function openSourceRef(
   ref: CosmosSourceRef,
   sourceRoot: string | undefined,
@@ -224,38 +279,40 @@ async function openSourceRef(
   const base = getApiBase();
   const headers = { "Content-Type": "application/json" };
   try {
-    let res: Response;
     if (ref.kind === "url") {
-      res = await fetch(`${base}/api/system/open-url`, {
+      const res = await fetch(`${base}/api/system/open-url`, {
         method: "POST",
         headers,
         body: JSON.stringify({ url: ref.url }),
       });
-    } else if (ref.kind === "passage") {
-      // Passages live inside files — open the file for now and let
-      // the user navigate to the locator manually. Editor-bridge
-      // upgrade to jump to a line/locator is deferred.
-      const path = resolveSourcePath(ref.file, sourceRoot, projectRoot);
-      res = await fetch(`${base}/api/system/open`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ path }),
-      });
-    } else {
-      const path = resolveSourcePath(ref.path, sourceRoot, projectRoot);
-      res = await fetch(`${base}/api/system/open`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ path }),
-      });
+      if (!res.ok) return { ok: false, message: `HTTP ${res.status}` };
+      const data = (await res.json().catch(() => ({}))) as { success?: boolean; message?: string };
+      if (data.success === false) return { ok: false, message: data.message ?? "open failed" };
+      return { ok: true };
     }
-    if (!res.ok) {
-      return { ok: false, message: `HTTP ${res.status}` };
+
+    // File + passage both resolve to a file path. Prefer opening in the
+    // user's code editor (Cursor / VS Code / …) so source files don't get
+    // routed to the OS default app (Xcode for .swift/.c/.h, etc.). Fall
+    // back to `/api/system/open` when no editor is detected or the editor
+    // open fails. Passage locator jumps are still deferred.
+    const path =
+      ref.kind === "passage"
+        ? resolveSourcePath(ref.file, sourceRoot, projectRoot)
+        : resolveSourcePath(ref.path, sourceRoot, projectRoot);
+
+    if (await tryOpenInEditor(base, headers, path)) {
+      return { ok: true };
     }
+
+    const res = await fetch(`${base}/api/system/open`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ path }),
+    });
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` };
     const data = (await res.json().catch(() => ({}))) as { success?: boolean; message?: string };
-    if (data.success === false) {
-      return { ok: false, message: data.message ?? "open failed" };
-    }
+    if (data.success === false) return { ok: false, message: data.message ?? "open failed" };
     return { ok: true };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : "open failed" };
@@ -338,14 +395,65 @@ function layoutLayerCards(
   return out;
 }
 
+// Content width inside a node card (NODE_W minus the 12px horizontal
+// padding on each side). Used by the height estimator to wrap text.
+const NODE_CONTENT_W = NODE_W - 24;
+
+/**
+ * Rough rendered text width. CJK / full-width glyphs are ~1em wide;
+ * Latin glyphs average ~0.55em. Good enough to estimate how many lines
+ * a string wraps to inside the card — we only need it to decide vertical
+ * spacing so cards don't overlap, not pixel-perfect measurement.
+ */
+function estimateTextWidth(text: string, fontSize: number): number {
+  let w = 0;
+  for (const ch of text) {
+    w += /[⺀-鿿＀-￯　-〿]/.test(ch) ? fontSize : fontSize * 0.55;
+  }
+  return w;
+}
+
+function estimateLines(text: string, fontSize: number, contentW: number): number {
+  return Math.max(1, Math.ceil(estimateTextWidth(text, fontSize) / contentW));
+}
+
+/**
+ * Estimate a node card's rendered height for the given persona. The card
+ * grows with content (wrapped name + optional summary + tags), and the
+ * layout must reserve that vertical space or denser personas overlap.
+ * Mirrors the markup in CosmosNodeCard: 10px top pad, ~14px type line,
+ * wrapped name, optional summary (clamped 2/4 lines), optional tags row,
+ * 10px bottom pad.
+ */
+function estimateNodeHeight(n: CosmosNode, persona: Persona): number {
+  const nameLines = estimateLines(n.name, 14, NODE_CONTENT_W);
+  let h = 10 + (10 + 2) + nameLines * 14 * 1.2 + 10;
+  if (persona !== "overview" && n.summary) {
+    const cap = persona === "deep-dive" ? 4 : 2;
+    const sumLines = Math.min(cap, estimateLines(n.summary, 11, NODE_CONTENT_W));
+    h += 6 + sumLines * 11 * 1.35;
+  }
+  if (persona === "deep-dive" && n.tags && n.tags.length > 0) {
+    // Tag chips wrap; assume ~2 chips per row at this width.
+    h += 6 + Math.ceil(Math.min(n.tags.length, 5) / 2) * 22;
+  }
+  return Math.max(NODE_H, Math.ceil(h));
+}
+
 function layout(
   nodes: CosmosNode[],
   edges: CosmosEdge[],
+  persona: Persona,
 ): Map<string, { x: number; y: number }> {
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: "LR", ranksep: 80, nodesep: 36 });
   g.setDefaultEdgeLabel(() => ({}));
-  for (const n of nodes) g.setNode(n.id, { width: NODE_W, height: NODE_H });
+  const heights = new Map<string, number>();
+  for (const n of nodes) {
+    const h = estimateNodeHeight(n, persona);
+    heights.set(n.id, h);
+    g.setNode(n.id, { width: NODE_W, height: h });
+  }
   for (const e of edges) {
     // Dagre ignores edges to/from unknown nodes — guard so a malformed
     // cosmos.json doesn't take the whole viewer down.
@@ -357,7 +465,10 @@ function layout(
   const out = new Map<string, { x: number; y: number }>();
   for (const n of nodes) {
     const pos = g.node(n.id);
-    if (pos) out.set(n.id, { x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 });
+    if (pos) {
+      const h = heights.get(n.id) ?? NODE_H;
+      out.set(n.id, { x: pos.x - NODE_W / 2, y: pos.y - h / 2 });
+    }
   }
   return out;
 }
@@ -408,7 +519,20 @@ function CosmosNodeCard({ data, selected }: NodeProps<RfNode<NodeData>>) {
       >
         {cosmosNode.type}
       </div>
-      <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2 }}>{cosmosNode.name}</div>
+      <div
+        style={{
+          fontSize: 14,
+          fontWeight: 600,
+          lineHeight: 1.2,
+          // Long unbroken tokens (e.g. FACET_DIFF_APPLY_REGISTRY) must
+          // wrap inside the fixed-width card instead of spilling past
+          // its right edge.
+          overflowWrap: "anywhere",
+          wordBreak: "break-word",
+        }}
+      >
+        {cosmosNode.name}
+      </div>
       {pendingDrill && (
         <div
           style={{
@@ -963,7 +1087,13 @@ function Canvas({
     return m;
   }, [cosmos.layers]);
 
-  const positions = useMemo(() => layout(cosmos.nodes, cosmos.edges), [cosmos.nodes, cosmos.edges]);
+  // Persona drives per-card height (summary lines + tags), so the layout
+  // must recompute when it changes — otherwise denser personas grow the
+  // cards into each other while the dagre spacing stays at overview size.
+  const positions = useMemo(
+    () => layout(cosmos.nodes, cosmos.edges, persona),
+    [cosmos.nodes, cosmos.edges, persona],
+  );
 
   // Set of node ids in the active focus neighborhood — anchors +
   // every node sharing an edge with any anchor. "Anchors" is the
@@ -1186,9 +1316,21 @@ function Canvas({
   // preserve every position (pure drag-preservation case). Otherwise
   // the layout itself changed (added/removed nodes, scope switch) —
   // accept the fresh Dagre positions wholesale.
+  // Track the persona the canvas last laid out under. A persona switch
+  // changes every card's height → the Dagre positions in `combinedNodes`
+  // are freshly recomputed and must win wholesale, even though the node-id
+  // set is unchanged (which would otherwise trigger drag-preservation and
+  // pin cards at their old, overlapping overview spacing).
+  const prevPersonaRef = useRef(persona);
   useEffect(() => {
+    const personaChanged = prevPersonaRef.current !== persona;
+    prevPersonaRef.current = persona;
     setNodes((prev) => {
       if (prev.length === 0) return combinedNodes;
+      if (personaChanged) {
+        // Re-layout for the new density — discard dragged positions.
+        return combinedNodes;
+      }
       const prevIds = new Set(prev.map((n) => n.id));
       const sameIdSet =
         prevIds.size === combinedNodes.length &&

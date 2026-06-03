@@ -5,7 +5,9 @@
     "cli_disconnected": "CLI Disconnected",
     "running": "Running",
     "compacting": "Compacting",
-    "idle": "Idle"
+    "idle": "Idle",
+    "collapse": "Collapse details",
+    "expand": "Show details"
   },
   "reconnect": "Reconnect",
   "no_model": "no model",

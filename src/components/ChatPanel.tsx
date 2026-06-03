@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
 import { forceReconnect } from "../ws.js";
@@ -91,7 +91,11 @@ function StatusDot() {
       <span className="text-cc-muted text-xs">{text}</span>
       {isDisconnected && (
         <button
-          onClick={forceReconnect}
+          onClick={(e) => {
+            // Don't let the click bubble to the pill's expand/collapse toggle.
+            e.stopPropagation();
+            forceReconnect();
+          }}
           className="text-cc-muted hover:text-cc-primary text-xs transition-colors cursor-pointer"
           title={t("reconnect")}
         >
@@ -128,6 +132,52 @@ function SessionInfo() {
           <span>ctx {session.context_used_percent}%</span>
         </>
       )}
+    </div>
+  );
+}
+
+const STATUS_EXPANDED_LS_KEY = "pneuma:chat-status-expanded";
+
+/**
+ * Floating status pill. Collapsed by default to just the status dot +
+ * state label (the only thing most glances need); clicking expands it to
+ * also show model / cost / context, and clicking again collapses. The
+ * preference is remembered in localStorage. The inner reconnect button
+ * stops propagation so it doesn't toggle the pill.
+ */
+function AgentStatusBar() {
+  const { t } = useTranslation("chat-panel");
+  const [expanded, setExpanded] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(STATUS_EXPANDED_LS_KEY) === "1";
+  });
+  const toggle = () => {
+    setExpanded((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(STATUS_EXPANDED_LS_KEY, next ? "1" : "0");
+      } catch {
+        /* localStorage unavailable — non-fatal */
+      }
+      return next;
+    });
+  };
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={toggle}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggle();
+        }
+      }}
+      title={expanded ? t("status.collapse") : t("status.expand")}
+      className="absolute top-4 right-4 z-10 flex items-center gap-3 px-4 py-1.5 bg-cc-surface/60 backdrop-blur-md border border-white/5 rounded-full shadow-sm cursor-pointer select-none hover:bg-cc-surface/80 transition-colors"
+    >
+      <StatusDot />
+      {expanded && <SessionInfo />}
     </div>
   );
 }
@@ -184,12 +234,7 @@ export default function ChatPanel() {
   return (
     <div className="flex flex-col h-full relative">
       {/* Agent status bar (floating pill) — hide in replay mode */}
-      {!replayMode && (
-        <div className="absolute top-4 right-4 z-10 flex items-center gap-3 px-4 py-1.5 bg-cc-surface/60 backdrop-blur-md border border-white/5 rounded-full shadow-sm">
-          <StatusDot />
-          <SessionInfo />
-        </div>
-      )}
+      {!replayMode && <AgentStatusBar />}
       <div className="flex-1 overflow-y-auto bg-grid-pattern p-4 pt-16 space-y-4 pb-36">
         {messages.length === 0 && !streaming && !activity && !replayMode && (
           <div className="text-cc-muted text-sm text-center mt-8">
