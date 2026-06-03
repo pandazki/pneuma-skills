@@ -5,7 +5,9 @@
     "cli_disconnected": "CLI 已斷線",
     "running": "執行中",
     "compacting": "壓縮中",
-    "idle": "閒置"
+    "idle": "閒置",
+    "collapse": "收起詳情",
+    "expand": "顯示詳情"
   },
   "reconnect": "重新連線",
   "no_model": "未選擇模型",

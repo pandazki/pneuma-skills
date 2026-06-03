@@ -81,7 +81,7 @@ interface EditorPickerButtonProps {
   menuPosition?: "above" | "below";
 }
 
-const DEFAULT_EDITOR_LS_KEY = "pneuma:default-editor";
+export const DEFAULT_EDITOR_LS_KEY = "pneuma:default-editor";
 
 export default function EditorPickerButton({
   targetPath,
