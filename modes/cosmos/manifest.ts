@@ -12,8 +12,14 @@ import { normalizeCosmos, type Cosmos } from "./types.js";
 
 const cosmosManifest: ModeManifest = {
   name: "cosmos",
-  version: "0.3.0",
+  version: "0.4.0",
   changelog: {
+    "0.4.0": [
+      "Workflow-backed projection (Path A, Claude Code): parallel per-partition extraction in fresh contexts → cross-edge merge → adversarial per-node verify → completeness loop → perspective judge-panel",
+      "Every node now carries a `trust` verdict (verified / weak / unverifiable); viewer renders a trust badge in the NodeDrawer header + hover tooltip",
+      "Graceful degradation: Codex / Kimi or small inputs fall back to the existing in-context passes (Path B)",
+      "schema.ts — zod is the structured-output truth; projection.workflow.js inlines derived JSON Schemas (drift-guarded by tests)",
+    ],
     "0.3.0": [
       "Source-chip clicks now resolve relative paths against project.sourceRoot or the project root",
       "SKILL: relative path + missing sourceRoot pitfall called out as a non-negotiable",
