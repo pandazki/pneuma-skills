@@ -5,7 +5,9 @@
     "cli_disconnected": "CLI 연결 끊김",
     "running": "실행 중",
     "compacting": "압축 중",
-    "idle": "대기 중"
+    "idle": "대기 중",
+    "collapse": "세부 정보 숨기기",
+    "expand": "세부 정보 표시"
   },
   "reconnect": "재연결",
   "no_model": "모델 없음",

@@ -5,7 +5,9 @@
     "cli_disconnected": "CLI getrennt",
     "running": "Läuft",
     "compacting": "Wird komprimiert",
-    "idle": "Inaktiv"
+    "idle": "Inaktiv",
+    "collapse": "Details ausblenden",
+    "expand": "Details anzeigen"
   },
   "reconnect": "Neu verbinden",
   "no_model": "kein Modell",

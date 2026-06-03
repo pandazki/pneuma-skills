@@ -5,7 +5,9 @@
     "cli_disconnected": "CLI 切断",
     "running": "実行中",
     "compacting": "圧縮中",
-    "idle": "アイドル"
+    "idle": "アイドル",
+    "collapse": "詳細を隠す",
+    "expand": "詳細を表示"
   },
   "reconnect": "再接続",
   "no_model": "モデルなし",
