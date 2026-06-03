@@ -66,6 +66,19 @@ export type CosmosNodeCategory =
 export type CosmosNodeComplexity = "simple" | "moderate" | "complex";
 
 /**
+ * Verification verdict for a node, produced by the projection workflow's
+ * adversarial verify pass (a skeptic re-reads the cited sources). The
+ * viewer renders it as a trust badge so the user can tell solidly-grounded
+ * nodes from inferences at a glance. Absent on nodes that were never run
+ * through verification (e.g. in-context Path B projections); the viewer
+ * treats absent as "unrated" and shows no badge. Mirrors `NODE_TRUST` in
+ * `schema.ts` — keep the two in lockstep (guarded by schema.test.ts).
+ * `verified` = sources substantiate the summary; `weak` = only partially;
+ * `unverifiable` = no citable source could be confirmed.
+ */
+export type CosmosNodeTrust = "verified" | "weak" | "unverifiable";
+
+/**
  * Multi-formed pointer back to a node's source material. Cosmos is
  * deliberately domain-agnostic: nodes can reference source files
  * (code, prose, notes), web URLs, fixed passages inside long
@@ -245,6 +258,12 @@ export interface CosmosNode {
   category?: CosmosNodeCategory;
   /** Subjective complexity hint — viewer renders as a badge on layer cards. */
   complexity?: CosmosNodeComplexity;
+  /**
+   * Verification verdict from the projection workflow's verify pass.
+   * Absent when the node was never verified (Path B / hand-authored).
+   * See `CosmosNodeTrust`.
+   */
+  trust?: CosmosNodeTrust;
   /** Multi-formed pointers back to source material — any combination
    *  of file / url / passage / image / audio / video. Rendered as
    *  click-to-open chips in the INFO panel. Zero or more per node;

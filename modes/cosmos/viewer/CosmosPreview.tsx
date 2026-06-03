@@ -48,6 +48,7 @@ import type {
   CosmosEdge,
   CosmosNode,
   CosmosNodeCategory,
+  CosmosNodeTrust,
   CosmosPerspective,
   CosmosSourceRef,
   CosmosSubgraph,
@@ -835,6 +836,48 @@ const COMPLEXITY_TINT: Record<LayerCardData["aggregateComplexity"], string> = {
   complex: "#fb7185",  // pink-rose
   mixed: "#a1a1aa",
 };
+
+// Trust badge — the projection workflow's verify pass tags each node
+// with how well its cited sources substantiate it. Lets the user tell a
+// solidly-grounded node from an inference at a glance.
+const TRUST_TINT: Record<CosmosNodeTrust, string> = {
+  verified: "#34d399",     // emerald
+  weak: "#fbbf24",         // amber
+  unverifiable: "#fb7185", // rose
+};
+const TRUST_LABEL: Record<CosmosNodeTrust, string> = {
+  verified: "verified",
+  weak: "weak",
+  unverifiable: "unverifiable",
+};
+const TRUST_HINT: Record<CosmosNodeTrust, string> = {
+  verified: "A skeptic re-read the cited sources and they substantiate this node.",
+  weak: "Sourced, but the cited material only partially supports the claim.",
+  unverifiable: "No citable source could be confirmed — treat this node as an inference.",
+};
+
+function TrustBadge({ trust, size = "md" }: { trust: CosmosNodeTrust; size?: "sm" | "md" }) {
+  const tint = TRUST_TINT[trust];
+  return (
+    <span
+      title={TRUST_HINT[trust]}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        fontSize: size === "sm" ? 8 : 9,
+        padding: size === "sm" ? "1px 5px" : "2px 7px",
+        borderRadius: 3,
+        background: `${tint}22`,
+        color: tint,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span style={{ width: 5, height: 5, borderRadius: "50%", background: tint, flexShrink: 0 }} />
+      {TRUST_LABEL[trust]}
+    </span>
+  );
+}
 
 function LayerCard({ data, selected }: NodeProps<RfNode<LayerCardData>>) {
   const { t } = useTranslation("cosmos");
@@ -2079,6 +2122,7 @@ function NodeDrawer({ cosmos, node, onSelectNode, onClose }: NodeDrawerProps) {
               {display.complexity}
             </div>
           )}
+          {display.trust && <TrustBadge trust={display.trust} />}
         </div>
         <button
           type="button"
@@ -3745,6 +3789,11 @@ function NodeTooltip({ cosmos, node, x, y }: NodeTooltipProps) {
             }}
           >
             {node.complexity}
+          </span>
+        )}
+        {node.trust && (
+          <span style={{ marginLeft: node.complexity ? 4 : "auto" }}>
+            <TrustBadge trust={node.trust} size="sm" />
           </span>
         )}
       </div>
