@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.18.0] - 2026-06-04
+
+### Added
+
+- **Cosmos isolate (subgraph) view** — a new canvas control lifts the active selection's neighborhood (a selected node plus its direct neighbors, or a focused layer's nodes) onto a clean canvas with its own compact dagre re-layout, so a dense cluster can be read and rearranged in isolation. A top-center chip shows the isolated count and returns to the full graph in one click; the button disables when nothing is selected and auto-clears on leaving the detail level.
+
+### Improved
+
+- **Cosmos selection-aware fit** — the crosshair fit button, the `F` key, and the agent `fit-view` action now frame the active selection (a selected node + its neighbors, or a focused layer's nodes) instead of always fitting the whole graph, falling back to fit-all when nothing is picked.
+
+### Fixed
+
+- **Reliable "open in editor" across modes** — the editor bridge now resolves each editor's bundled or on-PATH CLI launcher and opens files through it instead of `open -a "<App>" <file>`, which surfaced an error dialog in Cursor and merely launched (without opening the file) for other Electron forks. Antigravity now targets the real "Antigravity IDE" editor app rather than the agents-first "Antigravity" app, which can't open files. Native editors without a CLI still fall back to `open -a`.
+
 ## [3.17.0] - 2026-06-03
 
 ### Added
