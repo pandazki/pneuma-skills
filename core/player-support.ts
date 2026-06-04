@@ -19,6 +19,12 @@ export const WEB_PLAYER_SUPPORTED_MODES: readonly string[] = [
   "slide",
   "webcraft",
   "kami",
+  // Follow-up tier — work in the player because the deploy sets no restrictive
+  // CSP (remotion's in-browser Babel eval is allowed) and lets the diagram
+  // draw.io / rough.js CDN scripts load. Verified on the hosted player.
+  "diagram",
+  "remotion",
+  "cosmos",
 ];
 
 export function isModeWebPlayable(mode: string | undefined | null): boolean {

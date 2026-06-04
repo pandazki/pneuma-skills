@@ -1873,11 +1873,16 @@ body::after {
     }
 
     if (cw === 0 || ch === 0) {
+      // Container not measured yet (can happen on first paint, e.g. in the
+      // hosted player before flex layout settles). Render the paper at its
+      // natural size CENTERED on the desk rather than the full-bleed fallback —
+      // otherwise the iframe stretches to 100% and the paper loses its margins.
+      // Once the ResizeObserver fires, scale is recomputed below.
       return {
         width: `${naturalW}px`,
         height: `${naturalH}px`,
         scale: 1,
-        useTransform: false,
+        useTransform: true,
         fitMode,
       };
     }
