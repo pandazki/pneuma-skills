@@ -21,6 +21,7 @@ import {
   Handle,
   MarkerType,
   MiniMap,
+  Panel,
   Position,
   ReactFlow,
   ReactFlowProvider,
@@ -48,6 +49,7 @@ import type {
   CosmosEdge,
   CosmosNode,
   CosmosNodeCategory,
+  CosmosNodeTrust,
   CosmosPerspective,
   CosmosSourceRef,
   CosmosSubgraph,
@@ -836,6 +838,48 @@ const COMPLEXITY_TINT: Record<LayerCardData["aggregateComplexity"], string> = {
   mixed: "#a1a1aa",
 };
 
+// Trust badge — the projection workflow's verify pass tags each node
+// with how well its cited sources substantiate it. Lets the user tell a
+// solidly-grounded node from an inference at a glance.
+const TRUST_TINT: Record<CosmosNodeTrust, string> = {
+  verified: "#34d399",     // emerald
+  weak: "#fbbf24",         // amber
+  unverifiable: "#fb7185", // rose
+};
+const TRUST_LABEL: Record<CosmosNodeTrust, string> = {
+  verified: "verified",
+  weak: "weak",
+  unverifiable: "unverifiable",
+};
+const TRUST_HINT: Record<CosmosNodeTrust, string> = {
+  verified: "A skeptic re-read the cited sources and they substantiate this node.",
+  weak: "Sourced, but the cited material only partially supports the claim.",
+  unverifiable: "No citable source could be confirmed — treat this node as an inference.",
+};
+
+function TrustBadge({ trust, size = "md" }: { trust: CosmosNodeTrust; size?: "sm" | "md" }) {
+  const tint = TRUST_TINT[trust];
+  return (
+    <span
+      title={TRUST_HINT[trust]}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        fontSize: size === "sm" ? 8 : 9,
+        padding: size === "sm" ? "1px 5px" : "2px 7px",
+        borderRadius: 3,
+        background: `${tint}22`,
+        color: tint,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span style={{ width: 5, height: 5, borderRadius: "50%", background: tint, flexShrink: 0 }} />
+      {TRUST_LABEL[trust]}
+    </span>
+  );
+}
+
 function LayerCard({ data, selected }: NodeProps<RfNode<LayerCardData>>) {
   const { t } = useTranslation("cosmos");
   const { label, description, color, nodeCount, aggregateComplexity } = data;
@@ -1044,12 +1088,33 @@ function Canvas({
     return m;
   }, [cosmos.layers]);
 
+  // ── Isolation (subgraph) view ────────────────────────────────────────
+  // When set, the detail canvas is scoped to just these node ids — the
+  // active node + its neighbors (or a focused layer) lifted onto a clean
+  // canvas and re-laid-out compactly. Null = full graph. Only meaningful
+  // at the "detail" level; auto-cleared when the user leaves it.
+  const [isolatedIds, setIsolatedIds] = useState<Set<string> | null>(null);
+
+  const scopedNodes = useMemo(
+    () => (isolatedIds ? cosmos.nodes.filter((n) => isolatedIds.has(n.id)) : cosmos.nodes),
+    [cosmos.nodes, isolatedIds],
+  );
+  const scopedEdges = useMemo(
+    () =>
+      isolatedIds
+        ? cosmos.edges.filter((e) => isolatedIds.has(e.source) && isolatedIds.has(e.target))
+        : cosmos.edges,
+    [cosmos.edges, isolatedIds],
+  );
+
   // Persona drives per-card height (summary lines + tags), so the layout
   // must recompute when it changes — otherwise denser personas grow the
   // cards into each other while the dagre spacing stays at overview size.
+  // Scoped to the isolation set so an isolated subgraph gets its own
+  // compact Dagre layout rather than the sparse main-graph coordinates.
   const positions = useMemo(
-    () => layout(cosmos.nodes, cosmos.edges, persona),
-    [cosmos.nodes, cosmos.edges, persona],
+    () => layout(scopedNodes, scopedEdges, persona),
+    [scopedNodes, scopedEdges, persona],
   );
 
   // Set of node ids in the active focus neighborhood — anchors +
@@ -1074,12 +1139,12 @@ function Canvas({
     if (anchors.length === 0) return null;
     const anchorSet = new Set(anchors);
     const set = new Set<string>(anchors);
-    for (const e of cosmos.edges) {
+    for (const e of scopedEdges) {
       if (anchorSet.has(e.source)) set.add(e.target);
       if (anchorSet.has(e.target)) set.add(e.source);
     }
     return set;
-  }, [cosmos.edges, selectedNodeId, tourFocus, extraAnchors]);
+  }, [scopedEdges, selectedNodeId, tourFocus, extraAnchors]);
 
   // The same anchor set, exposed for edge styling so any edge whose
   // either endpoint is an anchor gets the highlight treatment — not
@@ -1107,7 +1172,7 @@ function Canvas({
 
   const rfNodes: RfNode<NodeData>[] = useMemo(
     () =>
-      cosmos.nodes.map((n) => {
+      scopedNodes.map((n) => {
         const categoryHidden = n.category
           ? hiddenCategories.has(n.category)
           : hiddenCategories.has("other");
@@ -1137,7 +1202,7 @@ function Canvas({
         };
       }),
     [
-      cosmos.nodes,
+      scopedNodes,
       positions,
       layerColor,
       persona,
@@ -1152,7 +1217,7 @@ function Canvas({
 
   const rfEdges: RfEdge[] = useMemo(
     () =>
-      cosmos.edges.map((e, i) => {
+      scopedEdges.map((e, i) => {
         const sourceLayer = nodeLayerById.get(e.source);
         const targetLayer = nodeLayerById.get(e.target);
         const layerOutOfFocus =
@@ -1194,7 +1259,7 @@ function Canvas({
             : undefined,
         };
       }),
-    [cosmos.edges, nodeLayerById, focusedLayer, focusAnchorSet],
+    [scopedEdges, nodeLayerById, focusedLayer, focusAnchorSet],
   );
 
   // ── Project-overview level: layer cards + aggregated layer edges ─────
@@ -1307,9 +1372,84 @@ function Canvas({
 
   const rf = useReactFlow();
 
+  // ── Selection-aware fit + isolate ────────────────────────────────────
+  // The node ids that the active selection "is about", used by both the
+  // smart-fit button and the isolate button. Priority: an explicit node
+  // selection (primary + shift-click anchors) expands to that node plus
+  // its direct neighbors; otherwise a focused layer expands to all of its
+  // nodes. Returns null when nothing is selected (→ fit-all fallback).
+  const computeFocusIds = useCallback((): string[] | null => {
+    if (navigationLevel !== "detail") return null;
+    if (selectedNodeId || extraAnchors.length > 0) {
+      const anchors = new Set<string>();
+      if (selectedNodeId) anchors.add(selectedNodeId);
+      for (const id of extraAnchors) anchors.add(id);
+      const ids = new Set<string>(anchors);
+      for (const e of scopedEdges) {
+        if (anchors.has(e.source)) ids.add(e.target);
+        if (anchors.has(e.target)) ids.add(e.source);
+      }
+      return [...ids];
+    }
+    if (focusedLayer) {
+      return scopedNodes.filter((n) => n.layerId === focusedLayer).map((n) => n.id);
+    }
+    return null;
+  }, [navigationLevel, selectedNodeId, extraAnchors, focusedLayer, scopedEdges, scopedNodes]);
+
+  // Smart-fit: frame the active selection's neighborhood if there is one,
+  // else fall back to fitting the whole canvas. Wired to both the
+  // crosshair control button and the `F` key / agent `fit-view` action.
+  const handleSmartFit = useCallback(() => {
+    const ids = computeFocusIds();
+    if (ids && ids.length > 0) {
+      rf.fitView({ nodes: ids.map((id) => ({ id })), padding: 0.28, duration: 400 });
+    } else {
+      rf.fitView({ padding: 0.2, duration: 400 });
+    }
+  }, [computeFocusIds, rf]);
+
   useEffect(() => {
-    registerFitView(() => rf.fitView({ padding: 0.2, duration: 400 }));
-  }, [rf, registerFitView]);
+    registerFitView(handleSmartFit);
+  }, [handleSmartFit, registerFitView]);
+
+  // Whether the isolate action is available right now: either we're
+  // already isolated (so the button exits) or there's a selection to
+  // isolate. Only ever active at the detail level.
+  const canIsolate =
+    navigationLevel === "detail" &&
+    (isolatedIds != null ||
+      selectedNodeId != null ||
+      extraAnchors.length > 0 ||
+      focusedLayer != null);
+
+  // Toggle the isolation (subgraph) view. Entering lifts the active
+  // selection's neighborhood onto a clean canvas with its own compact
+  // Dagre re-layout; exiting restores the full graph. The fitView after
+  // each transition is handled by the isolatedIds effect below.
+  const handleToggleIsolate = useCallback(() => {
+    if (isolatedIds != null) {
+      setIsolatedIds(null);
+      return;
+    }
+    const ids = computeFocusIds();
+    if (!ids || ids.length === 0) return;
+    setIsolatedIds(new Set(ids));
+  }, [isolatedIds, computeFocusIds]);
+
+  // Leaving the detail level (e.g. back to project-overview) drops any
+  // active isolation — layer cards have no meaningful subgraph scope.
+  useEffect(() => {
+    if (navigationLevel !== "detail" && isolatedIds != null) setIsolatedIds(null);
+  }, [navigationLevel, isolatedIds]);
+
+  // Re-fit whenever the isolation scope flips — the node set (and its
+  // coordinate scale) changes wholesale, so the previous viewport never
+  // frames the new layout. Wait a tick for React Flow to commit.
+  useEffect(() => {
+    const timer = setTimeout(() => rf.fitView({ padding: 0.2, duration: 400 }), 140);
+    return () => clearTimeout(timer);
+  }, [isolatedIds, rf]);
 
   useEffect(() => {
     registerNavigate((nodeId: string) => {
@@ -1409,7 +1549,32 @@ function Canvas({
       style={{ background: "#09090b" }}
     >
       <Background color="#27272a" gap={28} />
-      <Controls>
+      <Controls onFitView={handleSmartFit} fitViewOptions={{ padding: 0.2, duration: 400 }}>
+        {/* Isolate: lift the active selection's neighborhood onto a clean
+         * canvas (or exit back). Disabled until there's something to
+         * isolate; highlighted while isolation is active. */}
+        <ControlButton
+          onClick={handleToggleIsolate}
+          disabled={!canIsolate}
+          title={isolatedIds != null ? t("canvas.isolate_exit") : t("canvas.isolate_tooltip")}
+          aria-label={isolatedIds != null ? t("canvas.isolate_exit") : t("canvas.isolate_label")}
+          style={isolatedIds != null ? { color: "#f97316" } : undefined}
+        >
+          {/* Frame-with-center-node glyph: a bounding box around an
+           * isolated subject. Inherits currentColor like the other
+           * controls. */}
+          <svg viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <circle cx="12" cy="12" r="2.4" fill="currentColor" />
+          </svg>
+        </ControlButton>
         <ControlButton onClick={handleResetLayout} title={t("canvas.reset_layout_tooltip")} aria-label={t("canvas.reset_layout_label")}>
           {/* Circular-arrow glyph drawn inline so it inherits the dark
            * controls theme; matches the visual weight of the other
@@ -1422,6 +1587,40 @@ function Canvas({
           </svg>
         </ControlButton>
       </Controls>
+      {/* Isolation banner — a dismissible chip pinned top-center while a
+       * subgraph is isolated, so the scoped view never feels like a
+       * glitch and there's always a one-click way back. */}
+      {isolatedIds != null && (
+        <Panel position="top-center">
+          <button
+            type="button"
+            onClick={handleToggleIsolate}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "6px 12px",
+              borderRadius: 999,
+              border: "1px solid rgba(249,115,22,0.55)",
+              background: "rgba(24,24,27,0.92)",
+              color: "#fb923c",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 6px 20px rgba(0,0,0,0.4)",
+              backdropFilter: "blur(6px)",
+            }}
+            title={t("canvas.isolate_exit")}
+          >
+            <span>{t("canvas.isolate_hint", { count: isolatedIds.size })}</span>
+            <span style={{ opacity: 0.6 }}>·</span>
+            <span style={{ color: "#a1a1aa" }}>{t("canvas.isolate_exit")}</span>
+            <svg viewBox="0 0 24 24" width="13" height="13" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </Panel>
+      )}
       <MiniMap
         pannable
         zoomable
@@ -2079,6 +2278,7 @@ function NodeDrawer({ cosmos, node, onSelectNode, onClose }: NodeDrawerProps) {
               {display.complexity}
             </div>
           )}
+          {display.trust && <TrustBadge trust={display.trust} />}
         </div>
         <button
           type="button"
@@ -3745,6 +3945,11 @@ function NodeTooltip({ cosmos, node, x, y }: NodeTooltipProps) {
             }}
           >
             {node.complexity}
+          </span>
+        )}
+        {node.trust && (
+          <span style={{ marginLeft: node.complexity ? 4 : "auto" }}>
+            <TrustBadge trust={node.trust} size="sm" />
           </span>
         )}
       </div>

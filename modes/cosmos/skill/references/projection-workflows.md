@@ -10,7 +10,15 @@
 Strong inputs: a directory of source files, a single repo, a
 package. Token-heavy — use parallel reads aggressively.
 
-### Steps
+> **On Claude Code, prefer Path A** (the Workflow-backed projection in
+> SKILL.md). The projection workflow already does steps 3–5 below —
+> parallel per-partition extraction in fresh contexts, cross-edge merge,
+> *and* an adversarial verify pass the manual recipe can't afford. The
+> steps below are the **Path B fallback**: the in-context recipe for
+> when the `Workflow` tool is unavailable (Codex / Kimi) or the repo is
+> small enough to hold in one context. Don't run both.
+
+### Steps (Path B fallback)
 
 1. **Survey first.** `Glob` for source files, count by extension.
    Read `README.md`, `package.json` / `pyproject.toml` / `Cargo.toml`,

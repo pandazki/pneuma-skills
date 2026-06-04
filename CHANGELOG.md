@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.18.0] - 2026-06-04
+
+### Added
+
+- **Cosmos isolate (subgraph) view** — a new canvas control lifts the active selection's neighborhood (a selected node plus its direct neighbors, or a focused layer's nodes) onto a clean canvas with its own compact dagre re-layout, so a dense cluster can be read and rearranged in isolation. A top-center chip shows the isolated count and returns to the full graph in one click; the button disables when nothing is selected and auto-clears on leaving the detail level.
+
+### Improved
+
+- **Cosmos selection-aware fit** — the crosshair fit button, the `F` key, and the agent `fit-view` action now frame the active selection (a selected node + its neighbors, or a focused layer's nodes) instead of always fitting the whole graph, falling back to fit-all when nothing is picked.
+
+### Fixed
+
+- **Reliable "open in editor" across modes** — the editor bridge now resolves each editor's bundled or on-PATH CLI launcher and opens files through it instead of `open -a "<App>" <file>`, which surfaced an error dialog in Cursor and merely launched (without opening the file) for other Electron forks. Antigravity now targets the real "Antigravity IDE" editor app rather than the agents-first "Antigravity" app, which can't open files. Native editors without a CLI still fall back to `open -a`.
+
+## [3.17.0] - 2026-06-03
+
+### Added
+
+- **Workflow-backed cosmos projection** — on Claude Code, projecting a codebase now hands off to a multi-agent Workflow (Path A): each subsystem is read in its own fresh context (so coverage is no longer capped by one agent's context window), cross-partition edges are resolved, every node is **verified against its cited sources** by an adversarial skeptic, a completeness critic loops until coverage runs dry, and candidate perspectives are filtered by a judge panel. Codex / Kimi backends and small inputs gracefully fall back to the in-context passes (Path B). Adds `modes/cosmos/schema.ts` (zod as the structured-output truth + derived JSON Schema the workflow inlines), `skill/references/projection.workflow.js`, and a survey→handoff recipe in the cosmos SKILL.
+- **Cosmos trust badges** — every projected node carries a `trust` verdict (verified / weak / unverifiable) from the verify pass; the viewer renders it as a colored badge in the NodeDrawer header and hover tooltip, so solidly-grounded nodes are distinguishable from inferences at a glance.
+
+### Fixed
+
+- **Cosmos node card overflow + overlapping layout** — long unbroken node names (e.g. `FACET_DIFF_APPLY_REGISTRY`) now wrap inside the fixed-width card, and the graph layout is density-aware: per-node card heights are estimated per persona and fed into dagre, with positions recomputed on a persona change so cards stop overlapping.
+- **Cosmos source files routed to Xcode** — source-chip clicks now open in the user's chosen / first-detected code editor before falling back to the OS open handler.
+
+### Improved
+
+- **Collapsible chat status pill** — the floating status pill collapses to just the status dot + state label by default; click to expand model / cost / context, click again to collapse. Preference persists in `localStorage` (all 7 locales).
+
 ## [3.16.1] - 2026-06-02
 
 ### Fixed

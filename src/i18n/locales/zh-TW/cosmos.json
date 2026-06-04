@@ -133,7 +133,14 @@
     "drill_cta_tooltip": "打开下探编辑器",
     "drilling_badge": "下探中…",
     "reset_layout_tooltip": "重置布局 (R)",
-    "reset_layout_label": "重置布局"
+    "reset_layout_label": "重置布局",
+    "smart_fit_tooltip": "聚焦目前選擇 (F)",
+    "smart_fit_label": "聚焦目前選擇",
+    "isolate_tooltip": "在乾淨畫布上隔離目前選擇",
+    "isolate_label": "隔離選擇",
+    "isolate_exit": "退出隔離",
+    "isolate_hint_one": "已隔離 {{count}} 個節點",
+    "isolate_hint_other": "已隔離 {{count}} 個節點"
   },
   "node_card": {
     "click_to_explore": "点击展开 →",

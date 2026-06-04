@@ -133,7 +133,14 @@
     "drill_cta_tooltip": "Open the drill prompt editor",
     "drilling_badge": "drilling…",
     "reset_layout_tooltip": "Reset layout (R)",
-    "reset_layout_label": "Reset layout"
+    "reset_layout_label": "Reset layout",
+    "smart_fit_tooltip": "Fit to selection (F)",
+    "smart_fit_label": "Fit to selection",
+    "isolate_tooltip": "Isolate selection on a clean canvas",
+    "isolate_label": "Isolate selection",
+    "isolate_exit": "Exit isolation",
+    "isolate_hint_one": "Isolated {{count}} node",
+    "isolate_hint_other": "Isolated {{count}} nodes"
   },
   "node_card": {
     "click_to_explore": "Click to explore →",

@@ -133,7 +133,14 @@
     "drill_cta_tooltip": "Open the drill prompt editor",
     "drilling_badge": "drilling…",
     "reset_layout_tooltip": "Reset layout (R)",
-    "reset_layout_label": "Reset layout"
+    "reset_layout_label": "Reset layout",
+    "smart_fit_tooltip": "Ajustar a la selección (F)",
+    "smart_fit_label": "Ajustar a la selección",
+    "isolate_tooltip": "Aislar la selección en un lienzo limpio",
+    "isolate_label": "Aislar selección",
+    "isolate_exit": "Salir del aislamiento",
+    "isolate_hint_one": "{{count}} nodo aislado",
+    "isolate_hint_other": "{{count}} nodos aislados"
   },
   "node_card": {
     "click_to_explore": "Click to explore →",

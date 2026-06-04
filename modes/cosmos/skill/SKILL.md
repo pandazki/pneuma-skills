@@ -415,7 +415,72 @@ Read `README.md` and skim `cosmos.json`; understanding the seed is
 understanding what cosmos is for. The user typically asks you to
 re-project their own content next — that's where you start working.
 
-### First-time projection
+### Choosing a projection path
+
+The first decision each projection is **which of two paths** produces it:
+
+- **Path A — Workflow-backed (large codebases, Claude Code).** When the
+  input is a codebase or a folder too large to read well in one context,
+  AND you have the `Workflow` tool (Claude Code backend only), hand the
+  heavy lifting to the projection workflow. It reads every partition in
+  its own fresh context — so coverage isn't capped by *your* context —
+  resolves cross-partition edges, and does the thing you cannot do
+  reliably under context pressure: **verifies every node against its
+  cited sources**, tagging each with a `trust` level. You stay the
+  author — you survey, launch it, add the tour, write `cosmos.json`.
+- **Path B — in-context (everything else).** A short story, a paper, a
+  conversation, a small folder — or *any* input when the `Workflow` tool
+  is absent (Codex / Kimi backends). You read and project it yourself,
+  in the passes below.
+
+**How to choose:** survey first — Glob the source, count files. A handful
+of files or a token-light single document → Path B. Dozens of source
+files / a real repo you can't hold in one context → Path A. No `Workflow`
+tool → always Path B. Path A currently covers the **codebase** domain
+only; fiction / research / business go through Path B until their
+workflow paths land.
+
+### Path A — Workflow-backed projection
+
+1. **Survey (cheap, in-context).** Glob the source; read `README`,
+   package manifests, entry points. From that decide:
+   - `partitions[]` — one per coherent subsystem (usually a top-level
+     dir): `{ id, label, paths: ["<relative dir/file>", …], hint }`.
+     Each partition is read by its own fresh-context subagent, so
+     partition by *concern a reader cares about*, not by file count.
+   - a draft `layers[]` table (3–6, by architectural concern), a
+     `vocabulary` (`{ nodeTypes, edgeTypes }`), the working `language`,
+     the absolute `sourceRoot`, and a `projectName`.
+2. **Launch the workflow:**
+
+   ```
+   Workflow({
+     scriptPath: ".claude/skills/pneuma-cosmos/references/projection.workflow.js",
+     args: { sourceRoot, language, projectName, partitions, vocabulary, layers, maxCompletenessRounds: 2 }
+   })
+   ```
+
+   Watch it in `/workflows`: Extract (parallel per partition) → Merge →
+   Verify → Complete (loop-until-dry). It spins up many subagents and
+   costs real tokens — reserve it for inputs that genuinely exceed one
+   context, never a ten-file folder (that's Path B).
+3. **Take the returned graph.** It returns `{ version, kind, project,
+   nodes, edges, layers, perspectives?, stats }` — every node already
+   carries a `trust` verdict and real `sources[]`, and `perspectives[]`
+   (if present) have already survived a judge panel for groundedness.
+   Read `stats.trust`: a healthy run is mostly `verified`; a pile of
+   `unverifiable` means the source wasn't where the extractor thought —
+   investigate before you ship it.
+4. **Add the tour (and prune if needed).** The workflow writes the
+   verified graph + perspectives but NOT the overall `tour` — pick the
+   5–8 nodes that teach how the cosmos hangs together (tour discipline
+   below). If the graph came back denser than a reader needs, prune
+   trivial nodes here before writing.
+5. **Write `cosmos.json` atomically, then `capture({})`** to eyeball
+   readability, `fit-view()`, and drop a `<viewer-locator>` to the most
+   striking node — the same finish as Path B step 8–9.
+
+### Path B — in-context projection
 
 1. **Read the input.** Whatever the user has dropped into the
    workspace — a file, a folder, a chapter — use Read / Glob / Grep

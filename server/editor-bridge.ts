@@ -1,15 +1,22 @@
 /**
  * Editor Bridge — detect installed code editors and open paths in them.
  *
- * Runs server-side (Bun.spawn for the actual `open -a` call). The frontend
- * gets a list of detected editors via `/api/system/editors` and triggers
- * opens via `/api/system/open-in-editor`.
+ * Runs server-side (Bun.spawn for the actual open call). The frontend gets
+ * a list of detected editors via `/api/system/editors` and triggers opens
+ * via `/api/system/open-in-editor`.
  *
  * Detection strategy on macOS: check for `/Applications/<AppName>.app` or
- * `~/Applications/<AppName>.app`. We intentionally don't rely on the CLI
- * binaries (`code`, `cursor`, etc.) being on PATH — those are opt-in
- * installs in most editors and absence-on-PATH doesn't mean the app
- * isn't installed.
+ * `~/Applications/<AppName>.app`.
+ *
+ * Opening strategy: **CLI-first**. `open -a "<App>" <file>` is unreliable
+ * for the Electron editors — Cursor surfaces an error dialog, and other
+ * forks just bring the app forward without opening the file (the
+ * file-open Apple event gets dropped on a cold launch). Every VS Code
+ * fork ships a CLI launcher (`code` / `cursor` / `windsurf` / …) that
+ * talks to the running instance over IPC and opens files reliably. We
+ * resolve that CLI from inside the `.app` bundle first (always present,
+ * no PATH dependency), then fall back to a PATH lookup, then finally to
+ * `open -a` for the rare native editor without a CLI.
  *
  * Linux/Windows: not implemented yet — returns empty list. The feature
  * is gated by detection, so the UI just hides itself there until support
@@ -24,53 +31,148 @@ export interface DetectedEditor {
   id: string;
   /** User-facing label shown in the dropdown. */
   displayName: string;
-  /** macOS .app name passed to `open -a`. */
+  /** macOS .app name passed to `open -a` (fallback path). */
   appName: string;
+}
+
+interface KnownEditor {
+  id: string;
+  displayName: string;
+  /**
+   * Candidate macOS `.app` names, in preference order. The first one that
+   * exists on disk wins. Antigravity ships two apps — the agents-first
+   * "Antigravity" (no code editor, can't open files) and the standalone
+   * "Antigravity IDE" — so we list the IDE first and only treat that as
+   * the editor.
+   */
+  appNames: string[];
+  /** PATH shim name (`which <cliShim>`) used as a secondary CLI source. */
+  cliShim?: string;
+  /**
+   * Bundled CLI launcher paths relative to the `.app` root, in preference
+   * order. These ship inside every VS Code fork and don't depend on the
+   * user having installed the shell command on PATH.
+   */
+  bundledCli?: string[];
 }
 
 /**
  * Known editors we attempt to detect, in display order. The list is
- * curated — broadly used editors first, then common alternatives. Adding
- * a new editor: just append to this list with its `.app` name.
+ * curated — broadly used editors first, then common alternatives.
  */
-const KNOWN_EDITORS: ReadonlyArray<{
-  id: string;
-  displayName: string;
-  appName: string;
-}> = [
-  { id: "vscode", displayName: "VS Code", appName: "Visual Studio Code" },
-  { id: "cursor", displayName: "Cursor", appName: "Cursor" },
-  { id: "windsurf", displayName: "Windsurf", appName: "Windsurf" },
-  { id: "antigravity", displayName: "Antigravity", appName: "Antigravity" },
-  { id: "zed", displayName: "Zed", appName: "Zed" },
-  { id: "sublime", displayName: "Sublime Text", appName: "Sublime Text" },
-  { id: "vscode-insiders", displayName: "VS Code Insiders", appName: "Visual Studio Code - Insiders" },
+const KNOWN_EDITORS: ReadonlyArray<KnownEditor> = [
+  {
+    id: "vscode",
+    displayName: "VS Code",
+    appNames: ["Visual Studio Code"],
+    cliShim: "code",
+    bundledCli: ["Contents/Resources/app/bin/code"],
+  },
+  {
+    id: "cursor",
+    displayName: "Cursor",
+    appNames: ["Cursor"],
+    cliShim: "cursor",
+    bundledCli: ["Contents/Resources/app/bin/cursor"],
+  },
+  {
+    id: "windsurf",
+    displayName: "Windsurf",
+    appNames: ["Windsurf"],
+    cliShim: "windsurf",
+    bundledCli: ["Contents/Resources/app/bin/windsurf"],
+  },
+  {
+    id: "antigravity",
+    displayName: "Antigravity",
+    // "Antigravity IDE" is the actual code editor; plain "Antigravity" is
+    // the agents-first app that can't open files. Prefer the IDE.
+    appNames: ["Antigravity IDE", "Antigravity"],
+    cliShim: "antigravity",
+    bundledCli: [
+      "Contents/Resources/app/bin/antigravity",
+      "Contents/Resources/app/bin/code",
+    ],
+  },
+  {
+    id: "zed",
+    displayName: "Zed",
+    appNames: ["Zed"],
+    cliShim: "zed",
+    bundledCli: ["Contents/MacOS/cli"],
+  },
+  {
+    id: "sublime",
+    displayName: "Sublime Text",
+    appNames: ["Sublime Text"],
+    cliShim: "subl",
+    bundledCli: ["Contents/SharedSupport/bin/subl"],
+  },
+  {
+    id: "vscode-insiders",
+    displayName: "VS Code Insiders",
+    appNames: ["Visual Studio Code - Insiders"],
+    cliShim: "code-insiders",
+    bundledCli: ["Contents/Resources/app/bin/code-insiders"],
+  },
 ];
 
-function findAppPath(appName: string): string | null {
-  const candidates = [
-    `/Applications/${appName}.app`,
-    join(homedir(), "Applications", `${appName}.app`),
-  ];
-  return candidates.find((p) => existsSync(p)) ?? null;
-}
-
-function appExists(appName: string): boolean {
-  return findAppPath(appName) !== null;
+function findAppPath(appNames: string[]): string | null {
+  for (const appName of appNames) {
+    const candidates = [
+      `/Applications/${appName}.app`,
+      join(homedir(), "Applications", `${appName}.app`),
+    ];
+    const hit = candidates.find((p) => existsSync(p));
+    if (hit) return hit;
+  }
+  return null;
 }
 
 export function detectEditors(): DetectedEditor[] {
   if (process.platform !== "darwin") return [];
-  return KNOWN_EDITORS.filter((e) => appExists(e.appName)).map((e) => ({
-    id: e.id,
-    displayName: e.displayName,
-    appName: e.appName,
-  }));
+  return KNOWN_EDITORS.flatMap((e) => {
+    const appPath = findAppPath(e.appNames);
+    if (!appPath) return [];
+    // The chosen .app name (without extension / dir) — what `open -a`
+    // needs in the fallback path.
+    const appName = appPath.split("/").pop()!.replace(/\.app$/, "");
+    return [{ id: e.id, displayName: e.displayName, appName }];
+  });
 }
 
-function findEditor(id: string): DetectedEditor | null {
-  const all = detectEditors();
-  return all.find((e) => e.id === id) ?? null;
+function findEditor(id: string): KnownEditor | null {
+  return KNOWN_EDITORS.find((e) => e.id === id) ?? null;
+}
+
+/**
+ * Resolve a CLI launcher for the editor: bundled binary inside the
+ * `.app` first (no PATH dependency), then a PATH shim. Returns the
+ * absolute path to an executable that opens a file when invoked as
+ * `<cli> <absPath>`, or null if none is available.
+ */
+async function resolveEditorCli(editor: KnownEditor): Promise<string | null> {
+  const appPath = findAppPath(editor.appNames);
+  if (appPath && editor.bundledCli) {
+    for (const rel of editor.bundledCli) {
+      const candidate = join(appPath, rel);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  if (editor.cliShim) {
+    try {
+      const proc = Bun.spawn(["which", editor.cliShim], {
+        stdout: "pipe",
+        stderr: "ignore",
+      });
+      const out = (await new Response(proc.stdout).text()).trim();
+      const code = await proc.exited;
+      if (code === 0 && out && existsSync(out)) return out;
+    } catch {
+      // ignore — fall through to the open -a fallback
+    }
+  }
+  return null;
 }
 
 export async function openInEditor(
@@ -84,11 +186,28 @@ export async function openInEditor(
   if (!editor) {
     return { success: false, message: `Editor not found: ${editorId}` };
   }
+  const appPath = findAppPath(editor.appNames);
+  if (!appPath) {
+    return { success: false, message: `Editor not installed: ${editor.displayName}` };
+  }
   if (!existsSync(absPath)) {
     return { success: false, message: "Path does not exist" };
   }
   try {
-    const proc = Bun.spawn(["open", "-a", editor.appName, absPath], {
+    // CLI-first: reliably opens the file in the running/launched instance.
+    const cli = await resolveEditorCli(editor);
+    if (cli) {
+      const proc = Bun.spawn([cli, absPath], { stdout: "ignore", stderr: "pipe" });
+      const code = await proc.exited;
+      if (code === 0) return { success: true };
+      // CLI present but failed — surface its stderr rather than silently
+      // falling back, so a real error isn't masked.
+      const stderr = await new Response(proc.stderr).text();
+      return { success: false, message: stderr.trim() || `${editor.displayName} CLI exited with code ${code}` };
+    }
+    // Fallback: native editors without a CLI launcher (rare).
+    const appName = appPath.split("/").pop()!.replace(/\.app$/, "");
+    const proc = Bun.spawn(["open", "-a", appName, absPath], {
       stdout: "ignore",
       stderr: "pipe",
     });
@@ -147,7 +266,7 @@ export async function extractEditorIconPath(editorId: string): Promise<string | 
   if (process.platform !== "darwin") return null;
   const editor = KNOWN_EDITORS.find((e) => e.id === editorId);
   if (!editor) return null;
-  const appPath = findAppPath(editor.appName);
+  const appPath = findAppPath(editor.appNames);
   if (!appPath) return null;
 
   const infoPlist = join(appPath, "Contents", "Info.plist");

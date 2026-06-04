@@ -133,7 +133,14 @@
     "drill_cta_tooltip": "Open the drill prompt editor",
     "drilling_badge": "drilling…",
     "reset_layout_tooltip": "Reset layout (R)",
-    "reset_layout_label": "Reset layout"
+    "reset_layout_label": "Reset layout",
+    "smart_fit_tooltip": "선택 항목에 맞추기 (F)",
+    "smart_fit_label": "선택 항목에 맞추기",
+    "isolate_tooltip": "선택 항목을 깨끗한 캔버스에 격리",
+    "isolate_label": "선택 항목 격리",
+    "isolate_exit": "격리 종료",
+    "isolate_hint_one": "노드 {{count}}개 격리됨",
+    "isolate_hint_other": "노드 {{count}}개 격리됨"
   },
   "node_card": {
     "click_to_explore": "Click to explore →",
