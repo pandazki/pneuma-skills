@@ -10,6 +10,8 @@ interface R2Config {
   secretAccessKey: string;
   bucket: string;
   publicUrl: string;
+  /** Base URL of the hosted player site; when set, share returns a /s/<id> link. */
+  playerBaseUrl?: string;
 }
 
 const R2_CONFIG_PATH = join(homedir(), ".pneuma", "r2.json");
@@ -174,16 +176,29 @@ export async function shareResult(
   return { url };
 }
 
-/** Share Process — history + checkpoints + git bundle */
+export interface ShareProcessResult {
+  /** Primary copyable link: the hosted player when available, else the tar.gz. */
+  url: string;
+  /** Hosted player link (`<playerBaseUrl>/s/<id>`), when configured + materialized. */
+  playerUrl?: string;
+  /** tar.gz history-package URL — used by the player's "open in local client" badge. */
+  importUrl: string;
+  /** Whether the hosted player can render this mode (else it shows the local-client card). */
+  supported: boolean;
+  mode: string;
+}
+
+/** Share Process — history + checkpoints + git bundle, plus a materialized
+ *  play package for the hosted online player. */
 export async function shareProcess(
   workspace: string,
   title?: string,
   stateDir: string = join(workspace, ".pneuma"),
-): Promise<{ url: string }> {
+): Promise<ShareProcessResult> {
   const config = getR2Config();
   if (!config) throw new Error("R2 not configured. Please configure R2 credentials first.");
 
-  // Use existing export + upload
+  // 1. Export + upload the tar.gz history package (drives the local-client badge).
   const { exportHistory } = await import("./history-export.js");
 
   const timestamp = new Date().toISOString().replace(/[-:T.]/g, "").slice(0, 14);
@@ -194,15 +209,15 @@ export async function shareProcess(
   await exportHistory(workspace, { output: exportPath, title, stateDir });
 
   const key = `shares/${archiveName}`;
-  const url = await uploadToR2(exportPath, key, config);
+  const importUrl = await uploadToR2(exportPath, key, config);
 
-  // Upload metadata
   let mode = "unknown";
   try {
     const session = JSON.parse(readFileSync(join(stateDir, "session.json"), "utf-8"));
     mode = session.mode;
   } catch {}
 
+  // Upload share metadata (legacy importers read this).
   const metaKey = `shares/${archiveName.replace(".tar.gz", ".meta.json")}`;
   const metaContent = JSON.stringify({
     type: "process",
@@ -210,7 +225,7 @@ export async function shareProcess(
     mode,
     workspace: name,
     createdAt: new Date().toISOString(),
-    archiveUrl: url,
+    archiveUrl: importUrl,
   });
   const s3Endpoint = `https://${config.accountId}.r2.cloudflarestorage.com`;
   const client = new Bun.S3Client({
@@ -220,11 +235,25 @@ export async function shareProcess(
     bucket: config.bucket,
   });
   await client.file(metaKey).write(metaContent, { type: "application/json" });
-
-  // Cleanup
   try { const { unlinkSync } = await import("node:fs"); unlinkSync(exportPath); } catch {}
 
-  return { url };
+  // 2. Materialize + upload the static play package for the hosted player.
+  let playerUrl: string | undefined;
+  let supported = false;
+  try {
+    const { materializePlayPackage, uploadPlayPackage } = await import("./play-export.js");
+    const result = await materializePlayPackage(workspace, { title, stateDir, importUrl });
+    supported = result.index.supported;
+    await uploadPlayPackage(result.dir, result.index.id, config, config.publicUrl);
+    try { await Bun.spawn(["rm", "-rf", result.dir]).exited; } catch {}
+    if (config.playerBaseUrl) {
+      playerUrl = `${config.playerBaseUrl.replace(/\/$/, "")}/s/${result.index.id}`;
+    }
+  } catch (err) {
+    console.warn("[share] play-package materialization failed; falling back to tar.gz only:", err);
+  }
+
+  return { url: playerUrl ?? importUrl, playerUrl, importUrl, supported, mode };
 }
 
 /** Download a shared package from URL */

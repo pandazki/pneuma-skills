@@ -1,9 +1,16 @@
 // src/replay-engine.ts
 import { useStore } from "./store/index";
-import { getApiBase } from "./utils/api";
 import type { ChatMessage } from "./types";
+import {
+  ServerReplayProvider,
+  StaticPackageProvider,
+  type ReplayDataProvider,
+} from "./replay/provider";
 
 let playbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Active data source for the current replay session (server or static package). */
+let activeProvider: ReplayDataProvider | null = null;
 
 /** Navigate viewer to the file being edited in a tool_use message */
 function navigateToEditedFile(msg: any) {
@@ -172,15 +179,13 @@ function displayMessage(raw: any) {
 }
 
 async function checkoutCheckpoint(hash: string) {
+  if (!activeProvider) return;
   try {
-    const resp = await fetch(`${getApiBase()}/api/replay/checkout/${hash}`, {
-      method: "POST",
-    });
-    const data = await resp.json();
-    if (data.files) {
+    const { files } = await activeProvider.checkout(hash);
+    if (files) {
       const store = useStore.getState();
       // Use setFiles (replace all) not updateFiles (merge) — checkpoint is a complete state
-      store.setFiles(data.files);
+      store.setFiles(files);
 
       // Auto-select first content set and first file so viewer shows content
       setTimeout(() => {
@@ -233,33 +238,20 @@ export function seekTo(targetSeq: number) {
   }
 }
 
-/** Load a replay package from the server (tar.gz path or extracted directory) */
-export async function loadReplay(packagePath: string) {
-  const base = getApiBase();
+/** Shared replay bootstrap: load via the active provider, enter replay mode,
+ *  then position playback. */
+async function beginReplay(opts: { autoplay: boolean; startAtEnd: boolean }) {
+  if (!activeProvider) return;
 
-  // Load the package
-  const loadResp = await fetch(`${base}/api/replay/load`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: packagePath }),
-  });
-  const loadData = await loadResp.json();
-  if (loadData.error) throw new Error(loadData.error);
-
-  // Get all messages
-  const msgsResp = await fetch(`${base}/api/replay/messages`);
-  const msgsData = await msgsResp.json();
-
-  const { manifest } = loadData;
+  const { manifest, messages } = await activeProvider.load();
 
   // Sort checkpoints by timestamp to ensure chronological order
   const sortedCheckpoints = [...manifest.checkpoints].sort(
     (a: any, b: any) => a.timestamp - b.timestamp
   );
 
-  // Enter replay mode
   useStore.getState().enterReplayMode({
-    messages: msgsData.messages,
+    messages,
     checkpoints: sortedCheckpoints,
     metadata: {
       title: manifest.metadata.title,
@@ -270,12 +262,30 @@ export async function loadReplay(packagePath: string) {
     summary: manifest.summary,
   });
 
-  // Load the first checkpoint (earliest state) and start playing
-  if (sortedCheckpoints.length > 0) {
+  if (opts.startAtEnd) {
+    // Final-state-first: render the finished result + full history; user can
+    // scrub back through earlier turns. seekTo lands on the last checkpoint.
+    seekTo(messages.length);
+  } else if (sortedCheckpoints.length > 0) {
     await checkoutCheckpoint(sortedCheckpoints[0].hash);
     useStore.getState().setActiveCheckpoint(sortedCheckpoints[0].hash);
   }
 
-  // Auto-play — start from the beginning
-  startPlayback();
+  if (opts.autoplay) startPlayback();
+}
+
+/** Load a replay package from the local Bun server (tar.gz path or extracted
+ *  directory). Plays from the beginning — the original `--replay` behavior. */
+export async function loadReplay(packagePath: string) {
+  useStore.getState().setStaticPlayer(false);
+  activeProvider = new ServerReplayProvider(packagePath);
+  await beginReplay({ autoplay: true, startAtEnd: false });
+}
+
+/** Load a materialized play package from its base URL into the hosted player.
+ *  Opens on the finished result with full history available to scrub. */
+export async function loadStaticReplay(baseUrl: string) {
+  useStore.getState().setStaticPlayer(true);
+  activeProvider = new StaticPackageProvider(baseUrl);
+  await beginReplay({ autoplay: false, startAtEnd: true });
 }
