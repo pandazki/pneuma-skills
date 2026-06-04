@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.18.1] - 2026-06-05
+
+### Fixed
+
+- **"Open in editor" no longer crashes Cursor** — when Pneuma runs from a VS Code / Cursor integrated terminal (or desktop Electron) it inherited `VSCODE_IPC_HOOK_CLI` / `VSCODE_GIT_*` / `GIT_ASKPASS` / `ELECTRON_RUN_AS_NODE`, which routed the bundled `cursor` launcher through a remote-IPC path that recent Cursor crashes on (“AgentPanel failed to render — Cannot read properties of undefined (reading 'trim')”). The editor bridge now strips that family of injected vars before spawning, so the launcher does a clean local open.
+- **Kami live preview no longer blank after loading a seed content set** — the preview iframe is remounted on the first layout measurement (when `containerSize` goes 0 → measured and the render switches iframe branches); `srcdoc` was only re-assigned on content/viewport changes, so that remount left the new iframe empty while the content still loaded and print worked. The document is now assigned from a callback ref, so every (re)mount receives it.
+
+### Improved
+
+- **"Open in editor" focuses the project window and reveals the file** — instead of spawning a bare single-file window, the editor bridge hands the editor the file's enclosing project folder (auto-detected from the nearest `.git`/`.pneuma`/`package.json` marker, or passed explicitly) so VS Code / Cursor / Zed / Sublime focus an already-open window, reveal the file in the tree, and jump to the relevant line. Cosmos source chips open at the exact passage.
+
 ## [3.18.0] - 2026-06-04
 
 ### Added
