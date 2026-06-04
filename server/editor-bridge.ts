@@ -20,13 +20,20 @@
  * with a sanitized env (`cleanEditorEnv`) so VS Code / Cursor terminal
  * IPC injections don't route the open through a crashing remote path.
  *
+ * Window-focus + reveal: for a file we also hand the editor its enclosing
+ * project folder (`buildOpenArgs` + `findProjectRoot`). VS Code / Cursor /
+ * Zed / Sublime then focus the window that already has that folder open and
+ * open the file inside it — so `explorer.autoReveal` locates it in the tree
+ * instead of spawning a bare single-file window. An optional `line` jumps to
+ * a position (`--goto` for VS Code forks, `:line` suffix for Zed/Sublime).
+ *
  * Linux/Windows: not implemented yet — returns empty list. The feature
  * is gated by detection, so the UI just hides itself there until support
  * lands.
  */
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, isAbsolute, join, parse as parsePath, relative, resolve } from "node:path";
 
 export interface DetectedEditor {
   /** Stable id used by the frontend to identify the chosen editor. */
@@ -56,6 +63,17 @@ interface KnownEditor {
    * user having installed the shell command on PATH.
    */
   bundledCli?: string[];
+  /**
+   * CLI argument dialect, used to build the open command. Decides how a
+   * line number is expressed and whether passing a leading folder focuses
+   * an already-open window:
+   *   - "vscode" — `<folder> --goto <file>:<line>` (VS Code + every fork)
+   *   - "zed"    — `<folder> <file>:<line>`
+   *   - "sublime"— `<folder> <file>:<line>` (Sublime's `--goto`-free form)
+   * All three focus an existing window for a folder that's already open;
+   * absent/unknown family → plain `<file>` with no folder/line tricks.
+   */
+  family?: "vscode" | "zed" | "sublime";
 }
 
 /**
@@ -69,6 +87,7 @@ const KNOWN_EDITORS: ReadonlyArray<KnownEditor> = [
     appNames: ["Visual Studio Code"],
     cliShim: "code",
     bundledCli: ["Contents/Resources/app/bin/code"],
+    family: "vscode",
   },
   {
     id: "cursor",
@@ -76,6 +95,7 @@ const KNOWN_EDITORS: ReadonlyArray<KnownEditor> = [
     appNames: ["Cursor"],
     cliShim: "cursor",
     bundledCli: ["Contents/Resources/app/bin/cursor"],
+    family: "vscode",
   },
   {
     id: "windsurf",
@@ -83,6 +103,7 @@ const KNOWN_EDITORS: ReadonlyArray<KnownEditor> = [
     appNames: ["Windsurf"],
     cliShim: "windsurf",
     bundledCli: ["Contents/Resources/app/bin/windsurf"],
+    family: "vscode",
   },
   {
     id: "antigravity",
@@ -95,6 +116,7 @@ const KNOWN_EDITORS: ReadonlyArray<KnownEditor> = [
       "Contents/Resources/app/bin/antigravity",
       "Contents/Resources/app/bin/code",
     ],
+    family: "vscode",
   },
   {
     id: "zed",
@@ -102,6 +124,7 @@ const KNOWN_EDITORS: ReadonlyArray<KnownEditor> = [
     appNames: ["Zed"],
     cliShim: "zed",
     bundledCli: ["Contents/MacOS/cli"],
+    family: "zed",
   },
   {
     id: "sublime",
@@ -109,6 +132,7 @@ const KNOWN_EDITORS: ReadonlyArray<KnownEditor> = [
     appNames: ["Sublime Text"],
     cliShim: "subl",
     bundledCli: ["Contents/SharedSupport/bin/subl"],
+    family: "sublime",
   },
   {
     id: "vscode-insiders",
@@ -116,6 +140,7 @@ const KNOWN_EDITORS: ReadonlyArray<KnownEditor> = [
     appNames: ["Visual Studio Code - Insiders"],
     cliShim: "code-insiders",
     bundledCli: ["Contents/Resources/app/bin/code-insiders"],
+    family: "vscode",
   },
 ];
 
@@ -206,9 +231,107 @@ export function cleanEditorEnv(): Record<string, string> {
   return env;
 }
 
+/** Project-root markers, in the order we'd trust them. The nearest
+ *  ancestor of a file that contains any of these is treated as the
+ *  "project" whose editor window should host the file. */
+const PROJECT_ROOT_MARKERS = [
+  ".git",
+  ".pneuma",
+  ".hg",
+  ".svn",
+  "package.json",
+  "pyproject.toml",
+  "Cargo.toml",
+  "go.mod",
+  ".vscode",
+];
+
+/**
+ * Walk up from a file to the nearest ancestor directory that looks like a
+ * project root (contains a `PROJECT_ROOT_MARKERS` entry). Returns null when
+ * none is found before the filesystem / home boundary.
+ *
+ * Why: opening just `<file>` spawns a bare single-file editor window. If we
+ * also hand the editor the enclosing project folder, VS Code / Cursor focus
+ * the window that already has that folder open and reveal the file in the
+ * explorer tree — the behavior users expect from clicking a file link.
+ */
+export function findProjectRoot(absFile: string): string | null {
+  const home = resolve(homedir());
+  const fsRoot = parsePath(absFile).root;
+  let dir = dirname(resolve(absFile));
+  // Bounded walk — stop at filesystem root, and don't climb past $HOME
+  // (a marker in the home dir itself is too coarse to be a useful "project").
+  for (let i = 0; i < 64; i++) {
+    if (dir === home) return null;
+    for (const marker of PROJECT_ROOT_MARKERS) {
+      if (existsSync(join(dir, marker))) return dir;
+    }
+    if (dir === fsRoot) return null;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+  return null;
+}
+
+/** True when `file` is `root` itself or nested anywhere beneath it. */
+function isInside(file: string, root: string): boolean {
+  const rel = relative(resolve(root), resolve(file));
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+/**
+ * Build the editor CLI argv for opening `absPath`.
+ *
+ * - Directory target → just `[dir]` (open/focus the folder; no line/root
+ *   tricks make sense).
+ * - File target → optionally prefix the enclosing project `root` so an
+ *   already-open window is focused, then express the file (with an optional
+ *   line) in the editor family's dialect.
+ */
+export function buildOpenArgs(
+  editor: KnownEditor,
+  absPath: string,
+  root: string | null,
+  line: number | null,
+): string[] {
+  let isDir = false;
+  try {
+    isDir = statSync(absPath).isDirectory();
+  } catch {
+    // ignore — treat as file
+  }
+  if (isDir) return [absPath];
+
+  // Only the VS Code family + Zed + Sublime understand the folder-focus /
+  // line conventions. Anything else gets the plain file path.
+  const family = editor.family;
+  const leading = root && isInside(absPath, root) && root !== absPath ? [root] : [];
+
+  if (line && line > 0) {
+    if (family === "vscode") return [...leading, "--goto", `${absPath}:${line}`];
+    if (family === "zed" || family === "sublime") return [...leading, `${absPath}:${line}`];
+    return [absPath];
+  }
+  if (family) return [...leading, absPath];
+  return [absPath];
+}
+
+export interface OpenInEditorOptions {
+  /** Project folder to focus/open alongside the file so the editor reuses an
+   *  already-open window and reveals the file in its tree. When omitted, the
+   *  nearest project root above the file is auto-detected. Pass `null` to
+   *  opt out of the folder-focus behavior entirely. */
+  root?: string | null;
+  /** 1-based line to jump to (`--goto`). Ignored for directory targets. */
+  line?: number | null;
+}
+
 export async function openInEditor(
   editorId: string,
   absPath: string,
+  options: OpenInEditorOptions = {},
 ): Promise<{ success: boolean; message?: string }> {
   if (process.platform !== "darwin") {
     return { success: false, message: "Only macOS is supported" };
@@ -224,12 +347,22 @@ export async function openInEditor(
   if (!existsSync(absPath)) {
     return { success: false, message: "Path does not exist" };
   }
+  // Resolve the folder to focus: explicit `root` wins; `null` opts out;
+  // `undefined` auto-detects the nearest project root above the file.
+  const root =
+    options.root === null
+      ? null
+      : options.root !== undefined && existsSync(options.root)
+        ? options.root
+        : findProjectRoot(absPath);
+  const line = options.line ?? null;
+  const args = buildOpenArgs(editor, absPath, root, line);
   try {
     // CLI-first: reliably opens the file in the running/launched instance.
     const env = cleanEditorEnv();
     const cli = await resolveEditorCli(editor);
     if (cli) {
-      const proc = Bun.spawn([cli, absPath], { stdout: "ignore", stderr: "pipe", env });
+      const proc = Bun.spawn([cli, ...args], { stdout: "ignore", stderr: "pipe", env });
       const code = await proc.exited;
       if (code === 0) return { success: true };
       // CLI present but failed — surface its stderr rather than silently
@@ -237,7 +370,8 @@ export async function openInEditor(
       const stderr = await new Response(proc.stderr).text();
       return { success: false, message: stderr.trim() || `${editor.displayName} CLI exited with code ${code}` };
     }
-    // Fallback: native editors without a CLI launcher (rare).
+    // Fallback: native editors without a CLI launcher (rare). `open -a`
+    // can't express a folder-focus or a line, so it gets the bare path.
     const appName = appPath.split("/").pop()!.replace(/\.app$/, "");
     const proc = Bun.spawn(["open", "-a", appName, absPath], {
       stdout: "ignore",
