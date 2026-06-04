@@ -133,7 +133,14 @@
     "drill_cta_tooltip": "Open the drill prompt editor",
     "drilling_badge": "drilling…",
     "reset_layout_tooltip": "Reset layout (R)",
-    "reset_layout_label": "Reset layout"
+    "reset_layout_label": "Reset layout",
+    "smart_fit_tooltip": "選択範囲にフィット (F)",
+    "smart_fit_label": "選択範囲にフィット",
+    "isolate_tooltip": "選択範囲をクリーンなキャンバスに分離",
+    "isolate_label": "選択範囲を分離",
+    "isolate_exit": "分離を終了",
+    "isolate_hint_one": "{{count}} 個のノードを分離中",
+    "isolate_hint_other": "{{count}} 個のノードを分離中"
   },
   "node_card": {
     "click_to_explore": "Click to explore →",
