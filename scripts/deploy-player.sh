@@ -33,6 +33,15 @@ cp dist-player/favicon.png dist-player/favicon.ico dist-player/apple-touch-icon.
   printf '/* /index.html 200\n'
 } > "$STAGE/_redirects"
 
+# Cache control. The SPA HTML + service worker must always revalidate so users
+# pick up new builds immediately (the HTML points at content-hashed assets);
+# the hashed assets themselves are immutable.
+{
+  printf '/s/*\n  Cache-Control: no-cache\n'
+  printf '/player-content-sw.js\n  Cache-Control: no-cache\n'
+  printf '/player-assets/*\n  Cache-Control: public, max-age=31536000, immutable\n'
+} > "$STAGE/_headers"
+
 echo "[deploy] Deploying to Cloudflare Pages: $CF_PROJECT ($CF_BRANCH)..."
 bunx wrangler pages deploy "$STAGE" --project-name="$CF_PROJECT" --branch="$CF_BRANCH"
 echo "[deploy] Done. Player base: $PLAYER_ORIGIN (custom domain pneuma.deepaste.ai)."
