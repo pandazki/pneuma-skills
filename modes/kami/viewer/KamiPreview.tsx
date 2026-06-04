@@ -1202,21 +1202,36 @@ export default function KamiPreview({
     return buildSrcdoc(fileContent.content, baseHref);
   }, [currentFile, files, baseHref, activeContentSet]);
 
-  // Stable srcdoc: only update when the actual file content changes (not on
-  // every `files` array reference change).  This prevents the iframe from
-  // reloading — and resetting scroll position — due to unrelated store updates.
-  const stableSrcdocRef = useRef("");
+  // Latest srcdoc, readable from the iframe's callback ref without making the
+  // ref callback identity depend on it (a changing ref callback would itself
+  // detach/reattach the node every render).
+  const srcdocRef = useRef("");
+  srcdocRef.current = srcdoc;
 
+  // Assign srcdoc the instant the iframe node attaches.
+  //
+  // The iframe is remounted (a fresh DOM node) whenever `iframeLayout.useTransform`
+  // flips — which happens on the very first ResizeObserver measurement, when
+  // `containerSize` goes 0 → measured and the render switches from the bare
+  // `<iframe>` branch to the scaled `<div><iframe>` branch. The old imperative
+  // effect only re-ran on [srcdoc, viewport] changes, so a remount triggered by
+  // that layout flip left the new iframe blank forever (the bug: content loads,
+  // print works, but the live preview is empty). A callback ref fires on every
+  // (re)mount, so the current srcdoc always lands on the live node.
+  const attachIframe = useCallback((node: HTMLIFrameElement | null) => {
+    iframeRef.current = node;
+    if (node && srcdocRef.current) node.srcdoc = srcdocRef.current;
+  }, []);
+
+  // Push subsequent content updates into the already-mounted iframe. Guarded so
+  // unrelated re-renders don't reload it (which would reset scroll position).
+  const stableSrcdocRef = useRef("");
   useEffect(() => {
     if (!iframeRef.current || !srcdoc) return;
-    if (stableSrcdocRef.current !== srcdoc) {
-      stableSrcdocRef.current = srcdoc;
-    }
-    // Always assign srcdoc — the iframe DOM node may have been replaced by
-    // a viewport switch (Full ↔ Device) which conditionally renders different
-    // iframe structures.  Without this, the new iframe mounts blank.
+    if (stableSrcdocRef.current === srcdoc) return;
+    stableSrcdocRef.current = srcdoc;
     iframeRef.current.srcdoc = srcdoc;
-  }, [srcdoc, viewport]);
+  }, [srcdoc]);
 
   // ── Selection & edit mode handling ──────────────────────────────────────────
 
@@ -1985,7 +2000,7 @@ body::after {
                 }}
               >
                 <iframe
-                  ref={iframeRef}
+                  ref={attachIframe}
                   style={{
                     width: "100%",
                     height: "100%",
@@ -2001,7 +2016,7 @@ body::after {
             ) : (
               /* Fallback (unreachable in kami — buildKamiPreset always yields a fixed-size preset) */
               <iframe
-                ref={iframeRef}
+                ref={attachIframe}
                 style={{
                   width: "100%",
                   height: "100%",
