@@ -55,6 +55,14 @@ export async function registerContentServiceWorker(swUrl = "/player-content-sw.j
   }
 }
 
+/** Tell the service worker which content set is active, so it can resolve
+ *  content-set-relative asset requests (e.g. illustrate's "images/x.png"). */
+export function notifyActiveContentSet(contentSet: string | null): void {
+  if (typeof navigator !== "undefined" && navigator.serviceWorker?.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: "pneuma-player-content-set", contentSet });
+  }
+}
+
 /** Push the active checkpoint's file map to the service worker. */
 export function notifyContentLayer(baseUrl: string, files: PlayFileEntry[]): void {
   const map: Record<string, string> = {};

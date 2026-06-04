@@ -12,6 +12,10 @@
 
 /** @type {{ baseUrl: string, files: Record<string,string> } | null} */
 let active = null;
+/** Active content set prefix (e.g. "blog-heroes", "en-dark"). Some viewers
+ *  request assets relative to the content set, expecting the server to prepend
+ *  it; we do the same here. */
+let activeContentSet = null;
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
@@ -20,6 +24,8 @@ self.addEventListener("message", (event) => {
   const data = event.data;
   if (data && data.type === "pneuma-player-checkout") {
     active = { baseUrl: data.baseUrl.replace(/\/$/, ""), files: data.files || {} };
+  } else if (data && data.type === "pneuma-player-content-set") {
+    activeContentSet = data.contentSet || null;
   }
 });
 
@@ -48,12 +54,23 @@ function contentTypeFor(path) {
 function resolveKey(rel) {
   if (!active) return null;
   if (active.files[rel]) return rel;
-  // Some viewers reference assets relative to a content-set root that may or may
-  // not be encoded in the request; try progressively stripping leading segments.
+  // Viewers like illustrate/doc request assets relative to the content set
+  // (e.g. "images/x.png"), expecting the server to prepend the active set.
+  if (activeContentSet && active.files[`${activeContentSet}/${rel}`]) {
+    return `${activeContentSet}/${rel}`;
+  }
+  // Progressively strip leading segments (handles requests carrying a prefix
+  // the manifest doesn't use).
   const parts = rel.split("/");
   for (let i = 1; i < parts.length; i++) {
     const candidate = parts.slice(i).join("/");
     if (active.files[candidate]) return candidate;
+  }
+  // Suffix match — a single file whose path ends with /rel. Safe net for
+  // single-content-set packages where the prefix wasn't supplied.
+  const suffix = "/" + rel;
+  for (const key in active.files) {
+    if (key.endsWith(suffix)) return key;
   }
   return null;
 }

@@ -247,7 +247,10 @@ export async function shareProcess(
     await uploadPlayPackage(result.dir, result.index.id, config, config.publicUrl);
     try { await Bun.spawn(["rm", "-rf", result.dir]).exited; } catch {}
     if (config.playerBaseUrl) {
-      playerUrl = `${config.playerBaseUrl.replace(/\/$/, "")}/s/${result.index.id}`;
+      // Query form (/s/?id=) rather than /s/<id>: /s/ is a real served asset, so
+      // it works even when the host serves a catch-all SPA fallback for unknown
+      // paths (which would otherwise swallow /s/<id>).
+      playerUrl = `${config.playerBaseUrl.replace(/\/$/, "")}/s/?id=${result.index.id}`;
     }
   } catch (err) {
     console.warn("[share] play-package materialization failed; falling back to tar.gz only:", err);

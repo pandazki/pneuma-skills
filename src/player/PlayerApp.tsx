@@ -17,7 +17,7 @@ import { loadMode } from "../../core/mode-loader.js";
 import { resolveLocalized } from "../../core/types/mode-manifest.js";
 import { fetchPlayIndex } from "../replay/provider.js";
 import { loadStaticReplay } from "../replay-engine.js";
-import { registerContentServiceWorker } from "./content-sw-client.js";
+import { registerContentServiceWorker, notifyActiveContentSet } from "./content-sw-client.js";
 import { ReplayPlayer } from "../components/ReplayPlayer.js";
 import ChatPanel from "../components/ChatPanel.js";
 import { ViewerErrorBoundary } from "../components/ViewerErrorBoundary.js";
@@ -103,6 +103,12 @@ export default function PlayerApp() {
       if (best) useStore.getState().setActiveContentSet(best.prefix);
     }
   }, [contentSets, prefs, phase]); // activeContentSet intentionally excluded
+
+  // Keep the content service worker informed of the active content set so it can
+  // resolve content-set-relative asset requests (illustrate, doc images).
+  useEffect(() => {
+    notifyActiveContentSet(activeContentSet);
+  }, [activeContentSet]);
 
   if (phase === "loading") {
     return (

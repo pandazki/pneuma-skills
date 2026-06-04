@@ -927,7 +927,7 @@ function ViewportToolbar({
         >
           Design adapted from tw93/kami <span aria-hidden="true">↗</span>
         </a>
-        <button
+        {!readonly && <button
           onClick={onExport}
           title="Export &amp; Download"
           style={{
@@ -953,7 +953,7 @@ function ViewportToolbar({
           }}
         >
           <DownloadIcon />
-        </button>
+        </button>}
       </div>
     </div>
   );

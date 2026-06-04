@@ -43,7 +43,8 @@ export async function pushHistory(workspace: string, title?: string): Promise<st
     await uploadPlayPackage(play.dir, play.index.id, creds, creds.publicUrl);
     try { await Bun.spawn(["rm", "-rf", play.dir]).exited; } catch {}
     if (creds.playerBaseUrl) {
-      const playerUrl = `${creds.playerBaseUrl.replace(/\/$/, "")}/s/${play.index.id}`;
+      // Query form (/s/?id=) — see server/share.ts for why.
+      const playerUrl = `${creds.playerBaseUrl.replace(/\/$/, "")}/s/?id=${play.index.id}`;
       console.log(`[history] Online player: ${playerUrl}`);
       if (!play.index.supported) {
         console.log("[history] (mode not yet web-playable — player will offer the local client)");
