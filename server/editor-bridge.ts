@@ -16,7 +16,9 @@
  * talks to the running instance over IPC and opens files reliably. We
  * resolve that CLI from inside the `.app` bundle first (always present,
  * no PATH dependency), then fall back to a PATH lookup, then finally to
- * `open -a` for the rare native editor without a CLI.
+ * `open -a` for the rare native editor without a CLI. The CLI is spawned
+ * with a sanitized env (`cleanEditorEnv`) so VS Code / Cursor terminal
+ * IPC injections don't route the open through a crashing remote path.
  *
  * Linux/Windows: not implemented yet — returns empty list. The feature
  * is gated by detection, so the UI just hides itself there until support
@@ -175,6 +177,35 @@ async function resolveEditorCli(editor: KnownEditor): Promise<string | null> {
   return null;
 }
 
+/**
+ * A clean environment for spawning the editor CLI launcher.
+ *
+ * VS Code and its forks (Cursor, Windsurf, …) inject IPC + askpass vars
+ * into their integrated-terminal environments. When Pneuma is launched
+ * from such a terminal — or from a desktop Electron shell — those vars
+ * are inherited, and the bundled `cursor`/`code` launcher reads them:
+ * `VSCODE_IPC_HOOK_CLI` flips it into "remote" mode and routes the open
+ * over that socket. Recent Cursor crashes its agent panel on that path
+ * ("AgentPanel failed to render — Cannot read properties of undefined
+ * (reading 'trim')"). Stripping the injected vars makes the launcher do
+ * a clean external open against the running instance instead.
+ *
+ * `ELECTRON_RUN_AS_NODE` is stripped for the same reason — if Pneuma's
+ * own Electron leaks it, the launcher's Electron boots in node mode and
+ * never opens a window.
+ */
+export function cleanEditorEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v === undefined) continue;
+    if (k.startsWith("VSCODE_")) continue;
+    if (k === "ELECTRON_RUN_AS_NODE" || k === "ELECTRON_NO_ATTACH_CONSOLE") continue;
+    if (k === "GIT_ASKPASS" || k === "NODE_OPTIONS") continue;
+    env[k] = v;
+  }
+  return env;
+}
+
 export async function openInEditor(
   editorId: string,
   absPath: string,
@@ -195,9 +226,10 @@ export async function openInEditor(
   }
   try {
     // CLI-first: reliably opens the file in the running/launched instance.
+    const env = cleanEditorEnv();
     const cli = await resolveEditorCli(editor);
     if (cli) {
-      const proc = Bun.spawn([cli, absPath], { stdout: "ignore", stderr: "pipe" });
+      const proc = Bun.spawn([cli, absPath], { stdout: "ignore", stderr: "pipe", env });
       const code = await proc.exited;
       if (code === 0) return { success: true };
       // CLI present but failed — surface its stderr rather than silently
@@ -210,6 +242,7 @@ export async function openInEditor(
     const proc = Bun.spawn(["open", "-a", appName, absPath], {
       stdout: "ignore",
       stderr: "pipe",
+      env,
     });
     const code = await proc.exited;
     if (code !== 0) {
