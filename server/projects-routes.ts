@@ -673,7 +673,16 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
   // matches the behavior. Both ProjectPanel (project root) and
   // EditorPanel (per-session workspace) hit this same endpoint.
   app.post("/api/system/open-in-editor", async (c) => {
-    const body = await c.req.json<{ editorId: string; path: string }>();
+    // `root` (optional): the project folder to focus/open alongside the file
+    // so the editor reuses an already-open window and reveals the file in its
+    // tree. Omit → server auto-detects the nearest project root above the
+    // file. `line` (optional, 1-based): jump to that line.
+    const body = await c.req.json<{
+      editorId: string;
+      path: string;
+      root?: string;
+      line?: number;
+    }>();
     if (!body.path) {
       return c.json({ success: false, message: "Missing path" }, 400);
     }
@@ -681,7 +690,10 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
       return c.json({ success: false, message: "Directory not found" }, 404);
     }
     const { openInEditor } = await import("./editor-bridge.js");
-    const result = await openInEditor(body.editorId, body.path);
+    const result = await openInEditor(body.editorId, body.path, {
+      root: body.root && existsSync(body.root) ? body.root : undefined,
+      line: typeof body.line === "number" ? body.line : undefined,
+    });
     return c.json(result, result.success ? 200 : 500);
   });
 

@@ -255,6 +255,8 @@ async function tryOpenInEditor(
   base: string,
   headers: Record<string, string>,
   path: string,
+  root: string | undefined,
+  line: number | undefined,
 ): Promise<boolean> {
   const editorId = await resolvePreferredEditorId(base);
   if (!editorId) return false;
@@ -262,7 +264,9 @@ async function tryOpenInEditor(
     const res = await fetch(`${base}/api/system/open-in-editor`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ editorId, path }),
+      // `root` focuses the editor window that already has the source project
+      // open and reveals the file in its tree; `line` jumps to the passage.
+      body: JSON.stringify({ editorId, path, root, line }),
     });
     if (!res.ok) return false;
     const data = (await res.json().catch(() => ({}))) as { success?: boolean };
@@ -302,7 +306,20 @@ async function openSourceRef(
         ? resolveSourcePath(ref.file, sourceRoot, projectRoot)
         : resolveSourcePath(ref.path, sourceRoot, projectRoot);
 
-    if (await tryOpenInEditor(base, headers, path)) {
+    // Hand the editor the source project folder so it focuses the window
+    // that already has it open (and reveals the file in the tree) instead of
+    // spawning a bare single-file window. Only pass absolute roots; for
+    // relative/unknown roots the server auto-detects from the file path.
+    const root =
+      sourceRoot && sourceRoot.startsWith("/")
+        ? sourceRoot
+        : projectRoot && projectRoot.startsWith("/")
+          ? projectRoot
+          : undefined;
+    // A file ref's range pinpoints the span — jump to its first line.
+    const line = ref.kind === "file" ? ref.range?.[0] : undefined;
+
+    if (await tryOpenInEditor(base, headers, path, root, line)) {
       return { ok: true };
     }
 
