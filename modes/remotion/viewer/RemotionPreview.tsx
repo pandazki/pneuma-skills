@@ -544,7 +544,7 @@ export default function RemotionPreview({
         <span className="text-[10px] font-mono" style={{ color: "var(--color-cc-muted, #52525b)" }}>
           {activeComp.width}×{activeComp.height} · {activeComp.fps}fps · {(activeComp.durationInFrames / activeComp.fps).toFixed(1)}s
         </span>
-        <button
+        {!readonly && <button
           onClick={() => {
             const base = getApiBase();
             const compId = activeComp?.id;
@@ -561,7 +561,7 @@ export default function RemotionPreview({
             <path d="M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           Export
-        </button>
+        </button>}
       </div>
 
       {/* Player canvas */}

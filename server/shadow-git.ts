@@ -164,6 +164,61 @@ export async function createBundle(workspace: string, outPath: string): Promise<
   if (exitCode !== 0) throw new Error(`git bundle create failed with exit code ${exitCode}`);
 }
 
+export interface TreeFileEntry {
+  /** Workspace-relative path. */
+  path: string;
+  /** Git blob object id — content-addressed, stable across checkpoints (dedup key). */
+  blob: string;
+  /** Byte size of the blob. */
+  size: number;
+}
+
+/**
+ * List every file present at a checkpoint, with its git blob id and size.
+ * Used by the web-player materializer to build a content-addressed snapshot.
+ */
+export async function listCheckpointTree(
+  workspace: string,
+  hash: string,
+  stateDir?: string,
+): Promise<TreeFileEntry[]> {
+  const proc = Bun.spawn(
+    ["git", `--git-dir=${gitDir(workspace, stateDir)}`, "ls-tree", "-r", "-l", hash],
+    { stdout: "pipe", stderr: "ignore" },
+  );
+  const out = await new Response(proc.stdout as ReadableStream<Uint8Array>).text();
+  const entries: TreeFileEntry[] = [];
+  for (const line of out.split("\n")) {
+    if (!line.trim()) continue;
+    // Format: "<mode> <type> <object> <size>\t<path>"
+    const tab = line.indexOf("\t");
+    if (tab < 0) continue;
+    const meta = line.slice(0, tab).split(/\s+/);
+    const path = line.slice(tab + 1);
+    if (meta[1] !== "blob") continue; // skip submodules/trees
+    const blob = meta[2];
+    const size = parseInt(meta[3], 10) || 0;
+    entries.push({ path, blob, size });
+  }
+  return entries;
+}
+
+/**
+ * Read the raw bytes of a git blob (binary-safe) from the shadow repo.
+ */
+export async function readCheckpointBlob(
+  workspace: string,
+  blobSha: string,
+  stateDir?: string,
+): Promise<Uint8Array> {
+  const proc = Bun.spawn(
+    ["git", `--git-dir=${gitDir(workspace, stateDir)}`, "cat-file", "blob", blobSha],
+    { stdout: "pipe", stderr: "ignore" },
+  );
+  const buf = await new Response(proc.stdout as ReadableStream<Uint8Array>).arrayBuffer();
+  return new Uint8Array(buf);
+}
+
 export async function exportCheckpointFiles(workspace: string, hash: string, outDir: string): Promise<void> {
   mkdirSync(outDir, { recursive: true });
   const archive = Bun.spawn(

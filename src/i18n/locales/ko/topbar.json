@@ -22,7 +22,8 @@
     "again": "다시 공유",
     "share_failed": "공유 실패",
     "export_failed": "내보내기 실패",
-    "try_again": "다시 시도"
+    "try_again": "다시 시도",
+    "close": "닫기"
   },
   "tabs": {
     "chat": "대화",

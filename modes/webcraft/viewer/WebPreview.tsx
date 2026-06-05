@@ -723,8 +723,8 @@ function ViewportToolbar({
         ))}
       </div>}
 
-      {/* Right: Export */}
-      <button
+      {/* Right: Export — hidden in readonly (replay / hosted player) mode */}
+      {!readonly && <button
         onClick={onExport}
         title="Export &amp; Download"
         style={{
@@ -750,7 +750,7 @@ function ViewportToolbar({
         }}
       >
         <DownloadIcon />
-      </button>
+      </button>}
     </div>
   );
 }

@@ -16,6 +16,10 @@ export interface ReplaySlice {
     duration: number;
   } | null;
   replaySummary: any | null;
+  /** True when replaying a static play package in the hosted player (no Bun
+   *  server) — suppresses server-only affordances like "Continue Work". */
+  staticPlayer: boolean;
+  setStaticPlayer: (v: boolean) => void;
 
   enterReplayMode: (data: {
     messages: any[];
@@ -40,6 +44,8 @@ export const createReplaySlice: StateCreator<AppState, [], [], ReplaySlice> = (s
   isPlaying: false,
   replayMetadata: null,
   replaySummary: null,
+  staticPlayer: false,
+  setStaticPlayer: (v) => set({ staticPlayer: v }),
 
   enterReplayMode: (data) =>
     set({

@@ -16,6 +16,13 @@ interface ExportOptions {
    * project sessions pass `<projectRoot>/.pneuma/sessions/<id>`.
    */
   stateDir?: string;
+  /**
+   * Override the generated package id. Real shares omit it (a unique
+   * `mode-basename-timestamp` id is minted so links never collide). Demo
+   * seeders pass a stable slug (e.g. `kami-demo`) so the public link is
+   * permanent and a reseed overwrites the same R2 path in place.
+   */
+  id?: string;
 }
 
 interface ExportResult {
@@ -24,7 +31,25 @@ interface ExportResult {
   checkpointCount: number;
 }
 
-export async function exportHistory(workspace: string, options: ExportOptions = {}): Promise<ExportResult> {
+/** Result of assembling a session's manifest + sanitized messages, shared by the
+ *  tar.gz export (local replay) and the materialized play package (web player). */
+export interface HistoryArtifacts {
+  manifest: SharedHistoryPackage;
+  messages: BrowserIncomingMessage[];
+  /** Newline-delimited messages with the workspace path prefix stripped (portable). */
+  messagesJsonl: string;
+  /** Raw checkpoint entries (turn/ts/hash) in recorded order. */
+  checkpoints: Array<{ turn: number; ts: number; hash: string }>;
+}
+
+/**
+ * Read session.json + history.json + checkpoints and assemble the SharedHistoryPackage
+ * manifest plus the sanitized message stream. Pure data assembly — no disk staging.
+ */
+export async function buildHistoryArtifacts(
+  workspace: string,
+  options: ExportOptions = {},
+): Promise<HistoryArtifacts> {
   const stateDir = options.stateDir ?? join(workspace, ".pneuma");
 
   // 1. Read session metadata
@@ -50,7 +75,7 @@ export async function exportHistory(workspace: string, options: ExportOptions = 
   const summary = generateSummary(messages, workspaceFiles);
 
   // 7. Build manifest
-  const id = `${session.mode}-${basename(workspace)}-${Date.now()}`;
+  const id = options.id ?? `${session.mode}-${basename(workspace)}-${Date.now()}`;
   const timestamps = messages
     .filter((m: any) => m.timestamp)
     .map((m: any) => m.timestamp);
@@ -72,6 +97,18 @@ export async function exportHistory(workspace: string, options: ExportOptions = 
     checkpoints: exportedCheckpoints,
   };
 
+  // Sanitize workspace paths out of messages for portability
+  const workspacePrefix = workspace.endsWith("/") ? workspace : workspace + "/";
+  const messagesJsonl = messages
+    .map((m) => JSON.stringify(m).replaceAll(workspacePrefix, ""))
+    .join("\n");
+
+  return { manifest, messages, messagesJsonl, checkpoints };
+}
+
+export async function exportHistory(workspace: string, options: ExportOptions = {}): Promise<ExportResult> {
+  const { manifest, messages, messagesJsonl, checkpoints } = await buildHistoryArtifacts(workspace, options);
+
   // 8. Create staging directory
   const stageDir = mkdtempSync(join(tmpdir(), "pneuma-export-"));
   mkdirSync(stageDir, { recursive: true });
@@ -79,11 +116,7 @@ export async function exportHistory(workspace: string, options: ExportOptions = 
   // Write manifest
   writeFileSync(join(stageDir, "manifest.json"), JSON.stringify(manifest, null, 2));
 
-  // Write messages as JSONL (sanitize workspace paths)
-  const workspacePrefix = workspace.endsWith("/") ? workspace : workspace + "/";
-  const messagesJsonl = messages
-    .map((m) => JSON.stringify(m).replaceAll(workspacePrefix, ""))
-    .join("\n");
+  // Write messages as JSONL (workspace paths already sanitized in buildHistoryArtifacts)
   writeFileSync(join(stageDir, "messages.jsonl"), messagesJsonl);
 
   // Create git bundle if shadow git available
@@ -92,7 +125,7 @@ export async function exportHistory(workspace: string, options: ExportOptions = 
   }
 
   // 9. tar.gz the staging directory
-  const outputPath = options.output ?? join(workspace, `${id}.tar.gz`);
+  const outputPath = options.output ?? join(workspace, `${manifest.metadata.id}.tar.gz`);
   await Bun.spawn(
     ["tar", "czf", outputPath, "-C", stageDir, "."],
     { stdout: "ignore", stderr: "ignore" },

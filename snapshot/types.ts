@@ -16,6 +16,12 @@ export interface R2Credentials {
   secretAccessKey: string;
   bucket: string;
   publicUrl: string;
+  /**
+   * Base URL of the hosted player site (CF Pages). When set, sharing a session
+   * returns a `${playerBaseUrl}/s/<id>` link. When absent, sharing falls back
+   * to the raw history-package URL (local-client only).
+   */
+  playerBaseUrl?: string;
 }
 
 export interface ModeRegistryEntry {

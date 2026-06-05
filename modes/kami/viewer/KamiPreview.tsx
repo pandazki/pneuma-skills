@@ -139,6 +139,18 @@ interface ViewportPreset {
 }
 
 /**
+ * Desk inset, in CSS px — the breathing room between the sheet edge and
+ * the surrounding desk. The DESK lives in the CONTENT (styles.css
+ * `--desk-inset` + body padding), so a kami document renders as
+ * paper-on-a-desk on its own. Scroll mode sizes its iframe to include
+ * this inset so fit-to-width frames the desk+sheet as one unit; the
+ * scroll overlay re-asserts the same inset so the viewer's math matches
+ * the rendered document exactly, regardless of which styles.css version
+ * the workspace was seeded with. Keep this equal to `--desk-inset`.
+ */
+const DESK_INSET = 48;
+
+/**
  * Build the single locked paper preset from the config source.
  * Falls back to A4 Portrait if config hasn't loaded yet.
  */
@@ -927,7 +939,7 @@ function ViewportToolbar({
         >
           Design adapted from tw93/kami <span aria-hidden="true">↗</span>
         </a>
-        <button
+        {!readonly && <button
           onClick={onExport}
           title="Export &amp; Download"
           style={{
@@ -953,7 +965,7 @@ function ViewportToolbar({
           }}
         >
           <DownloadIcon />
-        </button>
+        </button>}
       </div>
     </div>
   );
@@ -1456,8 +1468,16 @@ body::after {
   z-index: 10;
 }`;
       } else {
-        // Scroll: no layout change beyond guides.
-        css = "";
+        // Scroll: re-assert the desk so the sheet(s) float on the desk with
+        // an inset on every side. styles.css already bakes this in (point:
+        // the content is self-sufficient), but re-injecting it here pins the
+        // rendered desk to exactly DESK_INSET — which the iframe sizing math
+        // below depends on — even for workspaces seeded with an older
+        // styles.css that predates the --desk-inset token.
+        css = `html, body { background: #d9d6ca !important; }
+body { margin: 0 !important; padding: ${DESK_INSET}px !important; }
+.page { margin: 0 auto !important; }
+.page + .page { margin-top: ${DESK_INSET}px !important; }`;
       }
 
       const styleId = "kami-view-style";
@@ -1874,8 +1894,13 @@ body::after {
     let naturalH = ph;
     let fitMode: "width" | "both" = "both";
     if (kamiViewMode === "scroll") {
-      naturalW = pw;
-      naturalH = Math.max(ph * pageCount, ph);
+      // Include the content's desk inset (body padding + inter-page gaps)
+      // so fit-to-width frames the whole document — desk + sheets — as one
+      // unit, instead of cropping to the bare sheet. Mirrors styles.css /
+      // the scroll overlay: DESK_INSET on every side + between each sheet.
+      const pages = Math.max(pageCount, 1);
+      naturalW = pw + DESK_INSET * 2;
+      naturalH = ph * pages + DESK_INSET * (pages + 1);
       fitMode = "width";
     } else if (kamiViewMode === "book") {
       naturalW = pw * 2;
@@ -1888,11 +1913,16 @@ body::after {
     }
 
     if (cw === 0 || ch === 0) {
+      // Container not measured yet (can happen on first paint, e.g. in the
+      // hosted player before flex layout settles). Render the paper at its
+      // natural size CENTERED on the desk rather than the full-bleed fallback —
+      // otherwise the iframe stretches to 100% and the paper loses its margins.
+      // Once the ResizeObserver fires, scale is recomputed below.
       return {
         width: `${naturalW}px`,
         height: `${naturalH}px`,
         scale: 1,
-        useTransform: false,
+        useTransform: true,
         fitMode,
       };
     }
@@ -1971,13 +2001,18 @@ body::after {
           style={{
             flex: 1,
             position: "relative",
-            /* paper letterbox — intentionally fixed-light, see CLAUDE.md kami constraint */
+            /* paper letterbox — intentionally fixed-light, see CLAUDE.md kami
+             * constraint. Matches the content's own desk (--desk-inset) so any
+             * scaling slack blends seamlessly into the sheet's surround. */
             background: "#d9d6ca",
             overflow: kamiViewMode === "scroll" ? "auto" : "hidden",
             display: "flex",
             alignItems: kamiViewMode === "scroll" ? "flex-start" : "center",
             justifyContent: "center",
-            padding: kamiViewMode === "scroll" ? "24px 0" : 0,
+            /* Scroll mode's desk is baked into the document (body padding +
+             * inter-page gaps), so the container adds none — focus/book center
+             * a bare sheet/spread and rely on the container surround instead. */
+            padding: 0,
           }}
         >
           {currentFile && srcdoc ? (

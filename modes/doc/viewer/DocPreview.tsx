@@ -689,6 +689,7 @@ export default function DocPreview({
         onToggleTheme={toggleTheme}
         previewMode={previewMode}
         onSetPreviewMode={setPreviewMode}
+        readonly={readonly}
       />
       {previewMode === "edit" ? (
         <div

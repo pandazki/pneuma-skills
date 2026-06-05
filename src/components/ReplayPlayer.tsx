@@ -9,7 +9,7 @@ export function ReplayPlayer() {
   const {
     replayMode, replayMessages, replayMetadata,
     currentSeq, playbackSpeed, isPlaying,
-    replayCheckpoints,
+    replayCheckpoints, staticPlayer,
   } = useStore();
 
   if (!replayMode || !replayMetadata) return null;
@@ -118,7 +118,9 @@ export function ReplayPlayer() {
 
         <div className="flex-1 min-w-0" />
         <span className="text-cc-muted/60 text-[10px] truncate shrink min-w-0">{replayMetadata.title}</span>
-        <ContinueWorkButton />
+        {/* Continue Work transitions back to a live agent session — only the
+            local Bun server can do that, so hide it in the hosted player. */}
+        {!staticPlayer && <ContinueWorkButton />}
       </div>
     </div>
   );

@@ -22,20 +22,40 @@ export async function pushHistory(workspace: string, title?: string): Promise<st
   const result = await exportHistory(workspace, { output: exportPath, title });
   console.log(`[history] Exported ${result.messageCount} messages, ${result.checkpointCount} checkpoints`);
 
-  // 2. Upload to R2
+  // 2. Upload tar.gz to R2 (drives `history open` + the player's local-client badge)
   const creds = await getCredentials();
   const key = `histories/${exportName}`;
   console.log("[history] Uploading to R2...");
-  const publicUrl = await uploadToR2(exportPath, key, creds);
+  const importUrl = await uploadToR2(exportPath, key, creds);
 
   // 3. Cleanup
   try { unlinkSync(exportPath); } catch {}
 
   console.log(`[history] Uploaded successfully!`);
-  console.log(`[history] URL: ${publicUrl}`);
-  console.log(`[history] To replay: pneuma history open ${publicUrl}`);
+  console.log(`[history] URL: ${importUrl}`);
+  console.log(`[history] To replay: pneuma history open ${importUrl}`);
 
-  return publicUrl;
+  // 4. Materialize + upload the static play package for the hosted player.
+  try {
+    const { materializePlayPackage, uploadPlayPackage } = await import("../server/play-export.js");
+    console.log("[history] Materializing play package...");
+    const play = await materializePlayPackage(workspace, { title, importUrl });
+    await uploadPlayPackage(play.dir, play.index.id, creds, creds.publicUrl);
+    try { await Bun.spawn(["rm", "-rf", play.dir]).exited; } catch {}
+    if (creds.playerBaseUrl) {
+      // Query form (/s/?id=) — see server/share.ts for why.
+      const playerUrl = `${creds.playerBaseUrl.replace(/\/$/, "")}/s/?id=${play.index.id}`;
+      console.log(`[history] Online player: ${playerUrl}`);
+      if (!play.index.supported) {
+        console.log("[history] (mode not yet web-playable — player will offer the local client)");
+      }
+      return playerUrl;
+    }
+  } catch (err) {
+    console.warn("[history] play-package materialization skipped:", err);
+  }
+
+  return importUrl;
 }
 
 /**

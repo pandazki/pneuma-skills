@@ -1,9 +1,16 @@
 // src/replay-engine.ts
 import { useStore } from "./store/index";
-import { getApiBase } from "./utils/api";
 import type { ChatMessage } from "./types";
+import {
+  ServerReplayProvider,
+  StaticPackageProvider,
+  type ReplayDataProvider,
+} from "./replay/provider";
 
 let playbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Active data source for the current replay session (server or static package). */
+let activeProvider: ReplayDataProvider | null = null;
 
 /** Navigate viewer to the file being edited in a tool_use message */
 function navigateToEditedFile(msg: any) {
@@ -172,15 +179,13 @@ function displayMessage(raw: any) {
 }
 
 async function checkoutCheckpoint(hash: string) {
+  if (!activeProvider) return;
   try {
-    const resp = await fetch(`${getApiBase()}/api/replay/checkout/${hash}`, {
-      method: "POST",
-    });
-    const data = await resp.json();
-    if (data.files) {
+    const { files } = await activeProvider.checkout(hash);
+    if (files) {
       const store = useStore.getState();
       // Use setFiles (replace all) not updateFiles (merge) — checkpoint is a complete state
-      store.setFiles(data.files);
+      store.setFiles(files);
 
       // Auto-select first content set and first file so viewer shows content
       setTimeout(() => {
@@ -196,6 +201,43 @@ async function checkoutCheckpoint(hash: string) {
   } catch (err) {
     console.warn("[replay] checkpoint checkout failed:", err);
   }
+}
+
+/** Choose which checkpoint reflects the workspace at message position `targetSeq`.
+ *
+ *  Prefers each checkpoint's recorded `messageSeqRange` — a direct message→state
+ *  mapping that holds for ANY mode, including ones that generate files by running
+ *  a script via Bash (cosmos's projection workflow, remotion renders) rather than
+ *  the Edit/Write tools. The old heuristic counted Edit/Write/NotebookEdit calls,
+ *  so a script-driven session had `editCount === 0` and pinned the view to the
+ *  FIRST checkpoint — which, in a multi-turn session, predates the generated file
+ *  and renders an empty viewer ("No cosmos yet"). Seeking to/past the end always
+ *  lands on the final checkpoint (the static player's final-state-first default).
+ *  Falls back to the Edit/Write count only for legacy packages without ranges. */
+function pickCheckpointForSeq(checkpoints: any[], targetSeq: number, messages: any[]): any {
+  if (targetSeq >= messages.length) return checkpoints[checkpoints.length - 1];
+
+  const haveRanges = checkpoints.some((c) => Array.isArray(c.messageSeqRange));
+  if (haveRanges) {
+    let best = checkpoints[0];
+    for (const cp of checkpoints) {
+      const start = cp.messageSeqRange?.[0];
+      if (typeof start === "number" && start <= targetSeq) best = cp;
+    }
+    return best;
+  }
+
+  let editCount = 0;
+  for (let i = 0; i < targetSeq && i < messages.length; i++) {
+    const m = messages[i];
+    if (m.type === "assistant" && m.message?.content?.some((b: any) =>
+      b.type === "tool_use" && (b.name === "Edit" || b.name === "Write" || b.name === "NotebookEdit")
+    )) {
+      editCount++;
+    }
+  }
+  const cpIdx = Math.max(0, Math.min(editCount - 1, checkpoints.length - 1));
+  return editCount === 0 ? checkpoints[0] : checkpoints[cpIdx];
 }
 
 /** Seek to a specific position — displays all messages up to that point instantly */
@@ -214,52 +256,28 @@ export function seekTo(targetSeq: number) {
 
   store.setCurrentSeq(targetSeq);
 
-  // Find the right checkpoint by counting file-editing messages up to targetSeq
   const checkpoints = store.replayCheckpoints as any[];
   if (checkpoints.length > 0) {
-    let editCount = 0;
-    for (let i = 0; i < targetSeq && i < store.replayMessages.length; i++) {
-      const m = store.replayMessages[i] as any;
-      if (m.type === "assistant" && m.message?.content?.some((b: any) =>
-        b.type === "tool_use" && (b.name === "Edit" || b.name === "Write" || b.name === "NotebookEdit")
-      )) {
-        editCount++;
-      }
-    }
-    const cpIdx = Math.max(0, Math.min(editCount - 1, checkpoints.length - 1));
-    const bestCp = editCount === 0 ? checkpoints[0] : checkpoints[cpIdx];
+    const bestCp = pickCheckpointForSeq(checkpoints, targetSeq, store.replayMessages as any[]);
     checkoutCheckpoint(bestCp.hash);
     store.setActiveCheckpoint(bestCp.hash);
   }
 }
 
-/** Load a replay package from the server (tar.gz path or extracted directory) */
-export async function loadReplay(packagePath: string) {
-  const base = getApiBase();
+/** Shared replay bootstrap: load via the active provider, enter replay mode,
+ *  then position playback. */
+async function beginReplay(opts: { autoplay: boolean; startAtEnd: boolean }) {
+  if (!activeProvider) return;
 
-  // Load the package
-  const loadResp = await fetch(`${base}/api/replay/load`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: packagePath }),
-  });
-  const loadData = await loadResp.json();
-  if (loadData.error) throw new Error(loadData.error);
-
-  // Get all messages
-  const msgsResp = await fetch(`${base}/api/replay/messages`);
-  const msgsData = await msgsResp.json();
-
-  const { manifest } = loadData;
+  const { manifest, messages } = await activeProvider.load();
 
   // Sort checkpoints by timestamp to ensure chronological order
   const sortedCheckpoints = [...manifest.checkpoints].sort(
     (a: any, b: any) => a.timestamp - b.timestamp
   );
 
-  // Enter replay mode
   useStore.getState().enterReplayMode({
-    messages: msgsData.messages,
+    messages,
     checkpoints: sortedCheckpoints,
     metadata: {
       title: manifest.metadata.title,
@@ -270,12 +288,30 @@ export async function loadReplay(packagePath: string) {
     summary: manifest.summary,
   });
 
-  // Load the first checkpoint (earliest state) and start playing
-  if (sortedCheckpoints.length > 0) {
+  if (opts.startAtEnd) {
+    // Final-state-first: render the finished result + full history; user can
+    // scrub back through earlier turns. seekTo lands on the last checkpoint.
+    seekTo(messages.length);
+  } else if (sortedCheckpoints.length > 0) {
     await checkoutCheckpoint(sortedCheckpoints[0].hash);
     useStore.getState().setActiveCheckpoint(sortedCheckpoints[0].hash);
   }
 
-  // Auto-play — start from the beginning
-  startPlayback();
+  if (opts.autoplay) startPlayback();
+}
+
+/** Load a replay package from the local Bun server (tar.gz path or extracted
+ *  directory). Plays from the beginning — the original `--replay` behavior. */
+export async function loadReplay(packagePath: string) {
+  useStore.getState().setStaticPlayer(false);
+  activeProvider = new ServerReplayProvider(packagePath);
+  await beginReplay({ autoplay: true, startAtEnd: false });
+}
+
+/** Load a materialized play package from its base URL into the hosted player.
+ *  Opens on the finished result with full history available to scrub. */
+export async function loadStaticReplay(baseUrl: string) {
+  useStore.getState().setStaticPlayer(true);
+  activeProvider = new StaticPackageProvider(baseUrl);
+  await beginReplay({ autoplay: false, startAtEnd: true });
 }

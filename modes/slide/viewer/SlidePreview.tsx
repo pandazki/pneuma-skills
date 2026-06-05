@@ -2231,13 +2231,15 @@ function SlideToolbar({
         >
           <FullscreenIcon />
         </button>
-        <button
-          onClick={handleExport}
-          className="flex items-center justify-center w-7 h-7 rounded text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
-          title="Export slides (open printable page)"
-        >
-          <ExportIcon />
-        </button>
+        {!readonly && (
+          <button
+            onClick={handleExport}
+            className="flex items-center justify-center w-7 h-7 rounded text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+            title="Export slides (open printable page)"
+          >
+            <ExportIcon />
+          </button>
+        )}
         {onScaffold && (
           <>
             <div className="w-px h-4 bg-cc-border" />
