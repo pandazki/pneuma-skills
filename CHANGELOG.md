@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.19.0] - 2026-06-05
+
+### Added
+
+- **Hosted online player** — share a finished session as a link that opens in any browser, no Pneuma install required. The player is the same `src/` frontend in a read-only, no-agent state, fed by a materialized "play package" on R2 (content-addressed per-checkpoint blobs + history). Opens on the finished result with a scrubbable timeline, and a one-click "Open in app" handoff back to the desktop client. Nine modes render in-browser (doc, webcraft, slide, draw, illustrate, kami, diagram, remotion, cosmos); unsupported/custom modes show an "open in desktop app" fallback. A content service worker serves `/content/*` + `/api/file` from the package so iframe-based viewers work statically.
+
+### Fixed
+
+- **Player no longer opens script-generated modes on an empty checkpoint** — the player chose which checkpoint to display by counting `Edit`/`Write` tool calls, but modes that generate files by running a script via Bash (cosmos's projection workflow, remotion renders) have no such calls, so a multi-turn session opened on the *first* checkpoint — before the file existed — and rendered an empty viewer ("No cosmos yet"). Checkpoint selection now maps the seek position by each checkpoint's recorded message range and always lands on the final checkpoint at end-of-history.
+- **Kami sheets render with their margin everywhere** — the desk margin around a paper sheet was painted by the viewer container, so it vanished in the hosted player, exports, or a bare browser tab. The margin now lives in the content (`--desk-inset` in the shared stylesheet) so a sheet is self-sufficiently "paper on a desk"; focus/book paging overlays still center on the container desk.
+- **Share dropdown renders above the chat panel** — it was trapped in the top bar's stacking context and hidden behind the floating Agent Surface. It now portals to `<body>` so it always sits on top, with an explicit close (× / Esc) and no close-on-outside-click (sharing is slow and low-frequency, so an accidental outside click no longer discards an in-progress share).
+
+### Improved
+
+- **Reliable share uploads** — per-file timeout + retry + adjustable concurrency on the play-package upload, so a single stalled blob can never hang a share. Demo packages can pin a stable id for permanent player links.
+
 ## [3.18.1] - 2026-06-05
 
 ### Fixed
