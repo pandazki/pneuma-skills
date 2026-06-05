@@ -22,7 +22,8 @@
     "again": "Erneut teilen",
     "share_failed": "Teilen fehlgeschlagen",
     "export_failed": "Export fehlgeschlagen",
-    "try_again": "Erneut versuchen"
+    "try_again": "Erneut versuchen",
+    "close": "Schließen"
   },
   "tabs": {
     "chat": "Chat",

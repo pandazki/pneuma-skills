@@ -194,6 +194,7 @@ export async function shareProcess(
   workspace: string,
   title?: string,
   stateDir: string = join(workspace, ".pneuma"),
+  opts: { id?: string; uploadConcurrency?: number } = {},
 ): Promise<ShareProcessResult> {
   const config = getR2Config();
   if (!config) throw new Error("R2 not configured. Please configure R2 credentials first.");
@@ -242,9 +243,9 @@ export async function shareProcess(
   let supported = false;
   try {
     const { materializePlayPackage, uploadPlayPackage } = await import("./play-export.js");
-    const result = await materializePlayPackage(workspace, { title, stateDir, importUrl });
+    const result = await materializePlayPackage(workspace, { title, stateDir, importUrl, id: opts.id });
     supported = result.index.supported;
-    await uploadPlayPackage(result.dir, result.index.id, config, config.publicUrl);
+    await uploadPlayPackage(result.dir, result.index.id, config, config.publicUrl, { concurrency: opts.uploadConcurrency });
     try { await Bun.spawn(["rm", "-rf", result.dir]).exited; } catch {}
     if (config.playerBaseUrl) {
       // Query form (/s/?id=) rather than /s/<id>: /s/ is a real served asset, so

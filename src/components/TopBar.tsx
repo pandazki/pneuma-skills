@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, lazy, Suspense } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
 import type { ToolTab } from "../store/ui-slice.js";
@@ -104,7 +105,16 @@ function ShareDropdown() {
   const [shareStatus, setShareStatus] = useState<"idle" | "sharing" | "done" | "error">("idle");
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  // Menu is portaled to <body> (see below) so it escapes the TopBar's
+  // backdrop-blur stacking context — otherwise the floating Agent Surface
+  // (fixed z-50) paints over it. Fixed-position under the button.
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+
+  const placeMenu = useCallback(() => {
+    const r = buttonRef.current?.getBoundingClientRect();
+    if (r) setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+  }, []);
 
   // Check R2 status when dropdown opens
   useEffect(() => {
@@ -116,15 +126,18 @@ function ShareDropdown() {
     }
   }, [open]);
 
-  // Close on click outside
+  // Deliberately NO close-on-click-outside: sharing is slow + low-frequency, so
+  // an accidental outside click mid-upload would throw away the in-progress
+  // share. The user closes it explicitly (× button, the toggle, or Escape).
+  // Reposition while open so the menu tracks a window resize.
   useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+    const onResize = () => placeMenu();
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("resize", onResize);
+    document.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("resize", onResize); document.removeEventListener("keydown", onKey); };
+  }, [open, placeMenu]);
 
   const handleShare = async (type: "result" | "process") => {
     setShareStatus("sharing");
@@ -174,9 +187,10 @@ function ShareDropdown() {
   };
 
   return (
-    <div className="relative shrink-0" ref={dropdownRef}>
+    <div className="shrink-0">
       <button
-        onClick={() => { setOpen(!open); if (!open) reset(); }}
+        ref={buttonRef}
+        onClick={() => { if (open) { setOpen(false); } else { reset(); placeMenu(); setOpen(true); } }}
         title={t("share.tooltip")}
         className="flex items-center justify-center w-7 h-7 rounded text-cc-muted hover:text-cc-primary hover:bg-cc-hover transition-colors cursor-pointer"
       >
@@ -188,10 +202,22 @@ function ShareDropdown() {
         </svg>
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-full mt-1 w-72 rounded-lg border border-cc-border bg-cc-surface shadow-xl z-[100] overflow-hidden">
-          <div className="px-3 py-2 border-b border-cc-border">
+      {open && menuPos && createPortal(
+        <div
+          className="fixed w-72 rounded-lg border border-cc-border bg-cc-surface shadow-xl z-[200] overflow-hidden"
+          style={{ top: menuPos.top, right: menuPos.right }}
+        >
+          <div className="px-3 py-2 border-b border-cc-border flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-cc-fg">{t("share.title")}</div>
+            <button
+              onClick={() => setOpen(false)}
+              title={t("share.close", "Close")}
+              className="flex items-center justify-center w-5 h-5 rounded text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+            >
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+                <path d="M4 4l8 8M12 4l-8 8" />
+              </svg>
+            </button>
           </div>
 
           {shareStatus === "idle" && (
@@ -274,7 +300,8 @@ function ShareDropdown() {
               </button>
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

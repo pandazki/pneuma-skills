@@ -16,6 +16,13 @@ interface ExportOptions {
    * project sessions pass `<projectRoot>/.pneuma/sessions/<id>`.
    */
   stateDir?: string;
+  /**
+   * Override the generated package id. Real shares omit it (a unique
+   * `mode-basename-timestamp` id is minted so links never collide). Demo
+   * seeders pass a stable slug (e.g. `kami-demo`) so the public link is
+   * permanent and a reseed overwrites the same R2 path in place.
+   */
+  id?: string;
 }
 
 interface ExportResult {
@@ -68,7 +75,7 @@ export async function buildHistoryArtifacts(
   const summary = generateSummary(messages, workspaceFiles);
 
   // 7. Build manifest
-  const id = `${session.mode}-${basename(workspace)}-${Date.now()}`;
+  const id = options.id ?? `${session.mode}-${basename(workspace)}-${Date.now()}`;
   const timestamps = messages
     .filter((m: any) => m.timestamp)
     .map((m: any) => m.timestamp);

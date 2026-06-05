@@ -22,7 +22,8 @@
     "again": "再共有",
     "share_failed": "共有に失敗しました",
     "export_failed": "エクスポートに失敗しました",
-    "try_again": "再試行"
+    "try_again": "再試行",
+    "close": "閉じる"
   },
   "tabs": {
     "chat": "チャット",

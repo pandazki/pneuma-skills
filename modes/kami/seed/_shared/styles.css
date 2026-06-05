@@ -49,6 +49,17 @@
   --safe-side:   {{safeSideMm}}mm;
   --safe-bottom: {{safeBottomMm}}mm;
 
+  /*
+   * Desk inset — the breathing room between the sheet edge and the
+   * surrounding desk (#d9d6ca). This lives in the CONTENT, not the
+   * viewer: opening this document raw in any browser already shows a
+   * sheet floating on a desk with margin. The kami viewer's scroll mode
+   * sizes its iframe to include this inset (keep the px value in sync
+   * with DESK_INSET in KamiPreview.tsx); focus/book paging overlays
+   * zero it and re-provide the desk via the viewer container.
+   */
+  --desk-inset: 48px;
+
   /* Canvas */
   --parchment:    #f5f4ed;
   --ivory:        #faf9f5;
@@ -99,15 +110,25 @@
 }
 
 @media print {
-  body { background: #f5f4ed; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { background: #f5f4ed; padding: 0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .page { padding: 0 !important; max-width: 100% !important; box-shadow: none !important; overflow: visible !important; }
+  .page + .page { margin-top: 0 !important; }
   section { page-break-inside: auto; }
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
+html, body { margin: 0; }
 body {
-  background: #d9d6ca;                      /* letterbox outside the sheet */
+  background: #d9d6ca;                      /* the desk the sheet rests on */
+  /*
+   * Desk inset baked into the content — the sheet (.page, centered via
+   * margin:0 auto) floats with margin on every side. This makes the
+   * document self-sufficient: rendered raw (hosted player, exported HTML,
+   * a bare browser tab) it already reads as paper-on-a-desk, without
+   * depending on any viewer chrome to paint the margin. Reset to 0 for
+   * print and by the viewer's focus/book overlays.
+   */
+  padding: var(--desk-inset);
   color: var(--near-black);
   font-family: var(--serif);
   font-size: 14px;
@@ -145,6 +166,10 @@ body {
   box-shadow: 0 0 0 1px var(--ring-warm), 0 8px 24px rgba(20, 20, 19, 0.08);
   animation: fadeIn 0.4s ease-out;
 }
+
+/* Multi-sheet documents: stack sheets down the desk with a desk-gap
+ * between them, so the scroll view reads as a pile of pages. */
+.page + .page { margin-top: var(--desk-inset); }
 
 .page.show-guides::after {
   content: '';

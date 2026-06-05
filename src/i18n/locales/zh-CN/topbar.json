@@ -22,7 +22,8 @@
     "again": "再分享一次",
     "share_failed": "分享失败",
     "export_failed": "导出失败",
-    "try_again": "重试"
+    "try_again": "重试",
+    "close": "关闭"
   },
   "tabs": {
     "chat": "对话",
