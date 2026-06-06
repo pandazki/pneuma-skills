@@ -922,6 +922,18 @@ export class WsBridge {
     // detachCLITransport, the CLI `permission_cancelled` path).
     if (containedAskq) {
       session.suppressingPostAskq = true;
+      // Genuinely PAUSE the agent. In `--print --permission-mode
+      // bypassPermissions`, the SDK does not gate AskUserQuestion via
+      // `can_use_tool`; it auto-denies the tool with an `is_error`
+      // tool_result and the model AUTO-CONTINUES a reactionary turn,
+      // executing tools (e.g. Write) on a guess before the user ever picks.
+      // Suppressing the display only hides bubbles — it cannot stop that
+      // work. Interrupting aborts the reactionary turn (verified ~7ms to
+      // land, turn ends ~30ms after the tool_use, before any reactionary
+      // tool runs). The picker stays up; when the user answers,
+      // handlePermissionResponse delivers it as a fresh user turn and the
+      // model resumes cleanly.
+      handleInterrupt(session, this.sendToCLI.bind(this));
     }
   }
 
@@ -965,6 +977,19 @@ export class WsBridge {
 
   private handleResultMessage(session: Session, msg: CLIResultMessage) {
     session.cliIdle = true;
+
+    // Paused on an AskUserQuestion picker: the only `result` that can arrive
+    // here is the interrupt-aborted reactionary turn (subtype
+    // error_during_execution). Don't surface it as an error, don't record
+    // its phantom cost/turns, don't checkpoint the half-state, and don't
+    // flush queued viewer notifications (that would start a new turn
+    // mid-pause). Settle the UI to idle; the picker resolution starts the
+    // real next turn (where suppression is already cleared).
+    if (session.suppressingPostAskq) {
+      this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
+      return;
+    }
+
     session.state.total_cost_usd = msg.total_cost_usd;
     session.state.num_turns = msg.num_turns;
 
@@ -1149,6 +1174,9 @@ export class WsBridge {
   }
 
   private handleStreamlinedText(session: Session, msg: CLIStreamlinedTextMessage) {
+    // Same suppression window as handleAssistantMessage / handleStreamEvent —
+    // drop any text from the interrupt-aborted post-AskUserQuestion turn.
+    if (session.suppressingPostAskq) return;
     this.broadcastToBrowsers(session, {
       type: "streamlined_text",
       text: msg.text,
@@ -1157,6 +1185,7 @@ export class WsBridge {
   }
 
   private handleStreamlinedToolUseSummary(session: Session, msg: CLIStreamlinedToolUseSummaryMessage) {
+    if (session.suppressingPostAskq) return;
     this.broadcastToBrowsers(session, {
       type: "streamlined_tool_use_summary",
       summary: msg.summary,

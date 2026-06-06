@@ -357,9 +357,42 @@ export async function openInEditor(
         : findProjectRoot(absPath);
   const line = options.line ?? null;
   const args = buildOpenArgs(editor, absPath, root, line);
+  let targetIsDir = false;
   try {
-    // CLI-first: reliably opens the file in the running/launched instance.
+    targetIsDir = statSync(absPath).isDirectory();
+  } catch {
+    // ignore — treat as file
+  }
+  try {
     const env = cleanEditorEnv();
+    const appName = appPath.split("/").pop()!.replace(/\.app$/, "");
+
+    // Directory (project) targets → LaunchServices `open -a`, NOT the bundled
+    // CLI. The VS Code-family `cursor`/`code` launcher opens a folder by
+    // handing it to the already-running instance over its `cli.js` IPC path;
+    // recent Cursor crashes its AgentPanel on that route ("AgentPanel failed
+    // to render — Cannot read properties of undefined (reading 'trim')").
+    // `open -a <App> <dir>` delivers a LaunchServices open-folder Apple event
+    // instead — the same path Finder uses — which opens/focuses the workspace
+    // reliably and dodges the crash. This is the original pre-CLI-first
+    // behavior; we only adopted CLI-first for *files* (they need --goto +
+    // project-window focus + reveal, which `open -a` can't express).
+    if (targetIsDir) {
+      const proc = Bun.spawn(["open", "-a", appName, absPath], {
+        stdout: "ignore",
+        stderr: "pipe",
+        env,
+      });
+      const code = await proc.exited;
+      if (code !== 0) {
+        const stderr = await new Response(proc.stderr).text();
+        return { success: false, message: stderr.trim() || `open exited with code ${code}` };
+      }
+      return { success: true };
+    }
+
+    // CLI-first for files: reliably opens in the running/launched instance
+    // with line jump + project-window focus.
     const cli = await resolveEditorCli(editor);
     if (cli) {
       const proc = Bun.spawn([cli, ...args], { stdout: "ignore", stderr: "pipe", env });
@@ -372,7 +405,6 @@ export async function openInEditor(
     }
     // Fallback: native editors without a CLI launcher (rare). `open -a`
     // can't express a folder-focus or a line, so it gets the bare path.
-    const appName = appPath.split("/").pop()!.replace(/\.app$/, "");
     const proc = Bun.spawn(["open", "-a", appName, absPath], {
       stdout: "ignore",
       stderr: "pipe",

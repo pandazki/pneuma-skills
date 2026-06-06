@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.19.0
+**Version:** 3.19.1
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`
 
@@ -440,7 +440,8 @@ CI (`release.yml`) handles tagging, GitHub Release, and npm publish on push to `
 - **Editing/readonly distinction**：`editing` 是 session 布尔（`true`=创作，`false`=消费）。Mode 通过 `editing: { supported: true }` opt-in。`false` 时不跑 agent；切到 `true` 触发 skill install + agent spawn；切回又 kill。`readonly`（replay）禁用一切交互；`editing: false` 只隐藏 Pneuma 编辑 UI，内容内部交互仍工作。
 - **Windows 兼容**：跨平台支持散在 `path-resolver.ts`（`where` vs `which`，PATH 从 `LOCALAPPDATA`/`APPDATA`）、`terminal-manager.ts`（`COMSPEC`/`cmd.exe`）、`system-bridge.ts`（`cmd /c start`）、`server/index.ts`（`NUL`、`taskkill`）。win32 路径比较不区分大小写。
 - **Native bridge timeout**：经浏览器 WS 路由——若无浏览器 tab 连接，native call 10s 超时。
-- **Editor-open 策略**（`server/editor-bridge.ts`）：`/api/system/open-in-editor` 走 CLI-first（bundled `cursor`/`code` 启动器）。三条铁律：
+- **Editor-open 策略**（`server/editor-bridge.ts`）：`/api/system/open-in-editor` 对**文件**走 CLI-first（bundled `cursor`/`code` 启动器），对**目录（项目根）走 `open -a`**。四条铁律：
+  0. **目录目标必须用 `open -a <App> <dir>`，不走 CLI**：bundled `cursor <folder>` 在本地模式下把文件夹交给已运行实例的 `cli.js` IPC 打开，最新版 Cursor 在这条路径上崩 AgentPanel（`Cannot read properties of undefined (reading 'trim')`）——而 Antigravity 等无此 panel 的 fork 不受影响。`open -a` 走 LaunchServices open-folder Apple event（Finder 同款路径），可靠且绕开崩溃。这是 CLI-first 之前的原始行为；CLI-first 只为**文件**保留（要 `--goto` + 项目窗口聚焦 + reveal，`open -a` 表达不了）。`openInEditor` 里 `statSync(absPath).isDirectory()` 分派。
   1. **必须 sanitize env**（`cleanEditorEnv`）：Pneuma 从 VS Code / Cursor 集成终端或桌面 Electron 启动时会继承 `VSCODE_IPC_HOOK_CLI` / `VSCODE_GIT_*` / `GIT_ASKPASS` / `ELECTRON_RUN_AS_NODE`；bundled `cursor` 启动器读到 `VSCODE_IPC_HOOK_CLI` 会切到 remote-IPC 模式，最新版 Cursor 走这条路打开文件直接崩 AgentPanel（`Cannot read properties of undefined (reading 'trim')`）。spawn 前剥掉这一族变量，走干净本地 electron 路径。
   2. **传 enclosing folder 以聚焦已有窗口**（`buildOpenArgs` + `findProjectRoot`）：开文件时把它的项目根目录也作为前导位置参数传进去，VS Code/Cursor/Zed/Sublime 会聚焦已经打开该文件夹的窗口并在其中开文件（→ `explorer.autoReveal` 在侧栏定位），而不是开一个裸单文件窗口。`root` 不传则 server 从文件往上自动探测最近的项目标记。**不要用 `-r/--reuse-window`**——它强制复用「最后激活窗口」不管文件夹对不对。
   3. **行号方言不同**：VS Code 系用 `--goto <file>:<line>`，Zed/Sublime 用 `<file>:<line>` 后缀（按 `KnownEditor.family` 分派）。`open -a` fallback 表达不了 folder/line，只能裸路径。

@@ -72,13 +72,18 @@ export interface Session {
    * True while we're waiting for the user to answer an `AskUserQuestion`
    * picker. Claude Code 2.x auto-denies the AskUserQuestion tool inside
    * the CLI's SDK (returns an `is_error` tool_result before the user has
-   * any chance to click), so the model immediately receives a "denied"
-   * signal and emits a reactionary assistant message ("Since you didn't
-   * answer..."). We suppress that reactionary turn — both the assistant
-   * envelope and its streaming partials — until the user submits an
-   * answer and the `<pneuma:askq-answer>` follow-up reaches the model.
-   * The model's *next* reply (responding to the real answer) flows
-   * normally.
+   * any chance to click), and the model would otherwise AUTO-CONTINUE a
+   * reactionary turn — executing tools (e.g. Write) on a guess before the
+   * user picks. To genuinely pause, handleAssistantMessage fires an
+   * `interrupt` the moment it detects the AskUserQuestion tool_use, which
+   * aborts that turn (verified ~30ms after the tool_use, before any
+   * reactionary tool runs). This flag closes the suppression window for
+   * anything that still slips through before the interrupt lands — the
+   * aborted-turn assistant envelope, its streaming partials, streamlined
+   * text, and the interrupt's `error_during_execution` result. It clears
+   * when the user submits an answer (handlePermissionResponse delivers the
+   * `<pneuma:askq-answer>` follow-up as a fresh turn) or the picker is
+   * cancelled. The model's reply to the real answer flows normally.
    */
   suppressingPostAskq: boolean;
   pendingMessages: string[];

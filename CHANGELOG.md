@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.19.1] - 2026-06-06
+
+### Fixed
+
+- **AskUserQuestion now genuinely pauses the agent** — in headless mode the Claude Code SDK auto-denies the AskUserQuestion tool (it can't gate it interactively) and the model would auto-continue the turn, executing tool calls and writing files on a *guess* before you ever picked an option — then course-correct once your answer arrived. The WS bridge now sends an `interrupt` the moment the picker appears, aborting that reactionary turn (verified to land ~30ms after the tool call, before any work runs); your selection resumes the agent as a clean follow-up turn. Also suppresses the stray "the tool didn't pop up…" bubbles that could leak into chat and swallows the aborted turn's phantom result.
+- **"Open project in editor" no longer crashes Cursor** — opening a project root through the bundled `cursor` CLI hands the folder to the running instance over its `cli.js` IPC path, which recent Cursor crashes on ("AgentPanel failed to render — Cannot read properties of undefined (reading 'trim')"); Antigravity and other forks without that panel were unaffected. Folder/project targets now open via `open -a` (the LaunchServices path Finder uses) so the workspace opens/focuses reliably; file opens keep the CLI path for line-jump + project-window focus + reveal.
+
 ## [3.19.0] - 2026-06-05
 
 ### Added
