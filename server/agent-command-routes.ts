@@ -76,7 +76,7 @@ export function registerAgentCommandRoutes(app: Hono, deps: AgentCommandRoutesDe
     }
     const body = await c.req.json<{ force?: boolean }>().catch(() => ({} as { force?: boolean }));
     try {
-      const template = loadBundledTemplate();
+      const template = loadBundledTemplate(backend);
       const result = install({
         backend,
         pneumaVersion: deps.pneumaVersion,
@@ -430,8 +430,8 @@ function createCliSymlink(override?: string): SymlinkResult {
 
 export function bootstrapAutoUpdate(deps: AgentCommandRoutesDeps): void {
   try {
-    const template = loadBundledTemplate();
-    const result = runAutoUpdate(deps.pneumaVersion, template);
+    // runAutoUpdate loads the right template per backend itself.
+    const result = runAutoUpdate(deps.pneumaVersion);
     if (result.updated.length > 0) {
       console.log(
         `[agent-commands] auto-updated ${result.updated.join(", ")} to ${deps.pneumaVersion}`,

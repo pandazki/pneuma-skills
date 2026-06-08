@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.20.1
+**Version:** 3.20.2
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`, `project-tidy`
 
@@ -339,9 +339,9 @@ Project 是用户目录，由 `<root>/.pneuma/project.json` 标记。多个 sess
 
 ## Agent Command Distribution (3.10.0)
 
-`/handoff-pneuma` 是 Pneuma 安装到其他 code agent（Claude Code、Codex）里的 user-level slash command——让 agent 在 CC/Codex 内输入 `/handoff-pneuma "make a finance dashboard"` 就能把工作交给 Pneuma，用户全程不打开 launcher。
+`handoff-pneuma` 是 Pneuma 安装到其他 code agent（Claude Code、Codex）里的 user-level 入口——让 agent 在 CC/Codex 内就能把工作交给 Pneuma，用户全程不打开 launcher。Claude Code 里是 `/handoff-pneuma` slash command；Codex 里是 `$handoff-pneuma` skill（显式 `/skills` 菜单或 `$handoff-pneuma`，也可按 description 隐式触发）。
 
-**安装位置：** Claude Code `~/.claude/commands/handoff-pneuma.md`；Codex `~/.codex/prompts/handoff-pneuma.md`。源模板 `templates/agent-commands/handoff-pneuma.md`。Marker 注释 `<!-- pneuma:agent-command version="X" backend="..." -->` 在 YAML frontmatter 下方（line 1 必须留给 `---`，否则 frontmatter parser 挂掉）标识我们拥有这文件；无 marker 视为用户手写、`--force` 之前不覆盖。Per-install state 在 `~/.pneuma/agent-commands.json`。
+**安装位置：** Claude Code `~/.claude/commands/handoff-pneuma.md`（slash command，源模板 `templates/agent-commands/handoff-pneuma.md`）；Codex `~/.agents/skills/handoff-pneuma/SKILL.md`（skill，源模板 `templates/agent-commands/handoff-pneuma.skill.md`）。**Codex 不再用 custom prompt**：`~/.codex/prompts/*.md` 已被 OpenAI 弃用且有发现回归（slash 菜单里直接不出现，openai/codex#15941），且只暴露成 `/prompts:handoff-pneuma`；改走 `.agents/skills`（与 Codex backend 的 mode-skill 同一约定，Codex 稳定扫描）。`BackendDescriptor.kind: "command" | "skill"` 区分两者；`loadBundledTemplate(backend)` 按 backend 取模板。install 时若旧的 `~/.codex/prompts/handoff-pneuma.md` 还在且带我们的 marker，会顺手删掉（`descriptor.legacyFile`）——只删我们自己写的，用户手写的不碰。Marker 注释 `<!-- pneuma:agent-command version="X" backend="..." -->` 在 YAML frontmatter 下方（line 1 必须留给 `---`，否则 frontmatter parser 挂掉）标识我们拥有这文件；无 marker 视为用户手写、`--force` 之前不覆盖。Per-install state 在 `~/.pneuma/agent-commands.json`。
 
 **两条路径：**
 1. **CLI 路径** —— `command -v pneuma` 成功 → `pneuma handoff-from-external --intent ... --mode ...`。CLI 验 mode、按需写 `<cwd>/.pneuma/project.json`、mint session id、stage inbound handoff、挑空闲端口、`spawn pneuma <mode> --no-prompt --project <cwd> --session-id <id> --port <p>` detached、打印 URL。

@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.20.2] - 2026-06-08
+
+### Fixed
+
+- **`handoff-pneuma` now actually shows up in Codex** — Codex couldn't find it because we installed a *custom prompt* at `~/.codex/prompts/handoff-pneuma.md`, but OpenAI deprecated custom prompts and they silently stop appearing in the slash menu (openai/codex#15941) — and even when they work they surface as `/prompts:handoff-pneuma`, never `/handoff-pneuma`. Codex now gets `handoff-pneuma` as a proper **skill** at `~/.agents/skills/handoff-pneuma/SKILL.md` (the user-level Agent Skills location Codex scans), invokable via `/skills`, `$handoff-pneuma`, or implicitly from its description. Installing also migrates away any stale prompt we previously wrote. Claude Code is unchanged (`/handoff-pneuma` slash command). Verified end-to-end against Codex 0.137.0.
+
 ## [3.20.1] - 2026-06-08
 
 ### Improved

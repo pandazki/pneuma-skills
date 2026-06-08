@@ -356,7 +356,7 @@ export function AgentCommandBanner({ className }: { className?: string }) {
               {" "}
               <span className="font-mono">~/.claude/commands/</span>
               {" "}or{" "}
-              <span className="font-mono">~/.codex/prompts/</span>.
+              <span className="font-mono">~/.agents/skills/</span>.
             </span>
           </div>
         </div>

@@ -1,8 +1,8 @@
 /**
  * Tests for `core/agent-command-installer.ts`. The installer relies on
- * `~/.claude/commands/`, `~/.codex/prompts/`, and `~/.pneuma/agent-commands.json`
- * — all under `homedir()`. We point `HOME` at a tmpdir per-test so the
- * suite leaves the user's actual files untouched.
+ * `~/.claude/commands/`, `~/.agents/skills/` (Codex), and
+ * `~/.pneuma/agent-commands.json` — all under `homedir()`. We point `HOME`
+ * at a tmpdir per-test so the suite leaves the user's actual files untouched.
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
@@ -93,11 +93,35 @@ describe("install + getStatus", () => {
     expect(status.registryVersion).toBe("3.9.1");
   });
 
-  test("fresh install for codex writes to ~/.codex/prompts/", () => {
+  test("fresh install for codex writes a skill to ~/.agents/skills/", () => {
     install({ backend: "codex", pneumaVersion: "3.9.1", template: TEMPLATE });
     const descriptor = getBackendDescriptor("codex");
-    expect(descriptor.file).toBe(join(tmpHome, ".codex", "prompts", "handoff-pneuma.md"));
+    expect(descriptor.kind).toBe("skill");
+    expect(descriptor.file).toBe(join(tmpHome, ".agents", "skills", "handoff-pneuma", "SKILL.md"));
     expect(existsSync(descriptor.file)).toBe(true);
+  });
+
+  test("installing codex removes our stale legacy ~/.codex/prompts file", () => {
+    const legacy = join(tmpHome, ".codex", "prompts", "handoff-pneuma.md");
+    mkdirSync(join(tmpHome, ".codex", "prompts"), { recursive: true });
+    // A prior install we own (has our marker) — should be migrated away.
+    writeFileSync(
+      legacy,
+      renderTemplate(TEMPLATE, { pneumaVersion: "3.8.0", backendType: "codex" }),
+      "utf-8",
+    );
+    install({ backend: "codex", pneumaVersion: "3.9.1", template: TEMPLATE });
+    expect(existsSync(legacy)).toBe(false);
+    expect(existsSync(getBackendDescriptor("codex").file)).toBe(true);
+  });
+
+  test("installing codex leaves a user-authored ~/.codex/prompts file alone", () => {
+    const legacy = join(tmpHome, ".codex", "prompts", "handoff-pneuma.md");
+    mkdirSync(join(tmpHome, ".codex", "prompts"), { recursive: true });
+    writeFileSync(legacy, "# User wrote this prompt themselves\n", "utf-8");
+    install({ backend: "codex", pneumaVersion: "3.9.1", template: TEMPLATE });
+    // No marker → not ours → never deleted.
+    expect(existsSync(legacy)).toBe(true);
   });
 
   test("re-install across pneuma versions overwrites and reports previousVersion", () => {
@@ -185,7 +209,7 @@ describe("runAutoUpdate", () => {
     // codex: up-to-date → should skip
     install({ backend: "codex", pneumaVersion: "3.9.1", template: TEMPLATE });
 
-    const result = runAutoUpdate("3.9.1", TEMPLATE);
+    const result = runAutoUpdate("3.9.1", () => TEMPLATE);
     expect(result.updated).toEqual(["claude-code"]);
     expect(result.skipped.find((s) => s.backend === "codex")?.reason).toBe("up-to-date");
 
@@ -195,7 +219,7 @@ describe("runAutoUpdate", () => {
   test("respects autoUpdate=false (no-op)", () => {
     install({ backend: "claude-code", pneumaVersion: "3.9.0", template: TEMPLATE });
     setAutoUpdate(false);
-    const result = runAutoUpdate("3.9.1", TEMPLATE);
+    const result = runAutoUpdate("3.9.1", () => TEMPLATE);
     expect(result.updated).toEqual([]);
     expect(result.skipped).toEqual([]);
     expect(getStatus("claude-code", "3.9.1").fileVersion).toBe("3.9.0");
@@ -214,11 +238,21 @@ describe("getAllStatus", () => {
 });
 
 describe("loadBundledTemplate", () => {
-  test("resolves the shipped template from a path with no spaces", () => {
+  test("resolves the shipped claude-code command template", () => {
     // Sanity check against the actual file shipped in this repo.
-    const text = loadBundledTemplate();
+    const text = loadBundledTemplate("claude-code");
     expect(text).toContain("pneuma:agent-command");
     expect(text).toContain("{{pneumaVersion}}");
+    expect(text).toContain("argument-hint:");
+  });
+
+  test("resolves the shipped codex skill template (skill frontmatter, not a slash command)", () => {
+    const text = loadBundledTemplate("codex");
+    expect(text).toContain("pneuma:agent-command");
+    expect(text).toContain("{{pneumaVersion}}");
+    // Skill frontmatter requires `name`; argument-hint is a slash-command-only field.
+    expect(text).toContain("name: handoff-pneuma");
+    expect(text).not.toContain("argument-hint:");
   });
 
   test("resolves the template when the package path contains a space (regression for /Applications/Pneuma Skills.app/)", async () => {
@@ -240,7 +274,7 @@ describe("loadBundledTemplate", () => {
 
       const copiedUrl = pathToFileURL(join(tmpRoot, "core", "agent-command-installer.ts")).href;
       const mod = await import(copiedUrl);
-      const text = (mod.loadBundledTemplate as () => string)();
+      const text = (mod.loadBundledTemplate as (b: AgentCommandBackend) => string)("claude-code");
       expect(text).toContain("pneuma:agent-command");
     } finally {
       rmSync(tmpRoot, { recursive: true, force: true });

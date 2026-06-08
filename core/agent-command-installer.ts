@@ -4,7 +4,17 @@
  *
  * Layout per backend:
  *   - claude-code: `~/.claude/commands/handoff-pneuma.md` (→ `/handoff-pneuma`)
- *   - codex:       `~/.codex/prompts/handoff-pneuma.md`   (→ `/handoff-pneuma`)
+ *   - codex:       `~/.agents/skills/handoff-pneuma/SKILL.md` (→ `$handoff-pneuma`)
+ *
+ * Codex used to install a custom *prompt* at `~/.codex/prompts/handoff-pneuma.md`,
+ * but custom prompts are deprecated and regression-prone (they silently
+ * stop appearing in the slash menu — openai/codex#15941), and they surface
+ * as `/prompts:handoff-pneuma`, not `/handoff-pneuma`. Codex now reads
+ * **skills** from `~/.agents/skills/<name>/SKILL.md` (the same cross-agent
+ * `.agents/skills` convention our Codex backend uses for mode skills), which
+ * Codex discovers reliably and can invoke explicitly (`/skills` menu or
+ * `$handoff-pneuma`) or implicitly from the description. Installing into the
+ * skill location also migrates users off the stale prompt (see `legacyFile`).
  *
  * State (single source of truth for the installer):
  *   `~/.pneuma/agent-commands.json` — first-run prompt dismissal, the
@@ -54,14 +64,25 @@ export interface BackendDescriptor {
   type: AgentCommandBackend;
   /** Human label for UI. */
   label: string;
+  /**
+   * How the agent surfaces this artifact: a slash `command` (Claude Code's
+   * `~/.claude/commands/*.md`) or a `skill` (Codex's `~/.agents/skills/<name>/SKILL.md`).
+   */
+  kind: "command" | "skill";
   /** Absolute path of the directory we install into. */
   dir: string;
   /** Absolute path of the markdown file we manage. */
   file: string;
-  /** Slash command name once installed (always `/handoff-pneuma` today). */
+  /** How the user invokes it once installed (`/handoff-pneuma` or `$handoff-pneuma`). */
   command: string;
   /** Identifier baked into the template's `--source-agent` arg. */
   sourceAgent: string;
+  /**
+   * A previous install location for the same backend that we should clean up
+   * on (re)install — e.g. Codex's deprecated `~/.codex/prompts/handoff-pneuma.md`.
+   * Only removed when it carries our marker (never a user-authored file).
+   */
+  legacyFile?: string;
 }
 
 export interface InstalledRecord {
@@ -150,21 +171,25 @@ export function getBackendDescriptor(b: AgentCommandBackend): BackendDescriptor 
     return {
       type: "claude-code",
       label: "Claude Code",
+      kind: "command",
       dir,
       file: join(dir, "handoff-pneuma.md"),
       command: "/handoff-pneuma",
       sourceAgent: "claude-code",
     };
   }
-  // codex
-  const dir = join(home, ".codex", "prompts");
+  // codex — install as a skill under the cross-agent `.agents/skills` dir
+  // Codex reads. (Was a deprecated custom prompt under `~/.codex/prompts`.)
+  const dir = join(home, ".agents", "skills", "handoff-pneuma");
   return {
     type: "codex",
     label: "Codex",
+    kind: "skill",
     dir,
-    file: join(dir, "handoff-pneuma.md"),
-    command: "/handoff-pneuma",
+    file: join(dir, "SKILL.md"),
+    command: "$handoff-pneuma",
     sourceAgent: "codex",
+    legacyFile: join(home, ".codex", "prompts", "handoff-pneuma.md"),
   };
 }
 
@@ -366,6 +391,20 @@ export function install(params: InstallParams): InstallResult {
     };
   }
 
+  // Migrate off any deprecated prior install location (e.g. Codex's old
+  // `~/.codex/prompts/handoff-pneuma.md`). Only remove it when it's ours —
+  // never clobber a file a user happened to author there. Best-effort: a
+  // failure here must not fail the install.
+  if (descriptor.legacyFile && existsSync(descriptor.legacyFile)) {
+    try {
+      if (parseHeader(readFileSync(descriptor.legacyFile, "utf-8"))) {
+        rmSync(descriptor.legacyFile);
+      }
+    } catch {
+      // ignore — the new install already succeeded
+    }
+  }
+
   const state = readState();
   state.installed[backend] = {
     version: pneumaVersion,
@@ -447,7 +486,7 @@ export function uninstall(backend: AgentCommandBackend, opts: { force?: boolean 
  */
 export function runAutoUpdate(
   currentVersion: string,
-  template: string,
+  loadTemplate: (backend: AgentCommandBackend) => string = loadBundledTemplate,
 ): AutoUpdateResult {
   const out: AutoUpdateResult = { updated: [], skipped: [] };
   const state = readState();
@@ -471,7 +510,7 @@ export function runAutoUpdate(
     const result = install({
       backend: desc.type,
       pneumaVersion: currentVersion,
-      template,
+      template: loadTemplate(desc.type),
     });
     if (result.ok) {
       out.updated.push(desc.type);
@@ -494,8 +533,12 @@ export function runAutoUpdate(
  * layouts. Sync read because we run during launcher boot before any
  * async-aware UI exists.
  */
-export function loadBundledTemplate(): string {
-  // `<pkg>/core/` → template lives at `<pkg>/templates/agent-commands/handoff-pneuma.md`.
+export function loadBundledTemplate(backend: AgentCommandBackend): string {
+  // `<pkg>/core/` → templates live at `<pkg>/templates/agent-commands/`.
+  // Claude Code gets the slash-command template (`handoff-pneuma.md`); Codex
+  // gets the skill template (`handoff-pneuma.skill.md`) — same operational
+  // steps, but skill frontmatter (`name` + `description`) and skill-invocation
+  // framing instead of `$ARGUMENTS`.
   //
   // Use `fileURLToPath` rather than `new URL(...).pathname` — the latter
   // keeps URL escapes (e.g. spaces stay encoded as `%20`), which silently
@@ -506,7 +549,8 @@ export function loadBundledTemplate(): string {
   // shows the literal `%20` — the giveaway.
   //
   const here = dirname(fileURLToPath(import.meta.url));
-  const path = join(here, "..", "templates", "agent-commands", "handoff-pneuma.md");
+  const file = backend === "codex" ? "handoff-pneuma.skill.md" : "handoff-pneuma.md";
+  const path = join(here, "..", "templates", "agent-commands", file);
   return readFileSync(path, "utf-8");
 }
 

@@ -1,7 +1,8 @@
 /**
  * `pneuma agent-command (status|install|uninstall|update)` — manages the
- * `/handoff-pneuma` slash command shipped into Claude Code's
- * `~/.claude/commands/` and Codex's `~/.codex/prompts/`.
+ * `handoff-pneuma` entry shipped into Claude Code's `~/.claude/commands/`
+ * (a `/handoff-pneuma` slash command) and Codex's `~/.agents/skills/`
+ * (a `$handoff-pneuma` skill — custom prompts are deprecated in Codex).
  *
  * Pure handler + IO surface (mirrors `bin/handoff-cli.ts`) so tests can run
  * the dispatch logic without spawning a subprocess. Filesystem effects live
@@ -35,7 +36,7 @@ export interface AgentCommandCliDeps {
   /** Current pneuma version — stamped into installed files. */
   pneumaVersion: string;
   /** Template source. Defaults to bundled template; tests inject a fixture. */
-  loadTemplate?: () => string;
+  loadTemplate?: (backend: AgentCommandBackend) => string;
 }
 
 // ── Arg parsing ────────────────────────────────────────────────────────────
@@ -105,8 +106,8 @@ Subcommands:
   update     Re-stamp installed entries to match the current pneuma version (idempotent).
 
 Backends:
-  claude-code  → ~/.claude/commands/handoff-pneuma.md  (→ /handoff-pneuma in CC)
-  codex        → ~/.codex/prompts/handoff-pneuma.md    (→ /handoff-pneuma in Codex)
+  claude-code  → ~/.claude/commands/handoff-pneuma.md         (→ /handoff-pneuma in CC)
+  codex        → ~/.agents/skills/handoff-pneuma/SKILL.md     (→ $handoff-pneuma skill in Codex)
   all          → both
 `;
 
@@ -155,19 +156,28 @@ export async function runAgentCommandCli(
   // intent — when a backend isn't installed, install actively installs,
   // whereas update is a no-op on missing entries.
   if (parsed.sub === "install" || parsed.sub === "update") {
-    let template: string;
-    try {
-      template = (deps.loadTemplate ?? loadBundledTemplate)();
-    } catch (err) {
-      io.stderr(`Failed to load slash-command template: ${err instanceof Error ? err.message : String(err)}`);
-      return 1;
-    }
+    const loadTemplate = deps.loadTemplate ?? loadBundledTemplate;
     const results: { backend: AgentCommandBackend; ok: boolean; reason: string; message?: string; path: string; newVersion?: string; previousVersion?: string; skipped?: boolean }[] = [];
     let anyFailure = false;
     for (const b of targets) {
       const status = getStatus(b, deps.pneumaVersion);
       if (parsed.sub === "update" && !status.installed) {
         results.push({ backend: b, ok: true, reason: "skipped-not-installed", path: status.path, skipped: true });
+        continue;
+      }
+      // Per-backend template (Claude Code = slash command, Codex = skill).
+      let template: string;
+      try {
+        template = loadTemplate(b);
+      } catch (err) {
+        anyFailure = true;
+        results.push({
+          backend: b,
+          ok: false,
+          reason: "io",
+          path: status.path,
+          message: `Failed to load template: ${err instanceof Error ? err.message : String(err)}`,
+        });
         continue;
       }
       const result = install({
