@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.21.0] - 2026-06-08
+
+### Added
+
+- **AskUserQuestion multi-select** — questions marked `multiSelect` now render as togglable checkboxes (instead of single-select radios), require an explicit submit, and pass every picked label back to the agent. Claude Code only (Codex/Kimi don't emit AskUserQuestion).
+- **Cosmos excerpt images open in a lightbox** — the excerpt thumbnail on a node was a cover-cropped 144×88 with no way to see the full extract. Clicking it now opens the full image in a zoom/pan lightbox (Esc/Close/backdrop to dismiss); the text side of the card still opens the underlying source. A small magnifier badge marks the thumbnail as zoomable.
+
+### Fixed
+
+- **Cosmos source links no longer error in the shared web player** — in the hosted online player there's no backend, so clicking a node's file/passage source (excerpt card, quote card, or chip) failed on every click. Those affordances now render inert in the static player; `url` sources still open, directly in a new tab. The excerpt image lightbox keeps working since it's pure frontend.
+- **`/api/file` resolves workspace-relative paths against the workspace** — it previously resolved them against the server's working directory, which isn't the workspace (only the agent backend is launched there). A workspace-relative cosmos excerpt path like `.cosmos-assets/<id>/x.png` therefore only loaded when the two happened to coincide. Relative paths now anchor to the workspace root (absolute paths unchanged), matching how the shared player's service worker resolves them.
+
 ## [3.20.3] - 2026-06-08
 
 ### Fixed
