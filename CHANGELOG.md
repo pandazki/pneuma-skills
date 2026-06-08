@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.21.1] - 2026-06-09
+
+### Fixed
+
+- **Queued chat messages no longer get stuck with the composer frozen on "Stop"** — when a queued message flushed during a brief WS reconnect window, the send was silently dropped (the socket wasn't open) yet the message had already been pulled from the queue and the turn marked busy, so the composer froze on a phantom turn that never produced a reply — recoverable only by reopening the session. The flush now only commits when the connection can actually carry the message, leaves it queued and auto-retries on reconnect otherwise, requeues it if the socket drops mid-send, and settles back to idle (instead of freezing) if a send throws. Sends also no longer flip the UI to "busy" unless the message actually went out.
+
 ## [3.21.0] - 2026-06-08
 
 ### Added
