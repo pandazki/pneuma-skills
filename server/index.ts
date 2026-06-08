@@ -139,7 +139,15 @@ export function mountFileRoute(app: Hono, opts: { workspace: string }): void {
   app.get("/api/file", (c) => {
     const rel = c.req.query("path");
     if (!rel) return c.json({ error: "missing path" }, 400);
-    const abs = resolve(rel);
+    // Anchor relative paths to the workspace, NOT process.cwd() — the server
+    // process isn't chdir'd into the workspace (only the agent backend is, see
+    // bin/pneuma.ts), so a workspace-relative path like a cosmos excerpt's
+    // `.cosmos-assets/<id>/x.png` must resolve against the workspace root to
+    // be found. Absolute paths pass through unchanged (resolve ignores the
+    // base when the second arg is absolute), preserving chat image previews.
+    // This also matches how the static player's service worker resolves
+    // `/api/file` against workspace-relative package blob keys.
+    const abs = resolve(workspaceRoot, rel);
     if (abs !== workspaceRoot && !abs.startsWith(workspaceRoot + sep)) {
       return c.json({ error: "path escapes workspace" }, 403);
     }

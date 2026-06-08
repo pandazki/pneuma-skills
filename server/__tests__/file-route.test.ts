@@ -24,6 +24,20 @@ describe("GET /api/file", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("image/png");
   });
+  it("resolves a workspace-relative path against the workspace, not process.cwd()", async () => {
+    // A cosmos excerpt is referenced workspace-relative (e.g.
+    // `.cosmos-assets/<id>/x.png`). The server process isn't chdir'd into the
+    // workspace, so this must anchor to the workspace root regardless of cwd.
+    await mkdir(join(workspace, ".cosmos-assets", "n1"), { recursive: true });
+    await writeFile(join(workspace, ".cosmos-assets", "n1", "x.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const res = await app.request(`/api/file?path=${encodeURIComponent(".cosmos-assets/n1/x.png")}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("image/png");
+  });
+  it("403 for a relative path escaping the workspace", async () => {
+    const res = await app.request(`/api/file?path=${encodeURIComponent("../outside.txt")}`);
+    expect(res.status).toBe(403);
+  });
   it("403 for a path escaping the workspace", async () => {
     const res = await app.request(`/api/file?path=${encodeURIComponent(join(workspace, "..", "outside.txt"))}`);
     expect(res.status).toBe(403);

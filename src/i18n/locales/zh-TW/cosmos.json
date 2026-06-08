@@ -63,6 +63,7 @@
     "layer_focus_nodes": "本层节点（{{count}}）",
     "sources_label": "信源",
     "excerpts_label": "摘錄",
+    "excerpt_zoom_hint": "點擊放大",
     "stack_label": "技术栈",
     "outbound": "出向 · {{count}}",
     "inbound": "入向 · {{count}}",

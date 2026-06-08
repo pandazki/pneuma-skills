@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Trans, useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import {
@@ -41,6 +42,7 @@ import type { Source } from "../../../core/types/source.js";
 import { useSource } from "../../../src/hooks/useSource.js";
 import { useStore } from "../../../src/store.js";
 import { getApiBase } from "../../../src/utils/api.js";
+import { ImageLightbox } from "../../../src/components/ImageLightbox.js";
 import EditorPickerButton, {
   DEFAULT_EDITOR_LS_KEY,
 } from "../../../src/components/EditorPickerButton.js";
@@ -276,15 +278,40 @@ async function tryOpenInEditor(
   }
 }
 
+/**
+ * Whether a source ref can be opened in the current environment.
+ *
+ * Local sessions / desktop / replay all have a Bun backend, so the
+ * `/api/system/*` routes resolve and every kind opens. The hosted
+ * **static online player** (`staticPlayer`) has no backend at all — file
+ * and passage refs have nowhere to open (no local filesystem, no editor
+ * bridge) and clicking them only produced an error toast every time. In
+ * that environment only `url` refs are openable, straight into a new
+ * browser tab. The excerpt image lightbox is unaffected — it's pure
+ * frontend and stays clickable everywhere.
+ */
+function canOpenSourceRef(ref: CosmosSourceRef, staticPlayer: boolean): boolean {
+  if (!staticPlayer) return true;
+  return ref.kind === "url";
+}
+
 async function openSourceRef(
   ref: CosmosSourceRef,
   sourceRoot: string | undefined,
   projectRoot: string | undefined,
+  staticPlayer = false,
 ): Promise<{ ok: boolean; message?: string }> {
   const base = getApiBase();
   const headers = { "Content-Type": "application/json" };
   try {
     if (ref.kind === "url") {
+      // No backend in the static player — open the URL directly. Elsewhere
+      // route through the system bridge so the desktop app can hand it to
+      // the OS default browser.
+      if (staticPlayer) {
+        window.open(ref.url, "_blank", "noopener,noreferrer");
+        return { ok: true };
+      }
       const res = await fetch(`${base}/api/system/open-url`, {
         method: "POST",
         headers,
@@ -1705,9 +1732,30 @@ function ExcerptsSection({
   projectRoot: string | undefined;
 }) {
   const { t } = useTranslation("cosmos");
+  const staticPlayer = useStore((s) => s.staticPlayer);
   const [error, setError] = useState<string | null>(null);
   const [pendingIdx, setPendingIdx] = useState<number | null>(null);
   const [imgFailed, setImgFailed] = useState<Record<number, boolean>>({});
+  // Excerpt image opened full-size in the zoom/pan lightbox. The 144×88
+  // thumbnail is cover-cropped, so this is the only way to see the whole
+  // extract — clicking the image opens it here, clicking the rest of the
+  // card still opens the underlying source.
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+
+  // While the lightbox is open it owns Escape: close only the lightbox, not
+  // the NodeDrawer behind it. Both this and the drawer listen for Escape on
+  // window; a capture-phase listener here fires first and stops the event
+  // before the drawer's bubble-phase handler can also close the drawer.
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopImmediatePropagation();
+      setLightbox(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [lightbox]);
 
   // Classify each ref once; only "image" / "quote" produce cards.
   type Card =
@@ -1730,7 +1778,7 @@ function ExcerptsSection({
   const handleOpen = async (ref: CosmosSourceRef, idx: number) => {
     setError(null);
     setPendingIdx(idx);
-    const res = await openSourceRef(ref, sourceRoot, projectRoot);
+    const res = await openSourceRef(ref, sourceRoot, projectRoot, staticPlayer);
     setPendingIdx(null);
     if (!res.ok) setError(res.message ?? "Failed to open");
   };
@@ -1757,15 +1805,21 @@ function ExcerptsSection({
           const label = sourceRefLabel(ref);
           const pending = pendingIdx === idx;
           const failed = imgFailed[idx] === true;
+          // In the static online player, file/passage refs have no backend
+          // to open against — gate the open affordance so it doesn't error.
+          const canOpen = canOpenSourceRef(ref, staticPlayer);
 
           if (card.kind === "image") {
+            // Split the card into two click targets: the thumbnail opens
+            // the full image in the zoom/pan lightbox (the cover-crop hides
+            // most of it otherwise); the text side opens the underlying
+            // source — same as the chip strip. Two sibling <button>s under a
+            // plain <div>, because nesting buttons is invalid HTML.
+            const fullSrc = excerptSrcUrl(card.excerpt.path);
+            const fullAlt = card.excerpt.caption ?? label;
             return (
-              <button
+              <div
                 key={`${refIdx}-img`}
-                type="button"
-                title={sourceRefTooltip(ref)}
-                onClick={() => void handleOpen(ref, idx)}
-                disabled={pending}
                 style={{
                   display: "flex",
                   alignItems: "stretch",
@@ -1776,27 +1830,32 @@ function ExcerptsSection({
                   border: `1px solid ${tint}55`,
                   background: `${tint}0d`,
                   color: "#d4d4d8",
-                  cursor: pending ? "default" : "pointer",
                   opacity: pending ? 0.5 : 1,
-                  textAlign: "left",
                   transition: "all 120ms ease",
                 }}
                 onMouseEnter={(ev) => {
                   if (pending) return;
-                  ev.currentTarget.style.background = `${tint}1c`;
                   ev.currentTarget.style.borderColor = `${tint}aa`;
                 }}
                 onMouseLeave={(ev) => {
                   if (pending) return;
-                  ev.currentTarget.style.background = `${tint}0d`;
                   ev.currentTarget.style.borderColor = `${tint}55`;
                 }}
               >
-                <div
+                <button
+                  type="button"
+                  title={failed ? undefined : t("info.excerpt_zoom_hint")}
+                  aria-label={t("info.excerpt_zoom_hint")}
+                  onClick={() => {
+                    if (!failed) setLightbox({ src: fullSrc, alt: fullAlt });
+                  }}
+                  disabled={failed}
                   style={{
+                    position: "relative",
                     width: 144,
                     height: 88,
                     flexShrink: 0,
+                    padding: 0,
                     borderRadius: 4,
                     border: `1px solid ${tint}66`,
                     background: "#0a0a0b",
@@ -1804,6 +1863,7 @@ function ExcerptsSection({
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
+                    cursor: failed ? "default" : "zoom-in",
                   }}
                 >
                   {failed ? (
@@ -1811,26 +1871,63 @@ function ExcerptsSection({
                       image unavailable
                     </div>
                   ) : (
-                    <img
-                      src={excerptSrcUrl(card.excerpt.path)}
-                      alt={card.excerpt.caption ?? label}
-                      onError={() => setImgFailed((m) => ({ ...m, [idx]: true }))}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        display: "block",
-                      }}
-                    />
+                    <>
+                      <img
+                        src={fullSrc}
+                        alt={fullAlt}
+                        onError={() => setImgFailed((m) => ({ ...m, [idx]: true }))}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          display: "block",
+                        }}
+                      />
+                      {/* Magnifier badge — signals the thumbnail is zoomable. */}
+                      <span
+                        aria-hidden
+                        style={{
+                          position: "absolute",
+                          right: 4,
+                          bottom: 4,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: 18,
+                          height: 18,
+                          borderRadius: 4,
+                          background: "rgba(10,10,11,0.72)",
+                          border: "1px solid rgba(255,255,255,0.18)",
+                          color: "#e4e4e7",
+                          pointerEvents: "none",
+                        }}
+                      >
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" width="11" height="11">
+                          <circle cx="7" cy="7" r="4.2" />
+                          <path d="M10.2 10.2L14 14" strokeLinecap="round" />
+                          <path d="M7 5.2v3.6M5.2 7h3.6" strokeLinecap="round" />
+                        </svg>
+                      </span>
+                    </>
                   )}
-                </div>
-                <div
+                </button>
+                <button
+                  type="button"
+                  title={sourceRefTooltip(ref)}
+                  onClick={canOpen ? () => void handleOpen(ref, idx) : undefined}
+                  disabled={pending || !canOpen}
                   style={{
                     flex: 1,
                     minWidth: 0,
                     display: "flex",
                     flexDirection: "column",
                     gap: 4,
+                    padding: 0,
+                    border: "none",
+                    background: "transparent",
+                    color: "inherit",
+                    textAlign: "left",
+                    cursor: pending || !canOpen ? "default" : "pointer",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
@@ -1894,8 +1991,8 @@ function ExcerptsSection({
                       {label}
                     </div>
                   )}
-                </div>
-              </button>
+                </button>
+              </div>
             );
           }
 
@@ -1906,8 +2003,8 @@ function ExcerptsSection({
               key={`${refIdx}-quote`}
               type="button"
               title={sourceRefTooltip(passage)}
-              onClick={() => void handleOpen(passage, idx)}
-              disabled={pending}
+              onClick={canOpen ? () => void handleOpen(passage, idx) : undefined}
+              disabled={pending || !canOpen}
               style={{
                 position: "relative",
                 display: "flex",
@@ -1919,18 +2016,18 @@ function ExcerptsSection({
                 border: `1px solid ${tint}55`,
                 background: `${tint}0d`,
                 color: "#d4d4d8",
-                cursor: pending ? "default" : "pointer",
+                cursor: pending || !canOpen ? "default" : "pointer",
                 opacity: pending ? 0.5 : 1,
                 textAlign: "left",
                 transition: "all 120ms ease",
               }}
               onMouseEnter={(ev) => {
-                if (pending) return;
+                if (pending || !canOpen) return;
                 ev.currentTarget.style.background = `${tint}1c`;
                 ev.currentTarget.style.borderColor = `${tint}aa`;
               }}
               onMouseLeave={(ev) => {
-                if (pending) return;
+                if (pending || !canOpen) return;
                 ev.currentTarget.style.background = `${tint}0d`;
                 ev.currentTarget.style.borderColor = `${tint}55`;
               }}
@@ -2002,17 +2099,19 @@ function ExcerptsSection({
                     {passage.locator}
                   </span>
                 )}
-                <span
-                  style={{
-                    marginLeft: "auto",
-                    fontSize: 9,
-                    color: "#71717a",
-                    letterSpacing: 0.3,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  open source ›
-                </span>
+                {canOpen && (
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      fontSize: 9,
+                      color: "#71717a",
+                      letterSpacing: 0.3,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    open source ›
+                  </span>
+                )}
               </div>
             </button>
           );
@@ -2033,6 +2132,15 @@ function ExcerptsSection({
           {error}
         </div>
       )}
+      {lightbox &&
+        createPortal(
+          <ImageLightbox
+            src={lightbox.src}
+            alt={lightbox.alt}
+            onClose={() => setLightbox(null)}
+          />,
+          document.body,
+        )}
     </div>
   );
 }
@@ -2058,12 +2166,13 @@ function SourcesStrip({
   projectRoot: string | undefined;
 }) {
   const { t } = useTranslation("cosmos");
+  const staticPlayer = useStore((s) => s.staticPlayer);
   const [error, setError] = useState<string | null>(null);
   const [pendingIdx, setPendingIdx] = useState<number | null>(null);
   const handleOpen = async (ref: CosmosSourceRef, idx: number) => {
     setError(null);
     setPendingIdx(idx);
-    const res = await openSourceRef(ref, sourceRoot, projectRoot);
+    const res = await openSourceRef(ref, sourceRoot, projectRoot, staticPlayer);
     setPendingIdx(null);
     if (!res.ok) setError(res.message ?? "Failed to open");
   };
@@ -2086,13 +2195,16 @@ function SourcesStrip({
           const label = sourceRefLabel(ref);
           const tip = sourceRefTooltip(ref);
           const pending = pendingIdx === idx;
+          // Static online player: file/passage chips have no backend to open
+          // against, so render them as inert labels instead of error toasts.
+          const canOpen = canOpenSourceRef(ref, staticPlayer);
           return (
             <button
               key={idx}
               type="button"
               title={tip}
-              onClick={() => void handleOpen(ref, idx)}
-              disabled={pending}
+              onClick={canOpen ? () => void handleOpen(ref, idx) : undefined}
+              disabled={pending || !canOpen}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -2104,18 +2216,18 @@ function SourcesStrip({
                 color: "#d4d4d8",
                 fontSize: 10.5,
                 lineHeight: 1.3,
-                cursor: pending ? "default" : "pointer",
+                cursor: pending || !canOpen ? "default" : "pointer",
                 opacity: pending ? 0.5 : 1,
                 maxWidth: "100%",
                 transition: "all 120ms ease",
               }}
               onMouseEnter={(ev) => {
-                if (pending) return;
+                if (pending || !canOpen) return;
                 ev.currentTarget.style.background = `${tint}24`;
                 ev.currentTarget.style.borderColor = `${tint}88`;
               }}
               onMouseLeave={(ev) => {
-                if (pending) return;
+                if (pending || !canOpen) return;
                 ev.currentTarget.style.background = `${tint}12`;
                 ev.currentTarget.style.borderColor = `${tint}55`;
               }}

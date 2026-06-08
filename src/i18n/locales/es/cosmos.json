@@ -63,6 +63,7 @@
     "layer_focus_nodes": "Nodes in this layer ({{count}})",
     "sources_label": "Sources",
     "excerpts_label": "Extractos",
+    "excerpt_zoom_hint": "Clic para ampliar",
     "stack_label": "Stack",
     "outbound": "Outbound · {{count}}",
     "inbound": "Inbound · {{count}}",

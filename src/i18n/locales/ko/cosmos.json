@@ -63,6 +63,7 @@
     "layer_focus_nodes": "Nodes in this layer ({{count}})",
     "sources_label": "Sources",
     "excerpts_label": "발췌",
+    "excerpt_zoom_hint": "클릭하여 확대",
     "stack_label": "Stack",
     "outbound": "Outbound · {{count}}",
     "inbound": "Inbound · {{count}}",
