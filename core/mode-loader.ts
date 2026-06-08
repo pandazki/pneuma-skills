@@ -82,6 +82,13 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/project-onboard/pneuma-mode.js").then((m) => m.default),
   },
+  "project-tidy": {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/project-tidy/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/project-tidy/pneuma-mode.js").then((m) => m.default),
+  },
   webcraft: {
     type: "builtin",
     manifestLoader: () =>

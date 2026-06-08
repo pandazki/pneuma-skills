@@ -19,7 +19,8 @@
     "default_title": "{{mode}} 세션",
     "starting": "세션 시작 중...",
     "mode_chip_aria": "{{mode}} 모드",
-    "delete_tooltip": "세션 삭제"
+    "delete_tooltip": "세션 삭제",
+    "count_aria": "세션 {{count}}개"
   },
   "favorite_aria": "즐겨찾기",
   "mode_count_suffix": "· {{count}}",
@@ -43,7 +44,13 @@
     "more_aria": "추가 작업",
     "more_tooltip": "추가 작업",
     "archive_project": "프로젝트 보관",
-    "delete_project_permanently": "프로젝트 영구 삭제"
+    "delete_project_permanently": "프로젝트 영구 삭제",
+    "ai_menu": "AI",
+    "ai_menu_aria": "프로젝트 AI 작업",
+    "ai_menu_tooltip": "프로젝트 AI 작업 —— 아틀라스를 진화시키거나 세션 목록을 정리",
+    "tidy": "세션 정리",
+    "tidy_desc": "기본 이름으로 남은 세션의 제목을 다시 작성",
+    "evolve_menu_desc": "이 프로젝트의 세션에서 아틀라스와 공유 환경설정을 추출"
   },
   "confirm": {
     "archive_question": "이 프로젝트를 보관할까요?",

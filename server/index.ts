@@ -2401,8 +2401,39 @@ export async function startServer(options: ServerOptions) {
       );
     }
 
+    // `targetSessionId` makes this refine land on a *sibling* session under
+    // the same project root instead of the server's own session — the
+    // `project-tidy` mode uses it to re-title every un-tidied session in one
+    // pass. Absent, behaviour is unchanged (refine the active session).
+    const targetSessionId =
+      typeof body.targetSessionId === "string" ? body.targetSessionId.trim() : "";
+    let resolvedStateDir = stateDirForSession;
+    let resolvedRegistryId = options.pneumaProjectRoot
+      ? `${options.pneumaProjectRoot}::${options.sessionId ?? ""}`
+      : `${workspace}::${options.modeName ?? ""}`;
+    if (targetSessionId) {
+      if (!options.pneumaProjectRoot) {
+        return c.json({ error: "targetSessionId requires a project session" }, 400);
+      }
+      // Guard against path traversal — the id is a directory name.
+      if (!/^[A-Za-z0-9_-]+$/.test(targetSessionId)) {
+        return c.json({ error: "invalid targetSessionId" }, 400);
+      }
+      const siblingDir = join(
+        options.pneumaProjectRoot,
+        ".pneuma",
+        "sessions",
+        targetSessionId,
+      );
+      if (!existsSync(join(siblingDir, "session.json"))) {
+        return c.json({ error: `session ${targetSessionId} not found` }, 404);
+      }
+      resolvedStateDir = siblingDir;
+      resolvedRegistryId = `${options.pneumaProjectRoot}::${targetSessionId}`;
+    }
+
     const refinedAt = Date.now();
-    const sessionPath = join(stateDirForSession, "session.json");
+    const sessionPath = join(resolvedStateDir, "session.json");
 
     // 1. Patch session.json (canonical source). Merge into the existing file
     //    so we don't clobber sessionId / agentSessionId / backendType / etc.
@@ -2428,10 +2459,7 @@ export async function startServer(options: ServerOptions) {
     //    sees the refined fields without round-tripping through session.json.
     //    The id format mirrors `recordSession()` in bin/pneuma.ts.
     try {
-      const modeName = options.modeName ?? "";
-      const candidateId = options.pneumaProjectRoot
-        ? `${options.pneumaProjectRoot}::${options.sessionId ?? ""}`
-        : `${workspace}::${modeName}`;
+      const candidateId = resolvedRegistryId;
       const registryPath = join(homedir(), ".pneuma", "sessions.json");
       const data = readSessionsFileSync(registryPath);
       const idx = data.sessions.findIndex((s) => s.id === candidateId);
@@ -2467,7 +2495,7 @@ export async function startServer(options: ServerOptions) {
       try {
         wsBridge.broadcastToSession(activeId, {
           type: "session_meta_updated",
-          session_id: activeId,
+          session_id: targetSessionId || activeId,
           ...(displayName !== undefined ? { displayName } : {}),
           ...(description !== undefined ? { description } : {}),
           refinedAt,

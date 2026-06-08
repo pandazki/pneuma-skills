@@ -19,7 +19,8 @@
     "default_title": "{{mode}} 会话",
     "starting": "会话启动中…",
     "mode_chip_aria": "{{mode}} 模式",
-    "delete_tooltip": "删除会话"
+    "delete_tooltip": "删除会话",
+    "count_aria": "{{count}} 个会话"
   },
   "favorite_aria": "收藏",
   "mode_count_suffix": "· {{count}}",
@@ -43,7 +44,13 @@
     "more_aria": "更多操作",
     "more_tooltip": "更多操作",
     "archive_project": "归档项目",
-    "delete_project_permanently": "永久删除项目"
+    "delete_project_permanently": "永久删除项目",
+    "ai_menu": "AI 整理",
+    "ai_menu_aria": "项目 AI 操作",
+    "ai_menu_tooltip": "项目 AI 操作 —— 演化项目图谱，或整理会话列表",
+    "tidy": "整理会话",
+    "tidy_desc": "为还是默认标题的会话补全标题与摘要",
+    "evolve_menu_desc": "从本项目的会话中提炼项目图谱与共享偏好"
   },
   "confirm": {
     "archive_question": "归档这个项目？",

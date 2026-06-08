@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.20.0] - 2026-06-08
+
+### Added
+
+- **Tidy Sessions — batch re-title the whole Recent Sessions list** — a new internal `project-tidy` mode, launched from the ProjectPanel's AI (sparkle) menu, that sweeps every session still on a default name (`"WebCraft session"`, `"文档 会话"`, …) and rewrites its title + one-line summary in one pass, instead of relying on each session to refine itself from the inside. It reads each sibling session's conversation, skips the ones a user manually named or that are too thin to title (no fabricated topics), and applies each refine directly to disk. A live progress viewer shows each row's old title struck through beside the freshly-written one, with a done/skipped tally.
+- **Sibling session refine** — `pneuma session refine --target-session <id>` and a `targetSessionId` field on `POST /api/session/refine` let an agent refine another session under the same project (path-guarded, project-scoped), the mechanism the tidy sweep runs on.
+
+### Improved
+
+- **ProjectPanel — Recent Sessions list scrolls internally and shows its count** — a long session list no longer stretches the panel taller and taller; it's capped with its own scrollbar so the mode picker and toolbar stay put, and the 最近会话 heading now shows the total session count at a glance.
+- **The ProjectPanel sparkle is now a menu** — the ✨ action groups the two project-level agents under one trigger: **Evolve project** (seed/refresh the atlas + shared preferences) and **Tidy sessions** (the new batch re-title).
+
 ## [3.19.1] - 2026-06-06
 
 ### Fixed

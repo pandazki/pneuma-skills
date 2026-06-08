@@ -34,7 +34,7 @@ describe("enumerateLocalModes", () => {
       expect(names).toContain(expected);
     }
     // Known internal/hidden builtins must be filtered.
-    for (const hidden of ["evolve", "project-evolve", "project-onboard"]) {
+    for (const hidden of ["evolve", "project-evolve", "project-onboard", "project-tidy"]) {
       expect(names).not.toContain(hidden);
     }
     // Builtins are always tagged correctly even if libraries leak in.

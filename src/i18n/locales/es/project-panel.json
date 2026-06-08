@@ -19,7 +19,8 @@
     "default_title": "Sesión de {{mode}}",
     "starting": "Iniciando sesión…",
     "mode_chip_aria": "Modo {{mode}}",
-    "delete_tooltip": "Eliminar sesión"
+    "delete_tooltip": "Eliminar sesión",
+    "count_aria": "{{count}} sesiones"
   },
   "favorite_aria": "Favorito",
   "mode_count_suffix": "· {{count}}",
@@ -43,7 +44,13 @@
     "more_aria": "Más acciones",
     "more_tooltip": "Más acciones",
     "archive_project": "Archivar proyecto",
-    "delete_project_permanently": "Eliminar el proyecto definitivamente"
+    "delete_project_permanently": "Eliminar el proyecto definitivamente",
+    "ai_menu": "IA",
+    "ai_menu_aria": "Acciones de IA del proyecto",
+    "ai_menu_tooltip": "Acciones de IA del proyecto: evoluciona el atlas u ordena la lista de sesiones",
+    "tidy": "Ordenar sesiones",
+    "tidy_desc": "Renombra cada sesión que sigue con un nombre por defecto",
+    "evolve_menu_desc": "Genera el atlas y las preferencias compartidas a partir de las sesiones del proyecto"
   },
   "confirm": {
     "archive_question": "¿Archivar este proyecto?",

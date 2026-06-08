@@ -19,7 +19,8 @@
     "default_title": "{{mode}} セッション",
     "starting": "セッションを起動中…",
     "mode_chip_aria": "{{mode}} モード",
-    "delete_tooltip": "セッションを削除"
+    "delete_tooltip": "セッションを削除",
+    "count_aria": "{{count}} 件のセッション"
   },
   "favorite_aria": "お気に入り",
   "mode_count_suffix": "· {{count}}",
@@ -43,7 +44,13 @@
     "more_aria": "その他の操作",
     "more_tooltip": "その他の操作",
     "archive_project": "プロジェクトをアーカイブ",
-    "delete_project_permanently": "プロジェクトを完全に削除"
+    "delete_project_permanently": "プロジェクトを完全に削除",
+    "ai_menu": "AI",
+    "ai_menu_aria": "プロジェクト AI 操作",
+    "ai_menu_tooltip": "プロジェクト AI 操作 —— アトラスを進化させる、またはセッション一覧を整理",
+    "tidy": "セッション整理",
+    "tidy_desc": "デフォルト名のままのセッションにタイトルを付け直す",
+    "evolve_menu_desc": "このプロジェクトのセッションからアトラスと共有設定を抽出"
   },
   "confirm": {
     "archive_question": "このプロジェクトをアーカイブしますか？",

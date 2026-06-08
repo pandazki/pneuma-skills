@@ -72,6 +72,7 @@ const BUILTIN_MODES = new Set([
   "evolve",
   "project-evolve",
   "project-onboard",
+  "project-tidy",
 ]);
 
 /** Global cache directory for cloned GitHub modes */

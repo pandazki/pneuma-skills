@@ -19,7 +19,8 @@
     "default_title": "{{mode}} 工作階段",
     "starting": "正在啟動工作階段…",
     "mode_chip_aria": "{{mode}} 模式",
-    "delete_tooltip": "刪除工作階段"
+    "delete_tooltip": "刪除工作階段",
+    "count_aria": "{{count}} 個會話"
   },
   "favorite_aria": "收藏",
   "mode_count_suffix": "· {{count}}",
@@ -43,7 +44,13 @@
     "more_aria": "更多操作",
     "more_tooltip": "更多操作",
     "archive_project": "封存專案",
-    "delete_project_permanently": "永久刪除專案"
+    "delete_project_permanently": "永久刪除專案",
+    "ai_menu": "AI 整理",
+    "ai_menu_aria": "專案 AI 操作",
+    "ai_menu_tooltip": "專案 AI 操作 —— 演化專案總覽，或整理會話列表",
+    "tidy": "整理會話",
+    "tidy_desc": "為還是預設標題的會話補全標題與摘要",
+    "evolve_menu_desc": "從本專案的會話中提煉專案總覽與共享偏好"
   },
   "confirm": {
     "archive_question": "要封存這個專案嗎？",

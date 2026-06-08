@@ -145,6 +145,11 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
+  // AI (sparkle) menu — a small dropdown grouping the project-level agent
+  // actions (Evolve the atlas, Tidy the session list) under one trigger.
+  const [aiMenuOpen, setAiMenuOpen] = useState(false);
+  const aiMenuRef = useRef<HTMLDivElement>(null);
+
 
   // Fetch project info + sessions + registry + project list (for cover URL
   // and homeDir) in parallel on mount.
@@ -577,6 +582,28 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     };
   }, [moreMenuOpen]);
 
+  // AI (sparkle) menu — close on outside-click or Esc.
+  useEffect(() => {
+    if (!aiMenuOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (aiMenuRef.current && !aiMenuRef.current.contains(e.target as Node)) {
+        setAiMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setAiMenuOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onMouseDown, true);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("mousedown", onMouseDown, true);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [aiMenuOpen]);
+
   // Esc inside the launch sheet returns to the mode grid (not closing the
   // panel). `capture: true` + stopPropagation so the chip's outer
   // close-on-Esc never fires while the sheet is open. At grid level the
@@ -762,7 +789,19 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
       <div className="grid grid-cols-[3fr_2fr] gap-px bg-cc-border/50 border-t border-cc-border/50">
         {/* LEFT — Sessions */}
         <div className="bg-cc-surface p-5 min-h-[200px]">
-          <h3 className={sectionHeading}>{t("sections.recent_sessions")}</h3>
+          <div className="flex items-baseline justify-between mb-3">
+            <h3 className="text-[11px] uppercase tracking-wider text-cc-muted/60 font-medium">
+              {t("sections.recent_sessions")}
+            </h3>
+            {!loading && sortedSessions.length > 0 ? (
+              <span
+                className="text-[11px] text-cc-muted/40 tabular-nums"
+                aria-label={t("session.count_aria", { count: sortedSessions.length })}
+              >
+                {sortedSessions.length}
+              </span>
+            ) : null}
+          </div>
           {loading ? (
             <div className="text-cc-muted/60 text-sm">{t("loading.sessions")}</div>
           ) : sortedSessions.length === 0 ? (
@@ -778,7 +817,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
               </p>
             </div>
           ) : (
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1 max-h-[48vh] overflow-y-auto overflow-x-hidden py-0.5 pr-1 -mr-1">
               {sortedSessions.map((s) => {
                 const isActive = s.sessionId === activeSessionId;
                 const hasName =
@@ -1158,43 +1197,108 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                 </span>
               </button>
 
-              {/* Evolve — launches the project-scoped evolution agent
-                  (`project-evolve`), which seeds the project atlas and
-                  maintains shared preferences. Distinct from the
-                  personal `evolve` mode, which targets a single
-                  workspace-level skill. Icon hover-expands its label so
-                  first-time users learn what it does. */}
-              <button
-                type="button"
-                disabled={launching}
-                onClick={() => void launch("project-evolve")}
-                aria-label={t("actions.evolve_aria")}
-                title={t("actions.evolve_tooltip")}
-                className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md text-cc-muted hover:text-cc-primary hover:bg-cc-primary-muted transition-colors disabled:opacity-50 cursor-pointer"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.75"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="w-4 h-4 shrink-0"
-                  aria-hidden
+              {/* AI menu — the sparkle groups the project-level agent
+                  actions: Evolve (seed/refresh the project atlas +
+                  shared preferences via `project-evolve`) and Tidy
+                  (batch-refine every un-tidied session's title via
+                  `project-tidy`). Both spawn a temporary internal-mode
+                  session. The trigger hover-expands its label; the menu
+                  anchors above since the row sits at the panel's bottom
+                  edge. */}
+              <div className="relative" ref={aiMenuRef}>
+                <button
+                  type="button"
+                  disabled={launching}
+                  onClick={() => setAiMenuOpen((v) => !v)}
+                  aria-haspopup="menu"
+                  aria-expanded={aiMenuOpen}
+                  aria-label={t("actions.ai_menu_aria")}
+                  title={t("actions.ai_menu_tooltip")}
+                  className={`group flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-colors disabled:opacity-50 cursor-pointer ${
+                    aiMenuOpen
+                      ? "text-cc-primary bg-cc-primary-muted"
+                      : "text-cc-muted hover:text-cc-primary hover:bg-cc-primary-muted"
+                  }`}
                 >
-                  <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
-                  <path d="M20 3v4" />
-                  <path d="M22 5h-4" />
-                  <path d="M4 17v2" />
-                  <path d="M5 18H3" />
-                </svg>
-                <span className="grid grid-cols-[0fr] group-hover:grid-cols-[1fr] transition-[grid-template-columns] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
-                  <span className="overflow-hidden whitespace-nowrap text-xs opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
-                    {t("actions.evolve")}
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.75"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="w-4 h-4 shrink-0"
+                    aria-hidden
+                  >
+                    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+                    <path d="M20 3v4" />
+                    <path d="M22 5h-4" />
+                    <path d="M4 17v2" />
+                    <path d="M5 18H3" />
+                  </svg>
+                  <span className="grid grid-cols-[0fr] group-hover:grid-cols-[1fr] transition-[grid-template-columns] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+                    <span className="overflow-hidden whitespace-nowrap text-xs opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+                      {t("actions.ai_menu")}
+                    </span>
                   </span>
-                </span>
-              </button>
+                </button>
+                {aiMenuOpen ? (
+                  <div
+                    role="menu"
+                    className="absolute bottom-full right-0 mb-2 w-[260px] rounded-lg border border-cc-border bg-cc-surface shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6)] py-1 [animation:overlayFadeIn_140ms_cubic-bezier(0.16,1,0.3,1)] z-10"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={launching}
+                      onClick={() => {
+                        setAiMenuOpen(false);
+                        void launch("project-evolve");
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-cc-hover transition-colors cursor-pointer disabled:opacity-50 flex items-start gap-2.5"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0 mt-0.5 text-cc-primary/80" aria-hidden>
+                        <path d="M9 4H5a2 2 0 0 0-2 2v3" />
+                        <path d="M15 4h4a2 2 0 0 1 2 2v3" />
+                        <path d="M3 15v3a2 2 0 0 0 2 2h4" />
+                        <path d="M21 15v3a2 2 0 0 1-2 2h-4" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                      <span className="flex flex-col gap-0.5 min-w-0">
+                        <span className="text-xs text-cc-fg">{t("actions.evolve")}</span>
+                        <span className="text-[11px] text-cc-muted/60 leading-snug">
+                          {t("actions.evolve_menu_desc")}
+                        </span>
+                      </span>
+                    </button>
+                    <div className="my-1 border-t border-cc-border/40" aria-hidden />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={launching}
+                      onClick={() => {
+                        setAiMenuOpen(false);
+                        void launch("project-tidy");
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-cc-hover transition-colors cursor-pointer disabled:opacity-50 flex items-start gap-2.5"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0 mt-0.5 text-cc-primary/80" aria-hidden>
+                        <path d="M3 6h18" />
+                        <path d="M3 12h12" />
+                        <path d="M3 18h6" />
+                        <path d="m17 14 1.5 3.5L22 19l-3.5 1.5L17 24l-1.5-3.5L12 19l3.5-1.5z" />
+                      </svg>
+                      <span className="flex flex-col gap-0.5 min-w-0">
+                        <span className="text-xs text-cc-fg">{t("actions.tidy")}</span>
+                        <span className="text-[11px] text-cc-muted/60 leading-snug">
+                          {t("actions.tidy_desc")}
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
 
               {/* Overflow menu — destructive / low-frequency actions live
                   here so the resting state of the row stays calm. The

@@ -67,14 +67,17 @@ export function parseSessionRefineArgs(args: string[]): {
   json?: string;
   stdin?: boolean;
   help?: boolean;
+  targetSession?: string;
 } {
-  const out: { json?: string; stdin?: boolean; help?: boolean } = {};
+  const out: { json?: string; stdin?: boolean; help?: boolean; targetSession?: string } = {};
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--json" && i + 1 < args.length) {
       out.json = args[++i];
     } else if (arg === "--stdin") {
       out.stdin = true;
+    } else if ((arg === "--target-session" || arg === "--target") && i + 1 < args.length) {
+      out.targetSession = args[++i];
     } else if (arg === "--help" || arg === "-h") {
       out.help = true;
     }
@@ -184,13 +187,19 @@ export async function runSessionRefineCommand(
     return 2;
   }
 
+  // A `--target-session <id>` refines a sibling session under the same
+  // project (used by `project-tidy`); without it the server refines its own.
+  const targetSession = parsed.targetSession?.trim();
+  const requestBody: Record<string, unknown> = { ...body };
+  if (targetSession) requestBody.targetSessionId = targetSession;
+
   const url = `${serverUrl.replace(/\/$/, "")}/api/session/refine`;
   let response: { status: number; json: () => Promise<unknown>; text: () => Promise<string> };
   try {
     response = await io.fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(requestBody),
     });
   } catch (err) {
     io.stderr(t("session.refine.fetch_failed", { url, message: err instanceof Error ? err.message : String(err) }));
