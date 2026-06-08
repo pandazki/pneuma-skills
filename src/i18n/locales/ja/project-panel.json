@@ -45,12 +45,12 @@
     "more_tooltip": "その他の操作",
     "archive_project": "プロジェクトをアーカイブ",
     "delete_project_permanently": "プロジェクトを完全に削除",
-    "ai_menu": "AI",
-    "ai_menu_aria": "プロジェクト AI 操作",
-    "ai_menu_tooltip": "プロジェクト AI 操作 —— アトラスを進化させる、またはセッション一覧を整理",
+    "ai_menu": "Spark",
+    "ai_menu_aria": "プロジェクト Spark",
+    "ai_menu_tooltip": "Spark —— AI がプロジェクトの知見を整える：アトラスを進化させ、各セッションに意味づけ",
     "tidy": "セッション整理",
-    "tidy_desc": "デフォルト名のままのセッションにタイトルを付け直す",
-    "evolve_menu_desc": "このプロジェクトのセッションからアトラスと共有設定を抽出"
+    "tidy_desc": "デフォルト名のままのセッションにタイトルと要約を付け直し、最近のセッションを一目で読めるように",
+    "evolve_menu_desc": "セッションに散らばる文脈と合意を抽出し、あらゆるモードが起動時に読むブリーフィングと共有設定に凝縮"
   },
   "confirm": {
     "archive_question": "このプロジェクトをアーカイブしますか？",

@@ -45,12 +45,12 @@
     "more_tooltip": "Más acciones",
     "archive_project": "Archivar proyecto",
     "delete_project_permanently": "Eliminar el proyecto definitivamente",
-    "ai_menu": "IA",
-    "ai_menu_aria": "Acciones de IA del proyecto",
-    "ai_menu_tooltip": "Acciones de IA del proyecto: evoluciona el atlas u ordena la lista de sesiones",
+    "ai_menu": "Spark",
+    "ai_menu_aria": "Spark del proyecto",
+    "ai_menu_tooltip": "Spark: deja que la IA cuide la mente del proyecto — evoluciona su atlas y da sentido a sus sesiones",
     "tidy": "Ordenar sesiones",
-    "tidy_desc": "Renombra cada sesión que sigue con un nombre por defecto",
-    "evolve_menu_desc": "Genera el atlas y las preferencias compartidas a partir de las sesiones del proyecto"
+    "tidy_desc": "Reescribe título y resumen de las sesiones aún con nombre por defecto, para que Sesiones recientes se lea de un vistazo",
+    "evolve_menu_desc": "Destila los hilos y consensos dispersos en las sesiones en el resumen que cada modo lee al iniciar, con las preferencias compartidas"
   },
   "confirm": {
     "archive_question": "¿Archivar este proyecto?",

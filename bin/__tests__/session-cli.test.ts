@@ -127,7 +127,10 @@ describe("runSessionRefineCommand", () => {
     expect(fetches).toHaveLength(1);
     expect(fetches[0].url).toBe("http://localhost:17007/api/session/refine");
     expect(JSON.parse(fetches[0].body)).toEqual({ displayName: "X", description: "Y" });
-    expect(stdout.join("\n")).toMatch(/refined/);
+    // Assert on the payload echo rather than an English word — the success
+    // message is localized (the active locale may not be English under test),
+    // but the refined title is interpolated into it in every locale.
+    expect(stdout.join("\n")).toContain("X");
   });
 
   test("exits 2 when neither --json nor --stdin supplied", async () => {

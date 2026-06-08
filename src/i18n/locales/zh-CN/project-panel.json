@@ -45,12 +45,12 @@
     "more_tooltip": "更多操作",
     "archive_project": "归档项目",
     "delete_project_permanently": "永久删除项目",
-    "ai_menu": "AI 整理",
-    "ai_menu_aria": "项目 AI 操作",
-    "ai_menu_tooltip": "项目 AI 操作 —— 演化项目图谱，或整理会话列表",
+    "ai_menu": "灵光",
+    "ai_menu_aria": "项目灵光",
+    "ai_menu_tooltip": "灵光 —— 让 AI 打理项目的认知：演化项目图谱，语义化每段会话",
     "tidy": "整理会话",
-    "tidy_desc": "为还是默认标题的会话补全标题与摘要",
-    "evolve_menu_desc": "从本项目的会话中提炼项目图谱与共享偏好"
+    "tidy_desc": "为仍是默认名的会话重拟标题与摘要，让最近会话一眼读懂各自在聊什么",
+    "evolve_menu_desc": "萃取散落会话里的脉络与共识，凝成每个模式启动即读的项目简报与共享偏好"
   },
   "confirm": {
     "archive_question": "归档这个项目？",

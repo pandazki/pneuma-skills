@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.20.1] - 2026-06-08
+
+### Improved
+
+- **The ProjectPanel sparkle is now "Spark" (灵光)** — reworded the AI menu so its copy keeps up with what it does: the trigger reads 灵光 / Spark, and the two items describe project-level work in plainer, more deliberate terms — **演化项目** distills the through-lines and consensus scattered across sessions into the briefing every mode reads at startup, **整理会话** re-titles and summarizes the sessions still on a default name so Recent Sessions reads at a glance. All seven locales updated.
+
 ## [3.20.0] - 2026-06-08
 
 ### Added

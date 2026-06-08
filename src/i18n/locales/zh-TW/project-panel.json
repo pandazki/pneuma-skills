@@ -45,12 +45,12 @@
     "more_tooltip": "更多操作",
     "archive_project": "封存專案",
     "delete_project_permanently": "永久刪除專案",
-    "ai_menu": "AI 整理",
-    "ai_menu_aria": "專案 AI 操作",
-    "ai_menu_tooltip": "專案 AI 操作 —— 演化專案總覽，或整理會話列表",
+    "ai_menu": "靈光",
+    "ai_menu_aria": "專案靈光",
+    "ai_menu_tooltip": "靈光 —— 讓 AI 打理專案的認知：演化專案總覽，語意化每段會話",
     "tidy": "整理會話",
-    "tidy_desc": "為還是預設標題的會話補全標題與摘要",
-    "evolve_menu_desc": "從本專案的會話中提煉專案總覽與共享偏好"
+    "tidy_desc": "為仍是預設名的會話重擬標題與摘要，讓最近會話一眼讀懂各自在聊什麼",
+    "evolve_menu_desc": "萃取散落會話裡的脈絡與共識，凝成每個模式啟動即讀的專案簡報與共享偏好"
   },
   "confirm": {
     "archive_question": "要封存這個專案嗎？",

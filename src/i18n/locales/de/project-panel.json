@@ -45,12 +45,12 @@
     "more_tooltip": "Weitere Aktionen",
     "archive_project": "Projekt archivieren",
     "delete_project_permanently": "Projekt endgültig löschen",
-    "ai_menu": "KI",
-    "ai_menu_aria": "Projekt-KI-Aktionen",
-    "ai_menu_tooltip": "Projekt-KI-Aktionen — Atlas weiterentwickeln oder Sitzungsliste aufräumen",
+    "ai_menu": "Spark",
+    "ai_menu_aria": "Projekt-Spark",
+    "ai_menu_tooltip": "Spark — lass die KI den Projektgeist pflegen: Atlas weiterentwickeln, Sitzungen lesbar machen",
     "tidy": "Sitzungen aufräumen",
-    "tidy_desc": "Jede Sitzung mit Standardnamen neu betiteln",
-    "evolve_menu_desc": "Atlas und gemeinsame Einstellungen aus den Sitzungen dieses Projekts ableiten"
+    "tidy_desc": "Schreibt Titel und Zusammenfassung der Sitzungen mit Standardnamen neu, damit die letzten Sitzungen auf einen Blick lesbar sind",
+    "evolve_menu_desc": "Destilliert die roten Fäden und den Konsens verstreuter Sitzungen in das Briefing, das jeder Modus beim Start liest, samt gemeinsamer Einstellungen"
   },
   "confirm": {
     "archive_question": "Dieses Projekt archivieren?",

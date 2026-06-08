@@ -45,12 +45,12 @@
     "more_tooltip": "More actions",
     "archive_project": "Archive project",
     "delete_project_permanently": "Delete project permanently",
-    "ai_menu": "AI",
-    "ai_menu_aria": "Project AI actions",
-    "ai_menu_tooltip": "Project AI actions — evolve the atlas or tidy the session list",
+    "ai_menu": "Spark",
+    "ai_menu_aria": "Project Spark",
+    "ai_menu_tooltip": "Spark — let AI tend the project's mind: evolve its atlas, make its sessions legible",
     "tidy": "Tidy sessions",
-    "tidy_desc": "Re-title every session still on a default name",
-    "evolve_menu_desc": "Seed the atlas + shared preferences from this project's sessions"
+    "tidy_desc": "Re-title and summarize the sessions still on a default name, so Recent Sessions reads at a glance",
+    "evolve_menu_desc": "Distill the through-lines and consensus scattered across sessions into the briefing every mode reads at startup"
   },
   "confirm": {
     "archive_question": "Archive this project?",
