@@ -12,8 +12,11 @@ import { normalizeCosmos, type Cosmos } from "./types.js";
 
 const cosmosManifest: ModeManifest = {
   name: "cosmos",
-  version: "0.4.0",
+  version: "0.4.1",
   changelog: {
+    "0.4.1": [
+      "SKILL.md — disambiguate the two walk shapes: `tour[]` uses `{ step, nodeId, narrative }`, `perspectives[].steps[]` uses `{ focus, narrative }`. Added an inline tour-shape example at Pass 3, a contrast table in the Perspective-tours chapter, and an explicit warning on Path A step 4 (where the workflow's perspective `focus` shape was being copied into the tour by reflex)",
+    ],
     "0.4.0": [
       "Workflow-backed projection (Path A, Claude Code): parallel per-partition extraction in fresh contexts → cross-edge merge → adversarial per-node verify → completeness loop → perspective judge-panel",
       "Every node now carries a `trust` verdict (verified / weak / unverifiable); viewer renders a trust badge in the NodeDrawer header + hover tooltip",

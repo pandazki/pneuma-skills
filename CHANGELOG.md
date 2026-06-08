@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.20.3] - 2026-06-08
+
+### Fixed
+
+- **Cosmos no longer mixes up the two tour shapes** — the cosmos skill repeatedly produced a broken guided tour because `tour[]` and `perspectives[].steps[]` both call their beats "steps" but use different fields (`tour[]` → `{ step, nodeId, narrative }`, perspectives → `{ focus, narrative }`), and only the perspective shape was shown inline in SKILL.md. The agent would copy `focus` into the tour, so step numbers wouldn't render and clicking a step wouldn't navigate. SKILL.md now shows the `tour[]` shape inline at Pass 3, adds a contrast table in the Perspective-tours chapter, and warns on the Workflow-backed path (where the workflow's perspective `focus` shape sits right beside the tour in the same file) — no more hand-correcting the structure each session.
+
 ## [3.20.2] - 2026-06-08
 
 ### Fixed

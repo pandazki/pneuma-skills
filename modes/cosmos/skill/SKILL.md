@@ -474,8 +474,13 @@ workflow paths land.
 4. **Add the tour (and prune if needed).** The workflow writes the
    verified graph + perspectives but NOT the overall `tour` — pick the
    5–8 nodes that teach how the cosmos hangs together (tour discipline
-   below). If the graph came back denser than a reader needs, prune
-   trivial nodes here before writing.
+   below). Write `tour[]` as `{ step, nodeId, narrative }` per beat —
+   **not** the `{ focus, narrative }` shape the workflow used for
+   `perspectives[].steps[]`. The workflow's perspectives sit right
+   above your tour in the same file, so it is easy to copy their
+   `focus` shape by reflex; see the contrast box in *Perspective
+   tours* before you write. If the graph came back denser than a
+   reader needs, prune trivial nodes here before writing.
 5. **Write `cosmos.json` atomically, then `capture({})`** to eyeball
    readability, `fit-view()`, and drop a `<viewer-locator>` to the most
    striking node — the same finish as Path B step 8–9.
@@ -517,7 +522,22 @@ workflow paths land.
 
 6. **Pass 3 — write the tour.** Pick the 5–8 nodes that, in order,
    teach the user how the cosmos hangs together. The tour is a
-   reading path, not a complete tour of every node.
+   reading path, not a complete tour of every node. The shape is a
+   flat array of `{ step, nodeId, narrative }` — **not** the
+   perspective-step shape:
+
+   ```jsonc
+   "tour": [
+     { "step": 1, "nodeId": "ct-published-language", "narrative": "..." },
+     { "step": 2, "nodeId": "sp-omne-core-v1",       "narrative": "..." }
+   ]
+   ```
+
+   `step` is a 1-based integer, `nodeId` is a single node id (string,
+   not an array), `narrative` is this beat's paragraph. Do **not**
+   write `focus` here — `focus` belongs to `perspectives[].steps[]`,
+   which is a different field with a different shape (see the contrast
+   box in *Perspective tours*).
 
 7. **Pass 4 — write perspective tours.** (Optional but encouraged.
    See the *Perspective tours* chapter below before doing this.) Step
@@ -578,6 +598,26 @@ The viewer surfaces overall + perspectives side-by-side in the TOUR
 tab. The user picks one. Picking starts a stepper that walks the
 chosen nodes in order, with the framing (lens + thesis) shown
 alongside.
+
+### Two "steps", two different shapes — don't conflate them
+
+Both the overall tour and each perspective have an ordered walk, and
+both call the beats "steps". **The field shapes are different**, and
+mixing them is the single most common cosmos mistake — the symptom is
+a tour whose step numbers don't render and whose canvas won't navigate,
+because you wrote `focus` where the viewer expects `step` + `nodeId`.
+
+| | Field | One beat's shape | Node reference |
+|---|---|---|---|
+| **Overall tour** | `cosmos.tour[]` | `{ step: number, nodeId: string, narrative }` | `nodeId` — a **single string** |
+| **Perspective walk** | `cosmos.perspectives[].steps[]` | `{ focus: string[], narrative }` | `focus` — an **array of ids** |
+
+The tour numbers its beats (`step: 1, 2, …`) and lights exactly one
+node each (`nodeId`). A perspective does **not** number its beats and
+can light several nodes per beat (`focus: ["a", "b"]`, first is the
+primary anchor). `narrative` is the only field they share. If you find
+yourself writing `focus` inside `tour[]` or `nodeId` inside a
+perspective step, stop — you've crossed the two.
 
 ### The discipline
 
