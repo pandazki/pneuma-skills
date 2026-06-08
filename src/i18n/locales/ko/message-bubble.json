@@ -29,7 +29,8 @@
     "other_option": "기타...",
     "answer_placeholder": "답변을 입력하세요...",
     "enter_hint": "Enter를 눌러 제출하세요",
-    "submit": "답변 제출"
+    "submit": "답변 제출",
+    "multi_hint": "해당하는 항목을 모두 선택하세요"
   },
   "thinking": {
     "label": "추론",

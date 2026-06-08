@@ -551,52 +551,83 @@ function AnsweredQuestionSummary({ pairs }: { pairs: { question: string; answer:
 function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
   const { t } = useTranslation("message-bubble");
   const questions: Record<string, unknown>[] = Array.isArray(perm.input.questions) ? perm.input.questions : [];
-  const [selections, setSelections] = useState<Record<string, string>>({});
+  // selections holds an array of picked option labels per question. Single-select
+  // questions keep 0 or 1 entry; multiSelect questions accumulate many.
+  const [selections, setSelections] = useState<Record<string, string[]>>({});
   const [customText, setCustomText] = useState<Record<string, string>>({});
   const [showCustom, setShowCustom] = useState<Record<string, boolean>>({});
   const [submitted, setSubmitted] = useState(false);
 
-  function submit(answers: Record<string, string>) {
+  const isMulti = (qIdx: number) => Boolean(questions[qIdx]?.multiSelect);
+
+  function submit(answers: Record<string, string | string[]>) {
     setSubmitted(true);
     sendPermissionResponse(perm.request_id, "allow", { ...perm.input, answers });
   }
 
+  // Resolve the answer for one question from current state. Single-select →
+  // a string (custom text wins); multiSelect → an array of picked labels plus
+  // any custom text. `undefined` means the question is unanswered.
+  function answerFor(qIdx: number): string | string[] | undefined {
+    const key = String(qIdx);
+    const picked = selections[key] ?? [];
+    const custom = showCustom[key] ? (customText[key]?.trim() || "") : "";
+    if (isMulti(qIdx)) {
+      const all = custom ? [...picked, custom] : picked;
+      return all.length ? all : undefined;
+    }
+    if (custom) return custom;
+    return picked.length ? picked[0] : undefined;
+  }
+
+  function submitAll() {
+    const answers: Record<string, string | string[]> = {};
+    questions.forEach((_, i) => {
+      const a = answerFor(i);
+      if (a !== undefined) answers[String(i)] = a;
+    });
+    submit(answers);
+  }
+
   function handleOptionClick(qIdx: number, label: string) {
     const key = String(qIdx);
-    setSelections((prev) => ({ ...prev, [key]: label }));
+    if (isMulti(qIdx)) {
+      // Toggle membership; multiSelect waits for an explicit submit.
+      setSelections((prev) => {
+        const cur = prev[key] ?? [];
+        const next = cur.includes(label) ? cur.filter((l) => l !== label) : [...cur, label];
+        return { ...prev, [key]: next };
+      });
+      return;
+    }
+    setSelections((prev) => ({ ...prev, [key]: [label] }));
     setShowCustom((prev) => ({ ...prev, [key]: false }));
     if (questions.length <= 1) submit({ [key]: label });
   }
 
   function handleCustomToggle(qIdx: number) {
     const key = String(qIdx);
+    const multi = isMulti(qIdx);
     setShowCustom((prev) => {
       const wasOpen = Boolean(prev[key]);
-      const next = { ...prev, [key]: !wasOpen };
       if (wasOpen) {
-        setSelections((s) => { const c = { ...s }; delete c[key]; return c; });
-        setCustomText((t) => { const c = { ...t }; delete c[key]; return c; });
+        setCustomText((c) => { const n = { ...c }; delete n[key]; return n; });
+      } else if (!multi) {
+        // Single-select: opening custom is exclusive — clear the picked option.
+        setSelections((s) => { const n = { ...s }; delete n[key]; return n; });
       }
-      return next;
+      return { ...prev, [key]: !wasOpen };
     });
   }
 
   function handleCustomChange(qIdx: number, value: string) {
-    const key = String(qIdx);
-    setCustomText((prev) => ({ ...prev, [key]: value }));
-    const trimmed = value.trim();
-    setSelections((prev) => {
-      if (!trimmed) { const c = { ...prev }; delete c[key]; return c; }
-      return { ...prev, [key]: trimmed };
-    });
+    setCustomText((prev) => ({ ...prev, [String(qIdx)]: value }));
   }
 
   function handleCustomSubmit(qIdx: number) {
-    const key = String(qIdx);
-    const text = customText[key]?.trim();
+    const text = customText[String(qIdx)]?.trim();
     if (!text) return;
-    setSelections((prev) => ({ ...prev, [key]: text }));
-    if (questions.length <= 1) submit({ [key]: text });
+    if (questions.length <= 1 && !isMulti(qIdx)) submit({ [String(qIdx)]: text });
   }
 
   // Fallback: no structured questions
@@ -610,6 +641,11 @@ function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
     );
   }
 
+  // A submit button is required whenever a click can't unambiguously finish the
+  // form: multi-question forms, or any single question that is multiSelect.
+  const needsSubmit = questions.length > 1 || questions.some((_, i) => isMulti(i));
+  const hasAnswer = questions.some((_, i) => answerFor(i) !== undefined);
+
   return (
     <div className="rounded-lg border border-cc-primary/20 bg-cc-card p-3 space-y-3">
       {questions.map((q, i) => {
@@ -617,8 +653,9 @@ function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
         const text = typeof q.question === "string" ? q.question : "";
         const options: Record<string, unknown>[] = Array.isArray(q.options) ? q.options : [];
         const key = String(i);
-        const selected = selections[key];
+        const picked = selections[key] ?? [];
         const isCustom = showCustom[key];
+        const multi = isMulti(i);
 
         return (
           <div key={i} className="space-y-2">
@@ -628,13 +665,14 @@ function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
               </span>
             )}
             {text && <p className="text-sm text-cc-fg leading-relaxed">{text}</p>}
+            {multi && <p className="text-[11px] text-cc-muted/80 -mt-1">{t("ask_user.multi_hint")}</p>}
 
             {options.length > 0 && (
               <div className="space-y-1.5">
                 {options.map((opt, j) => {
                   const label = typeof opt.label === "string" ? opt.label : String(opt);
                   const desc = typeof opt.description === "string" ? opt.description : "";
-                  const isSelected = selected === label && !isCustom;
+                  const isSelected = multi ? picked.includes(label) : (picked[0] === label && !isCustom);
 
                   return (
                     <button
@@ -648,11 +686,7 @@ function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                          isSelected ? "border-cc-primary" : "border-cc-border"
-                        }`}>
-                          {isSelected && <span className="w-2 h-2 rounded-full bg-cc-primary" />}
-                        </span>
+                        <SelectionIndicator multi={multi} selected={isSelected} />
                         <div>
                           <span className="text-xs font-medium text-cc-fg">{label}</span>
                           {desc && <p className="text-[11px] text-cc-muted mt-0.5 leading-snug">{desc}</p>}
@@ -673,11 +707,7 @@ function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
                   }`}
                 >
                   <div className="flex items-center gap-2">
-                    <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                      isCustom ? "border-cc-primary" : "border-cc-border"
-                    }`}>
-                      {isCustom && <span className="w-2 h-2 rounded-full bg-cc-primary" />}
-                    </span>
+                    <SelectionIndicator multi={multi} selected={Boolean(isCustom)} />
                     <span className="text-xs font-medium text-cc-muted">{t("ask_user.other_option")}</span>
                   </div>
                 </button>
@@ -693,7 +723,7 @@ function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
                       className="w-full px-2.5 py-1.5 text-xs bg-cc-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
                       autoFocus
                     />
-                    {questions.length <= 1 && (
+                    {questions.length <= 1 && !multi && (
                       <p className="mt-1 text-[10px] text-cc-muted">{t("ask_user.enter_hint")}</p>
                     )}
                   </div>
@@ -704,10 +734,10 @@ function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
         );
       })}
 
-      {/* Submit button for multi-question forms */}
-      {questions.length > 1 && Object.keys(selections).length > 0 && (
+      {/* Explicit submit for multi-question or multiSelect forms */}
+      {needsSubmit && hasAnswer && (
         <button
-          onClick={() => submit(selections)}
+          onClick={submitAll}
           disabled={submitted}
           className="px-4 py-1.5 text-xs font-medium bg-cc-primary hover:bg-cc-primary-hover text-white rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
         >
@@ -715,6 +745,26 @@ function AskUserQuestionPicker({ perm }: { perm: PermissionRequest }) {
         </button>
       )}
     </div>
+  );
+}
+
+// Radio dot for single-select, checkbox tick for multiSelect.
+function SelectionIndicator({ multi, selected }: { multi: boolean; selected: boolean }) {
+  return (
+    <span
+      className={`w-4 h-4 border-2 flex items-center justify-center shrink-0 ${
+        multi ? "rounded-[5px]" : "rounded-full"
+      } ${selected ? "border-cc-primary bg-cc-primary/10" : "border-cc-border"}`}
+    >
+      {selected &&
+        (multi ? (
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" className="w-2.5 h-2.5 text-cc-primary">
+            <path d="M2.5 6.2l2.3 2.3 4.7-5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : (
+          <span className="w-2 h-2 rounded-full bg-cc-primary" />
+        ))}
+    </span>
   );
 }
 

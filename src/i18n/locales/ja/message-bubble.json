@@ -29,7 +29,8 @@
     "other_option": "その他…",
     "answer_placeholder": "回答を入力…",
     "enter_hint": "Enter キーで送信",
-    "submit": "回答を送信"
+    "submit": "回答を送信",
+    "multi_hint": "当てはまるものをすべて選択"
   },
   "thinking": {
     "label": "推論",

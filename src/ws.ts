@@ -1274,7 +1274,8 @@ export function sendPermissionResponse(
 
   // Track answered AskUserQuestion before removing permission
   if (perm && perm.tool_name === "AskUserQuestion" && behavior === "allow" && updatedInput) {
-    const answers = updatedInput.answers as Record<string, string> | undefined;
+    const answers = updatedInput.answers as Record<string, string | string[]> | undefined;
+    const fmt = (a: string | string[] | undefined) => (Array.isArray(a) ? a.join(", ") : a || "");
     const questions: Record<string, unknown>[] = Array.isArray(perm.input.questions) ? perm.input.questions : [];
     const pairs: { question: string; answer: string }[] = [];
     if (questions.length > 0 && answers) {
@@ -1282,13 +1283,13 @@ export function sendPermissionResponse(
         const q = questions[i] as Record<string, unknown>;
         pairs.push({
           question: (q.question as string) || "",
-          answer: answers[String(i)] || "",
+          answer: fmt(answers[String(i)]),
         });
       }
     } else {
       pairs.push({
         question: (perm.input.question as string) || "",
-        answer: answers ? Object.values(answers).join(", ") : "",
+        answer: answers ? Object.values(answers).map(fmt).join(", ") : "",
       });
     }
     store.recordAnsweredQuestion(perm.tool_use_id, pairs);

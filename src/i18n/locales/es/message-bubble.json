@@ -29,7 +29,8 @@
     "other_option": "Otra…",
     "answer_placeholder": "Escribe tu respuesta…",
     "enter_hint": "Pulsa Enter para enviar",
-    "submit": "Enviar respuestas"
+    "submit": "Enviar respuestas",
+    "multi_hint": "Selecciona todas las que correspondan"
   },
   "thinking": {
     "label": "Razonamiento",

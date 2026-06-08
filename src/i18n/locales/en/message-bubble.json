@@ -29,7 +29,8 @@
     "other_option": "Other…",
     "answer_placeholder": "Type your answer…",
     "enter_hint": "Press Enter to submit",
-    "submit": "Submit answers"
+    "submit": "Submit answers",
+    "multi_hint": "Select all that apply"
   },
   "thinking": {
     "label": "Reasoning",

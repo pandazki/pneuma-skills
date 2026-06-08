@@ -29,7 +29,8 @@
     "other_option": "其他…",
     "answer_placeholder": "输入你的回答…",
     "enter_hint": "按 Enter 提交",
-    "submit": "提交回答"
+    "submit": "提交回答",
+    "multi_hint": "可多选"
   },
   "thinking": {
     "label": "推理",

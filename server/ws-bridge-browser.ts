@@ -166,10 +166,15 @@ function buildAskUserQuestionFollowupMessage(
     message?: string;
   },
 ): string {
-  const indexedAnswers = (msg.updated_input?.answers ?? {}) as Record<string, string>;
+  const indexedAnswers = (msg.updated_input?.answers ?? {}) as Record<string, string | string[]>;
   const questions = Array.isArray(pending.input.questions)
     ? (pending.input.questions as Array<Record<string, unknown>>)
     : [];
+
+  // A multiSelect question yields an array of chosen labels; render them as a
+  // comma-separated list so the agent reads every pick, not just the first.
+  const fmtAnswer = (a: string | string[] | undefined): string =>
+    Array.isArray(a) ? a.map((x) => `"${x}"`).join(", ") : a ? `"${a}"` : "";
 
   let bodyText: string;
   if (msg.behavior === "deny") {
@@ -177,14 +182,18 @@ function buildAskUserQuestionFollowupMessage(
   } else if (questions.length > 0) {
     const lines = questions.map((q, i) => {
       const qText = typeof q.question === "string" ? q.question : "";
-      const ans = indexedAnswers[String(i)] ?? "(no option selected)";
-      return `- "${qText}" → "${ans}"`;
+      const ans = fmtAnswer(indexedAnswers[String(i)]) || "(no option selected)";
+      return `- "${qText}" → ${ans}`;
     });
     bodyText = lines.join("\n");
   } else {
     const fallbackQ = typeof pending.input.question === "string" ? pending.input.question : "(question)";
-    const fallbackA = Object.values(indexedAnswers).join(", ") || "(no answer)";
-    bodyText = `- "${fallbackQ}" → "${fallbackA}"`;
+    const fallbackA =
+      Object.values(indexedAnswers)
+        .map(fmtAnswer)
+        .filter(Boolean)
+        .join(", ") || "(no answer)";
+    bodyText = `- "${fallbackQ}" → ${fallbackA}`;
   }
 
   // Wrap in a recognisable tag the agent can pattern-match. The leading
