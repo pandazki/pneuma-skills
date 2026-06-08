@@ -40,6 +40,12 @@ function tryFlushPendingQueue() {
   const state = useStore.getState();
   if (state.sessionStatus !== "idle" || state.turnInProgress) return;
   if (state.pendingMessages.length === 0) return;
+  // Don't flush into a socket that can't carry the message. `send()` silently
+  // no-ops when the WS isn't OPEN, so flushing mid-reconnect would shift the
+  // message out of the queue, mark the turn busy, and then drop it on the
+  // floor — leaving the composer frozen on a phantom turn with no `result`
+  // ever coming back. Leave it queued; the reconnect edge below retries.
+  if (state.connectionStatus !== "connected") return;
 
   _flushScheduled = true;
   // Microtask delay — lets Zustand batch the push + flush in one render
@@ -47,6 +53,7 @@ function tryFlushPendingQueue() {
     _flushScheduled = false;
     const store = useStore.getState();
     if (store.sessionStatus !== "idle" || store.turnInProgress) return;
+    if (store.connectionStatus !== "connected") return;
     const next = store.shiftPendingMessage();
     if (!next) return;
 
@@ -54,44 +61,80 @@ function tryFlushPendingQueue() {
     store.setSessionStatus("running");
     store.setTurnInProgress(true);
 
-    // Lazy import to avoid circular dependency (store ↔ ws)
-    import("../ws.js").then(({ sendUserMessage, sendViewerNotification }) => {
-      if (next.kind === "user") {
-        sendUserMessage(next.text, next.selection, next.images, next.annotations, next.files);
-      } else {
-        sendViewerNotification(next.notification, next.images);
-        const fileMatches = [...next.notification.message.matchAll(/\(([^)]+\.\w+)\)/g)];
-        const affectedFiles = fileMatches.map((m) => m[1]);
-        const msg: Record<string, unknown> = {
-          id: `notif-${next.id}`,
-          role: "user",
-          content: "",
-          timestamp: Date.now(),
-          viewerNotification: {
-            type: next.notification.type,
-            summary: next.notification.summary || next.notification.type,
-            files: affectedFiles.length > 0 ? affectedFiles : undefined,
-          },
-        };
-        if (store.debugMode) {
-          msg.debugPayload = {
-            enrichedContent: next.notification.message,
-            images: next.images?.length ? next.images : undefined,
-          };
+    // Lazy import to avoid circular dependency (store ↔ ws). The send is
+    // async (context enrichment + transport); if it throws or rejects we must
+    // NOT leave the turn stranded as "busy" forever — settle back to idle so
+    // the queue keeps moving and the user isn't stuck behind a frozen Stop
+    // button. We deliberately don't requeue `next`: a message that
+    // deterministically fails to serialize would otherwise hot-loop.
+    import("../ws.js")
+      .then(async ({ sendUserMessage, sendViewerNotification }) => {
+        let delivered: boolean;
+        if (next.kind === "user") {
+          delivered = await sendUserMessage(next.text, next.selection, next.images, next.annotations, next.files);
+        } else {
+          delivered = sendViewerNotification(next.notification, next.images);
         }
-        store.appendMessage(msg as any);
-      }
-    });
+
+        if (!delivered) {
+          // The socket closed between the connection check and the actual
+          // send (a narrow race). Don't lose the message or sit on a phantom
+          // busy turn: put it back at the head and settle to idle. Mark the
+          // connection disconnected too — a failed send empirically proves the
+          // socket is down, and this closes the flush gate so the requeue +
+          // idle transition can't hot-loop before `ws.onclose` catches up. The
+          // reconnect edge retries the flush once the socket is healthy again.
+          store.unshiftPendingMessage(next);
+          if (store.connectionStatus === "connected") store.setConnectionStatus("disconnected");
+          store.setSessionStatus("idle");
+          store.setTurnInProgress(false);
+          return;
+        }
+
+        if (next.kind === "notification") {
+          const fileMatches = [...next.notification.message.matchAll(/\(([^)]+\.\w+)\)/g)];
+          const affectedFiles = fileMatches.map((m) => m[1]);
+          const msg: Record<string, unknown> = {
+            id: `notif-${next.id}`,
+            role: "user",
+            content: "",
+            timestamp: Date.now(),
+            viewerNotification: {
+              type: next.notification.type,
+              summary: next.notification.summary || next.notification.type,
+              files: affectedFiles.length > 0 ? affectedFiles : undefined,
+            },
+          };
+          if (store.debugMode) {
+            msg.debugPayload = {
+              enrichedContent: next.notification.message,
+              images: next.images?.length ? next.images : undefined,
+            };
+          }
+          store.appendMessage(msg as any);
+        }
+      })
+      .catch((err) => {
+        // Hard failure (context enrichment / serialization threw). Don't
+        // requeue — a message that deterministically fails would hot-loop —
+        // but DO settle to idle so the composer isn't frozen on Stop.
+        console.error("[pneuma] failed to flush queued message; settling to idle", err);
+        store.setSessionStatus("idle");
+        store.setTurnInProgress(false);
+      });
   });
 }
 
 useStore.subscribe(
   (state, prevState) => {
-    // Flush when: agent becomes idle, turnInProgress clears, or queue grows
+    // Flush when: agent becomes idle, turnInProgress clears, the queue grows,
+    // or the socket reconnects (a message left queued because we were
+    // disconnected should go out as soon as the connection is healthy again).
     const becameIdle = state.sessionStatus === "idle" && prevState.sessionStatus !== "idle";
     const turnCleared = !state.turnInProgress && prevState.turnInProgress;
     const queueGrew = state.pendingMessages.length > prevState.pendingMessages.length;
-    if (becameIdle || turnCleared || queueGrew) {
+    const reconnected = state.connectionStatus === "connected" && prevState.connectionStatus !== "connected";
+    if (becameIdle || turnCleared || queueGrew || reconnected) {
       tryFlushPendingQueue();
     }
   },

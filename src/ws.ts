@@ -1045,7 +1045,13 @@ export function disconnect() {
   }
 }
 
-export function send(msg: BrowserOutgoingMessage) {
+/**
+ * Send a message to the server. Returns whether it was actually transmitted —
+ * `false` means the socket wasn't OPEN and the message was dropped. Callers
+ * that optimistically flip the UI to "busy" (or shift a message out of the
+ * pending queue) MUST check this so a drop doesn't strand a phantom turn.
+ */
+export function send(msg: BrowserOutgoingMessage): boolean {
   if (socket?.readyState === WebSocket.OPEN) {
     // Any outgoing message that could trigger an agent turn counts as user-initiated
     const turnTriggers = ["user_message", "permission_response", "viewer_notification", "viewer_action_response"];
@@ -1053,7 +1059,9 @@ export function send(msg: BrowserOutgoingMessage) {
       currentTurnUserInitiated = true;
     }
     socket.send(JSON.stringify(msg));
+    return true;
   }
+  return false;
 }
 
 export function sendSetModel(model: string) {
@@ -1250,18 +1258,23 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
   if (files?.length) {
     msg.files = files;
   }
-  send(msg);
+  const delivered = send(msg);
 
   // Optimistically mark the turn as in-progress so the Stop button shows
   // immediately. Without this, there's a 1–10s gap between "user clicked
   // Send" and "agent's first stream chunk arrives" during which the chat
   // looks idle even though work has been kicked off. The `assistant` /
   // `result` / `cli_disconnected` handlers all flip these back to false
-  // when the actual turn completes.
-  store.setTurnInProgress(true);
-  if (store.sessionStatus === "idle") {
-    store.setSessionStatus("running");
+  // when the actual turn completes. Only do this when the message actually
+  // went out — otherwise we'd freeze the composer on a turn that never
+  // started (the queue flush relies on the returned flag to recover).
+  if (delivered) {
+    store.setTurnInProgress(true);
+    if (store.sessionStatus === "idle") {
+      store.setSessionStatus("running");
+    }
   }
+  return delivered;
 }
 
 export function sendPermissionResponse(
@@ -1403,7 +1416,7 @@ export function sendViewerNotification(
   const enriched = prefix
     ? { ...notification, message: prefix + notification.message }
     : notification;
-  send({
+  return send({
     type: "viewer_notification",
     notification: enriched,
     ...(images?.length ? { images } : {}),

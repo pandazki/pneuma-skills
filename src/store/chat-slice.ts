@@ -44,6 +44,9 @@ export interface ChatSlice {
   addPendingNotification: (notification: { type: string; message: string; severity: "info" | "warning"; summary?: string; replaces?: string[] }, images?: { media_type: string; data: string }[]) => string;
   removePendingMessage: (id: string) => void;
   shiftPendingMessage: () => PendingMessage | undefined;
+  /** Put a message back at the HEAD of the queue — used to recover a flush
+   *  whose send didn't go out (socket closed mid-flight), so it isn't lost. */
+  unshiftPendingMessage: (msg: PendingMessage) => void;
   addPermission: (perm: PermissionRequest) => void;
   removePermission: (requestId: string) => void;
   recordAnsweredQuestion: (toolUseId: string, pairs: { question: string; answer: string }[]) => void;
@@ -158,6 +161,8 @@ export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, 
     set({ pendingMessages: rest });
     return first;
   },
+  unshiftPendingMessage: (msg) =>
+    set((s) => ({ pendingMessages: [msg, ...s.pendingMessages] })),
 
   addPermission: (perm) =>
     set((s) => {

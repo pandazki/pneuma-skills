@@ -158,9 +158,11 @@ export default function ChatInput() {
         annotations: annPayload,
       });
     } else {
-      sendUserMessage(trimmed, selection, imgPayload, annPayload, filePayload);
-      // Immediately show busy state — disable input + show Stop button
-      useStore.getState().setTurnInProgress(true);
+      // `sendUserMessage` flips the turn to in-progress itself — but only when
+      // the message actually goes out. Don't force `turnInProgress` here, or a
+      // send dropped on a closed socket would freeze the composer on a phantom
+      // turn that never produces a result.
+      void sendUserMessage(trimmed, selection, imgPayload, annPayload, filePayload);
     }
 
     setText("");
