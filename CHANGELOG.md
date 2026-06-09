@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.22.1] - 2026-06-09
+
+### Improved
+
+- **Launcher settings — clearer backend section** — the top of the settings panel stacked five equally-weighted bordered cards (three backend cards, each with a nested `/handoff-pneuma` install row, plus separate auto-update and CLI-symlink cards), scattering orange toggles and green chips with no visual hierarchy. Backends now collapse into a single grouped card with divided rows (status dot + name + description + toggle), and all the one-time agent-command setup — per-backend `/handoff-pneuma` install state, auto-update, and the pneuma-CLI-on-PATH symlink — folds into a collapsed "Agent commands" disclosure whose header dot surfaces attention (update available / CLI missing / not yet installed). The backend choice is the focus again; advanced setup is one click away.
+
 ## [3.22.0] - 2026-06-09
 
 ### Added

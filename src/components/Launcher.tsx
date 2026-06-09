@@ -3021,9 +3021,11 @@ function BackendsSection() {
   return (
     <div className="space-y-3">
       <h3 className="text-xs font-semibold text-cc-muted uppercase tracking-wider">{t("backends_section.title")}</h3>
-      <div className="space-y-2">
+      {/* One grouped surface with divided rows — far fewer color blocks than
+          three separate cards, and the backend choice stays the focus. */}
+      <div className="rounded-lg border border-cc-border bg-cc-surface/30 divide-y divide-cc-border/50">
         {backends.map((b: any) => (
-          <BackendCard
+          <BackendRow
             key={b.type}
             backend={b}
             t={t}
@@ -3032,27 +3034,23 @@ function BackendsSection() {
           />
         ))}
       </div>
-      <AgentCommandSharedControls />
+      <AgentCommandsDisclosure backends={backends} />
     </div>
   );
 }
 
 /**
- * Per-backend card. Replaces the simple status row with a richer surface
- * that combines:
- *   - Availability indicator (CLI on PATH or not) — the original status.
- *   - User enable/disable toggle — hides the backend from session-creation
- *     pickers without uninstalling anything. Persisted via `/api/backends/
- *     :type/disabled` → `~/.pneuma/settings.json` `backends` key.
- *   - `/handoff-pneuma` install row — only for backends that support the
- *     slash command (claude-code, codex). Pulls state from the shared
- *     `useAgentCommands()` hook so the banner + this card see the same
- *     source of truth.
+ * Compact per-backend row inside the grouped backends card. Shows
+ * availability (status dot) + label + description and the enable/disable
+ * toggle. The `/handoff-pneuma` install state moved out to the collapsible
+ * `AgentCommandsDisclosure` below — it's one-time setup, not the primary
+ * "which backend do I use" decision this section is about.
  *
- * Kimi (and any future backend without a slash-command installer) just
- * shows the status + enable toggle.
+ * The toggle hides the backend from session-creation pickers without
+ * uninstalling anything. Persisted via `/api/backends/:type/disabled` →
+ * `~/.pneuma/settings.json` `backends` key.
  */
-function BackendCard({
+function BackendRow({
   backend: b,
   t,
   toggling,
@@ -3063,56 +3061,39 @@ function BackendCard({
   toggling: boolean;
   onToggleDisabled: (disabled: boolean) => void;
 }) {
-  const hasSlashCommand = b.type === "claude-code" || b.type === "codex";
   const enabled = !b.disabled;
 
   return (
-    <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 mb-0.5">
-            <div className="text-sm text-cc-fg">{b.label}</div>
-            <div className="flex items-center gap-1">
-              <span className={`w-1.5 h-1.5 rounded-full ${b.available ? "bg-cc-success" : "bg-cc-muted/30"}`} />
-              <span className="text-[10px] text-cc-muted">{b.available ? t("backends_section.ready") : t("backends_section.not_found")}</span>
-            </div>
-            {!enabled && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-cc-muted/15 text-cc-muted uppercase tracking-wide leading-none">
-                hidden
-              </span>
-            )}
-          </div>
-          <div className="text-[10px] text-cc-muted leading-relaxed">{b.description}</div>
+    <div className="flex items-start justify-between gap-3 px-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span
+            className={`w-1.5 h-1.5 rounded-full shrink-0 ${b.available ? "bg-cc-success" : "bg-cc-muted/30"}`}
+            title={b.available ? t("backends_section.ready") : t("backends_section.not_found")}
+          />
+          <span className="text-sm text-cc-fg truncate">{b.label}</span>
+          {!b.available && (
+            <span className="text-[10px] text-cc-muted/70 shrink-0">{t("backends_section.not_found")}</span>
+          )}
+          {!enabled && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-cc-muted/15 text-cc-muted uppercase tracking-wide leading-none shrink-0">
+              hidden
+            </span>
+          )}
         </div>
-
-        {/* Enable / disable toggle */}
-        <button
-          type="button"
-          disabled={toggling}
-          onClick={() => onToggleDisabled(enabled)}
-          title={enabled ? "Hide this backend from session-creation pickers" : "Show this backend in session-creation pickers"}
-          className="shrink-0 mt-1 cursor-pointer disabled:cursor-wait"
-          style={{
-            width: 32, height: 18, borderRadius: 9, border: "none",
-            background: enabled ? "#f97316" : "rgba(255,255,255,0.12)",
-            position: "relative", transition: "background 0.2s",
-          }}
-        >
-          <span style={{
-            width: 14, height: 14, borderRadius: 7,
-            background: "#fff", position: "absolute", top: 2,
-            left: enabled ? 16 : 2,
-            transition: "left 0.2s",
-            display: "block",
-          }} />
-        </button>
+        <div className="text-[10px] text-cc-muted leading-relaxed mt-0.5 pl-3.5">{b.description}</div>
       </div>
 
-      {hasSlashCommand && (
-        <div className="mt-3 pt-3 border-t border-cc-border/60">
-          <SlashCommandRow backendType={b.type as "claude-code" | "codex"} />
-        </div>
-      )}
+      {/* Enable / disable toggle */}
+      <button
+        type="button"
+        disabled={toggling}
+        onClick={() => onToggleDisabled(enabled)}
+        title={enabled ? "Hide this backend from session-creation pickers" : "Show this backend in session-creation pickers"}
+        className={`relative shrink-0 mt-0.5 w-8 h-[18px] rounded-full transition-colors cursor-pointer disabled:cursor-wait ${enabled ? "bg-cc-primary" : "bg-cc-border"}`}
+      >
+        <span className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-all ${enabled ? "left-[15px]" : "left-[2px]"}`} />
+      </button>
     </div>
   );
 }
@@ -3122,18 +3103,18 @@ function BackendCard({
  * inline Reinstall / Update / Uninstall buttons. Pulls state from the
  * shared `useAgentCommands` hook in `AgentCommandPanel.tsx`.
  */
-function SlashCommandRow({ backendType }: { backendType: "claude-code" | "codex" }) {
+function SlashCommandRow({ backendType, label }: { backendType: "claude-code" | "codex"; label: string }) {
   const { useAgentCommandsForCard } = AgentCommandHooks;
   const { item, busy, install, uninstall, version } = useAgentCommandsForCard(backendType);
   if (!item) {
-    return <div className="text-[10px] text-cc-muted">/handoff-pneuma — loading…</div>;
+    return <div className="text-[10px] text-cc-muted">{label} — loading…</div>;
   }
   const installLabel = item.installed ? (item.upToDate ? "Reinstall" : "Update") : "Install";
   return (
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 mb-0.5">
-          <code className="text-xs text-cc-fg/90 font-mono">/handoff-pneuma</code>
+          <span className="text-[11px] text-cc-fg">{label}</span>
           <span
             className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
               item.installed
@@ -3181,68 +3162,126 @@ function SlashCommandRow({ backendType }: { backendType: "claude-code" | "codex"
 }
 
 /**
- * Shared bottom controls for the slash-command system: auto-update toggle
- * and CLI symlink helper. Rendered once below all backend cards because
- * they apply globally, not per-backend.
+ * Collapsible "Agent commands" disclosure. Houses the one-time setup that
+ * used to clutter every backend card: per-backend `/handoff-pneuma` install
+ * state, the auto-update toggle, and the pneuma-CLI-on-PATH symlink helper.
+ * Collapsed by default so the backends list stays the focus; the header dot
+ * surfaces attention (update available / CLI missing / not yet installed).
  */
-function AgentCommandSharedControls() {
+const SLASH_COMMAND_BACKENDS: ("claude-code" | "codex")[] = ["claude-code", "codex"];
+
+function AgentCommandsDisclosure({ backends }: { backends: any[] }) {
   const { useSharedAgentCommandControls } = AgentCommandHooks;
   const { state, cliStatus, autoUpdate, setAutoUpdate, symlink, symlinkResult } = useSharedAgentCommandControls();
+  const [open, setOpen] = useState(false);
   if (!state) return null;
-  return (
-    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-      {/* Auto-update toggle */}
-      <label className="flex items-center justify-between gap-2 p-3 rounded-lg border border-cc-border bg-cc-surface/30 cursor-pointer">
-        <div className="min-w-0">
-          <div className="text-xs text-cc-fg">Auto-update slash commands</div>
-          <div className="text-[10px] text-cc-muted mt-0.5">Re-stamp installed files on pneuma version change.</div>
-        </div>
-        <input
-          type="checkbox"
-          checked={autoUpdate}
-          onChange={(e) => void setAutoUpdate(e.target.checked)}
-          className="accent-cc-primary shrink-0"
-        />
-      </label>
 
-      {/* CLI status + symlink */}
-      {cliStatus && (
-        <div className="p-3 rounded-lg border border-cc-border bg-cc-surface/30">
-          <div className="flex items-center justify-between gap-2 mb-1">
-            <div className="text-xs text-cc-fg">pneuma CLI on PATH</div>
-            <span
-              className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                cliStatus.detectedOnPath ? "bg-cc-success/15 text-cc-success" : "bg-cc-muted/15 text-cc-muted"
-              }`}
-            >
-              {cliStatus.detectedOnPath ? "detected" : "missing"}
-            </span>
+  const types = SLASH_COMMAND_BACKENDS.filter((bt) => backends.some((b) => b.type === bt));
+  const labelFor = (bt: string) => backends.find((b) => b.type === bt)?.label ?? bt;
+  const items = state.items ?? [];
+  const installedCount = items.filter((i) => i.installed).length;
+  const needsUpdate = items.some((i) => i.installed && !i.upToDate);
+  const cliMissing = !!cliStatus && !cliStatus.detectedOnPath;
+  const allInstalled = items.length > 0 && installedCount === items.length;
+
+  const dotClass = needsUpdate
+    ? "bg-cc-warning"
+    : cliMissing || !allInstalled
+      ? "bg-cc-muted/40"
+      : "bg-cc-success";
+  const summary = needsUpdate
+    ? "Update available"
+    : cliMissing
+      ? "CLI not on PATH"
+      : allInstalled
+        ? "Installed"
+        : "Setup";
+
+  return (
+    <div className="rounded-lg border border-cc-border/60 bg-cc-surface/20">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-left cursor-pointer"
+      >
+        <svg viewBox="0 0 16 16" fill="currentColor" className={`w-3 h-3 text-cc-muted shrink-0 transition-transform ${open ? "rotate-90" : ""}`}>
+          <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z" />
+        </svg>
+        <span className="text-xs text-cc-fg">Agent commands</span>
+        <code className="text-[10px] text-cc-muted/70 font-mono">/handoff-pneuma</code>
+        <span className="ml-auto flex items-center gap-1.5 shrink-0">
+          <span className="text-[10px] text-cc-muted">{summary}</span>
+          <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
+        </span>
+      </button>
+
+      {open && (
+        <div className="border-t border-cc-border/60 px-3 py-3 space-y-3">
+          <p className="text-[10px] text-cc-muted/60 leading-relaxed">
+            Install <code className="font-mono text-cc-muted">/handoff-pneuma</code> into external CLIs so you can hand work to Pneuma from inside them.
+          </p>
+
+          {/* Per-backend install rows */}
+          <div className="space-y-2.5">
+            {types.map((bt) => (
+              <SlashCommandRow key={bt} backendType={bt} label={labelFor(bt)} />
+            ))}
           </div>
-          {cliStatus.detectedOnPath ? (
-            <div className="text-[10px] text-cc-muted font-mono truncate">
-              {cliStatus.pathBinary}
-              {cliStatus.pathBinaryVersion ? ` — ${cliStatus.pathBinaryVersion}` : ""}
+
+          {/* Auto-update toggle */}
+          <label className="flex items-center justify-between gap-2 pt-2 border-t border-cc-border/40 cursor-pointer">
+            <div className="min-w-0">
+              <div className="text-[11px] text-cc-fg">Auto-update on version change</div>
+              <div className="text-[10px] text-cc-muted/70 mt-0.5">Re-stamp installed files when pneuma updates.</div>
             </div>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => void symlink()}
-                className="px-2.5 py-1 rounded-md bg-cc-primary text-white text-[11px] font-medium hover:brightness-110 cursor-pointer transition-all"
-              >
-                Symlink to {cliStatus.defaultSymlinkPath.replace(/^.*?\.local/, "~/.local")}
-              </button>
-              {symlinkResult && (
-                <div className={`text-[10px] mt-1.5 ${symlinkResult.ok ? "text-cc-success" : "text-cc-error"}`}>
-                  {symlinkResult.ok ? "Done. Open a new shell to pick up PATH." : symlinkResult.message ?? "Symlink failed."}
+            <input
+              type="checkbox"
+              checked={autoUpdate}
+              onChange={(e) => void setAutoUpdate(e.target.checked)}
+              className="accent-cc-primary shrink-0"
+            />
+          </label>
+
+          {/* CLI status + symlink */}
+          {cliStatus && (
+            <div className="pt-2 border-t border-cc-border/40">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] text-cc-fg">pneuma CLI on PATH</div>
+                <span
+                  className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                    cliStatus.detectedOnPath ? "bg-cc-success/15 text-cc-success" : "bg-cc-muted/15 text-cc-muted"
+                  }`}
+                >
+                  {cliStatus.detectedOnPath ? "detected" : "missing"}
+                </span>
+              </div>
+              {cliStatus.detectedOnPath ? (
+                <div className="text-[10px] text-cc-muted font-mono truncate mt-1">
+                  {cliStatus.pathBinary}
+                  {cliStatus.pathBinaryVersion ? ` — ${cliStatus.pathBinaryVersion}` : ""}
+                </div>
+              ) : (
+                <div className="mt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void symlink()}
+                    className="px-2.5 py-1 rounded-md bg-cc-primary text-white text-[11px] font-medium hover:brightness-110 cursor-pointer transition-all"
+                  >
+                    Symlink to {cliStatus.defaultSymlinkPath.replace(/^.*?\.local/, "~/.local")}
+                  </button>
+                  {symlinkResult && (
+                    <div className={`text-[10px] mt-1.5 ${symlinkResult.ok ? "text-cc-success" : "text-cc-error"}`}>
+                      {symlinkResult.ok ? "Done. Open a new shell to pick up PATH." : symlinkResult.message ?? "Symlink failed."}
+                    </div>
+                  )}
+                  {!cliStatus.pathContainsDefault && cliStatus.shellRcHint && (
+                    <pre className="text-[10px] text-cc-muted bg-cc-bg p-1.5 mt-1.5 rounded border border-cc-border overflow-x-auto">
+{cliStatus.shellRcHint}
+                    </pre>
+                  )}
                 </div>
               )}
-              {!cliStatus.pathContainsDefault && cliStatus.shellRcHint && (
-                <pre className="text-[10px] text-cc-muted bg-cc-bg p-1.5 mt-1.5 rounded border border-cc-border overflow-x-auto">
-{cliStatus.shellRcHint}
-                </pre>
-              )}
-            </>
+            </div>
           )}
         </div>
       )}

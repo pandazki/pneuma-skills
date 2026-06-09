@@ -168,8 +168,8 @@ function useAgentCommands(): UseAgentCommands {
 
 /**
  * Per-backend card view of the agent-command state, plus inline install/
- * uninstall callbacks. Used by `BackendCard` in Launcher.tsx so each
- * backend card can manage its own slash command without re-implementing
+ * uninstall callbacks. Used by `SlashCommandRow` in Launcher.tsx so each
+ * backend row can manage its own slash command without re-implementing
  * the API plumbing.
  */
 function useAgentCommandsForCard(backendType: AgentCommandBackend) {
