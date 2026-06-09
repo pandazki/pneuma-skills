@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.22.0] - 2026-06-09
+
+### Added
+
+- **Cloudflare Pages custom-domain deploy targets** — configure a list of base domains in the Cloudflare Pages plugin settings (one per line, e.g. `deepaste.ai`), then pick one from a dropdown next to the project name in the deploy dialog to publish at `<project>.<domain>` instead of `<project>.pages.dev`. On deploy, Pneuma attaches the domain to the project **and** creates the proxied `CNAME → <project>.pages.dev` record (the Pages "add domain" API doesn't, so without it the domain would stay pending and never resolve). Requires an API token with Pages:Edit + the zone's DNS:Edit, with the zone in the same Cloudflare account; if the zone isn't found or a step fails, it falls back to `pages.dev` with a warning rather than returning a dead URL. The dropdown only appears when API credentials are configured (wrangler can't manage custom domains).
+
 ## [3.21.1] - 2026-06-09
 
 ### Fixed
