@@ -108,6 +108,9 @@ export interface CfPagesBinding {
   productionUrl: string;
   dashboardUrl: string;
   lastDeployedAt: string;
+  /** Base domain last deployed to (e.g. "deepaste.ai"); absent → pages.dev.
+   *  Lets the deploy dialog re-select the same target next time. */
+  customDomain?: string;
 }
 
 export interface DeployBinding {

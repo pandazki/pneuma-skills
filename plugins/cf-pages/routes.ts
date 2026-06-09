@@ -25,6 +25,7 @@ export default function (ctx: PluginRouteContext) {
         files: Array<{ path: string; content: string }>;
         projectName?: string;
         contentSet?: string;
+        customDomain?: string;
       }>();
       const result = await deployCfPages(body);
 
@@ -36,6 +37,7 @@ export default function (ctx: PluginRouteContext) {
         productionUrl: (result as any).productionUrl,
         dashboardUrl: (result as any).dashboardUrl,
         lastDeployedAt: new Date().toISOString(),
+        ...((result as any).customDomain ? { customDomain: (result as any).customDomain } : {}),
       };
       ctx.saveDeployBinding(binding);
 

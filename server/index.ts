@@ -1481,8 +1481,12 @@ export async function startServer(options: ServerOptions) {
           saveVercelConfig({ token: (body.config.token as string) ?? "", teamId: (body.config.teamId as string) || null });
         }
         if (name === "cf-pages-deploy") {
-          const { saveCfPagesConfig } = await import("./cloudflare-pages.js");
-          saveCfPagesConfig({ apiToken: (body.config.token as string) ?? "", accountId: (body.config.accountId as string) ?? "" });
+          const { saveCfPagesConfig, parseCustomDomains } = await import("./cloudflare-pages.js");
+          saveCfPagesConfig({
+            apiToken: (body.config.token as string) ?? "",
+            accountId: (body.config.accountId as string) ?? "",
+            customDomains: parseCustomDomains((body.config.customDomains as string) ?? ""),
+          });
         }
       }
       return c.json({ ok: true });

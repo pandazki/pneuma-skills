@@ -139,6 +139,38 @@ export function getDeployCSS(): string {
     border-color: rgba(249, 115, 22, 0.4) !important;
     box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.08);
   }
+  .deploy-name-row {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .deploy-name-row input { margin-top: 0; flex: 1; min-width: 0; }
+  .deploy-name-row .custom-select {
+    margin-top: 0;
+    flex: 0 0 auto;
+    min-width: 140px;
+    max-width: 48%;
+  }
+  .deploy-name-row .custom-select-trigger {
+    color: var(--color-cc-primary);
+    gap: 8px;
+    height: 100%;
+  }
+  .deploy-name-row .custom-select-trigger span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Anchor the options popover to the trigger's right edge and let it grow
+     leftward to fit long domains, so it never clips past the modal edge. */
+  .deploy-name-row .custom-select-options {
+    left: auto;
+    right: 0;
+    min-width: 100%;
+    width: max-content;
+    max-width: 280px;
+  }
   .custom-select {
     position: relative;
     margin-top: 6px;
@@ -187,6 +219,10 @@ export function getDeployCSS(): string {
     border-radius: 7px;
     cursor: pointer;
     transition: background 0.1s;
+    /* The whole modal label sets uppercase for its caption; options are
+       proper-case content (domain names, team names) so opt back out. */
+    text-transform: none;
+    white-space: nowrap;
   }
   .custom-select-option:hover {
     background: rgba(255, 255, 255, 0.06);
@@ -414,7 +450,19 @@ export function getDeployModalHTML(): string {
     <h3>Deploy to Vercel</h3>
     <div id="vercel-status-msg"></div>
     <div id="vercel-form" style="display:none">
-      <label>Project Name<input id="vercel-project-name" type="text" placeholder="my-project" /></label>
+      <label>Project Name
+        <div class="deploy-name-row">
+          <input id="vercel-project-name" type="text" placeholder="my-project" />
+          <div class="custom-select" id="cf-domain-wrap" style="display:none">
+            <button type="button" class="custom-select-trigger" id="cf-domain-trigger" onclick="toggleDomainSelect()" title="Deploy domain">
+              <span id="cf-domain-label">.pages.dev</span>
+              <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="custom-select-options" id="cf-domain-options" style="display:none"></div>
+            <input type="hidden" id="cf-domain-value" value="" />
+          </div>
+        </div>
+      </label>
       <label>Team
         <div class="custom-select" id="vercel-team-wrap">
           <button type="button" class="custom-select-trigger" id="vercel-team-trigger" onclick="toggleTeamSelect()">
@@ -549,6 +597,11 @@ document.addEventListener("click", function(e){
   if(teamWrap && !teamWrap.contains(e.target)) {
     document.getElementById("vercel-team-options").style.display = "none";
   }
+  var domainWrap = document.getElementById("cf-domain-wrap");
+  if(domainWrap && !domainWrap.contains(e.target)) {
+    var domainOpts = document.getElementById("cf-domain-options");
+    if(domainOpts) domainOpts.style.display = "none";
+  }
 });
 
 function openDeploy(provider){
@@ -675,6 +728,38 @@ function openDeploy(provider){
     }
   }
 
+  // Custom-domain suffix dropdown (Cloudflare Pages only). Offered when API
+  // creds are configured (custom domains are attached via the CF API, which
+  // wrangler can't do) and the user has saved at least one base domain. The
+  // empty value means the default <project>.pages.dev.
+  var domainWrap = document.getElementById("cf-domain-wrap");
+  var domainOpts = document.getElementById("cf-domain-options");
+  var st = _deployStatuses[provider] || {};
+  var domains = (provider === "cf-pages-deploy" && st.apiConfigured) ? (st.customDomains || []) : [];
+  if(domains.length > 0) {
+    var entries = [{ value: "", label: ".pages.dev" }].concat(
+      domains.map(function(d){ return { value: d, label: "." + d }; })
+    );
+    var initial = (binding && binding.customDomain) ? binding.customDomain : "";
+    domainOpts.innerHTML = "";
+    entries.forEach(function(e){
+      var div = document.createElement("div");
+      div.className = "custom-select-option" + (e.value === initial ? " selected" : "");
+      div.setAttribute("data-value", e.value);
+      div.textContent = e.label;
+      div.onclick = function(){ selectDomain(e.value, e.label); };
+      domainOpts.appendChild(div);
+    });
+    var initialLabel = (entries.filter(function(e){ return e.value === initial; })[0] || entries[0]).label;
+    selectDomain(initial, initialLabel);
+    domainOpts.style.display = "none";
+    domainWrap.style.display = "";
+  } else {
+    domainOpts.innerHTML = "";
+    document.getElementById("cf-domain-value").value = "";
+    domainWrap.style.display = "none";
+  }
+
   if(cfg.hasTeams && _deployStatuses[provider] && _deployStatuses[provider].method === "token") {
     fetch("/api/plugins/vercel-deploy/teams").then(function(r){return r.json()}).then(function(data){
       var optionsEl = document.getElementById("vercel-team-options");
@@ -706,6 +791,19 @@ function selectTeam(val, label){
   document.getElementById("vercel-team-label").textContent = label;
   document.getElementById("vercel-team-options").style.display = "none";
   var items = document.querySelectorAll("#vercel-team-options .custom-select-option");
+  items.forEach(function(it){ it.classList.toggle("selected", it.getAttribute("data-value") === val); });
+}
+
+function toggleDomainSelect(){
+  var opts = document.getElementById("cf-domain-options");
+  opts.style.display = opts.style.display === "none" ? "block" : "none";
+}
+
+function selectDomain(val, label){
+  document.getElementById("cf-domain-value").value = val;
+  document.getElementById("cf-domain-label").textContent = label;
+  document.getElementById("cf-domain-options").style.display = "none";
+  var items = document.querySelectorAll("#cf-domain-options .custom-select-option");
   items.forEach(function(it){ it.classList.toggle("selected", it.getAttribute("data-value") === val); });
 }
 
@@ -741,6 +839,12 @@ function executeDeploy(){
     var pName = document.getElementById("vercel-project-name").value;
     body.projectName = pName;
 
+    var domainWrap = document.getElementById("cf-domain-wrap");
+    var domainVal = document.getElementById("cf-domain-value");
+    if(domainWrap && domainWrap.style.display !== "none" && domainVal && domainVal.value) {
+      body.customDomain = domainVal.value;
+    }
+
     if(cfg.hasTeams) {
       body.framework = null;
       if(binding) {
@@ -768,6 +872,9 @@ function executeDeploy(){
     var prodUrl = result.productionUrl || result.url;
     deployLog(logEl, "Deployed!", "ok");
     deployLog(logEl, prodUrl, "ok");
+    // Custom-domain attach is best-effort; if it couldn't be wired up the
+    // deploy still succeeded at pages.dev — surface why so the user can fix DNS.
+    if(result.domainWarning) { deployLog(logEl, result.domainWarning, "info"); }
 
     var pName = document.getElementById("vercel-project-name")?.value || binding?.projectName || "pneuma-deploy";
     _deployBindings[_deployProvider] = {
@@ -777,6 +884,7 @@ function executeDeploy(){
       productionUrl: prodUrl,
       dashboardUrl: result.dashboardUrl,
       url: prodUrl,
+      customDomain: result.customDomain || (binding ? binding.customDomain : undefined),
     };
 
     var item = document.getElementById(cfg.labelId)?.closest(".deploy-dropdown-item");
