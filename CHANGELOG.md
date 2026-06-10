@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.22.2] - 2026-06-10
+
+### Fixed
+
+- **Codex sessions no longer fumble their first skill reads** — on Codex, a session's opening turns routinely burned several failed `sed`/`cat` attempts reading `SKILL.md` from Codex's global plugin cache (`~/.codex/plugins/cache/…`) before recovering to the real location. Root cause: Codex (0.137) presents skills to the model as an alias-compressed roots table (`r0`…`rN`) the model must expand itself, and with ~10 roots the expansion misfires — our skills were listed correctly but read from the wrong root. The injected instructions file now spells out the concrete cwd-relative path for the mode skill (e.g. `.agents/skills/pneuma-webcraft/SKILL.md`) plus a path rule covering every `pneuma-*` skill (preferences, project, session), giving the model a route that never goes through the alias table. Applies to all backends with their respective skills dirs; takes effect on the next skill install.
+
 ## [3.22.1] - 2026-06-09
 
 ### Improved

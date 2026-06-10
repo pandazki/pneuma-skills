@@ -6,7 +6,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.22.1
+**Version:** 3.22.2
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`, `project-tidy`
 
@@ -413,6 +413,7 @@ CI (`release.yml`) handles tagging, GitHub Release, and npm publish on push to `
 
 ## Known Gotchas
 
+- **Codex skill-roots alias expansion misfires**（3.22.2）：Codex（0.137）把 skill 列表呈现成 alias 压缩的 roots 表（`r0`…`rN`），路径展开由模型自己做；roots 一多就会展开错，去全局 plugin cache 读不存在的 SKILL.md。因此 `generatePneumaSection` 在 `pneuma:start` 块里写死 cwd 相对 skill 路径（mode skill 指针 + 覆盖所有 `pneuma-*` skill 的 `skillPathRule`）。重构指令拼装时**不要删这两行**。
 - **Seed gallery auto-derive is directory-only**（3.15.0）：when a mode's `init.seeds[]` is absent, `resolveSeedCatalog` surfaces only `seedFiles` entries that are directory-shaped (src/dst ends with `/`, or dst is `./`/`""`). Single-file entries (e.g. invoice-organization's `profile.json`) are treated as framework setup and dropped — they would otherwise show up as meaningless gallery cards. Modes that genuinely want a single-file template MUST declare it explicitly via `init.seeds[]`. The frontend's `hasSeedsDeclared` check in `App.tsx` mirrors this rule; keep the two in sync.
 - **Gallery dismissal sources** (3.15.0): the empty-state gallery clears on either (a) `userContentCount > 0` (auto-dismiss when agent / seed-apply produces real content — the filter excludes `.pneuma/.claude/.agents/.kimi/_*` and `CLAUDE.md`/`AGENTS.md`/`.gitignore`), or (b) `galleryDismissedByUser = true` set by the explicit "或直接开始对话 →" button. There is intentionally no click-outside-to-close — TopBar clicks, chat focus, etc. must NOT dismiss.
 - **`ViewerPreviewProps.files` is a deprecated compat shim** (3.15.0): the new contract is `sources` + `fileChannel`; `files: ViewerFileContent[]` is still populated by `useViewerProps` so pre-2.29 external modes don't crash on `props.files.find(...)`. Do not use it in new viewers — `useSource(sources.files)` is the supported path. Will be removed in a future major.
