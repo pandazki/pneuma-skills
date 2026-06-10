@@ -113,6 +113,54 @@ describe("skill installation → CLAUDE.md skill reference", () => {
   });
 });
 
+// ── 1b. Instructions file carries concrete skill paths ──────────────────────
+//
+// Codex surfaces skills through an alias-compressed roots table the model must
+// expand itself; with many roots the expansion misfires and the model reads
+// SKILL.md from a global plugin cache (observed with Codex 0.137). The
+// instructions file therefore spells out the cwd-relative install path so the
+// model has a route that never goes through that table.
+
+describe("skill installation → instructions file carries skill paths", () => {
+  it("claude-code: pointer + path rule use .claude/skills", () => {
+    const ws = makeWorkspace("doc-skill-path-claude");
+    const modeSourceDir = join(PROJECT_ROOT, "modes", "doc");
+    installSkill({
+      workspace: ws,
+      skillConfig: docManifest.skill,
+      modeSourceDir,
+      params: {},
+      viewerApi: docManifest.viewerApi,
+    });
+
+    const claudeMd = readFileSync(join(ws, "CLAUDE.md"), "utf-8");
+    expect(claudeMd).toContain("`.claude/skills/pneuma-doc/SKILL.md`");
+    expect(claudeMd).toContain(
+      "Every `pneuma-*` skill referenced in this file is installed at `.claude/skills/<name>/SKILL.md` under your working directory",
+    );
+    expect(claudeMd).toContain("not from any global or plugin skill cache");
+  });
+
+  it("codex: pointer + path rule use .agents/skills", () => {
+    const ws = makeWorkspace("doc-skill-path-codex");
+    const modeSourceDir = join(PROJECT_ROOT, "modes", "doc");
+    installSkill({
+      workspace: ws,
+      skillConfig: docManifest.skill,
+      modeSourceDir,
+      params: {},
+      viewerApi: docManifest.viewerApi,
+      backendType: "codex",
+    });
+
+    const agentsMd = readFileSync(join(ws, "AGENTS.md"), "utf-8");
+    expect(agentsMd).toContain("`.agents/skills/pneuma-doc/SKILL.md`");
+    expect(agentsMd).toContain(
+      "Every `pneuma-*` skill referenced in this file is installed at `.agents/skills/<name>/SKILL.md` under your working directory",
+    );
+  });
+});
+
 // ── 2. SKILL.md files have YAML frontmatter ─────────────────────────────────
 
 describe("SKILL.md YAML frontmatter", () => {

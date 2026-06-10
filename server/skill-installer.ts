@@ -688,7 +688,8 @@ export function generatePneumaSection(
   backendType: string | undefined,
   runtimeShell: "app" | "web",
 ): string {
-  const backendLabel = getInstallConventions(backendType).displayLabel;
+  const conventions = getInstallConventions(backendType);
+  const backendLabel = conventions.displayLabel;
   const shellLabel = runtimeShell === "app" ? "App" : "Web";
   const fallbackDisplay = skillConfig.installName
     .replace(/^pneuma-/, "")
@@ -714,7 +715,16 @@ export function generatePneumaSection(
   // for substantive moves; everything else is loaded on demand. It refuses to
   // be a "MUST read all of this before responding" rule — that would just
   // recreate the over-reading failure mode it's trying to prevent.
-  const pointer = `The mode's specific conventions, workflows, and reference material live in the \`${skillConfig.installName}\` skill — pull it in when you're about to act on a substantive task. Read on a need-to-know basis: start with the user's actual ask, reach for this skill when you're about to act, and load wider surfaces (project atlas, sibling sessions, README) only when the task calls for them. You don't need to warm up before talking back.`;
+  const pointer = `The mode's specific conventions, workflows, and reference material live in the \`${skillConfig.installName}\` skill (\`${conventions.skillsDir}/${skillConfig.installName}/SKILL.md\`, relative to your working directory) — pull it in when you're about to act on a substantive task. Read on a need-to-know basis: start with the user's actual ask, reach for this skill when you're about to act, and load wider surfaces (project atlas, sibling sessions, README) only when the task calls for them. You don't need to warm up before talking back.`;
+
+  // Authoritative path rule for every pneuma-* skill referenced anywhere in
+  // this instructions file (preferences, project, session, …). Some agent
+  // harnesses surface skills through an alias-compressed roots table that the
+  // model must expand itself; with ~10 roots the expansion misfires and the
+  // model reads SKILL.md from a global plugin cache that doesn't contain our
+  // skills (observed with Codex 0.137). A concrete cwd-relative path here
+  // gives the model a route that never goes through that table.
+  const skillPathRule = `Every \`pneuma-*\` skill referenced in this file is installed at \`${conventions.skillsDir}/<name>/SKILL.md\` under your working directory — read skill files from there, not from any global or plugin skill cache.`;
 
   return [
     PNEUMA_INTRO,
@@ -728,6 +738,8 @@ export function generatePneumaSection(
     scene,
     "",
     pointer,
+    "",
+    skillPathRule,
   ].join("\n");
 }
 
