@@ -48,15 +48,17 @@ Rules:
 
 ### 4. Refresh top-level docs
 
-Review `README.md` and `CLAUDE.md` against the current codebase state. Fix any contradictions, outdated info, or missing features. This is a **holistic review**, not just appending — trim stale content, update tables, fix version numbers.
+Review `README.md` and `AGENTS.md` against the current codebase state. Fix any contradictions, outdated info, or missing features. This is a **holistic review**, not just appending — trim stale content, update tables, fix version numbers.
+
+> `AGENTS.md` is the single source of agent instructions; `CLAUDE.md` is a one-line `@AGENTS.md` import — never write content into it.
 
 Specifically check:
-- `CLAUDE.md` `**Version:**` line → update to new version
-- `CLAUDE.md` `**Builtin Modes:**` list → matches `core/mode-loader.ts` registrations
-- `CLAUDE.md` tech stack table → matches `package.json` dependencies
-- `CLAUDE.md` project structure tree → reflects any new/moved directories
-- `CLAUDE.md` server API reference → includes any new endpoints
-- `CLAUDE.md` known gotchas → add any new ones discovered, remove resolved ones
+- `AGENTS.md` `**Version:**` line → update to new version
+- `AGENTS.md` `**Builtin Modes:**` list → matches `core/mode-loader.ts` registrations
+- `AGENTS.md` tech stack table → matches `package.json` dependencies
+- `AGENTS.md` project structure tree → reflects any new/moved directories
+- `AGENTS.md` server API reference → includes any new endpoints
+- `.claude/rules/*.md` → add any newly discovered gotchas to the matching domain rule, remove resolved ones
 - `README.md` mode table → matches manifest descriptions
 - `README.md` CLI help section → matches actual CLI output
 - `README.md` feature list / roadmap → reflects current state

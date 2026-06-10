@@ -4,13 +4,13 @@ Pneuma Skills 的文档分两类：**活文档**（与代码同步演进）和**
 
 ## Single source of truth — 根文件
 
-`README.md` / `README.zh.md` / `CLAUDE.md` / `AGENTS.md` 是项目的事实基线，每次发版同步更新。新人按以下顺序进入：
+`README.md` / `README.zh.md` / `AGENTS.md` 是项目的事实基线，每次发版同步更新。新人按以下顺序进入：
 
 | 顺序 | 文件 | 受众 |
 |------|------|------|
 | 1 | [`README.md`](../README.md) | 人类——项目是什么、怎么装、怎么用（[中文](../README.zh.md)） |
-| 2 | [`CLAUDE.md`](../CLAUDE.md) | Claude Code 读取的项目指引——哲学、架构、契约、known gotchas |
-| 3 | [`AGENTS.md`](../AGENTS.md) | Codex / Kimi 读取的同一份指引（手动与 `CLAUDE.md` 同步） |
+| 2 | [`AGENTS.md`](../AGENTS.md) | 所有 code agent 的统一指引——哲学、架构、契约（`CLAUDE.md` 只是一行 `@AGENTS.md` import） |
+| 3 | [`.claude/rules/`](../.claude/rules/) | 按领域拆分的约束与 known gotchas——编辑对应目录前先读（Claude Code 按路径自动加载） |
 
 `docs/` 下的所有内容都是补充材料。**实现细节让代码自己说话**——文档只在它能讲哲学、架构、契约的地方动笔。
 

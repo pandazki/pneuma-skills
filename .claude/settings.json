@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bun test:*)",
+      "Bash(bun run typecheck:*)",
+      "Bash(bun run build:*)",
+      "Bash(tsc --noEmit:*)",
+      "Bash(tree:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(git fetch:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git worktree list:*)",
+      "Bash(git merge-base:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run list:*)"
+    ]
+  },
+  "effortLevel": "xhigh"
+}
