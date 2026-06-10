@@ -371,13 +371,21 @@ class MessageStore {
  * envelopes so the same scenario assertions work for claude-code.
  *
  * Mirrors the subset of `WsBridge.routeCLIMessage` the harness needs:
- *   - `system:init` → `session_init`
- *   - `assistant`   → `assistant`
- *   - `result`      → `result`
+ *   - `system:init`  → `session_init`
+ *   - `assistant`    → `assistant`
+ *   - `stream_event` → `stream_event`
+ *   - `result`       → `result`
  *   - `control_request:can_use_tool` → `permission_request`
  *
  * Anything else is dropped (the harness's scenarios don't assert on
  * those envelope types).
+ *
+ * `stream_event` matters for the interrupt scenario: its "first stream
+ * chunk" wait accepts `assistant | stream_event`, and the prompt
+ * deliberately elicits a SLOW response. Without the stream_event
+ * translation, the wait could only be satisfied by a *complete*
+ * assistant message — which for a deliberately slow turn routinely
+ * blows the 45s budget and made the test flaky under suite load.
  */
 class ClaudeStdioObserver {
   private sendInput: ((line: string) => void) | null = null;
@@ -480,6 +488,18 @@ class ClaudeStdioObserver {
         message: cliAssistant.message,
         parent_tool_use_id: cliAssistant.parent_tool_use_id ?? null,
         timestamp: Date.now(),
+      });
+      return;
+    }
+    if (type === "stream_event") {
+      const streamEvent = msg as unknown as {
+        event: unknown;
+        parent_tool_use_id: string | null;
+      };
+      this.store.push({
+        type: "stream_event",
+        event: streamEvent.event,
+        parent_tool_use_id: streamEvent.parent_tool_use_id ?? null,
       });
       return;
     }
