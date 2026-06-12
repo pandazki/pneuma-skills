@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.22.3] - 2026-06-12
+
+### Fixed
+
+- **Internal one-shot sessions no longer clutter project surfaces** — sessions spawned by Pneuma's own machinery (project onboarding, session tidy, evolution) showed up alongside the user's actual work: they padded the project panel's "Recent sessions" list, inflated the session count and mode breakdown on launcher project cards, and could even win a project card's quick-resume as the "most recent" session — dropping the user back into a finished tidy run instead of what they were making. Sessions of any mode whose manifest declares `hidden: true` are now stamped `internal` at scan time (manifest-driven — third-party hidden modes get the same treatment) and filtered out of all three surfaces. The sessions themselves stay on disk and remain resumable by id.
+
 ## [3.22.2] - 2026-06-10
 
 ### Fixed
