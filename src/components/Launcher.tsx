@@ -4884,9 +4884,15 @@ export default function Launcher() {
           mode: string;
           backendType?: string;
           lastAccessed?: number;
+          internal?: boolean;
         }>;
-        if (sessions.length === 0) return;
-        const latest = [...sessions].sort(
+        // Quick-resume means "back to what I was making" — never an internal
+        // one-shot session (onboard / tidy / evolve), even if it's the most
+        // recent. With nothing user-created, fall through to the default
+        // link → project panel.
+        const resumable = sessions.filter((s) => !s.internal);
+        if (resumable.length === 0) return;
+        const latest = [...resumable].sort(
           (a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0),
         )[0];
         const launchRes = await fetch(`${getApiBase()}/api/launch`, {

@@ -1,10 +1,12 @@
 import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   isProjectManifest,
   type ProjectManifest,
 } from "./types/project-manifest.js";
+import { parseManifestTs } from "./utils/manifest-parser.js";
 
 export type WorkspaceKind = "quick" | "project";
 
@@ -89,6 +91,52 @@ export interface ProjectSessionRef {
   description?: string;
   /** Wall-clock ms of the last `session refine`; surfaces "refined N min ago" labels. */
   refinedAt?: number;
+  /**
+   * True when the session's mode manifest declares `hidden: true` — internal,
+   * one-shot modes (project-onboard, project-tidy, evolve, …) that Pneuma
+   * triggers itself rather than the user picking them. UI surfaces that list
+   * "what the user created here" (project panel, project cards, quick-resume)
+   * filter these out; the sessions stay on disk and remain resumable by id.
+   */
+  internal?: boolean;
+}
+
+/**
+ * Cached mode-name → manifest-`hidden` lookup. Resolution mirrors the
+ * launcher registry: builtin `modes/<name>/` (sibling of `core/`) first,
+ * then `~/.pneuma/modes/<name>/`. Library modes and external installs whose
+ * directory name differs from the manifest name are not resolved here — a
+ * miss means "not hidden", which only errs toward keeping a session visible.
+ */
+const hiddenModeCache = new Map<string, boolean>();
+
+function isHiddenMode(mode: string): boolean {
+  const cached = hiddenModeCache.get(mode);
+  if (cached !== undefined) return cached;
+  let hidden = false;
+  // `mode` comes from a session.json on disk — refuse path-ish values so a
+  // crafted name can't probe arbitrary directories.
+  if (/^[a-z0-9_-]+$/i.test(mode)) {
+    const home = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
+    const candidateDirs = [
+      join(import.meta.dir, "..", "modes", mode),
+      join(home, ".pneuma", "modes", mode),
+    ];
+    for (const dir of candidateDirs) {
+      const manifestPath = ["manifest.ts", "manifest.js"]
+        .map((f) => join(dir, f))
+        .find((p) => existsSync(p));
+      if (!manifestPath) continue;
+      try {
+        hidden = parseManifestTs(readFileSync(manifestPath, "utf-8")).hidden === true;
+      } catch {
+        hidden = false;
+      }
+      break;
+    }
+  }
+  hiddenModeCache.set(mode, hidden);
+  return hidden;
 }
 
 /**
@@ -257,6 +305,7 @@ export async function scanProjectSessions(
           ? { description: data.description }
           : {}),
         ...(typeof data.refinedAt === "number" ? { refinedAt: data.refinedAt } : {}),
+        ...(isHiddenMode(data.mode) ? { internal: true } : {}),
       });
     } catch {
       // skip corrupt session

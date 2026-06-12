@@ -350,6 +350,51 @@ describe("scanProjectSessions", () => {
     expect(ref?.preview).toBe("Caption this.");
   });
 
+  test("flags sessions of hidden (internal) modes with internal: true", async () => {
+    // Internal one-shot modes (project-tidy / project-onboard / evolve)
+    // declare `hidden: true` in their builtin manifest. Their sessions are
+    // Pneuma's own machinery — scan marks them so UI surfaces can filter
+    // them out of "what the user created here" lists. Resolution reads the
+    // real builtin manifests (sibling `modes/` dir), so this also pins that
+    // the shipped internal modes stay flagged.
+    const base = join(tmp, ".pneuma", "sessions");
+    await mkdir(join(base, "tidy-run"), { recursive: true });
+    await writeFile(
+      join(base, "tidy-run", "session.json"),
+      JSON.stringify({ sessionId: "tidy-run", mode: "project-tidy", backendType: "claude-code", createdAt: 1 })
+    );
+    await mkdir(join(base, "doc-work"), { recursive: true });
+    await writeFile(
+      join(base, "doc-work", "session.json"),
+      JSON.stringify({ sessionId: "doc-work", mode: "doc", backendType: "claude-code", createdAt: 2 })
+    );
+
+    const sessions = await scanProjectSessions(tmp);
+    expect(sessions.find((s) => s.sessionId === "tidy-run")?.internal).toBe(true);
+    expect(sessions.find((s) => s.sessionId === "doc-work")?.internal).toBeUndefined();
+  });
+
+  test("internal flag defaults to absent for unknown / unresolvable modes", async () => {
+    // A session whose mode can't be resolved to a manifest (uninstalled
+    // external mode, or a path-ish name from a corrupt session.json) must
+    // err toward visible — and never probe outside the modes dirs.
+    const base = join(tmp, ".pneuma", "sessions");
+    await mkdir(join(base, "unknown-mode"), { recursive: true });
+    await writeFile(
+      join(base, "unknown-mode", "session.json"),
+      JSON.stringify({ sessionId: "unknown-mode", mode: "no-such-mode-xyz", backendType: "claude-code", createdAt: 1 })
+    );
+    await mkdir(join(base, "pathish-mode"), { recursive: true });
+    await writeFile(
+      join(base, "pathish-mode", "session.json"),
+      JSON.stringify({ sessionId: "pathish-mode", mode: "../evolve", backendType: "claude-code", createdAt: 2 })
+    );
+
+    const sessions = await scanProjectSessions(tmp);
+    expect(sessions.find((s) => s.sessionId === "unknown-mode")?.internal).toBeUndefined();
+    expect(sessions.find((s) => s.sessionId === "pathish-mode")?.internal).toBeUndefined();
+  });
+
   test("preview is undefined when history.json is missing or malformed", async () => {
     const base = join(tmp, ".pneuma", "sessions");
     // No history at all

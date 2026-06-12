@@ -71,6 +71,12 @@ interface SessionRef {
   description?: string;
   /** Wall-clock ms of the most recent `pneuma session refine`. */
   refinedAt?: number;
+  /**
+   * Session of an internal one-shot mode (manifest `hidden: true` —
+   * project-onboard / project-tidy / evolve…). Excluded from the visible
+   * list: it's Pneuma's own machinery, not content the user created.
+   */
+  internal?: boolean;
 }
 
 interface ModeInfo {
@@ -412,19 +418,28 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     }
   };
 
+  // Only user-created sessions appear in the panel — internal one-shot
+  // sessions (onboard / tidy / evolve) stay on disk but out of sight. The
+  // raw `sessions` list is still consulted where identity matters (e.g.
+  // resolving the currently-active session, which may itself be internal).
+  const userSessions = useMemo(
+    () => sessions.filter((s) => !s.internal),
+    [sessions],
+  );
+
   // Flat session list, lastAccessed desc — distinguishing three sessions of
   // the same mode now relies on thumbnail + preview, not on column grouping.
   const sortedSessions = useMemo(
-    () => [...sessions].sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0)),
-    [sessions],
+    () => [...userSessions].sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0)),
+    [userSessions],
   );
 
   // Per-mode session count, for the right-pane "· N sessions" suffix.
   const sessionCountByMode = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const s of sessions) counts.set(s.mode, (counts.get(s.mode) ?? 0) + 1);
+    for (const s of userSessions) counts.set(s.mode, (counts.get(s.mode) ?? 0) + 1);
     return counts;
-  }, [sessions]);
+  }, [userSessions]);
 
   // Mode lookup helpers — used everywhere, name → displayName / icon / desc.
   const modeByName = useMemo(() => {
@@ -501,7 +516,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   const orderedModes = useMemo(() => {
     if (modes.length === 0) return [] as ModeInfo[];
     const usedModeRecency = new Map<string, number>();
-    for (const s of sessions) {
+    for (const s of userSessions) {
       const prev = usedModeRecency.get(s.mode) ?? 0;
       usedModeRecency.set(s.mode, Math.max(prev, s.lastAccessed ?? 0));
     }
@@ -524,7 +539,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
       .filter((m) => !favIdx.has(keyOf(m)) && !usedModeRecency.has(m.name))
       .sort((a, b) => priority(a.name) - priority(b.name));
     return [...favs, ...used, ...unused];
-  }, [modes, sessions, BUILTIN_PRIORITY, favoritesList]);
+  }, [modes, userSessions, BUILTIN_PRIORITY, favoritesList]);
   const visibleModes = showAllModes
     ? orderedModes
     : orderedModes.slice(0, DEFAULT_VISIBLE_MODE_COUNT);
@@ -539,7 +554,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   const coverEntry: ProjectCoverEntry = {
     id: projectRoot,
     displayName,
-    sessionCount: sessions.length,
+    sessionCount: userSessions.length,
     modeBreakdown: Array.from(sessionCountByMode.keys()),
     coverImageUrl,
   };

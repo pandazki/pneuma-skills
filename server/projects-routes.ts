@@ -120,15 +120,18 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     p: ProjectRegistryEntry,
     entry: ProjectCacheEntry,
   ): ProjectListResponseEntry => {
+    // Cards summarize what the user created here — internal one-shot
+    // sessions (onboard / tidy / evolve) don't count toward that story.
+    const userSessions = entry.sessions.filter((r) => !r.internal);
     const modeBreakdown = Array.from(
-      new Set(entry.sessions.map((r) => r.mode)),
+      new Set(userSessions.map((r) => r.mode)),
     ).sort();
     const coverImageUrl = entry.hasCover
       ? `/api/projects/${encodeURIComponent(p.id)}/cover`
       : undefined;
     return {
       ...p,
-      sessionCount: entry.sessions.length,
+      sessionCount: userSessions.length,
       modeBreakdown,
       ...(coverImageUrl ? { coverImageUrl } : {}),
     };
