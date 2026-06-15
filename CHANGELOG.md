@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.22.6] - 2026-06-15
+
+### Fixed
+
+- **Kami export preview no longer clips the bottom of each sheet** — the export page renders each paper sheet by loading the full document into a fixed-height, `overflow:hidden` frame and hiding the other `.page` divs, but it still applied the document's own on-desk layout: a `var(--desk-inset)` (48px) body padding plus a `.page + .page` inter-sheet margin. So every sheet sat 48px below its frame top and lost the bottom 48px, and because `display:none` on the hidden sibling doesn't break the `.page + .page` adjacency, page 2 and beyond inherited the inter-sheet margin on top of that (≈72px pushed down and clipped). The single-sheet early-return also skipped the reset, so one-pagers lost their bottom 48px too. Each sheet's frame now resets the body padding/margin and the page margin-top so it sits flush at the top and fills the frame exactly, regardless of sheet count. The Download HTML and Screenshot PNG paths were already correct.
+
 ## [3.22.5] - 2026-06-15
 
 ### Fixed
