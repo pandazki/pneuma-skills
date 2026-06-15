@@ -2431,14 +2431,29 @@ pages.forEach(function(page, i) {
       var doc = frame.contentDocument;
       if (!doc || !doc.body) return;
       var sheets = doc.querySelectorAll(".page");
-      // Legacy single-sheet file: nothing to hide.
-      if (sheets.length <= 1) return;
-      for (var si = 0; si < sheets.length; si++) {
-        sheets[si].setAttribute("data-kami-export-sheet", String(si));
+      // The kami document bakes an on-desk scroll layout into its own CSS:
+      // the body gets desk-inset padding that floats the sheet on a desk, and
+      // adjacent .page sheets get a margin-top so a multi-sheet doc stacks
+      // with a gap. In the export each sheet owns a fixed-height,
+      // overflow:hidden paper-frame, so those offsets only push the sheet
+      // down and clip its bottom edge -- and because display:none on a hidden
+      // sibling does not break the .page + .page adjacency, sheet 2+ inherits
+      // the inter-sheet margin on top of the body padding (worse clip). Reset
+      // both so every sheet sits flush at the top of its frame, regardless of
+      // sheet count. The page keeps margin:0 auto for horizontal centering.
+      var css =
+        'body { padding: 0 !important; margin: 0 !important; }' +
+        '.page { margin-top: 0 !important; }';
+      // Multi-sheet file: hide every sheet except this frame's target.
+      if (sheets.length > 1) {
+        for (var si = 0; si < sheets.length; si++) {
+          sheets[si].setAttribute("data-kami-export-sheet", String(si));
+        }
+        css +=
+          '.page[data-kami-export-sheet]:not([data-kami-export-sheet="' + page.sheetIndex + '"]) { display: none !important; }';
       }
       var style = doc.createElement("style");
-      style.textContent =
-        '.page[data-kami-export-sheet]:not([data-kami-export-sheet="' + page.sheetIndex + '"]) { display: none !important; }';
+      style.textContent = css;
       doc.head.appendChild(style);
     } catch (e) { /* ignore cross-origin if any */ }
   });
