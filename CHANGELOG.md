@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.22.4] - 2026-06-15
+
+### Improved
+
+- **Kami mode synced to upstream tw93/kami V1.5.0 → V1.7.3** — Kami's typesetting design language now tracks upstream's "Markdown Stage", "Korean Paper", "Cleaner Resumes", and "Wider Gallery" releases, taking in the parts that fit Pneuma's iframe paper-canvas model. Korean joins Chinese / English / Japanese as a best-effort language (Source Han Serif K → system Myeongjo serif fallback, one serif per page, visual QA); the anti-patterns reference gains image-generation and slide failure categories (decide the image slot before generating, preserve real screenshots over redrawn mockups, build a deck as an argument rather than a topic list); resume guidance picks up upstream's quieter two-page visual rhythm (warm bottom-rule headers, borderless project rows, single-line metric labels); and overflow handling is sharpened to delete-or-merge-first, never shrinking the locked typography. Screen-first / build-pipeline items upstream added — the Marp and WeasyPrint slide-rendering paths, the landing-page genre with its multilingual SEO companions, and the brand-profile mechanism — stay intentionally out of scope for a paper-only medium and are recorded as such in the mode's NOTICE. Mode skill version 1.3.0 → 1.4.0.
+
 ## [3.22.3] - 2026-06-12
 
 ### Fixed
