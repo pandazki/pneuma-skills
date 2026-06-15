@@ -30,7 +30,7 @@ const SAFE_MARGINS_MM: Record<string, { top: number; side: number; bottom: numbe
 
 const kamiManifest: ModeManifest = {
   name: "kami",
-  version: "1.3.0",
+  version: "1.4.0",
   displayName: {
     en: "Kami",
     "zh-CN": "Kami",
@@ -50,6 +50,14 @@ const kamiManifest: ModeManifest = {
     de: "Webdesign auf Papier-Leinwand mit warmer Pergament-Ästhetik —— Designsprache übernommen von tw93/kami (MIT)",
   },
   changelog: {
+    "1.4.0": [
+      "Synced upstream tw93/kami V1.5.0 → V1.7.3 (Markdown Stage / Korean Paper / Cleaner Resumes / Wider Gallery)",
+      "Korean (KO) added as a best-effort language — Source Han Serif K → system Myeongjo serif fallback, one-serif-per-page, visual QA like Japanese",
+      "anti-patterns reference gains Image-generation and Slides failure categories (slot-before-generate, preserve real screenshots, ghost-deck argument-first, one evidence shape per slide)",
+      "resume-writing gains a visual-rhythm note — warm bottom-rule headers, borderless project rows, single-line metric labels",
+      "Overflow guidance sharpened to upstream V1.7.1 priority — delete or merge content first, never shrink locked typography",
+      "Don'ts now scope out the screen-first landing-page genre and the Marp / marp-cli / python-pptx slide-rendering paths upstream added — Pneuma's kami is a paper-only iframe medium",
+    ],
     "1.3.0": [
       "SKILL.md gains equity-report and changelog doc routing, plus 11 new diagram routes (bar-chart, candlestick, donut-chart, layer-stack, line-chart, state-machine, swimlane, timeline, tree, venn, waterfall)",
       "New \"Auto-select charts from data\" decision tree maps data shape to the right diagram type",

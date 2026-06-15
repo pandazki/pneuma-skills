@@ -124,6 +124,23 @@ Use | Avoid
 
 ---
 
+## Visual rhythm
+
+The shipped resume templates carry a quiet, two-page rhythm (refreshed
+upstream V1.7.2). Hold these when editing layout — they keep a resume
+from reading like a long-doc:
+
+- **Section headers** use a single warm bottom rule
+  (`border-bottom: 0.5pt solid var(--border)`), not a brand-color left
+  bar. The 2.5pt brand left bar belongs to long-doc / proposal section
+  titles; on a resume it reads loud.
+- **Project rows** carry no top/bottom border. Separate them with padding
+  and the weight of the project name alone — row borders fragment the
+  page and fight the metric strip.
+- **Metric labels** stay on one line. Shorten the label before you change
+  the layout; switching `.metrics` to the vertical column is the second
+  move, not the first.
+
 ## Density tuning by project count
 
 When page 1 carries 3-6 projects, adjust these three CSS properties. Do not change line-heights on page 2 or touch header typography.

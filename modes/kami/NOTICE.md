@@ -43,24 +43,32 @@ documents are responsible for securing that license.
 [SIL Open Font License 1.1](https://openfontlicense.org/). No additional
 fee or permission required.
 
-### English & Japanese serif (system-bundled)
+### English, Japanese & Korean serif (system-bundled)
 
 English templates fall through to **Charter** (macOS / iOS bundled),
 **Georgia**, and **Palatino**. Japanese templates fall through to
 **YuMincho** / **Hiragino Mincho ProN** (macOS / iOS bundled) and **Noto
-Serif CJK JP**. None are shipped with this mode; the OS provides them or
-the page falls through to a generic serif. This matches the upstream
-single-serif-per-page model (locked since v1.2.0).
+Serif CJK JP**. Korean templates fall through to **AppleMyungjo** /
+**Nanum Myeongjo** (macOS / iOS bundled, when present) and **Source Han
+Serif K** / **Noto Serif CJK KR**. None are shipped with this mode; the
+OS provides them or the page falls through to a generic serif. This
+matches the upstream single-serif-per-page model (locked since v1.2.0).
+As with Japanese, Korean is a best-effort language requiring visual QA —
+it mirrors upstream V1.7.0's "Korean Paper" without bundling the font.
 
 ## Tracked upstream version
 
 Diagrams and reference docs in this mode are synced against
-[tw93/kami **V1.5.0**](https://github.com/tw93/Kami/releases/tag/V1.5.0)
-("Live Paper", 2026-05-15). Items intentionally not synced from
+[tw93/kami **V1.7.3**](https://github.com/tw93/Kami/releases/tag/V1.7.3)
+("Wider Gallery", 2026-06-14). Items intentionally not synced from
 upstream because they don't apply to Pneuma's iframe paper-canvas /
-browser-print model: the WeasyPrint runtime, the `build.py` /
-`ensure-fonts.sh` build pipeline, the Claude Code plugin marketplace
-install path, `llms.txt` / sitemap / JSON-LD landing-page assets, and
+browser-print model: the WeasyPrint runtime and the `slides-weasy` PDF
+path, the Marp / `marp-cli` and python-pptx slide-rendering paths (V1.6.0
+"Markdown Stage" — Pneuma renders slides as HTML in the iframe), the
+screen-first landing-page genre and its multilingual site companions
+(sitemap / robots / `llms.txt` / JSON-LD / hreflang), the `build.py` /
+`ensure-fonts.sh` build pipeline and CJK font auto-recovery, the quiet
+daily update check, the Claude Code plugin marketplace install path, and
 the brand profile loaded from `~/.config/kami/brand.md`.
 
 ## Seed demos

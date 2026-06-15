@@ -206,7 +206,7 @@ machine-readable check — capture is for visual judgement.
 | Canvas | `#f5f4ed` parchment. Never pure white. |
 | Accent | Ink blue `#1B365D` only. No second chromatic hue. |
 | Neutrals | Warm-toned (yellow-brown undertone). No cool blue-grays. |
-| Serif | **One serif per page.** CN: `TsangerJinKai02`. EN: `Charter` (system). JA: `YuMincho` (system). Weight 400 body / 500 headings. Never bold. |
+| Serif | **One serif per page.** CN: `TsangerJinKai02`. EN: `Charter` (system). JA: `YuMincho` (system). KO: `Source Han Serif K` → `AppleMyungjo` (system). Weight 400 body / 500 headings. Never bold. |
 | Letter-spacing | CN body 0.3pt (locks in TsangerJinKai02 density). EN body 0. Tracking only on small labels and overlines. |
 | Line-height | Titles 1.1–1.3. Dense body 1.4–1.45. Reading body 1.5–1.55. Never 1.6+. |
 | Shadows | Ring or whisper only. No hard drop shadows. No gradients. |
@@ -215,7 +215,9 @@ machine-readable check — capture is for visual judgement.
 `--sans` aliases `--serif` in `_shared/styles.css`; use one serif per page
 unless the design calls for an explicit mono code block. Match the user's
 language: CN content stays on the TsangerJinKai02 stack, EN on Charter,
-JA on YuMincho (best-effort, visually verify before shipping).
+JA on YuMincho, KO on Source Han Serif K → AppleMyungjo. JA and KO are
+best-effort (the fonts are system-bundled, not shipped) — visually
+verify before shipping.
 
 ## Workspace layout
 
@@ -380,7 +382,7 @@ Report shape:
 | Status     | Meaning                           | What to do |
 |------------|-----------------------------------|------------|
 | `fits`     | Content is within ±50mm of paper height | Stop. Move on. |
-| `overflow` | `overflow_mm > 2` — will not print on one sheet | **Must trim.** Drop a bullet, tighten phrasing, remove a section, or merge duplicated concepts. Do NOT just shrink font-size or line-height — those are locked by the design system. |
+| `overflow` | `overflow_mm > 2` — will not print on one sheet | **Must trim.** Priority order (upstream V1.7.1): delete or merge content first — drop a bullet, tighten phrasing, remove a section, merge duplicated concepts. Never shrink font-size or line-height to force a fit; those are locked by the design system. |
 | `sparse`   | `overflow_mm < -50` — paper is ~20%+ blank | Consider filling: expand a weak section with concrete specifics, add a pull-quote, include a metric, OR merge adjacent pages if the content genuinely fits tighter. |
 
 **The loop** (run it automatically after every edit; don't wait for the user to point out overflow):
@@ -575,8 +577,14 @@ documents read as one voice across every sheet; the imagery must too.
 - Don't edit tokens in `_shared/styles.css` casually. Aesthetic drift
   compounds fast.
 - Don't modify `.claude/` — runtime-managed.
-- Don't try to render Python-driven slide decks in this mode; that's a
-  separate (future) mode.
+- Don't render slides through Python (WeasyPrint / python-pptx) or Marp
+  (`marp-cli`). Kami slides here are HTML paper pages in the iframe; the
+  upstream `.md`-to-PPTX/PDF rendering paths (V1.6.0) are out of model.
+- Don't build screen-first landing pages here. Upstream kami added a
+  landing-page genre (V1.5.0+), but Pneuma's kami renders a single
+  physical paper sheet — landing pages, their carousels, and their
+  multilingual SEO companions are out of scope. Reach for webcraft
+  instead.
 
 ## Diagrams (14 self-contained templates)
 
@@ -644,3 +652,5 @@ Load only what the task needs. Default to the lowest tier.
 | Building a new doc type from scratch | `references/design.md` |
 | Writing tone / structure guidance | `references/writing.md` |
 | Embedding a diagram | `references/diagrams.md` |
+| Building or editing a resume | `references/resume-writing.md` — bullet structure, metrics, density, visual rhythm |
+| Quality pass before handing back | `references/anti-patterns.md` — the AI-document failure checklist |

@@ -59,7 +59,7 @@ This system is a fusion of Anthropic's visual language and real Chinese / Englis
 ```css
 --near-black:  #141413;   /* Primary text - deepest but not pure black, warm olive undertone */
 --dark-warm:   #3d3d3a;   /* Secondary text, table headers, links */
---olive:       #504e49;   /* Subtext - descriptions, captions. JA override: #4d4c48 (YuMincho thin strokes need darker text) */
+--olive:       #504e49;   /* Subtext - descriptions, captions. JA/KO override: #4d4c48 (YuMincho / Myeongjo thin strokes need darker text) */
 --stone:       #6b6a64;   /* Tertiary - dates, metadata */
 ```
 
@@ -114,6 +114,12 @@ font-family: "YuMincho", "Yu Mincho",
              "TsangerJinKai02",
              Georgia, serif;
 
+/* Korean (best-effort, like Japanese — visual QA before shipping) */
+font-family: "Source Han Serif K", "Noto Serif CJK KR",
+             "AppleMyungjo", "Nanum Myeongjo",
+             "TsangerJinKai02",
+             Georgia, serif;
+
 /* Mono, with CJK fallback for comments and labels */
 font-family: "JetBrains Mono", "SF Mono", "Fira Code",
              Consolas, Monaco,
@@ -121,7 +127,7 @@ font-family: "JetBrains Mono", "SF Mono", "Fira Code",
              monospace;
 ```
 
-Any font-family that may render Chinese or Japanese must include a CJK fallback, including `@page` footer text, `pre`, `code`, and SVG labels. A pure mono stack can render missing glyph boxes in WeasyPrint.
+Any font-family that may render Chinese, Japanese, or Korean must include a CJK fallback, including `@page` footer text, `pre`, `code`, and SVG labels. A pure mono stack can render missing glyph boxes in print.
 
 ### Size scale (pt for print A4, px for screen)
 
