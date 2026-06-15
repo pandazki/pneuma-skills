@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.22.5] - 2026-06-15
+
+### Fixed
+
+- **Refined session titles survive resume** — reopening a session reverted its launcher "Recent sessions" row (and ProjectPanel row) to the mode default ("WebCraft session") plus the first-message preview, discarding the semantic title and one-line summary the agent had written via `pneuma session refine`. Two write paths rebuilt the session metadata from scratch on every launch — the global `~/.pneuma/sessions.json` entry and the canonical `session.json` — preserving a manual `sessionName` but dropping the refined `displayName` / `description` / `refinedAt` trio. Both now merge-preserve the refined fields (registry via `pickRefinedMeta`, `session.json` via `preserveRefinedSessionMeta`), as does the project-import path. Sessions that already reverted before this fix need a one-time re-refine; going forward they hold.
+
 ## [3.22.4] - 2026-06-15
 
 ### Improved
