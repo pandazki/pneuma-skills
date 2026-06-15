@@ -97,6 +97,39 @@ export function normalizeSessionRecord(data: Record<string, unknown>): SessionRe
   } as SessionRecord;
 }
 
+/**
+ * Carry the refined session meta (title / one-line summary / refine timestamp)
+ * from a prior `session.json` into a freshly-built {@link PersistedSession}.
+ *
+ * Resume and launch callers of `saveSession` pass a minimal record
+ * (`{ sessionId, mode, backendType, createdAt }`) with none of these fields,
+ * so a plain overwrite drops what `pneuma session refine` wrote — reverting
+ * the canonical `session.json` (which ProjectPanel reads directly) to the mode
+ * default. The incoming record wins whenever it carries a field; only fields
+ * it leaves `undefined` fall back to `prev`. Symmetric to `pickRefinedMeta`
+ * on the registry side.
+ *
+ * @param incoming — the record about to be written
+ * @param prev — the parsed prior `session.json`, if any
+ */
+export function preserveRefinedSessionMeta(
+  incoming: PersistedSession,
+  prev: Partial<PersistedSession> | undefined,
+): PersistedSession {
+  if (!prev) return incoming;
+  const out: PersistedSession = { ...incoming };
+  if (out.displayName === undefined && prev.displayName !== undefined) {
+    out.displayName = prev.displayName;
+  }
+  if (out.description === undefined && prev.description !== undefined) {
+    out.description = prev.description;
+  }
+  if (out.refinedAt === undefined && prev.refinedAt !== undefined) {
+    out.refinedAt = prev.refinedAt;
+  }
+  return out;
+}
+
 export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs {
   const args = argv.slice(2);
   let mode = "";

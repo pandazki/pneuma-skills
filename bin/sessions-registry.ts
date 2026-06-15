@@ -393,3 +393,41 @@ export function pickSessionName(
   if (incoming !== undefined && incoming !== "") return incoming;
   return existing;
 }
+
+/**
+ * Merge rule for refined session metadata (title / one-line summary /
+ * timestamp) during a launch-time upsert.
+ *
+ * `recordSession` in `bin/pneuma.ts` rebuilds the entire registry entry on
+ * every `pneuma <mode>` resume, carrying only the mode-derived default
+ * displayName (e.g. "WebCraft") and no description. Without this merge a
+ * plain resume overwrites the title the agent set via `pneuma session
+ * refine` back to that default and drops the summary — the launcher row
+ * then falls back to "<Mode> session" + the first-message preview. Mirrors
+ * {@link pickSessionName}: the previously-refined values win unless this
+ * run carries its own refinement (it never does today, but the shape keeps
+ * the door open).
+ *
+ * `refinedAt` on the existing entry is the "this was refined" marker, so
+ * its presence is what gates keeping the existing displayName. The
+ * canonical source remains `<sessionDir>/session.json`; the registry copy
+ * is the cheap-listing cache the launcher reads.
+ *
+ * @param incomingDisplayName — the mode-derived default for this run
+ * @param existing — the prior registry entry, if any
+ */
+export function pickRefinedMeta(
+  incomingDisplayName: string,
+  existing:
+    | { displayName?: string; description?: string; refinedAt?: number }
+    | undefined
+): { displayName: string; description?: string; refinedAt?: number } {
+  if (!existing || existing.refinedAt === undefined) {
+    return { displayName: incomingDisplayName };
+  }
+  return {
+    displayName: existing.displayName ?? incomingDisplayName,
+    ...(existing.description !== undefined ? { description: existing.description } : {}),
+    refinedAt: existing.refinedAt,
+  };
+}

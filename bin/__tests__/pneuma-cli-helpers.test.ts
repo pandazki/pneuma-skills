@@ -3,7 +3,9 @@ import {
   normalizePersistedSession,
   normalizeSessionRecord,
   parseCliArgs,
+  preserveRefinedSessionMeta,
   resolveWorkspaceBackendType,
+  type PersistedSession,
 } from "../pneuma-cli-helpers.js";
 
 describe("pneuma CLI helpers", () => {
@@ -108,5 +110,55 @@ describe("pneuma CLI helpers", () => {
     const resolved = resolveWorkspaceBackendType("codex", null);
 
     expect(resolved).toEqual({ backendType: "codex" });
+  });
+});
+
+describe("preserveRefinedSessionMeta (refined title/summary survive a minimal save)", () => {
+  const minimal = (): PersistedSession => ({
+    sessionId: "s1",
+    mode: "webcraft",
+    backendType: "claude-code",
+    createdAt: 100,
+  });
+
+  test("carries displayName / description / refinedAt from the prior session.json", () => {
+    const out = preserveRefinedSessionMeta(minimal(), {
+      displayName: "驱动数据协同进化",
+      description: "整理材料成文档并重做一份汇报页",
+      refinedAt: 1234,
+    });
+    expect(out.displayName).toBe("驱动数据协同进化");
+    expect(out.description).toBe("整理材料成文档并重做一份汇报页");
+    expect(out.refinedAt).toBe(1234);
+    // The minimal fields are still written through.
+    expect(out.sessionId).toBe("s1");
+    expect(out.mode).toBe("webcraft");
+  });
+
+  test("no prior file → returns the incoming record untouched (fresh session)", () => {
+    const incoming = minimal();
+    expect(preserveRefinedSessionMeta(incoming, undefined)).toBe(incoming);
+  });
+
+  test("incoming explicit fields win over the prior file", () => {
+    const out = preserveRefinedSessionMeta(
+      { ...minimal(), displayName: "New title" },
+      { displayName: "Old title", refinedAt: 1 },
+    );
+    expect(out.displayName).toBe("New title");
+    // Absent incoming fields still fall back to prev.
+    expect(out.refinedAt).toBe(1);
+  });
+
+  test("a prior file without refined meta adds nothing", () => {
+    const out = preserveRefinedSessionMeta(minimal(), {
+      sessionId: "s1",
+      mode: "webcraft",
+      backendType: "claude-code",
+      createdAt: 100,
+    });
+    expect(out.displayName).toBeUndefined();
+    expect(out.description).toBeUndefined();
+    expect(out.refinedAt).toBeUndefined();
   });
 });

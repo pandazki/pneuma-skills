@@ -49,6 +49,7 @@ import {
   normalizePersistedSession,
   normalizeSessionRecord,
   parseCliArgs,
+  preserveRefinedSessionMeta,
   resolveWorkspaceBackendType,
   startViteDev,
   type PersistedSession,
@@ -62,6 +63,7 @@ import {
   upsertSession,
   upsertProject,
   pickSessionName,
+  pickRefinedMeta,
   type AnySessionRegistryEntry,
   type SessionsFile,
 } from "./sessions-registry.js";
@@ -137,7 +139,20 @@ function loadSession(stateDir: string): PersistedSession | null {
 
 function saveSession(stateDir: string, session: PersistedSession): void {
   mkdirSync(stateDir, { recursive: true });
-  writeFileSync(join(stateDir, "session.json"), JSON.stringify(session, null, 2));
+  const filePath = join(stateDir, "session.json");
+  // Preserve refined session meta (displayName / description / refinedAt) the
+  // agent set via `pneuma session refine`. Resume and launch callers pass a
+  // minimal PersistedSession; a naive overwrite wipes the refined trio from
+  // the canonical session.json (which ProjectPanel reads directly), reverting
+  // the row to the mode default. The merge rule mirrors the registry-side
+  // pickRefinedMeta and lives in a tested helper.
+  let prev: Partial<PersistedSession> | undefined;
+  try {
+    prev = JSON.parse(readFileSync(filePath, "utf-8")) as Partial<PersistedSession>;
+  } catch {
+    // No prior file (fresh session) or unreadable JSON — nothing to preserve.
+  }
+  writeFileSync(filePath, JSON.stringify(preserveRefinedSessionMeta(session, prev), null, 2));
 }
 
 function loadHistory(stateDir: string): unknown[] {
@@ -209,6 +224,12 @@ async function recordSession(opts: {
     opts.sessionName,
     existingEntry?.sessionName,
   );
+  // Preserve the refined title / summary the agent set via `pneuma session
+  // refine`. recordSession always carries the mode-derived default
+  // displayName and no description, so without this a plain resume would
+  // clobber the refined meta back to "<Mode> session" + first-message
+  // preview. Same survives-resume pattern as effectiveSessionName above.
+  const refinedMeta = pickRefinedMeta(opts.displayName, existingEntry);
 
   if (opts.startup.kind === "project") {
     // Project session: build the session entry first, then conditionally
@@ -224,12 +245,14 @@ async function recordSession(opts: {
       sessionId: opts.startup.sessionId,
       projectRoot,
       mode: opts.mode,
-      displayName: opts.displayName,
+      displayName: refinedMeta.displayName,
       sessionName: effectiveSessionName,
       sessionDir: opts.startup.paths.sessionDir,
       backendType: opts.backendType,
       lastAccessed: Date.now(),
       editing: opts.editing,
+      ...(refinedMeta.description !== undefined ? { description: refinedMeta.description } : {}),
+      ...(refinedMeta.refinedAt !== undefined ? { refinedAt: refinedMeta.refinedAt } : {}),
     };
 
     next = upsertSession(data, sessionEntry);
@@ -255,13 +278,15 @@ async function recordSession(opts: {
       id: candidateId,
       kind: "quick",
       mode: opts.mode,
-      displayName: opts.displayName,
+      displayName: refinedMeta.displayName,
       sessionName: effectiveSessionName,
       workspace: opts.workspace,
       sessionDir: opts.startup.paths.sessionDir,
       backendType: opts.backendType,
       lastAccessed: Date.now(),
       editing: opts.editing,
+      ...(refinedMeta.description !== undefined ? { description: refinedMeta.description } : {}),
+      ...(refinedMeta.refinedAt !== undefined ? { refinedAt: refinedMeta.refinedAt } : {}),
     };
 
     next = upsertSession(data, sessionEntry);

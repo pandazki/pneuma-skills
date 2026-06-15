@@ -10,6 +10,7 @@ import {
   upsertSession,
   upsertProject,
   pickSessionName,
+  pickRefinedMeta,
   pickArchived,
   archiveProject,
   restoreProject,
@@ -384,6 +385,81 @@ describe("pickSessionName (Fix 2 — preserve rename across no-arg resume)", () 
       lastAccessed: 2,
     });
     expect(data.sessions[0].sessionName).toBe("Hero Page");
+    expect(data.sessions[0].lastAccessed).toBe(2);
+  });
+});
+
+describe("pickRefinedMeta (preserve refined title/summary across no-arg resume)", () => {
+  test("falls back to the incoming default when the entry was never refined", () => {
+    expect(pickRefinedMeta("WebCraft", undefined)).toEqual({ displayName: "WebCraft" });
+    expect(
+      pickRefinedMeta("WebCraft", { displayName: "WebCraft" }),
+    ).toEqual({ displayName: "WebCraft" });
+  });
+
+  test("keeps the refined displayName / description / refinedAt when refinedAt is present", () => {
+    expect(
+      pickRefinedMeta("WebCraft", {
+        displayName: "Tanka Flow 用量趋势页",
+        description: "更新最近三周用户量与每日消息数趋势",
+        refinedAt: 1700,
+      }),
+    ).toEqual({
+      displayName: "Tanka Flow 用量趋势页",
+      description: "更新最近三周用户量与每日消息数趋势",
+      refinedAt: 1700,
+    });
+  });
+
+  test("a refined entry without a description keeps just the title + timestamp", () => {
+    expect(
+      pickRefinedMeta("Doc", { displayName: "Refined title", refinedAt: 42 }),
+    ).toEqual({ displayName: "Refined title", refinedAt: 42 });
+  });
+
+  test("falls back to the incoming displayName if a refined entry somehow lacks one", () => {
+    expect(
+      pickRefinedMeta("WebCraft", { refinedAt: 99 }),
+    ).toEqual({ displayName: "WebCraft", refinedAt: 99 });
+  });
+
+  test("end-to-end via upsert: refined title survives a no-arg default-displayName resume", () => {
+    // Simulates: agent refines the session (registry holds the refined trio),
+    // then the user resumes with `pneuma webcraft` — recordSession rebuilds
+    // the entry carrying only the default "WebCraft" displayName. The refined
+    // values must survive rather than reverting to the mode default.
+    let data: SessionsFile = upsertSession(
+      { projects: [], sessions: [] },
+      {
+        id: "/ws::webcraft",
+        kind: "quick",
+        mode: "webcraft",
+        displayName: "驱动数据协同进化",
+        description: "整理材料成文档并重做一份汇报页",
+        refinedAt: 1234,
+        workspace: "/ws",
+        sessionDir: "/ws",
+        backendType: "claude-code",
+        lastAccessed: 1,
+      },
+    );
+    const existing = data.sessions.find((s) => s.id === "/ws::webcraft");
+    const refined = pickRefinedMeta("WebCraft", existing);
+    data = upsertSession(data, {
+      id: "/ws::webcraft",
+      kind: "quick",
+      mode: "webcraft",
+      displayName: refined.displayName,
+      ...(refined.description !== undefined ? { description: refined.description } : {}),
+      ...(refined.refinedAt !== undefined ? { refinedAt: refined.refinedAt } : {}),
+      workspace: "/ws",
+      sessionDir: "/ws",
+      backendType: "claude-code",
+      lastAccessed: 2,
+    });
+    expect(data.sessions[0].displayName).toBe("驱动数据协同进化");
+    expect(data.sessions[0].description).toBe("整理材料成文档并重做一份汇报页");
+    expect(data.sessions[0].refinedAt).toBe(1234);
     expect(data.sessions[0].lastAccessed).toBe(2);
   });
 });

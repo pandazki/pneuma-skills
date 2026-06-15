@@ -166,6 +166,11 @@ async function importOneSession(
     backendType: source.backendType,
     lastAccessed: now,
     editing: source.editing,
+    // Carry the refined title/summary across the import — rebuilding the
+    // entry from scratch would otherwise drop them, the same defect
+    // pickRefinedMeta guards on the resume path.
+    ...(source.description !== undefined ? { description: source.description } : {}),
+    ...(source.refinedAt !== undefined ? { refinedAt: source.refinedAt } : {}),
   };
 
   const info: ImportedSessionInfo = {
