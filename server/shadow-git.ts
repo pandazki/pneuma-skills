@@ -1,15 +1,162 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 const SHADOW_DIR_NAME = "shadow.git";
-const EXCLUDE_RULES = `.pneuma
-node_modules
-.DS_Store
-dist
-.env
-.env.*
-*.log
-`;
+
+/** Skip any single file larger than this from checkpoints (defense-in-depth). */
+const MAX_CHECKPOINT_FILE_BYTES = 100 * 1024 * 1024; // 100 MB
+
+/** Marker lines delimiting the size-cap-managed section of `info/exclude`. */
+const OVERSIZED_BEGIN = "# >>> pneuma:oversized";
+const OVERSIZED_END = "# <<< pneuma:oversized";
+
+/**
+ * Base exclude rules applied in BOTH topologies (quick + project session).
+ *
+ * Beyond the heavy/ephemeral dirs every workspace wants gone, this includes
+ * pneuma's own repo artifacts (`shadow.git`, `checkpoints.jsonl`) as bare
+ * tokens. In a quick session those already live under `.pneuma` (so they are
+ * redundant-but-harmless); in a project session the work-tree IS the session
+ * dir, so without these the shadow repo would re-commit its own ever-growing
+ * object store every turn — an O(N^2) self-referential disk blowup.
+ *
+ * Deliberately NOT excluded: `build` / `target` / `out` — those can be
+ * legitimate mode deliverables.
+ */
+const BASE_EXCLUDE_RULES = [
+  ".pneuma",
+  "node_modules",
+  ".DS_Store",
+  "dist",
+  ".env",
+  ".env.*",
+  "*.log",
+  ".venv",
+  "venv",
+  "__pycache__",
+  "*.pyc",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
+  "shadow.git",
+  "checkpoints.jsonl",
+];
+
+/**
+ * Additional rules applied ONLY when the work-tree root IS the session state
+ * dir (project-session topology, `resolve(stateDir) === resolve(workspace)`).
+ *
+ * In that topology the work-tree is pneuma's own session dir, so these session
+ * bookkeeping / scaffolding paths sit at the work-tree ROOT and are never the
+ * user's deliverable (deliverables live in named content subdirs). Each is
+ * ROOT-ANCHORED with a leading `/` so a same-named file inside a user content
+ * subdir (e.g. `deck/CLAUDE.md`) is NOT excluded.
+ */
+const PROJECT_ROOT_EXCLUDE_RULES = [
+  "/session.json",
+  "/history.json",
+  "/config.json",
+  "/skill-version.json",
+  "/skill-dismissed.json",
+  "/deploy.json",
+  "/viewer-state.json",
+  "/thumbnail.png",
+  "/captures/",
+  "/evolution/",
+  "/onboard/",
+  "/inbound-handoff.json",
+  "/.claude/",
+  "/.agents/",
+  "/.kimi/",
+  "/CLAUDE.md",
+  "/AGENTS.md",
+];
+
+/**
+ * Build the static exclude ruleset for a session given its topology. The
+ * project-session root-anchored rules are appended only when the work-tree
+ * root is itself the session state dir.
+ */
+function buildExcludeRules(resolvedStateDir: string, workspace: string): string[] {
+  const rules = [...BASE_EXCLUDE_RULES];
+  if (resolve(resolvedStateDir) === resolve(workspace)) {
+    rules.push(...PROJECT_ROOT_EXCLUDE_RULES);
+  }
+  return rules;
+}
+
+/**
+ * Plumbing paths to untrack (`git rm --cached`) on resume. Mirrors the static
+ * exclude rules but WITHOUT the leading `/` git-anchor (the rm path is already
+ * work-tree-relative and rooted). Returns paths that, if already tracked from a
+ * pre-fix session, must stop being tracked so growth halts.
+ */
+function untrackablePlumbingPaths(resolvedStateDir: string, workspace: string): string[] {
+  const paths = ["shadow.git", "checkpoints.jsonl"];
+  if (resolve(resolvedStateDir) === resolve(workspace)) {
+    for (const rule of PROJECT_ROOT_EXCLUDE_RULES) {
+      // Strip the leading "/" anchor and any trailing "/" dir marker.
+      paths.push(rule.replace(/^\//, "").replace(/\/$/, ""));
+    }
+  }
+  return paths;
+}
+
+/**
+ * Serialize the static (non-size-cap) portion of `info/exclude`. The size-cap
+ * managed section, if present in the existing file, is preserved verbatim and
+ * re-appended so per-file caps accumulated across turns survive a rewrite.
+ */
+function serializeExclude(rules: string[], existing?: string): string {
+  let body = rules.join("\n") + "\n";
+  const managed = existing ? extractOversizedBlock(existing) : null;
+  if (managed) body += managed;
+  return body;
+}
+
+/** Extract the oversized-managed block (markers inclusive) from an exclude file. */
+function extractOversizedBlock(content: string): string | null {
+  const begin = content.indexOf(OVERSIZED_BEGIN);
+  if (begin < 0) return null;
+  const end = content.indexOf(OVERSIZED_END, begin);
+  if (end < 0) return null;
+  return content.slice(begin, end + OVERSIZED_END.length) + "\n";
+}
+
+/** Parse the root-anchored paths already recorded in the oversized block. */
+function parseOversizedPaths(content: string): Set<string> {
+  const block = extractOversizedBlock(content);
+  const paths = new Set<string>();
+  if (!block) return paths;
+  for (const raw of block.split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    paths.add(line.replace(/^\//, ""));
+  }
+  return paths;
+}
+
+/**
+ * Render `info/exclude` with the oversized block replaced/created from `paths`.
+ * Static rules are preserved verbatim; only the managed section is rewritten,
+ * so the block is idempotent across turns (no duplicated static rules).
+ */
+function withOversizedBlock(content: string, paths: Set<string>): string {
+  // Strip any existing managed block first.
+  let base = content;
+  const begin = base.indexOf(OVERSIZED_BEGIN);
+  if (begin >= 0) {
+    const end = base.indexOf(OVERSIZED_END, begin);
+    if (end >= 0) {
+      base = base.slice(0, begin) + base.slice(end + OVERSIZED_END.length);
+    }
+  }
+  base = base.replace(/\n+$/, "") + "\n";
+  if (paths.size === 0) return base;
+  const sorted = [...paths].sort();
+  const block = [OVERSIZED_BEGIN, ...sorted.map((p) => `/${p}`), OVERSIZED_END].join("\n");
+  return base + block + "\n";
+}
 
 /**
  * State directory where `shadow.git` and `checkpoints.jsonl` live.
@@ -52,9 +199,28 @@ export async function initShadowGit(workspace: string, stateDir?: string): Promi
   const resolvedStateDir = resolveStateDir(workspace, stateDir);
   const dir = join(resolvedStateDir, SHADOW_DIR_NAME);
 
-  // Idempotent — skip if already initialized
+  // Idempotent — already initialized. We still re-apply the current ruleset so
+  // sessions created before a rules change (e.g. the self-reference fix) pick up
+  // the new excludes and stop tracking now-excluded plumbing. Best-effort: a
+  // failure here must never disable an otherwise-healthy session.
   if (existsSync(join(dir, "HEAD"))) {
+    // Register first so shadowGit()/gitDir() resolve against this stateDir.
     stateDirByWorkspace.set(workspace, resolvedStateDir);
+    try {
+      const excludePath = join(dir, "info", "exclude");
+      const existing = existsSync(excludePath) ? readFileSync(excludePath, "utf-8") : undefined;
+      await Bun.write(excludePath, serializeExclude(buildExcludeRules(resolvedStateDir, workspace), existing));
+
+      // Untrack any plumbing that a pre-fix session already committed. The next
+      // checkpoint's `add -A` + commit finalizes the removal; ignored/untracked
+      // files are never re-added.
+      await shadowGit(workspace, [
+        "rm", "-r", "--cached", "--ignore-unmatch",
+        ...untrackablePlumbingPaths(resolvedStateDir, workspace),
+      ]).exited;
+    } catch (err) {
+      console.warn("[shadow-git] resume re-exclude failed (continuing):", err);
+    }
     return;
   }
 
@@ -66,8 +232,9 @@ export async function initShadowGit(workspace: string, stateDir?: string): Promi
     await Bun.spawn(["git", `--git-dir=${dir}`, "config", "user.email", "pneuma@local"], { stdout: "ignore" }).exited;
     await Bun.spawn(["git", `--git-dir=${dir}`, "config", "user.name", "Pneuma Shadow"], { stdout: "ignore" }).exited;
 
-    // Write exclude rules
-    await Bun.write(join(dir, "info", "exclude"), EXCLUDE_RULES);
+    // Write exclude rules (topology-aware: project sessions whose work-tree IS
+    // the session dir also exclude the root-anchored bookkeeping files).
+    await Bun.write(join(dir, "info", "exclude"), serializeExclude(buildExcludeRules(resolvedStateDir, workspace)));
 
     // Register before we run the initial commit so shadowGit() resolves stateDir correctly.
     stateDirByWorkspace.set(workspace, resolvedStateDir);
@@ -118,6 +285,11 @@ async function captureCheckpointInner(workspace: string, turnIndex: number): Pro
 
   if (diffExit === 0 && !untracked) return;
 
+  // Defense-in-depth: keep any single oversized file out of the snapshot. Bound
+  // the work to changed paths only (new + modified-tracked), so latency stays
+  // proportional to the turn's churn, not the whole work-tree.
+  await enforceFileSizeCap(workspace, untracked);
+
   await shadowGit(workspace, ["add", "-A"]).exited;
   await shadowGit(workspace, ["commit", "-m", `turn-${turnIndex}`]).exited;
 
@@ -141,6 +313,58 @@ async function captureCheckpointInner(workspace: string, turnIndex: number): Pro
 
   const entry = JSON.stringify({ turn: turnIndex, ts: Date.now(), hash }) + "\n";
   appendFileSync(checkpointsIndexPath(workspace), entry);
+}
+
+/**
+ * Skip any single changed file exceeding {@link MAX_CHECKPOINT_FILE_BYTES}.
+ *
+ * Candidates = newly-untracked paths (passed in, already computed by the caller)
+ * plus modified-tracked paths (`git diff --name-only HEAD`). Each is stat'd; any
+ * over the cap is appended to the managed oversized block in `info/exclude`
+ * (deduped across turns) and, if currently tracked, dropped from the index via
+ * `git rm --cached`. Best-effort — a failure here must not abort the checkpoint.
+ */
+async function enforceFileSizeCap(workspace: string, untracked: string): Promise<void> {
+  try {
+    const dir = gitDir(workspace);
+    const candidates = new Set<string>();
+    for (const p of untracked.split("\n").map((l) => l.trim()).filter(Boolean)) candidates.add(p);
+
+    const modifiedProc = shadowGit(workspace, ["diff", "--name-only", "HEAD"], { stdout: "pipe" });
+    const modified = (await new Response(modifiedProc.stdout as ReadableStream<Uint8Array>).text()).trim();
+    for (const p of modified.split("\n").map((l) => l.trim()).filter(Boolean)) candidates.add(p);
+
+    if (candidates.size === 0) return;
+
+    const oversized: string[] = [];
+    for (const rel of candidates) {
+      let size = 0;
+      try {
+        size = statSync(join(workspace, rel)).size;
+      } catch {
+        continue; // deleted/unreadable — git will reconcile via `add -A`
+      }
+      if (size > MAX_CHECKPOINT_FILE_BYTES) oversized.push(rel);
+    }
+    if (oversized.length === 0) return;
+
+    const excludePath = join(dir, "info", "exclude");
+    const existing = existsSync(excludePath) ? readFileSync(excludePath, "utf-8") : "";
+    const recorded = parseOversizedPaths(existing);
+    const fresh = oversized.filter((p) => !recorded.has(p));
+    for (const p of oversized) {
+      recorded.add(p);
+      console.warn(`[shadow-git] skipping oversized file (> ${MAX_CHECKPOINT_FILE_BYTES} bytes): ${p}`);
+    }
+    await Bun.write(excludePath, withOversizedBlock(existing, recorded));
+
+    // Drop from the index if any oversized path was already tracked.
+    if (fresh.length > 0) {
+      await shadowGit(workspace, ["rm", "--cached", "--ignore-unmatch", ...fresh]).exited;
+    }
+  } catch (err) {
+    console.warn("[shadow-git] size-cap enforcement failed (continuing):", err);
+  }
 }
 
 function checkpointsIndexPath(workspace: string, stateDir?: string): string {
