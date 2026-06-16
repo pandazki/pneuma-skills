@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.22.7] - 2026-06-16
+
+### Fixed
+
+- **Shadow-git no longer snapshots itself into a multi-gigabyte runaway** — in a project session the checkpoint work-tree IS the per-session state dir (`.pneuma/sessions/<id>/`), which physically holds `shadow.git/` along with `history.json`, `.claude/`, and the rest of pneuma's bookkeeping. The exclude rules only knew the quick-session layout (a single `.pneuma` token), so nothing matched at the project work-tree root: every turn re-committed the shadow repo's own ever-growing object store, and git's periodic repack rolled that into ~1.5 GB packs that were themselves re-committed — an O(N²) disk blowup (one observed 37-turn session reached 27 GB, of which 99.96% was the shadow repo snapshotting its own pack files). Exclude rules are now topology-aware: project sessions additionally drop the root-anchored session bookkeeping (`/session.json`, `/.claude/`, `/CLAUDE.md`, `/captures/`, …), and every session drops `shadow.git`, `checkpoints.jsonl`, and heavy ephemerals (`.venv`, `__pycache__`, `.mypy_cache`, …). Resuming a pre-existing session now rewrites its exclude file and untracks already-committed plumbing, so in-flight sessions self-heal on next launch; a 100 MB per-file cap keeps any single oversized artifact out of checkpoints. Already-bloated shadow repos are reclaimed by deleting `shadow.git` + `checkpoints.jsonl` (work-tree deliverables untouched) — they rebuild cleanly on next launch.
+
 ## [3.22.6] - 2026-06-15
 
 ### Fixed
