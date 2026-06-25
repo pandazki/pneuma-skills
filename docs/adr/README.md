@@ -20,6 +20,7 @@
 | [ADR-012](./adr-012-backend-runtime-abstraction.md) | Backend Registry 与运行时会话抽象 | Accepted | 2026-03-10 |
 | [ADR-013](./adr-013-history-sharing-replay.md) | History 分享与重放 | Accepted (实现于 2.x，shadow-git + replay) | 2026-03-20 |
 | [ADR-014](./adr-014-user-preference-analysis.md) | 用户偏好分析系统 | Accepted | 2026-03-31 |
+| [ADR-015](./adr-015-borrow-peer-handoff.md) | Borrow — 对等/往返跨模式委托 | Accepted | 2026-06-25 |
 
 ## 约定
 

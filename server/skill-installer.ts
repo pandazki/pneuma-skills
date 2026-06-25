@@ -19,6 +19,7 @@ import { join, dirname, extname } from "node:path";
 import { homedir } from "node:os";
 import type { SkillConfig, ViewerApiConfig, McpServerConfig, SkillDependency } from "../core/types/mode-manifest.js";
 import { isProjectManifest, type ProjectManifest } from "../core/types/project-manifest.js";
+import { normalizeBorrowScope, type BorrowDispatchPayload } from "../core/types/borrow.js";
 import { getInstallConventions } from "../backends/index.js";
 
 /**
@@ -409,6 +410,118 @@ export function buildHandoffSection(payload: InboundHandoffPayload | null): stri
   }
   lines.push(
     `Read suggested files in order, acknowledge in your first reply, then \`rm .pneuma/inbound-handoff.json\` and start the work.`,
+  );
+  return lines.join("\n").trimEnd();
+}
+
+/**
+ * Read the borrow brief, if any, dropped at this session's
+ * `.pneuma/borrow-brief.json` by `/api/borrows/dispatch` *before* the borrow
+ * target B was spawned (design §4.4-a, §8 disk surface). Its existence at
+ * session start is B's "you were borrowed for a bounded sub-task" signal —
+ * distinct from an inbound handoff (which is a terminal takeover). B reads it,
+ * does the bounded job, then calls `pneuma borrow-return` and `rm`s the brief.
+ *
+ * The brief is a {@link BorrowDispatchPayload} with the server-filled
+ * `return_via` (so B knows where to POST its result). Returns null on missing /
+ * unreadable / malformed JSON, or when the required `mode` + `brief` +
+ * `return_via.borrow_id` fields are absent — callers treat that as "no borrow".
+ */
+export function readBorrowBrief(sessionDir: string): BorrowDispatchPayload | null {
+  const path = join(sessionDir, ".pneuma", "borrow-brief.json");
+  if (!existsSync(path)) return null;
+  try {
+    const raw = readFileSync(path, "utf-8");
+    const parsed = JSON.parse(raw) as Partial<BorrowDispatchPayload>;
+    if (!parsed || typeof parsed !== "object") return null;
+    if (typeof parsed.mode !== "string" || parsed.mode.trim().length === 0) return null;
+    if (typeof parsed.brief !== "string" || parsed.brief.trim().length === 0) return null;
+    const borrowId = parsed.return_via?.borrow_id;
+    if (typeof borrowId !== "string" || borrowId.trim().length === 0) return null;
+    return parsed as BorrowDispatchPayload;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build the body of the `pneuma:handoff` block for a borrow brief. Reuses the
+ * SAME marker block as an inbound handoff (design §4.4-a — one seam, not a
+ * parallel reader/writer) but frames the content as a *borrow*: B did NOT take
+ * over a session, it was lent out for one bounded job and must RETURN a result.
+ *
+ * The return obligation (`pneuma borrow-return` + the `return_via` coordinates
+ * B copies into the call) is taught INLINE here, not only in the
+ * `pneuma-project` skill — a quick-session borrow runs in a temp dir that never
+ * gets the project skill, so the block must be self-sufficient. Returns null
+ * when there's no brief (callers skip injection / strip a stale block).
+ */
+export function buildBorrowSection(brief: BorrowDispatchPayload | null): string | null {
+  if (!brief) return null;
+  const lines: string[] = [];
+  const scope = normalizeBorrowScope(brief.scope);
+  const borrowId = brief.return_via?.borrow_id ?? "";
+  const hostServerUrl = brief.return_via?.host_server_url ?? "";
+
+  lines.push(`**Borrow — you were lent out for a bounded sub-task** (borrow \`${borrowId}\`)`);
+  lines.push("");
+  lines.push(
+    `A host session asked your mode (\`${brief.mode}\`) to do ONE bounded job and return the result — you did NOT take over a session. When you finish, control returns to the host. Do the job, then call \`pneuma borrow-return\` (below). Do not start unrelated work.`,
+  );
+  lines.push("");
+
+  lines.push(`**The job**: ${brief.brief}`);
+  lines.push("");
+
+  if (brief.summary) {
+    lines.push(`**Context**: ${brief.summary}`);
+    lines.push("");
+  }
+  if (brief.expects) {
+    lines.push(`**Expected deliverable**: ${brief.expects}`);
+    lines.push("");
+  }
+  if (brief.inputs?.length) {
+    lines.push("**Read these inputs** (read-only) **in order**:");
+    for (const f of brief.inputs) lines.push(`- \`${f}\``);
+    lines.push("");
+  }
+
+  if (scope === "in-place") {
+    lines.push(
+      "**Scope: `in-place`** — you MAY edit the host files named below directly, then list them in `applied_in_place`:",
+    );
+    for (const f of brief.in_place_targets ?? []) lines.push(`- \`${f}\``);
+    lines.push("");
+  } else {
+    lines.push(
+      "**Scope: `return`** (default) — produce your deliverable(s) in your OWN session dir (`$PNEUMA_SESSION_DIR`), NOT in the host's files. The host is the sole writer of its canonical artifact; it applies your result itself. Report each file you produced under `produced[]` plus `change_notes` explaining WHAT changed and WHY.",
+    );
+    lines.push("");
+  }
+
+  if (brief.language) {
+    lines.push(
+      `**Reply language**: \`${brief.language}\` — the host conversation is in this language. Use it for all user-visible copy you produce unless told otherwise.`,
+    );
+    lines.push("");
+  }
+
+  lines.push("**When the job is done**, call the borrow-return CLI through `$PNEUMA_CLI`:");
+  lines.push("");
+  lines.push("```bash");
+  lines.push("$PNEUMA_CLI borrow-return --json '{");
+  lines.push(`  "borrow_id": "${borrowId}",`);
+  lines.push(`  "mode": "${brief.mode}",`);
+  lines.push('  "status": "completed",');
+  lines.push('  "produced": [{ "path": "<absolute path you wrote>", "kind": "...", "role": "..." }],');
+  lines.push('  "change_notes": "<what changed and why, in your voice>",');
+  lines.push(`  "return_via": { "borrow_id": "${borrowId}", "host_server_url": "${hostServerUrl}" }`);
+  lines.push("}'");
+  lines.push("```");
+  lines.push("");
+  lines.push(
+    "Then `rm .pneuma/borrow-brief.json`. The host is notified at its next idle boundary and reads your result — you do not need to message it directly.",
   );
   return lines.join("\n").trimEnd();
 }
@@ -1431,8 +1544,19 @@ export function installSkill(options: InstallSkillOptions): void {
   //     reads the file (path quoted in the block) and rms it after consuming.
   //     No inbound file → strip any stale block from a prior install for
   //     idempotency.
-  const inbound = readInboundHandoff(installTarget);
-  content = injectHandoffSection(content, buildHandoffSection(inbound));
+  //
+  //     A borrow brief (`borrow-brief.json`) reuses the SAME marker block but
+  //     with borrow framing (design §4.4-a). It is the MORE SPECIFIC provenance
+  //     — a borrow target was lent out for a bounded job, not handed a session
+  //     to take over — so when both files exist the borrow brief wins. The
+  //     borrow body teaches the `pneuma borrow-return` obligation inline.
+  const borrowBrief = readBorrowBrief(installTarget);
+  if (borrowBrief) {
+    content = injectHandoffSection(content, buildBorrowSection(borrowBrief));
+  } else {
+    const inbound = readInboundHandoff(installTarget);
+    content = injectHandoffSection(content, buildHandoffSection(inbound));
+  }
 
   // Write instructions file
   mkdirSync(dirname(primaryInstructionsPath), { recursive: true });

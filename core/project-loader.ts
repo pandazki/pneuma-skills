@@ -226,6 +226,15 @@ export async function scanProjectSessions(
         description?: string;
         refinedAt?: number;
         createdAt?: number;
+        /** Session-level internal flag (set directly by some writers). */
+        internal?: boolean;
+        /**
+         * Borrow provenance — present on a borrow sub-session B spawned for a
+         * host session A. B runs a normal user mode, so the mode's `hidden`
+         * flag is false; this session-level marker is what keeps B out of
+         * user-facing lists (design §13.3).
+         */
+        borrow?: unknown;
       };
       if (typeof data.mode !== "string") continue;
       // The directory name is the canonical session id — it's what `/api/launch`
@@ -305,7 +314,16 @@ export async function scanProjectSessions(
           ? { description: data.description }
           : {}),
         ...(typeof data.refinedAt === "number" ? { refinedAt: data.refinedAt } : {}),
-        ...(isHiddenMode(data.mode) ? { internal: true } : {}),
+        // A session is internal when EITHER its mode is hidden (project-tidy,
+        // evolve, …) OR the session itself is provenance-marked — a borrow
+        // sub-session, or any writer that stamped `internal: true` directly.
+        // The latter two key on a session-level field, not the mode's hidden
+        // flag, so a borrow running a normal user mode still stays filtered.
+        ...(isHiddenMode(data.mode) ||
+        data.internal === true ||
+        (data.borrow !== undefined && data.borrow !== null)
+          ? { internal: true }
+          : {}),
       });
     } catch {
       // skip corrupt session

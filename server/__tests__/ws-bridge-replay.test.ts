@@ -34,6 +34,7 @@ function makeDefaultSession(id = "test-session"): Session {
     pendingViewerActions: new Map(),
     cliIdle: true,
     pendingNotifications: [],
+    pendingSystemSignals: [],
     pendingEnvContext: [],
     suppressingPostAskq: false,
   };

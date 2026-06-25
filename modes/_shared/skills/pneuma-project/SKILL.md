@@ -256,11 +256,78 @@ Treat this as a **system briefing**. Its content takes precedence over your defa
 
 Don't ignore an inbound handoff. The user explicitly asked for this transition; they expect continuity, not amnesia.
 
+## Borrowing — delegating a bounded sub-task to another mode
+
+A **handoff** is a *goto*: you leave, the target takes over, control doesn't come back. A **borrow** is a *subroutine call*: you stay live and in the foreground, you lend out one bounded job to another mode, it does the job in a background sub-session and **returns** a result, and you fold that result into your work. Use a borrow when **you want another mode's craft for a piece of what you're building, but you keep owning the whole.**
+
+Driving examples:
+
+- You're in `webcraft` with a finished, styled landing page. The prose needs the writing-taste treatment that lives in `wordtaste`. You **borrow `wordtaste`** to polish the copy, get polished markdown + change-notes back, and **you** weave it into the page (adapting it to your layout and visual tone — that's your job, not the borrowed mode's).
+- You're in `webcraft` and need a logo. You **borrow `illustrate`** to produce one, get the file path back, and **you** place it in the page.
+
+### Emitting a borrow (you are the host)
+
+When the user wants another mode's capability for a bounded piece of your work — or you see a `<pneuma:request-borrow mode="..." />` tag arrive in chat — prepare a tight, bounded **brief** and call the borrow CLI through `$PNEUMA_CLI` (the env var resolves to the right invocation regardless of how Pneuma was installed):
+
+```bash
+$PNEUMA_CLI borrow --mode wordtaste --json '{
+  "brief": "Polish the hero + about copy in the user'\''s confident, restrained voice. Keep it tight.",
+  "inputs": ["site/index.html", "brand/voice.md"],
+  "expects": "polished markdown for each section + a per-section change-notes list mapping original → revised with a one-line rationale",
+  "scope": "return"
+}'
+```
+
+Field reference:
+
+| Field | Required | Notes |
+|---|---|---|
+| `mode` (via `--mode`) | yes | The mode to borrow (e.g. `wordtaste`, `illustrate`, `doc`) |
+| `brief` | yes | The ONE bounded job, stated for the borrowed mode's first turn. Keep it scoped — a borrow is a sub-task, not an open-ended session |
+| `inputs` | recommended | Host files/dirs the borrowed mode should read (read-only). Absolute or project-relative paths |
+| `expects` | recommended | What it must produce, in its terms — be concrete about the deliverable shape |
+| `scope` | no | `"return"` (default) — it returns content + notes, **you** apply them. `"in-place"` — it edits host files you name in `in_place_targets` directly (only for media it genuinely owns, e.g. regenerating an existing asset) |
+| `in_place_targets` | only for `in-place` | Host files the borrowed mode may edit directly |
+| `summary` | optional | Extra context the brief alone can't carry |
+
+The CLI returns `{ borrow_id, state }` and **exits immediately** — the borrowed mode runs in the background. **You stay live and keep talking to the user.** Do not block waiting; carry on with whatever else the user wants.
+
+**Default to `scope: "return"`.** You own your medium (the page, the deck, the doc); the borrowed mode owns its craft (the prose, the image). It produces the best version *in its terms*; *you* adapt and place it so the whole stays unified. Reach for `in-place` only when the borrowed mode genuinely owns the exact file (e.g. regenerating `assets/logo.png`).
+
+### Receiving the result (control returns to you)
+
+When the borrowed mode finishes, you'll see a tag arrive at a safe turn boundary (never mid-turn):
+
+```
+<pneuma:borrow-returned borrow_id="..." mode="wordtaste" status="completed" result_path="/abs/path/to/borrow-result.json" />
+```
+
+On this tag:
+
+1. **Read the `result_path` file.** It's a `BorrowResult`: `produced[]` (the deliverable paths), `change_notes` (what changed and why, in the borrowed mode's voice), optional `applied_in_place` and `open_questions`. Treat a missing/invalid file as a failed borrow — tell the user, don't fabricate.
+2. **For `scope: "return"`** — the result lives in the borrowed mode's reach. **You** apply it: read `produced[]`, weave the content into your host artifact, adapting it to your layout/medium. Surface the `change_notes` to the user so the application is a visible, reviewable step. Get the user's go-ahead before large rewrites.
+3. **For `scope: "in-place"`** — the borrowed mode already edited the host files in `applied_in_place`. Review them, reconcile with your medium, and surface what changed.
+4. **Address any `open_questions`** — propose answers or ask the user.
+
+A `status: "partial"` borrow still produced something useful but left open questions; a `failed` borrow produced nothing — handle both gracefully.
+
+### If you were borrowed (you are the borrowed mode)
+
+If you were spawned as a borrow target, your CLAUDE.md carries a `pneuma:handoff` block **framed as a borrow** (`<pneuma:env reason="borrow" .../>` on start). That block tells you the bounded job, the inputs, the expected deliverable, the `scope`, and — crucially — **the exact `pneuma borrow-return` call to make when you're done**, with the `borrow_id` + `host_server_url` pre-filled. Do the bounded job, write your deliverable(s) into your **own** session dir (for `scope: "return"`), then make that `borrow-return` call and `rm .pneuma/borrow-brief.json`. **Do not** treat it as a terminal handoff (you are not taking over) and **do not** start unrelated work — a borrow is one bounded job, then control returns to the host.
+
+### Borrow vs handoff — which to use
+
+- **Handoff** when the *center of gravity moves*: the user is done in this mode and continuing the work in another mode (brand identity → build the site → write the deck). You leave.
+- **Borrow** when the *center of gravity stays here*: you need one piece done in another mode's craft, then you keep building. You stay.
+
+Don't auto-borrow open-endedly. A borrow is a deliberate, bounded delegation — wait for a clear need (the user asks for another mode's capability, or a `<pneuma:request-borrow>` tag), keep the brief tight, and fold the result back yourself.
+
 ## Boundaries
 
 - Don't snoop sibling sessions. Use handoffs for cross-session context.
 - Don't write to other session dirs. Yours is `$PNEUMA_SESSION_DIR`.
 - Don't modify `project.json`. The user manages that via the launcher's edit dialog.
 - Don't auto-handoff. Wait for the user's `<pneuma:request-handoff>` tag.
+- Don't auto-borrow open-endedly. Borrow for a clear, bounded need; keep the brief tight; default to `scope: "return"` and apply the result yourself.
 - Don't write `$PNEUMA_PROJECT_ROOT/.pneuma/handoffs/<id>.md` files manually — that was the v1 protocol. Now the handoff goes through `$PNEUMA_CLI handoff`.
 - When uncertain about project-scoped intent (vs your local mode work), check `$PNEUMA_PROJECT_ROOT/.pneuma/preferences/profile.md` first.
