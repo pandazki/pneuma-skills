@@ -58,6 +58,15 @@ export interface Session {
   cliIdle: boolean;
   /** Queued viewer notifications to send when CLI becomes idle. */
   pendingNotifications: Array<{ type: string; message: string; severity: "info" | "warning"; images?: { media_type: string; data: string }[] }>;
+  /**
+   * Queued server-originated system tags (e.g. `<pneuma:borrow-returned>`) to
+   * deliver to the agent when the CLI next becomes idle. Sibling to
+   * `pendingNotifications` so a non-viewer signal rides the same flush-on-idle
+   * gate verbatim without borrowing the viewer-notification shape
+   * (`{ type, message, severity }`) or starving the viewer path — both queues
+   * drain one item per turn boundary. Each entry is a ready-to-send tag string.
+   */
+  pendingSystemSignals: string[];
   messageHistory: BrowserIncomingMessage[];
   /**
    * `<pneuma:env>` tags accumulate here until the user actually types
