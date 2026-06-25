@@ -862,6 +862,61 @@ async function main() {
     );
     process.exit(exitCode);
   }
+  if (rawArgs[0] === "borrow") {
+    // Dispatch leg of a borrow — host session A's agent runs this to borrow
+    // mode B's capability for one bounded job. POSTs to A's own server's
+    // /api/borrows/dispatch. Pre-banner so stdout is pure JSON for A to parse.
+    const { runBorrowCommand } = await import("./borrow-cli.js");
+    const exitCode = await runBorrowCommand(
+      rawArgs.slice(1),
+      {
+        PNEUMA_SERVER_URL: process.env.PNEUMA_SERVER_URL,
+        PNEUMA_SESSION_ID: process.env.PNEUMA_SESSION_ID,
+      },
+      {
+        stdout: (line) => console.log(line),
+        stderr: (line) => console.error(line),
+        readStdin: async () => {
+          const chunks: string[] = [];
+          for await (const chunk of process.stdin as unknown as AsyncIterable<Buffer>) {
+            chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
+          }
+          return chunks.join("");
+        },
+        fetch: async (url, init) => {
+          const res = await fetch(url, init);
+          return { status: res.status, json: () => res.json(), text: () => res.text() };
+        },
+      },
+    );
+    process.exit(exitCode);
+  }
+  if (rawArgs[0] === "borrow-return") {
+    // Return leg of a borrow — borrowed mode B's agent runs this on completion.
+    // Writes <Bdir>/borrow-result.json and pokes A's server's /api/borrows/return.
+    // Pre-banner so stdout is pure JSON.
+    const { runBorrowReturnCommand } = await import("./borrow-return-cli.js");
+    const exitCode = await runBorrowReturnCommand(
+      rawArgs.slice(1),
+      { PNEUMA_SESSION_DIR: process.env.PNEUMA_SESSION_DIR },
+      {
+        stdout: (line) => console.log(line),
+        stderr: (line) => console.error(line),
+        readStdin: async () => {
+          const chunks: string[] = [];
+          for await (const chunk of process.stdin as unknown as AsyncIterable<Buffer>) {
+            chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
+          }
+          return chunks.join("");
+        },
+        fetch: async (url, init) => {
+          const res = await fetch(url, init);
+          return { status: res.status, json: () => res.json(), text: () => res.text() };
+        },
+      },
+    );
+    process.exit(exitCode);
+  }
   if (rawArgs[0] === "mode" && rawArgs[1] === "list" && rawArgs.includes("--local")) {
     const asJson = rawArgs.includes("--json");
     const { enumerateLocalModes } = await import("../core/local-modes.js");
