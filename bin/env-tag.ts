@@ -3,11 +3,16 @@
  * injects as the first user-side message after the agent connects.
  *
  * The skill (`pneuma-project/SKILL.md`) teaches the agent how to read the
- * tag's `reason` attribute and adjust its first response. Three reasons:
+ * tag's `reason` attribute and adjust its first response. Four reasons:
  *
  *   - `opened`     — fresh start (mode card, "+ New session", launcher)
  *   - `switched`   — clicked a sibling session in ProjectPanel (no Smart Handoff)
  *   - `handed-off` — confirmed Smart Handoff (`inbound-handoff.json` present)
+ *   - `borrow`     — spawned as a borrow target (`borrow-brief.json` present): a
+ *                    bounded sub-task for a live host session A, with a return
+ *                    obligation. Distinct from `handed-off` (which is terminal —
+ *                    A is gone) so the skill can teach B to finish + call
+ *                    `pneuma borrow-return` rather than treat the job as a takeover.
  *
  * Symmetric with the viewer's `<viewer-context>` — informational, not
  * directive; the agent decides what to do based on the user's next message.
@@ -53,6 +58,19 @@ export interface EnvTagInput {
   fromMode?: string;
   fromDisplayName?: string;
   /**
+   * Borrow id when this session was spawned as a borrow target (the host A
+   * dispatched `pneuma borrow`, the server staged a `borrow-brief.json`, and
+   * `bin/pneuma.ts` threaded `--borrow <id>` into the child). Its presence
+   * selects `reason="borrow"` — the most specific provenance — which wins over
+   * the `inbound`/handed-off branch because a borrow brief is inbound-shaped
+   * (it reuses the handoff payload vocabulary for the host's context) yet must
+   * NOT be read as a terminal takeover. Empty / whitespace strings count as
+   * "not a borrow" and fall through to the normal opened/switched/handed-off
+   * resolution. Surfaced as the `borrow_id` attr so B's skill can wire the
+   * `pneuma borrow-return` obligation without re-deriving it from disk.
+   */
+  borrowId?: string;
+  /**
    * User's UI language preference (BCP-47 like "zh-CN", "ja", "en"). When
    * the user has explicitly picked a language in Pneuma's Language menu,
    * surface it to the agent so it can default replies, file names, and
@@ -79,7 +97,23 @@ export function buildEnvTag(input: EnvTagInput): string | null {
     parts.push(`${key}="${escapeXmlAttr(trimmed)}"`);
   };
 
-  if (input.inbound && input.inbound.handoff_id) {
+  const borrowId = input.borrowId?.trim();
+  if (borrowId) {
+    // Borrow target: the most specific provenance. A borrow brief is
+    // inbound-shaped, so `input.inbound` is typically also populated with the
+    // host's context — we surface that `from_*` context here too, but under
+    // `reason="borrow"` (not `handed-off`) plus the `borrow_id` the skill
+    // needs for the return leg. The host-context fields fall back to the
+    // bare `from*` flags when no inbound payload accompanies the borrow.
+    push("reason", "borrow");
+    push("project", input.projectName);
+    push("mode", input.mode);
+    push("borrow_id", borrowId);
+    push("from_session", input.inbound?.source_session_id ?? input.fromSessionId);
+    push("from_mode", input.inbound?.source_mode ?? input.fromMode);
+    push("from_display_name", input.inbound?.source_display_name ?? input.fromDisplayName);
+    push("language", input.inbound?.language);
+  } else if (input.inbound && input.inbound.handoff_id) {
     push("reason", "handed-off");
     push("project", input.projectName);
     push("mode", input.mode);
