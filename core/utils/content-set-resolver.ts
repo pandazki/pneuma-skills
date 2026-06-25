@@ -26,6 +26,18 @@ export interface DirectoryContentSetOptions {
    * to be the default rather than whichever name sorts alphabetically first.
    */
   priority?: string[];
+  /**
+   * Surface a content set even when only ONE qualifying directory exists.
+   *
+   * The default treats a single directory as "not switchable" and returns an
+   * empty array (no switcher chrome for a lone locale/theme dir). But some
+   * modes put each piece of content in its own subdirectory and rely on the
+   * content-set prefix purely to scope/strip file paths — for them a single
+   * content set MUST be surfaced so the store auto-activates it and the viewer
+   * reads `<prefix>/…` instead of the empty root (e.g. palate's worked-example,
+   * kami's single-demo case). Opt in with `allowSingle: true`.
+   */
+  allowSingle?: boolean;
 }
 
 /** Well-known BCP-47 language codes for auto-detection */
@@ -67,6 +79,7 @@ export function createDirectoryContentSetResolver(
   const parseName = options.parseName ?? defaultParseName;
   const minFiles = options.minFiles ?? 1;
   const dirPattern = options.dirPattern;
+  const allowSingle = options.allowSingle ?? false;
   const priorityIndex = new Map<string, number>(
     (options.priority ?? []).map((name, i) => [name, i]),
   );
@@ -101,8 +114,11 @@ export function createDirectoryContentSetResolver(
       });
     }
 
-    // Only return content sets if 2+ found — one directory isn't a switchable set
-    if (sets.length < 2) return [];
+    // By default, only return content sets if 2+ found — one directory isn't a
+    // switchable set. With `allowSingle`, a lone qualifying directory is still
+    // surfaced (modes that scope content by subdir prefix need it activated).
+    const floor = allowSingle ? 1 : 2;
+    if (sets.length < floor) return [];
 
     // Sort: explicit priority first (in declared order), then alphabetical
     // for everything else. The first element becomes the default selection.

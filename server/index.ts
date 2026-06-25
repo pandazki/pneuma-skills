@@ -550,7 +550,7 @@ export async function startServer(options: ServerOptions) {
     // their manifest and get filtered out below. The filter is the source
     // of truth; the omission-from-this-list pattern is fragile (forget to
     // add a hidden mode → it leaks).
-    const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft", "cosmos"];
+    const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft", "cosmos", "palate"];
     const builtins = builtinNames
       .map((name) => {
         const manifestPath = join(projectRoot, "modes", name, "manifest.ts");

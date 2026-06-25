@@ -1,0 +1,4 @@
+{"ai":"标准姿势到了这里会崴脚","human":"标准姿势到了这里会出问题","symptom":"ai-metaphor","by":"model-claude","user_validated":false}
+{"ai":"AI 反复要把他改回 DDP，像看见一个人出门不穿鞋一样不安","human":"AI 一次次把他往 DDP 里拽","symptom":"ai-metaphor","by":"model-claude","user_validated":false,"note":"砍掉廉价 stock 生动"}
+{"ai":"那个库有个没写在文档里的脾气","human":"某个库没写在文档里的隐性假设","symptom":"ai-metaphor","by":"model-claude","user_validated":false,"note":"去技术拟人"}
+{"ai":"至于看起来不一样，那只是后来才长出来的影子","human":"至于看起来不一样，那是结果，不是原因","symptom":"ai-metaphor->definitional-reflex","by":"model-claude","user_validated":false,"note":"按下葫芦起瓢：砍了影子又冒出定义反射——仍非终点，待用户亲手一锤。这正是要采集的金料"}

@@ -260,3 +260,50 @@ export function deriveAnnotations(
 ): DraftAnnotations | null {
   return loadAnnotations(files, contentSet);
 }
+
+// ── Annotation column layout (block-aligned margin notes, no overlap) ─────────
+
+/** One annotation group to place: anchored at its block's top, with a height. */
+export interface AnnotationLayoutItem {
+  id: string;
+  /** The vertical offset of the anchored block's top, in the column's space. */
+  anchorTop: number;
+  /** The measured height of the group's card stack. */
+  height: number;
+}
+
+/** The resolved vertical offset for an annotation group. */
+export interface AnnotationLayoutResult {
+  id: string;
+  top: number;
+}
+
+/**
+ * Resolve vertical collisions in the block-aligned annotation column — the
+ * standard margin-notes layout. Each group prefers to sit at its anchor block's
+ * top (`anchorTop`), but is pushed down just enough to clear the previous
+ * group's bottom plus `gap`, so cards never cover each other's text.
+ *
+ * The walk is the classic non-overlap pass: sort by `anchorTop`, then for each
+ * group set `top = max(anchorTop, previousResolvedBottom + gap)` where
+ * `bottom = top + height`. A group with a clear run before the next anchor stays
+ * exactly at its block; a dense cluster cascades downward. Pure and
+ * deterministic — heights/tops are measured by the viewer and fed in here so the
+ * collision math is unit-testable without a browser.
+ *
+ * Returns one result per input id, ordered by resolved `anchorTop`.
+ */
+export function layoutAnnotations(
+  items: ReadonlyArray<AnnotationLayoutItem>,
+  gap: number,
+): AnnotationLayoutResult[] {
+  const sorted = [...items].sort((a, b) => a.anchorTop - b.anchorTop);
+  const out: AnnotationLayoutResult[] = [];
+  let prevBottom = -Infinity;
+  for (const item of sorted) {
+    const top = Math.max(item.anchorTop, prevBottom + gap);
+    out.push({ id: item.id, top });
+    prevBottom = top + Math.max(0, item.height);
+  }
+  return out;
+}

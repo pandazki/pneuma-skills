@@ -83,6 +83,7 @@ import {
   deriveDraft,
   deriveTaste,
   deriveAnnotations,
+  layoutAnnotations,
   type DirectionChip,
   type PalateAddress,
 } from "./studio-logic.js";
@@ -437,6 +438,19 @@ export default function PalatePreview(props: ViewerPreviewProps) {
     [onNotifyAgent],
   );
 
+  // ── Export the article body (draft.md) as a clean .md download ───────────────
+  // The export is the article ALONE — no annotation column, no reading skin, no
+  // meta. draft.md is already pure body-only markdown, so the server route just
+  // streams it back with a download-safe filename. Relative URL so Vite's
+  // /export proxy reaches whichever backend port the server landed on. Mirrors
+  // kami's window.open export gesture (KamiPreview#handleExport).
+  const exportMarkdown = useCallback(() => {
+    const qs = new URLSearchParams();
+    if (cs) qs.set("contentSet", cs);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    window.open(`/export/palate/download${suffix}`, "_blank");
+  }, [cs]);
+
   // ── Agent → Viewer actions (propose-directions, navigate-to, mark-resolved) ──
   useEffect(() => {
     if (!actionRequest) return;
@@ -564,6 +578,8 @@ export default function PalatePreview(props: ViewerPreviewProps) {
         annotationsPresent={annotationsPresent}
         annotationsOn={showAnnotations}
         onToggleAnnotations={() => setShowAnnotations((v) => !v)}
+        canExport={!!draft && draft.blocks.length > 0}
+        onExport={exportMarkdown}
         readonly={readonly}
       />
 
@@ -1007,6 +1023,9 @@ const FALLBACK_SYMPTOMS: Symptom[] = [
 
 // ── Annotation column (right of the article, block-aligned) ─────────────────────
 
+/** Vertical gap kept between adjacent annotation cards when they collide. */
+const ANNOTATION_GAP = 12;
+
 function AnnotationColumn({
   blocks,
   annotations,
@@ -1016,11 +1035,17 @@ function AnnotationColumn({
   annotations: DraftAnnotations | null;
   scrollRef: React.RefObject<HTMLDivElement | null>;
 }) {
-  // Each note group is vertically aligned to the TOP of the block it annotates.
-  // We measure block tops relative to the scroll container and pin each group to
-  // that offset (re-measured on draft/annotation change and on resize), so a
-  // note sits beside its passage even as upstream blocks reflow.
+  // Each note group prefers to align with the TOP of the block it annotates, but
+  // the column is a margin-notes layout: when anchors sit close together, or a
+  // card is taller than the gap to the next anchor, the groups would overlap and
+  // cover each other's text. So we measure each block's anchor top AND each
+  // group's rendered height (relative to the scroll container), then run the
+  // pure push-down resolver (studio-logic#layoutAnnotations) to get a non-
+  // overlapping `top` for every group. Re-measured on draft/annotation change
+  // and on resize, never per scroll frame.
   const [tops, setTops] = useState<Record<string, number>>({});
+  // Per-group element refs, so we can read each card stack's measured height.
+  const groupRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const annotatedIds = useMemo(
     () => blocks.filter((b) => annotationsForBlock(annotations, b.id).length > 0).map((b) => b.id),
@@ -1031,11 +1056,18 @@ function AnnotationColumn({
     const scroll = scrollRef.current;
     if (!scroll) return;
     const base = scroll.getBoundingClientRect().top - scroll.scrollTop;
-    const next: Record<string, number> = {};
+    const items: { id: string; anchorTop: number; height: number }[] = [];
     for (const id of annotatedIds) {
-      const el = scroll.querySelector(`[data-block-id="${id}"]`) as HTMLElement | null;
-      if (el) next[id] = el.getBoundingClientRect().top - base;
+      const blockEl = scroll.querySelector(`[data-block-id="${id}"]`) as HTMLElement | null;
+      if (!blockEl) continue;
+      const anchorTop = blockEl.getBoundingClientRect().top - base;
+      const groupEl = groupRefs.current.get(id);
+      const height = groupEl?.getBoundingClientRect().height ?? 0;
+      items.push({ id, anchorTop, height });
     }
+    const resolved = layoutAnnotations(items, ANNOTATION_GAP);
+    const next: Record<string, number> = {};
+    for (const r of resolved) next[r.id] = r.top;
     setTops(next);
   }, [annotatedIds, scrollRef]);
 
@@ -1043,18 +1075,35 @@ function AnnotationColumn({
     measure();
     const scroll = scrollRef.current;
     if (!scroll) return;
+    // Re-measure when the article reflows (resize) OR when a card's own height
+    // changes (the annotation aside is observed too, so a taller note re-runs
+    // the collision pass and never silently overlaps the next group).
     const ro = new ResizeObserver(() => measure());
     ro.observe(scroll);
     const inner = scroll.querySelector(".palate-prose");
     if (inner) ro.observe(inner);
+    for (const el of groupRefs.current.values()) ro.observe(el);
     return () => ro.disconnect();
-  }, [measure, scrollRef]);
+  }, [measure, scrollRef, annotatedIds]);
+
+  const setGroupRef = useCallback(
+    (id: string) => (el: HTMLDivElement | null) => {
+      if (el) groupRefs.current.set(id, el);
+      else groupRefs.current.delete(id);
+    },
+    [],
+  );
 
   return (
     <aside className="palate-annotations" aria-label="Revision notes">
       <div className="palate-annotations-inner">
         {annotatedIds.map((id) => (
-          <div key={id} className="palate-anno-group" style={{ top: tops[id] ?? 0 }}>
+          <div
+            key={id}
+            ref={setGroupRef(id)}
+            className="palate-anno-group"
+            style={{ top: tops[id] ?? 0 }}
+          >
             {annotationsForBlock(annotations, id).map((note, i) => (
               <AnnotationCard key={i} note={note} />
             ))}
@@ -1151,6 +1200,8 @@ function StudioTopBar({
   annotationsPresent,
   annotationsOn,
   onToggleAnnotations,
+  canExport,
+  onExport,
   readonly,
 }: {
   contentSets: { prefix: string; label: string }[];
@@ -1166,6 +1217,8 @@ function StudioTopBar({
   annotationsPresent: boolean;
   annotationsOn: boolean;
   onToggleAnnotations: () => void;
+  canExport: boolean;
+  onExport: () => void;
   readonly?: boolean;
 }) {
   return (
@@ -1199,6 +1252,17 @@ function StudioTopBar({
 
       <div className="palate-topbar-right">
         <FamilyChip crossFamily={crossFamily} resolved={familyResolved} />
+        {canExport && (
+          <button
+            type="button"
+            className="palate-export-btn"
+            onClick={onExport}
+            title="Download the article as a Markdown file"
+          >
+            <ExportIcon />
+            Export
+          </button>
+        )}
         {annotationsPresent && (
           <button
             type="button"
@@ -1643,6 +1707,16 @@ function CloseIcon() {
   );
 }
 
+function ExportIcon() {
+  // Down-into-tray: a page with an arrow exiting downward — the export glyph.
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="palate-svg">
+      <path d="M8 2v7M5.5 6.5L8 9l2.5-2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 10.5v1.5a1.5 1.5 0 0 0 1.5 1.5h7a1.5 1.5 0 0 0 1.5-1.5v-1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 // ── Scoped styles ──────────────────────────────────────────────────────────────
 
 function PalateStyles() {
@@ -1698,6 +1772,9 @@ const STUDIO_CSS = `
 .palate-mode-toggle { font-size: 12px; padding: 5px 13px; border-radius: 8px; border: 1px solid var(--color-cc-border); background: transparent; color: var(--color-cc-muted); cursor: pointer; transition: all .15s; }
 .palate-mode-toggle:hover { color: var(--color-cc-fg); }
 .palate-mode-toggle.is-active { color: var(--color-cc-primary); border-color: color-mix(in srgb, var(--color-cc-primary) 45%, transparent); background: var(--color-cc-primary-muted, rgba(249,115,22,0.12)); }
+.palate-export-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 5px 12px 5px 11px; border-radius: 8px; border: 1px solid var(--color-cc-border); background: transparent; color: var(--color-cc-muted); cursor: pointer; transition: all .15s; }
+.palate-export-btn .palate-svg { width: 14px; height: 14px; }
+.palate-export-btn:hover { color: var(--color-cc-primary); border-color: color-mix(in srgb, var(--color-cc-primary) 45%, transparent); background: var(--color-cc-primary-muted, rgba(249,115,22,0.12)); }
 
 /* ── Body: rail | flyout | center ── */
 .palate-body { display: flex; flex: 1; min-height: 0; position: relative; }

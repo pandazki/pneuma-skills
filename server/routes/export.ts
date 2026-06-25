@@ -1,8 +1,10 @@
 /**
- * Export routes — Slide export + WebCraft export + Remotion export + file listing.
+ * Export routes — Slide export + WebCraft export + Remotion export + Kami
+ * export + Palate markdown export + file listing.
  *
  * Registered for all non-launcher modes.
- * Includes: /export/slides, /export/webcraft, /export/remotion, /api/files (GET).
+ * Includes: /export/slides, /export/webcraft, /export/remotion, /export/kami,
+ * /export/palate, /api/files (GET).
  */
 
 import type { Hono } from "hono";
@@ -2772,6 +2774,112 @@ async function downloadPdf() {
     return c.html(inlined);
   });
 
+  // ── Palate export: the clean article body as Markdown ────────────────────
+  //
+  // Palate's draft.md IS the article — pure body-only markdown (the skill keeps
+  // the per-block revision notes in draft.annotations.json and the block ids /
+  // freeze flags in their own sidecars, all OUT of draft.md). So "export the
+  // article" reduces to "serve the active content-set's draft.md" with a
+  // sensible download filename. No render, no preview chrome, no inlining — the
+  // annotation column and reading skins are studio chrome, never part of the
+  // export. This mirrors the kami/webcraft download routes (read the body, set a
+  // download-safe Content-Disposition) but is far simpler because the source is
+  // already the final artifact.
+
+  /** Pull the first heading text out of a markdown body, for the filename. */
+  function firstMarkdownHeading(md: string): string | undefined {
+    const lines = md.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      // ATX heading: one-to-six leading '#', then the title text.
+      const atx = line.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/);
+      if (atx) {
+        const t = atx[1].trim();
+        if (t) return t;
+      }
+      // Setext heading: a non-blank line followed by an underline of = or -.
+      const next = lines[i + 1];
+      if (
+        line.trim() &&
+        !line.startsWith("#") &&
+        next &&
+        /^\s{0,3}(=+|-+)\s*$/.test(next)
+      ) {
+        return line.trim();
+      }
+    }
+    return undefined;
+  }
+
+  // Resolve the workspace-relative draft.md for the requested (or auto-
+  // discovered) content set. Returns the absolute draft path + the content-set
+  // name (for the filename fallback), an explicit traversal rejection, or a
+  // not-found. Resolution order mirrors the other export routes:
+  //   1. explicit ?contentSet=<dir>  →  <ws>/<dir>/draft.md  (traversal-guarded)
+  //   2. a root-level <ws>/draft.md   (quick session, no content-set subdir)
+  //   3. auto-discover the first subdirectory containing a draft.md
+  function resolvePalateDraft(
+    rawContentSet: string | undefined,
+  ): { path: string; contentSet?: string } | { error: string; status: 400 | 404 } {
+    if (rawContentSet) {
+      const baseDir = join(workspace, rawContentSet);
+      // Containment guard: reject any ?contentSet that escapes the workspace.
+      if (!pathStartsWith(baseDir, workspace)) {
+        return { error: "Invalid content set", status: 400 };
+      }
+      const draftPath = join(baseDir, "draft.md");
+      if (!existsSync(draftPath)) return { error: "No draft.md found", status: 404 };
+      return { path: draftPath, contentSet: rawContentSet };
+    }
+
+    const rootDraft = join(workspace, "draft.md");
+    if (existsSync(rootDraft)) return { path: rootDraft };
+
+    try {
+      for (const entry of readdirSync(workspace, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+        const candidate = join(workspace, entry.name, "draft.md");
+        if (existsSync(candidate)) return { path: candidate, contentSet: entry.name };
+      }
+    } catch { /* fall through to 404 */ }
+
+    return { error: "No draft.md found", status: 404 };
+  }
+
+  app.get("/export/palate/download", async (c) => {
+    const rawContentSet = c.req.query("contentSet") || undefined;
+    const resolved = resolvePalateDraft(rawContentSet);
+    if ("error" in resolved) return c.text(resolved.error, resolved.status);
+
+    const body = readFileSync(resolved.path, "utf-8");
+
+    // Filename: prefer the article's own title (first heading), then the
+    // content-set name + date, then a literal. safeDownloadName ASCII-slugs the
+    // title; when it can't (e.g. a CJK-only heading) it falls back to the
+    // content-set name. We append the date to the fallback base so an untitled
+    // export still gets a distinguishable name.
+    const heading = firstMarkdownHeading(body);
+    const date = new Date().toISOString().slice(0, 10);
+    const fallbackBase = `${resolved.contentSet ?? "draft"}-${date}`;
+    const safeFilename = safeDownloadName(heading, fallbackBase, "draft") + ".md";
+    const utf8Filename = encodeURIComponent((heading ?? fallbackBase) + ".md");
+
+    const format = "palate-markdown";
+    const contentSet = resolved.contentSet;
+    if (hookBus && sessionInfo) {
+      hookBus
+        .emit("export:after", { format, result: { title: heading ?? fallbackBase }, contentSet }, sessionInfo)
+        .catch(() => {});
+    }
+
+    return new Response(body, {
+      headers: {
+        "Content-Type": "text/markdown; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${safeFilename}"; filename*=UTF-8''${utf8Filename}`,
+      },
+    });
+  });
+
   app.get("/export/webcraft/zip", async (c) => {
     if (!workspace) return c.text("No workspace", 400);
     let contentSet = c.req.query("contentSet") || undefined;
@@ -3528,7 +3636,14 @@ ${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
     const patterns = options.watchPatterns || ["**/*.md"];
     try {
       for (const pattern of patterns) {
-        const entries = new Bun.Glob(pattern).scanSync({ cwd: workspace, absolute: false });
+        // Bun.Glob hides dot-directories by default. Enable `dot` ONLY for a
+        // pattern the manifest author made dot-intentional (a segment starting
+        // with "."), so an explicitly-declared state file like
+        // `.pneuma/cross-family.json` is served on cold start (without it the
+        // json-file source reading it never hydrates), while ordinary patterns
+        // keep excluding dotfiles — no cross-mode regression.
+        const dot = pattern.split("/").some((seg) => seg.startsWith("."));
+        const entries = new Bun.Glob(pattern).scanSync({ cwd: workspace, absolute: false, dot });
         for (const rawPath of entries) {
           // Normalize to forward slashes (Bun.Glob returns backslashes on Windows)
           const relPath = rawPath.replaceAll("\\", "/");
