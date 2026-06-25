@@ -307,6 +307,131 @@ describe("pneuma:handoff marker (v2 inbound payload)", () => {
   });
 });
 
+describe("pneuma:handoff marker — borrow brief intake", () => {
+  test("a borrow-brief.json fills the handoff block with borrow framing + the return obligation", async () => {
+    const project = join(tmpDir, "proj-borrow-brief");
+    const sessionDir = join(project, ".pneuma", "sessions", "brw-1");
+    mkdirSync(join(sessionDir, ".pneuma"), { recursive: true });
+    await writeProjectManifest(project, { version: 1, name: "p", displayName: "P", createdAt: 1 });
+    writeFileSync(
+      join(sessionDir, ".pneuma", "borrow-brief.json"),
+      JSON.stringify({
+        mode: "wordtaste",
+        brief: "Polish the hero copy in the user's confident, restrained voice.",
+        inputs: ["site/index.html"],
+        expects: "polished markdown + a per-section change-notes list",
+        scope: "return",
+        summary: "An ink-wash landing page; keep the 中国风 tone.",
+        language: "zh-CN",
+        return_via: { borrow_id: "brw-1", host_server_url: "http://localhost:17042" },
+      }),
+    );
+
+    installSkill({
+      workspace: project,
+      sessionDir,
+      projectRoot: project,
+      sessionId: "brw-1",
+      skillConfig,
+      modeSourceDir,
+      backendType: "claude-code",
+    });
+
+    const claudeMd = await readFile(join(sessionDir, "CLAUDE.md"), "utf-8");
+    // Rides the SAME marker block as inbound handoff (one seam, design §4.4-a).
+    expect(claudeMd).toContain("<!-- pneuma:handoff:start -->");
+    // Borrow framing — NOT a terminal takeover.
+    expect(claudeMd).toContain("Borrow");
+    expect(claudeMd).toContain("Polish the hero copy");
+    expect(claudeMd).toContain("polished markdown");
+    expect(claudeMd).toContain("site/index.html");
+    // The return obligation is taught inline so B learns it even without the
+    // pneuma-project skill (quick-session temp-dir borrows don't get it).
+    expect(claudeMd).toContain("borrow-return");
+    expect(claudeMd).toContain("brw-1");
+    expect(claudeMd).toContain("http://localhost:17042");
+    // Borrow framing must NOT tell B to rm an inbound-handoff.json it never had.
+    expect(claudeMd).not.toContain("rm .pneuma/inbound-handoff.json");
+  });
+
+  test("borrow brief wins over a stray inbound-handoff.json (most specific provenance)", async () => {
+    const project = join(tmpDir, "proj-borrow-over-handoff");
+    const sessionDir = join(project, ".pneuma", "sessions", "brw-2");
+    mkdirSync(join(sessionDir, ".pneuma"), { recursive: true });
+    await writeProjectManifest(project, { version: 1, name: "p", displayName: "P", createdAt: 1 });
+    writeFileSync(
+      join(sessionDir, ".pneuma", "borrow-brief.json"),
+      JSON.stringify({
+        mode: "illustrate",
+        brief: "Produce a transparent logo mark.",
+        return_via: { borrow_id: "brw-2", host_server_url: "http://localhost:17099" },
+      }),
+    );
+    writeFileSync(
+      join(sessionDir, ".pneuma", "inbound-handoff.json"),
+      JSON.stringify({ handoff_id: "hf-stray", source_mode: "doc", intent: "ignored" }),
+    );
+
+    installSkill({
+      workspace: project,
+      sessionDir,
+      projectRoot: project,
+      sessionId: "brw-2",
+      skillConfig,
+      modeSourceDir,
+      backendType: "claude-code",
+    });
+
+    const claudeMd = await readFile(join(sessionDir, "CLAUDE.md"), "utf-8");
+    expect(claudeMd).toContain("Produce a transparent logo mark.");
+    expect(claudeMd).toContain("borrow-return");
+    // The stray handoff intent must not surface.
+    expect(claudeMd).not.toContain("hf-stray");
+  });
+
+  test("strips the section when neither a borrow brief nor an inbound handoff exists", async () => {
+    const project = join(tmpDir, "proj-borrow-none");
+    const sessionDir = join(project, ".pneuma", "sessions", "brw-3");
+    mkdirSync(sessionDir, { recursive: true });
+    await writeProjectManifest(project, { version: 1, name: "p", displayName: "P", createdAt: 1 });
+
+    installSkill({
+      workspace: project,
+      sessionDir,
+      projectRoot: project,
+      sessionId: "brw-3",
+      skillConfig,
+      modeSourceDir,
+      backendType: "claude-code",
+    });
+
+    const claudeMd = await readFile(join(sessionDir, "CLAUDE.md"), "utf-8");
+    expect(claudeMd).not.toContain("<!-- pneuma:handoff:start -->");
+    expect(claudeMd).not.toContain("borrow-return");
+  });
+
+  test("ignores a malformed borrow-brief.json", async () => {
+    const project = join(tmpDir, "proj-borrow-bad");
+    const sessionDir = join(project, ".pneuma", "sessions", "brw-4");
+    mkdirSync(join(sessionDir, ".pneuma"), { recursive: true });
+    await writeProjectManifest(project, { version: 1, name: "p", displayName: "P", createdAt: 1 });
+    writeFileSync(join(sessionDir, ".pneuma", "borrow-brief.json"), "{not json");
+
+    installSkill({
+      workspace: project,
+      sessionDir,
+      projectRoot: project,
+      sessionId: "brw-4",
+      skillConfig,
+      modeSourceDir,
+      backendType: "claude-code",
+    });
+
+    const claudeMd = await readFile(join(sessionDir, "CLAUDE.md"), "utf-8");
+    expect(claudeMd).not.toContain("<!-- pneuma:handoff:start -->");
+  });
+});
+
 describe("resolvePluginSkillsBase (Fix 4 — plugin skills land in agent CWD)", () => {
   test("project session: routes to <sessionDir>/.claude/skills/", () => {
     const ws = "/tmp/proj-root";

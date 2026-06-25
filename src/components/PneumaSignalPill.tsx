@@ -14,9 +14,11 @@
  * the marker to show the raw tag below for inspection.
  *
  * Tags handled:
- *   - <pneuma:env reason="opened|switched|handed-off" ... />
+ *   - <pneuma:env reason="opened|switched|handed-off|borrow" ... />
  *   - <pneuma:request-handoff target="..." intent="..." ... />
  *   - <pneuma:handoff-cancelled reason="..." />
+ *   - <pneuma:request-borrow mode="..." ... />        (borrow affordance)
+ *   - <pneuma:borrow-returned mode="..." status="..." result_path="..." />
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -82,6 +84,10 @@ function summarize(tag: ParsedPneumaTag, t: TFunction): string {
       const fromMode = a.from_mode ?? t("another_mode");
       return t("handed_off", { fromMode });
     }
+    if (a.reason === "borrow") {
+      const fromMode = a.from_mode ?? t("another_mode");
+      return t("borrowed_by", { fromMode });
+    }
     return t("env_unknown", { reason: a.reason ?? "unknown" });
   }
   if (tag.kind === "request-handoff") {
@@ -94,6 +100,16 @@ function summarize(tag: ParsedPneumaTag, t: TFunction): string {
     return a.reason
       ? t("handoff_cancelled_with_reason", { reason: a.reason })
       : t("handoff_cancelled");
+  }
+  if (tag.kind === "request-borrow") {
+    const target = a.mode ?? t("another_mode");
+    return t("request_borrow", { target });
+  }
+  if (tag.kind === "borrow-returned") {
+    const mode = a.mode ?? t("another_mode");
+    if (a.status === "failed") return t("borrow_returned_failed", { mode });
+    if (a.status === "partial") return t("borrow_returned_partial", { mode });
+    return t("borrow_returned", { mode });
   }
   return t("default_signal", { kind: tag.kind });
 }

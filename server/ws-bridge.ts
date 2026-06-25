@@ -274,6 +274,36 @@ export class WsBridge {
   }
 
   /**
+   * Enqueue a server-originated system tag (e.g. the borrow return-leg's
+   * `<pneuma:borrow-returned>`) for delivery to the agent at a turn boundary.
+   *
+   * Unlike `enqueueEnvContext`, which buffers until the *user* next types, a
+   * system signal must reach the agent on its own — but never mid-turn. So:
+   *
+   *   - **CLI idle** → dispatch now via `sendUserMessage` (history + broadcast
+   *     + CLI delivery in one shot). The agent picks it up immediately.
+   *   - **CLI busy** → push onto `pendingSystemSignals`; the turn's `result`
+   *     message flushes one queued signal (same gate as `pendingNotifications`),
+   *     so the host agent A is poked at a safe boundary, not interrupted.
+   *
+   * This is the non-interruptive poke the borrow round-trip needs (design §6.3):
+   * B finishes, the server enqueues the returned tag here, A sees it on its
+   * next idle and reads the result artifact.
+   */
+  enqueueSystemSignal(sessionId: string, tag: string): void {
+    const session = this.getOrCreateSession(sessionId);
+    if (session.cliIdle) {
+      this.sendUserMessage(sessionId, tag);
+      return;
+    }
+    if (!session.pendingSystemSignals) session.pendingSystemSignals = [];
+    session.pendingSystemSignals.push(tag);
+    console.log(
+      `[ws-bridge] System signal queued (CLI busy): ${session.pendingSystemSignals.length} in queue`,
+    );
+  }
+
+  /**
    * Push a message to every connected browser across all sessions. Used by
    * system-wide notifications (e.g. `libraries_updated`) where the launcher
    * UI has no specific session affinity. Quiet no-op when nothing is
@@ -335,6 +365,7 @@ export class WsBridge {
         pendingViewerActions: new Map(),
         cliIdle: true,
         pendingNotifications: [],
+        pendingSystemSignals: [],
         messageHistory: [],
         pendingEnvContext: [],
         suppressingPostAskq: false,
@@ -1025,13 +1056,19 @@ export class WsBridge {
       enqueueCheckpoint(this.workspace, turnIndex);
     }
 
-    // Flush queued viewer notifications (send only the first; it will trigger a new turn,
-    // and subsequent notifications will be sent when that turn completes)
+    // Flush ONE queued signal per turn boundary — flushing starts a new turn
+    // (sets `cliIdle = false`), and the next item drains when that turn ends.
+    // Viewer notifications take priority over system signals, but both ride
+    // this same idle gate so neither starves the other (design §13.2).
     if (session.pendingNotifications?.length > 0) {
       const next = session.pendingNotifications.shift()!;
       const { images, ...notification } = next;
       console.log(`[ws-bridge] Flushing queued viewer notification: ${next.type} (${session.pendingNotifications.length} remaining)`);
       this.sendViewerNotificationToCLI(session, notification, images);
+    } else if (session.pendingSystemSignals?.length > 0) {
+      const tag = session.pendingSystemSignals.shift()!;
+      console.log(`[ws-bridge] Flushing queued system signal (${session.pendingSystemSignals.length} remaining)`);
+      this.sendUserMessage(session.id, tag);
     }
 
   }

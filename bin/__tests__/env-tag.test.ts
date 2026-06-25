@@ -76,4 +76,39 @@ describe("buildEnvTag", () => {
   test("opened with no project still includes mode", () => {
     expect(buildEnvTag({ mode: "draw" })).toBe('<pneuma:env reason="opened" mode="draw" />');
   });
+
+  test("borrow — reason=borrow carries borrow_id alongside from_* context", () => {
+    expect(
+      buildEnvTag({
+        mode: "draw",
+        projectName: "Demo",
+        borrowId: "borrow-123",
+        inbound: {
+          handoff_id: "borrow-123",
+          source_session_id: "host-A",
+          source_mode: "webcraft",
+          source_display_name: "Landing page",
+          language: "zh-CN",
+        },
+      }),
+    ).toBe(
+      '<pneuma:env reason="borrow" project="Demo" mode="draw" borrow_id="borrow-123" from_session="host-A" from_mode="webcraft" from_display_name="Landing page" language="zh-CN" />',
+    );
+  });
+
+  test("borrow — takes precedence over handed-off when both borrowId and inbound present", () => {
+    const tag = buildEnvTag({
+      mode: "draw",
+      borrowId: "b-1",
+      inbound: { handoff_id: "b-1", source_session_id: "A" },
+    });
+    expect(tag).toContain('reason="borrow"');
+    expect(tag).not.toContain('reason="handed-off"');
+  });
+
+  test("borrow — empty borrowId falls through to the normal opened/handed-off paths", () => {
+    expect(buildEnvTag({ mode: "draw", borrowId: "   " })).toBe(
+      '<pneuma:env reason="opened" mode="draw" />',
+    );
+  });
 });

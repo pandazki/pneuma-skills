@@ -33,6 +33,8 @@ import { resolveLocalized, type ModeManifest, type ProxyRoute } from "../core/ty
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
 import { copySeedEntry, resolveSeedCatalog, runPostSeedInstall } from "./seed-installer.js";
 import { mountHandoffRoutes } from "./handoff-routes.js";
+import { mountBorrowRoutes } from "./borrow-routes.js";
+import { enumerateLocalModes } from "../core/local-modes.js";
 import { registerLibraryRoutes } from "./library-routes.js";
 import {
   registerAgentCommandRoutes,
@@ -228,6 +230,23 @@ export async function startServer(options: ServerOptions) {
     fromSessionId?: string;
     fromMode?: string;
     fromDisplayName?: string;
+    /**
+     * Background hint for borrow sub-sessions (design §6.2). On desktop this
+     * keeps B's window hidden and suppresses the reveal-on-idle the normal
+     * handoff path uses — the user's foreground stays on host A. The server
+     * spawn itself is unchanged (always `--no-prompt --no-open`); the desktop
+     * presentation layer reads this. Passed through to the child URL so the
+     * Electron shell can honor it.
+     */
+    background?: boolean;
+    /**
+     * Borrow id when spawning a borrow target B (design §5). Threaded to the
+     * child as `--borrow <id>` so B's `bin/pneuma.ts` stamps `session.json`
+     * with `{ internal: true, borrow: {...} }` (filtering it from user-facing
+     * lists) and dispatches `<pneuma:env reason="borrow" />` instead of a
+     * terminal `handed-off`. Undefined for every non-borrow launch.
+     */
+    borrowId?: string;
   }): Promise<{ url: string; workspace: string; sessionId: string | null }> {
     const resolvedWorkspace = resolve(params.workspace.replace(/^~/, homedir()));
     mkdirSync(resolvedWorkspace, { recursive: true });
@@ -296,6 +315,7 @@ export async function startServer(options: ServerOptions) {
     if (params.fromSessionId) args.push("--from-session-id", params.fromSessionId);
     if (params.fromMode) args.push("--from-mode", params.fromMode);
     if (params.fromDisplayName) args.push("--from-display-name", params.fromDisplayName);
+    if (params.borrowId) args.push("--borrow", params.borrowId);
     if (options.debug) args.push("--debug");
     if (options.forceDev) args.push("--dev");
 
@@ -383,7 +403,16 @@ export async function startServer(options: ServerOptions) {
       revalidateProjectCache(params.project).catch(() => {});
     }
 
-    return { url: readyUrl, workspace: resolvedWorkspace, sessionId: resolvedSessionId };
+    // Tag the URL for a background (borrow) sub-session so the desktop shell
+    // can run it hidden and skip the reveal-on-idle (design §6.2). Harmless on
+    // web — no Electron window to hide. Append defensively (the child URL may
+    // already carry a query string).
+    let url = readyUrl;
+    if (params.background) {
+      url += (url.includes("?") ? "&" : "?") + "background=1";
+    }
+
+    return { url, workspace: resolvedWorkspace, sessionId: resolvedSessionId };
   }
 
   /**
@@ -2664,6 +2693,57 @@ export async function startServer(options: ServerOptions) {
     },
   });
 
+  // ── Borrow routes (peer / round-trip cross-mode handoff) ────────────
+  // Mounted on the per-session server — A's OWN server, not the launcher.
+  // The launcher has no agent session, so its WS broadcast can't poke A's
+  // live agent (server.md gotcha); A's own server is the only thing that can
+  // enqueue the return tag to A. A borrow NEVER kills A's session — B runs in
+  // a background sub-session and relays a result; control stays with A.
+  const borrowRoutesContext = mountBorrowRoutes(app, {
+    wsBridge,
+    // Resolve the host session id at request time: prefer the live active
+    // session (quick sessions only learn their id once the agent connects),
+    // fall back to the session.json-derived id captured at boot.
+    hostSessionId: () => wsBridge.getActiveSessionId() ?? sessionInfo.sessionId,
+    // The brief's `return_via.host_server_url` is filled at dispatch time, so
+    // it reflects the final bound port (which auto-increments on collision).
+    hostServerUrl: () => `http://localhost:${serverPort}`,
+    // Validate B's mode against the local-mode enumerator — never branch on
+    // the mode name (hard rule). Mirrors handoff-from-external's validation.
+    validateMode: (mode) => {
+      try {
+        const enumProjectRoot =
+          options.projectRoot || resolve(dirname(import.meta.path), "..");
+        return enumerateLocalModes({ projectRoot: enumProjectRoot }).some(
+          (m) => m.name === mode,
+        );
+      } catch (err) {
+        console.warn(`[borrow-routes] validateMode failed for ${mode}: ${err}`);
+        return false;
+      }
+    },
+    // Placement: a project session (this server has a pneumaProjectRoot) puts
+    // B under the project; a quick session resolves to no root → temp dir.
+    resolveHost: async () => ({
+      ...(options.pneumaProjectRoot ? { projectRoot: options.pneumaProjectRoot } : {}),
+    }),
+    // Spawn B in the background, reusing the single `launchPneumaChild` seam.
+    // For a quick borrow (no project) B runs in its OS temp dir as workspace.
+    launchBorrow: async (params) => {
+      const result = await launchPneumaChild({
+        specifier: params.mode,
+        workspace: params.project ?? join(tmpdir(), `pneuma-borrow-${params.sessionId}`),
+        ...(params.project ? { project: params.project } : {}),
+        sessionId: params.sessionId,
+        // The borrow_id IS B's session id — thread it as `--borrow` too so B
+        // stamps its session.json provenance + dispatches `reason="borrow"`.
+        borrowId: params.sessionId,
+        background: params.background,
+      });
+      return { sessionId: params.sessionId, url: result.url };
+    },
+  });
+
   // /api/launch/prepare in the per-session server — lets ProjectPanel's
   // launch sheet pre-fetch a mode's init params (with auto-fill from stored
   // API keys) before the user confirms. Mirrors the launcher block above;
@@ -4010,6 +4090,7 @@ export default S;`;
 
   const cleanup = async () => {
     if (handoffRoutesContext) handoffRoutesContext.stop();
+    if (borrowRoutesContext) borrowRoutesContext.stop();
     await hookBus.emit("session:end", { sessionId: sessionInfo.sessionId, mode: sessionInfo.mode, workspace }, sessionInfo).catch(() => {});
     // Tear down chokidar watchers so they don't leak across `bun run dev`
     // restarts (each restart spawns a fresh server process; without this,
