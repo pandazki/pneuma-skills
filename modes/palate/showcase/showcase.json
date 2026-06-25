@@ -1,0 +1,24 @@
+{
+  "tagline": "De-AI your prose and learn your voice as you write",
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": "Point, Don't Type",
+      "description": "Select any sentence and a popup offers five taste-derived rewrite directions — cut the AI metaphor, tighten, let it breathe, punch harder, sink the argument. You steer the prose by pointing, never by writing feedback.",
+      "media": "span-select-rewrite.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "Cross-Family De-AI",
+      "description": "Claude, GPT, and Gemini break each other out of their own RLHF habits, with a disruption dial from gentler to bolder. Watch prose go from one-glance-AI to reads-human.",
+      "media": "cross-family-deai.png",
+      "mediaType": "image"
+    },
+    {
+      "title": "A Taste That Learns",
+      "description": "A living profile of your voice floor, a symptom rubric, and a gauge of what Palate has learned about you. Every judgment you make sharpens the next session.",
+      "media": "living-taste-profile.png",
+      "mediaType": "image"
+    }
+  ]
+}
