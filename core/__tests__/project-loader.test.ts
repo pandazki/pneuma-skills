@@ -374,6 +374,49 @@ describe("scanProjectSessions", () => {
     expect(sessions.find((s) => s.sessionId === "doc-work")?.internal).toBeUndefined();
   });
 
+  test("flags a borrow sub-session internal even though its mode is user-visible", async () => {
+    // A borrow runs mode B (e.g. doc/wordtaste) — a NORMAL user mode, not a
+    // hidden one. So `isHiddenMode` alone would let B leak into "what the
+    // user created here" lists. The borrow sub-session is keyed by its
+    // session-level `borrow` provenance, not the mode's hidden flag (§13.3).
+    const base = join(tmp, ".pneuma", "sessions");
+    await mkdir(join(base, "brw-1"), { recursive: true });
+    await writeFile(
+      join(base, "brw-1", "session.json"),
+      JSON.stringify({
+        sessionId: "brw-1",
+        mode: "doc",
+        backendType: "claude-code",
+        createdAt: 1,
+        borrow: { borrowId: "brw-1", hostSessionId: "A", role: "borrow-target" },
+      })
+    );
+    await mkdir(join(base, "doc-work"), { recursive: true });
+    await writeFile(
+      join(base, "doc-work", "session.json"),
+      JSON.stringify({ sessionId: "doc-work", mode: "doc", backendType: "claude-code", createdAt: 2 })
+    );
+
+    const sessions = await scanProjectSessions(tmp);
+    expect(sessions.find((s) => s.sessionId === "brw-1")?.internal).toBe(true);
+    expect(sessions.find((s) => s.sessionId === "doc-work")?.internal).toBeUndefined();
+  });
+
+  test("honors an explicit session-level internal flag on a visible mode", async () => {
+    // The provenance writer may also stamp `internal: true` directly. Either
+    // signal — the mode being hidden, or the session being marked internal —
+    // suffices; scan must respect the session-level flag.
+    const base = join(tmp, ".pneuma", "sessions");
+    await mkdir(join(base, "marked"), { recursive: true });
+    await writeFile(
+      join(base, "marked", "session.json"),
+      JSON.stringify({ sessionId: "marked", mode: "doc", backendType: "claude-code", createdAt: 1, internal: true })
+    );
+
+    const sessions = await scanProjectSessions(tmp);
+    expect(sessions.find((s) => s.sessionId === "marked")?.internal).toBe(true);
+  });
+
   test("internal flag defaults to absent for unknown / unresolvable modes", async () => {
     // A session whose mode can't be resolved to a manifest (uninstalled
     // external mode, or a path-ish name from a corrupt session.json) must
