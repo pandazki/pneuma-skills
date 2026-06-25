@@ -75,6 +75,29 @@ describe("createDirectoryContentSetResolver", () => {
     expect(result).toHaveLength(2);
   });
 
+  test("allowSingle: surfaces a sole content-set directory (prefix-stripping)", () => {
+    // Default behavior: one directory is not a switchable set → empty.
+    expect(resolve([f("worked-example/draft.md")])).toEqual([]);
+    // Opt-in: a mode whose content lives in a subdir (wordtaste, kami) needs the
+    // sole content set surfaced so the store can auto-activate it and the
+    // viewer can prefix-strip — even when there is just one.
+    const single = createDirectoryContentSetResolver({ allowSingle: true });
+    const result = single([f("worked-example/draft.md")]);
+    expect(result).toHaveLength(1);
+    expect(result[0].prefix).toBe("worked-example");
+  });
+
+  test("allowSingle: still returns empty when there are zero directories", () => {
+    const single = createDirectoryContentSetResolver({ allowSingle: true });
+    expect(single([f("README.md"), f("notes.md")])).toEqual([]);
+  });
+
+  test("allowSingle: surfaces multiple sets exactly as the default does", () => {
+    const single = createDirectoryContentSetResolver({ allowSingle: true });
+    const result = single([f("en/a.md"), f("ja/a.md")]);
+    expect(result.map((v) => v.prefix)).toEqual(["en", "ja"]);
+  });
+
   test("respects minFiles option", () => {
     const resolve3 = createDirectoryContentSetResolver({ minFiles: 3 });
     const result = resolve3([

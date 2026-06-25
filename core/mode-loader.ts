@@ -145,6 +145,13 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/cosmos/pneuma-mode.js").then((m) => m.default),
   },
+  wordtaste: {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/wordtaste/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/wordtaste/pneuma-mode.js").then((m) => m.default),
+  },
 };
 
 /** External mode registry — registered by the CLI at startup via registerExternalMode */
