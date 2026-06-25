@@ -1,10 +1,10 @@
 /**
  * Export routes — Slide export + WebCraft export + Remotion export + Kami
- * export + Palate markdown export + file listing.
+ * export + WordTaste markdown export + file listing.
  *
  * Registered for all non-launcher modes.
  * Includes: /export/slides, /export/webcraft, /export/remotion, /export/kami,
- * /export/palate, /api/files (GET).
+ * /export/wordtaste, /api/files (GET).
  */
 
 import type { Hono } from "hono";
@@ -2774,9 +2774,9 @@ async function downloadPdf() {
     return c.html(inlined);
   });
 
-  // ── Palate export: the clean article body as Markdown ────────────────────
+  // ── WordTaste export: the clean article body as Markdown ─────────────────
   //
-  // Palate's draft.md IS the article — pure body-only markdown (the skill keeps
+  // WordTaste's draft.md IS the article — pure body-only markdown (the skill keeps
   // the per-block revision notes in draft.annotations.json and the block ids /
   // freeze flags in their own sidecars, all OUT of draft.md). So "export the
   // article" reduces to "serve the active content-set's draft.md" with a
@@ -2818,7 +2818,7 @@ async function downloadPdf() {
   //   1. explicit ?contentSet=<dir>  →  <ws>/<dir>/draft.md  (traversal-guarded)
   //   2. a root-level <ws>/draft.md   (quick session, no content-set subdir)
   //   3. auto-discover the first subdirectory containing a draft.md
-  function resolvePalateDraft(
+  function resolveWordtasteDraft(
     rawContentSet: string | undefined,
   ): { path: string; contentSet?: string } | { error: string; status: 400 | 404 } {
     if (rawContentSet) {
@@ -2846,9 +2846,9 @@ async function downloadPdf() {
     return { error: "No draft.md found", status: 404 };
   }
 
-  app.get("/export/palate/download", async (c) => {
+  app.get("/export/wordtaste/download", async (c) => {
     const rawContentSet = c.req.query("contentSet") || undefined;
-    const resolved = resolvePalateDraft(rawContentSet);
+    const resolved = resolveWordtasteDraft(rawContentSet);
     if ("error" in resolved) return c.text(resolved.error, resolved.status);
 
     const body = readFileSync(resolved.path, "utf-8");
@@ -2864,7 +2864,7 @@ async function downloadPdf() {
     const safeFilename = safeDownloadName(heading, fallbackBase, "draft") + ".md";
     const utf8Filename = encodeURIComponent((heading ?? fallbackBase) + ".md");
 
-    const format = "palate-markdown";
+    const format = "wordtaste-markdown";
     const contentSet = resolved.contentSet;
     if (hookBus && sessionInfo) {
       hookBus

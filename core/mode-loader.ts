@@ -145,12 +145,12 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/cosmos/pneuma-mode.js").then((m) => m.default),
   },
-  palate: {
+  wordtaste: {
     type: "builtin",
     manifestLoader: () =>
-      import("../modes/palate/manifest.js").then((m) => m.default),
+      import("../modes/wordtaste/manifest.js").then((m) => m.default),
     definitionLoader: () =>
-      import("../modes/palate/pneuma-mode.js").then((m) => m.default),
+      import("../modes/wordtaste/pneuma-mode.js").then((m) => m.default),
   },
 };
 

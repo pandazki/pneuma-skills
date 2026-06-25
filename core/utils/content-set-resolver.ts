@@ -34,7 +34,7 @@ export interface DirectoryContentSetOptions {
    * modes put each piece of content in its own subdirectory and rely on the
    * content-set prefix purely to scope/strip file paths — for them a single
    * content set MUST be surfaced so the store auto-activates it and the viewer
-   * reads `<prefix>/…` instead of the empty root (e.g. palate's worked-example,
+   * reads `<prefix>/…` instead of the empty root (e.g. wordtaste's worked-example,
    * kami's single-demo case). Opt in with `allowSingle: true`.
    */
   allowSingle?: boolean;

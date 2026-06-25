@@ -78,7 +78,7 @@ describe("createDirectoryContentSetResolver", () => {
   test("allowSingle: surfaces a sole content-set directory (prefix-stripping)", () => {
     // Default behavior: one directory is not a switchable set → empty.
     expect(resolve([f("worked-example/draft.md")])).toEqual([]);
-    // Opt-in: a mode whose content lives in a subdir (palate, kami) needs the
+    // Opt-in: a mode whose content lives in a subdir (wordtaste, kami) needs the
     // sole content set surfaced so the store can auto-activate it and the
     // viewer can prefix-strip — even when there is just one.
     const single = createDirectoryContentSetResolver({ allowSingle: true });

@@ -2,7 +2,7 @@
  * GET /api/files — explicitly-declared dot-path watch patterns must be served.
  *
  * A mode whose manifest declares a state file inside a dot-directory in
- * `watchPatterns` (e.g. palate's `.pneuma/cross-family.json`) needs that file
+ * `watchPatterns` (e.g. wordtaste's `.pneuma/cross-family.json`) needs that file
  * in the initial /api/files snapshot — otherwise the json-file source that
  * reads it never hydrates on cold start (the file exists on disk but is absent
  * from the snapshot), producing the cross-family banner flash / stuck state.
@@ -25,7 +25,7 @@ let workspace: string;
 let app: Hono;
 
 beforeAll(() => {
-  workspace = mkdtempSync(join(tmpdir(), "palate-files-route-"));
+  workspace = mkdtempSync(join(tmpdir(), "wordtaste-files-route-"));
   // A normal content file…
   mkdirSync(join(workspace, "worked-example"), { recursive: true });
   writeFileSync(join(workspace, "worked-example", "draft.md"), "# Title\n\nBody.");

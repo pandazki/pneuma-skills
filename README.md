@@ -77,7 +77,7 @@ When humans and code agents co-create content, they need more than a chat window
 | **remotion** | Code-driven video composition on [Remotion](https://www.remotion.dev) — live preview, frame-perfect animation, MP4/WebM export via WebCodecs |
 | **gridboard** | Interactive dashboards — draggable tile grid on a fixed canvas, JIT-compiled React tiles via `defineTile()`, agent-driven redesign on resize |
 | **cosmos** | Project any content — code, prose, research, business — into a structured cosmos: an interactive graph that lays its inner shape bare. Schema and dashboard tech borrow from [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything) (MIT) |
-| **palate** | Taste Writing Studio — a three-zone workbench (materials · draft · taste) that de-AIs your prose by generating across model families (Claude / Codex / Gemini) and learning your voice as you judge its rewrites. Block-addressed draft with kernel-freeze, span-select rewrite, and a disruption dial |
+| **wordtaste** | Taste Writing Studio — a three-zone workbench (materials · draft · taste) that de-AIs your prose by generating across model families (Claude / Codex / Gemini) and learning your voice as you judge its rewrites. Block-addressed draft with kernel-freeze, span-select rewrite, and a disruption dial |
 | **mode-maker** | Create custom modes with AI — fork, play-test, publish |
 | **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback |
 
@@ -159,7 +159,7 @@ Modes:
   illustrate                   AI illustration studio
   remotion                     Code-driven video composition
   gridboard                    Interactive tile dashboards
-  palate                       Taste Writing Studio — de-AI your prose
+  wordtaste                    Taste Writing Studio — de-AI your prose
   mode-maker                   Create custom modes with AI
   evolve                       Launch the Evolution Agent
   /path/to/mode                Load from a local directory
