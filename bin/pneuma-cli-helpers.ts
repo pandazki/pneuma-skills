@@ -24,6 +24,35 @@ export interface PersistedSession {
   displayName?: string;
   description?: string;
   refinedAt?: number;
+  /**
+   * Session-level internal flag — stamped on a borrow sub-session B so
+   * `scanProjectSessions` filters B out of user-facing lists even though B
+   * runs a normal (non-hidden) user mode. Set together with {@link borrow}
+   * at B's first save; both must survive every later resume/launch overwrite
+   * (see {@link preserveRefinedSessionMeta}).
+   */
+  internal?: boolean;
+  /**
+   * Borrow provenance — present on a borrow sub-session B spawned for a host
+   * session A. `scanProjectSessions` keys on this (or `internal`) to keep B
+   * out of Recent Sessions / ProjectPanel. The shape mirrors design §5:
+   * `{ borrowId, hostSessionId, role: "borrow-target" }`. Absent on every
+   * non-borrow session.
+   */
+  borrow?: BorrowProvenance;
+}
+
+/**
+ * Borrow provenance stamped onto a borrow sub-session's `session.json`.
+ * Mirrors the design §5 shape; immutable once written at B's session start.
+ */
+export interface BorrowProvenance {
+  /** The borrow this session fulfills (= B's own session id). */
+  borrowId: string;
+  /** A — the host session that dispatched the borrow (when known). */
+  hostSessionId?: string;
+  /** Always `"borrow-target"` for B; reserved for future roles. */
+  role: "borrow-target";
 }
 
 export interface SessionRecord {
@@ -66,6 +95,14 @@ export interface ParsedCliArgs {
   fromSessionId: string;
   fromMode: string;
   fromDisplayName: string;
+  /**
+   * Borrow id from `--borrow <id>` — populated only when this child was
+   * spawned as a borrow target by the server's `launchPneumaChild` seam. Its
+   * presence selects `<pneuma:env reason="borrow" />` and stamps the session's
+   * `session.json` with `{ internal: true, borrow: {...} }`. Empty string when
+   * not a borrow.
+   */
+  borrowId: string;
 }
 
 /**
@@ -109,6 +146,13 @@ export function normalizeSessionRecord(data: Record<string, unknown>): SessionRe
  * it leaves `undefined` fall back to `prev`. Symmetric to `pickRefinedMeta`
  * on the registry side.
  *
+ * Same trap, same fix for borrow provenance (`internal` + `borrow`): the
+ * server stages the brief and `bin/pneuma.ts` stamps these on B's FIRST save,
+ * but every subsequent resume passes a minimal record. Without preservation a
+ * resumed borrow sub-session would silently un-mark itself and leak back into
+ * user-facing session lists. They survive the same "incoming wins, else prev"
+ * way the refined trio does.
+ *
  * @param incoming — the record about to be written
  * @param prev — the parsed prior `session.json`, if any
  */
@@ -126,6 +170,12 @@ export function preserveRefinedSessionMeta(
   }
   if (out.refinedAt === undefined && prev.refinedAt !== undefined) {
     out.refinedAt = prev.refinedAt;
+  }
+  if (out.internal === undefined && prev.internal !== undefined) {
+    out.internal = prev.internal;
+  }
+  if (out.borrow === undefined && prev.borrow !== undefined) {
+    out.borrow = prev.borrow;
   }
   return out;
 }
@@ -152,6 +202,7 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
   let fromSessionId = "";
   let fromMode = "";
   let fromDisplayName = "";
+  let borrowId = "";
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -193,6 +244,8 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
       fromMode = args[++i] ?? "";
     } else if (arg === "--from-display-name" && i + 1 < args.length) {
       fromDisplayName = args[++i] ?? "";
+    } else if (arg === "--borrow" && i + 1 < args.length) {
+      borrowId = args[++i] ?? "";
     } else if (!arg.startsWith("--")) {
       mode = arg;
     }
@@ -219,6 +272,7 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
     fromSessionId,
     fromMode,
     fromDisplayName,
+    borrowId,
   };
 }
 

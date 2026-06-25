@@ -1813,7 +1813,7 @@ async function main() {
     return;
   }
 
-  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource, sessionName, viewing, fromSessionId, fromMode, fromDisplayName } = parsedArgs;
+  const { mode, port, backendType, noOpen, debug, forceDev, noPrompt, skipSkill, replaySource, sessionName, viewing, fromSessionId, fromMode, fromDisplayName, borrowId } = parsedArgs;
   let { workspace, replayPackage } = parsedArgs;
 
   // Launcher mode — no mode arg → start marketplace UI
@@ -2250,6 +2250,18 @@ async function main() {
     }
   }
 
+  // Borrow provenance — stamped onto B's session.json so `scanProjectSessions`
+  // filters B from user-facing lists (B runs a NORMAL user mode, so the mode's
+  // `hidden` flag is false; the session-level marker is what keeps it out). The
+  // borrow brief the server staged carries no host session id, so it's omitted
+  // here — the borrow id + role are enough for filtering. These survive every
+  // later resume via `preserveRefinedSessionMeta` (same trap as the refined
+  // trio). Computed once; spread into the agent-launch save below.
+  const borrowSessionFields: Pick<PersistedSession, "internal" | "borrow"> =
+    borrowId && borrowId.trim().length > 0
+      ? { internal: true, borrow: { borrowId: borrowId.trim(), role: "borrow-target" } }
+      : {};
+
   // Resolve the project's display name once for the env-tag dispatch below.
   // Best-effort — manifest read failures fall back to `undefined`, and the
   // env tag simply omits the `project=` attr.
@@ -2510,6 +2522,7 @@ async function main() {
       fromSessionId,
       fromMode,
       fromDisplayName,
+      borrowId: borrowId || undefined,
       userLocale: userLocale ?? undefined,
     });
     if (!tag) return;
@@ -2523,9 +2536,14 @@ async function main() {
     // subprocess sits on empty stdin and never fires `system.init`,
     // so the model picker stays "no model" until the user nudges it.
     // `opened` and `resumed` keep the original pending-context semantics.
+    // A borrow target was just spawned with a bounded job and nothing to do
+    // until the user (who isn't here — the host is) types — so like a handoff
+    // it must dispatch IMMEDIATE, not wait for pending-context to fold in.
+    const isBorrow = !!borrowId && borrowId.trim().length > 0;
     const isHandoff = !!inboundHandoff || (fromSessionId !== undefined && fromSessionId.trim().length > 0);
-    wsBridge.enqueueEnvContext(targetSessionId, tag, { immediate: isHandoff });
-    console.log(`[pneuma] ${isHandoff ? "Dispatched" : "Queued"} env context: ${tag}`);
+    const immediate = isHandoff || isBorrow;
+    wsBridge.enqueueEnvContext(targetSessionId, tag, { immediate });
+    console.log(`[pneuma] ${immediate ? "Dispatched" : "Queued"} env context: ${tag}`);
   };
 
   if (replayPackage) {
@@ -2887,6 +2905,9 @@ async function main() {
         backendType: sessionBackendType,
         createdAt: existing?.createdAt || Date.now(),
         editing: true,
+        // Stamp borrow provenance + internal flag so this sub-session B is
+        // filtered from user-facing lists. No-op spread for a normal session.
+        ...borrowSessionFields,
       });
       await recordSession({
         startup,

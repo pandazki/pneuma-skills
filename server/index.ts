@@ -239,6 +239,14 @@ export async function startServer(options: ServerOptions) {
      * Electron shell can honor it.
      */
     background?: boolean;
+    /**
+     * Borrow id when spawning a borrow target B (design §5). Threaded to the
+     * child as `--borrow <id>` so B's `bin/pneuma.ts` stamps `session.json`
+     * with `{ internal: true, borrow: {...} }` (filtering it from user-facing
+     * lists) and dispatches `<pneuma:env reason="borrow" />` instead of a
+     * terminal `handed-off`. Undefined for every non-borrow launch.
+     */
+    borrowId?: string;
   }): Promise<{ url: string; workspace: string; sessionId: string | null }> {
     const resolvedWorkspace = resolve(params.workspace.replace(/^~/, homedir()));
     mkdirSync(resolvedWorkspace, { recursive: true });
@@ -307,6 +315,7 @@ export async function startServer(options: ServerOptions) {
     if (params.fromSessionId) args.push("--from-session-id", params.fromSessionId);
     if (params.fromMode) args.push("--from-mode", params.fromMode);
     if (params.fromDisplayName) args.push("--from-display-name", params.fromDisplayName);
+    if (params.borrowId) args.push("--borrow", params.borrowId);
     if (options.debug) args.push("--debug");
     if (options.forceDev) args.push("--dev");
 
@@ -2726,6 +2735,9 @@ export async function startServer(options: ServerOptions) {
         workspace: params.project ?? join(tmpdir(), `pneuma-borrow-${params.sessionId}`),
         ...(params.project ? { project: params.project } : {}),
         sessionId: params.sessionId,
+        // The borrow_id IS B's session id — thread it as `--borrow` too so B
+        // stamps its session.json provenance + dispatches `reason="borrow"`.
+        borrowId: params.sessionId,
         background: params.background,
       });
       return { sessionId: params.sessionId, url: result.url };
