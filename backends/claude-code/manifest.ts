@@ -18,6 +18,10 @@ export const claudeCodeModule: BackendModule = {
 
   skillsDir: ".claude/skills",
   instructionsFile: "CLAUDE.md",
+  // Claude Code reports `<cwd>/.claude/commands/*.md` as native slash_commands,
+  // so session-scoped commands (e.g. `/borrow`) install here. Codex/Kimi leave
+  // this undefined — they don't surface project command files.
+  commandsDir: ".claude/commands",
 
   capabilities: {
     streaming: true,

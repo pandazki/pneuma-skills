@@ -344,6 +344,53 @@ describe("installSkill", () => {
   // teaser, and the whole viewer-api block is suppressed when the mode
   // declares no viewerApi config. See generateNativeBridgeSection (returns "").
 
+  test("installs the session-scoped /borrow command for claude-code (commandsDir defined)", () => {
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, backendType: "claude-code" });
+
+    const borrowPath = join(workspace, ".claude", "commands", "borrow.md");
+    expect(existsSync(borrowPath)).toBe(true);
+
+    const content = readFileSync(borrowPath, "utf-8");
+    // Borrow framing — subroutine call, not a goto.
+    expect(content).toContain("subroutine call");
+    // The real CLI invocation the caller must run.
+    expect(content).toContain("$PNEUMA_CLI borrow --mode");
+    // $ARGUMENTS parsing — first token is mode, remainder is intent.
+    expect(content).toContain("$ARGUMENTS");
+    // Default scope guidance.
+    expect(content).toContain("\"scope\": \"return\"");
+  });
+
+  test("installs the /borrow command into the session dir for project sessions", () => {
+    const sessionDir = join(tmpDir, "session");
+    mkdirSync(sessionDir, { recursive: true });
+
+    installSkill({
+      workspace,
+      skillConfig: defaultSkillConfig,
+      modeSourceDir,
+      backendType: "claude-code",
+      sessionDir,
+      projectRoot: workspace,
+      sessionId: "sess-1",
+    });
+
+    // Command installs into the per-session install target, not the workspace.
+    expect(existsSync(join(sessionDir, ".claude", "commands", "borrow.md"))).toBe(true);
+  });
+
+  test("does not install the /borrow command for codex (commandsDir undefined)", () => {
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, backendType: "codex" });
+    expect(existsSync(join(workspace, ".agents", "commands", "borrow.md"))).toBe(false);
+    expect(existsSync(join(workspace, ".claude", "commands", "borrow.md"))).toBe(false);
+  });
+
+  test("does not install the /borrow command for kimi-cli (commandsDir undefined)", () => {
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, backendType: "kimi-cli" });
+    expect(existsSync(join(workspace, ".kimi", "commands", "borrow.md"))).toBe(false);
+    expect(existsSync(join(workspace, ".claude", "commands", "borrow.md"))).toBe(false);
+  });
+
   test("writes AGENTS.md when backendType is codex", () => {
     installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, backendType: "codex" });
 
