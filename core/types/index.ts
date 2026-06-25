@@ -82,6 +82,18 @@ export type { ProjectManifest, ProjectSummary } from "./project-manifest.js";
 export { isProjectManifest } from "./project-manifest.js";
 
 export type {
+  BorrowDispatchPayload,
+  BorrowResult,
+  BorrowLink,
+  BorrowScope,
+  BorrowState,
+  BorrowResultStatus,
+  BorrowProducedArtifact,
+  BorrowReturnVia,
+} from "./borrow.js";
+export { isBorrowResult, normalizeBorrowScope, MAX_CONCURRENT_BORROWS_PER_SESSION } from "./borrow.js";
+
+export type {
   LibraryManifest,
   LibraryModeEntry,
   LibrarySource,
