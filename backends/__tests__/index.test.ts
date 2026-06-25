@@ -83,6 +83,18 @@ describe("module registry", () => {
     expect(getBackendModule("kimi-cli").instructionsFile).toBe("AGENTS.md");
   });
 
+  it("exposes a session-scoped commandsDir only for backends that surface project command files", () => {
+    // Claude Code reads `<cwd>/.claude/commands/*.md` and reports them as
+    // native slash_commands — that's the seam the /borrow command rides on.
+    expect(getBackendModule("claude-code").commandsDir).toBe(".claude/commands");
+
+    // Codex maps its *skills* to slash_commands (not project command files);
+    // Kimi doesn't populate slash_commands at all. Both leave commandsDir
+    // undefined so the installer skips the session-command step for them.
+    expect(getBackendModule("codex").commandsDir).toBeUndefined();
+    expect(getBackendModule("kimi-cli").commandsDir).toBeUndefined();
+  });
+
   it("claude-code's createBridgeBackend returns null (legacy stdio path)", () => {
     const m = getBackendModule("claude-code");
     const result = m.createBridgeBackend(

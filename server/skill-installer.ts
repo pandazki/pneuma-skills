@@ -1389,6 +1389,33 @@ export function installSkill(options: InstallSkillOptions): void {
     skillSnippets.push(...globalSnippets);
   }
 
+  // 1d-bis. Install session-scoped slash commands (e.g. `/borrow`).
+  //         Gated on `conventions.commandsDir` being defined — NOT on a
+  //         backend conditional. Only backends that surface project-scoped
+  //         slash commands declare this field (Claude Code reports
+  //         `<cwd>/.claude/commands/*.md` as native `slash_commands`); Codex
+  //         and Kimi leave it undefined and skip this step entirely. The
+  //         command file is a self-contained caller guide for the in-session
+  //         chat input, copied into the per-session install target so it works
+  //         for both quick and project sessions.
+  if (conventions.commandsDir) {
+    const commandsTarget = join(installTarget, conventions.commandsDir);
+    const borrowTemplate = join(
+      import.meta.dirname,
+      "..",
+      "templates",
+      "session-commands",
+      "borrow.md",
+    );
+    if (existsSync(borrowTemplate)) {
+      mkdirSync(commandsTarget, { recursive: true });
+      cpSync(borrowTemplate, join(commandsTarget, "borrow.md"), { force: true });
+      console.log(`[skill-installer] Installed /borrow command to ${commandsTarget}`);
+    } else {
+      console.warn(`[skill-installer] Session-command template not found: ${borrowTemplate}`);
+    }
+  }
+
   // 1e. Ensure preferences directory and scaffold files exist
   const prefsDir = join(homedir(), ".pneuma", "preferences");
   mkdirSync(prefsDir, { recursive: true });

@@ -182,6 +182,19 @@ export interface BackendModule {
   // ── File-layout conventions ───────────────────────────────────────────
   readonly skillsDir: string;
   readonly instructionsFile: string;
+  /**
+   * Backend-relative dir where session-scoped slash commands install
+   * (e.g. the `/borrow` command). OPTIONAL because only some backends
+   * surface project-scoped slash commands: Claude Code reports
+   * `<cwd>/.claude/commands/*.md` as native `slash_commands` in its
+   * `system.init` stream-json event, so a file there shows up in the
+   * in-session chat input. Codex maps its *skills* (not project command
+   * files) to slash_commands, and Kimi doesn't populate slash_commands at
+   * all — both leave this undefined, and the skill installer skips the
+   * session-command step for them (gated on this field, never on a backend
+   * conditional).
+   */
+  readonly commandsDir?: string;
 
   // ── Capability declarations ───────────────────────────────────────────
   readonly capabilities: AgentCapabilities;
