@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.24.0] - 2026-06-26
+
+### Added
+- **`/borrow` slash command** — borrow is now triggerable straight from the in-session chat input. Type `/borrow <mode> <intent>` (e.g. `/borrow wordtaste polish this hero copy`) and the agent parses it, prepares a bounded brief, dispatches the borrow, stays live, and folds the returned result back in. Backed by a session-scoped `.claude/commands/borrow.md` that Claude Code surfaces as a native slash command, gated by a new optional `commandsDir` convention on `BackendModule` (Claude Code only; Codex/Kimi skip it — no hardcoded backend check). Works in any Claude Code session, quick or project. Completes the borrow trigger surface from 3.23.0, which shipped the CLI + agent guidance but no user-facing entry point.
+
 ## [3.23.0] - 2026-06-25
 
 ### Added
