@@ -73,7 +73,7 @@ The user has an outline / brief in `materials/` but no prose. You write the firs
 3. Load `taste/taste-profile.md`: the voice floor (§1), the symptom rubric (§2), the calibrated launch rung (§0), and the §5 meta-principles.
 4. **Freeze the kernel** — extract the load-bearing meaning/facts/hedges from the outline and write them to `materials/kernel.md`; freeze the blocks that carry them once the draft exists.
 5. Generate from the **launch rung** (longform calibrates around rung 4; uncalibrated default is rung 1) across families, injecting: frozen kernel + voice anchors + `taste/recipes/<content-type>.md` + `taste/swaps.jsonl` (symbol-layer few-shot) + the current rung's mandate.
-6. Write the winning candidate to `draft.md` — **article body only**, no preamble or meta (see the [first discipline](#non-negotiable-disciplines-each-one-is-paid-for-not-theoretical)). Set a content-appropriate reading skin (see [Skin auto-selection](#skin-auto-selection)). Hand the user the cheapest signal and enter the loop.
+6. Write the winning candidate to `draft.md` — **article body only**, no preamble or meta (see the [first discipline](#non-negotiable-disciplines-each-one-is-paid-for-not-theoretical)). Set a content-appropriate color theme — the font auto-picks by language (see [Reading-surface auto-selection](#reading-surface-auto-selection-font--color-two-independent-axes)). Hand the user the cheapest signal and enter the loop.
 
 ### (B) Disliked draft → de-AI — the `start-from-draft` command
 
@@ -82,7 +82,7 @@ The user has prose that reads one-glance-AI (or a handoff dropped a source draft
 1. Preserve the original verbatim in `materials/original.md`.
 2. **Freeze the kernel** — read the original, extract what must survive (the argument, the facts, the precise hedges), write `materials/kernel.md`, and freeze the blocks carrying it.
 3. Load the taste profile as in (A); run the cold-start check.
-4. Run the first disruption pass from the launch rung, cross-family, kernel re-injected. Write to `draft.md` — **article body only**, no "修订版" preamble and no change-log: the revision rationale goes to [`draft.annotations.json`](#the-annotation-channel--where-revision-notes-go), not the document (see the [first discipline](#non-negotiable-disciplines-each-one-is-paid-for-not-theoretical)). Set a content-appropriate reading skin (see [Skin auto-selection](#skin-auto-selection)). Hand over the cheapest signal, enter the loop.
+4. Run the first disruption pass from the launch rung, cross-family, kernel re-injected. Write to `draft.md` — **article body only**, no "修订版" preamble and no change-log: the revision rationale goes to [`draft.annotations.json`](#the-annotation-channel--where-revision-notes-go), not the document (see the [first discipline](#non-negotiable-disciplines-each-one-is-paid-for-not-theoretical)). Set a content-appropriate color theme — the font auto-picks by language (see [Reading-surface auto-selection](#reading-surface-auto-selection-font--color-two-independent-axes)). Hand over the cheapest signal, enter the loop.
 
 ---
 
@@ -166,14 +166,14 @@ So: **body → `draft.md` (pure article); the "what I changed and why" → `draf
 
 ---
 
-## Skin auto-selection
+## Reading-surface auto-selection (font + color, two independent axes)
 
-On generation, pick a **reading skin that fits the content's register** and record your intent in `.pneuma/config.json` as `skinSuggested` (a skin id). One line of intent — the viewer owns the actual skin set and renders the choice; the user can always override.
+The reading surface is **two orthogonal choices**, persisted separately in `.pneuma/config.json`:
 
-- A literary / thoughtful essay → a warm serif day skin.
-- A punchy / modern / technical piece → a clean sans skin.
+- **Font** (`fontSuggested`) — the reading FACE. The viewer already auto-picks this from the draft's **script**: Chinese content renders in 霞鹭文楷 (a warm kami-style CJK serif), English-literary content in a soft serif. So you usually **leave the font alone** — only set `fontSuggested` (a font id) when you want a non-default register inside one script (e.g. a punchy/technical English piece reads better in the clean sans face). One line of intent.
+- **Color** (`themeSuggested`) — the page's PALETTE + day/night mood (warm paper, cool grey, neutral night, sepia night…). Set `themeSuggested` (a theme id) to fit the piece's mood when the draft first lands.
 
-Keep it light: set `skinSuggested` once when the draft first lands (and adjust if the piece's register shifts materially), don't churn it every turn. Don't hardcode a skin list in your reasoning — the ids are defined by the viewer and may drift; choose by register and let the viewer resolve it.
+The viewer OWNS both registries and renders the choice; the user can always override either axis. Keep it light: set the hints once when the draft first lands (adjust only if the register shifts materially), don't churn them every turn. **Don't hardcode the id lists in your reasoning** — they are defined by the viewer and may drift; choose by register/mood and let the viewer resolve it. (A legacy single `skinSuggested` is still honored and split into a font+theme pair, but prefer the two new keys.)
 
 ---
 
@@ -369,7 +369,7 @@ The symbol layer (metaphors / signature lines) is the finest tell, and the model
     swaps.jsonl             symbol-layer AI→human sentence pairs (gold material)
     prefs.log.jsonl         append-only signal events
 .pneuma/
-  config.json               init params (active content-set, content-type, current rung, skinSuggested)
+  config.json               init params (active content-set, content-type, current rung, fontSuggested, themeSuggested)
   cross-family.json         startup probe result { codex, gemini, claude }
 ```
 

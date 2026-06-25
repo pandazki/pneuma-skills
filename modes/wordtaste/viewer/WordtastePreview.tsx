@@ -3,9 +3,12 @@
  *
  * A writer's reading room, not a dashboard. The studio is content-first:
  *
- *   CENTER  The article body — and NOTHING else. The protagonist. Rendered in
- *           the active reading SKIN (a warm serif day page, a clean sans page,
- *           a calm night page). Block-addressed prose: span-select → instant
+ *   CENTER  The article body — and NOTHING else. The protagonist. Rendered on
+ *           the active reading surface, which composes TWO independent axes: a
+ *           reading FONT (auto-picked by the draft's script — 霞鹭文楷 for
+ *           Chinese, a literary serif for English — overridable) and a color
+ *           THEME (a day or night palette, chosen by the user). Block-addressed
+ *           prose: span-select → instant
  *           5-direction popup; per-block freeze/poke/mask hover chrome;
  *           agent-rewrite pulse; a quiet dense-block readability cue. When the
  *           agent has written revision notes, an ANNOTATION column opens on the
@@ -14,7 +17,8 @@
  *   LEFT    A slim ICON RAIL. All panels default-collapsed so the article gets
  *           full width. Three stacked entries (top→bottom): Materials (read-only
  *           inputs), Taste (the learned profile — moved here from the old right
- *           column), Theme (the skin switcher). Click an icon → a generous,
+ *           column), Theme (two pickers: the reading font + the color theme).
+ *           Click an icon → a generous,
  *           readable flyout opens over the studio edge; accordion (one open at a
  *           time); click again / click-away / Esc collapses it.
  *
@@ -36,7 +40,8 @@
  * drives re-render + the external-origin pulse signal.
  *
  * Design tokens: the studio CHROME stays on Ethereal Tech `cc-*` tokens; the
- * reading surface layers the active skin's CSS custom properties on top. Orange
+ * reading surface layers the font axis (`--wordtaste-font-*`) and the color axis
+ * (`--wordtaste-theme-*`) CSS custom properties on top. Orange
  * (cc-primary) is rationed to one focus at a time. Glass (backdrop-blur) only on
  * elevated instruments (popup, TopBar, flyouts).
  */
@@ -87,7 +92,15 @@ import {
   type DirectionChip,
   type WordtasteAddress,
 } from "./studio-logic.js";
-import { SKINS, resolveSkin, skinCssVars, type Skin } from "./skins.js";
+import {
+  FONTS,
+  THEMES,
+  resolveFont,
+  resolveTheme,
+  surfaceCssVars,
+  type ReadingFont,
+  type ColorTheme,
+} from "./font-theme.js";
 
 interface CrossFamily {
   claude: boolean;
@@ -98,9 +111,17 @@ interface CrossFamily {
 interface WordtasteConfig {
   rung?: number;
   contentType?: string;
-  /** The user's chosen reading skin id (wins over the agent suggestion). */
+  /** The user's chosen reading font id (wins over the agent suggestion + auto-pick). */
+  font?: string;
+  /** The user's chosen color-theme id (wins over the agent suggestion). */
+  theme?: string;
+  /** The agent's content-register font hint (fallback when the user has not chosen). */
+  fontSuggested?: string;
+  /** The agent's content-register color-theme hint (fallback when the user has not chosen). */
+  themeSuggested?: string;
+  /** Legacy pre-split bundled id — mapped to a { font, theme } pair for back-compat. */
   skin?: string;
-  /** The agent's content-register skin hint (fallback when the user has not chosen). */
+  /** Legacy pre-split bundled agent hint. */
   skinSuggested?: string;
   [k: string]: unknown;
 }
@@ -191,14 +212,40 @@ export default function WordtastePreview(props: ViewerPreviewProps) {
     [fileChannel, cs, fileTick],
   );
 
-  // ── Active reading skin (config-persisted; user > agent > default) ──────────
-  const skin = useMemo(() => resolveSkin(config), [config?.skin, config?.skinSuggested]);
-  const skinVars = useMemo(() => skinCssVars(skin) as React.CSSProperties, [skin]);
+  // ── Reading surface: two INDEPENDENT axes (config-persisted) ────────────────
+  // FONT  follows the draft's SCRIPT when unset (Chinese → 霞鹭文楷, English →
+  //       the literary serif); the user/agent can override.
+  // THEME follows only the user's color choice — never the content.
+  // A sample of the draft text drives the font auto-pick; we keep it short so a
+  // long draft does not rebuild the resolution on every keystroke-sized edit.
+  const draftSample = useMemo(
+    () => (draft ? draft.blocks.map((b) => b.markdown).join("\n").slice(0, 4000) : ""),
+    [draft],
+  );
+  const font = useMemo(
+    () => resolveFont(draftSample, config),
+    [draftSample, config?.font, config?.fontSuggested, config?.skin, config?.skinSuggested],
+  );
+  const theme = useMemo(
+    () => resolveTheme(config),
+    [config?.theme, config?.themeSuggested, config?.skin, config?.skinSuggested],
+  );
+  const surfaceVars = useMemo(
+    () => surfaceCssVars(font, theme) as React.CSSProperties,
+    [font, theme],
+  );
 
-  const setSkin = useCallback(
+  const setFont = useCallback(
     (id: string) => {
       if (readonly) return;
-      void writeConfig({ ...(config ?? {}), skin: id });
+      void writeConfig({ ...(config ?? {}), font: id });
+    },
+    [config, writeConfig, readonly],
+  );
+  const setTheme = useCallback(
+    (id: string) => {
+      if (readonly) return;
+      void writeConfig({ ...(config ?? {}), theme: id });
     },
     [config, writeConfig, readonly],
   );
@@ -606,11 +653,19 @@ export default function WordtastePreview(props: ViewerPreviewProps) {
             )}
             {railPanel === "theme" && (
               <ThemePanel
-                activeSkinId={skin.id}
-                suggestedSkinId={
-                  typeof config?.skinSuggested === "string" ? config.skinSuggested : undefined
+                activeFontId={font.id}
+                activeThemeId={theme.id}
+                suggestedFontId={
+                  typeof config?.fontSuggested === "string" ? config.fontSuggested : undefined
                 }
-                onPick={setSkin}
+                suggestedThemeId={
+                  typeof config?.themeSuggested === "string" ? config.themeSuggested : undefined
+                }
+                fontIsAuto={
+                  typeof config?.font !== "string" && typeof config?.fontSuggested !== "string"
+                }
+                onPickFont={setFont}
+                onPickTheme={setTheme}
                 readonly={readonly}
               />
             )}
@@ -621,7 +676,7 @@ export default function WordtastePreview(props: ViewerPreviewProps) {
         <section
           className={`wordtaste-center ${annotationColumnOpen ? "has-annotations" : ""}`}
           aria-label="The Draft"
-          style={skinVars}
+          style={surfaceVars}
         >
           <div
             ref={centerRef}
@@ -1497,46 +1552,141 @@ function Counter({ n, label, hint }: { n: number; label: string; hint: string })
   );
 }
 
-// ── Theme panel (left rail) ──────────────────────────────────────────────────
+// ── Theme panel (left rail) — TWO independent pickers: Font + Color ──────────
 
 function ThemePanel({
-  activeSkinId,
-  suggestedSkinId,
-  onPick,
+  activeFontId,
+  activeThemeId,
+  suggestedFontId,
+  suggestedThemeId,
+  fontIsAuto,
+  onPickFont,
+  onPickTheme,
   readonly,
 }: {
-  activeSkinId: string;
-  suggestedSkinId?: string;
-  onPick: (id: string) => void;
+  activeFontId: string;
+  activeThemeId: string;
+  suggestedFontId?: string;
+  suggestedThemeId?: string;
+  /** True when the active font came from content auto-pick (no explicit choice). */
+  fontIsAuto: boolean;
+  onPickFont: (id: string) => void;
+  onPickTheme: (id: string) => void;
   readonly?: boolean;
 }) {
+  const activeTheme = THEMES.find((t) => t.id === activeThemeId) ?? THEMES[0];
   return (
-    <div className="wordtaste-stack-lg">
-      <p className="wordtaste-panel-sub">how the article reads — pick a reading skin</p>
-      <div className="wordtaste-skins">
-        {SKINS.map((s) => (
-          <SkinCard
-            key={s.id}
-            skin={s}
-            active={s.id === activeSkinId}
-            suggested={s.id === suggestedSkinId}
-            onPick={() => !readonly && onPick(s.id)}
-            readonly={readonly}
-          />
-        ))}
+    <div className="wordtaste-stack-xl">
+      {/* Font axis — the reading face, auto-picked by content language */}
+      <div className="wordtaste-stack-lg">
+        <div className="wordtaste-theme-axis-head">
+          <span className="wordtaste-eyebrow">Reading font</span>
+          {fontIsAuto && <span className="wordtaste-auto-pill">auto by language</span>}
+        </div>
+        <p className="wordtaste-panel-sub">the face the article is read in</p>
+        <div className="wordtaste-skins">
+          {FONTS.map((f) => (
+            <FontCard
+              key={f.id}
+              font={f}
+              theme={activeTheme}
+              active={f.id === activeFontId}
+              suggested={f.id === suggestedFontId}
+              onPick={() => !readonly && onPickFont(f.id)}
+              readonly={readonly}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Color axis — the palette + day/night mood, independent of the font */}
+      <div className="wordtaste-stack-lg">
+        <span className="wordtaste-eyebrow">Color theme</span>
+        <p className="wordtaste-panel-sub">the page's color & day/night mood</p>
+        <div className="wordtaste-skins">
+          {THEMES.map((t) => (
+            <ColorThemeCard
+              key={t.id}
+              theme={t}
+              active={t.id === activeThemeId}
+              suggested={t.id === suggestedThemeId}
+              onPick={() => !readonly && onPickTheme(t.id)}
+              readonly={readonly}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
-function SkinCard({
-  skin,
+function FontCard({
+  font,
+  theme,
   active,
   suggested,
   onPick,
   readonly,
 }: {
-  skin: Skin;
+  font: ReadingFont;
+  /** The active color theme — so the font preview shows the real composed look. */
+  theme: ColorTheme;
+  active: boolean;
+  suggested: boolean;
+  onPick: () => void;
+  readonly?: boolean;
+}) {
+  // Preview the face in its own script's specimen so the difference is visible.
+  const specimen = font.script === "cjk" ? "文字" : "Aa";
+  return (
+    <button
+      type="button"
+      className={`wordtaste-skin-card ${active ? "is-active" : ""}`}
+      onClick={onPick}
+      disabled={readonly}
+      aria-pressed={active}
+      title={font.blurb}
+    >
+      <span
+        className="wordtaste-skin-swatch"
+        style={
+          {
+            background: theme.palette.bg,
+            color: theme.palette.fg,
+            fontFamily: font.fontFamily,
+            borderColor: theme.palette.rule,
+          } as React.CSSProperties
+        }
+      >
+        <span className="wordtaste-skin-aa" style={{ color: theme.palette.heading }}>
+          {specimen}
+        </span>
+        <span className="wordtaste-skin-line" style={{ background: theme.palette.fg }} />
+        <span className="wordtaste-skin-line is-short" style={{ background: theme.palette.muted }} />
+        <span className="wordtaste-skin-accent" style={{ background: theme.palette.accent }} />
+      </span>
+      <span className="wordtaste-skin-meta">
+        <span className="wordtaste-skin-label" style={{ fontFamily: font.fontFamily }}>
+          {font.label}
+          {active && <span className="wordtaste-skin-dot" />}
+        </span>
+        <span className="wordtaste-skin-mode">
+          {font.script === "cjk" ? "中文" : "Latin"}
+          {suggested && !active && <span className="wordtaste-skin-suggested">suggested</span>}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function ColorThemeCard({
+  theme,
+  active,
+  suggested,
+  onPick,
+  readonly,
+}: {
+  theme: ColorTheme;
   active: boolean;
   suggested: boolean;
   onPick: () => void;
@@ -1549,33 +1699,32 @@ function SkinCard({
       onClick={onPick}
       disabled={readonly}
       aria-pressed={active}
-      title={skin.blurb}
+      title={theme.blurb}
     >
       <span
         className="wordtaste-skin-swatch"
         style={
           {
-            background: skin.palette.bg,
-            color: skin.palette.fg,
-            fontFamily: skin.fontFamily,
-            borderColor: skin.palette.rule,
+            background: theme.palette.bg,
+            color: theme.palette.fg,
+            borderColor: theme.palette.rule,
           } as React.CSSProperties
         }
       >
-        <span className="wordtaste-skin-aa" style={{ color: skin.palette.heading }}>
+        <span className="wordtaste-skin-aa" style={{ color: theme.palette.heading }}>
           Aa
         </span>
-        <span className="wordtaste-skin-line" style={{ background: skin.palette.fg }} />
-        <span className="wordtaste-skin-line is-short" style={{ background: skin.palette.muted }} />
-        <span className="wordtaste-skin-accent" style={{ background: skin.palette.accent }} />
+        <span className="wordtaste-skin-line" style={{ background: theme.palette.fg }} />
+        <span className="wordtaste-skin-line is-short" style={{ background: theme.palette.muted }} />
+        <span className="wordtaste-skin-accent" style={{ background: theme.palette.accent }} />
       </span>
       <span className="wordtaste-skin-meta">
         <span className="wordtaste-skin-label">
-          {skin.label}
+          {theme.label}
           {active && <span className="wordtaste-skin-dot" />}
         </span>
         <span className="wordtaste-skin-mode">
-          {skin.mode}
+          {theme.mode}
           {suggested && !active && <span className="wordtaste-skin-suggested">suggested</span>}
         </span>
       </span>
@@ -1723,7 +1872,17 @@ function WordtasteStyles() {
   return <style dangerouslySetInnerHTML={{ __html: STUDIO_CSS }} />;
 }
 
+// The reading FACES the font axis names. Loaded here, in the viewer's own scoped
+// stylesheet, so the mode renders the same whether it runs in the launcher
+// shell, a showcase, or as an installed external mode (the host index.html only
+// ships the Latin display faces). @import must precede every other rule.
+//   - 霞鹭文楷 / LXGW WenKai Screen: warm kami-style CJK reading face. The
+//     jsdelivr stylesheet's inner @font-face URLs are resolved relative to the
+//     CDN, so the absolute import below pulls the subsetted woff2 correctly.
+//   - Newsreader + Source Serif 4: the soft / cool English literary serifs.
 const STUDIO_CSS = `
+@import url('https://cdn.jsdelivr.net/npm/lxgw-wenkai-screen-webfont@1.7.0/lxgwwenkaiscreen.css');
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&display=swap');
 .wordtaste-studio {
   display: flex; flex-direction: column; height: 100%; width: 100%;
   background: var(--color-cc-bg, #09090b);
@@ -1801,6 +1960,9 @@ const STUDIO_CSS = `
 .wordtaste-panel-sub { font-size: 12px; color: var(--color-cc-muted); font-family: "Lora", serif; font-style: italic; margin: 0 0 4px; }
 .wordtaste-stack { display: flex; flex-direction: column; gap: 8px; }
 .wordtaste-stack-lg { display: flex; flex-direction: column; gap: 18px; }
+.wordtaste-stack-xl { display: flex; flex-direction: column; gap: 26px; }
+.wordtaste-theme-axis-head { display: flex; align-items: center; gap: 10px; }
+.wordtaste-auto-pill { font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; padding: 2px 7px; border-radius: 999px; color: var(--color-cc-primary); background: var(--color-cc-primary-muted, rgba(249,115,22,0.12)); border: 1px solid color-mix(in srgb, var(--color-cc-primary) 30%, transparent); }
 
 /* Generic collapsible card (materials) */
 .wordtaste-card { border: 1px solid var(--color-cc-border); border-radius: 10px; background: var(--color-cc-card, rgba(24,24,27,0.4)); overflow: hidden; }
@@ -1816,7 +1978,7 @@ const STUDIO_CSS = `
 
 /* ── Center — the reading surface (the active SKIN layers here) ── */
 .wordtaste-center { display: flex; flex-direction: column; flex: 1; min-width: 0; position: relative;
-  background: var(--wordtaste-skin-bg, var(--color-cc-bg, #09090b));
+  background: var(--wordtaste-theme-bg, var(--color-cc-bg, #09090b));
   transition: background .35s ease;
 }
 .wordtaste-draft-scroll { flex: 1; overflow-y: auto; padding: 40px 0 96px; }
@@ -1824,29 +1986,29 @@ const STUDIO_CSS = `
 .wordtaste-center.has-annotations .wordtaste-reading { gap: 28px; align-items: flex-start; padding-right: 12px; }
 
 .wordtaste-prose {
-  width: min(var(--wordtaste-skin-measure, 64ch), 100% - 80px);
+  width: min(var(--wordtaste-font-measure, 64ch), 100% - 80px);
   margin: 0 auto;
-  font-family: var(--wordtaste-skin-font, "Lora", Georgia, serif);
-  color: var(--wordtaste-skin-fg, var(--color-cc-fg));
+  font-family: var(--wordtaste-font-family, "Lora", Georgia, serif);
+  color: var(--wordtaste-theme-fg, var(--color-cc-fg));
 }
 .wordtaste-center.has-annotations .wordtaste-prose { margin: 0; }
 
 .wordtaste-block { position: relative; padding: 4px 16px; margin: 2px -16px; border-radius: 10px; transition: background .3s ease; }
-.wordtaste-block .wordtaste-block-body { font-size: 18px; line-height: var(--wordtaste-skin-line, 1.78); color: var(--wordtaste-skin-fg, var(--color-cc-fg)); }
-.wordtaste-block-body :is(h1) { font-family: var(--wordtaste-skin-font); font-weight: 700; font-size: 30px; line-height: 1.22; margin: 14px 0 12px; color: var(--wordtaste-skin-heading, var(--color-cc-fg)); }
-.wordtaste-block-body :is(h2) { font-family: var(--wordtaste-skin-font); font-weight: 700; font-size: 23px; margin: 22px 0 8px; color: var(--wordtaste-skin-heading, var(--color-cc-fg)); }
-.wordtaste-block-body :is(h3) { font-size: 19px; font-weight: 600; margin: 16px 0 6px; color: var(--wordtaste-skin-heading, var(--color-cc-fg)); }
+.wordtaste-block .wordtaste-block-body { font-size: 18px; line-height: var(--wordtaste-font-line, 1.78); color: var(--wordtaste-theme-fg, var(--color-cc-fg)); }
+.wordtaste-block-body :is(h1) { font-family: var(--wordtaste-font-family); font-weight: 700; font-size: 30px; line-height: 1.22; margin: 14px 0 12px; color: var(--wordtaste-theme-heading, var(--color-cc-fg)); }
+.wordtaste-block-body :is(h2) { font-family: var(--wordtaste-font-family); font-weight: 700; font-size: 23px; margin: 22px 0 8px; color: var(--wordtaste-theme-heading, var(--color-cc-fg)); }
+.wordtaste-block-body :is(h3) { font-size: 19px; font-weight: 600; margin: 16px 0 6px; color: var(--wordtaste-theme-heading, var(--color-cc-fg)); }
 .wordtaste-block-body p { margin: 0 0 2px; }
-.wordtaste-block-body blockquote { padding-left: 18px; position: relative; font-style: italic; color: var(--wordtaste-skin-muted, var(--color-cc-muted)); }
-.wordtaste-block-body blockquote::before { content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 2px; border-radius: 2px; background: var(--wordtaste-skin-accent, var(--color-cc-primary)); }
+.wordtaste-block-body blockquote { padding-left: 18px; position: relative; font-style: italic; color: var(--wordtaste-theme-muted, var(--color-cc-muted)); }
+.wordtaste-block-body blockquote::before { content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 2px; border-radius: 2px; background: var(--wordtaste-theme-accent, var(--color-cc-primary)); }
 .wordtaste-block-body ul, .wordtaste-block-body ol { padding-left: 24px; }
-.wordtaste-block-body a { color: var(--wordtaste-skin-accent, var(--color-cc-primary)); }
-.wordtaste-block-body code { font-family: ui-monospace, Menlo, monospace; font-size: 14px; background: var(--wordtaste-skin-wash); padding: 1px 5px; border-radius: 4px; }
-.wordtaste-block-body hr { border: none; border-top: 1px solid var(--wordtaste-skin-rule); margin: 18px 0; }
-.wordtaste-block:hover { background: var(--wordtaste-skin-wash, rgba(255,255,255,0.04)); }
+.wordtaste-block-body a { color: var(--wordtaste-theme-accent, var(--color-cc-primary)); }
+.wordtaste-block-body code { font-family: ui-monospace, Menlo, monospace; font-size: 14px; background: var(--wordtaste-theme-wash); padding: 1px 5px; border-radius: 4px; }
+.wordtaste-block-body hr { border: none; border-top: 1px solid var(--wordtaste-theme-rule); margin: 18px 0; }
+.wordtaste-block:hover { background: var(--wordtaste-theme-wash, rgba(255,255,255,0.04)); }
 
-.wordtaste-block.is-frozen { background: var(--wordtaste-skin-wash); }
-.wordtaste-block.is-frozen .wordtaste-block-body { color: var(--wordtaste-skin-muted); }
+.wordtaste-block.is-frozen { background: var(--wordtaste-theme-wash); }
+.wordtaste-block.is-frozen .wordtaste-block-body { color: var(--wordtaste-theme-muted); }
 
 .wordtaste-block.is-pulse { animation: wordtaste-pulse 1.2s cubic-bezier(.16,1,.3,1); }
 @keyframes wordtaste-pulse {
@@ -1877,24 +2039,24 @@ const STUDIO_CSS = `
 .wordtaste-poke-id { font-family: ui-monospace, monospace; font-size: 11px; color: var(--color-cc-primary); font-weight: 600; }
 .wordtaste-poke-title { font-size: 12px; color: var(--color-cc-fg); }
 
-.wordtaste-frozen-badge { display: inline-flex; align-items: center; gap: 4px; position: absolute; top: 9px; right: 14px; z-index: 4; font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--wordtaste-skin-muted, var(--color-cc-muted)); pointer-events: none; }
+.wordtaste-frozen-badge { display: inline-flex; align-items: center; gap: 4px; position: absolute; top: 9px; right: 14px; z-index: 4; font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--wordtaste-theme-muted, var(--color-cc-muted)); pointer-events: none; }
 .wordtaste-block:hover .wordtaste-frozen-badge { opacity: 0; }
 .wordtaste-frozen-badge .wordtaste-svg { width: 12px; height: 12px; }
 /* Readability cue: a quiet, non-prominent dot in the margin — NOT a loud badge,
    and NEVER an agent notification. */
-.wordtaste-dense-dot { position: absolute; top: 14px; left: -8px; width: 6px; height: 6px; border-radius: 50%; background: color-mix(in srgb, var(--wordtaste-skin-muted, #888) 55%, transparent); pointer-events: none; }
+.wordtaste-dense-dot { position: absolute; top: 14px; left: -8px; width: 6px; height: 6px; border-radius: 50%; background: color-mix(in srgb, var(--wordtaste-theme-muted, #888) 55%, transparent); pointer-events: none; }
 
 /* Annotation column — block-aligned revision notes (批注模式) */
 .wordtaste-annotations { position: relative; width: 264px; flex-shrink: 0; align-self: stretch; }
 .wordtaste-annotations-inner { position: relative; height: 100%; }
 .wordtaste-anno-group { position: absolute; left: 0; right: 0; display: flex; flex-direction: column; gap: 6px; }
-.wordtaste-anno-card { padding: 9px 11px; border-radius: 9px; background: color-mix(in srgb, var(--wordtaste-skin-bg, #18181b) 80%, var(--color-cc-surface, #18181b)); border: 1px solid var(--wordtaste-skin-rule, var(--color-cc-border)); border-left: 2px solid var(--wordtaste-skin-accent, var(--color-cc-primary)); box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
-.wordtaste-anno-card.is-note { border-left-color: var(--wordtaste-skin-muted, var(--color-cc-muted)); }
+.wordtaste-anno-card { padding: 9px 11px; border-radius: 9px; background: color-mix(in srgb, var(--wordtaste-theme-bg, #18181b) 80%, var(--color-cc-surface, #18181b)); border: 1px solid var(--wordtaste-theme-rule, var(--color-cc-border)); border-left: 2px solid var(--wordtaste-theme-accent, var(--color-cc-primary)); box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+.wordtaste-anno-card.is-note { border-left-color: var(--wordtaste-theme-muted, var(--color-cc-muted)); }
 .wordtaste-anno-meta { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 3px; }
-.wordtaste-anno-kind { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--wordtaste-skin-accent, var(--color-cc-primary)); }
-.wordtaste-anno-card.is-note .wordtaste-anno-kind { color: var(--wordtaste-skin-muted, var(--color-cc-muted)); }
-.wordtaste-anno-ts { font-size: 10px; color: var(--wordtaste-skin-muted, var(--color-cc-muted)); }
-.wordtaste-anno-text { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--wordtaste-skin-fg, var(--color-cc-fg)); font-family: "DM Sans", system-ui, sans-serif; }
+.wordtaste-anno-kind { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--wordtaste-theme-accent, var(--color-cc-primary)); }
+.wordtaste-anno-card.is-note .wordtaste-anno-kind { color: var(--wordtaste-theme-muted, var(--color-cc-muted)); }
+.wordtaste-anno-ts { font-size: 10px; color: var(--wordtaste-theme-muted, var(--color-cc-muted)); }
+.wordtaste-anno-text { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--wordtaste-theme-fg, var(--color-cc-fg)); font-family: "DM Sans", system-ui, sans-serif; }
 
 /* Direction popup */
 .wordtaste-popup { position: fixed; z-index: 9999; min-width: 248px; max-width: 280px; padding: 8px; border-radius: 12px; background: color-mix(in srgb, var(--color-cc-surface) 92%, transparent); backdrop-filter: blur(20px); border: 1px solid var(--color-cc-border); box-shadow: 0 18px 50px rgba(0,0,0,0.55); animation: wordtaste-pop .16s cubic-bezier(.16,1,.3,1); color: var(--color-cc-fg); }
@@ -1963,8 +2125,8 @@ const STUDIO_CSS = `
 
 /* Empty draft */
 .wordtaste-draft-empty { width: min(54ch, 100% - 80px); margin: 8vh auto 0; display: flex; flex-direction: column; gap: 10px; }
-.wordtaste-empty-lead { font-family: "Playfair Display", Georgia, serif; font-size: 26px; color: var(--wordtaste-skin-heading, var(--color-cc-fg)); margin: 0; }
-.wordtaste-empty-note { font-size: 14px; line-height: 1.6; color: var(--wordtaste-skin-muted, var(--color-cc-muted)); margin: 0; font-family: var(--wordtaste-skin-font, "Lora", serif); }
+.wordtaste-empty-lead { font-family: "Playfair Display", Georgia, serif; font-size: 26px; color: var(--wordtaste-theme-heading, var(--color-cc-fg)); margin: 0; }
+.wordtaste-empty-note { font-size: 14px; line-height: 1.6; color: var(--wordtaste-theme-muted, var(--color-cc-muted)); margin: 0; font-family: var(--wordtaste-font-family, "Lora", serif); }
 .wordtaste-empty-actions { display: flex; gap: 10px; margin-top: 8px; }
 .wordtaste-cta { font-size: 13px; padding: 9px 16px; border-radius: 9px; border: 1px solid var(--color-cc-border); background: transparent; color: var(--color-cc-fg); cursor: pointer; transition: all .15s; font-family: "DM Sans"; }
 .wordtaste-cta:hover { border-color: var(--color-cc-muted); }
