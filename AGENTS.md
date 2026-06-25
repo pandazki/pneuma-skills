@@ -185,6 +185,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 | **SharedHistoryPackage** | `core/types/shared-history.ts` | `pneuma history export/share` produces | `pneuma history open` + replay flow consumes |
 | **PluginManifest** | `core/types/plugin.ts` | Each plugin's `manifest.ts` (`plugins/<name>/`) | `core/plugin-registry.ts` (discovery + lifecycle), `core/hook-bus.ts` (waterfall events), `core/settings-manager.ts` (settings) |
 | **ProjectManifest** | `core/types/project-manifest.ts` | `<projectRoot>/.pneuma/project.json` | `core/project-loader.ts::detectWorkspaceKind()`; `server/handoff-routes.ts`; ProjectPanel / EmptyShell on front-end |
+| **`BorrowDispatchPayload` + `BorrowResult` + `BorrowLink`** (round-trip cross-mode handoff — see ADR-015) | `core/types/borrow.ts` (`isBorrowResult` guard + `normalizeBorrowScope` + `MAX_CONCURRENT_BORROWS_PER_SESSION`) | dispatch built by `bin/borrow-cli.ts` (`pneuma borrow`) → `server/borrow-routes.ts` `/api/borrows/dispatch` writes `<Bdir>/.pneuma/borrow-brief.json` + records `BorrowLink` in the per-session `Map<borrow_id, BorrowLink>`; result written by `pneuma borrow-return` → `/api/borrows/return` to `<Bdir>/borrow-result.json` | `server/skill-installer.ts` (brief → B's `pneuma:handoff` block); `bin/env-tag.ts` (`reason="borrow"` start signal); `server/ws-bridge.ts` (queued `<pneuma:borrow-returned>` return tag, idle-flush); `pneuma-project` skill (semantic layer, both sides). *Instantiation/consumption land in tasks B2–B5; the contract type + ADR ship first.* |
 
 ### Plugin System
 
@@ -206,6 +207,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 - **文件变化**:chokidar → WS push 到浏览器,事件携 `origin: "self" | "external"`(服务端 `pendingSelfWrites` 在源头标记)
 - **Session init**:携 `backend_type` / `agent_capabilities` / `agent_version`,前端据此 feature-gate
 - **`tool_use` 带 `fileRef`**:服务端 `stampFileRefs`(`server/file-ref.ts`)通过 `BackendModule.toolFileRef` 归一化为 `{ path, kind }`;Chat 渲染 `FilePreview` + `ToolFileActions`(open/editor/reveal via `/api/system/*`),零 tool-name 知识
+- **跨模式 chat-tag 信号**:`<pneuma:request-handoff>` / `<pneuma:handoff-cancelled>`(goto 交接)与 `<pneuma:request-borrow>` / `<pneuma:borrow-returned>`(往返借用,见 Borrow)都走同一条 chat-tag 注入管道;`borrow-returned` 是**排队**通知(rides `pendingNotifications`,A idle 时 flush,绝不打断 A 某一轮中间)
 
 `/ws/cli/:sessionId` 是历史 Claude WS transport,保留供 legacy 调用——现役所有 backend 都跑 stdio。
 
@@ -342,6 +344,10 @@ Project 是用户目录,由 `<root>/.pneuma/project.json` 标记。多个 sessio
 - **Cancel**:server 派一条 `<pneuma:handoff-cancelled reason="..." />` synthetic user message 回源 agent。
 
 完整设计见 [`docs/archive/proposals/2026-04-28-handoff-tool-call.md`](docs/archive/proposals/2026-04-28-handoff-tool-call.md);项目层全貌见 [`docs/archive/proposals/2026-04-27-pneuma-projects-design.md`](docs/archive/proposals/2026-04-27-pneuma-projects-design.md)。
+
+### Borrow (round-trip cross-mode handoff)
+
+Handoff 是 **goto**(kill A、spawn B、控制权不回来);**borrow** 是 **subroutine call**——从活着的 session A 里借用 mode B 的能力做一件有界的事,**A 不死、不离前台**,B 在后台子 session 做完写出交付物 + 变更说明,控制权**返回** A。契约层(`core/types/borrow.ts`)定义三个形状:`BorrowDispatchPayload`(A→server 的 brief:`mode`+`brief` 必填,加 `inputs`/`expects`/`scope`/`in_place_targets`/`summary`/`language`/`return_via`)、`BorrowResult`(B 写进 `<Bdir>/borrow-result.json`、A 读:`produced[]`+`change_notes`+`status`+`applied_in_place?`+`open_questions?`)、`BorrowLink`(server 内存 `Map<borrow_id, BorrowLink>` 链接记录,磁盘是真相)。四个被批准的决策(ADR-015):(D1) borrow 是与 handoff 并列的独立原语而非它的 flag;(D2) 返回腿是磁盘文件 + 排队 chat tag、非同步响应(崩溃可幸存);(D3) 默认 `scope:"return"`(host 应用 diff、保住专长分工)、opt-in `in-place` 逃生口;(D4) B 默认继承 A 的 backend(单 backend 锁不破)。并发默认(`MAX_CONCURRENT_BORROWS_PER_SESSION = 1`):每 session 一个活跃 borrow,多余的排队。Server/CLI/env-tag/skill 集成属后续任务(B2–B5);契约类型 + ADR 先行。
 
 ## Agent Command Distribution (3.10.0)
 
