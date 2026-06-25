@@ -168,6 +168,35 @@ function isBackgroundHandoffUrl(url: string): boolean {
 }
 
 /**
+ * True for an http session URL that carries the `&background=1` tag the server
+ * appends when it spawns a BORROW sub-session (`launchPneumaChild` in
+ * `server/index.ts`, design §6.2). The escape hatch `background=0` opts out.
+ * A borrow window must run hidden and must NOT reveal itself on completion —
+ * the user's foreground is the *host* session that's still in charge. Distinct
+ * from {@link isBackgroundHandoffUrl}, which keys on the `pneuma://handoff`
+ * scheme; this keys on the query param of a plain http session URL.
+ */
+function isBackgroundChildUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    const bg = parsed.searchParams.get("background");
+    return bg === "1" || bg === "true";
+  } catch {
+    return false;
+  }
+}
+
+/** Extract the `mode` query param from a session URL (empty string when absent). */
+function modeFromUrl(url: string): string {
+  try {
+    return new URL(url).searchParams.get("mode") ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/**
  * POST to the launcher's `/api/handoffs/external` route and surface the
  * resulting Pneuma session. In background mode (the default) the session
  * runs in a hidden window — invisible until it completes, then a
@@ -313,7 +342,15 @@ async function showLauncher() {
   // Intercept window.open() from launcher to create mode windows
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("http://localhost:") || url.startsWith("http://127.0.0.1:")) {
-      createModeWindow(url);
+      if (isBackgroundChildUrl(url)) {
+        // A borrow sub-session (design §6.2): run it HIDDEN and do NOT reveal
+        // on completion — the user's foreground stays on the host session that
+        // dispatched the borrow. The result reaches them via the host's
+        // `<pneuma:borrow-returned>` chat tag, not by this window appearing.
+        startBackgroundSession({ url, mode: modeFromUrl(url), reveal: false });
+      } else {
+        createModeWindow(url);
+      }
       return { action: "deny" };
     }
     // External URLs → system browser

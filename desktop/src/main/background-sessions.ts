@@ -38,6 +38,19 @@ interface BackgroundSessionRecord {
   watchdog?: NodeJS.Timeout;
   /** Number of `loadURL` retries already spent on did-fail-load. */
   loadAttempts: number;
+  /**
+   * Whether to surface this window on the first `running → idle`. `true` for a
+   * normal background handoff (the user's foreground IS this finished session,
+   * so auto-reveal). `false` for a BORROW sub-session (design §6.2): the user's
+   * foreground is the *host* session A; revealing the borrow would yank them
+   * away from the very session that's still in charge. A borrow signals
+   * completion through the host's `<pneuma:borrow-returned>` chat tag, not by
+   * its own window appearing. A non-revealing session still fires the
+   * completion Notification (a passive cue) and still reveals on a FAILURE path
+   * (load failure / crash / watchdog) — stranding the user is worse than a
+   * stray window.
+   */
+  reveal: boolean;
 }
 
 // Two indexes over the same records: `id` is the public handle (tray, reveal),
@@ -71,8 +84,16 @@ export function startBackgroundSession(opts: {
   url: string;
   mode: string;
   intent?: string;
+  /**
+   * Suppress the auto-reveal on completion (borrow sub-session — design §6.2).
+   * Defaults to `true` (normal background handoff reveals when it finishes).
+   */
+  reveal?: boolean;
 }): void {
   const { url, mode, intent } = opts;
+  // Named distinctly from the module-level `reveal()` function it feeds — a
+  // bare `reveal` const would shadow that function inside this scope.
+  const shouldReveal = opts.reveal !== false;
   const id = randomUUID();
   const win = createModeWindow(url, { background: true });
 
@@ -87,6 +108,7 @@ export function startBackgroundSession(opts: {
     sawRunning: false,
     notified: false,
     loadAttempts: 0,
+    reveal: shouldReveal,
   };
   byId.set(id, record);
   byWebContentsId.set(record.webContentsId, record);
@@ -166,8 +188,31 @@ function handleStatus(
   // Background mode auto-surfaces the result the instant the agent backend
   // goes idle — a passive tray glyph is too easy to forget. `reveal` shows
   // the window and drops the record (which also refreshes the tray).
+  //
+  // A BORROW sub-session (design §6.2) must NOT steal the foreground: the
+  // user is working in the *host* session, and the borrow's result reaches
+  // them as a `<pneuma:borrow-returned>` chat tag in the host — not by this
+  // hidden window popping up. So we fire the completion Notification (a
+  // passive cue) and quietly finalize the record WITHOUT pulling the app
+  // forward. The host stays in front; the borrow window closes itself when
+  // its child process exits.
   notifyDone(record);
-  reveal(record.id);
+  if (record.reveal) {
+    reveal(record.id);
+  } else {
+    finalizeWithoutReveal(record);
+  }
+}
+
+/**
+ * Finalize a completed NON-revealing background session: drop it from tracking
+ * (which refreshes the tray) without bringing the app forward. Used for borrow
+ * sub-sessions so the host session keeps the foreground. The hidden window is
+ * left to close on its own when the child process exits — closing it eagerly
+ * here would race the renderer's own teardown.
+ */
+function finalizeWithoutReveal(record: BackgroundSessionRecord): void {
+  removeRecord(record);
 }
 
 /**
