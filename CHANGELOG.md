@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.23.0] - 2026-06-25
+
+### Added
+- **wordtaste mode** (Taste Writing Studio) — a goal-driven writing studio that de-AIs prose and learns your voice as you write. Cross-family generation (Claude / codex / gemini), block-addressed draft with kernel-freeze, span-select rewrite directions, disruption ladder, and distillation of every judgment into plain-text taste artifacts (no model trained). Three-zone viewer (materials · draft · taste) with independent reading-font and color-theme axes (霞鹭文楷 / Newsreader), block-aligned annotation column, markdown export, and showcase. (Evolved from the internal `palate` prototype.)
+- **borrow** — peer / round-trip cross-mode handoff ([ADR-015](docs/adr/adr-015-borrow-peer-handoff.md)). Unlike a handoff (a goto that abandons the current mode), a *borrow* lets a live session borrow another mode's capability for one bounded sub-task in the background and fold the result back, without leaving. `pneuma borrow` / `pneuma borrow-return`, `core/types/borrow.ts`, server dispatch/return routes with turn-boundary notification, sub-session marking, and caller/borrowed skill guidance.
+
 ## [3.22.7] - 2026-06-16
 
 ### Fixed
