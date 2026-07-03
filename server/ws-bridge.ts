@@ -1643,6 +1643,21 @@ export class WsBridge {
   ) {
     session.cliIdle = false;
 
+    const streamingBackend = this.streamingBackends.get(session.id);
+    if (streamingBackend) {
+      if (images?.length) {
+        streamingBackend.routeBrowserMessage({
+          type: "user_message",
+          content: notification.message,
+          images,
+        });
+      } else {
+        streamingBackend.injectUserMessage(notification.message);
+      }
+      console.log(`[ws-bridge] Viewer notification forwarded to backend: ${notification.type}${images?.length ? ` (with ${images.length} image(s))` : ""}`);
+      return;
+    }
+
     if (images?.length) {
       // Use the same path as regular user messages so images get converted to content blocks
       this.handleUserMessage(session, {

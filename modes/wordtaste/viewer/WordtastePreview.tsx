@@ -725,6 +725,13 @@ export default function WordtastePreview(props: ViewerPreviewProps) {
                     "Intake the disliked draft, freeze the kernel, run the first disruption pass.",
                   )
                 }
+                onCalibrate={() =>
+                  fireCommand(
+                    "calibrate-style-sample",
+                    "Try three styles first",
+                    "Pick the representative passage, generate three distinct style versions, learn the user's preference, then write the full draft.",
+                  )
+                }
                 readonly={readonly}
               />
             )}
@@ -1476,7 +1483,7 @@ function RungGauge({ rung, launchRung }: { rung: number; launchRung: number }) {
       <h3 className="wordtaste-section-title">Disruption</h3>
       <div className="wordtaste-gauge">
         <div className="wordtaste-gauge-bar">
-          <div className="wordtaste-gauge-fill" style={{ width: `${pct}%` }} />
+          <div className="wordtaste-gauge-fill" style={{ transform: `scaleX(${pct / 100})` }} />
           <div
             className="wordtaste-gauge-launch"
             style={{ left: `${(launchRung / MAX_RUNG) * 100}%` }}
@@ -1737,10 +1744,12 @@ function ColorThemeCard({
 function DraftEmpty({
   onStartIdea,
   onStartDraft,
+  onCalibrate,
   readonly,
 }: {
   onStartIdea: () => void;
   onStartDraft: () => void;
+  onCalibrate: () => void;
   readonly?: boolean;
 }) {
   return (
@@ -1758,6 +1767,9 @@ function DraftEmpty({
             </button>
             <button type="button" className="wordtaste-cta" onClick={onStartDraft}>
               De-AI a draft
+            </button>
+            <button type="button" className="wordtaste-cta" onClick={onCalibrate}>
+              Try three styles first
             </button>
           </div>
         )}
@@ -1978,18 +1990,50 @@ const STUDIO_CSS = `
 
 /* ── Center — the reading surface (the active SKIN layers here) ── */
 .wordtaste-center { display: flex; flex-direction: column; flex: 1; min-width: 0; position: relative;
+  container-type: inline-size;
   background: var(--wordtaste-theme-bg, var(--color-cc-bg, #09090b));
   transition: background .35s ease;
 }
-.wordtaste-draft-scroll { flex: 1; overflow-y: auto; padding: 40px 0 96px; }
-.wordtaste-reading { display: flex; justify-content: center; gap: 0; width: 100%; }
-.wordtaste-center.has-annotations .wordtaste-reading { gap: 28px; align-items: flex-start; padding-right: 12px; }
+.wordtaste-draft-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: clamp(32px, 5cqw, 64px) 0 96px;
+}
+.wordtaste-reading {
+  --wordtaste-stage-pad: clamp(28px, 8cqw, 132px);
+  --wordtaste-anno-width: clamp(240px, 24cqw, 340px);
+  --wordtaste-anno-gap: clamp(20px, 3cqw, 42px);
+  --wordtaste-prose-target: clamp(
+    var(--wordtaste-font-measure, 64ch),
+    58cqw,
+    var(--wordtaste-font-max-measure, 72ch)
+  );
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  width: min(
+    calc(100% - (var(--wordtaste-stage-pad) * 2)),
+    var(--wordtaste-prose-target)
+  );
+  margin: 0 auto;
+}
+.wordtaste-center.has-annotations .wordtaste-reading {
+  width: min(
+    calc(100% - (var(--wordtaste-stage-pad) * 2)),
+    calc(var(--wordtaste-prose-target) + var(--wordtaste-anno-gap) + var(--wordtaste-anno-width))
+  );
+  gap: var(--wordtaste-anno-gap);
+  align-items: flex-start;
+}
 
 .wordtaste-prose {
-  width: min(var(--wordtaste-font-measure, 64ch), 100% - 80px);
+  width: 100%;
+  max-width: var(--wordtaste-prose-target);
+  min-width: min(100%, var(--wordtaste-font-measure, 64ch));
   margin: 0 auto;
   font-family: var(--wordtaste-font-family, "Lora", Georgia, serif);
   color: var(--wordtaste-theme-fg, var(--color-cc-fg));
+  flex: 1 1 var(--wordtaste-prose-target);
 }
 .wordtaste-center.has-annotations .wordtaste-prose { margin: 0; }
 
@@ -2047,11 +2091,16 @@ const STUDIO_CSS = `
 .wordtaste-dense-dot { position: absolute; top: 14px; left: -8px; width: 6px; height: 6px; border-radius: 50%; background: color-mix(in srgb, var(--wordtaste-theme-muted, #888) 55%, transparent); pointer-events: none; }
 
 /* Annotation column — block-aligned revision notes (批注模式) */
-.wordtaste-annotations { position: relative; width: 264px; flex-shrink: 0; align-self: stretch; }
+.wordtaste-annotations {
+  position: relative;
+  width: var(--wordtaste-anno-width);
+  flex: 0 0 var(--wordtaste-anno-width);
+  align-self: stretch;
+}
 .wordtaste-annotations-inner { position: relative; height: 100%; }
 .wordtaste-anno-group { position: absolute; left: 0; right: 0; display: flex; flex-direction: column; gap: 6px; }
-.wordtaste-anno-card { padding: 9px 11px; border-radius: 9px; background: color-mix(in srgb, var(--wordtaste-theme-bg, #18181b) 80%, var(--color-cc-surface, #18181b)); border: 1px solid var(--wordtaste-theme-rule, var(--color-cc-border)); border-left: 2px solid var(--wordtaste-theme-accent, var(--color-cc-primary)); box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
-.wordtaste-anno-card.is-note { border-left-color: var(--wordtaste-theme-muted, var(--color-cc-muted)); }
+.wordtaste-anno-card { padding: 9px 11px; border-radius: 9px; background: color-mix(in srgb, var(--wordtaste-theme-bg, #18181b) 80%, var(--color-cc-surface, #18181b)); border: 1px solid color-mix(in srgb, var(--wordtaste-theme-rule, var(--color-cc-border)) 82%, var(--wordtaste-theme-accent, var(--color-cc-primary))); box-shadow: 0 2px 10px rgba(0,0,0,0.08), inset 0 1px 0 color-mix(in srgb, var(--wordtaste-theme-accent, var(--color-cc-primary)) 18%, transparent); }
+.wordtaste-anno-card.is-note { border-color: var(--wordtaste-theme-rule, var(--color-cc-border)); box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
 .wordtaste-anno-meta { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 3px; }
 .wordtaste-anno-kind { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--wordtaste-theme-accent, var(--color-cc-primary)); }
 .wordtaste-anno-card.is-note .wordtaste-anno-kind { color: var(--wordtaste-theme-muted, var(--color-cc-muted)); }
@@ -2081,7 +2130,7 @@ const STUDIO_CSS = `
 
 .wordtaste-gauge { display: flex; flex-direction: column; gap: 6px; }
 .wordtaste-gauge-bar { position: relative; height: 8px; border-radius: 999px; background: var(--color-cc-border); overflow: hidden; }
-.wordtaste-gauge-fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--color-cc-primary, #f97316); transition: width .3s cubic-bezier(.16,1,.3,1); }
+.wordtaste-gauge-fill { position: absolute; inset: 0; border-radius: 999px; background: var(--color-cc-primary, #f97316); transform-origin: left center; transition: transform .3s cubic-bezier(.16,1,.3,1); }
 .wordtaste-gauge-launch { position: absolute; top: -3px; width: 2px; height: 14px; background: var(--color-cc-fg); border-radius: 2px; opacity: 0.6; }
 .wordtaste-gauge-foot { display: flex; justify-content: space-between; align-items: baseline; }
 .wordtaste-gauge-foot span:first-child { font-size: 13px; font-weight: 600; color: var(--color-cc-fg); }
@@ -2127,7 +2176,7 @@ const STUDIO_CSS = `
 .wordtaste-draft-empty { width: min(54ch, 100% - 80px); margin: 8vh auto 0; display: flex; flex-direction: column; gap: 10px; }
 .wordtaste-empty-lead { font-family: "Playfair Display", Georgia, serif; font-size: 26px; color: var(--wordtaste-theme-heading, var(--color-cc-fg)); margin: 0; }
 .wordtaste-empty-note { font-size: 14px; line-height: 1.6; color: var(--wordtaste-theme-muted, var(--color-cc-muted)); margin: 0; font-family: var(--wordtaste-font-family, "Lora", serif); }
-.wordtaste-empty-actions { display: flex; gap: 10px; margin-top: 8px; }
+.wordtaste-empty-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 .wordtaste-cta { font-size: 13px; padding: 9px 16px; border-radius: 9px; border: 1px solid var(--color-cc-border); background: transparent; color: var(--color-cc-fg); cursor: pointer; transition: all .15s; font-family: "DM Sans"; }
 .wordtaste-cta:hover { border-color: var(--color-cc-muted); }
 .wordtaste-cta.is-primary { background: var(--color-cc-primary, #f97316); color: #0a0a0a; border-color: var(--color-cc-primary); }

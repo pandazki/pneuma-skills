@@ -257,7 +257,7 @@ content-type). Mirrors kami.
 
 ## 4. Action space (the full ViewerActionDescriptor + ViewerCommandDescriptor set)
 
-Mapped one-to-one to the five signature features. All `agentInvocable: true` so the agent can drive
+Mapped one-to-one to the signature features. All `agentInvocable: true` so the agent can drive
 them itself (e.g. propose directions after a generation pass), but each is **also triggered from a
 viewer gesture** via the Command channel or a direct viewer-internal dispatch (see §5 for the wire
 path). `capture` is framework-built-in and not listed.
@@ -295,11 +295,12 @@ chip clicks dispatch through these, carrying their payload in the notification �
 |---|---|---|
 | `start-from-idea` | Write from this outline | Entry state (A): generate the first cross-family draft from the materials/outline |
 | `start-from-draft` | De-AI this draft | Entry state (B): intake the disliked draft, freeze the kernel, run the first disruption pass |
+| `calibrate-style-sample` | Try three styles first | Entry state (C): choose a representative passage, produce three distinct style versions, let the user pick, distill the preference, then write the full draft |
 | `request-directions` | (internal) | Fired by span-select; asks the agent for taste-aware rewrite directions for the selected address |
 | `still-ai` | Still reads AI — dial up | The cheapest signal: bump the ladder +1 and regenerate (whole-draft one-shot) |
 | `good-enough` | This is good — finalize | Triggers the finalize + distill pass |
 
-**Action-space size check:** 8 actions + 5 commands. This is above the create-mode "2–5 actions"
+**Action-space size check:** 8 actions + 6 commands. This is above the create-mode "2–5 actions"
 guideline, and that is *deliberate and defended*: palate's entire value proposition is a rich
 direct-manipulation vocabulary on one object (the draft block/span). Each action is a distinct
 *verb on the same address noun* — none is surfacing UI chrome as an action (the anti-pattern the
@@ -310,6 +311,33 @@ agent's ability to reason about what it is doing. Verdict: justified.
 ---
 
 ## 5. Cross-layer integration flows
+
+### 5.0 Representative style trial → full draft
+
+```
+User clicks "Try three styles first"
+   │  Viewer fires Command `calibrate-style-sample`
+   ▼
+Agent reads outline/original + taste profile + voice anchors
+   │  chooses the most representative/high-risk passage
+   │  freezes the kernel before any style move
+   ▼
+Agent generates three distinct passage versions (not three whole drafts)
+   │  stores them in taste/style-trial.md
+   │  leaves draft.md absent/unchanged
+   ▼
+User picks A/B/C or names what is close/still AI
+   │  Agent appends a style_trial_pick event to taste/prefs.log.jsonl
+   │  updates taste/taste-profile.md with concrete style requirements
+   ▼
+Agent writes one full draft.md using the picked direction
+   │  normal span-select / poke / still-ai loop takes over
+```
+
+This is a recognition-first calibration path: the user distinguishes between styles on a small,
+representative passage before the expensive full-draft pass. It is still goal-first and must not
+be presented as a setup wizard. The trial artifact belongs under `taste/`, not in `draft.md`,
+because `draft.md` remains the article body only.
 
 ### 5.1 The span-select → directions → rewrite loop (the signature flow)
 

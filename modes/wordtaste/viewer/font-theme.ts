@@ -55,6 +55,8 @@ export interface ReadingFont {
   fontFamily: string;
   /** Optimal reading column width (a CSS length, e.g. "62ch"). */
   measure: string;
+  /** Widest comfortable column when the studio pane has extra room. */
+  maxMeasure: string;
   /** Body line-height (unitless). CJK reads best a touch looser. */
   lineHeight: number;
 }
@@ -83,7 +85,8 @@ export const FONTS: ReadingFont[] = [
     blurb: "Warm kami-style brush serif — the Chinese reading face.",
     script: "cjk",
     fontFamily: WENKAI,
-    measure: "40ch",
+    measure: "48ch",
+    maxMeasure: "82ch",
     lineHeight: 1.95,
   },
   {
@@ -93,6 +96,7 @@ export const FONTS: ReadingFont[] = [
     script: "latin",
     fontFamily: NEWSREADER,
     measure: "62ch",
+    maxMeasure: "76ch",
     lineHeight: 1.78,
   },
   {
@@ -102,6 +106,7 @@ export const FONTS: ReadingFont[] = [
     script: "latin",
     fontFamily: SOURCE_SERIF,
     measure: "60ch",
+    maxMeasure: "74ch",
     lineHeight: 1.74,
   },
   {
@@ -111,6 +116,7 @@ export const FONTS: ReadingFont[] = [
     script: "latin",
     fontFamily: DM_SANS,
     measure: "66ch",
+    maxMeasure: "78ch",
     lineHeight: 1.7,
   },
 ];
@@ -370,6 +376,7 @@ export function fontCssVars(font: ReadingFont): Record<string, string> {
   return {
     "--wordtaste-font-family": font.fontFamily,
     "--wordtaste-font-measure": font.measure,
+    "--wordtaste-font-max-measure": font.maxMeasure,
     "--wordtaste-font-line": String(font.lineHeight),
     "--wordtaste-font-script": font.script,
   };

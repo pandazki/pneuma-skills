@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.24.2] - 2026-07-03
+
+### Improved
+- **WordTaste adapts to wide and changing editor surfaces** — the reading measure, stage padding, and annotation column now respond to the available viewer width instead of holding the default-window layout. Closing side views or widening the app gives the draft more usable room without pushing notes into the prose.
+- **WordTaste can run a representative three-style trial before the full draft** — the new `Try three styles first` command picks a representative passage, writes A/B/C directions to `taste/style-trial.md`, records the user's pick into taste artifacts, and only then writes `draft.md`. The default taste profile now also treats formulaic contrast pivots such as "不是 X，而是 Y" / "not X but Y" as AI-slop unless the contrast is concrete and earned.
+
+### Fixed
+- **Codex-backed viewer commands reach the active backend** — viewer notifications now route directly into streaming backends instead of falling through to the legacy CLI queue, so WordTaste commands such as the three-style trial actually reach Codex sessions.
+
 ## [3.24.1] - 2026-07-03
 
 ### Fixed

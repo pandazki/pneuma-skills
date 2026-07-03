@@ -286,6 +286,7 @@ const wordtasteManifest: ModeManifest = {
     commands: [
       { id: "start-from-idea", label: "Write from this outline", description: "Entry (A): generate the first cross-family draft from the materials/outline." },
       { id: "start-from-draft", label: "De-AI this draft", description: "Entry (B): intake the disliked draft, freeze the kernel, run the first disruption pass." },
+      { id: "calibrate-style-sample", label: "Try three styles first", description: "Taste calibration: pick the most representative passage, produce three distinct style versions, let the user choose, distill the preference, then write the full draft." },
       { id: "request-directions", label: "Request directions", description: "Internal — fired by span-select; asks the agent for taste-aware rewrite directions for the selected address." },
       { id: "still-ai", label: "Still reads AI — dial up", description: "The cheapest signal: bump the ladder +1 and regenerate the whole draft one-shot." },
       { id: "good-enough", label: "This is good — finalize", description: "Trigger the finalize + distill pass." },
@@ -295,7 +296,7 @@ const wordtasteManifest: ModeManifest = {
   agent: {
     permissionMode: "bypassPermissions",
     greeting: `<system-info pneuma-mode="Pneuma WordTaste" skill="pneuma-wordtaste" session="new"></system-info>
-The user opened WordTaste with a concrete writing goal, not a configuration task. First run scripts/cross_family_probe.sh to detect which model families are available (writes .pneuma/cross-family.json), then ask for their goal if it is not already given: entry A is an outline/idea to write from, entry B is a draft to de-AI. Greet in 1–2 sentences. Never frame this as taste configuration or a setup wizard — onboarding is a byproduct of "give me your writing goal."`,
+The user opened WordTaste with a concrete writing goal, not a configuration task. First run scripts/cross_family_probe.sh to detect which model families are available (writes .pneuma/cross-family.json), then ask for their goal if it is not already given: entry A is an outline/idea to write from, entry B is a draft to de-AI, and the three-style calibration path lets them choose among representative sample versions before the full draft. Greet in 1–2 sentences. Never frame this as taste configuration or a setup wizard — onboarding is a byproduct of "give me your writing goal."`,
   },
 
   init: {

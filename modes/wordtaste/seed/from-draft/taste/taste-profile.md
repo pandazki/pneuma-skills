@@ -32,13 +32,14 @@
 ---
 
 ## 2. Symptom rubric · 症状清单（这些一出现就是「一眼 AI」，要压掉）
-> 还没有为你校准 —— 下面两条是**所有人都适用的通用 AI 症状**，给你一个清单的样子。
-> Not calibrated for you yet — the two below are **universal AI symptoms** that apply to almost everyone,
+> 还没有为你校准 —— 下面三条是**所有人都适用的通用 AI 症状**，给你一个清单的样子。
+> Not calibrated for you yet — the three below are **universal AI symptoms** that apply to almost everyone,
 > shown so you can see the shape. WordTaste 会随着你的判断把它们替换成**你**真正在意的那些。
 > WordTaste will replace these with the ones **you** actually reject as you go.
 
 1. **S1 over-patterning** —— tell：任何装置都被等周期地铺满（每段一样长、每节一句金句收口、迟疑均匀撒满）。规律性本身就是 tell。修：让轻重由内容真实决定 —— 最承重处出拳，过渡一句带过，敢打破节拍。
 2. **S2 ai-metaphor** —— tell：工整解释性类比（「就好比 A 之于 B」）、廉价 stock 生动（赤脚出门 / 潘多拉魔盒）、诗意虚化收尾（X 只是 Y 的影子）。修：拿不准就砍成大白话，留白优先；只有具体、带情绪、不工整、私人的真人意象才换。
+3. **S3 not-but-pivot** —— tell：用「不是 X，而是 Y / 不仅 X，更是 Y / 与其说 X，不如说 Y」或 "not X but Y" 来制造假反转、假升级，尤其在开头和段尾反复出现。修：直接写判断、条件、边界和后果；如果真有对比，就让具体事实承担对比，不用公式化转折撑气势。
 
 ---
 
