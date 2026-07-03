@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.24.1] - 2026-07-03
+
+### Fixed
+- **Content-set dropdowns render above viewers** — the TopBar content-set selector now portals its menu to the document body with fixed positioning, viewport clamping, and theme inheritance, so modes with their own high chrome (including Wordtaste) no longer clip or cover the dropdown.
+
 ## [3.24.0] - 2026-06-26
 
 ### Added

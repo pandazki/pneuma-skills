@@ -1,4 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback, useLayoutEffect } from "react";
+import type { CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 interface SelectorItem {
@@ -29,6 +31,8 @@ type RowState =
   | { kind: "deleting"; id: string }
   | { kind: "error"; id: string };
 
+type ElectronCSSProperties = CSSProperties & { WebkitAppRegion?: string };
+
 export default function ContentSetSelector({
   items,
   activeId,
@@ -40,22 +44,77 @@ export default function ContentSetSelector({
   const [open, setOpen] = useState(false);
   const [rowState, setRowState] = useState<RowState>({ kind: "idle" });
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [portalThemeClass, setPortalThemeClass] = useState("");
   const { t } = useTranslation("topbar");
+
+  const placeMenu = useCallback(() => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setPortalThemeClass(ref.current?.closest(".cc-theme-light") ? "cc-theme-light" : "");
+
+    const margin = 12;
+    const menuWidth = menuRef.current?.offsetWidth ?? 260;
+    const menuHeight = menuRef.current?.offsetHeight ?? 240;
+    const below = rect.bottom + 4;
+    const above = rect.top - menuHeight - 4;
+    const top = below + menuHeight + margin <= window.innerHeight
+      ? below
+      : Math.max(margin, above);
+    const left = Math.min(
+      Math.max(margin, rect.left),
+      Math.max(margin, window.innerWidth - menuWidth - margin),
+    );
+
+    setMenuPos({ top, left });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const insideTrigger = ref.current?.contains(target) ?? false;
+      const insideMenu = menuRef.current?.contains(target) ?? false;
+      if (!insideTrigger && !insideMenu) {
         setOpen(false);
         setRowState({ kind: "idle" });
       }
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        setRowState({ kind: "idle" });
+      }
+    };
+    const onReposition = () => placeMenu();
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onReposition);
+    window.addEventListener("scroll", onReposition, true);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onReposition);
+      window.removeEventListener("scroll", onReposition, true);
+    };
+  }, [open, placeMenu]);
+
+  useLayoutEffect(() => {
+    if (open) placeMenu();
+  }, [open, items.length, rowState, placeMenu]);
 
   const activeLabel = items.find((item) => item.id === activeId)?.label || "Select";
   const hasUnread = unread && unread.size > 0;
+  const menuStyle: ElectronCSSProperties | undefined = menuPos
+    ? {
+        position: "fixed",
+        top: menuPos.top,
+        left: menuPos.left,
+        WebkitAppRegion: "no-drag",
+      }
+    : undefined;
 
   const runDelete = async (id: string) => {
     if (!onDelete) return;
@@ -72,9 +131,20 @@ export default function ContentSetSelector({
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen(!open)}
+        ref={buttonRef}
+        onClick={() => {
+          if (open) {
+            setOpen(false);
+            setRowState({ kind: "idle" });
+          } else {
+            placeMenu();
+            setOpen(true);
+          }
+        }}
         className="relative flex items-center gap-1.5 px-2 py-1 text-xs font-medium
           rounded-md text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         {icon === "folder" ? <FolderIcon /> : <FileIcon />}
         <span>{activeLabel}</span>
@@ -93,10 +163,14 @@ export default function ContentSetSelector({
         </svg>
       </button>
 
-      {open && (
+      {open && menuPos && createPortal(
         <div
-          className="absolute top-full left-0 mt-1 min-w-[220px] z-50
-            bg-cc-surface border border-cc-border rounded-md shadow-lg overflow-hidden"
+          ref={menuRef}
+          role="menu"
+          className={`${portalThemeClass} min-w-[220px] max-w-[min(360px,calc(100vw-24px))]
+            max-h-[min(320px,calc(100vh-24px))] overflow-y-auto
+            bg-cc-surface border border-cc-border rounded-md shadow-lg z-[200]`}
+          style={menuStyle}
         >
           {items.map((item) => {
             const isActive = item.id === activeId;
@@ -172,7 +246,8 @@ export default function ContentSetSelector({
               </div>
             );
           })}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
