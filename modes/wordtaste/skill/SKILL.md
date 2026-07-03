@@ -23,6 +23,7 @@ Making AI write like a human is a **context-engineering and game-theory problem,
 - **You orchestrate; you never author or judge candidates in your own context.** Generation and evaluation go to isolated workers — a Claude Task subagent (fresh context, no leakage) or a separate-process CLI (`codex`, `gemini`). This is not ceremony: your main context carries the conversation and your own drafting priors, both of which corrupt a candidate and bias a verdict.
 - **Kernel-freeze is an invariant, not a suggestion.** Before the first generation you extract the load-bearing meaning / facts / precise hedges and freeze them. Disruption only ever touches structure, texture, and genre — *never* the kernel. Frozen blocks are a UI contract the rewrite path physically honors; treat a frozen block as immovable context, never as something to "improve."
 - **Cheapest-signal HITL.** Never ask the user to write a paragraph of feedback. Ask for a near-binary judgment ("closer? still AI? landed, or dial up one more?") or "poke one symptom." You carry the search cost so the user only has to *recognize*, not *compose*.
+- **Formulaic contrast pivots are default AI slop.** Treat "不是 X，而是 Y" / "not X but Y" / "not only X, but Y" and their cousins as suspect by default, especially in openings and paragraph closers. Keep one only when the contrast is concrete, necessary, and paid for by evidence; otherwise say the judgment directly.
 - **Rich context + steering wheel + kernel safety bar beats prompt micro-carving.** When a generation is off, reach for a better anchor, a clearer kernel, a different family, or a rung change — not a more ornate prompt.
 - **Distill every judgment.** Each reject / pick / poke / hand-edit becomes a line in the taste artifacts. This is how the studio gets faster per task (see [Distillation](#distillation--turning-judgments-into-faster-next-time)).
 
@@ -60,9 +61,9 @@ An absent file is not an error — it means no profile yet. The heavy per-projec
 
 ---
 
-## The two entry states
+## The three entry paths
 
-Everything starts from a concrete writing goal. The user picks one of two entry seeds (or a handoff lands you in one):
+Everything starts from a concrete writing goal. The user can start directly from an idea/draft, or run a short style calibration before the full draft. A handoff may land you in any of these paths.
 
 ### (A) Idea → draft — the `start-from-idea` command
 
@@ -83,6 +84,27 @@ The user has prose that reads one-glance-AI (or a handoff dropped a source draft
 2. **Freeze the kernel** — read the original, extract what must survive (the argument, the facts, the precise hedges), write `materials/kernel.md`, and freeze the blocks carrying it.
 3. Load the taste profile as in (A); run the cold-start check.
 4. Run the first disruption pass from the launch rung, cross-family, kernel re-injected. Write to `draft.md` — **article body only**, no "修订版" preamble and no change-log: the revision rationale goes to [`draft.annotations.json`](#the-annotation-channel--where-revision-notes-go), not the document (see the [first discipline](#non-negotiable-disciplines-each-one-is-paid-for-not-theoretical)). Set a content-appropriate color theme — the font auto-picks by language (see [Reading-surface auto-selection](#reading-surface-auto-selection-font--color-two-independent-axes)). Hand over the cheapest signal, enter the loop.
+
+### (C) Representative style trial → full draft — the `calibrate-style-sample` command
+
+Use this when the user wants to choose a direction before you write the whole piece, when the brief is underspecified, or when a cold-start voice profile would make a full draft too arbitrary. The purpose is to give the user a **recognition task**: three meaningfully different versions of one representative passage, then one pick.
+
+1. Read the available source material (`materials/outline.md`, `materials/original.md`, refs, voice anchors) and freeze the kernel as in (A)/(B). If there is no voice sample, run the cold-start check first.
+2. Pick the most representative passage: the paragraph where tone, argument density, and the hardest AI-slop risk all show up. Do not pick a trivial intro or a throwaway transition. If starting from an outline, write a neutral kernel paragraph from the outline first; if starting from a disliked draft, use the passage that best exposes why it reads AI.
+3. Generate **three distinct versions** of that passage across different approaches/families. They must differ in posture, rhythm, and structure — not just synonyms. A useful default set:
+   - **A. faithful / direct** — preserves order, cuts formula, clarifies the judgment.
+   - **B. human-textured** — more lived-in cadence, more asymmetry, a little more personality.
+   - **C. bolder architecture** — changes entry angle or paragraph shape while preserving the kernel.
+4. Write the trial to `taste/style-trial.md` with: the representative passage, the three versions, the intended tradeoff of each, and a blank "user pick" line. Keep `draft.md` absent/unchanged at this stage. Show the same A/B/C options in chat and ask only for a cheap pick: "A, B, C, or tell me what is close/still AI."
+5. When the user picks or combines directions, append a `style_trial_pick` event to `taste/prefs.log.jsonl` and update `taste/taste-profile.md` immediately: voice floor, symptom rubric, launch rung, and style requirements. Record concrete constraints, not vibes. Example event shape:
+
+   ```json
+   {"event":"style_trial_pick","picked":"B","rejected":["A","C"],"reason":"wanted asymmetry and less manifesto cadence","requirements":["avoid formulaic contrast pivots","keep claims direct"],"ts":"..."}
+   ```
+
+6. Only after the preference is distilled, write the full `draft.md` using the chosen direction and the frozen kernel. The first full draft should already reflect the trial pick; do not offer three full drafts. Then enter the normal viewer-first task loop.
+
+This path is still goal-first. Never present it as "setting up taste." The user is choosing how this concrete piece should sound.
 
 ---
 
@@ -258,6 +280,7 @@ These arrive buffered and flush to you as a system message when you go idle:
 |---|---|---|
 | `start-from-idea` | User picks entry (A) | Run [entry (A)](#a-idea--draft--the-start-from-idea-command). |
 | `start-from-draft` | User picks entry (B) | Run [entry (B)](#b-disliked-draft--de-ai--the-start-from-draft-command). |
+| `calibrate-style-sample` | User asks to try three styles first | Run [entry (C)](#c-representative-style-trial--full-draft--the-calibrate-style-sample-command): representative passage → three versions → user pick → distill → full draft. |
 | `request-directions` | Span selected | Read the rubric + span, return ~5 taste-aware directions via `propose-directions`. |
 | `still-ai` | User says it still reads AI | Rung +1, fresh session, regenerate whole (cheapest-signal branch). |
 | `good-enough` | User accepts | Finalize → distill → federate. |
@@ -368,6 +391,7 @@ The symbol layer (metaphors / signature lines) is the finest tell, and the model
     recipes/<type>.md       distilled operational generation recipe
     swaps.jsonl             symbol-layer AI→human sentence pairs (gold material)
     prefs.log.jsonl         append-only signal events
+    style-trial.md          representative-passage A/B/C trial; never article body
 .pneuma/
   config.json               init params (active content-set, content-type, current rung, fontSuggested, themeSuggested)
   cross-family.json         startup probe result { codex, gemini, claude }

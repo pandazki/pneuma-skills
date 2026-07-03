@@ -329,11 +329,11 @@ describe("seed: worked-example taste-profile parses cleanly", () => {
 
 describe("seed: starter taste-profile parses as an uncalibrated bootstrap", () => {
   for (const entry of ["from-idea", "from-draft"]) {
-    it(`${entry}: launch rung 1, voice-floor prose, two example symptom cards`, () => {
+    it(`${entry}: launch rung 1, voice-floor prose, three example symptom cards`, () => {
       const t = loadTaste(seedTaste(entry))!;
       expect(t.launchRung).toBe(1);
       expect(t.voiceFloor.length).toBeGreaterThan(0);
-      expect(t.rubric.map((s) => s.id)).toEqual(["S1", "S2"]);
+      expect(t.rubric.map((s) => s.id)).toEqual(["S1", "S2", "S3"]);
       for (const s of t.rubric) {
         expect(s.tell.length, `${s.id} tell`).toBeGreaterThan(0);
         expect(s.fix.length, `${s.id} fix`).toBeGreaterThan(0);

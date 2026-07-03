@@ -142,10 +142,11 @@ describe("wordtaste manifest — action space", () => {
     expect(byId["mark-resolved"]).toBe("ui");
   });
 
-  it("declares the 5 commands from §4.2 with exact ids", () => {
+  it("declares the 6 commands from §4.2 with exact ids", () => {
     expect(wordtasteManifest.viewerApi!.commands!.map((c) => c.id)).toEqual([
       "start-from-idea",
       "start-from-draft",
+      "calibrate-style-sample",
       "request-directions",
       "still-ai",
       "good-enough",
