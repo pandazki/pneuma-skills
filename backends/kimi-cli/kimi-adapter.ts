@@ -570,6 +570,13 @@ export class KimiAdapter {
             }
           }
           break;
+        case "config": {
+          // Agent-side config change (set_model / set_mode echo) — keep the
+          // model state in sync.
+          const modelConfig = parseModelConfig(event.configOptions);
+          if (modelConfig) this.fireModels(modelConfig);
+          break;
+        }
         case "tool-progress":
           for (const handler of this.toolProgressHandlers) {
             try {

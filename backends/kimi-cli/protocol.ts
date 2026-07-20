@@ -95,13 +95,23 @@ export interface AcpUserMessageChunk {
   content: AcpTextContent;
 }
 
+/**
+ * Emitted when session config changes (e.g. after `session/set_mode` /
+ * `session/set_model`); carries the full refreshed configOptions list.
+ */
+export interface AcpConfigOptionUpdate {
+  sessionUpdate: "config_option_update";
+  configOptions: AcpConfigOption[];
+}
+
 export type AcpSessionUpdate =
   | AcpToolCallStart
   | AcpToolCallUpdate
   | AcpAgentMessageChunk
   | AcpAgentThoughtChunk
   | AcpAvailableCommandsUpdate
-  | AcpUserMessageChunk;
+  | AcpUserMessageChunk
+  | AcpConfigOptionUpdate;
 
 // ── ACP session-setup shapes ─────────────────────────────────────────────────
 
@@ -205,6 +215,8 @@ export type AcpTranslationEvent =
   | { kind: "delta"; deltaType: "text" | "thinking"; text: string }
   /** The agent's slash-command inventory changed. */
   | { kind: "commands"; commands: AcpAvailableCommand[] }
+  /** Session config changed (model / mode) — carries the refreshed list. */
+  | { kind: "config"; configOptions: AcpConfigOption[] }
   /** A tool call is executing / still generating arguments. */
   | { kind: "tool-progress"; toolCallId: string; toolName: string }
   /** Unrecognized `sessionUpdate` — surfaced so the adapter can log once. */
@@ -300,6 +312,11 @@ export class AcpSessionTranslator {
         // History replay from `session/load` — Pneuma rehydrates chat history
         // from its own history.json, so replayed prompts are dropped.
         return [];
+      case "config_option_update":
+        return [{
+          kind: "config",
+          configOptions: (update as AcpConfigOptionUpdate).configOptions ?? [],
+        }];
       default:
         return [{ kind: "unknown", sessionUpdate: String(kind) }];
     }

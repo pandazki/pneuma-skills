@@ -245,6 +245,16 @@ describe("AcpSessionTranslator — session-level updates", () => {
     ]);
   });
 
+  it("surfaces config_option_update as a config event (emitted after set_mode/set_model)", () => {
+    const t = new AcpSessionTranslator();
+    const configOptions = [
+      { type: "select", id: "model", currentValue: "kimi-code/k3", options: [{ value: "kimi-code/k3", name: "K3" }] },
+    ];
+    expect(t.translate({ sessionUpdate: "config_option_update", configOptions })).toEqual([
+      { kind: "config", configOptions },
+    ]);
+  });
+
   it("ignores user_message_chunk (session/load history replay)", () => {
     const t = new AcpSessionTranslator();
     expect(
