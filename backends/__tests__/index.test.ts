@@ -21,8 +21,9 @@ describe("kimi-cli backend registration", () => {
     expect(caps).toEqual({
       streaming: true,
       resume: true,
-      permissions: false,
-      toolProgress: false,
+      // ACP delivers a first-class permission round trip and tool progress.
+      permissions: true,
+      toolProgress: true,
       modelSwitch: true,
     });
   });
