@@ -26,7 +26,7 @@ describe("backend registry", () => {
       {
         type: "kimi-cli",
         label: "Kimi",
-        description: "Moonshot AI Kimi Code CLI via stdio stream-json transport.",
+        description: "Moonshot AI Kimi Code CLI via ACP (Agent Client Protocol) JSON-RPC over stdio.",
         implemented: true,
       },
     ]);
@@ -63,8 +63,9 @@ describe("backend registry", () => {
     expect(getBackendCapabilities("kimi-cli")).toEqual({
       streaming: true,
       resume: true,
-      permissions: false,
-      toolProgress: false,
+      // ACP delivers a first-class permission round trip and tool progress.
+      permissions: true,
+      toolProgress: true,
       modelSwitch: true,
     });
   });

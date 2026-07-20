@@ -15,7 +15,7 @@ export interface ToolFileRef {
  * `file_path`). A non-default backend overrides BackendModule.toolFileRef
  * with its own resolver when its tool naming differs.
  */
-const KIND_BY_NAME: Record<string, ToolFileRef["kind"]> = {
+export const KIND_BY_NAME: Record<string, ToolFileRef["kind"]> = {
   Read: "read",
   Write: "write",
   Edit: "edit",

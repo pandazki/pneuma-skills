@@ -67,7 +67,7 @@ const PROJECT_ROOT_EXCLUDE_RULES = [
   "/inbound-handoff.json",
   "/.claude/",
   "/.agents/",
-  "/.kimi/",
+  "/.kimi-code/",
   "/CLAUDE.md",
   "/AGENTS.md",
 ];

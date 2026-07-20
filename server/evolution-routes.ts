@@ -264,15 +264,15 @@ export default evolvedMode;
  * Map a workspace-relative file path to a mode-relative path.
  * Accepts every backend's skills directory layout — claude-code's
  * `.claude/skills/<installName>/<rest>`, codex's `.agents/skills/...`,
- * and kimi-cli's `.kimi/skills/...` — all collapse to `skill/<rest>`,
+ * and kimi-cli's `.kimi-code/skills/...` — all collapse to `skill/<rest>`,
  * which matches every mode package's source layout.
  *
  * e.g. ".claude/skills/pneuma-slide/SKILL.md" → "skill/SKILL.md"
  *      ".agents/skills/pneuma-slide/SKILL.md"  → "skill/SKILL.md"
  */
 function mapWorkspacePathToModePath(wsPath: string): string | null {
-  // Match (.claude|.agents|.kimi)/skills/<installName>/<rest>
-  const match = wsPath.match(/^\.(?:claude|agents|kimi)\/skills\/[^/]+\/(.+)$/);
+  // Match (.claude|.agents|.kimi-code)/skills/<installName>/<rest>
+  const match = wsPath.match(/^\.(?:claude|agents|kimi-code)\/skills\/[^/]+\/(.+)$/);
   if (match) {
     return `skill/${match[1]}`;
   }

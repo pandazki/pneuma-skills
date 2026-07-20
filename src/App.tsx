@@ -312,7 +312,7 @@ export default function App() {
     const p = f.path;
     if (p === "CLAUDE.md" || p === "AGENTS.md") return false;
     if (p.startsWith(".pneuma/") || p.startsWith(".claude/") || p.startsWith(".agents/")) return false;
-    if (p.startsWith(".kimi/")) return false;
+    if (p.startsWith(".kimi-code/")) return false;
     if (p === ".gitignore") return false;
     // `_`-prefixed top-level dirs are framework-managed seeds (e.g. kami's
     // `_shared/` design-system bundle resynced on every boot). They are

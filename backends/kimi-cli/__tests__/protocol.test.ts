@@ -1,240 +1,295 @@
+/**
+ * AcpSessionTranslator tests. Every fixture below is lifted from frames
+ * captured live against `kimi acp` (Kimi Code CLI 0.26.0) — including the
+ * partial-JSON tool-argument streaming trap, the mutating `title`, and the
+ * failed-tool and `session/load` replay shapes.
+ */
+
 import { describe, expect, it } from "bun:test";
 import {
-  extractKimiSystemMetadata,
-  parseKimiLine,
-  kimiToPneumaMessages,
-  pneumaUserToKimi,
-  type KimiAssistantMessage,
-  type KimiToolMessage,
+  AcpSessionTranslator,
+  parseModelConfig,
+  type AcpTranslationEvent,
+  type PneumaMessage,
 } from "../protocol.js";
 
-describe("parseKimiLine", () => {
-  it("parses an assistant text-only message", () => {
-    const msg = parseKimiLine('{"role":"assistant","content":" OK"}');
-    expect(msg).toEqual({ role: "assistant", content: " OK" });
+function messages(events: AcpTranslationEvent[]): PneumaMessage[] {
+  return events.filter((e) => e.kind === "message").map((e) => e.message);
+}
+
+describe("AcpSessionTranslator — text & thinking chunks", () => {
+  it("accumulates agent_message_chunk tokens and flushes one text message at turn end", () => {
+    const t = new AcpSessionTranslator();
+    const deltas: string[] = [];
+    for (const tok of ["Got", " it", " —", " the", " magic", " word", " is", " \"", "pap", "rika", "\"."]) {
+      const evs = t.translate({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: tok } });
+      for (const e of evs) {
+        expect(e.kind).toBe("delta");
+        if (e.kind === "delta") {
+          expect(e.deltaType).toBe("text");
+          deltas.push(e.text);
+        }
+      }
+    }
+    expect(deltas.join("")).toBe('Got it — the magic word is "paprika".');
+
+    const flushed = messages(t.endTurn());
+    expect(flushed).toEqual([
+      { type: "assistant", content: [{ type: "text", text: 'Got it — the magic word is "paprika".' }] },
+    ]);
+    // Second endTurn flushes nothing.
+    expect(t.endTurn()).toEqual([]);
   });
 
-  it("parses an assistant message with tool_calls", () => {
-    const raw = `{"role":"assistant","content":" ","tool_calls":[{"type":"function","id":"functions.Shell:0","function":{"name":"Shell","arguments":"{\\"command\\":\\"ls\\"}"}}]}`;
-    const msg = parseKimiLine(raw) as KimiAssistantMessage;
-    expect(msg.tool_calls?.[0].id).toBe("functions.Shell:0");
-    expect(msg.tool_calls?.[0].function.name).toBe("Shell");
+  it("emits thinking deltas for agent_thought_chunk and flushes a thinking block on kind switch", () => {
+    const t = new AcpSessionTranslator();
+    t.translate({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "The user " } });
+    t.translate({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "is testing me." } });
+
+    // Switching to a message chunk flushes the buffered thinking first.
+    const evs = t.translate({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "OK" } });
+    expect(messages(evs)).toEqual([
+      { type: "assistant", content: [{ type: "thinking", thinking: "The user is testing me." }] },
+    ]);
+    expect(evs.at(-1)).toEqual({ kind: "delta", deltaType: "text", text: "OK" });
+
+    expect(messages(t.endTurn())).toEqual([
+      { type: "assistant", content: [{ type: "text", text: "OK" }] },
+    ]);
   });
 
-  it("parses a tool result with multi-part content", () => {
-    const raw = `{"role":"tool","content":[{"type":"text","text":"<system>ok</system>"},{"type":"text","text":"hello\\n"}],"tool_call_id":"functions.Shell:0"}`;
-    const msg = parseKimiLine(raw) as KimiToolMessage;
-    expect(msg.role).toBe("tool");
-    expect(Array.isArray(msg.content)).toBe(true);
-    expect(msg.tool_call_id).toBe("functions.Shell:0");
-  });
-
-  it("returns null for blank or unparseable lines", () => {
-    expect(parseKimiLine("")).toBeNull();
-    expect(parseKimiLine("not-json")).toBeNull();
-    expect(parseKimiLine("{}" /* missing role */)).toBeNull();
+  it("drops whitespace-only buffers instead of emitting empty messages", () => {
+    const t = new AcpSessionTranslator();
+    t.translate({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "  \n" } });
+    expect(t.endTurn()).toEqual([]);
   });
 });
 
-describe("kimiToPneumaMessages", () => {
-  it("translates an assistant text message into a single text content block", () => {
-    const out = kimiToPneumaMessages({ role: "assistant", content: "Hello" });
-    expect(out).toEqual([
+describe("AcpSessionTranslator — tool call lifecycle (captured Write flow)", () => {
+  const TOOL_ID = "0:tool_lDiSJtoNyqb7LlVtKrz4QJMc";
+
+  function startWrite(t: AcpSessionTranslator): AcpTranslationEvent[] {
+    return t.translate({
+      sessionUpdate: "tool_call",
+      toolCallId: TOOL_ID,
+      title: "Write",
+      kind: "edit",
+      status: "pending",
+      content: [{ type: "content", content: { type: "text", text: "" } }],
+    });
+  }
+
+  it("captures the tool name from the start frame and never parses streamed partial JSON", () => {
+    const t = new AcpSessionTranslator();
+    startWrite(t);
+
+    // Streaming partial-JSON argument frames (real capture: status stays
+    // in_progress, content.text grows, NO rawInput). Must yield progress
+    // events only — never a tool_use with a half-parsed input.
+    for (const partial of ['{"pa', '{"path":"out', '{"path":"out.txt","content":"pap']) {
+      const evs = t.translate({
+        sessionUpdate: "tool_call_update",
+        toolCallId: TOOL_ID,
+        status: "in_progress",
+        content: [{ type: "content", content: { type: "text", text: partial } }],
+      });
+      expect(messages(evs)).toEqual([]);
+      expect(evs).toEqual([{ kind: "tool-progress", toolCallId: TOOL_ID, toolName: "Write" }]);
+    }
+
+    // The rawInput frame (captured: title mutates to a human phrase here —
+    // the tool name must still come from the start frame).
+    const evs = t.translate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: TOOL_ID,
+      title: "Writing out.txt",
+      kind: "edit",
+      status: "in_progress",
+      rawInput: { path: "out.txt", content: "papaya" },
+      content: [{ type: "content", content: { type: "text", text: '{"path":"out.txt","content":"papaya"}' } }],
+    });
+    expect(messages(evs)).toEqual([
       {
         type: "assistant",
-        content: [{ type: "text", text: "Hello" }],
+        content: [{
+          type: "tool_use",
+          id: TOOL_ID,
+          name: "Write",
+          input: { path: "out.txt", content: "papaya" },
+        }],
       },
     ]);
-  });
 
-  it("translates an assistant message with array content (managed kimi-code shape)", () => {
-    // The managed `kimi-code` subscription provider emits the assistant's
-    // reasoning as a separate `{type:"think"}` part alongside the answer
-    // `{type:"text"}` part. Old code crashed on this shape because it tried
-    // to call `.trim()` on the array — regression-pin the new behavior.
-    const out = kimiToPneumaMessages({
-      role: "assistant",
-      content: [
-        { type: "think", think: "Let me think about this.", encrypted: null },
-        { type: "text", text: "OK" },
-      ],
+    // Terminal frame → tool_result from rawOutput.
+    const done = t.translate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: TOOL_ID,
+      status: "completed",
+      content: [{ type: "content", content: { type: "text", text: "Wrote 6 bytes to out.txt" } }],
+      rawOutput: "Wrote 6 bytes to out.txt",
     });
-    expect(out).toEqual([
-      {
-        type: "assistant",
-        content: [
-          { type: "thinking", thinking: "Let me think about this." },
-          { type: "text", text: "OK" },
-        ],
-      },
-    ]);
-  });
-
-  it("skips empty/whitespace text and think parts when array content is mixed", () => {
-    const out = kimiToPneumaMessages({
-      role: "assistant",
-      content: [
-        { type: "think", think: "   " }, // whitespace-only — skip
-        { type: "text", text: "" }, // empty — skip
-        { type: "think", think: "real reasoning" },
-        { type: "text", text: "final" },
-      ],
-    });
-    expect(out[0].content).toEqual([
-      { type: "thinking", thinking: "real reasoning" },
-      { type: "text", text: "final" },
-    ]);
-  });
-
-  it("translates an assistant message with tool_calls into separate tool_use blocks", () => {
-    const kimi: KimiAssistantMessage = {
-      role: "assistant",
-      content: "",
-      tool_calls: [
-        {
-          type: "function",
-          id: "functions.Shell:0",
-          function: { name: "Shell", arguments: '{"command":"ls"}' },
-        },
-      ],
-    };
-    const out = kimiToPneumaMessages(kimi);
-    expect(out).toHaveLength(1);
-    expect(out[0].content).toEqual([
-      { type: "tool_use", id: "functions.Shell:0", name: "Shell", input: { command: "ls" } },
-    ]);
-  });
-
-  it("translates a tool result, lifting the leading <system> wrapper into metadata", () => {
-    const kimi: KimiToolMessage = {
-      role: "tool",
-      tool_call_id: "functions.Shell:0",
-      content: [
-        { type: "text", text: "<system>ok</system>" },
-        { type: "text", text: "hello\n" },
-      ],
-    };
-    const out = kimiToPneumaMessages(kimi);
-    expect(out).toEqual([
+    expect(messages(done)).toEqual([
       {
         type: "user",
-        content: [
-          {
-            type: "tool_result",
-            tool_use_id: "functions.Shell:0",
-            content: "hello\n",
-            metadata: "ok",
-          },
+        content: [{ type: "tool_result", tool_use_id: TOOL_ID, content: "Wrote 6 bytes to out.txt" }],
+      },
+    ]);
+
+    // A stray update after settle is ignored.
+    expect(t.translate({ sessionUpdate: "tool_call_update", toolCallId: TOOL_ID, status: "completed" })).toEqual([]);
+  });
+
+  it("flushes buffered thinking before the tool_use block so ordering matches the wire", () => {
+    const t = new AcpSessionTranslator();
+    t.translate({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Planning the write." } });
+    const evs = startWrite(t);
+    expect(messages(evs)).toEqual([
+      { type: "assistant", content: [{ type: "thinking", thinking: "Planning the write." }] },
+    ]);
+  });
+
+  it("marks a failed tool call's result with is_error (captured Read failure)", () => {
+    const t = new AcpSessionTranslator();
+    const READ_ID = "0:tool_yLKCUgy8yROWKNcwsWy5gBFy";
+    t.translate({ sessionUpdate: "tool_call", toolCallId: READ_ID, title: "Read", kind: "read", status: "pending" });
+    t.translate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: READ_ID,
+      status: "in_progress",
+      rawInput: { path: "existing.txt" },
+    });
+    const done = t.translate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: READ_ID,
+      status: "failed",
+      content: [{ type: "content", content: { type: "text", text: '"existing.txt" does not exist.' } }],
+      rawOutput: '"existing.txt" does not exist.',
+    });
+    expect(messages(done)).toEqual([
+      {
+        type: "user",
+        content: [{
+          type: "tool_result",
+          tool_use_id: READ_ID,
+          content: '"existing.txt" does not exist.',
+          is_error: true,
+        }],
+      },
+    ]);
+  });
+
+  it("synthesizes an input-less tool_use when a tool settles without ever carrying rawInput", () => {
+    const t = new AcpSessionTranslator();
+    t.translate({ sessionUpdate: "tool_call", toolCallId: "x:1", title: "Bash", kind: "execute", status: "pending" });
+    const done = t.translate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "x:1",
+      status: "completed",
+      rawOutput: "ok\n",
+    });
+    expect(messages(done)).toEqual([
+      { type: "assistant", content: [{ type: "tool_use", id: "x:1", name: "Bash", input: {} }] },
+      { type: "user", content: [{ type: "tool_result", tool_use_id: "x:1", content: "ok\n" }] },
+    ]);
+  });
+
+  it("stringifies non-string rawOutput and falls back to content text when rawOutput is absent", () => {
+    const t = new AcpSessionTranslator();
+    t.translate({ sessionUpdate: "tool_call", toolCallId: "y:1", title: "Custom", status: "pending" });
+    const done = t.translate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "y:1",
+      status: "completed",
+      rawOutput: { bytes: 6, path: "out.txt" },
+    });
+    const result = messages(done)[1];
+    expect(result.content[0]).toMatchObject({ type: "tool_result", content: '{"bytes":6,"path":"out.txt"}' });
+
+    const t2 = new AcpSessionTranslator();
+    t2.translate({ sessionUpdate: "tool_call", toolCallId: "z:1", title: "Custom", status: "pending" });
+    const done2 = t2.translate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "z:1",
+      status: "completed",
+      content: [{ type: "content", content: { type: "text", text: "only-in-content" } }],
+    });
+    expect(messages(done2)[1].content[0]).toMatchObject({ type: "tool_result", content: "only-in-content" });
+  });
+
+  it("exposes toolName() so permission cards can resolve the real tool name", () => {
+    const t = new AcpSessionTranslator();
+    t.translate({ sessionUpdate: "tool_call", toolCallId: "p:1", title: "Bash", kind: "execute", status: "pending" });
+    expect(t.toolName("p:1")).toBe("Bash");
+    expect(t.toolName("nope")).toBeUndefined();
+  });
+});
+
+describe("AcpSessionTranslator — session-level updates", () => {
+  it("surfaces available_commands_update as a commands event", () => {
+    const t = new AcpSessionTranslator();
+    const evs = t.translate({
+      sessionUpdate: "available_commands_update",
+      availableCommands: [
+        { name: "compact", description: "Compact the conversation context" },
+        { name: "status", description: "Show current session status" },
+      ],
+    });
+    expect(evs).toEqual([
+      {
+        kind: "commands",
+        commands: [
+          { name: "compact", description: "Compact the conversation context" },
+          { name: "status", description: "Show current session status" },
         ],
       },
     ]);
   });
 
-  it("translates a status-only tool result into metadata + empty content", () => {
-    // Shell sometimes prints only the system status with no stdout — kimi
-    // still wraps it in `<system>...</system>`. The body should end up empty
-    // after stripping; the frontend renders just the status header.
-    const kimi: KimiToolMessage = {
-      role: "tool",
-      tool_call_id: "functions.Shell:0",
-      content: [{ type: "text", text: "<system>Command executed successfully.</system>" }],
-    };
-    const out = kimiToPneumaMessages(kimi);
-    expect(out[0].content[0]).toEqual({
-      type: "tool_result",
-      tool_use_id: "functions.Shell:0",
-      content: "",
-      metadata: "Command executed successfully.",
-    });
+  it("ignores user_message_chunk (session/load history replay)", () => {
+    const t = new AcpSessionTranslator();
+    expect(
+      t.translate({ sessionUpdate: "user_message_chunk", content: { type: "text", text: "old prompt" } }),
+    ).toEqual([]);
   });
 
-  it("leaves tool_result.metadata unset when the body has no <system> wrapper", () => {
-    const kimi: KimiToolMessage = {
-      role: "tool",
-      tool_call_id: "id",
-      content: "just plain output\n",
-    };
-    const out = kimiToPneumaMessages(kimi);
-    const block = out[0].content[0] as { metadata?: string; content: string };
-    expect(block.content).toBe("just plain output\n");
-    expect("metadata" in block).toBe(false);
-  });
-
-  it("leaves interior <system> tags inside the body alone", () => {
-    // Only LEADING <system> wrappers get lifted. A tag deep in the body —
-    // e.g. an LLM-generated output that happens to mention `<system>` —
-    // stays as-is.
-    const kimi: KimiToolMessage = {
-      role: "tool",
-      tool_call_id: "id",
-      content: [
-        { type: "text", text: "<system>head</system>" },
-        { type: "text", text: "real body\n<system>nested-not-lifted</system> trailing\n" },
-      ],
-    };
-    const out = kimiToPneumaMessages(kimi);
-    expect(out[0].content[0]).toEqual({
-      type: "tool_result",
-      tool_use_id: "id",
-      content: "real body\n<system>nested-not-lifted</system> trailing\n",
-      metadata: "head",
-    });
-  });
-
-  it("tolerates malformed tool-call arguments by stringifying them", () => {
-    const kimi: KimiAssistantMessage = {
-      role: "assistant",
-      content: "",
-      tool_calls: [
-        {
-          type: "function",
-          id: "x",
-          function: { name: "X", arguments: "not-json" },
-        },
-      ],
-    };
-    const out = kimiToPneumaMessages(kimi);
-    expect(out[0].content[0]).toMatchObject({
-      type: "tool_use",
-      id: "x",
-      name: "X",
-      input: { _raw: "not-json" },
-    });
+  it("reports unknown sessionUpdate kinds instead of crashing", () => {
+    const t = new AcpSessionTranslator();
+    expect(t.translate({ sessionUpdate: "future_frame_kind", payload: 1 } as never)).toEqual([
+      { kind: "unknown", sessionUpdate: "future_frame_kind" },
+    ]);
   });
 });
 
-describe("extractKimiSystemMetadata", () => {
-  it("returns null metadata when no leading <system> wrapper is present", () => {
-    expect(extractKimiSystemMetadata("plain output")).toEqual({
-      metadata: null,
-      content: "plain output",
+describe("parseModelConfig", () => {
+  it("extracts current model + available list from captured configOptions", () => {
+    // Captured verbatim from `session/new` on Kimi Code CLI 0.26.0 (trimmed).
+    const configOptions = [
+      {
+        type: "select",
+        id: "model",
+        name: "Model",
+        category: "model",
+        currentValue: "kimi-code/k3",
+        options: [
+          { value: "kimi-code/kimi-for-coding", name: "K2.7 Coding" },
+          { value: "kimi-code/k3", name: "K3" },
+          { value: "moonshot-cn/kimi-k2.6", name: "kimi-k2.6" },
+        ],
+      },
+      { type: "select", id: "thinking", name: "Thinking", category: "thought_level", currentValue: "on" },
+    ];
+    expect(parseModelConfig(configOptions)).toEqual({
+      current: "kimi-code/k3",
+      available: [
+        { id: "kimi-code/kimi-for-coding", name: "K2.7 Coding" },
+        { id: "kimi-code/k3", name: "K3" },
+        { id: "moonshot-cn/kimi-k2.6", name: "kimi-k2.6" },
+      ],
     });
   });
 
-  it("lifts a single leading wrapper", () => {
-    expect(extractKimiSystemMetadata("<system>ok</system>\nbody\n")).toEqual({
-      metadata: "ok",
-      content: "body\n",
-    });
-  });
-
-  it("joins multiple consecutive leading wrappers with a separator", () => {
-    expect(extractKimiSystemMetadata("<system>part-1</system> <system>part-2</system>body")).toEqual({
-      metadata: "part-1 · part-2",
-      content: "body",
-    });
-  });
-
-  it("treats a status-only payload as metadata with empty content", () => {
-    expect(extractKimiSystemMetadata("<system>Command executed successfully.</system>")).toEqual({
-      metadata: "Command executed successfully.",
-      content: "",
-    });
-  });
-});
-
-describe("pneumaUserToKimi", () => {
-  it("wraps a string into a kimi user message", () => {
-    expect(pneumaUserToKimi("hi")).toEqual({ role: "user", content: "hi" });
+  it("returns null when configOptions is missing or has no model entry", () => {
+    expect(parseModelConfig(undefined)).toBeNull();
+    expect(parseModelConfig([{ type: "select", id: "mode" }])).toBeNull();
   });
 });

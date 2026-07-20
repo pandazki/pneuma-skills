@@ -1,11 +1,16 @@
 /**
- * Kimi CLI launcher — spawns the kimi process with stream-json IO and tracks
- * lifecycle. Mirrors the structure of CodexCliLauncher (backends/codex/cli-launcher.ts)
- * but for a simpler stdio NDJSON protocol.
+ * Kimi CLI launcher — spawns `kimi acp` (the Kimi Code ACP server over stdio)
+ * and tracks process lifecycle. Mirrors the structure of CodexCliLauncher
+ * (backends/codex/cli-launcher.ts) for a stdio JSON-RPC protocol.
  *
- * The kimi process is long-lived: stays alive across turns as long as stdin
- * remains open. Each user turn = one NDJSON line on stdin. Verified against
- * kimi-cli v1.41.0.
+ * The process is long-lived: one `kimi acp` server per Pneuma session, alive
+ * across turns. All protocol work (handshake, session setup, prompt turns,
+ * permission round trips) lives in `KimiAdapter`; this file only owns spawn,
+ * environment, and kill.
+ *
+ * The ACP session id is returned synchronously by `session/new` — the adapter
+ * fires `onSessionId` when it lands, and the launcher records it here for
+ * `AgentSessionInfo.agentSessionId` / resume.
  */
 
 import { randomUUID } from "node:crypto";
@@ -22,7 +27,7 @@ export interface KimiSessionInfo {
   model?: string;
   cwd: string;
   createdAt: number;
-  /** Kimi session UUID, captured from stderr; used for `-r` resume. */
+  /** ACP session id (returned by `session/new`); used for `session/resume`. */
   kimiSessionId?: string;
 }
 
@@ -33,8 +38,10 @@ export interface KimiLaunchOptions {
   env?: Record<string, string>;
   /** Pneuma-side session ID (preserved if provided). */
   sessionId?: string;
-  /** Kimi session ID for resume (passed as `-r <id>`). */
+  /** ACP session ID to resume (passed to `session/resume`). */
   resumeKimiSessionId?: string;
+  /** Pneuma permission mode — mapped onto ACP session modes by the adapter. */
+  permissionMode?: string;
 }
 
 export class KimiCliLauncher {
@@ -80,22 +87,11 @@ export class KimiCliLauncher {
       return;
     }
 
-    // Pre-allocate the kimi session UUID so we know it before the agent starts.
-    // Kimi only prints `kimi -r <uuid>` to stderr at process exit, so we can't
-    // capture it from a live session — but it accepts any UUID via -r and
-    // creates a new session with that id when not found.
-    const kimiSessionId = options.resumeKimiSessionId ?? randomUUID();
-    info.kimiSessionId = kimiSessionId;
-
-    const args: string[] = [
-      "--print",
-      "--input-format", "stream-json",
-      "--output-format", "stream-json",
-      "-y",
-      "--work-dir", info.cwd,
-      "-r", kimiSessionId,
-    ];
-    if (options.model) args.push("--model", options.model);
+    // `kimi acp` takes no other flags — working directory rides the process
+    // cwd plus the ACP `session/new` `cwd` param; model selection goes
+    // through `session/set_model`; interrupts are the `session/cancel`
+    // notification (no signal games).
+    const args = ["acp"];
 
     const binaryDir = resolve(binary, "..");
     const enrichedPath = getEnrichedPath();
@@ -117,7 +113,7 @@ export class KimiCliLauncher {
     const nodeProc = nodeSpawn(binary, args, {
       cwd: info.cwd,
       env: cleanEnv,
-      stdio: ["pipe", "pipe", "pipe"], // stderr piped (we parse it for session ID)
+      stdio: ["pipe", "pipe", "pipe"],
     });
 
     info.pid = nodeProc.pid;
@@ -128,6 +124,10 @@ export class KimiCliLauncher {
       stdin: nodeProc.stdin!,
       stdout: nodeProc.stdout!,
       stderr: nodeProc.stderr!,
+      cwd: info.cwd,
+      resumeSessionId: options.resumeKimiSessionId,
+      model: options.model,
+      permissionMode: options.permissionMode,
       killProcess: async () => {
         nodeProc.kill("SIGTERM");
         await new Promise<void>((res) => {
@@ -135,17 +135,11 @@ export class KimiCliLauncher {
           nodeProc.once("exit", () => { clearTimeout(timer); res(); });
         });
       },
-      interruptProcess: () => {
-        // SIGINT (not SIGTERM) — kimi's print-mode signal handler turns SIGINT
-        // into a `cancel_event` that aborts the in-flight step but keeps the
-        // process alive to read the next user message. SIGTERM would kill it.
-        try { nodeProc.kill("SIGINT"); } catch {}
-      },
     });
     this.adapters.set(sessionId, adapter);
 
-    adapter.onSessionId((kimiSessionId: string) => {
-      info.kimiSessionId = kimiSessionId;
+    adapter.onSessionId((acpSessionId: string) => {
+      info.kimiSessionId = acpSessionId;
       info.state = "connected";
     });
 
@@ -157,11 +151,6 @@ export class KimiCliLauncher {
     for (const handler of this.adapterCreatedHandlers) {
       try { handler(sessionId, adapter); } catch {}
     }
-
-    // Now that both the launcher's and the bridge's onSessionId subscribers
-    // are wired, seed the kimi session id we pre-allocated. This fires the
-    // bridge's onCLISessionId callback which persists agentSessionId to disk.
-    adapter.seedSessionId(kimiSessionId);
 
     nodeProc.once("exit", (exitCode) => {
       const session = this.sessions.get(sessionId);
