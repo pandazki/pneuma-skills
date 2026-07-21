@@ -77,7 +77,7 @@ curl -X POST "$PNEUMA_API/api/viewer/action" \
   }'
 ```
 
-The 22 Impeccable design commands (`teach`, `document`, `shape`, `craft`, `audit`, `critique`, `polish`, …) are NOT viewer actions — they're toolbar commands the user invokes, surfaced to you via `<user-actions>` (see "Reading what the user sees" above and the "Impeccable Commands" section below).
+The 22 Impeccable design commands (`init`, `document`, `shape`, `craft`, `audit`, `critique`, `polish`, …) are NOT viewer actions — they're toolbar commands the user invokes, surfaced to you via `<user-actions>` (see "Reading what the user sees" above and the "Impeccable Commands" section below).
 
 ### Verifying your work
 
@@ -201,7 +201,7 @@ These are the visual equivalent of the `reflex_fonts_to_reject` list. Reject the
 
 An image in a webcraft project has to live next to the site's typography, color system, and voice. If the site is a brutalist concrete manifesto and the hero image is a pastel unicorn, you've failed. Before typing the prompt:
 
-1. **Read `.impeccable.md` / CLAUDE.md Design Context** (tone, audience, brand personality). If none exists, run `teach` first — same rule as any other design work.
+1. **Read `PRODUCT.md` / `.impeccable.md` / CLAUDE.md Design Context** (tone, audience, brand personality). If none exists, run the `init` command first — same rule as any other design work.
 2. **Name the project's 3 brand words** (same words you used for font selection) — e.g. "warm and mechanical and opinionated".
 3. **Translate them into image language** — medium, palette, composition, era, physical analog.
 4. **Write the prompt** with those translations baked in. Examples:
@@ -271,300 +271,142 @@ When generating multiple images for one site (hero + about + feature cards), rec
 
 ## Impeccable.style Design Intelligence
 
-This skill integrates the Impeccable.style design system. Follow these principles for ALL frontend work.
+This skill integrates the Impeccable.style design system. Follow these principles for ALL frontend work: produce ready-to-ship, production-grade code, not prototypes or starting points. Take no shortcuts unless the user asks for them (when in doubt, ask). Don't stop until arriving at a complete implementation (beautiful, responsive, fast, precise, bug-free, on brand). Claude is capable of extraordinary work. Don't hold back.
+
+### Setup — before any design work
+
+You MUST do these steps before your first design edit in a conversation:
+
+1. **Gather design context** (the Context Gathering Protocol below). Design commands produce generic output without project context; if none exists, run the `init` command first.
+2. **If a command was invoked** (from the toolbar via `<user-actions>`, or by clear intent), read its `references/cmd-<command>.md` next. Non-optional. The reference defines the command's flow; without it you will skip steps the user expects.
+3. **Familiarize yourself with any existing design system, conventions, and components** in the active content set. Read at least one project file (CSS / tokens / theme / a representative page). Required even when you've loaded a command reference in step 2. Don't reinvent the wheel; use what's there when it works, branch out when the UX wins.
+4. **Read the matching register reference.** This is non-optional; skipping it produces generic output. If the project is marketing, a landing page, a campaign, long-form content, or a portfolio (design IS the product), read [references/brand.md](references/brand.md). If it is app UI, admin, a dashboard, or a tool (design SERVES the product), read [references/product.md](references/product.md). Pick by first match: (1) task cue ("landing page" vs "dashboard"); (2) surface in focus; (3) `register` field in PRODUCT.md / `.impeccable.md`.
+5. **If the project is brand-new** (no existing CSS tokens / theme / committed brand colors found in step 3), run `node {SKILL_PATH}/scripts/palette.mjs` to receive a brand seed color and composition guidance. This is the anchor for your primary brand color. Compose the rest of the palette (bg, surface, ink, accent, muted) around it per the script's instructions. Use OKLCH throughout. **Skip this step only if step 3 found committed brand colors in existing tokens; in that case identity-preservation wins.**
 
 ### Context Gathering Protocol
 
 Design skills produce generic output without project context. You MUST have confirmed design context before doing any design work.
 
-**Required context** — every design skill needs at minimum:
+**Required context** — every design command needs at minimum:
 - **Target audience**: Who uses this product and in what context?
 - **Use cases**: What jobs are they trying to get done?
 - **Brand personality/tone**: How should the interface feel?
-
-Individual commands may require additional context — check the command's preparation section for specifics.
 
 **CRITICAL**: You cannot infer this context by reading the codebase. Code tells you what was built, not who it's for or what it should feel like. Only the creator can provide this context.
 
 **Gathering order:**
 1. **Check current instructions (instant)**: If `CLAUDE.md` already contains a **Design Context** section, proceed immediately.
-2. **Check .impeccable.md / PRODUCT.md (fast)**: If not in instructions, read `.impeccable.md` (or `PRODUCT.md`, the upstream v3.0 successor) from the project root. If either exists and contains the required context, proceed.
-3. **Run the `teach` command (REQUIRED)**: If neither source has context, you MUST run the `teach` command NOW before doing anything else. Do NOT skip this step. Do NOT attempt to infer context from the codebase instead.
+2. **Check PRODUCT.md / .impeccable.md (fast)**: If not in instructions, read `PRODUCT.md` (and `DESIGN.md` when present) from the project root; `.impeccable.md` is the accepted legacy single-file equivalent. If either exists and contains the required context, proceed.
+3. **Run the `init` command (REQUIRED)**: If neither source has context, you MUST run the `init` command NOW before doing anything else (reference: [cmd-init](references/cmd-init.md)). Do NOT skip this step. Do NOT attempt to infer context from the codebase instead.
 
 ### Register: brand vs product
 
 Every design task is one of two registers — identify before designing:
 
-- **Brand** — design IS the product. Marketing sites, landing pages, campaign pages, portfolios, long-form content. The visitor's impression IS the deliverable. Distinctive, opinionated, willing to risk strangeness. → consult [brand reference](references/brand.md) for typography, palette commitment, layout license.
-- **Product** — design SERVES the product. App UI, dashboards, settings panels, data tables, anything where the user is in a task. Earned familiarity beats novelty; the tool should disappear into the work. → consult [product reference](references/product.md) for system fonts, single-family typography, fixed scales, restrained palette defaults.
+- **Brand** — design IS the product. Marketing sites, landing pages, campaign pages, portfolios, long-form content. The visitor's impression IS the deliverable. Distinctive, opinionated, willing to risk strangeness. → consult [references/brand.md](references/brand.md).
+- **Product** — design SERVES the product. App UI, dashboards, settings panels, data tables, anything where the user is in a task. Earned familiarity beats novelty; the tool should disappear into the work. → consult [references/product.md](references/product.md).
 
-Priority for detection: (1) cue in the task itself ("landing page" vs "dashboard"); (2) the surface in focus (the page/route/file being edited); (3) the `register` field in `.impeccable.md` / `PRODUCT.md` if present. First match wins.
+The shared rules below apply to both registers; the register reference adjusts the dial.
 
-The shared design laws below apply to both registers; the register reference adjusts the dial.
+### General rules
 
-### Design Direction
+Existing project? Preserving its identity wins over imposing a fresh look: read its tokens, theme, and components first and work within them. New project? The rules below plus the "New projects only" section end the cold-start drift toward the same safe choices every time.
 
-Commit to a BOLD aesthetic direction:
-- **Purpose**: What problem does this interface solve? Who uses it?
-- **Tone**: Pick an extreme: brutally minimal, maximalist chaos, retro-futuristic, organic/natural, luxury/refined, playful/toy-like, editorial/magazine, brutalist/raw, art deco/geometric, soft/pastel, industrial/utilitarian, etc. There are so many flavors to choose from. Use these for inspiration but design one that is true to the aesthetic direction.
-- **Constraints**: Technical requirements (framework, performance, accessibility).
-- **Differentiation**: What makes this UNFORGETTABLE? What's the one thing someone will remember?
+#### Color
 
-**CRITICAL**: Choose a clear conceptual direction and execute it with precision. Bold maximalism and refined minimalism both work — the key is intentionality, not intensity.
-
-Then implement working code that is:
-- Production-grade and functional
-- Visually striking and memorable
-- Cohesive with a clear aesthetic point-of-view
-- Meticulously refined in every detail
-
-### Frontend Aesthetics Guidelines
+- **Verify contrast.** Body text must hit ≥4.5:1 against its background; large text (≥18px or bold ≥14px) needs ≥3:1. Placeholder text needs the same 4.5:1, not the muted-gray default. The most common failure: muted gray body text on a tinted near-white. If the contrast is even close, bump the body color toward the ink end of the ramp; light gray "for elegance" is the single biggest reason AI designs feel hard to read.
+- Gray text on a colored background looks washed out. Use a darker shade of the background's own hue, or a transparency of the text color.
 
 #### Typography
-> *Consult [typography reference](references/typography.md) for OpenType features, web font loading, and the deeper material on scales.*
 
-Choose fonts that are beautiful, unique, and interesting. Pair a distinctive display font with a refined body font.
+- Cap body line length at 65–75ch.
+- Don't pair fonts that are similar but not identical (two geometric sans-serifs, two humanist sans-serifs). Pair on a contrast axis (serif + sans, geometric + humanist) or use one family in multiple weights.
+- Hero / display heading ceiling: clamp() max ≤ 6rem (~96px). Above that the page is shouting, not designing.
+- Display heading letter-spacing floor: ≥ -0.04em. Anything tighter and letters touch; cramped, not "designed". -0.02 to -0.03em is plenty for tight grotesque display.
+- Use `text-wrap: balance` on h1–h3 for even line lengths; `text-wrap: pretty` on long prose to reduce orphans.
+- No more than three font families on a page. Beyond that is noise, not voice.
 
-<typography_principles>
-Always apply these — do not consult a reference, just do them:
+#### Layout
 
-- Use a modular type scale with fluid sizing (clamp) for headings on marketing/content pages. Use fixed `rem` scales for app UIs and dashboards (no major design system uses fluid type in product UI).
-- Use fewer sizes with more contrast. A 5-step scale with at least a 1.25 ratio between steps creates clearer hierarchy than 8 sizes that are 1.1× apart.
-- Line-height scales inversely with line length. Narrow columns want tighter leading, wide columns want more. For light text on dark backgrounds, ADD 0.05-0.1 to your normal line-height — light type reads as lighter weight and needs more breathing room.
-- Cap line length at ~65-75ch. Body text wider than that is fatiguing.
-</typography_principles>
-
-<font_selection_procedure>
-DO THIS BEFORE TYPING ANY FONT NAME.
-
-The model's natural failure mode is "I was told not to use Inter, so I will pick my next favorite font, which becomes the new monoculture." Avoid this by performing the following procedure on every project, in order:
-
-Step 1. Read the brief once. Write down 3 concrete words for the brand voice (e.g., "warm and mechanical and opinionated", "calm and clinical and careful", "fast and dense and unimpressed", "handmade and a little weird"). NOT "modern" or "elegant" — those are dead categories.
-
-Step 2. List the 3 fonts you would normally reach for given those words. Write them down. They are most likely from this list:
-
-<reflex_fonts_to_reject>
-Fraunces
-Newsreader
-Lora
-Crimson
-Crimson Pro
-Crimson Text
-Playfair Display
-Cormorant
-Cormorant Garamond
-Syne
-IBM Plex Mono
-IBM Plex Sans
-IBM Plex Serif
-Space Mono
-Space Grotesk
-Inter
-DM Sans
-DM Serif Display
-DM Serif Text
-Outfit
-Plus Jakarta Sans
-Instrument Sans
-Instrument Serif
-</reflex_fonts_to_reject>
-
-Reject every font that appears in the reflex_fonts_to_reject list. They are your training-data defaults and they create monoculture across projects.
-
-Step 3. Browse a font catalog with the 3 brand words in mind. Sources: Google Fonts, Pangram Pangram, Future Fonts, Adobe Fonts, ABC Dinamo, Klim Type Foundry, Velvetyne. Look for something that fits the brand as a *physical object* — a museum exhibit caption, a hand-painted shop sign, a 1970s mainframe terminal manual, a fabric label on the inside of a coat, a children's book printed on cheap newsprint. Reject the first thing that "looks designy" — that's the trained reflex too. Keep looking.
-
-Step 4. Cross-check the result. The right font for an "elegant" brief is NOT necessarily a serif. The right font for a "technical" brief is NOT necessarily a sans-serif. The right font for a "warm" brief is NOT Fraunces. If your final pick lines up with your reflex pattern, go back to Step 3.
-</font_selection_procedure>
-
-<typography_rules>
-DO use a modular type scale with fluid sizing (clamp) on headings.
-DO vary font weights and sizes to create clear visual hierarchy.
-DO vary your font choices across projects. If you used a serif display font on the last project, look for a sans, monospace, or display face on this one.
-
-DO NOT use overused fonts like Inter, Roboto, Arial, Open Sans, or system defaults — but also do not simply switch to your second-favorite. Every font in the reflex_fonts_to_reject list above is banned. Look further.
-DO NOT use monospace typography as lazy shorthand for "technical/developer" vibes.
-DO NOT put large icons with rounded corners above every heading. They rarely add value and make sites look templated.
-DO NOT use only one font family for the entire page. Pair a distinctive display font with a refined body font.
-DO NOT use a flat type hierarchy where sizes are too close together. Aim for at least a 1.25 ratio between steps.
-DO NOT set long body passages in uppercase. Reserve all-caps for short labels and headings.
-DO NOT use oversized italic serif (Fraunces, Recoleta, Newsreader, Playfair, Cormorant, Tiempos) as the primary hero h1. This pattern is the late-2025 / early-2026 AI marketing-page fingerprint. Editorial and magazine surfaces that legitimately want the pattern can override on purpose.
-DO NOT pair a hero h1 with an uppercase letter-spaced eyebrow label sitting directly above it, including the pill-chip variant (background plus 999px border-radius). The eyebrow chip is one of the most-trained hero patterns and reads as templated. Short labels at small sizes for editorial captions and ordinary subheads are fine.
-</typography_rules>
-
-#### Color & Theme
-> *Consult [color reference](references/color-and-contrast.md) for the deeper material on contrast, accessibility, and palette construction.*
-
-Commit to a cohesive palette. Dominant colors with sharp accents outperform timid, evenly-distributed palettes.
-
-<color_principles>
-Always apply these — do not consult a reference, just do them:
-
-- Use OKLCH, not HSL. OKLCH is perceptually uniform: equal steps in lightness *look* equal, which HSL does not deliver. As you move toward white or black, REDUCE chroma — high chroma at extreme lightness looks garish. A light blue at 85% lightness wants ~0.08 chroma, not the 0.15 of your base color.
-- Tint your neutrals toward your brand hue. Even a chroma of 0.005-0.01 is perceptible and creates subconscious cohesion between brand color and UI surfaces. The hue you tint toward should come from THIS brand, not from a "warm = friendly" or "cool = tech" formula. Pick the brand's actual hue first, then tint everything toward it.
-- The 60-30-10 rule is about visual *weight*, not pixel count. 60% neutral / surface, 30% secondary text and borders, 10% accent. Accents work BECAUSE they're rare. Overuse kills their power.
-</color_principles>
-
-<color_strategy>
-Pick a **color strategy** before picking colors. Four steps on the commitment axis — chosen by register and brief, not defaulted to:
-
-- **Restrained** — tinted neutrals + one accent ≤10% of surface area. Product default; brand minimalism.
-- **Committed** — one saturated color carries 30–60% of the surface. Brand default for identity-driven pages.
-- **Full palette** — 3–4 named roles, each used deliberately. Brand campaigns; product data viz.
-- **Drenched** — the surface IS the color. Brand heroes, campaign pages.
-
-The "one accent ≤10%" rule is Restrained only. Committed / Full palette / Drenched exceed it on purpose. Don't collapse every design to Restrained by reflex.
-</color_strategy>
-
-<theme_selection>
-Theme (light vs dark) should be DERIVED from audience and viewing context, not picked from a default. Read the brief and ask: when is this product used, by whom, in what physical setting?
-
-- A perp DEX consumed during fast trading sessions → dark
-- A hospital portal consumed by anxious patients on phones late at night → light
-- A children's reading app → light
-- A vintage motorcycle forum where users sit in their garage at 9pm → dark
-- An observability dashboard for SREs in a dark office → dark
-- A wedding planning checklist for couples on a Sunday morning → light
-- A music player app for headphone listening at night → dark
-- A food magazine homepage browsed during a coffee break → light
-
-Do not default everything to light "to play it safe." Do not default everything to dark "to look cool." Both defaults are the lazy reflex. The correct theme is the one the actual user wants in their actual context.
-</theme_selection>
-
-<color_rules>
-DO use modern CSS color functions (oklch, color-mix, light-dark) for perceptually uniform, maintainable palettes.
-DO tint your neutrals toward your brand hue. Even a subtle hint creates subconscious cohesion.
-
-DO NOT use gray text on colored backgrounds; it looks washed out. Use a shade of the background color instead.
-DO NOT use pure black (#000) or pure white (#fff). Always tint; pure black/white never appears in nature.
-DO NOT use the AI color palette: cyan-on-dark, purple-to-blue gradients, neon accents on dark backgrounds.
-DO NOT use gradient text for impact — see <absolute_bans> below for the strict definition. Solid colors only for text.
-DO NOT default to dark mode with glowing accents. It looks "cool" without requiring actual design decisions.
-DO NOT default to light mode "to be safe" either. The point is to choose, not to retreat to a safe option.
-</color_rules>
-
-#### Layout & Space
-> *Consult [spatial reference](references/spatial-design.md) for the deeper material on grids, container queries, and optical adjustments.*
-
-Create visual rhythm through varied spacing, not the same padding everywhere. Embrace asymmetry and unexpected compositions. Break the grid intentionally for emphasis.
-
-<spatial_principles>
-Always apply these — do not consult a reference, just do them:
-
-- Use a 4pt spacing scale with semantic token names (`--space-sm`, `--space-md`), not pixel-named (`--spacing-8`). Scale: 4, 8, 12, 16, 24, 32, 48, 64, 96. 8pt is too coarse — you'll often want 12px between two values.
-- Use `gap` instead of margins for sibling spacing. It eliminates margin collapse and the cleanup hacks that come with it.
-- Vary spacing for hierarchy. A heading with extra space above it reads as more important — make use of that. Don't apply the same padding everywhere.
-- Self-adjusting grid pattern: `grid-template-columns: repeat(auto-fit, minmax(280px, 1fr))` is the breakpoint-free responsive grid for card-style content.
-- Container queries are for components, viewport queries are for page layout. A card in a sidebar should adapt to the sidebar's width, not the viewport's.
-</spatial_principles>
-
-<spatial_rules>
-DO create visual rhythm through varied spacing: tight groupings, generous separations.
-DO use fluid spacing with clamp() that breathes on larger screens.
-DO use asymmetry and unexpected compositions; break the grid intentionally for emphasis.
-
-DO NOT wrap everything in cards. Not everything needs a container.
-DO NOT nest cards inside cards. Visual noise; flatten the hierarchy.
-DO NOT use identical card grids (same-sized cards with icon + heading + text, repeated endlessly).
-DO NOT use the hero metric layout template (big number, small label, supporting stats, gradient accent).
-DO NOT center everything. Left-aligned text with asymmetric layouts feels more designed.
-DO NOT use the same spacing everywhere. Without rhythm, layouts feel monotonous.
-DO NOT let body text wrap beyond ~80 characters per line. Add a max-width like 65–75ch so the eye can track easily.
-DO NOT let body text run to the absolute viewport edge. Wrap content in a container with horizontal padding (or a constrained max-width) so paragraphs never bleed into the screen border on any breakpoint.
-</spatial_rules>
-
-#### Visual Details
-
-<absolute_bans>
-These CSS patterns are NEVER acceptable. They are the most recognizable AI design tells. Match-and-refuse: if you find yourself about to write any of these, stop and rewrite the element with a different structure entirely.
-
-BAN 1: Side-stripe borders on cards/list items/callouts/alerts
-  - PATTERN: `border-left:` or `border-right:` with width greater than 1px
-  - INCLUDES: hard-coded colors AND CSS variables
-  - FORBIDDEN: `border-left: 3px solid red`, `border-left: 4px solid #ff0000`, `border-left: 4px solid var(--color-warning)`, `border-left: 5px solid oklch(...)`, etc.
-  - WHY: this is the single most overused "design touch" in admin, dashboard, and medical UIs. It never looks intentional regardless of color, radius, opacity, or whether the variable name is "primary" or "warning" or "accent."
-  - REWRITE: use a different element structure entirely. Do not just swap to box-shadow inset. Reach for full borders, background tints, leading numbers/icons, or no visual indicator at all.
-
-BAN 2: Gradient text
-  - PATTERN: `background-clip: text` (or `-webkit-background-clip: text`) combined with a gradient background
-  - FORBIDDEN: any combination that makes text fill come from a `linear-gradient`, `radial-gradient`, or `conic-gradient`
-  - WHY: gradient text is decorative rather than meaningful and is one of the top three AI design tells
-  - REWRITE: use a single solid color for text. If you want emphasis, use weight or size, not gradient fill.
-</absolute_bans>
-
-DO: Use intentional, purposeful decorative elements that reinforce brand.
-DO NOT: Use border-left or border-right greater than 1px as a colored accent stripe on cards, list items, callouts, or alerts. See <absolute_bans> above for the strict CSS pattern.
-DO NOT: Use glassmorphism everywhere (blur effects, glass cards, glow borders used decoratively rather than purposefully).
-DO NOT: Use sparklines as decoration. Tiny charts that look sophisticated but convey nothing meaningful.
-DO NOT: Use rounded rectangles with generic drop shadows. Safe, forgettable, could be any AI output.
-DO NOT: Use modals unless there's truly no better alternative. Modals are lazy.
+- Vary spacing for rhythm.
+- Cards are the lazy answer. Use them only when they're truly the best affordance. Nested cards are always wrong.
+- Flexbox for 1D, Grid for 2D. Don't default to Grid when `flex-wrap` would be simpler.
+- For responsive grids without breakpoints: `repeat(auto-fit, minmax(280px, 1fr))`.
+- Build a semantic z-index scale (dropdown → sticky → modal-backdrop → modal → toast → tooltip). Never arbitrary values like 999 or 9999.
 
 #### Motion
-> *Consult [motion reference](references/motion-design.md) for timing, easing, and reduced motion.*
 
-Focus on high-impact moments: one well-orchestrated page load with staggered reveals creates more delight than scattered micro-interactions.
-
-**DO**: Use motion to convey state changes — entrances, exits, feedback
-**DO**: Use exponential easing (ease-out-quart/quint/expo) for natural deceleration
-**DO**: For height animations, use grid-template-rows transitions instead of animating height directly
-**DON'T**: Animate layout properties (width, height, padding, margin). Use transform and opacity only
-**DON'T**: Use bounce or elastic easing. They feel dated and tacky; real objects decelerate smoothly
+- Motion should be intentional, not an afterthought. Consider it part of the build.
+- Don't animate CSS layout properties unless truly needed.
+- Ease out with exponential curves (ease-out-quart / quint / expo). No bounce, no elastic.
+- Use libraries for more advanced motion needs (e.g. motion, gsap, anime.js, lenis).
+- Reduced motion is not optional. Every animation needs a `@media (prefers-reduced-motion: reduce)` alternative: typically a crossfade or instant transition.
+- Staggering the items within one list is legitimate. The tell is the uniform reflex (one identical entrance applied to every section), not motion itself; each reveal should fit what it reveals. Suppressing the reflex is never a reason to ship a page with no motion at all.
+- Reveal animations must enhance an already-visible default. Don't gate content visibility on a class-triggered transition; transitions pause on hidden tabs and headless renderers, so the reveal never fires and the section ships blank.
+- Premium motion materials are not just transform/opacity. Blur, backdrop-filter, clip-path, mask, and shadow/glow are part of the palette when they materially improve the effect and stay smooth.
 
 #### Interaction
-> *Consult [interaction reference](references/interaction-design.md) for forms, focus, and loading patterns.*
 
-Make interactions feel fast. Use optimistic UI — update immediately, sync later.
+- Dropdowns rendered with `position: absolute` inside an `overflow: hidden` or `overflow: auto` container will be clipped. Use the native `<dialog>` / popover API, `position: fixed`, or a portal to escape the stacking context.
+- Never animate `<img>` elements on hover — no `transform` on `:hover` of an image, and no parent-hover patterns that scale/rotate/translate a child image. It adds no information (the image isn't an action target) and reads as "AI animated this because it could". If a card needs hover feedback, animate the card's background, border, or shadow.
 
-**DO**: Use progressive disclosure. Start simple, reveal sophistication through interaction (basic options first, advanced behind expandable sections; hover states that reveal secondary actions)
-**DO**: Design empty states that teach the interface, not just say "nothing here"
-**DO**: Make every interactive surface feel intentional and responsive
-**DON'T**: Repeat the same information (redundant headers, intros that restate the heading)
-**DON'T**: Make every button primary. Use ghost buttons, text links, secondary styles; hierarchy matters
+#### Copy
 
-#### Responsive
-> *Consult [responsive reference](references/responsive-design.md) for mobile-first, fluid design, and container queries.*
+- Every word earns its place. No restated headings, no intros that repeat the title.
+- Don't lean on em dashes. Use commas, colons, semicolons, periods, or parentheses. Also not `--`.
+- No marketing buzzwords ("seamless", "effortless", "supercharge") and no aphoristic-cadence copy (short punchy sentence triads that sound profound and say nothing).
+- No meta-criticism theater: naming a concept then layering an ironic modifier, or staging a strawman to "correct" it. Make the specific claim instead.
 
-**DO**: Use container queries (@container) for component-level responsiveness
-**DO**: Adapt the interface for different contexts, not just shrink it
-**DON'T**: Hide critical functionality on mobile. Adapt the interface, don't amputate it
+### New projects only (when no prior work exists)
 
-#### UX Writing
-> *Consult [ux-writing reference](references/ux-writing.md) for labels, errors, and empty states.*
+#### Color & Theme
 
-**DO**: Make every word earn its place
-**DON'T**: Repeat information users can already see
+- Use OKLCH.
+- **The cream / sand / beige body bg is the saturated AI default of 2026.** The whole warm-neutral band (OKLCH L 0.84-0.97, C < 0.06, hue 40-100) reads as cream/sand/paper/parchment regardless of what you call it. Token names like `--paper`, `--cream`, `--sand`, `--bone`, `--linen`, `--parchment`, `--ivory` are tells in themselves. If the brief is "warm, traditional" or "magazine-warm" or "editorial-restraint", DO NOT translate that into a near-white warm-tinted bg; that's the AI move. Pick: (a) a saturated brand color as the body (terracotta, oxblood, deep ochre, near-black), (b) a true off-white at chroma 0 (or chroma toward the brand's own hue, not toward warmth-by-default), or (c) a darker mid-tone tinted neutral that's clearly the brand's own. "Warmth" in the brand is carried by accent + typography + imagery, not by body bg.
+- Tinted neutrals: add 0.005–0.015 chroma toward the brand's hue. Don't default-tint toward warm or cool "because the brand feels that way"; that's the cross-project monoculture move.
+- When picking a theme: dark vs. light is never a default. Not dark "because tools look cool dark." Not light "to be safe." Before choosing, write one sentence of physical scene: who uses this, where, under what ambient light, in what mood. If the sentence doesn't force the answer, it's not concrete enough. Add detail until it does.
+- Pick a **color strategy** before picking colors. Four steps on the commitment axis:
+  - **Restrained**: tinted neutrals + one accent ≤10%. Product default; brand minimalism.
+  - **Committed**: one saturated color carries 30–60% of the surface. Brand default for identity-driven pages.
+  - **Full palette**: 3–4 named roles, each used deliberately. Brand campaigns; product data viz.
+  - **Drenched**: the surface IS the color. Brand heroes, campaign pages.
 
 ### Absolute bans
 
-Match-and-refuse. If you're about to write any of these, rewrite the element with different structure:
+Match-and-refuse. If you're about to write any of these, rewrite the element with different structure.
 
-- **Side-stripe borders.** `border-left` or `border-right` greater than 1px as a colored accent on cards, list items, callouts, or alerts. Never intentional. Rewrite with full borders, background tints, leading numbers/icons, or nothing.
+- **Side-stripe borders.** `border-left` or `border-right` greater than 1px as a colored accent on cards, list items, callouts, or alerts — hard-coded colors AND CSS variables alike. Never intentional. Rewrite with full borders, background tints, leading numbers/icons, or nothing. Do not just swap to box-shadow inset.
 - **Gradient text.** `background-clip: text` combined with a gradient background. Decorative, never meaningful. Use a single solid color. Emphasis via weight or size.
 - **Glassmorphism as default.** Blurs and glass cards used decoratively. Rare and purposeful, or nothing.
 - **The hero-metric template.** Big number, small label, supporting stats, gradient accent. SaaS cliché.
 - **Identical card grids.** Same-sized cards with icon + heading + text, repeated endlessly.
+- **Tiny uppercase tracked eyebrow above every section.** The 2023-era kicker (small all-caps text with wide tracking, "ABOUT" "PROCESS" "PRICING" above each heading, including the pill-chip variant with a 999px border-radius) is the saturated AI scaffold; it appears on most generations regardless of brief, which is the definition of a tell. One named kicker as a deliberate brand system is voice; an eyebrow on every section is AI grammar. Choose a different cadence.
+- **Numbered section markers as default scaffolding (01 / 02 / 03).** Putting `01 · About / 02 · Process / 03 · Pricing` above every section is the eyebrow trope one tier deeper: reach for it because "landing pages do this" and you're scaffolding by reflex. Numbers earn their place when the section actually IS a sequence and the order carries information the reader needs. One deliberate numbered sequence on one page is voice; numbered eyebrows on every section across the site is AI grammar.
+- **Text that overflows its container.** Long heading words plus large clamp scales plus narrow grids cause headline overflow on tablet/mobile. Test the heading copy at every breakpoint; if it overflows, reduce the clamp max or rewrite the copy. The viewport is part of the design. Body text never runs to the absolute viewport edge either — wrap content in a container with horizontal padding.
 - **Modal as first thought.** Modals are usually laziness. Exhaust inline / progressive alternatives first.
-- **Em dashes in copy.** Use commas, colons, semicolons, periods, or parentheses. Also not `--`.
+
+**Model-tell bans** — frequent giveaways of specific code models; refuse-and-rewrite regardless of which model you are:
+
+- **The ghost card**: `border: 1px solid X` + `box-shadow: 0 Npx Mpx ...` with blur ≥ 16px on the same element. Don't pair a 1px border with a soft wide drop shadow as decoration. Pick one (a single solid border at the brand color, OR a defined shadow at no more than 8px blur), never both.
+- **Over-rounding**: `border-radius: 32px+` on cards / sections / inputs. Cards top out at 12–16px; full-pill is fine for tags/buttons. 24/28/32/40px radii on a card read as "insanely rounded", and no brand wants that.
+- **Hand-drawn / sketchy SVG illustrations**: class names like `loose-sketch`, `doodle`, `wavy`; `feTurbulence` / `feDisplacementMap` "paper grain" filters; crude 5-to-30-path scenes meant to depict a tangible subject. These read as amateurish, not whimsical. If you can't render the scene with real assets, ship no illustration.
+- **`repeating-linear-gradient(...)` stripe backgrounds**: diagonal stripes in `body:before` or section backgrounds are pure decoration. Don't.
+- **Decorative grid backgrounds**: two-axis CSS grid overlays built from `linear-gradient(... 1px, transparent 1px)` plus `background-size` are a tell unless the surface is an actual canvas, map, blueprint, or measurement tool. Use product structure, real artifacts, or a plain surface instead.
 
 ### The AI Slop Test
 
-**Critical quality check**: If you showed this interface to someone and said "AI made this," would they believe you immediately? If yes, that's the problem.
-
-A distinctive interface should make someone ask "how was this made?" not "which AI made this?"
-
-Review the DON'T guidelines above — they are the fingerprints of AI-generated work from 2024-2025.
+**Critical quality check**: If someone could look at this interface and say "AI made that" without doubt, it's failed. If you showed it to someone and asked "which AI made this?", the honest answer should be "none — a designer did." Cross-register failures are the absolute bans above. Register-specific failures live in the register references.
 
 **Category-reflex check.** Run at two altitudes; the second one catches what the first one misses.
 
-- **First-order:** if someone could guess the theme and palette from the category name alone — "observability → dark blue", "healthcare → white + teal", "finance → navy + gold", "crypto → neon on black" — it's the first training-data reflex. Rework the scene sentence and color strategy until the answer is no longer obvious from the domain.
-- **Second-order:** if someone could guess the aesthetic family from category-plus-anti-references — "AI workflow tool that's not SaaS-cream → editorial-typographic with italic serif heroes", "fintech that's not navy-and-gold → terminal-native dark mode" — it's the trap one tier deeper. The first reflex was avoided; the second wasn't. Rework until both answers are not obvious. The brand reference's reflex-reject aesthetic lanes list catches the currently-saturated families.
+- **First-order:** if someone could guess the theme + palette from the category alone ("observability → dark blue", "healthcare → white + teal", "finance → navy + gold", "crypto → neon on black"), it's the first training-data reflex. Rework the scene sentence and color strategy until the answer isn't obvious from the domain.
+- **Second-order:** if someone could guess the aesthetic family from category-plus-anti-references ("AI workflow tool that's not SaaS-cream → editorial-typographic", "fintech that's not navy-and-gold → terminal-native dark mode"), it's the trap one tier deeper. The first reflex was avoided; the second wasn't. Rework until both answers are not obvious. The brand register's reflex-reject aesthetic lanes list ([references/brand.md](references/brand.md)) catches the currently-saturated families.
 
 ### Implementation Principles
 
 Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details.
 
 Interpret creatively and make unexpected choices that feel genuinely designed for the context. No design should be the same. Vary between light and dark themes, different fonts, different aesthetics. NEVER converge on common choices across generations.
-
-Remember: Claude is capable of extraordinary creative work. Don't hold back — show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
 
 ---
 
@@ -573,8 +415,8 @@ Remember: Claude is capable of extraordinary creative work. Don't hold back — 
 The user invokes these commands from the toolbar. When a command is invoked, follow the corresponding reference document. The available commands are:
 
 ### Setup
-- **teach** — Gather design context for the project and save persistent guidelines to `.impeccable.md`. Reference: [cmd-teach](references/cmd-teach.md)
-- **document** — Generate a `DESIGN.md` at the project root capturing the current visual design system in Google Stitch format, so future agents stay on-brand. Reference: [cmd-document](references/cmd-document.md)
+- **init** — Set up project context: gather design context, write `PRODUCT.md` (or legacy `.impeccable.md`), offer `DESIGN.md`, recommend next steps. `teach` is a deprecated alias — treat a `teach` invocation exactly as `init`. Reference: [cmd-init](references/cmd-init.md)
+- **document** — Generate a `DESIGN.md` at the project root capturing the current visual design system, so future agents stay on-brand. Reference: [cmd-document](references/cmd-document.md)
 
 ### Plan
 - **shape** — Run a discovery interview and produce a design brief before any code is written. Reference: [cmd-shape](references/cmd-shape.md)
@@ -599,7 +441,7 @@ The user invokes these commands from the toolbar. When a command is invoked, fol
 ### Style
 - **animate** — Add purposeful animations, micro-interactions, and motion effects. Reference: [cmd-animate](references/cmd-animate.md)
 - **colorize** — Add strategic color to monochromatic or visually flat interfaces. Reference: [cmd-colorize](references/cmd-colorize.md)
-- **bolder** — Amplify safe or boring designs to be more visually impactful. Reference: [cmd-bolder](references/cmd-bolder.md)
+- **bolder** — Amplify safe or boring designs by making the existing design language more decisive — inside the design system when one exists. Reference: [cmd-bolder](references/cmd-bolder.md)
 - **quieter** — Tone down overly bold or aggressive designs to be more refined. Reference: [cmd-quieter](references/cmd-quieter.md)
 - **delight** — Add moments of joy, personality, and unexpected polish. Reference: [cmd-delight](references/cmd-delight.md)
 - **overdrive** — Push interfaces past conventional limits with technically ambitious implementations (shaders, spring physics, scroll-driven animations, virtual scrolling). Reference: [cmd-overdrive](references/cmd-overdrive.md)
@@ -607,6 +449,13 @@ The user invokes these commands from the toolbar. When a command is invoked, fol
 ### Architecture
 - **extract** — Extract reusable components, design tokens, and patterns into a design system. Reference: [cmd-extract](references/cmd-extract.md)
 - **adapt** — Adapt designs for different screen sizes, devices, contexts, or platforms. Reference: [cmd-adapt](references/cmd-adapt.md)
+
+### Routing
+
+1. **Toolbar invocation** (`command:X` in `<user-actions>`): load the command's reference file and follow it. The chat text (if any) is the target.
+2. **Typed command name**: if the first word of a message matches a command above (including the deprecated `teach` → `init` alias), treat it as an invocation; everything after it is the target.
+3. **Clear intent, no command named**: when a request clearly maps to one command ("fix the spacing" → `layout`, "rewrite this error message" → `clarify`, "the colors feel flat" → `colorize`), load that command's reference and proceed as if invoked. If two commands could fit, ask once which.
+4. **No clear match**: general design work. Apply Setup, the General rules, and the loaded register reference, using the request as context.
 
 ### Command Execution Notes
 
@@ -616,6 +465,6 @@ When the user invokes a command:
 3. In the reference, replace `{{config_file}}` with: CLAUDE.md
 4. In the reference, replace `{{model}}` with: Claude
 5. In the reference, replace `{{available_commands}}` with the list of 22 commands above
-6. References may point to "this skill" or to `references/*.md` files. Both live in the pneuma-webcraft skill — consult them directly, no separate `impeccable` skill needs to be invoked.
+6. References may point to "this skill" or to `references/*.md` files. Both live in the pneuma-webcraft skill — consult them directly, no separate `impeccable` skill needs to be invoked. Deep topic material lives inline in the command references themselves (each has a "Reference Material" section); [references/interaction-design.md](references/interaction-design.md) covers forms, focus, and loading patterns.
 7. Follow the reference instructions step by step
 8. Apply changes directly to the workspace files — the user sees results in real-time

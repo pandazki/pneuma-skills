@@ -9,7 +9,7 @@ Find the moments where personality and unexpected polish would turn a functional
 
 ## MANDATORY PREPARATION
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `teach` command (see [cmd-teach](cmd-teach.md)) first. Additionally gather: what's appropriate for the domain (playful vs professional vs quirky vs elegant).
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `init` command (see [cmd-init](cmd-init.md)) first. Additionally gather: what's appropriate for the domain (playful vs professional vs quirky vs elegant).
 
 ---
 

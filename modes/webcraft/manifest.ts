@@ -8,7 +8,7 @@ import { loadSite, saveSite } from "./domain.js";
 
 const webcraftManifest: ModeManifest = {
   name: "webcraft",
-  version: "1.4.1",
+  version: "1.5.0",
   displayName: {
     en: "WebCraft",
     "zh-CN": "WebCraft",
@@ -28,6 +28,14 @@ const webcraftManifest: ModeManifest = {
     de: "Webdesign mit Impeccable.style —— 22 KI-Designbefehle, responsive Vorschau und Export",
   },
   changelog: {
+    "1.5.0": [
+      "Synced Impeccable.style guidance to upstream skill v3.9.1",
+      "Teach command renamed to Init (teach still works as an alias); it now closes by recommending your next commands",
+      "New projects draw their palette from a curated brand seed color with mood and composition guidance",
+      "Deep topic references folded into their commands: typography into Typeset, color into Colorize, spacing into Layout, motion into Animate, responsive into Adapt, UX writing into Clarify, scoring and personas into Critique",
+      "New anti-pattern bans: cream default backgrounds, numbered section markers, decorative grid backgrounds, ghost cards, over-rounded corners, image hover zoom",
+      "Bolder now amplifies within your existing design system and asks before inventing new colors or effects",
+    ],
     "1.4.1": [
       "Tracked Impeccable.style upstream pin moved to skill-v3.1.1 (Windows CLI fix release — no skill content delta)",
     ],
@@ -166,7 +174,7 @@ const webcraftManifest: ModeManifest = {
       clearPatterns: ["**/*.html", "**/manifest.json"],
     },
     commands: [
-      { id: "teach", label: "Teach", description: "Gather design context for the project and save persistent guidelines to .impeccable.md" },
+      { id: "init", label: "Init", description: "Set up project context: gather design context, write PRODUCT.md (or legacy .impeccable.md), offer DESIGN.md, and recommend next steps" },
       { id: "document", label: "Document", description: "Generate a DESIGN.md at the project root capturing the current visual design system in Google Stitch format" },
       { id: "shape", label: "Shape", description: "Run a discovery interview and produce a design brief before any code is written" },
       { id: "craft", label: "Craft", description: "Shape-then-build: run the discovery flow, then implement the feature in one pass" },

@@ -9,7 +9,7 @@ Designs that only work with perfect data aren't production-ready. Harden the int
 
 ## MANDATORY PREPARATION
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `teach` command first (see [cmd-teach](cmd-teach.md)).
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `init` command first (see [cmd-init](cmd-init.md)).
 
 ---
 

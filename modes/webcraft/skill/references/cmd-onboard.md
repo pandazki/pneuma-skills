@@ -9,7 +9,7 @@ Get users to first value as fast as possible. Onboarding's job is not to teach t
 
 ## MANDATORY PREPARATION
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `teach` command (see [cmd-teach](cmd-teach.md)) first. Additionally gather: the "aha moment" you want users to reach, and users' experience level.
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `init` command (see [cmd-init](cmd-init.md)) first. Additionally gather: the "aha moment" you want users to reach, and users' experience level.
 
 ---
 
