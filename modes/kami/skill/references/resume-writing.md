@@ -40,6 +40,59 @@ Each project row uses a fixed three-part structure. The word and character targe
 
 ---
 
+## Source and truth pass
+
+Run this pass before rewriting when the user provides more than one source, such as an old resume plus a self-review, annual review, promotion packet, or project notes.
+
+1. Extract every claim, number, project name, role label, and result from each source.
+2. Use the richer source for its best material, not as a replacement for the other source. Annual reviews often carry the strongest metrics; old resumes often carry the clearest project narrative.
+3. If two sources conflict on scope, owner, unit, or number, ask the user. Do not silently choose the larger or more impressive claim.
+4. Drop numbers whose unit or measurement basis is unclear. A precise, traceable number beats a bigger rounded estimate.
+
+Use precise before/after values when available: `S1 68% / S2 93%` reads more credible than "about 70%". If a number looks like a typo or a unit mismatch, leave it out or mark it as a question.
+
+---
+
+## Personal information hygiene
+
+Age and gender are optional resume metadata, not evidence. In CN / KO recruiting contexts, include them only when the user supplied them and the target channel expects them. Place them in the contact line after location; never promote them into metric cards, summary, or project copy.
+
+Do not invent missing personal details. Do not include expected salary in the resume body. Salary expectations, availability, and negotiation constraints belong in the recruiter message or a separate candidate note unless the user explicitly asks for a form-style resume.
+
+Use role positioning instead of old-style job intention: `AI / Agent 工程` is useful; `求职意向：前端工程师` usually wastes space.
+
+---
+
+## Ownership and title calibration
+
+Role words carry different promises. Pick the lowest truthful word that still reflects the contribution.
+
+| Role word | Boundary | Use when |
+|---|---|---|
+| 方向负责人 / owner / lead | Defined the direction, owned the architecture or outcome, and was the clear accountable person | You can defend the strategy, tradeoffs, and final result |
+| 负责 / drove / led | Independently carried a line or module to production | You owned delivery, but not necessarily the whole direction |
+| 牵头 / coordinated | Pulled multiple people or systems together around a bounded goal | The value was orchestration and delivery pressure |
+| 模块负责人 / module owner | Owned a specific module, industry slice, or workflow | The larger business line had other owners |
+| 共建 / contributed / core contributor | Delivered a distinct piece inside a shared project | Another person or team owns the larger project |
+| 参与 / implemented | Solid execution without ownership | The result is real, but scope should stay modest |
+
+Do not let every project say "主导". A strong resume usually mixes owner-level projects with narrower but concrete contributions. This reads more credible than inflating every line.
+
+---
+
+## Team resume mode
+
+When optimizing multiple resumes from the same team, run a project ownership pass before polishing any single resume.
+
+1. List each person's project names, aliases, role labels, and headline metrics.
+2. Mark shared projects, near-duplicate names, and reused metrics.
+3. Ask the user to confirm the unique owner for any project using owner-level language.
+4. For non-owners, downgrade the role word and switch to the person's distinct contribution or metric dimension.
+
+The goal is not to hide collaboration. The goal is to avoid five resumes all claiming the same project as personally owned. Shared work is credible when each person's scope is different and defensible.
+
+---
+
 ## Metrics: horizontal vs vertical layout
 
 Each project card has a `.metrics` row that shows key numbers. Two layout modes are available.
@@ -154,7 +207,37 @@ When page 1 carries 3-6 projects, adjust these three CSS properties. Do not chan
 
 For 5-project layouts, add `class="resume--dense"` to `<body>` instead of manually adjusting CSS. The `resume--dense` class applies the row-5 values above.
 
-For 6 projects there is no pre-built variant; apply the row-6 values directly and run `--verify` after. Six projects on one page is a strong signal the project list needs editing, not just tightening.
+For 6 projects there is no pre-built variant; apply the row-6 values directly and re-check `kami-fit.json` after. Six projects on one page is a strong signal the project list needs editing, not just tightening.
+
+---
+
+## Two-page balance
+
+Resume output has a stricter contract than general multi-page documents:
+
+- Exactly 2 pages.
+- Each page fill should land around 83-95%.
+- The two pages should differ by less than 12 percentage points.
+
+Verify with `.pneuma/kami-fit.json`: fill per page is `content_height_mm / paper height` (an A4 page reporting `content_height_mm` of 247-282 sits in the band). Both pages must report `fits`; a `sparse` second page breaches this contract even though it passes the general fit loop.
+
+If page 2 is too empty, fix content before touching typography:
+
+1. Split one mixed project only when it honestly contains two different systems or result dimensions.
+2. Add one real skills row only when the source material already supports it.
+3. Cut filler and repeated metrics before shrinking fonts.
+
+Do not fill space by padding, duplicating a number, or splitting one sentence into two lines. A sparse second page is acceptable only when the source material is genuinely thin and the user prefers restraint over padding.
+
+---
+
+## Recruiter pass (before shipping)
+
+Fit and density checks validate structure and layout, not prose. A resume can report `fits` on every page and still read broken. After filling and before handing back, reread every project card the way a recruiter would, against the row definitions in "What goes in each row" above: Role carries your position in the project, not background alone; Actions are verb-led, one concrete approach per sentence; Impact reads as an outcome, not a restatement of the process. One cross-row check on top: no row repeats another row's information.
+
+Fix a failing row by rewriting from the source material. If the source cannot support a row (for example, no outcome fact exists), ask the user for the missing fact. Do not pad, and do not fall back to generic claims ("保障稳定运行", "improved efficiency").
+
+This pass is internal: run it silently; surface it only when a row cannot be fixed without new information from the user.
 
 ---
 
@@ -176,6 +259,25 @@ Page 2 has more space than page 1. Do not compress it to match page 1 density.
 | `.conv-body` line-height | 1.40 |
 | Page 2 top buffer | 4mm minimum between header and first section |
 
-This configuration fits 2 pages when TsangerJinKai02 is available. Font fallback to Source Han Serif adds roughly 0.3pt per line; run `--verify` after any font environment change.
+This configuration fits 2 pages when TsangerJinKai02 is available. Font fallback to Source Han Serif adds roughly 0.3pt per line; re-check `kami-fit.json` after any font change.
 
 Do not scale page 2 font below 9pt to save space. If page 2 still overflows, cut one Convictions card or reduce Skills to 2 rows.
+
+---
+
+## AI engineering resumes
+
+AI-facing resumes should show that the candidate treats AI as an engineered system, not a magic tool or a list of model names.
+
+Use:
+- Mechanisms that turn generation into delivery: evaluation gates, feedback loops, harnesses, regression checks, context boundaries, rollback paths.
+- Clear human / AI division of labor: humans define scope, tradeoffs, and risk; AI may implement, repair, classify, or generate under constraints.
+- Metrics tied to the mechanism: pass rate, failure rate, iteration cycle, case coverage, retrieval precision, hallucination reduction, throughput, review load.
+- Evolution in operating model: prompt craft -> context engineering -> tool orchestration -> automated validation.
+
+Avoid:
+- Listing model or tool names as a skill by itself.
+- Writing "AI improved efficiency by 50%" without saying what baseline, sample, or workflow was measured.
+- Packaging an API demo as an agent platform.
+- Claiming a team or platform result as an individual result.
+- Using filler such as `赋能`, `抓手`, `组合拳`, or `规模化` without a concrete mechanism and metric.

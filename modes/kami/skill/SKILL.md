@@ -188,7 +188,9 @@ machine-readable check — capture is for visual judgement.
 ## Core rules
 
 - Edit HTML/CSS/JS files directly — the user sees updates live.
-- Keep the canvas warm (`#f5f4ed` parchment, never pure white).
+- Keep the canvas warm (`#f5f4ed` parchment, never pure white). One
+  sanctioned exception: the opt-in white-paper print recipe for documents
+  headed to a home/office printer — see `references/design.md` §6.
 - Single accent color: ink blue `#1B365D`. No gradients, no second
   chromatic hue, no hard drop shadows.
 - Serif (TsangerJinKai02 CN / Newsreader EN) weight locked at 500.
@@ -225,7 +227,7 @@ verify before shipping.
 _shared/
   styles.css          # Tokens + paper dimensions. Don't edit casually.
   assets/fonts/       # Bundled fonts: TsangerJinKai02-W04.ttf, JetBrainsMono.woff2
-  assets/diagrams/    # 14 self-contained SVG templates — copy the <svg>
+  assets/diagrams/    # 18 self-contained SVG templates — copy the <svg>
                       # block out, drop it inside a <figure> on a page.
 pneuma-one-pager/      # EN one-pager demo (Pneuma product brief)
 kaku-portfolio/        # CN 6-page portfolio demo (from kami)
@@ -351,6 +353,24 @@ adjust; otherwise proceed to Step 3.
 4. Gap-check: list what the layout needs but the content doesn't have.
    Share the gap table with the user before guessing.
 
+### Step 4 · Post-fill fact check
+
+After the pages are filled, re-verify against the extraction from Step 3
+that nothing was dropped or mutated on the way into HTML:
+
+- Every name, number, date, and metric from the source lands in the
+  document **verbatim** — short atomic values are never rephrased,
+  rounded, or "improved". Only prose longer than ~80 characters may be
+  rewritten for flow.
+- Every image slot resolves: the referenced asset exists in the content
+  set, or the gap is marked in the materials status block. Never ship a
+  broken `<img>`.
+- Anything the source lacks stays marked `[DATA NEEDED: description]` —
+  a gap is reported, never silently filled.
+
+Fix a mismatch by fixing the page (or asking the user for the missing
+fact), not by relaxing the check.
+
 ## Fit discipline — the kami authoring loop
 
 Kami is a **strict-page** medium. The AUTHOR decides how many sheets a
@@ -397,6 +417,23 @@ Reaching `fits` across every page is the quality bar before you tell
 the user the document is ready. Silence on your part implies the fit is
 passing. See `references/cmd-fit.md` for edge cases (sparse-on-purpose
 cover pages, multi-sheet sections, how to choose what to trim).
+
+### Definition of done
+
+A document task is done only when your closing message carries:
+
+1. Which content set (and pages) hold the deliverable — with
+   `<viewer-locator>` cards to the landmarks.
+2. The fit verdict: every page reports `fits` in `.pneuma/kami-fit.json`
+   (or the named, deliberate exceptions — cover, colophon).
+3. Every remaining `[DATA NEEDED]` gap, listed explicitly. Never declare
+   done with an unreported gap.
+4. The visual verdict, stated honestly: fit geometry cannot see a
+   fallback glyph, an arrow crossing a label, or a broken image. For a
+   final deliverable, run a `capture` pass page by page and say what you
+   checked; if you did not look, say "fit verified, visuals unconfirmed",
+   not "done". One visual defect found means sweeping every page for
+   that class of issue, not fixing the one spot.
 
 ### Per-page density target (multi-page docs only)
 
@@ -569,6 +606,39 @@ whitepaper with several diagrams), record the first prompt's style
 descriptors and reuse them verbatim on every subsequent prompt. Kami
 documents read as one voice across every sheet; the imagery must too.
 
+When a deliverable needs **several** generated images, drive them
+through a single handoff note (a scratch file in the content set works):
+one line per image — slot, aspect ratio, shared style anchor, prompt,
+status. Generate in batches of at most 5, update the status column after
+each batch, and check existing output before regenerating. The style
+anchor is shared by the whole batch; per-image style drift is the
+failure mode.
+
+For **diagram-shaped** illustrations (a figure that needs more detail
+than hand-assembled SVG holds at the target width), write the brief per
+`references/diagrams.md` «Illustration briefs» and run its QC checklist
+before placing the result.
+
+## Vague feedback → concrete options
+
+When the user gives vague visual feedback ("looks off", "太挤了", "not
+elegant"), do not guess. Ask back naming the element and its current
+value, offering 2 in-spec alternatives: "X is currently set to Y. Would
+you like (a) [specific alternative within spec] or (b) [another
+option]?" Never say "I'll adjust the spacing" without naming the exact
+property and its new value.
+
+**Escalate after two rounds.** If the same element is still not approved
+after two adjustment rounds, stop nudging values: build one comparison
+page instead — the current state plus 2-3 labeled variants (A/B/C) of
+the same content in the same frame — and let the user pick in the live
+preview. For choices with no objective criterion (typeface feel, accent
+usage, cover motif), skip the nudging entirely and start with a specimen
+page: up to 5 candidates, each a labeled half-page block of identical
+title-plus-paragraph content. One round of "pick one" converges where
+five rounds of "try again" do not; after the pick, apply it everywhere
+in the same round.
+
 ## Don'ts
 
 - Don't add a second accent color, gradients, or hard drop shadows.
@@ -586,7 +656,7 @@ documents read as one voice across every sheet; the imagery must too.
   multilingual SEO companions are out of scope. Reach for webcraft
   instead.
 
-## Diagrams (14 self-contained templates)
+## Diagrams (18 self-contained templates)
 
 When a page benefits from a chart, pick the closest match from
 `_shared/assets/diagrams/`, copy the `<svg>` block out, and drop it inside
@@ -596,6 +666,7 @@ are meant to live inline so they paginate with the surrounding text.
 | User intent | Diagram | File |
 |---|---|---|
 | 架构 / system / components | Architecture | `architecture.html` |
+| 架构全景 / architecture board / 平台全景 / 系统大图 | Architecture Board | `architecture-board.html` |
 | 流程 / flowchart / branching | Flowchart | `flowchart.html` |
 | 象限 / quadrant / 2×2 matrix | Quadrant | `quadrant.html` |
 | 柱状 / bar / category compare | Bar Chart | `bar-chart.html` |
@@ -609,9 +680,28 @@ are meant to live inline so they paginate with the surrounding text.
 | 维恩 / overlap / 集合 | Venn | `venn.html` |
 | K 线 / OHLC / 股价 | Candlestick | `candlestick.html` |
 | 瀑布 / revenue bridge / decomposition | Waterfall | `waterfall.html` |
+| 时序 / sequence / API handshake / 消息交互 | Sequence | `sequence.html` |
+| 类图 / class / 类型关系 / inheritance | Class | `class.html` |
+| ER / 实体关系 / data model / schema | ER | `er.html` |
 
 Read `references/diagrams.md` once before drawing — it has the selection
 guide, kami token map, and the AI-slop anti-pattern table.
+
+For a **full-system architecture board** (platform panorama, control
+plane, roadmap, or owner map in one artifact), do not inflate the single
+architecture figure past its node budget. Give the board its own
+`<div class="page">` (or content set), start from
+`architecture-board.html`, and follow «Architecture boards» in
+`references/diagrams.md`: five fixed information layers, bands over
+cards, lines never on module edges, and a structure outline before any
+rendering.
+
+When **updating a diagram someone drew earlier** (a redraw request, a
+diagram living in a content set across sessions), follow «Maintained
+diagrams» in `references/diagrams.md`: run the evidence pass first
+(intent note, current source, a `capture` of the render, then the facts
+that define objects and boundaries), encode shipped / in-build / future
+maturity, and never redraw from memory alone.
 
 **Auto-select charts from data.** When the page content includes numeric
 data, pick the right chart type and embed it without waiting for the user
@@ -652,5 +742,7 @@ Load only what the task needs. Default to the lowest tier.
 | Building a new doc type from scratch | `references/design.md` |
 | Writing tone / structure guidance | `references/writing.md` |
 | Embedding a diagram | `references/diagrams.md` |
-| Building or editing a resume | `references/resume-writing.md` — bullet structure, metrics, density, visual rhythm |
+| Architecture board / maintained diagram | `references/diagrams.md` §3-4 — board skeleton, evidence pass, maturity encoding |
+| Building or editing a resume | `references/resume-writing.md` — bullet structure, source-and-truth pass, ownership calibration, two-page balance, recruiter pass |
+| Document headed to a home/office printer | `references/design.md` §6 — the opt-in white-paper recipe |
 | Quality pass before handing back | `references/anti-patterns.md` — the AI-document failure checklist |

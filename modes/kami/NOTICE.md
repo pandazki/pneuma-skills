@@ -59,17 +59,51 @@ it mirrors upstream V1.7.0's "Korean Paper" without bundling the font.
 ## Tracked upstream version
 
 Diagrams and reference docs in this mode are synced against
-[tw93/kami **V1.7.3**](https://github.com/tw93/Kami/releases/tag/V1.7.3)
-("Wider Gallery", 2026-06-14). Items intentionally not synced from
+[tw93/kami **V1.10.0**](https://github.com/tw93/Kami/releases/tag/V1.10.0)
+("Reliable Documents", 2026-07-19). Items intentionally not synced from
 upstream because they don't apply to Pneuma's iframe paper-canvas /
-browser-print model: the WeasyPrint runtime and the `slides-weasy` PDF
-path, the Marp / `marp-cli` and python-pptx slide-rendering paths (V1.6.0
-"Markdown Stage" — Pneuma renders slides as HTML in the iframe), the
-screen-first landing-page genre and its multilingual site companions
-(sitemap / robots / `llms.txt` / JSON-LD / hreflang), the `build.py` /
-`ensure-fonts.sh` build pipeline and CJK font auto-recovery, the quiet
-daily update check, the Claude Code plugin marketplace install path, and
-the brand profile loaded from `~/.config/kami/brand.md`.
+browser-print model:
+
+- The WeasyPrint runtime and the `slides-weasy` PDF path; the Marp /
+  `marp-cli` and python-pptx slide-rendering paths (V1.6.0 "Markdown
+  Stage" — Pneuma renders slides as HTML in the iframe).
+- The screen-first landing-page genre and its multilingual site
+  companions (sitemap / robots / `llms.txt` / JSON-LD / hreflang),
+  including the V1.9.1–V1.10.0 additions to that genre (single-line
+  surfaces, testimonial walls, pricing/social-proof/SEO-article rules,
+  dashboards, docs pages).
+- The `build.py` / `ensure-fonts.sh` build pipeline, CJK font
+  auto-recovery, the quiet daily update check, the plugin marketplace
+  install paths (Claude Code, and Codex added in V1.8.0), release
+  packaging allowlists, and the brand profile loaded from
+  `~/.config/kami/brand.md`.
+- The Mermaid authoring pipeline (V1.9.0: beautiful-mermaid,
+  `mermaid_normalize.py`, `mermaid-theme.json`, `references/mermaid.md`).
+  The three Mermaid-sourced diagrams (`sequence` / `class` / `er`) ship
+  here as static kami-themed SVG with their `.mmd` sources kept for
+  provenance; regeneration happens upstream, not in this mode.
+- WeasyPrint paged-media long-doc features (V1.9.2): TOC page numbers
+  via `target-counter()` and per-chapter running headers — browser print
+  has no reliable equivalent.
+- The PDF check pipeline (`--check-resume-balance`, `--check-markdown`,
+  `--check-content`, `--check-visual`, `--check-density`, V1.7.4–V1.10.0)
+  and the `references/schemas/*.json` content contracts. Their
+  principles are adapted as agent-side guidance instead: two-page
+  balance and the recruiter pass ride `.pneuma/kami-fit.json`
+  (resume-writing reference), and the pre-layout structure / post-fill
+  fact check lives in SKILL.md — without mechanical validators.
+- The MCP server tools (V1.10.0 `mcp_server.py`) — Pneuma's viewer API
+  and `capture` action cover the render/check/screenshot loop.
+- Placeholder-hint parity across upstream fill-in templates (V1.9.4) —
+  Pneuma seeds are complete demo documents, not `{{...}}` templates.
+- The repo-maintained diagram PNG-export trio (V1.9.4 `index.html` +
+  PNG + `prompt.md`, headless-Chrome export chain). The lifecycle
+  guidance (evidence pass, intent note, maturity encoding, terminology
+  sync) is adapted in the diagrams reference; the export mechanics are
+  upstream delivery plumbing.
+- The V1.9.3 changelog-template `--mono` fix is structurally covered
+  here: documents build on `_shared/styles.css`, which already defines
+  the `--mono` stack with CJK fallback.
 
 ## Seed demos
 

@@ -281,14 +281,13 @@ Structure is necessary but not sufficient. These bars define what separates comp
 **Rules**:
 1. 20-40 words per slide maximum. If a slide has more than 40 words, split it or convert text to a visual
 2. 5 items per list maximum (working memory capacity)
-3. Three-act structure: Setup (slides 1-4, establish stakes) -> Evidence (slides 5-12, build the case) -> Resolution (slides 13-16, deliver the payoff)
-4. Reading just the slide titles in sequence should tell the full argument
-5. Include a "so what" moment every 3-4 slides to re-anchor the audience
-6. End with one clear ask, not a bullet list of "key points"
+3. Three-act arc: setup establishes stakes, evidence builds the case, and resolution delivers the payoff. Act lengths scale with deck size; reading the slide titles in sequence should tell the full argument
+4. Include a "so what" moment every 3-4 slides to re-anchor the audience
+5. End with one clear ask, not a bullet list of "key points"
 
 **Eyebrow vs title non-duplication**: the eyebrow is a stable, cross-slide section label ("Growth / Q3 Results"). The title is a page-unique declarative claim ("Revenue grew 23% because enterprise deals closed 2x faster"). They must never say the same thing in different words. If removing the eyebrow would make the title ambiguous, the title is too weak. If reading the title makes the eyebrow redundant, the eyebrow is a topic label masquerading as context.
 
-**Deck rhythm (>=12 slides)**: before writing any slide, sketch a layout-type sequence. Rules: every 4-6 slides must include a `chapter_slide` (ink-blue full-bleed divider); never run more than 5 consecutive `content_slides` without a divider; the deck must include at least one `quote_slide` or `metrics_slide` to vary density. Monotony is a structure failure, not a content one.
+**Deck rhythm (>=12 slides)**: the layout-type sequence includes a `chapter_slide` (ink-blue full-bleed divider) every 4-6 slides, no run exceeds 5 consecutive `content_slides`, and the deck includes at least one `quote_slide` or `metrics_slide` to vary density. Monotony is a structure failure, not a content one.
 
 **Term consistency self-check**: after drafting, list every domain term that appears 3 or more times (product names, feature names, roles, metrics). Confirm there is exactly one spelling and capitalization for each. Inconsistent casing ("LLM" vs "llm" vs "large language model") signals an unreviewed draft.
 
@@ -317,6 +316,8 @@ Structure is necessary but not sufficient. These bars define what separates comp
 
 **Core rule**: each chapter's claim paragraph must survive the "so what?" test. If the reader asks "why should I care?", the first paragraph must have the answer.
 
+When the source arrives as Markdown, remove or convert its artifacts before delivery: thematic breaks (`---`), `**bold**` markers, and inline-code backticks must not surface as raw characters in the rendered page. Scan the finished pages (preview or `capture`) for stray Markdown syntax before calling the document done.
+
 **Rules**:
 1. Evidence density: at least one data point per paragraph. A paragraph with zero numbers is an opinion paragraph and should be rare
 2. Callout or figure after every 3-4 paragraphs of dense text. Long unbroken prose causes eye fatigue in print
@@ -342,7 +343,7 @@ Structure is necessary but not sufficient. These bars define what separates comp
 1. One point per middle paragraph, each with its own evidence
 2. Tone calibration per use case: resignation (grateful + clear), recommendation (specific + enthusiastic), proposal (value-first + concrete), personal statement (authentic + structured)
 3. Sign-off matches formality: "Sincerely" for formal, "Best regards" for professional-warm, "Warm regards" for personal
-4. Under no circumstances exceed one page. If you need two pages, it's a memo or a proposal, not a letter
+4. A letter fits on one page. If it needs two pages, it is a memo or a proposal, not a letter
 
 ### Changelog
 
@@ -399,6 +400,7 @@ Across any document:
 - ≤ 2 emphasized items per line
 - Emphasis must be a **quantifiable number** or a **distinctive phrase**
 - Do not emphasize adjectives
+- In prose-heavy sections, one emphasis per 80-150 words is a healthy default. Short sections do not need a forced highlight
 
 ### Number formatting
 
@@ -417,6 +419,8 @@ Chinese documents:
 - Prefer `「」` for quoted prose, not straight double quotes
 - Keep numbers, commas, percent signs, and dates half-width in metric-heavy areas
 - Add spaces between Chinese text and Latin product names when it improves readability
+- Short copy (metric labels, card subtitles, changelog entries) joins clauses with commas; a period appears only at the end of the item, or not at all
+- Never use `；` in short user-visible strings; split into two sentences or rejoin with a comma. Self-check: grep short-copy blocks for `；` and mid-item `。`
 
 English documents:
 - Use straight quotes in source text unless the document already has a typographic quote convention
@@ -428,9 +432,21 @@ Use `color: var(--brand)` alone - don't also add `font-weight: bold`. Bold break
 
 ---
 
+## Localization pass (multilingual documents)
+
+Literal alignment is the failure mode; meaning alignment is the goal. Every time a multilingual document changes (a CN/EN paired report, a translated portfolio), finish with a native-reader pass per language before shipping:
+
+- **Read each language straight through as a native reader**, not against the source text. Flag every sentence that carries the source language's skeleton: word order, comparison patterns, and punctuation rhythm are all allowed to diverge from the source.
+- **Rewrite, don't adjust.** A source-shaped sentence usually needs its structure rebuilt, not a word swapped — even at the cost of dropping the source's phrasing entirely.
+- **Never transplant rhetorical devices.** Number parallelism, puns, and alliteration die in translation. A line that reads as a device becomes a plain statement in the target language: what the reader gets, no cleverness.
+- **User-adopted phrasing wins.** If the user has already approved a specific line in one language, treat it as fixed and localize around it, not over it.
+- **Report the pass.** Tell the user how many sentences were rewritten per language; `0 rewrites` after a large copy change is a signal the pass did not happen.
+
+---
+
 ## Pre-ship checklist
 
-Run through before every draft:
+Run through before shipping every draft:
 
 - [ ] Any jargon like "leverage / unlock / embrace / pioneer"? Cut.
 - [ ] Any Chinese filler like "拥抱 / 打造 / 赋能 / 重构"? Rewrite in plain language.
@@ -444,8 +460,9 @@ Run through before every draft:
 - [ ] Number format consistent (commas, percent signs, arrows)?
 - [ ] Chinese punctuation and Chinese / Latin spacing consistent where applicable?
 - [ ] Page count within the document's constraint (resume 2, one-pager 1, letter 1)?
-- [ ] Any AI writing cliches? CN: 本质是 / 这意味着 / 值得注意的是 / 不仅...而且 / 破折号堆砌。EN: em dashes, "It's worth noting", "This means that". See anti-patterns #27.
+- [ ] Any AI writing cliches? CN: 本质是 / 这意味着 / 值得注意的是 / 不仅...而且 / 破折号堆砌。EN: em dashes, "It's worth noting", "This means that". See anti-patterns #28.
 - [ ] Multi-page docs (>8 pages / >10 slides): domain terms re-annotated beyond the half-life window? See principle #7.
+- [ ] Multilingual documents: native-reader localization pass done per language, rewrite counts reported?
 
 ---
 

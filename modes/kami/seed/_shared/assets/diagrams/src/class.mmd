@@ -1,0 +1,14 @@
+classDiagram
+  class Order {
+    +String id
+    +Date createdAt
+    +total() Money
+  }
+  class Customer {
+    +String name
+  }
+  class LineItem {
+    +int qty
+  }
+  Customer "1" --> "*" Order : places
+  Order "1" *-- "*" LineItem : contains

@@ -76,7 +76,7 @@ Four levels: near-black (primary) > dark-warm (secondary) > olive (subtext) > st
 
 ### Translucent -> Solid conversion (TAGS MUST BE SOLID)
 
-**Why**: WeasyPrint's alpha compositing for padding vs glyph areas produces a visible double rectangle on zoom. See `production.md` Part 4 Pitfall #1.
+**Why**: alpha compositing over padding vs glyph areas can produce a visible double rectangle in PDF renderers (a WeasyPrint bug upstream documented); solid pre-blended hex prints identically everywhere.
 
 Ink Blue `#1B365D` over parchment `#f5f4ed`:
 
@@ -151,6 +151,10 @@ Any font-family that may render Chinese, Japanese, or Korean must include a CJK 
 
 **Slide caption floor**: slides 上 caption 至少 24px (不是 12px)。Print 9pt 在投影距离不可读，slide caption 用 pt x 2.67。
 
+**Ladder discipline**: sizes must land ON the scale, never between its steps. Components that each pick their own size drift into 12.5 / 13.5 / 14.5 / 17.5 neighbours; a reader cannot tell a 13.5 from a 14, so the difference registers as noise instead of hierarchy. Audit a stylesheet with `grep 'font-size:' <file> | sort | uniq -c`: every value should be a scale step, and the smallest floor should carry only uppercase micro-labels and badges, never prose.
+
+**Serif sets larger than sans at the same number**: a tall x-height serif at 15px already reads bigger than 15px sans. Do not raise a serif body size to fix perceived readability; check the ladder step first.
+
 ### Weight
 
 - **Serif body**: 400 (W04 font file)
@@ -206,6 +210,14 @@ Print documents are **tighter** than English web body. English web typically run
 | xl | 24-32pt | Section-title margins |
 | 2xl | 40-60pt | Between major sections |
 | 3xl | 80-120pt | Between chapters (long docs) |
+
+**Proximity law (a heading belongs to what follows)**: the gap UNDER a section head must be clearly smaller than the gap ABOVE it, ideally by 2x or more. Get this backwards (generous below, tight above) and the head reads as the tail of the previous section, no matter how large its type is. A page runs on three steps and nothing else: inside a block, head-to-content, section-to-section.
+
+**A cramped head is an internal problem**: when a heading block feels dense, the cause is usually its own internals (eyebrow-to-title, title-to-lede), not the section gaps. Open those by a few points before touching the macro rhythm.
+
+**Two-column rows: cap both tracks, justify to the edges.** In an image-plus-copy row, let the copy column grow freely (`1fr`) and the text strands itself against an empty far edge. Cap both tracks and push the slack into the gutter instead: both outer edges stay aligned to the container, and the copy sits at its natural measure.
+
+**A repeated row is no place for ornament.** A connector line, a badge, or an index number that looks charming once becomes noise on the fifth repetition. Empty space between the two columns is the answer, not a graphic that fills it.
 
 ### Page margins (A4)
 
@@ -785,7 +797,7 @@ body { widows: 3; orphans: 3; }
 p    { widows: 2; orphans: 2; }
 ```
 
-CSS alone cannot prevent "the last two lines of a chapter pushed onto a fresh page". For long-doc / proposal output, follow up with a render-time density check (see production.md "Verify & Debug").
+CSS alone cannot prevent "the last two lines of a chapter pushed onto a fresh page". For long-doc / proposal output, follow up with the fit loop: read `.pneuma/kami-fit.json` and act on `sparse` pages (see `cmd-fit.md`).
 
 **Cascading break-inside**: when two `break-inside: avoid` blocks sit next to each other and the first would split, both get pushed to the next page together. A chapter with more than two `break-inside: avoid` blocks (quote + table + callout, etc.) near a page boundary is at high risk of leaving 40-80mm of trailing whitespace on the previous page. Fix by splitting the chapter, or downgrade one block (allow the table to break with a repeating header `<thead>`). Browser print engines honor `break-inside: avoid` widely, so the same cascade applies in Pneuma's iframe-to-print path.
 
@@ -804,6 +816,41 @@ CSS alone cannot prevent "the last two lines of a chapter pushed onto a fresh pa
   background: #f5f4ed;   /* extends past margin area, prevents printed white edges */
 }
 ```
+
+### Print / white-paper variant (opt-in)
+
+Parchment is the default and keeps shipping. Override to white only when a single
+document is **headed for a home / office printer**: a full-page `#f5f4ed` tint
+bands unevenly and burns toner, where white paper prints clean. This is the one
+sanctioned exception to invariant #1 ("never pure white"), and it is opt-in per
+document, never the default render.
+
+White is not a one-line background swap. Parchment also serves as the surface that
+`--ivory` cards, code blocks, and striped rows lift *off* of (they are "brighter
+than parchment"). Flip the page to white and those surfaces, only 1.5% lighter than
+white, vanish. So relocate the warmth instead of deleting it: sink parchment down
+into the lift surface. Three edits on the document's own stylesheet (never on
+`_shared/styles.css` — this is a per-document recipe):
+
+```css
+@page      { background: #ffffff; }   /* was #f5f4ed */
+html, body { background: #ffffff; }   /* was var(--parchment) */
+:root      { --ivory: #f5f4ed; }      /* parchment becomes the card/code/table lift */
+```
+
+Everything else is unchanged: ink-blue accent, warm text grays, and `--border`
+hairlines all read fine on white. Leave the `--parchment` token itself alone (any
+`var(--parchment)` section fill then reads as an intentional warm band on white).
+A lifted surface that separated from parchment by fill *alone* (rare, most already
+carry a `0.5pt var(--border)` edge) wants that border added so it holds an edge on
+white.
+
+Notes:
+- Page-fit contracts are unaffected; `kami-fit.json` reads the same. Still inspect
+  (via the live preview or a `capture`) that cards, code, and tables read on white
+  before the user prints.
+- The viewer keeps rendering the sheet at the locked paper size; the white
+  variant flows through the same Export menu as any other document.
 
 ---
 
