@@ -78,21 +78,55 @@ function getPneumaEntryPoint(): string {
   return path.join(getPneumaProjectRoot(), "bin", "pneuma.ts");
 }
 
+const MARKER_START = "___PNEUMA_PATH_START___";
+const MARKER_END = "___PNEUMA_PATH_END___";
+
+/**
+ * Read the user's PATH out of their login shell.
+ *
+ * Mirrors `server/path-resolver.ts::captureUserShellPath` — the desktop
+ * tsconfig pins `rootDir: "src"`, so the logic is duplicated rather than
+ * imported. Keep the two in sync.
+ *
+ * `echo $PATH` is wrong here: fish stores PATH as a list and joins it with
+ * spaces, and `-i` runs interactive rc files, so greeters (fastfetch et al.)
+ * write ANSI art to the same stdout. `printenv` plus own-line markers plus a
+ * validation pass is what survives all three shells.
+ */
+function captureShellPath(): string {
+  if (process.platform === "win32") return "";
+  try {
+    const script = `echo ${MARKER_START}; printenv PATH; echo ${MARKER_END}`;
+    const raw = execSync(
+      `${process.env.SHELL || "/bin/sh"} -ilc ${JSON.stringify(script)}`,
+      { encoding: "utf-8", timeout: 5000 }
+    );
+    // eslint-disable-next-line no-control-regex
+    const text = raw.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
+    const start = text.indexOf(MARKER_START);
+    if (start === -1) return "";
+    const end = text.indexOf(MARKER_END, start + MARKER_START.length);
+    if (end === -1) return "";
+    const line = text
+      .slice(start + MARKER_START.length, end)
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => l.length > 0);
+    if (!line) return "";
+    // Guard against capturing greeter output instead of a real PATH.
+    const entries = line.split(path.delimiter).filter(Boolean);
+    if (!entries.some((dir) => dir.startsWith("/") && existsSync(dir))) return "";
+    return line;
+  } catch {
+    return "";
+  }
+}
+
 /** Build PATH with bundled Bun directory prepended */
 function buildEnv(): NodeJS.ProcessEnv {
   const bunDir = path.dirname(getBunBinaryPath());
   const currentPath = process.env.PATH || "";
-
-  // Capture user's shell PATH for Claude CLI detection
-  let shellPath = "";
-  try {
-    if (process.platform !== "win32") {
-      shellPath = execSync(
-        `${process.env.SHELL || "/bin/sh"} -ilc 'echo $PATH'`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
-    }
-  } catch {}
+  const shellPath = captureShellPath();
 
   const combinedPath = [bunDir, shellPath, currentPath]
     .filter(Boolean)

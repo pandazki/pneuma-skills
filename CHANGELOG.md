@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.26.2] - 2026-07-21
+
+### Fixed
+- **Agent CLIs installed outside the conventional bin dirs were invisible to the desktop app** — Kimi showed "not found" in a GUI-launched Pneuma while `which kimi` resolved fine in a terminal. Three independent defects compounded into that one symptom:
+  - **The login-shell PATH capture never worked, on any shell.** `path-resolver.ts` interpolated its sentinel as `"___PATH_START___$PATH___PATH_END___"`. Underscores are legal identifier characters, so bash, zsh *and* fish all parsed that as a single variable named `PATH___PATH_END___` — always empty. The marker regex never matched and `captureUserShellPath()` silently returned `buildFallbackPath()` every single time. Markers now sit on their own lines.
+  - **The desktop-side copy had a second, fish-specific bug.** `desktop/src/main/bun-process.ts` read the value with `echo $PATH`, but fish stores PATH as a list and joins it with spaces rather than colons. Combined with `-i` loading interactive rc files, shell greeters (fastfetch et al.) wrote ANSI art into the same stdout, all of which was `.trim()`ed straight into PATH. Both copies now use `printenv PATH`, strip ANSI, and validate that the captured value contains at least one real directory before accepting it.
+  - **`~/.kimi-code/bin` was absent from the fallback dir list.** This is why only Kimi went red: `claude` and `codex` live in `~/.local/bin`, which the hardcoded list already covered, so they stayed green despite the two capture bugs. Kimi Code moved there from `~/.local/bin` when it rebranded — hence "it broke after I updated".
+  
+  The defects were mutually masking: a terminal-launched process already has a correct `process.env.PATH`, and the fallback list covered the usual locations, so the failure needed *both* a GUI launch (minimal OS-supplied PATH) *and* a binary outside the list. `getEnrichedPath()` now also appends the fallback dirs unconditionally at lowest precedence, so a thin-but-successful capture can no longer hide an installed CLI. `resolveBinary` was verified to agree with the user's shell for `claude` / `codex` / `kimi` / `gh` / `bun`, and to resolve all three agent CLIs under a simulated GUI environment. The desktop copy is a deliberate duplicate — `desktop/tsconfig.json` pins `rootDir: "src"` — and the two now cross-reference each other.
+
+### Notes
+- `.claude/rules/server.md` records both traps, plus a reminder that `backends/*/__tests__/lifecycle.test.ts` runs against live CLIs and models: a single failing run is not evidence of a regression. During this fix one flaky codex run briefly pointed the wrong way before a re-run came back clean.
+
 ## [3.26.1] - 2026-07-21
 
 ### Fixed
