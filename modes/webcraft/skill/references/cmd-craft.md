@@ -11,7 +11,7 @@ Build a feature with impeccable UX and UI quality: shape the design, land the vi
 
 ## MANDATORY PREPARATION
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `teach` command (see [cmd-teach](cmd-teach.md)) first.
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `init` command (see [cmd-init](cmd-init.md)) first.
 
 Before writing code, you need: PRODUCT.md loaded, register identified and the matching reference loaded, and a confirmed design direction for this task (either from `shape` or supplied by the user). PRODUCT.md is project context, not a task-specific brief.
 
@@ -69,15 +69,15 @@ If image generation is enabled in this session, a compact shape's "confirm or ov
 
 Based on the design brief's "Recommended References" section, consult the relevant reference files. At minimum, always consult:
 
-- [spatial-design](spatial-design.md) for layout and spacing
-- [typography](typography.md) for type hierarchy
+- [cmd-layout](cmd-layout.md) for layout, spacing, grid, container queries, optical adjustments (Reference Material section)
+- [cmd-typeset](cmd-typeset.md) for type hierarchy, font selection, web font loading, OpenType features (Reference Material section)
 
 Then add references based on the brief's needs:
 - Complex interactions or forms? Consult [interaction-design](interaction-design.md)
-- Animation or transitions? Consult [motion-design](motion-design.md)
-- Color-heavy or themed? Consult [color-and-contrast](color-and-contrast.md)
-- Responsive requirements? Consult [responsive-design](responsive-design.md)
-- Heavy on copy, labels, or errors? Consult [ux-writing](ux-writing.md)
+- Animation or transitions? Consult [cmd-animate](cmd-animate.md) (Reference Material covers motion materials, durations, easing, perceived performance)
+- Color-heavy or themed? Consult [cmd-colorize](cmd-colorize.md) (Reference Material covers OKLCH, palette structure, dark mode, contrast)
+- Responsive requirements? Consult [cmd-adapt](cmd-adapt.md) (Reference Material covers breakpoints, input methods, safe areas, responsive images)
+- Heavy on copy, labels, or errors? Consult [cmd-clarify](cmd-clarify.md) (Reference Material covers button labels, error formula, voice/tone, translation)
 
 ## Step 3: Visual Direction & Assets (Image-Gen Gated)
 

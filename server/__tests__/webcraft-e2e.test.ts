@@ -6,7 +6,8 @@
  * 2. Manifest validation (required fields, viewer actions, watch patterns)
  * 3. Skill installation (SKILL.md + every reference file in mode source)
  * 4. SKILL.md content (Impeccable principles, 22 commands, AI slop test)
- * 5. Reference file completeness (7 design + 22 command + 5 companion references)
+ * 5. Reference file completeness (3 register/topic + 22 command references; deep
+ *    topic material folded into the commands as of upstream skill-v3.9.1)
  * 6. CLAUDE.md injection with pneuma markers
  * 7. Seed file (index.html) for empty workspaces
  * 8. Seed quality (OKLCH, fluid typography, semantic HTML, responsive, reduced motion)
@@ -81,9 +82,14 @@ describe("mode loading", () => {
 describe("manifest validation", () => {
   it("has all required top-level fields", () => {
     expect(webcraftManifest.name).toBe("webcraft");
-    expect(webcraftManifest.version).toBe("1.4.1");
+    expect(webcraftManifest.version).toBe("1.5.0");
     expect(resolveLocalized(webcraftManifest.displayName)).toBe("WebCraft");
     expect(resolveLocalized(webcraftManifest.description)).toContain("Impeccable");
+    // Mode version bumps must carry a matching changelog entry (launcher
+    // skill-update prompt reads its bullets).
+    const changelogEntries = webcraftManifest.changelog?.[webcraftManifest.version];
+    expect(changelogEntries).toBeDefined();
+    expect(changelogEntries!.length).toBeGreaterThan(0);
     expect(webcraftManifest.icon).toContain("<svg");
   });
 
@@ -198,16 +204,39 @@ describe("SKILL.md content", () => {
 
     const skillMd = readFileSync(join(ws, ".claude", "skills", "pneuma-webcraft", "SKILL.md"), "utf-8");
     expect(skillMd).toContain("## Core Principles");
-    expect(skillMd).toContain("### Design Direction");
-    expect(skillMd).toContain("### Typography");
-    expect(skillMd).toContain("### Color & Theme");
-    expect(skillMd).toContain("### Layout & Space");
-    expect(skillMd).toContain("### Motion");
-    expect(skillMd).toContain("### Interaction");
-    expect(skillMd).toContain("### Responsive");
-    expect(skillMd).toContain("### UX Writing");
-    expect(skillMd).toContain("### Visual Details");
+    expect(skillMd).toContain("### Setup — before any design work");
+    expect(skillMd).toContain("### Context Gathering Protocol");
+    expect(skillMd).toContain("### Register: brand vs product");
+    expect(skillMd).toContain("### General rules");
+    expect(skillMd).toContain("#### Typography");
+    expect(skillMd).toContain("#### Layout");
+    expect(skillMd).toContain("#### Motion");
+    expect(skillMd).toContain("#### Interaction");
+    expect(skillMd).toContain("#### Copy");
+    expect(skillMd).toContain("### New projects only (when no prior work exists)");
+    expect(skillMd).toContain("### Absolute bans");
     expect(skillMd).toContain("### Implementation Principles");
+  });
+
+  it("contains the v3.9.1 anti-pattern additions (model-tell bans)", () => {
+    const ws = makeWorkspace("skill-content-bans");
+    installWebcraftSkill(ws);
+
+    const skillMd = readFileSync(join(ws, ".claude", "skills", "pneuma-webcraft", "SKILL.md"), "utf-8");
+    expect(skillMd).toContain("Model-tell bans");
+    expect(skillMd).toContain("Decorative grid backgrounds");
+    expect(skillMd).toContain("Numbered section markers");
+    expect(skillMd).toContain("ghost card");
+  });
+
+  it("teaches the brand seed palette script for new projects", () => {
+    const ws = makeWorkspace("skill-content-palette");
+    installWebcraftSkill(ws);
+
+    const skillMd = readFileSync(join(ws, ".claude", "skills", "pneuma-webcraft", "SKILL.md"), "utf-8");
+    expect(skillMd).toContain("scripts/palette.mjs");
+    // The script itself ships with the installed skill
+    expect(existsSync(join(ws, ".claude", "skills", "pneuma-webcraft", "scripts", "palette.mjs"))).toBe(true);
   });
 
   it("contains the AI Slop Test section", () => {
@@ -226,7 +255,7 @@ describe("SKILL.md content", () => {
     const skillMd = readFileSync(join(ws, ".claude", "skills", "pneuma-webcraft", "SKILL.md"), "utf-8");
 
     const expectedCommands = [
-      "teach",
+      "init",
       "document",
       "shape",
       "craft",
@@ -286,18 +315,19 @@ describe("SKILL.md content", () => {
 // ── 5. Reference File Completeness ───────────────────────────────────────────
 
 describe("reference file completeness", () => {
+  // Standalone register/topic references. The former deep topic files
+  // (typography, color-and-contrast, spatial-design, motion-design,
+  // responsive-design, ux-writing, cognitive-load, heuristics-scoring,
+  // personas) were folded into their command references upstream in
+  // skill-v3.5.0 and are pinned inside the commands below.
   const designReferences = [
-    "typography.md",
-    "color-and-contrast.md",
-    "spatial-design.md",
-    "motion-design.md",
+    "brand.md",
+    "product.md",
     "interaction-design.md",
-    "responsive-design.md",
-    "ux-writing.md",
   ];
 
   const commandReferences = [
-    "cmd-teach.md",
+    "cmd-init.md",
     "cmd-document.md",
     "cmd-shape.md",
     "cmd-craft.md",
@@ -321,23 +351,15 @@ describe("reference file completeness", () => {
     "cmd-adapt.md",
   ];
 
-  const companionReferences = [
-    "cognitive-load.md",
-    "heuristics-scoring.md",
-    "personas.md",
-    "brand.md",
-    "product.md",
-  ];
-
-  it("has exactly 7 design reference files", () => {
-    expect(designReferences.length).toBe(7);
+  it("has exactly 3 standalone design reference files", () => {
+    expect(designReferences.length).toBe(3);
   });
 
   it("has exactly 22 command reference files", () => {
     expect(commandReferences.length).toBe(22);
   });
 
-  it("all 7 design references exist and have content", () => {
+  it("all standalone design references exist and have content", () => {
     const ws = makeWorkspace("refs-design");
     installWebcraftSkill(ws);
 
@@ -363,17 +385,37 @@ describe("reference file completeness", () => {
     }
   });
 
-  it("all companion references (critique sub-refs) exist and have content", () => {
-    const ws = makeWorkspace("refs-companion");
+  it("folded topic material lives inside the command references", () => {
+    const ws = makeWorkspace("refs-folded");
     installWebcraftSkill(ws);
 
     const refsDir = join(ws, ".claude", "skills", "pneuma-webcraft", "references");
-    for (const ref of companionReferences) {
-      const refPath = join(refsDir, ref);
-      expect(existsSync(refPath)).toBe(true);
-      const content = readFileSync(refPath, "utf-8");
-      expect(content.length).toBeGreaterThan(50);
+    const folded: Array<[string, string]> = [
+      ["cmd-typeset.md", "previously `typography.md`"],
+      ["cmd-colorize.md", "previously `color-and-contrast.md`"],
+      ["cmd-adapt.md", "previously `responsive-design.md`"],
+      ["cmd-clarify.md", "previously `ux-writing.md`"],
+      ["cmd-critique.md", "Heuristics Scoring Guide"],
+      ["cmd-critique.md", "Persona-Based Design Testing"],
+      ["cmd-critique.md", "Cognitive Load Assessment"],
+    ];
+    for (const [file, marker] of folded) {
+      const content = readFileSync(join(refsDir, file), "utf-8");
+      expect(content).toContain("## Reference Material");
+      expect(content).toContain(marker);
     }
+  });
+
+  it("critique pins the dual-sub-agent provenance discipline", () => {
+    const ws = makeWorkspace("refs-critique-provenance");
+    installWebcraftSkill(ws);
+
+    const content = readFileSync(
+      join(ws, ".claude", "skills", "pneuma-webcraft", "references", "cmd-critique.md"),
+      "utf-8",
+    );
+    expect(content).toContain("DEGRADED: single-context");
+    expect(content).toContain("Report header provenance");
   });
 
   it("no extra unexpected files in references/", () => {
@@ -382,7 +424,7 @@ describe("reference file completeness", () => {
 
     const refsDir = join(ws, ".claude", "skills", "pneuma-webcraft", "references");
     const allFiles = readdirSync(refsDir).filter((f) => f.endsWith(".md")).sort();
-    const expectedFiles = [...designReferences, ...commandReferences, ...companionReferences].sort();
+    const expectedFiles = [...designReferences, ...commandReferences].sort();
     expect(allFiles).toEqual(expectedFiles);
   });
 
@@ -589,7 +631,7 @@ describe("seed quality — Impeccable principles", () => {
 
 describe("viewer commands", () => {
   const expectedCommandIds = [
-    "teach",
+    "init",
     "shape",
     "craft",
     "audit",

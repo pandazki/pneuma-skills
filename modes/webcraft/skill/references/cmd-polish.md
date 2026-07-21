@@ -11,7 +11,7 @@ Automated QA output is defect evidence only. A clean script result is never proo
 
 ## MANDATORY PREPARATION
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `teach` command first (see [cmd-teach](cmd-teach.md)). Additionally gather: quality bar (MVP vs flagship).
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `init` command first (see [cmd-init](cmd-init.md)). Additionally gather: quality bar (MVP vs flagship).
 
 ---
 
@@ -97,7 +97,6 @@ Visual polish on a misshapen flow is wasted work. Match the *shape* of the exper
 - **Theme consistency**: Works in all theme variants
 - **Color meaning**: Same colors mean same things throughout
 - **Accessible focus**: Focus indicators visible with sufficient contrast
-- **Tinted neutrals**: No pure gray or pure black; add subtle color tint (0.01 chroma)
 - **Gray on color**: Never put gray text on colored backgrounds; use a shade of that color or transparency
 
 ### Interaction States
