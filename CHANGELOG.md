@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.26.0] - 2026-07-21
+
+### Improved
+- **WebCraft skill synced to Impeccable skill-v3.9.1** — the mode skill jumps eight minor versions from upstream `skill-v3.1.1`, resetting all command and topic references against the upstream tag and re-adapting them to Pneuma's iframe paper-canvas runtime. `teach` is renamed `init` (the old name still works as an alias) and now closes by recommending your next commands; new projects draw their palette from a curated brand seed color; the deep topic references fold into the commands that own them (typography → `typeset`, color → `colorize`, spacing → `layout`, motion → `animate`, responsive → `adapt`, UX writing → `clarify`, scoring and personas → `critique`); `bolder` now amplifies within your existing design system instead of inventing new colors unasked; and the anti-pattern ban list grows (cream default backgrounds, numbered section markers, decorative grid backgrounds, ghost cards, over-rounded corners, image hover zoom). The command set stays at 22 with no ID changes, so existing workspaces need no migration. Upstream's Live mode and Codex-native image paths remain unadopted for the documented reasons. WebCraft's mode version bumps to **1.5.0**, so open workspaces see a skill-update prompt.
+- **Kami design references synced to upstream tw93/kami V1.10.0** — five releases of upstream work (Grounded Resumes / Mermaid Diagrams / Print Ready / Living Diagrams / Reliable Documents) land in the mode's diagrams and reference docs. Four new diagram templates (sequence, class, ER, and a report-scale architecture board, bringing the set to 18), an opt-in white-paper print recipe that flips one document to white for home printers, resume guidance gaining source-and-truth and pre-ship recruiter passes, a post-fill fact check that re-verifies names, numbers, dates and images before handing back, and diagram lifecycle rules encoding shipped / in-build / future maturity. Upstream's WeasyPrint, Marp and python-pptx rendering paths stay unsynced — Pneuma's medium is an iframe paper canvas — with reasons recorded in `NOTICE.md`. Kami's mode version bumps to **1.5.0**.
+
 ## [3.25.0] - 2026-07-21
 
 ### Changed
