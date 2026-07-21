@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.25.0] - 2026-07-21
+
+### Changed
+- **Kimi backend rewritten onto the Kimi Code ACP protocol** — Moonshot replaced the Python `kimi-cli` with **Kimi Code**, a different product with a different CLI surface, so every flag the old backend spawned with (`--print`, `--input-format`, `--output-format`, `--work-dir`, `-r`) is gone and Kimi sessions died at argv parsing. The backend now speaks ACP (Agent Client Protocol) JSON-RPC over stdio via `kimi acp`, on a new id-correlated transport layer. Note the rebrand moved the version *backwards* (`1.41.0` → `0.26.0`), so `checkRequirements()` probes for the `acp` subcommand rather than comparing semver — a version comparison would conclude the exact opposite. Old `kimi-cli` is no longer supported; the failure message points at `kimi upgrade`.
+- **Kimi skills install to `.kimi-code/skills/`** — Kimi Code no longer discovers the legacy `.kimi/skills/` directory, so mode skills silently failed to load even once the transport was fixed. The manifest's `skillsDir` and the matching watcher / shadow-git / evolution path rules all move to `.kimi-code/`. `AGENTS.md` remains Kimi's instructions file. Leftover `.kimi/` directories in pre-existing sessions become visible to the file watcher once (harmless one-time noise).
+
+### Added
+- **Kimi gains real permission and tool-progress support** — ACP exposes a blocking `session/request_permission` round trip and `tool_call` / `tool_call_update` status transitions carrying structured `rawInput` / `rawOutput`, so the backend's `permissions` and `toolProgress` capabilities are now genuinely `true` instead of declared-false. Modes that ask for approval (`permissionMode: "default"`) get the same approval flow as Claude Code; the builtin modes all declare `bypassPermissions`, which maps to ACP's `yolo` and preserves today's behaviour exactly.
+- **Kimi model switching and interruption go through the protocol** — the model list arrives with `session/new`'s `configOptions` (no static fallback), switching uses `session/set_model`, and interrupt is now the `session/cancel` notification instead of an out-of-band SIGINT.
+
 ## [3.24.2] - 2026-07-03
 
 ### Improved

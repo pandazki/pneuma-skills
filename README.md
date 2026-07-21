@@ -23,7 +23,7 @@
     <br /><sub>by OpenAI</sub>
   </td>
   <td align="center" width="160">
-    <a href="https://moonshotai.github.io/kimi-cli/">
+    <a href="https://moonshotai.github.io/kimi-code/">
       <img src="docs/images/backends/kimi.png" alt="Kimi" width="72" height="72" />
       <br /><strong>Kimi</strong>
     </a>
@@ -115,7 +115,7 @@ The desktop app bundles Bun — no runtime install needed. Install [Claude Code 
 ### CLI
 
 ```bash
-# Prerequisites: Bun >= 1.3.5, plus one or more of: Claude Code CLI, Codex CLI, Kimi CLI
+# Prerequisites: Bun >= 1.3.5, plus one or more of: Claude Code CLI, Codex CLI, Kimi Code CLI
 
 # Open the Launcher (marketplace UI)
 bunx pneuma-skills
@@ -297,7 +297,7 @@ Quick (project-less) sessions remain fully supported — projects are opt-in. Cr
 | Video | [Remotion](https://www.remotion.dev) 4.0 + @remotion/player + @babel/standalone |
 | Canvas | [@xyflow/react](https://reactflow.dev) 12 (Illustrate mode) |
 | File Watching | [chokidar](https://github.com/paulmillr/chokidar) 5 |
-| Agent | Claude Code CLI via stdio stream-json (`-p --input-format/--output-format stream-json`); Codex CLI via app-server stdio JSON-RPC; Moonshot Kimi CLI via stdio stream-json (`kimi --print …`) |
+| Agent | Claude Code CLI via stdio stream-json (`-p --input-format/--output-format stream-json`); Codex CLI via app-server stdio JSON-RPC; Moonshot Kimi Code CLI via ACP JSON-RPC over stdio (`kimi acp`) |
 
 ## Backend Model
 
