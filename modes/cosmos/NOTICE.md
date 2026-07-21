@@ -1,8 +1,19 @@
 # NOTICE
 
 The Cosmos mode borrows substantial design from an upstream project.
-This file pins what we took, what we adapted, and what we dropped, so
-future syncs can be performed against the pinned upstream version.
+This file pins what we took, what we adapted, and what we dropped.
+
+**The pin below is a provenance record, not a sync baseline.** Unlike
+`kami` and `webcraft` — where Pneuma genuinely tracks upstream content
+and a version pin measures real debt — Cosmos borrowed a schema shape,
+a tech-stack choice, and a UI concept, then diverged deliberately. No
+source file was copied (see Compliance posture). Upstream has since
+moved on to domain graphs, knowledge bases, and Figma analysis while
+Pneuma's Cosmos generalized the projection and rebuilt its engine on
+the Workflow tool. Counting commits between the pinned SHA and upstream
+`HEAD` measures upstream's own development pace, not a Pneuma backlog;
+there is no sync obligation here. Read upstream releases for ideas
+worth stealing, and update this file when we steal one.
 
 ## Upstream
 
@@ -58,17 +69,27 @@ future syncs can be performed against the pinned upstream version.
 - **`.understand-anything/config.json`**. Pneuma init params + the
   `pneuma-cosmos` skill handle configuration.
 - **Tree-sitter pre-parse** for code. The Pneuma agent reads source
-  natively via Read / Glob / Grep tools; parallel Task subagents
-  handle large codebases. Tree-sitter MCP server is a possible
-  v0.2 addition for sub-function granularity.
-- **ELK layout engine.** We use Dagre LR for v0.1 — simpler, ships
-  smaller, sufficient for typical cosmos sizes (≤ 200 nodes).
-  ELK is a sensible v0.2 upgrade when sizes grow.
-- **Multi-agent batch analysis pipeline.** Upstream batches files
-  with size auto-scaling and merges sub-graphs. Pneuma's agent
-  achieves the same through the Task subagent pattern (which is
-  framework-native) — no separate `compute-batches.mjs` /
-  `merge-batch-graphs.py` machinery required.
+  natively via Read / Glob / Grep tools. Still not adopted; sub-function
+  granularity has not been needed so far.
+- **ELK layout engine.** We use Dagre LR — simpler, ships smaller,
+  sufficient for typical cosmos sizes (≤ 200 nodes). Still Dagre today
+  (`viewer/CosmosPreview.tsx`). Upstream moved to ELK in its v2.5.0 to
+  fix horizontal sprawl on layers with 50+ nodes, pairing it with
+  folder/community containers and a two-stage lazy layout — a live idea
+  worth revisiting for Pneuma if cosmos sizes grow, not something we
+  shipped.
+- **Multi-platform batch orchestration.** Upstream batches files with
+  size auto-scaling and merges sub-graphs via `compute-batches.mjs` /
+  `merge-batch-graphs.py`. Pneuma does not use that machinery — but note
+  Pneuma now runs its *own* multi-agent pipeline: on Claude Code, large
+  projections hand off to `skill/references/projection.workflow.js`
+  (Extract → Merge → Verify → Complete → Perspectives, one subagent per
+  partition, adversarial per-node verification, a completeness critic
+  looping until dry, and a judge panel over perspectives). Codex / Kimi
+  backends and small inputs fall back to the in-context passes. The
+  convergence is on the idea of a multi-pass pipeline, not on upstream's
+  implementation — Pneuma's is built on the Workflow tool and grounded
+  in a `node.trust` model that upstream does not have.
 
 ## Compliance posture
 

@@ -23,7 +23,7 @@
     <br /><sub>OpenAI 出品</sub>
   </td>
   <td align="center" width="160">
-    <a href="https://moonshotai.github.io/kimi-cli/">
+    <a href="https://moonshotai.github.io/kimi-code/">
       <img src="docs/images/backends/kimi.png" alt="Kimi" width="72" height="72" />
       <br /><strong>Kimi</strong>
     </a>
@@ -77,6 +77,7 @@
 | **remotion** | 基于 [Remotion](https://www.remotion.dev) 的代码驱动视频合成 —— 实时预览、逐帧精准动画、WebCodecs 路线导出 MP4/WebM |
 | **gridboard** | 交互式仪表盘 —— 固定画布上的可拖拽磁贴网格，通过 `defineTile()` 协议定义 React 磁贴，浏览器端 JIT 编译 |
 | **cosmos** | 把任何内容——代码、小说、研究、商业流程——投影成一张结构化的星图：让内在脉络以可交互图谱的方式显形。schema 与 dashboard 技术借鉴自 [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything)（MIT） |
+| **wordtaste** | 品味写作工坊 —— 三区工作台（素材 · 草稿 · 品味），跨模型家族（Claude / Codex / Gemini）生成、在你评判改写的过程中学习你的声音，把 AI 腔从文字里剥掉。块寻址草稿 + 内核冻结、划选改写、扰动强度旋钮 |
 | **mode-maker** | 用 AI 做自定义 mode —— fork、Play 试跑、发布 |
 | **evolve** | Evolution Agent —— 分析历史、提出技能改进、apply / 回滚 |
 
@@ -158,6 +159,8 @@ Modes:
   illustrate                   AI 插画工坊
   remotion                     代码驱动的视频合成
   gridboard                    交互式磁贴仪表盘
+  cosmos                       把任何内容投影成结构化星图
+  wordtaste                    品味写作工坊
   mode-maker                   用 AI 做自定义 mode
   evolve                       启动 Evolution Agent
   /path/to/mode                从本地目录加载
@@ -178,9 +181,16 @@ Options:
   --dev                强制 dev 模式（Vite）
 
 Subcommands:
-  mode add <url>           安装远端 mode 到 ~/.pneuma/modes/
+  mode add <url>           安装远端 mode（单 mode → ~/.pneuma/modes/；library → ~/.pneuma/libraries/）
   mode list                列出 R2 上已发布的 mode
   mode publish             把当前工作区作为 mode 发布
+  library init <name>      在本地初始化一个 mode library；--github user/repo 会建仓并推送
+  library link <source>    源是 library 时，等价于 `mode add`
+  library list             列出已链接的 library
+  library sync <id>        从源刷新某个 library
+  library publish <mode>   把本地 mode 复制进已链接的 library；--to <id> --push
+  library push <id>        把 library 的本地克隆推到远端
+  library unlink <id>      移除 library 及其本地克隆
   evolve <mode>            分析历史、提出 skill 改进
   plugin add <source>      安装插件（路径 / GitHub / URL）
   plugin list              列出内置 + 外部插件
@@ -288,7 +298,7 @@ Pneuma 支持在 session 之上的可选 Project 层 —— 用来锚定**一件
 | 视频 | [Remotion](https://www.remotion.dev) 4.0 + @remotion/player + @babel/standalone |
 | 节点画布 | [@xyflow/react](https://reactflow.dev) 12（Illustrate mode） |
 | 文件监听 | [chokidar](https://github.com/paulmillr/chokidar) 5 |
-| Agent | Claude Code CLI 走 stdio stream-json（`-p --input-format/--output-format stream-json`）；Codex CLI 走 app-server stdio JSON-RPC；Moonshot Kimi CLI 走 stdio stream-json（`kimi --print …`） |
+| Agent | Claude Code CLI 走 stdio stream-json（`-p --input-format/--output-format stream-json`）；Codex CLI 走 app-server stdio JSON-RPC；Moonshot Kimi Code CLI 走 ACP JSON-RPC over stdio（`kimi acp`） |
 
 ## 后端模型
 

@@ -10,7 +10,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.26.0
+**Version:** 3.26.1
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `wordtaste`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`, `project-tidy`
 
@@ -146,6 +146,9 @@ pneuma-skills/
 ├── desktop/                   # Electron client
 ├── web/                       # Landing page (CF Pages)
 ├── snapshot/                  # R2 push/pull
+├── vendor/                    # Vendored third-party bundles (dom-to-pptx)
+├── scripts/                   # Repo scripts — player deploy, reseed, smoke
+├── public/ + dist-player/     # Static assets + built online-player output
 ├── .claude/                   # Dev toolchain: rules/, agents/, workflows/, commands/, skills/create-mode/
 └── docs/                      # Supplementary docs (reference/, adr/, archive/, …) — see docs/README.md
 ```
@@ -455,5 +458,6 @@ CI (`release.yml`) handles tagging, GitHub Release, and npm publish on push to `
 2. `desktop/package.json` — `"version"`, **must equal** `package.json` 的值。`electron-updater` 用它比较运行中的桌面应用与最新 release;3.10.3 起两者绑定,**只 bump 一份就是 bug**。
 3. `AGENTS.md` — `**Version:**` 行(本文件。`CLAUDE.md` 只是一行 `@AGENTS.md` import,不含版本号——**不要**往 `CLAUDE.md` 写任何内容)
 4. `CHANGELOG.md` — new section
+5. `README.md` **和 `README.zh.md`** — 若本次改动碰了 mode 表、CLI 用法/子命令、技术栈表或 feature 列表,**两个语言版本都要改**。zh 版没有任何自动化守卫,只靠这条清单;它曾经因此落后英文版两个月(缺 wordtaste、缺整个 `library` 子命令族、`mode add` 描述停在单-mode 时代)。改一个就得改另一个。
 
 然后 `git push origin main`(不带 `--tags`)。CI 建 tag、发 release、publish。完整流程走 `/bump` command。

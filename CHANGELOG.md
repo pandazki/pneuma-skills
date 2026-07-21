@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.26.1] - 2026-07-21
+
+### Fixed
+- **Chinese README caught up with the English one** — `README.zh.md` had drifted about two months behind. It was missing the `wordtaste` mode from both the mode table and the CLI mode list, missing the entire `library` subcommand family (`init` / `link` / `list` / `sync` / `publish` / `push` / `unlink`), missing `cosmos` from the CLI mode list, still described `mode add` as single-mode-only, and still documented the Kimi backend as `kimi --print …` stream-json — an invocation the current binary no longer accepts. The release checklist in `AGENTS.md` now names `README.zh.md` explicitly, since nothing else guards it and that omission is why it drifted.
+
+### Improved
+- **Cosmos's NOTICE reframed as provenance, not a sync baseline** — the file previously read as if the pinned upstream commit were a sync target, which invites mistaking upstream's own development pace for Pneuma debt. Cosmos borrowed a schema shape, a tech-stack choice, and a UI concept, then diverged deliberately; no source file was copied. The "what we dropped" bullets are also refreshed against reality at 0.4.1: the multi-agent-pipeline bullet no longer claims Pneuma needs no such machinery (it now runs its own Workflow-backed projection on Claude Code), and the stale "v0.1 / v0.2" roadmap language is replaced with what is actually true today — still Dagre, still no tree-sitter — plus a pointer to upstream's ELK-with-containers work as an idea worth revisiting if graph sizes grow.
+- **Codex README documents the unhandled-notification surface** — the adapter logs and drops notifications it doesn't recognise (unlike requests, which are auto-declined). As of codex-cli 0.144.6 that includes `warning`, `remoteControl/status/changed`, and `thread/goal/cleared`. Nothing depends on them and all six lifecycle scenarios pass; the note exists so the next person wiring a codex capability knows where to look. The existing `v0.114` / `v0.128` references in that README are deliberate historical anchors for specific breaking changes and are left alone.
+- **`AGENTS.md` project tree names `vendor/`, `scripts/`, `public/` and `dist-player/`** — all four exist on disk with no mention anywhere in the document.
+
 ## [3.26.0] - 2026-07-21
 
 ### Improved

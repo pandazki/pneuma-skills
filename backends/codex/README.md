@@ -235,6 +235,17 @@ reads these paths directly.
   avoids accidentally approving a future-version dangerous operation — but
   it does mean a UX regression if codex adds a new approval shape and we
   silently reject every request from a session.
+- **Unknown *notifications* are logged and dropped — unlike requests.** The
+  `default:` branch suppresses a known list of event-prefix families
+  (`account/`, `codex/event/`, `rawResponseItem/`, `fuzzyFileSearch/`,
+  `thread/realtime/`, `app/`, `mcpServer/`, `windows`) and `console.log`s
+  everything else as `Unhandled notification: …`. Harmless, but it is the
+  signal that upstream's protocol surface has grown. As of codex-cli
+  **0.144.6** three such notifications show up in lifecycle runs with no
+  handler: `warning`, `remoteControl/status/changed`, and
+  `thread/goal/cleared`. Nothing depends on them today (all six lifecycle
+  scenarios pass), so this is a note about available surface, not a bug —
+  check here first when wiring a new codex capability.
 - **Initialization retries `thread/start` on transport-closed errors only.**
   The retry loop in `initialize()` (`codex-adapter.ts:548`) catches
   `Transport closed` errors with exponential backoff up to 3 attempts. Other
