@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<!-- ==================================================================
+     DIAGRAM · Class (kami palette, Mermaid-sourced)
+     Source: assets/diagrams/src/class.mmd. Generated with beautiful-mermaid +
+     scripts/mermaid_normalize.py (Kami re-theme + WeasyPrint-safe static SVG). To
+     change it, regenerate the SVG from any beautiful-mermaid renderer and re-run
+     the normalizer; do not hand-tune coordinates. See references/mermaid.md.
+     ================================================================== -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Class · kami diagram</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  @font-face {
+    font-family: "TsangerJinKai02";
+    src: url("../fonts/TsangerJinKai02-W04.ttf") format("truetype"),
+       url("https://cdn.jsdelivr.net/gh/tw93/Kami@main/assets/fonts/TsangerJinKai02-W04.ttf") format("truetype");
+    font-weight: 400;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: "TsangerJinKai02";
+    src: url("../fonts/TsangerJinKai02-W05.ttf") format("truetype"),
+       url("https://cdn.jsdelivr.net/gh/tw93/Kami@main/assets/fonts/TsangerJinKai02-W05.ttf") format("truetype");
+    font-weight: 500;
+    font-style: normal;
+  }
+
+  :root {
+    --parchment:  #f5f4ed;
+    --ivory:      #faf9f5;
+    --near-black: #141413;
+    --olive:      #504e49;
+    --stone:      #6b6a64;
+    --brand:      #1B365D;
+    --border:     #e8e6dc;
+
+    --serif: Charter, Georgia, "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", serif;
+    --sans: var(--serif);
+    --mono:  "JetBrains Mono", "SF Mono", Consolas, "TsangerJinKai02", "Source Han Serif SC", monospace;
+  }
+
+  /* Poster-size page so WeasyPrint exports the full diagram without
+     A4 clipping; browsers ignore @page. */
+  @page { size: 800px 1180px; margin: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--parchment);
+    color: var(--near-black);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 2rem;
+  }
+
+  .frame { max-width: 720px; width: 100%; text-align: center; }
+  .frame > .eyebrow, .frame > h1, .frame > .caption { text-align: left; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--stone);
+    margin-bottom: 0.5rem;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-size: 1.9rem;
+    font-weight: 500;
+    letter-spacing: -0.3pt;
+    line-height: 1.15;
+    margin-bottom: 1.6rem;
+  }
+
+  /* Size to the diagram's intrinsic dimensions, capped so wide diagrams fit
+     the frame and tall ones stay on a single page. Never upscale past natural
+     size (avoids blowing a 200px-wide class diagram up to full width). */
+  svg { display: block; margin: 0 auto; max-width: 100%; max-height: 780px; height: auto; width: auto; }
+
+  .caption {
+    font-family: var(--serif);
+    font-size: 0.95rem;
+    color: var(--olive);
+    margin-top: 1rem;
+    max-width: 52ch;
+  }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Class · kami diagram</p>
+    <h1>{{What structure does this model}}</h1>
+
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 208.2 604.6" width="208.2" height="604.6" style="background:#f5f4ed">
+    <style>
+      text { font-family: Charter, Georgia, "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", serif; }
+      .mono { font-family: Charter, Georgia, "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", serif; }
+    </style>
+    <defs>
+      <marker id="cls-inherit" markerWidth="12" markerHeight="10" refX="12" refY="5" orient="auto-start-reverse">
+        <polygon points="0 0, 12 5, 0 10" fill="#f5f4ed" stroke="#1b365d" stroke-width="1.5" />
+      </marker>
+      <marker id="cls-composition" markerWidth="12" markerHeight="10" refX="0" refY="5" orient="auto-start-reverse">
+        <polygon points="6 0, 12 5, 6 10, 0 5" fill="#1b365d" stroke="#1b365d" stroke-width="1" />
+      </marker>
+      <marker id="cls-aggregation" markerWidth="12" markerHeight="10" refX="0" refY="5" orient="auto-start-reverse">
+        <polygon points="6 0, 12 5, 6 10, 0 5" fill="#f5f4ed" stroke="#1b365d" stroke-width="1.5" />
+      </marker>
+      <marker id="cls-arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto-start-reverse">
+        <polyline points="0 0, 8 3, 0 6" fill="none" stroke="#1b365d" stroke-width="1.5" />
+      </marker>
+    </defs>
+    <polyline class="class-relationship" data-from="Customer" data-to="Order" data-type="association" data-marker-at="to" data-label="places" data-from-cardinality="1" data-to-cardinality="*" points="104.1,108 104.1,248.3" fill="none" stroke="#504e49" stroke-width="1" marker-end="url(#cls-arrow)" />
+    <polyline class="class-relationship" data-from="Order" data-to="LineItem" data-type="composition" data-marker-at="from" data-label="contains" data-from-cardinality="1" data-to-cardinality="*" points="104.1,356.3 104.1,496.6" fill="none" stroke="#504e49" stroke-width="1" marker-start="url(#cls-composition)" />
+    <g class="class-node" data-id="Order" data-label="Order">
+      <rect x="40" y="248.3" width="128.2" height="108" rx="0" ry="0" fill="#faf9f5" stroke="#e8e6dc" stroke-width="1" />
+      <rect x="40" y="248.3" width="128.2" height="32" rx="0" ry="0" fill="#eae9e2" stroke="#e8e6dc" stroke-width="1" />
+      <text x="104.1" y="264.3" text-anchor="middle" font-size="13" font-weight="700" fill="#141413" dy="4.55">Order</text>
+      <line x1="40" y1="280.3" x2="168.2" y2="280.3" stroke="#e8e6dc" stroke-width="0.75" />
+      <text x="48" y="294.3" class="mono" dy="0.35em" font-size="11" font-weight="400"><tspan fill="#bdbcb6">+ </tspan><tspan fill="#6b6a64">id</tspan><tspan fill="#bdbcb6">: </tspan><tspan fill="#6b6a64">String</tspan></text>
+      <text x="48" y="314.3" class="mono" dy="0.35em" font-size="11" font-weight="400"><tspan fill="#bdbcb6">+ </tspan><tspan fill="#6b6a64">createdAt</tspan><tspan fill="#bdbcb6">: </tspan><tspan fill="#6b6a64">Date</tspan></text>
+      <line x1="40" y1="328.3" x2="168.2" y2="328.3" stroke="#e8e6dc" stroke-width="0.75" />
+      <text x="48" y="342.3" class="mono" dy="0.35em" font-size="11" font-weight="400"><tspan fill="#bdbcb6">+ </tspan><tspan fill="#6b6a64">total()</tspan><tspan fill="#bdbcb6">: </tspan><tspan fill="#6b6a64">Money</tspan></text>
+    </g>
+    <g class="class-node" data-id="Customer" data-label="Customer">
+      <rect x="44.099999999999994" y="40" width="120" height="68" rx="0" ry="0" fill="#faf9f5" stroke="#e8e6dc" stroke-width="1" />
+      <rect x="44.099999999999994" y="40" width="120" height="32" rx="0" ry="0" fill="#eae9e2" stroke="#e8e6dc" stroke-width="1" />
+      <text x="104.1" y="56" text-anchor="middle" font-size="13" font-weight="700" fill="#141413" dy="4.55">Customer</text>
+      <line x1="44.099999999999994" y1="72" x2="164.1" y2="72" stroke="#e8e6dc" stroke-width="0.75" />
+      <text x="52.099999999999994" y="86" class="mono" dy="0.35em" font-size="11" font-weight="400"><tspan fill="#bdbcb6">+ </tspan><tspan fill="#6b6a64">name</tspan><tspan fill="#bdbcb6">: </tspan><tspan fill="#6b6a64">String</tspan></text>
+      <line x1="44.099999999999994" y1="100" x2="164.1" y2="100" stroke="#e8e6dc" stroke-width="0.75" />
+    </g>
+    <g class="class-node" data-id="LineItem" data-label="LineItem">
+      <rect x="44.099999999999994" y="496.6" width="120" height="68" rx="0" ry="0" fill="#faf9f5" stroke="#e8e6dc" stroke-width="1" />
+      <rect x="44.099999999999994" y="496.6" width="120" height="32" rx="0" ry="0" fill="#eae9e2" stroke="#e8e6dc" stroke-width="1" />
+      <text x="104.1" y="512.6" text-anchor="middle" font-size="13" font-weight="700" fill="#141413" dy="4.55">LineItem</text>
+      <line x1="44.099999999999994" y1="528.6" x2="164.1" y2="528.6" stroke="#e8e6dc" stroke-width="0.75" />
+      <text x="52.099999999999994" y="542.6" class="mono" dy="0.35em" font-size="11" font-weight="400"><tspan fill="#bdbcb6">+ </tspan><tspan fill="#6b6a64">qty</tspan><tspan fill="#bdbcb6">: </tspan><tspan fill="#6b6a64">int</tspan></text>
+      <line x1="44.099999999999994" y1="556.6" x2="164.1" y2="556.6" stroke="#e8e6dc" stroke-width="0.75" />
+    </g>
+    <text x="81.237" y="170.15" font-size="11" text-anchor="middle" font-weight="400" fill="#6b6a64" dy="3.8499999999999996">places</text>
+    <text x="90.1" y="122" font-size="11" text-anchor="middle" font-weight="400" fill="#6b6a64" dy="3.8499999999999996">1</text>
+    <text x="90.1" y="234.3" font-size="11" text-anchor="middle" font-weight="400" fill="#6b6a64" dy="3.8499999999999996">*</text>
+    <text x="77.079" y="418.45" font-size="11" text-anchor="middle" font-weight="400" fill="#6b6a64" dy="3.8499999999999996">contains</text>
+    <text x="90.1" y="370.3" font-size="11" text-anchor="middle" font-weight="400" fill="#6b6a64" dy="3.8499999999999996">1</text>
+    <text x="90.1" y="482.6" font-size="11" text-anchor="middle" font-weight="400" fill="#6b6a64" dy="3.8499999999999996">*</text>
+    </svg>
+
+    <p class="caption">Boxes are types; compartments list fields and methods. Arrows carry association and composition.</p>
+  </div>
+</body>
+</html>

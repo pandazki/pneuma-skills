@@ -1,0 +1,8 @@
+sequenceDiagram
+  participant U as 用户
+  participant A as API
+  participant D as 数据库
+  U->>A: 提交请求
+  A->>D: 查询记录
+  D-->>A: 返回结果
+  A-->>U: 响应数据

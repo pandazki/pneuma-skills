@@ -30,7 +30,7 @@ const SAFE_MARGINS_MM: Record<string, { top: number; side: number; bottom: numbe
 
 const kamiManifest: ModeManifest = {
   name: "kami",
-  version: "1.4.0",
+  version: "1.5.0",
   displayName: {
     en: "Kami",
     "zh-CN": "Kami",
@@ -50,6 +50,14 @@ const kamiManifest: ModeManifest = {
     de: "Webdesign auf Papier-Leinwand mit warmer Pergament-Ästhetik —— Designsprache übernommen von tw93/kami (MIT)",
   },
   changelog: {
+    "1.5.0": [
+      "Synced upstream tw93/kami V1.7.3 → V1.10.0 (Grounded Resumes / Mermaid Diagrams / Print Ready / Living Diagrams / Reliable Documents)",
+      "Four new diagram templates — sequence, class, ER and a report-scale architecture board (18 total)",
+      "Opt-in white-paper print recipe — flip one document to white for home printers, parchment sinks into cards and tables",
+      "Resume guidance grows source-and-truth pass, ownership calibration, two-page balance and a pre-ship recruiter pass",
+      "New post-fill fact check and definition-of-done — names, numbers, dates and images re-verified before handing back",
+      "Diagram lifecycle rules — evidence pass before redraws, shipped / in-build / future maturity encoding",
+    ],
     "1.4.0": [
       "Synced upstream tw93/kami V1.5.0 → V1.7.3 (Markdown Stage / Korean Paper / Cleaner Resumes / Wider Gallery)",
       "Korean (KO) added as a best-effort language — Source Han Serif K → system Myeongjo serif fallback, one-serif-per-page, visual QA like Japanese",

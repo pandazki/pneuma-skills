@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<!-- ==================================================================
+     DIAGRAM · Sequence (kami palette, Mermaid-sourced)
+     Source: assets/diagrams/src/sequence.mmd. Generated with beautiful-mermaid +
+     scripts/mermaid_normalize.py (Kami re-theme + WeasyPrint-safe static SVG). To
+     change it, regenerate the SVG from any beautiful-mermaid renderer and re-run
+     the normalizer; do not hand-tune coordinates. See references/mermaid.md.
+     ================================================================== -->
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Sequence · kami diagram</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  @font-face {
+    font-family: "TsangerJinKai02";
+    src: url("../fonts/TsangerJinKai02-W04.ttf") format("truetype"),
+       url("https://cdn.jsdelivr.net/gh/tw93/Kami@main/assets/fonts/TsangerJinKai02-W04.ttf") format("truetype");
+    font-weight: 400;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: "TsangerJinKai02";
+    src: url("../fonts/TsangerJinKai02-W05.ttf") format("truetype"),
+       url("https://cdn.jsdelivr.net/gh/tw93/Kami@main/assets/fonts/TsangerJinKai02-W05.ttf") format("truetype");
+    font-weight: 500;
+    font-style: normal;
+  }
+
+  :root {
+    --parchment:  #f5f4ed;
+    --ivory:      #faf9f5;
+    --near-black: #141413;
+    --olive:      #504e49;
+    --stone:      #6b6a64;
+    --brand:      #1B365D;
+    --border:     #e8e6dc;
+
+    --serif: Charter, Georgia, "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", serif;
+    --sans: var(--serif);
+    --mono:  "JetBrains Mono", "SF Mono", Consolas, "TsangerJinKai02", "Source Han Serif SC", monospace;
+  }
+
+  /* Poster-size page so WeasyPrint exports the full diagram without
+     A4 clipping; browsers ignore @page. */
+  @page { size: 800px 880px; margin: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--parchment);
+    color: var(--near-black);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 2rem;
+  }
+
+  .frame { max-width: 720px; width: 100%; text-align: center; }
+  .frame > .eyebrow, .frame > h1, .frame > .caption { text-align: left; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--stone);
+    margin-bottom: 0.5rem;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-size: 1.9rem;
+    font-weight: 500;
+    letter-spacing: -0.3pt;
+    line-height: 1.15;
+    margin-bottom: 1.6rem;
+  }
+
+  /* Size to the diagram's intrinsic dimensions, capped so wide diagrams fit
+     the frame and tall ones stay on a single page. Never upscale past natural
+     size (avoids blowing a 200px-wide class diagram up to full width). */
+  svg { display: block; margin: 0 auto; max-width: 100%; max-height: 780px; height: auto; width: auto; }
+
+  .caption {
+    font-family: var(--serif);
+    font-size: 0.95rem;
+    color: var(--olive);
+    margin-top: 1rem;
+    max-width: 52ch;
+  }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Sequence · kami diagram</p>
+    <h1>{{What interaction does this trace}}</h1>
+
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 280" width="420" height="280" style="background:#f5f4ed">
+    <style>
+      text { font-family: Charter, Georgia, "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", serif; }
+    </style>
+    <defs>
+      <marker id="seq-arrow" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+        <polygon points="0 0, 8 2.5, 0 5" fill="#1b365d" />
+      </marker>
+      <marker id="seq-arrow-open" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+        <polyline points="0 0, 8 2.5, 0 5" fill="none" stroke="#1b365d" stroke-width="1" />
+      </marker>
+    </defs>
+    <line class="lifeline" data-actor="U" x1="70" y1="70" x2="70" y2="250" stroke="#504e49" stroke-width="0.75" stroke-dasharray="6 4" />
+    <line class="lifeline" data-actor="A" x1="210" y1="70" x2="210" y2="250" stroke="#504e49" stroke-width="0.75" stroke-dasharray="6 4" />
+    <line class="lifeline" data-actor="D" x1="350" y1="70" x2="350" y2="250" stroke="#504e49" stroke-width="0.75" stroke-dasharray="6 4" />
+    <g class="message" data-from="U" data-to="A" data-label="提交请求" data-line-style="solid" data-arrow-head="filled" data-self="false">
+      <line x1="70" y1="90" x2="210" y2="90" stroke="#504e49" stroke-width="1" marker-end="url(#seq-arrow)" />
+      <text x="140" y="80" font-size="11" text-anchor="middle" font-weight="400" fill="#6b6a64" dy="3.8499999999999996">提交请求</text>
+    </g>
+    <g class="message" data-from="A" data-to="D" data-label="查询记录" data-line-style="solid" data-arrow-head="filled" data-self="false">
+      <line x1="210" y1="130" x2="350" y2="130" stroke="#504e49" stroke-width="1" marker-end="url(#seq-arrow)" />
+      <text x="280" y="120" font-size="11" text-anchor="middle" font-weight="400" fill="#6b6a64" dy="3.8499999999999996">查询记录</text>
+    </g>
+    <g class="message" data-from="D" data-to="A" data-label="返回结果" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+      <line x1="350" y1="170" x2="210" y2="170" stroke="#504e49" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+      <text x="280" y="160" font-size="11" text-anchor="middle" font-weight="400" fill="#6b6a64" dy="3.8499999999999996">返回结果</text>
+    </g>
+    <g class="message" data-from="A" data-to="U" data-label="响应数据" data-line-style="dashed" data-arrow-head="filled" data-self="false">
+      <line x1="210" y1="210" x2="70" y2="210" stroke="#504e49" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+      <text x="140" y="200" font-size="11" text-anchor="middle" font-weight="400" fill="#6b6a64" dy="3.8499999999999996">响应数据</text>
+    </g>
+    <g class="actor" data-id="U" data-label="用户" data-type="participant">
+      <rect x="30" y="30" width="80" height="40" rx="4" ry="4" fill="#faf9f5" stroke="#e8e6dc" stroke-width="1" />
+      <text x="70" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="#141413" dy="4.55">用户</text>
+    </g>
+    <g class="actor" data-id="A" data-label="API" data-type="participant">
+      <rect x="170" y="30" width="80" height="40" rx="4" ry="4" fill="#faf9f5" stroke="#e8e6dc" stroke-width="1" />
+      <text x="210" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="#141413" dy="4.55">API</text>
+    </g>
+    <g class="actor" data-id="D" data-label="数据库" data-type="participant">
+      <rect x="310" y="30" width="80" height="40" rx="4" ry="4" fill="#faf9f5" stroke="#e8e6dc" stroke-width="1" />
+      <text x="350" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="#141413" dy="4.55">数据库</text>
+    </g>
+    </svg>
+
+    <p class="caption">Lifelines drop from each participant; messages read top to bottom. Dashed returns distinguish responses from calls.</p>
+  </div>
+</body>
+</html>

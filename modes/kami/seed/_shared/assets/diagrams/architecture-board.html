@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<!-- ==================================================================
+     DIAGRAM · Architecture Board (kami palette)
+     Report-scale board: five fixed information layers, bands with
+     dividers instead of card piles, one focal node, a table shell for
+     governance, and a single brand-colored main axis. Demo content maps
+     the Kaku terminal (a WezTerm fork); replace it with your system.
+     Author the structure outline below BEFORE moving any rectangle.
+     ================================================================== -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Architecture Board · kami diagram</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --parchment:  #f5f4ed;
+    --ivory:      #faf9f5;
+    --near-black: #141413;
+    --olive:      #504e49;
+    --stone:      #6b6a64;
+    --brand:      #1B365D;
+    --brand-tint: #EEF2F7;
+    --border:     #e8e6dc;
+
+    --serif: Charter, Georgia, Palatino, serif;
+    --sans: var(--serif);
+    --mono:  "JetBrains Mono", "SF Mono", Consolas, "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", monospace;
+  }
+
+  /* Poster-size single page so WeasyPrint exports the whole board on one
+     sheet; browsers ignore @page. No 100vh / vertical flex centering here:
+     content is taller than a viewport and would paginate blank (see
+     production.md #5). */
+  @page { size: 1320px 1280px; margin: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--parchment);
+    color: var(--near-black);
+    padding: 3rem 2rem;
+  }
+
+  .frame { max-width: 1240px; width: 100%; margin: 0 auto; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--stone);
+    margin-bottom: 0.5rem;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-size: 1.9rem;
+    font-weight: 500;
+    letter-spacing: -0.3pt;
+    line-height: 1.15;
+    margin-bottom: 1.6rem;
+  }
+
+  svg { width: 100%; min-width: 1080px; display: block; }
+
+  .caption {
+    font-family: var(--serif);
+    font-size: 0.95rem;
+    color: var(--olive);
+    margin-top: 1rem;
+    max-width: 62ch;
+  }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Architecture Board · kami diagram</p>
+    <h1>{{System name}} architecture board</h1>
+
+    <!-- Structure outline (write this first, then render):
+         Section: Kaku architecture, one judgment in the title layer
+         Band: Platform surface  -> AI coding sessions | Daily terminal work | macOS desktop | Shell suite
+         Band: GUI shell         -> Window frontend | GPU glyph pipeline | Input map | [FOCAL] AI chat engine
+         Band: Terminal core     -> Multiplexer | PTY layer | Escape parsing | Cell model
+         Flow: Keystroke -> Input map -> PTY / shell -> Escape parse -> Cell grid -> GPU frame
+         Table: Config | Theme | Distribution | Upstream
+         Note: AI request path is not the main axis, demoted to a caption
+    -->
+    <svg viewBox="0 0 1200 1016" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+          <circle cx="1" cy="1" r="0.9" fill="#E3E2DC"/>
+        </pattern>
+      </defs>
+
+      <rect width="100%" height="100%" fill="#f5f4ed"/>
+      <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+      <!-- Layer 1 · Title: subject + judgment, basis caption top right -->
+      <text x="48" y="44" fill="#141413" font-size="28" font-weight="600" font-family="inherit">Kaku: a WezTerm core, rewired for AI coding</text>
+      <text x="1152" y="40" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace" text-anchor="end" letter-spacing="0.18em">WORKSPACE VIEW · 2026-07</text>
+      <text x="48" y="72" fill="#504e49" font-size="13" font-family="inherit">Defaults ship on day one, Lua customization stays, and the AI engine is the fork's real addition.</text>
+      <line x1="48" y1="92" x2="1152" y2="92" stroke="#1B365D" stroke-width="0.8"/>
+
+      <!-- Layer 2 · Platform surface (band, peers separated by dividers) -->
+      <text x="48" y="128" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace" letter-spacing="0.22em">01 · PLATFORM SURFACE</text>
+      <text x="1152" y="128" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace" text-anchor="end" letter-spacing="0.18em">WHO KAKU SERVES</text>
+      <rect x="48" y="144" width="1104" height="100" rx="6" fill="#faf9f5" stroke="#e8e6dc" stroke-width="1"/>
+      <line x1="324" y1="160" x2="324" y2="228" stroke="#e8e6dc" stroke-width="1"/>
+      <line x1="600" y1="160" x2="600" y2="228" stroke="#e8e6dc" stroke-width="1"/>
+      <line x1="876" y1="160" x2="876" y2="228" stroke="#e8e6dc" stroke-width="1"/>
+
+      <text x="72" y="180" fill="#141413" font-size="14" font-weight="600" font-family="inherit">AI coding sessions</text>
+      <text x="72" y="204" fill="#504e49" font-size="10" font-family="'JetBrains Mono', monospace">in-terminal assistant</text>
+      <text x="72" y="224" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace">ai_chat_engine · ai_tools</text>
+
+      <text x="348" y="180" fill="#141413" font-size="14" font-weight="600" font-family="inherit">Daily terminal work</text>
+      <text x="348" y="204" fill="#504e49" font-size="10" font-family="'JetBrains Mono', monospace">panes · tabs · workspaces</text>
+      <text x="348" y="224" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace">local, ssh, mux domains</text>
+
+      <text x="624" y="180" fill="#141413" font-size="14" font-weight="600" font-family="inherit">macOS desktop</text>
+      <text x="624" y="204" fill="#504e49" font-size="10" font-family="'JetBrains Mono', monospace">theme follows the system</text>
+      <text x="624" y="224" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace">notarized DMG app</text>
+
+      <text x="900" y="180" fill="#141413" font-size="14" font-weight="600" font-family="inherit">Shell suite</text>
+      <text x="900" y="204" fill="#504e49" font-size="10" font-family="'JetBrains Mono', monospace">curated zsh plugins</text>
+      <text x="900" y="224" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace">prompt · diff · navigation</text>
+
+      <!-- Layer 3a · GUI shell (band; focal cell carries the only accent) -->
+      <text x="48" y="288" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace" letter-spacing="0.22em">02 · GUI SHELL · KAKU-GUI</text>
+      <text x="1152" y="288" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace" text-anchor="end" letter-spacing="0.18em">GPU FRONT END</text>
+      <rect x="48" y="304" width="1104" height="100" rx="6" fill="#faf9f5" stroke="#e8e6dc" stroke-width="1"/>
+      <line x1="324" y1="320" x2="324" y2="388" stroke="#e8e6dc" stroke-width="1"/>
+      <line x1="600" y1="320" x2="600" y2="388" stroke="#e8e6dc" stroke-width="1"/>
+
+      <text x="72" y="340" fill="#141413" font-size="14" font-weight="600" font-family="inherit">Window frontend</text>
+      <text x="72" y="364" fill="#504e49" font-size="10" font-family="'JetBrains Mono', monospace">frontend.rs · macos</text>
+      <text x="72" y="384" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace">events · commands</text>
+
+      <text x="348" y="340" fill="#141413" font-size="14" font-weight="600" font-family="inherit">GPU glyph pipeline</text>
+      <text x="348" y="364" fill="#504e49" font-size="10" font-family="'JetBrains Mono', monospace">glyphcache · shaders</text>
+      <text x="348" y="384" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace">custom glyphs</text>
+
+      <text x="624" y="340" fill="#141413" font-size="14" font-weight="600" font-family="inherit">Input map</text>
+      <text x="624" y="364" fill="#504e49" font-size="10" font-family="'JetBrains Mono', monospace">inputmap.rs · commands.rs</text>
+      <text x="624" y="384" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace">keys to actions</text>
+
+      <rect x="880" y="308" width="268" height="92" rx="6" fill="#EEF2F7" stroke="#1B365D" stroke-width="1"/>
+      <text x="904" y="340" fill="#141413" font-size="14" font-weight="600" font-family="inherit">AI chat engine</text>
+      <text x="904" y="364" fill="#1B365D" font-size="10" font-family="'JetBrains Mono', monospace">ai_client · conversations</text>
+      <text x="904" y="384" fill="#504e49" font-size="10" font-family="'JetBrains Mono', monospace">auth · state · remote</text>
+
+      <!-- Layer 3b · Terminal core (band) -->
+      <text x="48" y="448" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace" letter-spacing="0.22em">03 · TERMINAL CORE</text>
+      <text x="1152" y="448" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace" text-anchor="end" letter-spacing="0.18em">INHERITED FROM WEZTERM · TRIMMED</text>
+      <rect x="48" y="464" width="1104" height="100" rx="6" fill="#faf9f5" stroke="#e8e6dc" stroke-width="1"/>
+      <line x1="324" y1="480" x2="324" y2="548" stroke="#e8e6dc" stroke-width="1"/>
+      <line x1="600" y1="480" x2="600" y2="548" stroke="#e8e6dc" stroke-width="1"/>
+      <line x1="876" y1="480" x2="876" y2="548" stroke="#e8e6dc" stroke-width="1"/>
+
+      <text x="72" y="500" fill="#141413" font-size="14" font-weight="600" font-family="inherit">Multiplexer</text>
+      <text x="72" y="524" fill="#504e49" font-size="10" font-family="'JetBrains Mono', monospace">pane · tab · domain</text>
+      <text x="72" y="544" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace">mux crate</text>
+
+      <text x="348" y="500" fill="#141413" font-size="14" font-weight="600" font-family="inherit">PTY layer</text>
+      <text x="348" y="524" fill="#504e49" font-size="10" font-family="'JetBrains Mono', monospace">child shell processes</text>
+      <text x="348" y="544" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace">pty crate</text>
+
+      <text x="624" y="500" fill="#141413" font-size="14" font-weight="600" font-family="inherit">Escape parsing</text>
+      <text x="624" y="524" fill="#504e49" font-size="10" font-family="'JetBrains Mono', monospace">vtparse · escape-parser</text>
+      <text x="624" y="544" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace">bytes to actions</text>
+
+      <text x="900" y="500" fill="#141413" font-size="14" font-weight="600" font-family="inherit">Cell model</text>
+      <text x="900" y="524" fill="#504e49" font-size="10" font-family="'JetBrains Mono', monospace">surface · cell · termwiz</text>
+      <text x="900" y="544" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace">grid state · attributes</text>
+
+      <!-- Layer 4 · Main axis: the only brand-colored line on the board -->
+      <text x="48" y="608" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace" letter-spacing="0.22em">04 · MAIN AXIS · INPUT TO PIXELS</text>
+      <text x="1152" y="608" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace" text-anchor="end" letter-spacing="0.18em">THE PATH EVERY KEYSTROKE TAKES</text>
+
+      <!-- Connectors keep a 4px standoff from both node edges -->
+      <line x1="196" y1="648" x2="236" y2="648" stroke="#1B365D" stroke-width="1.4"/>
+      <path d="M 228 644 L 236 648 L 228 652" fill="none" stroke="#1B365D" stroke-width="1.4" stroke-linecap="round"/>
+      <line x1="388" y1="648" x2="428" y2="648" stroke="#1B365D" stroke-width="1.4"/>
+      <path d="M 420 644 L 428 648 L 420 652" fill="none" stroke="#1B365D" stroke-width="1.4" stroke-linecap="round"/>
+      <line x1="580" y1="648" x2="620" y2="648" stroke="#1B365D" stroke-width="1.4"/>
+      <path d="M 612 644 L 620 648 L 612 652" fill="none" stroke="#1B365D" stroke-width="1.4" stroke-linecap="round"/>
+      <line x1="772" y1="648" x2="812" y2="648" stroke="#1B365D" stroke-width="1.4"/>
+      <path d="M 804 644 L 812 648 L 804 652" fill="none" stroke="#1B365D" stroke-width="1.4" stroke-linecap="round"/>
+      <line x1="964" y1="648" x2="1004" y2="648" stroke="#1B365D" stroke-width="1.4"/>
+      <path d="M 996 644 L 1004 648 L 996 652" fill="none" stroke="#1B365D" stroke-width="1.4" stroke-linecap="round"/>
+
+      <rect x="48" y="624" width="144" height="48" rx="6" fill="#faf9f5" stroke="#141413" stroke-width="1"/>
+      <text x="120" y="644" fill="#141413" font-size="12" font-weight="600" font-family="inherit" text-anchor="middle">Keystroke</text>
+      <text x="120" y="660" fill="#6b6a64" font-size="8.5" font-family="'JetBrains Mono', monospace" text-anchor="middle">user intent</text>
+
+      <rect x="240" y="624" width="144" height="48" rx="6" fill="#faf9f5" stroke="#141413" stroke-width="1"/>
+      <text x="312" y="644" fill="#141413" font-size="12" font-weight="600" font-family="inherit" text-anchor="middle">Input map</text>
+      <text x="312" y="660" fill="#6b6a64" font-size="8.5" font-family="'JetBrains Mono', monospace" text-anchor="middle">kaku-gui</text>
+
+      <rect x="432" y="624" width="144" height="48" rx="6" fill="#faf9f5" stroke="#141413" stroke-width="1"/>
+      <text x="504" y="644" fill="#141413" font-size="12" font-weight="600" font-family="inherit" text-anchor="middle">PTY · shell</text>
+      <text x="504" y="660" fill="#6b6a64" font-size="8.5" font-family="'JetBrains Mono', monospace" text-anchor="middle">pty crate</text>
+
+      <rect x="624" y="624" width="144" height="48" rx="6" fill="#faf9f5" stroke="#141413" stroke-width="1"/>
+      <text x="696" y="644" fill="#141413" font-size="12" font-weight="600" font-family="inherit" text-anchor="middle">Escape parse</text>
+      <text x="696" y="660" fill="#6b6a64" font-size="8.5" font-family="'JetBrains Mono', monospace" text-anchor="middle">vtparse</text>
+
+      <rect x="816" y="624" width="144" height="48" rx="6" fill="#faf9f5" stroke="#141413" stroke-width="1"/>
+      <text x="888" y="644" fill="#141413" font-size="12" font-weight="600" font-family="inherit" text-anchor="middle">Cell grid</text>
+      <text x="888" y="660" fill="#6b6a64" font-size="8.5" font-family="'JetBrains Mono', monospace" text-anchor="middle">surface</text>
+
+      <rect x="1008" y="624" width="144" height="48" rx="6" fill="#faf9f5" stroke="#141413" stroke-width="1"/>
+      <text x="1080" y="644" fill="#141413" font-size="12" font-weight="600" font-family="inherit" text-anchor="middle">GPU frame</text>
+      <text x="1080" y="660" fill="#6b6a64" font-size="8.5" font-family="'JetBrains Mono', monospace" text-anchor="middle">glyphcache</text>
+
+      <!-- Non-core relation demoted to a caption, not another line -->
+      <text x="48" y="700" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace" letter-spacing="0.08em">AUX · AI PATH: PROMPT → AI_CHAT_ENGINE → AI_CLIENT → PROVIDER API</text>
+
+      <!-- Layer 5 · Governance (table shell, not five cards) -->
+      <text x="48" y="744" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace" letter-spacing="0.22em">05 · CONTROL PLANE &amp; GOVERNANCE</text>
+      <text x="1152" y="744" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace" text-anchor="end" letter-spacing="0.18em">HOW THE FORK STAYS MAINTAINABLE</text>
+
+      <text x="48" y="784" fill="#141413" font-size="10" font-weight="600" font-family="'JetBrains Mono', monospace" letter-spacing="0.18em">CONFIG</text>
+      <text x="348" y="784" fill="#141413" font-size="10" font-weight="600" font-family="'JetBrains Mono', monospace" letter-spacing="0.18em">THEME</text>
+      <text x="624" y="784" fill="#141413" font-size="10" font-weight="600" font-family="'JetBrains Mono', monospace" letter-spacing="0.18em">DISTRIBUTION</text>
+      <text x="900" y="784" fill="#141413" font-size="10" font-weight="600" font-family="'JetBrains Mono', monospace" letter-spacing="0.18em">UPSTREAM</text>
+      <line x1="48" y1="796" x2="1152" y2="796" stroke="#141413" stroke-width="1"/>
+      <line x1="324" y1="760" x2="324" y2="900" stroke="#e8e6dc" stroke-width="1"/>
+      <line x1="600" y1="760" x2="600" y2="900" stroke="#e8e6dc" stroke-width="1"/>
+      <line x1="876" y1="760" x2="876" y2="900" stroke="#e8e6dc" stroke-width="1"/>
+
+      <text x="48" y="828" fill="#141413" font-size="14" font-weight="600" font-family="inherit">Lua end to end</text>
+      <text x="48" y="852" fill="#504e49" font-size="10" font-family="'JetBrains Mono', monospace">config · lua-api-crates</text>
+      <text x="48" y="876" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace">config_tui · doctor</text>
+
+      <text x="348" y="828" fill="#141413" font-size="14" font-weight="600" font-family="inherit">Follows macOS</text>
+      <text x="348" y="852" fill="#504e49" font-size="10" font-family="'JetBrains Mono', monospace">kaku_theme · color-funcs</text>
+      <text x="348" y="876" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace">dark and light tuned</text>
+
+      <text x="624" y="828" fill="#141413" font-size="14" font-weight="600" font-family="inherit">Notarized DMG</text>
+      <text x="624" y="852" fill="#504e49" font-size="10" font-family="'JetBrains Mono', monospace">GitHub releases</text>
+      <text x="624" y="876" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace">brew tw93/tap/kakuku</text>
+
+      <text x="900" y="828" fill="#141413" font-size="14" font-weight="600" font-family="inherit">WezTerm fork</text>
+      <text x="900" y="852" fill="#504e49" font-size="10" font-family="'JetBrains Mono', monospace">core crates tracked</text>
+      <text x="900" y="876" fill="#6b6a64" font-size="10" font-family="'JetBrains Mono', monospace">40% smaller binary</text>
+      <line x1="48" y1="900" x2="1152" y2="900" stroke="#DEDED7" stroke-width="0.8"/>
+
+      <!-- Legend + closing note: one text size on one baseline -->
+      <text x="48" y="948" fill="#504e49" font-size="8.5" font-family="'JetBrains Mono', monospace" letter-spacing="0.22em">LEGEND</text>
+
+      <rect x="48" y="968" width="14" height="10" rx="2" fill="#EEF2F7" stroke="#1B365D" stroke-width="1"/>
+      <text x="68" y="976" fill="#504e49" font-size="10" font-family="inherit">Focal · the fork's addition</text>
+
+      <rect x="288" y="968" width="28" height="10" rx="2" fill="#faf9f5" stroke="#B2B1AC" stroke-width="1"/>
+      <line x1="302" y1="970" x2="302" y2="976" stroke="#B2B1AC" stroke-width="1"/>
+      <text x="324" y="976" fill="#504e49" font-size="10" font-family="inherit">Band · peers share one shell</text>
+
+      <line x1="544" y1="972" x2="574" y2="972" stroke="#1B365D" stroke-width="1.4"/>
+      <path d="M 566 968 L 574 972 L 566 976" fill="none" stroke="#1B365D" stroke-width="1.4" stroke-linecap="round"/>
+      <text x="584" y="976" fill="#504e49" font-size="10" font-family="inherit">Main axis</text>
+
+      <text x="1152" y="976" fill="#504e49" font-size="10" font-family="inherit" text-anchor="end">Crate-level detail lives in the workspace docs; this board carries the spine.</text>
+    </svg>
+
+    <p class="caption">One focal per board: the AI chat engine, the piece this fork actually adds. Bands group peers behind thin dividers, governance sits in a table shell, and the only brand-colored line on the page is the main axis.</p>
+  </div>
+</body>
+</html>

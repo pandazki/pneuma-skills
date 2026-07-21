@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<!-- ==================================================================
+     DIAGRAM · ER (kami palette, Mermaid-sourced)
+     Source: assets/diagrams/src/er.mmd. Generated with beautiful-mermaid +
+     scripts/mermaid_normalize.py (Kami re-theme + WeasyPrint-safe static SVG). To
+     change it, regenerate the SVG from any beautiful-mermaid renderer and re-run
+     the normalizer; do not hand-tune coordinates. See references/mermaid.md.
+     ================================================================== -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ER · kami diagram</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  @font-face {
+    font-family: "TsangerJinKai02";
+    src: url("../fonts/TsangerJinKai02-W04.ttf") format("truetype"),
+       url("https://cdn.jsdelivr.net/gh/tw93/Kami@main/assets/fonts/TsangerJinKai02-W04.ttf") format("truetype");
+    font-weight: 400;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: "TsangerJinKai02";
+    src: url("../fonts/TsangerJinKai02-W05.ttf") format("truetype"),
+       url("https://cdn.jsdelivr.net/gh/tw93/Kami@main/assets/fonts/TsangerJinKai02-W05.ttf") format("truetype");
+    font-weight: 500;
+    font-style: normal;
+  }
+
+  :root {
+    --parchment:  #f5f4ed;
+    --ivory:      #faf9f5;
+    --near-black: #141413;
+    --olive:      #504e49;
+    --stone:      #6b6a64;
+    --brand:      #1B365D;
+    --border:     #e8e6dc;
+
+    --serif: Charter, Georgia, "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", serif;
+    --sans: var(--serif);
+    --mono:  "JetBrains Mono", "SF Mono", Consolas, "TsangerJinKai02", "Source Han Serif SC", monospace;
+  }
+
+  /* Poster-size page so WeasyPrint exports the full diagram without
+     A4 clipping; browsers ignore @page. */
+  @page { size: 800px 600px; margin: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--parchment);
+    color: var(--near-black);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 2rem;
+  }
+
+  .frame { max-width: 720px; width: 100%; text-align: center; }
+  .frame > .eyebrow, .frame > h1, .frame > .caption { text-align: left; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--stone);
+    margin-bottom: 0.5rem;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-size: 1.9rem;
+    font-weight: 500;
+    letter-spacing: -0.3pt;
+    line-height: 1.15;
+    margin-bottom: 1.6rem;
+  }
+
+  /* Size to the diagram's intrinsic dimensions, capped so wide diagrams fit
+     the frame and tall ones stay on a single page. Never upscale past natural
+     size (avoids blowing a 200px-wide class diagram up to full width). */
+  svg { display: block; margin: 0 auto; max-width: 100%; max-height: 780px; height: auto; width: auto; }
+
+  .caption {
+    font-family: var(--serif);
+    font-size: 0.95rem;
+    color: var(--olive);
+    margin-top: 1rem;
+    max-width: 52ch;
+  }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Entity-Relationship · kami diagram</p>
+    <h1>{{What schema does this map}}</h1>
+
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 961.866 262" width="961.866" height="262" style="background:#f5f4ed">
+    <style>
+      text { font-family: Charter, Georgia, "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", serif; }
+      .mono { font-family: Charter, Georgia, "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", serif; }
+    </style>
+    <defs>
+    </defs>
+    <polyline class="er-relationship" data-entity1="CUSTOMER" data-entity2="ORDER" data-cardinality1="one" data-cardinality2="zero-many" data-identifying="true" data-label="places" points="180,194 401.726,194" fill="none" stroke="#504e49" stroke-width="1" />
+    <polyline class="er-relationship" data-entity1="ORDER" data-entity2="LINE_ITEM" data-cardinality1="one" data-cardinality2="many" data-identifying="true" data-label="contains" points="541.726,194 701.866,194 701.866,86.66666666666666 781.866,86.66666666666666" fill="none" stroke="#504e49" stroke-width="1" />
+    <polyline class="er-relationship" data-entity1="PRODUCT" data-entity2="LINE_ITEM" data-cardinality1="one" data-cardinality2="zero-many" data-identifying="true" data-label="appears in" points="541.726,68 781.866,68" fill="none" stroke="#504e49" stroke-width="1" />
+    <g class="entity" data-id="CUSTOMER" data-label="CUSTOMER">
+      <rect x="40" y="166" width="140" height="56" rx="0" ry="0" fill="#faf9f5" stroke="#e8e6dc" stroke-width="1" />
+      <rect x="40" y="166" width="140" height="34" rx="0" ry="0" fill="#eae9e2" stroke="#e8e6dc" stroke-width="1" />
+      <text x="110" y="183" text-anchor="middle" font-size="13" font-weight="700" fill="#141413" dy="4.55">CUSTOMER</text>
+      <line x1="40" y1="200" x2="180" y2="200" stroke="#e8e6dc" stroke-width="0.75" />
+      <text x="110" y="211" text-anchor="middle" dy="0.35em" font-size="11" fill="#bdbcb6" font-style="italic">(no attributes)</text>
+    </g>
+    <g class="entity" data-id="ORDER" data-label="ORDER">
+      <rect x="401.726" y="166" width="140" height="56" rx="0" ry="0" fill="#faf9f5" stroke="#e8e6dc" stroke-width="1" />
+      <rect x="401.726" y="166" width="140" height="34" rx="0" ry="0" fill="#eae9e2" stroke="#e8e6dc" stroke-width="1" />
+      <text x="471.726" y="183" text-anchor="middle" font-size="13" font-weight="700" fill="#141413" dy="4.55">ORDER</text>
+      <line x1="401.726" y1="200" x2="541.726" y2="200" stroke="#e8e6dc" stroke-width="0.75" />
+      <text x="471.726" y="211" text-anchor="middle" dy="0.35em" font-size="11" fill="#bdbcb6" font-style="italic">(no attributes)</text>
+    </g>
+    <g class="entity" data-id="LINE_ITEM" data-label="LINE_ITEM">
+      <rect x="781.866" y="49.333333333333336" width="140" height="56" rx="0" ry="0" fill="#faf9f5" stroke="#e8e6dc" stroke-width="1" />
+      <rect x="781.866" y="49.333333333333336" width="140" height="34" rx="0" ry="0" fill="#eae9e2" stroke="#e8e6dc" stroke-width="1" />
+      <text x="851.866" y="66.33333333333334" text-anchor="middle" font-size="13" font-weight="700" fill="#141413" dy="4.55">LINE_ITEM</text>
+      <line x1="781.866" y1="83.33333333333334" x2="921.866" y2="83.33333333333334" stroke="#e8e6dc" stroke-width="0.75" />
+      <text x="851.866" y="94.33333333333334" text-anchor="middle" dy="0.35em" font-size="11" fill="#bdbcb6" font-style="italic">(no attributes)</text>
+    </g>
+    <g class="entity" data-id="PRODUCT" data-label="PRODUCT">
+      <rect x="401.726" y="40" width="140" height="56" rx="0" ry="0" fill="#faf9f5" stroke="#e8e6dc" stroke-width="1" />
+      <rect x="401.726" y="40" width="140" height="34" rx="0" ry="0" fill="#eae9e2" stroke="#e8e6dc" stroke-width="1" />
+      <text x="471.726" y="57" text-anchor="middle" font-size="13" font-weight="700" fill="#141413" dy="4.55">PRODUCT</text>
+      <line x1="401.726" y1="74" x2="541.726" y2="74" stroke="#e8e6dc" stroke-width="0.75" />
+      <text x="471.726" y="85" text-anchor="middle" dy="0.35em" font-size="11" fill="#bdbcb6" font-style="italic">(no attributes)</text>
+    </g>
+    <line x1="184" y1="188" x2="184" y2="200" stroke="#504e49" stroke-width="1.25" />
+    <line x1="188" y1="188" x2="188" y2="200" stroke="#504e49" stroke-width="1.25" />
+    <line x1="397.726" y1="201" x2="385.726" y2="194" stroke="#504e49" stroke-width="1.25" />
+    <line x1="397.726" y1="194" x2="385.726" y2="194" stroke="#504e49" stroke-width="1.25" />
+    <line x1="397.726" y1="187" x2="385.726" y2="194" stroke="#504e49" stroke-width="1.25" />
+    <circle cx="381.726" cy="194" r="4" fill="#f5f4ed" stroke="#504e49" stroke-width="1.25" />
+    <line x1="545.726" y1="188" x2="545.726" y2="200" stroke="#504e49" stroke-width="1.25" />
+    <line x1="549.726" y1="188" x2="549.726" y2="200" stroke="#504e49" stroke-width="1.25" />
+    <line x1="777.866" y1="93.66666666666666" x2="765.866" y2="86.66666666666666" stroke="#504e49" stroke-width="1.25" />
+    <line x1="777.866" y1="86.66666666666666" x2="765.866" y2="86.66666666666666" stroke="#504e49" stroke-width="1.25" />
+    <line x1="777.866" y1="79.66666666666666" x2="765.866" y2="86.66666666666666" stroke="#504e49" stroke-width="1.25" />
+    <line x1="545.726" y1="62" x2="545.726" y2="74" stroke="#504e49" stroke-width="1.25" />
+    <line x1="549.726" y1="62" x2="549.726" y2="74" stroke="#504e49" stroke-width="1.25" />
+    <line x1="777.866" y1="75" x2="765.866" y2="68" stroke="#504e49" stroke-width="1.25" />
+    <line x1="777.866" y1="68" x2="765.866" y2="68" stroke="#504e49" stroke-width="1.25" />
+    <line x1="777.866" y1="61" x2="765.866" y2="68" stroke="#504e49" stroke-width="1.25" />
+    <circle cx="761.866" cy="68" r="4" fill="#f5f4ed" stroke="#504e49" stroke-width="1.25" />
+    <rect x="270" y="183.85" width="41.726000000000006" height="20.3" rx="2" ry="2" fill="#f5f4ed" stroke="#dad9d3" stroke-width="0.5" />
+    <text x="290.863" y="194" text-anchor="middle" font-size="11" font-weight="400" fill="#6b6a64" dy="3.8499999999999996">places</text>
+    <rect x="676.845" y="170.2533333333333" width="50.04200000000001" height="20.3" rx="2" ry="2" fill="#f5f4ed" stroke="#dad9d3" stroke-width="0.5" />
+    <text x="701.866" y="180.4033333333333" text-anchor="middle" font-size="11" font-weight="400" fill="#6b6a64" dy="3.8499999999999996">contains</text>
+    <rect x="631.726" y="57.85" width="60.14" height="20.3" rx="2" ry="2" fill="#f5f4ed" stroke="#dad9d3" stroke-width="0.5" />
+    <text x="661.796" y="68" text-anchor="middle" font-size="11" font-weight="400" fill="#6b6a64" dy="3.8499999999999996">appears in</text>
+    </svg>
+
+    <p class="caption">Crow's-foot notation: each connector's ends mark cardinality between entities.</p>
+  </div>
+</body>
+</html>
