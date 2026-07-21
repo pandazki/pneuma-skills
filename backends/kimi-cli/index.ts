@@ -1,8 +1,8 @@
 /**
- * KimiCliBackend — AgentBackend for Moonshot AI's Kimi CLI.
+ * KimiCliBackend — AgentBackend for Moonshot AI's Kimi Code CLI.
  *
- * Wraps KimiCliLauncher; uses stdio NDJSON (kimi --print --input-format stream-json
- * --output-format stream-json). Pattern mirrors CodexBackend in backends/codex/index.ts.
+ * Wraps KimiCliLauncher; speaks ACP (Agent Client Protocol) JSON-RPC over
+ * stdio via `kimi acp`. Pattern mirrors CodexBackend in backends/codex/index.ts.
  */
 
 import type {
@@ -18,11 +18,13 @@ import type { KimiAdapter } from "./kimi-adapter.js";
 export class KimiCliBackend implements AgentBackend {
   readonly name = "kimi-cli" as const;
 
+  // Keep in sync with `manifest.ts` — capabilities are declared in both
+  // places (module-level registry + instance) with no single source.
   readonly capabilities: AgentCapabilities = {
     streaming: true,
     resume: true,
-    permissions: false,
-    toolProgress: false,
+    permissions: true,
+    toolProgress: true,
     modelSwitch: true,
   };
 
@@ -38,6 +40,7 @@ export class KimiCliBackend implements AgentBackend {
       model: options.model,
       sessionId: options.sessionId,
       resumeKimiSessionId: options.resumeSessionId,
+      permissionMode: options.permissionMode,
       env: options.env,
     };
     const info = this.launcher.launch(launchOpts);

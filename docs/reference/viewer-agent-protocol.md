@@ -456,7 +456,7 @@ export interface BackendModule {           // 每 backend 一份 manifest.ts
   readonly displayLabel: string;
   readonly binary: string;
   readonly installHint: string;
-  readonly skillsDir: string;              // 例 ".claude/skills" / ".agents/skills" / ".kimi/skills"
+  readonly skillsDir: string;              // 例 ".claude/skills" / ".agents/skills" / ".kimi-code/skills"
   readonly instructionsFile: string;       // 例 "CLAUDE.md" / "AGENTS.md"
   readonly capabilities: AgentCapabilities;
   readonly defaultModels?: ModelOption[];
@@ -475,7 +475,7 @@ export interface BackendModule {           // 每 backend 一份 manifest.ts
 
 ## 指令文件装配：契约的注入面
 
-Agent 不能调用看不到的 action——所以 `<manifest, runtime>` 必须把契约信息渲染进它读的指令文件（Claude 的 `CLAUDE.md` / Codex 的 `AGENTS.md` / Kimi 的 `.kimi/AGENTS.md`）。这块由 `server/skill-installer.ts` 完成，marker block 一一对应职责域：
+Agent 不能调用看不到的 action——所以 `<manifest, runtime>` 必须把契约信息渲染进它读的指令文件（Claude 的 `CLAUDE.md` / Codex 与 Kimi 的 `AGENTS.md`）。这块由 `server/skill-installer.ts` 完成，marker block 一一对应职责域：
 
 | Marker | 来源 | 是否项目-only |
 |--------|------|--------------|

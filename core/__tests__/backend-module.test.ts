@@ -73,13 +73,21 @@ describe("kimi-cli toolFileRef", () => {
   it("resolves Claude-shaped names via the default", () => {
     expect(kimiCliModule.toolFileRef?.("Read", { file_path: "/w/a.png" })).toEqual({ path: "/w/a.png", kind: "read" });
   });
-  it("resolves a generic `path` key to kind=edit", () => {
+  it("resolves ACP builtin tools addressing files via `path` (verified rawInput shapes)", () => {
+    // Kimi Code's builtin tools use Claude-style names but a `path` key:
+    // Write {path, content}, Read {path} — captured from kimi acp 0.26.0.
+    expect(kimiCliModule.toolFileRef?.("Write", { path: "hello.txt", content: "pneuma" })).toEqual({ path: "hello.txt", kind: "write" });
+    expect(kimiCliModule.toolFileRef?.("Read", { path: "existing.txt" })).toEqual({ path: "existing.txt", kind: "read" });
+    expect(kimiCliModule.toolFileRef?.("Edit", { path: "/w/a.ts" })).toEqual({ path: "/w/a.ts", kind: "edit" });
+  });
+  it("resolves a generic `path` key on an unknown tool to kind=edit", () => {
     expect(kimiCliModule.toolFileRef?.("view_file", { path: "/w/a.ts" })).toEqual({ path: "/w/a.ts", kind: "edit" });
   });
   it("resolves a generic `file_path` key on an unknown tool to kind=edit", () => {
     expect(kimiCliModule.toolFileRef?.("str_replace", { file_path: "/w/a.ts" })).toEqual({ path: "/w/a.ts", kind: "edit" });
   });
-  it("returns undefined when there's no usable path", () => {
-    expect(kimiCliModule.toolFileRef?.("run_shell", { command: "ls" })).toBeUndefined();
+  it("returns undefined when there's no usable path (Bash/Glob shapes)", () => {
+    expect(kimiCliModule.toolFileRef?.("Bash", { command: "echo ok" })).toBeUndefined();
+    expect(kimiCliModule.toolFileRef?.("Glob", { pattern: "**/*.ts" })).toBeUndefined();
   });
 });

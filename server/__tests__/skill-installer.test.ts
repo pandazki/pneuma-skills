@@ -387,7 +387,7 @@ describe("installSkill", () => {
 
   test("does not install the /borrow command for kimi-cli (commandsDir undefined)", () => {
     installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, backendType: "kimi-cli" });
-    expect(existsSync(join(workspace, ".kimi", "commands", "borrow.md"))).toBe(false);
+    expect(existsSync(join(workspace, ".kimi-code", "commands", "borrow.md"))).toBe(false);
     expect(existsSync(join(workspace, ".claude", "commands", "borrow.md"))).toBe(false);
   });
 

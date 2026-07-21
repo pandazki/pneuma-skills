@@ -6,21 +6,33 @@ describe("kimi-cli BackendModule", () => {
   it("declares correct identity", () => {
     expect(kimiCliModule.type).toBe("kimi-cli");
     expect(kimiCliModule.binary).toBe("kimi");
-    expect(kimiCliModule.skillsDir).toBe(".kimi/skills");
+    // Kimi Code discovers project skills in `.kimi-code/skills/` (the legacy
+    // kimi-cli `.kimi/skills/` is NOT read by the new binary).
+    expect(kimiCliModule.skillsDir).toBe(".kimi-code/skills");
     expect(kimiCliModule.instructionsFile).toBe("AGENTS.md");
     expect(kimiCliModule.displayLabel).toBe("kimi-cli");
   });
 
-  it("declares capabilities — no permissions or toolProgress", () => {
+  it("declares the ACP capability surface — permissions and toolProgress are real", () => {
     const c = kimiCliModule.capabilities;
     expect(c.streaming).toBe(true);
     expect(c.resume).toBe(true);
-    expect(c.permissions).toBe(false);
-    expect(c.toolProgress).toBe(false);
+    // ACP delivers a first-class permission round trip
+    // (session/request_permission) and tool progress
+    // (tool_call / tool_call_update status transitions).
+    expect(c.permissions).toBe(true);
+    expect(c.toolProgress).toBe(true);
     expect(c.modelSwitch).toBe(true);
     expect(c.scheduling).toBeFalsy();
     expect(c.costTracking).toBeFalsy();
     expect(c.contextWindow).toBeFalsy();
+  });
+
+  it("keeps manifest and backend-instance capability declarations in sync", () => {
+    // Capabilities are declared in two places (manifest.ts + index.ts) with
+    // no single source — pin that they never drift apart.
+    const backend = kimiCliModule.createBackend(0);
+    expect(backend.capabilities).toEqual(kimiCliModule.capabilities);
   });
 
   it("ships no defaultModels (kimi emits its own model list dynamically)", () => {
@@ -102,9 +114,20 @@ describe("kimi-cli BackendModule", () => {
     ).toThrow(/getOrCreateSession/i);
   });
 
-  it("checkRequirements probes the binary", () => {
+  it("checkRequirements probes the binary AND the acp subcommand", () => {
+    // Binary presence alone is not enough: the `kimi` name was reused across
+    // the kimi-cli → Kimi Code product swap. On a machine with Kimi Code the
+    // probe passes; with the legacy CLI (no `acp` subcommand) or no binary
+    // the reason must point at Kimi Code.
     const r = kimiCliModule.checkRequirements();
     if (r.ok) expect(r.binaryPath).toBeTruthy();
     else expect(r.reason).toMatch(/kimi/i);
+  });
+
+  it("points the install hint at Kimi Code, not the retired kimi-cli", () => {
+    expect(kimiCliModule.installHint).toContain("kimi-code");
+    expect(kimiCliModule.installHint).toContain("kimi upgrade");
+    expect(kimiCliModule.installHint).not.toContain("uv tool install kimi-cli");
+    expect(kimiCliModule.installHint).not.toContain("kimi-cli/");
   });
 });

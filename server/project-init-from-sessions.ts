@@ -6,7 +6,7 @@
  * session subdir under `<projectRoot>/.pneuma/sessions/<newSessionId>/`.
  *
  * Sources of state for a quick session live at `<workspace>/.pneuma/`. The
- * skill files (one of `.claude/skills/`, `.agents/skills/`, `.kimi/skills/`
+ * skill files (one of `.claude/skills/`, `.agents/skills/`, `.kimi-code/skills/`
  * depending on backend) and the project-level instructions file (one of
  * `CLAUDE.md` / `AGENTS.md`) live at `<workspace>/`. We copy whichever ones
  * the source actually has — `copyIfExists` makes the missing-entry case a
@@ -17,7 +17,7 @@
  *     → <newSessionDir>/{...}
  *   <source>/.claude/skills/  → <newSessionDir>/.claude/skills/   (claude-code)
  *   <source>/.agents/skills/  → <newSessionDir>/.agents/skills/   (codex)
- *   <source>/.kimi/skills/    → <newSessionDir>/.kimi/skills/      (kimi-cli)
+ *   <source>/.kimi-code/skills/ → <newSessionDir>/.kimi-code/skills/ (kimi-cli)
  *   <source>/CLAUDE.md        → <newSessionDir>/CLAUDE.md          (claude-code)
  *   <source>/AGENTS.md        → <newSessionDir>/AGENTS.md          (codex + kimi-cli)
  *
@@ -150,7 +150,7 @@ async function importOneSession(
   // actually has get carried over; missing entries are no-ops via copyIfExists.
   await copyIfExists(join(source.workspace, ".claude"), join(paths.stateDir, ".claude"));
   await copyIfExists(join(source.workspace, ".agents"), join(paths.stateDir, ".agents"));
-  await copyIfExists(join(source.workspace, ".kimi"), join(paths.stateDir, ".kimi"));
+  await copyIfExists(join(source.workspace, ".kimi-code"), join(paths.stateDir, ".kimi-code"));
   await copyIfExists(join(source.workspace, "CLAUDE.md"), join(paths.stateDir, "CLAUDE.md"));
   await copyIfExists(join(source.workspace, "AGENTS.md"), join(paths.stateDir, "AGENTS.md"));
 

@@ -38,7 +38,7 @@ const DEFAULT_IGNORE = [
   "**/.pneuma/**",
   "**/.claude/**",
   "**/.agents/**",
-  "**/.kimi/**",
+  "**/.kimi-code/**",
   "**/CLAUDE.md",
   "**/AGENTS.md",
   "**/agents.md",

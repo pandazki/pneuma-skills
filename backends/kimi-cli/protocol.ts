@@ -1,60 +1,152 @@
 /**
- * Kimi CLI protocol — message shapes (OpenAI Chat Completions style) emitted on
- * stdout when running `kimi --print --output-format stream-json`, plus pure
- * translation functions to/from Pneuma's normalized message shape.
+ * Kimi Code ACP protocol — wire shapes for the `session/update` notification
+ * stream emitted by `kimi acp` (Agent Client Protocol over stdio JSON-RPC),
+ * plus a stateful translator from that stream to Pneuma's normalized message
+ * shape.
  *
- * Shapes verified empirically against kimi-cli v1.41.0 in `/tmp/kimi-probe/`.
- * No IO in this module — keep it pure so it can be unit-tested without a
+ * Wire shapes verified empirically against Kimi Code CLI 0.26.0 (every frame
+ * kind below was captured live, not read from docs). No IO in this module —
+ * the translator is a pure state machine so it can be unit-tested without a
  * running kimi process.
+ *
+ * Key empirical facts the translation depends on:
+ *
+ *   - `tool_call` (the start frame) carries the REAL tool name in `title`
+ *     ("Write", "Read", "Bash", "Glob", …). Later `tool_call_update` frames
+ *     mutate `title` into a human phrase ("Writing out.txt") — so the tool
+ *     name must be captured from the start frame only.
+ *   - A single `toolCallId` fires many `tool_call_update` frames whose
+ *     `content[].content.text` is a *growing partial JSON string* of the
+ *     arguments as the model generates them. Those partials are NEVER
+ *     parsed — the structured input arrives once as a real `rawInput`
+ *     object, and that frame is the signal to emit the `tool_use` block.
+ *   - The terminal update (`status: "completed" | "failed"`) carries the
+ *     result in `rawOutput` (string for the builtin tools; tolerate
+ *     objects by JSON-stringifying).
+ *   - `session/load` replays history as `user_message_chunk` /
+ *     `agent_*_chunk` frames; `user_message_chunk` is deliberately ignored
+ *     (Pneuma rehydrates chat history from its own `history.json`).
  */
 
-export interface KimiUserMessage {
-  role: "user";
-  content: string;
-}
+// ── ACP wire shapes (agent → client `session/update` payloads) ───────────────
 
-export interface KimiToolCall {
-  type: "function";
-  id: string;
-  function: { name: string; arguments: string };
-}
-
-/**
- * Content part inside an assistant message when kimi is configured with a
- * provider that surfaces internal reasoning (notably the managed `kimi-code`
- * subscription, which emits `{type:"think", think:"...", encrypted: null}`
- * blocks alongside `{type:"text", ...}`). The OpenRouter provider keeps
- * content as a plain string instead, so both shapes have to be tolerated.
- */
-export interface KimiThinkPart {
-  type: "think";
-  think: string;
-  encrypted?: string | null;
-}
-export interface KimiAssistantTextPart {
+/** `{type:"text",text}` content payload used by chunk updates. */
+export interface AcpTextContent {
   type: "text";
   text: string;
 }
-export type KimiAssistantContentPart = KimiThinkPart | KimiAssistantTextPart;
 
-export interface KimiAssistantMessage {
-  role: "assistant";
-  /**
-   * Plain string when the LLM provider doesn't separate reasoning from the
-   * answer (OpenRouter); array of content parts when it does (managed
-   * kimi-code with thinking enabled). The translator handles both.
-   */
-  content: string | KimiAssistantContentPart[];
-  tool_calls?: KimiToolCall[];
+/** Entry of a tool call's `content[]` array. */
+export interface AcpToolCallContent {
+  type: "content";
+  content: AcpTextContent;
 }
 
-export interface KimiToolMessage {
-  role: "tool";
-  tool_call_id: string;
-  content: string | Array<{ type: "text"; text: string }>;
+export type AcpToolCallStatus = "pending" | "in_progress" | "completed" | "failed";
+
+export interface AcpToolCallStart {
+  sessionUpdate: "tool_call";
+  toolCallId: string;
+  /** Real tool name on this start frame ("Write", "Read", "Bash", …). */
+  title: string;
+  kind?: string;
+  status: AcpToolCallStatus;
+  content?: AcpToolCallContent[];
 }
 
-export type KimiMessage = KimiUserMessage | KimiAssistantMessage | KimiToolMessage;
+export interface AcpToolCallUpdate {
+  sessionUpdate: "tool_call_update";
+  toolCallId: string;
+  /** Human phrase on update frames ("Writing out.txt") — NOT the tool name. */
+  title?: string;
+  kind?: string;
+  status?: AcpToolCallStatus;
+  /** Structured tool input — present exactly when argument generation finished. */
+  rawInput?: Record<string, unknown>;
+  /** Tool result — present on the terminal (completed/failed) frame. */
+  rawOutput?: unknown;
+  content?: AcpToolCallContent[];
+}
+
+export interface AcpAgentMessageChunk {
+  sessionUpdate: "agent_message_chunk";
+  content: AcpTextContent;
+}
+
+export interface AcpAgentThoughtChunk {
+  sessionUpdate: "agent_thought_chunk";
+  content: AcpTextContent;
+}
+
+export interface AcpAvailableCommand {
+  name: string;
+  description?: string;
+  input?: Record<string, unknown>;
+}
+
+export interface AcpAvailableCommandsUpdate {
+  sessionUpdate: "available_commands_update";
+  availableCommands: AcpAvailableCommand[];
+}
+
+/** Replayed by `session/load`; carries the historical user prompt. Ignored. */
+export interface AcpUserMessageChunk {
+  sessionUpdate: "user_message_chunk";
+  content: AcpTextContent;
+}
+
+/**
+ * Emitted when session config changes (e.g. after `session/set_mode` /
+ * `session/set_model`); carries the full refreshed configOptions list.
+ */
+export interface AcpConfigOptionUpdate {
+  sessionUpdate: "config_option_update";
+  configOptions: AcpConfigOption[];
+}
+
+export type AcpSessionUpdate =
+  | AcpToolCallStart
+  | AcpToolCallUpdate
+  | AcpAgentMessageChunk
+  | AcpAgentThoughtChunk
+  | AcpAvailableCommandsUpdate
+  | AcpUserMessageChunk
+  | AcpConfigOptionUpdate;
+
+// ── ACP session-setup shapes ─────────────────────────────────────────────────
+
+/** One entry of `session/new`'s `configOptions[]` result field. */
+export interface AcpConfigOption {
+  type: string;
+  id: string;
+  name?: string;
+  category?: string;
+  currentValue?: string;
+  options?: { value: string; name?: string; description?: string }[];
+}
+
+export interface AcpPermissionOption {
+  optionId: string;
+  name?: string;
+  kind: "allow_once" | "allow_always" | "reject_once" | "reject_always" | string;
+}
+
+/** Params of the agent→client `session/request_permission` request. */
+export interface AcpPermissionRequestParams {
+  sessionId: string;
+  options: AcpPermissionOption[];
+  toolCall?: {
+    toolCallId?: string;
+    /** Tool name at request time (matches the tool_call start frame's title). */
+    title?: string;
+    content?: AcpToolCallContent[];
+  };
+}
+
+/** `session/prompt` resolves with this at end of turn. */
+export interface AcpPromptResult {
+  stopReason: string;
+}
 
 // ── Pneuma-side normalized shapes (subset; matches what ws-bridge broadcasts) ─
 
@@ -72,22 +164,21 @@ export interface PneumaToolResultBlock {
   type: "tool_result";
   tool_use_id: string;
   content: string;
+  /** Set when the tool call ended with ACP `status: "failed"`. */
+  is_error?: boolean;
   /**
-   * Agent-facing status that kimi prepends to tool results in the form
-   * `<system>...</system>` (see `kimi_cli/agents/default/system.md`). Extracted
-   * here so the bridge can keep tool_result.content as just the actual stdout /
-   * file body, and the frontend renders metadata as a small status header
-   * above the result. Empty string when the tool result carries no metadata.
+   * Optional inline status header rendered above the result body. Part of
+   * the preserved output contract (the chat panel renders it generically);
+   * the ACP stream carries no equivalent, so kimi no longer sets it.
    */
   metadata?: string;
 }
 
 /**
- * Internal reasoning surfaced as a separate content block. Kimi emits these
- * via `{type:"think"}` parts when the configured provider supports
- * thinking-stream output (managed `kimi-code` subscription); we translate
- * them into Pneuma's canonical `thinking` block so the chat panel's existing
- * `ThinkingBlock` component renders them as a collapsible reasoning card.
+ * Internal reasoning surfaced as a separate content block. ACP streams these
+ * as `agent_thought_chunk` frames; we accumulate and emit Pneuma's canonical
+ * `thinking` block so the chat panel's existing `ThinkingBlock` component
+ * renders them as a collapsible reasoning card.
  */
 export interface PneumaThinkingBlock {
   type: "thinking";
@@ -111,123 +202,234 @@ export interface PneumaUserMessage {
 
 export type PneumaMessage = PneumaAssistantMessage | PneumaUserMessage;
 
-// ── Parsing ──────────────────────────────────────────────────────────────────
-
-export function parseKimiLine(raw: string): KimiMessage | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    return null;
-  }
-  if (!parsed || typeof parsed !== "object") return null;
-  const role = (parsed as { role?: unknown }).role;
-  if (role !== "user" && role !== "assistant" && role !== "tool") return null;
-  return parsed as KimiMessage;
-}
-
-// ── kimi → Pneuma ────────────────────────────────────────────────────────────
-
-export function kimiToPneumaMessages(msg: KimiMessage): PneumaMessage[] {
-  if (msg.role === "user") {
-    return [{ type: "user", content: [{ type: "text", text: msg.content }] }];
-  }
-
-  if (msg.role === "assistant") {
-    const blocks: PneumaContentBlock[] = [];
-
-    // `content` can be either a plain string (OpenRouter provider) or an
-    // array of `{type:"think"|"text"}` parts (managed kimi-code provider
-    // with thinking enabled). Walk parts in order so the chat panel renders
-    // reasoning before its corresponding answer.
-    if (typeof msg.content === "string") {
-      const text = msg.content;
-      if (text.trim().length > 0) {
-        blocks.push({ type: "text", text });
-      }
-    } else if (Array.isArray(msg.content)) {
-      for (const part of msg.content) {
-        if (part.type === "think" && typeof part.think === "string" && part.think.trim().length > 0) {
-          blocks.push({ type: "thinking", thinking: part.think });
-        } else if (part.type === "text" && typeof part.text === "string" && part.text.trim().length > 0) {
-          blocks.push({ type: "text", text: part.text });
-        }
-      }
-    }
-
-    for (const call of msg.tool_calls ?? []) {
-      let input: Record<string, unknown>;
-      try {
-        const parsed = JSON.parse(call.function.arguments);
-        input = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : { _raw: call.function.arguments };
-      } catch {
-        input = { _raw: call.function.arguments };
-      }
-      blocks.push({ type: "tool_use", id: call.id, name: call.function.name, input });
-    }
-    if (blocks.length === 0) return [];
-    return [{ type: "assistant", content: blocks }];
-  }
-
-  // role === "tool"
-  const text = typeof msg.content === "string"
-    ? msg.content
-    : msg.content.map((p) => p.text).join("\n");
-  const { metadata, content } = extractKimiSystemMetadata(text);
-  const block: PneumaToolResultBlock = { type: "tool_result", tool_use_id: msg.tool_call_id, content };
-  if (metadata) block.metadata = metadata;
-  return [{ type: "user", content: [block] }];
-}
-
-// ── kimi `<system>` metadata extraction ──────────────────────────────────────
+// ── Translator events ────────────────────────────────────────────────────────
 
 /**
- * Kimi-cli prepends agent-facing status to every tool result in the form
- * `<system>...</system>` (see `kimi_cli/agents/default/system.md` and the
- * various tool wrappers under `kimi_cli/tools/`). Examples:
- *
- *   - `<system>Command executed successfully.</system>` (Shell)
- *   - `<system>103 lines read from file starting from line 1. ...</system>`
- *     followed by the actual file body (ReadFile)
- *   - `<system>ERROR: ... is not an absolute path. ...</system>` (failed tool)
- *
- * These markers are noise for human display, so we lift them out of the body
- * here. Multiple `<system>` blocks (occasionally seen on multi-step tools)
- * are joined with " · " into a single metadata string. The remaining text —
- * with leading/trailing whitespace from the lift trimmed off but interior
- * whitespace preserved — is the body the user actually wants to see.
- *
- * Returns `metadata` as `null` when no markers are present so callers can
- * cheaply skip setting the optional field.
+ * What one `session/update` payload translates into. A single frame can yield
+ * several events (e.g. a `tool_call` start flushes buffered text first).
  */
-export function extractKimiSystemMetadata(raw: string): { metadata: string | null; content: string } {
-  // Non-greedy match across newlines; only consume `<system>` blocks anchored
-  // at the start of the (remaining) buffer with optional leading whitespace.
-  // We deliberately do NOT match `<system>` blocks deeper in the body — those
-  // are part of the actual content and should stay visible.
-  const headRe = /^\s*<system>([\s\S]*?)<\/system>\s*/;
-  const parts: string[] = [];
-  let rest = raw;
-  while (true) {
-    const m = rest.match(headRe);
-    if (!m) break;
-    parts.push(m[1].trim());
-    rest = rest.slice(m[0].length);
-  }
-  if (parts.length === 0) {
-    return { metadata: null, content: raw };
-  }
+export type AcpTranslationEvent =
+  /** A complete Pneuma message ready to broadcast + record in history. */
+  | { kind: "message"; message: PneumaMessage }
+  /** A streaming token — live-typing feedback, not recorded in history. */
+  | { kind: "delta"; deltaType: "text" | "thinking"; text: string }
+  /** The agent's slash-command inventory changed. */
+  | { kind: "commands"; commands: AcpAvailableCommand[] }
+  /** Session config changed (model / mode) — carries the refreshed list. */
+  | { kind: "config"; configOptions: AcpConfigOption[] }
+  /** A tool call is executing / still generating arguments. */
+  | { kind: "tool-progress"; toolCallId: string; toolName: string }
+  /** Unrecognized `sessionUpdate` — surfaced so the adapter can log once. */
+  | { kind: "unknown"; sessionUpdate: string };
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Extract the model config option from `session/new`/`session/resume` results. */
+export function parseModelConfig(
+  configOptions: AcpConfigOption[] | undefined,
+): { current: string; available: { id: string; name?: string }[] } | null {
+  const model = configOptions?.find((o) => o.id === "model");
+  if (!model) return null;
   return {
-    metadata: parts.join(" · "),
-    // Preserve the body verbatim once the leading metadata is stripped.
-    content: rest,
+    current: model.currentValue ?? "",
+    available: (model.options ?? []).map((o) => ({ id: o.value, name: o.name })),
   };
 }
 
-// ── Pneuma → kimi ────────────────────────────────────────────────────────────
+function stringifyRawOutput(rawOutput: unknown, fallback: AcpToolCallContent[] | undefined): string {
+  if (typeof rawOutput === "string") return rawOutput;
+  if (rawOutput !== undefined && rawOutput !== null) {
+    try {
+      return JSON.stringify(rawOutput);
+    } catch {
+      return String(rawOutput);
+    }
+  }
+  // No rawOutput — fall back to the terminal frame's content text (observed
+  // to mirror rawOutput for builtin tools; covers hypothetical tools that
+  // only populate content).
+  const text = (fallback ?? [])
+    .map((c) => (c?.content?.type === "text" ? c.content.text : ""))
+    .join("");
+  return text;
+}
 
-export function pneumaUserToKimi(content: string): KimiUserMessage {
-  return { role: "user", content };
+// ── Translator ───────────────────────────────────────────────────────────────
+
+interface ToolState {
+  /** Real tool name, captured from the `tool_call` start frame's title. */
+  name: string;
+  /** Whether the `tool_use` block has been emitted (rawInput seen). */
+  emittedUse: boolean;
+  /** Whether the terminal tool_result has been emitted. */
+  settled: boolean;
+}
+
+/**
+ * Stateful ACP `session/update` → Pneuma translator. One instance per agent
+ * session; feed every update payload through `translate()` and flush at turn
+ * end with `endTurn()`.
+ *
+ * Buffering model: consecutive `agent_thought_chunk` / `agent_message_chunk`
+ * tokens accumulate into one pending block each; a boundary (kind switch,
+ * tool call start, turn end) flushes the buffer as a complete message. Every
+ * token is also surfaced as a `delta` event for live streaming.
+ */
+export class AcpSessionTranslator {
+  private pendingText = "";
+  private pendingThinking = "";
+  private tools = new Map<string, ToolState>();
+
+  translate(update: AcpSessionUpdate | Record<string, unknown>): AcpTranslationEvent[] {
+    const kind = (update as { sessionUpdate?: unknown }).sessionUpdate;
+    switch (kind) {
+      case "agent_message_chunk": {
+        const text = (update as AcpAgentMessageChunk).content?.text ?? "";
+        if (!text) return [];
+        const events = this.flushThinking();
+        this.pendingText += text;
+        events.push({ kind: "delta", deltaType: "text", text });
+        return events;
+      }
+      case "agent_thought_chunk": {
+        const text = (update as AcpAgentThoughtChunk).content?.text ?? "";
+        if (!text) return [];
+        const events = this.flushText();
+        this.pendingThinking += text;
+        events.push({ kind: "delta", deltaType: "thinking", text });
+        return events;
+      }
+      case "tool_call":
+        return this.onToolCallStart(update as AcpToolCallStart);
+      case "tool_call_update":
+        return this.onToolCallUpdate(update as AcpToolCallUpdate);
+      case "available_commands_update":
+        return [{
+          kind: "commands",
+          commands: (update as AcpAvailableCommandsUpdate).availableCommands ?? [],
+        }];
+      case "user_message_chunk":
+        // History replay from `session/load` — Pneuma rehydrates chat history
+        // from its own history.json, so replayed prompts are dropped.
+        return [];
+      case "config_option_update":
+        return [{
+          kind: "config",
+          configOptions: (update as AcpConfigOptionUpdate).configOptions ?? [],
+        }];
+      default:
+        return [{ kind: "unknown", sessionUpdate: String(kind) }];
+    }
+  }
+
+  /**
+   * Turn boundary — `session/prompt` resolved. Flushes any buffered text /
+   * thinking so nothing is lost when the turn ends mid-buffer.
+   */
+  endTurn(): AcpTranslationEvent[] {
+    return [...this.flushThinking(), ...this.flushText()];
+  }
+
+  /** Look up the real tool name for a toolCallId (used for permission cards). */
+  toolName(toolCallId: string): string | undefined {
+    return this.tools.get(toolCallId)?.name;
+  }
+
+  // ── internals ──────────────────────────────────────────────────────────────
+
+  private onToolCallStart(update: AcpToolCallStart): AcpTranslationEvent[] {
+    const events = [...this.flushThinking(), ...this.flushText()];
+    this.tools.set(update.toolCallId, {
+      name: update.title || "tool",
+      emittedUse: false,
+      settled: false,
+    });
+    return events;
+  }
+
+  private onToolCallUpdate(update: AcpToolCallUpdate): AcpTranslationEvent[] {
+    let tool = this.tools.get(update.toolCallId);
+    if (!tool) {
+      // Update for a tool we never saw start (shouldn't happen; be tolerant).
+      tool = { name: update.title || "tool", emittedUse: false, settled: false };
+      this.tools.set(update.toolCallId, tool);
+    }
+    if (tool.settled) return [];
+
+    const events: AcpTranslationEvent[] = [];
+
+    // Structured input arrived → emit the tool_use block exactly once. The
+    // earlier partial-JSON streaming frames are deliberately not parsed.
+    if (!tool.emittedUse && update.rawInput && typeof update.rawInput === "object") {
+      tool.emittedUse = true;
+      events.push(...this.flushThinking(), ...this.flushText());
+      events.push({
+        kind: "message",
+        message: {
+          type: "assistant",
+          content: [{
+            type: "tool_use",
+            id: update.toolCallId,
+            name: tool.name,
+            input: update.rawInput,
+          }],
+        },
+      });
+    }
+
+    if (update.status === "completed" || update.status === "failed") {
+      tool.settled = true;
+      // Auto-approved tools can theoretically settle without ever carrying
+      // rawInput; emit an input-less tool_use so the result has a pair.
+      if (!tool.emittedUse) {
+        tool.emittedUse = true;
+        events.push(...this.flushThinking(), ...this.flushText());
+        events.push({
+          kind: "message",
+          message: {
+            type: "assistant",
+            content: [{ type: "tool_use", id: update.toolCallId, name: tool.name, input: {} }],
+          },
+        });
+      }
+      const resultBlock: PneumaToolResultBlock = {
+        type: "tool_result",
+        tool_use_id: update.toolCallId,
+        content: stringifyRawOutput(update.rawOutput, update.content),
+      };
+      if (update.status === "failed") resultBlock.is_error = true;
+      events.push({ kind: "message", message: { type: "user", content: [resultBlock] } });
+      return events;
+    }
+
+    // Still pending / in_progress (argument streaming or execution).
+    events.push({ kind: "tool-progress", toolCallId: update.toolCallId, toolName: tool.name });
+    return events;
+  }
+
+  private flushText(): AcpTranslationEvent[] {
+    if (this.pendingText.trim().length === 0) {
+      this.pendingText = "";
+      return [];
+    }
+    const text = this.pendingText;
+    this.pendingText = "";
+    return [{
+      kind: "message",
+      message: { type: "assistant", content: [{ type: "text", text }] },
+    }];
+  }
+
+  private flushThinking(): AcpTranslationEvent[] {
+    if (this.pendingThinking.trim().length === 0) {
+      this.pendingThinking = "";
+      return [];
+    }
+    const thinking = this.pendingThinking;
+    this.pendingThinking = "";
+    return [{
+      kind: "message",
+      message: { type: "assistant", content: [{ type: "thinking", thinking }] },
+    }];
+  }
 }

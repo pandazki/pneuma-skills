@@ -21,8 +21,9 @@ describe("kimi-cli backend registration", () => {
     expect(caps).toEqual({
       streaming: true,
       resume: true,
-      permissions: false,
-      toolProgress: false,
+      // ACP delivers a first-class permission round trip and tool progress.
+      permissions: true,
+      toolProgress: true,
       modelSwitch: true,
     });
   });
@@ -79,7 +80,7 @@ describe("module registry", () => {
     expect(getBackendModule("codex").skillsDir).toBe(".agents/skills");
     expect(getBackendModule("codex").instructionsFile).toBe("AGENTS.md");
 
-    expect(getBackendModule("kimi-cli").skillsDir).toBe(".kimi/skills");
+    expect(getBackendModule("kimi-cli").skillsDir).toBe(".kimi-code/skills");
     expect(getBackendModule("kimi-cli").instructionsFile).toBe("AGENTS.md");
   });
 
