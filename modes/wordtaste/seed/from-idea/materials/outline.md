@@ -1,56 +1,33 @@
-# 写作大纲 / Outline
+# 写作素材 / Writing brief
 
-> 这不是一份要填满的表格 —— 是几个帮你把脑子里那团东西先说清楚的问题。
-> This isn't a form to fill out — it's a few questions to get the thing in your head onto the page.
-> 想到哪写到哪，留白也没关系；WordTaste 会拿着这些去写第一稿，写完你再点着改。
-> Answer loosely, leave gaps if you want; WordTaste writes the first draft from this, then you point and refine.
+> 不用填满。想到哪写到哪，留白也没关系。WordTaste 会先把这些整理成一份很松的文章走向，再把真正需要你拍板的论点摆出来。
+>
+> You do not need to fill every section. WordTaste first turns this into a loose movement, then shows only the claims that need your decision.
 
----
+## 这篇文章要完成什么
 
-## 我到底想说的那一件事
-*If the reader forgets everything else, what's the one thing they should walk away with?*
-*整篇文章如果只能留下一句话，是哪句？先用大白话写下来，别急着写漂亮。*
+*读完以后，读者应该多明白什么、少误会什么，或者愿意做什么？先用大白话说。*
 
 > （在这里写……）
 
----
+## 写给谁，放在哪
 
-## 写给谁 / 放在哪
-*Who is this for, and where will it live?* —— 朋友圈随笔？技术博客？给同事的一封长信？给一年后的自己？
-*读者是谁、他们已经知道什么、不知道什么，决定了你能省掉哪些铺垫。*
+*读者是谁？他们已经知道什么？这是博客、公众号、内部长信，还是别的场景？*
 
 > （在这里写……）
 
----
+## 现在手里有哪些材料
 
-## 2–3 个承重的点
-*The 2–3 load-bearing points — the beams the whole thing rests on.*
-*只列最重要的那两三个，每个一句话。不是提纲分点，是「砸下去最重的锤」在哪。其余的让它们围着这几点长。*
+*事实、案例、观察、数据、引用、亲身经历，想到什么就放什么。*
 
-1. 
-2. 
-3. 
+-
 
----
+## 哪些意思绝对不能写错
 
-## 一个具体的入口
-*One concrete way in — a scene, a moment, a small annoyance, a real example.*
-*别从「真正的问题不是…而是…」这种大词开门。从一件具体、不戏剧化的小事进去，文章会立刻有人味。*
+*必须保留的事实、边界和带条件的判断。WordTaste 会把它们整理进 `materials/kernel.md`。*
 
-> （在这里写……）
+-
 
----
+## 有没有一两篇自己的文字可以参考
 
-## 语气 / 姿态
-*Tone & posture.* —— 自白式、克制、犀利、温和、半开玩笑？你想让读者觉得「这是一个在现场、会犹豫的人」，还是「一个站讲台分点论述的人」？
-*一两个形容词就够；也可以直接说「像我平时跟人聊这个话题的样子」。*
-
-> （在这里写……）
-
----
-
-## 不想要的 / 雷区（可选）
-*What to avoid (optional).* —— 有没有你一看就反感的写法？（金句收尾、小标题报幕、「不是 X 是 Y」的对偶、工整比喻……）
-*如果说不上来也没关系 —— WordTaste 会在你看草稿、点「这句太 AI」的时候慢慢学到。*
-
-> （在这里写……）
+*可选。把你写过、并且觉得「这像我」的文字放进 `materials/voice/`。系统只学呼吸、姿态和句法，不照搬内容。*

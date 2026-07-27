@@ -4,7 +4,7 @@ export const meta = {
     'Distill a writing session into sharper taste artifacts (GEPA-style, no weights touched): gather the trajectory → fan out cross-family reflectors → Pareto-validate candidate rubrics against the user’s PAST verdicts (anti reflection-drift) → return the synthesized taste-profile + recipe + prefs/swaps guidance for the agent to write. Degrades gracefully to reflect-only when fewer than 2 past verdicts exist (single trajectory).',
   phases: [
     { title: 'Gather', detail: 'one subagent reads the full trajectory: taste-profile.md + prefs.log.jsonl + examples/positive + swaps.jsonl' },
-    { title: 'Reflect', detail: '≥2 cross-family reflectors (Claude/Agent + codex via run_codex.sh; gemini if present) each propose a sharper rubric / voice signature / generation recipe' },
+    { title: 'Reflect', detail: 'two isolated reflectors, reached through neutral leaf roles, each propose a sharper rubric / voice signature / generation recipe' },
     { title: 'Validate', detail: 'Pareto-select: a blind judge scores each candidate by how well it reproduces the user’s past verdicts; survivors are the non-dominated ones (skipped when n<2)' },
     { title: 'Commit', detail: 'synthesize the surviving candidates into one updated taste-profile + recipe + appended prefs/swaps guidance, returned as structured data for the agent to write' },
   ],
@@ -43,9 +43,8 @@ export const meta = {
  *     args: { contentType, language, trajectory, reflectors, contentSetLabel }
  *   })
  *
- * When the Workflow tool is absent (Codex / Kimi orchestrators), the SKILL.md
- * must fall back to a MANUAL fan-out: shell out >=2 cross-family reflectors
- * with run_codex.sh / run_gemini.sh, then eyeball the verdict-reproduction
+ * When the Workflow tool is absent, the SKILL.md must fall back to a MANUAL
+ * two-role pass through run_leaf.sh, then perform the verdict-reproduction
  * check by hand. This script is the automated path; the prompts below are the
  * source of truth the manual fallback should paraphrase.
  *
@@ -60,10 +59,10 @@ export const meta = {
  *     positives?: Array<{ name: string, text: string }>,  // accepted / voice-anchor texts (examples/positive)
  *   },
  *   reflectors?: Array<{             // which cross-family reflectors to run (>=2). Defaults below.
- *     family: string,                // "claude" | "codex" | "gemini"
+ *     family: string,                // "claude" | "codex"
  *     available?: boolean,           // from .pneuma/cross-family.json; absent families are dropped
  *   }>,
- *   maxReflectors?: number,          // cap (default 3)
+ *   maxReflectors?: number,          // cap (default 2)
  * }
  *
  * Returns: {
@@ -87,14 +86,13 @@ const contentType = (A.contentType && String(A.contentType)) || 'general'
 const contentSetLabel = A.contentSetLabel ? String(A.contentSetLabel) : 'this writing project'
 const trajectoryIn = A.trajectory || {}
 const language = A.language || trajectoryIn.language || 'the user’s working language'
-const maxReflectors = Number.isInteger(A.maxReflectors) ? A.maxReflectors : 3
+const maxReflectors = Number.isInteger(A.maxReflectors) ? A.maxReflectors : 2
 
-// Default reflector roster — Claude (in-process Agent, isolated fresh context)
-// + codex (the validated 2-family minimum) + gemini (neutral third when present).
+// Default reflector roster — Claude Code + Codex (the validated two-family
+// minimum). Both family calls use clean CLI wrappers.
 const REFLECTOR_DEFAULTS = [
   { family: 'claude', available: true },
   { family: 'codex', available: true },
-  { family: 'gemini', available: true },
 ]
 const reflectorRoster = (Array.isArray(A.reflectors) && A.reflectors.length
   ? A.reflectors
@@ -202,22 +200,20 @@ function trajectoryBlock(t) {
   return parts.length ? parts.join('\n\n---\n\n') : '(no trajectory text provided — ask the agent to gather it)'
 }
 
-// The reflector prompt. `family` steers whether the leaf does the reflection
-// itself (claude/Agent — naturally an isolated fresh context) or shells out to
-// the other family's CLI via the wordtaste-owned scripts (codex/gemini). The
-// workflow is a pure coordinator: the leaf agent owns the Bun.spawn.
+// The reflector prompt. The workflow leaf shells out through the neutral
+// wordtaste-owned router. The workflow remains a pure coordinator; the leaf
+// agent owns the Bun.spawn.
 function reflectPrompt(family, trajText) {
-  const crossFamilyInstruction =
-    family === 'claude'
-      ? `You ARE the reflector (Claude family) — reflect directly. You have a fresh context; read the entire trajectory before answering.`
-      : `Reflect via the ${family} family to escape your own model's RLHF attractor basin. Write the prompt below to a temp file and shell out:\n` +
-        `  - codex: run \`bash <skillDir>/scripts/run_codex.sh <promptfile>\` (wraps codex exec --skip-git-repo-check)\n` +
-        `  - gemini: run \`bash <skillDir>/scripts/run_gemini.sh <promptfile>\` (gemini non-interactive)\n` +
-        `Then return THAT family's answer, normalized into the schema. If the CLI is missing or errors, say so in \`notes\` and fall back to reflecting yourself.`
+  const role = family === 'claude' ? 'checker' : 'writer'
+  const isolatedInstruction =
+    `Reflect in a clean context. Write the prompt below to a temp file, run ` +
+    `\`bash <skillDir>/scripts/run_leaf.sh ${role} <promptfile>\`, redirect stdout to a staging file, then return ` +
+    `that answer normalized into the schema. If the isolated process is unavailable or errors, report it in ` +
+    `\`notes\`; do not expose adapter provenance.`
 
   return `You are a REFLECTOR distilling a finished wordtaste writing session for ${contentSetLabel} (content-type: ${contentType}).
 
-${crossFamilyInstruction}
+${isolatedInstruction}
 
 Read the full trajectory below. Answer the one GEPA question:
 "What sharper rubric / voice signature / generation recipe would make the generator hit the version the user ACCEPTED on the first try — flattening the disruption ladder?"
@@ -229,7 +225,7 @@ Produce three things:
 1. rubricDelta: concrete sharpenings to the symptom rubric (better tells, phrase templates, merges/splits, new symptoms). Each as { id?, change, why }.
 2. recipe: an operational, inject-and-go generation recipe for ${contentType} (markdown) that targets the accepted quality directly. Fold in any structural-disruption + readability constraints the trajectory revealed.
 3. voiceSignature: 2-5 bullets naming the user's voice floor (breathing/hedging habits, metaphor style, structural preferences) AND the AI-symptoms they reject hardest.
-Plus: collectNext (what symbol-layer material to mine next), notes (caveats, family used).
+Plus: collectNext (what symbol-layer material to mine next), notes (execution caveats).
 
 ${RULES}
 
@@ -414,8 +410,8 @@ const reflections = await parallel(
     agent(reflectPrompt(r.family, trajText), {
       schema: REFLECTION_SCHEMA,
       phase: 'Reflect',
-      // claude reflects in-process via an isolated Agent subagent; codex/gemini
-      // are reached by the leaf shelling out, so no special model override here.
+      // The leaf reaches Claude Code or Codex through the clean wrapper, so no
+      // special model override is needed here.
       label: `reflect:${r.family || i}`,
     }).then((res) => (res ? { family: r.family, ...res } : null)),
   ),

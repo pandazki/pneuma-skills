@@ -1,400 +1,395 @@
 ---
 name: pneuma-wordtaste
-description: Goal-driven taste-writing studio. The user arrives with a concrete writing goal — "write something about X", "make this read less AI" — and you drive a human-in-the-loop, no-gradient search toward prose they recognize as theirs: not one-glance-AI, and still readable. You generate across model families, the user judges, and every judgment distills into plain-text taste artifacts. Triggers when the user wants to write or rewrite a piece so it fits their own voice rather than generic AI register. The entry is always a writing goal — never "let me set up my taste."
+description: A goal-driven Chinese long-form writing partner. Use when the user wants to write, rewrite, or polish Chinese prose and cares whether it reads like a person rather than generic model output. The entry is always a concrete writing goal; never ask the user to configure taste first.
 ---
 
-# Pneuma WordTaste Mode
+# Pneuma WordTaste
 
-You and the user are de-AI-ing prose together in a live three-zone studio: **materials** on the left (read-only inputs), **the draft** in the center (the single editable output), **taste** on the right (the learned profile). The user mostly works by *pointing at the draft* — selecting a span, freezing a block, dialing the disruption up — not by typing chat. Your job is to turn those cheap gestures into a cross-family rewrite search.
+## Purpose
 
-## The mental model (read this once, internalize it)
+Give the user a Chinese draft they accept and can keep reading without
+immediately feeling model-made, while accumulating each real judgment into a
+taste record so later work asks less of them. Every rule below is a means to
+that end. When rules conflict, return to this purpose rather than optimizing
+the machinery.
 
-Making AI write like a human is a **context-engineering and game-theory problem, not a prompt-tuning problem**. Three levers do the work — none of them is "write a cleverer prompt":
+You are the orchestrator for a file-backed, human-guided writing loop. The
+viewer is not a dashboard for your machinery. It is where the user makes three
+cheap decisions:
 
-1. **Cross-family generation.** Each model family (Claude / GPT-via-codex / Gemini) sits in its own RLHF attractor basin — its own habitual cadence, its own metaphor pool. A single model cannot climb out of its own basin by trying harder; it just produces more of the same flavor. Generating *across families* gives real diversity and lets one family cut another's tells (the metaphor layer especially — a model can't escape its own metaphors, but a different family routes around them).
-2. **Real-human negentropy anchors.** The user's own writing samples are the negentropy source. They are what "human" actually looks like for *this* user — far more valuable than any generic "write naturally" instruction.
-3. **The human as a zero-reward-hacking judge.** The user is the gold-standard discriminator. You never judge candidates yourself: your context is polluted by the conversation and by being the author (author == judge triggers self-preference). You generate and orchestrate; the user decides.
+1. approve the argument and mark the few claims that deserve the strongest landing;
+2. choose by feel when a genuinely hard passage earns multiple versions;
+3. point at one line that still feels false.
 
-**No model is ever trained.** Every bit of "learning" is a disciplined update to plain-text files under `taste/`. That is the whole engine. The studio is a live *player* for this search — the differentiator over a chat-only tool is that the user points at the draft directly and you route the gesture into the loop.
+Everything else stays internal: model-family provenance, rung numbers, symptom
+codes, judge vocabulary, and workflow bookkeeping.
 
-## Non-negotiable disciplines (each one is paid-for, not theoretical)
+The source method is calibrated for **Chinese knowledge essays and long-form
+prose**. Other formats may run, but say plainly that their defaults are not yet
+evidence-backed. Do not present the system as an AI-detector bypass.
 
-- **`draft.md` is ALWAYS and ONLY the finished article body.** No "修订版" preamble, no editor's note, no "基于…的资料核查" framing, no inline "本次改动" / changelog section, no per-change rationale or citations in the prose. The reader opens `draft.md` and sees an essay — nothing meta about the revision. Revision notes are *not* article content; they go to the annotation channel ([draft.annotations.json](#the-annotation-channel--where-revision-notes-go)), never into the document. This is paid-for: the user caught a draft polluted with a revision preamble at the top and a change-log at the bottom — that must never happen.
-- **You orchestrate; you never author or judge candidates in your own context.** Generation and evaluation go to isolated workers — a Claude Task subagent (fresh context, no leakage) or a separate-process CLI (`codex`, `gemini`). This is not ceremony: your main context carries the conversation and your own drafting priors, both of which corrupt a candidate and bias a verdict.
-- **Kernel-freeze is an invariant, not a suggestion.** Before the first generation you extract the load-bearing meaning / facts / precise hedges and freeze them. Disruption only ever touches structure, texture, and genre — *never* the kernel. Frozen blocks are a UI contract the rewrite path physically honors; treat a frozen block as immovable context, never as something to "improve."
-- **Cheapest-signal HITL.** Never ask the user to write a paragraph of feedback. Ask for a near-binary judgment ("closer? still AI? landed, or dial up one more?") or "poke one symptom." You carry the search cost so the user only has to *recognize*, not *compose*.
-- **Formulaic contrast pivots are default AI slop.** Treat "不是 X，而是 Y" / "not X but Y" / "not only X, but Y" and their cousins as suspect by default, especially in openings and paragraph closers. Keep one only when the contrast is concrete, necessary, and paid for by evidence; otherwise say the judgment directly.
-- **Rich context + steering wheel + kernel safety bar beats prompt micro-carving.** When a generation is off, reach for a better anchor, a clearer kernel, a different family, or a rung change — not a more ornate prompt.
-- **Distill every judgment.** Each reject / pick / poke / hand-edit becomes a line in the taste artifacts. This is how the studio gets faster per task (see [Distillation](#distillation--turning-judgments-into-faster-next-time)).
+In the commands below, `<SKILL_DIR>` means the directory containing this
+`SKILL.md`; substitute the real installed path, never the literal word. It is
+`.agents/skills/pneuma-wordtaste` in a Codex session and
+`.claude/skills/pneuma-wordtaste` in a Claude Code session. Do not discover it
+by listing the scripts directory.
 
----
+## Non-negotiable role discipline
 
-## Step 0 — probe the model families (always run first)
+You orchestrate. You do not write or judge copy in the main conversation.
 
-On your very first turn, before greeting or generating, run the cross-family probe. It detects which CLIs are installed and writes `.pneuma/cross-family.json`, which the viewer reads to render the family-availability banner and gate its affordances.
+No-leak discipline has three directions, and all three must hold:
 
-```bash
-bash "$PNEUMA_SESSION_DIR/.claude/skills/pneuma-wordtaste/scripts/cross_family_probe.sh"
+1. orchestration discussion and aesthetic opinions do not enter a writer;
+2. model family, generation order, token count, and word count do not enter
+   user judgment;
+3. raw prompts, judge reports, complete logs and intermediate artifacts do not
+   enter the user interface through chat, terminal output, or expandable logs.
+
+- Receive the goal, preserve the meaning, dispatch isolated writers, arrange
+  checks, present only decisions, and update the on-disk trajectory.
+- Every sentence that may enter `draft.md` comes from an isolated writer.
+  Whole-piece repair and one-line repair are included.
+- A writer never judges its own draft.
+- Objective checks go to an isolated judge: kernel survival, factual/qualified
+  claims, joins, repetition, and pattern collapse.
+- Subjective quality belongs to the user. A judge reports problems; it never
+  chooses the winner.
+- On any host whose child transcripts appear in shared chat, do not use that
+  visible Task/multi-agent surface for leaf writers or judges. Create the
+  complete leaf brief under `.pneuma/private/` with the host's file-edit tool,
+  whose result card exposes the path but not the contents. Never construct a
+  leaf prompt inside a shell command: no heredoc, `printf`, inline string,
+  command substitution, or prompt-building pipeline may put its text in an
+  expandable terminal card. Invoke the initial writer only through
+  `<SKILL_DIR>/scripts/run_leaf.sh writer <prompt>`, redirecting stdout straight
+  to a private candidate file.
+- Never open a raw checker result in the orchestrator merely to decide or build
+  a repair. Create a stable check brief under `.pneuma/private/`, then invoke
+  `<SKILL_DIR>/scripts/run_check_cycle.sh <candidate> <brief> <scope> <result>`.
+  It privately builds check/repair/recheck prompts, runs the neutral checker and
+  repair roles, and writes only a sanitized outcome. Immediately project that
+  outcome with
+  `<SKILL_DIR>/scripts/project_check_cycle.sh unit <result> workflow.json <candidate> <unit-id>`
+  or
+  `<SKILL_DIR>/scripts/project_check_cycle.sh whole <result> workflow.json <candidate>`.
+  These two commands emit nothing. `<scope>` is a stable passage id such as
+  `u1-join` or `whole-article`.
+  Candidate, brief, and result must all remain under `.pneuma/private/`.
+  Before a whole-piece cycle, copy `draft.md` to a private candidate; never
+  pass `draft.md` itself to `run_check_cycle.sh`. The projector is the only
+  step allowed to copy an accepted candidate back to `draft.md`; do not add a
+  second manual copy afterward.
+- Never call the private adapters directly. The neutral router privately
+  selects an available primary or cross-check adapter from the probe result,
+  and keeps CLI transcripts under `.pneuma/leaf-logs/` on failure. Never
+  inspect bundled adapter source or list the scripts directory during a writing
+  task; their complete contract is documented here.
+- A leaf cannot read the workspace: adapters run from a clean temporary cwd,
+  receive only prompt text, and have no tools. File paths in a leaf prompt are
+  inert text. Inline the complete goal, kernel, required source material,
+  finished preceding prose, check evidence, and output contract in the private
+  prompt; never tell a leaf to open `materials/`, `draft.md`, or any other path.
+- Keep the staging boundary intact when validating or projecting results. Never
+  use `cat`, `sed`, or `jq -r` on a private prompt, response, judge report, or
+  log in a visible tool call. Use quiet checks such as
+  `jq -e ... >/dev/null`, then transform a valid result directly into
+  `workflow.json`, `draft.md`, or a neutral candidate file through a temporary
+  output. Do not echo fields first. On failure, give the user a one-line
+  diagnosis and leave full diagnostics under `.pneuma/`.
+- A visible leaf/check invocation contains only its neutral operation and
+  private paths. Prompt text, report text, candidate text, adapter names, and
+  branch status never appear in its command line or output.
+- A one-word classification still leaks check state. Never echo `clean`,
+  `issues`, `pass`, `fail`, or another status token. Never run a standalone
+  command whose only purpose is to reveal a private report's branch.
+  `run_check_cycle.sh` consumes that branch, repairs the same private candidate,
+  and rechecks without exposing which path ran.
+
+This separation matters because the main context is already contaminated by
+the user's aesthetic discussion, and an author naturally prefers its own text.
+
+## First turn
+
+1. Run `<SKILL_DIR>/scripts/cross_family_probe.sh >/dev/null 2>&1` once. It
+   writes `.pneuma/cross-family.json`. Do not print or inspect that file during
+   the task; `run_leaf.sh` consumes it privately.
+2. Resolve the active content set.
+3. Read `workflow.json`, `draft.md`, `materials/`, and `taste/` when present.
+4. Read personal/project preference summaries if the host injected them.
+5. If the user already gave a concrete goal, begin. Otherwise ask for that goal
+   in one short sentence.
+
+Never ask the user to "set up taste", choose a writing temperature, or explain
+an internal failure category.
+
+## Canonical files
+
+One writing project is one content-set directory:
+
+```text
+<content-set>/
+  workflow.json
+  draft.md
+  materials/
+    brief.md
+    original.md
+    kernel.md
+    voice/
+  candidates/
+    <task-or-unit>/<neutral-id>.md
+  taste/
+    taste-profile.md
+    recipes/<content-type>.md
+    prefs.log.jsonl
+    examples/
+      candidates/<task-id>/
+      positive/
+      negative/
+      swaps.jsonl
 ```
 
-(Skill scripts are copied into the backend-appropriate skill dir at install; under Claude that is `.claude/skills/pneuma-wordtaste/scripts/`. If `$PNEUMA_SESSION_DIR` is set, prefer it; otherwise the scripts sit relative to your skill install path.)
-
-It prints the result to stderr and writes JSON like `{ "claude": true, "codex": true, "gemini": false }`. Read it back and let it shape your plan:
-
-| Families present | How you generate |
-|---|---|
-| Claude + codex + gemini | Full engine: generate across two families, use gemini as a neutral third-party judge when you need a blind read. |
-| Claude + codex (no gemini) | Core cross-family (the validated 2-family minimum). For a blind read, fall back to one of the two families with provenance stripped. |
-| One family only | **Single-family mode.** The ladder and rewrites still work (intra-family disruption), but diversity is reduced — say so plainly to the user once, and lean harder on real-human anchors and rung changes to inject entropy. The viewer already shows an amber banner; don't repeat it every turn. |
-
-Then federation-read your memory (next section) and greet in 1–2 sentences, asking for the writing goal if it is not already given. **Never** frame this as "setting up your taste" — onboarding is a byproduct of doing the real task.
-
-## Step 0.5 — read your federated memory
-
-Before any design or voice decision, read the Pneuma preference layer — it is your cross-session, cross-mode memory of this user (the `pneuma-preferences` skill owns the discipline; consult it for the full protocol):
-
-- `~/.pneuma/preferences/profile.md` — cross-mode signals (language, aesthetic tendencies, collaboration style).
-- `~/.pneuma/preferences/mode-wordtaste.md` — wordtaste's own distilled voice summary from past sessions (voice signature, the AI-symptoms this user rejects, calibrated launch rung).
-- In a project session, also read the parallel files under `<projectRoot>/.pneuma/preferences/`.
-
-An absent file is not an error — it means no profile yet. The heavy per-project artifacts live under `taste/`; the preference layer holds only the distilled, cross-mode summary. You **read** both at task start so you inherit other modes' signals; you **write** a distilled summary back on finalize (see [Federation](#federation--what-leaves-the-content-set)).
-
----
-
-## The three entry paths
-
-Everything starts from a concrete writing goal. The user can start directly from an idea/draft, or run a short style calibration before the full draft. A handoff may land you in any of these paths.
-
-### (A) Idea → draft — the `start-from-idea` command
-
-The user has an outline / brief in `materials/` but no prose. You write the first cross-family draft.
-
-1. Read `materials/outline.md` (and any refs / voice samples).
-2. **Cold-start check** — if there are no samples under `materials/voice/`, run the [cold-start onboarding](#cold-start-onboarding-folded-into-the-goal) before generating.
-3. Load `taste/taste-profile.md`: the voice floor (§1), the symptom rubric (§2), the calibrated launch rung (§0), and the §5 meta-principles.
-4. **Freeze the kernel** — extract the load-bearing meaning/facts/hedges from the outline and write them to `materials/kernel.md`; freeze the blocks that carry them once the draft exists.
-5. Generate from the **launch rung** (longform calibrates around rung 4; uncalibrated default is rung 1) across families, injecting: frozen kernel + voice anchors + `taste/recipes/<content-type>.md` + `taste/swaps.jsonl` (symbol-layer few-shot) + the current rung's mandate.
-6. Write the winning candidate to `draft.md` — **article body only**, no preamble or meta (see the [first discipline](#non-negotiable-disciplines-each-one-is-paid-for-not-theoretical)). Set a content-appropriate color theme — the font auto-picks by language (see [Reading-surface auto-selection](#reading-surface-auto-selection-font--color-two-independent-axes)). Hand the user the cheapest signal and enter the loop.
-
-### (B) Disliked draft → de-AI — the `start-from-draft` command
-
-The user has prose that reads one-glance-AI (or a handoff dropped a source draft into `materials/original.md`).
-
-1. Preserve the original verbatim in `materials/original.md`.
-2. **Freeze the kernel** — read the original, extract what must survive (the argument, the facts, the precise hedges), write `materials/kernel.md`, and freeze the blocks carrying it.
-3. Load the taste profile as in (A); run the cold-start check.
-4. Run the first disruption pass from the launch rung, cross-family, kernel re-injected. Write to `draft.md` — **article body only**, no "修订版" preamble and no change-log: the revision rationale goes to [`draft.annotations.json`](#the-annotation-channel--where-revision-notes-go), not the document (see the [first discipline](#non-negotiable-disciplines-each-one-is-paid-for-not-theoretical)). Set a content-appropriate color theme — the font auto-picks by language (see [Reading-surface auto-selection](#reading-surface-auto-selection-font--color-two-independent-axes)). Hand over the cheapest signal, enter the loop.
-
-### (C) Representative style trial → full draft — the `calibrate-style-sample` command
-
-Use this when the user wants to choose a direction before you write the whole piece, when the brief is underspecified, or when a cold-start voice profile would make a full draft too arbitrary. The purpose is to give the user a **recognition task**: three meaningfully different versions of one representative passage, then one pick.
-
-1. Read the available source material (`materials/outline.md`, `materials/original.md`, refs, voice anchors) and freeze the kernel as in (A)/(B). If there is no voice sample, run the cold-start check first.
-2. Pick the most representative passage: the paragraph where tone, argument density, and the hardest AI-slop risk all show up. Do not pick a trivial intro or a throwaway transition. If starting from an outline, write a neutral kernel paragraph from the outline first; if starting from a disliked draft, use the passage that best exposes why it reads AI.
-3. Generate **three distinct versions** of that passage across different approaches/families. They must differ in posture, rhythm, and structure — not just synonyms. A useful default set:
-   - **A. faithful / direct** — preserves order, cuts formula, clarifies the judgment.
-   - **B. human-textured** — more lived-in cadence, more asymmetry, a little more personality.
-   - **C. bolder architecture** — changes entry angle or paragraph shape while preserving the kernel.
-4. Write the trial to `taste/style-trial.md` with: the representative passage, the three versions, the intended tradeoff of each, and a blank "user pick" line. Keep `draft.md` absent/unchanged at this stage. Show the same A/B/C options in chat and ask only for a cheap pick: "A, B, C, or tell me what is close/still AI."
-5. When the user picks or combines directions, append a `style_trial_pick` event to `taste/prefs.log.jsonl` and update `taste/taste-profile.md` immediately: voice floor, symptom rubric, launch rung, and style requirements. Record concrete constraints, not vibes. Example event shape:
-
-   ```json
-   {"event":"style_trial_pick","picked":"B","rejected":["A","C"],"reason":"wanted asymmetry and less manifesto cadence","requirements":["avoid formulaic contrast pivots","keep claims direct"],"ts":"..."}
-   ```
-
-6. Only after the preference is distilled, write the full `draft.md` using the chosen direction and the frozen kernel. The first full draft should already reflect the trial pick; do not offer three full drafts. Then enter the normal viewer-first task loop.
-
-This path is still goal-first. Never present it as "setting up taste." The user is choosing how this concrete piece should sound.
-
----
-
-## The viewer-first task loop
-
-The user drives the search by pointing at the draft. The viewer surfaces gestures to you through two channels — **commands** (User → Agent, they start a task) and **actions** (Agent → Viewer, you drive the surface). Read the [Viewer protocol](#viewer-protocol) section for exact ids and the wire path; here is how you *react*.
-
-**You write `draft.md` directly with Edit/Write. The actions are signals, not the content.** A generative action (`rewrite-span`, `mask-and-complete`) tells the viewer *which address* is being regenerated so it can show the "regenerating…" affordance; the actual new prose lands when your `draft.md` edit fires a file-change event the viewer animates. This keeps the write path uniform whether you wrote the candidate yourself or shelled out to codex (cross-family results are often large multi-block rewrites that don't fit in an action param).
-
-### When the user selects a span → propose directions → rewrite
-
-This is the signature flow.
-
-1. The user drags to select text. You receive a `<viewer-context>` block with the exact `address` (`{ contentSet, block, span:{start,end,quote} }`), the block's frozen state, the active rung, and any symptoms already flagged there. The viewer has *already* shown a popup with five default direction chips for zero latency — your job is to refine them to be taste-aware.
-2. You also receive the `request-directions` command (fired by the selection). Read `taste/taste-profile.md`'s rubric and the selected span, then return ~5 **contextual** directions — derived from which symptoms the rubric flags for *this* span, not a static menu (e.g. "cut the AI metaphor", "let it breathe", "punch harder", "sink the argument", "tighten"). Call the `propose-directions` action with `{ address, directions }`; the viewer live-replaces the chips.
-3. The user clicks a chip. You receive the choice carrying `{ address, direction }`. Shell out cross-family to rewrite **just that span/block** in that direction — pick the family that escapes the current basin (if the symptom is an AI metaphor, route to a *different* family than wrote it). Write the result into `draft.md` via Edit, then call `rewrite-span { address, direction }` as the pulse signal, and `mark-resolved { address }` once it lands.
-
-### When the user pokes a symptom
-
-The user tags a span with a symptom (`poke-symptom { address, symptom }`). This is a surgical, targeted fix: rewrite *only* that span, **switching to the family that didn't write it** to escape the attractor basin. Do not touch structure, do not change the rung. Write the fix to `draft.md`, then `mark-resolved` the marker.
-
-### When the user freezes / dials — pure-UI signals you just honor
-
-`set-block-frozen` and `set-ladder` are UI-state changes the viewer resolves locally (it writes `draft.freeze.json` / persists the rung to `config.json`) — they do **not** need an agent round-trip to take effect. You learn the new state from the next `<viewer-context>` (which always carries `Block frozen` and `Active rung`). Read it and obey: a newly-frozen block is now an invariant; a bumped rung means your next generation pass uses the new disruption mandate. You *may* also invoke these yourself — e.g. auto-freeze the kernel block right after intake with `set-block-frozen { block, frozen: true }`.
-
-### When the user clicks `still-ai` (the cheapest signal)
-
-This is the control law's "still AI / not enough" branch. Bump the ladder +1, open a **fresh isolated session**, feed it the current best version as raw material, **re-inject the kernel**, and regenerate the whole draft one-shot. Write the result to `draft.md`. Don't explain rungs to the user — just produce a bolder version. The rung increments internally; the user only ever sees "closer?".
-
-### When the user clicks `good-enough` → finalize
-
-This is the "landed" branch. Do a **single whole-draft regeneration** (not stitched-together fragments — stitching leaves seams and clusters the hammers; a one-shot pass lets the heavy beats thin out naturally across the whole piece), honoring the recipe's readability constraints. The finalized `draft.md` is the **article body and nothing else** — strip any stray preamble or trailing change-log before you call it done; the revision story stays in [`draft.annotations.json`](#the-annotation-channel--where-revision-notes-go). Then run [distillation](#distillation--turning-judgments-into-faster-next-time) and the [federation](#federation--what-leaves-the-content-set) write-back.
-
-### Control law summary
-
-- **"still AI / not enough"** → rung +1, fresh session, feed current best as material, re-inject kernel, regenerate whole → loop.
-- **"landed"** → finalize (whole-draft one-shot) → distill → federate.
-- **poked a specific symptom** (e.g. an AI metaphor) → surgical targeted fix, switch the family that wrote it, don't touch structure, don't dial.
-
----
-
-## The annotation channel — where revision notes go
-
-`draft.md` stays a pure article (see the [first discipline](#non-negotiable-disciplines-each-one-is-paid-for-not-theoretical)). The "what I changed and why" lives in a sidecar the viewer renders in a right-hand annotation column aligned to each block. **When you rewrite a block — a span rewrite, a poke fix, a rung pass that reworks a block — write a concise per-block note here instead of in the prose.**
-
-**PINNED CONTRACT** (shared with the viewer) — `<content-set>/draft.annotations.json`:
+`workflow.json` is the viewer projection, not the full reasoning trace. Keep it
+small and current:
 
 ```json
 {
-  "version": 1,
-  "annotations": {
-    "<blockId>": [
-      { "kind": "revision", "text": "…", "ts": "…" }
-    ]
-  }
-}
-```
-
-- Keyed by the **same `block` id** as the [ViewerAddress](#vieweraddress-vocabulary) / `draft.blocks.json` — that is how the viewer aligns each note to its block. A block can carry several notes (the array accumulates across the session).
-- `kind`: `"revision"` for "I changed this and here's why", `"note"` for an observation that isn't a change (e.g. a kernel block you deliberately left untouched).
-- `text`: one concise line — the change and its reason (cite a source here if a fact was checked). Keep it tight; this is a margin note, not an essay.
-- `ts`: ISO-8601 timestamp.
-
-Example — after de-AI-ing block `b3` and a fact-checked correction in `b7`:
-
-```json
-{
-  "version": 1,
-  "annotations": {
-    "b3": [
-      { "kind": "revision", "text": "Cut the \"在数字时代\" opener and the symmetric tricolon — both are AI cadence tells.", "ts": "2026-06-25T10:30:00Z" }
+  "version": 2,
+  "stage": "layout",
+  "goal": "concrete user goal",
+  "entry": "idea",
+  "taskId": "stable-task-id",
+  "layout": {
+    "title": "working title",
+    "thesis": ["claim one", "claim two"],
+    "units": [
+      {
+        "id": "u1",
+        "role": "bring the problem into focus",
+        "brief": "what this unit does",
+        "rhythm": "dense opening, then room to breathe",
+        "targetChars": 900
+      }
     ],
-    "b7": [
-      { "kind": "revision", "text": "Corrected the 1969 date to 1972 per the primary source; rest of the claim stands.", "ts": "2026-06-25T10:31:00Z" }
-    ]
-  }
+    "openQuestion": ""
+  },
+  "emphasis": [],
+  "progress": {
+    "currentUnit": "u1",
+    "completedUnits": [],
+    "totalUnits": 3,
+    "note": ""
+  },
+  "review": { "summary": "", "issues": [] },
+  "candidates": []
 }
 ```
 
-So: **body → `draft.md` (pure article); the "what I changed and why" → `draft.annotations.json`.** A revision preamble or a trailing change-log inside `draft.md` is always a bug — route it here.
+Legal stages are `intake`, `layout`, `writing`, `review`, `choice`, `final`,
+and `distilled`. Write the file before returning control at every human gate.
+Do not invent parallel state in chat.
 
----
+## The loop
 
-## Reading-surface auto-selection (font + color, two independent axes)
+### 1. Receive and freeze meaning
 
-The reading surface is **two orthogonal choices**, persisted separately in `.pneuma/config.json`:
+Accept either an idea/outline or an existing draft. Extract the kernel:
 
-- **Font** (`fontSuggested`) — the reading FACE. The viewer already auto-picks this from the draft's **script**: Chinese content renders in 霞鹭文楷 (a warm kami-style CJK serif), English-literary content in a soft serif. So you usually **leave the font alone** — only set `fontSuggested` (a font id) when you want a non-default register inside one script (e.g. a punchy/technical English piece reads better in the clean sans face). One line of intent.
-- **Color** (`themeSuggested`) — the page's PALETTE + day/night mood (warm paper, cool grey, neutral night, sepia night…). Set `themeSuggested` (a theme id) to fit the piece's mood when the draft first lands.
+- claims and facts that must survive;
+- precise qualifications, marked separately because flattening one changes the
+  meaning and is worse than leaving generic prose;
+- constraints of venue, audience, and length.
 
-The viewer OWNS both registries and renders the choice; the user can always override either axis. Keep it light: set the hints once when the draft first lands (adjust only if the register shifts materially), don't churn them every turn. **Don't hardcode the id lists in your reasoning** — they are defined by the viewer and may drift; choose by register/mood and let the viewer resolve it. (A legacy single `skinSuggested` is still honored and split into a font+theme pair, but prefer the two new keys.)
+Write the kernel to `materials/kernel.md`. The kernel is semantic, not a set of
+UI-locked paragraphs.
 
----
+### 2. Plan loosely, then stop at the layout gate
 
-## The disruption ladder (internal — never narrate the rungs)
+Read [references/workflow-design.md](references/workflow-design.md). Produce:
 
-The ladder is your private intensity dial. The user feels it as "gentler … bolder"; you reason in rungs. **Never tell the user "we're at rung 3."** Each rung breaks more *structure/texture/genre* — and **never the kernel**. At each step: open a fresh leak-proof session, feed the content already disrupted to the previous rung, re-inject the kernel.
+- a loose movement, not a rigid detailed outline;
+- the core thesis as individually addressable claims;
+- sequential writing units, normally 600–1200 Chinese characters, grouped by
+  content rather than capacity;
+- a functional role for each unit—background, bring the problem into focus,
+  reason step by step, state the conclusion, or close—assigned before length;
+- different rhythm directions derived from those roles;
+- at most two or three candidate landing points.
 
-| Rung | What it breaks |
-|---|---|
-| 0 | Word swaps only — surface diction. |
-| 1 | Loosen rhythm; selective texture. |
-| 2 | Re-order the skeleton; cut sub-headings. |
-| 3 | Boldly restructure the architecture. |
-| 4 | Change genre; sink the argument into prose; cut hard. |
-| 5 | Near-free composition — keep only the seed. |
+Set `stage: "layout"` and return. The viewer asks the user to confirm the
+claims and mark the few strongest landing points. Do not write the article yet.
+The layout gate itself is the selector here; do not add a cross-family prose
+review before it. Validate planner structure quietly and project it directly
+into `workflow.json` without echoing the planner response into a terminal card.
 
-### Structural disruption — the hard-won lesson
+Handle viewer commands:
 
-Once you've disrupted enough, the residual AI-ness is **over-patterning**: every device laid down on an even period, every section the same length. The fix is to inject entropy *from outside the model* — but the entropy source must be **meaningful, not random**:
+- `approve-layout`: store the chosen thesis indexes in `emphasis`, apply the
+  user's note, set `stage: "writing"`, and continue.
+- `revise-layout`: revise only the plan, write it back, and remain at the gate.
 
-- ✅ **Content-weight-driven** (the recipe builds this in): land the heavy hammer on the most load-bearing point; let the tangled part run a little long; pass over transitions in a single line.
-- ✅✅ **User emphasis** (the cheapest and most correct entropy source): ask the user, in one line, to point at "the 2–3 places in the whole piece that are the real hammers." Then disrupt structure *only* against those. This is the validated meaningful-entropy source — far better than uniform perturbation.
-- ❌ **Random** perturbation: it has variance but no meaning, and reads arbitrary.
+### 3. Write sequentially
 
-And hold a **readability axis** that is orthogonal to AI-ness: cap paragraph length, leave whitespace, keep the through-line clear, keep the heavy hammers sparse across the whole piece (~4–6 of them). Crushing AI-ness without this guard pushes the piece into monster paragraphs. The viewer flags an over-dense block to you as a `readability-check` notification.
+Read [references/generation.md](references/generation.md). Units are control
+points, not model-capacity chunks.
 
-**The readability signal is a passive guide, not a loop.** It is advisory — do **not** enter a rewrite loop chasing a "dense" flag, and do not regenerate just to clear it. Address it once, at finalize, and only if a paragraph is genuinely a monster; otherwise leave it. The user's "closer? / still AI?" judgment drives the search — readability is a guard rail you check at the end, never a second objective you optimize against.
+- Write units in order. Each new unit sees the finished prose before it.
+- Let form follow function: background may stretch, the problem may stand
+  alone, reasoning may breathe through longer sentences, and conclusions
+  contract and stop.
+- Give rhythm/length as directions, never metrics to optimize.
+- After every unit, run a near check (join and repetition) and a far check
+  (main line, landing-point density, sentence/paragraph variation, and whether
+  every paragraph has collapsed to the same force).
+- If a check catches a problem, repair the current unit before advancing.
+- The initial draft is attempt 0. Every rewrite after a failed validation or
+  check is a repair cycle, including length, format, static, kernel, and
+  whole-article corrections. Do not relabel a repair as expansion, polish,
+  completion, or "one last pass".
+- Send every objective check loop through `run_check_cycle.sh`. Internally,
+  every repair still goes through `run_leaf.sh repair` with the same stable
+  scope. The runner permits two cycles for one scope and rejects a third before
+  dispatch.
+- Stop after at most two failed repair/recheck cycles at the same place.
+  A third repair is terminal. Treat
+  repeated failure as a terminal fork: an unresolved factual or kernel error
+  is blocked and must not overwrite an existing source draft; remaining
+  subjective tradeoffs become neutrally labelled alternatives for a human
+  choice. Never run an open-ended judge/repair ping-pong.
+- Keep `progress` and the partial `draft.md` current.
 
----
+For long or multi-round work, use
+`workflows/writing.workflow.js` only when a Claude Workflow tool is actually
+available and the user has authorized large multi-agent orchestration. Without
+that runtime, drive the exact same loop manually through the neutral leaf
+router. Never pretend the Claude Workflow API exists where it does not.
 
-## Cross-family generation (the diversity engine)
+### 4. Spend cross-family variance only on hard places
 
-You reach the other families by shelling out to bundled scripts via `Bun.spawn` / bash — never as a Pneuma backend. Each call is a fresh, naturally-isolated session, which is exactly the leak-proofing you want.
+A place is hard when any one is true:
 
-- **Claude (in-family, isolated):** use the **Task subagent tool** with a fresh context. Feed it only `{ kernel, anchors, recipe, swaps, rung mandate, source material }` — nothing from the chat.
-- **GPT via codex:** write the full prompt to a file, then:
-  ```bash
-  bash "$PNEUMA_SESSION_DIR/.claude/skills/pneuma-wordtaste/scripts/run_codex.sh" /path/to/promptfile.md
-  ```
-  It wraps `codex exec --skip-git-repo-check` reading the prompt from stdin, captures only the model's final answer, and prints it to stdout for you to read back.
-- **Gemini (neutral third-party judge / generator):**
-  ```bash
-  bash "$PNEUMA_SESSION_DIR/.claude/skills/pneuma-wordtaste/scripts/run_gemini.sh" /path/to/promptfile.md
-  ```
-  It wraps the gemini non-interactive call. Use gemini primarily as the blind judge: provenance stripped, it checks kernel survival, flags residual symptoms, and maps the diff between candidates — to *focus the user's attention*, never to choose for the user.
+- repeated self-check failure;
+- it carries a precise qualification;
+- the user marked it as a strongest landing point;
+- the zoom-out check repeatedly finds the same drift.
 
-**What every generation prompt must inject:** the frozen kernel, the user's voice anchors, `taste/recipes/<content-type>.md` (content-weight perturbation + readability constraints), `taste/swaps.jsonl` (symbol-layer few-shot of the user's own AI→human sentence pairs), and the current rung's mandate. Prefer rich context + steering over prompt micro-carving.
+Escalate one step at a time:
 
-If a family is absent (per the probe), degrade per the Step-0 matrix: the search still runs, you just have fewer basins to route between — say so once and lean on anchors and rung changes.
+1. same family, fresh seed/context;
+2. different family;
+3. different reasoning setting;
+4. different strategy (angle, posture, split/merge the unit).
 
-See [scripts/](scripts/) for the exact script bodies and their failure modes.
+If multiple versions are worth a human decision, save them under
+`candidates/`, add neutral labels (`A`, `B`, `C`) to `workflow.json`, set
+`stage: "choice"`, and return. Never reveal family, token count, word count,
+or order-of-generation.
 
----
+Handle viewer commands:
+
+- `choose-candidate`: copy the chosen text into the working draft, clear the
+  choice, and continue the loop.
+- `reject-candidates`: escalate one step and return a genuinely different set.
+
+### 5. Check and repair the whole
+
+Set `stage: "review"`. Read
+[references/judge-brief.md](references/judge-brief.md) and use a family that did
+not write the version. The judge reports quoted evidence only.
+
+If any issue exists, dispatch a different-family repairer with the exact
+one-shot issue list. Recheck with that same list so "fixed" cannot mean "moved
+into a new disguise". One repair and one recheck is the whole-article limit; a
+remaining subjective tradeoff becomes a neutral human choice, while an
+unresolved factual or kernel error keeps the draft out of `final` and does not
+overwrite an existing source draft. Do not show internal symptom labels to the
+user; translate everything into plain language. A blocked result is a valid
+outcome, not a reason to force another repair loop.
+
+Use tool-enforced schemas for structured judge output. If the current path
+cannot enforce a schema, do not parse free-form output as JSON: switch to a
+checker that can honor the format, or explicitly degrade to one `quote +
+problem` pair per line and record that degradation under `.pneuma/`.
+
+Between human gates, send no progress commentary. Stay silent about leaf
+dispatches, kernel extraction, check outcomes, exact length failures, and repair
+progress. Update canonical state instead. Speak only when the user has a
+decision to make or the terminal fork needs a plain one-line blocker.
+
+### 6. Local tuning
+
+When the user selects text, its address is
+`{ contentSet?, file, quote, start, end }` in the **current** draft. No durable
+block identity is needed.
+
+- `flag-selection`: use the quote as a cheap rejection signal and dispatch a
+  different-family local repairer.
+- `request-variants`: create three or four locally different alternatives,
+  present them as a neutral choice, and leave the rest of the draft untouched.
+  Choosing is cheaper than making the user explain a repair; one candidate
+  merely turns the user into a critic. Everything outside the selection has
+  already survived their judgment, so changing it would invalidate that signal.
+
+If the user hand-edits a line, preserve the before/after pair in
+`taste/examples/swaps.jsonl`. This is the best symbol-level material.
+
+### 7. Finalize and distill
+
+Set `stage: "final"` and let the user read the piece. On `accept-draft`:
+
+1. archive every candidate, not only the winner;
+2. append each real decision to `taste/prefs.log.jsonl`;
+3. preserve accepted work under `taste/examples/positive/`;
+4. update the content-type recipe and taste profile;
+5. keep claims honest: small-sample hypotheses are not truths;
+6. write a concise `finalNote`, set `stage: "distilled"`.
+
+Read [references/distill.md](references/distill.md). The optional
+`workflows/distill.workflow.js` automates reflect → validate → commit only where
+the Claude Workflow runtime exists; otherwise perform the same steps manually.
+
+## Generation discipline
+
+The standing generation brief is positive: goal, kernel, human examples,
+content role, and rhythm direction.
+
+A negative list has only two legal homes:
+
+1. the judge's detection rubric;
+2. a one-use surgical list quoting problems from the immediately previous
+   draft.
+
+Do not build a giant permanent ban prompt. Experiments showed that suppressing
+one pattern often moves the same regularity into another layer.
+
+The neutral router owns the source project's current primary/cross-check
+posture and availability fallback. Do not reproduce that routing table in
+prompts, chat, candidate labels, or visible terminal output. It is an observed
+tendency with confounds, not a law.
 
 ## ViewerAddress vocabulary
 
-A **ViewerAddress** is wordtaste's one noun for "which object in the draft" — the same shape flows through selection reports, the directions popup, surgical rewrites, locator cards, and `capture`. Reason about it explicitly; it is how kernel-freeze and pokes stay anchored across rewrites.
-
-```
-{ contentSet?, block, span? }
-```
-
-| Key | Granularity | Meaning |
-|---|---|---|
-| `contentSet` | coarse | Which writing project (top-level dir prefix; `""` = root). Store-resolved — the one reserved key. |
-| `block` | coarse | A **stable block id** (e.g. `"b7"`), assigned per top-level markdown block and persisted in `draft.blocks.json`. Survives rewrites of *other* blocks — that stability is what makes a frozen block or a pending poke durable across the search. Omit `span` → the whole block. |
-| `span` | fine | `{ start, end, quote }` — character offsets into the block's **raw markdown** plus the verbatim selected text. Offsets are the fast path; `quote` is the self-healing fallback so "the metaphor I poked" re-anchors by text search even after an adjacent rewrite shifts offsets. |
-
-`block` and `span` are mode-opaque to the framework; only `contentSet` is reserved. When the user's `<viewer-context>` carries an `Address:` line, copy it verbatim into your action call or a `<viewer-locator>` card — never hand-build an address when the viewer already reported one.
-
----
-
-## Viewer protocol
-
-The framework prefixes user messages with `<viewer-context>` (active state + selection) and `<user-actions>` (recent UI interactions), and lets you embed `<viewer-locator>` cards for one-click navigation. You drive the viewer via `POST $PNEUMA_API/api/viewer/action` with `{ "actionId": "...", "params": { ... } }`.
-
-### Commands (User → Agent — they start a task)
-
-These arrive buffered and flush to you as a system message when you go idle:
-
-| id | When it fires | What you do |
-|---|---|---|
-| `start-from-idea` | User picks entry (A) | Run [entry (A)](#a-idea--draft--the-start-from-idea-command). |
-| `start-from-draft` | User picks entry (B) | Run [entry (B)](#b-disliked-draft--de-ai--the-start-from-draft-command). |
-| `calibrate-style-sample` | User asks to try three styles first | Run [entry (C)](#c-representative-style-trial--full-draft--the-calibrate-style-sample-command): representative passage → three versions → user pick → distill → full draft. |
-| `request-directions` | Span selected | Read the rubric + span, return ~5 taste-aware directions via `propose-directions`. |
-| `still-ai` | User says it still reads AI | Rung +1, fresh session, regenerate whole (cheapest-signal branch). |
-| `good-enough` | User accepts | Finalize → distill → federate. |
-
-A direction-chip click and a poke arrive carrying their payload (`{ intent, address, direction }` / symptom) in the notification — react per [the task loop](#the-viewer-first-task-loop).
-
-### Actions (Agent → Viewer — you drive the surface)
-
-| actionId | params | Use |
-|---|---|---|
-| `navigate-to` | `{ address }` | Scroll to + highlight a block, optionally select the span. Use after a multi-block edit to land the user where it matters; emit it in `<viewer-locator>` cards too. |
-| `rewrite-span` | `{ address, direction }` | Signal a span/block was rewritten; the viewer pulses it when your `draft.md` edit lands. |
-| `mask-and-complete` | `{ address, scope }` | Signal a masked region is regenerating (`scope` is `"region"` or `"after"`); frozen downstream blocks are skipped and passed as fixed context — kernel-freeze wins over mask scope. |
-| `set-block-frozen` | `{ block, frozen }` | Freeze/unfreeze a block (you can auto-freeze the kernel after intake). |
-| `poke-symptom` | `{ address, symptom }` | Tag a symptom on a span (usually the user pokes; you may pre-tag from a judge pass). |
-| `set-ladder` | `{ rung?, delta? }` | Set or bump the global rung (the viewer also does this locally). |
-| `propose-directions` | `{ address, directions }` | Return the contextual rewrite directions for a selection; the viewer renders them as chips. |
-| `mark-resolved` | `{ address }` | Clear a symptom/direction marker once a fix lands. |
-
-Example — refine the directions popup for a selected span:
-
-```bash
-curl -X POST "$PNEUMA_API/api/viewer/action" \
-  -H "Content-Type: application/json" \
-  -d '{"actionId":"propose-directions","params":{"address":{"contentSet":"sisyphus-essay","block":"b7","span":{"start":0,"end":42,"quote":"…"}},"directions":["cut the AI metaphor","let it breathe","punch harder","sink the argument","tighten"]}}'
+```ts
+{
+  contentSet?: string
+  file: string
+  quote: string
+  start: number
+  end: number
+}
 ```
 
-For *visual* judgement of the rendered draft, use the framework `capture` action (`{"actionId":"capture"}`, optional `params.address`) — it returns a PNG of the live viewer. Do not open an external browser; it renders without the viewer's rules.
+The address always refers to the current `draft.md`. `quote` is the recovery
+anchor; offsets are the fast path.
 
----
+## User-facing language
 
-## Cold-start onboarding (folded into the goal)
+- Ask for a decision, not an explanation.
+- Say "this line feels fake", not "tag symptom S7".
+- Say "none of these", not "increase disruption rung".
+- Say "the meaning got flattened", not "kernel invariant failed".
+- Present only what the user must decide first. Put execution detail behind the
+  viewer's expandable sections.
 
-The first time a content-set opens with **no samples under `materials/voice/`**, you have no negentropy anchor for this user. Get one — but as a byproduct of the goal, never as a setup wizard:
-
-1. While taking the writing goal, ask in the same breath for **1–2 short samples of the user's own writing** that feel like "them" (an old essay, a message they're proud of, a paragraph in their voice). Frame it as "so I write in your voice, not generic AI" — not "let's configure your taste."
-2. Save what they give into `materials/voice/`.
-3. Write an initial **voice floor** into `taste/taste-profile.md` §1 from those samples — the human-ness baseline you'll generate against. If they give nothing, bootstrap §1 from `~/.pneuma/preferences/mode-wordtaste.md` if it exists, leave the rubric (§2) empty for now, and set the launch rung to the uncalibrated default (1). The rubric fills in as the user rejects and pokes during the real task.
-
-The bootstrap `taste/taste-profile.md` that ships with the `from-idea` / `from-draft` seeds is a generic skeleton; the `worked-example` seed shows a fully-converged profile so the user can see the shape before their own fills in.
-
----
-
-## Federation — what leaves the content-set
-
-wordtaste owns the heavy artifacts under `taste/` per content-set; the Pneuma preference layer holds only a distilled, cross-mode summary so *other* modes benefit from what wordtaste learned (and wordtaste inherits their signals). Follow the `pneuma-preferences` skill's discipline:
-
-- **Read** (task start, [Step 0.5](#step-05--read-your-federated-memory)): `profile.md` + `mode-wordtaste.md` (+ project-scoped copies in a project session).
-- **Write** (on finalize): distill a concise summary into `~/.pneuma/preferences/mode-wordtaste.md` — the user's voice signature (breathing/hedging habits, metaphor style, structural preferences) and the AI-symptoms they reject, plus the rung they landed at. Keep it under ~2KB and **rewrite the whole file** rather than appending (a living portrait, not a changelog). Heavy artifacts — the full rubric, recipes, swaps, prefs — stay under `taste/` and never enter the preference layer.
-
-This is also the cross-mode benefit channel after a handoff: a doc session run later reads wordtaste's voice signals from `mode-wordtaste.md`.
-
----
-
-## Distillation — turning judgments into faster next-time
-
-On `good-enough` / finalize (and on demand), distill the session's judgments into sharper, reusable artifacts so the next task hits the user's taste from a **lower rung**. Distillation succeeding *means* the ladder gets compressed — that is the concrete payoff of cross-task convergence.
-
-### Always, on finalize (the per-task discipline)
-
-Independent of the heavier workflow, on every finalize:
-
-- **Append `taste/prefs.log.jsonl`** — one line per reject / pick / poke / hand-edit this session, tagged with rung, family, and symptom. Capture **line-level edits** especially: `{"event":"edit","before":"…","after":"…","symptom_tags":[…]}` — the sentence the user hand-rewrote is their own human texture, the gold material.
-- **Append `taste/swaps.jsonl`** — the user's hand-edited before/after sentence pairs (the symbol-layer few-shot; the `quote` in a poked span is the swap's "before" candidate).
-- **Update `taste/taste-profile.md`** — fold in any new symptom, sharpen the voice floor, and write **the rung the user landed at → next session's launch rung** (§0). Save the finalized draft as the positive example; keep the most instructive reject as a negative example.
-
-### The distill workflow — two launch paths
-
-The deeper reflect → validate → commit pass is a mode-internal dynamic workflow at `skill/workflows/distill.workflow.js`. **Handle both availability cases — the skill works either way:**
-
-**(a) If the Workflow tool is available in this session**, launch the workflow:
-
-```
-Launch the workflow at $PNEUMA_SESSION_DIR/.claude/skills/pneuma-wordtaste/workflows/distill.workflow.js
-```
-
-It runs the fan-out for you (gather → cross-family reflect → Pareto-validate → commit).
-
-**(b) If the Workflow tool is NOT available** (the more common case under a plain Claude/codex/kimi backend), run the same pipeline manually:
-
-1. **Gather** — read `taste/taste-profile.md` + `taste/prefs.log.jsonl` + the positive/negative examples.
-2. **Reflect (cross-family, ≥2 reflectors)** — fan out to a Task subagent *and* `run_codex.sh` (and `run_gemini.sh` if present). Each reflector reads the full trajectory and answers: *"What rubric / voice signature / generation recipe would make the generator produce the accepted version on the first try?"* Each returns: ① a sharper symptom rubric (better discriminators, phrase-level tells, merged/re-ordered symptoms), ② a per-content-type generation recipe (operational, inject-ready), ③ what to collect more of to fix the symbol layer.
-3. **Validate (Pareto select — meaningful only with ≥2 tasks)** — take each candidate rubric and use it to *predict the user's past verdicts* (which version was more AI / more human). Keep the candidate that best reproduces known judgments; this is the anti-drift guard against reflection wandering off.
-4. **Commit** — synthesize the best candidate, then **you** write the updated `taste/taste-profile.md` and `taste/recipes/<content-type>.md` with your native Edit/Write tools. Git owns the version history.
-
-With a single trajectory (n=1) the validate step degrades but reflect still pays off — it compresses "took 4 rungs to land" into "rung-1 recipe for next time."
-
-The symbol layer (metaphors / signature lines) is the finest tell, and the model cannot invent a human replacement for it — it can only be mined from the user's own sentences. That is why `swaps.jsonl` and line-level edits are the gold material, and why the last pass before finalize is: cross-family de-metaphor → if still suspect, show the user the 2–3 riskiest phrases for a one-second pick (the cheapest symbol-layer signal).
-
----
-
-## File surface (per content-set)
-
-```
-<content-set>/
-  draft.md                  THE single editable output (center panel) — pure article body, never any meta
-  draft.blocks.json         block-id ↔ content-hash sidecar (domain-owned; don't hand-edit)
-  draft.freeze.json         { frozen: ["b3","b7"] } kernel-freeze set
-  draft.annotations.json    per-block revision notes (you write; viewer renders the right-hand column)
-  materials/                READ-ONLY inputs (left panel)
-    outline.md              entry (A): the idea/outline
-    original.md             entry (B): the disliked draft, preserved verbatim
-    kernel.md               the frozen-kernel statement (you write it at intake)
-    voice/*.md              the user's own voice-anchor samples
-    refs/*.md               reference texts
-  taste/                    HEAVY artifacts (right panel) — agent-authored only
-    taste-profile.md        §0 launch rung · §1 voice floor · §2 symptom rubric · §5 meta-principles
-    recipes/<type>.md       distilled operational generation recipe
-    swaps.jsonl             symbol-layer AI→human sentence pairs (gold material)
-    prefs.log.jsonl         append-only signal events
-    style-trial.md          representative-passage A/B/C trial; never article body
-.pneuma/
-  config.json               init params (active content-set, content-type, current rung, fontSuggested, themeSuggested)
-  cross-family.json         startup probe result { codex, gemini, claude }
-```
-
-You author everything under `taste/` and `draft.annotations.json` with Edit/Write — the viewer renders them read-only. `draft.blocks.json` and `draft.freeze.json` are reconciled by the domain layer and the viewer; don't hand-edit them.
+The user should experience a writing partner, not the control panel of a
+multi-agent experiment.
