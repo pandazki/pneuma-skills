@@ -43,6 +43,8 @@ import {
 import {
   handleInterrupt,
   handleControlResponse,
+  parseSupportedModels,
+  sendControlRequest,
 } from "./ws-bridge-controls.js";
 import {
   handleSessionSubscribe,
@@ -470,6 +472,8 @@ export class WsBridge {
     console.log(`[ws-bridge] CLI connected for session ${sessionId}`);
     this.broadcastToBrowsers(session, { type: "cli_connected" });
 
+    this.requestSupportedModels(session);
+
     if (session.pendingMessages.length > 0) {
       console.log(`[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) on CLI connect for session ${sessionId}`);
       const queued = session.pendingMessages.splice(0);
@@ -477,6 +481,46 @@ export class WsBridge {
         this.sendToCLI(session, ndjson);
       }
     }
+  }
+
+  /**
+   * Ask the CLI which models it supports and publish the answer as
+   * `available_models`, the same wire field codex/kimi fill from their own
+   * model-list RPCs. Without this the picker falls back to the manifest's
+   * static `defaultModels`, which goes stale every time Anthropic ships a
+   * model (it listed Opus 4.7 well after Opus 5 and Fable had landed).
+   *
+   * The `initialize` control request is what the Agent SDK's
+   * `query.supportedModels()` reads; its response carries `models[]` with
+   * `{ value, resolvedModel, displayName }`. `system.init` does NOT carry the
+   * list — it only reports the single active model — so this is the only
+   * route. Sending it is a read: it coexists with a normal turn, and hooks
+   * and `system.init` behave unchanged.
+   *
+   * Fire-and-forget. Old CLIs answer without a `models` field (or error out,
+   * which `handleControlResponse` logs and drops); either way the manifest
+   * fallback stays in place. This lives on the CLI-transport path, which by
+   * construction is claude-code only — codex and kimi never attach here, they
+   * go through their own `BridgeBackend`.
+   */
+  private requestSupportedModels(session: Session): void {
+    sendControlRequest(
+      session,
+      { subtype: "initialize" },
+      this.sendToCLI.bind(this),
+      {
+        subtype: "initialize",
+        resolve: (response) => {
+          const models = parseSupportedModels(response);
+          if (!models) return;
+          session.state.available_models = models;
+          this.broadcastToBrowsers(session, {
+            type: "session_update",
+            session: { available_models: models },
+          });
+        },
+      },
+    );
   }
 
   /**
@@ -1313,14 +1357,33 @@ export class WsBridge {
         break;
 
       case "set_model": {
-        const ndjson = JSON.stringify({ type: "set_model", model: msg.model });
-        this.sendToCLI(session, ndjson);
-        // Optimistic update
-        session.state.model = msg.model;
-        this.broadcastToBrowsers(session, {
-          type: "session_update",
-          session: { model: msg.model },
-        });
+        // Must go out as a control request. A top-level `{type:"set_model"}`
+        // input frame is accepted by the stream-json reader and then silently
+        // dropped — the turn still runs on the previous model — so the picker
+        // used to relabel itself while changing nothing.
+        const previous = session.state.model;
+        const applyModel = (model: string) => {
+          session.state.model = model;
+          this.broadcastToBrowsers(session, {
+            type: "session_update",
+            session: { model },
+          });
+        };
+        sendControlRequest(
+          session,
+          { subtype: "set_model", model: msg.model },
+          this.sendToCLI.bind(this),
+          {
+            subtype: "set_model",
+            resolve: () => {},
+            // The CLI rejects unknown ids. Snap the picker back rather than
+            // leave it naming a model the session isn't running.
+            reject: () => applyModel(previous),
+          },
+        );
+        // Optimistic — the switch is near-instant and waiting for the ack
+        // would make the picker feel dead.
+        applyModel(msg.model);
         break;
       }
 

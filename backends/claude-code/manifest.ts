@@ -34,10 +34,17 @@ export const claudeCodeModule: BackendModule = {
     contextWindow: true,
   },
 
+  // Fallback only. The live list comes from the CLI's `initialize` control
+  // response (see WsBridge.requestSupportedModels) and supersedes this as soon
+  // as the transport attaches; these entries only surface on a CLI too old to
+  // answer. Deliberately aliases rather than pinned ids — an alias tracks
+  // whatever the installed CLI considers current, so this list cannot go stale
+  // the way the old pinned trio did (it still said Opus 4.7 / Sonnet 4.6 long
+  // after Opus 5 and Fable shipped).
   defaultModels: [
-    { id: "claude-opus-4-7", label: "Opus", icon: "O" },
-    { id: "claude-sonnet-4-6", label: "Sonnet", icon: "S" },
-    { id: "claude-haiku-4-5-20251001", label: "Haiku", icon: "H" },
+    { id: "opus", label: "Opus", icon: "O" },
+    { id: "sonnet", label: "Sonnet", icon: "S" },
+    { id: "haiku", label: "Haiku", icon: "H" },
   ],
 
   createBackend(port: number) {

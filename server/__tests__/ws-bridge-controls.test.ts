@@ -1,7 +1,8 @@
 /**
  * WS Bridge Controls tests
  *
- * Tests for handleInterrupt, sendControlRequest, handleControlResponse.
+ * Tests for handleInterrupt, sendControlRequest, handleControlResponse,
+ * parseSupportedModels.
  */
 
 import { describe, test, expect } from "bun:test";
@@ -9,6 +10,7 @@ import {
   handleInterrupt,
   sendControlRequest,
   handleControlResponse,
+  parseSupportedModels,
 } from "../ws-bridge-controls.js";
 import { makeDefaultState } from "../ws-bridge-types.js";
 import type { Session } from "../ws-bridge-types.js";
@@ -207,5 +209,71 @@ describe("handleControlResponse", () => {
     handleControlResponse(session, msg, () => {});
 
     expect(resolvedValue).toEqual({});
+  });
+});
+
+// ── parseSupportedModels ────────────────────────────────────────────────────
+
+/**
+ * Shape captured from a live `initialize` control response (Claude Code
+ * 2.1.220). Note `default` and `opus[1m]` resolve to the same model, and
+ * `haiku` carries none of the optional capability fields.
+ */
+const LIVE_INITIALIZE_MODELS = [
+  { value: "default", resolvedModel: "claude-opus-5[1m]", displayName: "Default (recommended)", supportsEffort: true },
+  { value: "opus[1m]", resolvedModel: "claude-opus-5[1m]", displayName: "Opus (1M context)" },
+  { value: "claude-fable-5[1m]", resolvedModel: "claude-fable-5", displayName: "Fable" },
+  { value: "sonnet", resolvedModel: "claude-sonnet-5", displayName: "Sonnet" },
+  { value: "haiku", resolvedModel: "claude-haiku-4-5-20251001", displayName: "Haiku" },
+  { value: "opus", resolvedModel: "claude-opus-5", displayName: "Opus" },
+];
+
+describe("parseSupportedModels", () => {
+  test("maps a live initialize response to available_models entries", () => {
+    const models = parseSupportedModels({ models: LIVE_INITIALIZE_MODELS });
+
+    expect(models).toEqual([
+      { id: "default", name: "Default (recommended)", resolvedId: "claude-opus-5[1m]" },
+      { id: "opus[1m]", name: "Opus (1M context)", resolvedId: "claude-opus-5[1m]" },
+      { id: "claude-fable-5[1m]", name: "Fable", resolvedId: "claude-fable-5" },
+      { id: "sonnet", name: "Sonnet", resolvedId: "claude-sonnet-5" },
+      { id: "haiku", name: "Haiku", resolvedId: "claude-haiku-4-5-20251001" },
+      { id: "opus", name: "Opus", resolvedId: "claude-opus-5" },
+    ]);
+  });
+
+  test("omits resolvedId when the alias already is the concrete model", () => {
+    const models = parseSupportedModels({
+      models: [{ value: "claude-fable-5", resolvedModel: "claude-fable-5", displayName: "Fable" }],
+    });
+
+    expect(models).toEqual([{ id: "claude-fable-5", name: "Fable" }]);
+  });
+
+  test("keeps entries that omit displayName / resolvedModel", () => {
+    const models = parseSupportedModels({ models: [{ value: "opus" }] });
+
+    expect(models).toEqual([{ id: "opus" }]);
+  });
+
+  test("skips malformed entries but keeps the usable ones", () => {
+    const models = parseSupportedModels({
+      models: [null, "opus", { displayName: "no id" }, { value: 42 }, { value: "sonnet" }],
+    });
+
+    expect(models).toEqual([{ id: "sonnet" }]);
+  });
+
+  // A CLI too old to report models must leave the manifest fallback in place,
+  // so "no usable list" has to be distinguishable from "an empty list".
+  test.each([
+    ["no models field", {}],
+    ["models is not an array", { models: "opus,sonnet" }],
+    ["models is empty", { models: [] }],
+    ["every entry is malformed", { models: [{ displayName: "no id" }] }],
+    ["response is undefined", undefined],
+    ["response is null", null],
+  ])("returns null when %s", (_label, response) => {
+    expect(parseSupportedModels(response)).toBeNull();
   });
 });

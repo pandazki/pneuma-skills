@@ -482,14 +482,19 @@ export interface SessionState {
   is_compacting: boolean;
   total_lines_added: number;
   total_lines_removed: number;
-  /** Available models for switching (populated by backends that support model/list). */
-  available_models?: { id: string; name?: string }[];
+  /**
+   * Available models for switching (populated by backends that support
+   * model/list). `id` is what gets sent back on `set_model`; `resolvedId` is
+   * the concrete model the backend resolves that id to, when the two differ
+   * (Claude Code lists aliases like `opus` / `default` that resolve to
+   * `claude-opus-5`). The switcher uses it to highlight the active entry.
+   */
+  available_models?: { id: string; name?: string; resolvedId?: string }[];
   /**
    * Static fallback model list shipped by the backend manifest
-   * (`BackendModule.defaultModels`). Used by the model switcher when
-   * the backend doesn't emit `available_models` over the wire (notably
-   * claude-code, whose model list is a manifest constant). May be
-   * undefined for backends that always supply `available_models`.
+   * (`BackendModule.defaultModels`). Used by the model switcher when the
+   * backend doesn't emit `available_models` over the wire — for claude-code
+   * that means a CLI too old to answer the `initialize` control request.
    */
   default_models?: ModelOption[];
   pid?: number;

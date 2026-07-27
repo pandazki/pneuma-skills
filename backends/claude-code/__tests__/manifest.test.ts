@@ -22,9 +22,16 @@ describe("claude-code BackendModule", () => {
     expect(c.contextWindow).toBe(true);
   });
 
-  it("ships default model list", () => {
-    expect(claudeCodeModule.defaultModels?.length).toBeGreaterThanOrEqual(3);
-    expect(claudeCodeModule.defaultModels?.[0].id).toMatch(/^claude-/);
+  it("ships a fallback model list of aliases, not pinned model ids", () => {
+    const models = claudeCodeModule.defaultModels;
+    expect(models?.length).toBeGreaterThanOrEqual(3);
+    // The live list comes from the CLI's `initialize` control response; this
+    // static list is only a fallback for CLIs too old to answer it. Pinned ids
+    // (`claude-opus-4-7`) go stale on every model release — aliases don't.
+    for (const m of models ?? []) {
+      expect(m.id).not.toMatch(/^claude-/);
+      expect(m.id).toMatch(/^[a-z]+$/);
+    }
   });
 
   it("createBridgeBackend returns null (legacy stdio path)", () => {

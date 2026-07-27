@@ -34,7 +34,7 @@ Inbound (CLI → server, one JSON object per `\n`-delimited line):
   "type": "system",
   "subtype": "init",
   "session_id": "9c…",          // CC's internal session id; this is what `--resume` accepts
-  "model": "claude-opus-4-7",
+  "model": "claude-opus-5",
   "cwd": "/path/to/workspace",
   "tools": ["Read", "Edit", …],
   "claude_code_version": "2.1.118",
@@ -54,7 +54,7 @@ Inbound (CLI → server, one JSON object per `\n`-delimited line):
       { "type": "text", "text": "Sure — running it now." },
       { "type": "tool_use", "id": "toolu_01…", "name": "Bash", "input": { "command": "ls" } }
     ],
-    "model": "claude-opus-4-7",
+    "model": "claude-opus-5",
     "usage": { "input_tokens": 42, "output_tokens": 12, … }
   },
   "parent_tool_use_id": null,
@@ -103,8 +103,14 @@ Outbound (server → CLI stdin, one JSON object per `\n`-delimited line):
 // or when running with the permission prompt path:
 { "type": "control_response", "response": { "subtype": "can_use_tool", "behavior": "allow", … } }
 
-// runtime model switch (Claude accepts this mid-session):
-{ "type": "set_model", "model": "claude-haiku-4-5-20251001" }
+// runtime model switch (mid-session). MUST be a control request — a top-level
+// {"type":"set_model"} frame is read, silently dropped, and the next turn runs
+// on the old model anyway. See "Switching models" below.
+{ "type": "control_request", "request_id": "…",
+  "request": { "subtype": "set_model", "model": "haiku" } }
+
+// model-list discovery, answered with { commands, agents, models, … }:
+{ "type": "control_request", "request_id": "…", "request": { "subtype": "initialize" } }
 ```
 
 ## Capabilities + why
@@ -115,7 +121,7 @@ Outbound (server → CLI stdin, one JSON object per `\n`-delimited line):
 | `resume`         | `true`  | `--resume <session_id>` rehydrates the prior conversation; we capture `session_id` from `system.init` and persist it as `agentSessionId`. |
 | `permissions`    | `true`  | CC supports `control_request:can_use_tool` round-trips (not used in default `bypassPermissions` mode but the protocol path is wired). |
 | `toolProgress`   | `true`  | CC exposes long-running tool progress via `stream_event` and tool_use streaming. |
-| `modelSwitch`    | `true`  | `set_model` mid-session is honoured by CC (next turn uses the new model). |
+| `modelSwitch`    | `true`  | A `set_model` **control request** mid-session is honoured by CC (next turn uses the new model). |
 | `scheduling`     | `true`  | Background tasks via the `Task` tool family. |
 | `costTracking`   | `true`  | `result.total_cost_usd` + per-message `usage` are real numbers Anthropic computes server-side. |
 | `contextWindow`  | `true`  | `system.compact_boundary` plus per-result usage fields let the UI compute a "% of context used" indicator. |
@@ -187,16 +193,56 @@ the convention because the CLI itself wires the discovery logic.
   them as empty bubbles — the tool-use cards downstream do the user-facing
   rendering.
 
-## Adding a new model
+## Models
 
-`manifest.ts:defaultModels` is a static list of `{ id, label, icon }` entries.
-Update it in the same commit that bumps the package version; the launcher
-shows these in the model picker. The CLI itself accepts any model id Anthropic
-serves (model id is passed to `claude --model <id>`), so the static list is
-purely a UX hint — users can always type a different id into the picker if
-they need to. There is no `available_models` discovery endpoint on Claude
-Code today (compare codex which emits `model/list`); a future CLI version
-could add one and the manifest list would then become a fallback.
+### Discovery — the CLI is the authority
+
+The model list comes from the CLI, not from us. `WsBridge.requestSupportedModels`
+fires a `control_request { subtype: "initialize" }` when the transport attaches;
+the success response carries `models[]`, which the bridge normalizes into the
+`available_models` session field the picker reads — the same field codex fills
+from `model/list` and kimi from ACP. Each entry looks like:
+
+```jsonc
+{ "value": "opus",                    // id to send back on set_model
+  "resolvedModel": "claude-opus-5",   // the concrete model it resolves to
+  "displayName": "Opus",
+  "supportsEffort": true, "supportedEffortLevels": ["low","medium","high","xhigh","max"],
+  "supportsAdaptiveThinking": true, "supportsFastMode": true, "supportsAutoMode": true }
+```
+
+Two traps:
+
+- **`system.init` does not carry the list.** It reports the single active
+  `model` and nothing else — no `models`, no `availableModels`. The
+  `initialize` response is the only route (it's what the Agent SDK's
+  `query.supportedModels()` reads).
+- **`value` and `resolvedModel` are many-to-one.** `default` and `opus[1m]`
+  both resolve to `claude-opus-5[1m]`, so "which entry is active?" must pick a
+  single winner (exact `value`, then `resolvedModel`, then a loose guess)
+  rather than run a predicate per row. `available_models` carries `resolvedId`
+  for exactly this.
+
+Sending `initialize` is a read — it coexists with a normal turn, hooks still
+fire, and `system.init` is unaffected.
+
+### Switching — control request, never a top-level frame
+
+`{"type":"set_model","model":"haiku"}` on stdin is **accepted and silently
+discarded**: no error, no response, and the next turn still runs on the old
+model. Only the control request form takes effect. Measured on CC 2.1.220 with
+the same prompt: top-level frame → `modelUsage: claude-opus-5`; control request
+→ `modelUsage: claude-haiku-4-5-20251001`. Because the bridge updates the
+picker optimistically, the broken form looked like it worked for a long time —
+the label changed, the billed model didn't.
+
+### The static fallback
+
+`manifest.ts:defaultModels` only surfaces when the probe finds nothing (a CLI
+too old to answer `initialize`). Keep it as **aliases** (`opus` / `sonnet` /
+`haiku`), never pinned ids: an alias tracks whatever the installed CLI treats
+as current, whereas a pinned list rots on every model release — it sat on Opus
+4.7 / Sonnet 4.6 long after Opus 5 and Fable had shipped.
 
 ## References
 
