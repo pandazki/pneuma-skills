@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.26.3] - 2026-07-27
+
+### Fixed
+- **The Claude model picker listed models that no longer exist, and switching between them did nothing.** Two independent defects that presented as one broken control:
+  - **The list was a hardcoded manifest constant.** `backends/claude-code/manifest.ts` pinned `claude-opus-4-7` / `claude-sonnet-4-6`, so the picker still offered Opus 4.7 long after Opus 5 and Fable shipped. Codex fills `available_models` from its `model/list` RPC and Kimi from ACP; claude-code never filled it at all, so the switcher always fell through to that static list. The CLI *does* expose its own list — `control_request { subtype: "initialize" }` answers with `models[]`, the same source the Agent SDK's `query.supportedModels()` reads — and the bridge now fires that probe when the CLI transport attaches, publishing the result through the very same `available_models` field the other two backends use. `system.init` does not carry the list (only the single active model), so this is the only route.
+  - **`set_model` was a no-op.** A top-level `{"type":"set_model"}` frame is accepted by the stream-json reader, silently discarded, and the next turn runs on the old model anyway; only the control-request form takes effect. Measured on Claude Code 2.1.220 with one prompt: the top-level frame billed to `claude-opus-5`, the control request to `claude-haiku-4-5-20251001`. The bridge's optimistic UI update is what hid this for so long — the label changed, the billed model didn't. A rejected switch now snaps the picker back instead of leaving it naming a model the session isn't running.
+
+### Changed
+- **`available_models` entries carry an optional `resolvedId`** — Claude Code lists aliases (`default`, `opus[1m]`) that are many-to-one with concrete models, so "which row is active?" has to resolve to a single winner rather than run a predicate per row. The manifest's `defaultModels` survives only as a fallback for CLIs too old to answer the probe, and is now expressed as aliases (`opus` / `sonnet` / `haiku`) rather than pinned ids — an alias tracks whatever the installed CLI treats as current, so it cannot rot the way the pinned trio did.
+
+### Notes
+- `backends/claude-code/README.md` had documented the wrong wire shape for `set_model` and asserted that Claude Code has no model-discovery endpoint; both are corrected, and `.claude/rules/backends.md` records the two traps.
+
 ## [3.26.2] - 2026-07-21
 
 ### Fixed
