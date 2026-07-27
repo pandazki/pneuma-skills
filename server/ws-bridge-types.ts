@@ -44,6 +44,13 @@ export interface CLITransport {
 export interface PendingControlRequest {
   subtype: string;
   resolve: (response: unknown) => void;
+  /**
+   * Called instead of `resolve` when the CLI answers with an error. Optional —
+   * callers that only care about a successful payload can omit it, but any
+   * request whose failure leaves the UI showing something untrue (a model
+   * switch that didn't take) must supply one.
+   */
+  reject?: (error: string) => void;
 }
 
 export interface Session {

@@ -4,8 +4,15 @@ import { useStore } from "../store.js";
 import { sendSetModel } from "../ws.js";
 import type { ModelOption } from "../../core/types/agent-backend.js";
 
-/** Derive a short icon string from a model id. */
-function modelIcon(id: string): string {
+/**
+ * Derive a short icon string from a model id, or from its display name when
+ * the backend supplies one. Names are the friendlier source — Claude Code
+ * reports "Opus (1M context)" / "Fable", whose initial reads far better than
+ * the "cl" you'd get from slicing `claude-fable-5[1m]`.
+ */
+function modelIcon(id: string, name?: string): string {
+  const initial = name?.trim().match(/[a-z0-9]/i)?.[0];
+  if (initial) return initial.toUpperCase();
   // Use first meaningful segment, max 2 chars
   const clean = id.replace(/^(openai\/|anthropic\/)/, "");
   const first = clean.split(/[-_]/)[0];
@@ -19,19 +26,36 @@ function modelLabel(id: string, name?: string): string {
   return id.replace(/^(openai\/|anthropic\/)/, "");
 }
 
-function modelDisplay(modelId: string, models: ModelOption[]): { label: string; icon: string } {
-  if (!modelId) return models[0] || { label: "?", icon: "?" };
-  // Exact match
+/**
+ * A picker entry. `resolvedId` is present when the backend lists an alias
+ * (`opus`, `default`) whose concrete model differs from the id we send back on
+ * `set_model` — matching against it is what keeps the active entry highlighted
+ * after `system.init` reports the resolved name.
+ */
+type SwitcherModel = ModelOption & { resolvedId?: string };
+
+/**
+ * Resolve the backend-reported model id to exactly one picker entry, in
+ * descending confidence: the id we'd send back on `set_model`, then the model
+ * an alias resolves to, then a loose substring guess. Single-winner by design
+ * — Claude Code lists several aliases (`default`, `opus[1m]`) that resolve to
+ * the same model, and highlighting all of them would read as broken.
+ */
+function findModel(modelId: string, models: SwitcherModel[]): SwitcherModel | undefined {
+  if (!modelId) return undefined;
   const exact = models.find((m) => m.id === modelId);
   if (exact) return exact;
-  // Fuzzy match
+  const resolved = models.find((m) => m.resolvedId === modelId);
+  if (resolved) return resolved;
   const lower = modelId.toLowerCase();
-  for (const m of models) {
-    if (lower.includes(m.id.toLowerCase()) || lower.includes(m.label.toLowerCase())) {
-      return m;
-    }
-  }
-  return { label: modelLabel(modelId), icon: modelIcon(modelId) };
+  return models.find(
+    (m) => lower.includes(m.id.toLowerCase()) || lower.includes(m.label.toLowerCase()),
+  );
+}
+
+function modelDisplay(modelId: string, models: SwitcherModel[]): { label: string; icon: string } {
+  if (!modelId) return models[0] || { label: "?", icon: "?" };
+  return findModel(modelId, models) ?? { label: modelLabel(modelId), icon: modelIcon(modelId) };
 }
 
 export default function ModelSwitcher() {
@@ -39,21 +63,23 @@ export default function ModelSwitcher() {
   const model = useStore((s) => s.session?.model ?? "");
   const canSwitchModel = useStore((s) => s.session?.agent_capabilities?.modelSwitch ?? false);
   const availableModels = useStore((s) => s.session?.available_models);
-  // Static fallback list shipped by the backend manifest. Backends that emit
-  // their own list dynamically (codex, kimi-cli) leave this undefined; the
-  // dynamic `available_models` branch above takes precedence either way.
+  // Static fallback list shipped by the backend manifest. Every backend now
+  // reports its real list over the wire — codex/kimi via their model-list RPCs,
+  // claude-code via the `initialize` control response — so this only surfaces
+  // when that probe finds nothing (e.g. a CLI too old to answer).
   const defaultModels = useStore((s) => s.session?.default_models);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   // Build model options: use dynamic list from backend if available, else
   // fall back to the manifest-declared static list, else just show current.
-  const models: ModelOption[] = useMemo(() => {
+  const models: SwitcherModel[] = useMemo(() => {
     if (availableModels && availableModels.length > 0) {
       return availableModels.map((m) => ({
         id: m.id,
         label: modelLabel(m.id, m.name),
-        icon: modelIcon(m.id),
+        icon: modelIcon(m.id, m.name),
+        ...(m.resolvedId ? { resolvedId: m.resolvedId } : {}),
       }));
     }
     if (defaultModels && defaultModels.length > 0) return defaultModels;
@@ -61,6 +87,7 @@ export default function ModelSwitcher() {
   }, [availableModels, defaultModels, model]);
 
   const current = useMemo(() => modelDisplay(model, models), [model, models]);
+  const activeId = useMemo(() => findModel(model, models)?.id, [model, models]);
 
   useEffect(() => {
     if (!open) return;
@@ -104,7 +131,7 @@ export default function ModelSwitcher() {
       {open && (
         <div className="absolute bottom-full left-0 mb-1 bg-cc-surface border border-cc-border rounded-md shadow-lg overflow-hidden z-50 max-h-64 overflow-y-auto">
           {models.map((m) => {
-            const active = model === m.id || (model && model.toLowerCase().includes(m.label.toLowerCase()));
+            const active = m.id === activeId;
             return (
               <button
                 key={m.id}
