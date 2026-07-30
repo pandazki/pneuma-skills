@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.28.1] - 2026-07-30
+
+### Fixed
+- **The Chinese WordTaste blurbs now read like Chinese** — 「面向中文长文的人在环写作流程」 ran the human-in-the-loop calque straight into a noun pile that no Chinese reader parses on first pass (it can even mis-read as 「长文的人 · 在环写作」). The launcher-card descriptions in the mode manifest (`zh-CN` / `zh-TW`) and both `README.zh.md` surfaces now say 「人机协作的中文长文写作」 and describe the loop in plain language. Metadata-only — the skill stays at 0.3.0, so installed users get no spurious update prompt.
+
 ## [3.28.0] - 2026-07-30
 
 ### Changed
