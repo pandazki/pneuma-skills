@@ -4,7 +4,7 @@
  * The probe must do a fast, non-hanging liveness check per family: a CLI that
  * is on PATH but cannot actually answer (unauthenticated → interactive OAuth
  * that hangs) must be reported `false`, not `true`. These tests drive the
- * script against stub CLIs that simulate the three real-world states —
+ * script against stub CLIs that simulate the real-world states —
  * authenticated, present-but-hangs (unauth), and absent — and pin the two
  * load-bearing guarantees: correct liveness JSON, and a hard bound on runtime
  * (the probe NEVER hangs, even when a stubbed CLI blocks forever).
@@ -19,26 +19,27 @@ const PROBE = join(import.meta.dir, "..", "skill", "scripts", "cross_family_prob
 
 /** A stub CLI that exits 0 immediately (authenticated, answers fast). */
 const STUB_OK = `#!/usr/bin/env bash
-# Accepts a "login status" subcommand (codex) or a -p prompt (claude/gemini).
+# Accepts a "login status" subcommand (codex) or a -p prompt (claude).
 echo "ok"
 exit 0
 `;
 
 /** A stub CLI that blocks forever (present but unauthenticated → would hang). */
 const STUB_HANG = `#!/usr/bin/env bash
-# Simulate the interactive OAuth wait gemini falls into when unauthenticated.
+# Simulate a CLI waiting for interactive authentication.
 echo "Code Assist login required." >&2
 sleep 600
 exit 1
 `;
 
 interface ProbeRun {
-  json: { claude: boolean; codex: boolean; gemini: boolean };
+  json: { claude: boolean; codex: boolean };
   elapsedMs: number;
   exitCode: number;
+  stderr: string;
 }
 
-async function runProbe(stubs: Partial<Record<"claude" | "codex" | "gemini", string>>): Promise<ProbeRun> {
+async function runProbe(stubs: Partial<Record<"claude" | "codex", string>>): Promise<ProbeRun> {
   const work = mkdtempSync(join(tmpdir(), "wordtaste-probe-"));
   const binDir = join(work, "bin");
   mkdirSync(binDir, { recursive: true });
@@ -53,7 +54,7 @@ async function runProbe(stubs: Partial<Record<"claude" | "codex" | "gemini", str
   const t0 = Date.now();
   // PATH = only the stub bin dir + the system tools the script itself needs
   // (mkdir, cat, sleep, kill…). Keep /bin and /usr/bin so the script runs, but
-  // they hold NO claude/codex/gemini, so only the stubs are discoverable.
+  // they hold NO claude/codex, so only the stubs are discoverable.
   const proc = Bun.spawn(["bash", PROBE], {
     env: {
       PATH: `${binDir}:/usr/bin:/bin`,
@@ -78,7 +79,7 @@ async function runProbe(stubs: Partial<Record<"claude" | "codex" | "gemini", str
     throw new Error(`probe wrote no JSON (exit ${exitCode}); stderr:\n${stderr}`);
   }
   rmSync(work, { recursive: true, force: true });
-  return { json, elapsedMs, exitCode };
+  return { json, elapsedMs, exitCode, stderr };
 }
 
 describe("cross_family_probe.sh — liveness detection", () => {
@@ -94,9 +95,9 @@ describe("cross_family_probe.sh — liveness detection", () => {
   });
 
   test("present-but-hanging CLI is reported false (does NOT hang the probe)", async () => {
-    const { json, elapsedMs, exitCode } = await runProbe({ gemini: STUB_HANG });
+    const { json, elapsedMs, exitCode } = await runProbe({ claude: STUB_HANG });
     expect(exitCode).toBe(0);
-    expect(json.gemini).toBe(false);
+    expect(json.claude).toBe(false);
     // The whole probe (which includes a hard timeout) must finish far faster
     // than the stub's 600s sleep — this is the entire point of the fix.
     expect(elapsedMs).toBeLessThan(20_000);
@@ -107,27 +108,29 @@ describe("cross_family_probe.sh — liveness detection", () => {
     expect(exitCode).toBe(0);
     expect(json.claude).toBe(false);
     expect(json.codex).toBe(false);
-    expect(json.gemini).toBe(false);
   });
 
-  test("mixed: one live, one hanging, one absent → true/false/false", async () => {
+  test("mixed: one live and one hanging → true/false", async () => {
     const { json, elapsedMs, exitCode } = await runProbe({
       codex: STUB_OK,
-      gemini: STUB_HANG,
-      // claude absent
+      claude: STUB_HANG,
     });
     expect(exitCode).toBe(0);
     expect(json.codex).toBe(true);
-    expect(json.gemini).toBe(false);
     expect(json.claude).toBe(false);
     expect(elapsedMs).toBeLessThan(20_000);
   });
 
-  test("always writes valid JSON with all three keys", async () => {
+  test("always writes valid JSON with both supported family keys", async () => {
     const { json } = await runProbe({ codex: STUB_OK });
-    expect(Object.keys(json).sort()).toEqual(["claude", "codex", "gemini"]);
-    for (const k of ["claude", "codex", "gemini"] as const) {
+    expect(Object.keys(json).sort()).toEqual(["claude", "codex"]);
+    for (const k of ["claude", "codex"] as const) {
       expect(typeof json[k]).toBe("boolean");
     }
+  });
+
+  test("keeps successful probe metadata out of the visible terminal stream", async () => {
+    const { stderr } = await runProbe({ codex: STUB_OK, claude: STUB_OK });
+    expect(stderr).toBe("");
   });
 });

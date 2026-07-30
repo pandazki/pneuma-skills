@@ -7,16 +7,14 @@
 #
 # Run this on the agent's first turn (SKILL.md step 0). It probes the CLIs the
 # orchestrator can shell out to as separate, naturally-isolated processes:
-#   - claude : the in-family generator (Task subagent when this IS the backend,
-#              else the `claude` CLI).
+#   - claude : Claude Code (`claude` CLI).
 #   - codex  : GPT family (`codex exec`).
-#   - gemini : Gemini family (neutral third-party judge / generator).
 #
 # Liveness, not PATH-presence: a CLI can be installed yet unusable — e.g.
-# gemini on PATH but UNAUTHENTICATED, whose non-interactive call falls into an
-# interactive OAuth flow that hangs forever. PATH alone over-reports it as
-# available, so the banner/agent would claim "full engine" against a CLI that
-# hangs on first real use. Instead, for each CLI present on PATH we run a
+# a CLI on PATH but unauthenticated may fall into an interactive flow that
+# hangs forever. PATH alone over-reports it as available, so the banner/agent
+# would claim cross-family coverage against a CLI that hangs on first real use.
+# Instead, for each supported CLI present on PATH we run a
 # trivial non-interactive invocation wrapped in a HARD timeout:
 #   - returns success (exit 0) within the timeout → true
 #   - times out, errors, or needs interactive auth → false
@@ -33,9 +31,9 @@ set -euo pipefail
 
 # Per-family liveness timeout (seconds). A clean CLI answers well within this;
 # an unauthenticated/hanging one is killed at the boundary and reported false.
-# The three families are probed in PARALLEL, so the whole probe finishes in
+# The two families are probed in PARALLEL, so the whole probe finishes in
 # roughly this bound (the slowest single family), not the sum.
-PROBE_TIMEOUT="${WORDTASTE_PROBE_TIMEOUT:-6}"
+PROBE_TIMEOUT="${WORDTASTE_PROBE_TIMEOUT:-12}"
 
 # --- resolve the output path ------------------------------------------------
 out_dir=""
@@ -65,8 +63,7 @@ run_with_timeout() {
   while kill -0 "${pid}" 2>/dev/null; do
     if [[ "${waited}" -ge $(( secs * 5 )) ]]; then
       # Kill (graceful, then hard) and reap INSIDE a stderr-suppressed group so
-      # the shell's async "Terminated" job notice never leaks to our stderr —
-      # the probe's only intended output is the JSON + one summary log line.
+      # the shell's async "Terminated" job notice never leaks to our stderr.
       {
         kill -TERM "${pid}" || true
         sleep 0.3
@@ -93,9 +90,6 @@ probe_family() {
   # Cheapest non-interactive call that actually exercises auth per CLI:
   #   codex  — `login status` reports auth state directly (no model spend).
   #   claude — a minimal `-p` print call (a real, in-family generation hop).
-  #   gemini — a minimal `-p` print call; when unauthenticated this is exactly
-  #            the interactive-OAuth path that hangs, so the timeout is what
-  #            turns "installed but unusable" into a clean false.
   local status=1
   case "${name}" in
     codex)
@@ -104,10 +98,6 @@ probe_family() {
       ;;
     claude)
       run_with_timeout "${PROBE_TIMEOUT}" claude -p "ping" --output-format text
-      status=$?
-      ;;
-    gemini)
-      run_with_timeout "${PROBE_TIMEOUT}" gemini -p "ping" --output-format text
       status=$?
       ;;
     *)
@@ -139,14 +129,11 @@ probe_family claude > "${work_tmp}/claude" &
 pid_claude=$!
 probe_family codex > "${work_tmp}/codex" &
 pid_codex=$!
-probe_family gemini > "${work_tmp}/gemini" &
-pid_gemini=$!
 
 # `wait` on each pid; probe_family itself never fails (always echoes a word and
 # returns 0), so `|| true` is belt-and-braces against a killed subshell.
 wait "${pid_claude}" 2>/dev/null || true
 wait "${pid_codex}" 2>/dev/null || true
-wait "${pid_gemini}" 2>/dev/null || true
 
 # Read back, defaulting to false if a result file is somehow missing/empty.
 read_result() {
@@ -159,7 +146,6 @@ read_result() {
 }
 claude="$(read_result "${work_tmp}/claude")"
 codex="$(read_result "${work_tmp}/codex")"
-gemini="$(read_result "${work_tmp}/gemini")"
 
 # --- write the result -------------------------------------------------------
 # Hand-rolled JSON keeps the script dependency-free (no jq). The shape matches
@@ -167,10 +153,8 @@ gemini="$(read_result "${work_tmp}/gemini")"
 cat > "${out_file}" <<JSON
 {
   "claude": ${claude},
-  "codex": ${codex},
-  "gemini": ${gemini}
+  "codex": ${codex}
 }
 JSON
 
-echo "wordtaste: cross-family probe (liveness) → claude=${claude} codex=${codex} gemini=${gemini} (wrote ${out_file})" >&2
 exit 0

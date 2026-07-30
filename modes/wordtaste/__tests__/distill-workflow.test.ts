@@ -187,15 +187,14 @@ describe("distill.workflow.js — parseVerdicts", () => {
     expect(verdicts[0].decision).toBe("accept-ish");
   });
 
-  it("parses the shipped worked-example prefs.log without throwing", () => {
-    const prefs = readFileSync(
-      join(import.meta.dir, "..", "seed", "worked-example", "taste", "prefs.log.jsonl"),
-      "utf8",
-    );
+  it("parses a mixed real-world trajectory without requiring a bundled private example", () => {
+    const prefs = [
+      '{"event":"reject","verdict":"still generic","prefer":"gpt>claude"}',
+      '{"event":"local-flag","quote":"this line"}',
+      '{"event":"accept","verdict":"lands"}',
+    ].join("\n");
     const verdicts = H.parseVerdicts(prefs);
-    // The worked example has 12 judgment-bearing lines.
-    expect(verdicts.length).toBe(12);
-    // Real preference signal is captured (one line records prefer:"gpt>claude").
+    expect(verdicts.length).toBe(3);
     expect(verdicts.some((v) => v.prefer === "gpt>claude")).toBe(true);
   });
 });
