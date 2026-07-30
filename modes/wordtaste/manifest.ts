@@ -49,8 +49,8 @@ const wordtasteManifest: ModeManifest = {
   },
   description: {
     en: "A human-guided Chinese long-form writing loop: shape the argument, write in sequence, check with fresh eyes, and keep what sounds right",
-    "zh-CN": "面向中文长文的人在环写作流程：先定论点与落笔重点，再顺序写作、换眼检查，留下真正顺耳的版本",
-    "zh-TW": "面向中文長文的人在環寫作流程：先定論點與落筆重點，再順序寫作、換眼檢查，留下真正順耳的版本",
+    "zh-CN": "人机协作的中文长文写作：先定论点与落笔重点，再逐段写作、换双眼睛复查，留下真正顺耳的版本",
+    "zh-TW": "人機協作的中文長文寫作：先定論點與落筆重點，再逐段寫作、換雙眼睛複查，留下真正順耳的版本",
   },
   changelog: {
     "0.1.0": [
