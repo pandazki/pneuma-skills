@@ -52,7 +52,8 @@ let attachmentCounter = 0;
 // Pastes longer than this become a text-file attachment instead of raw
 // composer text — a wall of pasted text otherwise floods the chat stream
 // with a huge user bubble and makes the transcript janky to scroll.
-const PASTE_AS_FILE_THRESHOLD = 2000;
+// Only paste is intercepted; typed text is never converted.
+const PASTE_AS_FILE_THRESHOLD = 500;
 
 let pasteCounter = 0;
 
