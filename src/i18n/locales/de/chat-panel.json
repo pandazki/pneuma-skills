@@ -12,5 +12,6 @@
   "reconnect": "Neu verbinden",
   "no_model": "kein Modell",
   "empty_send_message": "Nachricht senden, um mit der Bearbeitung zu beginnen",
-  "empty_connecting": "Verbindung zu Claude wird hergestellt…"
+  "empty_connecting": "Verbindung zu Claude wird hergestellt…",
+  "jump_to_bottom": "Zum Ende scrollen"
 }
