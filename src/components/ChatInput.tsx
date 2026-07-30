@@ -49,6 +49,31 @@ function formatSelectionLabel(
 
 let attachmentCounter = 0;
 
+// Pastes longer than this become a text-file attachment instead of raw
+// composer text — a wall of pasted text otherwise floods the chat stream
+// with a huge user bubble and makes the transcript janky to scroll.
+const PASTE_AS_FILE_THRESHOLD = 2000;
+
+let pasteCounter = 0;
+
+function pastedTextToAttachment(text: string): FileAttachment {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return {
+    id: `att-${Date.now()}-${++attachmentCounter}`,
+    kind: "file",
+    name: `pasted-${++pasteCounter}.txt`,
+    media_type: "text/plain",
+    data: btoa(binary),
+    size: bytes.length,
+    preview: null,
+  };
+}
+
 function fileToAttachment(file: File): Promise<FileAttachment | null> {
   return new Promise((resolve) => {
     const isImage = file.type.startsWith("image/");
@@ -173,6 +198,9 @@ export default function ChatInput() {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
+    // Sending re-anchors the conversation view to the tail even if the
+    // user had scrolled up — ChatPanel listens for this.
+    window.dispatchEvent(new Event("pneuma:chat-jump-bottom"));
   }, [text, attachments, selection, setSelection, annotations, clearAnnotations, isBusy, addPendingMessage]);
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -262,10 +290,10 @@ export default function ChatInput() {
   };
 
   const handlePaste = useCallback((e: ClipboardEvent) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
+    const data = e.clipboardData;
+    if (!data) return;
     const imageFiles: File[] = [];
-    for (const item of items) {
+    for (const item of data.items) {
       if (item.type.startsWith("image/")) {
         const file = item.getAsFile();
         if (file) imageFiles.push(file);
@@ -274,6 +302,12 @@ export default function ChatInput() {
     if (imageFiles.length > 0) {
       e.preventDefault();
       addAttachments(imageFiles);
+      return;
+    }
+    const pasted = data.getData("text/plain");
+    if (pasted.length > PASTE_AS_FILE_THRESHOLD) {
+      e.preventDefault();
+      setAttachments((prev) => [...prev, pastedTextToAttachment(pasted)]);
     }
   }, [addAttachments]);
 
@@ -440,6 +474,7 @@ export default function ChatInput() {
               onClick={() => {
                 sendUserMessage(suggestion);
                 clearPromptSuggestions();
+                window.dispatchEvent(new Event("pneuma:chat-jump-bottom"));
               }}
               disabled={!cliConnected || isBusy}
               className="px-3 py-1.5 text-xs bg-cc-surface/80 hover:bg-cc-surface text-cc-text border border-cc-border/50 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

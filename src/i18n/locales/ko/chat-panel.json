@@ -12,5 +12,6 @@
   "reconnect": "재연결",
   "no_model": "모델 없음",
   "empty_send_message": "메시지를 보내 편집을 시작하세요",
-  "empty_connecting": "Claude에 연결하는 중..."
+  "empty_connecting": "Claude에 연결하는 중...",
+  "jump_to_bottom": "맨 아래로 이동"
 }

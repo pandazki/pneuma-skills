@@ -12,5 +12,6 @@
   "reconnect": "Reconnect",
   "no_model": "no model",
   "empty_send_message": "Send a message to start editing",
-  "empty_connecting": "Connecting to Claude..."
+  "empty_connecting": "Connecting to Claude...",
+  "jump_to_bottom": "Scroll to bottom"
 }

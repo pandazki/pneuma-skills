@@ -12,5 +12,6 @@
   "reconnect": "再接続",
   "no_model": "モデルなし",
   "empty_send_message": "メッセージを送信して編集を開始",
-  "empty_connecting": "Claude に接続中…"
+  "empty_connecting": "Claude に接続中…",
+  "jump_to_bottom": "最下部へ移動"
 }
