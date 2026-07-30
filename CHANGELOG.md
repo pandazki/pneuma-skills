@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.27.0] - 2026-07-30
+
+### Added
+- **Long pastes become file attachments** — pasting more than 500 characters into the chat composer now creates a `pasted-N.txt` attachment (mirroring the Claude desktop client) instead of dumping the text inline. Huge pastes previously landed in the chat stream as an enormous user bubble that made the transcript laggy to scroll. Only the paste event is intercepted — typed input is never converted, no matter how long — and the attachment rides the existing upload pipeline (saved to `.pneuma/uploads/`, text ≤32 KB inlined for the agent), so the server needed no changes. Image pastes behave exactly as before.
+
+### Improved
+- **Auto-scroll follows the conversation only while you're at the bottom** — scrolling up (wheel or scrollbar) unpins the view and shows a floating jump-to-bottom button, so streaming output no longer yanks the transcript down while you read earlier messages. Returning to the bottom band or clicking the button re-pins and resumes following, and sending a message re-anchors the view to the tail. Auto-follow is deliberately instant rather than smooth so its own scroll events land inside the bottom band and can never be mistaken for a user scroll-away. The jump button label ships in all seven locales.
+
 ## [3.26.3] - 2026-07-27
 
 ### Fixed
