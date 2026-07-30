@@ -77,7 +77,7 @@
 | **remotion** | 基于 [Remotion](https://www.remotion.dev) 的代码驱动视频合成 —— 实时预览、逐帧精准动画、WebCodecs 路线导出 MP4/WebM |
 | **gridboard** | 交互式仪表盘 —— 固定画布上的可拖拽磁贴网格，通过 `defineTile()` 协议定义 React 磁贴，浏览器端 JIT 编译 |
 | **cosmos** | 把任何内容——代码、小说、研究、商业流程——投影成一张结构化的星图：让内在脉络以可交互图谱的方式显形。schema 与 dashboard 技术借鉴自 [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything)（MIT） |
-| **wordtaste** | 品味写作工坊 —— 三区工作台（素材 · 草稿 · 品味），跨模型家族（Claude / Codex / Gemini）生成、在你评判改写的过程中学习你的声音，把 AI 腔从文字里剥掉。块寻址草稿 + 内核冻结、划选改写、扰动强度旋钮 |
+| **wordtaste** | 面向中文长文的人在环写作流程 —— 先定论点与最强落点，再在隔离上下文中顺序写作，换一个模型家族（Claude Code / Codex）复查，经有限修复与人工门禁收束成稿 |
 | **mode-maker** | 用 AI 做自定义 mode —— fork、Play 试跑、发布 |
 | **evolve** | Evolution Agent —— 分析历史、提出技能改进、apply / 回滚 |
 
@@ -160,7 +160,7 @@ Modes:
   remotion                     代码驱动的视频合成
   gridboard                    交互式磁贴仪表盘
   cosmos                       把任何内容投影成结构化星图
-  wordtaste                    品味写作工坊
+  wordtaste                    中文长文人在环写作
   mode-maker                   用 AI 做自定义 mode
   evolve                       启动 Evolution Agent
   /path/to/mode                从本地目录加载

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.28.0] - 2026-07-30
+
+### Changed
+- **WordTaste rebuilt around the upstream long-form writing workflow (skill 0.1.0 → 0.3.0)** — the mode now runs the full stage contract: intake, layout, sequential unit writing in isolated contexts, fresh-family review, finite repair with blocked / neutral human-review exits, finalization, and distillation. Each writing unit is planned by function before length, rhythm, or emphasis are derived. The Gemini path is replaced with isolated Claude Code and Codex leaf adapters behind a private check-cycle projection, with explicit no-leak boundaries (rung numbers, symptom codes, model provenance, raw prompts and reports never reach user-facing surfaces) and stopped leaf processes reaped instead of orphaned. The viewer is simplified to human-facing writing gates, both entry seeds and the showcase assets are refreshed, and the selected-text action menu now light-dismisses on outside click. Both READMEs' mode descriptions are updated to match.
+
+### Fixed
+- **Launcher Galaxy background degrades cleanly when WebGL is unavailable** — a failed WebGL context previously blanked the app; the background now falls back instead of taking the launcher down with it.
+
 ## [3.27.0] - 2026-07-30
 
 ### Added
