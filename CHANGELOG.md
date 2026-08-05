@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.28.2] - 2026-08-05
+
+### Fixed
+- **Slide viewer no longer flickers at random** — the file watcher's entire ignore list has been dead code since v0.0.1: chokidar v4 removed glob support, so string patterns like `**/.pneuma/**` were compared with strict equality and matched nothing. Every session-state write leaked into `content_update` broadcasts, and one leak was self-sustaining: the periodic session-thumbnail capture wrote `.pneuma/thumbnail.png`, the watcher broadcast it as an image change, the browser bumped `imageVersion` and reloaded the *entire* slide iframe pool (a visible flash), which scheduled the next capture — an irregular capture → write → broadcast → reload feedback loop with no errors anywhere. The ignore globs are now compiled (Bun.Glob) into a function matcher over workspace-relative paths, with session-state exclusion derived from topology exactly like shadow-git's exclude rules: a nested state dir (quick sessions' `.pneuma/`) is ignored as a subtree, while project sessions (state dir *is* the workspace) ignore only root-anchored plumbing files so same-named files in content folders stay live. Directory-shaped patterns also prune the directory itself, so the watcher no longer descends into `node_modules/` or shadow-git object stores — a quiet performance win for every mode, not just Slide.
+
 ## [3.28.1] - 2026-07-30
 
 ### Fixed
