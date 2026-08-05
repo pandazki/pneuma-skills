@@ -5,9 +5,9 @@
  * Parameterized by ViewerConfig from ModeManifest — no hardcoded file type knowledge.
  */
 
-import { watch } from "chokidar";
+import { watch, type FSWatcher } from "chokidar";
 import { readFileSync, existsSync } from "node:fs";
-import { relative, join } from "node:path";
+import { relative, join, resolve } from "node:path";
 import type { ViewerConfig } from "../core/types/mode-manifest.js";
 
 const DEBOUNCE_MS = 300;
@@ -68,6 +68,31 @@ const DEFAULT_IGNORE = [
   // TypeScript build info
   "**/.tsbuildinfo",
   "**/*.tsbuildinfo",
+];
+
+/**
+ * Session-state plumbing that sits at the workspace ROOT in the
+ * project-session topology (`stateDir === workspace` — see the shadow-git
+ * `PROJECT_ROOT_EXCLUDE_RULES` for the same derivation). Every entry is
+ * root-anchored (no `**` prefix), so a same-named file inside a user content
+ * subdir (e.g. `deck/history.json`) is still watched.
+ */
+const PROJECT_ROOT_STATE_IGNORE = [
+  "session.json",
+  "history.json",
+  "config.json",
+  "skill-version.json",
+  "skill-dismissed.json",
+  "deploy.json",
+  "viewer-state.json",
+  "thumbnail.png",
+  "checkpoints.jsonl",
+  "inbound-handoff.json",
+  "borrow-result.json",
+  "shadow.git/**",
+  "captures/**",
+  "evolution/**",
+  "onboard/**",
 ];
 
 export interface FileUpdate {
@@ -163,10 +188,68 @@ function consumeSelfDelete(relPath: string): boolean {
 }
 
 /**
+ * Compile the ignore globs into a predicate over absolute paths.
+ *
+ * chokidar v4+ removed glob support: a string entry in `ignored` is compared
+ * with STRICT EQUALITY (chokidar's `createPattern`), so passing the glob
+ * strings above straight through silently matched nothing — every "ignored"
+ * path was watched and broadcast. This is what let a session's own
+ * `.pneuma/thumbnail.png` writes loop back as image `content_update`s and
+ * reload every slide iframe (the intermittent viewer flicker). We compile the
+ * globs ourselves (Bun.Glob) and hand chokidar a function matcher instead.
+ *
+ * Matching is against workspace-RELATIVE paths. This matters for the
+ * project-session topology, where the workspace path itself contains
+ * `.pneuma/` (`<project>/.pneuma/sessions/<id>/`) — matching absolute paths
+ * against `**\/.pneuma/**` would ignore the entire workspace. Relative
+ * matching also makes bare patterns (no `**` prefix) root-anchored for free.
+ *
+ * Topology-derived state exclusion, mirroring shadow-git's exclude rules:
+ * - stateDir nested in workspace (quick session `<ws>/.pneuma/`) → ignore
+ *   that subtree.
+ * - stateDir === workspace (project session) → ignore the root-anchored
+ *   plumbing files (PROJECT_ROOT_STATE_IGNORE); content subdirs stay watched.
+ */
+export function buildIgnoreMatcher(
+  workspace: string,
+  viewerConfig: ViewerConfig,
+  stateDir?: string,
+): (absPath: string) => boolean {
+  const patterns = [
+    ...DEFAULT_IGNORE,
+    ...(viewerConfig.ignorePatterns || []).map((p) =>
+      p.includes("/") && !p.startsWith("**/") && !p.startsWith("/") ? `**/${p}` : p,
+    ),
+  ];
+
+  if (stateDir) {
+    const relState = relative(resolve(workspace), resolve(stateDir)).replaceAll("\\", "/");
+    if (relState === "") {
+      patterns.push(...PROJECT_ROOT_STATE_IGNORE);
+    } else if (!relState.startsWith("..")) {
+      patterns.push(relState, `${relState}/**`);
+    }
+  }
+
+  // For every `x/**` pattern also match the bare dir `x`, so chokidar prunes
+  // the directory instead of descending into it and filtering per-file
+  // (shadow.git object stores and node_modules are large).
+  const globs = patterns
+    .flatMap((p) => (p.endsWith("/**") ? [p, p.slice(0, -3)] : [p]))
+    .map((p) => new Bun.Glob(p));
+
+  return (absPath: string) => {
+    const rel = relative(workspace, absPath).replaceAll("\\", "/");
+    if (rel === "" || rel.startsWith("..")) return false;
+    return globs.some((g) => g.match(rel));
+  };
+}
+
+/**
  * Extract file extensions from simple glob patterns (e.g., "**\/*.md" → ".md").
  * Returns null if patterns are too complex to extract extensions from.
  */
-function extractWatchExtensions(patterns: string[]): Set<string> | null {
+export function extractWatchExtensions(patterns: string[]): Set<string> | null {
   const exts = new Set<string>();
   for (const pattern of patterns) {
     // Glob pattern: "slides/*.html", "**/*.md"
@@ -189,7 +272,7 @@ function extractWatchExtensions(patterns: string[]): Set<string> | null {
 /**
  * Check if a file path matches the watch patterns.
  */
-function matchesWatchPatterns(relPath: string, watchExtensions: Set<string> | null): boolean {
+export function matchesWatchPatterns(relPath: string, watchExtensions: Set<string> | null): boolean {
   if (!watchExtensions) return true; // No extension filter → watch everything
   const lastDot = relPath.lastIndexOf(".");
   if (lastDot === -1) return false;
@@ -200,25 +283,22 @@ export function startFileWatcher(
   workspace: string,
   viewerConfig: ViewerConfig,
   onUpdate: (files: FileUpdate[]) => void,
-): void {
+  options?: { stateDir?: string },
+): FSWatcher {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingChanges = new Set<string>();
 
   // Derive watch extensions from ViewerConfig patterns
   const watchExtensions = extractWatchExtensions(viewerConfig.watchPatterns);
 
-  // Combine default + mode-specific ignore patterns
-  const ignorePatterns = [
-    ...DEFAULT_IGNORE,
-    ...(viewerConfig.ignorePatterns || []).map((p) =>
-      // chokidar works best with **/ prefix for directory patterns
-      p.includes("/") && !p.startsWith("**/") && !p.startsWith("/") ? `**/${p}` : p,
-    ),
-  ];
+  // Default + mode-specific + topology-derived ignore globs, compiled to a
+  // function matcher — chokidar v4+ treats string entries as exact paths, so
+  // glob strings must not be passed through directly (see buildIgnoreMatcher).
+  const ignoreMatcher = buildIgnoreMatcher(workspace, viewerConfig, options?.stateDir);
 
   // Watch the workspace directory (not glob) — chokidar globs + cwd don't work reliably
   const watcher = watch(workspace, {
-    ignored: ignorePatterns,
+    ignored: (path: string) => ignoreMatcher(path),
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: {
@@ -303,6 +383,7 @@ export function startFileWatcher(
 
   const patternDesc = viewerConfig.watchPatterns.join(", ");
   console.log(`[file-watcher] Watching ${workspace} for ${patternDesc} changes`);
+  return watcher;
 }
 
 /**

@@ -18,6 +18,7 @@ paths:
 ## Gotchas
 
 - **chokidar glob**:watch 目录路径,回调里 filter。**不要** `watch("**/*.md", { cwd })`。
+- **chokidar v4+ 的 `ignored` 字符串是全等比较,不是 glob**(`createPattern`:`(string) => matcher === string`)。glob 字符串直接传进去会**静默匹配不到任何东西**——`file-watcher.ts` 的 `DEFAULT_IGNORE` 因此从 v0.0.1 起就是死的:`.pneuma/thumbnail.png` 等 session 状态写入全部广播回浏览器,图片事件还会 `bumpImageTick` 让 slide 全 iframe 池重载,表现为"无规律 viewer 闪烁"(capture → thumbnail.png → 图片事件 → 重载 → 再 capture 的自反馈回路)。修法:`buildIgnoreMatcher` 用 Bun.Glob 编译后传**函数** matcher,且对 workspace-**相对**路径匹配——project session 的 workspace 路径本身含 `.pneuma/`,绝对路径匹配会把整个 workspace 忽略掉。state 排除按拓扑派生(镜像 shadow-git `buildExcludeRules`):stateDir 嵌套(quick)→ 忽略该子树;`stateDir === workspace`(project)→ 忽略 root-anchored plumbing(`PROJECT_ROOT_STATE_IGNORE`)。新增 session 根状态文件时两份清单都要加。另:`Bun.Glob.scanSync` 默认隐藏 dot 目录,但 `.match()` 不隐藏——匹配语义以 `.match()` 为准。
 - **Bun.serve dual-stack**:必须 `hostname: "0.0.0.0"`,否则 macOS IPv6/IPv4 端口碰撞。
 - **Stale `dist/`**:若 `dist/index.html` 存在,server 退回 production 模式。要么删 `dist/`,要么传 `--dev`。Launcher 派生子进程自动继承 `--dev`。
 - **Vite WS proxy + Bun.serve**:浏览器 WS 直连 backend 端口,绕开 Vite。

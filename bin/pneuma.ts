@@ -2661,7 +2661,7 @@ async function main() {
       // Start file watcher
       startFileWatcher(workspace, manifest.viewer, (files) => {
         wsBridge.broadcastToSession(sessionId, { type: "content_update", files });
-      });
+      }, { stateDir });
 
       // Start history persistence
       historyInterval = setInterval(() => {
@@ -3021,7 +3021,7 @@ async function main() {
           files,
         });
       }
-    });
+    }, { stateDir });
   }
 
   // Update sessionInfo so that server-side hooks (e.g. session:end, deploy:*)
