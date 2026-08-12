@@ -68,7 +68,45 @@ the UI toggle (which POSTs) was off limits.
 theme whose Latin baseline sits 6.5 px higher than the one all the earlier
 evidence was shot in. This is a verified-in-light result, not an assumed one.
 
-## 4. One thing that looks wrong and is not
+## 4. The rig, so the next run does not re-derive it
+
+These came from the **real product**, not the harness page: a `--viewing`
+session (no agent — the `modes.md` gotcha about an idle agent editing files on
+notification flush is real), seeded through the real `POST /api/seeds/apply`.
+
+```bash
+PNEUMA_VITE_PORT=17970 bun bin/pneuma.ts bansho \
+  --workspace <scratch>/ws --port 17971 --viewing --no-open --no-prompt --dev
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=9411 --user-data-dir=<scratch>/chrome --no-first-run
+curl -X POST :17971/api/seeds/apply -d '{"sourceKey":"modes/bansho/seed/tech-en/"}'
+bun modes/bansho/harness/cdp.mjs 9411 nav "http://localhost:17970?session=<id>&mode=bansho&layout=app"
+```
+
+Four things that cost time to find:
+
+- **Headful, always.** Headless has no hand face, and that is what produced the
+  false "Bradley Hand is absent" reading this file corrects.
+- **The first navigation renders a blank root** while Vite transforms the
+  module graph. Navigate a second time; do not debug it.
+- **`--viewing` suppresses the seed gallery** (`App.tsx` gates
+  `isEmptyWorkspace` on `editing !== false`), so the card UI is unavailable and
+  `POST /api/seeds/apply` is the way in. Same server code path either way.
+- **Never click the theme toggle.** `useAppTheme.set()` POSTs to
+  `/api/user-theme`, which writes `~/.pneuma/settings.json` — shared with every
+  other live session on the machine. Patch this page's `GET /api/user-theme` to
+  return the wanted theme and dispatch `pneuma:theme-changed`;
+  `useSystemPreferences` re-fetches on that event, so the patch is what makes
+  it take. Verify with `data-bansho-theme` on `.bansho-board-surface` before
+  shooting.
+
+The transport is a `role="slider"` div (`aria-label="Timeline"`), driven by
+`cdp.mjs click` at `track.x + fraction * track.width`; pause first via the
+`aria-label="Pause"` button or the clock walks out from under the frame.
+`Page.captureScreenshot` returns 2x on this display, so a 1376x768 viewport
+yields 2752x1536 — downscale with `sips -Z`.
+
+## 5. One thing that looks wrong and is not
 
 In `03` the second board carries only its heading and rule while three other
 faces are full. That is the seed's own script, not a fill failure: `tech-en`
