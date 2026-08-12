@@ -64,9 +64,15 @@ the UI toggle (which POSTs) was off limits.
 | `03-room-overview-100s.png` | 100.3 / 127.8 s | The `@overview` camera in light: plaster wall `#cfc7ba`, white boards `#ffffff`, grey-brown rails and trays, and the wall map bottom-right drawing real ink outlines against the light board. The chart is drawing itself on the third face. |
 | `04-end-highlight-circles-128s.png` | end | The end state: the `@highlight` band over two wrapped lines, `@circle` around "serial fraction" and "coherence cost", the aside's drawn margin bar, and the map's "you are here" tint. The band's vertical placement is the direct consumer of the baseline fix. |
 
-**Verdict: light holds.** No mark is misplaced in any of the four frames, in a
-theme whose Latin baseline sits 6.5 px higher than the one all the earlier
-evidence was shot in. This is a verified-in-light result, not an assumed one.
+**Verdict, scoped: light holds for what is in these four frames.** No mark is
+misplaced, in a theme whose Latin baseline sits 6.5 px higher than the one all
+the earlier evidence was shot in. That is a verified-in-light result for the
+ink baseline, the underline, the circle, the highlight band and the wall map,
+not an assumed one.
+
+**Still unphotographed in light:** the burst cut line, the collision marks and
+the flaw dust. None of the probed content triggers them, so they were never in
+frame — they inherit nothing from this pass and are still dark-only evidence.
 
 ## 4. The rig, so the next run does not re-derive it
 
