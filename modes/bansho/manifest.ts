@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.17.2",
+  version: "0.17.3",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -47,6 +47,12 @@ const banshoManifest: ModeManifest = {
     // Wording discipline: these bullets render VERBATIM in the launcher's
     // skill-update prompt, so they may only claim what the build actually
     // does.
+    "0.17.3": [
+      "A chart's y range is drawn from BOTH the ends you declare. Only the top one was read, so every plot's floor was an assumed zero: `y: -3 .. 3` was drawn on a 0..3.48 scale, which put its own lower end 235px below the bottom of the picture — the tick, its label and the whole negative half of the data off the canvas, with nothing reported anywhere. `y: -40 .. 25` lost even more. A range you already write as `0 .. N` scales exactly as it did",
+      "That also makes the lower end worth choosing: a series that never drops below 60 says more on `y: 60 .. 100` than on `y: 0 .. 100`",
+      "`y: 0 .. 0` (and the `y: 0 ..` typo) is now refused with a badge, like any other unreadable row. It used to quietly substitute a scale taken from your own numbers and mention it on a console nobody reads — so the board drew a real line between two axis labels that both said 0, and `check-board` called that board clean",
+      "A graph annotation is written out in full. Past three wrapped lines the rest was dropped — no badge, no warning, no finding — and the box grows downward to hold it instead. A node whose box has swollen into a paragraph is the board telling you that sentence belongs in the talk",
+    ],
     "0.17.2": [
       "`@turn` written straight under a sentence now turns the board. With no blank line between them it was read as part of that sentence and HANDWRITTEN onto the board — the words `@turn` in the middle of your prose, in front of the audience — and the room never turned. Every other verb (`@erase`, `@at`, `@focus`, `@overview`, `@board`, `@wait`) already broke the paragraph; this one was the exception",
       "Nothing warned you, and nothing could: a turn swallowed into a paragraph is valid prose, so `check-board` had nothing to report and the only signal was the line itself standing on the board",
