@@ -100,7 +100,13 @@ export function narrateResponse(
   }
   if (read?.issue) parts.push(`Manifest problem: ${read.issue}`);
   parts.push(
-    `Synthesize each needs-audio step with scripts/generate-tts.mjs --json --output <the step's "output">, then record it under "clips" in ${inSet(setKey, "narration/manifest.json")} using the step's "file" verbatim — manifest paths stay relative to the content set (see references/narration.md).`,
+    // Every field `readNarrationManifest` REQUIRES is named here. An
+    // entry missing any one of them is dropped by the reader and reported
+    // back as an unusable clip — so an agent that follows this sentence
+    // literally must end up with a valid entry, or the instruction is the
+    // bug (it named only "file", and a text-less entry silently lost its
+    // voice).
+    `Synthesize each needs-audio step with scripts/generate-tts.mjs --json --output <the step's "output">, then record it under "clips" in ${inSet(setKey, "narration/manifest.json")} keyed by the step's "key", with all three fields: "file" (the step's "file" verbatim — manifest paths stay relative to the content set), "seconds" (copied from the --json output), and "text" (what you actually had spoken). See references/narration.md.`,
   );
   return {
     success: true,

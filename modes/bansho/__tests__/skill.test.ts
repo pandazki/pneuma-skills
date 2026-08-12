@@ -543,6 +543,39 @@ Revenue tripled last year.
     }
   });
 
+  /**
+   * The synthesis command the agent copies has to WORK. Verified against
+   * the live vendor: `--language "cmn-CN"` — the value this reference
+   * shipped with — is rejected with HTTP 422 and writes no audio, so the
+   * documented voice-over workflow failed on its first command for every
+   * Chinese board.
+   *
+   * Pinned as a SHAPE rule, not a list of accepted names: the vendor owns
+   * the enum and copying it here would be a second source of truth that
+   * drifts silently. What cannot drift is the distinction the bug was made
+   * of — a BCP-47 tag is never one of the accepted values, whatever the
+   * list becomes.
+   */
+  test("the documented --language values are display names, never BCP-47 tags", () => {
+    const doc = read("references/narration.md");
+    const values = [...doc.matchAll(/--language\s+"([^"]+)"/g)].map((m) => m[1]!);
+    expect(values.length).toBeGreaterThan(0);
+    // e.g. cmn-CN / zh-CN / en-US / ja-JP — the shape the API refuses.
+    const bcp47 = /^[a-z]{2,3}(-[A-Za-z]{2,4})+$/;
+    for (const value of values) {
+      expect(value, `${value} is a language tag; the API takes a name`).not.toMatch(bcp47);
+      // The accepted form is `Language (Region)`, capitalized.
+      expect(value).toMatch(/^[A-Z][A-Za-z ]+\([A-Za-z ]+\)$/);
+    }
+    // Same value in the manifest example, so copying either one works.
+    const manifestLang = doc.match(/"language":\s*"([^"]+)"/)?.[1];
+    expect(manifestLang).toBeDefined();
+    expect(manifestLang).not.toMatch(bcp47);
+    expect(values).toContain(manifestLang!);
+    // And the trap is named where it is paid for, not merely avoided.
+    expect(doc).toMatch(/not a BCP-47 tag/i);
+  });
+
   test("the codes the skill lists are exactly the codes that exist", () => {
     const skill = read("SKILL.md");
     const listed = FINDING_CODES.filter((code) =>

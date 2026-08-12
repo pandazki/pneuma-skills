@@ -51,7 +51,7 @@ requirement.
    ```bash
    node {SKILL_PATH}/scripts/generate-tts.mjs --json \
      --text "the spoken line" \
-     --voice Kore --language "cmn-CN" \
+     --voice Kore --language "Chinese Mandarin (China)" \
      --output <the step's "output" from the plan>
    ```
 
@@ -60,13 +60,20 @@ requirement.
    be measured from `.wav` output. Needs `FAL_KEY` in the session `.env`
    (the fal.ai key init parameter); if it is missing, tell the user the
    board cannot get a voice rather than working around it.
+
+   **`--language` takes an English display name, not a BCP-47 tag** —
+   `"Chinese Mandarin (China)"`, `"English (US)"`, `"Japanese (Japan)"`.
+   A tag like `cmn-CN` or `zh-CN` is rejected outright (HTTP 422) and no
+   audio is written; the error lists every accepted name. The flag is
+   optional — omitting it lets the voice follow the text — so if a name
+   is refused, drop the flag rather than guessing another spelling.
 3. **Record each clip in the manifest.** `narration/manifest.json` sits
    next to `board.md` in the same content set:
 
    ```json
    {
      "voice": "Kore",
-     "language": "cmn-CN",
+     "language": "Chinese Mandarin (China)",
      "clips": {
        "1a2b3c4d": {
          "file": "narration/1a2b3c4d.wav",

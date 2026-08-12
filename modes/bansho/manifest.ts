@@ -353,7 +353,7 @@ const banshoManifest: ModeManifest = {
         agentInvocable: true,
         params: {},
         description:
-          'Ask the board which steps want a voice. Every speakable step comes back with its address, cache key, suggested spoken line, both clip paths — "file" is the manifest value (relative to the content set, use verbatim) and "output" is the workspace path to synthesize to — and whether a recorded clip is already fresh; plus clips that no longer match anything and are safe to delete. Synthesize only the steps marked needs-audio, then record each clip in the content set\'s narration/manifest.json (see the skill\'s references/narration.md for the workflow). A board with no voice plays fine without any of this.',
+          'Ask the board which steps want a voice. Every speakable step comes back with its address, cache key, suggested spoken line, both clip paths — "file" is the manifest value (relative to the content set, use verbatim) and "output" is the workspace path to synthesize to — and whether a recorded clip is already fresh; plus clips that no longer match anything and are safe to delete. Synthesize only the steps marked needs-audio, then record each clip in the content set\'s narration/manifest.json under the step\'s key with all three required fields — "file", "seconds" (from the synthesis command\'s --json output) and "text" (what was actually spoken); an entry missing any of them is rejected and that step loses its voice. See the skill\'s references/narration.md for the workflow. A board with no voice plays fine without any of this.',
       },
       {
         id: "subtitles",

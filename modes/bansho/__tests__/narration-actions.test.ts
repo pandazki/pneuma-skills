@@ -22,9 +22,10 @@ import { stepContentHash, stepPlainText } from "../engine/text.js";
 import { buildTimeline } from "../engine/timeline.js";
 import { narrationCues, toSrt, toVtt } from "../narration/subtitles.js";
 import { clipWindows, createNarrationHook } from "../narration/timing.js";
-import type {
-  NarrationManifest,
-  NarrationManifestRead,
+import {
+  readNarrationManifest,
+  type NarrationManifest,
+  type NarrationManifestRead,
 } from "../narration/types.js";
 import {
   narrateResponse,
@@ -101,6 +102,67 @@ describe("narrateResponse — the path contract", () => {
     expect(second.map((s) => s.output)).toEqual(first.map((s) => s.output));
     const third = stepsOf(narrateResponse(lecture, read, "tech-zh"));
     expect(third.map((s) => s.file)).toEqual(first.map((s) => s.file));
+  });
+
+  /**
+   * Task #197 — the instruction has to be SUFFICIENT, not merely true.
+   *
+   * `readNarrationManifest` requires `file` + positive `seconds` + `text`
+   * on every clip entry and drops any entry missing one of them. The
+   * narrate message used to name only `file`; an agent that followed it
+   * literally wrote a `text`-less entry, the reader dropped it, and the
+   * step silently lost its voice while the message that caused it still
+   * read as correct advice. Reproduced live against a real board before
+   * this fix: one entry with its `text` removed came back as "1 unusable
+   * clip entry". So the sentence must name every field the reader
+   * demands — and this test reads that demand off `readNarrationManifest`
+   * itself rather than a hand-kept list, so a new required field fails
+   * here instead of shipping as another silent-drop instruction.
+   */
+  test("the recording instruction names every field the manifest reader requires (#197)", () => {
+    const message = narrateResponse(parseLecture(BOARD), null, "tech-zh")
+      .message!;
+
+    // Establish, from the reader, which fields are actually load-bearing:
+    // drop each one from a complete entry and see if the entry survives.
+    const complete = { file: "narration/x.wav", seconds: 2, text: "spoken" };
+    const required = (
+      Object.keys(complete) as (keyof typeof complete)[]
+    ).filter((field) => {
+      const partial: Record<string, unknown> = { ...complete };
+      delete partial[field];
+      const read = readNarrationManifest(
+        JSON.stringify({ clips: { abcd1234: partial } }),
+      );
+      return read.issue !== null;
+    });
+    expect(required.sort()).toEqual(["file", "seconds", "text"]);
+
+    for (const field of required) {
+      expect(message, `narrate never tells the agent to write "${field}"`)
+        .toContain(`"${field}"`);
+    }
+  });
+
+  test("a manifest entry written by following the instruction is accepted", () => {
+    // The end-to-end shape of #197: build the entry the message describes
+    // and hand it back to the reader. No dropped entries, no issue.
+    const lecture = parseLecture(BOARD);
+    const steps = stepsOf(narrateResponse(lecture, null, "tech-zh"));
+    const written = readNarrationManifest(
+      JSON.stringify({
+        clips: Object.fromEntries(
+          steps.map((s) => [
+            s.key,
+            { file: s.file, seconds: 3.42, text: s.text },
+          ]),
+        ),
+      }),
+    );
+    expect(written.issue).toBeNull();
+    expect(Object.keys(written.manifest!.clips).sort()).toEqual(
+      steps.map((s) => s.key).sort(),
+    );
   });
 
   test("a malformed manifest's reason surfaces as manifestIssue", () => {
