@@ -86,6 +86,32 @@ describe("@turn — the parser", () => {
       expect(lecture.errors[0]!.message).toContain("malformed @turn");
     }
   });
+
+  test("breaks a paragraph even without a blank line before it", () => {
+    // `@turn` is a KNOWN_DIRECTIVE, so it opens a block the way `@erase`
+    // and `@at` do: a turn written straight under a sentence is a turn,
+    // never a literal line of that sentence. It was the ONE stage verb
+    // missing from that set — `@wait` / `@erase` / `@board` / `@focus` /
+    // `@overview` / `@at` were all in it — so a turn glued under prose was
+    // swallowed into the paragraph and HANDWRITTEN on the board, in front
+    // of the user, with no warning anywhere. The room never turned.
+    const steps = parseLecture("@board 2\n\n第一句。\n@turn\n\n第二句。\n")
+      .sections.flatMap((s) => s.steps);
+    expect(steps.filter((s) => s.kind === "turn").length).toBe(1);
+    const prose = steps.filter((s) => s.kind === "prose");
+    expect(prose.length).toBe(2);
+    for (const step of prose) {
+      expect(JSON.stringify(step)).not.toContain("@turn");
+    }
+  });
+
+  test("a malformed turn glued under a sentence is a bad step, not handwriting", () => {
+    // The other half of the same seam: adjacency must not decide whether
+    // the author gets told. `@turn 3` is wrong wherever it stands.
+    const lecture = parseLecture("@board 2\n\n第一句。\n@turn 3\n\n第二句。\n");
+    expect(lecture.errors).toHaveLength(1);
+    expect(lecture.errors[0]!.message).toContain("malformed @turn");
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────────────

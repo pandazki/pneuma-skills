@@ -790,8 +790,25 @@ interface PendingIssue {
 }
 
 const BACKREF_VERB = /^@(strike|circle|highlight|underline)\b/;
+/**
+ * EVERY verb the dialect has ever had, live or retired — the set
+ * `isBlockStart` reads. A verb missing from here is not merely unlisted:
+ * written straight under a sentence with no blank line, it is swallowed
+ * into that paragraph and HANDWRITTEN on the board, in front of the user,
+ * with no warning anywhere (the file is valid prose to `check-board`).
+ * `turn` was missing exactly that way until 2026-08-13.
+ *
+ * So the entries are not "the verbs worth listing" — they are the closed
+ * vocabulary, and `with` / `after` sit here though they were removed with
+ * the parallel model precisely so their BadStep is reached at any
+ * adjacency. Adding a verb below changes how a line starting with it
+ * merges, so a new verb belongs here the day it is coined, and the
+ * paragraph-adjacency case belongs in its test file (`turn.test.ts`,
+ * `at-dialect.test.ts`): no fixture that writes every directive after a
+ * blank line can tell the two behaviours apart.
+ */
 const KNOWN_DIRECTIVE =
-  /^@(wait|strike|circle|highlight|underline|focus|overview|erase|board|at|with|after)\b/;
+  /^@(wait|strike|circle|highlight|underline|focus|overview|erase|board|turn|at|with|after)\b/;
 const IMAGE_LINE = /^!\[([^\]]*)\]\(([^)]+)\)$/;
 
 /** True when the (trimmed) line opens a block form other than a paragraph. */

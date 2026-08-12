@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.17.1",
+  version: "0.17.2",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -47,6 +47,12 @@ const banshoManifest: ModeManifest = {
     // Wording discipline: these bullets render VERBATIM in the launcher's
     // skill-update prompt, so they may only claim what the build actually
     // does.
+    "0.17.2": [
+      "`@turn` written straight under a sentence now turns the board. With no blank line between them it was read as part of that sentence and HANDWRITTEN onto the board — the words `@turn` in the middle of your prose, in front of the audience — and the room never turned. Every other verb (`@erase`, `@at`, `@focus`, `@overview`, `@board`, `@wait`) already broke the paragraph; this one was the exception",
+      "Nothing warned you, and nothing could: a turn swallowed into a paragraph is valid prose, so `check-board` had nothing to report and the only signal was the line itself standing on the board",
+      "A malformed turn glued the same way (`@turn 3`) is now told back to you as a broken step instead of being written out silently. Whether the author hears about a mistake no longer depends on the blank line above it",
+      "Nothing else changed. A lecture that already left a blank line before every `@turn` — every seed, every existing board — performs exactly as it did",
+    ],
     "0.17.1": [
       "The highlighter covers the characters it marks. The yellow band was placed on the middle of the LINE rather than on the middle of the writing — and a Chinese character fills its whole square, so the bottom of every single one of them stood outside the yellow. It read as a stripe cut through the writing instead of a marker laid over it: measured on a real board, nine tenths of a character covered at best, two thirds once the stroke's own taper and tilt are counted in",
       "The same mistake had moved two other marks, and both are fixed with it. `**下划线**` ran THROUGH the bottom of every Chinese character and through the tail of every j, p, q and y; it now passes under the writing. The ring of `((圈注))` cleared the top of what it circled by six pixels and the bottom by half a pixel — it now sits evenly around it",
