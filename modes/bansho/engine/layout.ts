@@ -1518,7 +1518,32 @@ export function foldBoardLayout(
 
     // A container frame's measured height is the accumulated union — its
     // later layers' growth included. Charge it at its first-written size;
-    // the layers pay their own growth when they land (prefix stability).
+    // the layers pay their own growth when they land.
+    //
+    // WHICH prefix stability this buys, exactly — because the two registers
+    // this fold keeps do NOT make the same promise, and reading one promise
+    // onto the other is a repair that silently lands ink on ink (2026-08-13
+    // review F1, measured; `layout.test.ts` pins both halves):
+    //
+    //  - the CHARGE sequence is byte-identical whether the later layers
+    //    exist yet or not, so an append never re-decides an earlier step's
+    //    BOARD or RUN. That is the whole of the 2026-08-10 review's P1-2,
+    //    and it is what this subtraction is for.
+    //  - the BOX CHAIN (`placeBox`) deliberately does NOT subtract it and
+    //    must not: `input.box.h` is the frame's LIVE measurement, and the
+    //    frame's node is the whole accumulated dagre canvas — a layer
+    //    mounts a hidden zero-rect marker, so the box the browser holds
+    //    open really is the union from the first paint after the append.
+    //    Chaining on the first-written height would place the next box
+    //    INSIDE the picture, and `detectCollisions` skips same-region pairs
+    //    (the chain IS the flow's collision guarantee), so nothing in this
+    //    mode would ever report it.
+    //
+    // So a graph that grows across blocks moves the ink below it down by
+    // exactly its growth, and that is the documented cost of growing one
+    // (`references/charts.md`: declare the whole structure in the first
+    // block when the picture must not shift). A chart never pays it — its
+    // axes are declared up front, so a layer adds no height at all.
     const charge =
       input.container !== undefined
         ? Math.max(

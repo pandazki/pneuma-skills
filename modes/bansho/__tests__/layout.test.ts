@@ -24,6 +24,7 @@ import {
   PANEL_HEIGHT_RATIO,
   scanBoxRects,
   standingBoxes,
+  type BoxMetrics,
   type LayoutStepInput,
 } from "../engine/layout.js";
 import {
@@ -419,7 +420,17 @@ describe("fold properties (seeded random boards)", () => {
 
   /** Derive the fold input for one PREFIX of the document: a frame
    *  measures as its own height PLUS the growth of every layer inside the
-   *  prefix — the retroactive union measurement the live board reports. */
+   *  prefix — the retroactive union measurement the live board reports.
+   *
+   *  Every space-occupying item carries `box` metrics as well as its
+   *  charge, because a fold handed no box metrics places no boxes at all —
+   *  which is how the 2026-08-13 review found this file agreeing with the
+   *  implementation about `assignments` while never once looking at
+   *  `boxes`. Margins are zero so the two registers quote one number: the
+   *  point here is the CHAIN, not margin collapsing (pinned separately by
+   *  the box oracle). A container LAYER keeps no box on purpose — it is a
+   *  hidden zero-rect marker on the live board, and its arrival is felt
+   *  only through the frame's own re-measurement. */
   function inputsFor(doc: readonly DocItem[], cut: number): LayoutStepInput[] {
     const prefix = doc.slice(0, cut);
     const growthIn = new Map<string, number>();
@@ -431,10 +442,20 @@ describe("fold properties (seeded random boards)", () => {
         );
       }
     }
+    const metrics = (h: number): BoxMetrics => ({
+      h,
+      marginTop: 0,
+      marginBottom: 0,
+    });
     return prefix.map((item): LayoutStepInput => {
       switch (item.kind) {
         case "content":
-          return { kind: "content", key: item.key, height: item.height };
+          return {
+            kind: "content",
+            key: item.key,
+            height: item.height,
+            box: metrics(item.height),
+          };
         case "erase":
           return {
             kind: "erase",
@@ -443,13 +464,16 @@ describe("fold properties (seeded random boards)", () => {
               ? { anchorKey: item.anchorKey }
               : {}),
           };
-        case "frame":
+        case "frame": {
+          const height = item.ownHeight + (growthIn.get(item.container) ?? 0);
           return {
             kind: "content",
             key: item.key,
-            height: item.ownHeight + (growthIn.get(item.container) ?? 0),
+            height,
+            box: metrics(height),
             container: item.container,
           };
+        }
         case "layer":
           return {
             kind: "content",
@@ -493,6 +517,113 @@ describe("fold properties (seeded random boards)", () => {
       }
       expect(regrew).toBe(true);
     }
+  });
+
+  // ── The geometric register, which the property above never looked at ──
+  //
+  // The 2026-08-13 review found the test above comparing assignments,
+  // erases and orphans and NOT `boxes` — and the generator handing the fold
+  // no box metrics at all, so `boxes` was empty and could not have been
+  // compared. These two close that, and between them they say exactly what
+  // the fold promises in each register, because the two promises DIFFER and
+  // the gap is where the review's proposed repair would have landed.
+
+  /** Every fold's face width and column count, one place. */
+  const FACE_W = 1154;
+  const COLS = 2;
+
+  test("no two boxes standing in one region ever overlap — the guarantee `detectCollisions` structurally cannot make", () => {
+    // `regions.ts::detectCollisions` skips same-region pairs (`a.region ===
+    // b.region` → continue) because the flow's own chain is what keeps them
+    // apart. That makes the chain the SOLE guarantor of flow-on-flow ink,
+    // and nothing was pinning it. It is also the exact invariant the review
+    // wanted broken: charging a grown container frame's box at its
+    // first-written height puts the following box INSIDE the picture (74 vs
+    // a measured 162, measured), and no instrument in this mode would ever
+    // have said so.
+    for (const seed of [31, 32, 33, 34, 35, 36]) {
+      const doc = randomDoc(seed, 90);
+      for (const cut of [9, 27, 45, 71, doc.length]) {
+        const inputs = inputsFor(doc, cut);
+        const layout = foldBoardLayout(inputs, 3, 150, undefined, FACE_W, COLS);
+        const standing = standingBoxes(layout, inputs);
+        for (let i = 0; i < standing.length; i++) {
+          for (let j = i + 1; j < standing.length; j++) {
+            const a = standing[i]!;
+            const b = standing[j]!;
+            if (a.panel !== b.panel || a.region !== b.region) continue;
+            const gap =
+              a.rect.y >= b.rect.y + b.rect.h || b.rect.y >= a.rect.y + a.rect.h;
+            const apart =
+              a.rect.x >= b.rect.x + b.rect.w || b.rect.x >= a.rect.x + a.rect.w;
+            expect(`${seed}/${cut} ${a.key}×${b.key}: ${gap || apart}`).toBe(
+              `${seed}/${cut} ${a.key}×${b.key}: true`,
+            );
+          }
+        }
+      }
+    }
+  });
+
+  test("an append moves a box only where the picture above it grew, and only downward, by exactly that growth", () => {
+    // What prefix stability IS in the geometric register, stated as the
+    // model rather than as a wish. The reviewer's own scenario, with the
+    // numbers they quoted:
+    //
+    //   [graph frame own-height 74, prose 30]         → prose at y = 74
+    //   append a layer that grows the graph by 88     → prose at y = 162
+    //
+    // The prose DOES move, and it must: the frame's node is the whole
+    // accumulated dagre canvas — the layer mounts a hidden zero-rect marker
+    // — so the box the browser holds open really is 162 tall from the first
+    // paint after the append. Chaining on the first-written 74 would place
+    // the prose inside that picture, ink over ink, silently (see the test
+    // above). The room's honesty here is that the ASSIGNMENT does not move
+    // (which board, which run — that is what the deferred charge buys) and
+    // the ink lands below what stands, which is R1's other half.
+    const box = (h: number): BoxMetrics => ({ h, marginTop: 0, marginBottom: 0 });
+    const before: LayoutStepInput[] = [
+      { kind: "content", key: "F", height: 74, box: box(74), container: "graph:g" },
+      { kind: "content", key: "P", height: 30, box: box(30) },
+    ];
+    const after: LayoutStepInput[] = [
+      ...before.slice(0, 1).map((s) => ({
+        ...(s as Extract<LayoutStepInput, { kind: "content" }>),
+        height: 162,
+        box: box(162),
+      })),
+      before[1]!,
+      { kind: "content", key: "L", height: 0, container: "graph:g", growth: 88 },
+    ];
+    const fold = (steps: LayoutStepInput[]) =>
+      foldBoardLayout(steps, 1, Infinity, undefined, FACE_W, 1);
+
+    const a = fold(before);
+    const b = fold(after);
+    expect(a.boxes.get("P")!.y).toBe(74);
+    expect(b.boxes.get("P")!.y).toBe(162);
+    // The frame itself never moves, and the prose moved by exactly the
+    // growth — no more (which would be double-charging) and no less (which
+    // would be an overlap).
+    expect(b.boxes.get("F")).toEqual(a.boxes.get("F")!);
+    expect(b.boxes.get("P")!.y - a.boxes.get("P")!.y).toBe(88);
+    // The register that IS byte-stable across the append.
+    expect([...b.assignments].slice(0, 2)).toEqual([...a.assignments]);
+    // And the prose stands clear of the picture, at its measured size.
+    const standing = standingBoxes(b, after);
+    const frame = standing.find((s) => s.key === "F")!;
+    const prose = standing.find((s) => s.key === "P")!;
+    expect(frame.rect.h).toBe(162);
+    expect(prose.rect.y).toBeGreaterThanOrEqual(frame.rect.y + frame.rect.h);
+
+    // A layer that grows NOTHING moves nothing: the append is felt only
+    // through the frame's own re-measurement, never through its arrival.
+    const inert: LayoutStepInput[] = [
+      before[0]!,
+      before[1]!,
+      { kind: "content", key: "L", height: 0, container: "graph:g", growth: 0 },
+    ];
+    expect([...fold(inert).boxes]).toEqual([...a.boxes]);
   });
 
   test("erase target sets are PAIRWISE DISJOINT and every step has exactly one board — or stands orphaned", () => {
