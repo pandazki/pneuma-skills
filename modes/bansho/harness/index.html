@@ -1,0 +1,158 @@
+<!doctype html>
+<!--
+  bansho render harness — the durable G7 visual-verification scaffold (T3).
+
+  Run from the repo root:      bun modes/bansho/harness/index.html
+  then open the printed URL (Bun bundles main.ts on the fly).
+
+  This is NOT the T4 viewer: no React, no store, no streaming reconcile —
+  just the engine driven end to end in a real layout engine (parse →
+  factories → canonical timeline → rAF seek), so reveal behavior, ink
+  geometry, chart accumulation and back references can be SEEN and
+  screenshot for calibration. It lives outside engine/ on purpose: the
+  engine holds no rAF (G2); the harness is a host.
+-->
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>bansho harness</title>
+    <style>
+      /* Prototype design tokens (docs/proposals/2026-08-07-bansho-prototype.html). */
+      :root,
+      [data-theme="light"] {
+        --page: #f2f0ec;
+        --panel: #fbfaf7;
+        --board: #ffffff;
+        --board-fg: #1c1b19;
+        --accent: #c2571e;
+        --hl: #ffe072;
+        --hl-a: 0.62;
+        --s1: #2e9e4f;
+        --s2: #3b7dd8;
+        --hand: "Bradley Hand", "HanziPen SC", "Chalkboard SE", "Segoe Print", cursive;
+      }
+      [data-theme="dark"] {
+        --page: #14161a;
+        --panel: #1a1d22;
+        --board: #22302a;
+        --board-fg: #f2efe6;
+        --accent: #e8894b;
+        --hl: #e8c24a;
+        --hl-a: 0.32;
+        --s1: #6fd98d;
+        --s2: #7fb2f0;
+        --hand: "Chalkboard SE", "HanziPen SC", "Bradley Hand", "Segoe Print", cursive;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--page);
+        font-family: var(--hand);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 100vh;
+      }
+      #controls {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        width: 100%;
+        max-width: 960px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 10px 16px;
+        background: var(--panel);
+        color: var(--board-fg);
+        border-bottom: 1px solid color-mix(in srgb, var(--board-fg) 15%, transparent);
+        font-size: 14px;
+      }
+      #controls button,
+      #controls select {
+        font: inherit;
+        padding: 3px 12px;
+        cursor: pointer;
+      }
+      #scrub {
+        flex: 1;
+      }
+      /* The board — a positioned stacking-context root: backref overlays
+         mount here with under(0) / step text(1) / over(2) layering. */
+      #board {
+        position: relative;
+        width: 900px;
+        max-width: calc(100vw - 40px);
+        margin: 28px 0 80px;
+        padding: 44px 52px;
+        background: var(--board);
+        color: var(--board-fg);
+        border-radius: 10px;
+        box-shadow: 0 10px 32px rgba(0, 0, 0, 0.12);
+        font-size: 26px;
+        line-height: 1.72;
+      }
+      /* Step nodes must NOT mint stacking contexts (backref mount contract). */
+      .bansho-step {
+        margin: 0 0 14px;
+      }
+      .bansho-heading-1 {
+        font-size: 42px;
+        line-height: 1.4;
+        margin: 0 0 26px;
+      }
+      .bansho-heading-2 {
+        font-size: 33px;
+        line-height: 1.45;
+        margin: 26px 0 20px;
+      }
+      .bansho-aside {
+        font-size: 22px;
+        opacity: 0.78;
+        padding-left: 18px;
+        border-left: 3px solid color-mix(in srgb, var(--board-fg) 30%, transparent);
+      }
+      .bansho-list-item .bansho-bullet {
+        margin-right: 12px;
+        vertical-align: baseline;
+      }
+      .bansho-term {
+        color: var(--accent);
+      }
+      .bansho-math-block {
+        font-size: 30px;
+        text-align: center;
+        /* auto, not 0 — the factory shrinks this host to fit-content so the
+           clip window hugs the formula; mirrors viewer/board-css.ts. */
+        margin: 10px auto 18px;
+      }
+      #measure-host {
+        position: absolute;
+        visibility: hidden;
+        pointer-events: none;
+        left: 52px; /* board padding — measured width == mounted width */
+        right: 52px;
+        top: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="controls">
+      <button id="play">Play</button>
+      <input id="scrub" type="range" min="0" max="1000" value="0" />
+      <span id="clock">0.0 / 0.0s</span>
+      <select id="rate">
+        <option value="0.75">0.75×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option>
+        <option value="1.5">1.5×</option>
+      </select>
+      <button id="theme">Dark</button>
+    </div>
+    <div id="board"><div id="measure-host"></div></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

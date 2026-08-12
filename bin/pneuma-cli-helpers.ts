@@ -294,6 +294,39 @@ export function resolveWorkspaceBackendType(
   return { backendType: existingSession.backendType };
 }
 
+/** ANSI SGR / CSI sequences, as Vite's banner writes them. */
+const ANSI_ESCAPE = /\x1b\[[0-9;]*[A-Za-z]/g;
+
+/**
+ * The port Vite actually bound to, read off one line of its banner — or
+ * `null` when the line is not the banner's `Local:` row.
+ *
+ * PURE, EXPORTED AND TESTED BECAUSE ANSI ALREADY DEFEATED IT ONCE. Vite
+ * colourises the banner, and it does not wrap whole tokens: the row arrives
+ * as `Local\x1b[22m:   \x1b[36mhttp://localhost:\x1b[1m17999\x1b[22m/`, so a
+ * naive `/Local:\s+https?:\/\/[^:]+:(\d+)/` matches NOTHING — neither
+ * `Local:` (an escape sits between the word and the colon) nor the digits
+ * (an escape sits between the colon and the port). The old parser therefore
+ * never fired: every dev start waited out the 10s timeout and then reported
+ * the port it had ASKED for. When 17996 was already taken by another
+ * session, the ready line — and with it the URL printed to the user and
+ * handed to `mode-maker play` — pointed at somebody else's workspace. The
+ * blind trial (`docs/proposals/2026-08-11-bansho-blind-trial-findings.md`)
+ * measured the cost: a cold agent could not find its own page, and port
+ * 17999 served a DIFFERENT session's board while reporting success.
+ *
+ * Strip first, match second — the same ruling the shell-PATH capture
+ * reached (`.claude/rules/server.md`).
+ */
+export function parseVitePort(line: string): number | null {
+  const match = line
+    .replace(ANSI_ESCAPE, "")
+    .match(/Local:\s*https?:\/\/[^:/]+:(\d+)/);
+  if (!match) return null;
+  const port = Number.parseInt(match[1]!, 10);
+  return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
+}
+
 /**
  * Spawn Vite dev server and resolve the actual port from its stdout.
  * Returns { proc, port } where port is the actual port Vite bound to.
@@ -324,11 +357,11 @@ export async function startViteDev(opts: {
         for (const line of text.split("\n")) {
           if (line.trim()) console.log(`[vite] ${line}`);
           if (!resolved) {
-            const match = line.match(/Local:\s+https?:\/\/[^:]+:(\d+)/);
-            if (match) {
+            const parsed = parseVitePort(line);
+            if (parsed !== null) {
               resolved = true;
               clearTimeout(timeout);
-              resolvePort(parseInt(match[1], 10));
+              resolvePort(parsed);
             }
           }
         }

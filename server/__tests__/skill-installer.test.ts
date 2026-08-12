@@ -391,6 +391,71 @@ describe("installSkill", () => {
     expect(existsSync(join(workspace, ".claude", "commands", "borrow.md"))).toBe(false);
   });
 
+  // ── Mode-shipped workflow scripts (gated on `workflowsDir`) ──────────────
+  //
+  // Same seam as `/borrow`, one level up: the mode ships the script, the
+  // BACKEND says whether it has a runner for it. The source is discovered
+  // (`<modeSourceDir>/workflows/*.js`), never declared, so the server holds
+  // no mode knowledge — and the gate is the field, so adding a backend with
+  // a workflow runner is a manifest edit and nothing else.
+  const shipWorkflows = () => {
+    mkdirSync(join(modeSourceDir, "workflows"), { recursive: true });
+    writeFileSync(
+      join(modeSourceDir, "workflows", "plan-lecture.js"),
+      "export const meta = { name: 'plan-lecture' }\n",
+    );
+    writeFileSync(join(modeSourceDir, "workflows", "notes.md"), "not a script\n");
+  };
+
+  test("installs a mode's workflow scripts for claude-code (workflowsDir defined)", () => {
+    shipWorkflows();
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, backendType: "claude-code" });
+
+    const installed = join(workspace, ".claude", "workflows", "plan-lecture.js");
+    expect(existsSync(installed)).toBe(true);
+    expect(readFileSync(installed, "utf-8")).toContain("plan-lecture");
+    // Only scripts — a README beside them is not a workflow.
+    expect(existsSync(join(workspace, ".claude", "workflows", "notes.md"))).toBe(false);
+  });
+
+  test("installs workflow scripts into the session dir for project sessions", () => {
+    shipWorkflows();
+    const sessionDir = join(tmpDir, "session-wf");
+    mkdirSync(sessionDir, { recursive: true });
+
+    installSkill({
+      workspace,
+      skillConfig: defaultSkillConfig,
+      modeSourceDir,
+      backendType: "claude-code",
+      sessionDir,
+      projectRoot: workspace,
+      sessionId: "sess-wf",
+    });
+
+    // The agent's cwd is the session dir, so the script has to land there.
+    expect(existsSync(join(sessionDir, ".claude", "workflows", "plan-lecture.js"))).toBe(true);
+  });
+
+  test("does not install workflow scripts for codex or kimi-cli (workflowsDir undefined)", () => {
+    shipWorkflows();
+    for (const backendType of ["codex", "kimi-cli"] as const) {
+      const ws = join(tmpDir, `ws-${backendType}`);
+      mkdirSync(ws, { recursive: true });
+      installSkill({ workspace: ws, skillConfig: defaultSkillConfig, modeSourceDir, backendType });
+      expect(existsSync(join(ws, ".claude", "workflows"))).toBe(false);
+      expect(existsSync(join(ws, ".agents", "workflows"))).toBe(false);
+      expect(existsSync(join(ws, ".kimi-code", "workflows"))).toBe(false);
+    }
+  });
+
+  test("a mode that ships no workflows creates no workflows dir at all", () => {
+    // The default fixture has no `workflows/` — the step must be a no-op
+    // rather than an empty directory the agent then has to interpret.
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, backendType: "claude-code" });
+    expect(existsSync(join(workspace, ".claude", "workflows"))).toBe(false);
+  });
+
   test("writes AGENTS.md when backendType is codex", () => {
     installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, backendType: "codex" });
 

@@ -12,7 +12,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Version:** 3.28.2
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
-**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `wordtaste`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`, `project-tidy`
+**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `wordtaste`, `bansho`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`, `project-tidy`
 
 > Modes can set `hidden: true` to disappear from user-pickable lists (launcher grids, ProjectPanel mode-tile picker). Their sessions are also stamped `internal: true` by `scanProjectSessions` and filtered out of user-facing session lists (project panel, project cards, quick-resume). Internal modes (`evolve`, `project-evolve`, `project-onboard`, `project-tidy`) are hidden — triggered by specific UI affordances or programmatically, never by a "what mode to start?" choice.
 
@@ -181,7 +181,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 | **Source\<T\>** + `SourceEvent<T>` + `SourceProvider` + `SourceContext` + `FileChannel` + `FileChangeEvent` + `SourceDescriptor` | `core/types/source.ts` | `core/source-registry.ts` picks provider by `kind` from `manifest.sources` | Built-in providers in `core/sources/{file-glob,json-file,aggregate-file,memory}.ts` (all extend `core/sources/base.ts` which enforces the four invariants); viewer subscribes via `src/hooks/useSource.ts` |
 | **AgentBackend** + `AgentCapabilities` + `AgentSessionInfo` + `AgentLaunchOptions` | `core/types/agent-backend.ts` | Each backend's `manifest.ts::createBackend(port)` | `bin/pneuma.ts` boots one per session; `server/ws-bridge*.ts` drives lifecycle |
 | **AgentProtocolAdapter** _(reserved/unused — see `BridgeBackend` row for the real seam)_ | `core/types/agent-backend.ts` | — (no production implementor) | — (no production consumer) |
-| **BackendModule** | `core/types/agent-backend.ts` | One per backend: `backends/{claude-code,codex,kimi-cli}/manifest.ts` | `backends/index.ts` is a pure registry — no `if (type === ...)` outside this file |
+| **BackendModule** (incl. the optional install-seam fields `commandsDir` / `workflowsDir`) | `core/types/agent-backend.ts` | One per backend: `backends/{claude-code,codex,kimi-cli}/manifest.ts` | `backends/index.ts` is a pure registry — no `if (type === ...)` outside this file; `server/skill-installer.ts` gates the session-command and workflow-script install steps on the FIELDS being defined |
 | **BridgeBackend** | `server/ws-bridge-backend.ts` | `BackendModule.createBridgeBackend()` per non-Claude backend | `server/ws-bridge.ts` central bridge dispatches; Claude legacy NDJSON path returns `null` here |
 | **ToolFileRef** | `backends/tool-file-ref.ts` | `BackendModule.toolFileRef(toolName, input)` | `server/file-ref.ts::stampFileRefs` decorates `tool_use` blocks; front-end `FilePreview` + `ToolFileActions` (open / editor / reveal via `/api/system/*`) consume |
 | **EvolutionConfig** | `core/types/mode-manifest.ts` | Mode `manifest.evolution` | `server/evolution-routes.ts` + Evolution mode |
@@ -322,6 +322,8 @@ Skills 复制到 backend-appropriate 目录。每个 backend 的 `manifest.ts` �
 - Kimi:`.kimi-code/skills/<installName>/` + `AGENTS.md`(Kimi Code 读 `AGENTS.md`,不读 `CLAUDE.md`;旧 `.kimi/skills/` 新 binary 不读)
 
 **Session-scoped slash commands**:`BackendModule` 多了一个可选的 `commandsDir`。Claude Code 把 `<cwd>/.claude/commands/*.md` 当原生 `slash_commands` 在 `system.init` stream-json 事件里上报,因此 installer 会把 `templates/session-commands/borrow.md` 复制到 `<installTarget>/.claude/commands/borrow.md`——它在 in-session chat 输入框里以 `/borrow` 出现(quick + project session 都装)。Codex 把它的 *skills*(非 project command 文件)映射成 slash_commands、Kimi(ACP `available_commands_update` 上报的是它自己的命令与 skills,不读 project command 文件),所以两者 `commandsDir` 留空、installer 这一步直接跳过。**Gate 在 `commandsDir` 字段而非 backend 条件判断**——没有 `if (backendType === ...)`。
+
+**Session-scoped workflow scripts**:同一条缝往上一层——`BackendModule` 另有可选的 `workflowsDir`(Claude Code = `.claude/workflows`,Codex / Kimi 留空)。Installer 发现 `<modeSourceDir>/workflows/*.js` 就复制到 `<installTarget>/<workflowsDir>/`,由 Claude Code 的 `Workflow` 工具按名调用。**来源是发现而非声明**(mode 不必在 manifest 里列),**gate 在 `workflowsDir` 字段**——server 端零 mode 知识、零 backend 条件判断。Workflow 与 slash command 的分工:command 是给用户的入口,workflow 是**强制一段工作顺序**(fan out → 评判 → 产出 → 批评),用在"prose 只能请求、脚本才能强制"的地方。先例是 `modes/bansho/workflows/plan-lecture.js`(讲稿动笔前先出设计)。铁律:**策略本身必须同时写在 mode 的 SKILL.md 里**——没有 workflow runner 的 backend 只剩那份散文,策略只活在脚本里就等于没给它们。
 
 模板变量 `{{key}}` / `{{viewerCapabilities}}` 替换后,指令文件由一组**命名 marker block** 拼装(`<!-- pneuma:start/end -->` 主体 + `<!-- pneuma:viewer-api:* -->` + `<!-- pneuma:preferences:* -->` + `<!-- pneuma:project:* -->`(项目 only)+ `<!-- pneuma:project-atlas:* -->`(项目 only,pointer 而非 inline)+ `<!-- pneuma:handoff:* -->`(项目 only)+ `<!-- pneuma:evolved:* -->`(Evolution 写入)+ `<!-- pneuma:resumed:* -->`(replay 续档))。Mode 版本写到 `skill-version.json`,resume 时与 manifest 比对,不同且未 dismiss 即 inline 提示 "Skill update: X → Y"。
 

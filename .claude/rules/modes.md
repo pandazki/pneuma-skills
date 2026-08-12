@@ -15,6 +15,8 @@ paths:
 
 ## Gotchas
 
+- **翻 `session.json` 的 `editing: false → true` 会唤醒那个 workspace 上一个 agent，而它会开始改文件。** 想在一个 `--viewing` session 里调 viewer action 时很容易踩：`dispatchViewerAction` 需要一个真的 attached backend，于是有人去翻这个标志位。后果实测过（2026-08-11）：`claude --resume` 被拉起、浏览器一连上、viewer 就把积压的通知（那次是 `refUnresolved`）转给它，**它当真去编辑了内容文件**——而那些文件在仓库外，没有 git 兜底。要驱动 viewer action，**开你自己的 session**，不要复活别人的；真要翻这个标志位，先确认那个 workspace 没有可复活的 agent，用完立刻翻回去。
+  **补充(2026-08-12，同一坑在 `editing: true` 的全新 session 上复现)**:「开你自己的 session」不是免疫。一个为了验证板面而新建的编辑 session，agent 在浏览器一连上就收到积压通知(`[ws-bridge] Viewer notification forwarded to CLI: boardCollision`),**没有任何人给它下指令**,它自己就去改了内容文件——追加了一个 `@erase` 并复制了两段内容。**通知转发是 idle-flush，不区分"这个 agent 是被人拉来干活的"还是"它只是恰好活着"**。所以拿一个编辑 session 当观察工具时,要么把内容文件 `chmod 444` 圈起来(实测有效),要么用 `--viewing` 且不去碰那个标志位。任何"我只是看看"的 session,只要它有 agent 且浏览器连上,它就可能动手。
 - **Seed gallery auto-derive is directory-only**:mode 没声明 `init.seeds[]` 时,`resolveSeedCatalog` 只把 directory-shaped 的 `seedFiles`(src/dst 以 `/` 结尾,或 dst 是 `./`/`""`)做成 gallery card;单文件条目被视为 framework setup 直接丢弃。真想要单文件模板的 mode **必须**显式声明 `init.seeds[]`。前端 `App.tsx` 的 `hasSeedsDeclared` 镜像了这条规则,两处要同步改。
 - **Mode skill version bump 必须带 `changelog`**:`manifest.ts` 的 `version` 动了,就要在 `changelog` map 加同 key 的条目(launcher 的 skill-update 提示从这里取 bullets)。同时 grep 旧版本字符串——`server/__tests__/` 与 backend lifecycle harness 里有测试硬编码 manifest version。
 - **Viewer 改动遵守 frontend rules**(`.claude/rules/frontend.md`):视觉验证、design tokens、snapdom/缩略图约束都适用于 `modes/*/viewer/`。

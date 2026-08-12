@@ -78,6 +78,7 @@ When humans and code agents co-create content, they need more than a chat window
 | **gridboard** | Interactive dashboards — draggable tile grid on a fixed canvas, JIT-compiled React tiles via `defineTile()`, agent-driven redesign on resize |
 | **cosmos** | Project any content — code, prose, research, business — into a structured cosmos: an interactive graph that lays its inner shape bare. Schema and dashboard tech borrow from [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything) (MIT) |
 | **wordtaste** | Human-in-the-loop Chinese long-form writing — shape the argument and its strongest landing points first, write sequential units in isolated contexts, check with a fresh model family (Claude Code / Codex), and finish through finite repair with human gates |
+| **bansho** | Board-writing explainer — write the lecture as plain markdown and the board performs it: handwriting flows in, emphasis becomes hand-drawn ink, charts and formulas draw themselves as the narration reaches them, scrubbable like a replayed lecture |
 | **mode-maker** | Create custom modes with AI — fork, play-test, publish |
 | **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback |
 
@@ -160,6 +161,7 @@ Modes:
   remotion                     Code-driven video composition
   gridboard                    Interactive tile dashboards
   wordtaste                    Chinese long-form writing loop
+  bansho                       Board-writing explainer
   mode-maker                   Create custom modes with AI
   evolve                       Launch the Evolution Agent
   /path/to/mode                Load from a local directory

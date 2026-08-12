@@ -3,6 +3,7 @@ import {
   normalizePersistedSession,
   normalizeSessionRecord,
   parseCliArgs,
+  parseVitePort,
   preserveRefinedSessionMeta,
   resolveWorkspaceBackendType,
   type PersistedSession,
@@ -204,5 +205,42 @@ describe("preserveRefinedSessionMeta (refined title/summary survive a minimal sa
     const out = preserveRefinedSessionMeta(minimal(), { displayName: "Doc" });
     expect(out.internal).toBeUndefined();
     expect(out.borrow).toBeUndefined();
+  });
+});
+
+describe("parseVitePort (the ready line must name the port Vite actually took)", () => {
+  // Captured verbatim from a real `bun run dev` where 17996-17998 were
+  // already in use. The naive regex this replaced matched NOTHING here, so
+  // the parser timed out and the ready line advertised 17996 — a port
+  // serving a DIFFERENT session.
+  const COLOURISED =
+    "  \x1b[32m➜\x1b[39m  \x1b[1mLocal\x1b[22m:   \x1b[36mhttp://localhost:\x1b[1m17999\x1b[22m/\x1b[39m";
+
+  test("reads the port through Vite's ANSI colouring", () => {
+    expect(parseVitePort(COLOURISED)).toBe(17999);
+  });
+
+  test("still reads a plain, uncoloured banner", () => {
+    expect(parseVitePort("  ➜  Local:   http://localhost:17996/")).toBe(17996);
+  });
+
+  test("reads an https banner and a non-localhost host", () => {
+    expect(parseVitePort("  ➜  Local:   https://127.0.0.1:5173/")).toBe(5173);
+  });
+
+  test("is null on every line that is not the Local row", () => {
+    for (const line of [
+      "",
+      "  ➜  Network: http://10.0.0.2:17999/",
+      "  VITE v7.3.2  ready in 667 ms",
+      "[projects-cache] revalidated /Users/x/Codes/plexus in 920ms",
+      "Local: http://localhost:/",
+    ]) {
+      expect(parseVitePort(line)).toBeNull();
+    }
+  });
+
+  test("refuses a port outside the legal range rather than reporting it", () => {
+    expect(parseVitePort("  ➜  Local:   http://localhost:99999/")).toBeNull();
   });
 });

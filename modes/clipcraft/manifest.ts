@@ -39,7 +39,15 @@ const clipcraftManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-clipcraft",
-    sharedScripts: ["generate_image.mjs", "edit_image.mjs", "storyboard.mjs"],
+    sharedScripts: [
+      "generate_image.mjs",
+      "edit_image.mjs",
+      "storyboard.mjs",
+      // Lifted from clipcraft's own skill/scripts/ in bansho T10 — the
+      // installed path (`scripts/generate-tts.mjs`) is unchanged, so every
+      // SKILL.md reference keeps working.
+      "generate-tts.mjs",
+    ],
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
       FAL_KEY: "falApiKey",

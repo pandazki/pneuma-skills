@@ -1416,6 +1416,34 @@ export function installSkill(options: InstallSkillOptions): void {
     }
   }
 
+  // 1d-ter. Install the mode's own session-scoped WORKFLOW scripts.
+  //         Same seam as 1d-bis and the same rule: gated on
+  //         `conventions.workflowsDir`, never on a backend name. The source
+  //         is DISCOVERED, not declared — any mode that ships
+  //         `<modeSourceDir>/workflows/*.js` gets them installed, so the
+  //         server keeps zero mode knowledge. Sibling of `skill/` on
+  //         purpose: a workflow is executed by the backend, not read as
+  //         skill text, and nesting it under `skill/` would also copy it
+  //         into the skills dir as dead weight.
+  if (conventions.workflowsDir) {
+    const workflowSource = join(modeSourceDir, "workflows");
+    const scripts = existsSync(workflowSource)
+      ? readdirSync(workflowSource).filter((f) => f.endsWith(".js"))
+      : [];
+    if (scripts.length > 0) {
+      const workflowsTarget = join(installTarget, conventions.workflowsDir);
+      mkdirSync(workflowsTarget, { recursive: true });
+      for (const script of scripts) {
+        cpSync(join(workflowSource, script), join(workflowsTarget, script), {
+          force: true,
+        });
+      }
+      console.log(
+        `[skill-installer] Installed ${scripts.length} workflow script(s) to ${workflowsTarget}`,
+      );
+    }
+  }
+
   // 1e. Ensure preferences directory and scaffold files exist
   const prefsDir = join(homedir(), ".pneuma", "preferences");
   mkdirSync(prefsDir, { recursive: true });

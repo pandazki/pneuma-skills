@@ -1,0 +1,862 @@
+<title>bansho — 板书动画原型</title>
+
+<style>
+/* ─────────────────────────────────────────────────────────
+   bansho prototype
+   Light = whiteboard + marker.   Dark = blackboard + chalk.
+   Two real boards, not an inverted palette.
+   ───────────────────────────────────────────────────────── */
+:root {
+  --page:#F2F0EC; --panel:#FBFAF7; --board:#FFFFFF; --board-fg:#1C1B19;
+  --edge:#DDD9D0; --edge-soft:#E8E4DC;
+  --fg:#26241F; --fg-dim:#7C776D; --fg-faint:#A9A398;
+  --accent:#C2571E; --accent-soft:#EBC0A4;
+  --hl:#FFE072; --hl-a:.62;
+  --s1:#2E9E4F; --s2:#3B7DD8;
+  --board-shadow:0 1px 2px rgba(28,27,25,.05), 0 12px 32px -18px rgba(28,27,25,.28);
+  --hand:'Bradley Hand','HanziPen SC','Chalkboard SE','Segoe Print',cursive;
+  --ui:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page:#14161A; --panel:#1A1D22; --board:#22302A; --board-fg:#F2EFE6;
+    --edge:#2D3138; --edge-soft:#23262C;
+    --fg:#DEDAD1; --fg-dim:#8B8779; --fg-faint:#63605A;
+    --accent:#E8894B; --accent-soft:#7A4A2C;
+    --hl:#E8C24A; --hl-a:.32;
+    --s1:#6FD98D; --s2:#7FB2F0;
+    --board-shadow:0 1px 2px rgba(0,0,0,.4), 0 18px 40px -20px rgba(0,0,0,.7);
+    --hand:'Chalkboard SE','HanziPen SC','Bradley Hand','Segoe Print',cursive;
+  }
+}
+:root[data-theme="light"] {
+  --page:#F2F0EC; --panel:#FBFAF7; --board:#FFFFFF; --board-fg:#1C1B19;
+  --edge:#DDD9D0; --edge-soft:#E8E4DC;
+  --fg:#26241F; --fg-dim:#7C776D; --fg-faint:#A9A398;
+  --accent:#C2571E; --accent-soft:#EBC0A4;
+  --hl:#FFE072; --hl-a:.62; --s1:#2E9E4F; --s2:#3B7DD8;
+  --board-shadow:0 1px 2px rgba(28,27,25,.05), 0 12px 32px -18px rgba(28,27,25,.28);
+  --hand:'Bradley Hand','HanziPen SC','Chalkboard SE','Segoe Print',cursive;
+}
+:root[data-theme="dark"] {
+  --page:#14161A; --panel:#1A1D22; --board:#22302A; --board-fg:#F2EFE6;
+  --edge:#2D3138; --edge-soft:#23262C;
+  --fg:#DEDAD1; --fg-dim:#8B8779; --fg-faint:#63605A;
+  --accent:#E8894B; --accent-soft:#7A4A2C;
+  --hl:#E8C24A; --hl-a:.32; --s1:#6FD98D; --s2:#7FB2F0;
+  --board-shadow:0 1px 2px rgba(0,0,0,.4), 0 18px 40px -20px rgba(0,0,0,.7);
+  --hand:'Chalkboard SE','HanziPen SC','Bradley Hand','Segoe Print',cursive;
+}
+
+* { box-sizing:border-box; }
+body {
+  margin:0; background:var(--page); color:var(--fg);
+  font-family:var(--ui); font-size:15px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap { max-width:1380px; margin:0 auto; padding:26px 22px 36px; display:flex; flex-direction:column; gap:18px; }
+
+header { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px 16px; padding-bottom:14px; border-bottom:1px solid var(--edge); }
+h1 { font-family:var(--hand); font-size:30px; font-weight:400; margin:0; letter-spacing:.01em; }
+.sub { color:var(--fg-dim); font-size:13.5px; }
+.sub b { color:var(--accent); font-weight:600; }
+.hgap { flex:1; }
+
+button {
+  font-family:var(--ui); font-size:13px; color:var(--fg);
+  background:var(--panel); border:1px solid var(--edge); border-radius:7px;
+  padding:6px 13px; cursor:pointer;
+  transition:border-color .15s, background .15s, color .15s;
+}
+button:hover { border-color:var(--accent-soft); }
+button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+button[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:#fff; }
+.scenes { display:flex; gap:6px; }
+
+main { display:grid; grid-template-columns:minmax(290px,5.5fr) minmax(0,9.5fr); gap:18px; align-items:start; }
+@media (max-width:940px) { main { grid-template-columns:1fr; } }
+
+.pane { background:var(--panel); border:1px solid var(--edge); border-radius:12px; overflow:hidden; display:flex; flex-direction:column; }
+.pane.bare { background:transparent; border:0; overflow:visible; }
+.pane-head {
+  display:flex; align-items:center; gap:10px; padding:10px 14px;
+  border-bottom:1px solid var(--edge-soft);
+  font-size:11.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--fg-faint);
+}
+.pane.bare .pane-head { border-bottom:0; padding-left:2px; }
+.pane-head .tag { color:var(--fg-dim); letter-spacing:.04em; text-transform:none; font-size:12px; }
+.pane-head .spacer { flex:1; }
+.mini { font-size:11.5px; padding:3px 9px; }
+
+.src-stack { position:relative; flex:1; min-height:430px; }
+.src-shared {
+  font-family:var(--mono); font-size:12.5px; line-height:1.85;
+  padding:16px; white-space:pre-wrap; word-break:break-word; tab-size:2;
+  letter-spacing:0;
+}
+#srcHi { position:absolute; inset:0; pointer-events:none; color:var(--fg); overflow:hidden; }
+#srcHi .m { color:var(--accent); }
+#srcHi .blk { color:var(--fg-dim); }
+#srcHi .now { background:var(--accent-soft); border-radius:3px; box-shadow:0 0 0 2px var(--accent-soft); }
+#srcTa {
+  position:absolute; inset:0; width:100%; height:100%;
+  background:transparent; color:transparent; caret-color:var(--accent);
+  border:0; resize:none; outline:none;
+}
+#srcTa:focus-visible { box-shadow:inset 0 0 0 2px var(--accent); border-radius:11px; }
+
+.board-outer { background:var(--board); border-radius:12px; box-shadow:var(--board-shadow); border:1px solid var(--edge); overflow:hidden; }
+#boardScroll { height:clamp(440px,60vh,640px); overflow-y:auto; overflow-x:hidden; scrollbar-width:thin; }
+#board { position:relative; padding:32px 36px 44px; color:var(--board-fg); font-family:var(--hand); }
+#annUnder, #annOver { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
+#annUnder { z-index:1; }
+#annOver { z-index:3; }
+#flow { position:relative; z-index:2; }
+
+.line { font-size:clamp(20px,2vw,26px); line-height:1.74; margin:0; letter-spacing:.005em; }
+.para-gap { height:15px; }
+.w { display:inline-block; white-space:pre; clip-path:inset(0 100% 0 0); will-change:clip-path; }
+.chartwrap { margin:20px 0 4px; }
+.chartwrap svg { display:block; width:100%; height:auto; overflow:visible; }
+
+.transport { display:flex; align-items:center; gap:14px; padding:11px 16px; background:var(--panel); border:1px solid var(--edge); border-radius:12px; }
+.tbtn { width:38px; height:38px; display:grid; place-items:center; padding:0; border-radius:9px; flex:none; }
+.tbtn svg { width:15px; height:15px; fill:currentColor; }
+#scrub { flex:1; position:relative; height:38px; cursor:pointer; touch-action:none; }
+#scrub:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:6px; }
+.track { position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); height:5px; border-radius:3px; background:var(--edge); overflow:hidden; }
+.fill { position:absolute; inset:0 auto 0 0; width:0; background:var(--accent); }
+.ticks { position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); height:15px; }
+.ticks i { position:absolute; top:0; width:1px; height:100%; background:var(--fg-faint); opacity:.38; }
+.ticks i.k { opacity:.9; background:var(--accent); width:2px; }
+.head { position:absolute; top:50%; width:13px; height:13px; margin:-6.5px 0 0 -6.5px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 3px var(--panel); }
+.clock { font-family:var(--mono); font-size:12px; color:var(--fg-dim); font-variant-numeric:tabular-nums; min-width:90px; text-align:right; }
+
+.notes { display:grid; grid-template-columns:repeat(auto-fit,minmax(228px,1fr)); gap:14px 24px; padding-top:16px; border-top:1px solid var(--edge); font-size:12.5px; color:var(--fg-dim); line-height:1.62; }
+.notes h3 { margin:0 0 3px; font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--fg); font-weight:600; }
+.notes code { font-family:var(--mono); font-size:11.5px; color:var(--accent); }
+.notes b { color:var(--fg); font-weight:600; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>bansho</h1>
+    <span class="sub">板书动画原型 · 零依赖 · <b>seek(t) 纯函数引擎</b></span>
+    <span class="hgap"></span>
+    <div class="scenes" role="group" aria-label="示例场景">
+      <button id="scEn" aria-pressed="true">英文场景</button>
+      <button id="scZh" aria-pressed="false">中文 · 图后置</button>
+      <button id="scPar" aria-pressed="false">中文 · 讲一句画一层</button>
+      <button id="scDoc" aria-pressed="false">真实文档 · 形式论证</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="pane">
+      <div class="pane-head">
+        <span>agent 写的</span><span class="tag">可直接编辑</span>
+        <span class="spacer"></span>
+        <button id="replay" class="mini">重新播放</button>
+      </div>
+      <div class="src-stack">
+        <div id="srcHi" class="src-shared" aria-hidden="true"></div>
+        <textarea id="srcTa" class="src-shared" spellcheck="false" aria-label="板书源文本"></textarea>
+      </div>
+    </section>
+
+    <section class="pane bare">
+      <div class="pane-head"><span>板上发生的</span><span class="tag">内容累积 · 不擦除</span></div>
+      <div class="board-outer">
+        <div id="boardScroll">
+          <div id="board">
+            <svg id="annUnder"></svg>
+            <div id="flow"></div>
+            <svg id="annOver"></svg>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="transport">
+    <button id="play" class="tbtn" aria-label="播放"><svg id="playIcon" viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z"/></svg></button>
+    <div id="scrub" role="slider" tabindex="0" aria-label="时间轴" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="track"><div class="fill" id="fill"></div></div>
+      <div class="ticks" id="ticks"></div>
+      <div class="head" id="head" style="left:0"></div>
+    </div>
+    <button id="rate" class="mini" style="min-width:52px" aria-label="播放速度">1.0×</button>
+    <div class="clock" id="clock">0.0s / 0.0s</div>
+  </div>
+
+  <div class="notes">
+    <div><h3>内容即时间线</h3>文档顺序就是播放顺序。源文本里<b>没有一个时间戳</b>——每一笔多久，是从内容量算出来的（字数、路径长度）。左边正在写的那段会同步亮起。</div>
+    <div><h3>语法就是 Markdown</h3><code>==强调==</code> 是荧光笔，<code>**关键**</code> 圈出来，<code>~~推翻~~</code> 划掉。agent 不选动画，只标"我在强调什么"。</div>
+    <div><h3>seek(t) 不是 play()</h3>拖时间轴任意回看，画面完全一致——每帧都是 <code>t</code> 的纯函数。手绘抖动用定种子伪随机，来回拖线条不会跳。</div>
+    <div><h3>一支笔</h3>板书是<b>单线程</b>的：圈一个数字时手不在写字，后面的话要等它收笔。<b>全程没有任何并行动画。</b>同名 chart 可在后文接着写——骨架不重画，讲一句、加一层。</div>
+    <div><h3>关于字体</h3>这里用系统手写体（英文 Bradley Hand / 中文翩翩体），正式版会内联指定字体。<b>节奏比字体更决定像不像手写。</b></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* 定种子伪随机 —— 手绘抖动必须可复现，否则 scrub 回拖时线条会跳动 */
+  const mulberry32 = (a) => () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+  /* ── 每种笔有自己的速度性格。线性 = 一眼假 ──
+     手写不匀速：落笔、行笔、收笔三段速度都不同；长笔画中途还会顿。
+     所有函数必须单调递增，否则回拖时画面会倒退。 */
+  const Ease = {
+    /* 写字：落笔即走，收笔缓一下 */
+    write: (p) => 1 - Math.pow(1 - p, 1.75),
+    /* 荧光笔：唰一下扫过去，尾巴带一点甩 */
+    swipe: (p) => 1 - Math.pow(1 - p, 2.9),
+    /* 圈：起手慢，中段最快，收口回到慢 */
+    circle: (p) => (p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2),
+    /* 划掉：狠、快、一气呵成 */
+    strike: (p) => 1 - Math.pow(1 - p, 3.4),
+    /* 立骨架：落笔先顿一下，再一路拉到底 */
+    steady: (p) => (p < .14 ? (p / .14) * .06 : .06 + Math.pow((p - .14) / .86, .88) * .94),
+    /* 沿数据走：手跟着数字爬，每一段都要重新找方向 —— 顿挫在这儿 */
+    trace: (p, segs = 5) => {
+      if (p <= 0) return 0;
+      if (p >= 1) return 1;
+      const s = p * segs, i = Math.floor(s), f = s - i;
+      return (i + (1 - Math.pow(1 - f, 1.9))) / segs;
+    },
+  };
+  const NS = "http://www.w3.org/2000/svg";
+  /* SVG presentation attribute 不解析 var()，凡是 token 颜色一律走 style */
+  const el = (n, attrs, style) => {
+    const e = document.createElementNS(NS, n);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (style) for (const k in style) e.style[k] = style[k];
+    return e;
+  };
+
+  /* ── 手绘几何：抖动 + 平滑，rough.js 的核心思想 ── */
+  function sketchPath(pts, rnd, amp) {
+    let d = `M ${pts[0][0].toFixed(2)} ${pts[0][1].toFixed(2)}`;
+    for (let i = 1; i < pts.length; i++) {
+      const [x, y] = pts[i], [px, py] = pts[i - 1];
+      const cx = (px + x) / 2 + (rnd() - 0.5) * amp * 2.2;
+      const cy = (py + y) / 2 + (rnd() - 0.5) * amp * 2.2;
+      d += ` Q ${cx.toFixed(2)} ${cy.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    }
+    return d;
+  }
+  function jitterLine(x1, y1, x2, y2, rnd, amp = 1.5) {
+    const len = Math.hypot(x2 - x1, y2 - y1);
+    const segs = Math.max(2, Math.round(len / 46));
+    const pts = [];
+    for (let i = 0; i <= segs; i++) {
+      const t = i / segs, edge = (i === 0 || i === segs) ? 0.3 : 1;
+      pts.push([x1 + (x2 - x1) * t + (rnd() - 0.5) * amp * 2 * edge,
+                y1 + (y2 - y1) * t + (rnd() - 0.5) * amp * 2 * edge]);
+    }
+    return sketchPath(pts, rnd, amp * 0.5);
+  }
+  /* 荧光笔不是圆角长条 —— 它是一笔扫出来的：入笔窄、中段饱满、收笔收细，
+     整条还带点倾斜，上下边缘各自不平。所以是填充形状，不是等宽 stroke。 */
+  function highlighterShape(x0, x1, cy, h, rnd) {
+    const n = 12, top = [], bot = [];
+    const lift = (rnd() - .5) * h * .10;
+    const tilt = (rnd() - .5) * h * .24;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const x = x0 + (x1 - x0) * t;
+      const mid = cy + lift + tilt * (t - .5) * 2;
+      const env = Math.pow(Math.sin(Math.PI * clamp01(t * 1.08 - .04)), .34);
+      const w = h * (.34 + .58 * env);
+      top.push([x, mid - w / 2 + (rnd() - .5) * h * .10]);
+      bot.push([x, mid + w / 2 + (rnd() - .5) * h * .13]);
+    }
+    const rev = bot.reverse();
+    let d = sketchPath(top, rnd, h * .05);
+    d += ` L ${rev[0][0].toFixed(2)} ${rev[0][1].toFixed(2)}`;
+    d += sketchPath(rev, rnd, h * .05).replace(/^M [-\d.]+ [-\d.]+/, "");
+    return d + " Z";
+  }
+  function jitterEllipse(cx, cy, rx, ry, rnd, amp = 2.4) {
+    const n = 16, start = rnd() * 1.2, pts = [];
+    for (let i = 0; i <= n + 2; i++) {
+      const a = start + (i / n) * Math.PI * 2, k = 1 + (rnd() - 0.5) * 0.05;
+      pts.push([cx + Math.cos(a) * rx * k + (rnd() - 0.5) * amp,
+                cy + Math.sin(a) * ry * k + (rnd() - 0.5) * amp]);
+    }
+    return sketchPath(pts, rnd, amp * 0.5);
+  }
+
+  /* ── 引擎：一串 beat，每个是 (p:0..1) => void 的纯函数 ── */
+  class Scene {
+    constructor() { this.beats = []; this.dur = 0; }
+    at(start, dur, seek, meta) {
+      this.beats.push({ start, dur: Math.max(dur, 1e-4), seek, meta: meta || {} });
+      this.dur = Math.max(this.dur, start + dur);
+      return start + dur;
+    }
+    seek(t) { for (const b of this.beats) b.seek(clamp01((t - b.start) / b.dur)); }
+    active(t) {
+      let best = null;
+      for (const b of this.beats) {
+        if (b.start > t + 1e-6) continue;
+        if (!best || b.start >= best.start) best = b;
+      }
+      return best;
+    }
+  }
+
+  /* ── 节奏模型：唯一决定"多久"的地方。agent 永远不碰 ── */
+  const R = {
+    perChar:.0195, wordBase:.052, cjkBoost:1.5,
+    gap:.026, comma:.13, period:.30, paraGap:.42,
+    annotate:.44, annotDelay:.10, afterAnnot:.14,
+    axis:.40, tick:.20, series:1.45, label:.40, chartLead:.45,
+  };
+  const isCJK = (s) => /[\u4e00-\u9fff\u3040-\u30ff]/.test(s);
+  const wordDur = (text) => {
+    const t = text.trim(); if (!t) return 0;
+    const cjk = (t.match(/[\u4e00-\u9fff]/g) || []).length;
+    return R.wordBase + (cjk * R.cjkBoost + (t.length - cjk)) * R.perChar;
+  };
+
+  /* ── 解析：Markdown 为底，只在必要处扩展 ── */
+  function parse(src) {
+    const lines = src.replace(/\r/g, "").split("\n");
+    const offs = []; let o = 0;
+    for (const ln of lines) { offs.push(o); o += ln.length + 1; }
+    const nodes = []; let i = 0;
+    while (i < lines.length) {
+      if (/^\s*$/.test(lines[i])) { nodes.push({ type: "gap" }); i++; continue; }
+      const fence = lines[i].match(/^\s*```\s*chart\s*(.*)$/);
+      if (fence) {
+        const name = fence[1].trim() || "__default__";
+        const from = i, body = []; i++;
+        /* 每行带上自己的源偏移 —— 播放时左边能精确高亮到"正在画哪一条" */
+        while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) {
+          body.push({ text: lines[i], si: offs[i], sl: lines[i].length }); i++;
+        }
+        const endLine = Math.min(i, lines.length - 1); i++;
+        nodes.push({ type: "chart", name, body, si: offs[from], sl: offs[endLine] + lines[endLine].length - offs[from] });
+        continue;
+      }
+      nodes.push({ type: "line", tokens: tokenize(lines[i], offs[i]) }); i++;
+    }
+    return nodes;
+  }
+
+  function tokenize(text, base) {
+    const out = [];
+    const plain = (s, at) => {
+      for (const p of (s.match(/[^\s]+|\s+/g) || [])) {
+        if (/^\s+$/.test(p)) { out.push({ t: "sp", text: p }); at += p.length; continue; }
+        if (isCJK(p)) {
+          /* 中文按 1–2 字切，才有"一笔一笔"的手感 */
+          for (let k = 0; k < p.length; k += 2) {
+            const c = p.slice(k, k + 2);
+            out.push({ t: "w", text: c, si: at + k, sl: c.length });
+          }
+        } else out.push({ t: "w", text: p, si: at, sl: p.length });
+        at += p.length;
+      }
+    };
+    const re = /(==([^=]+)==|\*\*([^*]+)\*\*|~~([^~]+)~~)/g;
+    let last = 0, m;
+    while ((m = re.exec(text))) {
+      if (m.index > last) plain(text.slice(last, m.index), base + last);
+      const kind = m[2] != null ? "hl" : m[3] != null ? "key" : "strike";
+      const from = out.length;
+      plain(m[2] ?? m[3] ?? m[4], base + m.index + 2);
+      out.push({ t: "mark", kind, from, to: out.length, si: base + m.index, sl: m[0].length });
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) plain(text.slice(last), base + last);
+    return out;
+  }
+
+  function parseChart(body) {
+    const series = [], meta = { xFrom: "", xTo: "", yTicks: [], xRef: null, yRef: null };
+    for (const row of body) {
+      const ln = row.text.trim(); if (!ln) continue;
+      const ref = { si: row.si, sl: row.sl };
+      let m;
+      if ((m = ln.match(/^x:\s*(.+?)\s*(?:→|->|—)\s*(.+)$/))) { meta.xFrom = m[1]; meta.xTo = m[2]; meta.xRef = ref; continue; }
+      if ((m = ln.match(/^y:\s*(.+)$/))) { meta.yTicks = m[1].split(/[,\s]+/).filter(Boolean); meta.yRef = ref; continue; }
+      if ((m = ln.match(/^(.+?):\s*([+\-]?[\d.]+)%\s*(?:\[(.+?)\])?\s*$/))) {
+        series.push({ name: m[1].trim(), end: parseFloat(m[2]), shape: (m[3] || "").trim(), ref });
+      }
+    }
+    return { series, meta };
+  }
+
+  /* 终值 + 形状 → 一条确定性的走势 */
+  function synth(end, shape, seed) {
+    const rnd = mulberry32(seed), N = 66, out = [];
+    const late = /late|翻倍|后段/.test(shape);
+    for (let i = 0; i < N; i++) {
+      const t = i / (N - 1);
+      const base = late
+        ? Math.pow(t, 3.4) * .42 + (t > .82 ? Math.pow((t - .82) / .18, 1.7) * .58 : 0)
+        : Math.pow(t, 2.05) * .72 + Math.pow(t, 6) * .28;
+      out.push(Math.max(0, base + (rnd() - .5) * .055 * Math.min(1, t * 2.4)));
+    }
+    const lastV = out[N - 1] || 1;
+    return out.map((v) => (v / lastV) * end);
+  }
+
+  /* ── 构建 ── */
+  const board = document.getElementById("board");
+  const flow = document.getElementById("flow");
+  const annUnder = document.getElementById("annUnder");
+  const annOver = document.getElementById("annOver");
+  const boardScroll = document.getElementById("boardScroll");
+  let scene = null, marks = [], autoFollow = true;
+
+  function build(src) {
+    flow.textContent = ""; annUnder.textContent = ""; annOver.textContent = "";
+    marks = []; scene = new Scene();
+    let cursor = 0;
+    const rnd = mulberry32(0x5EED);
+    const charts = new Map();   // 同名 chart 可在后文续写，复用同一张画布
+
+    for (const node of parse(src)) {
+      if (node.type === "gap") {
+        cursor += R.paraGap;
+        const g = document.createElement("div"); g.className = "para-gap"; flow.appendChild(g);
+        continue;
+      }
+      if (node.type === "chart") { cursor = buildChart(node, cursor, rnd, charts); continue; }
+
+      const lineEl = document.createElement("div");
+      lineEl.className = "line";
+      flow.appendChild(lineEl);
+      const spans = [];
+
+      for (const tk of node.tokens) {
+        if (tk.t === "sp") { lineEl.appendChild(document.createTextNode(tk.text)); spans.push(null); continue; }
+        if (tk.t === "mark") {
+          /* mark token 排在它包裹的词之后 —— 此刻 cursor 正好是"写完了"。
+             一支笔：圈这个数字的时候手不在写字，所以把标注的时间从光标上扣掉，
+             后面的字要等它收笔。板书是单线程的。 */
+          marks.push({ kind: tk.kind, from: tk.from, to: tk.to, spans, si: tk.si, sl: tk.sl, done: cursor });
+          cursor += R.annotDelay + R.annotate + R.afterAnnot;
+          spans.push(null); continue;
+        }
+        const s = document.createElement("span");
+        s.className = "w"; s.textContent = tk.text;
+        lineEl.appendChild(s); spans.push(s);
+        cursor = scene.at(cursor, wordDur(tk.text),
+          (p) => { s.style.clipPath = `inset(0 ${((1 - Ease.write(p)) * 100).toFixed(2)}% 0 0)`; },
+          { si: tk.si, sl: tk.sl, el: s });
+        cursor += R.gap;
+        if (/[，,、；;]$/.test(tk.text)) cursor += R.comma;
+        if (/[。.!?！？]$/.test(tk.text)) cursor += R.period;
+      }
+    }
+    return scene;
+  }
+
+  function layoutMarks() {
+    const rnd = mulberry32(0xB005);
+    annUnder.textContent = ""; annOver.textContent = "";
+    const defs = el("defs", {});
+    annUnder.appendChild(defs);
+    let clipUid = 0;
+    const bb = board.getBoundingClientRect();
+    for (const mk of marks) {
+      const items = mk.spans.slice(mk.from, mk.to).filter(Boolean);
+      if (!items.length) continue;
+
+      /* 跨行的标注要按行拆成多段，否则会画出一个横跨两行的巨框 */
+      const rows = [];
+      for (const s of items) {
+        const r = s.getBoundingClientRect();
+        const top = r.top - bb.top;
+        let row = rows.find((g) => Math.abs(g.y0 - top) < 6);
+        if (!row) { row = { x0: Infinity, y0: top, x1: -Infinity, y1: -Infinity }; rows.push(row); }
+        row.x0 = Math.min(row.x0, r.left - bb.left);
+        row.y0 = Math.min(row.y0, top);
+        row.x1 = Math.max(row.x1, r.right - bb.left);
+        row.y1 = Math.max(row.y1, r.bottom - bb.top);
+      }
+
+      /* 关键：span 的 bbox 高度是「行高」，不是「字高」。按行高画圈，
+         椭圆会撑出行外，连续几行都有圈时必然互撞。按字号量墨迹。 */
+      const fs = parseFloat(getComputedStyle(items[0]).fontSize) || 24;
+
+      const drawn = [];
+      for (const { x0, y0, x1, y1 } of rows) {
+        const cy = (y0 + y1) / 2;
+        const h = Math.min(y1 - y0, fs * 1.02);
+        if (mk.kind === "hl") {
+          /* 填充形状 + 从左往右开窗 —— 笔扫过去的动作 */
+          const p = el("path", { d: highlighterShape(x0 - 6, x1 + 8, cy, h, rnd) },
+            { fill: "var(--hl)", opacity: "var(--hl-a)" });
+          const id = `hlc${++clipUid}`;
+          const rect = el("rect", { x: x0 - 14, y: y0 - h, width: 0, height: h * 3, "data-span": ((x1 - x0) + 30).toFixed(1) });
+          const cp = el("clipPath", { id, clipPathUnits: "userSpaceOnUse" });
+          cp.appendChild(rect); defs.appendChild(cp);
+          p.setAttribute("clip-path", `url(#${id})`);
+          annUnder.appendChild(p);
+          drawn.push({ rect, span: (x1 - x0) + 30 });
+          continue;
+        }
+        const d = mk.kind === "key"
+          ? jitterEllipse((x0 + x1) / 2, cy, (x1 - x0) / 2 + 14, h * .60, rnd, 2.0)
+          : jitterLine(x0 - 3, cy + 1, x1 + 3, cy - 2, rnd, 1.4);
+        const p = el("path", { d }, {
+          fill: "none", stroke: "var(--board-fg)", strokeLinecap: "round",
+          strokeWidth: mk.kind === "key" ? "2px" : "2.4px",
+        });
+        annOver.appendChild(p);
+        const L = p.getTotalLength();
+        p.style.strokeDasharray = L; p.style.strokeDashoffset = L;
+        drawn.push({ p, L });
+      }
+      const ez = mk.kind === "hl" ? Ease.swipe : mk.kind === "key" ? Ease.circle : Ease.strike;
+      scene.at(mk.done + R.annotDelay, R.annotate, (q) => {
+        const e = ez(q);
+        for (const it of drawn) {
+          if (it.rect) it.rect.setAttribute("width", (it.span * e).toFixed(2));
+          else it.p.style.strokeDashoffset = it.L * (1 - e);
+        }
+      }, { si: mk.si, sl: mk.sl, el: null });
+    }
+  }
+
+  function buildChart(node, cursor, rnd, charts) {
+    const { series, meta } = parseChart(node.body);
+    const W = 900, H = 420, PL = 96, PR = 100, PT = 26, PB = 56;
+    const existing = charts.get(node.name);
+
+    /* 续写：画布还在板上，只是往上加一层 —— 骨架不重画 */
+    if (existing) {
+      const { wrap, svg, Y, X, seen } = existing;
+      const at = (ref) => ({ si: (ref || node).si, sl: (ref || node).sl, el: wrap });
+      /* 讲完这句，转身到图上加这一层 —— 串行，不与叙述重叠 */
+      const start = cursor + R.chartLead * .6;
+      let endAt = start;
+      series.forEach((s, k) => {
+        const idx = seen.count + k;
+        const vals = synth(s.end, s.shape, 0x1234 + idx * 977);
+        const pts = vals.map((v, i) => [X(i, vals.length), Y(v)]);
+        const color = idx === 0 ? "var(--s1)" : "var(--s2)";
+        const p = el("path", { d: sketchPath(pts, mulberry32(0x99 + idx), .9) },
+          { fill: "none", stroke: color, strokeWidth: "2.9px", strokeLinecap: "round", strokeLinejoin: "round" });
+        svg.appendChild(p);
+        const L = p.getTotalLength();
+        p.style.strokeDasharray = L; p.style.strokeDashoffset = L;
+        endAt = scene.at(endAt, R.series, (q) => { p.style.strokeDashoffset = L * (1 - Ease.trace(q)); }, at(s.ref));
+
+        /* 画到头了，笔就在那儿，顺手写上名字 */
+        const last = pts[pts.length - 1];
+        const lab = el("text", { x: W - 4, y: last[1] - 18, "font-size": 23, "text-anchor": "end" },
+          { fill: color, fontFamily: "var(--hand)" });
+        lab.textContent = `${s.name} ${s.end > 0 ? "+" : ""}${s.end}%`;
+        svg.appendChild(lab);
+        endAt = scene.at(endAt, R.label,
+          (q) => { const e = Ease.write(q); lab.style.opacity = Math.min(1, q * 2.4); lab.style.clipPath = `inset(0 0 0 ${(1 - e) * 100}%)`; }, at(s.ref)) + .15;
+      });
+      seen.count += series.length;
+      return endAt + .2;
+    }
+
+    const wrap = document.createElement("div"); wrap.className = "chartwrap";
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}` });
+    wrap.appendChild(svg); flow.appendChild(wrap);
+
+    /* 刻度声明了范围就用它 —— 后文续写加线时坐标系才不会跳 */
+    const declared = meta.yTicks.map(parseFloat).filter((v) => !isNaN(v));
+    const peak = (declared.length ? Math.max(...declared) : Math.max(...series.map((s) => s.end), 1)) * 1.16;
+    const X = (i, n) => PL + (i / (n - 1)) * (W - PL - PR);
+    const Y = (v) => H - PB - (v / peak) * (H - PT - PB);
+    const at = (ref) => ({ si: (ref || node).si, sl: (ref || node).sl, el: wrap });
+    charts.set(node.name, { wrap, svg, X, Y, seen: { count: series.length } });
+
+    /* 首次出场串行：先把骨架交代清楚，再往上画 */
+    cursor += R.chartLead;
+
+    /* 1. 先立骨架 —— 一条画完再画下一条 */
+    for (const d of [jitterLine(PL, PT, PL, H - PB, rnd, 1.6),
+                     jitterLine(PL, H - PB, W - PR + 38, H - PB, rnd, 1.6)]) {
+      const a = el("path", { d }, { fill: "none", stroke: "var(--board-fg)", strokeWidth: "2.2px", strokeLinecap: "round" });
+      svg.appendChild(a);
+      const L = a.getTotalLength();
+      a.style.strokeDasharray = L; a.style.strokeDashoffset = L;
+      cursor = scene.at(cursor, R.axis, (p) => { a.style.strokeDashoffset = L * (1 - Ease.steady(p)); }, at(null)) + .08;
+    }
+    cursor += .12;
+
+    /* 2. 刻度一个一个点上去 */
+    meta.yTicks.forEach((tk, i) => {
+      const v = parseFloat(tk); if (isNaN(v)) return;
+      const y = Y(v);
+      const g = el("g", {});
+      g.appendChild(el("path", { d: jitterLine(PL - 9, y, PL + 8, y, rnd, 1) },
+        { fill: "none", stroke: "var(--board-fg)", strokeWidth: "2px", strokeLinecap: "round" }));
+      const lab = el("text", { x: PL - 15, y: y + 6, "text-anchor": "end", "font-size": 19 },
+        { fill: "var(--board-fg)", fontFamily: "var(--hand)" });
+      lab.textContent = "+" + tk + "%";
+      g.appendChild(lab); svg.appendChild(g);
+      scene.at(cursor + i * .13, .3, (p) => { g.style.opacity = p; }, at(meta.yRef));
+    });
+    [meta.xFrom, meta.xTo].filter(Boolean).forEach((tk, i) => {
+      const t = el("text", { x: i === 0 ? PL + 24 : W - PR + 6, y: H - PB + 32, "text-anchor": "middle", "font-size": 19 },
+        { fill: "var(--board-fg)", fontFamily: "var(--hand)" });
+      t.textContent = tk; svg.appendChild(t);
+      scene.at(cursor + i * .15, .3, (p) => { t.style.opacity = p; }, at(meta.xRef));
+    });
+    cursor += .58;
+
+    /* 3. 一条一条画 —— 一支笔，画完这条才画下一条 */
+    let endAt = cursor;
+    series.forEach((s, i) => {
+      const vals = synth(s.end, s.shape, 0x1234 + i * 977);
+      const pts = vals.map((v, k) => [X(k, vals.length), Y(v)]);
+      const color = i === 0 ? "var(--s1)" : "var(--s2)";
+      const p = el("path", { d: sketchPath(pts, mulberry32(0x99 + i), .9) },
+        { fill: "none", stroke: color, strokeWidth: "2.9px", strokeLinecap: "round", strokeLinejoin: "round" });
+      svg.appendChild(p);
+      const L = p.getTotalLength();
+      p.style.strokeDasharray = L; p.style.strokeDashoffset = L;
+      endAt = scene.at(endAt, R.series, (q) => { p.style.strokeDashoffset = L * (1 - Ease.trace(q)); }, at(s.ref));
+
+      /* 画到头了笔就在那儿，顺手写上名字。标签向左延伸，名字多长都不溢出 */
+      const last = pts[pts.length - 1];
+      const lab = el("text", { x: W - 4, y: last[1] - 18, "font-size": 23, "text-anchor": "end" },
+        { fill: color, fontFamily: "var(--hand)" });
+      lab.textContent = `${s.name} ${s.end > 0 ? "+" : ""}${s.end}%`;
+      svg.appendChild(lab);
+      endAt = scene.at(endAt, R.label,
+        (q) => { const e = Ease.write(q); lab.style.opacity = Math.min(1, q * 2.4); lab.style.clipPath = `inset(0 0 0 ${(1 - e) * 100}%)`; }, at(s.ref)) + .15;
+    });
+    return endAt + .2;
+  }
+
+  /* ── 源文本同步高亮 ── */
+  const srcTa = document.getElementById("srcTa");
+  const srcHi = document.getElementById("srcHi");
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  function paintSource(meta) {
+    const src = srcTa.value;
+    const a = meta && meta.si != null ? meta.si : -1;
+    const b = a >= 0 ? a + (meta.sl || 0) : -1;
+    const segs = []; let last = 0, m;
+    const re = /(==[^=]+==|\*\*[^*]+\*\*|~~[^~]+~~|```chart[\s\S]*?```)/g;
+    while ((m = re.exec(src))) {
+      if (m.index > last) segs.push([last, m.index, ""]);
+      segs.push([m.index, m.index + m[0].length, m[0].startsWith("```") ? "blk" : "m"]);
+      last = m.index + m[0].length;
+    }
+    if (last < src.length) segs.push([last, src.length, ""]);
+
+    let html = "";
+    for (const [s, e, cls] of segs) {
+      const pieces = (a >= 0 && b > s && a < e)
+        ? [[s, Math.min(a, e), 0], [Math.max(s, a), Math.min(e, b), 1], [Math.max(s, b), e, 0]]
+        : [[s, e, 0]];
+      for (const [ps, pe, on] of pieces) {
+        if (pe <= ps) continue;
+        const c = [cls, on ? "now" : ""].filter(Boolean).join(" ");
+        const txt = esc(src.slice(ps, pe));
+        html += c ? `<span class="${c}">${txt}</span>` : txt;
+      }
+    }
+    srcHi.innerHTML = html + "\n";
+    srcHi.scrollTop = srcTa.scrollTop;
+  }
+
+  /* ── transport ── */
+  const playBtn = document.getElementById("play");
+  const playIcon = document.getElementById("playIcon");
+  const scrubEl = document.getElementById("scrub");
+  const fillEl = document.getElementById("fill");
+  const headEl = document.getElementById("head");
+  const ticksEl = document.getElementById("ticks");
+  const clockEl = document.getElementById("clock");
+  const I_PLAY = "M4 2.5v11l9-5.5z";
+  const I_PAUSE = "M4 2.5h3v11H4zM9 2.5h3v11H9z";
+  const I_REPLAY = "M8 3.2V.6L4.2 3.9 8 7.2V4.7a3.9 3.9 0 1 1-3.9 3.9H2.6A5.4 5.4 0 1 0 8 3.2z";
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  let t = 0, playing = false, rafId = 0, lastTs = 0;
+
+  /* 倍速只改播放速率，不动 scene.dur —— canonical 时间线是唯一真相，
+     速度是观众的事。 */
+  const RATES = [0.75, 1, 1.25, 1.5];
+  let rate = 1;
+  const rateBtn = document.getElementById("rate");
+  rateBtn.addEventListener("click", () => {
+    rate = RATES[(RATES.indexOf(rate) + 1) % RATES.length];
+    rateBtn.textContent = rate.toFixed(2).replace(/0$/, "") + "×";
+  });
+
+  function render() {
+    if (!scene) return;
+    scene.seek(t);
+    const d = scene.dur || 1, pct = clamp01(t / d) * 100;
+    fillEl.style.width = pct + "%";
+    headEl.style.left = pct + "%";
+    clockEl.textContent = `${t.toFixed(1)}s / ${d.toFixed(1)}s`;
+    scrubEl.setAttribute("aria-valuenow", Math.round(pct));
+    const act = scene.active(t);
+    paintSource(act ? act.meta : null);
+    if (autoFollow && playing && act && act.meta.el) {
+      const want = act.meta.el.offsetTop + act.meta.el.offsetHeight - boardScroll.clientHeight + 96;
+      if (want > boardScroll.scrollTop) boardScroll.scrollTop = want;
+    }
+    playIcon.setAttribute("d", playing ? I_PAUSE : (t >= d - 1e-3 ? I_REPLAY : I_PLAY));
+  }
+
+  function drawTicks() {
+    ticksEl.textContent = "";
+    if (!scene || !scene.dur) return;
+    for (const b of scene.beats) {
+      const i = document.createElement("i");
+      i.style.left = (b.start / scene.dur) * 100 + "%";
+      if (b.dur >= .45) i.className = "k";
+      ticksEl.appendChild(i);
+    }
+  }
+
+  function tick(ts) {
+    if (!playing) return;
+    const dt = lastTs ? Math.min((ts - lastTs) / 1000, .05) : 0;
+    lastTs = ts; t += dt * rate;
+    if (t >= scene.dur) { t = scene.dur; playing = false; }
+    render();
+    if (playing) rafId = requestAnimationFrame(tick);
+  }
+  function setPlaying(v) {
+    playing = v; lastTs = 0;
+    cancelAnimationFrame(rafId);
+    if (v) rafId = requestAnimationFrame(tick);
+    render();
+  }
+
+  playBtn.addEventListener("click", () => {
+    if (t >= scene.dur - 1e-3) { t = 0; autoFollow = true; boardScroll.scrollTop = 0; }
+    setPlaying(!playing);
+  });
+
+  let dragging = false;
+  const seekAt = (e) => {
+    const r = scrubEl.getBoundingClientRect();
+    t = clamp01((e.clientX - r.left) / r.width) * scene.dur;
+    autoFollow = false; render();
+  };
+  scrubEl.addEventListener("pointerdown", (e) => { dragging = true; scrubEl.setPointerCapture(e.pointerId); setPlaying(false); seekAt(e); });
+  scrubEl.addEventListener("pointermove", (e) => { if (dragging) seekAt(e); });
+  scrubEl.addEventListener("pointerup", (e) => { dragging = false; scrubEl.releasePointerCapture(e.pointerId); });
+  scrubEl.addEventListener("keydown", (e) => {
+    const step = e.shiftKey ? 1 : .2;
+    if (e.key === "ArrowRight") { t = Math.min(scene.dur, t + step); autoFollow = false; render(); e.preventDefault(); }
+    else if (e.key === "ArrowLeft") { t = Math.max(0, t - step); autoFollow = false; render(); e.preventDefault(); }
+    else if (e.key === "Home") { t = 0; render(); e.preventDefault(); }
+    else if (e.key === "End") { t = scene.dur; render(); e.preventDefault(); }
+  });
+
+  /* ── 场景 ── */
+  const SCENES = {
+    en: `Five years side by side — ==NVIDIA== is up **+874%** and ==AMD== +453%.
+~~But since January~~ AMD has more than ==doubled==.
+
+\`\`\`chart
+x: 2021 → 2026
+y: 500 1000
+NVIDIA: 874% [steady]
+AMD: 453% [late 翻倍]
+\`\`\``,
+    zh: `我们把五年放在一起看 —— ==英伟达== 涨了 **+874%**，==AMD== 涨了 +453%。
+~~但从今年一月开始~~ AMD 已经 ==翻了一倍多==。
+
+\`\`\`chart
+x: 2021 → 2026
+y: 500 1000
+英伟达: 874% [steady]
+AMD: 453% [late 翻倍]
+\`\`\``,
+    par: `我们把五年放在一起看 —— ==英伟达== 涨了 **+874%**，一路在爬。
+
+\`\`\`chart 五年走势
+x: 2021 → 2026
+y: 500 1000
+英伟达: 874% [steady]
+\`\`\`
+
+同期 ==AMD== 只有 +453%。~~但从今年一月开始~~ 它已经 ==翻了一倍多==。
+
+\`\`\`chart 五年走势
+AMD: 453% [late 翻倍]
+\`\`\``,
+    /* 真实文档样张：一篇形式化论证报告的开篇。题材与前三个完全不同，
+       用来检验推断规则出了 demo 题材还成不成立。 */
+    doc: `先问一个问题 —— ~~omne_engram 是图灵完备的吗？~~
+
+问错了。这是个 **范畴错误**：
+图灵完备是对 ==计算系统== 说的，而 engram 首先是 ==表征基座==。
+
+想想一张无限大的白纸。纸本身不计算。
+可是 ==白纸 + 一支按规则移动的笔== —— 那正是图灵 1936 年的原始模型。
+
+所以真正该问的是三件事：
+
+R —— 能装下任意复杂的知识吗？ **能**
+C —— 引擎自己能算任何东西吗？ **故意不能**
+S —— 配一个最笨的循环呢？ **能**`,
+  };
+
+  function load(key) {
+    if (key) srcTa.value = SCENES[key];
+    build(srcTa.value);
+    t = 0; autoFollow = true; boardScroll.scrollTop = 0;
+    /* 标注要等 layout 落定才能量位置 —— 量完 dur 才是最终值 */
+    requestAnimationFrame(() => {
+      layoutMarks();
+      drawTicks();
+      if (reduce) { t = scene.dur; setPlaying(false); } else setPlaying(true);
+    });
+  }
+
+  const tabs = {
+    en: document.getElementById("scEn"), zh: document.getElementById("scZh"),
+    par: document.getElementById("scPar"), doc: document.getElementById("scDoc"),
+  };
+  for (const key of Object.keys(tabs)) {
+    tabs[key].addEventListener("click", () => {
+      for (const k of Object.keys(tabs)) tabs[k].setAttribute("aria-pressed", String(k === key));
+      load(key);
+    });
+  }
+  document.getElementById("replay").addEventListener("click", () => load(null));
+
+  let deb;
+  srcTa.addEventListener("input", () => { paintSource(null); clearTimeout(deb); deb = setTimeout(() => load(null), 420); });
+  srcTa.addEventListener("scroll", () => { srcHi.scrollTop = srcTa.scrollTop; });
+
+  let rz;
+  window.addEventListener("resize", () => {
+    clearTimeout(rz);
+    rz = setTimeout(() => {
+      const keep = t, wasPlaying = playing;
+      build(srcTa.value);
+      requestAnimationFrame(() => {
+        layoutMarks(); drawTicks();
+        t = Math.min(keep, scene.dur); setPlaying(wasPlaying);
+      });
+    }, 200);
+  });
+
+  load("en");
+})();
+</script>
