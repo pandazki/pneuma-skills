@@ -80,3 +80,20 @@ the first complete pass. Three things remain for whoever finishes it:
 - **Pick the face per seed from the manifest description** — it is the brief.
   `tech-*` want the curve board, `pitch-*` the pipeline boxes or the circled
   ask.
+
+## The rig itself
+
+`rig/` holds the drivers this run built, parameterized so the next one does not
+rebuild them. `BANSHO_SHOT_DIR` (required) is where frames land;
+`BANSHO_CDP_PORT` defaults to 9412; the repo root is derived from the script's
+own path.
+
+| File | What it does |
+|---|---|
+| `cdpx.mjs` | The CDP verbs `harness/cdp.mjs` lacks: `clearMetrics`, `bounds <w> <h>` (size the REAL window — see the metrics-override trap above), `front`, `key`. |
+| `go.sh <set> <fraction> [light\|dark]` | Switch content set, force the theme browser-locally, pause, seek, pause again (a seek leaves the player running), then report `{t, dur, theme, set, fontFallback}` — the last field is the oracle to check before every shot. |
+| `scan.sh <f0> <f1> <steps>` | Seek across a range reporting the stage scale, which is how an `@overview` is found (rest zoom 1.05153; an overview is the outlier). |
+| `thumb.sh <seed> <fraction> <panelIndex>` | The seed-gallery thumbnail path: zoom until one face fits, pan onto the requested face by drag, hide the overlays, clip at 16:10 anchored on the face top. Pass `-1` for "whichever face the camera is on". Still needs the three fixes listed above. |
+| `theme-light.js` / `theme-dark.js` | Patch this page's `GET /api/user-theme` — never the toggle, which POSTs into the shared `~/.pneuma/settings.json`. |
+| `hide-all.js` / `show.js` | Hide and restore the viewport-fixed overlays (wall map, Board/Notes, Parallax) page-locally. |
+| `mkplan.mjs` | Builds `plan-composite.html` from `plan.md`'s real bytes; the wall half points at the committed `highlight-wall.png`. |
