@@ -20,7 +20,12 @@
  *    labels write with `write`.
  */
 
-import { wholeNumber, xFraction } from "../chart-anchor.js";
+import {
+  wholeNumber,
+  xFraction,
+  yAxisSpan,
+  type AxisSpan,
+} from "../chart-anchor.js";
 import { containerKey } from "../container.js";
 import { Ease } from "../easing.js";
 import {
@@ -73,35 +78,44 @@ interface ChartScales {
   Y(v: number): number;
 }
 
+/** Headroom above the highest declared value, as a fraction of the span. */
+const Y_HEADROOM = 0.16;
+
 /**
  * Coordinate mapping — computed from the FRAME's declarations alone, so a
  * later layer reconstructs the identical scale and the coordinate system
  * never jumps when lines are added (§4.4: declare the range up front).
+ *
+ * A range names BOTH its ends (`references/charts.md`: "a range names its
+ * two ends"), so the plot's floor is the DECLARED lower end, not an
+ * assumed zero. Reading only the peak put `y: -3 .. 3` on a 0..3.48 scale
+ * and mapped its own lower endpoint to y ≈ 655 in a 420-tall viewBox — the
+ * tick, its label and the whole negative half of the data drawn off the
+ * canvas. `lo === 0` (the common declaration) scales byte-identically to
+ * the peak-only arithmetic this replaces.
+ *
+ * A declaration that names no interval never reaches here: the parser
+ * refuses `y: 0 .. 0` and the `y: 0 ..` typo as an unreadable row
+ * (`domain.ts`), because a chart drawn against a substituted scale
+ * contradicts its own axis labels. The guard below is what makes that
+ * refusal the ONLY path — never a division by zero — for a frame built by
+ * something other than the parser.
  */
 export function chartScales(frame: ChartFrameStep): ChartScales {
-  const declared = axisEntries(frame.y)
-    .map(Number.parseFloat)
-    .filter((v) => Number.isFinite(v));
-  const seriesPeak = Math.max(
-    1,
-    ...frame.rows.flatMap((r) => (r.kind === "series" ? r.values : [])),
-  );
-  // A declared peak ≤ 0 (`y: 0 .. 0`, or the `y: 0 ..` typo) cannot scale —
-  // dividing by it turns every path `d` into NaN/-Infinity, the browser
-  // drops the paths and the beats still spend their seconds: a silently
-  // blank chart. Degradation must be VISIBLE (R5): fall back to the data
-  // peak (already ≥ 1) so the chart still draws, and say so.
-  const declaredPeak = declared.length > 0 ? Math.max(...declared) : Number.NaN;
-  if (declared.length > 0 && declaredPeak <= 0) {
-    console.warn(
-      `[bansho] chart "${frame.chart}": declared y peak ${declaredPeak} ` +
-        `cannot scale the plot — falling back to the data peak ${seriesPeak}`,
-    );
-  }
-  const peak = (declaredPeak > 0 ? declaredPeak : seriesPeak) * 1.16;
+  const declared = yAxisSpan(frame.y);
+  const values = frame.rows.flatMap((r) => (r.kind === "series" ? r.values : []));
+  // The data's own interval, for an axis that declares no numbers at all (a
+  // categorical `y: 低 .. 高`). The floor stays 0 unless the data itself
+  // goes below it, so a positive series scales exactly as it always did.
+  const data: AxisSpan = {
+    lo: Math.min(0, ...values),
+    hi: Math.max(1, ...values),
+  };
+  const span = declared && declared.hi > declared.lo ? declared : data;
+  const top = span.lo + (span.hi - span.lo) * (1 + Y_HEADROOM);
   return {
     X: (i, n) => PL + (n <= 1 ? 0.5 : i / (n - 1)) * (W - PL - PR),
-    Y: (v) => H - PB - (v / peak) * (H - PT - PB),
+    Y: (v) => H - PB - ((v - span.lo) / (top - span.lo)) * (H - PT - PB),
   };
 }
 

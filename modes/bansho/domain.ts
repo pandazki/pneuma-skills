@@ -19,7 +19,7 @@
  */
 
 import type { ViewerFileContent } from "../../core/types/viewer-contract.js";
-import { wholeNumber, xFraction } from "./engine/chart-anchor.js";
+import { wholeNumber, xFraction, yAxisSpan } from "./engine/chart-anchor.js";
 import { containerKey } from "./engine/container.js";
 import {
   classifyRegionWord,
@@ -402,6 +402,23 @@ function parseChartBlock(
         x = axis;
       } else {
         if (y) return err("duplicate y: axis", t);
+        // A y axis that declares numbers must declare an INTERVAL. `y: 0 ..
+        // 0` — and the `y: 0 ..` typo, whose second end never parses — name
+        // a single point, and nothing can be scaled against a point. The
+        // factory used to substitute the data's own peak and say so on
+        // `console.warn`, which reaches neither the reader nor the agent:
+        // the board then drew a real line between two axis labels that both
+        // read 0, and `check-board` called it clean. An unreadable row
+        // breaks its block, exactly like every other one (R6).
+        const span = yAxisSpan(axis);
+        if (span && span.hi <= span.lo) {
+          return err(
+            `y axis names a single point (${span.lo}), not an interval — ` +
+              "nothing can be scaled against it; give it two different ends " +
+              "(y: 0 .. 40), or drop the numbers for a named axis (y: 低 .. 高)",
+            t,
+          );
+        }
         y = axis;
       }
     } else if ((m = t.match(/^\+\s*mark\s+(.+?)\s*@\s*(.+?)\s*:\s*"([^"]*)"$/))) {

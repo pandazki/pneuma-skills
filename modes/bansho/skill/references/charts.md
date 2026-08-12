@@ -25,6 +25,13 @@ y: 0 .. 240  (分钟)
   enumerated axis names every position you list, and the board writes each
   one under the axis. The choice decides what you can point at later —
   see [Where a mark may point](#where-a-mark-may-point).
+- **Both ends of a y range are real.** The lower end is the floor the plot
+  is drawn from, not a decoration: `y: -3 .. 3` puts 0 in the middle of the
+  picture, and `y: -40 .. 25` gives the losses as much room as the gains.
+  Pick the interval the argument lives in — a series that never drops below
+  60 says more on `y: 60 .. 100` than on `y: 0 .. 100`. The two ends must
+  differ; `y: 0 .. 0` (and the `y: 0 ..` typo) names a point, nothing can be
+  scaled against a point, and the block is refused with a badge.
   What the axis measures rides in parentheses at the end — how much of
   what (`(分钟)`, `(×)`, `(machines)`), never a scenario label. `(2026)`
   there measures nothing; if the year matters it belongs in the sentence

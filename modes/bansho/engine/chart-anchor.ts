@@ -67,3 +67,49 @@ export function xFraction(
   }
   return undefined;
 }
+
+/** The two ends of the numeric interval a y axis declares. */
+export interface AxisSpan {
+  /** The lowest declared number — the value that sits ON the baseline. */
+  lo: number;
+  /** The highest declared number — before the plot's headroom is added. */
+  hi: number;
+}
+
+/**
+ * The numeric interval a y axis declares — the ONE reading of "what range
+ * does this plot cover", and it lives here for the same reason `xFraction`
+ * does: the parser asks it (to refuse a declaration that can scale
+ * nothing) and the chart factory asks it (to map a value to a canvas y),
+ * and the two must never answer differently.
+ *
+ * A range names BOTH its ends (`y: -40 .. 25`), so `lo` is a real
+ * declaration and not an assumed zero — reading only the peak pinned every
+ * plot's floor at 0 and threw the declared lower end off the canvas
+ * (`Y(-40)` landed 410px below a 420-tall viewBox).
+ *
+ * Three outcomes, and the caller owes each a different answer:
+ *  - `null` — the axis declares no numbers at all (a categorical
+ *    `y: 低 .. 高`, or no axis): legitimate, scale off the data.
+ *  - `hi > lo` — a usable interval.
+ *  - `hi <= lo` — a declaration that names no interval (`y: 0 .. 0`, or
+ *    the `y: 0 ..` typo whose second end never parses). NOTHING can be
+ *    scaled against it, and quietly substituting a scale of one's own
+ *    draws a picture whose axis labels contradict its own line. Refuse it.
+ *
+ * `parseFloat` rather than `wholeNumber` is deliberate: the tick beats are
+ * planned off `inference.ts::finiteYTickEntries`, which reads the entries
+ * exactly this way, and a tick drawn at a value the scale did not see is
+ * the precise divergence this module exists to prevent.
+ */
+export function yAxisSpan(axis: ChartAxis | undefined): AxisSpan | null {
+  if (!axis) return null;
+  const entries = axis.values
+    ? axis.values
+    : [axis.from, axis.to].filter((v): v is string => v !== undefined);
+  const numbers = entries
+    .map((v) => Number.parseFloat(v))
+    .filter((v) => Number.isFinite(v));
+  if (numbers.length === 0) return null;
+  return { lo: Math.min(...numbers), hi: Math.max(...numbers) };
+}

@@ -43,6 +43,7 @@ import type {
   RowRect,
   StepRef,
 } from "../engine/types.js";
+import { chartScales } from "../engine/factories/chart.js";
 import {
   factoryFor,
   probeEnvCaps,
@@ -1576,36 +1577,118 @@ describe("chart factory — G8-C anchoring + accumulation into the frame", () =>
     }
   });
 
-  test("a declared y peak of 0 never divides to NaN — data peak takes over, loudly", () => {
-    // `y: 0 .. 0` (and the `y: 0 ..` typo, which parses to the same single
-    // finite entry) parse with zero errors, and an unguarded declared
-    // branch divided by 0×1.16: every path `d` contained literal NaN, the
-    // browser dropped the paths, and the beats still spent their seconds —
-    // a silently blank chart (the exact hazard wholeNumber's JSDoc names).
+  test("a y axis that names a single point is REFUSED, on the channel the agent reads", () => {
+    // Three versions of this test, and the middle one is the lesson.
+    //  1. Unguarded, `y: 0 .. 0` divided by 0×1.16: every path `d` carried
+    //     literal NaN, the browser dropped the paths, and the beats still
+    //     spent their seconds — a silently blank chart.
+    //  2. Guarded with a data-peak fallback and a `console.warn`, and this
+    //     test called that LOUD. It is not: console output reaches neither
+    //     the reader nor the agent (the same M4 correction the range-axis
+    //     test above carries), so the board drew a real line between two
+    //     axis labels that both read 0 and `check-board` answered ok:true.
+    //  3. Refused where every other unreadable row is refused — the parser.
+    //     One badge, neighbours fine, and the block quoted back.
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     try {
-      for (const decl of ["y: 0 .. 0", "y: 0 .."]) {
+      for (const decl of ["y: 0 .. 0", "y: 0 ..", "y: 7 .. 7"]) {
         const zHost = makeHost();
         const { lecture: lec, nodes: n } = buildAll(
           `\`\`\`chart 零\nx: 1 .. 4\n${decl}\n+ 系列: 2 4 6 9\n\`\`\`\n`,
           zHost,
         );
-        expect(lec.errors).toEqual([]);
+        // The board says WHICH row it could not read, and quotes it.
+        expect(lec.errors).toHaveLength(1);
+        expect(lec.errors[0]!.code).toBe("stepParseError");
+        expect(lec.errors[0]!.excerpt).toBe(decl);
+        expect(lec.errors[0]!.message).toContain("not an interval");
+        // Nothing is drawn against a substituted scale — the block is bad,
+        // so there is no chart frame and no svg at all.
         const entry = flattenSteps(lec).find(
           ({ step }) => step.kind === "chart-frame",
-        )!;
-        const chartSvg = n.get(refKey(entry.ref))!.querySelector("svg")!;
-        const series = chartSvg.querySelector("[data-bansho-series]")!;
-        expect(series).toBeDefined();
-        // Finite geometry — the series drew against the DATA peak instead.
-        expect(series.getAttribute("d")).not.toMatch(/NaN|Infinity/);
+        );
+        expect(entry).toBeUndefined();
+        const bad = flattenSteps(lec).find(({ step }) => step.kind === "bad");
+        expect(bad).toBeDefined();
+        expect(
+          Array.from(n.values()).some((node) => node.querySelector("svg")),
+        ).toBe(false);
       }
-      // …and the degradation is LOUD (R5), naming the unusable declaration.
-      expect(
-        warn.mock.calls.some((c) => c.join(" ").includes("declared y")),
-      ).toBe(true);
+      // And the console is no longer pretending to be a channel.
+      expect(warn.mock.calls.length).toBe(0);
     } finally {
       warn.mockRestore();
+    }
+  });
+
+  test("a chart's floor is the DECLARED lower end, not an assumed zero", () => {
+    // `y: -3 .. 3` used to scale off the peak alone: the plot ran 0..3.48,
+    // so the axis's own lower endpoint mapped to y ≈ 655 in a 420-tall
+    // viewBox — the tick, its label and the whole negative half of the data
+    // drawn off the canvas, with no parse issue and no finding anywhere.
+    const host = makeHost();
+    const { lecture: lec, nodes: n } = buildAll(
+      '```chart 波\nx: 1 .. 3\ny: -3 .. 3\n+ 振幅: -3 0 3\n```\n',
+      host,
+    );
+    expect(lec.errors).toEqual([]);
+    const entry = flattenSteps(lec).find(
+      ({ step }) => step.kind === "chart-frame",
+    )!;
+    const svg = n.get(refKey(entry.ref))!.querySelector("svg")!;
+    const viewBox = svg.getAttribute("viewBox")!.split(/\s+/).map(Number);
+    const height = viewBox[3]!;
+
+    // Every y tick the axis declares stands INSIDE the canvas… (a y tick
+    // label is the one written to the LEFT of the axis line, x = PL − 15.)
+    const ticks = Array.from(svg.querySelectorAll("text")).filter(
+      (t) => Number.parseFloat(t.getAttribute("x") ?? "0") === 81,
+    );
+    expect(ticks.map((t) => t.textContent)).toEqual(["-3", "3"]);
+    for (const tick of ticks) {
+      const y = Number.parseFloat(tick.getAttribute("y")!);
+      expect(y).toBeGreaterThan(0);
+      expect(y).toBeLessThan(height);
+    }
+    // …the declared floor sits ON the baseline, the way 0 always has…
+    const low = ticks.find((t) => t.textContent === "-3")!;
+    const high = ticks.find((t) => t.textContent === "3")!;
+    expect(Number.parseFloat(low.getAttribute("y")!)).toBeGreaterThan(
+      Number.parseFloat(high.getAttribute("y")!),
+    );
+    // …and the series drawn between them stays inside the canvas too.
+    const series = svg.querySelector("[data-bansho-series]")!;
+    const ys = Array.from(
+      series.getAttribute("d")!.matchAll(/[-\d.]+\s+([-\d.]+)/g),
+    ).map((m) => Number.parseFloat(m[1]!));
+    expect(ys.length).toBeGreaterThan(0);
+    for (const y of ys) {
+      expect(y).toBeGreaterThan(0);
+      expect(y).toBeLessThan(height);
+    }
+  });
+
+  test("a floor of zero scales exactly as it always did", () => {
+    // The regression guard for the change above: `y: 0 .. 240` is the
+    // declaration every shipped seed uses, and `lo + span × 1.16` must be
+    // the same arithmetic as `peak × 1.16` when `lo` is 0 — or the fix
+    // re-bases every chart in the corpus for nothing.
+    const frame = {
+      kind: "chart-frame" as const,
+      chart: "c",
+      chartType: "line" as const,
+      y: { from: "0", to: "240", srcSpan: { start: 0, end: 1 } },
+      rows: [],
+      srcSpan: { start: 0, end: 1 },
+    };
+    const { Y } = chartScales(frame as never);
+    const H = 420;
+    const PT = 26;
+    const PB = 56;
+    const peakOnly = (v: number): number =>
+      H - PB - (v / (240 * 1.16)) * (H - PT - PB);
+    for (const v of [0, 1, 60, 120, 240, 300]) {
+      expect(Y(v)).toBeCloseTo(peakOnly(v), 10);
     }
   });
 
