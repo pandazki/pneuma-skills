@@ -336,16 +336,25 @@ describe("layout — dagre is a test gate, not a promise", () => {
     expect(box.w).toBeGreaterThan(150);
   });
 
-  test("a long explanation wraps at a CJK glyph and stops at the line budget", () => {
-    const long = "这是一句相当长的说明文字用来把方框的宽度顶到上限并且继续往下换行直到超过预算为止";
+  test("a long explanation wraps at a CJK glyph and NOTHING is cut", () => {
+    // A three-line budget used to discard the rest, with no badge, no
+    // degraded beat and no finding — the board silently editing the
+    // lecture, findable only by counting glyphs on a photograph. Now the
+    // box grows to hold what was written, which is a consequence the
+    // author can see.
+    const long =
+      "这是一句相当长的说明文字用来把方框的宽度顶到上限并且继续往下换行直到超过预算为止再继续写下去还要更长一些才够";
     const layout = graphLayout(frameOf(`\`\`\`graph g\n节点: ${long}\n\`\`\``));
     const box = layout.boxes.get("节点")!;
-    expect(box.noteLines.length).toBeGreaterThan(1);
-    expect(box.noteLines.length).toBeLessThanOrEqual(3);
-    // The box stays inside the declared maximum however long the text is.
+    expect(box.noteLines.length).toBeGreaterThan(3);
+    // Every glyph the author wrote is on the board, in order.
+    expect(box.noteLines.join("")).toBe(long);
+    // The box stays inside the declared maximum WIDTH however long the text
+    // is — it grows downward, the direction a board has room in.
     expect(box.w).toBeLessThanOrEqual(260);
-    expect(box.noteLines.join("")).toBe(long.slice(0, box.noteLines.join("").length));
+    expect(box.h).toBeGreaterThan(14 * 2 + 30 + 3 * 21);
   });
+
 
   const onEdge = (
     x: number,
@@ -453,6 +462,25 @@ describe("the drawn board — hand-drawn, seeded, serial", () => {
       "stroke", // the arrow between them
     ]);
     expect(revealables.some((r) => r.degraded)).toBe(false);
+  });
+
+  test("every line the layout wrapped is a line the board writes", () => {
+    // The other half of "nothing is cut": `boxShape` sizing a box for N
+    // lines while the renderer draws three of them would put the silent
+    // truncation back, one layer down. Both ends read `box.noteLines`, and
+    // this is what says so.
+    const long =
+      "这是一句相当长的说明文字用来把方框的宽度顶到上限并且继续往下换行直到超过预算为止再继续写下去还要更长一些才够";
+    const frame = frameOf(`\`\`\`graph 长说明\n节点: ${long}\n\`\`\``);
+    const { node } = build(frame);
+    const box = graphLayout(frame).boxes.get("节点")!;
+    expect(box.noteLines.length).toBeGreaterThan(3);
+    const spans = Array.from(node.querySelectorAll("tspan")).map(
+      (s) => s.textContent ?? "",
+    );
+    // The name line, then every wrapped explanation line, in order.
+    expect(spans).toEqual(["节点", ...box.noteLines]);
+    expect(spans.slice(1).join("")).toBe(long);
   });
 
   test("a box is ONE closed stroke that overshoots its own start (hand-drawn)", () => {

@@ -159,7 +159,11 @@ has its place); a graph does it on every added block.
 - **One block per stretch of talk** when you do grow it: introduce a
   branch with the sentence that explains why it exists.
 - Annotations are for one-line explanations, not paragraphs — a box is a
-  box. If a node needs real explanation, that is narration's job.
+  box. If a node needs real explanation, that is narration's job. Nothing
+  you write there is dropped: the box grows downward to hold every line, so
+  a paragraph gives you a paragraph-shaped box standing in your picture.
+  That swollen box is the board telling you the sentence belongs in the
+  talk, not in the node.
 
 ## Honest edges
 

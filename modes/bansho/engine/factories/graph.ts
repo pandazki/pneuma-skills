@@ -60,8 +60,6 @@ const NAME_LH = 30;
 const NOTE_LH = 21;
 const MIN_W = 96;
 const MAX_W = 260;
-/** How many lines an explanation may wrap to before it is simply cut. */
-const NOTE_LINES = 3;
 
 const HAND_FONT = "var(--hand, cursive)";
 const BOARD_FG = "var(--board-fg, currentColor)";
@@ -138,7 +136,23 @@ function noteChunks(note: string): string[] {
   return out;
 }
 
-/** Greedy wrap of the explanation into the box's inner width. */
+/**
+ * Greedy wrap of the explanation into the box's inner width.
+ *
+ * EVERY line is kept. A three-line budget used to cut the rest and return,
+ * and the cut had no channel at all: the row parsed, no beat was degraded,
+ * no badge appeared, no finding was raised — a prefix of what the author
+ * wrote reached the board and the missing half was findable only by
+ * counting glyphs on a photograph of it. The board is not allowed to
+ * quietly edit the lecture.
+ *
+ * The consequence of a long note is now the one a board has: the box grows
+ * to hold it, in front of the author, and a graph whose boxes have swollen
+ * into paragraphs is telling them exactly what the reference file already
+ * says — "a box is a box; if a node needs real explanation, that is
+ * narration's job". A visible box beats an invisible truncation, and it
+ * costs no new report channel to say it.
+ */
 function wrapNote(note: string, innerWidth: number): string[] {
   const lines: string[] = [];
   let line = "";
@@ -149,7 +163,6 @@ function wrapNote(note: string, innerWidth: number): string[] {
     // from this very measurement, so an exact fit must stay one line.
     if (line !== "" && textWidth(next, NOTE_FS) > innerWidth + 0.5) {
       lines.push(line.trimEnd());
-      if (lines.length === NOTE_LINES) return lines;
       line = chunk === " " ? "" : chunk;
     } else {
       line = next;
