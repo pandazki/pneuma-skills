@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.17.3",
+  version: "0.17.4",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -47,6 +47,10 @@ const banshoManifest: ModeManifest = {
     // Wording discipline: these bullets render VERBATIM in the launcher's
     // skill-update prompt, so they may only claim what the build actually
     // does.
+    "0.17.4": [
+      "The voice-over workflow's very first command now works. The synthesis example passed `--language \"cmn-CN\"`, which the service refuses outright — no audio was written, so every Chinese board that followed the documented steps got an error instead of a voice. It takes an English name: `\"Chinese Mandarin (China)\"`",
+      "Recording a clip now asks for everything a clip needs. The instruction named only the file path, while a manifest entry is rejected without `seconds` and `text` as well — so a step could be synthesized, paid for, written down, and still play silent, with the instruction that caused it reading as correct",
+    ],
     "0.17.3": [
       "A chart's y range is drawn from BOTH the ends you declare. Only the top one was read, so every plot's floor was an assumed zero: `y: -3 .. 3` was drawn on a 0..3.48 scale, which put its own lower end 235px below the bottom of the picture — the tick, its label and the whole negative half of the data off the canvas, with nothing reported anywhere. `y: -40 .. 25` lost even more. A range you already write as `0 .. N` scales exactly as it did",
       "That also makes the lower end worth choosing: a series that never drops below 60 says more on `y: 60 .. 100` than on `y: 0 .. 100`",
