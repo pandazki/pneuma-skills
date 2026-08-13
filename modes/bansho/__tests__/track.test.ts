@@ -234,10 +234,8 @@ describe("verifyTrack", () => {
   test("a track with no clips against a board with none is fine", () => {
     const empty = layOutTrack([], 20, SR);
     expect(
-      verifyTrack(
-        { file: "narration/track.mp3", sampleRate: SR, samples: empty.samples, clips: [] },
-        empty,
-      ).ok,
+      verifyTrack({ sampleRate: SR, samples: empty.samples, clips: [] }, empty)
+        .ok,
     ).toBe(true);
   });
 });

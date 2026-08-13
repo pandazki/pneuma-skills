@@ -78,6 +78,17 @@ export class FakeAudioElement {
   advance(dt: number): void {
     if (!this.paused) this.time += dt * this.playbackRate;
   }
+  /**
+   * The media engine's clock placed directly — a test standing the
+   * element somewhere without that counting as a SEEK. (The track
+   * conductor's central guarantee is "no seek under a voice", audited
+   * through `seeks`, so moving the playhead to set up a case must not
+   * write to it.)
+   */
+  moveTo(seconds: number): void {
+    this.time = seconds;
+  }
+
   /** The clip running out: pauses and fires `ended`, like the real thing. */
   end(): void {
     this.paused = true;
