@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.29.0] - 2026-08-13
+
+### Added
+- **Bansho — a board-writing explainer mode.** Write plain markdown; the board writes itself out in handwriting on a wall of blackboards, draws its charts and diagrams stroke by stroke as the talk reaches them, keeps a camera on the pen, and lets a reader scrub back through everything ever written. The whole engine rests on one abstraction — `Revealable { naturalDuration, kind, seek(p) }`, where `seek` is a **pure mapping from progress to appearance**, never a `play()` — so one lecture answers to a clock, a scrub bar, a 16× skim and a frame-by-frame export with no second code path. Gestures degrade along one chain (stroke → wipe → fade), and one pen holds the surface at a time: write, strike, erase, move the camera, move a board are five mutually exclusive acts on one axis.
+- **The room is physical, and fixed.** A board is 1242 × 894 on every screen — a gate captures the canonical layout at 1280 and at 1990 and the two files are byte-identical, so a lecture is the same lecture on every reader's screen. Two to four boards stand in a room (not a filmstrip); a face fills in **columns**, the way a hand fills a wide blackboard. Erasing is something the teacher says rather than cleanup: history keeps every word, the board is its projection, and the room never retires anything for you. An append lands at the tail and moves nothing already standing (property-tested).
+- **The agent designs before it writes.** It lays the lecture out in `plan.md` first — which passage is a picture, how much of the board it gets, roughly how long — then writes against that design and checks the real board through `glance-board` / `check-board` / `capture` rather than imagining it. Claude Code additionally gets a workflow that makes that order unskippable, installed through a new `BackendModule.workflowsDir` seam (gated on the field, no backend conditionals); every other backend gets the same strategy as prose.
+- **Recorded narration, end to end.** Voice clips re-pace the board to the speech, the clock gate holds the pen for a long clip and releases it, subtitles export timed off the voice, and above 4× the voice steps aside so a skim never deadlocks behind a clip.
+
+### Fixed
+- **A chart's y axis silently dropped its lower bound** — `y: -3 .. 3` pinned the floor at zero, so on the shipped `fourier` seed the waveform's entire negative half drew off the bottom of the picture and over the prose below it. `lo === 0` stays byte-identical, so no other seed re-bases.
+- **`@turn` was missing from the parser's directive table** — written without a blank line above it, the characters `@turn` were handwritten onto the board in front of the audience and the room never turned, with no warning possible (a swallowed turn is valid prose to `check-board`).
+- **Ink was positioned from the line box instead of the baseline** — a box centre sits `(ascent − descent) / 2` above the baseline, so every highlight, underline and circle rode ~3.6px high. Latin hid it (x-height ink under a taller band); CJK ink is as tall as the band, so the error landed on every glyph's foot and an underline drew *through* the writing.
+- **`[pneuma] ready` printed the wrong port** — Vite colourises its banner inside the tokens, so the port parser never matched, timed out after 10s and reported the port it had *asked* for. When 17996 was taken, the URL handed to the user pointed at somebody else's workspace.
+
 ## [3.28.2] - 2026-08-05
 
 ### Fixed
