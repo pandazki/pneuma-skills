@@ -97,6 +97,16 @@ export interface TrackManifestRead {
 export const TRACK_ALIGN_TOLERANCE = 0.05;
 
 /**
+ * The rate every track is mixed at. One fixed grid, chosen rather than
+ * inherited from whatever the voice vendor happened to return: sample
+ * indices are only comparable inside one rate, and a lecture whose clips
+ * came from two vendors would otherwise have no common grid at all. 48 kHz
+ * is at or above every speech vendor's output, so the resample never
+ * invents detail it has to guess.
+ */
+export const TRACK_SAMPLE_RATE = 48000;
+
+/**
  * Lay every clip window into one wall-clock track.
  *
  * `boardDuration` is the compiled timeline's duration: the track has to be

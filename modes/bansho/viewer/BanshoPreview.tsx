@@ -580,6 +580,12 @@ export default function BanshoPreview({
     setTrackFailed(false);
   }, [trackFile, setKey]);
   const useTrack = trackVerdict.manifest !== null && !trackFailed;
+  // The narrate runner is an async callback that must not re-identify on
+  // every compile (it is handed to the action dispatcher), so it reads the
+  // verdict and the compile through refs — the same shape `lectureRef`
+  // already uses next to it.
+  const trackVerdictRef = useRef(trackVerdict);
+  trackVerdictRef.current = trackVerdict;
 
   // Every compile hands the conductor its program: the clip windows plus
   // each clip's WORKSPACE path (manifest `file` values are content-set
@@ -951,7 +957,16 @@ export default function BanshoPreview({
     // the agent re-synthesized to the same path, asked narrate, and the
     // board re-paces (or a fresh miss un-paces) without a manifest write.
     setMissingClips((prev) => (sameSet(prev, missing) ? prev : missing));
-    return narrateResponse(current, narrationRead, setKey ?? "", missing);
+    return narrateResponse(current, narrationRead, setKey ?? "", missing, {
+      windows: compiledRef.current?.narration ?? [],
+      duration: compiledRef.current?.timeline.duration ?? 0,
+      state: trackVerdictRef.current.manifest
+        ? "verified"
+        : trackVerdictRef.current.reason
+          ? "refused"
+          : "absent",
+      reason: trackVerdictRef.current.reason,
+    });
   }, [setKey, narrationRead, probeClips]);
 
   /**

@@ -114,6 +114,33 @@ requirement.
    again on every read). Save the manifest LAST — its write is what tells
    the board the voice changed.
 
+4. **Fuse the clips into one track — LAST, and only when they are all
+   fresh.** Call `narrate` again. When nothing is left needing audio it
+   answers with `data.track.plan`: save that JSON verbatim to a file and
+
+   ```bash
+   node {SKILL_PATH}/scripts/mix-narration.mjs --plan <that file> --json
+   ```
+
+   It writes `narration/track.mp3` (every clip fused, placed by sample)
+   and `narration/track.json` (the layout). The board then plays ONE
+   continuous element for the whole lecture.
+
+   **Why this step exists.** Played one clip at a time, each clip has to
+   start from nothing buffered, and the browser eats its first syllable —
+   measured on every start. A single file has no seam to start cold at.
+
+   **Why you may have to do it again.** A track is aligned globally: after
+   the first second there is no per-step re-sync at all. So the board
+   checks the layout against what it now performs, every load — the clip
+   order and every position must still match. Append one sentence and the
+   later clips move; the track stops matching and is **not played**. The
+   clips play one at a time instead, a chip on the board says so, and
+   `check-board` reports `staleTrack` with the reason. Nothing breaks —
+   but the first syllables come back. **Re-run the mixer** with a fresh
+   plan whenever you change the board after mixing. Mixing before the
+   writing has settled is wasted work; mix at the end.
+
 ## The cache is the file name
 
 A clip's key is a fingerprint of its step's exact text. Edit one sentence

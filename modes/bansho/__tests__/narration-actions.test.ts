@@ -24,6 +24,7 @@ import { narrationCues, toSrt, toVtt } from "../narration/subtitles.js";
 import { clipWindows, createNarrationHook } from "../narration/timing.js";
 import {
   readNarrationManifest,
+  type NarrationClip,
   type NarrationManifest,
   type NarrationManifestRead,
 } from "../narration/types.js";
@@ -280,5 +281,91 @@ describe("subtitlesResponse — finished text off the schedule", () => {
     // The voiced cue really spans the 120s clip, past the capped pen.
     const voiced = cues.find((c) => c.text === "长音频")!;
     expect(voiced.end - voiced.start).toBeCloseTo(120, 6);
+  });
+});
+
+// ── The mix plan (T10-5) ────────────────────────────────────────────────────
+
+describe("narrate hands the mixer its plan — but only when it is worth mixing", () => {
+  const lecture = parseLecture(BOARD);
+  /** Every speakable step recorded, so nothing is left needing audio. */
+  function fullManifest(): NarrationManifestRead {
+    const plan = narrateResponse(lecture, null, "tech-zh");
+    const clips: Record<string, NarrationClip> = {};
+    for (const step of stepsOf(plan)) {
+      clips[step.key] = { file: step.file, seconds: 4, text: step.text };
+    }
+    return { manifest: { clips }, issue: null };
+  }
+  function windowsFor(read: NarrationManifestRead) {
+    const hook = createNarrationHook(lecture.source, read.manifest)!;
+    const timeline = buildTimeline(lecture, {
+      durations: DEFAULT_DURATIONS,
+      durationOverride: hook.durationOverride,
+    });
+    return {
+      windows: clipWindows(timeline.schedule, hook.applied),
+      duration: timeline.duration,
+    };
+  }
+
+  test("a complete manifest yields a plan the mixer can run as-is", () => {
+    const read = fullManifest();
+    const { windows, duration } = windowsFor(read);
+    const result = narrateResponse(lecture, read, "tech-zh", new Set(), {
+      windows,
+      duration,
+      state: "absent",
+    });
+    const track = (result.data as { track: { plan: { clips: { source: string; offset: number }[]; track: string; manifest: string; file: string; samples: number } } }).track;
+    expect(track.plan.clips).toHaveLength(windows.length);
+    // The two-name path discipline, exactly as the per-step answer keeps
+    // it: `file` is the sidecar's own value, everything else is a
+    // workspace path the CLI can open.
+    expect(track.plan.file).toBe("narration/track.mp3");
+    expect(track.plan.track).toBe("tech-zh/narration/track.mp3");
+    expect(track.plan.manifest).toBe("tech-zh/narration/track.json");
+    for (const clip of track.plan.clips) {
+      expect(clip.source.startsWith("tech-zh/narration/")).toBe(true);
+    }
+    // Offsets ascend and the track is long enough to hold them.
+    const offsets = track.plan.clips.map((c) => c.offset);
+    expect([...offsets].sort((a, b) => a - b)).toEqual(offsets);
+    expect(track.plan.samples).toBeGreaterThan(offsets[offsets.length - 1]!);
+    expect(result.message).toContain("mix-narration.mjs");
+  });
+
+  test("a board still owing audio gets no plan — mixing early is wasted work", () => {
+    const read = fullManifest();
+    const [first] = Object.keys(read.manifest!.clips);
+    delete read.manifest!.clips[first!];
+    const { windows, duration } = windowsFor(read);
+    const result = narrateResponse(lecture, read, "tech-zh", new Set(), {
+      windows,
+      duration,
+      state: "absent",
+    });
+    expect((result.data as { track: { plan?: unknown } }).track.plan).toBeUndefined();
+    expect(result.message).not.toContain("mix-narration.mjs");
+  });
+
+  test("a refused track says so, and says why, in the message the agent reads", () => {
+    const read = fullManifest();
+    const { windows, duration } = windowsFor(read);
+    const result = narrateResponse(lecture, read, "tech-zh", new Set(), {
+      windows,
+      duration,
+      state: "refused",
+      reason: "clip 3 sits 1.40s away from where the board now performs it",
+    });
+    expect(result.message).toContain("1.40s");
+    expect(result.message).toContain("NOT played");
+    expect((result.data as { track: { state: string } }).track.state).toBe("refused");
+  });
+
+  test("no track state at all leaves the answer byte-identical to before", () => {
+    const read = fullManifest();
+    const result = narrateResponse(lecture, read, "tech-zh");
+    expect((result.data as { track?: unknown }).track).toBeUndefined();
   });
 });

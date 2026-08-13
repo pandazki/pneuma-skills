@@ -19,6 +19,11 @@ import type { Lecture, StepSchedule } from "../engine/types.js";
 import { buildNarrationPlan } from "../narration/plan.js";
 import { narrationCues, toSrt, toVtt } from "../narration/subtitles.js";
 import type { ClipWindow } from "../narration/timing.js";
+import {
+  TRACK_SAMPLE_RATE,
+  layOutTrack,
+  type TrackClip,
+} from "../narration/track.js";
 import type {
   NarrationClip,
   NarrationManifestRead,
@@ -58,6 +63,66 @@ export async function probeMissingClips(
 }
 
 /**
+ * What the board knows about its PRE-MIXED track when `narrate` is asked
+ * (T10-5). The host owns all of it — the compiled windows, the board's
+ * duration, and the verdict it already reached on any recorded sidecar —
+ * because only the live compile has the measured schedule the mix must be
+ * laid against.
+ */
+export interface NarrationTrackState {
+  /** The compile's clip windows, in start order. */
+  windows: readonly ClipWindow[];
+  /** The compiled board's duration in canonical seconds. */
+  duration: number;
+  /**
+   * `absent` — no sidecar. `verified` — the recorded track still matches
+   * this board and is what the user is hearing. `refused` — a sidecar
+   * exists but the board would not play it, with `reason` saying why
+   * (stale layout, or a malformed file).
+   */
+  state: "absent" | "verified" | "refused";
+  reason?: string | null;
+}
+
+/**
+ * The mixer's whole input: where every clip's audio is, and where it
+ * belongs in the finished track. Paths are WORKSPACE-relative (`source`,
+ * `track`, `manifest`) except `file`, which is the set-relative value the
+ * sidecar records — the same two-name discipline the per-clip answer uses.
+ */
+interface TrackMixPlan {
+  sampleRate: number;
+  samples: number;
+  file: string;
+  track: string;
+  manifest: string;
+  clips: (TrackClip & { source: string })[];
+}
+
+function buildMixPlan(
+  clips: Readonly<Record<string, NarrationClip>>,
+  setKey: string,
+  track: NarrationTrackState,
+): TrackMixPlan | null {
+  const layout = layOutTrack(track.windows, track.duration, TRACK_SAMPLE_RATE);
+  if (layout.clips.length === 0) return null;
+  const placed: (TrackClip & { source: string })[] = [];
+  for (const clip of layout.clips) {
+    const recorded = clips[clip.hash];
+    if (!recorded) return null; // a window with no file cannot be mixed
+    placed.push({ ...clip, source: inSet(setKey, recorded.file) });
+  }
+  return {
+    sampleRate: layout.sampleRate,
+    samples: layout.samples,
+    file: "narration/track.mp3",
+    track: inSet(setKey, "narration/track.mp3"),
+    manifest: inSet(setKey, "narration/track.json"),
+    clips: placed,
+  };
+}
+
+/**
  * `narrate` — the voice-over plan. The agent cannot compute step cache
  * keys itself (an installed skill cannot import the engine), so the board
  * answers with everything: per step the address, the key, the suggested
@@ -72,6 +137,8 @@ export function narrateResponse(
   setKey: string,
   /** Confirmed-absent clip hashes (`probeMissingClips`) — never guesses. */
   missing: ReadonlySet<string> = new Set(),
+  /** The board's pre-mixed track situation (T10-5); omitted = no track path. */
+  track?: NarrationTrackState,
 ): ViewerActionResult {
   const plan = buildNarrationPlan(lecture, read?.manifest ?? null, missing);
   const needsAudio = plan.entries.filter((e) => e.status === "needs-audio");
@@ -99,6 +166,25 @@ export function narrateResponse(
     );
   }
   if (read?.issue) parts.push(`Manifest problem: ${read.issue}`);
+  // The track (T10-5). Mixing is worth doing only once every clip is
+  // fresh — a remix after one more sentence is the whole file again — so
+  // the plan is offered, and pressed for, at exactly that moment.
+  const mixPlan =
+    track && needsAudio.length === 0 && missingLive.length === 0
+      ? buildMixPlan(read?.manifest?.clips ?? {}, setKey, track)
+      : null;
+  if (track?.state === "refused") {
+    parts.push(
+      `The mixed narration track was NOT played: ${track.reason ?? "it no longer matches this board"}. The clips played one at a time instead (which swallows the first syllable of each) — re-mix from data.track.plan.`,
+    );
+  } else if (track?.state === "verified") {
+    parts.push("The mixed narration track matches this board and is what plays.");
+  }
+  if (mixPlan) {
+    parts.push(
+      `Every clip is fresh, so fuse them: save data.track.plan verbatim to a file and run scripts/mix-narration.mjs --plan <that file> --json. It writes ${mixPlan.track} plus the layout sidecar ${mixPlan.manifest}, and the board then plays ONE continuous element instead of starting each clip cold. Re-mix whenever the board changes — the board verifies the layout and refuses a track that has moved.`,
+    );
+  }
   parts.push(
     // Every field `readNarrationManifest` REQUIRES is named here. An
     // entry missing any one of them is dropped by the reader and reported
@@ -132,6 +218,15 @@ export function narrateResponse(
       /** Confirmed-absent clip hashes — their steps read needs-audio above. */
       missing: missingLive.map((e) => e.hash),
       orphans: plan.orphans,
+      ...(track
+        ? {
+            track: {
+              state: track.state,
+              ...(track.reason ? { reason: track.reason } : {}),
+              ...(mixPlan ? { plan: mixPlan } : {}),
+            },
+          }
+        : {}),
     },
   };
 }

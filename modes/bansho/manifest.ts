@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.19.1",
+  version: "0.20.0",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -47,6 +47,11 @@ const banshoManifest: ModeManifest = {
     // Wording discipline: these bullets render VERBATIM in the launcher's
     // skill-update prompt, so they may only claim what the build actually
     // does.
+    "0.20.0": [
+      "The lecture's voice can now be ONE continuous track instead of one clip per step. Playing a clip at a time meant every clip started from nothing buffered, and the browser ate the first syllable of each — this removes the seam rather than managing it. Run narrate, and once every clip is fresh it hands you a mix plan; scripts/mix-narration.mjs fuses the clips in PCM and writes narration/track.mp3 plus a layout sidecar",
+      "The board VERIFIES that track against itself every time it loads: the clip order and every position must still match what it now performs. They do not — you appended a sentence, or the theme changed the font and the words re-wrapped — and the track is not played at all. The clips play one at a time instead (first syllable and all), a chip says so, and check-board reports staleTrack with the reason. Re-mix and it is right again",
+      "So: mix LAST, after the writing has settled, and re-mix whenever the board changes",
+    ],
     "0.19.1": [
       "A picture is fitted INSIDE the room its @at word gave it, on both sides: as wide as that room allows and never deeper than it. It used to be drawn the full width of the board whatever room you put it in, so a figure in a column hung off the right edge — and moving it to a bigger room made that worse, not better. Corner and band placements are worth a second look on any lecture written before this version",
       "A figure narrower than its room now stands centred in it, the way display math already did. Its shape is still exactly the ratio you declared: what gives is the size, never the proportions",
