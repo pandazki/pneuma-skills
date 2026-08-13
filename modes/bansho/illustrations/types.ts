@@ -22,8 +22,13 @@
  * the size it asked for); the board only ever reads it.
  */
 
-import type { ImageStep, Lecture, StepRef } from "../engine/types.js";
 import { flattenSteps } from "../engine/inference.js";
+import type {
+  IllustrationSpec,
+  ImageStep,
+  Lecture,
+  StepRef,
+} from "../engine/types.js";
 
 // ── Manifest (on-disk contract, agent-written) ──────────────────────────────
 
@@ -251,4 +256,58 @@ export function illustrationSources(lecture: Lecture): string[] {
     if (isSafeIllustrationSrc(path)) seen.add(path);
   }
   return [...seen].sort();
+}
+
+// ── The host seam's own shape ───────────────────────────────────────────────
+
+/**
+ * What a host hands the board so it can draw the pictures a lecture names.
+ *
+ * `resolve` is the whole answer: a spec, or `undefined` for every refusal
+ * (`illustrationRefusal` decides which). `identity` is what the board keys
+ * its rebuilds on — a figure's node is a function of the sidecar and of the
+ * host's on-disk probe, and NEITHER is a byte of `board.md`, so the content
+ * hash structurally cannot see them change (`viewer/reconcile.ts`).
+ */
+export interface IllustrationSource {
+  resolve(src: string): IllustrationSpec | undefined;
+  identity: string;
+}
+
+/**
+ * The one `IllustrationSource` this mode builds — pure, so the URL rule and
+ * the refusal rule are pinned without a browser.
+ *
+ * `toUrl` receives a WORKSPACE-relative path (content set prefixed) and
+ * owes a SAME-ORIGIN URL back. That is not a preference: a mask reads
+ * pixels, so a cross-origin source is refused by the browser with no
+ * output and no diagnostic (`.claude/rules/frontend.md`) — which is why
+ * this seam takes a path and never a base URL.
+ */
+export function illustrationSource(
+  manifest: IllustrationManifest | null,
+  contentSet: string,
+  toUrl: (workspacePath: string) => string,
+  absentFiles?: ReadonlySet<string>,
+): IllustrationSource {
+  const prefix = contentSet === "" ? "" : `${contentSet}/`;
+  const figures = manifest?.figures ?? {};
+  return {
+    identity: [
+      contentSet,
+      ...Object.keys(figures)
+        .sort()
+        .map((key) => `${key}=${figures[key]!.aspect}`),
+      ...[...(absentFiles ?? [])].sort().map((path) => `-${path}`),
+    ].join("|"),
+    resolve: (src) => {
+      const path = normalizeIllustrationSrc(src);
+      if (illustrationRefusal(path, manifest, absentFiles) !== null) {
+        return undefined;
+      }
+      const aspect = figures[path]?.aspect;
+      if (aspect === undefined) return undefined;
+      return { aspect, url: toUrl(`${prefix}${path}`) };
+    },
+  };
 }

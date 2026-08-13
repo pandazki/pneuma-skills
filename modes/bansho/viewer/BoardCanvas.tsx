@@ -65,6 +65,7 @@ import {
   createNarrationHook,
   type ClipWindow,
 } from "../narration/timing.js";
+import type { IllustrationSource } from "../illustrations/types.js";
 import type { NarrationManifest } from "../narration/types.js";
 import { parseStepKey, stepKey } from "./address.js";
 import WallMap from "./WallMap.js";
@@ -214,6 +215,7 @@ import {
 import {
   alignCascade,
   boxWidthCascade,
+  illustrationCascade,
   containerKeyOf,
   planReconcile,
   toEntries,
@@ -351,6 +353,8 @@ interface BuiltItem {
   /** Named-container key (`chart:名` / `graph:名`) when the step has one. */
   container?: string;
   alignWidth?: number;
+  /** Image steps: the picture identity this node was built against (I1). */
+  illustration?: string;
   /** Backref steps: measured target rows (PANEL coords) — follow anchor. */
   anchorRows?: RowRect[];
   /** C3: which panel `anchorRows` are relative to (0 when unstaged). */
@@ -484,6 +488,17 @@ export interface BoardCanvasProps {
    */
   narration?: NarrationManifest | null;
   /**
+   * I1 — how a picture the lecture names becomes a picture on the board.
+   * Null (or absent) draws every figure as its honest badge, which is also
+   * what a host that has not wired this gets: a hole is never invisible.
+   *
+   * `identity` is the cascade key: a figure's node is a function of the
+   * sidecar and of the host's on-disk probe, and NEITHER is a byte of
+   * board.md, so the content hash cannot see them change (see
+   * `reconcile.ts::illustrationCascade`).
+   */
+  illustrations?: IllustrationSource | null;
+  /**
    * V1.5 — the reader's parallax (css3d brief §5.2). With it on, the
    * pointer rocks the board a few degrees so the depth the transitions
    * build can be FELT rather than believed: real depth produces parallax,
@@ -535,6 +550,7 @@ export default function BoardCanvas({
   onGrab,
   onApi,
   narration = null,
+  illustrations = null,
   parallax = false,
   depthMotion = true,
 }: BoardCanvasProps) {
@@ -551,6 +567,14 @@ export default function BoardCanvas({
   // The notes view is ALWAYS the single unbounded strip — the whole point
   // of the projection is that nothing is ever area-limited there.
   const panelCount = view === "notes" ? 1 : boardCount(lecture);
+
+  /**
+   * I1 — the identity of everything the picture seam can answer with. It is
+   * the cascade key AND a rebuild trigger: the same board.md draws a
+   * different figure when its declared aspect changes or when its file
+   * arrives, and neither event moves a byte the hash can see.
+   */
+  const illustrationIdentity = illustrations?.identity ?? "";
 
   /** The assignment fold of the LAST staged rebuild; null when the board
    *  is unstaged (single strip, no erases — the pristine C1 path). */
@@ -1910,6 +1934,11 @@ function setMeasureWidth(host: HTMLElement, width: number | undefined): void {
       // signature.
       backRef: (target) => measureBackRef(target, currentBuildKey),
       stageAnchor: measureStageAnchor,
+      // I1 — the picture seam. The host owns path → URL (it must be
+      // ROOT-RELATIVE: a mask reads pixels, so a cross-origin source
+      // paints nothing at all and says nothing about it) and owns the
+      // refusal; the factory owns the box and the reveal.
+      illustration: (step) => illustrations?.resolve(step.src),
       // C3 — the eraser's live handle: a DOUBLE deferred lookup (key →
       // run → wrapper), because at build time the fold has not run yet
       // (it needs every height), and wrappers are reminted per rebuild.
@@ -2088,8 +2117,16 @@ function setMeasureWidth(host: HTMLElement, width: number | undefined): void {
       ...(it.container !== undefined ? { container: it.container } : {}),
       ...(it.alignWidth !== undefined ? { alignWidth: it.alignWidth } : {}),
       ...(it.boxWidth !== undefined ? { boxWidth: it.boxWidth } : {}),
+      ...(it.illustration !== undefined ? { illustration: it.illustration } : {}),
     }));
     const forcedRebuild = alignCascade(prev, targetWidths);
+    // I1 × §7 — a figure whose sidecar entry moved, or whose file has just
+    // arrived (or gone), must be BUILT again: its box comes from the
+    // declared aspect and its paint from the resolved URL, and board.md
+    // carries neither. Same class as the two cascades below.
+    for (const i of illustrationCascade(prev, entries, illustrationIdentity)) {
+      forcedRebuild.add(i);
+    }
     // §7.2 × §7 — a step whose column changed under it must be BUILT again,
     // not merely re-measured: its ink is the line boxes its run occupied,
     // and those lines are a property of the width it was built at. The
@@ -2136,6 +2173,7 @@ function setMeasureWidth(host: HTMLElement, width: number | undefined): void {
         measureAt(currentBuildKey);
         item = buildItem(doc, entry, ctx);
         item.boxWidth = buildWidths.get(currentBuildKey);
+        if (entry.step.kind === "image") item.illustration = illustrationIdentity;
         currentAlign = undefined;
         if (item.step.kind === "backref" && pendingRowsRef.current) {
           item.anchorRows = pendingRowsRef.current;
@@ -2266,6 +2304,9 @@ function setMeasureWidth(host: HTMLElement, width: number | undefined): void {
           const rebuilt = buildItem(doc, entries[i]!, ctx);
           currentAlign = undefined;
           rebuilt.boxWidth = buildWidths.get(k);
+          if (entries[i]!.step.kind === "image") {
+            rebuilt.illustration = illustrationIdentity;
+          }
           if (targetWidths.has(i)) rebuilt.alignWidth = targetWidths.get(i)!;
           if (rebuilt.node instanceof HTMLElement) {
             rebuilt.node.dataset.banshoRef = k;
@@ -2953,6 +2994,8 @@ function setMeasureWidth(host: HTMLElement, width: number | undefined): void {
     view,
     panelCount,
     narration,
+    illustrations,
+    illustrationIdentity,
     fontsReady,
     env,
     rebuildTick,

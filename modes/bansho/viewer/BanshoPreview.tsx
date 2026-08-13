@@ -38,6 +38,11 @@ import {
   probeEnvCaps,
 } from "../engine/factories/index.js";
 import type { EnvCaps, Lecture, StepRef } from "../engine/types.js";
+import {
+  illustrationSource,
+  illustrationSources,
+  undrawnIllustrations,
+} from "../illustrations/types.js";
 import { buildNarrationPlan } from "../narration/plan.js";
 import {
   withoutMissingClips,
@@ -395,6 +400,89 @@ export default function BanshoPreview({
     [narrationRead, missingClips],
   );
 
+  // ── The picture layer (I1) ───────────────────────────────────────────────
+  // Same three moves as the voice: read the sidecar off the board's own
+  // file load, probe the files it names, hand the board ONE resolver.
+  const illustrationRead =
+    setKey === null ? null : (board?.illustrations[setKey] ?? null);
+  const [absentFigures, setAbsentFigures] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  // The pictures this lecture names, as one string: the aggregate source
+  // mints a fresh Lecture on every watched-file emit (including each
+  // board.md append while the agent live-writes), and the probe must re-run
+  // on a real change only — the file-watch → render loop is hot.
+  const figureFingerprint = useMemo(
+    () => (lecture ? illustrationSources(lecture).join("|") : ""),
+    [lecture],
+  );
+  const probeFiguresRef = useRef<() => Promise<Set<string>>>(async () => new Set());
+  probeFiguresRef.current = async () => {
+    const paths = lecture ? illustrationSources(lecture) : [];
+    const prefix = setKey ? `${setKey}/` : "";
+    const gone = new Set<string>();
+    await Promise.all(
+      paths.map(async (path) => {
+        try {
+          const res = await fetch(
+            `${getApiBase()}/api/file?path=${encodeURIComponent(prefix + path)}`,
+          );
+          // Headers are the answer; never download the picture here.
+          void res.body?.cancel();
+          // A CONFIRMED 404 accuses; anything else (offline, 500, a host
+          // with no file route at all) changes nothing.
+          if (res.status === 404) gone.add(path);
+        } catch {
+          // Unanswerable is not an accusation — see above.
+        }
+      }),
+    );
+    return gone;
+  };
+  useEffect(() => {
+    if (figureFingerprint === "") {
+      setAbsentFigures((prev) => (prev.size === 0 ? prev : new Set()));
+      return;
+    }
+    let cancelled = false;
+    void probeFiguresRef.current().then((gone) => {
+      if (cancelled) return;
+      setAbsentFigures((prev) => (sameSet(prev, gone) ? prev : gone));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [figureFingerprint, setKey, illustrationRead]);
+
+  const illustrations = useMemo(
+    () =>
+      illustrationSource(
+        illustrationRead?.manifest ?? null,
+        setKey ?? "",
+        // ROOT-RELATIVE, never `getApiBase()`: a mask reads pixels, so a
+        // cross-origin source paints NOTHING and reports success while
+        // doing it (`.claude/rules/frontend.md`). In dev the API base is a
+        // different port — a different origin — and the dev server proxies
+        // `/api` for exactly this reason.
+        (workspacePath) => `/api/file?path=${encodeURIComponent(workspacePath)}`,
+        absentFigures,
+      ),
+    [illustrationRead, setKey, absentFigures],
+  );
+
+  /** The pictures that are not on the board, as check-board observations. */
+  const undrawnFigures = useMemo(
+    () =>
+      lecture
+        ? undrawnIllustrations(
+            lecture,
+            illustrationRead?.manifest ?? null,
+            absentFigures,
+          )
+        : [],
+    [lecture, illustrationRead, absentFigures],
+  );
+
   // The missing clips as check-board observations, addressed to their
   // steps (the plan knows hash → ref; missing clips have no windows to
   // read it from — they were filtered out of the compile).
@@ -717,6 +805,7 @@ export default function BanshoPreview({
         overflowing: compiled?.overflowing ?? [],
         inkAfterErase: compiled?.inkAfterErase ?? [],
         missingNarrationClips: missingNarration,
+        undrawnIllustrations: undrawnFigures,
         collisions: compiled?.collisions ?? [],
         bursts: compiled?.bursts ?? [],
         turnsOnFullWall: compiled?.turnsOnFullWall ?? [],
@@ -728,7 +817,7 @@ export default function BanshoPreview({
       message: report.summary,
       data: { ok: report.ok, findings: report.findings },
     };
-  }, [compiled, missingNarration]);
+  }, [compiled, missingNarration, undrawnFigures]);
 
   /**
    * `narrate` (T10) — the voice-over plan. The response shape lives in
@@ -1043,8 +1132,11 @@ export default function BanshoPreview({
         inkAfterErase: compiled?.inkAfterErase ?? [],
         // Present for coherence with check-board; narrationClipMissing is
         // not a notified kind (report, not interrupt), so it never fires
-        // here — deriveNotifications filters it.
+        // here — deriveNotifications filters it. A picture that is not on
+        // the board DOES fire: it rides `refUnresolved`, one of the three
+        // §9 kinds, because a hole in the board is worth interrupting for.
         missingNarrationClips: missingNarration,
+        undrawnIllustrations: undrawnFigures,
         collisions: compiled?.collisions ?? [],
         bursts: compiled?.bursts ?? [],
         turnsOnFullWall: compiled?.turnsOnFullWall ?? [],
@@ -1053,7 +1145,7 @@ export default function BanshoPreview({
     );
     reportedRef.current = seen;
     for (const notification of notifications) notify(notification);
-  }, [lecture, compiled, readonly, missingNarration]);
+  }, [lecture, compiled, readonly, missingNarration, undrawnFigures]);
 
   // `boardCollision` (§5.5): the room now lets declarations land on top of
   // each other, and being SEEN is the whole of how a collision is handled.
@@ -1223,6 +1315,7 @@ export default function BanshoPreview({
                 lecture={lecture}
                 view={boardView}
                 narration={narrationForBoard}
+                illustrations={illustrations}
                 theme={theme}
                 themeCss={themeCss}
                 fontsReady={fontsReady}

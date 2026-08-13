@@ -26,6 +26,10 @@ import type { ViewerNotification } from "../../../core/types/viewer-contract.js"
 import type { RegionBurst } from "../engine/layout.js";
 import type { BoxCollision, Rect } from "../engine/regions.js";
 import type { Lecture, StepRef } from "../engine/types.js";
+import type {
+  IllustrationRefusal,
+  UndrawnIllustration,
+} from "../illustrations/types.js";
 import {
   formatAddress,
   parseStepKey,
@@ -116,6 +120,21 @@ export interface BoardObservations {
    * unanswerable probe accuses nothing.
    */
   missingNarrationClips?: readonly MissingNarrationClip[];
+  /**
+   * I1 — pictures the lecture names that the board could not draw: a path
+   * that leaves the lecture's folder, a file the host's `/api/file` probe
+   * confirmed is absent, a picture whose shape was never declared in
+   * `illustrations/manifest.json`. The board stands a badge where each one
+   * would have been, and this is how the agent learns why.
+   *
+   * Reported under `refUnresolved` — the code that already means "this
+   * points at something that is not on the board" — with a sentence that
+   * names the actual cause. That is also what makes it an INTERRUPTION
+   * (§9's three kinds) rather than a report-only finding: a figure that is
+   * not there is a hole in the board, and the author should hear about it
+   * without asking.
+   */
+  undrawnIllustrations?: readonly UndrawnIllustration[];
   /**
    * Standing boxes that overlap (design §5.2's predicate, run by
    * `engine/regions.ts::detectCollisions` over `layout.standingBoxes`).
@@ -420,6 +439,21 @@ export const CLAIM_VS_INK_NOTE =
 export const REGION_BURST_SENTENCE =
   "The writing here stands taller than the space it was placed in and runs past its bottom edge; past the board's own edge nothing of it is written. Say less here, place it under a word with more room, or give it a board of its own with @turn.";
 
+/**
+ * What to say about a picture that is not on the board (I1), one sentence
+ * per cause. They ride `refUnresolved`'s code with their own words — the
+ * `turnUnderfilled` precedent: the code says WHICH KIND of problem, the
+ * message says what happened and what to do about it.
+ */
+const UNDRAWN_SENTENCE: Record<IllustrationRefusal, string> = {
+  unsafePath:
+    "A picture is named by a path inside the lecture's own folder — a path that climbs out of it, an absolute one, or a web address is not read. Put the file beside the lecture and point at it from there.",
+  fileMissing:
+    "This points at a picture that is not there — the board leaves a marked gap where it would have gone. Put the file at the quoted path.",
+  noEntry:
+    "This picture has no shape on record, so the board does not know how much room to leave for it. Add the quoted path to illustrations/manifest.json with its aspect (width ÷ height), or its width and height.",
+};
+
 const SENTENCE: Record<FindingCode, string> = {
   stepParseError: "This block could not be read, so nothing is written for it.",
   refUnresolved:
@@ -587,6 +621,17 @@ export function collectFindings(
       message: `This board is about ${Math.round(
         turn.fill * 100,
       )}% written on when the pen turns away. A board fills in columns — writing carries on at the top of the next column before it needs a new board. Keep going here, or say @turn later.`,
+    });
+  }
+
+  // A picture that could not be drawn (I1) — the excerpt quotes the path
+  // exactly as the lecture wrote it, so the fix is the obvious one.
+  for (const figure of observations.undrawnIllustrations ?? []) {
+    findings.push({
+      code: "refUnresolved",
+      address: toAddress(figure.ref),
+      message: UNDRAWN_SENTENCE[figure.reason],
+      ...quote(figure.src),
     });
   }
 

@@ -16,7 +16,10 @@ import { describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 
 import { loadBoard, parseLecture } from "../domain.js";
+import { collectFindings } from "../viewer/board-check.js";
 import { BOARD_BASE_CSS } from "../viewer/board-css.js";
+import { BANNED_WORDS } from "./vocabulary.js";
+import { illustrationCascade, toEntries } from "../viewer/reconcile.js";
 import { DEFAULT_DURATIONS, IMAGE_GLUE, imageDuration } from "../engine/duration.js";
 import { factoryFor } from "../engine/factories/index.js";
 import { flattenSteps, planLecture, planStepUnits } from "../engine/inference.js";
@@ -29,6 +32,7 @@ import type {
 } from "../engine/types.js";
 import {
   illustrationAspect,
+  illustrationSource,
   illustrationRefusal,
   illustrationSources,
   isSafeIllustrationSrc,
@@ -410,5 +414,117 @@ describe("a picture that cannot be drawn says so, on the board", () => {
     )!.step as Step;
     const built = factoryFor("image")!.build(prose, ctx);
     expect(built.revealables.every((r) => r.degraded === true)).toBe(true);
+  });
+});
+
+// ── 7. The host seam ────────────────────────────────────────────────────────
+
+describe("the resolver a host hands the board", () => {
+  const toUrl = (path: string) => `/api/file?path=${encodeURIComponent(path)}`;
+
+  test("the URL is ROOT-RELATIVE and content-set prefixed", () => {
+    // Root-relative is not a preference: a mask reads pixels, so a
+    // cross-origin source paints nothing at all — and in dev the API base
+    // is a different port, which is a different origin.
+    const source = illustrationSource(NEURON, "神经", toUrl);
+    const spec = source.resolve("illustrations/neuron.png")!;
+    expect(spec.url.startsWith("/api/file?path=")).toBe(true);
+    expect(decodeURIComponent(spec.url)).toContain("神经/illustrations/neuron.png");
+    expect(spec.aspect).toBe(1.5);
+    expect(illustrationSource(NEURON, "", toUrl).resolve("illustrations/neuron.png")!.url)
+      .not.toContain("神经");
+  });
+
+  test("every refusal comes back as the one refusal the factory reads", () => {
+    const source = illustrationSource(NEURON, "", toUrl, new Set(["gone.png"]));
+    expect(source.resolve("nowhere.png")).toBeUndefined();
+    expect(source.resolve("gone.png")).toBeUndefined();
+    expect(source.resolve("../out.png")).toBeUndefined();
+  });
+
+  test("identity moves when the shape moves, and when a file comes or goes", () => {
+    const base = illustrationSource(NEURON, "", toUrl).identity;
+    const resized = illustrationSource(
+      manifestOf({ figures: { "illustrations/neuron.png": { aspect: 2 } } }),
+      "",
+      toUrl,
+    ).identity;
+    const gone = illustrationSource(NEURON, "", toUrl, new Set(["x.png"])).identity;
+    expect(resized).not.toBe(base);
+    expect(gone).not.toBe(base);
+    // …and stands still when nothing did (the file-watch loop is hot).
+    expect(illustrationSource(NEURON, "", toUrl).identity).toBe(base);
+  });
+});
+
+describe("a figure rebuilds when its picture changed under it", () => {
+  const entries = toEntries(parseLecture(SRC));
+  const imageIndex = entries.findIndex((e) => e.step.kind === "image");
+
+  test("the same picture is left alone", () => {
+    const prev = entries.map((e) => ({ hash: e.hash, illustration: "A" }));
+    expect([...illustrationCascade(prev, entries, "A")]).toEqual([]);
+  });
+
+  test("a new shape, or a file that just arrived, rebuilds the figure", () => {
+    // Neither event moves one byte of board.md, so every hash still
+    // matches and the plan is a no-op: without this the stale box (or the
+    // stale badge) survives every reconcile.
+    const prev = entries.map((e) => ({ hash: e.hash, illustration: "A" }));
+    expect([...illustrationCascade(prev, entries, "B")]).toEqual([imageIndex]);
+  });
+
+  test("only figures — a picture's shape says nothing about the prose", () => {
+    const prev = entries.map((e) => ({ hash: e.hash }));
+    // Nothing was built with an identity yet; the base plan covers a
+    // never-built step, so the cascade adds only the one that WAS built.
+    const withOne = prev.map((p, i) =>
+      i === imageIndex ? { ...p, illustration: "A" } : p,
+    );
+    expect([...illustrationCascade(withOne, entries, "B")]).toEqual([imageIndex]);
+  });
+});
+
+// ── 8. The report ───────────────────────────────────────────────────────────
+
+describe("check-board says the same thing the board shows", () => {
+  const lecture = parseLecture(
+    "# 图\n\n![好的](a.png)\n\n![没登记](b.png)\n\n![不见了](c.png)\n\n![出界](../d.png)\n",
+  );
+  const manifest = manifestOf({
+    figures: { "a.png": { aspect: 1 }, "c.png": { aspect: 1 } },
+  });
+  const findings = collectFindings(lecture, {
+    mathErrors: [],
+    overflowing: [],
+    undrawnIllustrations: undrawnIllustrations(lecture, manifest, new Set(["c.png"])),
+  });
+
+  test("one finding per picture that is not on the board, and no more", () => {
+    expect(findings).toHaveLength(3);
+    expect(findings.every((f) => f.code === "refUnresolved")).toBe(true);
+  });
+
+  test("each one is addressed, quotes its own path, and says what to do", () => {
+    for (const finding of findings) {
+      expect(finding.address).toBeDefined();
+      expect(finding.excerpt).toBeTruthy();
+    }
+    expect(findings.map((f) => f.excerpt)).toEqual(["b.png", "c.png", "../d.png"]);
+    expect(findings[0]!.message).toContain("illustrations/manifest.json");
+    expect(findings[1]!.message).toMatch(/not there/);
+    expect(findings[2]!.message).toMatch(/inside the lecture's own folder/);
+  });
+
+  test("a picture the board CAN draw is never accused", () => {
+    expect(findings.some((f) => f.excerpt === "a.png")).toBe(false);
+  });
+
+  test("the words stay lecture words", () => {
+    for (const finding of findings) {
+      for (const banned of BANNED_WORDS) {
+        expect(finding.message.toLowerCase()).not.toContain(banned);
+      }
+    }
   });
 });

@@ -50,6 +50,11 @@ export interface BuiltStepState {
    * ink was drawn for. See `boxWidthCascade`.
    */
   boxWidth?: number;
+  /**
+   * The illustration identity this step's node was BUILT against — see
+   * `illustrationCascade`. Image steps only.
+   */
+  illustration?: string;
 }
 
 /** One entry of the new flat document order, hash precomputed. */
@@ -180,6 +185,36 @@ export function alignCascade(
     const built = prev[index];
     if (!built) continue; // not built yet — the base plan already covers it
     if ((built.alignWidth ?? 0) !== width) out.add(index);
+  }
+  return out;
+}
+
+/**
+ * Illustration cascade (I1 × §7): image steps whose PICTURE changed under
+ * them. Their content hash cannot see it — a figure's node is a function of
+ * the sidecar (`illustrations/manifest.json`) and of which files the host's
+ * probe found on disk, and neither is a byte of `board.md`. Edit an aspect,
+ * or drop the missing file into place, and the step's own source has not
+ * moved: without this the stale box (or the stale badge) survives every
+ * reconcile. Same shape as the align and box-width cascades — a derived
+ * invalidation the hash identity structurally cannot express.
+ *
+ * The identity is one string for the whole resolution state, so ANY change
+ * rebuilds EVERY figure. That is deliberate: figures are rare, a rebuild is
+ * one node, and a per-picture key would have to encode the same inputs
+ * anyway.
+ */
+export function illustrationCascade(
+  prev: readonly BuiltStepState[],
+  entries: readonly ReconcileEntry[],
+  identity: string,
+): Set<number> {
+  const out = new Set<number>();
+  for (let i = 0; i < entries.length; i++) {
+    if (entries[i]!.step.kind !== "image") continue;
+    const built = prev[i];
+    if (!built) continue; // never built — the base plan already covers it
+    if (built.illustration !== identity) out.add(i);
   }
   return out;
 }
