@@ -1,0 +1,15 @@
+# NOTE — this file cannot exclude anything `package.json`'s `files` field
+# whitelists. `files` wins; `.npmignore` only prunes inside what is already
+# unlisted. That is why `modes/*/harness/` is excluded by a NEGATION IN
+# `files` (`"!modes/*/harness/"`) and not from here — the first attempt put
+# it here, and the packed tarball did not shrink by a single byte.
+#
+# What ships to npm is what a USER runs, not what a developer measured.
+
+# Design documents and proposals — `docs/README.md` indexes them for
+# contributors; a user gets README.md.
+docs/
+
+# Development toolchain: rules, subagents, workflows, commands. Read by
+# agents working ON this repo, never by anyone running it.
+.claude/

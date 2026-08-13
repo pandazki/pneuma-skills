@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.29.1] - 2026-08-13
+
+### Fixed
+- **The npm package no longer exceeds the registry's size limit.** 3.29.0 was tagged and released on GitHub but never reached npm: bansho's `harness/screenshots/` — the evidence frames each visual decision was argued from — is 166 MB, which pushed the tarball to 346 MB and `npm publish` returned `413 Payload Too Large`. Because publish is the *last* CI step, the release looked successful from every surface except the registry. Development harnesses are now excluded by a negation in `package.json`'s `files` (159 MB packed, 1502 files). `.npmignore` could not do it: `files` is a whitelist and wins, so the first attempt shrank the tarball by zero bytes — that trap is now written into the release checklist.
+
 ## [3.29.0] - 2026-08-13
 
 ### Added

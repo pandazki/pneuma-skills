@@ -10,7 +10,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.29.0
+**Version:** 3.29.1
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `wordtaste`, `bansho`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`, `project-tidy`
 
@@ -461,5 +461,8 @@ CI (`release.yml`) handles tagging, GitHub Release, and npm publish on push to `
 3. `AGENTS.md` — `**Version:**` 行(本文件。`CLAUDE.md` 只是一行 `@AGENTS.md` import,不含版本号——**不要**往 `CLAUDE.md` 写任何内容)
 4. `CHANGELOG.md` — new section
 5. `README.md` **和 `README.zh.md`** — 若本次改动碰了 mode 表、CLI 用法/子命令、技术栈表或 feature 列表,**两个语言版本都要改**。zh 版没有任何自动化守卫,只靠这条清单;它曾经因此落后英文版两个月(缺 wordtaste、缺整个 `library` 子命令族、`mode add` 描述停在单-mode 时代)。改一个就得改另一个。
+
+6. **发布体积** —— 若本次新增了 mode 或往仓库里加了大宗二进制(截图、证据帧、样例素材),先跑 `npm pack --dry-run` 看打包体积。**npm 单包上限约 250 MB**,超了 `npm publish` 回 `413 Payload Too Large`,而那一步在 CI 的**最后**:tag 建了、GitHub Release 发了、**只有 registry 没拿到包**——半发布状态,而且从 release 页面上看不出来。3.29.0 就这么炸过一次(bansho 的 `harness/screenshots/` 166 MB,把包顶到 346 MB)。
+   **排除大宗物料只能靠 `package.json` 的 `files` 否定模式**(`"!modes/*/harness/"`),**`.npmignore` 对 `files` 白名单里的目录无效**——`files` 优先级更高,写进 `.npmignore` 的那一版打出来一个字节都没少。
 
 然后 `git push origin main`(不带 `--tags`)。CI 建 tag、发 release、publish。完整流程走 `/bump` command。
