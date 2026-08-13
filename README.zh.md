@@ -78,6 +78,7 @@
 | **gridboard** | 交互式仪表盘 —— 固定画布上的可拖拽磁贴网格，通过 `defineTile()` 协议定义 React 磁贴，浏览器端 JIT 编译 |
 | **cosmos** | 把任何内容——代码、小说、研究、商业流程——投影成一张结构化的星图：让内在脉络以可交互图谱的方式显形。schema 与 dashboard 技术借鉴自 [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything)（MIT） |
 | **wordtaste** | 人机协作的中文长文写作 —— 先和你确认论点与最强落点，再在隔离上下文中逐段成文，换一个模型家族（Claude Code / Codex）交叉检查，有限轮修复后由你把关收尾 |
+| **bansho** | 板书式讲解 —— 用普通 Markdown 写一份讲稿，板子自己演出来：手写一笔一笔浮现，强调的地方变成手绘的圈和荧光，讲到哪就把图表和公式画到哪，还能像回看直播一样拖时间轴 |
 | **mode-maker** | 用 AI 做自定义 mode —— fork、Play 试跑、发布 |
 | **evolve** | Evolution Agent —— 分析历史、提出技能改进、apply / 回滚 |
 
@@ -161,6 +162,7 @@ Modes:
   gridboard                    交互式磁贴仪表盘
   cosmos                       把任何内容投影成结构化星图
   wordtaste                    人机协作的中文长文写作
+  bansho                       板书式讲解
   mode-maker                   用 AI 做自定义 mode
   evolve                       启动 Evolution Agent
   /path/to/mode                从本地目录加载

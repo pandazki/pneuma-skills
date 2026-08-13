@@ -11,10 +11,29 @@ export interface WorkspaceSlice {
   activeContentSet: string | null;
   contentSetUnread: Set<string>;
   workspaceItems: WorkspaceItem[];
+  /**
+   * True once the initial workspace load has RESOLVED (success or empty).
+   * Before this, `files: []` is ambiguous — "still fetching" and "empty
+   * workspace" look identical. The app shell flips it after the initial
+   * `/api/files` (or replay package) load; it never goes back to false.
+   */
+  filesHydrated: boolean;
+  /**
+   * The file PATHS present at the moment `markFilesHydrated` first ran —
+   * `null` until then, then frozen for the session. Viewers that must
+   * distinguish "content existed when I opened" from "content arrived
+   * while I watched" (e.g. a live-join playback decision) read THIS, never
+   * the live `files`: a viewer can mount long after hydration (the seed
+   * gallery replaces the viewer on an empty workspace, so the viewer
+   * first mounts only once seed content already landed), and the live
+   * list at that moment describes the present, not the opening.
+   */
+  filesAtHydration: readonly string[] | null;
 
   setFiles: (files: FileContent[]) => void;
   updateFiles: (updates: Array<FileContent & { origin?: "self" | "external"; deleted?: boolean }>) => void;
   setActiveContentSet: (prefix: string | null) => void;
+  markFilesHydrated: () => void;
 }
 
 export const createWorkspaceSlice: StateCreator<AppState, [], [], WorkspaceSlice> = (set) => ({
@@ -23,6 +42,8 @@ export const createWorkspaceSlice: StateCreator<AppState, [], [], WorkspaceSlice
   activeContentSet: null,
   contentSetUnread: new Set(),
   workspaceItems: [],
+  filesHydrated: false,
+  filesAtHydration: null,
 
   setFiles: (files) => {
     set((s) => {
@@ -152,6 +173,18 @@ export const createWorkspaceSlice: StateCreator<AppState, [], [], WorkspaceSlice
       })),
     );
   },
+
+  // Idempotent: only the FIRST call snapshots — hydration happens once,
+  // and a later call must not rewrite what the opening looked like.
+  markFilesHydrated: () =>
+    set((s) =>
+      s.filesAtHydration !== null
+        ? { filesHydrated: true }
+        : {
+            filesHydrated: true,
+            filesAtHydration: s.files.map((f) => f.path),
+          },
+    ),
 
   setActiveContentSet: (activeContentSet) =>
     set((s) => {

@@ -1,0 +1,52 @@
+{
+  "tagline": {
+    "en": "Markdown in, a lecture on the blackboard out",
+    "zh-CN": "写下 markdown，黑板自己把这堂课讲出来",
+    "ja": "マークダウンを書けば、黒板が講義を書き出す"
+  },
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": {
+        "en": "It performs, it does not render",
+        "zh-CN": "它是在讲，不是在渲染",
+        "ja": "描画ではなく、板書そのもの"
+      },
+      "description": {
+        "en": "Handwriting streams out word by word, charts and diagrams draw stroke by stroke as the talk reaches them, and every mark is a pure function of time — so the same lecture answers to a scrub bar, a 16x skim and a frame-by-frame export with no second code path.",
+        "zh-CN": "手写逐词流出，图表随讲到的地方一笔一笔画出来；每一道墨迹都是时间的纯函数——所以同一堂课能被拖动进度条、16 倍速略读、逐帧导出，走的是同一条路径。",
+        "ja": "手書きが一語ずつ流れ出し、図やチャートは話が届いたところから一筆ずつ描かれる。すべての筆致が時間の純関数なので、シークバーも 16 倍速の流し見もフレーム単位の書き出しも、同じ一本の経路で答える。"
+      },
+      "media": "highlight-performs.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "A wall of boards, with an edge",
+        "zh-CN": "一面有边界的黑板墙",
+        "ja": "端のある黒板の壁"
+      },
+      "description": {
+        "en": "Two to four boards stand in a room, each a fixed size on every screen, each filling in columns the way a hand fills a wide blackboard. Erasing is something the teacher says, not cleanup — nothing is ever lost, and scrubbing back brings it all home.",
+        "zh-CN": "两到四块板站在一间屋子里，每块在任何屏幕上都是同一个尺寸，像手写宽黑板那样一栏一栏地填。擦除是老师说出口的一个动作，不是清理——什么都不会丢，往回拖它们全都回来。",
+        "ja": "2〜4 枚の黒板が一つの部屋に立ち、どの画面でも同じ大きさで、広い黒板を手で埋めるように段組みで埋まっていく。消すことは片付けではなく先生の発話であり、失われるものは何もない。巻き戻せばすべて戻ってくる。"
+      },
+      "media": "highlight-wall.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "The agent designs before it writes",
+        "zh-CN": "先设计，再动笔",
+        "ja": "書く前に設計する"
+      },
+      "description": {
+        "en": "It lays the lecture out in a plan first — which passage is a picture, how much of the board it gets, roughly how long — then writes against that design and checks the real board with its own eyes, so a wall of half-empty boards never ships.",
+        "zh-CN": "它先把整堂课摆成一份设计——哪一段是图、占多大地方、大概多长——再照着设计写，并用板子自己的眼睛回看，所以不会交出一面写了一半的墙。",
+        "ja": "まず講義全体を設計に落とす——どの段落が図で、板のどれだけを占め、おおよそ何分か。それから設計に沿って書き、実際の板を自分の目で確かめるので、半分空いた壁が出荷されることはない。"
+      },
+      "media": "highlight-plan.png",
+      "mediaType": "image"
+    }
+  ]
+}

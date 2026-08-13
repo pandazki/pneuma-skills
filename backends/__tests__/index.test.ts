@@ -96,6 +96,20 @@ describe("module registry", () => {
     expect(getBackendModule("kimi-cli").commandsDir).toBeUndefined();
   });
 
+  it("exposes a session-scoped workflowsDir only for backends with a workflow runner", () => {
+    // Claude Code's `Workflow` tool loads named scripts from
+    // `.claude/workflows` — the seam a mode's planning SOP rides on when it
+    // needs to CONSTRAIN an order of work rather than describe one.
+    expect(getBackendModule("claude-code").workflowsDir).toBe(".claude/workflows");
+
+    // Neither Codex nor Kimi executes workflow scripts. They leave the field
+    // undefined and the installer skips the step, so those backends get the
+    // same strategy from the mode's SKILL.md prose instead — which is why
+    // the strategy may never live only inside a workflow script.
+    expect(getBackendModule("codex").workflowsDir).toBeUndefined();
+    expect(getBackendModule("kimi-cli").workflowsDir).toBeUndefined();
+  });
+
   it("claude-code's createBridgeBackend returns null (legacy stdio path)", () => {
     const m = getBackendModule("claude-code");
     const result = m.createBridgeBackend(

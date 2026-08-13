@@ -81,6 +81,11 @@ export default function PlayerApp() {
         // /content/* asset fetches resolve from the package.
         await registerContentServiceWorker();
         await loadStaticReplay(base);
+        // The workspace snapshot is now fully known — same signal App.tsx
+        // raises after /api/files. Viewers gate their empty-vs-loading
+        // states on it (bansho's EmptyBoard vs BoardLoading); without it a
+        // package with an empty/unparseable board pulses "Loading…" forever.
+        useStore.getState().markFilesHydrated();
         if (!cancelled) setPhase("ready");
       } catch (e: any) {
         if (!cancelled) {

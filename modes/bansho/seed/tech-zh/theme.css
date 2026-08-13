@@ -1,0 +1,30 @@
+/*
+ * tech-zh board theme — the seed owns the font stack (设计稿 §6.3: the
+ * engine is font-agnostic; the board's handwriting comes from here).
+ *
+ * SSOT NOTE: as shipped, these stacks are byte-identical to the defaults
+ * in viewer/board-css.ts (BOARD_BASE_CSS) — this file DEMONSTRATES the
+ * seed-owns-the-stack seam rather than changing pixels. If the default
+ * stack ever moves, board-css.ts is the value's source of truth and every
+ * seed copy (tech-zh, pitch-zh, tech-en, pitch-en) must be revisited
+ * by hand — seeds.test.ts deliberately does not pin the copies together.
+ *
+ * G8-A: `Hannotate SC` must never appear. `document.fonts.check()` returns
+ * true for it on macOS while the text silently renders in PingFang — the
+ * handwriting feel evaporates with no error anywhere. `HanziPen SC` (翩翩体)
+ * is the CJK face that actually loads. Verify with a canvas measureText
+ * width comparison, never with fonts.check().
+ *
+ * Same selectors as the engine's base stylesheet, injected after it. The
+ * light rule ties the base default and wins on order; the dark rule wins
+ * outright, because the base declares its own dark --hand behind :where()
+ * so that ONE unscoped rule can retheme both boards (see board-css.ts).
+ */
+
+.bansho-board-surface {
+  --hand: "Bradley Hand", "HanziPen SC", "Chalkboard SE", "Segoe Print", cursive;
+}
+
+.bansho-board-surface[data-bansho-theme="dark"] {
+  --hand: "Chalkboard SE", "HanziPen SC", "Bradley Hand", "Segoe Print", cursive;
+}

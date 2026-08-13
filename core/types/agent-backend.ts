@@ -195,6 +195,19 @@ export interface BackendModule {
    * conditional).
    */
   readonly commandsDir?: string;
+  /**
+   * Backend-relative dir where session-scoped WORKFLOW scripts install
+   * (e.g. bansho's `plan-lecture`). OPTIONAL for the same reason as
+   * `commandsDir`, and gated the same way — on the FIELD, never on a
+   * backend name. A workflow is a script the backend executes as an
+   * ORDER of work (fan out, judge, produce, critique), which is what a
+   * mode reaches for when prose can only request a discipline that the
+   * script can enforce. Only Claude Code runs them (`.claude/workflows`,
+   * invoked by the `Workflow` tool); Codex and Kimi leave this undefined
+   * and the skill installer skips the step entirely, so those backends
+   * fall back to the same strategy written in the mode's SKILL.md.
+   */
+  readonly workflowsDir?: string;
 
   // ── Capability declarations ───────────────────────────────────────────
   readonly capabilities: AgentCapabilities;

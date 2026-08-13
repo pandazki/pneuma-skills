@@ -22,6 +22,10 @@ export const claudeCodeModule: BackendModule = {
   // so session-scoped commands (e.g. `/borrow`) install here. Codex/Kimi leave
   // this undefined — they don't surface project command files.
   commandsDir: ".claude/commands",
+  // Claude Code's `Workflow` tool loads named scripts from `.claude/workflows`,
+  // so a mode that ships `workflows/*.js` gets them installed here. Codex/Kimi
+  // have no workflow runner and leave this undefined.
+  workflowsDir: ".claude/workflows",
 
   capabilities: {
     streaming: true,

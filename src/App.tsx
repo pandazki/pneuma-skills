@@ -97,8 +97,11 @@ export default function App() {
   // Flipped to true once the initial `/api/files` request resolves (success
   // OR empty). Gates the gallery's empty-state render so old sessions
   // resuming with content don't flash gallery during the brief window
-  // between `setModeViewer` and `setFiles`.
-  const [filesFetched, setFilesFetched] = useState(false);
+  // between `setModeViewer` and `setFiles`. Lives in the store
+  // (workspace-slice `filesHydrated`) because viewers also need the
+  // "workspace state is now known" signal — before it, `files: []` cannot
+  // distinguish "still fetching" from "genuinely empty".
+  const filesFetched = useStore((s) => s.filesHydrated);
   // User-driven dismissal of the gallery / no-seed overlay. Persists for
   // the lifetime of the session. Auto-dismiss-on-content-production is
   // still handled by `userContentCount` / `hasSeedsDeclared`; this lets
@@ -149,12 +152,12 @@ export default function App() {
           await loadReplay(replayPath).catch((err) =>
             console.error("[app] Failed to load replay:", err)
           );
-          setFilesFetched(true);
+          useStore.getState().markFilesHydrated();
         } else {
           // Normal mode — load workspace files from disk
           const d = await fetch(`${getApiBase()}/api/files`).then((r) => r.json());
           if (d.files?.length) useStore.getState().setFiles(d.files);
-          setFilesFetched(true);
+          useStore.getState().markFilesHydrated();
           // Restore persisted viewer position (content set + active file)
           try {
             const vs = await fetch(`${getApiBase()}/api/viewer-state`).then((r) => r.json());

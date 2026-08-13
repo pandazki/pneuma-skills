@@ -1,0 +1,74 @@
+<!doctype html><meta charset="utf-8"><style>
+  @font-face { font-family: x; src: local("Menlo"); }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    width: 1376px; height: 768px; overflow: hidden;
+    background: radial-gradient(1200px 700px at 22% 18%, #17151a 0%, #09090b 62%);
+    color: #e4e4e7; font-family: "Inter", "SF Pro Text", system-ui, sans-serif;
+    display: grid; grid-template-columns: 540px 50px 702px; align-items: center; justify-content: center;
+    padding: 30px 26px 34px; gap: 0;
+  }
+  .cap { font-size: 12.5px; letter-spacing: .14em; text-transform: uppercase; color: #a1a1aa; margin-bottom: 9px; }
+  .cap i { font-style: normal; color: #f97316; }
+  .panel {
+    border: 1px solid #27272a; border-radius: 12px; background: rgba(24,24,27,.72);
+    backdrop-filter: blur(8px); padding: 15px 17px; overflow: hidden;
+  }
+  pre { font-family: Menlo, ui-monospace, monospace; font-size: 11.1px; line-height: 1.58;
+        color: #c7c7cf; white-space: pre-wrap; word-break: break-word; }
+  pre .fig { color: #f97316; font-weight: 600; }
+  pre .verb { color: #7dd3fc; font-weight: 600; }
+  pre .len { color: #a3e635; }
+  pre.note { color: #8d8d96; font-size: 11px; border-left: 2px solid #f97316; padding-left: 11px; margin-top: 12px; }
+  .arrow { display: grid; place-items: center; }
+  .arrow svg { filter: drop-shadow(0 0 12px rgba(249,115,22,.55)); }
+  .frame { position: relative; width: 702px; height: 372px; overflow: hidden; border-radius: 10px; border: 1px solid #3f3f46; box-shadow: 0 18px 48px rgba(0,0,0,.55); }
+  .frame img { position: absolute; width: 740.8px; left: -30.1px; top: -4.3px; display: block; }
+  .foot { position: absolute; left: 30px; bottom: 12px; font-size: 12.5px; color: #71717a; font-style: italic; }
+</style>
+<div>
+  <div class="cap">plan.md <i>&mdash; written before one board exists</i></div>
+  <div class="panel">
+    <pre># 一个小功能，为什么要三个月 — plan   <b class="verb">@board 4</b> · ~10 min
+
+听众：刚带团队的技术主管。要的不是吐槽，是三个他明天就能动的数字。
+
+Q 两天的活，为什么在日历上走了三个月？
+A 时间不花在做上，花在等上；等的长度由队列的忙碌程度和在制数量决定，这两个数字在你手上。
+
+| # | 内容 | medium | room | len |
+|---|---|---|---|---|
+| 1 | 记一笔账：动手 5 天，等 58 天 | prose | b1 `<b class="verb">@at left</b>`（标题也在这一列） | <b class="len">~90s</b> |
+| 2 | 58 天散在链条的每个接口上 | <b class="fig">FIGURE graph</b> | b1 `<b class="verb">@at right</b>` | <b class="len">~100s</b> |
+| 3 | 等待从哪来：队列，$W \propto \rho/(1-\rho)$ | formula | b2 `<b class="verb">@at left</b>` | <b class="len">~70s</b> |
+| 4 | 忙碌程度→等待倍数的曲线 | <b class="fig">FIGURE chart</b> | b2 `<b class="verb">@at right</b>` | <b class="len">~80s</b> |
+| 5 | 利特尔法则：在制数量决定前置时间 | formula + worked example | b3 `<b class="verb">@at left</b>` | <b class="len">~110s</b> |
+| 6 | 三个常见处方，当场划掉 | prose（`~~…~~`） | b3 `<b class="verb">@at right</b>` | <b class="len">~80s</b> |
+| 7 | 三个杠杆 + 收束 | prose + list | b4 `<b class="verb">@at full</b>` | <b class="len">~100s</b> |</pre>
+    <pre class="note">&gt; revised（b1 写满之后）：一整块板（两栏、含标题和一张图）= 41.6 秒，约 280 字。
+&gt; 一栏 ≈ 20 秒。四块板的墙一轮只有 170 秒。十分钟需要三轮左右，所以擦板重用是
+&gt; 这堂课的结构，不是补救。下面是按栏排的完整走位。
+</pre>
+    <pre style="margin-top:12px">
+| 板·栏 | 内容 | medium |
+|---|---|---|
+| b1 左 | 账单：动手 5 天，等 58 天 ✓ | prose |
+| b1 右 | 链条图 + 流动效率 8% ✓ | FIGURE |
+| b2 左 | 队为什么这么长：$W \propto \rho/(1-\rho)$ | formula |
+| b2 右 | 忙碌程度→等待倍数的曲线 | FIGURE |
+| b3 左 | 曲线为什么会立起来：方差是队列的燃料 | prose |
+| b3 右 | 团队为什么被排在右端：空闲看起来像浪费 | prose |
+| b4 左 | 利特尔法则 $W = L/\lambda$ | formula |
+| b4 右 | 12 个需求的推演：六周 vs 两周 | worked example |
+| — | 擦掉 b1（账单已讲完） | `<b class="verb">@erase</b>` ×2 |
+| b1 左 | 在制为什么自己会涨：一堵就再开一个 | prose |</pre>
+  </div>
+</div>
+<div class="arrow">
+  <svg width="56" height="26" viewBox="0 0 56 26"><path d="M2 13 H44" stroke="#f97316" stroke-width="2.4" stroke-linecap="round"/><path d="M38 5 L50 13 L38 21" fill="none" stroke="#f97316" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</div>
+<div class="board">
+  <div class="cap">board.md <i>&mdash; the wall it produced</i></div>
+  <div class="frame"><img src="../../../showcase/highlight-wall.png"></div>
+</div>
+<div class="foot">Every passage gets a medium, a column and a length before a word is written &mdash; then the design is corrected against the real board.</div>

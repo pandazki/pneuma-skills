@@ -161,7 +161,7 @@ node modes/clipcraft/skill/scripts/generate-video.mjs from-image \
   --output assets/clips/<file>.mp4
 
 # 4. VO + BGM.
-node modes/clipcraft/skill/scripts/generate-tts.mjs --text "..." --voice Kore --output assets/audio/vo-tagline.mp3
+node modes/_shared/scripts/generate-tts.mjs --text "..." --voice Kore --output assets/audio/vo-tagline.mp3
 node modes/clipcraft/skill/scripts/generate-bgm.mjs --prompt "..." --duration 19 --output assets/bgm/pneuma-ambient.mp3
 ```
 

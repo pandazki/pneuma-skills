@@ -31,8 +31,16 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
  * Address keys that name a target outside the current view — the viewer must
  * navigate before the screenshot. Fine keys (`selector` / `anchor`) resolve
  * in-place and never trigger a navigation.
+ *
+ * This is the registry of coarse keys across every mode's address
+ * vocabulary; each entry was added by the mode that coined it (`slide` by
+ * slide, `nodeId` by diagram, `section`/`step` by bansho — where a step is
+ * a MOMENT in a lecture, so reaching it is always a navigation). A mode
+ * whose coarse key is missing here does not fail loudly: `capture` would
+ * silently screenshot whatever is on screen, which is why new coarse keys
+ * belong in this list.
  */
-const COARSE_ADDRESS_KEYS = ["page", "file", "slide", "contentSet", "nodeId", "elementId", "image"];
+const COARSE_ADDRESS_KEYS = ["page", "file", "slide", "contentSet", "nodeId", "elementId", "image", "section", "step"];
 
 /** Extract a CSS-selector-shaped fine handle from a mode address, if any. */
 function fineSelector(address: ViewerAddress | undefined): string | undefined {
