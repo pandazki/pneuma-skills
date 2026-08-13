@@ -111,6 +111,19 @@ is the one thing a board cannot take a picture from: it comes back as a
 solid block standing where your figure should be. The default leaves the
 prompt alone, which is what you want.
 
+**The picture is never pasted onto the board.** White-on-black is not a
+look you are choosing, it is a *stencil*: the board reads the picture's
+brightness as the shape of the drawing and then paints that shape in its
+own chalk. So the file you order is not what the audience sees — chalk
+on slate in a dark room, dark ink on plaster in a light one, from the
+same one file, with nothing regenerated when the theme changes. That is
+also the whole reason a white background is fatal: a solid bright field
+is a stencil with no holes in it.
+
+Do not plan around a dark plate pinned to a pale board, and never write
+a line on the board excusing one. There is no plate. Ask for the picture
+the lecture needs and the room will ink it in its own hand.
+
 Pick the aspect ratio from what the picture is: `4:3` or `1:1` for a
 thing, `16:9` for something wide, `3:4` for something tall. It is a
 declaration, not a measurement — see below.
