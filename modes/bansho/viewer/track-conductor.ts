@@ -57,6 +57,7 @@ import {
   type AudioClockSnapshot,
   type NarrationClock,
 } from "./clock-gate.js";
+import type { VoiceOutput } from "./voice-output.js";
 
 export interface TrackConductorOptions {
   /** Workspace-relative track path → fetchable URL (`/api/file?path=…`). */
@@ -86,7 +87,7 @@ const ALIGN_GUARD = 0.75;
 /** Wall seconds a claimed-playing element may stand still before the board stops waiting. */
 const STALL_GRACE = 0.25;
 
-export class TrackConductor implements NarrationClock {
+export class TrackConductor implements NarrationClock, VoiceOutput {
   private layout: TrackLayout | null = null;
   private windowByHash = new Map<string, ClipWindow>();
   private element: AudioElementLike | null = null;
@@ -96,6 +97,8 @@ export class TrackConductor implements NarrationClock {
   private failed = false;
   private rate = 1;
   private wantsPlay = false;
+  /** The listener's own silence (`VoiceOutput`) — see `setMuted`. */
+  private muted = false;
   private gestureArmed = false;
   private readonly blockedListeners = new Set<(blocked: boolean) => void>();
   private readonly degradedListeners = new Set<
@@ -242,6 +245,21 @@ export class TrackConductor implements NarrationClock {
     if (el && el.playbackRate !== rate) el.playbackRate = rate;
   }
 
+  // ── Voice output (the transport's mute) ──────────────────────────────────
+
+  /**
+   * The listener asked for silence — the SPEAKER only. Doubly load-bearing
+   * on this path: the element is never paused for silence anyway (a gap
+   * between clips is part of the file), so stopping it to mute would not
+   * just release the gate's hold, it would put back the very seam this
+   * conductor exists to delete. The flag is the whole mechanism.
+   */
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    const el = this.element;
+    if (el && el.muted !== muted) el.muted = muted;
+  }
+
   // ── Autoplay policy surface (the chip) ───────────────────────────────────
 
   isBlocked(): boolean {
@@ -297,6 +315,8 @@ export class TrackConductor implements NarrationClock {
     // The whole reason this class exists: one src, buffered from the
     // moment the board loads, so no clip is ever asked to start cold.
     created.preload = "auto";
+    // Born with the listener's choice already applied (see `setMuted`).
+    created.muted = this.muted;
     created.addEventListener("error", this.onError);
     this.element = created;
     return created;

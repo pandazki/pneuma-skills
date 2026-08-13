@@ -21,6 +21,13 @@ export class FakeAudioElement {
   playbackRate = 1;
   preload = "";
   paused = true;
+  /**
+   * The listener's mute. A plain field on purpose — the real element mutes
+   * at the OUTPUT stage, so the flag must have no effect whatsoever on
+   * `advance`, `paused` or `currentTime` here either. A fake that made
+   * muting stop the clock would hide the bug the seam test hunts.
+   */
+  muted = false;
 
   /** Every `currentTime` assignment the conductor made (alignment audit). */
   seeks: number[] = [];

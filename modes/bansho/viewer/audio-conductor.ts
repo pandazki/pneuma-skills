@@ -45,6 +45,7 @@ import {
   type AudioClockSnapshot,
   type NarrationClock,
 } from "./clock-gate.js";
+import type { VoiceOutput } from "./voice-output.js";
 
 /** The element surface the conductor drives (HTMLAudioElement satisfies it). */
 export interface AudioElementLike {
@@ -53,6 +54,12 @@ export interface AudioElementLike {
   playbackRate: number;
   readonly paused: boolean;
   preload: string;
+  /**
+   * The listener's silence (`voice-output.ts`). Output-stage only: the
+   * element keeps playing and keeps advancing its clock, so muting can
+   * never reach the gate's projection. Never confuse it with `pause()`.
+   */
+  muted: boolean;
   play(): Promise<void>;
   pause(): void;
   addEventListener(type: string, listener: () => void): void;
@@ -99,7 +106,7 @@ export interface NarrationDegradation {
   reason: "failed" | "stalled";
 }
 
-export class AudioConductor implements NarrationClock {
+export class AudioConductor implements NarrationClock, VoiceOutput {
   private windows: readonly ClipWindow[] = [];
   /** hash → its window (frame() is hot path — no per-frame scans). */
   private windowByHash = new Map<string, ClipWindow>();
@@ -120,6 +127,12 @@ export class AudioConductor implements NarrationClock {
   private rate = 1;
   /** Whether a gesture-unlock should start sound (last transport intent). */
   private wantsPlay = false;
+  /**
+   * The listener's own silence (`VoiceOutput`). Held here rather than only
+   * on the element because the element is created lazily — a preference
+   * restored on mount arrives before the first clip is ever asked for.
+   */
+  private muted = false;
   private gestureArmed = false;
   private readonly blockedListeners = new Set<(blocked: boolean) => void>();
   private readonly degradedListeners = new Set<
@@ -365,6 +378,20 @@ export class AudioConductor implements NarrationClock {
     if (el && el.playbackRate !== rate) el.playbackRate = rate;
   }
 
+  // ── Voice output (the transport's mute) ──────────────────────────────────
+
+  /**
+   * The listener asked for silence — the SPEAKER only. The element keeps
+   * playing and keeps advancing, so the gate's projection, the hold pins
+   * and the schedule are untouched: a muted lecture is the same lecture
+   * (`voice-output.ts`, pinned by `mute-seam.test.ts`).
+   */
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    const el = this.element;
+    if (el && el.muted !== muted) el.muted = muted;
+  }
+
   // ── Autoplay policy surface (the chip) ───────────────────────────────────
 
   isBlocked(): boolean {
@@ -425,6 +452,9 @@ export class AudioConductor implements NarrationClock {
         : null;
     if (!created) return null;
     created.preload = "auto";
+    // Born with the listener's choice already applied: the preference is
+    // restored on mount, long before any clip asks for an element.
+    created.muted = this.muted;
     created.addEventListener("ended", this.onEnded);
     created.addEventListener("error", this.onError);
     this.element = created;
