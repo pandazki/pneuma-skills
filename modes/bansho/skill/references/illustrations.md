@@ -168,15 +168,22 @@ belongs to:
 ```
 
 The alt text is what the figure is, in words — write it as you would say
-it. The picture fills the width of the room its `@at` word gave it, and
-its height follows the ratio you declared. How long the board spends
-putting it up follows from that room, like a chart: not yours to time.
+it. The picture is FITTED INSIDE the room its `@at` word gave it: as wide
+as that room allows, but never deeper than it. A tall picture in a shallow
+band therefore comes out narrower rather than hanging off the bottom, and
+its shape is always the ratio you declared — what gives is the size, never
+the proportions. It stands centred in whatever the binding side left over.
+How long the board spends putting it up follows from that ratio, like a
+chart: not yours to time.
 
-**It obeys the room like everything else.** A picture placed in a corner
-is a picture mostly off the board — `check-board` says so (`regionBurst`),
-and the answer is the same as for prose that overfills: a wider word, a
-board of its own, or a smaller claim on the room. A figure wants a
-column or a face, never a band shared with the prose that introduces it.
+**A room still fills up.** The picture fits the room; it does not make the
+room bigger, and the prose you introduce it with is standing in there too.
+A heading and a figure together in a half-deep band is a band that
+overflows — `check-board` says so (`regionBurst`: "the writing goes on
+below; the board does not"), and the answer is the same as for prose that
+overfills: a wider word, a board of its own, or a smaller claim on the
+room. A figure wants a column or a face, never a band shared with the
+prose that introduces it.
 
 ## One batch, right after the plan — never mid-lecture
 

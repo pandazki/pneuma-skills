@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.19.0",
+  version: "0.19.1",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -47,6 +47,11 @@ const banshoManifest: ModeManifest = {
     // Wording discipline: these bullets render VERBATIM in the launcher's
     // skill-update prompt, so they may only claim what the build actually
     // does.
+    "0.19.1": [
+      "A picture is fitted INSIDE the room its @at word gave it, on both sides: as wide as that room allows and never deeper than it. It used to be drawn the full width of the board whatever room you put it in, so a figure in a column hung off the right edge — and moving it to a bigger room made that worse, not better. Corner and band placements are worth a second look on any lecture written before this version",
+      "A figure narrower than its room now stands centred in it, the way display math already did. Its shape is still exactly the ratio you declared: what gives is the size, never the proportions",
+      "The room itself is unchanged, and it still fills up: a heading and a figure together in a half-deep band still overflows, and check-board still says so",
+    ],
     "0.19.0": [
       "The board has a new voice: ByteDance Seed-Speech, chosen because it reads a bilingual lecture the way a bilingual person does — 「阿姆达尔定律」 and \"NVIDIA\" in one breath, with no language flag set at all. The old voice is still one flag away (--model gemini-3.1-flash-tts) and is still the one for inline expressive tags",
       "Clips are .mp3 now, because this voice returns no .wav — and their length is still MEASURED, not estimated, so a clip still paces the pen exactly as it did. A lecture already voiced keeps every clip it paid for and plays unchanged",
