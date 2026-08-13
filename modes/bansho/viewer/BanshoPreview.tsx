@@ -73,6 +73,7 @@ import {
 import { captureViewer } from "../../../src/utils/viewer-capture.js";
 import { AudioConductor } from "./audio-conductor.js";
 import { TrackConductor } from "./track-conductor.js";
+import { readVoiceMuted, writeVoiceMuted } from "./voice-output.js";
 import { layOutTrack, verifyTrack } from "../narration/track.js";
 import BoardCanvas, {
   type BoardApi,
@@ -353,6 +354,25 @@ export default function BanshoPreview({
     },
     [],
   );
+
+  // The listener's own silence — a viewer preference, remembered in the
+  // browser (`voice-output.ts` argues the level). It is pushed to BOTH
+  // conductors, never only the one currently holding the program: the
+  // board can fall back from the track to the clips mid-lecture (a stale
+  // or failed track), and a mute that lived on one of them would come
+  // undone at exactly that moment.
+  const [voiceMuted, setVoiceMuted] = useState(readVoiceMuted);
+  useEffect(() => {
+    conductorRef.current?.setMuted(voiceMuted);
+    trackConductorRef.current?.setMuted(voiceMuted);
+  }, [voiceMuted]);
+  const toggleVoiceMuted = useCallback(() => {
+    setVoiceMuted((prev) => {
+      const next = !prev;
+      writeVoiceMuted(next);
+      return next;
+    });
+  }, []);
 
   // ── The file-existence probe (M3), on the PLAYBACK path ─────────────────
   // A manifest `seconds` whose audio file is gone must not pace the
@@ -1408,11 +1428,21 @@ export default function BanshoPreview({
                     : "handwriting font fallback"}
                 </div>
               ) : null}
-              {voiceBlocked ? (
+              {voiceBlocked && !voiceMuted ? (
                 // The voice-over sibling of the font chip: the browser
                 // refused to sound audio before the first interaction, and
                 // a silently muted voice must not pretend to be a silent
                 // board. The click IS the gesture that unlocks it.
+                //
+                // Suppressed while the LISTENER has chosen silence, and the
+                // distinction is the whole point: this chip reports a
+                // degradation — sound the board wanted and could not get —
+                // whereas the transport's toggle is a control state the
+                // user set on purpose. Warning someone that the browser is
+                // withholding a voice they just switched off would be
+                // noise about a problem they do not have. Unmuting brings
+                // it back if the block is still real, and the unmuting
+                // click is itself the gesture that usually clears it.
                 <button
                   type="button"
                   onClick={() =>
@@ -1510,8 +1540,12 @@ export default function BanshoPreview({
         timeline={compiled?.timeline ?? null}
         player={player}
         // Only a board with clip windows gets the rate menu's note about
-        // where the voice stops following (clock-gate rule 6).
+        // where the voice stops following (clock-gate rule 6) — and only
+        // such a board gets the mute switch, since a silent lecture has
+        // nothing to silence.
         narrated={(compiled?.narration.length ?? 0) > 0}
+        muted={voiceMuted}
+        onToggleMute={toggleVoiceMuted}
       />
     </div>
   );

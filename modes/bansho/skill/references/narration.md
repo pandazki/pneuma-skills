@@ -32,6 +32,17 @@ speed would hold the pen still while it finished. Nothing about this is
 yours to arrange — it is what a reader gets when they reach for the top
 of the ladder.
 
+**The reader's own mute.** A speaker button sits beside the rate control
+on any board that has a voice, and it silences the sound and nothing
+else: the pacing, the schedule and the pen are exactly as they are with
+sound on, so a step whose voice runs long still holds the pen until that
+voice would have finished. Their browser remembers the choice. Keep this
+apart from the chip: the chip means the browser is withholding a voice
+the reader wants, the button means the reader asked for quiet — while
+they have, the chip is not shown, because there is nothing to report.
+Nothing here changes what you write, and a muted reader is still hearing
+the lecture's timing, so never compensate for it.
+
 A board with no voice is a normal board. No key, no manifest, no clips —
 it plays exactly as written. The voice is a layer you add, never a
 requirement.

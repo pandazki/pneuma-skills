@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.20.0",
+  version: "0.21.0",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -47,6 +47,11 @@ const banshoManifest: ModeManifest = {
     // Wording discipline: these bullets render VERBATIM in the launcher's
     // skill-update prompt, so they may only claim what the build actually
     // does.
+    "0.21.0": [
+      "The voice has an off switch. A speaker button sits beside the playback-rate control in the transport, on any board that has recorded narration; a board with no voice does not grow one. The choice is remembered by your browser, so a lecture opened later stays the way you left it",
+      "Muting silences the sound and nothing else. The pacing, the schedule and where the pen is are untouched: a step whose voice runs long still holds the pen until that voice would have finished, exactly as it does with sound on. A muted lecture is the same lecture",
+      "It works on both voice paths — the mixed track and the clip-at-a-time fallback — and it stays muted when the board switches between them mid-lecture",
+    ],
     "0.20.0": [
       "The lecture's voice can now be ONE continuous track instead of one clip per step. Playing a clip at a time meant every clip started from nothing buffered, and the browser ate the first syllable of each — this removes the seam rather than managing it. Run narrate, and once every clip is fresh it hands you a mix plan; scripts/mix-narration.mjs fuses the clips in PCM and writes narration/track.mp3 plus a layout sidecar",
       "The board VERIFIES that track against itself every time it loads: the clip order and every position must still match what it now performs. They do not — you appended a sentence, or the theme changed the font and the words re-wrapped — and the track is not played at all. The clips play one at a time instead (first syllable and all), a chip says so, and check-board reports staleTrack with the reason. Re-mix and it is right again",

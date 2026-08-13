@@ -35,9 +35,19 @@ export interface TimelineProps {
   /**
    * Whether this board has a recorded voice. Only then does the menu note
    * which rungs the voice steps aside at — on a silent board the note
-   * would be true of every rate and mean nothing.
+   * would be true of every rate and mean nothing — and only then is there
+   * a voice to silence.
    */
   narrated?: boolean;
+  /** The listener's current silence (`viewer/voice-output.ts`). */
+  muted?: boolean;
+  /**
+   * Flip it. Deliberately NOT on the player handle: mute is not a
+   * transport transition — it changes no state the clock reads, which is
+   * the whole point (a muted lecture is the same lecture). Omitted by a
+   * host that owns no voice output, and then no button is drawn.
+   */
+  onToggleMute?: () => void;
 }
 
 /** Fastest first: in a list that opens upward, "up" reads as "faster". */
@@ -55,7 +65,21 @@ const ICON_PAUSE = "M4 2.5h3v11H4zM9 2.5h3v11H9z";
 const ICON_REPLAY =
   "M8 3.2V.6L4.2 3.9 8 7.2V4.7a3.9 3.9 0 1 1-3.9 3.9H2.6A5.4 5.4 0 1 0 8 3.2z";
 
-function Timeline({ timeline, player, narrated = false }: TimelineProps) {
+/** The speaker cone — the filled half of both voice glyphs. */
+const ICON_SPEAKER_BODY = "M1.5 6h2.6L7.8 2.9v10.2L4.1 10H1.5z";
+/** Sound coming out: two arcs, stroked (see the `<svg>` below). */
+const ICON_SPEAKER_WAVES =
+  "M10 5.9a3 3 0 0 1 0 4.2M12.2 3.9a6 6 0 0 1 0 8.2";
+/** Silence: the cross that replaces the waves — a different SHAPE, not a tint. */
+const ICON_SPEAKER_CROSS = "M10.4 6.2l4 3.6M14.4 6.2l-4 3.6";
+
+function Timeline({
+  timeline,
+  player,
+  narrated = false,
+  muted = false,
+  onToggleMute,
+}: TimelineProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const fillRef = useRef<HTMLDivElement>(null);
   const headRef = useRef<HTMLDivElement>(null);
@@ -295,6 +319,46 @@ function Timeline({ timeline, player, narrated = false }: TimelineProps) {
           style={{ left: "0%" }}
         />
       </div>
+
+      {/* The voice switch, next to the rate control and wearing the same
+          pill so the two read as one family: this pair is "how the lecture
+          is delivered to me", as against the transport verbs on the left.
+          Drawn only when there is a voice AND a host able to silence it —
+          a lecture with no narration must not grow a dead control. */}
+      {narrated && onToggleMute ? (
+        <button
+          type="button"
+          data-voice-toggle=""
+          // A glyph is invisible to a screen reader, so the state is
+          // announced twice over: `aria-pressed` for the toggle's own
+          // semantics, and a label that says which way pressing it goes.
+          aria-pressed={muted}
+          aria-label={muted ? "Unmute the narration" : "Mute the narration"}
+          title={
+            muted
+              ? "The recorded voice is silenced — pacing is unchanged, so the board still waits for a long clip exactly as it does with sound on"
+              : "Silence the recorded voice. Only the sound: the pacing, the schedule and where the pen is are untouched"
+          }
+          onClick={onToggleMute}
+          className={
+            (muted
+              ? "text-cc-primary bg-cc-primary/10 "
+              : "text-cc-muted hover:text-cc-primary hover:bg-cc-primary/10 ") +
+            "w-8 h-8 grid place-items-center rounded-md transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-cc-primary/70"
+          }
+        >
+          <svg viewBox="0 0 16 16" className="w-4 h-4" aria-hidden="true">
+            <path d={ICON_SPEAKER_BODY} className="fill-current" />
+            <path
+              d={muted ? ICON_SPEAKER_CROSS : ICON_SPEAKER_WAVES}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.3"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+      ) : null}
 
       <div ref={rateBoxRef} className="relative">
         <button
