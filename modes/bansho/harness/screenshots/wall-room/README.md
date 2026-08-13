@@ -13,27 +13,27 @@ change.
 
 ## before/
 
-- `01-wall-4boards.png` — at rest, z = 1. The camera stands on board 3 and
+- `before/01-wall-4boards.jpeg` — at rest, z = 1. The camera stands on board 3 and
   there is no way to know boards 1, 2 and 4 exist except by dragging.
-- `02-wall-zoomed-out.png` — the whole wall, and the rejection in one
+- `before/02-wall-zoomed-out.jpeg` — the whole wall, and the rejection in one
   picture: four boards march off to the right at **z = 0.245**, the fill-bar
   widget sits over board 4, and two thirds of the frame is void.
 
 ## after/
 
-- `01-wall-2x2.png` — the same wall as a **room**: 2x2, each board framed,
+- `after/01-wall-2x2.jpeg` — the same wall as a **room**: 2x2, each board framed,
   a chalk tray under every row, lit wall behind them. The whole wall fits at
   **z = 0.4** (the camera's own floor, not a fit limit — the room's aspect
   ratio is now close to the viewport's).
-- `02-wall-and-map.png` — the room with the wall map in the bottom right.
-- `04-diagonal-walk.png` — mid-walk from board 2 to board 3, which in a
+- `after/02-wall-and-map.jpeg` — the room with the wall map in the bottom right.
+- `after/04-diagonal-walk.jpeg` — mid-walk from board 2 to board 3, which in a
   2x2 room is a DIAGONAL: a pose that did not exist before this change.
   The camera pulls back to z = 0.68, the wall turns toward where it is
   going (`rotateX 3.04deg rotateY 4.83deg`, the V1.5 depth reading the same
   schedule), and the map's rectangle straddles the row boundary. Captured
   by scrubbing into the move, which is also the proof that a row change is
   a resolved camera MOVE and not a cut.
-- `03-map-detail.png` — the map at 3x. Four boards, each drawn with the
+- `after/03-map-detail.jpeg` — the map at 3x. Four boards, each drawn with the
   REAL shape of its writing: a word per bar, every ink `d` string re-emitted
   as itself, so a reader recognises the board with the formula island and
   the board that is all bullets without reading a character.

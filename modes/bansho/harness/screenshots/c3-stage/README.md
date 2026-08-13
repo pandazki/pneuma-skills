@@ -9,11 +9,11 @@ viewport 1600×1100 (panel 1176×847 — the 0.72 ratio).
 
 | File | What it shows |
 |---|---|
-| `g7-1-mid-sweep.png` | The auto-erase mid-flight (t≈122.9s): board 2's standing content (the W formula, the "十一倍" highlight) being taken off left→right behind a seeded, jittered erase front — the right of the board still stands while the left is already clean. Reads as an eraser pass, not a shutter. |
-| `g7-3-rewriting.png` | ~3s later: the sweep is done and the pen writes the triggering sentence at the top of the freshly wiped board, script-pane highlight following. The teacher walked back, wiped, and kept talking. |
-| `g7-4-wall.png` | The whole wall, user-zoomed to scale 0.245 — BELOW the old constant floor (0.4): the C3 stage-fit zoom floor (`min(0.4, viewW/stageW)`) lets a four-board wall be seen whole. Four fixed-size boards with gaps; board 2 carries the post-erase content. |
-| `g7-5-scrub-back-restored.png` | `navigate-to {section:2,step:2}` — scrubbed back to t=31s, the content that was later auto-erased stands fully restored (G5: the board erases, history does not). |
-| `g7-6-notes-view.png` | The Notes toggle (top right, active): the same lecture as ONE unbounded strip — all 60 steps, erased content included, no wrappers, no camera. 板 ≠ 笔记. |
+| `g7-1-mid-sweep.jpeg` | The auto-erase mid-flight (t≈122.9s): board 2's standing content (the W formula, the "十一倍" highlight) being taken off left→right behind a seeded, jittered erase front — the right of the board still stands while the left is already clean. Reads as an eraser pass, not a shutter. |
+| `g7-3-rewriting.jpeg` | ~3s later: the sweep is done and the pen writes the triggering sentence at the top of the freshly wiped board, script-pane highlight following. The teacher walked back, wiped, and kept talking. |
+| `g7-4-wall.jpeg` | The whole wall, user-zoomed to scale 0.245 — BELOW the old constant floor (0.4): the C3 stage-fit zoom floor (`min(0.4, viewW/stageW)`) lets a four-board wall be seen whole. Four fixed-size boards with gaps; board 2 carries the post-erase content. |
+| `g7-5-scrub-back-restored.jpeg` | `navigate-to {section:2,step:2}` — scrubbed back to t=31s, the content that was later auto-erased stands fully restored (G5: the board erases, history does not). |
+| `g7-6-notes-view.jpeg` | The Notes toggle (top right, active): the same lecture as ONE unbounded strip — all 60 steps, erased content included, no wrappers, no camera. 板 ≠ 笔记. |
 
 Verdict against the G7 bar ("does it read like a teacher going back to
 wipe the first board, rather than content vanishing"): yes — the sweep

@@ -15,25 +15,25 @@ either side of the change through `harness/cdp.mjs`.
 
 ## before/
 
-- `01-wall-4boards.png` — the complaint in one frame. Four boards, every one
+- `before/01-wall-4boards.jpeg` — the complaint in one frame. Four boards, every one
   starting flush at its top-left corner, one uniform type size throughout,
   and a title that is a slightly larger paragraph. **44 glyphs per line** at
   26px on a 1154px face: a page measure, set in a handwriting font.
-- `02-board-close.png` — board 1 at rest.
+- `after/02-board-close.jpeg` — board 1 at rest.
 
 ## after/
 
-- `01-wall-4boards.png` — the same wall. Every board opens with a title
+- `before/01-wall-4boards.jpeg` — the same wall. Every board opens with a title
   written ACROSS its face at twice the body size and hand-underlined; the
   prose runs down a **565px column** (~16 glyphs a line); and each section's
   formula stands at the **top of the right column**, centred, half again the
   size of the words around it. You can see where the teacher chose to put
   each idea.
-- `02-board-close.png` — board 1 at z = 1, the acceptance frame. Title across
+- `after/02-board-close.jpeg` — board 1 at z = 1, the acceptance frame. Title across
   the whole face, the setup down the left column, `P(D|+) = P(+|D)P(D)/P(+)`
   standing alone at the top of the right one.
 
-- `03-no-directive-column-flow.png` — **the frame the phase is actually
+- `after/03-no-directive-column-flow.jpeg` — **the frame the phase is actually
   about.** The same lecture with the author's three `@turn`s deleted, so the
   document says NOTHING about where anything goes. Board 1 fills its left
   column, resumes at the top of its right, then board 2 does the same — and

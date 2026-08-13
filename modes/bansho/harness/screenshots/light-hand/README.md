@@ -59,10 +59,10 @@ the UI toggle (which POSTs) was off limits.
 
 | File | t | What it evidences |
 |---|---|---|
-| `01-latin-marks-51s.png` | 51.1 / 127.8 s | Backref circles land on `20×` and `100×`; the KaTeX block sits in the right column; the second column is mid-write with the pen visible. Marks sit **on** the Latin writing under Bradley Hand's metrics, not above or below it. |
-| `02-underline-heading-97s.png` | 97.1 / 127.8 s | Two in-place underlines ("Contention flattens the curve." / "Coherence bends it back down.") and a heading rule. The underline is the mark most sensitive to a baseline error; all three sit correctly under the writing. |
-| `03-room-overview-100s.png` | 100.3 / 127.8 s | The `@overview` camera in light: plaster wall `#cfc7ba`, white boards `#ffffff`, grey-brown rails and trays, and the wall map bottom-right drawing real ink outlines against the light board. The chart is drawing itself on the third face. |
-| `04-end-highlight-circles-128s.png` | end | The end state: the `@highlight` band over two wrapped lines, `@circle` around "serial fraction" and "coherence cost", the aside's drawn margin bar, and the map's "you are here" tint. The band's vertical placement is the direct consumer of the baseline fix. |
+| `01-latin-marks-51s.jpeg` | 51.1 / 127.8 s | Backref circles land on `20×` and `100×`; the KaTeX block sits in the right column; the second column is mid-write with the pen visible. Marks sit **on** the Latin writing under Bradley Hand's metrics, not above or below it. |
+| `02-underline-heading-97s.jpeg` | 97.1 / 127.8 s | Two in-place underlines ("Contention flattens the curve." / "Coherence bends it back down.") and a heading rule. The underline is the mark most sensitive to a baseline error; all three sit correctly under the writing. |
+| `03-room-overview-100s.jpeg` | 100.3 / 127.8 s | The `@overview` camera in light: plaster wall `#cfc7ba`, white boards `#ffffff`, grey-brown rails and trays, and the wall map bottom-right drawing real ink outlines against the light board. The chart is drawing itself on the third face. |
+| `04-end-highlight-circles-128s.jpeg` | end | The end state: the `@highlight` band over two wrapped lines, `@circle` around "serial fraction" and "coherence cost", the aside's drawn margin bar, and the map's "you are here" tint. The band's vertical placement is the direct consumer of the baseline fix. |
 
 **Verdict, scoped: light holds for what is in these four frames.** No mark is
 misplaced, in a theme whose Latin baseline sits 6.5 px higher than the one all

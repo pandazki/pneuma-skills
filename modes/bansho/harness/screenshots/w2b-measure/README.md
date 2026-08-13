@@ -32,27 +32,27 @@ at the board's body size, so it fits a 565px column and **wraps** in a
 
 ## before/
 
-- `01-narrow-board4-1x.jpeg` — **the frame the phase is about.** Board 4,
+- `before/01-narrow-board4-1x.jpeg` — **the frame the phase is about.** Board 4,
   `1x`. 「证据不给答案，证据只改」 carries one underline that runs past 改 to
   the column edge, and 「变比例」 on the next line gets no ink at all. Same
   for 「先验小，再准的证据也翻不」 / 「动」. The `##` heading's hand baseline
   runs the whole 937px face rather than its 456.5px column. This is the
   broken-renderer look, and after W2 it fires on almost every emphasised
   run.
-- `02-wide-board4-1x.jpeg` — the same board in the wide window. The bullets
+- `before/02-wide-board4-1x.jpeg` — the same board in the wide window. The bullets
   do not wrap at 565px, so the only visible symptom left is the heading
   baseline overshooting to the face. The defect is the same; the window is
   just kinder about it.
 
 ## after/
 
-- `01-narrow-board4-1x.jpeg` — every wrapped line carries its own
+- `before/01-narrow-board4-1x.jpeg` — every wrapped line carries its own
   underline, ending at its own last glyph, and the heading's baseline spans
   its column. Nothing else on the board moved.
-- `02-wide-board4-1x.jpeg` — the wide window: the heading baseline is a
+- `before/02-wide-board4-1x.jpeg` — the wide window: the heading baseline is a
   column wide now. That is the design's intent (a `##` stands in its column
   — `board-css.ts`), not a regression.
-- `03-narrow-board4-1x-hang.jpeg` / `04-wide-board4-1x-hang.jpeg` — the
+- `after/03-narrow-board4-1x-hang.jpeg` / `after/04-wide-board4-1x-hang.jpeg` — the
   second, smaller thing in the same pass: a wrapped bullet **hangs**. Its
   continuation lines (「变比例」, 「动」, 「后验变成新的先验」) line up under
   the item's text instead of starting back under the dot.

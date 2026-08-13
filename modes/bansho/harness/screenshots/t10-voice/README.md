@@ -8,8 +8,8 @@ audio correctness is asserted, not eyeballed.
 
 | Shot | What it shows |
 |------|---------------|
-| `01-open-export-subtitles.png` | Opening at the tip; the **Export subtitles** command renders in the ask bar beside the three pointing commands. |
-| `02-hold-clock-pinned-5.5s.png` | 7.5 s of wall clock after replay, the canonical clock reads **5.5s / 9.6s** — the pen finished sentence 1 and WAITS at the next pen-down while the 12 s voice finishes (the hold). |
+| `01-open-export-subtitles.jpeg` | Opening at the tip; the **Export subtitles** command renders in the ask bar beside the three pointing commands. |
+| `02-hold-clock-pinned-5.5s.jpeg` | 7.5 s of wall clock after replay, the canonical clock reads **5.5s / 9.6s** — the pen finished sentence 1 and WAITS at the next pen-down while the 12 s voice finishes (the hold). |
 
 Sampled facts (evaluate_script, 0.9 s cadence, `Audio.prototype.play`
 instrumented):

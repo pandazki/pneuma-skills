@@ -7,10 +7,10 @@ working tree and the browser kept alive across the whole implementation.
 
 | Frame | What to look at |
 |---|---|
-| `01-before-wall.png` | Zoomed out to `cameraMinZ` (0.4). The wall (2516x1820) is smaller than the viewport gives it at that zoom and sits hard against the TOP-LEFT with dead room right and below. Board 2's aside reads 「…六分之一是真的」 / 「。」 — **a full stop alone on its own line.** |
-| `02-after-wall.png` | Same zoom, same content. The wall hangs in the MIDDLE of the space it has on both axes, and the aside reads 「…六分之一是」 / 「真的。」 |
-| `03-after-board2-closeup.png` | That aside at 1x — the mark sits on the line it belongs to. |
-| `04-after-board1-closeup.png` | Board 1's opening line, 「一句話：先验 × 似然 → 后验**。**」 — the welded residual itself, the case the brief named. |
+| `01-before-wall.jpeg` | Zoomed out to `cameraMinZ` (0.4). The wall (2516x1820) is smaller than the viewport gives it at that zoom and sits hard against the TOP-LEFT with dead room right and below. Board 2's aside reads 「…六分之一是真的」 / 「。」 — **a full stop alone on its own line.** |
+| `02-after-wall.jpeg` | Same zoom, same content. The wall hangs in the MIDDLE of the space it has on both axes, and the aside reads 「…六分之一是」 / 「真的。」 |
+| `03-after-board2-closeup.jpeg` | That aside at 1x — the mark sits on the line it belongs to. |
+| `04-after-board1-closeup.jpeg` | Board 1's opening line, 「一句話：先验 × 似然 → 后验**。**」 — the welded residual itself, the case the brief named. |
 
 ## The measurement behind the frames
 

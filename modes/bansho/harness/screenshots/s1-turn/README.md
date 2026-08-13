@@ -10,7 +10,7 @@ the ready line advertises 17996 and 404s, a known framework bug.
 
 | File | What it shows |
 |---|---|
-| `turn-final.png` | End state (t = 16.7s). Board 1 holds the whole first topic — heading, the highlighted 结论, the two list items, the hand-off line. Board 2 holds only what was written after `@turn`. The script pane shows `@turn` between them. |
+| `turn-final.jpeg` | End state (t = 16.7s). Board 1 holds the whole first topic — heading, the highlighted 结论, the two list items, the hand-off line. Board 2 holds only what was written after `@turn`. The script pane shows `@turn` between them. |
 
 **The verdict this evidence supports:** `@turn` does what its semantics
 claim and nothing more. DOM probe at the same moment: 2 panels, **8 steps

@@ -7,10 +7,10 @@ lecture. Yesterday this was one instant `applyCamera` write; today it is a
 
 | frame | t | what it shows |
 |---|---|---|
-| `f0_t80.60.png` | 80.60 | still square-on in front of board 3 |
-| `f1_t81.10.png` | 81.10 | **the whole wall in frame** — scale 0.32, all four boards visible at once, the room stepped back to connect the two ends of the journey |
-| `f2_t81.70.png` | 81.70 | closing on board 0, coming back in |
-| `f3_t82.80.png` | 82.80 | settled, square-on, unskewed — the css3d brief's rest state |
+| `f0_t80.60.jpeg` | 80.60 | still square-on in front of board 3 |
+| `f1_t81.10.jpeg` | 81.10 | **the whole wall in frame** — scale 0.32, all four boards visible at once, the room stepped back to connect the two ends of the journey |
+| `f2_t81.70.jpeg` | 81.70 | closing on board 0, coming back in |
+| `f3_t82.80.jpeg` | 82.80 | settled, square-on, unskewed — the css3d brief's rest state |
 
 The middle frame is the whole argument. A cut cannot show you the room;
 this does, and it is the same Van Wijk pull-back `@turn` earns — reached

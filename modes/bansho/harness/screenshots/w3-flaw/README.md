@@ -13,9 +13,9 @@ board answer.
 
 | Frame | Knob | What to look at |
 |---|---|---|
-| `01-wall-knob-0-clean.png` | `0` | Every heading rule dead level, every bullet on the same invisible ruler, the slate flat. This is byte-for-byte the board of before this feature — see the layout-baseline README's W3 section. |
-| `02-wall-knob-1-default.png` | `1` | The shipped default. 「贝叶斯：证据怎么改变信念」 and its rule lean together; 「一个体检的例子」 leans the other way; the three bullets on board 4 each sit at their own angle; words drift a hair off their line; the slate carries grain and the broad smears a cloth leaves. It reads as a person's board and still reads as tidy. |
-| `03-wall-knob-3-exaggerated.png` | `3` | Deliberately overdone, so the knob's direction is unmistakable. Useful as the upper reference when choosing a value; not a shipping look. |
+| `01-wall-knob-0-clean.jpeg` | `0` | Every heading rule dead level, every bullet on the same invisible ruler, the slate flat. This is byte-for-byte the board of before this feature — see the layout-baseline README's W3 section. |
+| `02-wall-knob-1-default.jpeg` | `1` | The shipped default. 「贝叶斯：证据怎么改变信念」 and its rule lean together; 「一个体检的例子」 leans the other way; the three bullets on board 4 each sit at their own angle; words drift a hair off their line; the slate carries grain and the broad smears a cloth leaves. It reads as a person's board and still reads as tidy. |
+| `03-wall-knob-3-exaggerated.jpeg` | `3` | Deliberately overdone, so the knob's direction is unmistakable. Useful as the upper reference when choosing a value; not a shipping look. |
 
 ## Why the default is what it is
 
@@ -27,7 +27,7 @@ written by a hand AND one board at z = 1 still reads as tidy. That is the
 frame pair above, and it is the reason the numbers in `engine/flaw.ts`
 are what they are rather than the numbers the first draft proposed.
 
-## `04-detail-knob-1-z1.2.png` — the default at reading range
+## `04-detail-knob-1-z1.2.jpeg` — the default at reading range
 
 The same wall at z = 1.2, knob `1`, so the claim "a single board still
 reads as tidy at the shipped amplitudes" is looked at rather than

@@ -39,9 +39,9 @@ query history.
 
 | File | Moment |
 |---|---|
-| `01-follow-writing.png` | t≈17.6 s — live follow, pen writing at z=1 |
-| `03-focus-glide-mid.png` | inside the @focus window — interpolated pose |
-| `04-focus-hold.png` | mid-@wait — anchor held, script highlights `@focus` (G6) |
-| `05-overview-glide-mid.png` | inside the @overview window |
-| `06-overview-hold.png` | overview held — content-so-far fitted, unwritten tail absent |
-| `07-decayed-follow.png` | post-decay — pen camera restored, closing line mid-write |
+| `01-follow-writing.jpeg` | t≈17.6 s — live follow, pen writing at z=1 |
+| `03-focus-glide-mid.jpeg` | inside the @focus window — interpolated pose |
+| `04-focus-hold.jpeg` | mid-@wait — anchor held, script highlights `@focus` (G6) |
+| `05-overview-glide-mid.jpeg` | inside the @overview window |
+| `06-overview-hold.jpeg` | overview held — content-so-far fitted, unwritten tail absent |
+| `07-decayed-follow.jpeg` | post-decay — pen camera restored, closing line mid-write |

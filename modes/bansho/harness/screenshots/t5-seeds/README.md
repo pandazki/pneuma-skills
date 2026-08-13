@@ -43,11 +43,11 @@ was pre-copied; nothing but the transport was touched.
 
 | File | Proves |
 |------|--------|
-| `13-tech-zh-dark-end-seeded.png` | **tech-zh × dark**, end state, seeded. Chart accumulation, both annotation clusters, hand-drawn heading baselines, rule, aside. The closing sentence now reads `错的不是结论，是它藏着的两个前提：一是 ((串行段为零))，二是 ((协调不要钱))。` on ONE line — the `，` between the two circles survives (three glyphs sit between the two ink targets, well clear of the 2×14 px tip overshoot that erased the old `、`) and the final `。` is no longer orphaned onto a line of its own. x axis reads `(台)`. |
-| `14-tech-zh-light-end-seeded.png` | **tech-zh × light**, seeded. White board, black ink, `--hl` yellow band, light series tokens, the seed's light `--hand` stack (Bradley Hand first) live. Replaces the stale `02`, which still showed the pre-fix colon. |
-| `15-pitch-zh-seeded-live-mid.png` | **The blocker, closed.** A board applied from the seed gallery, caught mid-performance at **21.8 s / 70.7 s** with the transport LIVE and the pen part-way through a list row — not a scrub, not a replay. Before the fix this same path produced a fully-written board in one frame. |
-| `16-pitch-zh-dark-end-seeded.png` | **pitch-zh × dark**, end state, seeded. 对比 chart (月发 flat, 日发 falling, `mark 24 分钟`), the closing `@circle`, rule, aside. |
-| `17-pitch-zh-light-end-seeded.png` | **pitch-zh × light**, seeded. Same board under the light tokens; the script pane shows the `(月)` x unit. |
+| `13-tech-zh-dark-end-seeded.jpeg` | **tech-zh × dark**, end state, seeded. Chart accumulation, both annotation clusters, hand-drawn heading baselines, rule, aside. The closing sentence now reads `错的不是结论，是它藏着的两个前提：一是 ((串行段为零))，二是 ((协调不要钱))。` on ONE line — the `，` between the two circles survives (three glyphs sit between the two ink targets, well clear of the 2×14 px tip overshoot that erased the old `、`) and the final `。` is no longer orphaned onto a line of its own. x axis reads `(台)`. |
+| `14-tech-zh-light-end-seeded.jpeg` | **tech-zh × light**, seeded. White board, black ink, `--hl` yellow band, light series tokens, the seed's light `--hand` stack (Bradley Hand first) live. Replaces the stale `02`, which still showed the pre-fix colon. |
+| `15-pitch-zh-seeded-live-mid.jpeg` | **The blocker, closed.** A board applied from the seed gallery, caught mid-performance at **21.8 s / 70.7 s** with the transport LIVE and the pen part-way through a list row — not a scrub, not a replay. Before the fix this same path produced a fully-written board in one frame. |
+| `16-pitch-zh-dark-end-seeded.jpeg` | **pitch-zh × dark**, end state, seeded. 对比 chart (月发 flat, 日发 falling, `mark 24 分钟`), the closing `@circle`, rule, aside. |
+| `17-pitch-zh-light-end-seeded.jpeg` | **pitch-zh × light**, seeded. Same board under the light tokens; the script pane shows the `(月)` x unit. |
 
 **Transport sampling, before and after** (250 ms samples, from the moment
 the seed lands). Round-2 review, on the shipped layout:
@@ -71,18 +71,18 @@ appears first, then the playhead walks it.
 
 | File | Proves |
 |------|--------|
-| `00-tech-zh-t0-blank.png` | t = 0: the board is **fully blank** before the pen arrives (R1 fail-closed) while the whole 讲稿 already sits in the script pane with its dialect marks tinted. Also the readable inventory of tech-zh's source. |
-| `01-tech-zh-dark-end.png` | **tech-zh × dark**, end state. Chart accumulation (串行占比 curve, then 相干开销 turning over past n=32, `mark 峰值`), both annotation clusters inked, hand-drawn heading baselines, `---` rule, aside. |
-| `02-tech-zh-light-end.png` | **tech-zh × light**. White board, black ink, `--hl` yellow band, light series tokens — the seed's light `--hand` stack (Bradley Hand first) live. Chrome flips to light `cc-*` tokens with it. |
-| `03-pitch-zh-dark-end.png` | **pitch-zh × dark**, end state. 对比 chart (月发 flat, 日发 falling, `mark 24 分钟`), the closing `@circle` around the conclusion, rule, aside. |
-| `04-pitch-zh-light-end.png` | **pitch-zh × light**. Same board under the light tokens. |
-| `05a-tech-zh-formula-before-30.2s.png` | **公式左→右展开**, and the bug the walkthrough found. The block is cut mid-reveal (`S(n) = 1/(1-p)` written, `+ p/n` not yet) so the left→right order is real — but it is *already* ~90% written at 43% of the beat. Measured cause: the clip window is a percentage of the HOST, and a block-level `<math display="block">` host was **994 px** wide around a **229 px** formula, so the sweep spent 38% of the beat left of the first glyph, 38% right of the last, and the formula visibly wrote during ~18% of its own reveal. G6 holds throughout: the script pane highlights exactly the `$$…$$` line. |
-| `05b-tech-zh-formula-after-30.2s.png` | The same board, same t = 30.2 s, after the host was shrink-wrapped (`width: fit-content` + auto inline margins). The formula is now **43.7% written at a 43.66% clip** — the reveal uses the whole beat instead of popping in the middle third — and stays centered (measured host 229 px, hug 100%, centre offset 0 px; second formula 408 px, same). |
-| `06-tech-zh-backref-strike-87.7s.png` | **先立、再驳、后划**, mid-stroke: 80 s after the claim 「慢了就加机器」 was written plain, and after the whole rebuttal has been argued, the camera turns UP to it and the strike is **half drawn** (it covers 慢了就加机 and has not reached 器). The script pane highlights the `@strike` directive line. Also in frame: the `==…==` band over a sentence that wraps, **split per line** (§6.4-B) instead of one giant box; the §4.3 align group with its visible spacers; two circles on adjacent lines, no collision. |
-| `07-tech-zh-ink-waits-78.0s.png` | I2: the annotation-dense paragraph's **text is fully written and none of its ink has landed yet** — the marks wait for the sentence to finish. |
-| `08-tech-zh-ink-single-pen-78.8s.png` | **G1 in one frame**: 0.8 s later the first circle (串行占比) is finished, the second (相干开销) is **just starting**, and the highlight on 机器数本身 has not begun. One pen — never two marks in progress. |
-| `09-pitch-zh-align-and-arrows.png` | **并列三点** with the column actually doing work: labels 频率 / 每次改动量 / 回滚 differ in width, so the value column only lines up because of the §4.3 spacers. Same frame: the arrow chain 提交 → 自动测试 → 灰度 10% → 全量, the two-line `**…**` underline split per row, and the in-place circle on 十分之一的事故. |
-| `10-pitch-zh-dark-top.png` | The head of pitch-zh in dark: the `==…==` band wrapping across two lines, the align group, the arrow chain — the light-theme evidence of `09` repeated on the chalkboard. |
+| `00-tech-zh-t0-blank.jpeg` | t = 0: the board is **fully blank** before the pen arrives (R1 fail-closed) while the whole 讲稿 already sits in the script pane with its dialect marks tinted. Also the readable inventory of tech-zh's source. |
+| `01-tech-zh-dark-end.jpeg` | **tech-zh × dark**, end state. Chart accumulation (串行占比 curve, then 相干开销 turning over past n=32, `mark 峰值`), both annotation clusters inked, hand-drawn heading baselines, `---` rule, aside. |
+| `02-tech-zh-light-end.jpeg` | **tech-zh × light**. White board, black ink, `--hl` yellow band, light series tokens — the seed's light `--hand` stack (Bradley Hand first) live. Chrome flips to light `cc-*` tokens with it. |
+| `03-pitch-zh-dark-end.jpeg` | **pitch-zh × dark**, end state. 对比 chart (月发 flat, 日发 falling, `mark 24 分钟`), the closing `@circle` around the conclusion, rule, aside. |
+| `04-pitch-zh-light-end.jpeg` | **pitch-zh × light**. Same board under the light tokens. |
+| `05a-tech-zh-formula-before-30.2s.jpeg` | **公式左→右展开**, and the bug the walkthrough found. The block is cut mid-reveal (`S(n) = 1/(1-p)` written, `+ p/n` not yet) so the left→right order is real — but it is *already* ~90% written at 43% of the beat. Measured cause: the clip window is a percentage of the HOST, and a block-level `<math display="block">` host was **994 px** wide around a **229 px** formula, so the sweep spent 38% of the beat left of the first glyph, 38% right of the last, and the formula visibly wrote during ~18% of its own reveal. G6 holds throughout: the script pane highlights exactly the `$$…$$` line. |
+| `05b-tech-zh-formula-after-30.2s.jpeg` | The same board, same t = 30.2 s, after the host was shrink-wrapped (`width: fit-content` + auto inline margins). The formula is now **43.7% written at a 43.66% clip** — the reveal uses the whole beat instead of popping in the middle third — and stays centered (measured host 229 px, hug 100%, centre offset 0 px; second formula 408 px, same). |
+| `06-tech-zh-backref-strike-87.7s.jpeg` | **先立、再驳、后划**, mid-stroke: 80 s after the claim 「慢了就加机器」 was written plain, and after the whole rebuttal has been argued, the camera turns UP to it and the strike is **half drawn** (it covers 慢了就加机 and has not reached 器). The script pane highlights the `@strike` directive line. Also in frame: the `==…==` band over a sentence that wraps, **split per line** (§6.4-B) instead of one giant box; the §4.3 align group with its visible spacers; two circles on adjacent lines, no collision. |
+| `07-tech-zh-ink-waits-78.0s.jpeg` | I2: the annotation-dense paragraph's **text is fully written and none of its ink has landed yet** — the marks wait for the sentence to finish. |
+| `08-tech-zh-ink-single-pen-78.8s.jpeg` | **G1 in one frame**: 0.8 s later the first circle (串行占比) is finished, the second (相干开销) is **just starting**, and the highlight on 机器数本身 has not begun. One pen — never two marks in progress. |
+| `09-pitch-zh-align-and-arrows.jpeg` | **并列三点** with the column actually doing work: labels 频率 / 每次改动量 / 回滚 differ in width, so the value column only lines up because of the §4.3 spacers. Same frame: the arrow chain 提交 → 自动测试 → 灰度 10% → 全量, the two-line `**…**` underline split per row, and the in-place circle on 十分之一的事故. |
+| `10-pitch-zh-dark-top.jpeg` | The head of pitch-zh in dark: the `==…==` band wrapping across two lines, the align group, the arrow chain — the light-theme evidence of `09` repeated on the chalkboard. |
 
 ## G8-A — the handwriting font, measured, not assumed
 
@@ -132,8 +132,8 @@ to **91.78 s**; `11`'s closing sentence is superseded by `13`.)
 
 | File | Proves |
 |------|--------|
-| `11-tech-zh-colon-fixed-dark.png` | The fullwidth colon before `((…))` is legible again. In `01` the ellipse's left tip lands on the two dots of `：` and the sentence reads as if it lost its punctuation (measured on the live board: the colon's box is 26.8 px wide and the circle path started inside it). With one space between `：` and `((`, the colon clears the tip — 763.9→790.7 px for the glyph box against a path starting at 787.2 px, and the second passage 1031.8→1058.5 px against 1053.7 px, i.e. the tip now grazes the box's right edge instead of the ink. Same board, same theme, same end state as `01`. |
-| `12-pitch-zh-axis-unit-dark.png` | pitch-zh's x axis now declares `(月)` instead of the scenario label `(试点)` — the unit slot every other axis in both boards fills with a real unit. Only the **x** unit changed and only the y unit is drawn on the board (`chart.ts` appends `frame.y.unit` to ticks and series labels; the x unit is parsed and never rendered), so the board pixels are identical to `03` — the visible change is in the script pane, which is what the agent reads as its few-shot 范文. |
+| `11-tech-zh-colon-fixed-dark.jpeg` | The fullwidth colon before `((…))` is legible again. In `01` the ellipse's left tip lands on the two dots of `：` and the sentence reads as if it lost its punctuation (measured on the live board: the colon's box is 26.8 px wide and the circle path started inside it). With one space between `：` and `((`, the colon clears the tip — 763.9→790.7 px for the glyph box against a path starting at 787.2 px, and the second passage 1031.8→1058.5 px against 1053.7 px, i.e. the tip now grazes the box's right edge instead of the ink. Same board, same theme, same end state as `01`. |
+| `12-pitch-zh-axis-unit-dark.jpeg` | pitch-zh's x axis now declares `(月)` instead of the scenario label `(试点)` — the unit slot every other axis in both boards fills with a real unit. Only the **x** unit changed and only the y unit is drawn on the board (`chart.ts` appends `frame.y.unit` to ticks and series labels; the x unit is parsed and never rendered), so the board pixels are identical to `03` — the visible change is in the script pane, which is what the agent reads as its few-shot 范文. |
 
 ## Round-3 amendment — circle overshoot scales with font size (frames 18–22)
 
@@ -149,11 +149,11 @@ through the seed-apply path, light theme, end state:
 
 | File | Proves |
 |------|--------|
-| `18-tech-zh-light-end-circle-overshoot-fix.png` | tech-zh full end state with the new circle geometry, seeded, 91.8 s. |
-| `19-tech-zh-20bei-semicolon-survives.png` | Zoom of `((20 倍))；` — the `；` frame `06` showed erased is back, clear of the tip. |
-| `20-tech-zh-closing-line-comma-period-survive.png` | Zoom of `一是((串行段为零))，二是((协调不要钱))。` — both the `，` and the terminal `。` legible beside the tips. |
-| `21-pitch-zh-circle-left-tip-clears.png` | Zoom of `都((小到不值得开会))。` — the LEFT tip no longer cuts through 都 (compare `17`). |
-| `22-env-chip-light-scoped-hannotate.png` | G8-A guard live: a light-scoped `--hand: "Hannotate SC"` override in the seed's `theme.css` now raises the `handwriting font fallback` chip (before the `THEME_VARIANTS` fix the light-scoped stack was never measured); reverting the override clears the chip. |
+| `18-tech-zh-light-end-circle-overshoot-fix.jpeg` | tech-zh full end state with the new circle geometry, seeded, 91.8 s. |
+| `19-tech-zh-20bei-semicolon-survives.jpeg` | Zoom of `((20 倍))；` — the `；` frame `06` showed erased is back, clear of the tip. |
+| `20-tech-zh-closing-line-comma-period-survive.jpeg` | Zoom of `一是((串行段为零))，二是((协调不要钱))。` — both the `，` and the terminal `。` legible beside the tips. |
+| `21-pitch-zh-circle-left-tip-clears.jpeg` | Zoom of `都((小到不值得开会))。` — the LEFT tip no longer cuts through 都 (compare `17`). |
+| `22-env-chip-light-scoped-hannotate.jpeg` | G8-A guard live: a light-scoped `--hand: "Hannotate SC"` override in the seed's `theme.css` now raises the `handwriting font fallback` chip (before the `THEME_VARIANTS` fix the light-scoped stack was never measured); reverting the override clears the chip. |
 
 ## Regenerating
 

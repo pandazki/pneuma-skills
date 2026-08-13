@@ -20,12 +20,12 @@ performed for a user, so the append-only discipline did not bind.
 
 | Frame | Moment | Why it matters |
 |---|---|---|
-| `01-stake-the-wrong-answer.png` | §0 | The wrong intuition stated in the reader's own voice, with the reasoning step that produces it spelled out — and the fact that clinicians asked this question answer it the same way. It has to be *staked* before the lecture can knock it down. |
-| `02-both-counts-one-board.png` | §3 step 6 | Both counted groups in one picture: the `一万个人做完检查` graph is declared with the sick branch alone, then a second same-name block adds the healthy branch, so `报阳性 10 人` ends up directly above `误报阳性 100 人`. **This frame was captured parked at the graph, and the "held comparison" claim it once carried was wrong — see the closed finding below.** |
-| `06-before-verdict-on-a-blank-board.png` | §3, played, 151.7 s | Why the comparison did not land. The board was full when the graph finished, so the room turned, and 「假阳性的人数，是真病人的十倍。」 — the sentence that names the comparison — was written **alone on a blank board** with both counts out of frame. |
-| `06-ten-against-a-hundred.png` | §4 「十个，和一百个」 | The repair. Two counts measured on one vertical scale (`0 .. 110 (人)`) instead of spelled as digits: 10 on the floor, 100 at the ceiling, the climb marked `十倍`, the inked verdict directly under the picture, and a `@wait` after it so the camera cannot walk off first. |
-| `03-strike-lands.png` | §4 step 7 | The restated wrong answer with the strike-through ink visibly drawn. Re-shot after the fix recorded below; the placement also keeps target and strike on the same panel. |
-| `05-second-test-91.png` | §6 | The over-correction refused: retest the 110, count again — 10 true positives against 1 false positive, 10/11 ≈ 91%. Same machine, same two 99%s, a smaller denominator. |
+| `01-stake-the-wrong-answer.jpeg` | §0 | The wrong intuition stated in the reader's own voice, with the reasoning step that produces it spelled out — and the fact that clinicians asked this question answer it the same way. It has to be *staked* before the lecture can knock it down. |
+| `02-both-counts-one-board.jpeg` | §3 step 6 | Both counted groups in one picture: the `一万个人做完检查` graph is declared with the sick branch alone, then a second same-name block adds the healthy branch, so `报阳性 10 人` ends up directly above `误报阳性 100 人`. **This frame was captured parked at the graph, and the "held comparison" claim it once carried was wrong — see the closed finding below.** |
+| `06-before-verdict-on-a-blank-board.jpeg` | §3, played, 151.7 s | Why the comparison did not land. The board was full when the graph finished, so the room turned, and 「假阳性的人数，是真病人的十倍。」 — the sentence that names the comparison — was written **alone on a blank board** with both counts out of frame. |
+| `06-ten-against-a-hundred.jpeg` | §4 「十个，和一百个」 | The repair. Two counts measured on one vertical scale (`0 .. 110 (人)`) instead of spelled as digits: 10 on the floor, 100 at the ceiling, the climb marked `十倍`, the inked verdict directly under the picture, and a `@wait` after it so the camera cannot walk off first. |
+| `03-strike-lands.jpeg` | §4 step 7 | The restated wrong answer with the strike-through ink visibly drawn. Re-shot after the fix recorded below; the placement also keeps target and strike on the same panel. |
+| `05-second-test-91.jpeg` | §6 | The over-correction refused: retest the 110, count again — 10 true positives against 1 false positive, 10/11 ≈ 91%. Same machine, same two 99%s, a smaller denominator. |
 
 ## Verification notes
 
@@ -83,7 +83,7 @@ still degrades inert, still reports `inkAfterErase`.
 
 Verified on this board, same window, same content: pre-fix the annotation node
 mounts with an **empty stroke overlay**, post-fix it carries its path and the
-line lands on the restated sentence. `03-strike-lands.png` is a post-fix
+line lands on the restated sentence. `03-strike-lands.jpeg` is a post-fix
 frame of the rewritten lecture — the ink there is the fix's, not the
 rewrite's, and the rewrite should not be read as having cured it.
 
@@ -101,7 +101,7 @@ it, check the set switcher before believing the board.
 An independent acceptance pass reported that 10 sick vs 100 false positives
 never read as a direct comparison at 1x. The previous pass had put both counts
 into one graph on one board and believed that closed it. Played back, it did
-not: `06-before-verdict-on-a-blank-board.png` is 151.7 s of the pre-fix board —
+not: `06-before-verdict-on-a-blank-board.jpeg` is 151.7 s of the pre-fix board —
 the graph board filled right after the second `graph` block, the room turned,
 and the sentence naming the comparison landed on a **blank** board. The counts
 and the verdict were never in one frame. A capture parked at the graph step

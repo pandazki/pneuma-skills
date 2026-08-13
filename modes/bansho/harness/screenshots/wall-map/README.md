@@ -12,7 +12,7 @@ The product owner's third complaint: 「没有总览/鸟瞰的界面,不知道�
 at all — no way to know how big the room is, which wall they are standing
 in front of, or whether a board is full.
 
-- `board-3-of-4.png` — the map in context, playhead at t = 70.0s. Four
+- `board-3-of-4.jpeg` — the map in context, playhead at t = 70.0s. Four
   tiles, board 3 current (primary border, brighter fill, brighter number).
 - `map-detail.png` — the same map at 3×. Board 2 is empty, board 3 nearly
   full, boards 1 and 4 partly written. Boards fill from the TOP, because

@@ -10,9 +10,9 @@ debug port and user-data-dir, own dev server) — the same universe as
 
 | Frame | Playhead | What to look at |
 |---|---|---|
-| `01-map-at-start.png` | 2% (21.9s ⁄ 66.2s bar at the left) | **1 of 31** mark groups drawn. Board 1 carries one line; boards 2–4 are bare wall. |
-| `02-map-at-a-third.png` | 33% | **10 of 31**. Board 1 is full, board 2 (the current one, orange outline) carries exactly the heading and the one line the big board shows — 「先别算，先数人」 and 「拿 10000 个人来数。」 — and the bottom row is still bare. **The map and the board agree.** |
-| `03-map-at-the-end.png` | 99% | **31 of 31**. All four boards written; the current board's three bullets and closing line are on the map at the same shape they have on the slate. |
+| `01-map-at-start.jpeg` | 2% (21.9s ⁄ 66.2s bar at the left) | **1 of 31** mark groups drawn. Board 1 carries one line; boards 2–4 are bare wall. |
+| `02-map-at-a-third.jpeg` | 33% | **10 of 31**. Board 1 is full, board 2 (the current one, orange outline) carries exactly the heading and the one line the big board shows — 「先别算，先数人」 and 「拿 10000 个人来数。」 — and the bottom row is still bare. **The map and the board agree.** |
+| `03-map-at-the-end.jpeg` | 99% | **31 of 31**. All four boards written; the current board's three bullets and closing line are on the map at the same shape they have on the slate. |
 
 Before this change all three frames were identical: 31 of 31, always. The
 geometry is still measured once per compile — a reveal is opacity, a clip
@@ -23,8 +23,8 @@ decides is only which groups are drawn, at one integer comparison each.
 
 | Frame | Gesture | Result |
 |---|---|---|
-| `04-wheel-zooms-at-the-cursor.png` | three wheel notches up, pointer at 30% ⁄ 30% of the viewport | z **1 → 2.054**, anchored on the point under the cursor. No modifier, and nothing scrolled. |
-| `05-middle-drag-pans.png` | middle-button drag up-left | the camera walked with the hand (1464.9, 959.5) → (1646.3, 1083.3). |
+| `04-wheel-zooms-at-the-cursor.jpeg` | three wheel notches up, pointer at 30% ⁄ 30% of the viewport | z **1 → 2.054**, anchored on the point under the cursor. No modifier, and nothing scrolled. |
+| `05-middle-drag-pans.jpeg` | middle-button drag up-left | the camera walked with the hand (1464.9, 959.5) → (1646.3, 1083.3). |
 
 Wheel = zoom, middle-drag = pan, left-drag = pan, pinch = zoom, page
 scrolling = never. `board-grab.test.tsx` pins the wiring, including the two
@@ -33,7 +33,7 @@ on `auxclick`) being cancelled on the viewport only.
 
 ## 3 — the camera keeps the pen
 
-`06-after-a-wheel-the-camera-is-still-with-the-pen.png` is the end state of
+`06-after-a-wheel-the-camera-is-still-with-the-pen.jpeg` is the end state of
 the reproduction that found defect 3(a). The gesture sequence, recorded
 before anything was changed and re-run against the fix:
 
@@ -56,7 +56,7 @@ sliver. The board's own height now travels with its origin, so the camera
 cannot leave the board it is following; `camera.test.ts`'s
 `W4a-3a` block pins it at zero tolerance.
 
-`07-short-window-after-the-row-crossing-turn.png` is that same window a
+`07-short-window-after-the-row-crossing-turn.jpeg` is that same window a
 second after the turn, on the fixed build: the camera stands squarely on
 board 3 with its heading and both written bullets in view, and the map's
 own rectangle sits over board 3 rather than across the gap. Measured over
