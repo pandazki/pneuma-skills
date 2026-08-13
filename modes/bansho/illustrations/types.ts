@@ -37,8 +37,9 @@ export interface IllustrationEntry {
   /**
    * The figure's DECLARED aspect: width ÷ height. Positive and finite.
    *
-   * A figure always fills the width of the space it is placed in, so this
-   * is the whole of its geometry — the board reads height off it and never
+   * A figure is FITTED INSIDE the space it is placed in — as wide as that
+   * space allows, but never deeper than it (`illustrationBox`) — so this
+   * is the whole of its geometry: the board reads height off it and never
    * off the file (see the module header).
    */
   aspect: number;
@@ -232,6 +233,59 @@ export function illustrationAspect(
 ): number | undefined {
   if (illustrationRefusal(src, manifest, absentFiles) !== null) return undefined;
   return manifest?.figures[normalizeIllustrationSrc(src)]?.aspect;
+}
+
+/** A figure's box on the face: what the mount writes, in board px. */
+export interface FigureBox {
+  w: number;
+  h: number;
+}
+
+/**
+ * THE FIGURE FITS INSIDE THE SPACE IT IS GIVEN, ON BOTH AXES.
+ * 「不能有什么东西被挤出画面」— nothing may be pushed out of frame, and a
+ * picture is the easiest thing on a board to push out of one, because it
+ * is the only box whose height is not a consequence of how much was
+ * written but of how wide it was made.
+ *
+ * `space` is the region's own rectangle, straight off `resolveRegionRect`
+ * — CANONICAL COORDINATES, arithmetic the plan layer already has. Nothing
+ * here reads a pixel: no `naturalWidth`, no client rect, no measurement.
+ * That is not fastidiousness, it is R8: the same lecture must fold
+ * identically at every window size, and the two-width byte gate would
+ * catch any measurement that leaked in here.
+ *
+ * Fit, not fill. Filling the width is right exactly while the width binds,
+ * and the moment the picture is taller than its region — a 1:1 figure in a
+ * 1154 × 794 face would be 1154 deep — filling the width pushes the bottom
+ * of the picture off the bottom of the board. So the box is the LARGER of
+ * nothing and the SMALLER of the two constraints, and the declared shape
+ * is never squashed to make it fit: what gives is the size, not the shape.
+ *
+ * The strip passes `h = Infinity` (it has no bottom), on which the
+ * vertical constraint is vacuous and the width binds — by arithmetic
+ * rather than by a special case.
+ */
+export function illustrationBox(
+  space: { readonly w: number; readonly h: number },
+  aspect: number,
+): FigureBox {
+  // A shape that is not a shape cannot decide a box. Refusing here would
+  // mean an invisible figure; a square is the one fallback that cannot be
+  // wrong on either axis, since it is bounded by both.
+  const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
+  const roomW = Number.isFinite(space.w) && space.w > 0 ? space.w : 0;
+  // NOT `Number.isFinite` — `Infinity` is the strip's real answer.
+  const roomH = space.h > 0 ? space.h : 0;
+  // Which axis binds is decided ONCE, and the bound axis is then handed
+  // back VERBATIM rather than round-tripped through the aspect: `385 *
+  // (16/9) / (16/9)` is 385.00000000000006, and a "fits" function that can
+  // answer 6e-14 past the edge is not one anything downstream may lean on.
+  // The other axis is clamped for the same reason, one ulp of division.
+  const byHeight = roomH * a;
+  return byHeight <= roomW
+    ? { w: Math.min(byHeight, roomW), h: roomH }
+    : { w: roomW, h: Math.min(roomW / a, roomH) };
 }
 
 /**

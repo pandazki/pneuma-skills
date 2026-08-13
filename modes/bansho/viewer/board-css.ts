@@ -640,8 +640,24 @@ export const BOARD_BASE_CSS = `
 .bansho-illustration {
   position: relative;
   display: block;
-  width: 100%;
-  margin: 0 0 14px;
+  /* NO percentage width here — that line was the defect. The mount makes every box
+     absolute, and a PERCENTAGE width on an absolute box resolves against
+     the containing block, not against the left / right insets the mount just
+     wrote: measured 2026-08-13, every figure came out 1242px wide (the
+     whole board) at left 633px, hanging 633px off the right edge. The
+     width is written explicitly by the mount now, from the region's own
+     rectangle; in flow a block box fills its container anyway, so nothing
+     is lost by saying nothing here.
+
+     "margin: 0 auto" is how the leftover is split when the picture is
+     narrower than its box — with left, right and width all set, auto
+     inline margins are the one thing CSS still has to solve for, so it
+     gives them equal values and the figure lands in the middle of its
+     region. The same mechanism centres display math (.bansho-math-block)
+     one rule down; a teacher pins a picture in the middle of the column it
+     belongs to, not flush against its edge. The BLOCK margins stay real
+     numbers: the fold's §7.5 spacing reads them. */
+  margin: 0 auto 14px;
 }
 .bansho-illustration-ink {
   position: absolute;

@@ -39,6 +39,34 @@ import type {
 import { inertRevealable, type StyledElement } from "./svg.js";
 
 /**
+ * A figure's DECLARED aspect, stated on the node itself.
+ *
+ * The mount has to size this box explicitly — a picture is the one box on
+ * a board whose height is a consequence of its width rather than of how
+ * much was written, so it is the one box that can be pushed off the bottom
+ * of the board by being made wide (see `illustrationBox`). To do that the
+ * mount needs the aspect, and the mount runs from a ref-only closure that
+ * cannot see the illustration source.
+ *
+ * So the declaration rides the node the factory built. It is not a
+ * measurement and it is not geometry: it is the SAME number the factory
+ * put in `aspect-ratio`, in a form that reads back unambiguously (the
+ * CSSOM is free to re-spell `1.5` as `1.5 / 1`, and a future engine
+ * spelling it `3 / 2` would silently parse as 3). A figure that could not
+ * be drawn carries no attribute at all — the badge is not a box with a
+ * shape.
+ */
+export const FIGURE_ASPECT_ATTR = "data-bansho-aspect";
+
+/** The declared aspect of a built figure, or `undefined` for anything else. */
+export function figureAspect(node: Element): number | undefined {
+  const declared = node.getAttribute(FIGURE_ASPECT_ATTR);
+  if (declared === null) return undefined;
+  const aspect = Number.parseFloat(declared);
+  return Number.isFinite(aspect) && aspect > 0 ? aspect : undefined;
+}
+
+/**
  * The badge a picture that cannot be drawn stands as — the `bad-step badge`
  * convention (`.bansho-bad-badge`), one class over. A figure that failed is
  * the most visible hole a board can have, so it says so ON the board;
@@ -123,10 +151,19 @@ export const illustrationFactory: RevealableFactory = {
 
     const node = doc.createElement("figure");
     node.className = "bansho-illustration";
-    // The box: the full width of the space it stands in, height from the
+    // The box: as wide as the space it stands in ALLOWS, height from the
     // DECLARED aspect. `aspect-ratio` gives the fold a real height before a
     // single byte of the file has arrived, which is exactly the point.
+    //
+    // The WIDTH is the mount's to write, from the region's own rectangle
+    // (`illustrationBox`) — and it must be written explicitly. A box
+    // positioned with `left` + `right` alone was measured on 2026-08-13
+    // taking the full 1242px board and hanging 633px off its right edge:
+    // the percentage width these figures used to carry resolved against
+    // the containing block and dropped both insets. The aspect stated
+    // here is what lets the mount compute that width without a pixel.
     node.style.aspectRatio = String(spec.aspect);
+    node.setAttribute(FIGURE_ASPECT_ATTR, String(spec.aspect));
     if (step.alt) {
       node.setAttribute("role", "img");
       node.setAttribute("aria-label", step.alt);

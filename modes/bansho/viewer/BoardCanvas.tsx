@@ -65,7 +65,11 @@ import {
   createNarrationHook,
   type ClipWindow,
 } from "../narration/timing.js";
-import type { IllustrationSource } from "../illustrations/types.js";
+import { figureAspect } from "../engine/factories/illustration.js";
+import {
+  illustrationBox,
+  type IllustrationSource,
+} from "../illustrations/types.js";
 import type { NarrationManifest } from "../narration/types.js";
 import { parseStepKey, stepKey } from "./address.js";
 import WallMap from "./WallMap.js";
@@ -1246,6 +1250,51 @@ function setMeasureWidth(host: HTMLElement, width: number | undefined): void {
   host.style.width = `${width}px`;
 }
 
+/**
+ * Give a figure its box — EXPLICITLY, and fitted inside its region on both
+ * axes. 「不能有什么东西被挤出画面」.
+ *
+ * A picture is the only box on a board whose height is not a consequence
+ * of how much was written but of how wide it was made, and it was the only
+ * box the mount never sized. Measured in Chromium on 2026-08-13: every
+ * figure came out 1242px wide — the WHOLE board — at whatever `left` its
+ * region gave it, so a half-width column figure hung 633px off the right
+ * edge, and a 1:1 figure hung 384px off the bottom as well. The insets
+ * were right; the box ignored them, because `.bansho-illustration` carried
+ * `width: 100%` and a percentage on an absolute box resolves against the
+ * containing block. Both halves are fixed: the stylesheet no longer says a
+ * width, and this says the only one that is true.
+ *
+ * The number is arithmetic on the region's own rectangle
+ * (`illustrationBox`) — canonical coordinates the plan layer already has.
+ * No `naturalWidth`, no client rect, nothing measured: a figure's geometry
+ * stays a function of the DOCUMENT, so the same lecture folds identically
+ * at every window size (R8) and the two-width byte gate still holds.
+ *
+ * Why this was not winnable from the authoring side, and so had to be
+ * fixed here: the cold-agent trial watched an author see the cut, move the
+ * figure to a bigger region, and get a WORSE overflow (44px → 633px),
+ * because the size ignored the region it was moved to. Their judgement was
+ * right at every step and the engine made the correction impossible.
+ */
+function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
+  const node = item.node;
+  if (!(node instanceof HTMLElement)) return;
+  const aspect = figureAspect(node);
+  // Not a figure, or a picture that could not be drawn: a badge is not a
+  // box with a shape, and nothing else on the board is sized this way.
+  if (aspect === undefined) return;
+  const width = `${illustrationBox(region, aspect).w}px`;
+  if (node.style.width === width) return;
+  node.style.width = width;
+  // Its height IS this width through the declared aspect, so a new width
+  // is a new height and the cached fold charge belongs to the old box.
+  // (`measuredWidth` is deliberately untouched: that one records the BOX
+  // the fold placed, which the corrective pass compares against, and a
+  // figure narrower than its box must not read as a width mismatch.)
+  item.foldHeight = undefined;
+}
+
   const computeFoldInputs = useCallback(
     (
       entries: ReconcileEntry[],
@@ -1407,8 +1456,25 @@ function setMeasureWidth(host: HTMLElement, width: number | undefined): void {
               ? scanned
               : { ...scanned, x: scanned.x === 0 ? 0 : frame.faceW - forced, w: forced };
           widthOf.set(k, rect.w);
+          const item = byRef.get(k);
+          // A FIGURE IS SIZED, NOT INSET — and it is sized here, BEFORE
+          // its height is measured a few lines down, because its height
+          // IS its width through the declared aspect.
+          //
+          // Ahead of the `full` skip below on purpose: this one is not a
+          // style write the pre-region path can do without. A `full`
+          // figure is still made absolute by the mount ("Boxes land"), and
+          // an absolute box with no explicit width takes its containing
+          // block — which is how a half-width figure came to be drawn
+          // 1242px wide, 633px of it off the board (2026-08-13). It also
+          // has to be clamped on the OTHER axis whether or not it is
+          // named: a 1:1 figure across a full 1154 × 794 face would be
+          // 1154 deep in a board 794 deep.
+          if (item && item.node instanceof HTMLElement) {
+            sizeFigure(item, rect);
+          }
           if (rect.w === frame.faceW && forced === undefined) continue;
-          const node = byRef.get(k)?.node;
+          const node = item?.node;
           if (!(node instanceof HTMLElement)) continue;
           node.style.position = "absolute";
           node.style.left = `${frame.padLeft + rect.x}px`;

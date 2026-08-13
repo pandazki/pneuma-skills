@@ -7,9 +7,11 @@
  *  3. the plan (one beat per figure, gap-transparent no longer);
  *  4. the time — a function of the DECLARED aspect and of nothing measured
  *     (the two-width gate depends on this);
- *  5. the paint — the board's own ink through the picture's luminance, one
+ *  5. the box — it FITS INSIDE the region it stands in, on both axes, and
+ *     the arithmetic that says so reads no pixels;
+ *  6. the paint — the board's own ink through the picture's luminance, one
  *     asset for both themes;
- *  6. every way it can fail, each one visible.
+ *  7. every way it can fail, each one visible.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -32,6 +34,7 @@ import type {
 } from "../engine/types.js";
 import {
   illustrationAspect,
+  illustrationBox,
   illustrationSource,
   illustrationRefusal,
   illustrationSources,
@@ -40,6 +43,11 @@ import {
   undrawnIllustrations,
   type IllustrationManifest,
 } from "../illustrations/types.js";
+import {
+  BOUNDED_REGION_WORDS,
+  REGION_GUTTER,
+  resolveRegionRect,
+} from "../engine/regions.js";
 
 const D = DEFAULT_DURATIONS;
 
@@ -313,7 +321,106 @@ describe("a figure's time — declared, never measured", () => {
   });
 });
 
-// ── 5. The paint ────────────────────────────────────────────────────────────
+// ── 5. The box ──────────────────────────────────────────────────────────────
+
+/**
+ * NOTHING MAY BE PUSHED OUT OF FRAME (「不能有什么东西被挤出画面」).
+ *
+ * The canonical face: the board is 1242 × 894 (W7) and `.bansho-panel`
+ * pads it 36 / 44 / 64, so a figure's world is 1154 wide and 794 deep.
+ * Those are the numbers the live measurement was taken against, and the
+ * `@at right` reproduction below is that measurement to the pixel.
+ */
+const FACE_W = 1242 - 44 - 44;
+const FACE_H = 894 - 36 - 64;
+
+/** Wide, tall, square — the three shapes that actually broke. */
+const ASPECTS = [
+  ["16:9", 16 / 9],
+  ["3:4", 3 / 4],
+  ["1:1", 1],
+] as const;
+
+describe("a figure fits inside the space it is given — both axes", () => {
+  test("the reproduction: `@at right`, 16:9 — 565 wide, not the whole board", () => {
+    // Measured in Chromium 2026-08-13: the box took 1242 (the FULL board)
+    // and hung 633px off the right edge, because `left` + `right` +
+    // `width: 100%` resolves the percentage against the containing block
+    // and drops the insets. 1154 − 24 gutter, halved, is what `@at right`
+    // actually offers.
+    const rect = resolveRegionRect("right", FACE_W, FACE_H);
+    expect(rect.ok && rect.rect.w).toBe(565);
+    const box = illustrationBox(rect.ok ? rect.rect : { w: 0, h: 0 }, 16 / 9);
+    expect(box.w).toBe(565);
+    expect(Math.round(box.h)).toBe(318);
+  });
+
+  for (const word of BOUNDED_REGION_WORDS) {
+    for (const [label, aspect] of ASPECTS) {
+      test(`@at ${word} × ${label}: inside its region, and inside the board`, () => {
+        const verdict = resolveRegionRect(word, FACE_W, FACE_H);
+        expect(verdict.ok).toBe(true);
+        const rect = verdict.ok ? verdict.rect : { x: 0, y: 0, w: 0, h: 0 };
+        const box = illustrationBox(rect, aspect);
+
+        // The two axes of the floor, said as the mount says them.
+        expect(box.w).toBeLessThanOrEqual(rect.w);
+        expect(box.h).toBeLessThanOrEqual(rect.h);
+        // Centred in whatever the binding axis left over — the same
+        // convention display math already uses on this board.
+        const x = rect.x + (rect.w - box.w) / 2;
+        expect(x).toBeGreaterThanOrEqual(0);
+        expect(x + box.w).toBeLessThanOrEqual(FACE_W);
+        expect(rect.y + box.h).toBeLessThanOrEqual(FACE_H);
+        // …and it is still the DECLARED shape, never a squash to fit.
+        expect(box.w / box.h).toBeCloseTo(aspect, 10);
+      });
+    }
+  }
+
+  test("the height binds when the region is shallower than the picture is tall", () => {
+    // A square figure across a whole 1154 × 794 face would be 1154 tall in
+    // a 794-deep board — the vertical half of the same defect.
+    const box = illustrationBox({ w: FACE_W, h: FACE_H }, 1);
+    expect(box.w).toBe(FACE_H);
+    expect(box.h).toBe(FACE_H);
+  });
+
+  test("the width binds when the region is wide enough for the whole height", () => {
+    const box = illustrationBox({ w: 565, h: FACE_H }, 16 / 9);
+    expect(box.w).toBe(565);
+  });
+
+  test("a band is half a face deep, and a square figure feels it", () => {
+    const bandH = (FACE_H - REGION_GUTTER) / 2;
+    expect(illustrationBox({ w: FACE_W, h: bandH }, 1).w).toBe(bandH);
+  });
+
+  test("the strip has no bottom, so nothing can be pushed off it downward", () => {
+    // `H = Infinity` is the strip's face. The width still binds; the
+    // vertical clamp simply has nothing to clamp against.
+    const box = illustrationBox({ w: 565, h: Number.POSITIVE_INFINITY }, 1);
+    expect(box.w).toBe(565);
+    expect(box.h).toBe(565);
+  });
+
+  test("total over its input domain — a broken number never becomes a NaN box", () => {
+    for (const bad of [0, -2, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const box = illustrationBox({ w: 565, h: FACE_H }, bad);
+      expect(Number.isFinite(box.w)).toBe(true);
+      expect(Number.isFinite(box.h)).toBe(true);
+      expect(box.w).toBeLessThanOrEqual(565);
+      expect(box.h).toBeLessThanOrEqual(FACE_H);
+    }
+    for (const room of [{ w: 0, h: FACE_H }, { w: 565, h: 0 }, { w: Number.NaN, h: FACE_H }]) {
+      const box = illustrationBox(room, 1.5);
+      expect(box.w).toBe(0);
+      expect(box.h).toBe(0);
+    }
+  });
+});
+
+// ── 6. The paint ────────────────────────────────────────────────────────────
 
 describe("the paint — the board's ink through the picture's luminance", () => {
   const ctx = () => makeCtx(() => ({ aspect: 1.5, url: "/api/file?path=n.png" }));
@@ -383,7 +490,7 @@ describe("the paint — the board's ink through the picture's luminance", () => 
   });
 });
 
-// ── 6. The honest hole ──────────────────────────────────────────────────────
+// ── 7. The honest hole ──────────────────────────────────────────────────────
 
 describe("a picture that cannot be drawn says so, on the board", () => {
   test("no shape on record → a badge stands where the figure would", () => {
@@ -417,7 +524,7 @@ describe("a picture that cannot be drawn says so, on the board", () => {
   });
 });
 
-// ── 7. The host seam ────────────────────────────────────────────────────────
+// ── 8. The host seam ────────────────────────────────────────────────────────
 
 describe("the resolver a host hands the board", () => {
   const toUrl = (path: string) => `/api/file?path=${encodeURIComponent(path)}`;
@@ -485,7 +592,7 @@ describe("a figure rebuilds when its picture changed under it", () => {
   });
 });
 
-// ── 8. The report ───────────────────────────────────────────────────────────
+// ── 9. The report ───────────────────────────────────────────────────────────
 
 describe("check-board says the same thing the board shows", () => {
   const lecture = parseLecture(
