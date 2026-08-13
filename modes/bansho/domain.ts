@@ -28,6 +28,10 @@ import {
 } from "./engine/regions.js";
 import { stepContentHash, stepPlainText } from "./engine/text.js";
 import {
+  readIllustrationManifest,
+  type IllustrationManifestRead,
+} from "./illustrations/types.js";
+import {
   readNarrationManifest,
   type NarrationManifestRead,
 } from "./narration/types.js";
@@ -74,6 +78,13 @@ export interface Board {
    * failure through the same silence (see `narration/types.ts`).
    */
   narration: Record<string, NarrationManifestRead>;
+  /**
+   * Sibling `illustrations/manifest.json` per content set (I1), same key,
+   * same ride. The READ result, like narration's: a missing file is a
+   * lecture that draws no figures, but a malformed one must not hide
+   * behind that silence — it carries its reason to `check-board`.
+   */
+  illustrations: Record<string, IllustrationManifestRead>;
 }
 
 // ── Line model ──────────────────────────────────────────────────────────────
@@ -892,14 +903,21 @@ export function parseLecture(src: string, fallbackTitle = "board"): Lecture {
   };
 
   /**
-   * v1 performs no image / html steps (they land with Phase 3 骨架完备):
-   * the step parses and keeps its place in the model (srcSpan, identity),
-   * but the planner schedules no beat for it — this warning is the loud
-   * signal that the block will draw nothing. Without it the gap is silent:
-   * no factory exists, so a scheduled beat would burn dead board time with
-   * no owner and no way for the agent to self-heal.
+   * v1 performs no html steps (they land with Phase 3 骨架完备): the step
+   * parses and keeps its place in the model (srcSpan, identity), but the
+   * planner schedules no beat for it — this warning is the loud signal
+   * that the block will draw nothing. Without it the gap is silent: no
+   * factory exists, so a scheduled beat would burn dead board time with no
+   * owner and no way for the agent to self-heal.
+   *
+   * `image` LEFT this gate on 2026-08-13 (I1): a picture is drawn now, so
+   * the silence it declared would be a lie. What can still go wrong with a
+   * picture — a path that leaves the folder, a file that is not there, a
+   * shape that was never declared — is not a parse fact (the sidecar is
+   * not in this file), so it is reported by the board itself through
+   * `illustrations/types.ts::undrawnIllustrations`.
    */
-  const pushUnsupported = (kind: "image" | "html", span: SrcSpan): void => {
+  const pushUnsupported = (kind: "html", span: SrcSpan): void => {
     pendingIssues.push({
       flatIndex: flat.length - 1,
       code: "unsupportedStep",
@@ -1092,7 +1110,6 @@ export function parseLecture(src: string, fallbackTitle = "board"): Lecture {
         alt: m[1]!,
         srcSpan: trimmedSpan(line),
       });
-      pushUnsupported("image", trimmedSpan(line));
       i++;
       continue;
     }
@@ -1627,6 +1644,7 @@ export function loadBoard(
   const byContentSet: Record<string, Lecture> = {};
   const themeCss: Record<string, string> = {};
   const narration: Record<string, NarrationManifestRead> = {};
+  const illustrations: Record<string, IllustrationManifestRead> = {};
   for (const f of boards) {
     const prefix =
       f.path === "board.md" ? "" : f.path.slice(0, -"/board.md".length);
@@ -1643,8 +1661,15 @@ export function loadBoard(
     narration[prefix] = readNarrationManifest(
       files.find((n) => n.path === narrationPath)?.content,
     );
+    const illustrationsPath =
+      prefix === ""
+        ? "illustrations/manifest.json"
+        : `${prefix}/illustrations/manifest.json`;
+    illustrations[prefix] = readIllustrationManifest(
+      files.find((n) => n.path === illustrationsPath)?.content,
+    );
   }
-  return { byContentSet, themeCss, narration };
+  return { byContentSet, themeCss, narration, illustrations };
 }
 
 /**

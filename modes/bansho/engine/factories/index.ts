@@ -1,16 +1,18 @@
 /**
  * Factory registry (T3) — one `RevealableFactory` per performable step
  * kind. The host resolves factories ONLY through here; `wait` and `bad`
- * plan to no units and have no factory. `image` / `html` land in a later
- * task (Phase 3 骨架完备) — until then they ALSO plan no units, and the
- * parse surfaces an `unsupportedStep` warning (a factory added here must
- * remove both halves of that gate: `planStepUnits` and `pushUnsupported`).
+ * plan to no units and have no factory. `html` lands in a later task
+ * (Phase 3 骨架完备) — until then it ALSO plans no units, and the parse
+ * surfaces an `unsupportedStep` warning (a factory added here must remove
+ * both halves of that gate: `planStepUnits` and `pushUnsupported`, as
+ * `image` did on 2026-08-13).
  */
 
 import type { RevealableFactory, Step } from "../types.js";
 import { chartFrameFactory, chartLayerFactory } from "./chart.js";
 import { eraseFactory } from "./eraser.js";
 import { graphFrameFactory, graphLayerFactory } from "./graph.js";
+import { illustrationFactory } from "./illustration.js";
 import { backRefFactory } from "./ink.js";
 import { mathFactory } from "./math.js";
 import {
@@ -34,6 +36,7 @@ const REGISTRY: Partial<Record<Step["kind"], RevealableFactory>> = {
   "chart-layer": chartLayerFactory,
   "graph-frame": graphFrameFactory,
   "graph-layer": graphLayerFactory,
+  image: illustrationFactory,
 };
 
 /** The factory for a step kind, or `undefined` when the kind has none. */
@@ -56,6 +59,7 @@ export {
   graphFrameFactory,
   graphLayerFactory,
   headingFactory,
+  illustrationFactory,
   listItemFactory,
   mathFactory,
   proseFactory,

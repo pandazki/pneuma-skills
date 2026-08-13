@@ -55,7 +55,9 @@ Revenue tripled last year.
 + series that has no home: 1 2 3
 \`\`\`
 
-![a picture](assets/x.png)
+\`\`\`html
+<b>an embedded block</b>
+\`\`\`
 `;
 
 const MATHY = `# A board with a formula

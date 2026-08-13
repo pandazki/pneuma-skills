@@ -67,6 +67,10 @@ y: 0 .. 40  (billion)
 @wait 1
 
 ![a picture](assets/x.png)
+
+\`\`\`html
+<b>an embedded block</b>
+\`\`\`
 `;
 
 const lecture = parseLecture(SOURCE);
@@ -394,12 +398,23 @@ describe("stepWindow / revealStatus — where a step sits in the lecture", () =>
   });
 
   test("a step the board never performs says so — it is not 'upcoming'", () => {
-    const image = findRef((s) => s.kind === "image");
-    expect(stepWindow(timeline.schedule, image)).toBeNull();
-    expect(revealStatus(timeline.schedule, image, 0)).toBe("never written");
-    expect(revealStatus(timeline.schedule, image, timeline.duration)).toBe(
+    // An embedded block, not a picture: a picture has been drawn since
+    // 2026-08-13 and has a window like any other block (asserted below).
+    const html = findRef((s) => s.kind === "html");
+    expect(stepWindow(timeline.schedule, html)).toBeNull();
+    expect(revealStatus(timeline.schedule, html, 0)).toBe("never written");
+    expect(revealStatus(timeline.schedule, html, timeline.duration)).toBe(
       "never written",
     );
+  });
+
+  test("a picture has a window of its own — it is performed", () => {
+    const image = findRef((s) => s.kind === "image");
+    const window = stepWindow(timeline.schedule, image)!;
+    expect(window).not.toBeNull();
+    expect(window.end).toBeGreaterThan(window.start);
+    expect(revealStatus(timeline.schedule, image, 0)).toBe("upcoming");
+    expect(revealStatus(timeline.schedule, image, window.end)).toBe("shown");
   });
 
   test("an explicit pause is time without writing — also never written", () => {

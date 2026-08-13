@@ -1030,6 +1030,42 @@ export interface MeasureContext {
    * declares its coordinates up front while a graph computes them.
    */
   container(key: string): ContainerHome | undefined;
+  /**
+   * I1 illustration seam (optional, mirrors `container`: knowledge the step
+   * value alone cannot carry enters through a host seam). Resolve a picture
+   * the lecture NAMES to the two things the board needs to draw it: the
+   * shape to leave room for, and where to read it from.
+   *
+   * `undefined` is the refusal, and it is the ONLY refusal — a path that
+   * leaves the content set, a file the host confirmed is not on disk, a
+   * picture with no entry in `illustrations/manifest.json`. The factory
+   * degrades to a visible badge (never a throw, never an invisible gap),
+   * and `check-board` names the same picture through the same verdict
+   * function (`illustrations/types.ts::illustrationRefusal`), so the board
+   * and the report can never disagree about what is drawn.
+   */
+  illustration?(step: ImageStep): IllustrationSpec | undefined;
+}
+
+/**
+ * A drawable picture (see `MeasureContext.illustration`).
+ *
+ * `aspect` is DECLARED, never measured: the board reads a figure's height
+ * off this number, so it is available before the file has loaded and it is
+ * the same number at every window size (R8 — see `IMAGE_GLUE`).
+ *
+ * `url` must be SAME-ORIGIN. A figure is painted as a mask over the board's
+ * own ink color, and a mask reads pixels, so a cross-origin source is
+ * refused by the browser — silently, completely, and with every diagnostic
+ * still reporting success (`.claude/rules/frontend.md`). Hosts pass a
+ * root-relative URL; `getApiBase()` is a different origin in dev and must
+ * NOT be used here.
+ */
+export interface IllustrationSpec {
+  /** Width ÷ height, from the sidecar. Positive and finite. */
+  aspect: number;
+  /** Same-origin URL the paint reads (see above). */
+  url: string;
 }
 
 /** Every step kind that can declare a named container. */

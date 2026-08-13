@@ -179,6 +179,70 @@ export const GRAPH_GLUE = {
 } as const;
 
 /**
+ * A drawn figure's timing (I1) — the illustration's counterpart to
+ * `CHART_GLUE`, and kept OUT of the frozen `DurationConstants` contract for
+ * the same reason (engine-contract.test.ts instantiates that interface;
+ * extending it would be a contract change).
+ *
+ * WHAT THE TIME IS A FUNCTION OF — and what it deliberately is NOT. A
+ * figure is drawn across its own width, and its width is always the width
+ * of the space it stands in, so the only thing that varies from figure to
+ * figure is how TALL it is for that width: the declared aspect. Time is a
+ * function of that declared number and of the constants below, and of
+ * nothing else.
+ *
+ * Not of pixels, and this is load-bearing rather than stylistic: the same
+ * lecture must compile to a byte-identical timeline at every window size
+ * (the two-width gate). A time derived from a measured box would make the
+ * schedule a function of the browser's layout, and a time derived from the
+ * loaded file's own size would additionally make it a function of WHEN
+ * that file arrived. Both are R8 violations; the declared aspect is
+ * neither.
+ */
+export const IMAGE_GLUE = {
+  /**
+   * A SQUARE figure's drawing time — the reference. Sits above one chart
+   * series (1.45 s) and below a whole chart skeleton: a figure is one
+   * continuous piece of drawing, bigger than a line and smaller than a
+   * built diagram. T5-family initial value.
+   */
+  sweep: 2.4,
+  /** Tail breath after the figure lands (mirrors `CHART_GLUE.tail`). */
+  tail: 0.2,
+  /**
+   * Bounds on the tallness factor (height ÷ width). A letterbox banner
+   * still reads as a drawing rather than a flick, and a freak column
+   * cannot stall the board for a minute.
+   */
+  minTallness: 0.5,
+  maxTallness: 2,
+  /**
+   * The aspect the PURE plan assumes before any figure is built — the
+   * square reference. The plan cannot see the sidecar (it is a function of
+   * the document alone), so it schedules the reference and the built
+   * figure reports its real, aspect-derived time through the ordinary
+   * measured-wins-per-unit channel (`engine/timeline.ts`). Same shape as
+   * `CAMERA_FALLBACK`.
+   */
+  nominalAspect: 1,
+} as const;
+
+/**
+ * I1 — one drawn figure's time, from its DECLARED aspect (width ÷ height).
+ * Total over its input domain: an aspect that is not a positive finite
+ * number falls back to the square reference rather than producing NaN
+ * (unreachable past the manifest reader, kept defensive).
+ */
+export function imageDuration(aspect: number): number {
+  const usable = Number.isFinite(aspect) && aspect > 0 ? aspect : IMAGE_GLUE.nominalAspect;
+  const tallness = Math.min(
+    Math.max(1 / usable, IMAGE_GLUE.minTallness),
+    IMAGE_GLUE.maxTallness,
+  );
+  return IMAGE_GLUE.sweep * tallness;
+}
+
+/**
  * Borrowed-constant aliases — non-chart units whose INITIAL timing happens
  * to equal a chart-skeleton constant. The coupling is declared here, in the
  * one calibration file, so a T5 pass retiming the chart skeleton can SEE

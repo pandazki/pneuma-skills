@@ -546,22 +546,31 @@ describe("step shapes", () => {
     }
   });
 
-  test("image / html steps plan NO beat and surface a loud unsupportedStep warning", () => {
-    // v1 has no factory for either kind (factoryFor returns undefined), so
-    // a planned 0.40s beat was pure dead board time — no node, no
-    // degradation signal, no owner. The plan is now empty and gap-
-    // transparent (like bad steps), and the parse declares the silence.
-    const src = "早上好。\n\n![说明](a.png)\n\n```html\n<b>x</b>\n```\n\n晚上好。";
+  test("an html step plans NO beat and surfaces a loud unsupportedStep warning", () => {
+    // v1 has no factory for the kind (factoryFor returns undefined), so a
+    // planned 0.40s beat was pure dead board time — no node, no
+    // degradation signal, no owner. The plan is empty and gap-transparent
+    // (like bad steps), and the parse declares the silence.
+    //
+    // A PICTURE used to sit in this test beside it. It left on 2026-08-13
+    // (I1): a picture is drawn now, so declaring its silence would be a
+    // lie — see the sibling assertion below.
+    const src = "早上好。\n\n```html\n<b>x</b>\n```\n\n晚上好。";
     const lecture = parseLecture(src);
-    expect(lecture.errors.map((e) => e.code)).toEqual([
-      "unsupportedStep",
-      "unsupportedStep",
-    ]);
+    expect(lecture.errors.map((e) => e.code)).toEqual(["unsupportedStep"]);
     const plans = planLecture(lecture, D);
     expect(plans.map((p) => p.step.kind)).toEqual(["prose", "prose"]);
     // Gap-transparent: the second prose step still leads in with ONE
-    // paraGap, exactly as if the unperformable blocks were not there.
+    // paraGap, exactly as if the unperformable block were not there.
     expect(plans[1]!.leadIn).toBeCloseTo(D.paraGap, 10);
+  });
+
+  test("a picture is planned, and says nothing about being unperformed", () => {
+    const lecture = parseLecture("早上好。\n\n![说明](a.png)\n\n晚上好。");
+    expect(lecture.errors).toEqual([]);
+    const plans = planLecture(lecture, D);
+    expect(plans.map((p) => p.step.kind)).toEqual(["prose", "image", "prose"]);
+    expect(plans[1]!.units.map((u) => u.kind)).toEqual(["image"]);
   });
 });
 

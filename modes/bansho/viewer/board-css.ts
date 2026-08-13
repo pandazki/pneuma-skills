@@ -631,7 +631,30 @@ export const BOARD_BASE_CSS = `
   color: color-mix(in srgb, var(--board-fg) 60%, transparent);
 }
 
-/* Phase-3 placeholder (image / html steps have no factory yet). */
+/* I1 — a drawn figure. The box is sized by the DECLARED aspect the factory
+   writes inline (never by the file), so it holds its place in the fold
+   before a single byte of the picture has arrived; the ink layer is the
+   board's own color painted through the picture's luminance, which is why
+   one asset serves both themes. Bottom margin matches the block rhythm
+   (.bansho-placeholder / .bansho-bad-badge). */
+.bansho-illustration {
+  position: relative;
+  display: block;
+  width: 100%;
+  margin: 0 0 14px;
+}
+.bansho-illustration-ink {
+  position: absolute;
+  inset: 0;
+  /* The picture is a MATTE, not a picture: what you see is the board's own
+     ink, painted THROUGH the file's luminance (the mask itself is written
+     inline by the factory, which is the only part that varies per figure).
+     That is why one asset serves both themes — chalk on slate here, ink on
+     plaster in the light one — with nothing regenerated on a theme flip. */
+  background-color: var(--board-fg);
+}
+
+/* Phase-3 placeholder (html steps have no factory yet). */
 .bansho-placeholder {
   font-size: 14px;
   font-family: ui-sans-serif, system-ui, sans-serif;

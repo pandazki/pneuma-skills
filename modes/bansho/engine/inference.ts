@@ -34,6 +34,7 @@ import {
   CJK_SEGMENT_CHARS,
   GRAPH_GLUE,
   HEADING_GAP_MULT,
+  IMAGE_GLUE,
   asideBarDuration,
   bulletDuration,
   endsSentence,
@@ -41,6 +42,7 @@ import {
   graphEdgeDuration,
   hasCjk,
   headingBaselineLift,
+  imageDuration,
   isClosingPunctuation,
   isOpeningPunctuation,
   isSegmentCutChar,
@@ -91,6 +93,7 @@ export type UnitKind =
   | "graph-node" // one hand-drawn box (T12)
   | "graph-label" // the name (and explanation) written inside it
   | "graph-edge" // one arrow between two boxes
+  | "image" // one drawn figure (I1) — a picture the lecture names
   | "camera" // one camera move (C2) — exclusive stage time, draws nothing
   | "erase" // one eraser sweep (C3) — exclusive stage time, hides a board
   | "turn" // one `@turn` walk (S1) — exclusive stage time, moves the pen
@@ -566,6 +569,24 @@ export function planStepUnits(step: Step, d: DurationConstants): UnitPlan[] {
         },
       ];
     case "image":
+      // I1 — one drawn figure: a single continuous piece of drawing, so a
+      // single unit, strictly serial with everything around it (G1).
+      //
+      // The time here is the SQUARE reference (`IMAGE_GLUE.nominalAspect`),
+      // not the figure's own: the declared aspect lives in a sidecar and
+      // this layer is a pure function of the document. The built figure
+      // reports its real time through the measured-wins-per-unit channel
+      // (`engine/timeline.ts`), exactly as a camera move reports its arc
+      // length over `CAMERA_FALLBACK`.
+      return [
+        {
+          kind: "image",
+          srcSpan: step.srcSpan,
+          duration: imageDuration(IMAGE_GLUE.nominalAspect),
+          gapBefore: 0,
+          gapAfter: IMAGE_GLUE.tail,
+        },
+      ];
     case "html":
       // Unperformable in v1 — no factory exists (Phase 3 骨架完备), so a
       // planned beat would burn dead board time with nothing on screen and
@@ -734,13 +755,12 @@ export function planLecture(
   let prev: "none" | "heading" | "rule" | "other" = "none";
 
   for (const { ref, step } of flattenSteps(lecture)) {
-    // Bad steps, v1-unperformable steps (image/html — no factory, no
-    // beat; see planStepUnits) and the opening `@board` stage direction
+    // Bad steps, v1-unperformable steps (html — no factory, no beat; see
+    // planStepUnits) and the opening `@board` stage direction
     // (pure configuration — zero time, zero space) are skipped and
     // gap-transparent: their blast radius is zero seconds.
     if (
       step.kind === "bad" ||
-      step.kind === "image" ||
       step.kind === "html" ||
       step.kind === "board-config"
     ) {
